@@ -265,8 +265,10 @@ struct GuideEntry: Codable, Identifiable, Hashable {
     var SeriesID: String?
     var ImageURL: String?
     var OriginalAirdate: Int?
+    var Filter: [String]?   // genre tags from SiliconDust guide API (e.g. ["Drama","Series"])
 
     var startDate: Date { Date(timeIntervalSince1970: TimeInterval(StartTime)) }
     var endDate:   Date { Date(timeIntervalSince1970: TimeInterval(EndTime)) }
     var durationMinutes: Int { (EndTime - StartTime) / 60 }
+    var firstGenre: String? { Filter?.first }
 }

@@ -18,8 +18,20 @@ struct AddShowView: View {
     @State private var selectedEntry: GuideEntry? = nil
     @State private var isLoadingGuide = false
     @State private var refreshToken = UUID()
+    @State private var snapToNow   = false
+    @State private var genreFilter: String? = nil
 
     private var taskId: String { "\(selectedDevice?.DeviceID ?? ""):\(refreshToken)" }
+
+    // Genres extracted from loaded guide channels, sorted A-Z
+    private var availableGenres: [String] {
+        var seen = Set<String>()
+        return allChannels.flatMap { $0.Guide ?? [] }
+            .compactMap { $0.firstGenre }
+            .filter { seen.insert($0.lowercased()).inserted }
+            .sorted()
+    }
+
     // Step 3
     @State private var seriesType: ShowState = .single
     @State private var airDays: Set<String> = []
@@ -98,8 +110,13 @@ struct AddShowView: View {
     }
 
     private var guideStep: some View {
-        VStack(spacing: 0) {
-            // ── Tuner picker + refresh ────────────────────────────────────────
+        let managedSeriesIDs = Set(state.shows.compactMap {
+            $0.show_seriesid.isEmpty ? nil : $0.show_seriesid
+        })
+        let managedTitles = Set(state.shows.map { $0.show_title })
+
+        return VStack(spacing: 0) {
+            // ── Row 1: Tuner picker + Now + Refresh ───────────────────────────
             HStack(spacing: 8) {
                 Text("Tuner:").foregroundStyle(.secondary)
                 if state.devices.count > 1 {
@@ -119,6 +136,9 @@ struct AddShowView: View {
                     ProgressView().scaleEffect(0.7)
                     Text("Loading…").font(.caption).foregroundStyle(.secondary)
                 }
+                Button { snapToNow = true } label: {
+                    Label("Now", systemImage: "clock.arrow.circlepath")
+                }
                 Button {
                     if let id = selectedDevice?.DeviceID {
                         state.guideStore.invalidate(deviceId: id)
@@ -129,13 +149,35 @@ struct AddShowView: View {
                 }
                 .disabled(isLoadingGuide)
             }
-            .padding(.horizontal).padding(.vertical, 8)
+            .padding(.horizontal).padding(.vertical, 6)
+
+            // ── Row 2: Genre filter (only when guide has genre data) ───────────
+            if !availableGenres.isEmpty {
+                HStack(spacing: 8) {
+                    Text("Genre:").foregroundStyle(.secondary)
+                    Picker("", selection: $genreFilter) {
+                        Text("All").tag(String?.none)
+                        ForEach(availableGenres, id: \.self) { g in
+                            Text(g).tag(Optional(g))
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(maxWidth: 180)
+                    if genreFilter != nil {
+                        Button("Clear") { genreFilter = nil }
+                            .buttonStyle(.borderless)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal).padding(.bottom, 6)
+            }
 
             Divider()
 
             // ── Show summary panel ────────────────────────────────────────────
             summaryPanel
-                .frame(height: 120)
+                .frame(height: 130)
 
             Divider()
 
@@ -146,11 +188,15 @@ struct AddShowView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 CableGuideView(
-                    allChannels:     allChannels,
-                    lineup:          state.lineups[selectedDevice?.DeviceID ?? ""] ?? [],
-                    guideHours:      state.config.GuideHours,
-                    selectedEntry:   $selectedEntry,
-                    selectedChannel: $selectedChannel,
+                    allChannels:      allChannels,
+                    lineup:           state.lineups[selectedDevice?.DeviceID ?? ""] ?? [],
+                    guideHours:       state.config.GuideHours,
+                    selectedEntry:    $selectedEntry,
+                    selectedChannel:  $selectedChannel,
+                    snapToNow:        $snapToNow,
+                    managedSeriesIDs: managedSeriesIDs,
+                    managedTitles:    managedTitles,
+                    genreFilter:      genreFilter,
                     onConfirm: {
                         applyGuideEntry()
                         step = .details
@@ -166,48 +212,57 @@ struct AddShowView: View {
     @ViewBuilder
     private var summaryPanel: some View {
         if let entry = selectedEntry {
-            HStack(alignment: .top, spacing: 12) {
+            let onAir  = entry.startDate <= Date() && entry.endDate > Date()
+            let bgColor = guideEntryColor(for: entry, onAir: onAir)
+
+            HStack(alignment: .top, spacing: 14) {
                 // Poster image
                 if let urlStr = entry.ImageURL, !urlStr.isEmpty, let url = URL(string: urlStr) {
                     AsyncImage(url: url) { img in
                         img.resizable().aspectRatio(contentMode: .fill)
                     } placeholder: {
-                        Color(NSColor.separatorColor)
+                        Color.white.opacity(0.2)
                     }
-                    .frame(width: 120, height: 96)
-                    .cornerRadius(6)
+                    .frame(width: 140, height: 100)
+                    .cornerRadius(7)
                     .clipped()
                 } else {
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(Color(NSColor.separatorColor))
-                        .frame(width: 120, height: 96)
+                    RoundedRectangle(cornerRadius: 7)
+                        .fill(Color.white.opacity(0.2))
+                        .frame(width: 140, height: 100)
                 }
 
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(entry.Title)
-                        .font(.headline)
+                        .font(.title3).bold()
+                        .foregroundColor(.white)
                         .lineLimit(1)
+                        .shadow(color: .black.opacity(0.4), radius: 1, x: 0, y: 1)
                     if let ep = episodeInfoLabel(entry) {
                         Text(ep)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .font(.subheadline)
+                            .foregroundColor(.white.opacity(0.85))
                             .lineLimit(1)
                     }
                     if let syn = entry.Synopsis, !syn.isEmpty {
                         Text(syn)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .font(.callout)
+                            .foregroundColor(.white.opacity(0.9))
                             .lineLimit(3)
                     }
                     Spacer(minLength: 0)
                     Text("ch \(selectedChannel?.GuideNumber ?? "?")  ·  \(guideTimeRange(entry))")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.75))
                 }
                 Spacer()
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(bgColor.opacity(0.90))
+            .cornerRadius(10)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
         } else {
             Text("Select a show from the grid")
                 .foregroundStyle(.tertiary)
@@ -225,7 +280,9 @@ struct AddShowView: View {
     }
 
     private func guideTimeRange(_ entry: GuideEntry) -> String {
-        let f = DateFormatter(); f.timeStyle = .short; f.dateStyle = .none
+        let f = DateFormatter()
+        f.dateFormat = "h:mm a"
+        f.locale = Locale.current
         return "\(f.string(from: entry.startDate)) – \(f.string(from: entry.endDate))"
     }
 
