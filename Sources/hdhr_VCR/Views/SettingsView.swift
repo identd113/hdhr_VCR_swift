@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import ServiceManagement
 
 private enum SettingsCategory: String, CaseIterable, Identifiable {
@@ -8,6 +9,7 @@ private enum SettingsCategory: String, CaseIterable, Identifiable {
     case guide         = "Guide"
     case notifications = "Notifications"
     case advanced      = "Advanced"
+    case about         = "About"
 
     var icon: String {
         switch self {
@@ -16,6 +18,7 @@ private enum SettingsCategory: String, CaseIterable, Identifiable {
         case .guide:         return "tv"
         case .notifications: return "bell.badge"
         case .advanced:      return "terminal"
+        case .about:         return "info.circle"
         }
     }
 }
@@ -25,18 +28,54 @@ struct SettingsView: View {
     @AppStorage("addShowMode") private var addShowMode: AddShowMode = .menu
     @AppStorage("defaultSaveDirectory") private var defaultSaveDirectory: String = ""
     @State private var selection: SettingsCategory? = .general
+    @State private var draft: AppConfig = AppConfig()
+    @State private var easterEggTaps = 0
+    @State private var showEasterEgg = false
+
+    private var isDirty: Bool { draft != state.config }
 
     var body: some View {
-        NavigationSplitView {
-            List(SettingsCategory.allCases, selection: $selection) { cat in
-                Label(cat.rawValue, systemImage: cat.icon)
-                    .tag(cat)
+        VStack(spacing: 0) {
+            NavigationSplitView {
+                List(SettingsCategory.allCases, selection: $selection) { cat in
+                    Label(cat.rawValue, systemImage: cat.icon)
+                        .tag(cat)
+                }
+                .navigationSplitViewColumnWidth(min: 150, ideal: 170, max: 200)
+            } detail: {
+                detailContent
             }
-            .navigationSplitViewColumnWidth(min: 150, ideal: 170, max: 200)
-        } detail: {
-            detailContent
+
+            Divider()
+
+            // ── Persistent save bar ────────────────────────────────────────
+            HStack {
+                if isDirty {
+                    Text("Unsaved changes")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Button("Discard") { draft = state.config }
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Save") { applyAndSave() }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!isDirty)
+                    .keyboardShortcut("s", modifiers: .command)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
         }
-        .frame(width: 560, height: 440)
+        .frame(width: 560, height: 520)
+        .background(WindowCloseInterceptor(isDirty: isDirty, onSave: applyAndSave))
+        .onAppear { draft = state.config }
+    }
+
+    private func applyAndSave() {
+        let intervalChanged = draft.Idle_timer_interval != state.config.Idle_timer_interval
+        state.config = draft
+        state.saveConfig()
+        if intervalChanged { state.startTimer() }
     }
 
     @ViewBuilder
@@ -47,6 +86,7 @@ struct SettingsView: View {
         case .guide:         guideView
         case .notifications: notificationsView
         case .advanced:      advancedView
+        case .about:         aboutView
         }
     }
 
@@ -103,10 +143,7 @@ struct SettingsView: View {
                     }
                 }
 
-                Picker("Default transcode", selection: Binding(
-                    get: { state.config.Default_transcode },
-                    set: { state.config.Default_transcode = $0; state.saveConfig() }
-                )) {
+                Picker("Default transcode", selection: $draft.Default_transcode) {
                     Text("None").tag("none")
                     Text("Heavy").tag("heavy")
                     Text("Mobile").tag("mobile")
@@ -114,22 +151,21 @@ struct SettingsView: View {
                 }
 
                 Stepper(
-                    "Min free disk: \(state.config.Min_disk_free_gb, specifier: "%.0f") GB",
-                    value: Binding(
-                        get: { state.config.Min_disk_free_gb },
-                        set: { state.config.Min_disk_free_gb = $0; state.saveConfig() }
-                    ),
+                    "Min free disk: \(draft.Min_disk_free_gb, specifier: "%.0f") GB",
+                    value: $draft.Min_disk_free_gb,
                     in: 1...100, step: 1
                 )
 
                 Stepper(
-                    "Pause after \(state.config.Fail_count_setting) failure(s)",
-                    value: Binding(
-                        get: { state.config.Fail_count_setting },
-                        set: { state.config.Fail_count_setting = $0; state.saveConfig() }
-                    ),
+                    "Pause after \(draft.Fail_count_setting) failure(s)",
+                    value: $draft.Fail_count_setting,
                     in: 1...10
                 )
+
+                if FileManager.default.fileExists(atPath: "/Applications/VLC.app") {
+                    Toggle("Watch in VLC", isOn: $draft.Watch_in_VLC)
+                        .help("Show a 'Watch in VLC' option for live and recording streams")
+                }
             }
         }
         .formStyle(.grouped)
@@ -142,19 +178,13 @@ struct SettingsView: View {
         Form {
             Section("Guide") {
                 Stepper(
-                    "Show next \(state.config.GuideHours) hours",
-                    value: Binding(
-                        get: { state.config.GuideHours },
-                        set: { state.config.GuideHours = $0; state.saveConfig() }
-                    ),
+                    "Show next \(draft.GuideHours) hours",
+                    value: $draft.GuideHours,
                     in: 1...48
                 )
                 Stepper(
-                    "Series scan retry: \(state.config.Series_scan_retry_hours) hr",
-                    value: Binding(
-                        get: { state.config.Series_scan_retry_hours },
-                        set: { state.config.Series_scan_retry_hours = $0; state.saveConfig() }
-                    ),
+                    "Series scan retry: \(draft.Series_scan_retry_hours) hr",
+                    value: $draft.Series_scan_retry_hours,
                     in: 1...24
                 )
             }
@@ -169,18 +199,18 @@ struct SettingsView: View {
         Form {
             Section("Notifications") {
                 Stepper(
-                    "Up Next: \(Int(state.config.Notify_upnext)) min before",
+                    "Up Next: \(Int(draft.Notify_upnext)) min before",
                     value: Binding(
-                        get: { Int(state.config.Notify_upnext) },
-                        set: { state.config.Notify_upnext = Double($0); state.saveConfig() }
+                        get: { Int(draft.Notify_upnext) },
+                        set: { draft.Notify_upnext = Double($0) }
                     ),
                     in: 5...120, step: 5
                 )
                 Stepper(
-                    "Recording alert: \(Int(state.config.Notify_recording)) min before",
+                    "Recording alert: \(Int(draft.Notify_recording)) min before",
                     value: Binding(
-                        get: { Int(state.config.Notify_recording) },
-                        set: { state.config.Notify_recording = Double($0); state.saveConfig() }
+                        get: { Int(draft.Notify_recording) },
+                        set: { draft.Notify_recording = Double($0) }
                     ),
                     in: 1...60
                 )
@@ -196,21 +226,15 @@ struct SettingsView: View {
         Form {
             Section("Performance") {
                 Stepper(
-                    "Idle check: every \(state.config.Idle_timer_interval) sec",
-                    value: Binding(
-                        get: { state.config.Idle_timer_interval },
-                        set: { state.config.Idle_timer_interval = $0; state.saveConfig(); state.startTimer() }
-                    ),
+                    "Idle check: every \(draft.Idle_timer_interval) sec",
+                    value: $draft.Idle_timer_interval,
                     in: 5...60, step: 5
                 )
             }
 
             Section("Logging") {
-                Toggle("Verbose curl logging", isOn: Binding(
-                    get: { state.config.Verbose_curl },
-                    set: { state.config.Verbose_curl = $0; state.saveConfig() }
-                ))
-                if state.config.Verbose_curl {
+                Toggle("Verbose curl logging", isOn: $draft.Verbose_curl)
+                if draft.Verbose_curl {
                     Text("curl stderr → \(RecordingManager.curlLogPath)")
                         .font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
                     Button("Show curl log in Finder") {
@@ -240,6 +264,59 @@ struct SettingsView: View {
         .navigationTitle("Advanced")
     }
 
+    // MARK: - About
+
+    private var aboutView: some View {
+        ScrollView {
+            VStack(spacing: 20) {
+                AsyncImage(url: URL(string: "https://raw.githubusercontent.com/identd113/hdhr_VCR-AS/main/app.jpg")) { img in
+                    img.resizable().aspectRatio(contentMode: .fit).cornerRadius(12)
+                } placeholder: {
+                    Image(systemName: "antenna.radiowaves.left.and.right")
+                        .font(.system(size: 80)).foregroundStyle(.secondary)
+                }
+                .frame(width: 180, height: 180)
+                .onTapGesture {
+                    easterEggTaps += 1
+                    if easterEggTaps >= 5 { showEasterEgg = true; easterEggTaps = 0 }
+                }
+
+                Text("hdhr_VCR").font(.largeTitle).bold()
+                Text("Version 1.0 — Swift/SwiftUI rewrite")
+                    .foregroundStyle(.secondary)
+
+                Divider()
+
+                Text("""
+                hdhr_VCR began in 2016 as an AppleScript application for recording \
+                live TV from HDHomeRun network tuners. Built to fill the gap left by \
+                discontinued recording software, it grew to support SeriesID-based \
+                recording, multi-device discovery, and guide-driven scheduling — all \
+                from a simple macOS script.
+
+                This Swift/SwiftUI rewrite brings a native menu bar experience, a \
+                cable-guide grid, persistent settings, and modern macOS features like \
+                Launch at Login and user notifications, while staying fully compatible \
+                with the original AppleScript config format.
+                """)
+                .font(.callout)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Link("View on GitHub",
+                     destination: URL(string: "https://github.com/identd113/hdhr_VCR-AS")!)
+                    .buttonStyle(.bordered)
+            }
+            .padding()
+        }
+        .navigationTitle("About")
+        .alert("You found it!", isPresented: $showEasterEgg) {
+            Button("OK") {}
+        } message: {
+            Text("Congratulations! You clicked the logo 5 times.\n\nYou are now an honorary HDHomeRun power user. Your tuner count has been increased by zero.")
+        }
+    }
+
     // MARK: - Helpers
 
     private var saveDirLabel: String {
@@ -259,5 +336,52 @@ struct SettingsView: View {
         panel.allowsMultipleSelection = false
         panel.directoryURL = state.defaultSaveDir
         if panel.runModal() == .OK, let url = panel.url { defaultSaveDirectory = url.path }
+    }
+}
+
+// MARK: - Window close interception
+
+private struct WindowCloseInterceptor: NSViewRepresentable {
+    let isDirty: Bool
+    let onSave: () -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            view.window?.delegate = context.coordinator
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        context.coordinator.isDirty = isDirty
+        context.coordinator.onSave  = onSave
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(isDirty: isDirty, onSave: onSave) }
+
+    class Coordinator: NSObject, NSWindowDelegate {
+        var isDirty: Bool
+        var onSave:  () -> Void
+
+        init(isDirty: Bool, onSave: @escaping () -> Void) {
+            self.isDirty = isDirty
+            self.onSave  = onSave
+        }
+
+        func windowShouldClose(_ sender: NSWindow) -> Bool {
+            guard isDirty else { return true }
+            let alert = NSAlert()
+            alert.messageText     = "Unsaved Settings"
+            alert.informativeText = "Save your changes before closing?"
+            alert.addButton(withTitle: "Save")
+            alert.addButton(withTitle: "Discard")
+            alert.addButton(withTitle: "Cancel")
+            switch alert.runModal() {
+            case .alertFirstButtonReturn:  onSave(); return true
+            case .alertSecondButtonReturn: return true
+            default:                       return false
+            }
+        }
     }
 }

@@ -61,7 +61,7 @@ final class GuideStore {
             return
         }
         guard let url = Self.guideURL(for: device, hours: hours) else {
-            log("[\(id)] could not build URL for hours=\(hours)")
+            print("[GuideStore] [\(id)] could not build guide URL — DeviceAuth: \(device.DeviceAuth != nil ? "yes" : "nil"), LocalIP: '\(device.LocalIP)'")
             return
         }
 
@@ -83,6 +83,8 @@ final class GuideStore {
             buildIndex(deviceId: id, channels: channels)
             loadTimestamps[id] = Date()
         } catch {
+            // Always print fetch errors so failures are visible without verbose mode
+            print("[GuideStore] [\(id)] fetch error: \(error.localizedDescription)")
             log("[\(id)] fetch error: \(error.localizedDescription)")
         }
     }

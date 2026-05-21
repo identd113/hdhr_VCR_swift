@@ -69,8 +69,8 @@ struct AddShowView: View {
             Divider()
             navBar
         }
-        .frame(width: step == .guide ? 960 : 560,
-               height: step == .guide ? 700 : 540)
+        .frame(width: step == .guide ? 860 : 560,
+               height: step == .guide ? 620 : 540)
         .animation(.easeInOut(duration: 0.2), value: step)
         .onAppear {
             show.show_transcode = state.config.Default_transcode
@@ -79,6 +79,10 @@ struct AddShowView: View {
                 selectedDevice = state.devices[0]
                 step = .guide
             }
+            // Preload guide for all devices now so step 2 is ready immediately
+            for device in state.devices {
+                state.ensureGuideLoaded(for: device.DeviceID)
+            }
         }
     }
 
@@ -86,7 +90,14 @@ struct AddShowView: View {
 
     private var deviceStep: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Select Tuner").font(.title2).padding()
+            HStack {
+                Text("Select Tuner").font(.title2)
+                Spacer()
+                Button { Task { await state.discoverDevices() } } label: {
+                    Label("Refresh", systemImage: "arrow.clockwise")
+                }
+            }
+            .padding()
             if state.devices.isEmpty {
                 ContentUnavailableView("No tuners found", systemImage: "wifi.slash",
                     description: Text("Make sure your HDHomeRun is on the network."))
@@ -116,26 +127,39 @@ struct AddShowView: View {
         let managedTitles = Set(state.shows.map { $0.show_title })
 
         return VStack(spacing: 0) {
-            // ── Row 1: Tuner picker + Now + Refresh ───────────────────────────
-            HStack(spacing: 8) {
-                Text("Tuner:").foregroundStyle(.secondary)
+            // ── Compact toolbar: tuner + genre filter + actions ───────────────
+            HStack(spacing: 10) {
                 if state.devices.count > 1 {
+                    Text("Tuner:").foregroundStyle(.secondary).fixedSize()
                     Picker("", selection: $selectedDevice) {
                         ForEach(state.devices) { device in
                             Text(device.DeviceID).tag(Optional(device))
                         }
                     }
                     .labelsHidden()
-                    .frame(maxWidth: 180)
-                } else {
-                    Text(selectedDevice?.DeviceID ?? "—")
-                        .foregroundStyle(.secondary)
+                    .frame(maxWidth: 170)
                 }
+
+                if !availableGenres.isEmpty {
+                    Text("Genre:").foregroundStyle(.secondary).fixedSize()
+                    Picker("", selection: $genreFilter) {
+                        Text("All").tag(String?.none)
+                        ForEach(availableGenres, id: \.self) { g in
+                            Text(g).tag(Optional(g))
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(maxWidth: 160)
+                    if genreFilter != nil {
+                        Button("Clear") { genreFilter = nil }
+                            .buttonStyle(.borderless)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
                 Spacer()
-                if isLoadingGuide {
-                    ProgressView().scaleEffect(0.7)
-                    Text("Loading…").font(.caption).foregroundStyle(.secondary)
-                }
+
+                if isLoadingGuide { ProgressView().scaleEffect(0.7) }
                 Button { snapToNow = true } label: {
                     Label("Now", systemImage: "clock.arrow.circlepath")
                 }
@@ -149,59 +173,40 @@ struct AddShowView: View {
                 }
                 .disabled(isLoadingGuide)
             }
-            .padding(.horizontal).padding(.vertical, 6)
+            .padding(.horizontal, 12).padding(.vertical, 8)
 
-            // ── Row 2: Genre filter (only when guide has genre data) ───────────
-            if !availableGenres.isEmpty {
-                HStack(spacing: 8) {
-                    Text("Genre:").foregroundStyle(.secondary)
-                    Picker("", selection: $genreFilter) {
-                        Text("All").tag(String?.none)
-                        ForEach(availableGenres, id: \.self) { g in
-                            Text(g).tag(Optional(g))
-                        }
+            Divider()
+
+            // ── Summary (top 1/3) + Guide grid (bottom 2/3) ──────────────────
+            GeometryReader { proxy in
+                VStack(spacing: 0) {
+                    summaryPanel
+                        .frame(height: proxy.size.height / 3)
+
+                    Divider()
+
+                    if allChannels.isEmpty && !isLoadingGuide {
+                        ContentUnavailableView("No guide data", systemImage: "tv.slash",
+                            description: Text("Guide data unavailable — tap Refresh to retry."))
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        CableGuideView(
+                            allChannels:      allChannels,
+                            lineup:           state.lineups[selectedDevice?.DeviceID ?? ""] ?? [],
+                            guideHours:       state.config.GuideHours,
+                            selectedEntry:    $selectedEntry,
+                            selectedChannel:  $selectedChannel,
+                            snapToNow:        $snapToNow,
+                            managedSeriesIDs: managedSeriesIDs,
+                            managedTitles:    managedTitles,
+                            genreFilter:      genreFilter,
+                            onConfirm: {
+                                applyGuideEntry()
+                                step = .details
+                            }
+                        )
                     }
-                    .labelsHidden()
-                    .frame(maxWidth: 180)
-                    if genreFilter != nil {
-                        Button("Clear") { genreFilter = nil }
-                            .buttonStyle(.borderless)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
                 }
-                .padding(.horizontal).padding(.bottom, 6)
-            }
-
-            Divider()
-
-            // ── Show summary panel ────────────────────────────────────────────
-            summaryPanel
-                .frame(height: 130)
-
-            Divider()
-
-            // ── Cable guide grid ──────────────────────────────────────────────
-            if allChannels.isEmpty && !isLoadingGuide {
-                ContentUnavailableView("No guide data", systemImage: "tv.slash",
-                    description: Text("Guide data unavailable — tap Refresh to retry."))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                CableGuideView(
-                    allChannels:      allChannels,
-                    lineup:           state.lineups[selectedDevice?.DeviceID ?? ""] ?? [],
-                    guideHours:       state.config.GuideHours,
-                    selectedEntry:    $selectedEntry,
-                    selectedChannel:  $selectedChannel,
-                    snapToNow:        $snapToNow,
-                    managedSeriesIDs: managedSeriesIDs,
-                    managedTitles:    managedTitles,
-                    genreFilter:      genreFilter,
-                    onConfirm: {
-                        applyGuideEntry()
-                        step = .details
-                    }
-                )
             }
         }
         .task(id: taskId) { await loadAllGuide() }

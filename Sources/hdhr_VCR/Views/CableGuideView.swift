@@ -62,6 +62,11 @@ struct CableGuideView: View {
     // ── State ──────────────────────────────────────────────────────────────────
     @State private var channelScrollOffset: CGFloat = 0
 
+    // Pre-built O(1) lookup — avoids lineup.first(where:) O(N) scan per channel per render
+    private var lineupByNumber: [String: LineupEntry] {
+        Dictionary(uniqueKeysWithValues: lineup.map { ($0.GuideNumber, $0) })
+    }
+
     // ── Derived layout values ──────────────────────────────────────────────────
     private var displayStart: Date {
         let secs = Int(Date().timeIntervalSince1970)
@@ -113,7 +118,7 @@ struct CableGuideView: View {
     }
 
     private func channelLabelCell(_ ch: GuideChannel) -> some View {
-        let lu = lineup.first(where: { $0.GuideNumber == ch.GuideNumber })
+        let lu = lineupByNumber[ch.GuideNumber]
         return VStack(alignment: .leading, spacing: 1) {
             Text(ch.GuideNumber)
                 .font(.system(size: 11, weight: .bold))
@@ -148,7 +153,9 @@ struct CableGuideView: View {
                 .frame(width: totalW)
             }
             .onScrollGeometryChange(for: CGFloat.self, of: { $0.contentOffset.y }) { _, y in
-                channelScrollOffset = y
+                guard abs(y - channelScrollOffset) > 0.5 else { return }
+                var t = Transaction(); t.disablesAnimations = true
+                withTransaction(t) { channelScrollOffset = y }
             }
             .onChange(of: snapToNow) { _, trigger in
                 guard trigger else { return }
@@ -197,8 +204,9 @@ struct CableGuideView: View {
     // ── Show blocks row (no channel label — that lives in channelColumnFixed) ──
 
     private func showBlocksRow(_ ch: GuideChannel) -> some View {
-        let lu      = lineup.first(where: { $0.GuideNumber == ch.GuideNumber })
+        let lu      = lineupByNumber[ch.GuideNumber]
         let entries = visibleEntries(ch)
+        let now     = Date()
 
         return ZStack(alignment: .topLeading) {
             Color(NSColor.underPageBackgroundColor)
@@ -213,10 +221,10 @@ struct CableGuideView: View {
                     .offset(x: x)
             }
 
-            ForEach(entries) { entry in showBlock(entry: entry, lu: lu) }
+            ForEach(entries) { entry in showBlock(entry: entry, lu: lu, now: now) }
 
             // "Now" line
-            let nowX = CGFloat(Date().timeIntervalSince(displayStart) / 60) * pxPerMin
+            let nowX = CGFloat(now.timeIntervalSince(displayStart) / 60) * pxPerMin
             if nowX > 0 && nowX < totalW {
                 Rectangle()
                     .fill(Color.red.opacity(0.65))
@@ -231,8 +239,7 @@ struct CableGuideView: View {
     // ── Individual show block ──────────────────────────────────────────────────
 
     @ViewBuilder
-    private func showBlock(entry: GuideEntry, lu: LineupEntry?) -> some View {
-        let now        = Date()
+    private func showBlock(entry: GuideEntry, lu: LineupEntry?, now: Date) -> some View {
         let startSec   = entry.startDate.timeIntervalSince(displayStart)
         let rawX       = CGFloat(startSec / 60) * pxPerMin
         let cellX      = max(0, rawX)
@@ -304,15 +311,16 @@ struct CableGuideView: View {
         .offset(x: cellX, y: 1)
         .opacity(matchesFilter ? 1.0 : 0.2)
         .allowsHitTesting(matchesFilter)
-        .onTapGesture(count: 1) {
+        // Single-tap fires immediately; double-tap runs concurrently (no ~400ms delay)
+        .onTapGesture {
             selectedEntry   = entry
             selectedChannel = lu
         }
-        .onTapGesture(count: 2) {
+        .simultaneousGesture(TapGesture(count: 2).onEnded {
             selectedEntry   = entry
             selectedChannel = lu
             onConfirm?()
-        }
+        })
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

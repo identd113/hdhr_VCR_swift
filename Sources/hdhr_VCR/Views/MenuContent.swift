@@ -19,8 +19,14 @@ struct MenuContent: View {
     var body: some View {
 
         // ── Header ────────────────────────────────────────────────────────
-        Text("hdhr_VCR").font(.headline)
-        Text(state.statusMessage).foregroundStyle(.secondary)
+        if state.devices.count > 1 {
+            Text("\(state.devices.count) Tuners").font(.headline)
+        }
+        let totalSlots = state.devices.reduce(0) { $0 + ($1.TunerCount ?? 1) }
+        let activeCount = state.recordingShows.count
+        Text("\(activeCount) of \(totalSlots) tuner(s) in use")
+            .foregroundStyle(activeCount > 0 ? Color(NSColor.labelColor) : Color(NSColor.secondaryLabelColor))
+        Text(state.statusMessage).foregroundStyle(Color(NSColor.secondaryLabelColor))
         Divider()
 
         // ── Recording now ─────────────────────────────────────────────────
@@ -54,7 +60,7 @@ struct MenuContent: View {
         if addShowMode == .menu {
             addShowMenu
         } else {
-            Button("➕ Add Show…") { open("add-show") }
+            Button("Add Show…") { open("add-show") }
         }
         Button("Refresh Guide") { state.refreshAll() }
         Button("Settings…")    { open("settings") }
@@ -68,7 +74,7 @@ struct MenuContent: View {
 
     @ViewBuilder
     private var addShowMenu: some View {
-        let menuLabel = "➕ Add Show"
+        let menuLabel = "Add Show"
         if state.devices.isEmpty {
             Text("No tuners detected").foregroundStyle(.secondary)
         } else if state.devices.count == 1, let device = state.devices.first {
@@ -113,7 +119,7 @@ struct MenuContent: View {
         let hdBadge   = channel.HD == 1 ? " HD" : ""
         let label     = "\(channel.GuideNumber)  \(channel.GuideName)\(hdBadge)"
         let now       = Date()
-        let onAir     = entries.filter { $0.startDate <= now }
+        let onAir     = entries.filter { $0.startDate <= now && $0.endDate > now }
         let upcoming  = entries.filter { $0.startDate > now }
 
         Menu(label) {
@@ -142,7 +148,8 @@ struct MenuContent: View {
 
     @ViewBuilder
     private func entryMenu(entry: GuideEntry, device: HDHRDevice, channel: LineupEntry, isOnAir: Bool = false) -> some View {
-        Menu(entryLabel(entry, isOnAir: isOnAir)) {
+        let entryColor = guideEntryColor(for: entry, onAir: isOnAir)
+        Menu {
 
             // Info (disabled) ─────────────────────────────────────────────
             // Poster image (best-effort — NSMenu rendering of AsyncImage varies)
@@ -213,6 +220,17 @@ struct MenuContent: View {
                     }
                 }
             }
+
+            if state.config.Watch_in_VLC && isOnAir {
+                Button("Watch in VLC") { state.watchInVLC(url: channel.URL ?? "") }
+            }
+        } label: {
+            Label {
+                Text(entryLabel(entry, isOnAir: isOnAir))
+            } icon: {
+                Image(systemName: "square.fill")
+                    .foregroundStyle(entryColor)
+            }
         }
     }
 
@@ -230,6 +248,9 @@ struct MenuContent: View {
                 .foregroundColor(Color(NSColor.secondaryLabelColor))
             Divider()
             Button("Stop Recording") { state.stopRecording(showId: show.show_id) }
+            if state.config.Watch_in_VLC {
+                Button("Watch in VLC") { state.watchInVLC(url: show.show_url) }
+            }
             Button("Edit…") { editShow(show) }
         }
     }

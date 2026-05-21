@@ -164,7 +164,7 @@ extension Show: Codable {
 
 // MARK: - AppConfig / ConfigFile
 
-struct AppConfig: Codable {
+struct AppConfig: Codable, Equatable {
     // Notifications
     var Notify_recording: Double = 15.5     // minutes before recording alert
     var Notify_upnext: Double    = 35.0     // minutes before show airs
@@ -186,6 +186,7 @@ struct AppConfig: Codable {
     var Hdhr_setup_folder: String = ""
 
     var Verbose_curl: Bool = false
+    var Watch_in_VLC: Bool = false
     var Config_version: String = "1"
 }
 

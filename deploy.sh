@@ -13,6 +13,10 @@ swift build
 echo "==> Deploying binary…"
 cp .build/debug/hdhr_VCR "$BINARY"
 
+echo "==> Signing…"
+xattr -cr "$APP"
+codesign --force --deep --sign - "$APP"
+
 echo "==> Launching $APP…"
 open "$APP"
 

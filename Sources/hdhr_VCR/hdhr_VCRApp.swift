@@ -56,6 +56,10 @@ struct hdhr_VCRApp: App {
             Image(systemName: "record.circle.fill")
                 .symbolRenderingMode(.palette)
                 .foregroundStyle(.red, .primary)
+        } else if let mins = appState.nextShowMinutes, mins <= 30 {
+            Image(systemName: "clock.badge.fill")
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(.orange, .primary)
         } else {
             Image(systemName: "tv")
         }

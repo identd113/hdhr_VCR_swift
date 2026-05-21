@@ -21,6 +21,13 @@ final class AppState: ObservableObject {
                                        .sorted { ($0.show_next.date ?? .distantFuture) < ($1.show_next.date ?? .distantFuture) } }
     var inactiveShows: [Show]   { shows.filter { !$0.show_active } }
 
+    var nextShowMinutes: Double? {
+        activeShows
+            .compactMap { $0.show_next.date.map { $0.timeIntervalSince(Date()) / 60 } }
+            .filter { $0 > 0 }
+            .min()
+    }
+
     let configManager    = ConfigManager()
     let hdhrManager      = HDHRManager()
     let recordingManager = RecordingManager()
@@ -42,6 +49,17 @@ final class AppState: ObservableObject {
         await reattachRecordings()
         await discoverDevices(knownHosts: knownHostsFromShows())
         await fetchAllGuides()
+
+        // If known-hosts fast path gave us devices but guide load still failed
+        // (EXTEND device may not expose DeviceAuth via local discover.json),
+        // redo discovery via mDNS/cloud which properly populates DeviceAuth.
+        let loadedChannels = guideByDevice.values.reduce(0) { $0 + $1.count }
+        if loadedChannels == 0 && !devices.isEmpty {
+            print("[Startup] Guide load failed — retrying with full device discovery")
+            await discoverDevices()
+            await fetchAllGuides()
+        }
+
         startTimer()
         isStartingUp = false
     }
@@ -142,7 +160,12 @@ final class AppState: ObservableObject {
         guideStore.verbose = config.Verbose_curl
         await guideStore.loadAll(devices: devices, hours: config.GuideHours)
         guideByDevice = guideStore.channelsByDevice
-        lastGuideRefresh = Date()
+        // Only stamp the refresh time if at least one device actually loaded channels.
+        // A failed load must NOT reset lastGuideRefresh — the idle loop's ensureGuideLoaded
+        // retries for empty-channel devices every tick, so skipping the stamp lets the
+        // periodic refresh also retry at the normal interval.
+        let loadedCount = guideByDevice.values.reduce(0) { $0 + $1.count }
+        if loadedCount > 0 { lastGuideRefresh = Date() }
         statusMessage = "\(shows.count) show(s) — \(devices.count) tuner(s) ready"
     }
 
@@ -515,6 +538,16 @@ final class AppState: ObservableObject {
     func shortTime(_ date: Date?) -> String {
         guard let d = date else { return "?" }
         let f = DateFormatter(); f.timeStyle = .short; return f.string(from: d)
+    }
+
+    func watchInVLC(url: String) {
+        guard config.Watch_in_VLC,
+              let streamURL = URL(string: url) else { return }
+        let vlcPath = "/Applications/VLC.app"
+        guard FileManager.default.fileExists(atPath: vlcPath),
+              let vlcApp = URL(string: "file://\(vlcPath)") else { return }
+        NSWorkspace.shared.open([streamURL], withApplicationAt: vlcApp,
+                                configuration: .init()) { _, _ in }
     }
 
     func quit() {

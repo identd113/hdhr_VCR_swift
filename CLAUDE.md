@@ -50,8 +50,9 @@ Views/
 3. `reattachRecordings()` — scans `ps -Aa` for caffeinate processes with `show_id:` that survived a restart; reattaches their PIDs without launching new recordings
 4. `discoverDevices(knownHosts:)` — seeds known device IPs from saved show URLs, then falls back to mDNS → cloud → UDP, up to 3 retries
 5. `fetchAllGuides()` — delegates to `guideStore.loadAll(devices:hours:)` in parallel; mirrors result into `guideByDevice`
-6. `startTimer()` — fires `idleLoop()` every N seconds (default 10)
-7. Sets `isStartingUp = false` (menu bar icon switches from dimmed tv to normal/red-dot)
+6. **Guide retry** — if step 5 loaded 0 channels but devices exist (known-hosts fast path may return EXTEND device without `DeviceAuth`), re-runs `discoverDevices()` with no knownHosts (forces mDNS/cloud path) and retries `fetchAllGuides()`
+7. `startTimer()` — fires `idleLoop()` every N seconds (default 10)
+8. Sets `isStartingUp = false` (menu bar icon switches from dimmed tv to normal/red-dot)
 
 ### Idle Loop (`AppState.idleLoop`)
 Runs every `config.Idle_timer_interval` seconds on MainActor:
@@ -86,6 +87,7 @@ Four methods tried in order, first non-empty result wins:
 - `HDHRDevice.DeviceAuth` is set when the device has a cloud auth token
 - `GuideStore.guideURL(for:hours:)` routes to `https://api.hdhomerun.com/api/guide.php?DeviceAuth=...&Duration=N` when `DeviceAuth != nil`, otherwise to `http://{LocalIP}/guide.json?Duration=N`
 - mDNS response omits `LocalIP`; it is extracted from `BaseURL` host in `HDHRDevice.init(from:)`
+- **Known-hosts caveat**: the EXTEND device's local `/discover.json` may not include `DeviceAuth` on some firmware versions. If `guideURL()` can't build a URL it always prints a diagnostic (`[GuideStore] … could not build guide URL`). The startup retry (step 6 above) handles this by forcing mDNS/cloud discovery.
 
 ---
 
@@ -110,12 +112,20 @@ func invalidate(deviceId: String)
 func invalidateAll()
 ```
 
+### AppState computed properties
+- `isRecording: Bool` — any show has `show_recording == true`
+- `recordingShows: [Show]` — recording and `show_end > now`
+- `activeShows: [Show]` — `show_active && !show_recording`, sorted by `show_next`
+- `inactiveShows: [Show]` — `!show_active`
+- `nextShowMinutes: Double?` — minutes until the nearest upcoming active show; drives the orange clock.badge menu bar icon (≤ 30 min)
+
 ### AppState guide helpers
-- `fetchAllGuides()` — startup parallel load; sets `lastGuideRefresh`
+- `fetchAllGuides()` — startup parallel load; sets `lastGuideRefresh` only when ≥1 channel loaded
 - `refreshGuides()` (private) — invalidates then reloads all; called periodically from idle loop
-- `ensureGuideLoaded(for deviceId:)` — loads a single device if channels are absent and not already loading
+- `ensureGuideLoaded(for deviceId:)` — loads a single device if channels are absent and not already loading; safe to call multiple times
 - `guideEntries(deviceId:channelNum:)` — delegates to `guideStore.entries()`
 - `nextGuideEpisode(for show:)` — delegates to `guideStore.nextEpisode()`; respects channel/device filters for SeriesID(Channel) vs SeriesID(All)
+- `watchInVLC(url:)` — opens a stream URL in `/Applications/VLC.app` via `NSWorkspace`; no-op if VLC not installed or `Watch_in_VLC` is false
 
 ---
 
@@ -192,6 +202,7 @@ Min_disk_free_gb        Double  10.0   refuse to record below this free space (G
 Idle_timer_interval     Int     10     seconds between idle loop checks (min enforced: 5)
 Series_scan_retry_hours Int     4      hours to wait before re-scanning guide for a series episode
 Verbose_curl            Bool    false  enable -v curl logging to ~/Library/Logs/hdhr_VCR_curl.log
+Watch_in_VLC            Bool    false  show "Watch in VLC" buttons in menus (only when VLC installed)
 Hdhr_setup_folder       String  ""     default recording folder (POSIX path; empty = ~/Movies)
 Config_version          String  "1"    format version marker
 ```
@@ -211,11 +222,17 @@ Single `MenuBarExtra` with `.menu` style (native cascading NSMenu).
 **Menu bar icon states:**
 - Dimmed tv icon — app is starting up (`isStartingUp == true`)
 - Normal tv icon — idle
+- Orange `clock.badge.fill` — a show starts within 30 minutes (`AppState.nextShowMinutes <= 30`)
 - Red `record.circle.fill` — one or more shows recording
 
+**Header** (replaces static "hdhr_VCR" title):
+- Tuner count line (omitted when only 1 device)
+- "N of M tuner(s) in use" — N = actively recording shows, M = total tuner slots across all devices; primary color when recording, secondary when idle
+- Status message (secondary color)
+
 **Structure:**
-- Header: app name + status message
-- "Recording Now" section — shows type+channel, elapsed time, time remaining; "Stop Recording" and "Edit…" actions
+- Header: tuner count + recording usage + status message
+- "Recording Now" section — shows type+channel, elapsed time, time remaining; "Stop Recording", optionally "Watch in VLC", and "Edit…" actions
 - "Scheduled" section — shows state icon + title; submenu shows type/channel, time until air, next SeriesID episode from guide cache, failure count
 - "Paused" section (inactive shows) — activate, edit, delete actions
 - Add Show (mode-dependent — see below)
@@ -231,8 +248,12 @@ Single `MenuBarExtra` with `.menu` style (native cascading NSMenu).
 **Add Show menu hierarchy** (`.menu` mode):
 1. **Device** (omitted if only 1 tuner) — triggers `ensureGuideLoaded` on open
 2. **Channel** — lists all lineup entries with HD badge; each opens a guide submenu
-3. **Guide entry** — `entryMenu`: currently-airing entries prefixed with `▶`; future entries plain
+3. **Guide entry** — `entryMenu`: currently-airing entries prefixed with `▶` and a colored genre square; future entries plain with colored square. On-air entries include "Watch in VLC" when enabled.
 4. **Entry submenu**: poster image (AsyncImage, best-effort); title; episode number · episode title (if available); time range; synopsis; "Record once (Single)"; "Record as series…" → DateTime / SeriesID(Channel) / SeriesID(All)
+
+**On-air filter**: entries shown in the "currently airing" section require `startDate <= now && endDate > now` — shows that have already ended are excluded even if `startDate` is in the past.
+
+**VLC Watch Now**: when `config.Watch_in_VLC` is true and `/Applications/VLC.app` exists, "Watch in VLC" appears in recording submenus and on-air guide entry submenus. `AppState.watchInVLC(url:)` opens the stream URL with VLC via `NSWorkspace.shared.open(_:withApplicationAt:)`.
 
 **Dark mode**: Info text uses `Color(NSColor.labelColor)` and `Color(NSColor.secondaryLabelColor)` — these are guaranteed to be white/gray in dark mode, unlike `.foregroundStyle(.primary)` which can be overridden by NSMenu's disabled-item dimming.
 
@@ -242,17 +263,23 @@ Single `MenuBarExtra` with `.menu` style (native cascading NSMenu).
 
 **3 steps**: Device → Guide (cable grid) → Details
 
+**Guide preloading**: `AddShowView.onAppear` calls `ensureGuideLoaded` for every discovered device immediately, so the guide cache is warm before the user reaches step 2.
+
 ### Step 1: Device
-Select which HDHomeRun tuner to use. Skipped automatically when only 1 tuner is found.
+Select which HDHomeRun tuner to use. Skipped automatically when only 1 tuner is found. A **Refresh** button re-runs `AppState.discoverDevices()` in case the initial discovery missed devices.
 
 ### Step 2: Guide (cable TV grid — `CableGuideView.swift`)
 Full cable-guide layout: rows = channels, columns = 30-min time slots, scrollable both axes.
 
-**Toolbar (two rows)**:
-- Row 1: Tuner picker (hidden when only 1 tuner) + loading indicator + **"Now" button** (snaps grid to current time) + Refresh button. Changing the tuner or clicking Refresh invalidates the cache and reloads via `.task(id: taskId)`.
-- Row 2 (conditional): **Genre filter picker** — shown only when guide data includes `Filter` tags. Lists all genres from loaded channels (sorted A–Z). Selecting a genre dims and disables non-matching show blocks; a "Clear" button resets to "All".
+**Window size**: 860×620 for this step, 560×540 for others.
 
-**Layout**: `HStack { channelColumnFixed | scrollableGrid }`. The channel label column is **not** part of the scroll view — it stays pinned on the left while scrolling right. Vertical scroll is synchronized from the inner `ScrollView` to the fixed column via `onScrollGeometryChange` updating a shared `channelScrollOffset` state, applied as `.offset(y: -channelScrollOffset)` inside a `.clipped()` container.
+**Compact toolbar (single row)**: Tuner picker (hidden when only 1 tuner) + Genre filter picker (shown only when guide has `Filter` tags) + Clear button + loading indicator + **"Now" button** + Refresh button — all in one `HStack` at the very top of the step. Changing the tuner or clicking Refresh invalidates the cache for that device and reloads via `.task(id: taskId)`.
+
+**Layout**: `VStack` with toolbar → `GeometryReader` content area → nav bar:
+- **Top 1/3** of `GeometryReader` height: show summary panel
+- **Bottom 2/3**: cable guide grid (`HStack { channelColumnFixed | scrollableGrid }`)
+
+The channel label column is **not** part of the scroll view — it stays pinned on the left while scrolling right. Vertical scroll is synchronized from the inner `ScrollView` to the fixed column via `onScrollGeometryChange` updating a shared `channelScrollOffset` state, applied as `.offset(y: -channelScrollOffset)` inside a `.clipped()` container.
 
 **Guide grid features**:
 - Uses `state.guideStore` cache; fetches fresh if absent or after Refresh
@@ -263,14 +290,12 @@ Full cable-guide layout: rows = channels, columns = 30-min time slots, scrollabl
 - Red "now" line runs through all rows; the grid auto-scrolls to current time on open. "Now" button triggers a `@Binding var snapToNow: Bool` that the `ScrollViewReader` proxy listens to
 - Time header row is pinned (sticky) while scrolling vertically (`LazyVStack(pinnedViews: .sectionHeaders)`)
 
-**Show summary panel** (130 px fixed, between toolbar and grid): when a show is selected, displays a **background color matching its guide cell color** with white text — poster image (AsyncImage, 140×100), title (`.title3`, bold), episode number · episode title (`.subheadline`), synopsis up to 3 lines (`.callout`), channel + time range (`.caption`). Time range uses explicit `h:mm a` format with `Locale.current` for correct AM/PM. Shows a placeholder when nothing is selected.
+**Show summary panel** (top 1/3 of content area, `GeometryReader`-sized): when a show is selected, displays a **background color matching its guide cell color** with white text — poster image (AsyncImage, 140×100), title (`.title3`, bold), episode number · episode title (`.subheadline`), synopsis up to 3 lines (`.callout`), channel + time range (`.caption`). Time range uses explicit `h:mm a` format with `Locale.current` for correct AM/PM. Shows a placeholder when nothing is selected.
 
 **Module-level color function** (`CableGuideView.swift`, non-private so `AddShowView` can use it for the summary panel background):
 ```swift
 func guideEntryColor(for entry: GuideEntry, onAir: Bool) -> Color
 ```
-
-**Window size**: 960×700 for this step, 560×540 for others.
 
 ### Step 3: Details
 - Title, show type (Single / DateTime / SeriesID), air days, transcode, save folder
@@ -286,10 +311,18 @@ func guideEntryColor(for entry: GuideEntry, onAir: Bool) -> Color
 | Category | Contents |
 |---|---|
 | General | Launch at Login toggle (`SMAppService`); Add Show mode (menu vs wizard) |
-| Recording | Default folder, transcode, min disk, fail threshold |
+| Recording | Default folder, transcode, min disk, fail threshold; "Watch in VLC" toggle (only shown when `/Applications/VLC.app` exists) |
 | Guide | Guide hours, series scan retry |
 | Notifications | Up Next timing, Recording alert timing |
 | Advanced | Idle check interval, verbose curl toggle + log path, config file path |
+| About | App image (AsyncImage from raw GitHub URL), version, history text, GitHub link; 5-tap easter egg on the logo |
+
+**Draft/save pattern**: all config controls bind to a `@State private var draft: AppConfig`. Changes are not written to disk until the user clicks **Save** (⌘S). An "Unsaved changes" label and **Discard** button appear when `draft != state.config` (`isDirty`).
+
+**Close warning**: a `WindowCloseInterceptor: NSViewRepresentable` attaches an `NSWindowDelegate` to the settings window. `windowShouldClose` checks `isDirty` and presents an `NSAlert` with **Save / Discard / Cancel** — Cancel keeps the window open.
+
+**Config fields added**:
+- `Watch_in_VLC: Bool = false` — enables VLC streaming buttons in menus
 
 ---
 
