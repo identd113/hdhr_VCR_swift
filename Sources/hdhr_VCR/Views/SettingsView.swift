@@ -304,7 +304,7 @@ struct SettingsView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 Link("View on GitHub",
-                     destination: URL(string: "https://github.com/identd113/hdhr_VCR-AS")!)
+                     destination: URL(string: "https://github.com/identd113/hdhr_VCR_swift")!)
                     .buttonStyle(.bordered)
             }
             .padding()

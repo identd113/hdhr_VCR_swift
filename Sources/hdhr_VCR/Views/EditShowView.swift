@@ -161,10 +161,9 @@ struct EditShowView: View {
     }
 
     private func applySeriesType() {
-        guard show != nil else { return }
-        show!.show_is_series        = seriesType != .single
-        show!.show_use_seriesid     = seriesType == .seriesChannel || seriesType == .seriesAll
-        show!.show_use_seriesid_all = seriesType == .seriesAll
+        show?.show_is_series        = seriesType != .single
+        show?.show_use_seriesid     = seriesType == .seriesChannel || seriesType == .seriesAll
+        show?.show_use_seriesid_all = seriesType == .seriesAll
         if seriesType == .seriesChannel || seriesType == .seriesAll {
             airDays = Set(weekdays)
         }

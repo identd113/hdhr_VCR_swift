@@ -8,6 +8,7 @@ final class AppState: ObservableObject {
     @Published var devices: [HDHRDevice] = []
     @Published var lineups: [String: [LineupEntry]] = [:]       // deviceId → channel lineup
     @Published var guideByDevice: [String: [GuideChannel]] = [:] // mirror of guideStore.channelsByDevice
+    @Published var guideRevision: Int = 0                        // increments each time guide data successfully loads
     @Published var config = AppConfig()
     @Published var statusMessage = "Starting…"
     @Published var notifyPermission = false
@@ -46,22 +47,54 @@ final class AppState: ObservableObject {
         await requestNotifyPermission()
         loadConfig()
         guideStore.verbose = config.Verbose_curl
+        glog("[Startup] config loaded — \(shows.count) shows, GuideHours=\(config.GuideHours)")
         await reattachRecordings()
-        await discoverDevices(knownHosts: knownHostsFromShows())
+        let knownHosts = knownHostsFromShows()
+        glog("[Startup] known hosts from shows: \(knownHosts)")
+        await discoverDevices(knownHosts: knownHosts)
+        glog("[Startup] discovered \(devices.count) device(s):")
+        for d in devices {
+            glog("[Startup]   \(d.DeviceID)  LocalIP='\(d.LocalIP)'  DeviceAuth=\(d.DeviceAuth ?? "nil")")
+        }
         await fetchAllGuides()
 
         // If known-hosts fast path gave us devices but guide load still failed
         // (EXTEND device may not expose DeviceAuth via local discover.json),
         // redo discovery via mDNS/cloud which properly populates DeviceAuth.
         let loadedChannels = guideByDevice.values.reduce(0) { $0 + $1.count }
+        glog("[Startup] guide load result: \(loadedChannels) total channels across \(guideByDevice.count) device(s)")
         if loadedChannels == 0 && !devices.isEmpty {
-            print("[Startup] Guide load failed — retrying with full device discovery")
+            glog("[Startup] Guide load failed — retrying with full device discovery")
             await discoverDevices()
+            glog("[Startup] retry discovered \(devices.count) device(s):")
+            for d in devices {
+                glog("[Startup]   \(d.DeviceID)  LocalIP='\(d.LocalIP)'  DeviceAuth=\(d.DeviceAuth ?? "nil")")
+            }
             await fetchAllGuides()
+            let retryChannels = guideByDevice.values.reduce(0) { $0 + $1.count }
+            glog("[Startup] retry guide result: \(retryChannels) total channels")
         }
 
         startTimer()
         isStartingUp = false
+        glog("[Startup] complete — isStartingUp=false")
+    }
+
+    func logGuide(_ msg: String) { glog(msg) }
+
+    private func glog(_ msg: String) {
+        print(msg)
+        let ts = ISO8601DateFormatter().string(from: Date())
+        let line = "[\(ts)] \(msg)\n"
+        guard let data = line.data(using: .utf8) else { return }
+        let path = GuideStore.guideLogPath
+        if FileManager.default.fileExists(atPath: path) {
+            if let fh = FileHandle(forWritingAtPath: path) {
+                fh.seekToEndOfFile(); fh.write(data); fh.closeFile()
+            }
+        } else {
+            FileManager.default.createFile(atPath: path, contents: data)
+        }
     }
 
     /// Extract unique device IPs from saved show stream URLs so discovery can try them directly.
@@ -165,7 +198,7 @@ final class AppState: ObservableObject {
         // retries for empty-channel devices every tick, so skipping the stamp lets the
         // periodic refresh also retry at the normal interval.
         let loadedCount = guideByDevice.values.reduce(0) { $0 + $1.count }
-        if loadedCount > 0 { lastGuideRefresh = Date() }
+        if loadedCount > 0 { lastGuideRefresh = Date(); guideRevision += 1 }
         statusMessage = "\(shows.count) show(s) — \(devices.count) tuner(s) ready"
     }
 
@@ -494,7 +527,7 @@ final class AppState: ObservableObject {
 
     // MARK: - Show CRUD
 
-    func addShow(_ show: Show)    { shows.append(show); saveConfig() }
+    func addShow(_ show: Show)    { guard !shows.contains(where: { $0.show_id == show.show_id }) else { return }; shows.append(show); saveConfig() }
     func updateShow(_ show: Show) {
         guard let i = shows.firstIndex(where: { $0.show_id == show.show_id }) else { return }
         shows[i] = show; saveConfig()

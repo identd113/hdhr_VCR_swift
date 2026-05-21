@@ -165,4 +165,6 @@ Requires Xcode Command Line Tools. The minimum deployment target is macOS 15.0.
 
 hdhr_VCR started in 2016 as an AppleScript application to fill the gap left by discontinued HDHomeRun recording software. This Swift/SwiftUI rewrite brings a native menu bar UI, a cable-guide grid, and modern macOS features while keeping full compatibility with the original config format.
 
+Swift/SwiftUI version: [identd113/hdhr_VCR_swift](https://github.com/identd113/hdhr_VCR_swift)
+
 Original AppleScript version: [identd113/hdhr_VCR-AS](https://github.com/identd113/hdhr_VCR-AS)

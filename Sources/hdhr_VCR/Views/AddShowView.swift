@@ -79,10 +79,6 @@ struct AddShowView: View {
                 selectedDevice = state.devices[0]
                 step = .guide
             }
-            // Preload guide for all devices now so step 2 is ready immediately
-            for device in state.devices {
-                state.ensureGuideLoaded(for: device.DeviceID)
-            }
         }
     }
 
@@ -150,11 +146,6 @@ struct AddShowView: View {
                     }
                     .labelsHidden()
                     .frame(maxWidth: 160)
-                    if genreFilter != nil {
-                        Button("Clear") { genreFilter = nil }
-                            .buttonStyle(.borderless)
-                            .foregroundStyle(.secondary)
-                    }
                 }
 
                 Spacer()
@@ -172,6 +163,7 @@ struct AddShowView: View {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
                 .disabled(isLoadingGuide)
+                Text("[\(allChannels.count) ch]").font(.caption2).foregroundStyle(.orange)
             }
             .padding(.horizontal, 12).padding(.vertical, 8)
 
@@ -210,6 +202,14 @@ struct AddShowView: View {
             }
         }
         .task(id: taskId) { await loadAllGuide() }
+        .onChange(of: state.guideRevision) { _, _ in
+            guard let id = selectedDevice?.DeviceID, allChannels.isEmpty else { return }
+            let ch = state.guideStore.channels(deviceId: id)
+            guard !ch.isEmpty else { return }
+            state.logGuide("[Wizard] guideRevision fired — \(ch.count) channels pulled into view")
+            allChannels = ch
+            isLoadingGuide = false
+        }
     }
 
     // ── Summary panel ─────────────────────────────────────────────────────────
@@ -400,22 +400,47 @@ struct AddShowView: View {
     // MARK: - Logic
 
     private func loadAllGuide() async {
-        guard let device = selectedDevice else { return }
+        guard let device = selectedDevice else {
+            state.logGuide("[Wizard] no device selected — loadAllGuide returning")
+            return
+        }
+        let id = device.DeviceID
+        state.logGuide("[Wizard] loadAllGuide deviceId=\(id) fresh=\(state.guideStore.isFresh(deviceId: id)) loading=\(state.guideStore.isLoading(deviceId: id))")
         isLoadingGuide = true
-        allChannels = []
         defer { isLoadingGuide = false }
 
-        // Use cached data if fresh (loaded within the last hour)
-        if state.guideStore.isFresh(deviceId: device.DeviceID) {
-            allChannels = state.guideStore.channels(deviceId: device.DeviceID)
+        // Already cached — read immediately
+        if state.guideStore.isFresh(deviceId: id) {
+            let ch = state.guideStore.channels(deviceId: id)
+            state.logGuide("[Wizard] cache hit — \(ch.count) channels, first guide counts: \(ch.prefix(3).map { "\($0.GuideNumber):\($0.Guide?.count ?? 0)" }.joined(separator: ", "))")
+            allChannels = ch
             return
         }
 
-        // Load fresh via the unified store
+        // Startup is already loading this device — wait for it then read
+        if state.guideStore.isLoading(deviceId: id) {
+            state.logGuide("[Wizard] startup load in progress, waiting...")
+            while state.guideStore.isLoading(deviceId: id) {
+                try? await Task.sleep(nanoseconds: 200_000_000)
+            }
+            let ch = state.guideStore.channels(deviceId: id)
+            state.logGuide("[Wizard] startup finished — \(ch.count) channels")
+            if !ch.isEmpty {
+                state.guideByDevice = state.guideStore.channelsByDevice
+                allChannels = ch
+                return
+            }
+            state.logGuide("[Wizard] startup gave 0 channels — falling through to fresh load")
+        }
+
+        // Fresh load
         state.guideStore.verbose = state.config.Verbose_curl
+        state.logGuide("[Wizard] fetching fresh guide for \(id)...")
         await state.guideStore.load(for: device, hours: state.config.GuideHours)
         state.guideByDevice = state.guideStore.channelsByDevice
-        allChannels = state.guideStore.channels(deviceId: device.DeviceID)
+        let ch = state.guideStore.channels(deviceId: id)
+        state.logGuide("[Wizard] fetch complete — \(ch.count) channels")
+        allChannels = ch
     }
 
     private func applyGuideEntry() {

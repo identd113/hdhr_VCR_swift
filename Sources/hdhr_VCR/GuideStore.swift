@@ -31,11 +31,14 @@ final class GuideStore {
 
     var verbose: Bool = false
 
+    static let guideLogPath = NSHomeDirectory() + "/Library/Logs/hdhr_VCR_guide.log"
+
     // Injected at init so tests can supply a mock session
     private let session: URLSession
 
     init(session: URLSession = .shared) {
         self.session = session
+        glog("=== GuideStore initialised ===")
     }
 
     // MARK: - URL building
@@ -48,6 +51,7 @@ final class GuideStore {
         if let auth = device.DeviceAuth {
             return URL(string: "https://api.hdhomerun.com/api/guide.php?DeviceAuth=\(auth)&Duration=\(durationSecs)")
         }
+        if device.LocalIP.isEmpty { return nil }
         return URL(string: "http://\(device.LocalIP)/guide.json?Duration=\(durationSecs)")
     }
 
@@ -56,49 +60,95 @@ final class GuideStore {
     /// Fetch and index guide for one device. No-op if already loading.
     func load(for device: HDHRDevice, hours: Int = 12) async {
         let id = device.DeviceID
+        glog("[\(id)] load() called — DeviceAuth:\(device.DeviceAuth ?? "nil")  LocalIP:'\(device.LocalIP)'  hours:\(hours)")
+
         guard !loadingDevices.contains(id) else {
-            log("[\(id)] already loading — skipped")
+            glog("[\(id)] already loading — skipped")
             return
         }
         guard let url = Self.guideURL(for: device, hours: hours) else {
-            print("[GuideStore] [\(id)] could not build guide URL — DeviceAuth: \(device.DeviceAuth != nil ? "yes" : "nil"), LocalIP: '\(device.LocalIP)'")
+            glog("[\(id)] ERROR: could not build guide URL — DeviceAuth:\(device.DeviceAuth != nil ? "present" : "nil")  LocalIP:'\(device.LocalIP)'")
             return
         }
 
         loadingDevices.insert(id)
         defer { loadingDevices.remove(id) }
 
-        log("[\(id)] GET \(url.absoluteString)")
+        glog("[\(id)] GET \(url.absoluteString)")
         let t0 = Date()
         do {
             let (data, response) = try await session.data(from: url)
             let ms = Int(Date().timeIntervalSince(t0) * 1000)
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-            log("[\(id)] \(data.count) bytes, HTTP \(status), \(ms)ms")
+            glog("[\(id)] HTTP \(status)  \(data.count) bytes  \(ms)ms")
 
-            let channels = try JSONDecoder().decode([GuideChannel].self, from: data)
+            // Log first 500 chars of raw response to help diagnose unexpected formats
+            if let preview = String(data: data.prefix(500), encoding: .utf8) {
+                glog("[\(id)] response preview: \(preview)")
+            } else {
+                glog("[\(id)] response is not UTF-8 — binary or empty")
+            }
+
+            guard status == 200 else {
+                glog("[\(id)] ERROR: non-200 status, aborting parse")
+                return
+            }
+
+            guard !data.isEmpty else {
+                glog("[\(id)] ERROR: empty response body")
+                return
+            }
+
+            let channels: [GuideChannel]
+            do {
+                channels = try JSONDecoder().decode([GuideChannel].self, from: data)
+            } catch {
+                glog("[\(id)] PARSE ERROR: \(error)")
+                // Log more of the raw response on parse failure for diagnosis
+                if let full = String(data: data.prefix(2000), encoding: .utf8) {
+                    glog("[\(id)] raw response (2000 chars): \(full)")
+                }
+                return
+            }
+
             let entryCount = channels.reduce(0) { $0 + ($1.Guide?.count ?? 0) }
-            log("[\(id)] \(channels.count) channels, \(entryCount) total entries")
+            glog("[\(id)] parsed \(channels.count) channels, \(entryCount) total guide entries")
+
+            // Log per-channel summary
+            for ch in channels.prefix(5) {
+                glog("[\(id)]   ch \(ch.GuideNumber) \(ch.GuideName): \(ch.Guide?.count ?? 0) entries")
+            }
+            if channels.count > 5 {
+                glog("[\(id)]   ... and \(channels.count - 5) more channels")
+            }
+
+            if entryCount == 0 {
+                glog("[\(id)] WARNING: channels loaded but ALL have 0 guide entries — check GuideHours setting or API response")
+            }
 
             buildIndex(deviceId: id, channels: channels)
             loadTimestamps[id] = Date()
+            glog("[\(id)] index built and timestamp set — guide ready")
+
         } catch {
-            // Always print fetch errors so failures are visible without verbose mode
-            print("[GuideStore] [\(id)] fetch error: \(error.localizedDescription)")
-            log("[\(id)] fetch error: \(error.localizedDescription)")
+            glog("[\(id)] NETWORK ERROR: \(error)")
         }
     }
 
     /// Fetch guide for all devices in parallel.
     func loadAll(devices: [HDHRDevice], hours: Int = 12) async {
-        guard !devices.isEmpty else { return }
-        log("Starting guide load for \(devices.count) device(s), hours=\(hours)")
+        guard !devices.isEmpty else {
+            glog("loadAll called with 0 devices — nothing to do")
+            return
+        }
+        glog("loadAll: \(devices.count) device(s), hours=\(hours)")
         await withTaskGroup(of: Void.self) { group in
             for device in devices {
                 group.addTask { await self.load(for: device, hours: hours) }
             }
         }
-        log("Guide load complete — \(channelsByDevice.values.reduce(0) { $0 + $1.count }) total channels across \(channelsByDevice.count) device(s)")
+        let total = channelsByDevice.values.reduce(0) { $0 + $1.count }
+        glog("loadAll complete — \(total) total channels across \(channelsByDevice.count) device(s)")
     }
 
     // MARK: - Indexing
@@ -111,6 +161,9 @@ final class GuideStore {
         seriesIndex = seriesIndex.filter { !$1.isEmpty }
 
         channelsByDevice[deviceId] = channels
+        let nilCount   = channels.filter { $0.Guide == nil }.count
+        let emptyCount = channels.filter { $0.Guide?.isEmpty == true }.count
+        glog("[\(deviceId)] buildIndex: \(channels.count) channels — \(nilCount) Guide=nil, \(emptyCount) Guide=[]")
 
         for ch in channels {
             let key = "\(deviceId):\(ch.GuideNumber)"
@@ -179,7 +232,7 @@ final class GuideStore {
         }
         seriesIndex = seriesIndex.filter { !$1.isEmpty }
         loadTimestamps.removeValue(forKey: deviceId)
-        log("[\(deviceId)] cache invalidated")
+        glog("[\(deviceId)] cache invalidated")
     }
 
     func invalidateAll() {
@@ -187,14 +240,29 @@ final class GuideStore {
         channelEntryIndex = [:]
         seriesIndex = [:]
         loadTimestamps = [:]
-        log("All guide caches invalidated")
+        glog("All guide caches invalidated")
     }
 
-    // MARK: - Logging
+    // MARK: - File logging
 
-    private func log(_ msg: String) {
-        guard verbose else { return }
+    /// Always-on log to ~/Library/Logs/hdhr_VCR_guide.log
+    private func glog(_ msg: String) {
         let ts = ISO8601DateFormatter().string(from: Date())
-        print("[GuideStore \(ts)] \(msg)")
+        let line = "[\(ts)] \(msg)\n"
+        print("[GuideStore] \(msg)")   // also to console for debug builds
+        guard let data = line.data(using: .utf8) else { return }
+        let path = Self.guideLogPath
+        if FileManager.default.fileExists(atPath: path) {
+            if let fh = FileHandle(forWritingAtPath: path) {
+                fh.seekToEndOfFile()
+                fh.write(data)
+                fh.closeFile()
+            }
+        } else {
+            FileManager.default.createFile(atPath: path, contents: data)
+        }
     }
+
+    // Kept for backward compat (verbose-gated callers)
+    private func log(_ msg: String) { glog(msg) }
 }

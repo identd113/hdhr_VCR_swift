@@ -326,9 +326,15 @@ struct CableGuideView: View {
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private func visibleEntries(_ ch: GuideChannel) -> [GuideEntry] {
-        (ch.Guide ?? [])
-            .filter { $0.endDate > displayStart && $0.startDate < displayEnd }
-            .sorted { $0.StartTime < $1.StartTime }
+        let raw      = ch.Guide ?? []
+        let filtered = raw.filter { $0.endDate > displayStart && $0.startDate < displayEnd }
+        if ch.GuideNumber == allChannels.first?.GuideNumber {
+            NSLog("[CableGuide] ch%@ raw=%d filtered=%d winStart=%d winEnd=%d",
+                  ch.GuideNumber, raw.count, filtered.count,
+                  Int(displayStart.timeIntervalSince1970),
+                  Int(displayEnd.timeIntervalSince1970))
+        }
+        return filtered.sorted { $0.StartTime < $1.StartTime }
     }
 
     private func formatSlot(_ d: Date) -> String {
