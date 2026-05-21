@@ -40,6 +40,8 @@ func guideEntryColor(for entry: GuideEntry, onAir: Bool) -> Color {
 // ── Cable-style TV guide grid ─────────────────────────────────────────────────
 // Rows = channels, columns = 30-min time slots, cells span proportional to show duration.
 // Channel labels are pinned (do not scroll horizontally).
+// Time header is pinned above the scroll view (not inside it) so contentOffset.y == 0
+// at rest, keeping channel-column sync exact.
 
 struct CableGuideView: View {
     let allChannels:      [GuideChannel]
@@ -54,13 +56,14 @@ struct CableGuideView: View {
     var onConfirm: (() -> Void)? = nil        // called on double-click to advance wizard
 
     // ── Layout constants ───────────────────────────────────────────────────────
-    private let channelColW: CGFloat = 88
+    private let channelColW: CGFloat = 100
     private let rowH:        CGFloat = 52
     private let headerH:     CGFloat = 26
     private let pxPerMin:    CGFloat = 4.2
 
     // ── State ──────────────────────────────────────────────────────────────────
-    @State private var channelScrollOffset: CGFloat = 0
+    @State private var channelScrollOffset: CGFloat = 0   // tracks vertical scroll
+    @State private var timeHeaderOffset:    CGFloat = 0   // tracks horizontal scroll
 
     // Pre-built O(1) lookup — avoids lineup.first(where:) O(N) scan per channel per render
     private var lineupByNumber: [String: LineupEntry] {
@@ -86,9 +89,13 @@ struct CableGuideView: View {
 
     // ── Body ───────────────────────────────────────────────────────────────────
     var body: some View {
-        HStack(spacing: 0) {
+        HStack(alignment: .top, spacing: 0) {
             channelColumnFixed
-            scrollableGrid
+            VStack(spacing: 0) {
+                pinnedTimeHeader   // sits above the scroll view; synced via timeHeaderOffset
+                guideScrollView    // rows only — no pinned section header inside
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
@@ -96,66 +103,112 @@ struct CableGuideView: View {
 
     private var channelColumnFixed: some View {
         VStack(spacing: 0) {
-            // Corner cell matching the accent-coloured header
+            // Corner cell — matches pinnedTimeHeader height exactly
             Text("CHANNEL")
                 .font(.system(size: 10, weight: .bold))
                 .foregroundColor(.white)
                 .frame(width: channelColW, height: headerH, alignment: .center)
                 .background(Color.accentColor)
 
-            // Channel labels, offset vertically to track main scroll
+            // Channel labels, offset vertically to track vertical scroll.
+            // frame(maxHeight:) MUST come before .clipped() so the clip rect is the
+            // available height (not the ZStack's 5000px+ natural height).
             ZStack(alignment: .top) {
                 VStack(spacing: 0) {
                     ForEach(allChannels) { ch in channelLabelCell(ch) }
                 }
                 .offset(y: -channelScrollOffset)
             }
-            .clipped()
-            .frame(maxHeight: .infinity)
+            .frame(maxHeight: .infinity)   // ← constrains layout bounds first
+            .clipped()                      // ← then clips to those bounds
         }
         .frame(width: channelColW)
+        .clipped()
         .background(Color(NSColor.windowBackgroundColor))
     }
 
     private func channelLabelCell(_ ch: GuideChannel) -> some View {
         let lu = lineupByNumber[ch.GuideNumber]
-        return VStack(alignment: .leading, spacing: 1) {
-            Text(ch.GuideNumber)
-                .font(.system(size: 11, weight: .bold))
-                .foregroundColor(.primary)
-            Text(ch.GuideName)
-                .font(.system(size: 10))
-                .foregroundColor(.secondary)
-                .lineLimit(1)
-            if (lu?.HD ?? 0) == 1 {
-                Text("HD")
-                    .font(.system(size: 8, weight: .heavy))
-                    .foregroundColor(Color.accentColor)
+        return HStack(spacing: 5) {
+            ChannelIcon(urlString: ch.ImageURL, size: 28)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(ch.GuideNumber)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.primary)
+                Text(ch.GuideName)
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                if (lu?.HD ?? 0) == 1 {
+                    Text("HD")
+                        .font(.system(size: 8, weight: .heavy))
+                        .foregroundColor(Color.accentColor)
+                }
             }
         }
-        .padding(.horizontal, 7)
+        .padding(.horizontal, 5)
         .frame(width: channelColW, height: rowH, alignment: .leading)
         .background(Color(NSColor.windowBackgroundColor))
         .overlay(Rectangle()
             .strokeBorder(Color(NSColor.separatorColor).opacity(0.35), lineWidth: 0.5))
     }
 
-    // ── Scrollable grid (time header + show blocks) ────────────────────────────
+    // ── Pinned time header (outside the scroll view; shifts left with timeHeaderOffset) ──
 
-    private var scrollableGrid: some View {
-        ScrollViewReader { proxy in
+    private var pinnedTimeHeader: some View {
+        ZStack(alignment: .leading) {
+            ForEach(timeSlots, id: \.self) { slot in
+                let x = CGFloat(slot.timeIntervalSince(displayStart) / 60) * pxPerMin - timeHeaderOffset
+                Text(formatSlot(slot))
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(.white)
+                    .padding(.leading, 5)
+                    .frame(width: slotW, height: headerH, alignment: .leading)
+                    .background(Color.accentColor.opacity(0.80))
+                    .offset(x: x)
+            }
+
+            // "Now" indicator line on the time header
+            let nowX = CGFloat(Date().timeIntervalSince(displayStart) / 60) * pxPerMin - timeHeaderOffset
+            Rectangle()
+                .fill(Color.red)
+                .frame(width: 2, height: headerH)
+                .offset(x: nowX)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(height: headerH)
+        .clipped()
+        .background(Color.accentColor.opacity(0.80))
+    }
+
+    // ── Scrollable guide rows (channel rows only — no pinned section header) ───
+
+    private var guideScrollView: some View {
+        // nowX computed once for the anchor layout position
+        let nowX = CGFloat(Date().timeIntervalSince(displayStart) / 60) * pxPerMin
+        return ScrollViewReader { proxy in
             ScrollView([.horizontal, .vertical]) {
-                LazyVStack(spacing: 0, pinnedViews: .sectionHeaders) {
-                    Section(header: timeSlotsHeader) {
+                VStack(spacing: 0) {
+                    // Zero-height anchor at layout x=(nowX-160) so proxy.scrollTo works correctly.
+                    // Must use real layout width (not .offset) because scrollTo uses layout bounds.
+                    HStack(spacing: 0) {
+                        Color.clear.frame(width: max(0, nowX - 160), height: 0)
+                        Color.clear.frame(width: 1, height: 0).id("now-anchor")
+                        Spacer(minLength: 0)
+                    }
+                    .frame(width: totalW, height: 0)
+
+                    VStack(spacing: 0) {
                         ForEach(allChannels) { ch in showBlocksRow(ch) }
                     }
+                    .frame(width: totalW)
                 }
-                .frame(width: totalW)
             }
-            .onScrollGeometryChange(for: CGFloat.self, of: { $0.contentOffset.y }) { _, y in
-                guard abs(y - channelScrollOffset) > 0.5 else { return }
-                var t = Transaction(); t.disablesAnimations = true
-                withTransaction(t) { channelScrollOffset = y }
+            // Track both axes: y → channel column sync, x → time header sync
+            .onScrollGeometryChange(for: CGPoint.self, of: { $0.contentOffset }) { _, pt in
+                channelScrollOffset = pt.y
+                timeHeaderOffset    = pt.x
             }
             .onChange(of: snapToNow) { _, trigger in
                 guard trigger else { return }
@@ -168,37 +221,6 @@ struct CableGuideView: View {
                 }
             }
         }
-    }
-
-    // ── Time slots header (pinned; no corner cell — that lives in channelColumnFixed) ──
-
-    private var timeSlotsHeader: some View {
-        ZStack(alignment: .leading) {
-            ForEach(timeSlots, id: \.self) { slot in
-                let x = CGFloat(slot.timeIntervalSince(displayStart) / 60) * pxPerMin
-                Text(formatSlot(slot))
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(.white)
-                    .padding(.leading, 5)
-                    .frame(width: slotW, height: headerH, alignment: .leading)
-                    .background(Color.accentColor.opacity(0.80))
-                    .offset(x: x)
-            }
-
-            // Scroll anchor — placed ~160 px left of now so the red line is visible
-            let nowX = CGFloat(Date().timeIntervalSince(displayStart) / 60) * pxPerMin
-            Color.clear.frame(width: 1, height: 1)
-                .offset(x: max(0, nowX - 160))
-                .id("now-anchor")
-
-            Rectangle()
-                .fill(Color.red)
-                .frame(width: 2, height: headerH)
-                .offset(x: nowX)
-        }
-        .frame(width: totalW, height: headerH)
-        .clipped()
-        .background(Color.accentColor.opacity(0.80))
     }
 
     // ── Show blocks row (no channel label — that lives in channelColumnFixed) ──
@@ -231,8 +253,14 @@ struct CableGuideView: View {
                     .frame(width: 2, height: rowH)
                     .offset(x: nowX)
             }
+
         }
         .frame(width: totalW, height: rowH)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Color(NSColor.separatorColor).opacity(0.35))
+                .frame(height: 0.5)
+        }
         .clipped()
     }
 
@@ -259,9 +287,7 @@ struct CableGuideView: View {
         ZStack(alignment: .topLeading) {
             // Background fill
             RoundedRectangle(cornerRadius: 3)
-                .fill(isSelected
-                    ? guideEntryColor(for: entry, onAir: onAir)
-                    : guideEntryColor(for: entry, onAir: onAir))
+                .fill(guideEntryColor(for: entry, onAir: onAir))
 
             // Selection border + glow
             if isSelected {

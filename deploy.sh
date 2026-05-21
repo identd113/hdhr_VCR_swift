@@ -16,6 +16,7 @@ cp .build/debug/hdhr_VCR "$BINARY"
 echo "==> Signing…"
 xattr -cr "$APP"
 codesign --force --deep --sign - "$APP"
+touch "$APP"   # update bundle mtime so Finder shows today's date
 
 echo "==> Launching $APP…"
 open "$APP"

@@ -167,11 +167,7 @@ final class AppState: ObservableObject {
             do {
                 let found = try await hdhrManager.discoverDevices(knownHosts: knownHosts)
                 devices = found
-                for device in found {
-                    if let lu = try? await hdhrManager.fetchLineup(for: device) {
-                        lineups[device.DeviceID] = lu
-                    }
-                }
+                await fetchAllLineups(for: found)
                 statusMessage = "\(devices.count) tuner(s) found"
                 return
             } catch {
@@ -180,6 +176,21 @@ final class AppState: ObservableObject {
                 } else {
                     statusMessage = "No tuners found — check network"
                 }
+            }
+        }
+    }
+
+    /// Fetch lineup for every device in parallel; stores results in `lineups[deviceID]`.
+    private func fetchAllLineups(for devices: [HDHRDevice]) async {
+        await withTaskGroup(of: (String, [LineupEntry]?).self) { group in
+            for device in devices {
+                group.addTask {
+                    let lu = try? await self.hdhrManager.fetchLineup(for: device)
+                    return (device.DeviceID, lu)
+                }
+            }
+            for await (id, lu) in group {
+                if let lu { lineups[id] = lu }
             }
         }
     }
@@ -200,21 +211,21 @@ final class AppState: ObservableObject {
         let loadedCount = guideByDevice.values.reduce(0) { $0 + $1.count }
         if loadedCount > 0 { lastGuideRefresh = Date(); guideRevision += 1 }
         statusMessage = "\(shows.count) show(s) — \(devices.count) tuner(s) ready"
+        let allChannels = guideByDevice.values.flatMap { $0 }
+        Task { await prefetchChannelIcons(allChannels) }
     }
 
     /// Refresh lineup + guide for all devices (called periodically from idleLoop).
     private func refreshGuides() async {
         guideStore.invalidateAll()
-        for device in devices {
-            if let lu = try? await hdhrManager.fetchLineup(for: device) {
-                lineups[device.DeviceID] = lu
-            }
-        }
+        await fetchAllLineups(for: devices)
         guideStore.verbose = config.Verbose_curl
         await guideStore.loadAll(devices: devices, hours: config.GuideHours)
         guideByDevice = guideStore.channelsByDevice
         lastGuideRefresh = Date()
         print("[Guide] Refresh complete")
+        let allChannels = guideByDevice.values.flatMap { $0 }
+        Task { await prefetchChannelIcons(allChannels) }
     }
 
     /// Trigger a guide load for a single device (idleLoop / menu fallback).
@@ -226,7 +237,23 @@ final class AppState: ObservableObject {
             guideStore.verbose = config.Verbose_curl
             await guideStore.load(for: device, hours: config.GuideHours)
             guideByDevice = guideStore.channelsByDevice
+            await prefetchChannelIcons(guideStore.channels(deviceId: deviceId))
         }
+    }
+
+    /// Download any channel icons not already on disk; update menu bar status while working.
+    private func prefetchChannelIcons(_ channels: [GuideChannel]) async {
+        let urls = Array(Set(channels.compactMap { $0.ImageURL }.filter { !$0.isEmpty }))
+        guard !urls.isEmpty else { return }
+        let needed = await ChannelIconCache.shared.countMissing(in: urls)
+        guard needed > 0 else { return }
+        statusMessage = "Caching \(needed) channel icon(s)…"
+        await withTaskGroup(of: Void.self) { group in
+            for url in urls {
+                group.addTask { _ = await ChannelIconCache.shared.image(for: url) }
+            }
+        }
+        statusMessage = "\(shows.count) show(s) — \(devices.count) tuner(s) ready"
     }
 
     func isGuideLoading(for deviceId: String) -> Bool {

@@ -14,44 +14,70 @@ final class HDHRManager {
 
     // MARK: - Device Discovery
 
-    /// Discover devices. Tries known hosts from saved shows first (fastest path when IP is stable),
-    /// then falls back to mDNS → cloud → UDP broadcast.
+    /// Discover HDHomeRun devices on the local network.
+    ///
+    /// Always probes hdhomerun.local (mDNS) and UDP broadcast concurrently so all device
+    /// types are found in a single pass. mDNS is the primary source for EXTEND devices;
+    /// UDP catches any additional tuners that don't respond to mDNS. Results are merged
+    /// and DeviceAuth is supplemented from cloud for any device missing it.
     func discoverDevices(knownHosts: [String] = []) async throws -> [HDHRDevice] {
-        // Known hosts from saved show URLs — avoids full network scan on stable networks
-        if !knownHosts.isEmpty {
-            let direct = await withTaskGroup(of: HDHRDevice?.self) { group in
-                for host in knownHosts {
-                    group.addTask { try? await self.fetchDeviceInfo(ip: host) }
-                }
-                var found: [HDHRDevice] = []
-                for await d in group {
-                    if let d, !found.contains(where: { $0.DeviceID == d.DeviceID }) { found.append(d) }
-                }
-                return found
-            }
-            if !direct.isEmpty {
-                print("[Discovery] Found \(direct.count) device(s) via known hosts")
-                return direct
-            }
+        // Run mDNS and UDP in parallel — together they cover all HDHomeRun device types
+        async let mdnsDevices = mDNSDiscover()
+        async let udpDevices  = udpDiscoverAndFetch()
+
+        let fromMDNS = (try? await mdnsDevices) ?? []
+        let fromUDP  = await udpDevices
+
+        // Merge: prefer mDNS entries (richer metadata); UDP fills in any device mDNS missed
+        var found = fromMDNS
+        for dev in fromUDP where !found.contains(where: { $0.DeviceID == dev.DeviceID }) {
+            found.append(dev)
         }
-        // mDNS — works on local network without internet, preferred for EXTEND devices
-        if let mdns = try? await mDNSDiscover(), !mdns.isEmpty {
-            return mdns
-        }
-        // Cloud discovery (requires device to be registered with SiliconDust)
-        if let cloud = try? await cloudDiscover(), !cloud.isEmpty {
+        print("[Discovery] mDNS=\(fromMDNS.count) UDP=\(fromUDP.count) merged=\(found.count)")
+
+        // Neither local method found anything — fall back to cloud
+        if found.isEmpty {
+            guard let cloud = try? await cloudDiscover(), !cloud.isEmpty else {
+                throw URLError(.cannotFindHost)
+            }
             return cloud
         }
-        // Local UDP broadcast discovery (works without internet, no mDNS)
-        let local = await udpDiscover()
-        guard !local.isEmpty else { throw URLError(.cannotFindHost) }
+
+        // EXTEND devices need DeviceAuth to reach the cloud guide API.
+        // Supplement from cloud for any device that is missing it.
+        if found.contains(where: { $0.DeviceAuth == nil }),
+           let cloud = try? await cloudDiscover(), !cloud.isEmpty {
+            found = supplementDeviceAuth(local: found, cloud: cloud)
+            print("[Discovery] DeviceAuth supplemented from cloud")
+        }
+
+        return found
+    }
+
+    /// Run UDP broadcast discovery and follow up each reply with a fetchDeviceInfo call.
+    private func udpDiscoverAndFetch() async -> [HDHRDevice] {
+        let raw = await udpDiscover()
+        guard !raw.isEmpty else { return [] }
         return await withTaskGroup(of: HDHRDevice?.self) { group in
-            for device in local {
+            for device in raw {
                 group.addTask { (try? await self.fetchDeviceInfo(ip: device.LocalIP)) ?? device }
             }
             var result: [HDHRDevice] = []
             for await d in group { if let d { result.append(d) } }
             return result
+        }
+    }
+
+    /// Copy DeviceAuth from cloud-discovered devices into matching locally-discovered ones.
+    /// Preserves the local device's IP, lineup URL, and all other fields.
+    private func supplementDeviceAuth(local: [HDHRDevice], cloud: [HDHRDevice]) -> [HDHRDevice] {
+        local.map { dev in
+            guard dev.DeviceAuth == nil,
+                  let match = cloud.first(where: { $0.DeviceID == dev.DeviceID }),
+                  let auth = match.DeviceAuth else { return dev }
+            var updated = dev
+            updated.DeviceAuth = auth
+            return updated
         }
     }
 

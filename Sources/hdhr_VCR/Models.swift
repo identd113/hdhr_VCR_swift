@@ -250,6 +250,8 @@ struct LineupEntry: Codable, Identifiable {
 struct GuideChannel: Codable {
     var GuideNumber: String
     var GuideName: String
+    var Affiliate: String?
+    var ImageURL: String?
     var Guide: [GuideEntry]?
 }
 
