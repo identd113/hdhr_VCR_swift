@@ -25,6 +25,7 @@ struct EditShowView: View {
                     .frame(width: 480, height: 520)
             }
         }
+.onExitCommand { dismiss() }
         .onAppear { loadShow() }
     }
 
@@ -138,7 +139,6 @@ struct EditShowView: View {
                 dismiss()
             }
             Spacer()
-            Button("Cancel") { dismiss() }
             Button("Save") { save() }.buttonStyle(.borderedProminent)
         }
         .padding()

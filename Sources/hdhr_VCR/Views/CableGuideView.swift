@@ -68,7 +68,12 @@ struct CableGuideView: View {
     private let channelColW: CGFloat = 100
     private let rowH:        CGFloat = 52
     private let headerH:     CGFloat = 26
-    private let pxPerMin:    CGFloat = 4.2
+    // pxPerMin scales up on wider windows so the grid fills available space
+    @State private var availableGridWidth: CGFloat = 0
+    private var pxPerMin: CGFloat {
+        guard availableGridWidth > 0 else { return 4.2 }
+        return max(4.2, availableGridWidth / CGFloat(guideHours * 60))
+    }
 
     // ── State ──────────────────────────────────────────────────────────────────
     @State private var channelScrollOffset: CGFloat = 0
@@ -95,9 +100,18 @@ struct CableGuideView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .background(GeometryReader { geo in
+            Color.clear.onAppear {
+                availableGridWidth = geo.size.width - channelColW
+            }
+            .onChange(of: geo.size.width) { _, w in
+                availableGridWidth = w - channelColW
+            }
+        })
         .onAppear { rebuildCaches() }
         .onChange(of: lineup.count)  { rebuildCaches() }
         .onChange(of: guideHours)    { rebuildCaches() }
+        .onChange(of: availableGridWidth) { rebuildCaches() }
     }
 
     // ── Cache rebuild ──────────────────────────────────────────────────────────

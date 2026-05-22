@@ -1,6 +1,8 @@
 import SwiftUI
 import AppKit
 
+private let vlcOrange = Color(red: 1.0, green: 0.482, blue: 0.0)
+
 struct MenuContent: View {
     @EnvironmentObject var state: AppState
     @Environment(\.openWindow) var openWindow
@@ -86,7 +88,7 @@ struct MenuContent: View {
                 menuInfo("\(Self.timeFormatter.string(from: slotTime)) · in \(relativeLabel(slotTime.timeIntervalSince(now)))",
                          font: .footnote, secondary: true)
                 ForEach(slotShows) { show in
-                    menuInfo("\(stateIcon(show)) \(show.show_title) · ch \(show.show_channel)")
+                    scheduledMenu(show)
                 }
             }
             Divider()
@@ -112,7 +114,7 @@ struct MenuContent: View {
         Button("Settings…")    { open("settings") }
         Divider()
 
-        Button("Quit hdhr_VCR", role: .destructive) { state.quit() }
+        Button("Quit hdhrVCRplus", role: .destructive) { state.quit() }
     }
 
     // MARK: ── Level 1: Add Show ──────────────────────────────────────────
@@ -259,7 +261,7 @@ struct MenuContent: View {
             } label: {
                 VStack(alignment: .leading) {
                     Text("DateTime — same day & time")
-                    Text("Repeats on \(weekdayName(entry.startDate))s at \(state.shortTime(entry.startDate)) on ch \(channel.GuideNumber)")
+                    Text("Repeats on \(weekdayName(entry.startDate))s at \(state.shortTime(entry.startDate)) on Channel \(channel.GuideNumber)")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
@@ -270,7 +272,7 @@ struct MenuContent: View {
             } label: {
                 VStack(alignment: .leading) {
                     Text("SeriesID — this channel")
-                    Text("Any episode on ch \(channel.GuideNumber)")
+                    Text("Any episode on Channel \(channel.GuideNumber)")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
@@ -289,7 +291,9 @@ struct MenuContent: View {
             }
 
             if state.config.Watch_in_VLC && isOnAir {
-                Button("Watch in VLC") { state.watchInVLC(url: channel.URL ?? "") }
+                Button(action: { state.watchInVLC(url: channel.URL ?? "") }) {
+                    Text("Watch in VLC").foregroundColor(vlcOrange)
+                }
             }
         } label: {
             Label {
@@ -333,10 +337,14 @@ struct MenuContent: View {
             }
 
             Divider()
-            menuInfo("ch \(show.show_channel) · \(show.state.rawValue) · tuner \(show.hdhr_record)", font: .footnote, secondary: true)
+            menuInfo("Channel \(show.show_channel) · \(show.state.rawValue) · tuner \(show.hdhr_record)", font: .footnote, secondary: true)
             menuInfo("\(elapsedLabel(since: started)) elapsed · \(remainingLabel(until: ends)) left", font: .footnote, secondary: true)
+            if let sig = state.tunerStatus[show.show_id] {
+                menuInfo(sig.displayString, font: .footnote, secondary: true)
+            }
             Divider()
             Button("Stop Recording") { state.stopRecording(showId: show.show_id) }
+            Button("Skip This Airing") { Task { await state.skipRecording(showId: show.show_id) } }
             if !show.show_recording_path.isEmpty {
                 Button("Show Recording in Finder") {
                     NSWorkspace.shared.selectFile(show.show_recording_path,
@@ -344,7 +352,9 @@ struct MenuContent: View {
                 }
             }
             if state.config.Watch_in_VLC {
-                Button("Watch in VLC") { state.watchInVLC(url: show.show_url) }
+                Button(action: { state.watchInVLC(url: show.show_url, transcode: show.show_transcode) }) {
+                    Text("Watch in VLC").foregroundColor(vlcOrange)
+                }
             }
             Button("Edit…") { editShow(show) }
         }
@@ -356,8 +366,10 @@ struct MenuContent: View {
         let schEntries = state.guideEntries(deviceId: show.hdhr_record, channelNum: show.show_channel)
         let schEp      = schEntries.first { abs($0.startDate.timeIntervalSince(schNext)) < 5 * 60 }
                                    .flatMap { episodeInfoLabel($0) }
-        let schLabel   = schEp.map { "\(stateIcon(show)) \(show.show_title) · \($0)" }
-                      ?? "\(stateIcon(show)) \(show.show_title)"
+        let conflict   = state.hasConflict(for: show)
+        let prefix     = conflict ? "⚠️ " : ""
+        let schLabel   = schEp.map { "\(prefix)\(stateIcon(show)) \(show.show_title) · \($0)" }
+                      ?? "\(prefix)\(stateIcon(show)) \(show.show_title)"
         Menu(schLabel) {
             let now    = Date()
             let next   = show.show_next.date ?? .distantFuture
@@ -371,8 +383,28 @@ struct MenuContent: View {
                 abs($0.startDate.timeIntervalSince(next)) < 5 * 60
             }
 
+            // Poster image + title (mirrors recordingMenu layout)
+            if !show.show_logo_url.isEmpty, let url = URL(string: show.show_logo_url) {
+                AsyncImage(url: url) { img in
+                    img.resizable().aspectRatio(contentMode: .fill)
+                        .frame(width: 120, height: 80).clipped().cornerRadius(4)
+                } placeholder: {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color(NSColor.separatorColor))
+                        .frame(width: 120, height: 80)
+                }
+            }
+            menuInfo(show.show_title, font: .headline)
+            if let entry = scheduledEntry, let synopsis = entry.Synopsis, !synopsis.isEmpty {
+                menuInfo(synopsis, font: .footnote, secondary: true)
+            }
+            Divider()
+
             // Type + channel
-            menuInfo("\(show.state.rawValue) · ch \(show.show_channel)", font: .footnote)
+            menuInfo("\(show.state.rawValue) · Channel \(show.show_channel)", font: .footnote)
+            if conflict {
+                menuInfo("⚠️ Conflict — all tuners busy at this time", font: .footnote, secondary: true)
+            }
 
             // Episode info from the guide (season/episode number · episode title)
             if let entry = scheduledEntry, let epInfo = episodeInfoLabel(entry) {
@@ -444,7 +476,7 @@ struct MenuContent: View {
         switch show.state {
         case .single:        return "1️⃣"
         case .dateTime:      return "📅"
-        case .seriesChannel: return "📺"
+        case .seriesChannel: return "🔂"
         case .seriesAll:     return "🔁"
         }
     }
@@ -469,8 +501,8 @@ struct MenuContent: View {
     // "ch 5.1 · 8:00 PM" (today) or "ch 5.1 · Thu 8:00 PM" (future day)
     private func upcomingLabel(channel: String, date: Date) -> String {
         let t = Self.timeFormatter.string(from: date)
-        if Calendar.current.isDateInToday(date) { return "ch \(channel) · \(t)" }
-        return "ch \(channel) · \(Self.shortWeekdayFormatter.string(from: date)) \(t)"
+        if Calendar.current.isDateInToday(date) { return "Channel \(channel) · \(t)" }
+        return "Channel \(channel) · \(Self.shortWeekdayFormatter.string(from: date)) \(t)"
     }
 
     // Next N weekday+time occurrences for a DateTime show, computed from show_air_date / show_time.

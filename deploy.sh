@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-APP="hdhr_VCR.app"
+APP="hdhrVCRplus.app"
 BINARY="$APP/Contents/MacOS/hdhr_VCR"
 
 echo "==> Stopping running instance…"
@@ -18,6 +18,10 @@ swift build
 
 echo "==> Deploying binary…"
 cp .build/debug/hdhr_VCR "$BINARY"
+
+echo "==> Deploying resources…"
+mkdir -p "$APP/Contents/Resources"
+cp Resources/app.jpg "$APP/Contents/Resources/app.jpg"
 
 echo "==> Signing…"
 xattr -cr "$APP"

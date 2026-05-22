@@ -1,4 +1,4 @@
-# hdhr_VCR
+# hdhrVCRplus
 
 A macOS menu bar app for recording live TV from [HDHomeRun](https://www.silicondust.com) network tuners. Lives in your menu bar — no Dock icon — and records in the background while you work.
 

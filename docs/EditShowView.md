@@ -27,7 +27,8 @@ ScrollView {
     Stream URL (read-only Text, .caption, lineLimit 1)
   }
 }
-navBar: [Delete] ... [Cancel] [Save]
+navBar: [Delete] ... [Save]
+Escape key: `.onExitCommand { dismiss() }` on root Group — dismisses without saving
 ```
 
 ---
@@ -112,6 +113,6 @@ Calls `state.deleteShow(s)` (which also calls `recordingManager.stop(showId:)` t
 
 - **No "Schedule Now" button** — for debugging, it would be useful to immediately trigger a scheduling pass for a show (force it to find its next episode in the guide) without waiting for the idle loop.
 
-- **No unsaved-changes warning on close** — unlike `SettingsView`, `EditShowView` has no `WindowCloseInterceptor`. Closing the window (not Cancel) discards edits silently.
+- **No unsaved-changes warning on close** — unlike `SettingsView`, `EditShowView` has no `WindowCloseInterceptor`. Closing the window or pressing Escape discards edits silently.
 
 - **No undo** — once Save is pressed, the old values are gone. A Revert button (or Cancel-to-original) is the standard macOS pattern and would make this view safer to use.

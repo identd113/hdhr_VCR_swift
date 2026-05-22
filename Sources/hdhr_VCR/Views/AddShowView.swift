@@ -83,9 +83,16 @@ struct AddShowView: View {
                 navBar
             }
         }
-        .frame(width: step == .guide ? 980 : 560,
-               height: step == .guide ? 700 : 540)
+        .frame(
+            minWidth: step == .guide ? 1100 : 560,
+            idealWidth: step == .guide ? 1280 : 560,
+            maxWidth: step == .guide ? .infinity : 560,
+            minHeight: step == .guide ? 720 : 540,
+            idealHeight: step == .guide ? 820 : 540,
+            maxHeight: step == .guide ? .infinity : 540
+        )
         .animation(.easeInOut(duration: 0.2), value: step)
+        .onExitCommand { dismiss() }
         .onAppear {
             show.show_transcode = state.config.Default_transcode
             // Single device — skip the device step entirely
@@ -113,18 +120,37 @@ struct AddShowView: View {
                     description: Text("Make sure your HDHomeRun is on the network."))
             } else {
                 List(state.devices, selection: $selectedDevice) { device in
+                    let activeRecordings = state.recordingShows.filter { $0.hdhr_record == device.DeviceID }.count
+                    let channelCount = state.lineups[device.DeviceID]?.count ?? 0
                     HStack {
                         Image(systemName: "antenna.radiowaves.left.and.right")
-                        VStack(alignment: .leading) {
-                            Text(device.DeviceID).bold()
-                            Text(device.LocalIP).foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack {
+                                Text(device.DeviceID).bold()
+                                Spacer()
+                                if activeRecordings > 0 {
+                                    Text("Recording \(activeRecordings)")
+                                        .font(.caption).bold()
+                                        .foregroundStyle(.red)
+                                }
+                            }
+                            HStack(spacing: 6) {
+                                Text(device.LocalIP)
+                                if let tc = device.TunerCount { Text("· \(tc) tuners") }
+                                if channelCount > 0 { Text("· \(channelCount) channels") }
+                                if let fw = device.FirmwareVersion { Text("· fw \(fw)") }
+                            }
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                         }
-                        Spacer()
-                        Text("\(device.TunerCount ?? 0) tuners").foregroundStyle(.secondary)
                     }
                     .tag(device)
                     .contentShape(Rectangle())
                     .onTapGesture { selectedDevice = device }
+                    .simultaneousGesture(TapGesture(count: 2).onEnded {
+                        selectedDevice = device
+                        goForward()
+                    })
                 }
             }
         }
@@ -156,7 +182,6 @@ struct AddShowView: View {
         return VStack(spacing: 0) {
             // ── Compact toolbar: tuner + genre filter + actions ───────────────
             HStack(spacing: 10) {
-                Button("Cancel") { dismiss() }
                 if state.devices.count > 1 {
                     Text("Tuner:").foregroundStyle(.secondary).fixedSize()
                     Picker("", selection: $selectedDevice) {
@@ -241,6 +266,14 @@ struct AddShowView: View {
             }
         }
         .task(id: taskId) { await loadAllGuide() }
+        .onChange(of: selectedDevice) { _, newDevice in
+            // Force fresh data whenever the user switches tuners
+            guard let id = newDevice?.DeviceID else { return }
+            state.guideStore.invalidate(deviceId: id)
+            state.lineups.removeValue(forKey: id)
+            allChannels = []
+            refreshToken = UUID()
+        }
         .onChange(of: state.guideRevision) { _, _ in
             guard let id = selectedDevice?.DeviceID, allChannels.isEmpty else { return }
             let ch = state.guideStore.channels(deviceId: id)
@@ -274,7 +307,10 @@ struct AddShowView: View {
                 (show.show_next.date ?? .distantFuture) <= Date() &&
                 (show.show_end.date  ?? .distantPast)   >  Date()
             }
+            let isSportsBonusEntry = entry.firstGenre?.lowercased().contains("sports") == true
+                                  && state.config.Sports_padding_enabled
 
+            ZStack(alignment: .topTrailing) {
             HStack(alignment: .top, spacing: 14) {
                 // Poster image
                 if let urlStr = entry.ImageURL, !urlStr.isEmpty, let url = URL(string: urlStr) {
@@ -346,7 +382,7 @@ struct AddShowView: View {
                     if let sid = entry.SeriesID, !sid.isEmpty {
                         let upcoming = state.upcomingGuideEpisodes(seriesID: sid)
                         if !upcoming.isEmpty {
-                                let labels = upcoming.map { "ch \($0.channel) \(Self.upcomingFormatter.string(from: $0.entry.startDate))" }
+                                let labels = upcoming.map { "Channel \($0.channel) \(Self.upcomingFormatter.string(from: $0.entry.startDate))" }
                             Text(labels.joined(separator: "  ·  "))
                                 .font(.caption2)
                                 .foregroundColor(.white.opacity(0.85))
@@ -357,15 +393,17 @@ struct AddShowView: View {
                     Spacer(minLength: 0)
                     HStack(spacing: 8) {
                         ChannelIcon(urlString: channelIcon, size: 18)
-                        Text("ch \(selectedChannel?.GuideNumber ?? "?")  ·  \(guideTimeRange(entry))")
+                        Text("Channel \(selectedChannel?.GuideNumber ?? "?")  ·  \(guideTimeRange(entry))")
                             .font(.caption)
                             .foregroundColor(.white.opacity(0.85))
                             .shadow(color: .black.opacity(0.35), radius: 1.5, x: 0, y: 1)
                         Spacer()
-                        if state.config.Watch_in_VLC,
+                        if onAir,
+                           state.config.Watch_in_VLC,
                            FileManager.default.fileExists(atPath: "/Applications/VLC.app") {
-                            Button("Watch in VLC") {
-                                state.watchInVLC(url: selectedChannel?.URL ?? "")
+                            Button(action: { state.watchInVLC(url: selectedChannel?.URL ?? "") }) {
+                                Text("Watch in VLC")
+                                    .foregroundColor(Color(red: 1.0, green: 0.482, blue: 0.0))
                             }
                             .controlSize(.small)
                             .disabled(selectedChannel == nil)
@@ -397,6 +435,27 @@ struct AddShowView: View {
             .cornerRadius(10)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
+
+            // Sports bonus-time starburst — floats over top-right corner of the summary card
+            if isSportsBonusEntry {
+                StarburstShape()
+                    .fill(Color.orange)
+                    .frame(width: 80, height: 80)
+                    .overlay(
+                        VStack(spacing: 2) {
+                            Text("🏈").font(.title3)
+                            Text("+\(state.config.Sports_padding_minutes) min")
+                                .font(.caption).bold().foregroundColor(.white)
+                        }
+                    )
+                    .scaleEffect(showSummaryStarburst ? 1.0 : 0.1)
+                    .rotationEffect(.degrees(showSummaryStarburst ? 0 : -45))
+                    .animation(.spring(response: 0.4, dampingFraction: 0.55), value: showSummaryStarburst)
+                    .onAppear  { showSummaryStarburst = true  }
+                    .onDisappear { showSummaryStarburst = false }
+                    .padding(.trailing, 18).padding(.top, 8)
+            }
+            } // ZStack
         } else {
             Text("Select a show from the grid")
                 .foregroundStyle(.tertiary)
@@ -417,8 +476,33 @@ struct AddShowView: View {
         return "\(Self.timeRangeFormatter.string(from: entry.startDate)) – \(Self.timeRangeFormatter.string(from: entry.endDate))"
     }
 
+    // 12-point starburst shape for the bonus-time badge
+    private struct StarburstShape: Shape {
+        func path(in rect: CGRect) -> Path {
+            let cx = rect.midX, cy = rect.midY
+            let outerR = min(rect.width, rect.height) / 2
+            let innerR = outerR * 0.55
+            let points = 12
+            var path = Path()
+            for i in 0..<(points * 2) {
+                let angle = Double(i) * .pi / Double(points) - .pi / 2
+                let r = i.isMultiple(of: 2) ? outerR : innerR
+                let x = cx + CGFloat(cos(angle)) * r
+                let y = cy + CGFloat(sin(angle)) * r
+                i == 0 ? path.move(to: CGPoint(x: x, y: y)) : path.addLine(to: CGPoint(x: x, y: y))
+            }
+            path.closeSubpath()
+            return path
+        }
+    }
+
+    @State private var showStarburst        = false
+    @State private var showSummaryStarburst = false
+
     private var detailsStep: some View {
-        ScrollView {
+        let isSportsBonusShow = show.show_genre.lowercased().contains("sports") && state.config.Sports_padding_enabled
+        return ScrollView {
+            ZStack(alignment: .topTrailing) {
             VStack(alignment: .leading, spacing: 16) {
                 Text("Recording Details").font(.title2)
 
@@ -472,6 +556,27 @@ struct AddShowView: View {
                 }
             }
             .padding()
+
+            // Sports bonus-time starburst badge — animates in when a sports show is selected
+            if isSportsBonusShow {
+                StarburstShape()
+                    .fill(Color.orange)
+                    .frame(width: 90, height: 90)
+                    .overlay(
+                        VStack(spacing: 2) {
+                            Text("🏈").font(.title3)
+                            Text("+\(state.config.Sports_padding_minutes) min")
+                                .font(.caption).bold().foregroundColor(.white)
+                        }
+                    )
+                    .scaleEffect(showStarburst ? 1.0 : 0.1)
+                    .rotationEffect(.degrees(showStarburst ? 0 : -45))
+                    .animation(.spring(response: 0.4, dampingFraction: 0.55), value: showStarburst)
+                    .onAppear { showStarburst = true }
+                    .onDisappear { showStarburst = false }
+                    .padding(.trailing, 12).padding(.top, 12)
+            }
+            } // ZStack
         }
     }
 
@@ -479,7 +584,6 @@ struct AddShowView: View {
 
     private var navBar: some View {
         HStack {
-            Button("Cancel") { dismiss() }
             Spacer()
             switch step {
             case .device:

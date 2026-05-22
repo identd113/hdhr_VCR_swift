@@ -11,17 +11,22 @@ final class ConfigManager {
     }
 
     func load() -> ConfigFile? {
-        guard let data = try? Data(contentsOf: configURL) else {
-            print("[ConfigManager] No config at \(configURL.path)")
-            return nil
-        }
         let decoder = JSONDecoder()
-        do {
-            return try decoder.decode(ConfigFile.self, from: data)
-        } catch {
-            print("[ConfigManager] Decode error: \(error)")
-            return nil
+        // Try main config first
+        if let data = try? Data(contentsOf: configURL),
+           let file = try? decoder.decode(ConfigFile.self, from: data) {
+            return file
         }
+        // Fall back to backup — restore it as the main file so future saves have a base
+        let backup = configURL.appendingPathExtension("bak")
+        if let data = try? Data(contentsOf: backup),
+           let file = try? decoder.decode(ConfigFile.self, from: data) {
+            print("[ConfigManager] Main config missing/corrupt — restored from backup")
+            try? data.write(to: configURL, options: .atomic)
+            return file
+        }
+        print("[ConfigManager] No config or backup — fresh install")
+        return nil
     }
 
     func save(_ file: ConfigFile) throws {

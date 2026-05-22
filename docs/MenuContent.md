@@ -62,7 +62,7 @@ Divider
 Refresh Guide
 Settings…
 Divider
-Quit hdhr_VCR
+Quit hdhrVCRplus
 ```
 
 ### Header
@@ -81,12 +81,14 @@ Submenu contents (in order):
 3. **Episode info** — synchronous lookup from `state.guideEntries(deviceId: show.hdhr_record, channelNum: show.show_channel)`, finding the entry where `startDate <= now && endDate > now`. Shows `episodeInfoLabel(entry)` (`"S02E05 · The One Where…"`) in `labelColor`
 4. **Synopsis** — up to 3 lines from `currentEntry?.Synopsis`, in `labelColor`
 5. Divider
-6. **Channel + type** — `"ch 5.1 · SeriesID(All)"`, `secondaryLabelColor`
+6. **Channel + type** — `"Channel 5.1 · SeriesID(All)"`, `secondaryLabelColor`
 7. **Elapsed + remaining** — `"2h 15m elapsed · 45m left"` via `elapsedLabel(since:)` / `remainingLabel(until:)`
-8. Divider
-9. **Stop Recording** → `state.stopRecording(showId:)` — deactivates show, kills curl PID explicitly, moves to Paused
-10. **Watch in VLC** — shown when `config.Watch_in_VLC` and `/Applications/VLC.app` exists
-11. **Edit…** — sets `state.editingShowId`, opens `"edit-show"` window
+8. **Tuner signal** — shown when `state.tunerStatus[show.show_id]` is set (polled each idle tick via `fetchTunerStatus`): `"Signal: 78% · lock: qam256 · 12.4 Mbps"`, `secondaryLabelColor`
+9. Divider
+10. **Stop Recording** → `state.stopRecording(showId:)` — deactivates show, kills curl PID explicitly, moves to Paused
+11. **Skip This Airing** → `state.skipRecording(showId:)` — stops recording, advances schedule to next airing without incrementing fail count
+12. **Watch in VLC** — shown when `config.Watch_in_VLC` and `/Applications/VLC.app` exists; button label text uses VLC orange (`Color(red: 1.0, green: 0.482, blue: 0.0)`)
+13. **Edit…** — sets `state.editingShowId`, opens `"edit-show"` window
 
 The guide lookup is a **synchronous read from the in-memory cache** (`guideStore.channelEntryIndex`). No network call. If the cache is empty, episode/synopsis items are absent gracefully.
 
@@ -96,24 +98,29 @@ The guide lookup is a **synchronous read from the in-memory cache** (`guideStore
 
 Source: `state.activeShows` — sorted by `show_next` ascending.
 
-Menu label: `[stateIcon] [Title]`
+Menu label: `[stateIcon] [Title]` — prefixed with `⚠️` when a tuner conflict is detected for the show's next airing.
 
-State icons: `1️⃣` Single · `📅` DateTime · `📺` SeriesID(Channel) · `🔁` SeriesID(All)
+State icons: `1️⃣` Single · `📅` DateTime · `🔂` SeriesID(Channel) · `🔁` SeriesID(All)
 
 Submenu (in order):
-1. **Type + channel** — `"SeriesID(All) · ch 5.1"`, full `labelColor`
-2. **Episode info** — guide entry at `show_next` ±5 min:
+1. **Poster image** — `AsyncImage` of `show.show_logo_url` (120×80, cornerRadius 4) if non-empty
+2. **Title** — `.headline`, `labelColor`
+3. **Type + channel** — `"SeriesID(All) · Channel 5.1"`, full `labelColor`
+4. **Synopsis** — from the guide entry at `show_next` ±5 min, `.footnote`, `secondaryLabelColor`
+5. Divider
+6. **Episode info** — guide entry at `show_next` ±5 min:
    ```swift
    let scheduledEntry = guideEntries.first {
        abs($0.startDate.timeIntervalSince(next)) < 5 * 60
    }
    ```
    Shows `episodeInfoLabel(scheduledEntry)` in `labelColor` if found
-3. **Timing** — `"In 2h 15m · 60 min"` or `"Started 5m ago · 55m left"`, full `labelColor`
-4. **Next SeriesID episode** (SeriesID shows only) — calls `state.nextGuideEpisode(for:)` → `guideStore.nextEpisode(seriesID:channelNum:deviceId:)`. Shows `"ch 5.1 · 8:00 PM"` and episode info, in full `labelColor`
-5. **Failure warning** — orange `"⚠️ N failure(s): reason"` if `show_fail_count > 0`
-6. Divider
-7. **Edit…**, **Deactivate**, **Delete…** (destructive role)
+7. **Timing** — `"In 2h 15m · 60 min"` or `"Started 5m ago · 55m left"`, full `labelColor`
+8. **Next SeriesID episode** (SeriesID shows only) — calls `state.nextGuideEpisode(for:)` → `guideStore.nextEpisode(seriesID:channelNum:deviceId:)`. Shows `"Channel 5.1 · 8:00 PM"` and episode info, in full `labelColor`
+9. **Conflict warning** — orange `"⚠️ Conflict: all N tuners busy at this time"` if `state.hasConflict(for: show)` returns true
+10. **Failure warning** — orange `"⚠️ N failure(s): reason"` if `show_fail_count > 0`
+11. Divider
+12. **Edit…**, **Deactivate**, **Delete…** (destructive role)
 
 All timing and episode text uses full `labelColor` (not `secondaryLabelColor`) for readability — the dim gray was too low-contrast in the menu.
 

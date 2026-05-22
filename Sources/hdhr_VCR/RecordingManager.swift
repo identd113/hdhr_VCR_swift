@@ -23,7 +23,7 @@ final class RecordingManager {
             "--max-time", "\(durationSeconds + 120)",
             "-H", "show_id:\(showId)",
             "-H", "show_end:\(showEndEpoch)",
-            "-H", "appname:hdhr_VCR_swift",
+            "-H", "appname:hdhrVCRplus",
         ]
         if verbose { curlArgs.append("-v") }
         curlArgs += [streamURL, "-o", outputPath]

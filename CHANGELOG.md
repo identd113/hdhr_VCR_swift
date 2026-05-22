@@ -1,4 +1,30 @@
-# hdhr_VCR Changelog
+# hdhrVCRplus Changelog
+
+## 2026-05-22 (260522-1210)
+
+- **Project renamed to hdhrVCRplus** — bundle name, identifier (`com.hdhr.vcrplus`), Quit button, and process marker updated; source directory and config filename unchanged for AppleScript compatibility
+- **App icon in menu bar** — `app.jpg` bundled locally (`Contents/Resources/`); used as the menu bar icon, proportionally scaled to actual menu bar height (`NSStatusBar.system.thickness − 2`); dimmed during startup, full opacity when idle; falls back to SF Symbol `tv` if bundle resource is absent
+- **App icon in About** — Settings → About now loads the icon from the local bundle instead of fetching from GitHub; instant display, no network required
+- **Tuner signal status in recording menu** — signal strength, lock type, and bitrate (`"Signal: 78% · lock: qam256 · 12.4 Mbps"`) appear in the recording submenu, polled from `http://<device-ip>/tuner{N}/vstatus` each idle loop tick
+- **Recording conflict detection** — `⚠️` badge on scheduled show labels when all tuner slots are occupied at that show's start time; conflict detail line inside the submenu
+- **Skip This Airing** — new button in active recording submenu; stops the recording and advances to the next scheduled airing without incrementing the fail count
+- **Cable guide dynamic width** — guide grid fills available window width; `pxPerMin` scales up as the window is widened (min 4.2 px/min); window resizable from 1100×720 minimum instead of fixed 980×700
+- **Starburst animation in summary panel** — sports show with Bonus Time enabled now shows the animated 🏈 starburst badge in the guide step summary panel, not only in the Details step
+- **Watch in VLC — on-air only** — VLC button in the guide summary panel is now suppressed for future shows; only appears when the selected entry is currently broadcasting
+- **Next Up submenus** — shows in the "Next Up" section now open full submenus (poster, synopsis, episode info, timing, Edit/Deactivate/Delete) matching the Scheduled section
+- **Scheduled menu: poster + synopsis** — poster image and synopsis added at the top of each scheduled show submenu, consistent with the recording now menu
+- **SeriesChannel icon** — SeriesID(Channel) shows now use 🔂 instead of 📺 to distinguish from a plain TV icon
+- **"ch" → "Channel"** — all user-visible strings changed from `"ch N"` to `"Channel N"` throughout menus, summary panel, and notifications
+- **VLC button orange** — all "Watch in VLC" button labels now render in VLC brand orange (#FF7B00)
+- **Settings: Save & Close** — new button in Settings bottom bar saves and closes the window in one click
+- **Settings: Update Guides Now** — button in Settings → Guide section triggers an immediate guide refresh for all devices
+- **Watch in VLC auto-enable** — on first launch, if `/Applications/VLC.app` is installed the Watch in VLC setting is automatically enabled; subsequent user toggles are never overridden
+- **Double-click tuner to advance** — double-clicking a device in the tuner selection step immediately advances to the guide step
+- **Richer device info in tuner step** — device rows now show IP, tuner count, lineup channel count, firmware version, and active recording count (red when > 0)
+- **Tuner switch invalidates cache** — changing the tuner picker in the guide step immediately clears the guide and lineup cache for that device and reloads fresh data
+- **Cancel buttons removed; Escape exits** — Cancel buttons removed from AddShowView and EditShowView nav bars; Escape key dismisses both windows via `.onExitCommand`
+- **Config recovery from backup** — if the main config file is missing or corrupt on launch, the app automatically restores it from the `.json.bak` backup
+- **Documentation overhaul** — `cableView.md` deleted; `docs/CableGuideView.md` rewritten with full layout reference; `docs/CableGuideView_pitfalls.md` created (10 failed layout attempts); all view docs updated to reflect current code; CLAUDE.md Documentation section added; `docs/todo.md` created with known improvement areas
 
 ## 2026-05-22 (v1.0.0)
 

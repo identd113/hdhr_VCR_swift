@@ -16,6 +16,7 @@ final class AppState: ObservableObject {
     @Published var isStartingUp: Bool = true
 
     @Published var editingShowId: String? = nil
+    @Published var tunerStatus: [String: TunerStatus] = [:]  // showId → last polled vstatus
 
     var isRecording: Bool      { shows.contains { $0.show_recording } }
     var recordingShows: [Show] { shows.filter { $0.show_recording && ($0.show_end.date ?? .distantPast) > Date() } }
@@ -50,6 +51,13 @@ final class AppState: ObservableObject {
         loadConfig()
         guideStore.verbose = config.Verbose_curl
         glog("[Startup] config loaded — \(shows.count) shows, GuideHours=\(config.GuideHours)")
+
+        // Auto-enable Watch in VLC on first launch if VLC is installed
+        if !config.Watch_in_VLC_initialized {
+            config.Watch_in_VLC = FileManager.default.fileExists(atPath: "/Applications/VLC.app")
+            config.Watch_in_VLC_initialized = true
+            saveConfig()
+        }
 
         // 2. Reattach any recordings that survived a restart
         await reattachRecordings()
@@ -154,7 +162,7 @@ final class AppState: ObservableObject {
         for line in output.components(separatedBy: "\n") {
             guard line.contains("caffeinate"),
                   line.contains("show_id:"),
-                  line.contains("hdhr_VCR_swift") else { continue }
+                  line.contains("hdhrVCRplus") else { continue }
 
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             let cols    = trimmed.components(separatedBy: .whitespaces)
@@ -381,6 +389,10 @@ final class AppState: ObservableObject {
             resolveSeriesAir(show: &show, device: device, isAll: true, channel: channel)
         }
 
+        if hasConflict(for: show) {
+            notify("Recording Conflict", body: show.show_title,
+                   subtitle: "All tuners on \(show.hdhr_record) are busy at \(shortTime(show.show_next.date))")
+        }
         addShow(show)
         notify("Show Added", body: show.show_title, subtitle: type.rawValue)
     }
@@ -497,7 +509,7 @@ final class AppState: ObservableObject {
             // "Up Next" notification — fires once at Notify_upnext minutes before
             let upNextDue = (show.notify_upnext_time.date ?? .distantPast) <= now
             if !show.show_recording, upNextDue, minutesAway > 0, minutesAway <= config.Notify_upnext {
-                notify("Up Next", body: show.show_title, subtitle: "Starts in \(Int(minutesAway)) min on ch \(show.show_channel)")
+                notify("Up Next", body: show.show_title, subtitle: "Starts in \(Int(minutesAway)) min on Channel \(show.show_channel)")
                 shows[i].notify_upnext_time = EpochDate(now.addingTimeInterval(config.Notify_upnext * 60))
                 dirty = true
             }
@@ -505,7 +517,7 @@ final class AppState: ObservableObject {
             // "Recording About to Start" notification — fires once at Notify_recording minutes before
             let recNotifyDue = (show.notify_recording_time.date ?? .distantPast) <= now
             if !show.show_recording, recNotifyDue, minutesAway > 0, minutesAway <= config.Notify_recording {
-                notify("Recording Soon", body: show.show_title, subtitle: "Starts in \(Int(minutesAway)) min on ch \(show.show_channel)")
+                notify("Recording Soon", body: show.show_title, subtitle: "Starts in \(Int(minutesAway)) min on Channel \(show.show_channel)")
                 shows[i].notify_recording_time = EpochDate(now.addingTimeInterval(config.Notify_recording * 60))
                 dirty = true
             }
@@ -524,6 +536,11 @@ final class AppState: ObservableObject {
             }
         }
         if dirty { saveConfig() }
+
+        // Refresh vstatus for each active recording so the recording submenu shows live signal data
+        for show in recordingShows {
+            Task { await fetchTunerStatus(for: show) }
+        }
     }
 
     // MARK: - Recording
@@ -572,12 +589,23 @@ final class AppState: ObservableObject {
         shows[index].show_fail_count = max(0, show.show_fail_count - 1)
         // Stamp notify_recording_time so the "Recording Soon" pre-notification won't re-fire
         shows[index].notify_recording_time = EpochDate(Date().addingTimeInterval(config.Notify_recording * 60))
-        notify("Recording Started", body: show.show_title, subtitle: "ch \(show.show_channel) — ends \(shortTime(show.show_end.date))")
+        notify("Recording Started", body: show.show_title, subtitle: "Channel \(show.show_channel) — ends \(shortTime(show.show_end.date))")
+    }
+
+    func skipRecording(showId: String) async {
+        guard let i = shows.firstIndex(where: { $0.show_id == showId }) else { return }
+        recordingManager.stop(showId: showId)
+        tunerStatus.removeValue(forKey: showId)
+        shows[i].show_recording = false
+        shows[i].show_last = EpochDate(Date())
+        await scheduleNextAir(index: i)
+        saveConfig()
     }
 
     func stopRecording(index: Int, natural: Bool) async {
         let show = shows[index]
         recordingManager.stop(showId: show.show_id)
+        tunerStatus.removeValue(forKey: show.show_id)
         shows[index].show_recording = false
         shows[index].show_last = EpochDate(Date())
 
@@ -786,14 +814,83 @@ final class AppState: ObservableObject {
         return Self.shortTimeFormatter.string(from: d)
     }
 
-    func watchInVLC(url: String) {
+    func watchInVLC(url: String, transcode: String? = nil) {
+        let profile = (transcode ?? config.Default_transcode).lowercased().trimmingCharacters(in: .whitespaces)
+        let raw = profile.isEmpty || profile == "none" ? url : "\(url)?transcode=\(profile)"
         guard config.Watch_in_VLC,
-              let streamURL = URL(string: url) else { return }
+              let streamURL = URL(string: raw) else { return }
         let vlcPath = "/Applications/VLC.app"
         guard FileManager.default.fileExists(atPath: vlcPath),
               let vlcApp = URL(string: "file://\(vlcPath)") else { return }
         NSWorkspace.shared.open([streamURL], withApplicationAt: vlcApp,
                                 configuration: .init()) { _, _ in }
+    }
+
+    // MARK: - Tuner signal status
+
+    func fetchTunerStatus(for show: Show) async {
+        // Resolve device IP from the known-device list; fall back to the host in show_url
+        let ip: String
+        if let deviceIP = devices.first(where: { $0.DeviceID == show.hdhr_record })?.LocalIP {
+            ip = deviceIP
+        } else if let host = URL(string: show.show_url)?.host {
+            ip = host
+        } else {
+            return
+        }
+        let tunerCount = devices.first(where: { $0.DeviceID == show.hdhr_record })?.TunerCount ?? 4
+
+        var best: TunerStatus? = nil
+        for n in 0..<tunerCount {
+            guard let url = URL(string: "http://\(ip)/tuner\(n)/vstatus") else { continue }
+            guard let (data, _) = try? await URLSession.shared.data(from: url),
+                  let text = String(data: data, encoding: .utf8) else { continue }
+
+            // Parse space-separated key=value pairs
+            var kv: [String: String] = [:]
+            for token in text.split(separator: " ") {
+                let parts = token.split(separator: "=", maxSplits: 1)
+                if parts.count == 2 { kv[String(parts[0])] = String(parts[1]) }
+            }
+            let lock = kv["lock"] ?? "none"
+            guard lock != "none" else { continue }
+
+            let status = TunerStatus(
+                signalStrength: Int(kv["ss"]  ?? "0") ?? 0,
+                signalQuality:  Int(kv["snq"] ?? "0") ?? 0,
+                lockType:       lock,
+                bitrateMbps:    Double(kv["bps"] ?? "0").map { $0 / 1_000_000 } ?? 0
+            )
+            // Prefer the tuner whose channel matches the show's channel
+            if kv["ch"] == show.show_channel {
+                best = status
+                break
+            }
+            if best == nil { best = status }  // first locked tuner as fallback
+        }
+        if let status = best {
+            tunerStatus[show.show_id] = status
+        }
+    }
+
+    // MARK: - Conflict detection
+
+    func hasConflict(for show: Show) -> Bool {
+        guard let next = show.show_next.date,
+              let end  = show.show_end.date,
+              let device = devices.first(where: { $0.DeviceID == show.hdhr_record }),
+              let tunerCount = device.TunerCount,
+              tunerCount > 0 else { return false }
+        let overlapping = shows.filter { other in
+            guard other.show_active,
+                  other.show_id != show.show_id,
+                  other.hdhr_record == show.hdhr_record,
+                  let oNext = other.show_next.date,
+                  let oEnd  = other.show_end.date
+            else { return false }
+            return oNext < end && oEnd > next
+        }
+        return overlapping.count >= tunerCount
     }
 
     func quit() {
@@ -802,7 +899,7 @@ final class AppState: ObservableObject {
         }
         let alert = NSAlert()
         alert.messageText = "Recordings in progress"
-        let list = recordingShows.map { "• \($0.show_title) (ch \($0.show_channel))" }.joined(separator: "\n")
+        let list = recordingShows.map { "• \($0.show_title) (Channel \($0.show_channel))" }.joined(separator: "\n")
         alert.informativeText = "These recordings will be stopped:\n\n\(list)\n\nChoose \"Keep Recording\" to exit while recordings continue — relaunch the app to reconnect."
         alert.addButton(withTitle: "Keep Recording & Quit") // default (Return key) — caffeinate+curl survive as orphans; reattachRecordings() reconnects on next launch
         alert.addButton(withTitle: "Stop Recordings & Quit")

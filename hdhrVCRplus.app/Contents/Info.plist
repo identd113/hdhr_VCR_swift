@@ -5,9 +5,9 @@
     <key>CFBundleExecutable</key>
     <string>hdhr_VCR</string>
     <key>CFBundleIdentifier</key>
-    <string>com.hdhr.vcr</string>
+    <string>com.hdhr.vcrplus</string>
     <key>CFBundleName</key>
-    <string>hdhr_VCR</string>
+    <string>hdhrVCRplus</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>

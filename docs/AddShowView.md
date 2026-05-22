@@ -4,7 +4,7 @@
 
 `AddShowView` is a 3-step wizard window for adding a new recording schedule. It guides the user from tuner selection → cable guide browsing → recording details. It is the primary way new shows get added when the app is in Wizard mode (vs. the inline cascading menu mode).
 
-Window size: **560×540** for steps 1 and 3, **980×700** for step 2 (guide grid).
+Window size: **560×540** for steps 1 and 3; **resizable** (min 1100×720, ideal 1280×820) for step 2 (guide grid). The guide step window can be expanded to full screen — the grid fills available width via dynamic `pxPerMin` scaling.
 
 ---
 
@@ -14,11 +14,15 @@ Window size: **560×540** for steps 1 and 3, **980×700** for step 2 (guide grid
 enum Step { case device, guide, details }
 ```
 
-A progress indicator (3 dots, filled vs hollow) tracks position. Step content fills the main area. A nav bar (Cancel / Next or Back / Save) is shown for all steps except the guide step, which uses Cancel in the toolbar and Record in the summary panel instead.
+A progress indicator (3 dots, filled vs hollow) tracks position. Step content fills the main area. A nav bar (Back / Next or Save) is shown for steps 1 and 3. The guide step hides the nav bar entirely; Record appears in the summary panel. **Escape key** dismisses the window from any step (`.onExitCommand { dismiss() }` on the root VStack).
 
 ### Step 1 — Device
 
-Shows a `List` of `state.devices` with device ID, IP, and tuner count. Tapping a row sets `selectedDevice` — but the actual advance to step 2 happens via the "Next" button (`canAdvance` requires `selectedDevice != nil`).
+Shows a `List` of `state.devices` with expanded device info:
+- **DeviceID** + active recording count (red when > 0)
+- **IP · N tuners · M channels · fw YYYYMMDD** (firmware shown if non-nil)
+
+Tapping a row sets `selectedDevice`. **Double-tapping** sets `selectedDevice` and immediately advances to step 2 (`.simultaneousGesture(TapGesture(count: 2).onEnded { ... })`). The "Next" button also advances when `selectedDevice != nil`.
 
 **Single-device skip**: `.onAppear` auto-selects the only device and jumps to step 2 immediately, so single-tuner setups never see the device list.
 
@@ -28,9 +32,16 @@ A **Refresh** button runs `state.discoverDevices()` in a `Task` in case the init
 
 Full cable-guide layout powered by `CableGuideView`. Guide step hides the bottom nav bar to reclaim ~48px for the grid; Cancel moves to the compact toolbar, and Record appears in the summary panel.
 
-**Window resizes** to 980×700 when `step == .guide`, controlled by a `.frame()` modifier on the outer `VStack` keyed on `step`:
+**Window resizes** when `step == .guide` — a `.frame()` modifier on the outer `VStack` switches between fixed 560×540 (steps 1 and 3) and resizable with min 1100×720 (step 2):
 ```swift
-.frame(width: step == .guide ? 980 : 560, height: step == .guide ? 700 : 540)
+.frame(
+    minWidth: step == .guide ? 1100 : 560,
+    idealWidth: step == .guide ? 1280 : 560,
+    maxWidth: step == .guide ? .infinity : 560,
+    minHeight: step == .guide ? 720 : 540,
+    idealHeight: step == .guide ? 820 : 540,
+    maxHeight: step == .guide ? .infinity : 540
+)
 ```
 The window animates between sizes with `.animation(.easeInOut(duration: 0.2), value: step)`.
 
@@ -50,16 +61,22 @@ These are passed to `CableGuideView` along with `bonusMinutes: state.config.Spor
 
 **Genre filter resets**: when the tuner picker changes, `availableGenres` repopulates and `genreFilter` becomes invalid (stale genre string). It resets to `nil`.
 
+**Tuner switch cache invalidation**: `onChange(of: selectedDevice)` calls `state.guideStore.invalidate(deviceId:)` and removes the lineup from `state.lineups` for the newly selected device, then bumps `refreshToken`. This forces a fresh guide and lineup fetch for the new tuner.
+
 **`guideRevision` observation**: `onChange(of: state.guideRevision)` catches guide updates triggered by the idle loop while the wizard is open, pulling fresh channels into `allChannels` if they were empty.
 
 ### Step 3 — Details
 
-Form with:
+`ScrollView { ZStack(alignment: .topTrailing) { form; starburst } }` layout — the form scrolls normally and the starburst badge floats at the top-right.
+
+Form fields:
 - **Title** — `TextField` pre-populated by `applyGuideEntry()`
 - **Type** — segmented `Picker` for `ShowState.allCases`
 - **Days** — weekday toggle buttons (shown for `.single` and `.dateTime`). Single enforces single-day selection; dateTime allows any combination
 - **Transcode** — `Picker`: None / Heavy / Mobile / Internet 720
 - **Folder** — display + Choose… button; writes to `UserDefaults["defaultSaveDirectory"]`
+
+**Bonus Time starburst**: when `show.show_genre.lowercased().contains("sports") && state.config.Sports_padding_enabled`, a `StarburstShape` (12-point star polygon) overlays the top-right corner showing "🏈 +N min". It animates in on appear with `.spring(response: 0.4, dampingFraction: 0.55)` scale + rotation, and resets on disappear.
 
 `canAdvance` for details step: `!show.show_title.isEmpty && recordFolder != nil`.
 
@@ -67,7 +84,7 @@ Form with:
 
 ## Layout Architecture — Guide Step (CRITICAL)
 
-> **Do not change the outer structure without reading `cableView.md`.**
+> **Do not change the outer structure without reading `docs/CableGuideView_pitfalls.md`.**
 
 ```
 VStack(spacing: 0) {
@@ -89,7 +106,7 @@ VStack(spacing: 0) {
 1. **`GeometryReader` MUST wrap both the summary panel AND `CableGuideView`** — pulling the summary panel outside the `GeometryReader` always causes the guide to fill the window and the summary to disappear.
 2. **`CableGuideView` must NOT have a `.frame()` modifier** — the `GeometryReader` + `VStack` distributes height naturally.
 3. **Summary height = `proxy.size.height / 3`** (not a fixed pixel value).
-4. **Window size = 980×700** for the guide step. Changing this may require re-validating grid proportions.
+4. **Window minimum = 1100×720** for the guide step (resizable up to full screen). The guide grid fills available width dynamically via `pxPerMin` scaling; see `CableGuideView.md`.
 
 ---
 
@@ -176,7 +193,7 @@ show.show_air_date         = seriesType == .seriesChannel || seriesType == .seri
           [ProgressView]  [Now ⏱]  [Refresh ↺]  [N ch]
 ```
 
-- **Cancel** — in toolbar (not nav bar) because the nav bar is hidden for this step
+- **Escape** — `.onExitCommand { dismiss() }` on root VStack dismisses from any step; the nav bar has no Cancel button
 - **Tuner picker** — hidden when `state.devices.count == 1`; changing selection invalidates cache for that device and bumps `refreshToken`
 - **Genre picker** — shown only when `availableGenres` is non-empty. Dims non-matching show blocks to 0.2 opacity
 - **`[N ch]`** — orange `.caption2` text showing `allChannels.count`; useful for debugging guide load issues

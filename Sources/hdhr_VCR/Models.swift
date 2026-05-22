@@ -189,6 +189,7 @@ struct AppConfig: Equatable {
 
     var Verbose_curl: Bool = false
     var Watch_in_VLC: Bool = false
+    var Watch_in_VLC_initialized: Bool = false  // set true after first auto-detect so user toggles are preserved
     // Bonus Time: extends recording past the guide end for sports shows
     var Sports_padding_enabled: Bool = true
     var Sports_padding_minutes: Int  = 30   // user-settable 10–60 min, default 30
@@ -210,6 +211,7 @@ extension AppConfig: Codable {
         Hdhr_setup_folder     = (try? c.decode(String.self,  forKey: .Hdhr_setup_folder))     ?? ""
         Verbose_curl          = (try? c.decode(Bool.self,    forKey: .Verbose_curl))          ?? false
         Watch_in_VLC          = (try? c.decode(Bool.self,    forKey: .Watch_in_VLC))          ?? false
+        Watch_in_VLC_initialized = (try? c.decode(Bool.self, forKey: .Watch_in_VLC_initialized)) ?? false
         Sports_padding_enabled  = (try? c.decode(Bool.self,   forKey: .Sports_padding_enabled))  ?? true
         Sports_padding_minutes  = (try? c.decode(Int.self,    forKey: .Sports_padding_minutes))  ?? 30
         Config_version          = (try? c.decode(String.self,  forKey: .Config_version))         ?? "1"
@@ -279,6 +281,20 @@ struct GuideChannel: Codable {
     var Affiliate: String?
     var ImageURL: String?
     var Guide: [GuideEntry]?
+}
+
+// MARK: - TunerStatus
+
+struct TunerStatus {
+    let signalStrength: Int   // ss field (0–100)
+    let signalQuality: Int    // snq field (0–100)
+    let lockType: String      // e.g. "qam256", "8vsb", "none"
+    let bitrateMbps: Double   // bps / 1_000_000
+
+    var displayString: String {
+        guard lockType != "none" else { return "Signal: no lock" }
+        return "Signal: \(signalStrength)% · \(lockType.uppercased()) · \(String(format: "%.1f", bitrateMbps)) Mbps"
+    }
 }
 
 struct GuideEntry: Codable, Identifiable, Hashable {

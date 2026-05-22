@@ -77,6 +77,11 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
+                Button("Save & Close") {
+                    applyAndSave()
+                    NSApp.keyWindow?.close()
+                }
+                .disabled(!isDirty)
                 Button("Save") { applyAndSave() }
                     .buttonStyle(.borderedProminent)
                     // Turn orange when dirty so it visually demands attention
@@ -223,6 +228,10 @@ struct SettingsView: View {
                     value: $draft.Series_scan_retry_hours,
                     in: 1...24
                 )
+                Button("Update Guides Now") {
+                    state.refreshAll()
+                }
+                .buttonStyle(.borderedProminent)
             }
         }
         .formStyle(.grouped)
@@ -381,11 +390,16 @@ struct SettingsView: View {
     private var aboutView: some View {
         ScrollView {
             VStack(spacing: 20) {
-                AsyncImage(url: URL(string: "https://raw.githubusercontent.com/identd113/hdhr_VCR-AS/main/app.jpg")) { img in
-                    img.resizable().aspectRatio(contentMode: .fit).cornerRadius(12)
-                } placeholder: {
-                    Image(systemName: "antenna.radiowaves.left.and.right")
-                        .font(.system(size: 80)).foregroundStyle(.secondary)
+                Group {
+                    if let icon = appIconImage {
+                        Image(nsImage: icon)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .cornerRadius(12)
+                    } else {
+                        Image(systemName: "antenna.radiowaves.left.and.right")
+                            .font(.system(size: 80)).foregroundStyle(.secondary)
+                    }
                 }
                 .frame(width: 180, height: 180)
                 .onTapGesture {

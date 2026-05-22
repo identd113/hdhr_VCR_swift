@@ -19,14 +19,13 @@ struct hdhr_VCRApp: App {
         }
         .menuBarExtraStyle(.menu)
 
-        // Add Show window
+        // Add Show window — resizable when in guide step (the view controls its own frame)
         WindowGroup("Add Show", id: "add-show") {
             AddShowView()
                 .environmentObject(appState)
         }
         .windowStyle(.titleBar)
         .windowResizability(.contentSize)
-        .defaultSize(width: 520, height: 480)
 
         // Edit Show window
         WindowGroup("Edit Show", id: "edit-show") {
@@ -49,10 +48,7 @@ struct hdhr_VCRApp: App {
 
     @ViewBuilder
     private var statusLabel: some View {
-        if appState.isStartingUp {
-            Image(systemName: "tv")
-                .opacity(0.4)
-        } else if appState.isRecording {
+        if appState.isRecording {
             Image(systemName: "record.circle.fill")
                 .symbolRenderingMode(.palette)
                 .foregroundStyle(.red, .primary)
@@ -60,8 +56,13 @@ struct hdhr_VCRApp: App {
             Image(systemName: "clock.badge.fill")
                 .symbolRenderingMode(.palette)
                 .foregroundStyle(.orange, .primary)
+        } else if let icon = appIconMenuBar {
+            Image(nsImage: icon)
+                .opacity(appState.isStartingUp ? 0.4 : 1.0)
         } else {
+            // Fallback: no bundle resources (e.g. direct swift build)
             Image(systemName: "tv")
+                .opacity(appState.isStartingUp ? 0.4 : 1.0)
         }
     }
 }
