@@ -8,9 +8,11 @@ echo "==> Stopping running instance…"
 pkill -x hdhr_VCR 2>/dev/null && echo "    Stopped." || echo "    Not running."
 
 echo "==> Generating version…"
-# Stamp the build time as YYMMDD-HHMM (e.g. "260521-2011") so About tab always shows when this build was made
-printf 'let appVersion = "%s"\n' "$(date +%y%m%d-%H%M)" > Sources/hdhr_VCR/Version.swift
-echo "    Version: $(date +%y%m%d-%H%M)"
+# Read version from Info.plist so the About tab matches the release tag.
+# To release a new version: bump CFBundleShortVersionString in Info.plist, then run deploy.sh.
+APP_VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$APP/Contents/Info.plist")
+printf 'let appVersion = "%s"\n' "$APP_VERSION" > Sources/hdhr_VCR/Version.swift
+echo "    Version: $APP_VERSION"
 
 echo "==> Building…"
 swift build
