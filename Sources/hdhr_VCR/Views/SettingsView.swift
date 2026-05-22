@@ -355,7 +355,8 @@ struct SettingsView: View {
         .task {
             guard liveChangelog == nil,
                   let url = URL(string: "https://raw.githubusercontent.com/identd113/hdhr_VCR_swift/main/CHANGELOG.md"),
-                  let (data, _) = try? await URLSession.shared.data(from: url),
+                  let (data, resp) = try? await URLSession.shared.data(from: url),
+                  (resp as? HTTPURLResponse)?.statusCode == 200,
                   let text = String(data: data, encoding: .utf8)
             else { return }
             liveChangelog = text
