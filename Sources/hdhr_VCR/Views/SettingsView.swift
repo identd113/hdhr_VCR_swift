@@ -78,6 +78,7 @@ struct SettingsView: View {
                         draftAddShowMode   = addShowMode
                         draftSaveDirectory = defaultSaveDirectory
                         draftLaunchAtLogin = SMAppService.mainApp.status == .enabled
+                        draftSimulatedOS   = simulatedMacOSVersion
                     }
                         .foregroundStyle(.secondary)
                 }
@@ -105,11 +106,15 @@ struct SettingsView: View {
             draftSaveDirectory  = defaultSaveDirectory
             draftLaunchAtLogin  = SMAppService.mainApp.status == .enabled
             // Clear a stale saved interface: if the named NIC isn't available right now
-            // (e.g. VPN disconnected), reset to Auto so a Save can't silently write a
-            // value that makes every curl recording fail with "interface not found".
+            // (e.g. VPN disconnected), reset to Auto immediately in both draft AND live
+            // config. Without the live-config clear, a Discard-and-close would leave the
+            // dead interface name in state.config, causing every subsequent curl recording
+            // to fail with "interface not found" until the user manually Saves.
             let available = Set(availableNetworkInterfaces().map { $0.name })
             if !draft.Network_interface.isEmpty && !available.contains(draft.Network_interface) {
                 draft.Network_interface = ""
+                state.config.Network_interface = ""
+                state.saveConfig()
             }
             // Migrate: a previous build stored realVersion for "current"; normalize to 0.
             let real = ProcessInfo.processInfo.operatingSystemVersion.majorVersion

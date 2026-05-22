@@ -1,6 +1,9 @@
 // Hand-maintained changelog displayed in Settings → About.
 // Update this file when shipping new features; keep most-recent version at the top.
 let appChangelog = """
+## 2026-05-22 (260522-1600)
+- Code-review fixes: Discard button now resets OS-sim picker draft; stale-interface clear propagates to live config (prevents dead-interface curl failures after Discard-close); refreshGuides() guards against concurrent runs and stops suppressing retries after an empty-devices refresh; if_nametoindex=0 now logs a diagnostic instead of silently skipping the interface bind
+
 ## 2026-05-22 (260522-1530)
 - All new settings require Save: OS simulation picker now uses draft/save pattern (was live-updating @AppStorage); Save commits, Discard reverts, ⌘S works
 - Interface change triggers refresh: switching network interface on Save automatically runs device rediscovery + guide reload so curl and UDP bind to the new NIC immediately

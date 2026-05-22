@@ -37,8 +37,9 @@ final class AppState: ObservableObject {
     let guideStore       = GuideStore()
 
     private var idleTimer: Timer?
-    private var lastGuideRefresh: Date = .distantPast
-    private var lastDeviceProbe: Date  = .distantPast
+    private var lastGuideRefresh: Date    = .distantPast
+    private var lastDeviceProbe: Date     = .distantPast
+    private var guideRefreshInFlight: Bool = false
     private var failThreshold: Int { config.Fail_count_setting }
     private let maxDiskPct: Double = 93
 
@@ -282,12 +283,19 @@ final class AppState: ObservableObject {
 
     /// Refresh lineup + guide for all devices (called periodically from idleLoop).
     private func refreshGuides() async {
+        guard !guideRefreshInFlight else { return }
+        guideRefreshInFlight = true
+        defer { guideRefreshInFlight = false }
         guideStore.invalidateAll()
         await fetchAllLineups(for: devices)
         guideStore.verbose = config.Verbose_curl
         await guideStore.loadAll(devices: devices, hours: config.GuideHours)
         guideByDevice = guideStore.channelsByDevice
-        lastGuideRefresh = Date()
+        // Only stamp if at least one channel loaded — an empty result (no devices, network
+        // down) must not suppress the retry for up to 12 hours. Mirrors fetchAllGuides().
+        if guideByDevice.values.contains(where: { !$0.isEmpty }) {
+            lastGuideRefresh = Date()
+        }
         print("[Guide] Refresh complete")
         let allChannels = guideByDevice.values.flatMap { $0 }
         Task { await prefetchChannelIcons(allChannels) }

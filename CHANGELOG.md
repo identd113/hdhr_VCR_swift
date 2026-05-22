@@ -1,5 +1,13 @@
 # hdhrVCRplus Changelog
 
+## 2026-05-22 (260522-1600)
+
+- **Discard resets OS-sim picker** — the Discard button in Settings now correctly reverts the OS simulation picker to its saved value (was missing from the reset list, causing `isDirty` to stay true permanently after touching the picker then discarding)
+- **Stale-interface clear propagates to live config** — when Settings opens and detects a disconnected interface (e.g. VPN dropped), it now clears `Network_interface` in both the draft AND the live `AppConfig` and saves immediately; previously only the draft was cleared, so Discard-and-close left the dead interface name active for all subsequent curl recordings, causing every recording to fail silently
+- **`refreshGuides()` guards concurrent runs** — added an in-flight flag so the idle loop and an interface-change Save can't both enqueue a `refreshGuides()` simultaneously; the second call returns immediately rather than racing through guide invalidation and rebuild at interleaved await points
+- **`refreshGuides()` retry on empty load** — `lastGuideRefresh` is now only stamped when at least one channel was actually loaded, matching `fetchAllGuides()`; previously a refresh that found no devices (e.g. right after a VPN reconnect) would suppress the next periodic retry for up to 12 hours
+- **`if_nametoindex` failure logged** — when the UDP socket can't resolve a configured interface name to an index, a `[Discovery]` log line is printed instead of silently falling back to the OS default route
+
 ## 2026-05-22 (260522-1530)
 
 - **All new settings require Save** — the OS simulation picker in Maintenance → Developer now follows the draft/save pattern; changing the picker marks Settings as dirty (Save button turns orange) but does not apply until Save is clicked; Discard reverts the draft; the existing `isDirty` banner and ⌘S shortcut work as expected

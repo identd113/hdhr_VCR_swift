@@ -156,6 +156,10 @@ final class HDHRManager {
             var ifIndex = if_nametoindex(interface)
             if ifIndex > 0 {
                 setsockopt(sock, IPPROTO_IP, IP_BOUND_IF, &ifIndex, socklen_t(MemoryLayout<UInt32>.size))
+            } else {
+                // Interface name not recognised by the kernel — bind is skipped and UDP goes
+                // out on the OS default route. Log so the user can spot a misconfigured name.
+                print("[Discovery] UDP: if_nametoindex('\(interface)') returned 0 — unknown interface, binding skipped")
             }
         }
 
