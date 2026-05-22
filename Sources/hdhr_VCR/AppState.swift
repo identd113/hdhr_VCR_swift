@@ -745,16 +745,16 @@ final class AppState: ObservableObject {
         alert.messageText = "Recordings in progress"
         let list = recordingShows.map { "• \($0.show_title) (ch \($0.show_channel))" }.joined(separator: "\n")
         alert.informativeText = "These recordings will be stopped:\n\n\(list)\n\nChoose \"Keep Recording\" to exit while recordings continue — relaunch the app to reconnect."
+        alert.addButton(withTitle: "Keep Recording & Quit") // default (Return key) — caffeinate+curl survive as orphans; reattachRecordings() reconnects on next launch
         alert.addButton(withTitle: "Stop Recordings & Quit")
-        alert.addButton(withTitle: "Keep Recording & Quit") // quit without stopping — caffeinate+curl survive as orphans; reattachRecordings() reconnects on next launch
         alert.addButton(withTitle: "Go Back")
         alert.alertStyle = .warning
         NSApp.activate(ignoringOtherApps: true)
         switch alert.runModal() {
-        case .alertFirstButtonReturn:  // stop all, then quit
-            recordingManager.stopAll(); saveConfig(); NSApplication.shared.terminate(nil)
-        case .alertSecondButtonReturn: // quit without stopping recordings
+        case .alertFirstButtonReturn:  // keep recordings running, quit
             saveConfig(); NSApplication.shared.terminate(nil)
+        case .alertSecondButtonReturn: // stop all, then quit
+            recordingManager.stopAll(); saveConfig(); NSApplication.shared.terminate(nil)
         default:                       // Go Back — cancel
             break
         }

@@ -51,8 +51,12 @@ struct CableGuideView: View {
     @Binding var selectedEntry:   GuideEntry?
     @Binding var selectedChannel: LineupEntry?
     @Binding var snapToNow:       Bool        // set true externally to snap grid to now
-    let managedSeriesIDs: Set<String>         // shows already scheduled (by SeriesID)
-    let managedTitles:    Set<String>         // shows already scheduled (by title fallback)
+    let managedSeriesIDs:   Set<String>         // shows already scheduled (by SeriesID)
+    let managedTitles:      Set<String>         // shows already scheduled (by title fallback)
+    let recordingSeriesIDs: Set<String>         // shows currently recording
+    let recordingTitles:    Set<String>
+    let nextUpSeriesIDs:    Set<String>         // shows recording within 30 min
+    let nextUpTitles:       Set<String>
     // Bonus Time: seriesIDs/titles of managed sports shows; used to draw the dotted overtime box
     let bonusSeriesIDs:   Set<String>
     let bonusTitles:      Set<String>
@@ -207,22 +211,26 @@ struct CableGuideView: View {
                         ForEach(allChannels) { ch in
                             let entries = visibleEntries(ch)
                             ShowBlocksRow(
-                                channel:         ch,
-                                entries:         entries,
-                                lineupEntry:     lineupByNumber[ch.GuideNumber],
-                                displayStart:    displayStart,
-                                totalW:          totalW,
-                                rowH:            rowH,
-                                pxPerMin:        pxPerMin,
-                                timeSlots:       timeSlots,
-                                selectedEntry:   selectedEntry,
-                                selectedChannel: selectedChannel,
-                                managedSeriesIDs: managedSeriesIDs,
-                                managedTitles:   managedTitles,
-                                bonusSeriesIDs:  bonusSeriesIDs,
-                                bonusTitles:     bonusTitles,
-                                bonusMinutes:    bonusMinutes,
-                                genreFilter:     genreFilter,
+                                channel:            ch,
+                                entries:            entries,
+                                lineupEntry:        lineupByNumber[ch.GuideNumber],
+                                displayStart:       displayStart,
+                                totalW:             totalW,
+                                rowH:               rowH,
+                                pxPerMin:           pxPerMin,
+                                timeSlots:          timeSlots,
+                                selectedEntry:      selectedEntry,
+                                selectedChannel:    selectedChannel,
+                                managedSeriesIDs:   managedSeriesIDs,
+                                managedTitles:      managedTitles,
+                                recordingSeriesIDs: recordingSeriesIDs,
+                                recordingTitles:    recordingTitles,
+                                nextUpSeriesIDs:    nextUpSeriesIDs,
+                                nextUpTitles:       nextUpTitles,
+                                bonusSeriesIDs:     bonusSeriesIDs,
+                                bonusTitles:        bonusTitles,
+                                bonusMinutes:       bonusMinutes,
+                                genreFilter:        genreFilter,
                                 onSelect: { entry, lu in
                                     selectedEntry   = entry
                                     selectedChannel = lu
@@ -287,8 +295,12 @@ private struct ShowBlocksRow: View, Equatable {
     let timeSlots:        [Date]
     let selectedEntry:    GuideEntry?
     let selectedChannel:  LineupEntry?
-    let managedSeriesIDs: Set<String>
-    let managedTitles:    Set<String>
+    let managedSeriesIDs:   Set<String>
+    let managedTitles:      Set<String>
+    let recordingSeriesIDs: Set<String>
+    let recordingTitles:    Set<String>
+    let nextUpSeriesIDs:    Set<String>
+    let nextUpTitles:       Set<String>
     // Bonus Time: sports shows that get an overtime extension — used to draw the dotted overlay box
     let bonusSeriesIDs:   Set<String>
     let bonusTitles:      Set<String>
@@ -306,6 +318,10 @@ private struct ShowBlocksRow: View, Equatable {
         lhs.displayStart                 == rhs.displayStart &&
         lhs.managedSeriesIDs             == rhs.managedSeriesIDs &&
         lhs.managedTitles                == rhs.managedTitles &&
+        lhs.recordingSeriesIDs           == rhs.recordingSeriesIDs &&
+        lhs.recordingTitles              == rhs.recordingTitles &&
+        lhs.nextUpSeriesIDs              == rhs.nextUpSeriesIDs &&
+        lhs.nextUpTitles                 == rhs.nextUpTitles &&
         lhs.bonusSeriesIDs               == rhs.bonusSeriesIDs &&
         lhs.bonusTitles                  == rhs.bonusTitles &&
         lhs.bonusMinutes                 == rhs.bonusMinutes
@@ -359,6 +375,10 @@ private struct ShowBlocksRow: View, Equatable {
         // that have no SeriesID so unrelated shows sharing a name don't get false badges.
         let isManaged   = entry.SeriesID.map { managedSeriesIDs.contains($0) }
                        ?? managedTitles.contains(entry.Title)
+        let isRecording = entry.SeriesID.map { recordingSeriesIDs.contains($0) }
+                       ?? recordingTitles.contains(entry.Title)
+        let isNextUp    = !isRecording && (entry.SeriesID.map { nextUpSeriesIDs.contains($0) }
+                       ?? nextUpTitles.contains(entry.Title))
         let isBonusTime = entry.SeriesID.map { bonusSeriesIDs.contains($0) }
                        ?? bonusTitles.contains(entry.Title)
         let matchesFilter: Bool = {
@@ -379,6 +399,10 @@ private struct ShowBlocksRow: View, Equatable {
             if isSelected {
                 RoundedRectangle(cornerRadius: 3).strokeBorder(Color.white, lineWidth: 2.5)
                 RoundedRectangle(cornerRadius: 3).fill(Color.white.opacity(0.15))
+            } else if isRecording {
+                RoundedRectangle(cornerRadius: 3).strokeBorder(Color.red, lineWidth: 1.5)
+            } else if isNextUp {
+                RoundedRectangle(cornerRadius: 3).strokeBorder(Color.orange, lineWidth: 1.5)
             } else {
                 RoundedRectangle(cornerRadius: 3).strokeBorder(Color.black.opacity(0.25), lineWidth: 0.5)
             }
@@ -404,9 +428,16 @@ private struct ShowBlocksRow: View, Equatable {
                     .font(.system(size: 12, weight: .bold))
                     .foregroundColor(.white)
                     .offset(x: cellW - 18, y: 4)
-            } else if onAir && isManaged {
-                Circle().fill(Color.red).frame(width: 5, height: 5)
-                    .offset(x: cellW - 9, y: 5)
+            } else if isRecording {
+                // Red dot — currently recording
+                Circle().fill(Color.red).frame(width: 8, height: 8)
+                    .offset(x: cellW - 11, y: 4)
+            } else if isNextUp {
+                // Orange clock — records within 30 min
+                Image(systemName: "clock.badge.fill")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.orange)
+                    .offset(x: cellW - 14, y: 4)
             }
 
             if isManaged {

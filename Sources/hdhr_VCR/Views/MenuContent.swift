@@ -80,7 +80,7 @@ struct MenuContent: View {
                 menuInfo("\(Self.timeFormatter.string(from: slotTime)) · in \(relativeLabel(slotTime.timeIntervalSince(now)))",
                          font: .footnote, secondary: true)
                 ForEach(slotShows) { show in
-                    menuInfo("\(stateIcon(show)) \(show.show_title) · ch \(show.show_channel)", font: .footnote)
+                    menuInfo("\(stateIcon(show)) \(show.show_title) · ch \(show.show_channel)")
                 }
             }
             Divider()

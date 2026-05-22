@@ -135,6 +135,17 @@ struct AddShowView: View {
             $0.show_seriesid.isEmpty ? nil : $0.show_seriesid
         })
         let managedTitles = Set(state.shows.map { $0.show_title })
+        // Recording now
+        let recordingSeriesIDs = Set(state.recordingShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
+        let recordingTitles    = Set(state.recordingShows.map { $0.show_title })
+        // Next up: active shows whose next air is within 30 min (matches menu bar orange-clock threshold)
+        let now30 = Date()
+        let nextUpShows = state.activeShows.filter {
+            guard let d = $0.show_next.date else { return false }
+            return d > now30 && d.timeIntervalSince(now30) <= 30 * 60
+        }
+        let nextUpSeriesIDs = Set(nextUpShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
+        let nextUpTitles    = Set(nextUpShows.map { $0.show_title })
         // Bonus Time: find managed sports shows so the guide can draw the overtime dotted box
         let sportShows = state.shows.filter {
             state.config.Sports_padding_enabled && $0.show_genre.lowercased().contains("sports")
@@ -204,18 +215,22 @@ struct AddShowView: View {
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else {
                         CableGuideView(
-                            allChannels:      allChannels,
-                            lineup:           state.lineups[selectedDevice?.DeviceID ?? ""] ?? [],
-                            guideHours:       state.config.GuideHours,
-                            selectedEntry:    $selectedEntry,
-                            selectedChannel:  $selectedChannel,
-                            snapToNow:        $snapToNow,
-                            managedSeriesIDs: managedSeriesIDs,
-                            managedTitles:    managedTitles,
-                            bonusSeriesIDs:   bonusSeriesIDs,
-                            bonusTitles:      bonusTitles,
-                            bonusMinutes:     state.config.Sports_padding_minutes,
-                            genreFilter:      genreFilter,
+                            allChannels:        allChannels,
+                            lineup:             state.lineups[selectedDevice?.DeviceID ?? ""] ?? [],
+                            guideHours:         state.config.GuideHours,
+                            selectedEntry:      $selectedEntry,
+                            selectedChannel:    $selectedChannel,
+                            snapToNow:          $snapToNow,
+                            managedSeriesIDs:   managedSeriesIDs,
+                            managedTitles:      managedTitles,
+                            recordingSeriesIDs: recordingSeriesIDs,
+                            recordingTitles:    recordingTitles,
+                            nextUpSeriesIDs:    nextUpSeriesIDs,
+                            nextUpTitles:       nextUpTitles,
+                            bonusSeriesIDs:     bonusSeriesIDs,
+                            bonusTitles:        bonusTitles,
+                            bonusMinutes:       state.config.Sports_padding_minutes,
+                            genreFilter:        genreFilter,
                             onConfirm: {
                                 applyGuideEntry()
                                 step = .details
@@ -582,7 +597,7 @@ struct AddShowView: View {
         let dayName = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][(comps.weekday ?? 2) - 1]
         airDays = [dayName]
 
-        seriesType = entry.SeriesID != nil ? .seriesChannel : .single
+        seriesType = .single
     }
 
     private func chooseFolder() {
