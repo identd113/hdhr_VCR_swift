@@ -15,6 +15,7 @@ struct AddShowView: View {
     }()
     @EnvironmentObject var state: AppState
     @Environment(\.dismiss) var dismiss
+    @Environment(\.openWindow) private var openWindow
 
     enum Step { case device, guide, details }
 
@@ -116,8 +117,8 @@ struct AddShowView: View {
             }
             .padding()
             if state.devices.isEmpty {
-                ContentUnavailableView("No tuners found", systemImage: "wifi.slash",
-                    description: Text("Make sure your HDHomeRun is on the network."))
+                EmptyStateView(title: "No tuners found", systemImage: "wifi.slash",
+                               description: "Make sure your HDHomeRun is on the network.")
             } else {
                 List(state.devices, selection: $selectedDevice) { device in
                     let activeRecordings = state.recordingShows.filter { $0.hdhr_record == device.DeviceID }.count
@@ -220,6 +221,17 @@ struct AddShowView: View {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
                 .disabled(isLoadingGuide)
+                // Pop-out: re-focus existing floating window or open a new one
+                Button {
+                    if let existing = NSApp.windows.first(where: { $0.title == "Cable Guide" }) {
+                        existing.makeKeyAndOrderFront(nil)
+                    } else {
+                        openWindow(id: "cable-guide")
+                    }
+                } label: {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                }
+                .help("Open guide in floating window")
                 Text("[\(allChannels.count) ch]").font(.caption2).foregroundStyle(.orange)
             }
             .padding(.horizontal, 12).padding(.vertical, 8)
@@ -235,9 +247,8 @@ struct AddShowView: View {
                     Divider()
 
                     if allChannels.isEmpty && !isLoadingGuide {
-                        ContentUnavailableView("No guide data", systemImage: "tv.slash",
-                            description: Text("Guide data unavailable — tap Refresh to retry."))
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        EmptyStateView(title: "No guide data", systemImage: "tv.slash",
+                                   description: "Guide data unavailable — tap Refresh to retry.")
                     } else {
                         CableGuideView(
                             allChannels:        allChannels,
@@ -266,7 +277,7 @@ struct AddShowView: View {
             }
         }
         .task(id: taskId) { await loadAllGuide() }
-        .onChange(of: selectedDevice) { _, newDevice in
+        .onChange(of: selectedDevice) { newDevice in
             // Force fresh data whenever the user switches tuners
             guard let id = newDevice?.DeviceID else { return }
             state.guideStore.invalidate(deviceId: id)
@@ -274,7 +285,7 @@ struct AddShowView: View {
             allChannels = []
             refreshToken = UUID()
         }
-        .onChange(of: state.guideRevision) { _, _ in
+        .onChange(of: state.guideRevision) { _ in
             guard let id = selectedDevice?.DeviceID, allChannels.isEmpty else { return }
             let ch = state.guideStore.channels(deviceId: id)
             guard !ch.isEmpty else { return }
@@ -282,7 +293,7 @@ struct AddShowView: View {
             allChannels = ch
             isLoadingGuide = false
         }
-        .onChange(of: allChannels.count) { _, count in
+        .onChange(of: allChannels.count) { count in
             guard count > 0, selectedEntry == nil else { return }
             let now = Date()
             guard let firstCh = allChannels.first,
@@ -476,25 +487,6 @@ struct AddShowView: View {
         return "\(Self.timeRangeFormatter.string(from: entry.startDate)) – \(Self.timeRangeFormatter.string(from: entry.endDate))"
     }
 
-    // 12-point starburst shape for the bonus-time badge
-    private struct StarburstShape: Shape {
-        func path(in rect: CGRect) -> Path {
-            let cx = rect.midX, cy = rect.midY
-            let outerR = min(rect.width, rect.height) / 2
-            let innerR = outerR * 0.55
-            let points = 12
-            var path = Path()
-            for i in 0..<(points * 2) {
-                let angle = Double(i) * .pi / Double(points) - .pi / 2
-                let r = i.isMultiple(of: 2) ? outerR : innerR
-                let x = cx + CGFloat(cos(angle)) * r
-                let y = cy + CGFloat(sin(angle)) * r
-                i == 0 ? path.move(to: CGPoint(x: x, y: y)) : path.addLine(to: CGPoint(x: x, y: y))
-            }
-            path.closeSubpath()
-            return path
-        }
-    }
 
     @State private var showStarburst        = false
     @State private var showSummaryStarburst = false
@@ -731,6 +723,26 @@ struct AddShowView: View {
         dismiss()
     }
 
+}
+
+// 12-point starburst shape for the bonus-time badge — shared by AddShowView and FloatingGuideView
+struct StarburstShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let cx = rect.midX, cy = rect.midY
+        let outerR = min(rect.width, rect.height) / 2
+        let innerR = outerR * 0.55
+        let points = 12
+        var path = Path()
+        for i in 0..<(points * 2) {
+            let angle = Double(i) * .pi / Double(points) - .pi / 2
+            let r = i.isMultiple(of: 2) ? outerR : innerR
+            let x = cx + CGFloat(cos(angle)) * r
+            let y = cy + CGFloat(sin(angle)) * r
+            i == 0 ? path.move(to: CGPoint(x: x, y: y)) : path.addLine(to: CGPoint(x: x, y: y))
+        }
+        path.closeSubpath()
+        return path
+    }
 }
 
 // Allow LineupEntry to be used with List selection

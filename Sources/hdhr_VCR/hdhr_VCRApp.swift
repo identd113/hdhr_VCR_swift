@@ -8,6 +8,10 @@ struct hdhr_VCRApp: App {
         // Hide Dock icon — menu bar only.
         // In Xcode: Target → Info → add "Application is agent (UIElement)" = YES
         NSApplication.shared.setActivationPolicy(.accessory)
+        // Set app icon from bundled app.jpg so it appears in Force Quit and Activity Monitor.
+        if let icon = appIconImage {
+            NSApplication.shared.applicationIconImage = icon
+        }
     }
 
     var body: some Scene {
@@ -44,6 +48,15 @@ struct hdhr_VCRApp: App {
         .windowStyle(.titleBar)
         .windowResizability(.contentSize)
         .defaultSize(width: 560, height: 440)
+
+        // Floating cable guide — opened from the Add Show guide step pop-out button
+        WindowGroup("Cable Guide", id: "cable-guide") {
+            FloatingGuideView()
+                .environmentObject(appState)
+        }
+        .windowStyle(.titleBar)
+        .windowResizability(.contentMinSize)
+        .defaultSize(width: 1280, height: 820)
     }
 
     @ViewBuilder

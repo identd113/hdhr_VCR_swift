@@ -29,6 +29,7 @@ struct SettingsView: View {
     @EnvironmentObject var state: AppState
     @AppStorage("addShowMode") private var addShowMode: AddShowMode = .menu
     @AppStorage("defaultSaveDirectory") private var defaultSaveDirectory: String = ""
+    @AppStorage("simulatedMacOSVersion") private var simulatedMacOSVersion: Int = 0
     @State private var selection: SettingsCategory? = .general
     @State private var draft: AppConfig = AppConfig()
     // Shadow drafts for settings that live outside AppConfig — applied only on Save
@@ -40,6 +41,8 @@ struct SettingsView: View {
     @State private var showEasterEgg = false
     @State private var maintenanceStatus: String = ""
     @State private var maintenanceBusy: Bool = false
+    @State private var brewBusy: Bool = false
+    @State private var brewStatus: String = ""
 
     private var isDirty: Bool {
         draft != state.config
@@ -259,6 +262,11 @@ struct SettingsView: View {
                     ),
                     in: 1...60
                 )
+                if draft.Notify_recording >= draft.Notify_upnext {
+                    Label("Recording alert fires at or after Up Next — the Up Next notification won't appear first.", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
             }
         }
         .formStyle(.grouped)
@@ -340,10 +348,54 @@ struct SettingsView: View {
                     let ch = state.guideByDevice.values.flatMap { $0 }.count
                     return "Guide refreshed — \(ch) channel(s) loaded"
                 }
+                maintenanceRow("Clear Guide Cache",
+                               "Discard all cached guide data — the next guide step will fetch fresh") {
+                    state.guideStore.invalidateAll()
+                    state.guideByDevice = [:]
+                    return "Guide cache cleared"
+                }
                 maintenanceRow("Rediscover Devices",
                                "Scan the network for HDHomeRun tuners (mDNS + UDP + known hosts)") {
                     await state.rediscoverDevices()
                     return "\(state.devices.count) device(s) found"
+                }
+            }
+            if let brew = brewPath {
+                Section("Tools") {
+                    brewInstallRow(
+                        name: "VLC",
+                        description: "Media player used for Watch in VLC — brew install --cask vlc",
+                        installed: vlcInstalled,
+                        brew: brew,
+                        args: ["install", "--cask", "vlc"]
+                    )
+                    brewInstallRow(
+                        name: "HDHomeRun CLI",
+                        description: "hdhomerun_config command-line tool — brew install libhdhomerun",
+                        installed: hdhrCliInstalled,
+                        brew: brew,
+                        args: ["install", "libhdhomerun"]
+                    )
+                    if !brewStatus.isEmpty {
+                        Label(brewStatus, systemImage: brewStatus.hasPrefix("Error") ? "xmark.circle.fill" : "checkmark.circle.fill")
+                            .foregroundStyle(brewStatus.hasPrefix("Error") ? .red : .green)
+                            .font(.callout)
+                    }
+                }
+            }
+            let realVersion = ProcessInfo.processInfo.operatingSystemVersion.majorVersion
+            if realVersion > 13 {
+                Section("Developer") {
+                    Picker("Simulate macOS version", selection: $simulatedMacOSVersion) {
+                        Text("Current (macOS \(realVersion))").tag(0)
+                        if realVersion >= 15 { Text("macOS 14 (Sonoma)").tag(14) }
+                        if realVersion >= 14 { Text("macOS 13 (Ventura)").tag(13) }
+                    }
+                    if simulatedMacOSVersion > 0 {
+                        Label("Simulating macOS \(simulatedMacOSVersion) — reopen guide or wizard to see effect",
+                              systemImage: "exclamationmark.triangle")
+                            .font(.caption).foregroundStyle(.orange)
+                    }
                 }
             }
             if !maintenanceStatus.isEmpty {
@@ -383,6 +435,88 @@ struct SettingsView: View {
             }
         }
         .padding(.vertical, 2)
+    }
+
+    // MARK: - Brew helpers
+
+    private var brewPath: String? {
+        for path in ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"] {
+            if FileManager.default.isExecutableFile(atPath: path) { return path }
+        }
+        return nil
+    }
+
+    private var vlcInstalled: Bool {
+        FileManager.default.fileExists(atPath: "/Applications/VLC.app")
+    }
+
+    private var hdhrCliInstalled: Bool {
+        for path in ["/opt/homebrew/bin/hdhomerun_config", "/usr/local/bin/hdhomerun_config"] {
+            if FileManager.default.isExecutableFile(atPath: path) { return true }
+        }
+        return false
+    }
+
+    @ViewBuilder
+    private func brewInstallRow(name: String, description: String, installed: Bool,
+                                brew: String, args: [String]) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name).fontWeight(.medium)
+                Text(description).font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            if installed {
+                Label("Installed", systemImage: "checkmark.circle.fill")
+                    .font(.caption).foregroundStyle(.green)
+            } else if brewBusy {
+                ProgressView().controlSize(.small)
+            } else {
+                Button("Install") {
+                    brewBusy = true
+                    brewStatus = ""
+                    Task {
+                        do {
+                            try await runBrew(brew, args: args)
+                            await MainActor.run {
+                                brewStatus = "\(name) installed"
+                                brewBusy = false
+                            }
+                        } catch {
+                            await MainActor.run {
+                                brewStatus = "Error: \(error.localizedDescription)"
+                                brewBusy = false
+                            }
+                        }
+                    }
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    private func runBrew(_ brew: String, args: [String]) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: brew)
+            process.arguments = args
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            process.standardError = pipe
+            process.terminationHandler = { p in
+                _ = pipe.fileHandleForReading.readDataToEndOfFile()
+                if p.terminationStatus == 0 {
+                    continuation.resume()
+                } else {
+                    continuation.resume(throwing: NSError(
+                        domain: "brew", code: Int(p.terminationStatus),
+                        userInfo: [NSLocalizedDescriptionKey: "brew exited with status \(p.terminationStatus)"]
+                    ))
+                }
+            }
+            do { try process.run() } catch { continuation.resume(throwing: error) }
+        }
     }
 
     // MARK: - About
@@ -487,7 +621,7 @@ struct SettingsView: View {
 
 // MARK: - Window close interception
 
-private struct WindowCloseInterceptor: NSViewRepresentable {
+struct WindowCloseInterceptor: NSViewRepresentable {
     let isDirty: Bool
     let onSave: () -> Void
 

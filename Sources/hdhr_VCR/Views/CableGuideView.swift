@@ -104,14 +104,14 @@ struct CableGuideView: View {
             Color.clear.onAppear {
                 availableGridWidth = geo.size.width - channelColW
             }
-            .onChange(of: geo.size.width) { _, w in
+            .onChange(of: geo.size.width) { w in
                 availableGridWidth = w - channelColW
             }
         })
         .onAppear { rebuildCaches() }
-        .onChange(of: lineup.count)  { rebuildCaches() }
-        .onChange(of: guideHours)    { rebuildCaches() }
-        .onChange(of: availableGridWidth) { rebuildCaches() }
+        .onChange(of: lineup.count)       { _ in rebuildCaches() }
+        .onChange(of: guideHours)         { _ in rebuildCaches() }
+        .onChange(of: availableGridWidth) { _ in rebuildCaches() }
     }
 
     // ── Cache rebuild ──────────────────────────────────────────────────────────
@@ -256,15 +256,16 @@ struct CableGuideView: View {
                     }
                     .frame(width: totalW)
                 }
-            }
-            .onScrollGeometryChange(for: CGPoint.self, of: { $0.contentOffset }) { _, pt in
-                var t = Transaction(); t.disablesAnimations = true
-                withTransaction(t) {
-                    if abs(pt.y - channelScrollOffset) > 1 { channelScrollOffset = pt.y }
-                    if abs(pt.x - timeHeaderOffset)    > 1 { timeHeaderOffset    = pt.x }
+                .onScrollOffset(coordinateSpaceName: "guideScroll") { pt in
+                    var t = Transaction(); t.disablesAnimations = true
+                    withTransaction(t) {
+                        channelScrollOffset = pt.y
+                        timeHeaderOffset    = pt.x
+                    }
                 }
             }
-            .onChange(of: snapToNow) { _, trigger in
+            .coordinateSpace(name: "guideScroll")
+            .onChange(of: snapToNow) { trigger in
                 guard trigger else { return }
                 proxy.scrollTo("now-anchor", anchor: .leading)
                 snapToNow = false

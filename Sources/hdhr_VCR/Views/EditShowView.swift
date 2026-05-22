@@ -5,9 +5,12 @@ struct EditShowView: View {
     @Environment(\.dismiss) var dismiss
 
     @State private var show: Show?
+    @State private var originalShow: Show?
     @State private var seriesType: ShowState = .single
     @State private var airDays: Set<String> = []
     @State private var recordFolder: URL? = nil
+
+    private var isDirty: Bool { show != nil && show != originalShow }
 
     private let weekdays = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
 
@@ -25,7 +28,24 @@ struct EditShowView: View {
                     .frame(width: 480, height: 520)
             }
         }
-.onExitCommand { dismiss() }
+        .onExitCommand {
+            if isDirty {
+                let alert = NSAlert()
+                alert.messageText     = "Unsaved Changes"
+                alert.informativeText = "Save your changes before closing?"
+                alert.addButton(withTitle: "Save")
+                alert.addButton(withTitle: "Discard")
+                alert.addButton(withTitle: "Cancel")
+                switch alert.runModal() {
+                case .alertFirstButtonReturn:  saveWithoutDismiss(); dismiss()
+                case .alertSecondButtonReturn: dismiss()
+                default: break
+                }
+            } else {
+                dismiss()
+            }
+        }
+        .background(WindowCloseInterceptor(isDirty: isDirty, onSave: saveWithoutDismiss))
         .onAppear { loadShow() }
     }
 
@@ -54,7 +74,7 @@ struct EditShowView: View {
                         ForEach(ShowState.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                     }
                     .pickerStyle(.segmented)
-                    .onChange(of: seriesType) { _, _ in applySeriesType() }
+                    .onChange(of: seriesType) { _ in applySeriesType() }
                 }
 
                 if seriesType == .dateTime || seriesType == .single {
@@ -135,8 +155,17 @@ struct EditShowView: View {
     private var navBar: some View {
         HStack {
             Button("Delete", role: .destructive) {
-                if let s = show { state.deleteShow(s) }
-                dismiss()
+                let title = show?.show_title ?? "this show"
+                let alert = NSAlert()
+                alert.messageText     = "Delete \"\(title)\"?"
+                alert.informativeText = "This cannot be undone."
+                alert.addButton(withTitle: "Delete")
+                alert.addButton(withTitle: "Cancel")
+                alert.alertStyle = .warning
+                if alert.runModal() == .alertFirstButtonReturn {
+                    if let s = show { state.deleteShow(s) }
+                    dismiss()
+                }
             }
             Spacer()
             Button("Save") { save() }.buttonStyle(.borderedProminent)
@@ -150,6 +179,7 @@ struct EditShowView: View {
         guard let id = state.editingShowId,
               let s = state.shows.first(where: { $0.show_id == id }) else { return }
         show = s
+        originalShow = s   // snapshot for dirty tracking
         seriesType = s.state
         airDays = Set(s.show_air_date)
         // Use show's existing dir, fall back to default setting, then ~/Movies
@@ -175,9 +205,9 @@ struct EditShowView: View {
         if panel.runModal() == .OK, let url = panel.url { recordFolder = url }
     }
 
-    private func save() {
+    private func saveWithoutDismiss() {
         guard var s = show else { return }
-        s.show_air_date = Array(airDays)
+        s.show_air_date         = Array(airDays)
         s.show_is_series        = seriesType != .single
         s.show_use_seriesid     = seriesType == .seriesChannel || seriesType == .seriesAll
         s.show_use_seriesid_all = seriesType == .seriesAll
@@ -186,6 +216,11 @@ struct EditShowView: View {
             s.show_temp_dir = folder.path
         }
         state.updateShow(s)
+        originalShow = s   // reset dirty tracking after save
+    }
+
+    private func save() {
+        saveWithoutDismiss()
         dismiss()
     }
 }

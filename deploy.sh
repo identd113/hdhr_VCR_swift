@@ -23,6 +23,23 @@ echo "==> Deploying resources…"
 mkdir -p "$APP/Contents/Resources"
 cp Resources/app.jpg "$APP/Contents/Resources/app.jpg"
 
+echo "==> Generating app icon…"
+# Build AppIcon.icns from app.jpg so the bundle icon in Finder stays current
+_ICONSET="$(mktemp -d)/hdhr_icon.iconset"
+mkdir -p "$_ICONSET"
+sips -s format png Resources/app.jpg --out /tmp/hdhr_src.png > /dev/null
+sips --padToHeightWidth 507 507 --padColor 1A1A1A /tmp/hdhr_src.png --out /tmp/hdhr_sq.png > /dev/null
+for _SZ in 16 32 128 256 512; do
+    sips -z $_SZ $_SZ /tmp/hdhr_sq.png --out "$_ICONSET/icon_${_SZ}x${_SZ}.png" > /dev/null
+done
+sips -z 32   32   /tmp/hdhr_sq.png --out "$_ICONSET/icon_16x16@2x.png"   > /dev/null
+sips -z 64   64   /tmp/hdhr_sq.png --out "$_ICONSET/icon_32x32@2x.png"   > /dev/null
+sips -z 256  256  /tmp/hdhr_sq.png --out "$_ICONSET/icon_128x128@2x.png" > /dev/null
+sips -z 512  512  /tmp/hdhr_sq.png --out "$_ICONSET/icon_256x256@2x.png" > /dev/null
+sips -z 1024 1024 /tmp/hdhr_sq.png --out "$_ICONSET/icon_512x512@2x.png" > /dev/null
+iconutil --convert icns "$_ICONSET" --output Resources/AppIcon.icns
+cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+
 echo "==> Signing…"
 xattr -cr "$APP"
 codesign --force --deep --sign - "$APP"

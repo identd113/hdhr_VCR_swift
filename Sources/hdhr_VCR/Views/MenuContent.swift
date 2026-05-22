@@ -209,7 +209,7 @@ struct MenuContent: View {
 
             // Genre color accent bar — matches the show block color in the cable guide
             Rectangle()
-                .fill(Color(entryColor).opacity(0.65))
+                .fill(entryColor.opacity(0.65))
                 .frame(height: 5)
 
             // Info (disabled) ─────────────────────────────────────────────
@@ -314,9 +314,15 @@ struct MenuContent: View {
         let currentEntry = recEntries.first { $0.startDate <= recNow && $0.endDate > recNow }
         let recEp        = currentEntry.flatMap { episodeInfoLabel($0) }
         let menuTitle    = recEp.map { "🔴 \(show.show_title) · \($0)" } ?? "🔴 \(show.show_title)"
+        // Bonus Time: sports shows record past the guide end — adjust the displayed end time
+        let isSportsBonus = state.config.Sports_padding_enabled
+                         && show.show_genre.lowercased().contains("sports")
+        let bonusPadding  = isSportsBonus ? TimeInterval(state.config.Sports_padding_minutes * 60) : 0
         Menu(menuTitle) {
-            let started = show.show_next.date ?? recNow
-            let ends    = show.show_end.date  ?? recNow
+            let started      = show.show_next.date ?? recNow
+            let guideEnd     = show.show_end.date  ?? recNow
+            let ends         = guideEnd.addingTimeInterval(bonusPadding)
+            let inBonusTime  = isSportsBonus && recNow > guideEnd
 
             // Poster image when available
             if !show.show_logo_url.isEmpty, let url = URL(string: show.show_logo_url) {
@@ -339,11 +345,24 @@ struct MenuContent: View {
             Divider()
             menuInfo("Channel \(show.show_channel) · \(show.state.rawValue) · tuner \(show.hdhr_record)", font: .footnote, secondary: true)
             menuInfo("\(elapsedLabel(since: started)) elapsed · \(remainingLabel(until: ends)) left", font: .footnote, secondary: true)
+            if inBonusTime {
+                menuInfo("🏈 Bonus Time (+\(state.config.Sports_padding_minutes) min)", font: .footnote, secondary: true)
+            }
             if let sig = state.tunerStatus[show.show_id] {
                 menuInfo(sig.displayString, font: .footnote, secondary: true)
             }
             Divider()
-            Button("Stop Recording") { state.stopRecording(showId: show.show_id) }
+            Button("Stop Recording", role: .destructive) {
+                let alert = NSAlert()
+                alert.messageText     = "Stop recording \"\(show.show_title)\"?"
+                alert.informativeText = "This deactivates the show. Use \"Skip This Airing\" to skip without deactivating."
+                alert.addButton(withTitle: "Stop & Deactivate")
+                alert.addButton(withTitle: "Keep Recording")
+                alert.alertStyle = .warning
+                if alert.runModal() == .alertFirstButtonReturn {
+                    state.stopRecording(showId: show.show_id)
+                }
+            }
             Button("Skip This Airing") { Task { await state.skipRecording(showId: show.show_id) } }
             if !show.show_recording_path.isEmpty {
                 Button("Show Recording in Finder") {
@@ -448,20 +467,37 @@ struct MenuContent: View {
             Divider()
             Button("Edit…")      { editShow(show) }
             Button("Deactivate") { state.toggleActive(show) }
-            Button("Delete…", role: .destructive) { state.deleteShow(show) }
+            Button("Delete…", role: .destructive) {
+                let alert = NSAlert()
+                alert.messageText     = "Delete \"\(show.show_title)\"?"
+                alert.informativeText = "This cannot be undone."
+                alert.addButton(withTitle: "Delete")
+                alert.addButton(withTitle: "Cancel")
+                alert.alertStyle = .warning
+                if alert.runModal() == .alertFirstButtonReturn { state.deleteShow(show) }
+            }
         }
     }
 
     @ViewBuilder
     private func pausedMenu(_ show: Show) -> some View {
         Menu("⏸ \(show.show_title)") {
+            menuInfo("\(show.state.rawValue) · Channel \(show.show_channel)", font: .footnote, secondary: true)
             if !show.show_fail_reason.isEmpty {
                 menuInfo("Last error: \(show.show_fail_reason)", font: .footnote, secondary: true)
             }
             Divider()
             Button("Activate")  { state.toggleActive(show) }
             Button("Edit…")     { editShow(show) }
-            Button("Delete…", role: .destructive) { state.deleteShow(show) }
+            Button("Delete…", role: .destructive) {
+                let alert = NSAlert()
+                alert.messageText     = "Delete \"\(show.show_title)\"?"
+                alert.informativeText = "This cannot be undone."
+                alert.addButton(withTitle: "Delete")
+                alert.addButton(withTitle: "Cancel")
+                alert.alertStyle = .warning
+                if alert.runModal() == .alertFirstButtonReturn { state.deleteShow(show) }
+            }
         }
     }
 

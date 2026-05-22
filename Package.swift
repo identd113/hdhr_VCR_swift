@@ -6,7 +6,7 @@ let devLib = "/Library/Developer/CommandLineTools/Library/Developer/usr/lib"
 
 let package = Package(
     name: "hdhr_VCR",
-    platforms: [.macOS("15.0")],
+    platforms: [.macOS("13.0")],
     targets: [
         .executableTarget(
             name: "hdhr_VCR",
