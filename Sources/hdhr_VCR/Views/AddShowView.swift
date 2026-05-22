@@ -515,6 +515,7 @@ struct AddShowView: View {
         show.show_end      = EpochDate(entry.endDate)
         show.show_seriesid = entry.SeriesID ?? ""
         show.show_logo_url = entry.ImageURL ?? ""
+        show.show_genre    = entry.firstGenre ?? ""
         show.hdhr_record   = device.DeviceID
         show.show_url      = channel.URL ?? ""
 

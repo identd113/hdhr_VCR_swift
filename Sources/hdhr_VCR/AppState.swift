@@ -299,6 +299,7 @@ final class AppState: ObservableObject {
         show.show_seriesid  = entry.SeriesID ?? ""
         show.show_logo_url  = entry.ImageURL ?? ""
         show.show_url       = channel.URL ?? ""
+        show.show_genre     = entry.firstGenre ?? ""
         show.show_dir       = folder.path
         show.show_temp_dir  = folder.path
 
@@ -445,7 +446,11 @@ final class AppState: ObservableObject {
             notify("Recording Skipped", body: show.show_title, subtitle: "Disk over \(Int(maxDiskPct))%"); return
         }
         let path = show.outputPath(date: show.show_next.date ?? Date())
-        let endDate = show.show_end.date ?? Date().addingTimeInterval(Double(show.show_length) * 60)
+        var endDate = show.show_end.date ?? Date().addingTimeInterval(Double(show.show_length) * 60)
+        if config.Sports_padding_enabled && show.show_genre.lowercased().contains("sports") {
+            endDate = endDate.addingTimeInterval(30 * 60)
+            shows[index].show_end = EpochDate(endDate)
+        }
         let remainingSecs = max(60, Int(endDate.timeIntervalSince(Date())))
         recordingManager.start(showId: show.show_id, url: show.show_url,
                                outputPath: path, durationSeconds: remainingSecs,
@@ -529,6 +534,7 @@ final class AppState: ObservableObject {
                     shows[index].show_next    = EpochDate(match.entry.startDate)
                     shows[index].show_end     = EpochDate(match.entry.endDate)
                     shows[index].show_channel = match.channelNum
+                    shows[index].show_genre   = match.entry.firstGenre ?? ""
                     if let url = hdhrManager.streamURL(for: match.channelNum, lineup: lineups[device.DeviceID] ?? []) {
                         shows[index].show_url = url
                     }

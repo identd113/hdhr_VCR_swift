@@ -65,6 +65,7 @@ struct Show: Identifiable, Equatable {
     var show_dir: String            // recording destination (Mac alias or POSIX)
     var show_temp_dir: String       // same as show_dir in most configs
     var show_recording_path: String // path of active/last recording file
+    var show_genre: String          // first genre tag from guide (e.g. "Sports")
 
     var state: ShowState {
         if !show_is_series { return .single }
@@ -102,7 +103,7 @@ struct Show: Identifiable, Equatable {
             show_fail_count: 0, show_fail_reason: "", show_logo_url: "", show_transcode: "none",
             show_tags: "", show_recording: false, show_last: EpochDate(),
             notify_upnext_time: EpochDate(), notify_recording_time: EpochDate(),
-            show_dir: "", show_temp_dir: "", show_recording_path: ""
+            show_dir: "", show_temp_dir: "", show_recording_path: "", show_genre: ""
         )
     }
 }
@@ -124,7 +125,7 @@ extension Show: Codable {
         case show_seriesid, show_fail_count, show_fail_reason, show_logo_url
         case show_transcode, show_tags, show_recording, show_last
         case notify_upnext_time, notify_recording_time
-        case show_dir, show_temp_dir, show_recording_path
+        case show_dir, show_temp_dir, show_recording_path, show_genre
     }
 
     init(from decoder: Decoder) throws {
@@ -159,6 +160,7 @@ extension Show: Codable {
         show_dir           = (try? c.decode(String.self, forKey: .show_dir)) ?? ""
         show_temp_dir      = (try? c.decode(String.self, forKey: .show_temp_dir)) ?? ""
         show_recording_path = (try? c.decode(String.self, forKey: .show_recording_path)) ?? ""
+        show_genre          = (try? c.decode(String.self, forKey: .show_genre)) ?? ""
     }
 }
 
@@ -187,6 +189,7 @@ struct AppConfig: Codable, Equatable {
 
     var Verbose_curl: Bool = false
     var Watch_in_VLC: Bool = false
+    var Sports_padding_enabled: Bool = true
     var Config_version: String = "1"
 }
 

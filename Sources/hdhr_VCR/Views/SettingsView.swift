@@ -166,6 +166,9 @@ struct SettingsView: View {
                     Toggle("Watch in VLC", isOn: $draft.Watch_in_VLC)
                         .help("Show a 'Watch in VLC' option for live and recording streams")
                 }
+
+                Toggle("Extra recording time for sports (30 min)", isOn: $draft.Sports_padding_enabled)
+                    .help("Adds 30 minutes after the guide end time for shows tagged as sports")
             }
         }
         .formStyle(.grouped)
