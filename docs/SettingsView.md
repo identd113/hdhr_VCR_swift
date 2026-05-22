@@ -17,7 +17,7 @@ private var isDirty: Bool { draft != state.config }
 
 - `.onAppear` seeds `draft = state.config`
 - All controls bind to `$draft.*` — not to `state.config` directly
-- **Save** → `applyAndSave()` sets `state.config = draft`, calls `state.saveConfig()`, and if `Idle_timer_interval` changed, calls `state.startTimer()` to apply the new interval immediately
+- **Save** → `applyAndSave()` sets `state.config = draft`, calls `state.saveConfig()`, and applies side effects: if `Idle_timer_interval` changed, calls `state.startTimer()`; if `Network_interface` changed, invalidates the guide cache and triggers `state.rediscoverDevices()` + `state.refreshGuide()` in a background Task so the new NIC is active immediately
 - **Save & Close** → calls `applyAndSave()` then `NSApp.keyWindow?.close()`. Only enabled when `isDirty`.
 - **Discard** → `draft = state.config`
 - **Close with unsaved changes** → `WindowCloseInterceptor` intercepts and shows an NSAlert: Save / Discard / Cancel
@@ -82,7 +82,7 @@ Sidebar entries (with SF Symbol icons):
 
 ### Advanced
 
-- **Discovery & recording interface** — `Picker`: "Auto" (empty string, stored as `tag(0)` in AppStorage so default always matches) plus all IPv4-bearing interfaces, each shown as `name  ip` (e.g. `en0  192.168.1.5`, `utun0  10.8.0.2`). Populated by `availableNetworkInterfaces()` via `getifaddrs`; uses `IFF_POINTOPOINT` to detect all VPN/tunnel types (utun*, tun*, cscotun*, gpd*, zt*, ppp*, ipsec*, etc.) regardless of vendor naming. Stored in `draft.Network_interface`. On Settings open, if the saved value names an interface that is no longer available (VPN disconnected), `draft.Network_interface` is silently reset to `""` so a Save can't persist a broken value. When non-empty:
+- **Discovery & recording interface** — `Picker`: "Auto" (empty string) plus all IPv4-bearing interfaces, each shown as `name  ip` (e.g. `en0  192.168.1.5`, `utun0  10.8.0.2`). Populated by `availableNetworkInterfaces()` via `getifaddrs`; uses `IFF_POINTOPOINT` to detect all VPN/tunnel types (utun*, tun*, cscotun*, gpd*, zt*, ppp*, ipsec*, etc.) regardless of vendor naming. Stored in `draft.Network_interface`. On Settings open, if the saved value names an interface that is no longer available (VPN disconnected), `draft.Network_interface` is silently reset to `""` so a Save can't persist a broken value. **On Save**, if the interface changed, `applyAndSave()` invalidates the guide cache and triggers `rediscoverDevices()` + `refreshGuide()` in a background Task — the new NIC is active immediately. When non-empty:
   - UDP discovery (`HDHRManager.udpDiscoverSync`) binds via `IP_BOUND_IF`+`if_nametoindex`; **automatically skipped for tunnel/point-to-point interfaces** (`isPointToPointInterface()` check) since tunnels don't support broadcast — known-hosts (saved device IPs) handles remote device lookup
   - curl recordings get `--interface <name>` appended to args
   - URLSession HTTP requests rely on OS routing — correct for VPN since the VPN routes the remote subnet through the tunnel automatically

@@ -1,5 +1,10 @@
 # hdhrVCRplus Changelog
 
+## 2026-05-22 (260522-1530)
+
+- **All new settings require Save** — the OS simulation picker in Maintenance → Developer now follows the draft/save pattern; changing the picker marks Settings as dirty (Save button turns orange) but does not apply until Save is clicked; Discard reverts the draft; the existing `isDirty` banner and ⌘S shortcut work as expected
+- **Interface change triggers refresh** — switching the "Discovery & recording interface" in Settings → Advanced and clicking Save automatically invalidates the guide cache, clears loaded device channels, re-runs device discovery (so UDP binds to the new NIC), and reloads the guide; the new interface is fully active immediately without restarting the app
+
 ## 2026-05-22 (260522-1500)
 
 - **Network interface binding** — Settings → Advanced → "Discovery & recording interface" picker; binds UDP device discovery and curl recordings to a specific NIC; "Auto" uses OS routing (default); VPN tunnels (utun*, tun*, cscotun*, gpd*, zt*, etc.) are listed alongside physical interfaces, each labelled with its current IP address; tunnel detection uses the kernel's `IFF_POINTOPOINT` flag so all VPN types are caught regardless of vendor naming

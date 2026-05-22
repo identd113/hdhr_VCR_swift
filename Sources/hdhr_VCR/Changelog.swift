@@ -1,6 +1,10 @@
 // Hand-maintained changelog displayed in Settings → About.
 // Update this file when shipping new features; keep most-recent version at the top.
 let appChangelog = """
+## 2026-05-22 (260522-1530)
+- All new settings require Save: OS simulation picker now uses draft/save pattern (was live-updating @AppStorage); Save commits, Discard reverts, ⌘S works
+- Interface change triggers refresh: switching network interface on Save automatically runs device rediscovery + guide reload so curl and UDP bind to the new NIC immediately
+
 ## 2026-05-22 (260522-1500)
 - Network interface binding (Settings → Advanced): bind UDP discovery + curl to a specific NIC or VPN tunnel
 - VPN recording support: tunnel selected → UDP broadcast skipped, known-hosts discovery used, curl bound to tunnel

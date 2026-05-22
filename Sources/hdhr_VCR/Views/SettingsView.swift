@@ -36,6 +36,7 @@ struct SettingsView: View {
     @State private var draftAddShowMode:   AddShowMode = .menu
     @State private var draftSaveDirectory: String      = ""
     @State private var draftLaunchAtLogin: Bool        = false
+    @State private var draftSimulatedOS:   Int         = 0
     @State private var liveChangelog: String? = nil
     @State private var easterEggTaps = 0
     @State private var showEasterEgg = false
@@ -49,6 +50,7 @@ struct SettingsView: View {
             || draftAddShowMode   != addShowMode
             || draftSaveDirectory != defaultSaveDirectory
             || draftLaunchAtLogin != (SMAppService.mainApp.status == .enabled)
+            || draftSimulatedOS   != simulatedMacOSVersion
     }
 
     var body: some View {
@@ -112,23 +114,36 @@ struct SettingsView: View {
             // Migrate: a previous build stored realVersion for "current"; normalize to 0.
             let real = ProcessInfo.processInfo.operatingSystemVersion.majorVersion
             if simulatedMacOSVersion == real { simulatedMacOSVersion = 0 }
+            draftSimulatedOS = simulatedMacOSVersion
         }
     }
 
     private func applyAndSave() {
-        let intervalChanged = draft.Idle_timer_interval != state.config.Idle_timer_interval
+        let intervalChanged   = draft.Idle_timer_interval != state.config.Idle_timer_interval
+        let interfaceChanged  = draft.Network_interface   != state.config.Network_interface
         state.config = draft
         state.saveConfig()
         if intervalChanged { state.startTimer() }
         // Commit settings that live outside AppConfig
         addShowMode          = draftAddShowMode
         defaultSaveDirectory = draftSaveDirectory
+        simulatedMacOSVersion = draftSimulatedOS
         let loginEnabled = SMAppService.mainApp.status == .enabled
         if draftLaunchAtLogin != loginEnabled {
             do {
                 if draftLaunchAtLogin { try SMAppService.mainApp.register() }
                 else                  { try SMAppService.mainApp.unregister() }
             } catch { print("[Settings] Login item: \(error)") }
+        }
+        // Changing the network interface requires fresh device discovery and guide data
+        // so curl and UDP both bind to the correct NIC immediately.
+        if interfaceChanged {
+            state.guideStore.invalidateAll()
+            state.guideByDevice = [:]
+            Task { @MainActor in
+                await state.rediscoverDevices()
+                await state.refreshGuide()
+            }
         }
     }
 
@@ -407,13 +422,13 @@ struct SettingsView: View {
             let realVersion = ProcessInfo.processInfo.operatingSystemVersion.majorVersion
             if realVersion > 13 {
                 Section("Developer") {
-                    Picker("Simulate macOS version", selection: $simulatedMacOSVersion) {
+                    Picker("Simulate macOS version", selection: $draftSimulatedOS) {
                         Text("macOS \(realVersion) (current)").tag(0)
                         if realVersion >= 15 { Text("macOS 14 (Sonoma)").tag(14) }
                         if realVersion >= 14 { Text("macOS 13 (Ventura)").tag(13) }
                     }
-                    if simulatedMacOSVersion > 0 {
-                        Label("Simulating macOS \(simulatedMacOSVersion) — reopen guide or wizard to see effect",
+                    if draftSimulatedOS > 0 {
+                        Label("Simulating macOS \(draftSimulatedOS) — reopen guide or wizard to see effect",
                               systemImage: "exclamationmark.triangle")
                             .font(.caption).foregroundStyle(.orange)
                     }
