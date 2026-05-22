@@ -44,40 +44,39 @@ final class AppState: ObservableObject {
     // MARK: - Startup
 
     func startup() async {
-        await requestNotifyPermission()
+        // 1. Config first — shows visible in menu immediately
         loadConfig()
         guideStore.verbose = config.Verbose_curl
         glog("[Startup] config loaded — \(shows.count) shows, GuideHours=\(config.GuideHours)")
+
+        // 2. Reattach any recordings that survived a restart
         await reattachRecordings()
+        glog("[Startup] recordings reattached")
+
+        // 3. Notification permission — fire-and-forget; must not block discovery
+        Task { await requestNotifyPermission() }
+
+        // 4. Discover tuners + lineups — 10 attempts, 1s apart
         let knownHosts = knownHostsFromShows()
-        glog("[Startup] known hosts from shows: \(knownHosts)")
-        await discoverDevices(knownHosts: knownHosts)
-        glog("[Startup] discovered \(devices.count) device(s):")
+        glog("[Startup] discovering — knownHosts=\(knownHosts)")
+        await discoverDevices(knownHosts: knownHosts, attempts: 10)
+        glog("[Startup] discovered \(devices.count) device(s)")
         for d in devices {
             glog("[Startup]   \(d.DeviceID)  LocalIP='\(d.LocalIP)'  DeviceAuth=\(d.DeviceAuth ?? "nil")")
         }
-        await fetchAllGuides()
 
-        // If known-hosts fast path gave us devices but guide load still failed
-        // (EXTEND device may not expose DeviceAuth via local discover.json),
-        // redo discovery via mDNS/cloud which properly populates DeviceAuth.
-        let loadedChannels = guideByDevice.values.reduce(0) { $0 + $1.count }
-        glog("[Startup] guide load result: \(loadedChannels) total channels across \(guideByDevice.count) device(s)")
-        if loadedChannels == 0 && !devices.isEmpty {
-            glog("[Startup] Guide load failed — retrying with full device discovery")
-            await discoverDevices()
-            glog("[Startup] retry discovered \(devices.count) device(s):")
-            for d in devices {
-                glog("[Startup]   \(d.DeviceID)  LocalIP='\(d.LocalIP)'  DeviceAuth=\(d.DeviceAuth ?? "nil")")
-            }
+        // 5. Guide — only if tuners found; idleLoop will retry if this fails
+        if !devices.isEmpty {
             await fetchAllGuides()
-            let retryChannels = guideByDevice.values.reduce(0) { $0 + $1.count }
-            glog("[Startup] retry guide result: \(retryChannels) total channels")
+            let ch = guideByDevice.values.reduce(0) { $0 + $1.count }
+            glog("[Startup] guide: \(ch) channels across \(guideByDevice.count) device(s)")
+        } else {
+            glog("[Startup] no devices — idleLoop will retry")
         }
 
         startTimer()
         isStartingUp = false
-        glog("[Startup] complete — isStartingUp=false")
+        glog("[Startup] complete")
     }
 
     func logGuide(_ msg: String) { glog(msg) }
@@ -112,7 +111,10 @@ final class AppState: ObservableObject {
     func loadConfig() {
         guard let file = configManager.load() else { statusMessage = "No config found"; return }
         config = file.config
-        shows  = file.the_shows.map { var s = $0; s.show_recording = false; return s }
+        let allShows = file.the_shows.map { var s = $0; s.show_recording = false; return s }
+        let filtered = allShows.filter { !($0.state == .single && !$0.show_active) }
+        shows = filtered
+        if filtered.count < allShows.count { saveConfig() }
         statusMessage = "\(shows.count) shows loaded"
     }
 
@@ -127,8 +129,10 @@ final class AppState: ObservableObject {
             task.standardOutput = pipe
             task.standardError  = FileHandle.nullDevice
             guard (try? task.run()) != nil else { return "" }
+            // Read first — waitUntilExit() before reading can deadlock if ps output fills the pipe buffer
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
             task.waitUntilExit()
-            return String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+            return String(data: data, encoding: .utf8) ?? ""
         }.value
 
         let now    = Date()
@@ -160,10 +164,9 @@ final class AppState: ObservableObject {
         try? configManager.save(ConfigFile(config: config, the_shows: shows))
     }
 
-    func discoverDevices(knownHosts: [String] = []) async {
-        let maxAttempts = 3
-        for attempt in 1...maxAttempts {
-            statusMessage = attempt == 1 ? "Searching for tuners…" : "Retrying… (\(attempt)/\(maxAttempts))"
+    func discoverDevices(knownHosts: [String] = [], attempts: Int = 3) async {
+        for attempt in 1...max(1, attempts) {
+            statusMessage = attempt == 1 ? "Searching for tuners…" : "Searching for tuners (\(attempt)/\(attempts))…"
             do {
                 let found = try await hdhrManager.discoverDevices(knownHosts: knownHosts)
                 devices = found
@@ -171,13 +174,12 @@ final class AppState: ObservableObject {
                 statusMessage = "\(devices.count) tuner(s) found"
                 return
             } catch {
-                if attempt < maxAttempts {
-                    try? await Task.sleep(nanoseconds: 3_000_000_000)
-                } else {
-                    statusMessage = "No tuners found — check network"
+                if attempt < attempts {
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
                 }
             }
         }
+        statusMessage = "No tuners found — will keep trying"
     }
 
     /// Fetch lineup for every device in parallel; stores results in `lineups[deviceID]`.
@@ -265,6 +267,12 @@ final class AppState: ObservableObject {
         guideStore.entries(deviceId: deviceId, channelNum: channelNum)
     }
 
+    /// Up to `limit` upcoming episodes for a given SeriesID across all devices/channels.
+    func upcomingGuideEpisodes(seriesID: String, after: Date = Date(), limit: Int = 4) -> [(channel: String, entry: GuideEntry)] {
+        guideStore.nextEpisodes(seriesID: seriesID, after: after, limit: limit)
+            .map { ($0.channelNum, $0.entry) }
+    }
+
     /// Next episode of a SeriesID show from the guide cache.
     func nextGuideEpisode(for show: Show) -> (channel: String, entry: GuideEntry)? {
         guard show.show_use_seriesid, !show.show_seriesid.isEmpty else { return nil }
@@ -294,10 +302,8 @@ final class AppState: ObservableObject {
         show.show_dir       = folder.path
         show.show_temp_dir  = folder.path
 
-        // UTC decimal hour from guide start time
-        var utcCal = Calendar(identifier: .gregorian)
-        utcCal.timeZone = TimeZone(identifier: "UTC")!
-        let comps = utcCal.dateComponents([.hour, .minute], from: entry.startDate)
+        // Local decimal hour from guide start time (matches what the user sees in the guide)
+        let comps = Calendar.current.dateComponents([.hour, .minute], from: entry.startDate)
         show.show_time = Double(comps.hour ?? 20) + Double(comps.minute ?? 0) / 60.0
 
         let allDays = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
@@ -307,10 +313,7 @@ final class AppState: ObservableObject {
             show.show_air_date = []
         case .dateTime:
             show.show_is_series = true; show.show_use_seriesid = false; show.show_use_seriesid_all = false
-            // Use UTC calendar to match nextDateTime(), which also works in UTC
-            var utcCal = Calendar(identifier: .gregorian)
-            utcCal.timeZone = TimeZone(identifier: "UTC")!
-            let weekday = utcCal.component(.weekday, from: entry.startDate)
+            let weekday = Calendar.current.component(.weekday, from: entry.startDate)
             show.show_air_date = [["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][weekday - 1]]
         case .seriesChannel:
             show.show_is_series = true; show.show_use_seriesid = true; show.show_use_seriesid_all = false
@@ -324,12 +327,15 @@ final class AppState: ObservableObject {
         notify("Show Added", body: show.show_title, subtitle: type.rawValue)
     }
 
-    /// The default recording folder: UserDefaults override → config Hdhr_setup_folder → ~/Movies.
+    /// The default recording folder: UserDefaults override → config Hdhr_setup_folder → ~/Documents/hdhr_videos.
     var defaultSaveDir: URL {
         let stored = UserDefaults.standard.string(forKey: "defaultSaveDirectory") ?? ""
         if !stored.isEmpty { return URL(fileURLWithPath: stored) }
         if !config.Hdhr_setup_folder.isEmpty { return URL(fileURLWithPath: config.Hdhr_setup_folder) }
-        return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Movies")
+        let dir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Documents/hdhr_videos")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
     }
 
     /// Synchronous folder picker — opens NSOpenPanel after menu dismisses.
@@ -361,9 +367,9 @@ final class AppState: ObservableObject {
         let now = Date()
         var dirty = false
 
-        // If startup discovery failed, keep retrying until we have devices
+        // If startup discovery failed, keep retrying — single attempt per tick so we return quickly
         if devices.isEmpty {
-            await discoverDevices(knownHosts: knownHostsFromShows())
+            await discoverDevices(knownHosts: knownHostsFromShows(), attempts: 1)
             if !devices.isEmpty { await fetchAllGuides() }
             return
         }
@@ -535,19 +541,17 @@ final class AppState: ObservableObject {
 
     func nextDateTime(for show: Show) -> Date? {
         let dayMap = ["Sunday":1,"Monday":2,"Tuesday":3,"Wednesday":4,"Thursday":5,"Friday":6,"Saturday":7]
-        var utcCal = Calendar(identifier: .gregorian)
-        utcCal.timeZone = TimeZone(identifier: "UTC")!
+        let cal = Calendar.current
         let h = Int(show.show_time)
         let m = Int((show.show_time.truncatingRemainder(dividingBy: 1)) * 60)
         for offset in 1...7 {
             let candidate = Date().addingTimeInterval(Double(offset) * 86400)
-            let weekday = utcCal.component(.weekday, from: candidate)
+            let weekday = cal.component(.weekday, from: candidate)
             let dayName = dayMap.first { $0.value == weekday }?.key ?? ""
             guard show.show_air_date.contains(dayName) else { continue }
-            var comps = utcCal.dateComponents([.year, .month, .day], from: candidate)
+            var comps = cal.dateComponents([.year, .month, .day], from: candidate)
             comps.hour = h; comps.minute = m; comps.second = 0
-            comps.timeZone = TimeZone(identifier: "UTC")!
-            return utcCal.date(from: comps)
+            return cal.date(from: comps)
         }
         return nil
     }

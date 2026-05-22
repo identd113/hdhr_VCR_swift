@@ -212,6 +212,14 @@ final class GuideStore {
         }
     }
 
+    /// Up to `limit` upcoming episodes matching seriesID with StartTime > after.
+    /// The index is already sorted by StartTime so no additional sort is needed.
+    func nextEpisodes(seriesID: String, after: Date = Date(), limit: Int = 4) -> [SeriesMatch] {
+        let epoch = Int(after.timeIntervalSince1970)
+        let all = seriesIndex[seriesID]?.filter { $0.entry.StartTime > epoch } ?? []
+        return Array(all.prefix(limit))
+    }
+
     // MARK: - State queries
 
     func isLoading(deviceId: String) -> Bool { loadingDevices.contains(deviceId) }

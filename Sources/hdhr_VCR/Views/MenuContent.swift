@@ -12,6 +12,17 @@ struct MenuContent: View {
     private func open(_ id: String) {
         DispatchQueue.main.async {
             NSApp.activate(ignoringOtherApps: true)
+            let title: String
+            switch id {
+            case "add-show":  title = "Add Show"
+            case "edit-show": title = "Edit Show"
+            case "settings":  title = "Settings"
+            default:          title = id
+            }
+            if let w = NSApp.windows.first(where: { $0.title == title }) {
+                w.makeKeyAndOrderFront(nil)
+                return
+            }
             openWindow(id: id)
         }
     }
@@ -19,13 +30,12 @@ struct MenuContent: View {
     var body: some View {
 
         // ── Header ────────────────────────────────────────────────────────
-        if state.devices.count > 1 {
-            Text("\(state.devices.count) Tuners").font(.headline)
+        ForEach(state.devices) { device in
+            let slots  = device.TunerCount ?? 1
+            let active = state.recordingShows.filter { $0.hdhr_record == device.DeviceID }.count
+            Text("\(device.DeviceID)  \(active)/\(slots)")
+                .foregroundStyle(active > 0 ? Color(NSColor.labelColor) : Color(NSColor.secondaryLabelColor))
         }
-        let totalSlots = state.devices.reduce(0) { $0 + ($1.TunerCount ?? 1) }
-        let activeCount = state.recordingShows.count
-        Text("\(activeCount) of \(totalSlots) tuner(s) in use")
-            .foregroundStyle(activeCount > 0 ? Color(NSColor.labelColor) : Color(NSColor.secondaryLabelColor))
         Text(state.statusMessage).foregroundStyle(Color(NSColor.secondaryLabelColor))
         Divider()
 

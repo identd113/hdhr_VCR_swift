@@ -5,8 +5,8 @@ final class HDHRManager {
     // Short-timeout session for discovery; regular session for data transfers
     private let session: URLSession = {
         let c = URLSessionConfiguration.default
-        c.timeoutIntervalForRequest  = 5
-        c.timeoutIntervalForResource = 10
+        c.timeoutIntervalForRequest  = 2
+        c.timeoutIntervalForResource = 6
         return URLSession(configuration: c)
     }()
     private let dataSession = URLSession.shared
@@ -21,21 +21,21 @@ final class HDHRManager {
     /// UDP catches any additional tuners that don't respond to mDNS. Results are merged
     /// and DeviceAuth is supplemented from cloud for any device missing it.
     func discoverDevices(knownHosts: [String] = []) async throws -> [HDHRDevice] {
-        // Run mDNS and UDP in parallel — together they cover all HDHomeRun device types
-        async let mdnsDevices = mDNSDiscover()
-        async let udpDevices  = udpDiscoverAndFetch()
+        // Run all three paths concurrently — known hosts (fastest on stable networks),
+        // mDNS (EXTEND devices), and UDP broadcast (all other tuner types)
+        async let knownHostDevices = knownHostsDiscover(ips: knownHosts)
+        async let mdnsDevices      = mDNSDiscover()
+        async let udpDevices       = udpDiscoverAndFetch()
 
-        let fromMDNS = (try? await mdnsDevices) ?? []
-        let fromUDP  = await udpDevices
+        let fromKnown = await knownHostDevices
+        let fromMDNS  = (try? await mdnsDevices) ?? []
+        let fromUDP   = await udpDevices
 
-        // Merge: prefer mDNS entries (richer metadata); UDP fills in any device mDNS missed
-        var found = fromMDNS
-        for dev in fromUDP where !found.contains(where: { $0.DeviceID == dev.DeviceID }) {
-            found.append(dev)
-        }
-        print("[Discovery] mDNS=\(fromMDNS.count) UDP=\(fromUDP.count) merged=\(found.count)")
+        var found = fromKnown
+        for dev in fromMDNS where !found.contains(where: { $0.DeviceID == dev.DeviceID }) { found.append(dev) }
+        for dev in fromUDP  where !found.contains(where: { $0.DeviceID == dev.DeviceID }) { found.append(dev) }
+        print("[Discovery] known=\(fromKnown.count) mDNS=\(fromMDNS.count) UDP=\(fromUDP.count) merged=\(found.count)")
 
-        // Neither local method found anything — fall back to cloud
         if found.isEmpty {
             guard let cloud = try? await cloudDiscover(), !cloud.isEmpty else {
                 throw URLError(.cannotFindHost)
@@ -43,8 +43,7 @@ final class HDHRManager {
             return cloud
         }
 
-        // EXTEND devices need DeviceAuth to reach the cloud guide API.
-        // Supplement from cloud for any device that is missing it.
+        // Supplement DeviceAuth from cloud for EXTEND devices that need it for the guide API
         if found.contains(where: { $0.DeviceAuth == nil }),
            let cloud = try? await cloudDiscover(), !cloud.isEmpty {
             found = supplementDeviceAuth(local: found, cloud: cloud)
@@ -52,6 +51,21 @@ final class HDHRManager {
         }
 
         return found
+    }
+
+    /// Direct HTTP lookup for device IPs extracted from saved show URLs — fastest path on stable networks.
+    private func knownHostsDiscover(ips: [String]) async -> [HDHRDevice] {
+        guard !ips.isEmpty else { return [] }
+        return await withTaskGroup(of: HDHRDevice?.self) { group in
+            for ip in ips {
+                group.addTask { try? await self.fetchDeviceInfo(ip: ip) }
+            }
+            var found: [HDHRDevice] = []
+            for await d in group {
+                if let d, !found.contains(where: { $0.DeviceID == d.DeviceID }) { found.append(d) }
+            }
+            return found
+        }
     }
 
     /// Run UDP broadcast discovery and follow up each reply with a fetchDeviceInfo call.

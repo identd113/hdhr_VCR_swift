@@ -38,7 +38,8 @@ struct AddShowView: View {
     @State private var recordFolder: URL? = {
         let stored = UserDefaults.standard.string(forKey: "defaultSaveDirectory") ?? ""
         if !stored.isEmpty { return URL(fileURLWithPath: stored) }
-        return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Movies")
+        return FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Documents/hdhr_videos")
     }()
 
     private let weekdays = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
@@ -66,11 +67,13 @@ struct AddShowView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            Divider()
-            navBar
+            if step != .guide {
+                Divider()
+                navBar
+            }
         }
-        .frame(width: step == .guide ? 860 : 560,
-               height: step == .guide ? 620 : 540)
+        .frame(width: step == .guide ? 980 : 560,
+               height: step == .guide ? 700 : 540)
         .animation(.easeInOut(duration: 0.2), value: step)
         .onAppear {
             show.show_transcode = state.config.Default_transcode
@@ -125,6 +128,7 @@ struct AddShowView: View {
         return VStack(spacing: 0) {
             // ── Compact toolbar: tuner + genre filter + actions ───────────────
             HStack(spacing: 10) {
+                Button("Cancel") { dismiss() }
                 if state.devices.count > 1 {
                     Text("Tuner:").foregroundStyle(.secondary).fixedSize()
                     Picker("", selection: $selectedDevice) {
@@ -210,6 +214,16 @@ struct AddShowView: View {
             allChannels = ch
             isLoadingGuide = false
         }
+        .onChange(of: allChannels.count) { _, count in
+            guard count > 0, selectedEntry == nil else { return }
+            let now = Date()
+            guard let firstCh = allChannels.first,
+                  let entry = firstCh.Guide?.first(where: { $0.startDate <= now && $0.endDate > now })
+            else { return }
+            selectedEntry   = entry
+            selectedChannel = (state.lineups[selectedDevice?.DeviceID ?? ""] ?? [])
+                .first(where: { $0.GuideNumber == firstCh.GuideNumber })
+        }
     }
 
     // ── Summary panel ─────────────────────────────────────────────────────────
@@ -219,6 +233,12 @@ struct AddShowView: View {
         if let entry = selectedEntry {
             let onAir  = entry.startDate <= Date() && entry.endDate > Date()
             let bgColor = guideEntryColor(for: entry, onAir: onAir)
+            let channelIcon = allChannels.first(where: { $0.GuideNumber == selectedChannel?.GuideNumber })?.ImageURL
+            let isRecordingNow = state.recordingShows.contains { show in
+                show.show_channel == selectedChannel?.GuideNumber &&
+                (show.show_next.date ?? .distantFuture) <= Date() &&
+                (show.show_end.date  ?? .distantPast)   >  Date()
+            }
 
             HStack(alignment: .top, spacing: 14) {
                 // Poster image
@@ -243,6 +263,11 @@ struct AddShowView: View {
                         .foregroundColor(.white)
                         .lineLimit(1)
                         .shadow(color: .black.opacity(0.4), radius: 1, x: 0, y: 1)
+                    if isRecordingNow {
+                        Label("Recording Now", systemImage: "record.circle.fill")
+                            .font(.caption).bold()
+                            .foregroundColor(.red)
+                    }
                     if let ep = episodeInfoLabel(entry) {
                         Text(ep)
                             .font(.subheadline)
@@ -255,10 +280,41 @@ struct AddShowView: View {
                             .foregroundColor(.white.opacity(0.9))
                             .lineLimit(3)
                     }
+                    // Upcoming airings for series shows
+                    if let sid = entry.SeriesID, !sid.isEmpty {
+                        let upcoming = state.upcomingGuideEpisodes(seriesID: sid)
+                        if !upcoming.isEmpty {
+                            let f: DateFormatter = { let df = DateFormatter(); df.dateFormat = "E h:mm a"; return df }()
+                            let labels = upcoming.map { "ch \($0.channel) \(f.string(from: $0.entry.startDate))" }
+                            Text(labels.joined(separator: "  ·  "))
+                                .font(.caption2)
+                                .foregroundColor(.white.opacity(0.70))
+                                .lineLimit(2)
+                        }
+                    }
                     Spacer(minLength: 0)
-                    Text("ch \(selectedChannel?.GuideNumber ?? "?")  ·  \(guideTimeRange(entry))")
-                        .font(.caption)
-                        .foregroundColor(.white.opacity(0.75))
+                    HStack(spacing: 8) {
+                        ChannelIcon(urlString: channelIcon, size: 18)
+                        Text("ch \(selectedChannel?.GuideNumber ?? "?")  ·  \(guideTimeRange(entry))")
+                            .font(.caption)
+                            .foregroundColor(.white.opacity(0.75))
+                        Spacer()
+                        if state.config.Watch_in_VLC,
+                           FileManager.default.fileExists(atPath: "/Applications/VLC.app") {
+                            Button("Watch in VLC") {
+                                state.watchInVLC(url: selectedChannel?.URL ?? "")
+                            }
+                            .controlSize(.small)
+                            .disabled(selectedChannel == nil)
+                        }
+                        Button("Record") {
+                            applyGuideEntry()
+                            step = .details
+                        }
+                        .controlSize(.small)
+                        .buttonStyle(.borderedProminent)
+                        .disabled(selectedChannel == nil)
+                    }
                 }
                 Spacer()
             }
@@ -355,14 +411,21 @@ struct AddShowView: View {
         HStack {
             Button("Cancel") { dismiss() }
             Spacer()
-            if step != .device {
-                Button("Back") { goBack() }
+            switch step {
+            case .device:
+                Button("Next") { goForward() }
+                    .disabled(!canAdvance)
+                    .buttonStyle(.borderedProminent)
+            case .guide:
+                EmptyView()
+            case .details:
+                HStack(spacing: 8) {
+                    Button("Back") { goBack() }
+                    Button("Save") { save() }
+                        .disabled(!canAdvance)
+                        .buttonStyle(.borderedProminent)
+                }
             }
-            Button(step == .details ? "Save" : "Next") {
-                if step == .details { save() } else { goForward() }
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(!canAdvance)
         }
         .padding()
     }
@@ -455,13 +518,11 @@ struct AddShowView: View {
         show.hdhr_record   = device.DeviceID
         show.show_url      = channel.URL ?? ""
 
-        // UTC time components (show_time and show_air_date are always in UTC)
-        var utcCal = Calendar(identifier: .gregorian)
-        utcCal.timeZone = TimeZone(identifier: "UTC")!
-        let comps = utcCal.dateComponents([.hour, .minute, .weekday], from: entry.startDate)
+        // Local time components — matches what the user sees in the guide
+        let comps = Calendar.current.dateComponents([.hour, .minute, .weekday], from: entry.startDate)
         show.show_time = Double(comps.hour ?? 20) + Double(comps.minute ?? 0) / 60.0
 
-        // Pre-populate airDays with the UTC weekday so DateTime mode works out-of-the-box
+        // Pre-populate airDays with the local weekday so it matches the guide display
         let dayName = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][(comps.weekday ?? 2) - 1]
         airDays = [dayName]
 

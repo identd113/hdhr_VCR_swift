@@ -62,41 +62,46 @@ struct CableGuideView: View {
     private let pxPerMin:    CGFloat = 4.2
 
     // ── State ──────────────────────────────────────────────────────────────────
-    @State private var channelScrollOffset: CGFloat = 0   // tracks vertical scroll
-    @State private var timeHeaderOffset:    CGFloat = 0   // tracks horizontal scroll
+    @State private var channelScrollOffset: CGFloat = 0
+    @State private var timeHeaderOffset:    CGFloat = 0
 
-    // Pre-built O(1) lookup — avoids lineup.first(where:) O(N) scan per channel per render
-    private var lineupByNumber: [String: LineupEntry] {
-        Dictionary(uniqueKeysWithValues: lineup.map { ($0.GuideNumber, $0) })
-    }
+    // Cached hot-path values — rebuilt once on appear/change, not on every render
+    @State private var lineupByNumber: [String: LineupEntry] = [:]
+    @State private var displayStart:   Date   = Date()
+    @State private var timeSlots:      [Date] = []
 
-    // ── Derived layout values ──────────────────────────────────────────────────
-    private var displayStart: Date {
-        let secs = Int(Date().timeIntervalSince1970)
-        return Date(timeIntervalSince1970: Double((secs / 1800) * 1800) - 1800)
-    }
+    // ── Derived layout values (O(1) math from cached state) ───────────────────
     private var displayEnd:   Date   { displayStart.addingTimeInterval(Double(guideHours) * 3600) }
     private var totalMinutes: CGFloat { CGFloat(guideHours * 60) }
     private var totalW:       CGFloat { totalMinutes * pxPerMin }
     private var slotW:        CGFloat { 1800 * pxPerMin / 60 }
-
-    private var timeSlots: [Date] {
-        var slots: [Date] = []
-        var t = displayStart
-        while t < displayEnd { slots.append(t); t = t.addingTimeInterval(1800) }
-        return slots
-    }
 
     // ── Body ───────────────────────────────────────────────────────────────────
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
             channelColumnFixed
             VStack(spacing: 0) {
-                pinnedTimeHeader   // sits above the scroll view; synced via timeHeaderOffset
-                guideScrollView    // rows only — no pinned section header inside
+                pinnedTimeHeader
+                guideScrollView
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .onAppear { rebuildCaches() }
+        .onChange(of: lineup.count)  { rebuildCaches() }
+        .onChange(of: guideHours)    { rebuildCaches() }
+    }
+
+    // ── Cache rebuild ──────────────────────────────────────────────────────────
+
+    private func rebuildCaches() {
+        lineupByNumber = Dictionary(uniqueKeysWithValues: lineup.map { ($0.GuideNumber, $0) })
+        let secs = Int(Date().timeIntervalSince1970)
+        displayStart = Date(timeIntervalSince1970: Double((secs / 1800) * 1800) - 1800)
+        let end = displayStart.addingTimeInterval(Double(guideHours) * 3600)
+        var slots: [Date] = []
+        var t = displayStart
+        while t < end { slots.append(t); t = t.addingTimeInterval(1800) }
+        timeSlots = slots
     }
 
     // ── Fixed channel column (does not scroll horizontally) ────────────────────
@@ -111,16 +116,14 @@ struct CableGuideView: View {
                 .background(Color.accentColor)
 
             // Channel labels, offset vertically to track vertical scroll.
-            // frame(maxHeight:) MUST come before .clipped() so the clip rect is the
-            // available height (not the ZStack's 5000px+ natural height).
             ZStack(alignment: .top) {
                 VStack(spacing: 0) {
                     ForEach(allChannels) { ch in channelLabelCell(ch) }
                 }
                 .offset(y: -channelScrollOffset)
             }
-            .frame(maxHeight: .infinity)   // ← constrains layout bounds first
-            .clipped()                      // ← then clips to those bounds
+            .frame(maxHeight: .infinity)
+            .clipped()
         }
         .frame(width: channelColW)
         .clipped()
@@ -169,7 +172,6 @@ struct CableGuideView: View {
                     .offset(x: x)
             }
 
-            // "Now" indicator line on the time header
             let nowX = CGFloat(Date().timeIntervalSince(displayStart) / 60) * pxPerMin - timeHeaderOffset
             Rectangle()
                 .fill(Color.red)
@@ -182,16 +184,13 @@ struct CableGuideView: View {
         .background(Color.accentColor.opacity(0.80))
     }
 
-    // ── Scrollable guide rows (channel rows only — no pinned section header) ───
+    // ── Scrollable guide rows ──────────────────────────────────────────────────
 
     private var guideScrollView: some View {
-        // nowX computed once for the anchor layout position
         let nowX = CGFloat(Date().timeIntervalSince(displayStart) / 60) * pxPerMin
         return ScrollViewReader { proxy in
             ScrollView([.horizontal, .vertical]) {
                 VStack(spacing: 0) {
-                    // Zero-height anchor at layout x=(nowX-160) so proxy.scrollTo works correctly.
-                    // Must use real layout width (not .offset) because scrollTo uses layout bounds.
                     HStack(spacing: 0) {
                         Color.clear.frame(width: max(0, nowX - 160), height: 0)
                         Color.clear.frame(width: 1, height: 0).id("now-anchor")
@@ -200,15 +199,40 @@ struct CableGuideView: View {
                     .frame(width: totalW, height: 0)
 
                     VStack(spacing: 0) {
-                        ForEach(allChannels) { ch in showBlocksRow(ch) }
+                        ForEach(allChannels) { ch in
+                            let entries = visibleEntries(ch)
+                            ShowBlocksRow(
+                                channel:         ch,
+                                entries:         entries,
+                                lineupEntry:     lineupByNumber[ch.GuideNumber],
+                                displayStart:    displayStart,
+                                totalW:          totalW,
+                                rowH:            rowH,
+                                pxPerMin:        pxPerMin,
+                                timeSlots:       timeSlots,
+                                selectedEntry:   selectedEntry,
+                                selectedChannel: selectedChannel,
+                                managedSeriesIDs: managedSeriesIDs,
+                                managedTitles:   managedTitles,
+                                genreFilter:     genreFilter,
+                                onSelect: { entry, lu in
+                                    selectedEntry   = entry
+                                    selectedChannel = lu
+                                },
+                                onConfirm: onConfirm
+                            )
+                            .equatable()
+                        }
                     }
                     .frame(width: totalW)
                 }
             }
-            // Track both axes: y → channel column sync, x → time header sync
             .onScrollGeometryChange(for: CGPoint.self, of: { $0.contentOffset }) { _, pt in
-                channelScrollOffset = pt.y
-                timeHeaderOffset    = pt.x
+                var t = Transaction(); t.disablesAnimations = true
+                withTransaction(t) {
+                    if abs(pt.y - channelScrollOffset) > 1 { channelScrollOffset = pt.y }
+                    if abs(pt.x - timeHeaderOffset)    > 1 { timeHeaderOffset    = pt.x }
+                }
             }
             .onChange(of: snapToNow) { _, trigger in
                 guard trigger else { return }
@@ -221,132 +245,6 @@ struct CableGuideView: View {
                 }
             }
         }
-    }
-
-    // ── Show blocks row (no channel label — that lives in channelColumnFixed) ──
-
-    private func showBlocksRow(_ ch: GuideChannel) -> some View {
-        let lu      = lineupByNumber[ch.GuideNumber]
-        let entries = visibleEntries(ch)
-        let now     = Date()
-
-        return ZStack(alignment: .topLeading) {
-            Color(NSColor.underPageBackgroundColor)
-                .frame(width: totalW, height: rowH)
-
-            // Vertical grid lines at 30-min boundaries
-            ForEach(timeSlots, id: \.self) { slot in
-                let x = CGFloat(slot.timeIntervalSince(displayStart) / 60) * pxPerMin
-                Rectangle()
-                    .fill(Color(NSColor.separatorColor).opacity(0.18))
-                    .frame(width: 0.5, height: rowH)
-                    .offset(x: x)
-            }
-
-            ForEach(entries) { entry in showBlock(entry: entry, lu: lu, now: now) }
-
-            // "Now" line
-            let nowX = CGFloat(now.timeIntervalSince(displayStart) / 60) * pxPerMin
-            if nowX > 0 && nowX < totalW {
-                Rectangle()
-                    .fill(Color.red.opacity(0.65))
-                    .frame(width: 2, height: rowH)
-                    .offset(x: nowX)
-            }
-
-        }
-        .frame(width: totalW, height: rowH)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(Color(NSColor.separatorColor).opacity(0.35))
-                .frame(height: 0.5)
-        }
-        .clipped()
-    }
-
-    // ── Individual show block ──────────────────────────────────────────────────
-
-    @ViewBuilder
-    private func showBlock(entry: GuideEntry, lu: LineupEntry?, now: Date) -> some View {
-        let startSec   = entry.startDate.timeIntervalSince(displayStart)
-        let rawX       = CGFloat(startSec / 60) * pxPerMin
-        let cellX      = max(0, rawX)
-        let clip       = min(CGFloat(0), rawX)
-        let rawW       = CGFloat(entry.durationMinutes) * pxPerMin + clip - 2
-        let cellW      = max(22, rawW)
-        let onAir      = entry.startDate <= now && entry.endDate > now
-        let isSelected = selectedEntry?.id == entry.id
-                          && selectedChannel?.GuideNumber == lu?.GuideNumber
-        let isManaged  = (entry.SeriesID.map { managedSeriesIDs.contains($0) } ?? false)
-                       || managedTitles.contains(entry.Title)
-        let matchesFilter: Bool = {
-            guard let f = genreFilter else { return true }
-            return entry.Filter?.contains(where: { $0.caseInsensitiveCompare(f) == .orderedSame }) ?? false
-        }()
-
-        ZStack(alignment: .topLeading) {
-            // Background fill
-            RoundedRectangle(cornerRadius: 3)
-                .fill(guideEntryColor(for: entry, onAir: onAir))
-
-            // Selection border + glow
-            if isSelected {
-                RoundedRectangle(cornerRadius: 3).strokeBorder(Color.white, lineWidth: 2.5)
-                RoundedRectangle(cornerRadius: 3).fill(Color.white.opacity(0.15))
-            } else {
-                RoundedRectangle(cornerRadius: 3).strokeBorder(Color.black.opacity(0.25), lineWidth: 0.5)
-            }
-
-            // Title + episode title
-            VStack(alignment: .leading, spacing: 1) {
-                Text(entry.Title)
-                    .font(.system(size: 11, weight: isSelected ? .bold : .semibold))
-                    .foregroundColor(.white)
-                    .lineLimit(1)
-                if cellW > 90, let ep = entry.EpisodeTitle, !ep.isEmpty {
-                    Text(ep)
-                        .font(.system(size: 9))
-                        .foregroundColor(.white.opacity(0.85))
-                        .lineLimit(1)
-                }
-            }
-            .padding(.horizontal, 4)
-            .padding(.top, 4)
-            .frame(width: max(1, cellW - (isSelected ? 20 : 8)), alignment: .topLeading)
-
-            // Top-right: checkmark (selected) or on-air dot
-            if isSelected {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(.white)
-                    .offset(x: cellW - 18, y: 4)
-            } else if onAir {
-                Circle().fill(Color.red).frame(width: 5, height: 5)
-                    .offset(x: cellW - 9, y: 5)
-            }
-
-            // Bottom-left: bookmark badge when show is already managed
-            if isManaged {
-                Image(systemName: "bookmark.fill")
-                    .font(.system(size: 9))
-                    .foregroundColor(.white.opacity(0.9))
-                    .offset(x: 4, y: rowH - 20)
-            }
-        }
-        .frame(width: cellW, height: rowH - 2)
-        .offset(x: cellX, y: 1)
-        .opacity(matchesFilter ? 1.0 : 0.2)
-        .allowsHitTesting(matchesFilter)
-        // Single-tap fires immediately; double-tap runs concurrently (no ~400ms delay)
-        .onTapGesture {
-            selectedEntry   = entry
-            selectedChannel = lu
-        }
-        .simultaneousGesture(TapGesture(count: 2).onEnded {
-            selectedEntry   = entry
-            selectedChannel = lu
-            onConfirm?()
-        })
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -365,6 +263,145 @@ struct CableGuideView: View {
 
     private func formatSlot(_ d: Date) -> String {
         let f = DateFormatter(); f.dateFormat = "h:mm a"; return f.string(from: d)
+    }
+}
+
+// ── Equatable channel row — SwiftUI skips body re-eval during scroll ──────────
+
+private struct ShowBlocksRow: View, Equatable {
+    let channel:          GuideChannel
+    let entries:          [GuideEntry]
+    let lineupEntry:      LineupEntry?
+    let displayStart:     Date
+    let totalW:           CGFloat
+    let rowH:             CGFloat
+    let pxPerMin:         CGFloat
+    let timeSlots:        [Date]
+    let selectedEntry:    GuideEntry?
+    let selectedChannel:  LineupEntry?
+    let managedSeriesIDs: Set<String>
+    let managedTitles:    Set<String>
+    let genreFilter:      String?
+    var onSelect:  (GuideEntry, LineupEntry?) -> Void
+    var onConfirm: (() -> Void)?
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.channel.GuideNumber          == rhs.channel.GuideNumber &&
+        lhs.entries.count                == rhs.entries.count &&
+        lhs.selectedEntry?.StartTime     == rhs.selectedEntry?.StartTime &&
+        lhs.selectedChannel?.GuideNumber == rhs.selectedChannel?.GuideNumber &&
+        lhs.genreFilter                  == rhs.genreFilter &&
+        lhs.displayStart                 == rhs.displayStart &&
+        lhs.managedSeriesIDs             == rhs.managedSeriesIDs &&
+        lhs.managedTitles                == rhs.managedTitles
+    }
+
+    var body: some View {
+        let now = Date()
+        ZStack(alignment: .topLeading) {
+            Color(NSColor.underPageBackgroundColor)
+                .frame(width: totalW, height: rowH)
+
+            ForEach(timeSlots, id: \.self) { slot in
+                let x = CGFloat(slot.timeIntervalSince(displayStart) / 60) * pxPerMin
+                Rectangle()
+                    .fill(Color(NSColor.separatorColor).opacity(0.18))
+                    .frame(width: 0.5, height: rowH)
+                    .offset(x: x)
+            }
+
+            ForEach(entries) { entry in showBlock(entry: entry, now: now) }
+
+            let nowX = CGFloat(now.timeIntervalSince(displayStart) / 60) * pxPerMin
+            if nowX > 0 && nowX < totalW {
+                Rectangle()
+                    .fill(Color.red.opacity(0.65))
+                    .frame(width: 2, height: rowH)
+                    .offset(x: nowX)
+            }
+        }
+        .frame(width: totalW, height: rowH)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Color(NSColor.separatorColor).opacity(0.35))
+                .frame(height: 0.5)
+        }
+        .clipped()
+    }
+
+    @ViewBuilder
+    private func showBlock(entry: GuideEntry, now: Date) -> some View {
+        let startSec   = entry.startDate.timeIntervalSince(displayStart)
+        let rawX       = CGFloat(startSec / 60) * pxPerMin
+        let cellX      = max(0, rawX)
+        let clip       = min(CGFloat(0), rawX)
+        let rawW       = CGFloat(entry.durationMinutes) * pxPerMin + clip - 2
+        let cellW      = max(22, rawW)
+        let onAir      = entry.startDate <= now && entry.endDate > now
+        let isSelected = selectedEntry?.id == entry.id
+                          && selectedChannel?.GuideNumber == lineupEntry?.GuideNumber
+        let isManaged  = (entry.SeriesID.map { managedSeriesIDs.contains($0) } ?? false)
+                       || managedTitles.contains(entry.Title)
+        let matchesFilter: Bool = {
+            guard let f = genreFilter else { return true }
+            return entry.Filter?.contains(where: { $0.caseInsensitiveCompare(f) == .orderedSame }) ?? false
+        }()
+
+        ZStack(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: 3)
+                .fill(guideEntryColor(for: entry, onAir: onAir))
+
+            if isSelected {
+                RoundedRectangle(cornerRadius: 3).strokeBorder(Color.white, lineWidth: 2.5)
+                RoundedRectangle(cornerRadius: 3).fill(Color.white.opacity(0.15))
+            } else {
+                RoundedRectangle(cornerRadius: 3).strokeBorder(Color.black.opacity(0.25), lineWidth: 0.5)
+            }
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(entry.Title)
+                    .font(.system(size: 11, weight: isSelected ? .bold : .semibold))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                if cellW > 90, let ep = entry.EpisodeTitle, !ep.isEmpty {
+                    Text(ep)
+                        .font(.system(size: 9))
+                        .foregroundColor(.white.opacity(0.85))
+                        .lineLimit(1)
+                }
+            }
+            .padding(.horizontal, 4)
+            .padding(.top, 4)
+            .frame(width: max(1, cellW - (isSelected ? 20 : 8)), alignment: .topLeading)
+
+            if isSelected {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(.white)
+                    .offset(x: cellW - 18, y: 4)
+            } else if onAir && isManaged {
+                Circle().fill(Color.red).frame(width: 5, height: 5)
+                    .offset(x: cellW - 9, y: 5)
+            }
+
+            if isManaged {
+                Image(systemName: "bookmark.fill")
+                    .font(.system(size: 9))
+                    .foregroundColor(.white.opacity(0.9))
+                    .offset(x: 4, y: rowH - 20)
+            }
+        }
+        .frame(width: cellW, height: rowH - 2)
+        .offset(x: cellX, y: 1)
+        .opacity(matchesFilter ? 1.0 : 0.2)
+        .allowsHitTesting(matchesFilter)
+        .onTapGesture {
+            onSelect(entry, lineupEntry)
+        }
+        .simultaneousGesture(TapGesture(count: 2).onEnded {
+            onSelect(entry, lineupEntry)
+            onConfirm?()
+        })
     }
 }
 

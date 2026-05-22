@@ -26,12 +26,13 @@ The `.app` bundle is committed to the repo at `hdhr_VCR.app/`. The binary inside
 ```
 hdhr_VCRApp.swift          Entry point, scene definitions (MenuBarExtra + WindowGroups)
 AppState.swift             @MainActor ObservableObject — all app logic, idle loop, state
-HDHRManager.swift          Network layer: device discovery and lineup fetch only
+HDHRManager.swift          Network layer: device discovery (concurrent known-hosts+mDNS+UDP) and lineup fetch
 GuideStore.swift           Guide cache: fetches, indexes, and queries guide data for all devices
 RecordingManager.swift     Launches/stops caffeinate+curl processes, manages sleep prevention
 ConfigManager.swift        Reads/writes ~/Documents/hdhr_VCR-{hostname}.json
 Models.swift               All data types (Show, HDHRDevice, GuideEntry, AppConfig, EpochDate, …)
 AddShowMode.swift          Enum: .menu vs .wizard add-show modes
+ChannelIconCache.swift     Actor: async disk-backed cache for channel logo images
 Views/
   MenuContent.swift        The menu bar dropdown (entire UI lives here)
   AddShowView.swift        3-step wizard window for adding shows
@@ -45,14 +46,13 @@ Views/
 ## Key Data Flow
 
 ### Startup (`AppState.startup`)
-1. Request notification permission
-2. `loadConfig()` — reads JSON, resets all `show_recording = false`; sets `guideStore.verbose`
-3. `reattachRecordings()` — scans `ps -Aa` for caffeinate processes with `show_id:` that survived a restart; reattaches their PIDs without launching new recordings
-4. `discoverDevices(knownHosts:)` — seeds known device IPs from saved show URLs, then falls back to mDNS → cloud → UDP, up to 3 retries
+1. `loadConfig()` — reads JSON, resets all `show_recording = false`; sets `guideStore.verbose`. Also auto-removes inactive Single shows (deactivated singles have already recorded and need no further scheduling).
+2. `reattachRecordings()` — scans `ps -Axo pid,args` for caffeinate processes with `show_id:` that survived a restart; reattaches their PIDs. **Read pipe data before `waitUntilExit()`** to avoid deadlock when ps output overflows the ~64 KB pipe buffer.
+3. Notification permission request (non-blocking — fired as a background `Task` so it doesn't delay discovery)
+4. `discoverDevices(knownHosts:attempts:10)` — seeds known device IPs from saved show URLs (fastest path), then concurrently probes mDNS + UDP. Up to 10 retry attempts with 1-second pauses; idle loop retries on each tick if devices remain empty.
 5. `fetchAllGuides()` — delegates to `guideStore.loadAll(devices:hours:)` in parallel; mirrors result into `guideByDevice`
-6. **Guide retry** — if step 5 loaded 0 channels but devices exist (known-hosts fast path may return EXTEND device without `DeviceAuth`), re-runs `discoverDevices()` with no knownHosts (forces mDNS/cloud path) and retries `fetchAllGuides()`
-7. `startTimer()` — fires `idleLoop()` every N seconds (default 10)
-8. Sets `isStartingUp = false` (menu bar icon switches from dimmed tv to normal/red-dot)
+6. `startTimer()` — fires `idleLoop()` every N seconds (default 10)
+7. Sets `isStartingUp = false` (menu bar icon switches from dimmed tv to normal/red-dot)
 
 ### Idle Loop (`AppState.idleLoop`)
 Runs every `config.Idle_timer_interval` seconds on MainActor:
@@ -73,14 +73,15 @@ On restart during a recording: `reattachRecordings()` scans `ps -Axo pid,args` f
 
 ## Device Discovery (`HDHRManager.discoverDevices`)
 
-Four methods tried in order, first non-empty result wins:
+Three paths run **concurrently** in a single pass; results are merged by DeviceID:
 
-1. **Known hosts** — extracts device IPs from `show_url` fields of saved shows (e.g. `http://192.168.1.x:5004/...` → tries `http://192.168.1.x/discover.json`). Fastest path on stable networks; avoids mDNS/cloud entirely.
+1. **Known hosts** — extracts device IPs from `show_url` fields of saved shows (e.g. `http://192.168.1.x:5004/...` → tries `http://192.168.1.x/discover.json`). Fastest on stable networks; sub-second when the device IP hasn't changed.
 2. **mDNS** — `http://hdhomerun.local/discover.json` — works for EXTEND devices (HDTC-2US) and devices not registered with SiliconDust cloud. Handles single-object or array response.
-3. **Cloud** — `http://discover.hdhomerun.com/discover.json` — requires device to be cloud-registered.
-4. **UDP broadcast** — SiliconDust discovery packet to `255.255.255.255:65001`, waits 2 s for replies. UDP replies are followed up with individual `fetchDeviceInfo(ip:)` calls to get full device metadata.
+3. **UDP broadcast** — SiliconDust discovery packet to `255.255.255.255:65001`, waits 2 s for replies. UDP replies are followed up with individual `fetchDeviceInfo(ip:)` calls to get full device metadata.
 
-`AppState.discoverDevices` wraps this with up to 3 retry attempts, 3-second pause between attempts.
+If all three yield nothing, falls back to the **SiliconDust cloud API** (`http://discover.hdhomerun.com/discover.json`). After merging, any device missing `DeviceAuth` is supplemented from the cloud response (needed for EXTEND devices to access the cloud guide API).
+
+`AppState.discoverDevices(knownHosts:attempts:)` wraps this with up to N retry attempts (default 3; startup uses 10), 1-second pause between attempts. The idle loop retries with `attempts:1` on each tick when `devices` is empty. Session timeouts: 2 s request / 6 s resource.
 
 ### EXTEND device (HDTC-2US) specifics
 - Has no local `/guide.json` — uses SiliconDust cloud guide API instead
@@ -102,12 +103,13 @@ Four methods tried in order, first non-empty result wins:
 
 ### Key methods
 ```swift
-func load(for device: HDHRDevice, hours: Int)          // fetch + index one device; no-op if already loading
-func loadAll(devices: [HDHRDevice], hours: Int)        // parallel load for all devices
+func load(for device: HDHRDevice, hours: Int)                          // fetch + index one device; no-op if already loading
+func loadAll(devices: [HDHRDevice], hours: Int)                        // parallel load for all devices
 func channels(deviceId: String) -> [GuideChannel]
 func entries(deviceId: String, channelNum: String, after: Date) -> [GuideEntry]
 func nextEpisode(seriesID: String, channelNum: String?, deviceId: String?, after: Date) -> SeriesMatch?
-func isFresh(deviceId: String, within interval: TimeInterval) -> Bool   // default 1 hour
+func nextEpisodes(seriesID: String, after: Date, limit: Int) -> [SeriesMatch]  // up to `limit` upcoming airings
+func isFresh(deviceId: String, within interval: TimeInterval) -> Bool  // default 1 hour
 func invalidate(deviceId: String)
 func invalidateAll()
 ```
@@ -125,6 +127,7 @@ func invalidateAll()
 - `ensureGuideLoaded(for deviceId:)` — loads a single device if channels are absent and not already loading; safe to call multiple times
 - `guideEntries(deviceId:channelNum:)` — delegates to `guideStore.entries()`
 - `nextGuideEpisode(for show:)` — delegates to `guideStore.nextEpisode()`; respects channel/device filters for SeriesID(Channel) vs SeriesID(All)
+- `upcomingGuideEpisodes(seriesID:after:limit:)` — returns up to `limit` upcoming `(channel, entry)` tuples for a SeriesID across all devices; used by the guide summary panel
 - `watchInVLC(url:)` — opens a stream URL in `/Applications/VLC.app` via `NSWorkspace`; no-op if VLC not installed or `Watch_in_VLC` is false
 
 ---
@@ -171,7 +174,7 @@ Shows have exactly one of four states, determined by boolean flags:
 ### Next-air scheduling (`AppState.scheduleNextAir`)
 Called after each recording completes (and after file verification passes):
 - **Single**: sets `show_active = false`
-- **DateTime**: calculates next matching weekday/time in UTC via `nextDateTime(for:)`. If `show_air_date` is empty or invalid (returns `nil`), the show is paused with reason `"No air days configured"` rather than looping forever.
+- **DateTime**: calculates next matching weekday/time in **local time** via `nextDateTime(for:)`. `show_time` stores local decimal hours and `show_air_date` stores local day names — both match what the user sees in the guide and the UI. If `show_air_date` is empty or invalid (returns `nil`), the show is paused with reason `"No air days configured"` rather than looping forever.
 - **SeriesID**: reloads guide for the device if stale (`!guideStore.isFresh`), then searches `seriesIndex` for the next matching episode. If found, updates `show_next`, `show_end`, `show_channel`, and `show_url`. If not found, sets `show_next = now + Series_scan_retry_hours`.
 
 ### Timestamps (`EpochDate`)
@@ -203,7 +206,7 @@ Idle_timer_interval     Int     10     seconds between idle loop checks (min enf
 Series_scan_retry_hours Int     4      hours to wait before re-scanning guide for a series episode
 Verbose_curl            Bool    false  enable -v curl logging to ~/Library/Logs/hdhr_VCR_curl.log
 Watch_in_VLC            Bool    false  show "Watch in VLC" buttons in menus (only when VLC installed)
-Hdhr_setup_folder       String  ""     default recording folder (POSIX path; empty = ~/Movies)
+Hdhr_setup_folder       String  ""     default recording folder (POSIX path; empty = ~/Documents/hdhr_videos)
 Config_version          String  "1"    format version marker
 ```
 
@@ -211,7 +214,7 @@ Config_version          String  "1"    format version marker
 Priority order:
 1. `UserDefaults` key `"defaultSaveDirectory"` (set by the folder picker in Settings)
 2. `config.Hdhr_setup_folder` (from config JSON)
-3. `~/Movies`
+3. `~/Documents/hdhr_videos` (created automatically if it doesn't exist)
 
 ---
 
@@ -226,8 +229,7 @@ Single `MenuBarExtra` with `.menu` style (native cascading NSMenu).
 - Red `record.circle.fill` — one or more shows recording
 
 **Header** (replaces static "hdhr_VCR" title):
-- Tuner count line (omitted when only 1 device)
-- "N of M tuner(s) in use" — N = actively recording shows, M = total tuner slots across all devices; primary color when recording, secondary when idle
+- One line per device: `DeviceID  active/slots` (e.g. `105404BE  1/4`) — primary color when that device has active recordings, secondary when idle. Shows all devices even when idle so tuner capacity is always visible.
 - Status message (secondary color)
 
 **Structure:**
@@ -271,26 +273,35 @@ Select which HDHomeRun tuner to use. Skipped automatically when only 1 tuner is 
 ### Step 2: Guide (cable TV grid — `CableGuideView.swift`)
 Full cable-guide layout: rows = channels, columns = 30-min time slots, scrollable both axes.
 
-**Window size**: 860×620 for this step, 560×540 for others.
+**Window size**: 980×700 for this step, 560×540 for others.
 
-**Compact toolbar (single row)**: Tuner picker (hidden when only 1 tuner) + Genre filter picker (shown only when guide has `Filter` tags) + Clear button + loading indicator + **"Now" button** + Refresh button — all in one `HStack` at the very top of the step. Changing the tuner or clicking Refresh invalidates the cache for that device and reloads via `.task(id: taskId)`.
+**Compact toolbar (single row)**: **Cancel** button (leftmost) + Tuner picker (hidden when only 1 tuner) + Genre filter picker (shown only when guide has `Filter` tags) + loading indicator + **"Now" button** + Refresh button. Changing the tuner or clicking Refresh invalidates the cache for that device and reloads via `.task(id: taskId)`. The bottom nav bar is hidden for the guide step (Cancel moved here; other actions are in the summary panel).
 
-**Layout**: `VStack` with toolbar → `GeometryReader` content area → nav bar:
+**Layout**: `VStack` with toolbar → `GeometryReader` content area (no bottom nav bar for this step):
 - **Top 1/3** of `GeometryReader` height: show summary panel
 - **Bottom 2/3**: cable guide grid (`HStack { channelColumnFixed | scrollableGrid }`)
 
-The channel label column is **not** part of the scroll view — it stays pinned on the left while scrolling right. Vertical scroll is synchronized from the inner `ScrollView` to the fixed column via `onScrollGeometryChange` updating a shared `channelScrollOffset` state, applied as `.offset(y: -channelScrollOffset)` inside a `.clipped()` container.
+The channel label column is **not** part of the scroll view — it stays pinned on the left while scrolling right. Vertical scroll is synchronized from the inner `ScrollView` to the fixed column via `onScrollGeometryChange` (1-pt threshold + `Transaction.disablesAnimations`) updating a shared `channelScrollOffset` state, applied as `.offset(y: -channelScrollOffset)` inside a `.clipped()` container.
+
+**Performance**: `CableGuideView` caches `lineupByNumber`, `displayStart`, and `timeSlots` as `@State` vars rebuilt once on `.onAppear`/`onChange` (not on every scroll-triggered body re-evaluation). Channel rows are extracted as a private `ShowBlocksRow: View, Equatable` struct; `.equatable()` lets SwiftUI skip body re-evaluation for all unchanged rows during scroll.
 
 **Guide grid features**:
 - Uses `state.guideStore` cache; fetches fresh if absent or after Refresh
 - Show blocks are **coloured by genre first** (from `GuideEntry.Filter[0]`): drama=blue, comedy=amber, news=crimson, sports=green, reality=orange, movie=purple, talk=teal, children=steel-blue. Falls back to a series/title hash from an 8-colour palette when genre is absent.
-- Currently-airing shows have full opacity + red dot; future shows are slightly dimmed (0.75 opacity)
+- Currently-airing managed shows get a red dot badge; non-managed on-air shows have no dot. Future shows are slightly dimmed (0.75 opacity).
 - Only the tapped show block highlights — selection compares both `entry.id` (StartTime) **and** `selectedChannel.GuideNumber` to avoid false matches across channels at the same time
 - Shows that are already being managed (matched by `show_seriesid` or `show_title`) display a `bookmark.fill` badge at the bottom-left of their block
 - Red "now" line runs through all rows; the grid auto-scrolls to current time on open. "Now" button triggers a `@Binding var snapToNow: Bool` that the `ScrollViewReader` proxy listens to
-- Time header row is pinned (sticky) while scrolling vertically (`LazyVStack(pinnedViews: .sectionHeaders)`)
+- On open, the currently-airing show on the first channel is **auto-selected** (`onChange(of: allChannels.count)` in `guideStep`) so the summary panel is populated immediately
 
-**Show summary panel** (top 1/3 of content area, `GeometryReader`-sized): when a show is selected, displays a **background color matching its guide cell color** with white text — poster image (AsyncImage, 140×100), title (`.title3`, bold), episode number · episode title (`.subheadline`), synopsis up to 3 lines (`.callout`), channel + time range (`.caption`). Time range uses explicit `h:mm a` format with `Locale.current` for correct AM/PM. Shows a placeholder when nothing is selected.
+**Show summary panel** (top 1/3 of content area): when a show is selected, displays a **background color matching its guide cell color** with white text:
+- Poster image (AsyncImage, 140×100)
+- Title (`.title3`, bold) + optional "🔴 Recording Now" badge if that channel is actively recording
+- Episode number · episode title (`.subheadline`)
+- Synopsis up to 3 lines (`.callout`)
+- For SeriesID shows: upcoming airings line (up to 4, e.g. `ch 5.1 Thu 8:00 PM · ch 5.1 Fri 10:00 PM`) via `upcomingGuideEpisodes()`
+- Channel icon + "ch X · time range" (`.caption`) + **Watch in VLC** (conditional) + **Record** (`.borderedProminent`) buttons
+- Shows a placeholder when nothing is selected
 
 **Module-level color function** (`CableGuideView.swift`, non-private so `AddShowView` can use it for the summary panel background):
 ```swift
@@ -299,6 +310,7 @@ func guideEntryColor(for entry: GuideEntry, onAir: Bool) -> Color
 
 ### Step 3: Details
 - Title, show type (Single / DateTime / SeriesID), air days, transcode, save folder
+- Air days and time are in **local time** (matches what the user sees in the guide)
 - Single-day enforcement for `.single` type
 - Folder picker writes to `UserDefaults` key `"defaultSaveDirectory"` so the choice persists across launches
 
