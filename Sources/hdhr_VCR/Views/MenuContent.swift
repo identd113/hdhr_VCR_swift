@@ -13,6 +13,10 @@ struct MenuContent: View {
     private static let weekdayFormatter: DateFormatter = {
         let f = DateFormatter(); f.dateFormat = "EEEE"; return f
     }()
+    // "Thu" abbreviation for compact upcoming-slot labels in scheduledMenu
+    private static let shortWeekdayFormatter: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "EEE"; return f
+    }()
 
     /// Open a WindowGroup scene reliably from a .menu-style MenuBarExtra.
     /// The menu dismisses synchronously; deferring to the next run loop tick
@@ -58,6 +62,25 @@ struct MenuContent: View {
             Section("Recording Now") {
                 ForEach(recordingShows) { show in
                     recordingMenu(show)
+                }
+            }
+            Divider()
+        }
+
+        // ── Next Up ────────────────────────────────────────────────────────
+        let now = Date()
+        let nextSlotTime: Date? = activeShows
+            .compactMap { $0.show_next.date }.filter { $0 > now }.min()
+        if let slotTime = nextSlotTime {
+            let slotShows = activeShows.filter {
+                guard let d = $0.show_next.date else { return false }
+                return abs(d.timeIntervalSince(slotTime)) < 5 * 60
+            }
+            Section("Next Up") {
+                menuInfo("\(Self.timeFormatter.string(from: slotTime)) · in \(relativeLabel(slotTime.timeIntervalSince(now)))",
+                         font: .footnote, secondary: true)
+                ForEach(slotShows) { show in
+                    menuInfo("\(stateIcon(show)) \(show.show_title) · ch \(show.show_channel)", font: .footnote)
                 }
             }
             Divider()
@@ -125,6 +148,10 @@ struct MenuContent: View {
     @ViewBuilder
     private func channelMenus(for device: HDHRDevice) -> some View {
         let channels = state.lineups[device.DeviceID] ?? []
+        // Amber accent bar (comedy/warm hue from the guide genre palette) marks the channel-list depth
+        Rectangle()
+            .fill(Color(hue: 0.13, saturation: 0.75, brightness: 0.90).opacity(0.65))
+            .frame(height: 5)
         if channels.isEmpty {
             Text("No channels — try Refresh Guide").foregroundStyle(.secondary)
         } else {
@@ -147,6 +174,10 @@ struct MenuContent: View {
         let upcoming  = entries.filter { $0.startDate > now }
 
         Menu(label) {
+            // Blue accent bar (drama hue from guide palette) marks the entry-list depth
+            Rectangle()
+                .fill(Color(hue: 0.60, saturation: 0.75, brightness: 0.85).opacity(0.65))
+                .frame(height: 5)
             if entries.isEmpty {
                 if loading {
                     Text("Fetching guide…").foregroundStyle(.secondary)
@@ -175,75 +206,85 @@ struct MenuContent: View {
         let entryColor = guideEntryColor(for: entry, onAir: isOnAir)
         Menu {
 
+            // Genre color accent bar — matches the show block color in the cable guide
+            Rectangle()
+                .fill(Color(entryColor).opacity(0.65))
+                .frame(height: 5)
+
             // Info (disabled) ─────────────────────────────────────────────
             // Poster image (best-effort — NSMenu rendering of AsyncImage varies)
             if let urlStr = entry.ImageURL, !urlStr.isEmpty, let url = URL(string: urlStr) {
                 AsyncImage(url: url) { img in
                     img.resizable().aspectRatio(contentMode: .fill)
-                        .frame(width: 200, height: 120).clipped().cornerRadius(4)
+                        .frame(width: 240, height: 135).clipped().cornerRadius(4)
                 } placeholder: {
                     RoundedRectangle(cornerRadius: 4)
                         .fill(Color(NSColor.separatorColor))
-                        .frame(width: 200, height: 120)
+                        .frame(width: 240, height: 135)
                 }
             }
-            Text(entry.Title).font(.headline)
-                .foregroundColor(Color(NSColor.labelColor))
-            if let ep = episodeInfoLabel(entry) {
-                // labelColor, not secondaryLabelColor — NSMenu auto-dims non-interactive items
-                // so secondary would be doubly-dimmed and nearly invisible
-                Text(ep).font(.caption)
-                    .foregroundColor(Color(NSColor.labelColor))
-            }
-            // Same reason: labelColor so the time range stays readable after NSMenu dimming
-            Text(timeRange(entry))
-                .foregroundColor(Color(NSColor.labelColor))
-            if let syn = entry.Synopsis, !syn.isEmpty {
-                Text(syn).font(.caption).lineLimit(3)
-                    .foregroundColor(Color(NSColor.labelColor))
+            // Wrap info in a no-op Button so AppKit treats it as an enabled NSMenuItem
+            // and renders at full brightness. Pure Text views are auto-disabled by AppKit
+            // and drawn at ~50% opacity regardless of the foreground color set.
+            Button(action: {}) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(entry.Title)
+                        .font(.title3).bold()
+                        .foregroundColor(Color(NSColor.labelColor))
+                    if let ep = episodeInfoLabel(entry) {
+                        Text(ep)
+                            .font(.subheadline)
+                            .foregroundColor(Color(NSColor.secondaryLabelColor))
+                    }
+                    Text(timeRange(entry))
+                        .font(.caption)
+                        .foregroundColor(Color(NSColor.secondaryLabelColor))
+                    if let syn = entry.Synopsis, !syn.isEmpty {
+                        Text(syn).font(.caption).lineLimit(3)
+                            .foregroundColor(Color(NSColor.labelColor))
+                    }
+                }
             }
             Divider()
 
             // Single ───────────────────────────────────────────────────────
-            Button("Record once (Single)") {
+            Button("Single — record once") {
                 state.addShowFromGuide(entry: entry, type: .single, device: device, channel: channel)
             }
 
-            // Series submenu ───────────────────────────────────────────────
-            Menu("Record as series…") {
+            Divider()
 
-                // DateTime: repeats this same day + time on this channel
-                Button {
-                    state.addShowFromGuide(entry: entry, type: .dateTime, device: device, channel: channel)
-                } label: {
-                    VStack(alignment: .leading) {
-                        Text("DateTime — same day & time")
-                        Text("Repeats on \(weekdayName(entry.startDate))s at \(state.shortTime(entry.startDate)) on ch \(channel.GuideNumber)")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
+            // DateTime: repeats this same day + time on this channel
+            Button {
+                state.addShowFromGuide(entry: entry, type: .dateTime, device: device, channel: channel)
+            } label: {
+                VStack(alignment: .leading) {
+                    Text("DateTime — same day & time")
+                    Text("Repeats on \(weekdayName(entry.startDate))s at \(state.shortTime(entry.startDate)) on ch \(channel.GuideNumber)")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
+            }
 
-                // SeriesID Channel: any episode, this channel only
-                Button {
-                    state.addShowFromGuide(entry: entry, type: .seriesChannel, device: device, channel: channel)
-                } label: {
-                    VStack(alignment: .leading) {
-                        Text("SeriesID — this channel")
-                        Text("Any episode on ch \(channel.GuideNumber)")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
+            // SeriesID Channel: any episode, this channel only
+            Button {
+                state.addShowFromGuide(entry: entry, type: .seriesChannel, device: device, channel: channel)
+            } label: {
+                VStack(alignment: .leading) {
+                    Text("SeriesID — this channel")
+                    Text("Any episode on ch \(channel.GuideNumber)")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
+            }
 
-                // SeriesID All: any episode, any channel
-                Button {
-                    state.addShowFromGuide(entry: entry, type: .seriesAll, device: device, channel: channel)
-                } label: {
-                    VStack(alignment: .leading) {
-                        Text("SeriesID — all channels")
-                        if let sid = entry.SeriesID {
-                            Text("Matches \(sid) anywhere in the guide")
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
+            // SeriesID All: any episode, any channel
+            Button {
+                state.addShowFromGuide(entry: entry, type: .seriesAll, device: device, channel: channel)
+            } label: {
+                VStack(alignment: .leading) {
+                    Text("SeriesID — all channels")
+                    if let sid = entry.SeriesID {
+                        Text("Matches \(sid) anywhere in the guide")
+                            .font(.caption).foregroundStyle(.secondary)
                     }
                 }
             }
@@ -265,17 +306,16 @@ struct MenuContent: View {
 
     @ViewBuilder
     private func recordingMenu(_ show: Show) -> some View {
-        Menu("🔴 \(show.show_title)") {
-            let now     = Date()
-            let started = show.show_next.date ?? now
-            let ends    = show.show_end.date   ?? now
+        let recNow       = Date()
+        let recEntries   = state.guideEntries(deviceId: show.hdhr_record, channelNum: show.show_channel)
+        let currentEntry = recEntries.first { $0.startDate <= recNow && $0.endDate > recNow }
+        let recEp        = currentEntry.flatMap { episodeInfoLabel($0) }
+        let menuTitle    = recEp.map { "🔴 \(show.show_title) · \($0)" } ?? "🔴 \(show.show_title)"
+        Menu(menuTitle) {
+            let started = show.show_next.date ?? recNow
+            let ends    = show.show_end.date  ?? recNow
 
-            // Item 1: look up the current guide entry from the in-memory cache so we can show
-            // episode info and synopsis — same data the cable guide summary panel displays
-            let guideEntries = state.guideEntries(deviceId: show.hdhr_record, channelNum: show.show_channel)
-            let currentEntry = guideEntries.first { $0.startDate <= now && $0.endDate > now }
-
-            // Poster image when available (same pattern as entryMenu in Add Show)
+            // Poster image when available
             if !show.show_logo_url.isEmpty, let url = URL(string: show.show_logo_url) {
                 AsyncImage(url: url) { img in
                     img.resizable().aspectRatio(contentMode: .fill)
@@ -287,27 +327,23 @@ struct MenuContent: View {
                 }
             }
 
-            // Title + episode info from guide (e.g. "S02E05 · Overtime")
-            Text(show.show_title).font(.headline)
-                .foregroundColor(Color(NSColor.labelColor))
-            if let entry = currentEntry, let ep = episodeInfoLabel(entry) {
-                Text(ep).font(.caption)
-                    .foregroundColor(Color(NSColor.labelColor))
-            }
-
-            // Synopsis from guide (up to 3 lines so menu doesn't get too tall)
-            if let synopsis = currentEntry?.Synopsis, !synopsis.isEmpty {
-                Text(synopsis).font(.caption).lineLimit(3)
-                    .foregroundColor(Color(NSColor.labelColor))
+            // Title + episode info — menuInfo() wrapper defeats AppKit's ~50% opacity on disabled items
+            menuInfo(show.show_title, font: .headline)
+            if let entry = currentEntry, let epInfo = episodeInfoLabel(entry) {
+                menuInfo(epInfo, font: .footnote, secondary: true)
             }
 
             Divider()
-            Text("ch \(show.show_channel) · \(show.state.rawValue)")
-                .foregroundColor(Color(NSColor.secondaryLabelColor))
-            Text("\(elapsedLabel(since: started)) elapsed · \(remainingLabel(until: ends)) left")
-                .foregroundColor(Color(NSColor.secondaryLabelColor))
+            menuInfo("ch \(show.show_channel) · \(show.state.rawValue) · tuner \(show.hdhr_record)", font: .footnote, secondary: true)
+            menuInfo("\(elapsedLabel(since: started)) elapsed · \(remainingLabel(until: ends)) left", font: .footnote, secondary: true)
             Divider()
             Button("Stop Recording") { state.stopRecording(showId: show.show_id) }
+            if !show.show_recording_path.isEmpty {
+                Button("Show Recording in Finder") {
+                    NSWorkspace.shared.selectFile(show.show_recording_path,
+                                                  inFileViewerRootedAtPath: "")
+                }
+            }
             if state.config.Watch_in_VLC {
                 Button("Watch in VLC") { state.watchInVLC(url: show.show_url) }
             }
@@ -317,7 +353,13 @@ struct MenuContent: View {
 
     @ViewBuilder
     private func scheduledMenu(_ show: Show) -> some View {
-        Menu("\(stateIcon(show)) \(show.show_title)") {
+        let schNext    = show.show_next.date ?? .distantFuture
+        let schEntries = state.guideEntries(deviceId: show.hdhr_record, channelNum: show.show_channel)
+        let schEp      = schEntries.first { abs($0.startDate.timeIntervalSince(schNext)) < 5 * 60 }
+                                   .flatMap { episodeInfoLabel($0) }
+        let schLabel   = schEp.map { "\(stateIcon(show)) \(show.show_title) · \($0)" }
+                      ?? "\(stateIcon(show)) \(show.show_title)"
+        Menu(schLabel) {
             let now    = Date()
             let next   = show.show_next.date ?? .distantFuture
             let ends   = show.show_end.date  ?? .distantFuture
@@ -330,41 +372,47 @@ struct MenuContent: View {
                 abs($0.startDate.timeIntervalSince(next)) < 5 * 60
             }
 
-            // Type + channel — full-brightness so it reads clearly in the menu
-            Text("\(show.state.rawValue) · ch \(show.show_channel)")
-                .foregroundColor(Color(NSColor.labelColor))
+            // Type + channel
+            menuInfo("\(show.state.rawValue) · ch \(show.show_channel)", font: .footnote)
 
             // Episode info from the guide (season/episode number · episode title)
             if let entry = scheduledEntry, let epInfo = episodeInfoLabel(entry) {
-                Text(epInfo).font(.caption)
-                    .foregroundColor(Color(NSColor.labelColor))
+                menuInfo(epInfo, font: .footnote, secondary: true)
             }
 
             // Timing: starts in / ended
             if next > now {
-                Text("In \(relativeLabel(next.timeIntervalSince(now))) · \(show.show_length) min")
-                    .foregroundColor(Color(NSColor.labelColor))
+                menuInfo("In \(relativeLabel(next.timeIntervalSince(now))) · \(show.show_length) min", font: .footnote, secondary: true)
             } else if ends > now {
-                Text("Started \(relativeLabel(now.timeIntervalSince(next))) ago · \(remainingLabel(until: ends)) left")
-                    .foregroundColor(Color(NSColor.labelColor))
+                menuInfo("Started \(relativeLabel(now.timeIntervalSince(next))) ago · \(remainingLabel(until: ends)) left", font: .footnote, secondary: true)
             }
 
-            // For SeriesID shows: augment with the next guide episode from the series index
-            if show.show_use_seriesid, let ep = state.nextGuideEpisode(for: show) {
+            // Upcoming recording slots — source depends on show type
+            let upcoming: [(channel: String, date: Date)] = {
+                switch show.state {
+                case .single:
+                    if let d = show.show_next.date { return [(show.show_channel, d)] }
+                    return []
+                case .dateTime:
+                    return nextDateTimeOccurrences(for: show, count: 3).map { (show.show_channel, $0) }
+                case .seriesChannel, .seriesAll:
+                    return state.upcomingGuideEpisodes(seriesID: show.show_seriesid, limit: 3)
+                        .map { ($0.channel, $0.entry.startDate) }
+                }
+            }()
+            if !upcoming.isEmpty {
                 Divider()
-                // Full label color so the episode line stands out — was secondaryLabelColor before
-                Text("Next: ch \(ep.channel) · \(state.shortTime(ep.entry.startDate))")
-                    .foregroundColor(Color(NSColor.labelColor))
-                if let epInfo = episodeInfoLabel(ep.entry) {
-                    Text(epInfo).font(.caption)
-                        .foregroundColor(Color(NSColor.labelColor))
+                if upcoming.count > 1 {
+                    menuInfo("Upcoming", font: .caption, secondary: true)
+                }
+                ForEach(upcoming, id: \.date) { slot in
+                    menuInfo(upcomingLabel(channel: slot.channel, date: slot.date), font: .footnote)
                 }
             }
 
             if show.show_fail_count > 0 {
                 Divider()
-                Text("⚠️ \(show.show_fail_count) failure(s): \(show.show_fail_reason)")
-                    .foregroundColor(Color(NSColor.systemOrange))
+                menuInfo("⚠️ \(show.show_fail_count) failure(s): \(show.show_fail_reason)", font: .footnote)
             }
             Divider()
             Button("Edit…")      { editShow(show) }
@@ -377,7 +425,7 @@ struct MenuContent: View {
     private func pausedMenu(_ show: Show) -> some View {
         Menu("⏸ \(show.show_title)") {
             if !show.show_fail_reason.isEmpty {
-                Text("Last error: \(show.show_fail_reason)").foregroundStyle(.secondary)
+                menuInfo("Last error: \(show.show_fail_reason)", font: .footnote, secondary: true)
             }
             Divider()
             Button("Activate")  { state.toggleActive(show) }
@@ -419,6 +467,48 @@ struct MenuContent: View {
         relativeLabel(end.timeIntervalSince(Date()))
     }
 
+    // "ch 5.1 · 8:00 PM" (today) or "ch 5.1 · Thu 8:00 PM" (future day)
+    private func upcomingLabel(channel: String, date: Date) -> String {
+        let t = Self.timeFormatter.string(from: date)
+        if Calendar.current.isDateInToday(date) { return "ch \(channel) · \(t)" }
+        return "ch \(channel) · \(Self.shortWeekdayFormatter.string(from: date)) \(t)"
+    }
+
+    // Next N weekday+time occurrences for a DateTime show, computed from show_air_date / show_time.
+    // AppState.nextDateTime(for:) has no after: parameter so we derive occurrences locally.
+    private func nextDateTimeOccurrences(for show: Show, count: Int) -> [Date] {
+        let cal = Calendar.current
+        let now = Date()
+        let dayNames = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"]
+        let airIndices = show.show_air_date.compactMap { dayNames.firstIndex(of: $0.lowercased()) }
+        let hours = Int(show.show_time)
+        let minutes = Int((show.show_time - Double(hours)) * 60)
+        var results: [Date] = []
+        var check = now
+        guard let limit = cal.date(byAdding: .day, value: 60, to: now) else { return [] }
+        while results.count < count && check < limit {
+            let idx = cal.component(.weekday, from: check) - 1  // 0 = Sunday
+            if airIndices.contains(idx) {
+                var c = cal.dateComponents([.year, .month, .day], from: check)
+                c.hour = hours; c.minute = minutes
+                if let d = cal.date(from: c), d > now { results.append(d) }
+            }
+            check = cal.date(byAdding: .day, value: 1, to: check) ?? check
+        }
+        return results
+    }
+
+    // Universal helper: wraps info text in a no-op Button so AppKit renders it at full
+    // brightness. Plain Text views in Menu {} blocks are auto-disabled by NSMenu and drawn
+    // at ~50% opacity regardless of the foreground color — Button avoids that treatment.
+    @ViewBuilder
+    private func menuInfo(_ string: String, font: Font = .body, secondary: Bool = false) -> some View {
+        Button(action: {}) {
+            Text(string).font(font)
+                .foregroundColor(secondary ? Color(NSColor.secondaryLabelColor) : Color(NSColor.labelColor))
+        }
+    }
+
     // "▶ 8:00 PM  Jeopardy! (30 min)" or "8:00 PM  Jeopardy! (30 min)"
     private func entryLabel(_ entry: GuideEntry, isOnAir: Bool = false) -> String {
         let prefix = isOnAir ? "▶ " : ""
@@ -443,3 +533,4 @@ struct MenuContent: View {
         return parts.isEmpty ? nil : parts.joined(separator: "  ·  ")
     }
 }
+

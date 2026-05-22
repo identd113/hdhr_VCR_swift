@@ -36,6 +36,7 @@ final class AppState: ObservableObject {
 
     private var idleTimer: Timer?
     private var lastGuideRefresh: Date = .distantPast
+    private var lastDeviceProbe: Date  = .distantPast
     private var failThreshold: Int { config.Fail_count_setting }
     private let maxDiskPct: Double = 93
 
@@ -183,6 +184,20 @@ final class AppState: ObservableObject {
             }
         }
         statusMessage = "No tuners found — will keep trying"
+    }
+
+    /// Merge-only discovery: finds tuners not already in the devices list and adds them.
+    /// Never removes existing entries so active recordings are never disrupted.
+    private func probeForNewDevices() async {
+        guard let found = try? await hdhrManager.discoverDevices(knownHosts: knownHostsFromShows()) else { return }
+        let existingIDs = Set(devices.map { $0.DeviceID })
+        let newDevices  = found.filter { !existingIDs.contains($0.DeviceID) }
+        guard !newDevices.isEmpty else { return }
+        glog("[DeviceProbe] \(newDevices.count) new tuner(s): \(newDevices.map { $0.DeviceID }.joined(separator: ", "))")
+        devices.append(contentsOf: newDevices)
+        await fetchAllLineups(for: newDevices)
+        await guideStore.loadAll(devices: newDevices, hours: config.GuideHours)
+        guideByDevice = guideStore.channelsByDevice
     }
 
     /// Fetch lineup for every device in parallel; stores results in `lineups[deviceID]`.
@@ -349,13 +364,42 @@ final class AppState: ObservableObject {
         case .seriesChannel:
             show.show_is_series = true; show.show_use_seriesid = true; show.show_use_seriesid_all = false
             show.show_air_date = allDays
+            resolveSeriesAir(show: &show, device: device, isAll: false, channel: channel)
         case .seriesAll:
             show.show_is_series = true; show.show_use_seriesid = true; show.show_use_seriesid_all = true
             show.show_air_date = allDays
+            resolveSeriesAir(show: &show, device: device, isAll: true, channel: channel)
         }
 
         addShow(show)
         notify("Show Added", body: show.show_title, subtitle: type.rawValue)
+    }
+
+    /// For SeriesID shows, find the earliest airing episode and update show_next/show_end/show_channel/show_url.
+    /// Checks currently-airing first (so show_next may be in the past — idle loop records the remaining portion),
+    /// then the next future episode. Falls back silently if neither is found (selected entry's times stay).
+    private func resolveSeriesAir(show: inout Show, device: HDHRDevice, isAll: Bool, channel: LineupEntry) {
+        let chFilter  = isAll ? nil : channel.GuideNumber
+        let devFilter = isAll ? nil : device.DeviceID
+        let now       = Date()
+
+        if let m = guideStore.currentEpisode(seriesID: show.show_seriesid, channelNum: chFilter, deviceId: devFilter, at: now) {
+            show.show_next    = EpochDate(m.entry.startDate)
+            show.show_end     = EpochDate(m.entry.endDate)
+            show.show_channel = m.channelNum
+            if let url = hdhrManager.streamURL(for: m.channelNum, lineup: lineups[device.DeviceID] ?? []) {
+                show.show_url = url
+            }
+            return
+        }
+        if let m = guideStore.nextEpisode(seriesID: show.show_seriesid, channelNum: chFilter, deviceId: devFilter, after: now) {
+            show.show_next    = EpochDate(m.entry.startDate)
+            show.show_end     = EpochDate(m.entry.endDate)
+            show.show_channel = m.channelNum
+            if let url = hdhrManager.streamURL(for: m.channelNum, lineup: lineups[device.DeviceID] ?? []) {
+                show.show_url = url
+            }
+        }
     }
 
     /// The default recording folder: UserDefaults override → config Hdhr_setup_folder → ~/Documents/hdhr_videos.
@@ -410,6 +454,12 @@ final class AppState: ObservableObject {
             ensureGuideLoaded(for: device.DeviceID)
         }
 
+        // Probe for newly-connected tuners every 5 minutes (merge-only — safe during active recordings)
+        if now.timeIntervalSince(lastDeviceProbe) > 300 {
+            lastDeviceProbe = now
+            Task { await probeForNewDevices() }
+        }
+
         // Refresh lineup + guide every GuideHours / 2 (default: every 12 h, min: 1 h)
         let refreshInterval = max(3600.0, Double(config.GuideHours) * 1800.0)
         if now.timeIntervalSince(lastGuideRefresh) > refreshInterval {
@@ -459,6 +509,15 @@ final class AppState: ObservableObject {
 
     func startRecording(index: Int) async {
         var show = shows[index]
+        // Enforce tuner limit: skip if all slots on this device are already occupied
+        if let device = devices.first(where: { $0.DeviceID == show.hdhr_record }),
+           let tunerCount = device.TunerCount {
+            let active = recordingShows.filter { $0.hdhr_record == show.hdhr_record }.count
+            if active >= tunerCount {
+                glog("[\(show.show_title)] TUNER FULL \(show.hdhr_record): \(active)/\(tunerCount) — skipping start")
+                return
+            }
+        }
         if show.show_url.isEmpty {
             if let lu = lineups[show.hdhr_record],
                let url = hdhrManager.streamURL(for: show.show_channel, lineup: lu) {
@@ -569,6 +628,18 @@ final class AppState: ObservableObject {
                     await guideStore.load(for: device, hours: config.GuideHours)
                     guideByDevice = guideStore.channelsByDevice
                 }
+                // Check for a currently-airing episode first (e.g. marathon, back-to-back airings)
+                let now = Date()
+                if let match = guideStore.currentEpisode(seriesID: show.show_seriesid, channelNum: chFilter, deviceId: devFilter, at: now) {
+                    shows[index].show_next    = EpochDate(match.entry.startDate)
+                    shows[index].show_end     = EpochDate(match.entry.endDate)
+                    shows[index].show_channel = match.channelNum
+                    shows[index].show_genre   = match.entry.firstGenre ?? ""
+                    if let url = hdhrManager.streamURL(for: match.channelNum, lineup: lineups[device.DeviceID] ?? []) {
+                        shows[index].show_url = url
+                    }
+                    return
+                }
                 if let match = guideStore.nextEpisode(seriesID: show.show_seriesid,
                                                       channelNum: chFilter,
                                                       deviceId: devFilter) {
@@ -673,13 +744,19 @@ final class AppState: ObservableObject {
         let alert = NSAlert()
         alert.messageText = "Recordings in progress"
         let list = recordingShows.map { "• \($0.show_title) (ch \($0.show_channel))" }.joined(separator: "\n")
-        alert.informativeText = "These recordings will be stopped:\n\n\(list)"
+        alert.informativeText = "These recordings will be stopped:\n\n\(list)\n\nChoose \"Keep Recording\" to exit while recordings continue — relaunch the app to reconnect."
         alert.addButton(withTitle: "Stop Recordings & Quit")
+        alert.addButton(withTitle: "Keep Recording & Quit") // quit without stopping — caffeinate+curl survive as orphans; reattachRecordings() reconnects on next launch
         alert.addButton(withTitle: "Go Back")
         alert.alertStyle = .warning
         NSApp.activate(ignoringOtherApps: true)
-        if alert.runModal() == .alertFirstButtonReturn {
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:  // stop all, then quit
             recordingManager.stopAll(); saveConfig(); NSApplication.shared.terminate(nil)
+        case .alertSecondButtonReturn: // quit without stopping recordings
+            saveConfig(); NSApplication.shared.terminate(nil)
+        default:                       // Go Back — cancel
+            break
         }
     }
 }

@@ -355,11 +355,12 @@ private struct ShowBlocksRow: View, Equatable {
         let onAir      = entry.startDate <= now && entry.endDate > now
         let isSelected = selectedEntry?.id == entry.id
                           && selectedChannel?.GuideNumber == lineupEntry?.GuideNumber
-        let isManaged  = (entry.SeriesID.map { managedSeriesIDs.contains($0) } ?? false)
-                       || managedTitles.contains(entry.Title)
-        // Bonus Time: this managed show is a sports show with extra recording time configured
-        let isBonusTime = (entry.SeriesID.map { bonusSeriesIDs.contains($0) } ?? false)
-                        || bonusTitles.contains(entry.Title)
+        // When SeriesID is present use it exclusively; title is fallback only for entries
+        // that have no SeriesID so unrelated shows sharing a name don't get false badges.
+        let isManaged   = entry.SeriesID.map { managedSeriesIDs.contains($0) }
+                       ?? managedTitles.contains(entry.Title)
+        let isBonusTime = entry.SeriesID.map { bonusSeriesIDs.contains($0) }
+                       ?? bonusTitles.contains(entry.Title)
         let matchesFilter: Bool = {
             guard let f = genreFilter else { return true }
             return entry.Filter?.contains(where: { $0.caseInsensitiveCompare(f) == .orderedSame }) ?? false

@@ -220,6 +220,22 @@ final class GuideStore {
         return Array(all.prefix(limit))
     }
 
+    /// Episode matching seriesID whose broadcast window spans `at` (StartTime ≤ at < EndTime).
+    /// Used to detect a partially-airing episode so recording can be scheduled from the beginning.
+    func currentEpisode(
+        seriesID: String,
+        channelNum: String? = nil,
+        deviceId: String? = nil,
+        at date: Date = Date()
+    ) -> SeriesMatch? {
+        let epoch = Int(date.timeIntervalSince1970)
+        return seriesIndex[seriesID]?.first { m in
+            m.entry.StartTime <= epoch && m.entry.EndTime > epoch
+                && (channelNum == nil || m.channelNum == channelNum)
+                && (deviceId == nil || m.deviceId == deviceId)
+        }
+    }
+
     // MARK: - State queries
 
     func isLoading(deviceId: String) -> Bool { loadingDevices.contains(deviceId) }

@@ -29,10 +29,20 @@ struct SettingsView: View {
     @AppStorage("defaultSaveDirectory") private var defaultSaveDirectory: String = ""
     @State private var selection: SettingsCategory? = .general
     @State private var draft: AppConfig = AppConfig()
+    // Shadow drafts for settings that live outside AppConfig — applied only on Save
+    @State private var draftAddShowMode:   AddShowMode = .menu
+    @State private var draftSaveDirectory: String      = ""
+    @State private var draftLaunchAtLogin: Bool        = false
+    @State private var liveChangelog: String? = nil
     @State private var easterEggTaps = 0
     @State private var showEasterEgg = false
 
-    private var isDirty: Bool { draft != state.config }
+    private var isDirty: Bool {
+        draft != state.config
+            || draftAddShowMode   != addShowMode
+            || draftSaveDirectory != defaultSaveDirectory
+            || draftLaunchAtLogin != (SMAppService.mainApp.status == .enabled)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -54,7 +64,12 @@ struct SettingsView: View {
                     Text("Unsaved changes")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Button("Discard") { draft = state.config }
+                    Button("Discard") {
+                        draft              = state.config
+                        draftAddShowMode   = addShowMode
+                        draftSaveDirectory = defaultSaveDirectory
+                        draftLaunchAtLogin = SMAppService.mainApp.status == .enabled
+                    }
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -70,7 +85,12 @@ struct SettingsView: View {
         }
         .frame(width: 560, height: 520)
         .background(WindowCloseInterceptor(isDirty: isDirty, onSave: applyAndSave))
-        .onAppear { draft = state.config }
+        .onAppear {
+            draft               = state.config
+            draftAddShowMode    = addShowMode
+            draftSaveDirectory  = defaultSaveDirectory
+            draftLaunchAtLogin  = SMAppService.mainApp.status == .enabled
+        }
     }
 
     private func applyAndSave() {
@@ -78,6 +98,16 @@ struct SettingsView: View {
         state.config = draft
         state.saveConfig()
         if intervalChanged { state.startTimer() }
+        // Commit settings that live outside AppConfig
+        addShowMode          = draftAddShowMode
+        defaultSaveDirectory = draftSaveDirectory
+        let loginEnabled = SMAppService.mainApp.status == .enabled
+        if draftLaunchAtLogin != loginEnabled {
+            do {
+                if draftLaunchAtLogin { try SMAppService.mainApp.register() }
+                else                  { try SMAppService.mainApp.unregister() }
+            } catch { print("[Settings] Login item: \(error)") }
+        }
     }
 
     @ViewBuilder
@@ -97,24 +127,14 @@ struct SettingsView: View {
     private var generalView: some View {
         Form {
             Section("System") {
-                Toggle("Launch at Login", isOn: Binding(
-                    get: { SMAppService.mainApp.status == .enabled },
-                    set: { enable in
-                        do {
-                            if enable { try SMAppService.mainApp.register() }
-                            else       { try SMAppService.mainApp.unregister() }
-                        } catch {
-                            print("[Settings] Login item: \(error)")
-                        }
-                    }
-                ))
+                Toggle("Launch at Login", isOn: $draftLaunchAtLogin)
             }
 
             Section("Add Show Method") {
                 ForEach(AddShowMode.allCases, id: \.self) { mode in
                     HStack(alignment: .top, spacing: 12) {
-                        Image(systemName: addShowMode == mode ? "largecircle.fill.circle" : "circle")
-                            .foregroundStyle(addShowMode == mode ? Color.accentColor : .secondary)
+                        Image(systemName: draftAddShowMode == mode ? "largecircle.fill.circle" : "circle")
+                            .foregroundStyle(draftAddShowMode == mode ? Color.accentColor : .secondary)
                             .font(.title3)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(mode.label).fontWeight(.medium)
@@ -122,7 +142,7 @@ struct SettingsView: View {
                         }
                     }
                     .contentShape(Rectangle())
-                    .onTapGesture { addShowMode = mode }
+                    .onTapGesture { draftAddShowMode = mode }
                 }
             }
         }
@@ -139,8 +159,8 @@ struct SettingsView: View {
                     HStack {
                         Text(saveDirLabel).foregroundStyle(.secondary)
                         Button("Choose…") { chooseFolder() }
-                        if !defaultSaveDirectory.isEmpty {
-                            Button("Reset") { defaultSaveDirectory = "" }.foregroundStyle(.secondary)
+                        if !draftSaveDirectory.isEmpty {
+                            Button("Reset") { draftSaveDirectory = "" }.foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -315,6 +335,16 @@ struct SettingsView: View {
                 .multilineTextAlignment(.leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
+                Divider()
+
+                Text("Changelog")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text(liveChangelog ?? appChangelog)
+                    .font(.caption)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+
                 Link("View on GitHub",
                      destination: URL(string: "https://github.com/identd113/hdhr_VCR_swift")!)
                     .buttonStyle(.bordered)
@@ -322,6 +352,14 @@ struct SettingsView: View {
             .padding()
         }
         .navigationTitle("About")
+        .task {
+            guard liveChangelog == nil,
+                  let url = URL(string: "https://raw.githubusercontent.com/identd113/hdhr_VCR_swift/main/CHANGELOG.md"),
+                  let (data, _) = try? await URLSession.shared.data(from: url),
+                  let text = String(data: data, encoding: .utf8)
+            else { return }
+            liveChangelog = text
+        }
         .alert("You found it!", isPresented: $showEasterEgg) {
             Button("OK") {}
         } message: {
@@ -332,8 +370,8 @@ struct SettingsView: View {
     // MARK: - Helpers
 
     private var saveDirLabel: String {
-        if !defaultSaveDirectory.isEmpty {
-            return (defaultSaveDirectory as NSString).lastPathComponent
+        if !draftSaveDirectory.isEmpty {
+            return (draftSaveDirectory as NSString).lastPathComponent
         }
         if !state.config.Hdhr_setup_folder.isEmpty {
             return (state.config.Hdhr_setup_folder as NSString).lastPathComponent + " (from config)"
@@ -347,7 +385,7 @@ struct SettingsView: View {
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
         panel.directoryURL = state.defaultSaveDir
-        if panel.runModal() == .OK, let url = panel.url { defaultSaveDirectory = url.path }
+        if panel.runModal() == .OK, let url = panel.url { draftSaveDirectory = url.path }
     }
 }
 
