@@ -42,6 +42,9 @@ cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
 echo "==> Signing…"
 xattr -cr "$APP"
+# Also remove any ._* resource-fork sidecar files codesign --deep rejects on macOS 15+
+find "$APP" -name "._*" -delete
+find "$APP" -name ".DS_Store" -delete
 codesign --force --deep --sign - "$APP"
 touch "$APP"   # update bundle mtime so Finder shows today's date
 
