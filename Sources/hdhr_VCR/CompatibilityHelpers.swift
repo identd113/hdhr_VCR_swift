@@ -22,10 +22,17 @@ struct NetworkInterfaceInfo: Identifiable {
     var displayLabel: String { "\(name)  \(ip)" }
 }
 
-/// Returns all IPv4-bearing interfaces suitable for the discovery/recording interface picker.
-/// Excludes loopback (lo*), AWDL (awdl*), and low-latency WLAN (llw*).
-/// VPN tunnels (utun*, ipsec*, ppp*) are intentionally INCLUDED — they are valid targets
-/// when the HDHomeRun is on a remote network reachable via VPN.
+/// Returns IPv4-bearing interfaces suitable for the discovery/recording interface picker.
+///
+/// Physical/WiFi interfaces (en*, eth*) are always included when up.
+/// Tunnel interfaces (utun*, ipsec*, ppp*) are included only when they look like active
+/// VPN tunnels: IFF_UP + IFF_RUNNING flags set, and a routable (non-link-local) IPv4
+/// address assigned. On macOS, system-created utun interfaces (boot-time kernel entries,
+/// Network Extension content filters, etc.) are typically created without a routable IPv4
+/// address, so this filter naturally excludes them while admitting real VPN connections
+/// (OpenVPN, WireGuard, Tailscale, macOS built-in IKEv2/L2TP, etc.).
+///
+/// Always excluded: loopback (lo*), AWDL/AirDrop (awdl*), low-latency WLAN (llw*).
 func availableNetworkInterfaces() -> [NetworkInterfaceInfo] {
     var results: [NetworkInterfaceInfo] = []
     var ptr: UnsafeMutablePointer<ifaddrs>? = nil
@@ -44,6 +51,14 @@ func availableNetworkInterfaces() -> [NetworkInterfaceInfo] {
             var buf = [CChar](repeating: 0, count: Int(INET_ADDRSTRLEN))
             inet_ntop(AF_INET, &sin.pointee.sin_addr, &buf, socklen_t(INET_ADDRSTRLEN))
             ip = String(cString: buf)
+        }
+        let isTunnel = name.hasPrefix("utun") || name.hasPrefix("ipsec") || name.hasPrefix("ppp")
+        if isTunnel {
+            let flags = iface.pointee.ifa_flags
+            // Must be actively up and running
+            guard flags & UInt32(IFF_UP) != 0, flags & UInt32(IFF_RUNNING) != 0 else { continue }
+            // Link-local (169.254.x.x) is self-assigned and never a VPN endpoint
+            guard !ip.hasPrefix("169.254.") else { continue }
         }
         results.append(NetworkInterfaceInfo(name: name, ip: ip))
     }
