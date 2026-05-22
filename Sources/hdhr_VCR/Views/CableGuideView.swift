@@ -293,7 +293,10 @@ struct CableGuideView: View {
     }
 
     private func formatSlot(_ d: Date) -> String {
-        let f = DateFormatter(); f.dateFormat = "h:mm a"; return f.string(from: d)
+        let f = DateFormatter()
+        // "jmm" template: j means preferred hour format for the locale (12h or 24h)
+        f.dateFormat = DateFormatter.dateFormat(fromTemplate: "jmm", options: 0, locale: .current)
+        return f.string(from: d)
     }
 }
 

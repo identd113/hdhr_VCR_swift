@@ -8,10 +8,15 @@ struct FloatingGuideView: View {
         let f = DateFormatter(); f.dateStyle = .medium; f.timeStyle = .none; return f
     }()
     private static let upcomingFormatter: DateFormatter = {
-        let f = DateFormatter(); f.dateFormat = "E h:mm a"; return f
+        let f = DateFormatter()
+        // "Ejmm": E=short weekday, j=locale-preferred hour (12h or 24h), mm=minutes
+        f.dateFormat = DateFormatter.dateFormat(fromTemplate: "Ejmm", options: 0, locale: .current)
+        return f
     }()
     private static let timeRangeFormatter: DateFormatter = {
-        let f = DateFormatter(); f.dateFormat = "h:mm a"; f.locale = .current; return f
+        let f = DateFormatter()
+        f.dateFormat = DateFormatter.dateFormat(fromTemplate: "jmm", options: 0, locale: .current)
+        return f
     }()
 
     @EnvironmentObject var state: AppState
