@@ -139,6 +139,7 @@ final class AppState: ObservableObject {
         shows = filtered
         if filtered.count < allShows.count { saveConfig() }
         statusMessage = "\(shows.count) shows loaded"
+        glog("[Startup] \(shows.count) show(s) loaded from config")
     }
 
     /// Scan ps for caffeinate recordings that survived an app restart and reattach their PIDs.
@@ -195,6 +196,7 @@ final class AppState: ObservableObject {
                 devices = found
                 await fetchAllLineups(for: found)
                 statusMessage = "\(devices.count) tuner(s) found"
+                glog("[Discovery] \(devices.count) tuner(s): \(devices.map { "\($0.DeviceID) \($0.LocalIP)" }.joined(separator: ", "))")
                 return
             } catch {
                 if attempt < attempts {
@@ -539,6 +541,7 @@ final class AppState: ObservableObject {
             if show.show_recording, endDate > now, !recordingManager.isRunning(showId: show.show_id) {
                 shows[i].show_recording = false; shows[i].show_fail_count += 1
                 shows[i].show_fail_reason = "curl exited unexpectedly"
+                glog("[\(show.show_title)] FAIL curl exited unexpectedly — fail_count=\(shows[i].show_fail_count)")
                 notify("Recording Failed", body: show.show_title, subtitle: "curl exited unexpectedly")
                 dirty = true
             }
@@ -569,14 +572,17 @@ final class AppState: ObservableObject {
                let url = hdhrManager.streamURL(for: show.show_channel, lineup: lu) {
                 shows[index].show_url = url; show.show_url = url
             } else {
+                glog("[\(show.show_title)] NO STREAM URL — ch=\(show.show_channel) device=\(show.hdhr_record)")
                 shows[index].show_fail_count += 1; shows[index].show_fail_reason = "No stream URL"; return
             }
         }
         guard show.show_fail_count < failThreshold else {
+            glog("[\(show.show_title)] PAUSED — fail threshold \(failThreshold) reached")
             shows[index].show_active = false
             notify("Recording Paused", body: show.show_title, subtitle: "Failed \(failThreshold)× — deactivated"); return
         }
         guard diskOK(for: show) else {
+            glog("[\(show.show_title)] DISK FULL — skipping recording")
             shows[index].show_fail_count += 1; shows[index].show_fail_reason = "Disk too full"
             notify("Recording Skipped", body: show.show_title, subtitle: "Disk over \(Int(maxDiskPct))%"); return
         }
@@ -587,8 +593,10 @@ final class AppState: ObservableObject {
             endDate = endDate.addingTimeInterval(Double(config.Sports_padding_minutes) * 60)
             // Update stored show_end so the idle loop's natural-stop check uses the padded time
             shows[index].show_end = EpochDate(endDate)
+            glog("[\(show.show_title)] Bonus Time +\(config.Sports_padding_minutes) min applied")
         }
         let remainingSecs = max(60, Int(endDate.timeIntervalSince(Date())))
+        glog("[\(show.show_title)] START ch=\(show.show_channel) dur=\(remainingSecs)s transcode=\(show.show_transcode) → \(path)")
         recordingManager.start(showId: show.show_id, url: show.show_url,
                                outputPath: path, durationSeconds: remainingSecs,
                                transcode: show.show_transcode, showEnd: endDate,
@@ -621,6 +629,7 @@ final class AppState: ObservableObject {
         if !natural {
             // Manual stop: deactivate the show so it moves to Paused in the menu
             // and won't reschedule automatically — user can reactivate from Paused section
+            glog("[\(show.show_title)] STOP manual")
             shows[index].show_active = false
             shows[index].show_fail_reason = "Manually stopped"
             saveConfig()
@@ -636,10 +645,12 @@ final class AppState: ObservableObject {
                 if size == 0 {
                     shows[index].show_fail_count += 1
                     shows[index].show_fail_reason = "Output file missing or empty"
+                    glog("[\(show.show_title)] STOP file missing or empty — fail_count=\(shows[index].show_fail_count)")
                     notify("Recording Failed", body: show.show_title, subtitle: "File not written — check disk space and URL")
                     await scheduleNextAir(index: index)
                     return
                 }
+                glog("[\(show.show_title)] STOP natural size=\(size / 1024)KB → \(path)")
             }
             await scheduleNextAir(index: index)
             let completedShow = shows[index]
@@ -666,13 +677,16 @@ final class AppState: ObservableObject {
         let show = shows[index]
         switch show.state {
         case .single:
+            glog("[\(show.show_title)] DONE single — deactivated")
             shows[index].show_active = false
         case .dateTime:
             if let next = nextDateTime(for: show) {
                 shows[index].show_next = EpochDate(next)
                 shows[index].show_end  = EpochDate(next.addingTimeInterval(Double(show.show_length) * 60))
+                glog("[\(show.show_title)] NEXT \(shortTime(next)) ch=\(show.show_channel)")
             } else {
                 // No matching air day found (show_air_date is empty or invalid) — pause rather than loop forever
+                glog("[\(show.show_title)] PAUSED — no air days configured")
                 shows[index].show_active = false
                 shows[index].show_fail_reason = "No air days configured"
                 notify("Show Paused", body: show.show_title, subtitle: "No air days configured — edit show to fix")
@@ -701,23 +715,28 @@ final class AppState: ObservableObject {
                     }
                 }
                 if let match = guideStore.currentEpisode(seriesID: show.show_seriesid, channelNum: chFilter, deviceId: devFilter, at: now) {
+                    glog("[\(show.show_title)] NEXT now (on-air) ch=\(match.channelNum) \(match.entry.Title)")
                     applyMatch(match); return
                 }
                 if let match = guideStore.nextEpisode(seriesID: show.show_seriesid,
                                                       channelNum: chFilter,
                                                       deviceId: devFilter) {
+                    glog("[\(show.show_title)] NEXT \(shortTime(match.entry.startDate)) ch=\(match.channelNum) \(match.entry.Title)")
                     applyMatch(match); return
                 }
                 // Fallback: title match — handles guide entries where SeriesID is absent.
                 if let ch = chFilter, let dev = devFilter {
                     if let match = guideStore.currentEntryByTitle(show.show_title, channelNum: ch, deviceId: dev, at: now) {
+                        glog("[\(show.show_title)] NEXT now (title match, on-air) ch=\(match.channelNum)")
                         applyMatch(match); return
                     }
                     if let match = guideStore.nextEntryByTitle(show.show_title, channelNum: ch, deviceId: dev, after: now) {
+                        glog("[\(show.show_title)] NEXT \(shortTime(match.entry.startDate)) ch=\(match.channelNum) (title match)")
                         applyMatch(match); return
                     }
                 }
             }
+            glog("[\(show.show_title)] no episode found — retry in \(config.Series_scan_retry_hours)h")
             shows[index].show_next = EpochDate(Date().addingTimeInterval(Double(config.Series_scan_retry_hours) * 3600))
         }
     }
