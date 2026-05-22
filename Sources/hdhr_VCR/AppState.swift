@@ -190,7 +190,7 @@ final class AppState: ObservableObject {
         for attempt in 1...max(1, attempts) {
             statusMessage = attempt == 1 ? "Searching for tuners…" : "Searching for tuners (\(attempt)/\(attempts))…"
             do {
-                let found = try await hdhrManager.discoverDevices(knownHosts: knownHosts)
+                let found = try await hdhrManager.discoverDevices(knownHosts: knownHosts, interface: config.Network_interface)
                 devices = found
                 await fetchAllLineups(for: found)
                 statusMessage = "\(devices.count) tuner(s) found"
@@ -207,7 +207,7 @@ final class AppState: ObservableObject {
     /// Merge-only discovery: finds tuners not already in the devices list and adds them.
     /// Never removes existing entries so active recordings are never disrupted.
     private func probeForNewDevices() async {
-        guard let found = try? await hdhrManager.discoverDevices(knownHosts: knownHostsFromShows()) else { return }
+        guard let found = try? await hdhrManager.discoverDevices(knownHosts: knownHostsFromShows(), interface: config.Network_interface) else { return }
         let existingIDs = Set(devices.map { $0.DeviceID })
         let newDevices  = found.filter { !existingIDs.contains($0.DeviceID) }
         guard !newDevices.isEmpty else { return }
@@ -584,7 +584,8 @@ final class AppState: ObservableObject {
         recordingManager.start(showId: show.show_id, url: show.show_url,
                                outputPath: path, durationSeconds: remainingSecs,
                                transcode: show.show_transcode, showEnd: endDate,
-                               verbose: config.Verbose_curl)
+                               verbose: config.Verbose_curl,
+                               networkInterface: config.Network_interface)
         shows[index].show_recording = true; shows[index].show_recording_path = path
         shows[index].show_fail_count = max(0, show.show_fail_count - 1)
         // Stamp notify_recording_time so the "Recording Soon" pre-notification won't re-fire

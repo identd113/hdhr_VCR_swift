@@ -1,14 +1,53 @@
 import SwiftUI
+import Darwin
 
 /// Returns true if the effective macOS major version is ≥ `major`.
 /// Checks the "simulatedMacOSVersion" UserDefaults key first, so the
 /// developer can preview compatibility shims on the current machine without
 /// needing an older Mac (set via Settings → Maintenance → Developer).
-/// 0 = use the real running OS; 13/14/15 = simulate that version.
+/// 0 = unset (use real OS); storing the real version number also means "not simulating".
 func effectiveMacOS(_ major: Int) -> Bool {
-    let sim = UserDefaults.standard.integer(forKey: "simulatedMacOSVersion")
-    if sim > 0 { return sim >= major }
-    return ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= major
+    let sim  = UserDefaults.standard.integer(forKey: "simulatedMacOSVersion")
+    let real = ProcessInfo.processInfo.operatingSystemVersion.majorVersion
+    if sim > 0 && sim != real { return sim >= major }
+    return real >= major
+}
+
+/// Network interface entry for the interface picker.
+struct NetworkInterfaceInfo: Identifiable {
+    var id: String { name }
+    let name: String
+    let ip: String
+    /// Display label shown in the picker — name plus IP so users can identify tunnels.
+    var displayLabel: String { "\(name)  \(ip)" }
+}
+
+/// Returns all IPv4-bearing interfaces suitable for the discovery/recording interface picker.
+/// Excludes loopback (lo*), AWDL (awdl*), and low-latency WLAN (llw*).
+/// VPN tunnels (utun*, ipsec*, ppp*) are intentionally INCLUDED — they are valid targets
+/// when the HDHomeRun is on a remote network reachable via VPN.
+func availableNetworkInterfaces() -> [NetworkInterfaceInfo] {
+    var results: [NetworkInterfaceInfo] = []
+    var ptr: UnsafeMutablePointer<ifaddrs>? = nil
+    guard getifaddrs(&ptr) == 0 else { return results }
+    defer { freeifaddrs(ptr) }
+    var cur = ptr
+    while let iface = cur {
+        defer { cur = iface.pointee.ifa_next }
+        guard let addr = iface.pointee.ifa_addr,
+              addr.pointee.sa_family == sa_family_t(AF_INET) else { continue }
+        let name = String(cString: iface.pointee.ifa_name)
+        guard !name.hasPrefix("lo"), !name.hasPrefix("awdl"), !name.hasPrefix("llw"),
+              !results.contains(where: { $0.name == name }) else { continue }
+        var ip = ""
+        addr.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { sin in
+            var buf = [CChar](repeating: 0, count: Int(INET_ADDRSTRLEN))
+            inet_ntop(AF_INET, &sin.pointee.sin_addr, &buf, socklen_t(INET_ADDRSTRLEN))
+            ip = String(cString: buf)
+        }
+        results.append(NetworkInterfaceInfo(name: name, ip: ip))
+    }
+    return results.sorted { $0.name < $1.name }
 }
 
 // MARK: - EmptyStateView

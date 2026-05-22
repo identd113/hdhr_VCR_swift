@@ -20,12 +20,12 @@ final class HDHRManager {
     /// types are found in a single pass. mDNS is the primary source for EXTEND devices;
     /// UDP catches any additional tuners that don't respond to mDNS. Results are merged
     /// and DeviceAuth is supplemented from cloud for any device missing it.
-    func discoverDevices(knownHosts: [String] = []) async throws -> [HDHRDevice] {
+    func discoverDevices(knownHosts: [String] = [], interface: String = "") async throws -> [HDHRDevice] {
         // Run all three paths concurrently — known hosts (fastest on stable networks),
         // mDNS (EXTEND devices), and UDP broadcast (all other tuner types)
         async let knownHostDevices = knownHostsDiscover(ips: knownHosts)
         async let mdnsDevices      = mDNSDiscover()
-        async let udpDevices       = udpDiscoverAndFetch()
+        async let udpDevices       = udpDiscoverAndFetch(interface: interface)
 
         let fromKnown = await knownHostDevices
         let fromMDNS  = (try? await mdnsDevices) ?? []
@@ -69,8 +69,8 @@ final class HDHRManager {
     }
 
     /// Run UDP broadcast discovery and follow up each reply with a fetchDeviceInfo call.
-    private func udpDiscoverAndFetch() async -> [HDHRDevice] {
-        let raw = await udpDiscover()
+    private func udpDiscoverAndFetch(interface: String = "") async -> [HDHRDevice] {
+        let raw = await udpDiscover(interface: interface)
         guard !raw.isEmpty else { return [] }
         return await withTaskGroup(of: HDHRDevice?.self) { group in
             for device in raw {
@@ -123,15 +123,24 @@ final class HDHRManager {
 
     /// Broadcast SiliconDust discovery packet on the local network and collect replies.
     /// Blocks for up to 2 seconds waiting for device responses.
-    private func udpDiscover() async -> [HDHRDevice] {
+    private func udpDiscover(interface: String = "") async -> [HDHRDevice] {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
-                continuation.resume(returning: Self.udpDiscoverSync())
+                continuation.resume(returning: Self.udpDiscoverSync(interface: interface))
             }
         }
     }
 
-    private static func udpDiscoverSync() -> [HDHRDevice] {
+    private static func udpDiscoverSync(interface: String = "") -> [HDHRDevice] {
+        // Tunnel interfaces (VPN) don't support broadcast — skip UDP entirely.
+        // Known-hosts discovery handles remote devices via their saved IPs.
+        let isTunnel = !interface.isEmpty &&
+            (interface.hasPrefix("utun") || interface.hasPrefix("ipsec") || interface.hasPrefix("ppp"))
+        guard !isTunnel else {
+            print("[Discovery] UDP skipped — \(interface) is a tunnel, no broadcast support")
+            return []
+        }
+
         var found: [HDHRDevice] = []
 
         let sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)
@@ -143,6 +152,14 @@ final class HDHRManager {
         setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &yes, socklen_t(MemoryLayout<Int32>.size))
         var tv = timeval(tv_sec: 2, tv_usec: 0)
         setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
+
+        // Bind to a specific interface when requested (IP_BOUND_IF = 25 on macOS)
+        if !interface.isEmpty {
+            var ifIndex = if_nametoindex(interface)
+            if ifIndex > 0 {
+                setsockopt(sock, IPPROTO_IP, IP_BOUND_IF, &ifIndex, socklen_t(MemoryLayout<UInt32>.size))
+            }
+        }
 
         // Discovery request packet
         // Payload TLV: tag=0x01 (DeviceType), len=4, value=0xFFFFFFFF (wildcard)

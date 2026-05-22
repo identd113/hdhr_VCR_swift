@@ -187,6 +187,7 @@ struct AppConfig: Equatable {
     // Stored here for compat with the AppleScript config (Hdhr_setup_folder field).
     var Hdhr_setup_folder: String = ""
 
+    var Network_interface: String = ""  // empty = Auto (OS chooses interface)
     var Verbose_curl: Bool = false
     var Watch_in_VLC: Bool = false
     var Watch_in_VLC_initialized: Bool = false  // set true after first auto-detect so user toggles are preserved
@@ -209,6 +210,7 @@ extension AppConfig: Codable {
         Idle_timer_interval   = (try? c.decode(Int.self,     forKey: .Idle_timer_interval))   ?? 10
         Series_scan_retry_hours = (try? c.decode(Int.self,   forKey: .Series_scan_retry_hours)) ?? 4
         Hdhr_setup_folder     = (try? c.decode(String.self,  forKey: .Hdhr_setup_folder))     ?? ""
+        Network_interface     = (try? c.decode(String.self,  forKey: .Network_interface))     ?? ""
         Verbose_curl          = (try? c.decode(Bool.self,    forKey: .Verbose_curl))          ?? false
         Watch_in_VLC          = (try? c.decode(Bool.self,    forKey: .Watch_in_VLC))          ?? false
         Watch_in_VLC_initialized = (try? c.decode(Bool.self, forKey: .Watch_in_VLC_initialized)) ?? false

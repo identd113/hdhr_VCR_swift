@@ -216,6 +216,7 @@ Fail_count_setting      Int     3      deactivate show after N consecutive failu
 Min_disk_free_gb        Double  10.0   refuse to record below this free space (GB)
 Idle_timer_interval     Int     10     seconds between idle loop checks (min enforced: 5)
 Series_scan_retry_hours Int     4      hours to wait before re-scanning guide for a series episode
+Network_interface       String  ""     bind UDP discovery + curl to this interface; empty = Auto; utun* = VPN
 Verbose_curl            Bool    false  enable -v curl logging to ~/Library/Logs/hdhr_VCR_curl.log
 Watch_in_VLC            Bool    false  show "Watch in VLC" buttons in menus (only when VLC installed)
 Hdhr_setup_folder       String  ""     default recording folder (POSIX path; empty = ~/Documents/hdhr_videos)

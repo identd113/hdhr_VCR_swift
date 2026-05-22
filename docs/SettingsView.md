@@ -36,7 +36,8 @@ Sidebar entries (with SF Symbol icons):
 | Recording | `record.circle` | Folder, transcode, disk, failures, VLC, Bonus Time |
 | Guide | `tv` | Guide hours, series scan retry |
 | Notifications | `bell.badge` | Up Next timing, Recording alert timing |
-| Advanced | `terminal` | Idle interval, verbose curl, config file path |
+| Advanced | `terminal` | Network interface, idle interval, verbose curl, config file path |
+| Maintenance | `wrench.and.screwdriver` | Show maintenance, guide/device ops, brew tool installs, Developer (OS sim) |
 | About | `info.circle` | App logo, version, history, GitHub link |
 
 ---
@@ -81,6 +82,11 @@ Sidebar entries (with SF Symbol icons):
 
 ### Advanced
 
+- **Discovery & recording interface** — `Picker`: "Auto" (empty string) plus all IPv4-bearing interfaces on the machine, each shown as `name  ip` (e.g. `en0  192.168.1.5`, `utun0  10.8.0.2`). Populated by `availableNetworkInterfaces()` in `CompatibilityHelpers.swift` via `getifaddrs`; excludes lo*, awdl*, llw* but **includes VPN tunnels (utun*, ipsec*, ppp*)** so a remote HDHomeRun reachable via VPN can be targeted. Stored in `draft.Network_interface`. When non-empty:
+  - UDP device discovery (`HDHRManager.udpDiscoverSync`) binds the socket via `IP_BOUND_IF` + `if_nametoindex` — **automatically skipped for tunnel interfaces** (tunnels don't support broadcast; known-hosts path handles remote devices via their saved IPs)
+  - curl recordings get `--interface <name>` appended to their args
+  - URLSession HTTP requests (device HTTP, guide, lineup) rely on OS routing — for VPN this is correct behaviour since the VPN routes the remote subnet through the tunnel automatically
+  - Leave on Auto for single-NIC setups.
 - **Idle check interval** — `Stepper` (5–60 sec, step 5). How often the idle loop fires. Minimum enforced at 5s (`max(5, config.Idle_timer_interval)`). Changing this calls `state.startTimer()` immediately via `applyAndSave()`.
 - **Verbose curl logging** — `Toggle`. Adds `-v` to curl args and pipes curl stderr to `~/Library/Logs/hdhr_VCR_curl.log`. When enabled, shows the log path (selectable text) and a "Show curl log in Finder" button. Log path is `RecordingManager.curlLogPath` (static let).
 - **Config file path** — read-only display (`state.configManager.configPath`) + "Show config in Finder" button using `NSWorkspace.shared.selectFile(_:inFileViewerRootedAtPath:)`.

@@ -11,7 +11,7 @@ final class RecordingManager {
 
     func start(showId: String, url: String, outputPath: String,
                durationSeconds: Int, transcode: String, showEnd: Date,
-               verbose: Bool = false) {
+               verbose: Bool = false, networkInterface: String = "") {
         guard pids[showId] == nil else { return }
 
         let profile      = transcode.lowercased().trimmingCharacters(in: .whitespaces)
@@ -25,6 +25,7 @@ final class RecordingManager {
             "-H", "show_end:\(showEndEpoch)",
             "-H", "appname:hdhrVCRplus",
         ]
+        if !networkInterface.isEmpty { curlArgs += ["--interface", networkInterface] }
         if verbose { curlArgs.append("-v") }
         curlArgs += [streamURL, "-o", outputPath]
 

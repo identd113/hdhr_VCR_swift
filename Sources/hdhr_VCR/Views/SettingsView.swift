@@ -102,6 +102,10 @@ struct SettingsView: View {
             draftAddShowMode    = addShowMode
             draftSaveDirectory  = defaultSaveDirectory
             draftLaunchAtLogin  = SMAppService.mainApp.status == .enabled
+            // Initialize sim version to the real OS version so the picker selects "current" by default
+            if simulatedMacOSVersion == 0 {
+                simulatedMacOSVersion = ProcessInfo.processInfo.operatingSystemVersion.majorVersion
+            }
         }
     }
 
@@ -277,6 +281,17 @@ struct SettingsView: View {
 
     private var advancedView: some View {
         Form {
+            Section("Network") {
+                Picker("Discovery & recording interface", selection: $draft.Network_interface) {
+                    Text("Auto").tag("")
+                    ForEach(availableNetworkInterfaces()) { iface in
+                        Text(iface.displayLabel).tag(iface.name)
+                    }
+                }
+                Text("Binds UDP discovery and curl recordings to a specific interface. VPN tunnels (utun*) are listed — use one if your HDHomeRun is on a remote network reachable via VPN.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
             Section("Performance") {
                 Stepper(
                     "Idle check: every \(draft.Idle_timer_interval) sec",
@@ -387,11 +402,11 @@ struct SettingsView: View {
             if realVersion > 13 {
                 Section("Developer") {
                     Picker("Simulate macOS version", selection: $simulatedMacOSVersion) {
-                        Text("Current (macOS \(realVersion))").tag(0)
+                        Text("macOS \(realVersion) (current)").tag(realVersion)
                         if realVersion >= 15 { Text("macOS 14 (Sonoma)").tag(14) }
                         if realVersion >= 14 { Text("macOS 13 (Ventura)").tag(13) }
                     }
-                    if simulatedMacOSVersion > 0 {
+                    if simulatedMacOSVersion != realVersion && simulatedMacOSVersion != 0 {
                         Label("Simulating macOS \(simulatedMacOSVersion) — reopen guide or wizard to see effect",
                               systemImage: "exclamationmark.triangle")
                             .font(.caption).foregroundStyle(.orange)
