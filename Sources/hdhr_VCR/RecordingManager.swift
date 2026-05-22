@@ -5,7 +5,7 @@ final class RecordingManager {
     private var pids:     [String: Int32] = [:]   // caffeinate PID per show
     private var curlPids: [String: Int32] = [:]   // curl child PID (for explicit kill on manual stop)
 
-    static let curlLogPath = NSHomeDirectory() + "/Library/Logs/hdhr_VCR_curl.log"
+    static let curlLogPath = NSHomeDirectory() + "/Library/Logs/hdhrVCRplus.log"
 
     // MARK: - Start
 

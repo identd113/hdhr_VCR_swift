@@ -88,7 +88,7 @@ Sidebar entries (with SF Symbol icons):
   - URLSession HTTP requests rely on OS routing — correct for VPN since the VPN routes the remote subnet through the tunnel automatically
   - Leave on Auto for single-NIC setups.
 - **Idle check interval** — `Stepper` (5–60 sec, step 5). How often the idle loop fires. Minimum enforced at 5s (`max(5, config.Idle_timer_interval)`). Changing this calls `state.startTimer()` immediately via `applyAndSave()`.
-- **Verbose curl logging** — `Toggle`. Adds `-v` to curl args and pipes curl stderr to `~/Library/Logs/hdhr_VCR_curl.log`. When enabled, shows the log path (selectable text) and a "Show curl log in Finder" button. Log path is `RecordingManager.curlLogPath` (static let).
+- **Verbose curl logging** — `Toggle`. Adds `-v` to curl args and pipes curl stderr to `~/Library/Logs/hdhrVCRplus.log`. When enabled, shows the log path (selectable text) and a "Show curl log in Finder" button. Log path is `RecordingManager.curlLogPath` (static let).
 - **Config file path** — read-only display (`state.configManager.configPath`) + "Show config in Finder" button using `NSWorkspace.shared.selectFile(_:inFileViewerRootedAtPath:)`.
 
 ---

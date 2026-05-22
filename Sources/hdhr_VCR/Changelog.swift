@@ -64,7 +64,7 @@ let appChangelog = """
 - Bonus Time extension for sports recordings
 - Fail threshold: auto-pause after N failures
 - Launch at Login via SMAppService
-- Verbose curl logging to ~/Library/Logs/hdhr_VCR_curl.log
+- Verbose curl logging to ~/Library/Logs/hdhrVCRplus.log
 - Up Next and Recording Soon notifications
 - Boot-resume: reattach recordings that survived a restart
 - Initial Swift/SwiftUI rewrite of the original 2016 AppleScript app
