@@ -5,8 +5,23 @@ struct hdhr_VCRApp: App {
     @StateObject private var appState = AppState()
 
     init() {
+        // Redirect stdout + stderr to ~/Library/Logs/hdhrVCRplus.log so all print()
+        // calls are persisted regardless of how the app was launched (.app bundle,
+        // Login Item, or direct binary). Truncate to 0 when the file exceeds 5 MB
+        // so it doesn't grow without bound across many restarts.
+        let logURL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Logs/hdhrVCRplus.log")
+        let logPath = logURL.path
+        if let attrs = try? FileManager.default.attributesOfItem(atPath: logPath),
+           let size = attrs[.size] as? Int, size > 5 * 1024 * 1024 {
+            try? "".write(toFile: logPath, atomically: false, encoding: .utf8)
+        }
+        freopen(logPath, "a", stdout)
+        freopen(logPath, "a", stderr)
+        let stamp = ISO8601DateFormatter().string(from: Date())
+        print("\n=== hdhrVCRplus launched \(stamp) ===")
+
         // Hide Dock icon — menu bar only.
-        // In Xcode: Target → Info → add "Application is agent (UIElement)" = YES
         NSApplication.shared.setActivationPolicy(.accessory)
         // Set app icon from bundled app.jpg so it appears in Force Quit and Activity Monitor.
         if let icon = appIconImage {
