@@ -15,6 +15,13 @@
 - **Settings deferred save** — Add Show Mode, Default Folder, and Launch at Login no longer apply immediately; all settings require pressing Save (⌘S) to take effect
 - **SeriesID-only badge matching** — "already managed" bookmark badge in cable guide now matches strictly by SeriesID when present; title fallback only used for shows with no SeriesID
 - **Live changelog** — Settings → About fetches the latest CHANGELOG.md from GitHub; falls back to bundled copy when offline; scrolls inline with the rest of the About view
+- **Cable guide status badges** — guide cells now show a red border + dot for actively recording shows and an orange border + clock for shows recording within 30 minutes; bookmark badge remains for all managed shows
+- **Next Up menu text** — show names in the Next Up section now match the body font size of the Scheduled section
+- **Record defaults to Single** — clicking Record in the guide wizard now defaults to Single type; series options remain available
+- **Quit defaults to Keep Recording** — when quitting with recordings in progress, "Keep Recording & Quit" is now the default (Return key) button; caffeinate/curl survive the quit and reattach on next launch
+- **SeriesID(All) device fix** — when a SeriesID(All) show resolves to an episode on a different tuner than the one browsed, the recording now targets the correct device and channel URL instead of silently falling back to the wrong one
+- **Menu first-click warmup** — app pre-renders the menu view 2 seconds after startup so the first click is as fast as subsequent ones
+- **Cable guide lazy rows** — guide channel rows now render lazily (only visible rows), reducing initial load from ~50 rows to ~13
 
 ## 2026-05-21
 

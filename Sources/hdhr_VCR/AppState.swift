@@ -1,6 +1,7 @@
 import Foundation
 import UserNotifications
 import AppKit
+import SwiftUI
 
 @MainActor
 final class AppState: ObservableObject {
@@ -16,11 +17,11 @@ final class AppState: ObservableObject {
 
     @Published var editingShowId: String? = nil
 
-    var isRecording: Bool       { shows.contains { $0.show_recording } }
-    var recordingShows: [Show]  { shows.filter { $0.show_recording && ($0.show_end.date ?? .distantPast) > Date() } }
-    var activeShows: [Show]     { shows.filter { $0.show_active && !$0.show_recording }
-                                       .sorted { ($0.show_next.date ?? .distantFuture) < ($1.show_next.date ?? .distantFuture) } }
-    var inactiveShows: [Show]   { shows.filter { !$0.show_active } }
+    var isRecording: Bool      { shows.contains { $0.show_recording } }
+    var recordingShows: [Show] { shows.filter { $0.show_recording && ($0.show_end.date ?? .distantPast) > Date() } }
+    var activeShows: [Show]    { shows.filter { $0.show_active && !$0.show_recording }
+                                      .sorted { ($0.show_next.date ?? .distantFuture) < ($1.show_next.date ?? .distantFuture) } }
+    var inactiveShows: [Show]  { shows.filter { !$0.show_active } }
 
     var nextShowMinutes: Double? {
         activeShows
@@ -78,6 +79,15 @@ final class AppState: ObservableObject {
         startTimer()
         isStartingUp = false
         glog("[Startup] complete")
+
+        // Pre-warm SwiftUI's JIT compiler for MenuContent so first menu click has no delay.
+        // Creating an NSHostingView forces a full layout pass; the view is discarded immediately.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+            guard let self else { return }
+            let v = NSHostingView(rootView: MenuContent().environmentObject(self))
+            v.frame = CGRect(x: 0, y: 0, width: 320, height: 600)
+            _ = v.fittingSize
+        }
     }
 
     func logGuide(_ msg: String) { glog(msg) }
@@ -383,22 +393,23 @@ final class AppState: ObservableObject {
         let devFilter = isAll ? nil : device.DeviceID
         let now       = Date()
 
-        if let m = guideStore.currentEpisode(seriesID: show.show_seriesid, channelNum: chFilter, deviceId: devFilter, at: now) {
+        // Helper: apply a SeriesMatch to the show — uses m.deviceId for lineup lookup so
+        // SeriesID(All) works correctly when the episode is on a different device than browsed.
+        func apply(_ m: GuideStore.SeriesMatch) {
             show.show_next    = EpochDate(m.entry.startDate)
             show.show_end     = EpochDate(m.entry.endDate)
             show.show_channel = m.channelNum
-            if let url = hdhrManager.streamURL(for: m.channelNum, lineup: lineups[device.DeviceID] ?? []) {
+            show.hdhr_record  = m.deviceId
+            if let url = hdhrManager.streamURL(for: m.channelNum, lineup: lineups[m.deviceId] ?? []) {
                 show.show_url = url
             }
-            return
+        }
+
+        if let m = guideStore.currentEpisode(seriesID: show.show_seriesid, channelNum: chFilter, deviceId: devFilter, at: now) {
+            apply(m); return
         }
         if let m = guideStore.nextEpisode(seriesID: show.show_seriesid, channelNum: chFilter, deviceId: devFilter, after: now) {
-            show.show_next    = EpochDate(m.entry.startDate)
-            show.show_end     = EpochDate(m.entry.endDate)
-            show.show_channel = m.channelNum
-            if let url = hdhrManager.streamURL(for: m.channelNum, lineup: lineups[device.DeviceID] ?? []) {
-                show.show_url = url
-            }
+            apply(m)
         }
     }
 
@@ -628,29 +639,26 @@ final class AppState: ObservableObject {
                     await guideStore.load(for: device, hours: config.GuideHours)
                     guideByDevice = guideStore.channelsByDevice
                 }
-                // Check for a currently-airing episode first (e.g. marathon, back-to-back airings)
+                // Check for a currently-airing episode first (e.g. marathon, back-to-back airings).
+                // Use match.deviceId for lineup lookup — SeriesID(All) may resolve to a different device.
                 let now = Date()
-                if let match = guideStore.currentEpisode(seriesID: show.show_seriesid, channelNum: chFilter, deviceId: devFilter, at: now) {
+                func applyMatch(_ match: GuideStore.SeriesMatch) {
                     shows[index].show_next    = EpochDate(match.entry.startDate)
                     shows[index].show_end     = EpochDate(match.entry.endDate)
                     shows[index].show_channel = match.channelNum
                     shows[index].show_genre   = match.entry.firstGenre ?? ""
-                    if let url = hdhrManager.streamURL(for: match.channelNum, lineup: lineups[device.DeviceID] ?? []) {
+                    shows[index].hdhr_record  = match.deviceId
+                    if let url = hdhrManager.streamURL(for: match.channelNum, lineup: lineups[match.deviceId] ?? []) {
                         shows[index].show_url = url
                     }
-                    return
+                }
+                if let match = guideStore.currentEpisode(seriesID: show.show_seriesid, channelNum: chFilter, deviceId: devFilter, at: now) {
+                    applyMatch(match); return
                 }
                 if let match = guideStore.nextEpisode(seriesID: show.show_seriesid,
                                                       channelNum: chFilter,
                                                       deviceId: devFilter) {
-                    shows[index].show_next    = EpochDate(match.entry.startDate)
-                    shows[index].show_end     = EpochDate(match.entry.endDate)
-                    shows[index].show_channel = match.channelNum
-                    shows[index].show_genre   = match.entry.firstGenre ?? ""
-                    if let url = hdhrManager.streamURL(for: match.channelNum, lineup: lineups[device.DeviceID] ?? []) {
-                        shows[index].show_url = url
-                    }
-                    return
+                    applyMatch(match); return
                 }
             }
             shows[index].show_next = EpochDate(Date().addingTimeInterval(Double(config.Series_scan_retry_hours) * 3600))

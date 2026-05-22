@@ -14,6 +14,13 @@ let appChangelog = """
 - Settings deferred save (Add Show Mode, Default Folder, Launch at Login now require Save)
 - SeriesID-only badge matching in cable guide (title fallback only when no SeriesID)
 - Live changelog in About tab (fetched from GitHub, inline scroll, offline fallback)
+- Cable guide status badges (red=recording, orange=next up within 30 min)
+- Next Up menu text size matches Scheduled section
+- Record button defaults to Single type
+- Quit alert defaults to Keep Recording & Quit
+- SeriesID(All) device fix: resolves correct device/URL when episode is on a different tuner
+- Menu first-click warmup (pre-render 2s after startup)
+- Cable guide lazy row rendering (~4x faster initial load)
 
 ## 2026-05-21
 - Guide summary panel polish + upcoming airings for SeriesID shows

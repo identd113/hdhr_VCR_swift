@@ -175,7 +175,7 @@ Shows have exactly one of four states, determined by boolean flags:
 Called after each recording completes (and after file verification passes):
 - **Single**: sets `show_active = false`
 - **DateTime**: calculates next matching weekday/time in **local time** via `nextDateTime(for:)`. `show_time` stores local decimal hours and `show_air_date` stores local day names — both match what the user sees in the guide and the UI. If `show_air_date` is empty or invalid (returns `nil`), the show is paused with reason `"No air days configured"` rather than looping forever.
-- **SeriesID**: reloads guide for the device if stale (`!guideStore.isFresh`), then searches `seriesIndex` for the next matching episode. If found, updates `show_next`, `show_end`, `show_channel`, and `show_url`. If not found, sets `show_next = now + Series_scan_retry_hours`.
+- **SeriesID**: reloads guide for the device if stale (`!guideStore.isFresh`), then checks `currentEpisode` first (handles marathons/back-to-back), then `nextEpisode`. Both use `match.deviceId` for the lineup lookup and update `show.hdhr_record` — SeriesID(All) may resolve to a different device than the one originally browsed. If no episode found, sets `show_next = now + Series_scan_retry_hours`.
 
 ### Timestamps (`EpochDate`)
 All `Date?` fields in `Show` use the `EpochDate` wrapper struct, which:
