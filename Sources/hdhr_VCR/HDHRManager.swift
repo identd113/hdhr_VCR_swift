@@ -132,11 +132,9 @@ final class HDHRManager {
     }
 
     private static func udpDiscoverSync(interface: String = "") -> [HDHRDevice] {
-        // Tunnel interfaces (VPN) don't support broadcast — skip UDP entirely.
+        // Tunnel/VPN interfaces don't support broadcast — skip UDP entirely.
         // Known-hosts discovery handles remote devices via their saved IPs.
-        let isTunnel = !interface.isEmpty &&
-            (interface.hasPrefix("utun") || interface.hasPrefix("ipsec") || interface.hasPrefix("ppp"))
-        guard !isTunnel else {
+        guard interface.isEmpty || !isPointToPointInterface(interface) else {
             print("[Discovery] UDP skipped — \(interface) is a tunnel, no broadcast support")
             return []
         }
