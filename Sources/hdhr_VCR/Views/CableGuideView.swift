@@ -27,6 +27,7 @@ private let _genreColorMap: [String: Color] = [
 
 /// Returns the display colour for a guide entry.
 /// Uses genre when available, falls back to series/title hash.
+/// On-air shows use full opacity; future shows are dimmed to 0.75 so on-air stands out.
 func guideEntryColor(for entry: GuideEntry, onAir: Bool) -> Color {
     if let genre = entry.firstGenre?.lowercased(),
        let color = _genreColorMap[genre] {
@@ -52,6 +53,10 @@ struct CableGuideView: View {
     @Binding var snapToNow:       Bool        // set true externally to snap grid to now
     let managedSeriesIDs: Set<String>         // shows already scheduled (by SeriesID)
     let managedTitles:    Set<String>         // shows already scheduled (by title fallback)
+    // Bonus Time: seriesIDs/titles of managed sports shows; used to draw the dotted overtime box
+    let bonusSeriesIDs:   Set<String>
+    let bonusTitles:      Set<String>
+    let bonusMinutes:     Int                 // how many minutes of Bonus Time to visualize
     let genreFilter:      String?             // nil = show all; non-nil = dim non-matching
     var onConfirm: (() -> Void)? = nil        // called on double-click to advance wizard
 
@@ -214,6 +219,9 @@ struct CableGuideView: View {
                                 selectedChannel: selectedChannel,
                                 managedSeriesIDs: managedSeriesIDs,
                                 managedTitles:   managedTitles,
+                                bonusSeriesIDs:  bonusSeriesIDs,
+                                bonusTitles:     bonusTitles,
+                                bonusMinutes:    bonusMinutes,
                                 genreFilter:     genreFilter,
                                 onSelect: { entry, lu in
                                     selectedEntry   = entry
@@ -281,6 +289,10 @@ private struct ShowBlocksRow: View, Equatable {
     let selectedChannel:  LineupEntry?
     let managedSeriesIDs: Set<String>
     let managedTitles:    Set<String>
+    // Bonus Time: sports shows that get an overtime extension — used to draw the dotted overlay box
+    let bonusSeriesIDs:   Set<String>
+    let bonusTitles:      Set<String>
+    let bonusMinutes:     Int
     let genreFilter:      String?
     var onSelect:  (GuideEntry, LineupEntry?) -> Void
     var onConfirm: (() -> Void)?
@@ -293,7 +305,10 @@ private struct ShowBlocksRow: View, Equatable {
         lhs.genreFilter                  == rhs.genreFilter &&
         lhs.displayStart                 == rhs.displayStart &&
         lhs.managedSeriesIDs             == rhs.managedSeriesIDs &&
-        lhs.managedTitles                == rhs.managedTitles
+        lhs.managedTitles                == rhs.managedTitles &&
+        lhs.bonusSeriesIDs               == rhs.bonusSeriesIDs &&
+        lhs.bonusTitles                  == rhs.bonusTitles &&
+        lhs.bonusMinutes                 == rhs.bonusMinutes
     }
 
     var body: some View {
@@ -342,6 +357,9 @@ private struct ShowBlocksRow: View, Equatable {
                           && selectedChannel?.GuideNumber == lineupEntry?.GuideNumber
         let isManaged  = (entry.SeriesID.map { managedSeriesIDs.contains($0) } ?? false)
                        || managedTitles.contains(entry.Title)
+        // Bonus Time: this managed show is a sports show with extra recording time configured
+        let isBonusTime = (entry.SeriesID.map { bonusSeriesIDs.contains($0) } ?? false)
+                        || bonusTitles.contains(entry.Title)
         let matchesFilter: Bool = {
             guard let f = genreFilter else { return true }
             return entry.Filter?.contains(where: { $0.caseInsensitiveCompare(f) == .orderedSame }) ?? false
@@ -350,6 +368,12 @@ private struct ShowBlocksRow: View, Equatable {
         ZStack(alignment: .topLeading) {
             RoundedRectangle(cornerRadius: 3)
                 .fill(guideEntryColor(for: entry, onAir: onAir))
+
+            // Item 9: white wash on on-air shows makes them visibly brighter than future shows,
+            // which are already dimmed to 0.75 opacity by guideEntryColor
+            if onAir && !isSelected {
+                RoundedRectangle(cornerRadius: 3).fill(Color.white.opacity(0.12))
+            }
 
             if isSelected {
                 RoundedRectangle(cornerRadius: 3).strokeBorder(Color.white, lineWidth: 2.5)
@@ -402,6 +426,31 @@ private struct ShowBlocksRow: View, Equatable {
             onSelect(entry, lineupEntry)
             onConfirm?()
         })
+
+        // Item 6: Bonus Time dotted box — drawn as a sibling view immediately to the right of the
+        // show block, showing how far past the guide end the recording will actually run.
+        // Only appears for managed sports shows when Bonus Time is configured (bonusMinutes > 0).
+        if isBonusTime && bonusMinutes > 0 {
+            let bonusW = max(8, CGFloat(bonusMinutes) * pxPerMin - 2)
+            ZStack(alignment: .topLeading) {
+                // Dotted border matching the show's color to visually link them
+                RoundedRectangle(cornerRadius: 3)
+                    .stroke(style: StrokeStyle(lineWidth: 1.5, dash: [5, 3]))
+                    .foregroundColor(guideEntryColor(for: entry, onAir: onAir).opacity(0.85))
+                // Label if the box is wide enough to fit text
+                if bonusW > 60 {
+                    Text("Bonus Time")
+                        .font(.system(size: 8, weight: .medium))
+                        .foregroundColor(guideEntryColor(for: entry, onAir: onAir).opacity(0.9))
+                        .padding(.horizontal, 4)
+                        .padding(.top, 4)
+                }
+            }
+            .frame(width: bonusW, height: rowH - 2)
+            .offset(x: cellX + cellW + 2, y: 1)
+            .opacity(matchesFilter ? 1.0 : 0.2)
+            .allowsHitTesting(false)  // tap goes to the underlying show, not the bonus box
+        }
     }
 }
 

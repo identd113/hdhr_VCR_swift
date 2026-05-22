@@ -2,6 +2,17 @@ import SwiftUI
 
 // Multi-step wizard: Device → Channel → Guide entry → Details → Save
 struct AddShowView: View {
+
+    // Static so these are created once, not on every guide cell tap or summaryPanel render
+    private static let origAirdateFormatter: DateFormatter = {
+        let f = DateFormatter(); f.dateStyle = .medium; f.timeStyle = .none; return f
+    }()
+    private static let upcomingFormatter: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "E h:mm a"; return f
+    }()
+    private static let timeRangeFormatter: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "h:mm a"; f.locale = .current; return f
+    }()
     @EnvironmentObject var state: AppState
     @Environment(\.dismiss) var dismiss
 
@@ -124,6 +135,12 @@ struct AddShowView: View {
             $0.show_seriesid.isEmpty ? nil : $0.show_seriesid
         })
         let managedTitles = Set(state.shows.map { $0.show_title })
+        // Bonus Time: find managed sports shows so the guide can draw the overtime dotted box
+        let sportShows = state.shows.filter {
+            state.config.Sports_padding_enabled && $0.show_genre.lowercased().contains("sports")
+        }
+        let bonusSeriesIDs = Set(sportShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
+        let bonusTitles    = Set(sportShows.map { $0.show_title })
 
         return VStack(spacing: 0) {
             // ── Compact toolbar: tuner + genre filter + actions ───────────────
@@ -195,6 +212,9 @@ struct AddShowView: View {
                             snapToNow:        $snapToNow,
                             managedSeriesIDs: managedSeriesIDs,
                             managedTitles:    managedTitles,
+                            bonusSeriesIDs:   bonusSeriesIDs,
+                            bonusTitles:      bonusTitles,
+                            bonusMinutes:     state.config.Sports_padding_minutes,
                             genreFilter:      genreFilter,
                             onConfirm: {
                                 applyGuideEntry()
@@ -268,28 +288,55 @@ struct AddShowView: View {
                             .font(.caption).bold()
                             .foregroundColor(.red)
                     }
+
+                    // Genre badge — skip the generic "Series" tag since it adds nothing;
+                    // shown for meaningful genres like Sports, Drama, Comedy
+                    if let genre = entry.firstGenre, genre.lowercased() != "series" {
+                        Text(genre.uppercased())
+                            .font(.system(size: 9, weight: .bold))
+                            .padding(.horizontal, 5).padding(.vertical, 2)
+                            .background(Color.white.opacity(0.20))
+                            .cornerRadius(3)
+                            .foregroundColor(.white.opacity(0.90))
+                            .shadow(color: .black.opacity(0.35), radius: 1.5, x: 0, y: 1)
+                    }
+
                     if let ep = episodeInfoLabel(entry) {
+                        // Full white + shadow so episode info reads clearly on all genre colors
                         Text(ep)
                             .font(.subheadline)
-                            .foregroundColor(.white.opacity(0.85))
+                            .foregroundColor(.white)
                             .lineLimit(1)
+                            .shadow(color: .black.opacity(0.35), radius: 1.5, x: 0, y: 1)
                     }
+
+                    // Original air date — present on most episodes; lets the user distinguish
+                    // first-runs from repeats without needing to know the episode number
+                    if let airdate = entry.OriginalAirdate {
+                        Text("Orig. \(Self.origAirdateFormatter.string(from: Date(timeIntervalSince1970: TimeInterval(airdate))))")
+                            .font(.caption)
+                            .foregroundColor(.white.opacity(0.80))
+                            .shadow(color: .black.opacity(0.35), radius: 1.5, x: 0, y: 1)
+                    }
+
                     if let syn = entry.Synopsis, !syn.isEmpty {
+                        // Full white + shadow so synopsis is legible on both dark and light genre backgrounds
                         Text(syn)
                             .font(.callout)
-                            .foregroundColor(.white.opacity(0.9))
+                            .foregroundColor(.white)
                             .lineLimit(3)
+                            .shadow(color: .black.opacity(0.35), radius: 1.5, x: 0, y: 1)
                     }
                     // Upcoming airings for series shows
                     if let sid = entry.SeriesID, !sid.isEmpty {
                         let upcoming = state.upcomingGuideEpisodes(seriesID: sid)
                         if !upcoming.isEmpty {
-                            let f: DateFormatter = { let df = DateFormatter(); df.dateFormat = "E h:mm a"; return df }()
-                            let labels = upcoming.map { "ch \($0.channel) \(f.string(from: $0.entry.startDate))" }
+                                let labels = upcoming.map { "ch \($0.channel) \(Self.upcomingFormatter.string(from: $0.entry.startDate))" }
                             Text(labels.joined(separator: "  ·  "))
                                 .font(.caption2)
-                                .foregroundColor(.white.opacity(0.70))
+                                .foregroundColor(.white.opacity(0.85))
                                 .lineLimit(2)
+                                .shadow(color: .black.opacity(0.35), radius: 1.5, x: 0, y: 1)
                         }
                     }
                     Spacer(minLength: 0)
@@ -297,7 +344,8 @@ struct AddShowView: View {
                         ChannelIcon(urlString: channelIcon, size: 18)
                         Text("ch \(selectedChannel?.GuideNumber ?? "?")  ·  \(guideTimeRange(entry))")
                             .font(.caption)
-                            .foregroundColor(.white.opacity(0.75))
+                            .foregroundColor(.white.opacity(0.85))
+                            .shadow(color: .black.opacity(0.35), radius: 1.5, x: 0, y: 1)
                         Spacer()
                         if state.config.Watch_in_VLC,
                            FileManager.default.fileExists(atPath: "/Applications/VLC.app") {
@@ -316,6 +364,16 @@ struct AddShowView: View {
                         .disabled(selectedChannel == nil)
                     }
                 }
+                // Dark gradient scrim behind the text column improves contrast on light genre
+                // backgrounds (amber comedy, green sports) without changing the background color
+                .background(
+                    LinearGradient(
+                        gradient: Gradient(colors: [Color.black.opacity(0.28), Color.black.opacity(0.04)]),
+                        startPoint: .leading, endPoint: .trailing
+                    )
+                    .cornerRadius(8)
+                    .blendMode(.multiply)
+                )
                 Spacer()
             }
             .padding(.horizontal, 14)
@@ -341,10 +399,7 @@ struct AddShowView: View {
     }
 
     private func guideTimeRange(_ entry: GuideEntry) -> String {
-        let f = DateFormatter()
-        f.dateFormat = "h:mm a"
-        f.locale = Locale.current
-        return "\(f.string(from: entry.startDate)) – \(f.string(from: entry.endDate))"
+        return "\(Self.timeRangeFormatter.string(from: entry.startDate)) – \(Self.timeRangeFormatter.string(from: entry.endDate))"
     }
 
     private var detailsStep: some View {

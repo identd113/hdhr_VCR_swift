@@ -81,9 +81,12 @@ final class AppState: ObservableObject {
 
     func logGuide(_ msg: String) { glog(msg) }
 
+    // Static — ISO8601DateFormatter is expensive; single MainActor caller makes static safe
+    private static let logFormatter = ISO8601DateFormatter()
+
     private func glog(_ msg: String) {
         print(msg)
-        let ts = ISO8601DateFormatter().string(from: Date())
+        let ts = Self.logFormatter.string(from: Date())
         let line = "[\(ts)] \(msg)\n"
         guard let data = line.data(using: .utf8) else { return }
         let path = GuideStore.guideLogPath
@@ -183,6 +186,8 @@ final class AppState: ObservableObject {
     }
 
     /// Fetch lineup for every device in parallel; stores results in `lineups[deviceID]`.
+    /// After all lineups are fetched, checks whether any show's stored stream URL still uses
+    /// a stale device IP and updates it from the fresh lineup data.
     private func fetchAllLineups(for devices: [HDHRDevice]) async {
         await withTaskGroup(of: (String, [LineupEntry]?).self) { group in
             for device in devices {
@@ -195,6 +200,31 @@ final class AppState: ObservableObject {
                 if let lu { lineups[id] = lu }
             }
         }
+        // After lineups are current, fix any stale show URLs caused by device IP changes
+        updateShowURLsFromLineups()
+    }
+
+    /// Detects shows whose stored stream URL contains a stale device IP and replaces it
+    /// with the fresh URL from the current lineup.  Called after every lineup fetch so a
+    /// DHCP IP change is corrected automatically rather than waiting for the next recording.
+    /// The lineup URL is authoritative — the device embeds its own current IP in it.
+    private func updateShowURLsFromLineups() {
+        var dirty = false
+        for i in shows.indices {
+            let show = shows[i]
+            guard !show.show_url.isEmpty,
+                  let device = devices.first(where: { $0.DeviceID == show.hdhr_record }),
+                  let storedHost = URL(string: show.show_url)?.host,
+                  storedHost != device.LocalIP,           // IP has changed since URL was saved
+                  let lineup = lineups[show.hdhr_record],
+                  let freshURL = hdhrManager.streamURL(for: show.show_channel, lineup: lineup)
+            else { continue }
+
+            shows[i].show_url = freshURL
+            dirty = true
+            print("[AppState] show_url updated for '\(show.show_title)': \(storedHost) → \(device.LocalIP)")
+        }
+        if dirty { saveConfig() }
     }
 
     // MARK: - Guide cache
@@ -447,8 +477,10 @@ final class AppState: ObservableObject {
         }
         let path = show.outputPath(date: show.show_next.date ?? Date())
         var endDate = show.show_end.date ?? Date().addingTimeInterval(Double(show.show_length) * 60)
+        // Bonus Time: extend recording past the guide end for sports shows so overtime isn't cut off
         if config.Sports_padding_enabled && show.show_genre.lowercased().contains("sports") {
-            endDate = endDate.addingTimeInterval(30 * 60)
+            endDate = endDate.addingTimeInterval(Double(config.Sports_padding_minutes) * 60)
+            // Update stored show_end so the idle loop's natural-stop check uses the padded time
             shows[index].show_end = EpochDate(endDate)
         }
         let remainingSecs = max(60, Int(endDate.timeIntervalSince(Date())))
@@ -468,6 +500,15 @@ final class AppState: ObservableObject {
         recordingManager.stop(showId: show.show_id)
         shows[index].show_recording = false
         shows[index].show_last = EpochDate(Date())
+
+        if !natural {
+            // Manual stop: deactivate the show so it moves to Paused in the menu
+            // and won't reschedule automatically — user can reactivate from Paused section
+            shows[index].show_active = false
+            shows[index].show_fail_reason = "Manually stopped"
+            saveConfig()
+            return
+        }
 
         if natural {
             // Verify the output file was actually created and is non-empty
@@ -605,9 +646,14 @@ final class AppState: ObservableObject {
         notifyPermission = (try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])) ?? false
     }
 
+    // Static — shortTime is called per notification and per scheduled menu render
+    private static let shortTimeFormatter: DateFormatter = {
+        let f = DateFormatter(); f.timeStyle = .short; return f
+    }()
+
     func shortTime(_ date: Date?) -> String {
         guard let d = date else { return "?" }
-        let f = DateFormatter(); f.timeStyle = .short; return f.string(from: d)
+        return Self.shortTimeFormatter.string(from: d)
     }
 
     func watchInVLC(url: String) {

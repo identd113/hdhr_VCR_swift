@@ -166,7 +166,7 @@ extension Show: Codable {
 
 // MARK: - AppConfig / ConfigFile
 
-struct AppConfig: Codable, Equatable {
+struct AppConfig: Equatable {
     // Notifications
     var Notify_recording: Double = 15.5     // minutes before recording alert
     var Notify_upnext: Double    = 35.0     // minutes before show airs
@@ -189,8 +189,31 @@ struct AppConfig: Codable, Equatable {
 
     var Verbose_curl: Bool = false
     var Watch_in_VLC: Bool = false
+    // Bonus Time: extends recording past the guide end for sports shows
     var Sports_padding_enabled: Bool = true
+    var Sports_padding_minutes: Int  = 30   // user-settable 10–60 min, default 30
     var Config_version: String = "1"
+}
+
+extension AppConfig: Codable {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        Notify_recording      = (try? c.decode(Double.self,  forKey: .Notify_recording))      ?? 15.5
+        Notify_upnext         = (try? c.decode(Double.self,  forKey: .Notify_upnext))         ?? 35.0
+        GuideHours            = (try? c.decode(Int.self,     forKey: .GuideHours))            ?? 24
+        Default_transcode     = (try? c.decode(String.self,  forKey: .Default_transcode))     ?? "none"
+        Fail_count_setting    = (try? c.decode(Int.self,     forKey: .Fail_count_setting))    ?? 3
+        if let d = try? c.decode(Double.self, forKey: .Min_disk_free_gb) { Min_disk_free_gb = d }
+        else { Min_disk_free_gb = Double((try? c.decode(Int.self, forKey: .Min_disk_free_gb)) ?? 10) }
+        Idle_timer_interval   = (try? c.decode(Int.self,     forKey: .Idle_timer_interval))   ?? 10
+        Series_scan_retry_hours = (try? c.decode(Int.self,   forKey: .Series_scan_retry_hours)) ?? 4
+        Hdhr_setup_folder     = (try? c.decode(String.self,  forKey: .Hdhr_setup_folder))     ?? ""
+        Verbose_curl          = (try? c.decode(Bool.self,    forKey: .Verbose_curl))          ?? false
+        Watch_in_VLC          = (try? c.decode(Bool.self,    forKey: .Watch_in_VLC))          ?? false
+        Sports_padding_enabled  = (try? c.decode(Bool.self,   forKey: .Sports_padding_enabled))  ?? true
+        Sports_padding_minutes  = (try? c.decode(Int.self,    forKey: .Sports_padding_minutes))  ?? 30
+        Config_version          = (try? c.decode(String.self,  forKey: .Config_version))         ?? "1"
+    }
 }
 
 struct ConfigFile: Codable {

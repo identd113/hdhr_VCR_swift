@@ -4,6 +4,7 @@ import Foundation
 final class RecordingManager {
     private var processes: [String: Process] = [:]
     private var pids:      [String: Int32]   = [:]   // caffeinate PID per show
+    private var curlPids:  [String: Int32]   = [:]   // curl child PID (for explicit kill on manual stop)
 
     static let curlLogPath = NSHomeDirectory() + "/Library/Logs/hdhr_VCR_curl.log"
 
@@ -47,7 +48,12 @@ final class RecordingManager {
             try p.run()
             processes[showId] = p
             pids[showId]      = p.processIdentifier
-            print("[Rec] Started \(showId) pid=\(p.processIdentifier) verbose=\(verbose): \(streamURL) → \(outputPath)")
+            // Find curl's PID as a child of caffeinate so we can kill it directly on manual stop.
+            // pgrep -P returns child PIDs; curl is caffeinate's only child in this usage.
+            if let curlPid = findCurlChild(of: p.processIdentifier) {
+                curlPids[showId] = curlPid
+            }
+            print("[Rec] Started \(showId) pid=\(p.processIdentifier) curl=\(curlPids[showId].map { "\($0)" } ?? "?") verbose=\(verbose): \(streamURL) → \(outputPath)")
         } catch {
             print("[Rec] Launch error for \(showId): \(error)")
         }
@@ -60,8 +66,13 @@ final class RecordingManager {
             if p.isRunning { p.terminate() }
             processes.removeValue(forKey: showId)
         }
+        // Kill curl directly first — caffeinate may ignore SIGTERM but curl will stop writing
+        if let curlPid = curlPids[showId] {
+            kill(curlPid, SIGTERM)
+            curlPids.removeValue(forKey: showId)
+        }
         if let pid = pids[showId] {
-            // Kill the caffeinate process group so curl child also dies
+            // Kill the entire caffeinate process group to ensure no orphaned children remain
             kill(-pid, SIGTERM)
             pids.removeValue(forKey: showId)
         }
@@ -87,6 +98,30 @@ final class RecordingManager {
 
     func stopAll() {
         for id in Array(processes.keys) { stop(showId: id) }
+    }
+
+    // MARK: - Curl child discovery
+
+    /// Uses pgrep to find the PID of curl launched as a child of the caffeinate process.
+    /// Returns nil if curl hasn't started yet or pgrep fails — the process-group kill in stop()
+    /// will still clean it up in that case.
+    private func findCurlChild(of parentPid: Int32) -> Int32? {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        p.arguments = ["-P", "\(parentPid)"]
+        let pipe = Pipe()
+        p.standardOutput = pipe
+        p.standardError  = FileHandle.nullDevice
+        do {
+            try p.run()
+            p.waitUntilExit()
+            let data   = pipe.fileHandleForReading.readDataToEndOfFile()
+            let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if let pid = Int32(output.components(separatedBy: "\n").first ?? "") {
+                return pid
+            }
+        } catch {}
+        return nil
     }
 
     // MARK: - Verbose log

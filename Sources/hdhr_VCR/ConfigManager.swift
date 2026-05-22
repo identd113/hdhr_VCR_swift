@@ -5,7 +5,7 @@ final class ConfigManager {
     private var configURL: URL
 
     init() {
-        hostname = Host.current().localizedName ?? ProcessInfo.processInfo.hostName
+        hostname = ProcessInfo.processInfo.hostName
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         configURL = docs.appendingPathComponent("hdhr_VCR-\(hostname).json")
     }

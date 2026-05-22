@@ -253,9 +253,12 @@ final class GuideStore {
 
     // MARK: - File logging
 
+    // Static — ISO8601DateFormatter is expensive; GuideStore is actor-isolated so static is safe
+    private static let logFormatter = ISO8601DateFormatter()
+
     /// Always-on log to ~/Library/Logs/hdhr_VCR_guide.log
     private func glog(_ msg: String) {
-        let ts = ISO8601DateFormatter().string(from: Date())
+        let ts = Self.logFormatter.string(from: Date())
         let line = "[\(ts)] \(msg)\n"
         print("[GuideStore] \(msg)")   // also to console for debug builds
         guard let data = line.data(using: .utf8) else { return }
