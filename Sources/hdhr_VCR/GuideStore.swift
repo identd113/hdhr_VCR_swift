@@ -236,6 +236,26 @@ final class GuideStore {
         }
     }
 
+    /// Currently-airing entry matching `title` on a specific channel, regardless of SeriesID.
+    /// Fallback for when the guide omits SeriesID from some airings of a series.
+    func currentEntryByTitle(_ title: String, channelNum: String, deviceId: String, at date: Date = Date()) -> SeriesMatch? {
+        let epoch = Int(date.timeIntervalSince1970)
+        guard let entry = channelEntryIndex["\(deviceId):\(channelNum)"]?.first(where: {
+            $0.StartTime <= epoch && $0.EndTime > epoch && $0.Title == title
+        }) else { return nil }
+        return SeriesMatch(deviceId: deviceId, channelNum: channelNum, entry: entry)
+    }
+
+    /// Next entry with StartTime > after matching `title` on a specific channel, regardless of SeriesID.
+    /// Fallback for when the guide omits SeriesID from some airings of a series.
+    func nextEntryByTitle(_ title: String, channelNum: String, deviceId: String, after: Date = Date()) -> SeriesMatch? {
+        let epoch = Int(after.timeIntervalSince1970)
+        guard let entry = channelEntryIndex["\(deviceId):\(channelNum)"]?.first(where: {
+            $0.StartTime > epoch && $0.Title == title
+        }) else { return nil }
+        return SeriesMatch(deviceId: deviceId, channelNum: channelNum, entry: entry)
+    }
+
     // MARK: - State queries
 
     func isLoading(deviceId: String) -> Bool { loadingDevices.contains(deviceId) }

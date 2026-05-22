@@ -55,6 +55,12 @@ struct MenuContent: View {
                 .foregroundStyle(active > 0 ? Color(NSColor.labelColor) : Color(NSColor.secondaryLabelColor))
         }
         Text(state.statusMessage).foregroundStyle(Color(NSColor.secondaryLabelColor))
+        // ── Add Show ──────────────────────────────────────────────────────
+        if addShowMode == .menu {
+            addShowMenu
+        } else {
+            Button("Add Show…") { open("add-show") }
+        }
         Divider()
 
         // ── Recording now ─────────────────────────────────────────────────
@@ -103,13 +109,6 @@ struct MenuContent: View {
         }
         Divider()
 
-        // ── Add Show ──────────────────────────────────────────────────────
-        if addShowMode == .menu {
-            addShowMenu
-        } else {
-            Button("Add Show…") { open("add-show") }
-        }
-        Button("Refresh Guide") { state.refreshAll() }
         Button("Settings…")    { open("settings") }
         Divider()
 

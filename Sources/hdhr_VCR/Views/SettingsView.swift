@@ -9,6 +9,7 @@ private enum SettingsCategory: String, CaseIterable, Identifiable {
     case guide         = "Guide"
     case notifications = "Notifications"
     case advanced      = "Advanced"
+    case maintenance   = "Maintenance"
     case about         = "About"
 
     var icon: String {
@@ -18,6 +19,7 @@ private enum SettingsCategory: String, CaseIterable, Identifiable {
         case .guide:         return "tv"
         case .notifications: return "bell.badge"
         case .advanced:      return "terminal"
+        case .maintenance:   return "wrench.and.screwdriver"
         case .about:         return "info.circle"
         }
     }
@@ -36,6 +38,8 @@ struct SettingsView: View {
     @State private var liveChangelog: String? = nil
     @State private var easterEggTaps = 0
     @State private var showEasterEgg = false
+    @State private var maintenanceStatus: String = ""
+    @State private var maintenanceBusy: Bool = false
 
     private var isDirty: Bool {
         draft != state.config
@@ -118,6 +122,7 @@ struct SettingsView: View {
         case .guide:         guideView
         case .notifications: notificationsView
         case .advanced:      advancedView
+        case .maintenance:   maintenanceView
         case .about:         aboutView
         }
     }
@@ -293,6 +298,82 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .navigationTitle("Advanced")
+    }
+
+    // MARK: - Maintenance
+
+    private var maintenanceView: some View {
+        Form {
+            Section("Shows") {
+                maintenanceRow("Rescan Series",
+                               "Re-check the guide for updated next-air times on all active SeriesID shows") {
+                    let count = state.shows.filter { $0.show_active && $0.show_use_seriesid }.count
+                    await state.rescheduleAllSeries()
+                    return "\(count) series show(s) rescheduled"
+                }
+                maintenanceRow("Reset Fail Counts",
+                               "Zero out failure counters on every show without changing active/paused state") {
+                    let total = state.shows.count
+                    state.resetAllFailCounts()
+                    return "Cleared fail counts on \(total) show(s)"
+                }
+                maintenanceRow("Reactivate Paused Shows",
+                               "Reactivate all shows that were paused due to failures and reset their counts") {
+                    let count = state.inactiveShows.count
+                    state.reactivatePausedShows()
+                    return count > 0 ? "\(count) show(s) reactivated" : "No paused shows"
+                }
+            }
+            Section("Guide & Devices") {
+                maintenanceRow("Refresh Guide",
+                               "Force-reload guide data from all tuners (full network re-fetch)") {
+                    await state.refreshGuide()
+                    let ch = state.guideByDevice.values.flatMap { $0 }.count
+                    return "Guide refreshed — \(ch) channel(s) loaded"
+                }
+                maintenanceRow("Rediscover Devices",
+                               "Scan the network for HDHomeRun tuners (mDNS + UDP + known hosts)") {
+                    await state.rediscoverDevices()
+                    return "\(state.devices.count) device(s) found"
+                }
+            }
+            if !maintenanceStatus.isEmpty {
+                Section {
+                    Label(maintenanceStatus, systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                        .font(.callout)
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .navigationTitle("Maintenance")
+    }
+
+    @ViewBuilder
+    private func maintenanceRow(_ title: String, _ description: String,
+                                 action: @escaping () async throws -> String) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).fontWeight(.medium)
+                Text(description).font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            if maintenanceBusy {
+                ProgressView().controlSize(.small)
+            } else {
+                Button("Run") {
+                    maintenanceBusy = true
+                    maintenanceStatus = ""
+                    Task { @MainActor in
+                        do { maintenanceStatus = try await action() }
+                        catch { maintenanceStatus = "Error: \(error.localizedDescription)" }
+                        maintenanceBusy = false
+                    }
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .padding(.vertical, 2)
     }
 
     // MARK: - About

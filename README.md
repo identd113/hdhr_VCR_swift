@@ -39,7 +39,13 @@ Optional:
 
 ## Installation
 
-1. Clone or download this repository
+### Option A — Download a release
+
+Download `hdhr_VCR-vX.X.X.zip` from the [Releases page](https://github.com/identd113/hdhr_VCR_swift/releases), unzip it, and move `hdhr_VCR.app` wherever you like.
+
+### Option B — Build from source
+
+1. Clone this repository
 2. Open Terminal in the project folder
 3. Run:
 
@@ -49,7 +55,18 @@ Optional:
 
 This builds the app, copies the binary into `hdhr_VCR.app`, signs it, and launches it. The app will appear in your menu bar as a TV icon.
 
-> **Note**: The `.app` bundle is included in the repository. If you don't want to build from source, you can try launching `hdhr_VCR.app` directly — you may need to right-click → Open the first time to bypass Gatekeeper.
+### First launch — Gatekeeper
+
+This app is **ad-hoc signed** (no Apple Developer ID), so macOS Gatekeeper will block it on first launch with *"hdhr_VCR can't be opened because Apple cannot check it for malicious software."*
+
+To open it, do **one** of the following:
+
+- **Right-click** `hdhr_VCR.app` → **Open** → click **Open** in the dialog, or
+- Run in Terminal: `xattr -d com.apple.quarantine hdhr_VCR.app`
+
+macOS remembers the exception after the first open — subsequent launches work normally.
+
+> **Why not notarized?** Notarization requires an Apple Developer Program membership ($99/yr). This is an open-source personal project; you can inspect and build the full source yourself via `./deploy.sh`.
 
 ---
 
@@ -58,7 +75,7 @@ This builds the app, copies the binary into `hdhr_VCR.app`, signs it, and launch
 On first launch, the app will search for HDHomeRun tuners on your network automatically. If none are found:
 
 1. Make sure your HDHomeRun is powered on and connected to the same network
-2. Click **Refresh Guide** in the menu to retry discovery
+2. Open **Settings → Maintenance → Rediscover Devices** to retry
 
 The config file is created automatically at:
 ```
@@ -118,6 +135,7 @@ Open via the menu bar icon → **Settings…**
 | **Guide** | Hours of guide data to fetch; series scan retry interval |
 | **Notifications** | "Up Next" alert timing; "Recording Soon" alert timing |
 | **Advanced** | Idle check interval; verbose curl logging; config file location |
+| **Maintenance** | Rescan Series; Reset Fail Counts; Reactivate Paused Shows; Refresh Guide; Rediscover Devices |
 | **About** | App history, version, GitHub link |
 
 Settings use a **draft/save** pattern — changes are not applied until you click **Save** (⌘S). Closing the window with unsaved changes prompts to save or discard.

@@ -207,7 +207,7 @@ struct CableGuideView: View {
                     }
                     .frame(width: totalW, height: 0)
 
-                    VStack(spacing: 0) {
+                    LazyVStack(spacing: 0, pinnedViews: []) {
                         ForEach(allChannels) { ch in
                             let entries = visibleEntries(ch)
                             ShowBlocksRow(

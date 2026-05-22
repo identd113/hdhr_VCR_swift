@@ -1,5 +1,13 @@
 # hdhr_VCR Changelog
 
+## 2026-05-22 (v1.0.0)
+
+- **SeriesID title fallback** — when the guide omits a SeriesID for a currently-airing episode, recording scheduling now falls back to a title match against the channel entry index; ensures shows like daily court/syndicated programs are picked up even when the guide API omits the SeriesID for that specific slot
+- **Maintenance panel** — Settings → Maintenance (wrench icon) with five action buttons: Rescan Series (re-check guide for updated next-air times on all active SeriesID shows), Reset Fail Counts, Reactivate Paused Shows, Refresh Guide, and Rediscover Devices; each shows a spinner and result message
+- **Add Show at top of menu** — moved above Recording Now so it is always the first action, regardless of how many shows are scheduled
+- **Recording process survives force-quit** — recording processes (caffeinate + curl) are now launched via `posix_spawn` with `POSIX_SPAWN_SETSID`, placing them in their own POSIX session independent of the app's process group; a force-quit of the app leaves recordings running and the existing boot-resume mechanism reattaches them on next launch
+- **Refresh Guide removed from main menu** — available in Settings → Maintenance instead
+
 ## 2026-05-22
 
 - **Next Up section** — main menu now shows the next upcoming recording time slot and all shows starting then, so you can see what's coming without opening submenu

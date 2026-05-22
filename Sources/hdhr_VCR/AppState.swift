@@ -408,8 +408,18 @@ final class AppState: ObservableObject {
         if let m = guideStore.currentEpisode(seriesID: show.show_seriesid, channelNum: chFilter, deviceId: devFilter, at: now) {
             apply(m); return
         }
+        // Fallback: title match on channelEntryIndex — handles guide entries where SeriesID is absent.
+        if let ch = chFilter, let dev = devFilter,
+           let m = guideStore.currentEntryByTitle(show.show_title, channelNum: ch, deviceId: dev, at: now) {
+            apply(m); return
+        }
         if let m = guideStore.nextEpisode(seriesID: show.show_seriesid, channelNum: chFilter, deviceId: devFilter, after: now) {
-            apply(m)
+            apply(m); return
+        }
+        // Fallback: title match for next airing — handles guide entries where SeriesID is absent.
+        if let ch = chFilter, let dev = devFilter,
+           let m = guideStore.nextEntryByTitle(show.show_title, channelNum: ch, deviceId: dev, after: now) {
+            apply(m); return
         }
     }
 
@@ -615,6 +625,7 @@ final class AppState: ObservableObject {
     // MARK: - Next-air scheduling
 
     func scheduleNextAir(index: Int) async {
+        guard index < shows.count else { return }
         let show = shows[index]
         switch show.state {
         case .single:
@@ -660,6 +671,15 @@ final class AppState: ObservableObject {
                                                       deviceId: devFilter) {
                     applyMatch(match); return
                 }
+                // Fallback: title match — handles guide entries where SeriesID is absent.
+                if let ch = chFilter, let dev = devFilter {
+                    if let match = guideStore.currentEntryByTitle(show.show_title, channelNum: ch, deviceId: dev, at: now) {
+                        applyMatch(match); return
+                    }
+                    if let match = guideStore.nextEntryByTitle(show.show_title, channelNum: ch, deviceId: dev, after: now) {
+                        applyMatch(match); return
+                    }
+                }
             }
             shows[index].show_next = EpochDate(Date().addingTimeInterval(Double(config.Series_scan_retry_hours) * 3600))
         }
@@ -694,6 +714,37 @@ final class AppState: ObservableObject {
         shows[i].show_active.toggle(); shows[i].show_fail_count = 0; shows[i].show_fail_reason = ""; saveConfig()
     }
     func deleteShow(_ show: Show) { recordingManager.stop(showId: show.show_id); shows.removeAll { $0.show_id == show.show_id }; saveConfig() }
+
+    // MARK: - Maintenance actions (Settings → Maintenance panel)
+
+    /// Re-run scheduleNextAir for every active SeriesID show using the current guide cache.
+    func rescheduleAllSeries() async {
+        let indices = shows.indices.filter { shows[$0].show_active && shows[$0].show_use_seriesid }
+        for i in indices { await scheduleNextAir(index: i) }
+        saveConfig()
+    }
+
+    /// Force a full guide reload (invalidate + re-fetch all devices).
+    func refreshGuide() async { await refreshGuides() }
+
+    /// Re-run device discovery seeded from known show URLs, same path as startup.
+    func rediscoverDevices() async {
+        await discoverDevices(knownHosts: knownHostsFromShows(), attempts: 5)
+    }
+
+    /// Zero out fail counts on every show without changing active/inactive state.
+    func resetAllFailCounts() {
+        for i in shows.indices { shows[i].show_fail_count = 0; shows[i].show_fail_reason = "" }
+        saveConfig()
+    }
+
+    /// Reactivate all paused shows and clear their fail counts.
+    func reactivatePausedShows() {
+        for i in shows.indices where !shows[i].show_active {
+            shows[i].show_active = true; shows[i].show_fail_count = 0; shows[i].show_fail_reason = ""
+        }
+        saveConfig()
+    }
 
     // MARK: - Utilities
 

@@ -2,9 +2,8 @@ import Foundation
 
 @MainActor
 final class RecordingManager {
-    private var processes: [String: Process] = [:]
-    private var pids:      [String: Int32]   = [:]   // caffeinate PID per show
-    private var curlPids:  [String: Int32]   = [:]   // curl child PID (for explicit kill on manual stop)
+    private var pids:     [String: Int32] = [:]   // caffeinate PID per show
+    private var curlPids: [String: Int32] = [:]   // curl child PID (for explicit kill on manual stop)
 
     static let curlLogPath = NSHomeDirectory() + "/Library/Logs/hdhr_VCR_curl.log"
 
@@ -13,7 +12,7 @@ final class RecordingManager {
     func start(showId: String, url: String, outputPath: String,
                durationSeconds: Int, transcode: String, showEnd: Date,
                verbose: Bool = false) {
-        guard processes[showId] == nil else { return }
+        guard pids[showId] == nil else { return }
 
         let profile      = transcode.lowercased().trimmingCharacters(in: .whitespaces)
         let streamURL    = "\(url)?duration=\(durationSeconds)&transcode=\(profile)"
@@ -32,28 +31,19 @@ final class RecordingManager {
         let dir = (outputPath as NSString).deletingLastPathComponent
         try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
 
-        // caffeinate -i prevents idle sleep and wraps curl; creates 2 visible ps lines per show
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/usr/bin/caffeinate")
-        p.arguments     = ["-i", "/usr/bin/curl"] + curlArgs
-        p.standardOutput = FileHandle.nullDevice
+        // Write the header to the log file before spawning so the child just appends.
+        if verbose { writeCurlLogHeader(showId: showId, curlArgs: curlArgs, outputPath: outputPath) }
+        let logPath: String? = verbose ? Self.curlLogPath : nil
 
-        if verbose, let fh = openCurlLog(showId: showId, curlArgs: curlArgs, outputPath: outputPath) {
-            p.standardError = fh
-        } else {
-            p.standardError = FileHandle.nullDevice
-        }
-
+        // caffeinate -i prevents idle sleep and wraps curl; POSIX_SPAWN_SETSID puts the
+        // process in its own session so a force-quit of the app does not kill the recording.
         do {
-            try p.run()
-            processes[showId] = p
-            pids[showId]      = p.processIdentifier
-            // Find curl's PID as a child of caffeinate so we can kill it directly on manual stop.
-            // pgrep -P returns child PIDs; curl is caffeinate's only child in this usage.
-            if let curlPid = findCurlChild(of: p.processIdentifier) {
-                curlPids[showId] = curlPid
-            }
-            print("[Rec] Started \(showId) pid=\(p.processIdentifier) curl=\(curlPids[showId].map { "\($0)" } ?? "?") verbose=\(verbose): \(streamURL) → \(outputPath)")
+            let pid = try spawnDetached(executablePath: "/usr/bin/caffeinate",
+                                        arguments: ["-i", "/usr/bin/curl"] + curlArgs,
+                                        stderrPath: logPath)
+            pids[showId] = pid
+            if let curlPid = findCurlChild(of: pid) { curlPids[showId] = curlPid }
+            print("[Rec] Started \(showId) pid=\(pid) curl=\(curlPids[showId].map { "\($0)" } ?? "?") verbose=\(verbose): \(streamURL) → \(outputPath)")
         } catch {
             print("[Rec] Launch error for \(showId): \(error)")
         }
@@ -62,17 +52,13 @@ final class RecordingManager {
     // MARK: - Stop
 
     func stop(showId: String) {
-        if let p = processes[showId] {
-            if p.isRunning { p.terminate() }
-            processes.removeValue(forKey: showId)
-        }
         // Kill curl directly first — caffeinate may ignore SIGTERM but curl will stop writing
         if let curlPid = curlPids[showId] {
             kill(curlPid, SIGTERM)
             curlPids.removeValue(forKey: showId)
         }
         if let pid = pids[showId] {
-            // Kill the entire caffeinate process group to ensure no orphaned children remain
+            // Kill the entire caffeinate process group (caffeinate + curl child)
             kill(-pid, SIGTERM)
             pids.removeValue(forKey: showId)
         }
@@ -82,7 +68,6 @@ final class RecordingManager {
     // MARK: - Reattach (startup resume)
 
     /// Register an already-running caffeinate PID without launching a new process.
-    /// Called at startup when a recording survived an app restart.
     func reattach(showId: String, pid: Int32) {
         pids[showId] = pid
         print("[Rec] Reattached \(showId) pid=\(pid)")
@@ -92,19 +77,64 @@ final class RecordingManager {
 
     func isRunning(showId: String) -> Bool {
         guard let pid = pids[showId] else { return false }
-        // kill -0 returns 0 if the process exists, errno ESRCH if it does not
         return kill(pid, 0) == 0
     }
 
     func stopAll() {
-        for id in Array(processes.keys) { stop(showId: id) }
+        for id in Array(pids.keys) { stop(showId: id) }
+    }
+
+    // MARK: - Detached spawn
+
+    /// Launch an executable in its own POSIX session (POSIX_SPAWN_SETSID) so the process
+    /// survives a force-quit of the parent app. stdin/stdout go to /dev/null; stderr goes to
+    /// stderrPath (appended) or /dev/null if nil.
+    private func spawnDetached(executablePath: String, arguments: [String],
+                                stderrPath: String?) throws -> pid_t {
+        var fa: posix_spawn_file_actions_t?
+        var sa: posix_spawnattr_t?
+
+        posix_spawn_file_actions_init(&fa)
+        defer { posix_spawn_file_actions_destroy(&fa) }
+        posix_spawnattr_init(&sa)
+        defer { posix_spawnattr_destroy(&sa) }
+
+        // New session: decouples from the app's process group and session.
+        posix_spawnattr_setflags(&sa, Int16(POSIX_SPAWN_SETSID))
+
+        "/dev/null".withCString { devNull in
+            posix_spawn_file_actions_addopen(&fa, STDIN_FILENO,  devNull, O_RDONLY, 0)
+            posix_spawn_file_actions_addopen(&fa, STDOUT_FILENO, devNull, O_WRONLY, 0)
+        }
+        let errTarget = stderrPath ?? "/dev/null"
+        _ = errTarget.withCString { path in
+            posix_spawn_file_actions_addopen(&fa, STDERR_FILENO, path,
+                                             O_WRONLY | O_CREAT | O_APPEND, 0o644)
+        }
+
+        // Build null-terminated argv (first element must be the executable path).
+        let argv: [UnsafeMutablePointer<CChar>?] = ([executablePath] + arguments).map { strdup($0) } + [nil]
+        defer { argv.compactMap { $0 }.forEach { free($0) } }
+
+        var pid: pid_t = 0
+        var rc: Int32 = 0
+        argv.withUnsafeBufferPointer { argvBuf in
+            executablePath.withCString { exec in
+                rc = posix_spawn(&pid, exec, &fa, &sa,
+                                 UnsafeMutablePointer(mutating: argvBuf.baseAddress), environ)
+            }
+        }
+
+        guard rc == 0 else {
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(rc),
+                          userInfo: [NSLocalizedDescriptionKey: String(cString: strerror(rc))])
+        }
+        return pid
     }
 
     // MARK: - Curl child discovery
 
-    /// Uses pgrep to find the PID of curl launched as a child of the caffeinate process.
-    /// Returns nil if curl hasn't started yet or pgrep fails — the process-group kill in stop()
-    /// will still clean it up in that case.
+    /// Uses pgrep to find curl's PID as a child of caffeinate.
     private func findCurlChild(of parentPid: Int32) -> Int32? {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
@@ -115,22 +145,21 @@ final class RecordingManager {
         do {
             try p.run()
             p.waitUntilExit()
-            let data   = pipe.fileHandleForReading.readDataToEndOfFile()
-            let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            if let pid = Int32(output.components(separatedBy: "\n").first ?? "") {
-                return pid
-            }
-        } catch {}
-        return nil
+            let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(),
+                                encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return Int32(output.components(separatedBy: "\n").first ?? "")
+        } catch { return nil }
     }
 
     // MARK: - Verbose log
 
-    private func openCurlLog(showId: String, curlArgs: [String], outputPath: String) -> FileHandle? {
+    private func writeCurlLogHeader(showId: String, curlArgs: [String], outputPath: String) {
         let path = Self.curlLogPath
-        let fm = FileManager.default
-        if !fm.fileExists(atPath: path) { fm.createFile(atPath: path, contents: nil) }
-        guard let fh = FileHandle(forWritingAtPath: path) else { return nil }
+        if !FileManager.default.fileExists(atPath: path) {
+            FileManager.default.createFile(atPath: path, contents: nil)
+        }
+        guard let fh = FileHandle(forWritingAtPath: path) else { return }
+        defer { try? fh.close() }
         fh.seekToEndOfFile()
         let header = """
 
@@ -140,6 +169,5 @@ Output: \(outputPath)
 
 """
         fh.write(header.data(using: .utf8) ?? Data())
-        return fh
     }
 }
