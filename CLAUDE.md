@@ -285,9 +285,9 @@ Select which HDHomeRun tuner to use. Skipped automatically when only 1 tuner is 
 ### Step 2: Guide (cable TV grid — `CableGuideView.swift`)
 Full cable-guide layout: rows = channels, columns = 30-min time slots, scrollable both axes.
 
-**Window size**: 980×700 for this step, 560×540 for others.
+**Window size**: Resizable (min 1100×720, ideal 1280×820) for this step, fixed 560×540 for others. The grid fills available width via dynamic `pxPerMin` scaling.
 
-**Compact toolbar (single row)**: **Cancel** button (leftmost) + Tuner picker (hidden when only 1 tuner) + Genre filter picker (shown only when guide has `Filter` tags) + loading indicator + **"Now" button** + Refresh button. Changing the tuner or clicking Refresh invalidates the cache for that device and reloads via `.task(id: taskId)`. The bottom nav bar is hidden for the guide step (Cancel moved here; other actions are in the summary panel).
+**Compact toolbar (single row)**: Tuner picker (hidden when only 1 tuner) + Genre filter picker (shown only when guide has `Filter` tags) + loading indicator + **"Now" button** + Refresh button. Changing the tuner or clicking Refresh invalidates the cache for that device and reloads via `.task(id: taskId)`. The bottom nav bar is hidden for the guide step; **Escape** key dismisses the window. No Cancel button.
 
 **Layout**: `VStack` with toolbar → `GeometryReader` content area (no bottom nav bar for this step):
 - **Top 1/3** of `GeometryReader` height: show summary panel
