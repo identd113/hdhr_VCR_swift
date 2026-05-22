@@ -1,6 +1,26 @@
 // Hand-maintained changelog displayed in Settings → About.
 // Update this file when shipping new features; keep most-recent version at the top.
 let appChangelog = """
+## 2026-05-22 (260522-1500)
+- Network interface binding (Settings → Advanced): bind UDP discovery + curl to a specific NIC or VPN tunnel
+- VPN recording support: tunnel selected → UDP broadcast skipped, known-hosts discovery used, curl bound to tunnel
+- OS sim picker: shows "macOS X (current)" as default; always anchored to tag(0) so no blank-picker flash
+- Stale interface auto-clear on Settings open (prevents saving a disconnected interface)
+- Changelog version filtering in About: shows only entries up to running build; update notice when newer version available
+
+## 2026-05-22 (260522-1342)
+- Pop-out cable guide window from wizard toolbar
+- Brew install buttons in Maintenance (VLC, HDHomeRun CLI)
+- Stop Recording / Delete confirmations (NSAlert)
+- Edit Show unsaved-changes warning on close
+- Bonus Time callout in recording menu; remaining time reflects padded end
+- Paused show submenus show type + channel context
+- Notification timing validation warning in Settings
+- Clear Guide Cache button in Maintenance
+- App icon (AppIcon.icns) generated from app.jpg; shown in Finder and Force Quit
+- macOS 13+ compatibility (deployment target lowered from 15); version-adaptive scroll, EmptyStateView
+- OS simulation picker in Maintenance → Developer
+
 ## 2026-05-22
 - Next Up section in main menu (next recording time slot + all shows)
 - Episode info in menu labels (S01E02 · Title without opening submenu)

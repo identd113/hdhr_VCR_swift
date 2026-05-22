@@ -102,10 +102,16 @@ struct SettingsView: View {
             draftAddShowMode    = addShowMode
             draftSaveDirectory  = defaultSaveDirectory
             draftLaunchAtLogin  = SMAppService.mainApp.status == .enabled
-            // Initialize sim version to the real OS version so the picker selects "current" by default
-            if simulatedMacOSVersion == 0 {
-                simulatedMacOSVersion = ProcessInfo.processInfo.operatingSystemVersion.majorVersion
+            // Clear a stale saved interface: if the named NIC isn't available right now
+            // (e.g. VPN disconnected), reset to Auto so a Save can't silently write a
+            // value that makes every curl recording fail with "interface not found".
+            let available = Set(availableNetworkInterfaces().map { $0.name })
+            if !draft.Network_interface.isEmpty && !available.contains(draft.Network_interface) {
+                draft.Network_interface = ""
             }
+            // Migrate: a previous build stored realVersion for "current"; normalize to 0.
+            let real = ProcessInfo.processInfo.operatingSystemVersion.majorVersion
+            if simulatedMacOSVersion == real { simulatedMacOSVersion = 0 }
         }
     }
 
@@ -288,7 +294,7 @@ struct SettingsView: View {
                         Text(iface.displayLabel).tag(iface.name)
                     }
                 }
-                Text("Binds UDP discovery and curl recordings to a specific interface. VPN tunnels (utun*) are listed — use one if your HDHomeRun is on a remote network reachable via VPN.")
+                Text("Binds UDP discovery and curl recordings to a specific interface. VPN tunnels are listed (utun*, tun*, cscotun*, gpd*, etc.) — use one if your HDHomeRun is on a remote network reachable via VPN.")
                     .font(.caption).foregroundStyle(.secondary)
             }
 
@@ -402,11 +408,11 @@ struct SettingsView: View {
             if realVersion > 13 {
                 Section("Developer") {
                     Picker("Simulate macOS version", selection: $simulatedMacOSVersion) {
-                        Text("macOS \(realVersion) (current)").tag(realVersion)
+                        Text("macOS \(realVersion) (current)").tag(0)
                         if realVersion >= 15 { Text("macOS 14 (Sonoma)").tag(14) }
                         if realVersion >= 14 { Text("macOS 13 (Ventura)").tag(13) }
                     }
-                    if simulatedMacOSVersion != realVersion && simulatedMacOSVersion != 0 {
+                    if simulatedMacOSVersion > 0 {
                         Label("Simulating macOS \(simulatedMacOSVersion) — reopen guide or wizard to see effect",
                               systemImage: "exclamationmark.triangle")
                             .font(.caption).foregroundStyle(.orange)
@@ -537,7 +543,11 @@ struct SettingsView: View {
     // MARK: - About
 
     private var aboutView: some View {
-        ScrollView {
+        let raw = liveChangelog ?? appChangelog
+        let (filteredText, latestVersion) = Self.parseChangelog(raw)
+        let updateVersion = latestVersion.flatMap { $0 > appVersion ? $0 : nil }
+
+        return ScrollView {
             VStack(spacing: 20) {
                 Group {
                     if let icon = appIconImage {
@@ -581,10 +591,22 @@ struct SettingsView: View {
 
                 Divider()
 
-                Text("Changelog")
+                if let ver = updateVersion {
+                    HStack(spacing: 8) {
+                        Image(systemName: "arrow.down.circle.fill").foregroundStyle(.blue)
+                        Text("Update \(ver) is available")
+                            .fontWeight(.medium).foregroundStyle(.blue)
+                        Spacer()
+                        Link("Releases",
+                             destination: URL(string: "https://github.com/identd113/hdhr_VCR_swift/releases")!)
+                            .buttonStyle(.bordered)
+                    }
+                }
+
+                Text(updateVersion != nil ? "Changelog (current version)" : "Changelog")
                     .font(.headline)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                Text(liveChangelog ?? appChangelog)
+                Text(filteredText)
                     .font(.caption)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .textSelection(.enabled)
@@ -622,6 +644,41 @@ struct SettingsView: View {
             return (state.config.Hdhr_setup_folder as NSString).lastPathComponent + " (from config)"
         }
         return "Movies (default)"
+    }
+
+    // MARK: - Changelog parsing
+
+    /// Splits `text` into sections by "## " headings, keeping only those whose
+    /// "(YYMMDD-HHMM)" version stamp is ≤ `appVersion`. Sections with no stamp are
+    /// always kept (they predate version stamping). Returns the filtered text and the
+    /// latest version found (nil if none), so callers can show an update notice.
+    private static func parseChangelog(_ text: String) -> (filtered: String, latestVersion: String?) {
+        let sep = "\n## "
+        let parts = text.components(separatedBy: sep)
+        guard parts.count > 1 else { return (text, nil) }
+        var latestVersion: String? = nil
+        var kept = [parts[0]]
+        for part in parts.dropFirst() {
+            let heading = String(part.prefix(while: { $0 != "\n" }))
+            let ver = extractVersion(from: heading)
+            if latestVersion == nil { latestVersion = ver }
+            if let ver, ver > appVersion { continue }   // newer than this build — omit
+            kept.append(part)
+        }
+        return (kept.joined(separator: sep), latestVersion)
+    }
+
+    /// Extracts a "(YYMMDD-HHMM)" version stamp from a changelog heading string.
+    private static func extractVersion(from heading: String) -> String? {
+        guard let open  = heading.firstIndex(of: "("),
+              let close = heading.firstIndex(of: ")"),
+              open < close else { return nil }
+        let inner = String(heading[heading.index(after: open)..<close])
+        let parts = inner.components(separatedBy: "-")
+        guard parts.count == 2,
+              parts[0].count == 6, parts[0].allSatisfy(\.isNumber),
+              parts[1].count == 4, parts[1].allSatisfy(\.isNumber) else { return nil }
+        return inner
     }
 
     private func chooseFolder() {

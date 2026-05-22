@@ -82,10 +82,10 @@ Sidebar entries (with SF Symbol icons):
 
 ### Advanced
 
-- **Discovery & recording interface** — `Picker`: "Auto" (empty string) plus all IPv4-bearing interfaces on the machine, each shown as `name  ip` (e.g. `en0  192.168.1.5`, `utun0  10.8.0.2`). Populated by `availableNetworkInterfaces()` in `CompatibilityHelpers.swift` via `getifaddrs`; excludes lo*, awdl*, llw* but **includes VPN tunnels (utun*, ipsec*, ppp*)** so a remote HDHomeRun reachable via VPN can be targeted. Stored in `draft.Network_interface`. When non-empty:
-  - UDP device discovery (`HDHRManager.udpDiscoverSync`) binds the socket via `IP_BOUND_IF` + `if_nametoindex` — **automatically skipped for tunnel interfaces** (tunnels don't support broadcast; known-hosts path handles remote devices via their saved IPs)
-  - curl recordings get `--interface <name>` appended to their args
-  - URLSession HTTP requests (device HTTP, guide, lineup) rely on OS routing — for VPN this is correct behaviour since the VPN routes the remote subnet through the tunnel automatically
+- **Discovery & recording interface** — `Picker`: "Auto" (empty string, stored as `tag(0)` in AppStorage so default always matches) plus all IPv4-bearing interfaces, each shown as `name  ip` (e.g. `en0  192.168.1.5`, `utun0  10.8.0.2`). Populated by `availableNetworkInterfaces()` via `getifaddrs`; uses `IFF_POINTOPOINT` to detect all VPN/tunnel types (utun*, tun*, cscotun*, gpd*, zt*, ppp*, ipsec*, etc.) regardless of vendor naming. Stored in `draft.Network_interface`. On Settings open, if the saved value names an interface that is no longer available (VPN disconnected), `draft.Network_interface` is silently reset to `""` so a Save can't persist a broken value. When non-empty:
+  - UDP discovery (`HDHRManager.udpDiscoverSync`) binds via `IP_BOUND_IF`+`if_nametoindex`; **automatically skipped for tunnel/point-to-point interfaces** (`isPointToPointInterface()` check) since tunnels don't support broadcast — known-hosts (saved device IPs) handles remote device lookup
+  - curl recordings get `--interface <name>` appended to args
+  - URLSession HTTP requests rely on OS routing — correct for VPN since the VPN routes the remote subnet through the tunnel automatically
   - Leave on Auto for single-NIC setups.
 - **Idle check interval** — `Stepper` (5–60 sec, step 5). How often the idle loop fires. Minimum enforced at 5s (`max(5, config.Idle_timer_interval)`). Changing this calls `state.startTimer()` immediately via `applyAndSave()`.
 - **Verbose curl logging** — `Toggle`. Adds `-v` to curl args and pipes curl stderr to `~/Library/Logs/hdhr_VCR_curl.log`. When enabled, shows the log path (selectable text) and a "Show curl log in Finder" button. Log path is `RecordingManager.curlLogPath` (static let).
@@ -177,8 +177,6 @@ A `.json.bak` backup is written before each save. The config format is shared wi
 - **No export/import of config** — power users who manage multiple machines have no UI for this. The config JSON is in `~/Documents/` and can be copied manually, but "Export config…" / "Import config…" buttons in Advanced would be user-friendly.
 
 - **Notification timing validation** — the "Recording alert" value must be less than the "Up Next" value for the notification sequence to make sense, but there's no enforcement or warning when they overlap.
-
-- **No guide cache control** — there's no "Clear guide cache" button. If the guide data gets corrupted or stale, the only fix is restarting the app or waiting for the idle loop to invalidate and reload.
 
 - **Version stamp only on deploy** — running `swift build` directly won't update `Version.swift`. A Xcode pre-build phase or Swift Package Manager build plugin would make the version always current.
 
