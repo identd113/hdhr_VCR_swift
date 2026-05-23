@@ -41,7 +41,7 @@ Optional:
 
 ### Option A — Download a release
 
-Download `hdhr_VCR-vX.X.X.zip` from the [Releases page](https://github.com/identd113/hdhr_VCR_swift/releases), unzip it, and move `hdhr_VCR.app` wherever you like.
+Download `hdhrVCRplus-vX.X.X.zip` from the [Releases page](https://github.com/identd113/hdhr_VCR_swift/releases), unzip it, and move `hdhrVCRplus.app` wherever you like.
 
 ### Option B — Build from source
 
@@ -68,12 +68,12 @@ cd hdhr_VCR_swift
 
 ### First launch — Gatekeeper
 
-This app is **ad-hoc signed** (no Apple Developer ID), so macOS Gatekeeper will block it on first launch with *"hdhr_VCR can't be opened because Apple cannot check it for malicious software."*
+This app is **ad-hoc signed** (no Apple Developer ID), so macOS Gatekeeper will block it on first launch with *"hdhrVCRplus can't be opened because Apple cannot check it for malicious software."*
 
 To open it, do **one** of the following:
 
-- **Right-click** `hdhr_VCR.app` → **Open** → click **Open** in the dialog, or
-- Run in Terminal: `xattr -d com.apple.quarantine hdhr_VCR.app`
+- **Right-click** `hdhrVCRplus.app` → **Open** → click **Open** in the dialog, or
+- Run in Terminal: `xattr -d com.apple.quarantine hdhrVCRplus.app`
 
 macOS remembers the exception after the first open — subsequent launches work normally.
 
@@ -196,7 +196,7 @@ swift build
 swift test
 ```
 
-`swift build` produces the binary at `.build/debug/hdhr_VCR`. `./deploy.sh` copies it into `hdhrVCRplus.app`, ad-hoc signs the bundle, and launches it — no Xcode.app required, just the Command Line Tools.
+`swift build` produces the binary at `.build/debug/hdhr_VCR` (the Swift target name). `./deploy.sh` copies it into `hdhrVCRplus.app`, ad-hoc signs the bundle, and launches it — no Xcode.app required, just the Command Line Tools.
 
 ---
 
