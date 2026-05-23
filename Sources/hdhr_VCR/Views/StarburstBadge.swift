@@ -68,11 +68,8 @@ struct StarburstBadge: View {
             .fill(Color.orange)
             .frame(width: size, height: size)
             .overlay(
-                VStack(spacing: 2) {
-                    Text("🏈").font(.title3)
-                    Text("+\(minutes) min")
-                        .font(.caption).bold().foregroundColor(.white)
-                }
+                Text("+\(minutes) min")
+                    .font(.caption).bold().foregroundColor(.white)
             )
             // Pop-in: badge slams in spinning from far behind, overshoots scale, springs to rest.
             // initialValue.scale=0 keeps it hidden until the first pop fires from onAppear.

@@ -125,7 +125,7 @@ final class AppState: ObservableObject {
         let path = GuideStore.guideLogPath
         if FileManager.default.fileExists(atPath: path) {
             if let fh = FileHandle(forWritingAtPath: path) {
-                fh.seekToEndOfFile(); fh.write(data); fh.closeFile()
+                fh.seekToEndOfFile(); try? fh.write(contentsOf: data); fh.closeFile()
             }
         } else {
             FileManager.default.createFile(atPath: path, contents: data)
@@ -694,7 +694,7 @@ final class AppState: ObservableObject {
         let path = show.outputPath(date: show.show_next.date ?? Date())
         var endDate = show.show_end.date ?? Date().addingTimeInterval(Double(show.show_length) * 60)
         // Bonus Time: extend recording past the guide end for sports shows so overtime isn't cut off
-        if config.Sports_padding_enabled && show.show_genre.lowercased().contains("sports") {
+        if config.Sports_padding_enabled && show.show_bonus_time {
             endDate = endDate.addingTimeInterval(Double(config.Sports_padding_minutes) * 60)
             // Update stored show_end so the idle loop's natural-stop check uses the padded time
             shows[index].show_end = EpochDate(endDate)

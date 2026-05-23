@@ -15,16 +15,16 @@ It is used in `AddShowView` step 2. It is a pure display component — selection
 ```
 HStack(alignment: .top, spacing: 0) {
   channelColumnFixed            ← pinned left column, clips to channelScrollOffset
-  VStack(maxWidth: .infinity, maxHeight: .infinity) {
-    pinnedTimeHeader             ← time slots header, tracks timeHeaderOffset
-    guideScrollView              ← ScrollView([.horizontal, .vertical])
-      VStack {
-        zero-height now-anchor   ← for ScrollViewReader.scrollTo("now")
-        VStack {                 ← plain VStack (NOT LazyVStack — see Constraints)
-          ForEach(allChannels) { ShowBlocksRow(...).equatable() }
-        }
+  guideScrollView               ← ScrollView([.horizontal, .vertical])
+    LazyVStack(pinnedViews: .sectionHeaders) {
+      Section {
+        ForEach(allChannels) { ShowBlocksRow(...).equatable() }
+      } header: {
+        scrollingTimeHeader      ← time header inside ScrollView; scrolls horizontally,
+                                    pinned vertically by LazyVStack sectionHeaders
+                                    (contains "now-anchor" for ScrollViewReader.scrollTo)
       }
-  }
+    }
 }
 ```
 
@@ -52,9 +52,9 @@ private var pxPerMin: CGFloat {
 
 2. **`CableGuideView` must NOT have a `.frame()` modifier in `AddShowView`** — the `GeometryReader` + `VStack` distributes height naturally.
 
-3. **Plain `VStack`, NOT `LazyVStack`** — `LazyVStack(pinnedViews: .sectionHeaders)` inside a bidirectional `ScrollView` cannot compute lazy row visibility, causing all content to render blank. With 106 channels at 52px each (~5500px total), eager rendering is acceptable and performs well due to `.equatable()`.
+3. **`LazyVStack(pinnedViews: [.sectionHeaders])` requires macOS 15+** — on macOS 13/14 this causes blank rows in a bidirectional `ScrollView` (lazy row visibility can't be resolved). macOS 15 is the current deployment floor so this is safe. Do not lower the deployment target without reverting to plain `VStack` + external `pinnedTimeHeader`.
 
-4. **Inner `VStack` (pinnedTimeHeader + guideScrollView) MUST have `.frame(maxWidth: .infinity, maxHeight: .infinity)`** — without it the VStack collapses to near-zero width inside the HStack.
+4. **`guideScrollView` MUST have `.frame(maxWidth: .infinity, maxHeight: .infinity)`** — without it the scroll view collapses to near-zero width inside the HStack.
 
 5. **Summary height = `proxy.size.height / 3`** (not a fixed pixel value).
 
@@ -128,14 +128,11 @@ For managed sports shows, a dotted `RoundedRectangle` is drawn as a sibling view
 
 ## Scroll Synchronization
 
-Both `channelScrollOffset` (vertical) and `timeHeaderOffset` (horizontal) are driven by `.onScrollOffset(coordinateSpaceName:)` — a `CompatibilityHelpers` extension:
-- macOS 15+: uses the native `onScrollGeometryChange` API
-- macOS 14: falls back to a `PreferenceKey + GeometryReader` placed in the scroll content's background, reading position relative to the named coordinate space
+`channelScrollOffset` (vertical) is driven by `.onScrollGeometryChange` applied directly to the `LazyVStack` content — macOS 15+ API, used unconditionally since 15.0 is the deployment floor. A 1pt threshold and `disablesAnimations: true` prevent jitter.
 
-Both paths apply a 1pt threshold and `disablesAnimations: true` to prevent jitter.
+The time header scrolls horizontally automatically (it's inside the `ScrollView`) and stays pinned vertically via `LazyVStack(pinnedViews: [.sectionHeaders])` — no `timeHeaderOffset` synchronization needed.
 
 - `channelScrollOffset` → `.offset(y: -channelScrollOffset)` on the fixed channel column, inside `.clipped()`
-- `timeHeaderOffset` → `.offset(x: -timeHeaderOffset)` on the pinned time header
 
 ---
 

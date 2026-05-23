@@ -59,7 +59,6 @@ struct AddShowView: View {
             .appendingPathComponent("Documents/hdhr_videos")
     }()
 
-    private let weekdays = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -83,6 +82,16 @@ struct AddShowView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay(alignment: .bottomTrailing) {
+                if step == .details && show.show_bonus_time && state.config.Sports_padding_enabled {
+                    StarburstBadge(minutes: state.config.Sports_padding_minutes, size: 115)
+                        .padding(.trailing, 12).padding(.bottom, 12)
+                        .transition(.asymmetric(
+                            insertion: .identity,
+                            removal: .scale(scale: 0.05).combined(with: .opacity)
+                        ))
+                }
+            }
 
             if step != .guide {
                 Divider()
@@ -175,12 +184,10 @@ struct AddShowView: View {
         }
         let nextUpSeriesIDs = Set(nextUpShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
         let nextUpTitles    = Set(nextUpShows.map { $0.show_title })
-        // Bonus Time: find managed sports shows so the guide can draw the overtime dotted box
-        let sportShows = state.shows.filter {
-            state.config.Sports_padding_enabled && $0.show_genre.lowercased().contains("sports")
-        }
-        let bonusSeriesIDs = Set(sportShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
-        let bonusTitles    = Set(sportShows.map { $0.show_title })
+        // Bonus Time: find managed shows with per-show bonus time enabled so the guide can draw the overtime dotted box
+        let bonusShows = state.shows.filter { $0.show_bonus_time }
+        let bonusSeriesIDs = Set(bonusShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
+        let bonusTitles    = Set(bonusShows.map { $0.show_title })
 
         return VStack(spacing: 0) {
             // ── Compact toolbar: tuner + genre filter + actions ───────────────
@@ -409,21 +416,48 @@ struct AddShowView: View {
                         if onAir,
                            state.config.Watch_in_VLC,
                            FileManager.default.fileExists(atPath: "/Applications/VLC.app") {
-                            Button(action: { state.watchInVLC(url: selectedChannel?.URL ?? "") }) {
-                                Text("Watch in VLC")
-                                    .foregroundColor(Color(red: 1.0, green: 0.482, blue: 0.0))
-                            }
-                            .controlSize(.small)
+                            Button("Watch in VLC") { state.watchInVLC(url: selectedChannel?.URL ?? "") }
+                            .buttonStyle(WhiteOutlineButtonStyle(borderColor: Color(red: 1.0, green: 0.482, blue: 0.0)))
                             .disabled(selectedChannel == nil)
                         }
-                        Button("Record") {
-                            applyGuideEntry()
-                            step = .details
+                        let managedShow: Show? = {
+                            guard let entry = selectedEntry else { return nil }
+                            if let sid = entry.SeriesID, !sid.isEmpty {
+                                return state.shows.first { $0.show_seriesid == sid }
+                            }
+                            return state.shows.first { $0.show_title == entry.Title }
+                        }()
+                        let isManaged = managedShow != nil
+                        Button {
+                            if let existing = managedShow {
+                                state.editingShowId = existing.show_id
+                                openWindow(id: "edit-show")
+                            } else {
+                                applyGuideEntry()
+                                step = .details
+                            }
+                        } label: {
+                            if isManaged {
+                                Label("Edit Show", systemImage: "pencil")
+                            } else {
+                                Label("Record", systemImage: "record.circle.fill")
+                            }
                         }
-                        .controlSize(.small)
-                        .buttonStyle(.borderedProminent)
-                        .disabled(selectedChannel == nil)
+                        .buttonStyle(WhiteOutlineButtonStyle(borderColor: isManaged ? .blue : .red))
+                        .disabled(!isManaged && selectedChannel == nil)
+                        .frame(minWidth: 90)
                     }
+                    // Overlap warning: shown when this show's start falls inside another show's bonus-time extension.
+                    // Always rendered (opacity 0 when absent) so the button row above stays at a fixed vertical position.
+                    let overlapWarning: String? = {
+                        guard let device = selectedDevice, let ch = selectedChannel else { return nil }
+                        return bonusOverlapWarning(for: entry, channel: ch, device: device)
+                    }()
+                    Text(overlapWarning ?? " ")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.90))
+                        .padding(.horizontal, 4)
+                        .opacity(overlapWarning != nil ? 1 : 0)
                 }
                 // Dark gradient scrim behind the text column improves contrast on light genre
                 // backgrounds (amber comedy, green sports) without changing the background color
@@ -469,6 +503,25 @@ struct AddShowView: View {
         return "\(Self.timeRangeFormatter.string(from: entry.startDate)) – \(Self.timeRangeFormatter.string(from: entry.endDate))"
     }
 
+    // Returns a warning string when `entry` starts during another show's bonus-time extension on the same channel.
+    // e.g. "⚠️ First 30 min overlap with extended recording of \"PGA Tour Golf\""
+    private func bonusOverlapWarning(for entry: GuideEntry, channel: LineupEntry, device: HDHRDevice) -> String? {
+        let bonusMin = state.config.Sports_padding_minutes
+        let bonusShows = state.shows.filter { $0.show_bonus_time }
+        let bonusSeriesIDs = Set(bonusShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
+        let bonusTitles   = Set(bonusShows.map { $0.show_title })
+        let channelEntries = state.guideEntries(deviceId: device.DeviceID, channelNum: channel.GuideNumber)
+        for other in channelEntries {
+            guard other.EndTime <= entry.StartTime else { continue }  // only shows that end at or before this one starts
+            let isBonusShow = other.SeriesID.map { bonusSeriesIDs.contains($0) } ?? bonusTitles.contains(other.Title)
+            guard isBonusShow else { continue }
+            let bonusEndEpoch = other.EndTime + bonusMin * 60
+            guard bonusEndEpoch > entry.StartTime else { continue }
+            let overlapMin = (bonusEndEpoch - entry.StartTime) / 60
+            return "⚠️ First \(overlapMin) min overlap with extended recording of \"\(other.Title)\""
+        }
+        return nil
+    }
 
     // MARK: - Tuner menu helpers
 
@@ -503,68 +556,21 @@ struct AddShowView: View {
     }
 
     private var detailsStep: some View {
-        let isSportsBonusShow = show.show_genre.lowercased().contains("sports") && state.config.Sports_padding_enabled
-        return ScrollView {
-            ZStack(alignment: .topTrailing) {
+        ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 Text("Recording Details").font(.title2)
 
-                LabeledContent("Title") {
-                    TextField("Title", text: $show.show_title)
-                }
-
-                LabeledContent("Type") {
-                    Picker("", selection: $seriesType) {
-                        ForEach(ShowState.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-                    }.pickerStyle(.segmented)
-                }
-
-                if seriesType == .dateTime || seriesType == .single {
-                    let daysLabel = seriesType == .single ? "Day" : "Days"
-                    LabeledContent(daysLabel) {
-                        HStack {
-                            ForEach(weekdays, id: \.self) { day in
-                                let abbr = String(day.prefix(2))
-                                Toggle(isOn: Binding(
-                                    get: { airDays.contains(day) },
-                                    set: { on in
-                                        if seriesType == .single {
-                                            airDays = on ? [day] : []
-                                        } else {
-                                            if on { airDays.insert(day) } else { airDays.remove(day) }
-                                        }
-                                    }
-                                )) { Text(abbr).font(.caption) }
-                                .toggleStyle(.button)
-                                .buttonStyle(.bordered)
-                            }
-                        }
-                    }
-                }
-
-                LabeledContent("Transcode") {
-                    Picker("", selection: $show.show_transcode) {
-                        Text("None").tag("none")
-                        Text("Heavy").tag("heavy")
-                        Text("Mobile").tag("mobile")
-                        Text("Internet 720").tag("internet720")
-                    }
-                }
-
-                LabeledContent("Folder") {
-                    HStack {
-                        Text(recordFolder?.lastPathComponent ?? "Not set").foregroundStyle(.secondary)
-                        Button("Choose…") { chooseFolder() }
-                    }
-                }
+                ShowFormSection(
+                    show: $show,
+                    seriesType: $seriesType,
+                    airDays: $airDays,
+                    recordFolder: $recordFolder,
+                    folderButtonLabel: "Choose…",
+                    onSeriesTypeChange: { /* no-op: series flags applied at save() */ },
+                    onChooseFolder: { chooseFolder() }
+                )
             }
             .padding()
-
-            if isSportsBonusShow {
-                StarburstBadge(minutes: state.config.Sports_padding_minutes, size: 115)
-                    .padding(.trailing, 12).padding(.top, 12)
-            }
-            } // ZStack
         }
     }
 
@@ -632,6 +638,9 @@ struct AddShowView: View {
         isLoadingGuide = true
         // Guarantee lineup is present before loading guide — recovers from silent startup fetch failures
         await state.ensureLineupLoaded(for: device)
+        // Repair: guideRevision may have triggered auto-select before lineup was ready,
+        // leaving selectedChannel nil. Now that lineup is confirmed available, fix it.
+        repairSelectedChannel(deviceId: device.DeviceID)
         let id = device.DeviceID
         state.logGuide("[Wizard] loadAllGuide deviceId=\(id) fresh=\(state.guideStore.isFresh(deviceId: id)) loading=\(state.guideStore.isLoading(deviceId: id))")
         defer { isLoadingGuide = false }
@@ -670,6 +679,18 @@ struct AddShowView: View {
         allChannels = ch
     }
 
+    /// Called after lineup is confirmed loaded. Fixes selectedChannel when auto-select fired
+    /// before the lineup arrived (guideRevision race) or when a tap captured a nil lineupEntry.
+    private func repairSelectedChannel(deviceId: String) {
+        guard let entry = selectedEntry, selectedChannel == nil else { return }
+        let lineupList = state.lineups[deviceId] ?? []
+        for ch in allChannels {
+            guard ch.Guide?.contains(where: { $0.id == entry.id }) == true else { continue }
+            selectedChannel = lineupList.first(where: { $0.GuideNumber == ch.GuideNumber })
+            return
+        }
+    }
+
     private func applyGuideEntry() {
         guard let entry = selectedEntry, let channel = selectedChannel, let device = selectedDevice else { return }
         show.show_title    = entry.Title
@@ -680,6 +701,7 @@ struct AddShowView: View {
         show.show_seriesid = entry.SeriesID ?? ""
         show.show_logo_url = entry.ImageURL ?? ""
         show.show_genre    = entry.firstGenre ?? ""
+        show.show_bonus_time = entry.firstGenre?.lowercased().contains("sports") == true
         show.hdhr_record   = device.DeviceID
         show.show_url      = channel.URL ?? ""
 

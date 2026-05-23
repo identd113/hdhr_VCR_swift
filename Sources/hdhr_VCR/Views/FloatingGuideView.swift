@@ -67,11 +67,9 @@ struct FloatingGuideView: View {
                         }
                         let nextUpSeriesIDs = Set(nextUpShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
                         let nextUpTitles = Set(nextUpShows.map { $0.show_title })
-                        let sportShows = state.shows.filter {
-                            state.config.Sports_padding_enabled && $0.show_genre.lowercased().contains("sports")
-                        }
-                        let bonusSeriesIDs = Set(sportShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
-                        let bonusTitles = Set(sportShows.map { $0.show_title })
+                        let bonusShows = state.shows.filter { $0.show_bonus_time }
+                        let bonusSeriesIDs = Set(bonusShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
+                        let bonusTitles = Set(bonusShows.map { $0.show_title })
 
                         CableGuideView(
                             allChannels:        allChannels,
@@ -269,14 +267,20 @@ struct FloatingGuideView: View {
                             if onAir,
                                state.config.Watch_in_VLC,
                                FileManager.default.fileExists(atPath: "/Applications/VLC.app") {
-                                Button(action: { state.watchInVLC(url: selectedChannel?.URL ?? "") }) {
-                                    Text("Watch in VLC")
-                                        .foregroundColor(Color(red: 1.0, green: 0.482, blue: 0.0))
-                                }
-                                .controlSize(.small)
+                                Button("Watch in VLC") { state.watchInVLC(url: selectedChannel?.URL ?? "") }
+                                .buttonStyle(WhiteOutlineButtonStyle(borderColor: Color(red: 1.0, green: 0.482, blue: 0.0)))
                                 .disabled(selectedChannel == nil)
                             }
                             // No Record button — floating guide is browse-only
+                        }
+                        // Overlap warning: shown when this show's start falls inside another show's bonus-time extension
+                        if let device = selectedDevice,
+                           let ch = selectedChannel,
+                           let warning = bonusOverlapWarning(for: entry, channel: ch, device: device) {
+                            Text(warning)
+                                .font(.caption)
+                                .foregroundColor(.white.opacity(0.90))
+                                .padding(.horizontal, 4)
                         }
                     }
                     .background(
@@ -321,6 +325,24 @@ struct FloatingGuideView: View {
 
     private func guideTimeRange(_ entry: GuideEntry) -> String {
         "\(Self.timeRangeFormatter.string(from: entry.startDate)) – \(Self.timeRangeFormatter.string(from: entry.endDate))"
+    }
+
+    private func bonusOverlapWarning(for entry: GuideEntry, channel: LineupEntry, device: HDHRDevice) -> String? {
+        let bonusMin = state.config.Sports_padding_minutes
+        let bonusShows = state.shows.filter { $0.show_bonus_time }
+        let bonusSeriesIDs = Set(bonusShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
+        let bonusTitles   = Set(bonusShows.map { $0.show_title })
+        let channelEntries = state.guideEntries(deviceId: device.DeviceID, channelNum: channel.GuideNumber)
+        for other in channelEntries {
+            guard other.EndTime <= entry.StartTime else { continue }
+            let isBonusShow = other.SeriesID.map { bonusSeriesIDs.contains($0) } ?? bonusTitles.contains(other.Title)
+            guard isBonusShow else { continue }
+            let bonusEndEpoch = other.EndTime + bonusMin * 60
+            guard bonusEndEpoch > entry.StartTime else { continue }
+            let overlapMin = (bonusEndEpoch - entry.StartTime) / 60
+            return "⚠️ First \(overlapMin) min overlap with extended recording of \"\(other.Title)\""
+        }
+        return nil
     }
 
     private func loadGuide() async {

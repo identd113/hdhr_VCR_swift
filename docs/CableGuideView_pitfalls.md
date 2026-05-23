@@ -77,6 +77,8 @@ LazyVStack(spacing: 0, pinnedViews: .sectionHeaders)
 ```
 inside a `ScrollView([.horizontal, .vertical])`. Result: channel column appeared, guide blocks were blank. `LazyVStack` with `pinnedViews` in a bidirectional ScrollView cannot compute lazy row visibility — it renders nothing. Replacing with plain `VStack` fixed the blank-row bug. 106 rows is small enough to render eagerly (all rows are lightweight; `.equatable()` prevents re-evaluation during scroll).
 
+**Re-introduced with macOS 15+ floor — now the correct approach.** A later refactor raised the deployment target to macOS 15.0. At that floor `LazyVStack(pinnedViews: [.sectionHeaders])` in a bidirectional `ScrollView` works correctly — the blank-row failure only occurs on macOS 13/14. The plain VStack workaround was removed and the LazyVStack approach restored. If the deployment target is ever lowered below macOS 15, this pitfall immediately returns and you must revert to plain VStack + external `pinnedTimeHeader`.
+
 ### 10. Restructuring scroll architecture combined with #8
 
 An attempt to move the time header outside the ScrollView (as a pinned external view synced via `timeHeaderOffset`) was deployed at the same time as attempt #8. Could not be isolated for testing. The combined deploy broke all visible content. Key side effects:
@@ -87,7 +89,7 @@ An attempt to move the time header outside the ScrollView (as a pinned external 
 
 ## The Working Solution
 
-The same AddShowView structure as 353c7bf — `GeometryReader` wrapping both summary and guide — but with corrected `CableGuideView` internals:
+The same AddShowView structure as 353c7bf — `GeometryReader` wrapping both summary and guide — with `CableGuideView` using `LazyVStack(pinnedViews: [.sectionHeaders])` now that the deployment floor is macOS 15.0.
 
 **AddShowView (`guideStep`):**
 ```swift
@@ -109,29 +111,29 @@ VStack(spacing: 0) {
 ```swift
 HStack(alignment: .top, spacing: 0) {
     channelColumnFixed
-    VStack(spacing: 0) {
-        pinnedTimeHeader          // time header OUTSIDE the ScrollView
-        guideScrollView           // ScrollView([.horizontal, .vertical])
-    }
-    .frame(maxWidth: .infinity, maxHeight: .infinity)  // REQUIRED — without this the VStack collapses to zero width
+    guideScrollView
+        .frame(maxWidth: .infinity, maxHeight: .infinity)  // REQUIRED
 }
 ```
 
 **guideScrollView:**
 ```swift
 ScrollView([.horizontal, .vertical]) {
-    VStack(spacing: 0) {
-        HStack { ... }.frame(width: totalW, height: 0)   // zero-height "now" anchor
-        VStack(spacing: 0) {                             // plain VStack, NOT LazyVStack
+    LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
+        Section {
             ForEach(allChannels) { ShowBlocksRow(...).equatable() }
+        } header: {
+            scrollingTimeHeader(nowX: nowX)  // scrolls horizontally, pinned vertically
         }
     }
-}
-.onScrollGeometryChange(for: CGPoint.self, of: { $0.contentOffset }) { _, pt in
-    channelScrollOffset = pt.y   // drives fixed channel column offset
-    timeHeaderOffset    = pt.x   // drives pinned time header offset
+    .frame(width: totalW)
+    .onScrollGeometryChange(for: CGFloat.self, of: { $0.contentOffset.y }) { old, y in
+        channelScrollOffset = y   // drives fixed channel column offset
+    }
 }
 ```
+
+The time header scrolling horizontally in sync with the content is free — it's inside the `ScrollView`. No `timeHeaderOffset` state variable needed.
 
 ---
 
@@ -143,5 +145,5 @@ ScrollView([.horizontal, .vertical]) {
 | 2 | `CableGuideView` MUST NOT have a `.frame()` in `AddShowView` | Height distribution breaks |
 | 3 | Summary height = `proxy.size.height / 3` (not fixed px) | Fixed height breaks proportions at different window sizes |
 | 4 | Inner VStack (pinnedTimeHeader + guideScrollView) MUST have `.frame(maxWidth: .infinity, maxHeight: .infinity)` | VStack gets zero width inside HStack |
-| 5 | Plain `VStack`, NOT `LazyVStack` | All guide rows render blank |
+| 5 | `LazyVStack(pinnedViews: [.sectionHeaders])` requires macOS 15+ floor | All guide rows render blank on macOS 13/14; safe at current floor of 15.0 |
 | 6 | Window minimum 1100×720 for guide step | Guide compressed below usable proportions |

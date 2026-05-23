@@ -306,7 +306,7 @@ final class GuideStore {
         if FileManager.default.fileExists(atPath: path) {
             if let fh = FileHandle(forWritingAtPath: path) {
                 fh.seekToEndOfFile()
-                fh.write(data)
+                try? fh.write(contentsOf: data)
                 fh.closeFile()
             }
         } else {

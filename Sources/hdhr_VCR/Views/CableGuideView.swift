@@ -176,8 +176,7 @@ struct CableGuideView: View {
             .strokeBorder(Color(NSColor.separatorColor).opacity(0.35), lineWidth: 0.5))
     }
 
-    // ── Time header — lives inside the scroll view so it scrolls horizontally ──
-    // pinnedViews: [.sectionHeaders] keeps it pinned to the top during vertical scroll.
+    // ── Time header — lives inside the ScrollView as a LazyVStack section header ──
 
     private func scrollingTimeHeader(nowX: CGFloat) -> some View {
         ZStack(alignment: .leading) {
@@ -253,14 +252,12 @@ struct CableGuideView: View {
                     }
                 }
                 .frame(width: totalW)
-                .onScrollOffset(coordinateSpaceName: "guideScroll") { pt in
+                .onScrollGeometryChange(for: CGFloat.self, of: { $0.contentOffset.y }) { old, y in
+                    guard abs(y - old) >= 1 else { return }
                     var t = Transaction(); t.disablesAnimations = true
-                    withTransaction(t) {
-                        channelScrollOffset = pt.y
-                    }
+                    withTransaction(t) { channelScrollOffset = y }
                 }
             }
-            .coordinateSpace(name: "guideScroll")
             .onChange(of: snapToNow) { trigger in
                 guard trigger else { return }
                 proxy.scrollTo("now-anchor", anchor: .leading)
@@ -328,6 +325,7 @@ private struct ShowBlocksRow: View, Equatable {
         lhs.entries.count                == rhs.entries.count &&
         lhs.selectedEntry?.StartTime     == rhs.selectedEntry?.StartTime &&
         lhs.selectedChannel?.GuideNumber == rhs.selectedChannel?.GuideNumber &&
+        lhs.lineupEntry?.GuideNumber     == rhs.lineupEntry?.GuideNumber &&   // nil→value change must re-evaluate tap handlers
         lhs.genreFilter                  == rhs.genreFilter &&
         lhs.displayStart                 == rhs.displayStart &&
         lhs.managedSeriesIDs             == rhs.managedSeriesIDs &&
@@ -355,7 +353,10 @@ private struct ShowBlocksRow: View, Equatable {
                     .offset(x: x)
             }
 
-            ForEach(entries) { entry in showBlock(entry: entry, now: now) }
+            ForEach(Array(entries.enumerated()), id: \.element.id) { idx, entry in
+                let nextEntry = idx + 1 < entries.count ? entries[idx + 1] : nil
+                showBlock(entry: entry, nextEntry: nextEntry, now: now)
+            }
 
             let nowX = CGFloat(now.timeIntervalSince(displayStart) / 60) * pxPerMin
             if nowX > 0 && nowX < totalW {
@@ -375,7 +376,7 @@ private struct ShowBlocksRow: View, Equatable {
     }
 
     @ViewBuilder
-    private func showBlock(entry: GuideEntry, now: Date) -> some View {
+    private func showBlock(entry: GuideEntry, nextEntry: GuideEntry?, now: Date) -> some View {
         let startSec   = entry.startDate.timeIntervalSince(displayStart)
         let rawX       = CGFloat(startSec / 60) * pxPerMin
         let cellX      = max(0, rawX)
@@ -482,16 +483,21 @@ private struct ShowBlocksRow: View, Equatable {
         // Only appears for managed sports shows when Bonus Time is configured (bonusMinutes > 0).
         if isBonusTime && bonusMinutes > 0 {
             let bonusW = max(8, CGFloat(bonusMinutes) * pxPerMin - 2)
+            let bonusColor = guideEntryColor(for: entry, onAir: onAir)
             ZStack(alignment: .topLeading) {
-                // Dotted border matching the show's color to visually link them
+                // Golf show's color dominates the stolen region — clearly reads as the bonus show's time
                 RoundedRectangle(cornerRadius: 3)
-                    .stroke(style: StrokeStyle(lineWidth: 1.5, dash: [5, 3]))
-                    .foregroundColor(guideEntryColor(for: entry, onAir: onAir).opacity(0.85))
-                // Label if the box is wide enough to fit text
-                if bonusW > 60 {
-                    Text("Bonus Time")
-                        .font(.system(size: 8, weight: .medium))
-                        .foregroundColor(guideEntryColor(for: entry, onAir: onAir).opacity(0.9))
+                    .fill(bonusColor.opacity(0.70))
+                // Dotted border marks the boundary clearly
+                RoundedRectangle(cornerRadius: 3)
+                    .stroke(style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+                    .foregroundColor(bonusColor.opacity(0.90))
+                // Next show's title always visible — even when fully covered by the bonus box
+                if let title = nextEntry?.Title {
+                    Text(title)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.80))
+                        .lineLimit(1)
                         .padding(.horizontal, 4)
                         .padding(.top, 4)
                 }
@@ -499,7 +505,11 @@ private struct ShowBlocksRow: View, Equatable {
             .frame(width: bonusW, height: rowH - 2)
             .offset(x: cellX + cellW + 2, y: 1)
             .opacity(matchesFilter ? 1.0 : 0.2)
-            .allowsHitTesting(false)  // tap goes to the underlying show, not the bonus box
+            .zIndex(1)              // render above the next show's block
+            .onTapGesture {
+                // Tap selects the overlapped show in the summary panel
+                if let ne = nextEntry { onSelect(ne, lineupEntry) }
+            }
         }
     }
 }

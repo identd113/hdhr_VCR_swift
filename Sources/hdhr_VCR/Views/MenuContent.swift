@@ -65,6 +65,9 @@ struct MenuContent: View {
         }
         Divider()
 
+        Button("Settings…")    { open("settings") }
+        Divider()
+
         // ── Recording now ─────────────────────────────────────────────────
         if !recordingShows.isEmpty {
             if state.devices.count > 1 {
@@ -134,9 +137,6 @@ struct MenuContent: View {
                 }
             }
         }
-        Divider()
-
-        Button("Settings…")    { open("settings") }
         Divider()
 
         Button("Quit hdhrVCRplus", role: .destructive) { state.quit() }
@@ -281,44 +281,48 @@ struct MenuContent: View {
             }
             Divider()
 
-            // Single ───────────────────────────────────────────────────────
-            Button("Single — record once") {
-                state.addShowFromGuide(entry: entry, type: .single, device: device, channel: channel)
-            }
-
-            Divider()
-
-            // DateTime: repeats this same day + time on this channel
-            Button {
-                state.addShowFromGuide(entry: entry, type: .dateTime, device: device, channel: channel)
-            } label: {
-                VStack(alignment: .leading) {
-                    Text("DateTime — same day & time")
-                    Text("Repeats on \(weekdayName(entry.startDate))s at \(state.shortTime(entry.startDate)) on Channel \(channel.GuideNumber)")
-                        .font(.caption).foregroundStyle(.secondary)
+            if let existing = managedShow(for: entry) {
+                Button("Edit Show…") { editShow(existing) }
+            } else {
+                // Single ───────────────────────────────────────────────────────
+                Button("Single — record once") {
+                    state.addShowFromGuide(entry: entry, type: .single, device: device, channel: channel)
                 }
-            }
 
-            // SeriesID Channel: any episode, this channel only
-            Button {
-                state.addShowFromGuide(entry: entry, type: .seriesChannel, device: device, channel: channel)
-            } label: {
-                VStack(alignment: .leading) {
-                    Text("SeriesID — this channel")
-                    Text("Any episode on Channel \(channel.GuideNumber)")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-            }
+                Divider()
 
-            // SeriesID All: any episode, any channel
-            Button {
-                state.addShowFromGuide(entry: entry, type: .seriesAll, device: device, channel: channel)
-            } label: {
-                VStack(alignment: .leading) {
-                    Text("SeriesID — all channels")
-                    if let sid = entry.SeriesID {
-                        Text("Matches \(sid) anywhere in the guide")
+                // DateTime: repeats this same day + time on this channel
+                Button {
+                    state.addShowFromGuide(entry: entry, type: .dateTime, device: device, channel: channel)
+                } label: {
+                    VStack(alignment: .leading) {
+                        Text("DateTime — same day & time")
+                        Text("Repeats on \(weekdayName(entry.startDate))s at \(state.shortTime(entry.startDate)) on Channel \(channel.GuideNumber)")
                             .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+
+                // SeriesID Channel: any episode, this channel only
+                Button {
+                    state.addShowFromGuide(entry: entry, type: .seriesChannel, device: device, channel: channel)
+                } label: {
+                    VStack(alignment: .leading) {
+                        Text("SeriesID — this channel")
+                        Text("Any episode on Channel \(channel.GuideNumber)")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+
+                // SeriesID All: any episode, any channel
+                Button {
+                    state.addShowFromGuide(entry: entry, type: .seriesAll, device: device, channel: channel)
+                } label: {
+                    VStack(alignment: .leading) {
+                        Text("SeriesID — all channels")
+                        if let sid = entry.SeriesID {
+                            Text("Matches \(sid) anywhere in the guide")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
                     }
                 }
             }
@@ -348,8 +352,7 @@ struct MenuContent: View {
         let recEp        = currentEntry.flatMap { episodeInfoLabel($0) }
         let menuTitle    = recEp.map { "🔴 \(show.show_title) · \($0)" } ?? "🔴 \(show.show_title)"
         // Bonus Time: sports shows record past the guide end — adjust the displayed end time
-        let isSportsBonus = state.config.Sports_padding_enabled
-                         && show.show_genre.lowercased().contains("sports")
+        let isSportsBonus = state.config.Sports_padding_enabled && show.show_bonus_time
         let bonusPadding  = isSportsBonus ? TimeInterval(state.config.Sports_padding_minutes * 60) : 0
         Menu(menuTitle) {
             let started      = show.show_next.date ?? recNow
@@ -500,6 +503,13 @@ struct MenuContent: View {
     private func editShow(_ show: Show) {
         state.editingShowId = show.show_id
         open("edit-show")
+    }
+
+    private func managedShow(for entry: GuideEntry) -> Show? {
+        if let sid = entry.SeriesID, !sid.isEmpty {
+            return state.shows.first { $0.show_seriesid == sid }
+        }
+        return state.shows.first { $0.show_title == entry.Title }
     }
 
     private func stateIcon(_ show: Show) -> String {

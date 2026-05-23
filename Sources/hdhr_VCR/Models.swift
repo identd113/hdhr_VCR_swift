@@ -66,6 +66,7 @@ struct Show: Identifiable, Equatable {
     var show_temp_dir: String       // same as show_dir in most configs
     var show_recording_path: String // path of active/last recording file
     var show_genre: String          // first genre tag from guide (e.g. "Sports")
+    var show_bonus_time: Bool       // true = extend recording past guide end
 
     var state: ShowState {
         if !show_is_series { return .single }
@@ -103,7 +104,8 @@ struct Show: Identifiable, Equatable {
             show_fail_count: 0, show_fail_reason: "", show_logo_url: "", show_transcode: "none",
             show_tags: "", show_recording: false, show_last: EpochDate(),
             notify_upnext_time: EpochDate(), notify_recording_time: EpochDate(),
-            show_dir: "", show_temp_dir: "", show_recording_path: "", show_genre: ""
+            show_dir: "", show_temp_dir: "", show_recording_path: "", show_genre: "",
+            show_bonus_time: false
         )
     }
 }
@@ -125,7 +127,7 @@ extension Show: Codable {
         case show_seriesid, show_fail_count, show_fail_reason, show_logo_url
         case show_transcode, show_tags, show_recording, show_last
         case notify_upnext_time, notify_recording_time
-        case show_dir, show_temp_dir, show_recording_path, show_genre
+        case show_dir, show_temp_dir, show_recording_path, show_genre, show_bonus_time
     }
 
     init(from decoder: Decoder) throws {
@@ -161,6 +163,8 @@ extension Show: Codable {
         show_temp_dir      = (try? c.decode(String.self, forKey: .show_temp_dir)) ?? ""
         show_recording_path = (try? c.decode(String.self, forKey: .show_recording_path)) ?? ""
         show_genre          = (try? c.decode(String.self, forKey: .show_genre)) ?? ""
+        show_bonus_time     = (try? c.decode(Bool.self,   forKey: .show_bonus_time))
+            ?? show_genre.lowercased().contains("sports")
     }
 }
 
