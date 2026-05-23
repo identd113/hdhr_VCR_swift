@@ -128,7 +128,7 @@ For managed sports shows, a dotted `RoundedRectangle` is drawn as a sibling view
 
 ## Scroll Synchronization
 
-`channelScrollOffset` (vertical) is driven by `.onScrollGeometryChange` applied directly to the `LazyVStack` content — macOS 15+ API, used unconditionally since 15.0 is the deployment floor. A 1pt threshold and `disablesAnimations: true` prevent jitter.
+`channelScrollOffset` (vertical) is driven by `VerticalScrollTracker: NSViewRepresentable` — a zero-size `NSView` embedded in the scroll content `.background()`; it hooks `NSView.boundsDidChangeNotification` on the `NSScrollView.contentView` and fires on every AppKit scroll frame. A 1pt threshold and `disablesAnimations: true` prevent jitter. **Do not use `.onScrollGeometryChange` or `GeometryReader + PreferenceKey`** — AppKit moves scroll content via CALayer translation without triggering SwiftUI view re-evaluation; those APIs fire only during view body re-evaluation, not on live scroll. See `CableGuideView_pitfalls.md` and `feedback_channel_scroll_sync.md` for the full investigation.
 
 The time header scrolls horizontally automatically (it's inside the `ScrollView`) and stays pinned vertically via `LazyVStack(pinnedViews: [.sectionHeaders])` — no `timeHeaderOffset` synchronization needed.
 

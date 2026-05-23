@@ -1,5 +1,16 @@
 # hdhrVCRplus Changelog
 
+## 2026-05-23 (260523-1751)
+
+- **Config moved to Application Support** — config file relocated to `~/Library/Application Support/hdhrVCRplus/hdhr_VCR-{hostname}.json`; ad-hoc re-signing during development no longer resets TCC permissions and clears all shows; one-time migration from `~/Documents` runs on first launch, old file preserved for AppleScript app compatibility
+- **Unbuffered log output** — `setbuf(stdout/stderr, nil)` applied after `freopen`; every `print()` line now lands on disk immediately instead of buffering in 8 KB chunks
+- **Cable guide vertical scroll sync** — replaced `.onScrollGeometryChange` (fires only on SwiftUI re-evaluation, not AppKit layer scroll) with `VerticalScrollTracker: NSViewRepresentable`; embeds a zero-size `NSView` that hooks `NSView.boundsDidChangeNotification` on the enclosing `NSScrollView`, firing on every scroll frame
+- **Guide summary poster fills panel height** — poster image is now `frame(width: 180).frame(maxHeight: .infinity)` (was `frame(width: 140, height: 100)`); channel icon enlarged to 52 pt
+- **Stale channel icon cleared** — `ChannelIcon` now sets `img = nil` when `urlString` changes to nil/empty; switching from a channel with a logo to one without no longer shows the previous channel's logo
+- **Wizard SeriesID scheduling fixed** — `save()` now calls `resolveSeriesAir()` before `addShow()`, matching the menu-flow; selecting a future airing now correctly schedules from the current (or nearest) episode
+- **"Watch in App" gated on onAir** — button only appears when the selected show is currently broadcasting, consistent with "Watch in VLC"; applies in both the guide summary panel and `entryMenu()`
+- **In-app AVKit player** — `Player_unlocked` easter egg (5-tap About logo) unlocks a pop-out `AVPlayerView` window; always forces `transcode=heavy` since AVPlayer does not support raw MPEG-2
+
 ## 2026-05-23 (260523-1212)
 
 - **Prevent duplicate scheduling** — the guide wizard and menu-mode Add Show now detect already-managed shows (matched by SeriesID, falling back to title) and replace the Record button / record menu items with an "Edit Show" action; you can no longer accidentally create a duplicate entry for a show already in your schedule; clicking "Edit Show" opens the existing show directly in EditShowView

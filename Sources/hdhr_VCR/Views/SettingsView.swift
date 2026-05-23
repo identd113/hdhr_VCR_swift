@@ -635,10 +635,7 @@ struct SettingsView: View {
                 Text(updateVersion != nil ? "Changelog (current version)" : "Changelog")
                     .font(.headline)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                Text(filteredText)
-                    .font(.caption)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .textSelection(.enabled)
+                renderChangelog(filteredText)
 
                 Link("View on GitHub",
                      destination: URL(string: "https://github.com/identd113/hdhr_VCR_swift")!)
@@ -708,6 +705,28 @@ struct SettingsView: View {
               parts[0].count == 6, parts[0].allSatisfy(\.isNumber),
               parts[1].count == 4, parts[1].allSatisfy(\.isNumber) else { return nil }
         return inner
+    }
+
+    @ViewBuilder
+    private func renderChangelog(_ text: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(Array(text.components(separatedBy: "\n").enumerated()), id: \.offset) { _, line in
+                if line.hasPrefix("## ") {
+                    Text(LocalizedStringKey(String(line.dropFirst(3))))
+                        .font(.caption.bold())
+                        .padding(.top, 8)
+                } else if line.hasPrefix("- ") {
+                    HStack(alignment: .top, spacing: 4) {
+                        Text("•").font(.caption).padding(.leading, 4)
+                        Text(LocalizedStringKey(String(line.dropFirst(2)))).font(.caption)
+                    }
+                } else if !line.trimmingCharacters(in: .whitespaces).isEmpty {
+                    Text(LocalizedStringKey(line)).font(.caption)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .textSelection(.enabled)
     }
 
     private func chooseFolder() {

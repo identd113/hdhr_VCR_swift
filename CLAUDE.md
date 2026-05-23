@@ -41,7 +41,7 @@ AppState.swift             @MainActor ObservableObject — all app logic, idle l
 HDHRManager.swift          Network layer: device discovery (concurrent known-hosts+mDNS+UDP) and lineup fetch
 GuideStore.swift           Guide cache: fetches, indexes, and queries guide data for all devices
 RecordingManager.swift     Launches/stops caffeinate+curl processes, manages sleep prevention
-ConfigManager.swift        Reads/writes ~/Documents/hdhr_VCR-{hostname}.json
+ConfigManager.swift        Reads/writes ~/Library/Application Support/hdhrVCRplus/hdhr_VCR-{hostname}.json
 Models.swift               All data types (Show, HDHRDevice, GuideEntry, AppConfig, EpochDate, …)
 AddShowMode.swift          Enum: .menu vs .wizard add-show modes
 ChannelIconCache.swift     Actor: async disk-backed cache for channel logo images
@@ -205,7 +205,8 @@ All `Date?` fields in `Show` use the `EpochDate` wrapper struct, which:
 
 ## Config File
 
-**Location**: `~/Documents/hdhr_VCR-{hostname}.json`  
+**Location**: `~/Library/Application Support/hdhrVCRplus/hdhr_VCR-{hostname}.json`  
+**Migration**: on first launch, `ConfigManager` copies the old `~/Documents/hdhr_VCR-{hostname}.json` to the new path automatically; the old file is left in place for the AppleScript app.  
 **Backup**: `.json.bak` created before each write  
 **Shares format** with the AppleScript app — both apps can read the same config.
 

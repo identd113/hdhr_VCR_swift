@@ -115,15 +115,16 @@ VStack(spacing: 0) {
 Displayed in the top 1/3 of the guide step content area. Background color matches the selected guide cell color via `guideEntryColor(for:onAir:)` (module-level function in `CableGuideView.swift`, non-private so `AddShowView` can call it).
 
 When a show is selected:
-- **Poster image** — `AsyncImage`, 140×100, cornerRadius 7
+- **Poster image** — `AsyncImage`, `frame(width: 180).frame(maxHeight: .infinity)` (fills HStack height dynamically), cornerRadius 7
 - **"🔴 Recording Now" badge** — shown if the selected channel is actively recording (`recordingShows` match by channel + time)
 - **Title** — `.title3`, bold, white with drop shadow
 - **Episode info** — `episodeInfoLabel(entry)` → `"S02E05 · The Episode Title"`, `.subheadline`
 - **Synopsis** — up to 3 lines, `.callout`
 - **Upcoming airings** (SeriesID shows) — calls `state.upcomingGuideEpisodes(seriesID:)` → `"ch 5.1 Thu 8:00 PM · ch 5.1 Fri 10:00 PM"`, `.caption2`
-- **Channel icon** — `ChannelIcon(urlString:size:18)` from `ChannelIconCache`
+- **Channel icon** — `ChannelIcon(urlString:size:52)` from `ChannelIconCache`; sourced from `GuideChannel.ImageURL` (not `LineupEntry`, which has no icon); sets `img = nil` on nil `urlString` to prevent stale logo bleed when switching to a channel without an icon
 - **Time range** — `"ch 5.1 · 8:00 PM – 9:00 PM"`, `.caption`
-- **Watch in VLC** button — conditional on `config.Watch_in_VLC && VLC installed`
+- **Watch in VLC** button — conditional on `config.Watch_in_VLC && VLC installed && onAir`
+- **Watch in App** button — conditional on `onAir && config.Player_unlocked` (easter egg: 5-tap About logo)
 - **Record** button — `.borderedProminent`; calls `applyGuideEntry()` then advances to step 3
 
 Placeholder `"Select a show from the grid"` shown when nothing is selected.
@@ -182,6 +183,8 @@ show.show_air_date         = seriesType == .seriesChannel || seriesType == .seri
     ? ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
     : Array(airDays)
 ```
+
+For SeriesID shows (`show_use_seriesid == true`), `resolveSeriesAir(show:device:isAll:channel:)` is called **before** `state.addShow(show)`: it checks for a currently-airing episode first (so recording starts immediately if the show is on now), then falls back to the next future episode. This matches the menu-flow behavior — without this call, the show would be scheduled for the tapped guide entry's time rather than the nearest airing.
 
 `state.addShow` deduplicates by `show_id` (UUID), then saves the config to disk.
 
