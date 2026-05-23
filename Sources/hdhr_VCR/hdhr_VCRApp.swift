@@ -18,6 +18,11 @@ struct hdhr_VCRApp: App {
         }
         freopen(logPath, "a", stdout)
         freopen(logPath, "a", stderr)
+        // Disable stdio buffering so every print() line lands on disk immediately.
+        // Without this, output is fully buffered (8 KB chunks) when stdout is a file,
+        // causing log entries to appear delayed or missing after a crash/kill.
+        setbuf(stdout, nil)
+        setbuf(stderr, nil)
         let stamp = ISO8601DateFormatter().string(from: Date())
         print("\n=== hdhrVCRplus launched \(stamp) ===")
 

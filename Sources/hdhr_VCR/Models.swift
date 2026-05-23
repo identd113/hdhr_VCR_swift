@@ -195,6 +195,7 @@ struct AppConfig: Equatable {
     var Verbose_curl: Bool = false
     var Watch_in_VLC: Bool = false
     var Watch_in_VLC_initialized: Bool = false  // set true after first auto-detect so user toggles are preserved
+    var Player_unlocked: Bool = false           // unlocked via 5-tap on About logo
     // Bonus Time: extends recording past the guide end for sports shows
     var Sports_padding_enabled: Bool = true
     var Sports_padding_minutes: Int  = 30   // user-settable 10–60 min, default 30
@@ -218,6 +219,7 @@ extension AppConfig: Codable {
         Verbose_curl          = (try? c.decode(Bool.self,    forKey: .Verbose_curl))          ?? false
         Watch_in_VLC          = (try? c.decode(Bool.self,    forKey: .Watch_in_VLC))          ?? false
         Watch_in_VLC_initialized = (try? c.decode(Bool.self, forKey: .Watch_in_VLC_initialized)) ?? false
+        Player_unlocked          = (try? c.decode(Bool.self, forKey: .Player_unlocked))          ?? false
         Sports_padding_enabled  = (try? c.decode(Bool.self,   forKey: .Sports_padding_enabled))  ?? true
         Sports_padding_minutes  = (try? c.decode(Int.self,    forKey: .Sports_padding_minutes))  ?? 30
         Config_version          = (try? c.decode(String.self,  forKey: .Config_version))         ?? "1"

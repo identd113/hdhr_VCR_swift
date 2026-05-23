@@ -583,7 +583,7 @@ final class AppState: ObservableObject {
     /// For SeriesID shows, find the earliest airing episode and update show_next/show_end/show_channel/show_url.
     /// Checks currently-airing first (so show_next may be in the past — idle loop records the remaining portion),
     /// then the next future episode. Falls back silently if neither is found (selected entry's times stay).
-    private func resolveSeriesAir(show: inout Show, device: HDHRDevice, isAll: Bool, channel: LineupEntry) {
+    func resolveSeriesAir(show: inout Show, device: HDHRDevice, isAll: Bool, channel: LineupEntry) {
         let chFilter  = isAll ? nil : channel.GuideNumber
         let devFilter = isAll ? nil : device.DeviceID
         let now       = Date()
@@ -1028,6 +1028,17 @@ final class AppState: ObservableObject {
     func shortTime(_ date: Date?) -> String {
         guard let d = date else { return "?" }
         return Self.shortTimeFormatter.string(from: d)
+    }
+
+    func watchInApp(url: String, title: String, transcode: String? = nil) {
+        let profile = (transcode ?? config.Default_transcode).lowercased().trimmingCharacters(in: .whitespaces)
+        // AVPlayer requires H.264 — fall back to 'heavy' when profile is none/empty
+        // (VLC handles raw MPEG-2 natively but AVFoundation's VideoToolbox does not)
+        let playerProfile = (profile.isEmpty || profile == "none") ? "heavy" : profile
+        let raw = "\(url)?transcode=\(playerProfile)"
+        guard config.Player_unlocked,
+              let streamURL = URL(string: raw) else { return }
+        PlayerWindowManager.shared.play(url: streamURL, title: title)
     }
 
     func watchInVLC(url: String, transcode: String? = nil) {

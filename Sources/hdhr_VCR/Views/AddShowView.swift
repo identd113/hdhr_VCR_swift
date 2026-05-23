@@ -326,21 +326,23 @@ struct AddShowView: View {
                                   && state.config.Sports_padding_enabled
 
             ZStack(alignment: .topTrailing) {
-            HStack(alignment: .top, spacing: 14) {
-                // Poster image
+            HStack(alignment: .top, spacing: 16) {
+                // Poster image — fixed width, fills panel height dynamically
                 if let urlStr = entry.ImageURL, !urlStr.isEmpty, let url = URL(string: urlStr) {
                     AsyncImage(url: url) { img in
                         img.resizable().aspectRatio(contentMode: .fill)
                     } placeholder: {
                         Color.white.opacity(0.2)
                     }
-                    .frame(width: 140, height: 100)
+                    .frame(width: 180)
+                    .frame(maxHeight: .infinity)
                     .cornerRadius(7)
                     .clipped()
                 } else {
                     RoundedRectangle(cornerRadius: 7)
                         .fill(Color.white.opacity(0.2))
-                        .frame(width: 140, height: 100)
+                        .frame(width: 180)
+                        .frame(maxHeight: .infinity)
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -407,7 +409,7 @@ struct AddShowView: View {
                     }
                     Spacer(minLength: 0)
                     HStack(spacing: 8) {
-                        ChannelIcon(urlString: channelIcon, size: 18)
+                        ChannelIcon(urlString: channelIcon, size: 52)
                         Text("Channel \(selectedChannel?.GuideNumber ?? "?")  ·  \(guideTimeRange(entry))")
                             .font(.caption)
                             .foregroundColor(.white.opacity(0.85))
@@ -418,6 +420,14 @@ struct AddShowView: View {
                            FileManager.default.fileExists(atPath: "/Applications/VLC.app") {
                             Button("Watch in VLC") { state.watchInVLC(url: selectedChannel?.URL ?? "") }
                             .buttonStyle(WhiteOutlineButtonStyle(borderColor: Color(red: 1.0, green: 0.482, blue: 0.0)))
+                            .disabled(selectedChannel == nil)
+                        }
+                        if onAir, state.config.Player_unlocked {
+                            Button("Watch in App") {
+                                state.watchInApp(url: selectedChannel?.URL ?? "",
+                                                 title: selectedEntry?.Title ?? "Live TV")
+                            }
+                            .buttonStyle(WhiteOutlineButtonStyle(borderColor: .blue))
                             .disabled(selectedChannel == nil)
                         }
                         let managedShow: Show? = {
@@ -739,6 +749,10 @@ struct AddShowView: View {
             : Array(airDays)
         show.show_dir               = folder.path
         show.show_temp_dir          = folder.path
+        // For SeriesID shows, resolve to the current airing (or next) — same path as the menu flow
+        if show.show_use_seriesid, let device = selectedDevice, let channel = selectedChannel {
+            state.resolveSeriesAir(show: &show, device: device, isAll: show.show_use_seriesid_all, channel: channel)
+        }
         state.addShow(show)
         dismiss()
     }

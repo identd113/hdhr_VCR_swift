@@ -68,12 +68,12 @@ struct ChannelIcon: View {
                     .resizable()
                     .aspectRatio(contentMode: .fit)
             } else {
-                Color.clear
+                Rectangle().hidden()
             }
         }
         .frame(width: size, height: size)
         .task(id: urlString) {
-            guard let s = urlString, !s.isEmpty else { return }
+            guard let s = urlString, !s.isEmpty else { img = nil; return }
             img = await ChannelIconCache.shared.image(for: s)
         }
     }

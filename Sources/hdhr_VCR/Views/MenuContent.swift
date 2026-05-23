@@ -315,6 +315,9 @@ struct MenuContent: View {
                     Text("Watch in VLC").foregroundColor(vlcOrange)
                 }
             }
+            if state.config.Player_unlocked && isOnAir {
+                Button("Watch in App") { state.watchInApp(url: channel.URL ?? "", title: entry.Title) }
+            }
         } label: {
             Label {
                 Text(entryLabel(entry, isOnAir: isOnAir))
@@ -375,6 +378,11 @@ struct MenuContent: View {
             if state.config.Watch_in_VLC {
                 Button(action: { state.watchInVLC(url: show.show_url, transcode: show.show_transcode) }) {
                     Text("Watch in VLC").foregroundColor(vlcOrange)
+                }
+            }
+            if state.config.Player_unlocked {
+                Button("Watch in App") {
+                    state.watchInApp(url: show.show_url, title: show.show_title, transcode: show.show_transcode)
                 }
             }
             Button("Edit…") { editShow(show) }

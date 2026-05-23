@@ -38,11 +38,47 @@ func guideEntryColor(for entry: GuideEntry, onAir: Bool) -> Color {
     return onAir ? base : base.opacity(0.75)
 }
 
+// Observes the AppKit NSScrollView for vertical offset changes every scroll frame.
+private struct VerticalScrollTracker: NSViewRepresentable {
+    var onOffset: (CGFloat) -> Void
+
+    func makeNSView(context: Context) -> TrackingView { TrackingView(onOffset: onOffset) }
+    func updateNSView(_ v: TrackingView, context: Context) { v.onOffset = onOffset }
+
+    final class TrackingView: NSView {
+        var onOffset: (CGFloat) -> Void
+        private var observer: Any?
+
+        init(onOffset: @escaping (CGFloat) -> Void) {
+            self.onOffset = onOffset
+            super.init(frame: .zero)
+        }
+        required init?(coder: NSCoder) { fatalError() }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let obs = observer { NotificationCenter.default.removeObserver(obs) }
+            observer = nil
+            guard let sv = enclosingScrollView else { return }
+            sv.contentView.postsBoundsChangedNotifications = true
+            observer = NotificationCenter.default.addObserver(
+                forName: NSView.boundsDidChangeNotification,
+                object: sv.contentView, queue: .main
+            ) { [weak self, weak sv] _ in
+                guard let y = sv?.contentView.bounds.origin.y else { return }
+                self?.onOffset(y)
+            }
+        }
+    }
+}
+
 // ── Cable-style TV guide grid ─────────────────────────────────────────────────
 // Rows = channels, columns = 30-min time slots, cells span proportional to show duration.
-// Channel labels are pinned left (do not scroll horizontally).
-// Time header lives INSIDE the ScrollView as a LazyVStack pinned section header:
-// it scrolls horizontally with the content and stays pinned at the top during vertical scroll.
+// Channel column floats outside the ScrollView (truly pinned — SwiftUI culls offset-faked columns).
+// Time header lives INSIDE the ScrollView as a LazyVStack pinned section header.
+// Vertical sync: NSView.boundsDidChangeNotification on the NSScrollView clip view — the only
+// mechanism that fires on every scroll frame on macOS (SwiftUI preference/onScrollGeometryChange
+// fire only during view re-evaluation, not on AppKit layer-level scroll movements).
 
 struct CableGuideView: View {
     let allChannels:      [GuideChannel]
@@ -123,7 +159,7 @@ struct CableGuideView: View {
         timeSlots = slots
     }
 
-    // ── Fixed channel column (does not scroll horizontally) ────────────────────
+    // ── Fixed channel column (floats outside ScrollView — never culled) ────────
 
     private var channelColumnFixed: some View {
         VStack(spacing: 0) {
@@ -134,7 +170,7 @@ struct CableGuideView: View {
                 .frame(width: channelColW, height: headerH, alignment: .center)
                 .background(Color.accentColor)
 
-            // Channel labels, offset vertically to track vertical scroll.
+            // Labels track vertical scroll via channelScrollOffset
             ZStack(alignment: .top) {
                 VStack(spacing: 0) {
                     ForEach(allChannels) { ch in channelLabelCell(ch) }
@@ -252,11 +288,15 @@ struct CableGuideView: View {
                     }
                 }
                 .frame(width: totalW)
-                .onScrollGeometryChange(for: CGFloat.self, of: { $0.contentOffset.y }) { old, y in
-                    guard abs(y - old) >= 1 else { return }
-                    var t = Transaction(); t.disablesAnimations = true
-                    withTransaction(t) { channelScrollOffset = y }
-                }
+                .background(
+                    VerticalScrollTracker { y in
+                        let clamped = max(0, y)
+                        guard abs(clamped - channelScrollOffset) >= 1 else { return }
+                        var t = Transaction(); t.disablesAnimations = true
+                        withTransaction(t) { channelScrollOffset = clamped }
+                    }
+                    .frame(width: 0, height: 0)
+                )
             }
             .onChange(of: snapToNow) { trigger in
                 guard trigger else { return }

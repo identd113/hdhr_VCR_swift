@@ -6,8 +6,28 @@ final class ConfigManager {
 
     init() {
         hostname = ProcessInfo.processInfo.hostName
+        // ~/Library/Application Support/hdhrVCRplus/ — not TCC-protected, survives ad-hoc re-signs
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("hdhrVCRplus")
+        try? FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
+        configURL = appSupport.appendingPathComponent("hdhr_VCR-\(hostname).json")
+        migrateFromDocumentsIfNeeded()
+    }
+
+    // One-time migration: move the config from ~/Documents (TCC-protected) to Application Support.
+    // After migration the old file is left in place so the AppleScript app can still use it.
+    private func migrateFromDocumentsIfNeeded() {
+        guard !FileManager.default.fileExists(atPath: configURL.path) else { return }
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        configURL = docs.appendingPathComponent("hdhr_VCR-\(hostname).json")
+        let oldURL = docs.appendingPathComponent("hdhr_VCR-\(hostname).json")
+        guard let data = try? Data(contentsOf: oldURL) else { return }
+        try? data.write(to: configURL, options: .atomic)
+        // Also copy backup so first save still has a prior version to back up from
+        let oldBak = oldURL.appendingPathExtension("bak")
+        if let bakData = try? Data(contentsOf: oldBak) {
+            try? bakData.write(to: configURL.appendingPathExtension("bak"), options: .atomic)
+        }
+        print("[ConfigManager] migrated config from ~/Documents to Application Support")
     }
 
     func load() -> ConfigFile? {
