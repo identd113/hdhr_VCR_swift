@@ -1,5 +1,16 @@
 # hdhrVCRplus Changelog
 
+## 2026-05-23 (260523-1212)
+
+- **Prevent duplicate scheduling** — the guide wizard and menu-mode Add Show now detect already-managed shows (matched by SeriesID, falling back to title) and replace the Record button / record menu items with an "Edit Show" action; you can no longer accidentally create a duplicate entry for a show already in your schedule; clicking "Edit Show" opens the existing show directly in EditShowView
+- **Record/Edit button layout stability** — the button is now a single SwiftUI `Button` view with a fixed minimum width (90 pt) that switches label and color in place; previously two separate `if/else` views caused the Spacer to relax and the channel-time text to shift when clicking between managed and unmanaged shows
+- **Overlap warning layout stability** — the bonus-time overlap warning text in the guide summary panel is always in the layout (opacity 0 when absent) so the button row above it stays at a fixed vertical position when switching between shows that do and don't trigger a warning
+- **Per-show bonus time flag** — `show_bonus_time: Bool` added to `Show`; any show type can now opt into the recording extension, not just shows whose genre contains "sports"; existing config files migrate automatically (genre-based detection used as the decode fallback)
+- **Bonus-time overrun box redesign** — the dotted overrun box in the cable guide is now filled with the bonus show's genre color (70% opacity) instead of just a colored outline; the overlapped show's title is displayed inside the box; the box is tappable and selects the overlapped show in the summary panel
+- **ShowFormSection extracted** — title, type, days/day, transcode, and folder picker rows extracted into a shared `ShowFormSection` component; used by both the Add Show details step and EditShowView, eliminating ~80 lines of duplication
+- **Starburst badge in details step and EditShowView** — the animated starburst badge now appears when `show_bonus_time` is true in both the Add Show details step and EditShowView; removal uses a shrink+fade transition
+- **CableGuideView vertical scroll** — removed the `CompatibilityHelpers.onScrollOffset` shim; vertical scroll offset now uses `onScrollGeometryChange` directly since macOS 15 is the deployment floor
+
 ## 2026-05-22 (260522-2057)
 
 - **Multi-selection bug fixed** — selecting a show in the cable guide no longer highlights every block at the same start time across all channels; caused by Swift's `nil == nil` evaluating to `true` when lineup data was absent — `ShowBlocksRow` now requires `lineupEntry != nil` before comparing `GuideNumber`

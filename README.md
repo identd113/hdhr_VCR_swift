@@ -45,15 +45,26 @@ Download `hdhr_VCR-vX.X.X.zip` from the [Releases page](https://github.com/ident
 
 ### Option B — Build from source
 
-1. Clone this repository
-2. Open Terminal in the project folder
-3. Run:
+**Prerequisites**: macOS 15.0+, Xcode Command Line Tools (no full Xcode required).
+
+Install the tools if you haven't already:
 
 ```bash
+xcode-select --install
+```
+
+Then:
+
+```bash
+# 1. Clone the repo
+git clone https://github.com/identd113/hdhr_VCR_swift.git
+cd hdhr_VCR_swift
+
+# 2. Build, bundle, sign, and launch
 ./deploy.sh
 ```
 
-This builds the app, copies the binary into `hdhr_VCR.app`, signs it, and launches it. The app will appear in your menu bar as a TV icon.
+`deploy.sh` does everything in one step: stops any running instance, runs `swift build`, copies the binary into `hdhrVCRplus.app`, generates the app icon, ad-hoc signs the bundle, and launches it. The app appears in your menu bar as a TV icon.
 
 ### First launch — Gatekeeper
 
@@ -164,18 +175,28 @@ File naming: `ShowTitle_Channel_YYYYMMDD_HHmm.m2ts` (or `.mkv` for transcoded re
 
 ## Building from Source
 
+**Prerequisites**: macOS 15.0+, Xcode Command Line Tools.
+
 ```bash
-# Build and launch
+xcode-select --install   # one-time setup, skip if already installed
+```
+
+```bash
+# Clone
+git clone https://github.com/identd113/hdhr_VCR_swift.git
+cd hdhr_VCR_swift
+
+# Build + bundle + sign + launch (most common)
 ./deploy.sh
 
-# Build only
+# Build only (no launch)
 swift build
 
 # Run tests
 swift test
 ```
 
-Requires Xcode Command Line Tools. The minimum deployment target is macOS 15.0.
+`swift build` produces the binary at `.build/debug/hdhr_VCR`. `./deploy.sh` copies it into `hdhrVCRplus.app`, ad-hoc signs the bundle, and launches it — no Xcode.app required, just the Command Line Tools.
 
 ---
 
