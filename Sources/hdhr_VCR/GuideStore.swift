@@ -217,7 +217,11 @@ final class GuideStore {
     func nextEpisodes(seriesID: String, after: Date = Date(), limit: Int = 4) -> [SeriesMatch] {
         let epoch = Int(after.timeIntervalSince1970)
         let all = seriesIndex[seriesID]?.filter { $0.entry.StartTime > epoch } ?? []
-        return Array(all.prefix(limit))
+        // Same airing appears once per device when multiple tuners share a channel lineup;
+        // keep only the first occurrence per (channel, StartTime) to avoid duplicate menu rows.
+        var seen = Set<String>()
+        let deduped = all.filter { seen.insert("\($0.channelNum):\($0.entry.StartTime)").inserted }
+        return Array(deduped.prefix(limit))
     }
 
     /// Episode matching seriesID whose broadcast window spans `at` (StartTime ≤ at < EndTime).

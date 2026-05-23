@@ -24,7 +24,7 @@ struct AddShowView: View {
 
     enum Step { case device, guide, details }
 
-    @State private var step: Step = .device
+    @State private var step: Step = .guide
     @State private var show = Show.blank()   // transcode overridden in onAppear
 
     // Step 1
@@ -65,7 +65,7 @@ struct AddShowView: View {
         VStack(alignment: .leading, spacing: 0) {
             // Progress indicator
             HStack(spacing: 4) {
-                ForEach([Step.device, .guide, .details], id: \.self) { s in
+                ForEach([Step.guide, .details], id: \.self) { s in
                     Circle().fill(s == step ? Color.accentColor : .secondary.opacity(0.3))
                         .frame(width: 8, height: 8)
                 }
@@ -101,11 +101,8 @@ struct AddShowView: View {
         .onExitCommand { dismiss() }
         .onAppear {
             show.show_transcode = state.config.Default_transcode
-            // Single device — skip the device step entirely
-            if state.devices.count == 1 {
-                selectedDevice = state.devices[0]
-                step = .guide
-            }
+            if selectedDevice == nil { selectedDevice = state.devices.first }
+            step = .guide
         }
     }
 
@@ -188,15 +185,9 @@ struct AddShowView: View {
         return VStack(spacing: 0) {
             // ── Compact toolbar: tuner + genre filter + actions ───────────────
             HStack(spacing: 10) {
-                if state.devices.count > 1 {
-                    Text("Tuner:").foregroundStyle(.secondary).fixedSize()
-                    Picker("", selection: $selectedDevice) {
-                        ForEach(state.devices) { device in
-                            Text(device.DeviceID).tag(Optional(device))
-                        }
-                    }
-                    .labelsHidden()
-                    .frame(maxWidth: 170)
+                if !state.devices.isEmpty {
+                    Menu { ForEach(state.devices) { tunerMenuItem($0) } } label: { tunerMenuButton }
+                        .frame(maxWidth: 220)
                 }
 
                 if !availableGenres.isEmpty {
@@ -492,6 +483,38 @@ struct AddShowView: View {
         return "\(Self.timeRangeFormatter.string(from: entry.startDate)) – \(Self.timeRangeFormatter.string(from: entry.endDate))"
     }
 
+
+    // MARK: - Tuner menu helpers
+
+    @ViewBuilder
+    private func tunerMenuItem(_ device: HDHRDevice) -> some View {
+        let recCount = state.recordingShows.filter { $0.hdhr_record == device.DeviceID }.count
+        Button {
+            if selectedDevice?.DeviceID != device.DeviceID { selectedDevice = device }
+        } label: {
+            Label(tunerMenuItemLabel(device),
+                  systemImage: recCount > 0 ? "record.circle.fill" : "antenna.radiowaves.left.and.right")
+        }
+    }
+
+    private var tunerMenuButton: some View {
+        let recCount = selectedDevice.map { d in
+            state.recordingShows.filter { $0.hdhr_record == d.DeviceID }.count
+        } ?? 0
+        return Label(selectedDevice?.DeviceID ?? "No Tuner",
+                     systemImage: recCount > 0 ? "record.circle.fill" : "antenna.radiowaves.left.and.right")
+    }
+
+    private func tunerMenuItemLabel(_ device: HDHRDevice) -> String {
+        let recCount = state.recordingShows.filter { $0.hdhr_record == device.DeviceID }.count
+        let chCount  = state.lineups[device.DeviceID]?.count ?? 0
+        var parts    = [device.DeviceID, device.LocalIP]
+        if let tc = device.TunerCount { parts.append("\(tc) tuner\(tc == 1 ? "" : "s")") }
+        if chCount  > 0 { parts.append("\(chCount) ch") }
+        if recCount > 0 { parts.append("\(recCount) recording\(recCount == 1 ? "" : "s")") }
+        if let fw = device.FirmwareVersion { parts.append("fw \(fw)") }
+        return parts.joined(separator: "  ·  ")
+    }
 
     @State private var showStarburst        = false
     @State private var showSummaryStarburst = false

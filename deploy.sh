@@ -41,11 +41,20 @@ iconutil --convert icns "$_ICONSET" --output Resources/AppIcon.icns
 cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
 echo "==> Signing…"
-xattr -cr "$APP"
-# Also remove any ._* resource-fork sidecar files codesign --deep rejects on macOS 15+
+# Delete sidecar/junk files first, then clear xattrs, then sign.
+# Retry up to 3 times — Finder/Spotlight can re-attach attributes in the
+# brief window between xattr -cr and codesign on a busy system.
 find "$APP" -name "._*" -delete
 find "$APP" -name ".DS_Store" -delete
-codesign --force --deep --sign - "$APP"
+_signed=0
+for _attempt in 1 2 3; do
+    xattr -cr "$APP"
+    # No --deep: this bundle has no nested frameworks, and --deep causes codesign
+    # to reject com.apple.FinderInfo that iCloud re-attaches to the bundle root.
+    codesign --force --sign - "$APP" && _signed=1 && break
+    echo "    Attempt $_attempt failed, retrying…"
+done
+[ "$_signed" -eq 1 ] || { echo "ERROR: codesign failed after 3 attempts"; exit 1; }
 touch "$APP"   # update bundle mtime so Finder shows today's date
 
 echo "==> Launching $APP…"

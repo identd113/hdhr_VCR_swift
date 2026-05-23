@@ -67,29 +67,43 @@ struct MenuContent: View {
 
         // ── Recording now ─────────────────────────────────────────────────
         if !recordingShows.isEmpty {
-            Section("Recording Now") {
-                ForEach(recordingShows) { show in
-                    recordingMenu(show)
+            if state.devices.count > 1 {
+                ForEach(state.devices) { device in
+                    let recs = recordingShows.filter { $0.hdhr_record == device.DeviceID }
+                    if !recs.isEmpty {
+                        Section("Recording · \(device.DeviceID)") {
+                            ForEach(recs) { recordingMenu($0) }
+                        }
+                    }
+                }
+            } else {
+                Section("Recording Now") {
+                    ForEach(recordingShows) { recordingMenu($0) }
                 }
             }
             Divider()
         }
 
         // ── Next Up ────────────────────────────────────────────────────────
+        // Compute slotShows here so the Scheduled section can exclude them (avoids
+        // showing the same show in both Next Up and Scheduled at the same time).
         let now = Date()
-        let nextSlotTime: Date? = activeShows
-            .compactMap { $0.show_next.date }.filter { $0 > now }.min()
-        if let slotTime = nextSlotTime {
-            let slotShows = activeShows.filter {
+        let slotShows: [Show] = {
+            guard let t = activeShows.compactMap({ $0.show_next.date }).filter({ $0 > now }).min()
+            else { return [] }
+            return activeShows.filter {
                 guard let d = $0.show_next.date else { return false }
-                return abs(d.timeIntervalSince(slotTime)) < 5 * 60
+                return abs(d.timeIntervalSince(t)) < 5 * 60
             }
+        }()
+        let slotShowIds   = Set(slotShows.map { $0.show_id })
+        let remainingActive = activeShows.filter { !slotShowIds.contains($0.show_id) }
+
+        if !slotShows.isEmpty, let slotTime = slotShows.first?.show_next.date {
             Section("Next Up") {
                 menuInfo("\(Self.timeFormatter.string(from: slotTime)) · in \(relativeLabel(slotTime.timeIntervalSince(now)))",
                          font: .footnote, secondary: true)
-                ForEach(slotShows) { show in
-                    scheduledMenu(show)
-                }
+                ForEach(slotShows) { scheduledMenu($0) }
             }
             Divider()
         }
@@ -98,9 +112,20 @@ struct MenuContent: View {
         if activeShows.isEmpty && inactiveShows.isEmpty {
             Text("No shows scheduled").foregroundStyle(.secondary)
         } else {
-            if !activeShows.isEmpty {
-                Section("Scheduled") {
-                    ForEach(activeShows) { show in scheduledMenu(show) }
+            if !remainingActive.isEmpty {
+                if state.devices.count > 1 {
+                    ForEach(state.devices) { device in
+                        let deviceShows = remainingActive.filter { $0.hdhr_record == device.DeviceID }
+                        if !deviceShows.isEmpty {
+                            Section("Scheduled · \(device.DeviceID)") {
+                                ForEach(deviceShows) { scheduledMenu($0) }
+                            }
+                        }
+                    }
+                } else {
+                    Section("Scheduled") {
+                        ForEach(remainingActive) { scheduledMenu($0) }
+                    }
                 }
             }
             if !inactiveShows.isEmpty {
@@ -324,24 +349,7 @@ struct MenuContent: View {
             let ends         = guideEnd.addingTimeInterval(bonusPadding)
             let inBonusTime  = isSportsBonus && recNow > guideEnd
 
-            // Poster image when available
-            if !show.show_logo_url.isEmpty, let url = URL(string: show.show_logo_url) {
-                AsyncImage(url: url) { img in
-                    img.resizable().aspectRatio(contentMode: .fill)
-                        .frame(width: 120, height: 80).clipped().cornerRadius(4)
-                } placeholder: {
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Color(NSColor.separatorColor))
-                        .frame(width: 120, height: 80)
-                }
-            }
-
-            // Title + episode info — menuInfo() wrapper defeats AppKit's ~50% opacity on disabled items
-            menuInfo(show.show_title, font: .headline)
-            if let entry = currentEntry, let epInfo = episodeInfoLabel(entry) {
-                menuInfo(epInfo, font: .footnote, secondary: true)
-            }
-
+            showInfoHeader(show, entry: currentEntry)
             Divider()
             menuInfo("Channel \(show.show_channel) · \(show.state.rawValue) · tuner \(show.hdhr_record)", font: .footnote, secondary: true)
             menuInfo("\(elapsedLabel(since: started)) elapsed · \(remainingLabel(until: ends)) left", font: .footnote, secondary: true)
@@ -402,32 +410,13 @@ struct MenuContent: View {
                 abs($0.startDate.timeIntervalSince(next)) < 5 * 60
             }
 
-            // Poster image + title (mirrors recordingMenu layout)
-            if !show.show_logo_url.isEmpty, let url = URL(string: show.show_logo_url) {
-                AsyncImage(url: url) { img in
-                    img.resizable().aspectRatio(contentMode: .fill)
-                        .frame(width: 120, height: 80).clipped().cornerRadius(4)
-                } placeholder: {
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Color(NSColor.separatorColor))
-                        .frame(width: 120, height: 80)
-                }
-            }
-            menuInfo(show.show_title, font: .headline)
-            if let entry = scheduledEntry, let synopsis = entry.Synopsis, !synopsis.isEmpty {
-                menuInfo(synopsis, font: .footnote, secondary: true)
-            }
+            showInfoHeader(show, entry: scheduledEntry)
             Divider()
 
             // Type + channel
             menuInfo("\(show.state.rawValue) · Channel \(show.show_channel)", font: .footnote)
             if conflict {
                 menuInfo("⚠️ Conflict — all tuners busy at this time", font: .footnote, secondary: true)
-            }
-
-            // Episode info from the guide (season/episode number · episode title)
-            if let entry = scheduledEntry, let epInfo = episodeInfoLabel(entry) {
-                menuInfo(epInfo, font: .footnote, secondary: true)
             }
 
             // Timing: starts in / ended
@@ -482,6 +471,12 @@ struct MenuContent: View {
     @ViewBuilder
     private func pausedMenu(_ show: Show) -> some View {
         Menu("⏸ \(show.show_title)") {
+            let pausedEntries = state.guideEntries(deviceId: show.hdhr_record, channelNum: show.show_channel)
+            let pausedEntry   = pausedEntries.first {
+                abs($0.startDate.timeIntervalSince(show.show_next.date ?? .distantPast)) < 5 * 60
+            }
+            showInfoHeader(show, entry: pausedEntry)
+            Divider()
             menuInfo("\(show.state.rawValue) · Channel \(show.show_channel)", font: .footnote, secondary: true)
             if !show.show_fail_reason.isEmpty {
                 menuInfo("Last error: \(show.show_fail_reason)", font: .footnote, secondary: true)
@@ -565,14 +560,42 @@ struct MenuContent: View {
         return results
     }
 
+    // Shared show-info panel used by recordingMenu, scheduledMenu, and pausedMenu.
+    // Renders poster (520×292), title, episode info, and synopsis in a consistent layout.
+    @ViewBuilder
+    private func showInfoHeader(_ show: Show, entry: GuideEntry?) -> some View {
+        if !show.show_logo_url.isEmpty, let url = URL(string: show.show_logo_url) {
+            AsyncImage(url: url) { img in
+                img.resizable().aspectRatio(contentMode: .fill)
+                    .frame(width: 520, height: 292).clipped().cornerRadius(6)
+            } placeholder: {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color(NSColor.separatorColor))
+                    .frame(width: 520, height: 292)
+            }
+        }
+        menuInfo(show.show_title, font: .title3)
+        if let ep = entry.flatMap({ episodeInfoLabel($0) }) {
+            menuInfo(ep, font: .callout)
+        }
+        if let syn = entry?.Synopsis, !syn.isEmpty {
+            menuInfo(syn, font: .callout, maxWidth: 520)
+        }
+    }
+
     // Universal helper: wraps info text in a no-op Button so AppKit renders it at full
     // brightness. Plain Text views in Menu {} blocks are auto-disabled by NSMenu and drawn
     // at ~50% opacity regardless of the foreground color — Button avoids that treatment.
+    // Pass maxWidth to constrain width and allow the text to wrap (up to 4 lines).
     @ViewBuilder
-    private func menuInfo(_ string: String, font: Font = .body, secondary: Bool = false) -> some View {
+    private func menuInfo(_ string: String, font: Font = .body, secondary: Bool = false, maxWidth: CGFloat? = nil) -> some View {
         Button(action: {}) {
             Text(string).font(font)
                 .foregroundColor(secondary ? Color(NSColor.secondaryLabelColor) : Color(NSColor.labelColor))
+                .lineLimit(maxWidth == nil ? nil : 4)
+                // Fixed width (not maxWidth) forces NSMenu items to wrap rather than
+                // expanding the menu horizontally to fit a single long line.
+                .frame(width: maxWidth, alignment: .leading)
         }
     }
 
