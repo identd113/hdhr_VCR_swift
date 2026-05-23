@@ -8,7 +8,18 @@ final class AppState: ObservableObject {
     @Published var shows: [Show] = []
     @Published var devices: [HDHRDevice] = []
     @Published var lineups: [String: [LineupEntry]] = [:]       // deviceId → channel lineup
-    @Published var guideByDevice: [String: [GuideChannel]] = [:] // mirror of guideStore.channelsByDevice
+    @Published var guideByDevice: [String: [GuideChannel]] = [:] {  // mirror of guideStore.channelsByDevice
+        didSet { rebuildMenuEntries() }
+    }
+    // Pre-filtered entries for the Add Show cascading menu — on-air + next 3 upcoming per channel.
+    // Rebuilt after every guide load so menu construction is an O(1) dict read.
+    @Published var menuGuideEntries: [String: [GuideEntry]] = [:]
+    // Per-show guide entry for the scheduled menu label and info header — avoids O(series) scan per open.
+    @Published var menuScheduledEntry: [String: GuideEntry] = [:]
+    // Pre-computed upcoming slots for SeriesID shows — avoids O(series) nextEpisodes scan per open.
+    @Published var menuUpcomingSlots: [String: [(channel: String, date: Date)]] = [:]
+    // Pre-computed set of show IDs with scheduling conflicts — rebuilt alongside menu entries.
+    var conflictingShowIDs: Set<String> = []
     @Published var guideRevision: Int = 0                        // increments each time guide data successfully loads
     @Published var config = AppConfig()
     @Published var statusMessage = "Starting…"
@@ -40,6 +51,8 @@ final class AppState: ObservableObject {
     private var lastGuideRefresh: Date    = .distantPast
     private var lastDeviceProbe: Date     = .distantPast
     private var guideRefreshInFlight: Bool = false
+    // Tracks in-flight lineup fetches so concurrent callers don't fire duplicate requests
+    private var loadingLineupDevices: Set<String> = []
     private var failThreshold: Int { config.Fail_count_setting }
     private let maxDiskPct: Double = 93
 
@@ -224,6 +237,25 @@ final class AppState: ObservableObject {
     /// Fetch lineup for every device in parallel; stores results in `lineups[deviceID]`.
     /// After all lineups are fetched, checks whether any show's stored stream URL still uses
     /// a stale device IP and updates it from the fresh lineup data.
+    /// Ensures lineup is available for `device`; re-fetches if missing or empty.
+    /// Guards against silent `try?` failures in fetchAllLineups that leave lineups[deviceID] nil.
+    /// Concurrent callers for the same device wait rather than firing duplicate network requests.
+    func ensureLineupLoaded(for device: HDHRDevice) async {
+        let id = device.DeviceID
+        guard lineups[id]?.isEmpty ?? true else { return }
+        // Coalesce concurrent callers: only the first proceeds; others wait for it to finish.
+        guard !loadingLineupDevices.contains(id) else {
+            while loadingLineupDevices.contains(id) {
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
+            return
+        }
+        loadingLineupDevices.insert(id)
+        defer { loadingLineupDevices.remove(id) }
+        glog("[Lineup] \(id) lineup missing — fetching on demand")
+        await fetchAllLineups(for: [device])
+    }
+
     private func fetchAllLineups(for devices: [HDHRDevice]) async {
         await withTaskGroup(of: (String, [LineupEntry]?).self) { group in
             for device in devices {
@@ -338,6 +370,76 @@ final class AppState: ObservableObject {
     /// Guide entries for a device+channel still airing or upcoming within GuideHours.
     func guideEntries(deviceId: String, channelNum: String) -> [GuideEntry] {
         guideStore.entries(deviceId: deviceId, channelNum: channelNum)
+    }
+
+    /// Rebuilds the pre-filtered entry cache used by the Add Show cascading menu.
+    /// Limits each channel to on-air + next 3 upcoming entries so menu construction
+    /// is an O(1) dict read instead of O(entries) filter per channel per open.
+    /// Called automatically via guideByDevice.didSet after every guide load.
+    private func rebuildMenuEntries() {
+        let now = Date()
+
+        // ── Add Show channel menu: on-air + next 3 per channel ────────────────
+        var channelResult: [String: [GuideEntry]] = [:]
+        for device in devices {
+            for ch in lineups[device.DeviceID] ?? [] {
+                let all      = guideStore.entries(deviceId: device.DeviceID, channelNum: ch.GuideNumber)
+                let onAir    = all.filter { $0.startDate <= now && $0.endDate > now }
+                let upcoming = Array(all.filter { $0.startDate > now }.prefix(3))
+                channelResult["\(device.DeviceID):\(ch.GuideNumber)"] = onAir + upcoming
+            }
+        }
+        menuGuideEntries = channelResult
+
+        // ── Scheduled menu: guide entry + upcoming slots per active show ──────
+        var scheduledResult: [String: GuideEntry] = [:]
+        var upcomingResult:  [String: [(channel: String, date: Date)]] = [:]
+        for show in shows where show.show_active {
+            let schNext = show.show_next.date ?? .distantFuture
+            // Replicate scheduledMenu's schEntry logic: direct match first, series fallback
+            let direct = guideStore.entries(deviceId: show.hdhr_record, channelNum: show.show_channel)
+            if let hit = direct.first(where: { abs($0.startDate.timeIntervalSince(schNext)) < 5 * 60 }) {
+                scheduledResult[show.show_id] = hit
+            } else if show.show_use_seriesid, !show.show_seriesid.isEmpty {
+                let ch  = show.show_use_seriesid_all ? nil : show.show_channel
+                let dev = show.show_use_seriesid_all ? nil : show.hdhr_record
+                scheduledResult[show.show_id] = guideStore.nextEpisode(
+                    seriesID: show.show_seriesid, channelNum: ch, deviceId: dev,
+                    after: schNext.addingTimeInterval(-3600)
+                )?.entry
+            }
+            // Upcoming slots for SeriesID shows
+            if show.show_use_seriesid, !show.show_seriesid.isEmpty {
+                upcomingResult[show.show_id] = guideStore.nextEpisodes(
+                    seriesID: show.show_seriesid, after: now, limit: 3
+                ).map { ($0.channelNum, $0.entry.startDate) }
+            }
+        }
+        menuScheduledEntry  = scheduledResult
+        menuUpcomingSlots   = upcomingResult
+
+        // ── Conflict detection: one O(N²) pass instead of one per menu open ──
+        let deviceMap = Dictionary(uniqueKeysWithValues: devices.compactMap { d -> (String, Int)? in
+            guard let t = d.TunerCount, t > 0 else { return nil }
+            return (d.DeviceID, t)
+        })
+        var newConflicts = Set<String>()
+        let activeShows = shows.filter { $0.show_active }
+        for show in activeShows {
+            guard let next = show.show_next.date,
+                  let end  = show.show_end.date,
+                  let tunerCount = deviceMap[show.hdhr_record] else { continue }
+            let overlapping = activeShows.filter { other in
+                guard other.show_id != show.show_id,
+                      other.hdhr_record == show.hdhr_record,
+                      let oNext = other.show_next.date,
+                      let oEnd  = other.show_end.date
+                else { return false }
+                return oNext < end && oEnd > next
+            }.count
+            if overlapping >= tunerCount { newConflicts.insert(show.show_id) }
+        }
+        conflictingShowIDs = newConflicts
     }
 
     /// Up to `limit` upcoming episodes for a given SeriesID across all devices/channels.
@@ -552,6 +654,9 @@ final class AppState: ObservableObject {
         for show in recordingShows {
             Task { await fetchTunerStatus(for: show) }
         }
+
+        // Re-sync menu caches with current show states (show_next changes after recordings complete)
+        rebuildMenuEntries()
     }
 
     // MARK: - Recording

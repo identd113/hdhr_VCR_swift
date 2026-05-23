@@ -92,18 +92,8 @@ struct EmptyStateView: View {
     let description: String
 
     var body: some View {
-        if effectiveMacOS(14), #available(macOS 14, *) {
-            ContentUnavailableView(title, systemImage: systemImage,
-                                   description: Text(description))
-        } else {
-            VStack(spacing: 16) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 48)).foregroundStyle(.secondary)
-                Text(title).font(.title3).fontWeight(.semibold)
-                Text(description).foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
+        ContentUnavailableView(title, systemImage: systemImage,
+                               description: Text(description))
     }
 }
 

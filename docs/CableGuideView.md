@@ -116,7 +116,7 @@ Compares: `channel.GuideNumber`, `entries.count`, `selectedEntry?.StartTime`, `s
 
 ### Selection logic
 
-Selection compares BOTH `entry.id` (= `StartTime`) AND `selectedChannel?.GuideNumber`. Tap = single-select. Double-tap (`.simultaneousGesture(TapGesture(count: 2))`) calls `onConfirm?()` to advance the wizard.
+Selection compares `entry.id` (= `StartTime`) AND `lineupEntry != nil` AND `selectedChannel?.GuideNumber == lineupEntry?.GuideNumber`. The explicit `lineupEntry != nil` guard is required because Swift evaluates `nil == nil` as `true` — without it, when the lineup is absent every entry at the same `StartTime` across all channels appears selected simultaneously. Tap = single-select. Double-tap (`.simultaneousGesture(TapGesture(count: 2))`) calls `onConfirm?()` to advance the wizard.
 
 ---
 
@@ -128,12 +128,14 @@ For managed sports shows, a dotted `RoundedRectangle` is drawn as a sibling view
 
 ## Scroll Synchronization
 
-Both `channelScrollOffset` (vertical) and `timeHeaderOffset` (horizontal) are driven by `onScrollGeometryChange(for: CGPoint.self)` on the guide `ScrollView`, with a 1pt threshold and `disablesAnimations: true` to prevent jitter.
+Both `channelScrollOffset` (vertical) and `timeHeaderOffset` (horizontal) are driven by `.onScrollOffset(coordinateSpaceName:)` — a `CompatibilityHelpers` extension:
+- macOS 15+: uses the native `onScrollGeometryChange` API
+- macOS 14: falls back to a `PreferenceKey + GeometryReader` placed in the scroll content's background, reading position relative to the named coordinate space
+
+Both paths apply a 1pt threshold and `disablesAnimations: true` to prevent jitter.
 
 - `channelScrollOffset` → `.offset(y: -channelScrollOffset)` on the fixed channel column, inside `.clipped()`
 - `timeHeaderOffset` → `.offset(x: -timeHeaderOffset)` on the pinned time header
-
-Requires macOS 15+ (`onScrollGeometryChange`).
 
 ---
 

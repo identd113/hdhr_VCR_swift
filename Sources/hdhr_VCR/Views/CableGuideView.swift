@@ -40,9 +40,9 @@ func guideEntryColor(for entry: GuideEntry, onAir: Bool) -> Color {
 
 // ── Cable-style TV guide grid ─────────────────────────────────────────────────
 // Rows = channels, columns = 30-min time slots, cells span proportional to show duration.
-// Channel labels are pinned (do not scroll horizontally).
-// Time header is pinned above the scroll view (not inside it) so contentOffset.y == 0
-// at rest, keeping channel-column sync exact.
+// Channel labels are pinned left (do not scroll horizontally).
+// Time header lives INSIDE the ScrollView as a LazyVStack pinned section header:
+// it scrolls horizontally with the content and stays pinned at the top during vertical scroll.
 
 struct CableGuideView: View {
     let allChannels:      [GuideChannel]
@@ -77,7 +77,6 @@ struct CableGuideView: View {
 
     // ── State ──────────────────────────────────────────────────────────────────
     @State private var channelScrollOffset: CGFloat = 0
-    @State private var timeHeaderOffset:    CGFloat = 0
 
     // Cached hot-path values — rebuilt once on appear/change, not on every render
     @State private var lineupByNumber: [String: LineupEntry] = [:]
@@ -94,11 +93,8 @@ struct CableGuideView: View {
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
             channelColumnFixed
-            VStack(spacing: 0) {
-                pinnedTimeHeader
-                guideScrollView
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            guideScrollView
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(GeometryReader { geo in
             Color.clear.onAppear {
@@ -131,7 +127,7 @@ struct CableGuideView: View {
 
     private var channelColumnFixed: some View {
         VStack(spacing: 0) {
-            // Corner cell — matches pinnedTimeHeader height exactly
+            // Corner cell — matches scrollingTimeHeader height exactly
             Text("CHANNEL")
                 .font(.system(size: 10, weight: .bold))
                 .foregroundColor(.white)
@@ -180,12 +176,21 @@ struct CableGuideView: View {
             .strokeBorder(Color(NSColor.separatorColor).opacity(0.35), lineWidth: 0.5))
     }
 
-    // ── Pinned time header (outside the scroll view; shifts left with timeHeaderOffset) ──
+    // ── Time header — lives inside the scroll view so it scrolls horizontally ──
+    // pinnedViews: [.sectionHeaders] keeps it pinned to the top during vertical scroll.
 
-    private var pinnedTimeHeader: some View {
+    private func scrollingTimeHeader(nowX: CGFloat) -> some View {
         ZStack(alignment: .leading) {
+            // Invisible anchor used by ScrollViewReader to snap to current time.
+            HStack(spacing: 0) {
+                Color.clear.frame(width: max(0, nowX - 160), height: 0)
+                Color.clear.frame(width: 1, height: 0).id("now-anchor")
+                Spacer(minLength: 0)
+            }
+            .frame(width: totalW, height: 0)
+
             ForEach(timeSlots, id: \.self) { slot in
-                let x = CGFloat(slot.timeIntervalSince(displayStart) / 60) * pxPerMin - timeHeaderOffset
+                let x = CGFloat(slot.timeIntervalSince(displayStart) / 60) * pxPerMin
                 Text(formatSlot(slot))
                     .font(.system(size: 10, weight: .medium))
                     .foregroundColor(.white)
@@ -195,15 +200,12 @@ struct CableGuideView: View {
                     .offset(x: x)
             }
 
-            let nowX = CGFloat(Date().timeIntervalSince(displayStart) / 60) * pxPerMin - timeHeaderOffset
             Rectangle()
                 .fill(Color.red)
                 .frame(width: 2, height: headerH)
                 .offset(x: nowX)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(height: headerH)
-        .clipped()
+        .frame(width: totalW, height: headerH)
         .background(Color.accentColor.opacity(0.80))
     }
 
@@ -213,15 +215,8 @@ struct CableGuideView: View {
         let nowX = CGFloat(Date().timeIntervalSince(displayStart) / 60) * pxPerMin
         return ScrollViewReader { proxy in
             ScrollView([.horizontal, .vertical]) {
-                VStack(spacing: 0) {
-                    HStack(spacing: 0) {
-                        Color.clear.frame(width: max(0, nowX - 160), height: 0)
-                        Color.clear.frame(width: 1, height: 0).id("now-anchor")
-                        Spacer(minLength: 0)
-                    }
-                    .frame(width: totalW, height: 0)
-
-                    LazyVStack(spacing: 0, pinnedViews: []) {
+                LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
+                    Section {
                         ForEach(allChannels) { ch in
                             let entries = visibleEntries(ch)
                             ShowBlocksRow(
@@ -253,14 +248,15 @@ struct CableGuideView: View {
                             )
                             .equatable()
                         }
+                    } header: {
+                        scrollingTimeHeader(nowX: nowX)
                     }
-                    .frame(width: totalW)
                 }
+                .frame(width: totalW)
                 .onScrollOffset(coordinateSpaceName: "guideScroll") { pt in
                     var t = Transaction(); t.disablesAnimations = true
                     withTransaction(t) {
                         channelScrollOffset = pt.y
-                        timeHeaderOffset    = pt.x
                     }
                 }
             }
@@ -387,7 +383,11 @@ private struct ShowBlocksRow: View, Equatable {
         let rawW       = CGFloat(entry.durationMinutes) * pxPerMin + clip - 2
         let cellW      = max(22, rawW)
         let onAir      = entry.startDate <= now && entry.endDate > now
+        // lineupEntry != nil guard prevents nil==nil false-positive when lineup is absent:
+        // both sides would be nil and Swift evaluates nil == nil as true, lighting up every
+        // entry at the same startTime across all channels as "selected".
         let isSelected = selectedEntry?.id == entry.id
+                          && lineupEntry != nil
                           && selectedChannel?.GuideNumber == lineupEntry?.GuideNumber
         // When SeriesID is present use it exclusively; title is fallback only for entries
         // that have no SeriesID so unrelated shows sharing a name don't get false badges.

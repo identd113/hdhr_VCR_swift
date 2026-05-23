@@ -30,7 +30,6 @@ struct FloatingGuideView: View {
     @State private var refreshToken = UUID()
     @State private var snapToNow = false
     @State private var genreFilter: String? = nil
-    @State private var showSummaryStarburst = false
 
     private var taskId: String { "\(selectedDevice?.DeviceID ?? ""):\(refreshToken)" }
 
@@ -105,9 +104,10 @@ struct FloatingGuideView: View {
         }
         .task(id: taskId) { await loadGuide() }
         .onChange(of: selectedDevice) { newDevice in
+            // Lineups are stable (loaded during discovery) — don't clear them or
+            // CableGuideView gets an empty lineup and the Record button stays disabled.
             guard let id = newDevice?.DeviceID else { return }
             state.guideStore.invalidate(deviceId: id)
-            state.lineups.removeValue(forKey: id)
             allChannels = []
             refreshToken = UUID()
         }
@@ -297,21 +297,7 @@ struct FloatingGuideView: View {
                 .padding(.vertical, 6)
 
                 if isSportsBonusEntry {
-                    StarburstShape()
-                        .fill(Color.orange)
-                        .frame(width: 80, height: 80)
-                        .overlay(
-                            VStack(spacing: 2) {
-                                Text("🏈").font(.title3)
-                                Text("+\(state.config.Sports_padding_minutes) min")
-                                    .font(.caption).bold().foregroundColor(.white)
-                            }
-                        )
-                        .scaleEffect(showSummaryStarburst ? 1.0 : 0.1)
-                        .rotationEffect(.degrees(showSummaryStarburst ? 0 : -45))
-                        .animation(.spring(response: 0.4, dampingFraction: 0.55), value: showSummaryStarburst)
-                        .onAppear  { showSummaryStarburst = true  }
-                        .onDisappear { showSummaryStarburst = false }
+                    StarburstBadge(minutes: state.config.Sports_padding_minutes, size: 100)
                         .padding(.trailing, 18).padding(.top, 8)
                 }
             }
@@ -339,12 +325,15 @@ struct FloatingGuideView: View {
 
     private func loadGuide() async {
         guard let device = selectedDevice else { return }
-        let id = device.DeviceID
         isLoadingGuide = true
+        // Guarantee lineup is present before loading guide — recovers from silent startup fetch failures
+        await state.ensureLineupLoaded(for: device)
+        let id = device.DeviceID
         defer { isLoadingGuide = false }
 
         if state.guideStore.isFresh(deviceId: id) {
             allChannels = state.guideStore.channels(deviceId: id)
+            state.guideByDevice = state.guideStore.channelsByDevice
             return
         }
         if state.guideStore.isLoading(deviceId: id) {

@@ -8,14 +8,6 @@ All original feature requests have been implemented. Items below are quality-of-
 
 - **Elapsed/remaining timer doesn't tick** — times are computed when the menu opens and stay static. NSMenu doesn't auto-refresh; a real-time display would require a window-based popover for recording detail.
 
-- **"Stop Recording" has no confirmation** — clicking it immediately deactivates the show with no undo. An NSAlert ("Stop recording and deactivate [Title]?") with Keep/Stop options would prevent accidental permanent deactivation.
-
-- **No Bonus Time callout in recording menu** — when a sports show is recording past the guide end in Bonus Time, the remaining-time counter reflects the padded end time but nothing labels this as "🏈 Bonus Time". The user has no visible explanation for why the recording extends past the guide.
-
-- **Paused show submenu shows only fail reason** — no show type, channel, or last-recorded date. Adding this context would help the user decide whether to reactivate or delete.
-
-- **Delete has no confirmation in scheduled and paused menus** — `.destructive` role adds a red tint but no NSAlert. Accidental deletion is permanent.
-
 - **No "Record Now" shortcut** — there is no direct path to immediately record a show that's currently on air without going through the full Add Show cascade.
 
 ---
@@ -32,8 +24,6 @@ All original feature requests have been implemented. Items below are quality-of-
 
 ## Edit Show (EditShowView.swift)
 
-- **Delete has no confirmation** — immediate and irreversible. An NSAlert "Delete [Title]? This cannot be undone." would prevent accidental data loss.
-
 - **Stream URL is read-only** — displayed but not editable. If a device's IP changes, the only fix is delete + re-add the show.
 
 - **`show_next` (next air time) is not editable** — can't correct a drifted schedule without editing the config JSON directly.
@@ -42,8 +32,6 @@ All original feature requests have been implemented. Items below are quality-of-
 
 - **SeriesID is read-only** — can't update if SiliconDust changes a series' ID (which happens occasionally). Only fix today is delete + re-add.
 
-- **No unsaved-changes warning on close** — unlike SettingsView, EditShowView has no `WindowCloseInterceptor`. Closing the window discards edits silently.
-
 ---
 
 ## Settings (SettingsView.swift)
@@ -51,10 +39,6 @@ All original feature requests have been implemented. Items below are quality-of-
 - **No per-show overrides** — transcode profile, Bonus Time, and fail threshold all apply globally. A useful future feature: per-show overrides so one show always transcodes to Mobile, or one sports show gets 60 min of Bonus Time.
 
 - **No export / import config** — power users managing multiple machines must copy the JSON manually. "Export config…" / "Import config…" buttons in Advanced would be user-friendly.
-
-- **Notification timing not validated** — "Recording alert" can be set higher than "Up Next" with no warning. The notification sequence breaks silently.
-
-- **No "Clear guide cache" button** — if guide data becomes stale or corrupt, the only fix is restarting the app or waiting for the idle loop's auto-invalidation.
 
 ---
 
@@ -67,3 +51,23 @@ All original feature requests have been implemented. Items below are quality-of-
 ## Recording Engine
 
 - **No retry backoff** — failed shows go straight to Paused after N consecutive failures with no grace period or exponential backoff. A short wait (e.g. 5 min) before retrying the next eligible airing would handle transient network blips without deactivating the show.
+
+---
+
+## Performance Backlog
+
+Items identified during audit but deferred (medium or low impact, no user-visible regression).
+
+- **#1 — Idle vstatus fetches fire unconditionally** (`AppState.idleLoop` ~line 596): `fetchTunerStatus` runs every 10 s for each active recording regardless of whether anyone is watching the recording submenu. Each call fires O(tunerCount) HTTP requests. Fix: track NSMenu open/close state and only poll while the menu is visible, or throttle to 30–60 s.
+
+- **#4 — Guide index sort is eager** (`GuideStore.buildIndex`): After every guide load, all series entries are sorted — O(series × entries log entries) on the main actor. Fix: sort lazily (only when `nextEpisode` is first queried for a given series ID); skip re-sort if the series was already sorted.
+
+- **#5 — menuGuideEntries still splits on-air/upcoming at menu render time** (`MenuContent.channelMenu`): The pre-cached array (≤4 entries) is filtered twice per channel at open time. Fix: store `(onAir: [GuideEntry], upcoming: [GuideEntry])` tuples in the cache so the menu just reads pre-split slices with no filtering.
+
+- **#6 — Device lookup in `updateShowURLsFromLineups` is O(shows × devices)** (`AppState`): `devices.first(where:)` is called once per show. Fix: build a `[DeviceID: HDHRDevice]` dictionary before the loop (O(devices)) and use O(1) lookups inside.
+
+- **#7 — DateTime "next occurrences" loops through 60 calendar days per show** (`MenuContent.nextDateTimeOccurrences`): Fix: compute the next matching weekday with modulo arithmetic (jump directly rather than stepping day-by-day) to reduce 60 Calendar iterations to ≤7.
+
+- **#8 — Startup JIT warm-up renders full MenuContent synchronously** (`AppState.startup` +2 s): The `NSHostingView + fittingSize` pass forces a full layout of the menu tree including all show submenus. Fix: render a minimal placeholder view (just the header + a few static items) instead of the live state-driven MenuContent.
+
+- **#10 — `guideStore.entries()` rebuilds key string on every call** (`GuideStore`): `"\(deviceId):\(channelNum)"` string interpolation happens at each call site. Fix: pass a pre-built key, or add a direct `entries(key:)` overload that accepts a pre-computed string.

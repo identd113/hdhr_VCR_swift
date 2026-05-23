@@ -76,7 +76,7 @@ Form fields:
 - **Transcode** — `Picker`: None / Heavy / Mobile / Internet 720
 - **Folder** — display + Choose… button; writes to `UserDefaults["defaultSaveDirectory"]`
 
-**Bonus Time starburst**: when `show.show_genre.lowercased().contains("sports") && state.config.Sports_padding_enabled`, a `StarburstShape` (12-point star polygon) overlays the top-right corner showing "🏈 +N min". It animates in on appear with `.spring(response: 0.4, dampingFraction: 0.55)` scale + rotation, and resets on disappear.
+**Bonus Time starburst**: when `show.show_genre.lowercased().contains("sports") && state.config.Sports_padding_enabled`, a `StarburstBadge` (from `StarburstBadge.swift`) overlays the top-right corner showing "🏈 +N min". It animates in with a `keyframeAnimator` pop-in sequence on appear and has a 5-tap easter egg that triggers a celebration spin. The same component is used in the guide step summary panel and `FloatingGuideView`.
 
 `canAdvance` for details step: `!show.show_title.isEmpty && recordFolder != nil`.
 
@@ -132,7 +132,9 @@ Placeholder `"Select a show from the grid"` shown when nothing is selected.
 
 ## Guide Loading — `loadAllGuide()`
 
-Three paths in order:
+Before any of the three cache paths, `loadAllGuide()` calls `await state.ensureLineupLoaded(for: device)`. This recovers from silent `try?` failures in `fetchAllLineups` at startup — if `lineups[deviceID]` is nil or empty, it re-fetches on demand so that `CableGuideView` has valid lineup data, `selectedChannel` resolves correctly, and the Record/VLC buttons are enabled.
+
+Three paths follow:
 1. **Cache hit**: `guideStore.isFresh(deviceId:)` → read from `guideStore.channels(deviceId:)` immediately (sub-millisecond)
 2. **Startup already loading**: `guideStore.isLoading(deviceId:)` → poll with 200ms sleep until loading finishes, then read channels
 3. **Fresh load**: call `guideStore.load(for:hours:)`, then read channels
@@ -227,7 +229,5 @@ show.show_air_date         = seriesType == .seriesChannel || seriesType == .seri
 - **Genre filter resets on tuner change** — when the tuner picker changes, `genreFilter` silently resets to `nil` because `availableGenres` repopulates with the new channel list.
 
 - **Single device step skip + slow discovery** — if discovery is still running when the wizard opens, it might auto-select a device that isn't the preferred one. A loading indicator at the device step ("Discovering tuners…") would be cleaner.
-
-- **Bonus Time indicator in summary panel** — if the selected entry is a managed sports show, a `"🏈 Bonus Time: +30 min"` callout in the summary panel would make it clear the recording extends past the guide end.
 
 - **No edit integration** — there's no way to change a show's scheduled episode by browsing the guide in the Edit view. For SeriesID shows this doesn't matter, but for Single and DateTime shows it would be useful.

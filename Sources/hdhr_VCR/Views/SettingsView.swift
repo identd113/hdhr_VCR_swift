@@ -430,7 +430,6 @@ struct SettingsView: View {
                     Picker("Simulate macOS version", selection: $draftSimulatedOS) {
                         Text("macOS \(realVersion) (current)").tag(0)
                         if realVersion >= 15 { Text("macOS 14 (Sonoma)").tag(14) }
-                        if realVersion >= 14 { Text("macOS 13 (Ventura)").tag(13) }
                     }
                     if draftSimulatedOS > 0 {
                         Label("Simulating macOS \(draftSimulatedOS) — reopen guide or wizard to see effect",

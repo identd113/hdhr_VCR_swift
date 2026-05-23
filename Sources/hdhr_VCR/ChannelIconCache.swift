@@ -18,12 +18,15 @@ actor ChannelIconCache {
     }
 
     /// How many of these URLs are not yet on disk (need a download).
+    /// Uses a single contentsOfDirectory call instead of one fileExists per URL —
+    /// replaces ~400 individual disk stat calls with one directory scan after each guide load.
     func countMissing(in urlStrings: [String]) -> Int {
-        urlStrings.filter { url in
+        let onDisk = Set((try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? [])
+        return urlStrings.filter { url in
             guard !url.isEmpty else { return false }
             if mem[url] != nil { return false }
             let fileName = URL(string: url)?.lastPathComponent ?? "icon.png"
-            return !FileManager.default.fileExists(atPath: dir.appendingPathComponent(fileName).path)
+            return !onDisk.contains(fileName)
         }.count
     }
 

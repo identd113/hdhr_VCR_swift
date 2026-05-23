@@ -191,7 +191,9 @@ struct MenuContent: View {
 
     @ViewBuilder
     private func channelMenu(device: HDHRDevice, channel: LineupEntry) -> some View {
-        let entries   = state.guideEntries(deviceId: device.DeviceID, channelNum: channel.GuideNumber)
+        // Pre-filtered cache: on-air + next 3 upcoming entries, rebuilt after each guide load.
+        // O(1) dict lookup instead of O(entries) filter × 100 channels per menu open.
+        let entries   = state.menuGuideEntries["\(device.DeviceID):\(channel.GuideNumber)"] ?? []
         let loading   = state.isGuideLoading(for: device.DeviceID)
         let hdBadge   = channel.HD == 1 ? " HD" : ""
         let label     = "\(channel.GuideNumber)  \(channel.GuideName)\(hdBadge)"
@@ -238,17 +240,20 @@ struct MenuContent: View {
                 .frame(height: 5)
 
             // Info (disabled) ─────────────────────────────────────────────
-            // Poster image (best-effort — NSMenu rendering of AsyncImage varies)
-            if let urlStr = entry.ImageURL, !urlStr.isEmpty, let url = URL(string: urlStr) {
-                AsyncImage(url: url) { img in
-                    img.resizable().aspectRatio(contentMode: .fill)
-                        .frame(width: 240, height: 135).clipped().cornerRadius(4)
-                } placeholder: {
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Color(NSColor.separatorColor))
-                        .frame(width: 240, height: 135)
-                }
-            }
+            // Genre-colored header bar replaces AsyncImage — NSMenu renders async images
+            // unreliably, and creating one per entry across 100+ channels triggered hundreds
+            // of URLSession tasks synchronously on menu open, causing the slowness.
+            RoundedRectangle(cornerRadius: 4)
+                .fill(entryColor.opacity(0.30))
+                .frame(width: 240, height: 52)
+                .overlay(
+                    Text(entry.Title)
+                        .font(.headline).bold()
+                        .foregroundColor(Color(NSColor.labelColor))
+                        .lineLimit(2)
+                        .padding(.horizontal, 10),
+                    alignment: .leading
+                )
             // Wrap info in a no-op Button so AppKit treats it as an enabled NSMenuItem
             // and renders at full brightness. Pure Text views are auto-disabled by AppKit
             // and drawn at ~50% opacity regardless of the foreground color set.
@@ -266,10 +271,13 @@ struct MenuContent: View {
                         .font(.caption)
                         .foregroundColor(Color(NSColor.secondaryLabelColor))
                     if let syn = entry.Synopsis, !syn.isEmpty {
-                        Text(syn).font(.caption).lineLimit(3)
+                        Text(truncateSynopsis(syn, limit: 120)).font(.caption).lineLimit(4)
                             .foregroundColor(Color(NSColor.labelColor))
                     }
                 }
+                // Fixed width matches the poster image above; forces NSMenu to wrap text
+                // rather than expanding the submenu horizontally to fit one long line.
+                .frame(width: 240, alignment: .leading)
             }
             Divider()
 
@@ -389,31 +397,23 @@ struct MenuContent: View {
 
     @ViewBuilder
     private func scheduledMenu(_ show: Show) -> some View {
-        let schNext    = show.show_next.date ?? .distantFuture
-        let schEntries = state.guideEntries(deviceId: show.hdhr_record, channelNum: show.show_channel)
-        let schEp      = schEntries.first { abs($0.startDate.timeIntervalSince(schNext)) < 5 * 60 }
-                                   .flatMap { episodeInfoLabel($0) }
-        let conflict   = state.hasConflict(for: show)
-        let prefix     = conflict ? "⚠️ " : ""
-        let schLabel   = schEp.map { "\(prefix)\(stateIcon(show)) \(show.show_title) · \($0)" }
-                      ?? "\(prefix)\(stateIcon(show)) \(show.show_title)"
+        // Pre-computed in AppState.rebuildMenuEntries() every idle tick and after guide loads —
+        // avoids O(series entries) scan per show per menu open.
+        let conflict = state.conflictingShowIDs.contains(show.show_id)
+        let prefix   = conflict ? "⚠️ " : ""
+        let schEntry = state.menuScheduledEntry[show.show_id]
+        let schEp    = schEntry.flatMap { episodeInfoLabel($0) }
+        let schLabel = schEp.map { "\(prefix)\(stateIcon(show)) \(show.show_title) · \($0)" }
+                   ?? "\(prefix)\(stateIcon(show)) \(show.show_title)"
+
         Menu(schLabel) {
-            let now    = Date()
-            let next   = show.show_next.date ?? .distantFuture
-            let ends   = show.show_end.date  ?? .distantFuture
+            let now  = Date()
+            let next = show.show_next.date ?? .distantFuture
+            let ends = show.show_end.date  ?? .distantFuture
 
-            // Item 5: look up the guide entry at the scheduled time so we can display episode
-            // title/number — this is a sync read from the in-memory guide cache
-            let guideEntries = state.guideEntries(deviceId: show.hdhr_record, channelNum: show.show_channel)
-            let scheduledEntry = guideEntries.first {
-                // Match the entry whose start time is within 5 minutes of show_next
-                abs($0.startDate.timeIntervalSince(next)) < 5 * 60
-            }
-
-            showInfoHeader(show, entry: scheduledEntry)
+            showInfoHeader(show, entry: schEntry)
             Divider()
 
-            // Type + channel
             menuInfo("\(show.state.rawValue) · Channel \(show.show_channel)", font: .footnote)
             if conflict {
                 menuInfo("⚠️ Conflict — all tuners busy at this time", font: .footnote, secondary: true)
@@ -435,8 +435,7 @@ struct MenuContent: View {
                 case .dateTime:
                     return nextDateTimeOccurrences(for: show, count: 3).map { (show.show_channel, $0) }
                 case .seriesChannel, .seriesAll:
-                    return state.upcomingGuideEpisodes(seriesID: show.show_seriesid, limit: 3)
-                        .map { ($0.channel, $0.entry.startDate) }
+                    return state.menuUpcomingSlots[show.show_id] ?? []
                 }
             }()
             if !upcoming.isEmpty {
@@ -561,25 +560,25 @@ struct MenuContent: View {
     }
 
     // Shared show-info panel used by recordingMenu, scheduledMenu, and pausedMenu.
-    // Renders poster (520×292), title, episode info, and synopsis in a consistent layout.
+    // Renders poster (460×258), title, episode info, and synopsis in a consistent layout.
     @ViewBuilder
     private func showInfoHeader(_ show: Show, entry: GuideEntry?) -> some View {
         if !show.show_logo_url.isEmpty, let url = URL(string: show.show_logo_url) {
             AsyncImage(url: url) { img in
                 img.resizable().aspectRatio(contentMode: .fill)
-                    .frame(width: 520, height: 292).clipped().cornerRadius(6)
+                    .frame(width: 460, height: 258).clipped().cornerRadius(6)
             } placeholder: {
                 RoundedRectangle(cornerRadius: 6)
                     .fill(Color(NSColor.separatorColor))
-                    .frame(width: 520, height: 292)
+                    .frame(width: 460, height: 258)
             }
         }
-        menuInfo(show.show_title, font: .title3)
+        menuInfo(show.show_title, font: .title3, maxWidth: 460)
         if let ep = entry.flatMap({ episodeInfoLabel($0) }) {
-            menuInfo(ep, font: .callout)
+            menuInfo(ep, font: .callout, maxWidth: 460)
         }
         if let syn = entry?.Synopsis, !syn.isEmpty {
-            menuInfo(syn, font: .callout, maxWidth: 520)
+            menuInfo(truncateSynopsis(syn), font: .callout, maxWidth: 460)
         }
     }
 
@@ -612,6 +611,15 @@ struct MenuContent: View {
 
     private func weekdayName(_ date: Date) -> String {
         return Self.weekdayFormatter.string(from: date)
+    }
+
+    private func truncateSynopsis(_ text: String, limit: Int = 160) -> String {
+        guard text.count > limit else { return text }
+        let cut = text.index(text.startIndex, offsetBy: limit)
+        if let space = text[..<cut].lastIndex(of: " ") {
+            return String(text[..<space]) + "…"
+        }
+        return String(text[..<cut]) + "…"
     }
 
     private func episodeInfoLabel(_ entry: GuideEntry) -> String? {

@@ -274,10 +274,11 @@ struct AddShowView: View {
         }
         .task(id: taskId) { await loadAllGuide() }
         .onChange(of: selectedDevice) { newDevice in
-            // Force fresh data whenever the user switches tuners
+            // Force fresh guide data whenever the user switches tuners.
+            // Lineups are stable (loaded during discovery) — don't clear them or
+            // CableGuideView gets an empty lineup and the Record button stays disabled.
             guard let id = newDevice?.DeviceID else { return }
             state.guideStore.invalidate(deviceId: id)
-            state.lineups.removeValue(forKey: id)
             allChannels = []
             refreshToken = UUID()
         }
@@ -443,23 +444,8 @@ struct AddShowView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
 
-            // Sports bonus-time starburst — floats over top-right corner of the summary card
             if isSportsBonusEntry {
-                StarburstShape()
-                    .fill(Color.orange)
-                    .frame(width: 80, height: 80)
-                    .overlay(
-                        VStack(spacing: 2) {
-                            Text("🏈").font(.title3)
-                            Text("+\(state.config.Sports_padding_minutes) min")
-                                .font(.caption).bold().foregroundColor(.white)
-                        }
-                    )
-                    .scaleEffect(showSummaryStarburst ? 1.0 : 0.1)
-                    .rotationEffect(.degrees(showSummaryStarburst ? 0 : -45))
-                    .animation(.spring(response: 0.4, dampingFraction: 0.55), value: showSummaryStarburst)
-                    .onAppear  { showSummaryStarburst = true  }
-                    .onDisappear { showSummaryStarburst = false }
+                StarburstBadge(minutes: state.config.Sports_padding_minutes, size: 100)
                     .padding(.trailing, 18).padding(.top, 8)
             }
             } // ZStack
@@ -515,9 +501,6 @@ struct AddShowView: View {
         if let fw = device.FirmwareVersion { parts.append("fw \(fw)") }
         return parts.joined(separator: "  ·  ")
     }
-
-    @State private var showStarburst        = false
-    @State private var showSummaryStarburst = false
 
     private var detailsStep: some View {
         let isSportsBonusShow = show.show_genre.lowercased().contains("sports") && state.config.Sports_padding_enabled
@@ -577,23 +560,8 @@ struct AddShowView: View {
             }
             .padding()
 
-            // Sports bonus-time starburst badge — animates in when a sports show is selected
             if isSportsBonusShow {
-                StarburstShape()
-                    .fill(Color.orange)
-                    .frame(width: 90, height: 90)
-                    .overlay(
-                        VStack(spacing: 2) {
-                            Text("🏈").font(.title3)
-                            Text("+\(state.config.Sports_padding_minutes) min")
-                                .font(.caption).bold().foregroundColor(.white)
-                        }
-                    )
-                    .scaleEffect(showStarburst ? 1.0 : 0.1)
-                    .rotationEffect(.degrees(showStarburst ? 0 : -45))
-                    .animation(.spring(response: 0.4, dampingFraction: 0.55), value: showStarburst)
-                    .onAppear { showStarburst = true }
-                    .onDisappear { showStarburst = false }
+                StarburstBadge(minutes: state.config.Sports_padding_minutes, size: 115)
                     .padding(.trailing, 12).padding(.top, 12)
             }
             } // ZStack
@@ -661,9 +629,11 @@ struct AddShowView: View {
             state.logGuide("[Wizard] no device selected — loadAllGuide returning")
             return
         }
+        isLoadingGuide = true
+        // Guarantee lineup is present before loading guide — recovers from silent startup fetch failures
+        await state.ensureLineupLoaded(for: device)
         let id = device.DeviceID
         state.logGuide("[Wizard] loadAllGuide deviceId=\(id) fresh=\(state.guideStore.isFresh(deviceId: id)) loading=\(state.guideStore.isLoading(deviceId: id))")
-        isLoadingGuide = true
         defer { isLoadingGuide = false }
 
         // Already cached — read immediately
@@ -751,26 +721,6 @@ struct AddShowView: View {
         dismiss()
     }
 
-}
-
-// 12-point starburst shape for the bonus-time badge — shared by AddShowView and FloatingGuideView
-struct StarburstShape: Shape {
-    func path(in rect: CGRect) -> Path {
-        let cx = rect.midX, cy = rect.midY
-        let outerR = min(rect.width, rect.height) / 2
-        let innerR = outerR * 0.55
-        let points = 12
-        var path = Path()
-        for i in 0..<(points * 2) {
-            let angle = Double(i) * .pi / Double(points) - .pi / 2
-            let r = i.isMultiple(of: 2) ? outerR : innerR
-            let x = cx + CGFloat(cos(angle)) * r
-            let y = cy + CGFloat(sin(angle)) * r
-            i == 0 ? path.move(to: CGPoint(x: x, y: y)) : path.addLine(to: CGPoint(x: x, y: y))
-        }
-        path.closeSubpath()
-        return path
-    }
 }
 
 // Allow LineupEntry to be used with List selection

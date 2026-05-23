@@ -1,5 +1,13 @@
 # hdhrVCRplus Changelog
 
+## 2026-05-22 (260522-2057)
+
+- **Multi-selection bug fixed** — selecting a show in the cable guide no longer highlights every block at the same start time across all channels; caused by Swift's `nil == nil` evaluating to `true` when lineup data was absent — `ShowBlocksRow` now requires `lineupEntry != nil` before comparing `GuideNumber`
+- **Record and Watch in VLC buttons now reliably enabled** — `AppState.ensureLineupLoaded(for:)` re-fetches lineup on demand if `lineups[deviceID]` is nil or empty (recovering from silent `try?` failures in `fetchAllLineups`); called at the start of guide loading in both `AddShowView` and `FloatingGuideView`, guaranteeing `selectedChannel` resolves correctly before the guide grid populates
+- **FloatingGuideView lineup fix** — the floating cable guide was clearing `state.lineups` on device change, leaving `selectedChannel` permanently nil and disabling both buttons; lineup is now stable across device changes (only the guide cache is invalidated)
+- **StarburstBadge** — extracted starburst animation into a standalone reusable `StarburstBadge` component (`StarburstBadge.swift`); uses two stacked `keyframeAnimator` modifiers for a pop-in animation on appear and a 5-tap celebration spin; used in AddShowView details step, AddShowView summary panel, and FloatingGuideView summary panel
+- **macOS 13 support dropped** — minimum deployment target raised from macOS 13 to macOS 14; `EmptyStateView` simplified to call `ContentUnavailableView` directly; macOS 13 simulation option removed from Settings → Maintenance → Developer; `keyframeAnimator` (macOS 14+) now available without availability guards
+
 ## 2026-05-22 (260522-1600)
 
 - **Discard resets OS-sim picker** — the Discard button in Settings now correctly reverts the OS simulation picker to its saved value (was missing from the reset list, causing `isDirty` to stay true permanently after touching the picker then discarding)
