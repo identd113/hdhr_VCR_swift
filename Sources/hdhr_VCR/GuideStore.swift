@@ -58,17 +58,19 @@ final class GuideStore {
     // MARK: - Loading
 
     /// Fetch and index guide for one device. No-op if already loading.
-    func load(for device: HDHRDevice, hours: Int = 12) async {
+    /// Returns true if channels were successfully loaded, false on any error.
+    @discardableResult
+    func load(for device: HDHRDevice, hours: Int = 12) async -> Bool {
         let id = device.DeviceID
         glog("[\(id)] load() called — DeviceAuth:\(device.DeviceAuth ?? "nil")  LocalIP:'\(device.LocalIP)'  hours:\(hours)")
 
         guard !loadingDevices.contains(id) else {
             glog("[\(id)] already loading — skipped")
-            return
+            return false
         }
         guard let url = Self.guideURL(for: device, hours: hours) else {
             glog("[\(id)] ERROR: could not build guide URL — DeviceAuth:\(device.DeviceAuth != nil ? "present" : "nil")  LocalIP:'\(device.LocalIP)'")
-            return
+            return false
         }
 
         loadingDevices.insert(id)
@@ -91,12 +93,12 @@ final class GuideStore {
 
             guard status == 200 else {
                 glog("[\(id)] ERROR: non-200 status, aborting parse")
-                return
+                return false
             }
 
             guard !data.isEmpty else {
                 glog("[\(id)] ERROR: empty response body")
-                return
+                return false
             }
 
             let channels: [GuideChannel]
@@ -108,7 +110,7 @@ final class GuideStore {
                 if let full = String(data: data.prefix(2000), encoding: .utf8) {
                     glog("[\(id)] raw response (2000 chars): \(full)")
                 }
-                return
+                return false
             }
 
             let entryCount = channels.reduce(0) { $0 + ($1.Guide?.count ?? 0) }
@@ -129,26 +131,32 @@ final class GuideStore {
             buildIndex(deviceId: id, channels: channels)
             loadTimestamps[id] = Date()
             glog("[\(id)] index built and timestamp set — guide ready")
+            return true
 
         } catch {
             glog("[\(id)] NETWORK ERROR: \(error)")
+            return false
         }
     }
 
-    /// Fetch guide for all devices in parallel.
-    func loadAll(devices: [HDHRDevice], hours: Int = 12) async {
+    /// Fetch guide for all devices in parallel. Returns per-device success map.
+    @discardableResult
+    func loadAll(devices: [HDHRDevice], hours: Int = 12) async -> [String: Bool] {
         guard !devices.isEmpty else {
             glog("loadAll called with 0 devices — nothing to do")
-            return
+            return [:]
         }
         glog("loadAll: \(devices.count) device(s), hours=\(hours)")
-        await withTaskGroup(of: Void.self) { group in
+        var results: [String: Bool] = [:]
+        await withTaskGroup(of: (String, Bool).self) { group in
             for device in devices {
-                group.addTask { await self.load(for: device, hours: hours) }
+                group.addTask { (device.DeviceID, await self.load(for: device, hours: hours)) }
             }
+            for await (id, ok) in group { results[id] = ok }
         }
         let total = channelsByDevice.values.reduce(0) { $0 + $1.count }
         glog("loadAll complete — \(total) total channels across \(channelsByDevice.count) device(s)")
+        return results
     }
 
     // MARK: - Indexing

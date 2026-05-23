@@ -376,6 +376,13 @@ ps -Aa | grep show_id | grep -v grep   # shows caffeinate + curl lines per activ
 ```
 Each recording produces two lines (caffeinate parent + curl child). The caffeinate PID is what `RecordingManager` tracks. `kill -0 <pid>` is used for liveness checks.
 
+### Menu bar @Published safety rule
+In a SwiftUI `.menu`-style `MenuBarExtra`, the menu body re-evaluates whenever any `@Published` property on the `@EnvironmentObject` changes. `ensureGuideLoaded` is called **inline** in the menu `@ViewBuilder` via `let _ = { }()`, so a re-evaluation triggers another network call.
+
+**Never assign `guideByDevice = ...` (or any `@Published` menu-related var) unconditionally after a failed/empty network response.** A failed guide load that assigns `guideByDevice` fires `didSet → rebuildMenuEntries → 3 @Published changes → SwiftUI re-eval → ensureGuideLoaded → HTTP request → failure → assign → didSet → ...` at ~35ms/loop, making the menu unresponsive. `ensureGuideLoaded` guards against this by only assigning `guideByDevice` when `guideStore.channels(deviceId:)` is non-empty after the load, and uses `guideLoadFailTimes` for 5-minute backoff on failed devices.
+
+The idle loop's `rebuildMenuEntries()` is guarded by `menuIsOpen` (set via `.onAppear/.onDisappear` on `MenuContent()` in `hdhr_VCRApp`). The `guideByDevice.didSet` is **not** guarded — guide loads (infrequent) must always populate `menuGuideEntries` even if the menu is open.
+
 ### Running tests
 ```bash
 swift test

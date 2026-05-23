@@ -9,9 +9,13 @@ final class AppState: ObservableObject {
     @Published var devices: [HDHRDevice] = []
     @Published var lineups: [String: [LineupEntry]] = [:]       // deviceId → channel lineup
     @Published var guideByDevice: [String: [GuideChannel]] = [:] {  // mirror of guideStore.channelsByDevice
+        // Always rebuild on guide load — this is infrequent (startup + periodic refresh) and
+        // must populate menuGuideEntries even if the menu happens to be open at load time.
+        // The feedback loop that previously made this dangerous (403 → guideByDevice = → didSet
+        // → rebuild → re-eval → 403 → ...) is broken by ensureGuideLoaded's success-only guard.
         didSet { rebuildMenuEntries() }
     }
-    // Pre-filtered entries for the Add Show cascading menu — on-air + next 3 upcoming per channel.
+    // Pre-filtered entries for the Add Show cascading menu — on-air + next 2 upcoming per channel.
     // Rebuilt after every guide load so menu construction is an O(1) dict read.
     @Published var menuGuideEntries: [String: [GuideEntry]] = [:]
     // Per-show guide entry for the scheduled menu label and info header — avoids O(series) scan per open.
@@ -20,6 +24,9 @@ final class AppState: ObservableObject {
     @Published var menuUpcomingSlots: [String: [(channel: String, date: Date)]] = [:]
     // Pre-computed set of show IDs with scheduling conflicts — rebuilt alongside menu entries.
     var conflictingShowIDs: Set<String> = []
+    // O(1) managed-show lookup for entryMenu — rebuilt alongside menu entries.
+    var managedShowBySeriesID: [String: Show] = [:]
+    var managedShowByTitle:    [String: Show] = [:]
     @Published var guideRevision: Int = 0                        // increments each time guide data successfully loads
     @Published var config = AppConfig()
     @Published var statusMessage = "Starting…"
@@ -47,14 +54,36 @@ final class AppState: ObservableObject {
     let recordingManager = RecordingManager()
     let guideStore       = GuideStore()
 
+    // Exponential backoff for repeated guide API failures per device.
+    // Delays: 1 min → 5 min → 15 min → 30 min → 1 hour (capped).
+    // notifiedUser tracks whether we've sent a notification for the current failure streak.
+    private struct APIBackoff {
+        var failCount: Int = 0
+        var nextRetry: Date = .distantPast
+        var notifiedUser: Bool = false
+        static let delays: [TimeInterval] = [60, 300, 900, 1800, 3600]
+        var isBackedOff: Bool { Date() < nextRetry }
+        var minutesUntilRetry: Int { max(1, Int(nextRetry.timeIntervalSinceNow / 60)) }
+        mutating func recordFailure() {
+            failCount += 1
+            nextRetry = Date().addingTimeInterval(Self.delays[min(failCount - 1, Self.delays.count - 1)])
+        }
+        mutating func recordSuccess() { failCount = 0; nextRetry = .distantPast; notifiedUser = false }
+    }
+
     private var idleTimer: Timer?
     private var lastGuideRefresh: Date    = .distantPast
     private var lastDeviceProbe: Date     = .distantPast
     private var guideRefreshInFlight: Bool = false
     // Tracks in-flight lineup fetches so concurrent callers don't fire duplicate requests
     private var loadingLineupDevices: Set<String> = []
+    // Per-device exponential backoff after guide API failures (replaces flat guideLoadFailTimes).
+    private var guideApiBackoff: [String: APIBackoff] = [:]
     private var failThreshold: Int { config.Fail_count_setting }
     private let maxDiskPct: Double = 93
+    // Set true while the MenuBarExtra menu is open (tracked via MenuContent onAppear/onDisappear).
+    // Guards guideByDevice.didSet and idle-loop rebuilds so @Published changes don't redraw the menu.
+    var menuIsOpen: Bool = false
 
     init() { Task { await startup() } }
 
@@ -230,7 +259,8 @@ final class AppState: ObservableObject {
         glog("[DeviceProbe] \(newDevices.count) new tuner(s): \(newDevices.map { $0.DeviceID }.joined(separator: ", "))")
         devices.append(contentsOf: newDevices)
         await fetchAllLineups(for: newDevices)
-        await guideStore.loadAll(devices: newDevices, hours: config.GuideHours)
+        let results = await guideStore.loadAll(devices: newDevices, hours: config.GuideHours)
+        for (deviceId, ok) in results where ok { guideApiBackoff.removeValue(forKey: deviceId) }
         guideByDevice = guideStore.channelsByDevice
     }
 
@@ -302,12 +332,14 @@ final class AppState: ObservableObject {
         guard !devices.isEmpty else { return }
         statusMessage = "Loading guide…"
         guideStore.verbose = config.Verbose_curl
-        await guideStore.loadAll(devices: devices, hours: config.GuideHours)
+        let results = await guideStore.loadAll(devices: devices, hours: config.GuideHours)
         guideByDevice = guideStore.channelsByDevice
-        // Only stamp the refresh time if at least one device actually loaded channels.
-        // A failed load must NOT reset lastGuideRefresh — the idle loop's ensureGuideLoaded
-        // retries for empty-channel devices every tick, so skipping the stamp lets the
-        // periodic refresh also retry at the normal interval.
+        // Seed per-device backoff state from startup results (no notification — user may not have
+        // granted permission yet; ensureGuideLoaded will notify when it retries and fails again).
+        for (deviceId, ok) in results {
+            if ok { guideApiBackoff.removeValue(forKey: deviceId) }
+            else  { guideApiBackoff[deviceId, default: APIBackoff()].recordFailure() }
+        }
         let loadedCount = guideByDevice.values.reduce(0) { $0 + $1.count }
         if loadedCount > 0 { lastGuideRefresh = Date(); guideRevision += 1 }
         statusMessage = "\(shows.count) show(s) — \(devices.count) tuner(s) ready"
@@ -319,17 +351,29 @@ final class AppState: ObservableObject {
     private func refreshGuides() async {
         guard !guideRefreshInFlight else { return }
         guideRefreshInFlight = true
-        defer { guideRefreshInFlight = false }
+        // Always stamp lastGuideRefresh — even on total failure. Without this, a complete
+        // API outage causes idleLoop to call refreshGuides() every 10s (retry storm).
+        // Per-device retries are handled separately by ensureGuideLoaded with exponential backoff.
+        defer { guideRefreshInFlight = false; lastGuideRefresh = Date() }
         guideStore.invalidateAll()
         await fetchAllLineups(for: devices)
         guideStore.verbose = config.Verbose_curl
-        await guideStore.loadAll(devices: devices, hours: config.GuideHours)
+        let results = await guideStore.loadAll(devices: devices, hours: config.GuideHours)
         guideByDevice = guideStore.channelsByDevice
-        // Only stamp if at least one channel loaded — an empty result (no devices, network
-        // down) must not suppress the retry for up to 12 hours. Mirrors fetchAllGuides().
-        if guideByDevice.values.contains(where: { !$0.isEmpty }) {
-            lastGuideRefresh = Date()
+        // Update per-device backoff; notify once per failure streak
+        for (deviceId, ok) in results {
+            if ok {
+                guideApiBackoff.removeValue(forKey: deviceId)
+            } else {
+                guideApiBackoff[deviceId, default: APIBackoff()].recordFailure()
+                if guideApiBackoff[deviceId]?.notifiedUser == false {
+                    guideApiBackoff[deviceId]!.notifiedUser = true
+                    let mins = guideApiBackoff[deviceId]?.minutesUntilRetry ?? 60
+                    notify("Guide Load Failed", body: deviceId, subtitle: "API error — retry in \(mins) min")
+                }
+            }
         }
+        if guideByDevice.values.contains(where: { !$0.isEmpty }) { guideRevision += 1 }
         print("[Guide] Refresh complete")
         let allChannels = guideByDevice.values.flatMap { $0 }
         Task { await prefetchChannelIcons(allChannels) }
@@ -337,14 +381,31 @@ final class AppState: ObservableObject {
 
     /// Trigger a guide load for a single device (idleLoop / menu fallback).
     func ensureGuideLoaded(for deviceId: String) {
+        // Exponential backoff: 1m → 5m → 15m → 30m → 1h after repeated API failures.
+        // Prevents hammering the SiliconDust cloud API (e.g. 403 from EXTEND devices).
+        if guideApiBackoff[deviceId]?.isBackedOff == true { return }
         guard !guideStore.isLoading(deviceId: deviceId),
               guideStore.channels(deviceId: deviceId).isEmpty,
               let device = devices.first(where: { $0.DeviceID == deviceId }) else { return }
         Task {
             guideStore.verbose = config.Verbose_curl
-            await guideStore.load(for: device, hours: config.GuideHours)
-            guideByDevice = guideStore.channelsByDevice
-            await prefetchChannelIcons(guideStore.channels(deviceId: deviceId))
+            let ok = await guideStore.load(for: device, hours: config.GuideHours)
+            // Only update guideByDevice if channels actually loaded — a 403/network failure
+            // leaves channels empty. Assigning guideByDevice unconditionally fires didSet →
+            // rebuildMenuEntries → SwiftUI re-eval → ensureGuideLoaded again → 403 → loop.
+            if ok {
+                guideApiBackoff.removeValue(forKey: deviceId)
+                guideByDevice = guideStore.channelsByDevice
+                await prefetchChannelIcons(guideStore.channels(deviceId: deviceId))
+            } else {
+                guideApiBackoff[deviceId, default: APIBackoff()].recordFailure()
+                // Notify user on first failure; subsequent backoff retries are silent
+                if guideApiBackoff[deviceId]?.notifiedUser == false {
+                    guideApiBackoff[deviceId]!.notifiedUser = true
+                    let mins = guideApiBackoff[deviceId]?.minutesUntilRetry ?? 5
+                    notify("Guide Load Failed", body: deviceId, subtitle: "API error — retry in \(mins) min")
+                }
+            }
         }
     }
 
@@ -376,20 +437,30 @@ final class AppState: ObservableObject {
     /// Limits each channel to on-air + next 3 upcoming entries so menu construction
     /// is an O(1) dict read instead of O(entries) filter per channel per open.
     /// Called automatically via guideByDevice.didSet after every guide load.
-    private func rebuildMenuEntries() {
+    func rebuildMenuEntries() {
         let now = Date()
 
-        // ── Add Show channel menu: on-air + next 3 per channel ────────────────
+        // ── Add Show channel menu: on-air + next 2 per channel ────────────────
         var channelResult: [String: [GuideEntry]] = [:]
         for device in devices {
             for ch in lineups[device.DeviceID] ?? [] {
                 let all      = guideStore.entries(deviceId: device.DeviceID, channelNum: ch.GuideNumber)
                 let onAir    = all.filter { $0.startDate <= now && $0.endDate > now }
-                let upcoming = Array(all.filter { $0.startDate > now }.prefix(3))
+                let upcoming = Array(all.filter { $0.startDate > now }.prefix(2))
                 channelResult["\(device.DeviceID):\(ch.GuideNumber)"] = onAir + upcoming
             }
         }
         menuGuideEntries = channelResult
+
+        // ── O(1) managed-show lookup dicts for entryMenu ──────────────────────
+        var bySeriesID: [String: Show] = [:]
+        var byTitle:    [String: Show] = [:]
+        for show in shows {
+            if !show.show_seriesid.isEmpty { bySeriesID[show.show_seriesid] = show }
+            byTitle[show.show_title] = show
+        }
+        managedShowBySeriesID = bySeriesID
+        managedShowByTitle    = byTitle
 
         // ── Scheduled menu: guide entry + upcoming slots per active show ──────
         var scheduledResult: [String: GuideEntry] = [:]
@@ -647,6 +718,13 @@ final class AppState: ObservableObject {
                 notify("Recording Failed", body: show.show_title, subtitle: "curl exited unexpectedly")
                 dirty = true
             }
+            // Advance shows stranded with a past window and show_recording = false.
+            // Happens when the app restarts after curl exits normally but before the idle loop
+            // fires the natural-stop handler above (which requires show_recording == true).
+            if !show.show_recording, endDate <= now, nextDate < now {
+                glog("[\(show.show_title)] stranded show_next in past — advancing")
+                await scheduleNextAir(index: i); dirty = true
+            }
         }
         if dirty { saveConfig() }
 
@@ -655,8 +733,9 @@ final class AppState: ObservableObject {
             Task { await fetchTunerStatus(for: show) }
         }
 
-        // Re-sync menu caches with current show states (show_next changes after recordings complete)
-        rebuildMenuEntries()
+        // Re-sync menu caches with current show states (show_next changes after recordings complete).
+        // Skip while the menu is open — @Published changes would cause SwiftUI to redraw it mid-display.
+        if !menuIsOpen { rebuildMenuEntries() }
     }
 
     // MARK: - Recording
@@ -910,10 +989,14 @@ final class AppState: ObservableObject {
     // MARK: - Utilities
 
     func refreshAll() {
-        guideStore.invalidateAll()
+        glog("[Guide] refreshAll() — triggering discovery + refreshGuides()")
         guideByDevice = [:]
-        lastGuideRefresh = .distantPast
-        Task { await discoverDevices(); await fetchAllGuides() }
+        // Discovery first (updates device IPs), then refreshGuides() which invalidates and reloads.
+        // Previously this called fetchAllGuides() directly AND set lastGuideRefresh = .distantPast,
+        // causing the idle loop to ALSO call refreshGuides() concurrently — two loadAll calls,
+        // the faster "skipped" one would return with 0 channels, and lastGuideRefresh was stamped
+        // before the real data arrived, creating a persistent retry storm.
+        Task { await discoverDevices(); await refreshGuides() }
     }
 
     func diskOK(for show: Show) -> Bool {

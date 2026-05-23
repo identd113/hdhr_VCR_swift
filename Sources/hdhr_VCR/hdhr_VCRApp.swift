@@ -33,6 +33,15 @@ struct hdhr_VCRApp: App {
         MenuBarExtra {
             MenuContent()
                 .environmentObject(appState)
+                // Track menu open/closed so the idle loop skips rebuildMenuEntries() while
+                // the user is navigating — prevents @Published changes from glitching the menu.
+                .onAppear  { appState.menuIsOpen = true  }
+                .onDisappear {
+                    appState.menuIsOpen = false
+                    // Refresh menu caches now that the menu is closed — guide loads or
+                    // recording state changes that were suppressed while open are applied here.
+                    appState.rebuildMenuEntries()
+                }
         } label: {
             statusLabel
         }

@@ -174,14 +174,27 @@ struct MenuContent: View {
     @ViewBuilder
     private func channelMenus(for device: HDHRDevice) -> some View {
         let channels = state.lineups[device.DeviceID] ?? []
+        let loading  = state.isGuideLoading(for: device.DeviceID)
+        // Only build submenus for channels that have cached guide entries — avoids constructing
+        // empty Menu views for 30-50 channels with no guide data, which SwiftUI evaluates eagerly.
+        let populated = channels.filter {
+            !(state.menuGuideEntries["\(device.DeviceID):\($0.GuideNumber)"] ?? []).isEmpty
+        }
         // Amber accent bar (comedy/warm hue from the guide genre palette) marks the channel-list depth
         Rectangle()
             .fill(Color(hue: 0.13, saturation: 0.75, brightness: 0.90).opacity(0.65))
             .frame(height: 5)
         if channels.isEmpty {
             Text("No channels — try Refresh Guide").foregroundStyle(.secondary)
+        } else if populated.isEmpty {
+            if loading {
+                Text("Fetching guide…").foregroundStyle(.secondary)
+            } else {
+                Text("No upcoming shows").foregroundStyle(.secondary)
+                Button("Load guide") { state.ensureGuideLoaded(for: device.DeviceID) }
+            }
         } else {
-            ForEach(channels, id: \.GuideNumber) { ch in
+            ForEach(populated, id: \.GuideNumber) { ch in
                 channelMenu(device: device, channel: ch)
             }
         }
@@ -239,45 +252,15 @@ struct MenuContent: View {
                 .fill(entryColor.opacity(0.65))
                 .frame(height: 5)
 
-            // Info (disabled) ─────────────────────────────────────────────
-            // Genre-colored header bar replaces AsyncImage — NSMenu renders async images
-            // unreliably, and creating one per entry across 100+ channels triggered hundreds
-            // of URLSession tasks synchronously on menu open, causing the slowness.
-            RoundedRectangle(cornerRadius: 4)
-                .fill(entryColor.opacity(0.30))
-                .frame(width: 240, height: 52)
-                .overlay(
-                    Text(entry.Title)
-                        .font(.headline).bold()
-                        .foregroundColor(Color(NSColor.labelColor))
-                        .lineLimit(2)
-                        .padding(.horizontal, 10),
-                    alignment: .leading
-                )
-            // Wrap info in a no-op Button so AppKit treats it as an enabled NSMenuItem
-            // and renders at full brightness. Pure Text views are auto-disabled by AppKit
-            // and drawn at ~50% opacity regardless of the foreground color set.
-            Button(action: {}) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(entry.Title)
-                        .font(.title3).bold()
-                        .foregroundColor(Color(NSColor.labelColor))
-                    if let ep = episodeInfoLabel(entry) {
-                        Text(ep)
-                            .font(.subheadline)
-                            .foregroundColor(Color(NSColor.secondaryLabelColor))
-                    }
-                    Text(timeRange(entry))
-                        .font(.caption)
-                        .foregroundColor(Color(NSColor.secondaryLabelColor))
-                    if let syn = entry.Synopsis, !syn.isEmpty {
-                        Text(truncateSynopsis(syn, limit: 120)).font(.caption).lineLimit(4)
-                            .foregroundColor(Color(NSColor.labelColor))
-                    }
-                }
-                // Fixed width matches the poster image above; forces NSMenu to wrap text
-                // rather than expanding the submenu horizontally to fit one long line.
-                .frame(width: 240, alignment: .leading)
+            // Info panel — mirrors showInfoHeader style (title3 → callout episode → caption time → callout synopsis).
+            // No photo: entry.ImageURL is intentionally not loaded (would fire URLSession tasks per entry).
+            menuInfo(entry.Title, font: .title3, maxWidth: 240)
+            if let ep = episodeInfoLabel(entry) {
+                menuInfo(ep, font: .callout, maxWidth: 240)
+            }
+            menuInfo(timeRange(entry), font: .caption, maxWidth: 240)
+            if let syn = entry.Synopsis, !syn.isEmpty {
+                menuInfo(truncateSynopsis(syn, limit: 120), font: .callout, maxWidth: 240)
             }
             Divider()
 
@@ -507,9 +490,9 @@ struct MenuContent: View {
 
     private func managedShow(for entry: GuideEntry) -> Show? {
         if let sid = entry.SeriesID, !sid.isEmpty {
-            return state.shows.first { $0.show_seriesid == sid }
+            return state.managedShowBySeriesID[sid]
         }
-        return state.shows.first { $0.show_title == entry.Title }
+        return state.managedShowByTitle[entry.Title]
     }
 
     private func stateIcon(_ show: Show) -> String {
