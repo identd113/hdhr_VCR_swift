@@ -26,6 +26,14 @@ This is a Swift/SwiftUI rewrite of the original [hdhr_VCR AppleScript app](https
 
 ---
 
+## Screenshots
+
+| Menu bar | Cable guide |
+|----------|-------------|
+| ![Menu bar dropdown showing tuner status, scheduled shows, and Next Up section](docs/screenshots/menu.png) | ![Cable TV-style guide grid with show summary panel](docs/screenshots/guide.png) |
+
+---
+
 ## Requirements
 
 - **macOS 15.0** (Sequoia) or later
