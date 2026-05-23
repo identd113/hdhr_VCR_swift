@@ -32,6 +32,22 @@ This is a Swift/SwiftUI rewrite of the original [hdhr_VCR AppleScript app](https
 |----------|-------------|
 | ![Menu bar dropdown showing tuner status, scheduled shows, and Next Up section](docs/screenshots/menu.png) | ![Cable TV-style guide grid with show summary panel](docs/screenshots/guide.png) |
 
+| Recording in progress | Scheduled show submenu |
+|-----------------------|------------------------|
+| ![Recording active with red dot icon and Stop Recording option](docs/screenshots/recording.png) | ![Scheduled show submenu showing type, channel, upcoming airings, and Edit/Deactivate/Delete](docs/screenshots/scheduled_submenu_series.png) |
+
+| Recording submenu | Paused show submenu |
+|-------------------|---------------------|
+| ![Recording submenu with elapsed time, time remaining, Stop Recording, Watch in VLC, Edit](docs/screenshots/recording_submenu.png) | ![Paused show submenu with Activate, Edit, Delete options](docs/screenshots/paused_submenu.png) |
+
+| Add Show — Details | Edit Show |
+|--------------------|-----------|
+| ![Add Show details step with title, type, days, transcode, bonus time, and folder](docs/screenshots/addshow_details.png) | ![Edit Show window with starburst bonus time badge](docs/screenshots/edit_show.png) |
+
+| Cable guide (standalone) | Settings |
+|--------------------------|----------|
+| ![Standalone cable guide browse window](docs/screenshots/floating_guide.png) | ![Settings general panel with Launch at Login and Add Show mode](docs/screenshots/settings_general.png) |
+
 ---
 
 ## Requirements
