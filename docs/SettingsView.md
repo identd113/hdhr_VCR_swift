@@ -93,6 +93,29 @@ Sidebar entries (with SF Symbol icons):
 
 ---
 
+### Maintenance
+
+One-tap operations for recovering from stuck states. Each uses `maintenanceRow(_:_:action:)` — a helper that takes a title string, a description string, and an async closure that returns a result string. The result is shown in a green `Label` at the bottom of the section after completion.
+
+**Shows section:**
+- **Rescan Series** — calls `state.rescheduleAllSeries()`, which iterates all active SeriesID shows, reloads each device's guide if stale, and resets `show_next` to the next matching episode. Result: `"N series show(s) rescheduled"`.
+- **Reset Fail Counts** — calls `state.resetAllFailCounts()`, zeroing `show_fail_count` and clearing `show_fail_reason` on every show without touching `show_active`. Useful when shows get stuck in Paused after transient network failures.
+- **Reactivate Paused Shows** — calls `state.reactivatePausedShows()`, setting `show_active = true` on all inactive shows and resetting their fail counts. Result: count of shows reactivated.
+
+**Guide & Devices section:**
+- **Refresh Guide** — calls `state.refreshGuide()` (invalidate + reload all devices). Reports channel count on completion.
+- **Clear Guide Cache** — calls `state.guideStore.invalidateAll()` and clears `state.guideByDevice`. The next time the guide step or floating guide opens, it fetches fresh data.
+- **Rediscover Devices** — calls `state.rediscoverDevices()` (same 3-path mDNS+UDP+known-hosts scan as startup). Reports device count.
+
+**Tools section** (only shown when `/usr/local/bin/brew` or `/opt/homebrew/bin/brew` exists):
+- **VLC** — `brew install --cask vlc`. Shown as installed (checkmark) when `/Applications/VLC.app` exists.
+- **HDHomeRun CLI** — `brew install libhdhomerun`. Shown as installed when `hdhomerun_config` is on PATH. Brew output is streamed to a `brewStatus` string shown at the bottom of the section.
+
+**Developer section** (only shown when macOS major version > 13):
+- **Simulate macOS version** — `Picker` that sets `draftSimulatedOS`. When non-zero, `CableGuideView` and `FloatingGuideView` can use a simulated OS floor (e.g., force the macOS 14 layout path to test that `LazyVStack` blank-row failure). Shows a warning label: `"Simulating macOS N — reopen guide or wizard to see effect"`. This is a development aid; the simulated value is stored in `@AppStorage` (not in `AppConfig`).
+
+---
+
 ### About
 
 - **App logo** — local `app.jpg` from the app bundle, displayed via `Image(nsImage: appIconImage)`. Tapping it 5 times unlocks the in-app AVKit player (`Player_unlocked = true`, saved to config) and shows an alert.

@@ -224,13 +224,14 @@ struct AddShowView: View {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
                 .disabled(isLoadingGuide)
-                // Pop-out: re-focus existing floating window or open a new one
+                // Pop-out: open or focus the floating guide, then close the wizard
                 Button {
                     if let existing = NSApp.windows.first(where: { $0.title == "Cable Guide" }) {
                         existing.makeKeyAndOrderFront(nil)
                     } else {
                         openWindow(id: "cable-guide")
                     }
+                    dismiss()
                 } label: {
                     Image(systemName: "arrow.up.left.and.arrow.down.right")
                 }
@@ -280,7 +281,7 @@ struct AddShowView: View {
             }
         }
         .task(id: taskId) { await loadAllGuide() }
-        .onChange(of: selectedDevice) { newDevice in
+        .onChange(of: selectedDevice) { _, newDevice in
             // Force fresh guide data whenever the user switches tuners.
             // Lineups are stable (loaded during discovery) — don't clear them or
             // CableGuideView gets an empty lineup and the Record button stays disabled.
@@ -289,7 +290,7 @@ struct AddShowView: View {
             allChannels = []
             refreshToken = UUID()
         }
-        .onChange(of: state.guideRevision) { _ in
+        .onChange(of: state.guideRevision) { _, _ in
             guard let id = selectedDevice?.DeviceID, allChannels.isEmpty else { return }
             let ch = state.guideStore.channels(deviceId: id)
             guard !ch.isEmpty else { return }
@@ -297,7 +298,7 @@ struct AddShowView: View {
             allChannels = ch
             isLoadingGuide = false
         }
-        .onChange(of: allChannels.count) { count in
+        .onChange(of: allChannels.count) { _, count in
             guard count > 0, selectedEntry == nil else { return }
             let now = Date()
             guard let firstCh = allChannels.first,

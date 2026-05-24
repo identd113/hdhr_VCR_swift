@@ -127,11 +127,19 @@ ScrollView([.horizontal, .vertical]) {
         }
     }
     .frame(width: totalW)
-    .onScrollGeometryChange(for: CGFloat.self, of: { $0.contentOffset.y }) { old, y in
-        channelScrollOffset = y   // drives fixed channel column offset
-    }
+    .background(
+        VerticalScrollTracker { y in
+            let clamped = max(0, y)
+            guard abs(clamped - channelScrollOffset) >= 1 else { return }
+            var t = Transaction(); t.disablesAnimations = true
+            withTransaction(t) { channelScrollOffset = clamped }
+        }
+        .frame(width: 0, height: 0)
+    )
 }
 ```
+
+**Why `VerticalScrollTracker` and not `onScrollGeometryChange`**: AppKit moves scroll content via CALayer translation without triggering SwiftUI view body re-evaluation. `onScrollGeometryChange` and `GeometryReader + PreferenceKey` only fire during a SwiftUI render pass — they are silent on live AppKit scroll frames. `VerticalScrollTracker` is an `NSViewRepresentable` that hooks `NSView.boundsDidChangeNotification` on the `NSScrollView.contentView`, which fires on every scroll frame at the AppKit level. **Do not replace this with any SwiftUI-only scroll observation API.**
 
 The time header scrolling horizontally in sync with the content is free — it's inside the `ScrollView`. No `timeHeaderOffset` state variable needed.
 

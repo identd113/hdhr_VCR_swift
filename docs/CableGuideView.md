@@ -101,18 +101,23 @@ func guideEntryColor(for entry: GuideEntry, onAir: Bool) -> Color {
 
 ### `==` Implementation
 
-Compares: `channel.GuideNumber`, `entries.count`, `selectedEntry?.StartTime`, `selectedChannel?.GuideNumber`, `genreFilter`, `displayStart`, `managedSeriesIDs`, `managedTitles`, `bonusSeriesIDs`, `bonusTitles`, `bonusMinutes`.
+Compares: `channel.GuideNumber`, `entries.count`, `selectedEntry?.StartTime`, `selectedChannel?.GuideNumber`, `lineupEntry?.GuideNumber`, `genreFilter`, `displayStart`, `managedSeriesIDs`, `managedTitles`, `recordingSeriesIDs`, `recordingTitles`, `nextUpSeriesIDs`, `nextUpTitles`, `bonusSeriesIDs`, `bonusTitles`, `bonusMinutes`.
+
+The `lineupEntry?.GuideNumber` field is included because a `nil → non-nil` change (lineup arriving after a cached guide load) must force a re-evaluation so that tap handlers get the real `LineupEntry` reference instead of nil. Without this, the first tap after a cold load does nothing — the handler calls `onSelect(entry, nil)` and `AddShowView` can't advance because `selectedChannel == nil`.
 
 ### Per-block decorations
 
 | Condition | Visual |
 |---|---|
-| On-air | Full opacity + `Color.white.opacity(0.12)` overlay |
-| Selected | White stroke border (2.5pt) + checkmark icon + `Color.white.opacity(0.15)` fill |
-| On-air + managed | Red dot badge 5×5px, top-right corner |
-| Managed (any) | `bookmark.fill` icon, bottom-left corner |
+| On-air (unselected) | Full opacity + `Color.white.opacity(0.12)` white wash overlay |
+| Selected | White stroke border (2.5pt) + `checkmark.circle.fill` icon + `Color.white.opacity(0.15)` fill |
+| Currently recording | Red stroke border (1.5pt) + red circle dot, top-right corner |
+| Starts within 30 min | Orange stroke border (1.5pt) + `clock.badge.fill` icon (orange), top-right corner |
+| Managed (any) | `bookmark.fill` icon (white, 0.9 opacity), bottom-left corner |
 | Filter mismatch | 0.2 opacity, `allowsHitTesting(false)` |
-| Bonus Time | Dotted box sibling extending past the show's right edge |
+| Bonus Time | Dotted `RoundedRectangle` sibling at `cellX + cellW + 2`; `.zIndex(1)` so it renders above the next block; next show's title is drawn inside the box so it remains readable even when fully covered; tapping the bonus box selects the overlapped next show |
+
+Recording vs. next-up precedence: `isNextUp` is only true when `!isRecording` — the red recording state always takes visual priority. Both use SeriesID-first matching with title as fallback to avoid false positives when unrelated shows share a name.
 
 ### Selection logic
 
@@ -128,7 +133,9 @@ For managed sports shows, a dotted `RoundedRectangle` is drawn as a sibling view
 
 ## Scroll Synchronization
 
-`channelScrollOffset` (vertical) is driven by `VerticalScrollTracker: NSViewRepresentable` — a zero-size `NSView` embedded in the scroll content `.background()`; it hooks `NSView.boundsDidChangeNotification` on the `NSScrollView.contentView` and fires on every AppKit scroll frame. A 1pt threshold and `disablesAnimations: true` prevent jitter. **Do not use `.onScrollGeometryChange` or `GeometryReader + PreferenceKey`** — AppKit moves scroll content via CALayer translation without triggering SwiftUI view re-evaluation; those APIs fire only during view body re-evaluation, not on live scroll. See `CableGuideView_pitfalls.md` and `feedback_channel_scroll_sync.md` for the full investigation.
+`channelScrollOffset` (vertical) is driven by `VerticalScrollTracker: NSViewRepresentable` — a zero-size `NSView` embedded in the scroll content `.background()`; it hooks `NSView.boundsDidChangeNotification` on the `NSScrollView.contentView` and fires on every AppKit scroll frame. A 1pt threshold and `disablesAnimations: true` prevent jitter.
+
+**Do not replace `VerticalScrollTracker` with `.onScrollGeometryChange` or `GeometryReader + PreferenceKey`** — AppKit moves scroll content via CALayer translation without triggering SwiftUI view body re-evaluation. Those SwiftUI APIs only fire during a render pass, so they are completely silent on live scroll frames. `VerticalScrollTracker` is the only mechanism that fires per-frame on macOS. See `CableGuideView_pitfalls.md` and `feedback_channel_scroll_sync.md` for the full investigation.
 
 The time header scrolls horizontally automatically (it's inside the `ScrollView`) and stays pinned vertically via `LazyVStack(pinnedViews: [.sectionHeaders])` — no `timeHeaderOffset` synchronization needed.
 
@@ -157,8 +164,12 @@ The time header scrolls horizontally automatically (it's inside the `ScrollView`
 | `snapToNow` | `@Binding Bool` | Set true to scroll grid to current time |
 | `managedSeriesIDs` | `Set<String>` | Shows already scheduled — bookmark badge |
 | `managedTitles` | `Set<String>` | Title-based fallback for managed badge |
+| `recordingSeriesIDs` | `Set<String>` | Shows currently recording — red border + dot |
+| `recordingTitles` | `Set<String>` | Title-based fallback for recording badge |
+| `nextUpSeriesIDs` | `Set<String>` | Shows recording within 30 min — orange border + clock |
+| `nextUpTitles` | `Set<String>` | Title-based fallback for next-up badge |
 | `bonusSeriesIDs` | `Set<String>` | Sports shows with Bonus Time — dotted box |
 | `bonusTitles` | `Set<String>` | Title-based fallback for bonus box |
 | `bonusMinutes` | `Int` | Bonus box width in minutes |
 | `genreFilter` | `String?` | nil = all; non-nil = dim non-matching |
-| `onConfirm` | `(() -> Void)?` | Called on double-tap — advances wizard |
+| `onConfirm` | `(() -> Void)?` | Called on double-tap — advances wizard; pass `{}` for browse-only views |
