@@ -60,6 +60,8 @@ final class VLCBridge {
 
     /// Retained so channel switches can reattach the same NSView after stop/play.
     private(set) var drawableView: NSView?
+    /// URL queued before the drawable view was ready; played in setDrawable().
+    private var pendingURL: String?
 
     private let _new:          vlc_new_fn?
     private let _release:      vlc_release_fn?
@@ -81,7 +83,9 @@ final class VLCBridge {
     private let _adevSet:      vlc_adev_set_fn?
 
     private init() {
-        let libPath = "/Applications/VLC.app/Contents/MacOS/lib/libvlc.dylib"
+        let vlcLib = "/Applications/VLC.app/Contents/MacOS/lib/"
+        dlopen(vlcLib + "libvlccore.dylib", RTLD_LAZY | RTLD_GLOBAL)
+        let libPath = vlcLib + "libvlc.dylib"
         let h = dlopen(libPath, RTLD_LAZY | RTLD_LOCAL)
         libHandle = h
 
@@ -94,7 +98,7 @@ final class VLCBridge {
         _release      = sym("libvlc_release")
         _mediaNL      = sym("libvlc_media_new_location")
         _mediaRelease = sym("libvlc_media_release")
-        _mpNew        = sym("libvlc_media_player_new")           // no-media ctor
+        _mpNew        = sym("libvlc_media_player_new")
         _mpSetMedia   = sym("libvlc_media_player_set_media")
         _mpRelease    = sym("libvlc_media_player_release")
         _mpSetNSO     = sym("libvlc_media_player_set_nsobject")
@@ -112,13 +116,25 @@ final class VLCBridge {
         isAvailable = h != nil && _new != nil && _mpNew != nil
         guard isAvailable else { return }
 
-        // Create the libvlc instance. Pass no argv — defaults are fine.
-        // "--quiet" suppresses VLC's console log output.
-        vlcInstance = withUnsafePointer(to: UnsafePointer<CChar>(bitPattern: 0)) { _ in
-            _new?(0, nil)
+        // libvlc_new loads 300+ plugins — run off-main to avoid blocking the UI.
+        // C function pointers are plain values, safe to capture across threads.
+        let newFn   = _new!
+        let mpNewFn = _mpNew!
+        setenv("VLC_PLUGIN_PATH", "/Applications/VLC.app/Contents/MacOS/plugins", 1)
+        Task.detached(priority: .userInitiated) { [weak self] in
+            let inst = newFn(0, nil)
+            let mp   = inst.flatMap { mpNewFn($0) }
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                self.vlcInstance = inst
+                self.mediaPlayer = mp
+                if mp != nil, let url = self.pendingURL, let view = self.drawableView {
+                    self.pendingURL = nil
+                    self._mpSetNSO?(mp, Unmanaged.passUnretained(view).toOpaque())
+                    self.play(url: url)
+                }
+            }
         }
-        guard let inst = vlcInstance else { return }
-        mediaPlayer = _mpNew?(inst)   // player with no media yet; media set in play()
     }
 
     // MARK: - Drawable
@@ -129,6 +145,10 @@ final class VLCBridge {
         drawableView = view
         guard let mp = mediaPlayer else { return }
         _mpSetNSO?(mp, Unmanaged.passUnretained(view).toOpaque())
+        if let url = pendingURL {
+            pendingURL = nil
+            play(url: url)
+        }
     }
 
     // MARK: - Playback
@@ -136,7 +156,8 @@ final class VLCBridge {
     /// Switch to a new stream URL (or start playback if idle).
     /// Stops current media, sets new media on the same player, resumes play.
     func play(url: String) {
-        guard let inst = vlcInstance, let mp = mediaPlayer else { return }
+        guard drawableView != nil else { pendingURL = url; return }
+        guard let inst = vlcInstance, let mp = mediaPlayer else { pendingURL = url; return }
         _mpStop?(mp)
         if let old = currentMedia { _mediaRelease?(old); currentMedia = nil }
         guard let media = url.withCString({ _mediaNL?(inst, $0) }) else { return }
@@ -146,6 +167,8 @@ final class VLCBridge {
     }
 
     func stop() {
+        pendingURL = nil
+        drawableView = nil
         guard let mp = mediaPlayer else { return }
         _mpStop?(mp)
         if let old = currentMedia { _mediaRelease?(old); currentMedia = nil }

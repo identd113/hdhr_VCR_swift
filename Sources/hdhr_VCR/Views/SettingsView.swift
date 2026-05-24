@@ -83,17 +83,16 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button("Save & Close") {
-                    applyAndSave()
-                    NSApp.keyWindow?.close()
-                }
-                .disabled(!isDirty)
                 Button("Save") { applyAndSave() }
-                    .buttonStyle(.borderedProminent)
-                    // Turn orange when dirty so it visually demands attention
-                    .tint(isDirty ? .orange : .accentColor)
                     .disabled(!isDirty)
                     .keyboardShortcut("s", modifiers: .command)
+                Button("Save & Close") {
+                    if isDirty { applyAndSave() }
+                    NSApp.keyWindow?.close()
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(isDirty ? .orange : .accentColor)
+                .keyboardShortcut(.defaultAction)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
@@ -298,6 +297,45 @@ struct SettingsView: View {
                         .foregroundStyle(.orange)
                 }
             }
+
+            Section("Discord Webhook") {
+                TextField("https://discord.com/api/webhooks/…", text: $draft.Discord_webhook_url)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(.body, design: .monospaced))
+                Text("Paste a Discord webhook URL to send rich notifications to a channel. Leave blank to disable.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Discord — Recording Events") {
+                discordRow("Recording Started",  event: "start",    isOn: $draft.Discord_on_start)
+                discordRow("Recording Complete", event: "complete",  isOn: $draft.Discord_on_complete)
+                discordRow("Recording Failed",   event: "failed",   isOn: $draft.Discord_on_failed)
+            }
+            .disabled(draft.Discord_webhook_url.isEmpty)
+            .opacity(draft.Discord_webhook_url.isEmpty ? 0.4 : 1)
+
+            Section("Discord — Show Management") {
+                discordRow("Show Paused (max failures / no air days)", event: "paused",     isOn: $draft.Discord_on_paused)
+                discordRow("Skipped — Disk Full",                      event: "skipped",    isOn: $draft.Discord_on_skipped)
+                discordRow("Tuner Conflict",                           event: "conflict",   isOn: $draft.Discord_on_conflict)
+                discordRow("Show Added",                               event: "show_added", isOn: $draft.Discord_on_show_added)
+            }
+            .disabled(draft.Discord_webhook_url.isEmpty)
+            .opacity(draft.Discord_webhook_url.isEmpty ? 0.4 : 1)
+
+            Section("Discord — Alerts") {
+                discordRow("Up Next",        event: "upnext", isOn: $draft.Discord_on_upnext)
+                discordRow("Recording Soon", event: "soon",   isOn: $draft.Discord_on_soon)
+            }
+            .disabled(draft.Discord_webhook_url.isEmpty)
+            .opacity(draft.Discord_webhook_url.isEmpty ? 0.4 : 1)
+
+            Section("Discord — Errors") {
+                discordRow("Guide Load Failed", event: "guide_error", isOn: $draft.Discord_on_guide_error)
+            }
+            .disabled(draft.Discord_webhook_url.isEmpty)
+            .opacity(draft.Discord_webhook_url.isEmpty ? 0.4 : 1)
         }
         .formStyle(.grouped)
         .navigationTitle("Notifications")
@@ -448,6 +486,18 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .navigationTitle("Maintenance")
+    }
+
+    @ViewBuilder
+    private func discordRow(_ label: String, event: String, isOn: Binding<Bool>) -> some View {
+        HStack {
+            Text(label)
+            Spacer()
+            Button("Test") { state.testDiscordEvent(event, webhookURL: draft.Discord_webhook_url) }
+                .buttonStyle(.bordered)
+                .controlSize(.mini)
+            Toggle("", isOn: isOn).labelsHidden()
+        }
     }
 
     @ViewBuilder

@@ -35,6 +35,7 @@ final class AppState: ObservableObject {
 
     @Published var editingShowId: String? = nil
     @Published var tunerStatus: [String: TunerStatus] = [:]  // showId → last polled vstatus
+    @Published var vlcCurrentURL: String = ""               // raw URL (no transcode query) playing in VLCPlayerView
 
     var isRecording: Bool      { shows.contains { $0.show_recording } }
     var recordingShows: [Show] { shows.filter { $0.show_recording && ($0.show_end.date ?? .distantPast) > Date() } }
@@ -370,6 +371,7 @@ final class AppState: ObservableObject {
                     guideApiBackoff[deviceId]!.notifiedUser = true
                     let mins = guideApiBackoff[deviceId]?.minutesUntilRetry ?? 60
                     notify("Guide Load Failed", body: deviceId, subtitle: "API error — retry in \(mins) min")
+                    discordError("Guide Load Failed", detail: "Device \(deviceId) — API error, retry in \(mins) min", color: 0x95A5A6, enabled: config.Discord_on_guide_error)
                 }
             }
         }
@@ -404,6 +406,7 @@ final class AppState: ObservableObject {
                     guideApiBackoff[deviceId]!.notifiedUser = true
                     let mins = guideApiBackoff[deviceId]?.minutesUntilRetry ?? 5
                     notify("Guide Load Failed", body: deviceId, subtitle: "API error — retry in \(mins) min")
+                    discordError("Guide Load Failed", detail: "Device \(deviceId) — API error, retry in \(mins) min", color: 0x95A5A6, enabled: config.Discord_on_guide_error)
                 }
             }
         }
@@ -575,9 +578,13 @@ final class AppState: ObservableObject {
         if hasConflict(for: show) {
             notify("Recording Conflict", body: show.show_title,
                    subtitle: "All tuners on \(show.hdhr_record) are busy at \(shortTime(show.show_next.date))")
+            discordShow("⚠️ Tuner Conflict", show: show, color: 0xF1C40F, enabled: config.Discord_on_conflict,
+                        extra: [("Note", "All tuners on \(show.hdhr_record) are busy at \(shortTime(show.show_next.date))", false)])
         }
         addShow(show)
         notify("Show Added", body: show.show_title, subtitle: type.rawValue)
+        discordShow("✅ Show Added", show: show, color: 0x1ABC9C, enabled: config.Discord_on_show_added,
+                    extra: [("Type", type.rawValue, true)])
     }
 
     /// For SeriesID shows, find the earliest airing episode and update show_next/show_end/show_channel/show_url.
@@ -693,6 +700,8 @@ final class AppState: ObservableObject {
             let upNextDue = (show.notify_upnext_time.date ?? .distantPast) <= now
             if !show.show_recording, upNextDue, minutesAway > 0, minutesAway <= config.Notify_upnext {
                 notify("Up Next", body: show.show_title, subtitle: "Starts in \(Int(minutesAway)) min on Channel \(show.show_channel)")
+                discordShow("🔔 Up Next", show: show, color: 0x9B59B6, enabled: config.Discord_on_upnext,
+                            extra: [("Starts In", "\(Int(minutesAway)) min", true)])
                 shows[i].notify_upnext_time = EpochDate(now.addingTimeInterval(config.Notify_upnext * 60))
                 dirty = true
             }
@@ -701,6 +710,8 @@ final class AppState: ObservableObject {
             let recNotifyDue = (show.notify_recording_time.date ?? .distantPast) <= now
             if !show.show_recording, recNotifyDue, minutesAway > 0, minutesAway <= config.Notify_recording {
                 notify("Recording Soon", body: show.show_title, subtitle: "Starts in \(Int(minutesAway)) min on Channel \(show.show_channel)")
+                discordShow("⏱ Recording Soon", show: show, color: 0x9B59B6, enabled: config.Discord_on_soon,
+                            extra: [("Starts In", "\(Int(minutesAway)) min", true)])
                 shows[i].notify_recording_time = EpochDate(now.addingTimeInterval(config.Notify_recording * 60))
                 dirty = true
             }
@@ -716,6 +727,8 @@ final class AppState: ObservableObject {
                 shows[i].show_fail_reason = "curl exited unexpectedly"
                 glog("[\(show.show_title)] FAIL curl exited unexpectedly — fail_count=\(shows[i].show_fail_count)")
                 notify("Recording Failed", body: show.show_title, subtitle: "curl exited unexpectedly")
+                discordShow("❌ Recording Failed", show: show, color: 0xE74C3C, enabled: config.Discord_on_failed,
+                            extra: [("Reason", "curl exited unexpectedly", false), ("Fail Count", "\(shows[i].show_fail_count)", true)])
                 dirty = true
             }
             // Advance shows stranded with a past window and show_recording = false.
@@ -763,12 +776,18 @@ final class AppState: ObservableObject {
         guard show.show_fail_count < failThreshold else {
             glog("[\(show.show_title)] PAUSED — fail threshold \(failThreshold) reached")
             shows[index].show_active = false
-            notify("Recording Paused", body: show.show_title, subtitle: "Failed \(failThreshold)× — deactivated"); return
+            notify("Recording Paused", body: show.show_title, subtitle: "Failed \(failThreshold)× — deactivated")
+            discordShow("⏸ Recording Paused", show: show, color: 0xE67E22, enabled: config.Discord_on_paused,
+                        extra: [("Reason", "Failed \(failThreshold)× — deactivated", false)])
+            return
         }
         guard diskOK(for: show) else {
             glog("[\(show.show_title)] DISK FULL — skipping recording")
             shows[index].show_fail_count += 1; shows[index].show_fail_reason = "Disk too full"
-            notify("Recording Skipped", body: show.show_title, subtitle: "Disk over \(Int(maxDiskPct))%"); return
+            notify("Recording Skipped", body: show.show_title, subtitle: "Disk over \(Int(maxDiskPct))%")
+            discordShow("💾 Recording Skipped", show: show, color: 0xE67E22, enabled: config.Discord_on_skipped,
+                        extra: [("Reason", "Disk over \(Int(maxDiskPct))% — free up space", false)])
+            return
         }
         let path = show.outputPath(date: show.show_next.date ?? Date())
         var endDate = show.show_end.date ?? Date().addingTimeInterval(Double(show.show_length) * 60)
@@ -791,6 +810,8 @@ final class AppState: ObservableObject {
         // Stamp notify_recording_time so the "Recording Soon" pre-notification won't re-fire
         shows[index].notify_recording_time = EpochDate(Date().addingTimeInterval(config.Notify_recording * 60))
         notify("Recording Started", body: show.show_title, subtitle: "Channel \(show.show_channel) — ends \(shortTime(show.show_end.date))")
+        discordShow("🔴 Recording Started", show: show, color: 0x2ECC71, enabled: config.Discord_on_start,
+                    extra: [("Ends", shortTime(show.show_end.date), true)])
     }
 
     func skipRecording(showId: String) async {
@@ -831,6 +852,8 @@ final class AppState: ObservableObject {
                     shows[index].show_fail_reason = "Output file missing or empty"
                     glog("[\(show.show_title)] STOP file missing or empty — fail_count=\(shows[index].show_fail_count)")
                     notify("Recording Failed", body: show.show_title, subtitle: "File not written — check disk space and URL")
+                    discordShow("❌ Recording Failed", show: show, color: 0xE74C3C, enabled: config.Discord_on_failed,
+                                extra: [("Reason", "Output file missing or empty — check disk space and stream URL", false)])
                     await scheduleNextAir(index: index)
                     return
                 }
@@ -840,11 +863,16 @@ final class AppState: ObservableObject {
             let completedShow = shows[index]
             if !completedShow.show_active {
                 notify("Recording Complete", body: show.show_title, subtitle: "Single episode recorded — show deactivated")
+                discordShow("✅ Recording Complete", show: show, color: 0x3498DB, enabled: config.Discord_on_complete,
+                            extra: [("Note", "Single episode — show deactivated", false)])
             } else if let next = completedShow.show_next.date {
                 let f = DateFormatter(); f.dateStyle = .short; f.timeStyle = .short
                 notify("Recording Complete", body: show.show_title, subtitle: "Next: \(f.string(from: next))")
+                discordShow("✅ Recording Complete", show: show, color: 0x3498DB, enabled: config.Discord_on_complete,
+                            extra: [("Next Airing", f.string(from: next), false)])
             } else {
                 notify("Recording Complete", body: show.show_title, subtitle: "")
+                discordShow("✅ Recording Complete", show: show, color: 0x3498DB, enabled: config.Discord_on_complete)
             }
         }
     }
@@ -874,6 +902,8 @@ final class AppState: ObservableObject {
                 shows[index].show_active = false
                 shows[index].show_fail_reason = "No air days configured"
                 notify("Show Paused", body: show.show_title, subtitle: "No air days configured — edit show to fix")
+                discordShow("⏸ Show Paused", show: show, color: 0xE67E22, enabled: config.Discord_on_paused,
+                            extra: [("Reason", "No air days configured — edit show to fix", false)])
             }
         case .seriesChannel, .seriesAll:
             if let device = devices.first(where: { $0.DeviceID == show.hdhr_record }) {
@@ -1020,6 +1050,131 @@ final class AppState: ObservableObject {
         notifyPermission = (try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])) ?? false
     }
 
+    // MARK: - Discord
+
+    private static let discordTimeFmt: DateFormatter = {
+        let f = DateFormatter(); f.dateStyle = .none; f.timeStyle = .short; return f
+    }()
+
+    // Finds the guide entry matching show_next for a given show, used to enrich Discord embeds.
+    private func guideEntryForShow(_ show: Show) -> GuideEntry? {
+        guard let startDate = show.show_next.date else { return nil }
+        let target = Int(startDate.timeIntervalSince1970)
+        let entries = guideStore.entries(deviceId: show.hdhr_record, channelNum: show.show_channel,
+                                         after: startDate.addingTimeInterval(-60))
+        return entries.first { abs($0.StartTime - target) < 120 }
+    }
+
+    private func discordShow(_ event: String, show: Show, color: Int, enabled: Bool,
+                             extra: [(name: String, value: String, inline: Bool)] = [],
+                             webhookURL: String? = nil) {
+        let url = webhookURL ?? config.Discord_webhook_url
+        guard enabled, !url.isEmpty else { return }
+
+        let entry = guideEntryForShow(show)
+
+        // ── Channel author (icon + name at top of embed) ───────────────────────
+        let channel = guideStore.channels(deviceId: show.hdhr_record)
+                                .first { $0.GuideNumber == show.show_channel }
+
+        // ── Description ───────────────────────────────────────────────────────
+        // Line 1: bold show title
+        // Line 2: episode number · episode title (when available)
+        // Line 3: synopsis (truncated to 200 chars)
+        var descLines: [String] = ["**\(show.show_title)**"]
+        let epNum   = entry?.EpisodeNumber?.trimmingCharacters(in: .whitespaces) ?? ""
+        let epTitle = entry?.EpisodeTitle?.trimmingCharacters(in: .whitespaces) ?? ""
+        if !epNum.isEmpty || !epTitle.isEmpty {
+            let epLine = [epNum, epTitle].filter { !$0.isEmpty }.joined(separator: " · ")
+            descLines.append(epLine)
+        }
+        if let synopsis = entry?.Synopsis, !synopsis.isEmpty {
+            let s = synopsis.count > 200 ? String(synopsis.prefix(200)) + "…" : synopsis
+            descLines.append(s)
+        }
+        let description = descLines.joined(separator: "\n")
+
+        // ── Fields ────────────────────────────────────────────────────────────
+        var fields: [[String: Any]] = [
+            ["name": "Channel", "value": show.show_channel,     "inline": true],
+            ["name": "Type",    "value": show.state.rawValue,   "inline": true]
+        ]
+        if let start = show.show_next.date, let end = show.show_end.date {
+            let range = "\(Self.discordTimeFmt.string(from: start)) – \(Self.discordTimeFmt.string(from: end))"
+            fields.append(["name": "Time", "value": range, "inline": true])
+        }
+        for e in extra { fields.append(["name": e.name, "value": e.value, "inline": e.inline]) }
+
+        // Filter tags formatted as `Tag` code-style "buttons"
+        let tags = entry?.Filter ?? (show.show_genre.isEmpty ? [] : [show.show_genre])
+        if !tags.isEmpty {
+            fields.append(["name": "Tags", "value": tags.map { "`\($0)`" }.joined(separator: " "), "inline": false])
+        }
+
+        // Author line: "CH 2.1 · PBS" with channel logo icon
+        var authorDict: [String: Any] = ["name": "CH \(show.show_channel)\(channel.map { " · \($0.GuideName)" } ?? "")"]
+        if let iconURL = channel?.ImageURL, !iconURL.isEmpty { authorDict["icon_url"] = iconURL }
+
+        var embed: [String: Any] = [
+            "author":      authorDict,
+            "title":       event,
+            "description": description,
+            "color":       color,
+            "fields":      fields,
+            "footer":      ["text": "hdhr VCR  ·  \(show.hdhr_record)"]
+        ]
+        if !show.show_logo_url.isEmpty { embed["thumbnail"] = ["url": show.show_logo_url] }
+        sendDiscordEmbed(to: url, embed: embed)
+    }
+
+    private func discordError(_ event: String, detail: String, color: Int = 0x95A5A6, enabled: Bool,
+                              webhookURL: String? = nil) {
+        let url = webhookURL ?? config.Discord_webhook_url
+        guard enabled, !url.isEmpty else { return }
+        let embed: [String: Any] = [
+            "title":       event,
+            "description": detail,
+            "color":       color,
+            "footer":      ["text": "hdhr VCR"]
+        ]
+        sendDiscordEmbed(to: url, embed: embed)
+    }
+
+    func testDiscordEvent(_ eventType: String, webhookURL: String) {
+        guard !webhookURL.isEmpty else { return }
+        let testShow = recordingShows.first ?? activeShows.first ?? shows.first
+        switch eventType {
+        case "start":
+            if let show = testShow { discordShow("🔴 Recording Started",  show: show, color: 0x2ECC71, enabled: true, webhookURL: webhookURL) }
+        case "complete":
+            if let show = testShow { discordShow("✅ Recording Complete", show: show, color: 0x3498DB, enabled: true, webhookURL: webhookURL) }
+        case "failed":
+            if let show = testShow { discordShow("❌ Recording Failed",   show: show, color: 0xE74C3C, enabled: true,
+                                                  extra: [("Reason", "curl error 6 — could not resolve host", false)], webhookURL: webhookURL) }
+        case "paused":
+            if let show = testShow { discordShow("⏸ Recording Paused",   show: show, color: 0xE67E22, enabled: true,
+                                                  extra: [("Reason", "Max failures reached", false)], webhookURL: webhookURL) }
+        case "skipped":
+            if let show = testShow { discordShow("💾 Recording Skipped",  show: show, color: 0xE67E22, enabled: true,
+                                                  extra: [("Reason", "Only 4 GB free — limit: \(Int(config.Min_disk_free_gb)) GB", false)], webhookURL: webhookURL) }
+        case "conflict":
+            if let show = testShow { discordShow("⚠️ Tuner Conflict",     show: show, color: 0xF1C40F, enabled: true, webhookURL: webhookURL) }
+        case "show_added":
+            if let show = testShow { discordShow("✅ Show Added",          show: show, color: 0x1ABC9C, enabled: true, webhookURL: webhookURL) }
+        case "upnext":
+            if let show = testShow { discordShow("🔔 Up Next",            show: show, color: 0x9B59B6, enabled: true,
+                                                  extra: [("Starts In", "\(Int(config.Notify_upnext)) min", true)], webhookURL: webhookURL) }
+        case "soon":
+            if let show = testShow { discordShow("⏱ Recording Soon",     show: show, color: 0x9B59B6, enabled: true,
+                                                  extra: [("Starts In", "\(Int(config.Notify_recording)) min", true)], webhookURL: webhookURL) }
+        case "guide_error":
+            discordError("🚫 Guide Load Failed",
+                         detail: "Test — guide could not be fetched for device \(devices.first?.DeviceID ?? "unknown")",
+                         color: 0x95A5A6, enabled: true, webhookURL: webhookURL)
+        default: break
+        }
+    }
+
     // Static — shortTime is called per notification and per scheduled menu render
     private static let shortTimeFormatter: DateFormatter = {
         let f = DateFormatter(); f.timeStyle = .short; return f
@@ -1031,12 +1186,36 @@ final class AppState: ObservableObject {
     }
 
     func watchInApp(url: String, title: String, deviceId: String? = nil, transcode: String? = nil) {
-        guard config.Player_unlocked, VLCBridge.shared.isAvailable else { return }
-        let profile = (transcode ?? config.Default_transcode).lowercased().trimmingCharacters(in: .whitespaces)
-        let streamURL = (profile.isEmpty || profile == "none") ? url : "\(url)?transcode=\(profile)"
+        guard VLCBridge.shared.isAvailable else { return }
         let device = devices.first { $0.DeviceID == (deviceId ?? "") } ?? devices.first
         guard let device else { return }
-        VLCPlayerWindowManager.shared.open(url: streamURL, title: title, device: device, appState: self)
+        let profile = (transcode ?? config.Default_transcode).lowercased().trimmingCharacters(in: .whitespaces)
+        let streamURL = (profile.isEmpty || profile == "none") ? url : "\(url)?transcode=\(profile)"
+        let mgr = VLCPlayerWindowManager.shared
+
+        Task {
+            // Switching channels in an already-open player on this device reuses the same slot —
+            // skip the availability check so we don't block a legal channel switch.
+            if mgr.currentDeviceID != device.DeviceID {
+                if let statusURL = URL(string: device.statusURL),
+                   let (data, _) = try? await URLSession.shared.data(from: statusURL),
+                   let tuners = try? JSONDecoder().decode([DeviceTunerInfo].self, from: data) {
+                    let tunerCount = device.TunerCount ?? 2
+                    let active = tuners.filter { $0.VctNumber != nil }.count
+                    if active >= tunerCount {
+                        let alert = NSAlert()
+                        alert.messageText = "No Tuner Available"
+                        alert.informativeText = "All \(tunerCount) tuner\(tunerCount == 1 ? "" : "s") on \(device.DeviceID) are in use. Stop a recording or close another stream to free up a tuner."
+                        alert.alertStyle = .warning
+                        alert.addButton(withTitle: "OK")
+                        alert.runModal()
+                        return
+                    }
+                }
+            }
+            vlcCurrentURL = url
+            mgr.open(url: streamURL, title: title, device: device, appState: self)
+        }
     }
 
     func watchInVLC(url: String, transcode: String? = nil) {

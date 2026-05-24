@@ -315,7 +315,7 @@ struct MenuContent: View {
                     Text("Watch in VLC").foregroundColor(vlcOrange)
                 }
             }
-            if state.config.Player_unlocked && VLCBridge.shared.isAvailable && isOnAir {
+            if VLCBridge.shared.isAvailable && isOnAir {
                 Button("Watch Now!") { state.watchInApp(url: channel.URL ?? "", title: entry.Title, deviceId: device.DeviceID) }
             }
         } label: {
@@ -380,7 +380,7 @@ struct MenuContent: View {
                     Text("Watch in VLC").foregroundColor(vlcOrange)
                 }
             }
-            if state.config.Player_unlocked && VLCBridge.shared.isAvailable {
+            if VLCBridge.shared.isAvailable {
                 Button("Watch Now!") {
                     state.watchInApp(url: show.show_url, title: show.show_title, deviceId: show.hdhr_record, transcode: show.show_transcode)
                 }

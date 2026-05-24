@@ -31,6 +31,7 @@ struct VLCPlayerView: View {
     let initialURL: String
 
     @State private var selectedChannel: LineupEntry?
+    @State private var suppressNextChannelPlay = false
     @State private var volume: Double = 50
     @State private var audioOutputs: [(name: String, description: String)] = []
     @State private var selectedOutput: String = ""
@@ -56,12 +57,11 @@ struct VLCPlayerView: View {
                 selectedOutput = first.name
             }
             refreshAudioDevices()
-            // Pre-select the channel matching the URL that was playing when the window opened.
-            // Strip query params so "http://.../auto/v5.1?transcode=heavy" matches "http://.../auto/v5.1".
-            if selectedChannel == nil, !initialURL.isEmpty {
-                let baseURL = initialURL.components(separatedBy: "?").first ?? initialURL
-                selectedChannel = lineup.first { ($0.URL ?? "").hasPrefix(baseURL) || baseURL.hasPrefix($0.URL ?? "") }
-            }
+            syncChannel(to: initialURL)
+        }
+        .onChange(of: state.vlcCurrentURL) { _, rawURL in
+            // Sync picker when watchInApp is called while the window is already open.
+            syncChannel(to: rawURL)
         }
         .onDisappear {
             VLCBridge.shared.stop()
@@ -81,6 +81,7 @@ struct VLCPlayerView: View {
             .labelsHidden()
             .frame(maxWidth: 220)
             .onChange(of: selectedChannel) { _, ch in
+                if suppressNextChannelPlay { suppressNextChannelPlay = false; return }
                 if let ch { playChannel(ch) }
             }
 
@@ -133,6 +134,15 @@ struct VLCPlayerView: View {
 
     // MARK: - Helpers
 
+    private func syncChannel(to url: String) {
+        guard !url.isEmpty else { return }
+        let base = url.components(separatedBy: "?").first ?? url
+        if let match = lineup.first(where: { ($0.URL ?? "").hasPrefix(base) || base.hasPrefix($0.URL ?? "") }) {
+            suppressNextChannelPlay = true
+            selectedChannel = match
+        }
+    }
+
     private func playChannel(_ ch: LineupEntry) {
         guard let rawURL = ch.URL, !rawURL.isEmpty else { return }
         let transcode = state.config.Default_transcode.lowercased()
@@ -160,12 +170,15 @@ final class VLCPlayerWindowManager {
     static let shared = VLCPlayerWindowManager()
     private var window: NSWindow?
 
+    /// DeviceID of the tuner currently occupied by the player window; nil when closed.
+    private(set) var currentDeviceID: String?
+
     private init() {}
 
     /// Open (or bring forward) the player window and start playing url on device.
     /// If the window is already showing, the stream is switched immediately.
     func open(url: String, title: String, device: HDHRDevice, appState: AppState) {
-        // Always start/switch the stream first
+        currentDeviceID = device.DeviceID
         VLCBridge.shared.play(url: url)
 
         if let win = window {
@@ -187,9 +200,22 @@ final class VLCPlayerWindowManager {
         win.title = title
         win.contentView = NSHostingView(rootView: playerView)
         win.isReleasedWhenClosed = false   // retain for reuse on next open()
+        win.delegate = WindowCloseObserver(manager: self)
         win.center()
         win.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         self.window = win
     }
+
+    fileprivate func playerWindowDidClose() {
+        VLCBridge.shared.stop()
+        currentDeviceID = nil
+        window = nil
+    }
+}
+
+private final class WindowCloseObserver: NSObject, NSWindowDelegate {
+    weak var manager: VLCPlayerWindowManager?
+    init(manager: VLCPlayerWindowManager) { self.manager = manager }
+    func windowWillClose(_ notification: Notification) { manager?.playerWindowDidClose() }
 }

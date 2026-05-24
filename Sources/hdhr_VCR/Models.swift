@@ -200,6 +200,19 @@ struct AppConfig: Equatable {
     var Sports_padding_enabled: Bool = true
     var Sports_padding_minutes: Int  = 30   // user-settable 10–60 min, default 30
     var Config_version: String = "1"
+
+    // Discord webhook
+    var Discord_webhook_url: String  = ""
+    var Discord_on_start:    Bool    = true    // Recording Started
+    var Discord_on_complete: Bool    = true    // Recording Complete
+    var Discord_on_failed:   Bool    = true    // Recording Failed
+    var Discord_on_paused:   Bool    = true    // Show Paused (max fails / no air days)
+    var Discord_on_skipped:  Bool    = true    // Skipped — disk full
+    var Discord_on_conflict: Bool    = true    // Tuner Conflict
+    var Discord_on_guide_error: Bool = true    // Guide Load Failed
+    var Discord_on_upnext:   Bool    = false   // Up Next reminder
+    var Discord_on_soon:     Bool    = false   // Recording Soon reminder
+    var Discord_on_show_added: Bool  = false   // Show Added
 }
 
 extension AppConfig: Codable {
@@ -223,6 +236,17 @@ extension AppConfig: Codable {
         Sports_padding_enabled  = (try? c.decode(Bool.self,   forKey: .Sports_padding_enabled))  ?? true
         Sports_padding_minutes  = (try? c.decode(Int.self,    forKey: .Sports_padding_minutes))  ?? 30
         Config_version          = (try? c.decode(String.self,  forKey: .Config_version))         ?? "1"
+        Discord_webhook_url     = (try? c.decode(String.self, forKey: .Discord_webhook_url))     ?? ""
+        Discord_on_start        = (try? c.decode(Bool.self,   forKey: .Discord_on_start))        ?? true
+        Discord_on_complete     = (try? c.decode(Bool.self,   forKey: .Discord_on_complete))     ?? true
+        Discord_on_failed       = (try? c.decode(Bool.self,   forKey: .Discord_on_failed))       ?? true
+        Discord_on_paused       = (try? c.decode(Bool.self,   forKey: .Discord_on_paused))       ?? true
+        Discord_on_skipped      = (try? c.decode(Bool.self,   forKey: .Discord_on_skipped))      ?? true
+        Discord_on_conflict     = (try? c.decode(Bool.self,   forKey: .Discord_on_conflict))     ?? true
+        Discord_on_guide_error  = (try? c.decode(Bool.self,   forKey: .Discord_on_guide_error))  ?? true
+        Discord_on_upnext       = (try? c.decode(Bool.self,   forKey: .Discord_on_upnext))       ?? false
+        Discord_on_soon         = (try? c.decode(Bool.self,   forKey: .Discord_on_soon))         ?? false
+        Discord_on_show_added   = (try? c.decode(Bool.self,   forKey: .Discord_on_show_added))   ?? false
     }
 }
 
@@ -243,9 +267,11 @@ struct HDHRDevice: Identifiable, Equatable {
     var DeviceAuth: String?   // used to call SiliconDust cloud guide API (EXTEND and similar)
     var LineupURL: String?    // raw lineup URL from discover.json (uses mDNS host if available)
 
+    var localHostname: String { "hdhr-\(DeviceID.lowercased()).local" }
     var streamBase: String { "http://\(LocalIP):5004" }
     var guideURL:   String { "http://\(LocalIP)/guide.json" }
     var lineupURL:  String { LineupURL ?? "http://\(LocalIP)/lineup.json" }
+    var statusURL:  String { "http://\(localHostname)/status.json" }
 }
 
 extension HDHRDevice: Codable {
@@ -292,6 +318,13 @@ struct GuideChannel: Codable {
 }
 
 // MARK: - TunerStatus
+
+/// One entry from /status.json — only present when that tuner is actively streaming.
+struct DeviceTunerInfo: Decodable {
+    let Resource: String      // "tuner0", "tuner1", …
+    let VctNumber: String?    // channel number if locked
+    let TargetIP:  String?    // client IP receiving the stream
+}
 
 struct TunerStatus {
     let signalStrength: Int   // ss field (0–100)
