@@ -146,6 +146,8 @@ final class AppState: ObservableObject {
 
     // Static — ISO8601DateFormatter is expensive; single MainActor caller makes static safe
     private static let logFormatter = ISO8601DateFormatter()
+    // Kept open for the app's lifetime to avoid open/seek/close syscalls on every log line.
+    private var logHandle: FileHandle?
 
     private func glog(_ msg: String) {
         print(msg)
@@ -153,13 +155,14 @@ final class AppState: ObservableObject {
         let line = "[\(ts)] \(msg)\n"
         guard let data = line.data(using: .utf8) else { return }
         let path = GuideStore.guideLogPath
-        if FileManager.default.fileExists(atPath: path) {
-            if let fh = FileHandle(forWritingAtPath: path) {
-                fh.seekToEndOfFile(); try? fh.write(contentsOf: data); fh.closeFile()
+        if logHandle == nil {
+            if !FileManager.default.fileExists(atPath: path) {
+                FileManager.default.createFile(atPath: path, contents: nil)
             }
-        } else {
-            FileManager.default.createFile(atPath: path, contents: data)
+            logHandle = FileHandle(forWritingAtPath: path)
+            logHandle?.seekToEndOfFile()
         }
+        try? logHandle?.write(contentsOf: data)
     }
 
     /// Extract unique device IPs from saved show stream URLs so discovery can try them directly.
@@ -228,7 +231,12 @@ final class AppState: ObservableObject {
     }
 
     func saveConfig() {
-        try? configManager.save(ConfigFile(config: config, the_shows: shows))
+        do {
+            try configManager.save(ConfigFile(config: config, the_shows: shows))
+        } catch {
+            glog("[Config] Save failed: \(error)")
+            statusMessage = "Config save error — check log"
+        }
     }
 
     func discoverDevices(knownHosts: [String] = [], attempts: Int = 3) async {
@@ -276,8 +284,10 @@ final class AppState: ObservableObject {
         guard lineups[id]?.isEmpty ?? true else { return }
         // Coalesce concurrent callers: only the first proceeds; others wait for it to finish.
         guard !loadingLineupDevices.contains(id) else {
-            while loadingLineupDevices.contains(id) {
+            var waited = 0
+            while loadingLineupDevices.contains(id), waited < 50 {
                 try? await Task.sleep(nanoseconds: 100_000_000)
+                waited += 1
             }
             return
         }
@@ -367,9 +377,10 @@ final class AppState: ObservableObject {
                 guideApiBackoff.removeValue(forKey: deviceId)
             } else {
                 guideApiBackoff[deviceId, default: APIBackoff()].recordFailure()
-                if guideApiBackoff[deviceId]?.notifiedUser == false {
-                    guideApiBackoff[deviceId]!.notifiedUser = true
-                    let mins = guideApiBackoff[deviceId]?.minutesUntilRetry ?? 60
+                if var backoff = guideApiBackoff[deviceId], !backoff.notifiedUser {
+                    backoff.notifiedUser = true
+                    guideApiBackoff[deviceId] = backoff
+                    let mins = backoff.minutesUntilRetry
                     notify("Guide Load Failed", body: deviceId, subtitle: "API error — retry in \(mins) min")
                     discordError("Guide Load Failed", detail: "Device \(deviceId) — API error, retry in \(mins) min", color: 0x95A5A6, enabled: config.Discord_on_guide_error)
                 }
@@ -402,9 +413,10 @@ final class AppState: ObservableObject {
             } else {
                 guideApiBackoff[deviceId, default: APIBackoff()].recordFailure()
                 // Notify user on first failure; subsequent backoff retries are silent
-                if guideApiBackoff[deviceId]?.notifiedUser == false {
-                    guideApiBackoff[deviceId]!.notifiedUser = true
-                    let mins = guideApiBackoff[deviceId]?.minutesUntilRetry ?? 5
+                if var backoff = guideApiBackoff[deviceId], !backoff.notifiedUser {
+                    backoff.notifiedUser = true
+                    guideApiBackoff[deviceId] = backoff
+                    let mins = backoff.minutesUntilRetry
                     notify("Guide Load Failed", body: deviceId, subtitle: "API error — retry in \(mins) min")
                     discordError("Guide Load Failed", detail: "Device \(deviceId) — API error, retry in \(mins) min", color: 0x95A5A6, enabled: config.Discord_on_guide_error)
                 }
@@ -800,11 +812,21 @@ final class AppState: ObservableObject {
         }
         let remainingSecs = max(60, Int(endDate.timeIntervalSince(Date())))
         glog("[\(show.show_title)] START ch=\(show.show_channel) dur=\(remainingSecs)s transcode=\(show.show_transcode) → \(path)")
-        recordingManager.start(showId: show.show_id, url: show.show_url,
-                               outputPath: path, durationSeconds: remainingSecs,
-                               transcode: show.show_transcode, showEnd: endDate,
-                               verbose: config.Verbose_curl,
-                               networkInterface: config.Network_interface)
+        do {
+            try recordingManager.start(showId: show.show_id, url: show.show_url,
+                                       outputPath: path, durationSeconds: remainingSecs,
+                                       transcode: show.show_transcode, showEnd: endDate,
+                                       verbose: config.Verbose_curl,
+                                       networkInterface: config.Network_interface)
+        } catch {
+            glog("[\(show.show_title)] LAUNCH ERROR: \(error)")
+            shows[index].show_fail_count += 1
+            shows[index].show_fail_reason = "Launch failed: \(error.localizedDescription)"
+            notify("Recording Failed", body: show.show_title, subtitle: "Could not launch — \(error.localizedDescription)")
+            discordShow("❌ Recording Failed", show: show, color: 0xE74C3C, enabled: config.Discord_on_failed,
+                        extra: [("Reason", "Launch failed: \(error.localizedDescription)", false)])
+            return
+        }
         shows[index].show_recording = true; shows[index].show_recording_path = path
         shows[index].show_fail_count = max(0, show.show_fail_count - 1)
         // Stamp notify_recording_time so the "Recording Soon" pre-notification won't re-fire

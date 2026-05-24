@@ -11,7 +11,7 @@ final class RecordingManager {
 
     func start(showId: String, url: String, outputPath: String,
                durationSeconds: Int, transcode: String, showEnd: Date,
-               verbose: Bool = false, networkInterface: String = "") {
+               verbose: Bool = false, networkInterface: String = "") throws {
         guard pids[showId] == nil else { return }
 
         let profile      = transcode.lowercased().trimmingCharacters(in: .whitespaces)
@@ -38,16 +38,12 @@ final class RecordingManager {
 
         // caffeinate -i prevents idle sleep and wraps curl; POSIX_SPAWN_SETSID puts the
         // process in its own session so a force-quit of the app does not kill the recording.
-        do {
-            let pid = try spawnDetached(executablePath: "/usr/bin/caffeinate",
-                                        arguments: ["-i", "/usr/bin/curl"] + curlArgs,
-                                        stderrPath: logPath)
-            pids[showId] = pid
-            if let curlPid = findCurlChild(of: pid) { curlPids[showId] = curlPid }
-            print("[Rec] Started \(showId) pid=\(pid) curl=\(curlPids[showId].map { "\($0)" } ?? "?") verbose=\(verbose): \(streamURL) → \(outputPath)")
-        } catch {
-            print("[Rec] Launch error for \(showId): \(error)")
-        }
+        let pid = try spawnDetached(executablePath: "/usr/bin/caffeinate",
+                                    arguments: ["-i", "/usr/bin/curl"] + curlArgs,
+                                    stderrPath: logPath)
+        pids[showId] = pid
+        if let curlPid = findCurlChild(of: pid) { curlPids[showId] = curlPid }
+        print("[Rec] Started \(showId) pid=\(pid) curl=\(curlPids[showId].map { "\($0)" } ?? "?") verbose=\(verbose): \(streamURL) → \(outputPath)")
     }
 
     // MARK: - Stop
