@@ -32,7 +32,9 @@ Detailed per-view docs are in `docs/`. Load as needed:
 - [SettingsView](docs/SettingsView.md) — settings window, draft/save pattern, WindowCloseInterceptor, Maintenance section
 - [MenuContent](docs/MenuContent.md) — menu bar dropdown structure, recording/scheduled/paused menus, add-show cascade
 - [StarburstBadge](docs/StarburstBadge.md) — two stacked keyframeAnimators, pop-in + celebration sequences, 5-tap easter egg
-- [PlayerView](docs/PlayerView.md) — AVKit pop-out player, PlayerWindowManager singleton, MPEG-2 constraint, Player_unlocked easter egg
+- [PlayerView](docs/PlayerView.md) — AVKit pop-out player, PlayerWindowManager singleton, MPEG-2 constraint, Player_unlocked easter egg (superseded by VLCPlayerView)
+- [VLCBridge](docs/VLCBridge.md) — dlopen runtime loader for libvlc.dylib, @convention(c) typedefs, C struct mirroring, channel switching, volume/audio APIs
+- [VLCPlayerView](docs/VLCPlayerView.md) — VLC in-app player window, VLCVideoSurface drawable, channel picker, audio output/device selectors, VLCPlayerWindowManager singleton reuse
 - [ShowFormSection](docs/ShowFormSection.md) — shared form fields (AddShowView + EditShowView), WhiteOutlineButtonStyle
 
 ---
