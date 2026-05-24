@@ -271,6 +271,15 @@ struct FloatingGuideView: View {
                                 .buttonStyle(WhiteOutlineButtonStyle(borderColor: Color(red: 1.0, green: 0.482, blue: 0.0)))
                                 .disabled(selectedChannel == nil)
                             }
+                            if onAir, VLCBridge.shared.isAvailable {
+                                Button("Watch Now!") {
+                                    state.watchInApp(url: selectedChannel?.URL ?? "",
+                                                     title: entry.Title,
+                                                     deviceId: selectedDevice?.DeviceID)
+                                }
+                                .buttonStyle(WhiteOutlineButtonStyle(borderColor: .blue))
+                                .disabled(selectedChannel == nil)
+                            }
                             // No Record button — floating guide is browse-only
                         }
                         // Overlap warning: shown when this show's start falls inside another show's bonus-time extension

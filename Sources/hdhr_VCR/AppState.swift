@@ -1166,7 +1166,8 @@ final class AppState: ObservableObject {
         case "start":
             if let show = testShow { discordShow("🔴 Recording Started",  show: show, color: 0x2ECC71, enabled: true, webhookURL: webhookURL) }
         case "complete":
-            if let show = testShow { discordShow("✅ Recording Complete", show: show, color: 0x3498DB, enabled: true, webhookURL: webhookURL) }
+            if let show = testShow { discordShow("✅ Recording Complete", show: show, color: 0x3498DB, enabled: true,
+                                                  extra: [("Format", "TS", true), ("File Size", "2.34 GB", true)], webhookURL: webhookURL) }
         case "failed":
             if let show = testShow { discordShow("❌ Recording Failed",   show: show, color: 0xE74C3C, enabled: true,
                                                   extra: [("Reason", "curl error 6 — could not resolve host", false)], webhookURL: webhookURL) }

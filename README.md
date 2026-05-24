@@ -6,6 +6,26 @@ This is a Swift/SwiftUI rewrite of the original [hdhr_VCR AppleScript app](https
 
 ---
 
+## What's New
+
+**Discord notifications** — Get a rich Discord message when a recording starts, finishes (including file format and size), fails, or hits a tuner conflict. Choose exactly which events notify you and send a live test from Settings without waiting for a real recording.
+
+**Built-in TV player** — "Watch Now!" streams live TV directly in the app using your installed VLC. Includes a channel picker so you can switch without reopening the menu, plus volume and audio output controls. The app checks whether a tuner is actually free before opening, so you're never silently blocked.
+
+**Pop-out guide browser** — Browse the full cable guide in its own window anytime, without going through the Add Show wizard. Great for checking what's on without committing to a recording.
+
+**Per-show bonus time** — Add extra recording padding to individual shows, not just globally. Handy for sports or anything that reliably runs long.
+
+**Smarter menus** — The menu bar header now shows live tuner usage for each device at a glance. The Add Show wizard skips the device-picker step when you only have one tuner. The in-app player now appears for any on-air show the moment VLC is installed — no hidden unlock required.
+
+**VPN-aware network binding** — Network interface selection now correctly identifies active VPN tunnels (versus inactive system interfaces), so recordings work reliably when connected to a VPN.
+
+**Changelog in Settings** — Full version history is rendered as rich text directly in Settings → About.
+
+**Reliability fixes** — Shows now re-schedule correctly after a restart that happened mid-recording-window; cable guide vertical scroll sync restored; time formats corrected for non-US locales.
+
+---
+
 ## Features
 
 - **Menu bar recording** — start, monitor, and stop recordings from the menu bar without opening a full app window
@@ -116,7 +136,7 @@ On first launch, the app will search for HDHomeRun tuners on your network automa
 
 The config file is created automatically at:
 ```
-~/Documents/hdhr_VCR-{hostname}.json
+~/Library/Application Support/hdhrVCRplus/hdhr_VCR-{hostname}.json
 ```
 
 ---
@@ -181,19 +201,19 @@ Settings use a **draft/save** pattern — changes are not applied until you clic
 
 ## Config File
 
-The config file is shared with the original AppleScript version:
+The config file lives at:
 
 ```
-~/Documents/hdhr_VCR-{hostname}.json
+~/Library/Application Support/hdhrVCRplus/hdhr_VCR-{hostname}.json
 ```
 
-A `.json.bak` backup is created before each save. You can copy a config from the AppleScript version and it will load correctly.
+A `.json.bak` backup is created before each save. On first launch the app automatically migrates an existing config from the old `~/Documents/` location — the original file is left in place so the AppleScript version continues to work.
 
 ---
 
 ## Recordings
 
-By default, recordings are saved to `~/Movies`. You can set a different folder in **Settings → Recording → Default folder**, or per-show via **Edit…** in the menu.
+By default, recordings are saved to `~/Documents/hdhr_videos` (created automatically). You can set a different folder in **Settings → Recording → Default folder**, or per-show via **Edit…** in the menu.
 
 File naming: `ShowTitle_Channel_YYYYMMDD_HHmm.m2ts` (or `.mkv` for transcoded recordings).
 
