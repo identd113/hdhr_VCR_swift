@@ -6,7 +6,7 @@ Replaces `PlayerView.swift` (AVKit / `AVPlayer`). AVPlayer cannot decode MPEG-2 
 
 The player opens as a detached `NSWindow` with a SwiftUI toolbar above the video surface. It has a channel picker, volume slider, audio output selector, and audio device selector. The window is reusable — opening it a second time switches the stream rather than creating a new window.
 
-Gate: both `Player_unlocked` (5-tap easter egg in Settings → About) **and** `VLCBridge.shared.isAvailable` (VLC.app installed at `/Applications/VLC.app`) must be true for "Watch Now!" buttons to appear anywhere in the UI.
+Gate: `VLCBridge.shared.isAvailable` (VLC.app installed at `/Applications/VLC.app`) must be true for "Watch Now!" buttons to appear. No easter egg gate — the player is always accessible when VLC is installed.
 
 ---
 
@@ -75,7 +75,7 @@ private var lineup: [LineupEntry] {
 
 Reads from `AppState.lineups` (already loaded at app startup). `localizedStandardCompare` sorts guide numbers correctly: `2`, `2.1`, `2.2`, `5.1`, `10`, `10.1` rather than lexicographic order which would put `10` before `2`.
 
-### onAppear
+### onAppear / Channel Sync
 
 ```swift
 .onAppear {
@@ -85,16 +85,20 @@ Reads from `AppState.lineups` (already loaded at app startup). `localizedStandar
         selectedOutput = first.name
     }
     refreshAudioDevices()
-    if selectedChannel == nil, !initialURL.isEmpty {
-        let baseURL = initialURL.components(separatedBy: "?").first ?? initialURL
-        selectedChannel = lineup.first { ($0.URL ?? "").hasPrefix(baseURL) || baseURL.hasPrefix($0.URL ?? "") }
-    }
+    syncChannel(to: initialURL)
+}
+.onChange(of: state.vlcCurrentURL) { _, rawURL in
+    syncChannel(to: rawURL)
 }
 ```
 
-The initial channel pre-selection strips query parameters from `initialURL` before matching because the URL passed to `open()` may have `?transcode=heavy` appended while `LineupEntry.URL` is the raw base URL. Both `hasPrefix` directions are checked to handle edge cases where one URL is a prefix of the other.
+`syncChannel(to:)` strips query params, matches against `lineup`, sets `suppressNextChannelPlay = true`, then sets `selectedChannel`. The `suppressNextChannelPlay` flag prevents the `onChange(of: selectedChannel)` handler from calling `playChannel()` when the selection change was driven by `syncChannel` rather than a user tap — avoiding a redundant second `_mpPlay` call on an already-playing stream.
 
-The pre-selection only sets `selectedChannel` — it does **not** call `playChannel()`. The stream is already playing (started by `VLCPlayerWindowManager.open()` before the window appears). Setting `selectedChannel` purely populates the picker UI.
+`state.vlcCurrentURL` is set by `AppState.watchInApp()` before calling `open()`. When the player window is already open and a different "Watch Now!" is clicked, `onChange(of: vlcCurrentURL)` fires inside the running window's SwiftUI tree and syncs the picker to the new channel without reopening the window.
+
+Initial pre-selection strips query parameters from `initialURL` before matching because the URL passed to `open()` may have `?transcode=heavy` appended while `LineupEntry.URL` is the raw base URL. Both `hasPrefix` directions are checked to handle edge cases where one URL is a prefix of the other.
+
+Pre-selection via `syncChannel` only updates `selectedChannel` — it does **not** call `playChannel()`. The stream is already playing (started by `VLCPlayerWindowManager.open()` before the window appears).
 
 ### Toolbar Layout
 
@@ -176,21 +180,38 @@ Without this, the second `open()` call would create a new window with a new `NSH
 
 ```swift
 func watchInApp(url: String, title: String, deviceId: String? = nil, transcode: String? = nil) {
-    guard config.Player_unlocked, VLCBridge.shared.isAvailable else { return }
+    guard VLCBridge.shared.isAvailable else { return }
+    // Tuner availability check — skip if the player already owns a tuner on this device
+    if VLCPlayerWindowManager.shared.currentDeviceID != deviceId {
+        // fetch /status.json and alert if all tuners occupied
+    }
     let profile = (transcode ?? config.Default_transcode).lowercased().trimmingCharacters(in: .whitespaces)
     let streamURL = (profile.isEmpty || profile == "none") ? url : "\(url)?transcode=\(profile)"
     let device = devices.first { $0.DeviceID == (deviceId ?? "") } ?? devices.first
     guard let device else { return }
+    vlcCurrentURL = url   // raw URL (no transcode suffix) — syncs channel picker
     VLCPlayerWindowManager.shared.open(url: streamURL, title: title, device: device, appState: self)
 }
 ```
 
-`deviceId` is passed at each call site so the channel picker knows which device's lineup to show. Three call sites:
-- Guide entry menu (`entryMenu`): passes `device.DeviceID` (HDHRDevice is in scope)
-- Recording menu (`recordingMenu`): passes `show.hdhr_record` (the device ID stored on the show)
+**Tuner availability check**: before opening, `watchInApp` fetches `device.statusURL` (`http://hdhr-{DeviceID}.local/status.json`) and decodes a `[DeviceTunerInfo]` array. If all entries have `VctNumber != nil` (all tuners occupied), it shows an NSAlert explaining why the player can't open. The check is **skipped** when `VLCPlayerWindowManager.shared.currentDeviceID == deviceId` — the player window already holds a tuner slot on that device, so switching channels doesn't need a free slot.
+
+`vlcCurrentURL` is set to the raw URL (without transcode suffix) before calling `open()`. This publishes to the SwiftUI tree so `onChange(of: state.vlcCurrentURL)` in a running `VLCPlayerView` fires immediately and syncs the channel picker.
+
+`deviceId` call sites:
+- Guide entry menu (`entryMenu`): passes `device.DeviceID`
+- Recording menu (`recordingMenu`): passes `show.hdhr_record`
 - AddShowView summary panel: passes `selectedDevice?.DeviceID`
 
-Falls back to `devices.first` if no match, so the picker always has a device even if the stored ID is stale.
+Falls back to `devices.first` if no match.
+
+## VLCPlayerWindowManager.currentDeviceID
+
+```swift
+private(set) var currentDeviceID: String?
+```
+
+Set to `device.DeviceID` in `open()`, cleared to `nil` in `playerWindowDidClose()`. Read by `watchInApp` to skip the tuner availability check when the player already occupies a slot on the target device (channel switching should always be allowed without a free-tuner check).
 
 ---
 

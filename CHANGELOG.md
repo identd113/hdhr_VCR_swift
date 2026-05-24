@@ -1,5 +1,13 @@
 # hdhrVCRplus Changelog
 
+## 2026-05-24 (260524-0119)
+
+- **Discord webhook notifications** — Settings → Notifications → Discord Webhook; paste a webhook URL to send rich embeds to any Discord channel. Per-event toggles (enabled by default): Recording Started, Recording Complete, Recording Failed, Show Paused, Skipped (Disk Full), Tuner Conflict, Guide Load Failed. Off by default: Up Next, Recording Soon, Show Added. Each toggle has a **Test** button that fires a live embed to the draft URL using real show data without saving. Embeds include: station icon (`author.icon_url` from guide channel image), show poster thumbnail, bold title + episode number/title + synopsis, Channel/Type/Time inline fields, filter tags as `` `Drama` `` `` `Series` `` code buttons, and event-color sidebar (green=started, blue=complete, red=failed, orange=paused/skipped, yellow=conflict, teal=added, purple=reminders, grey=errors). Recording Complete embeds additionally show **Format** (file extension, e.g. `TS`) and **File Size** (e.g. `2.34 GB`) inline fields from the actual output file. Blank or non-discord.com URLs are silently skipped.
+- **Watch Now! ungated** — the VLC in-app player "Watch Now!" button no longer requires the `Player_unlocked` easter egg; it appears whenever VLC is installed at `/Applications/VLC.app`
+- **Tuner availability check** — clicking "Watch Now!" fetches live `/status.json` from the device and shows an alert if all tuners are occupied; channel switching in an already-open player window bypasses the check since that window already holds a tuner slot
+- **Channel picker sync** — the channel picker in the VLC player window now syncs to the channel you clicked "Watch Now!" from; switching channels while the window is open also updates the picker; `suppressNextChannelPlay` flag prevents a redundant second play call on sync-driven selection changes
+- **Settings: Save & Close as default** — Save & Close is now the rightmost, prominent (`.borderedProminent`) button in the Settings footer, triggered by Return; Save (⌘S) is secondary and only enabled when dirty; Save & Close is always enabled (just closes when nothing is dirty)
+
 ## 2026-05-23 (260523-1751)
 
 - **Config moved to Application Support** — config file relocated to `~/Library/Application Support/hdhrVCRplus/hdhr_VCR-{hostname}.json`; ad-hoc re-signing during development no longer resets TCC permissions and clears all shows; one-time migration from `~/Documents` runs on first launch, old file preserved for AppleScript app compatibility

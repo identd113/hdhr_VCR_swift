@@ -18,9 +18,11 @@ This is a Swift/SwiftUI rewrite of the original [hdhr_VCR AppleScript app](https
 - **Multi-device support** — discovers and manages multiple HDHomeRun tuners on the network
 - **EXTEND support** — uses SiliconDust's cloud guide API for HDTC-2US devices
 - **Notifications** — "Up Next" and "Recording Soon" alerts before each show
+- **Discord webhooks** — rich embeds for recording events (started, complete with file size, failed, paused, conflict, and more); per-event toggles with Test buttons in Settings
 - **Sleep prevention** — uses `caffeinate` so recordings survive display sleep
 - **Transcode options** — none (`.m2ts`), heavy, mobile, or internet720 (`.mkv` via the device)
 - **Watch in VLC** — open any live stream in VLC directly from the menu
+- **Watch Now! (in-app player)** — stream live TV in a built-in VLC-powered window with channel picker, volume, and audio output controls; checks tuner availability before opening
 - **Launch at Login** — stay running in the background automatically
 - **Survives restarts** — reattaches to in-progress recordings after a crash or relaunch
 
@@ -168,7 +170,7 @@ Open via the menu bar icon → **Settings…**
 | **General** | Launch at Login; Add Show mode (wizard vs menu) |
 | **Recording** | Default save folder; transcode profile; minimum free disk space; failure threshold; Watch in VLC |
 | **Guide** | Hours of guide data to fetch; series scan retry interval |
-| **Notifications** | "Up Next" alert timing; "Recording Soon" alert timing |
+| **Notifications** | "Up Next" alert timing; "Recording Soon" alert timing; Discord webhook URL + per-event toggles with Test buttons |
 | **Advanced** | Idle check interval; verbose curl logging; config file location |
 | **Maintenance** | Rescan Series; Reset Fail Counts; Reactivate Paused Shows; Refresh Guide; Rediscover Devices |
 | **About** | App history, version, GitHub link |

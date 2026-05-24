@@ -34,7 +34,7 @@ Detailed per-view docs are in `docs/`. Load as needed:
 - [StarburstBadge](docs/StarburstBadge.md) — two stacked keyframeAnimators, pop-in + celebration sequences, 5-tap easter egg
 - [PlayerView](docs/PlayerView.md) — AVKit pop-out player, PlayerWindowManager singleton, MPEG-2 constraint, Player_unlocked easter egg (superseded by VLCPlayerView)
 - [VLCBridge](docs/VLCBridge.md) — dlopen runtime loader for libvlc.dylib, @convention(c) typedefs, C struct mirroring, channel switching, volume/audio APIs
-- [VLCPlayerView](docs/VLCPlayerView.md) — VLC in-app player window, VLCVideoSurface drawable, channel picker, audio output/device selectors, VLCPlayerWindowManager singleton reuse
+- [VLCPlayerView](docs/VLCPlayerView.md) — VLC in-app player window, VLCVideoSurface drawable, channel picker, audio output/device selectors, VLCPlayerWindowManager singleton reuse, tuner availability check
 - [ShowFormSection](docs/ShowFormSection.md) — shared form fields (AddShowView + EditShowView), WhiteOutlineButtonStyle
 
 ---
@@ -49,6 +49,7 @@ GuideStore.swift           Guide cache: fetches, indexes, and queries guide data
 RecordingManager.swift     Launches/stops caffeinate+curl processes, manages sleep prevention
 ConfigManager.swift        Reads/writes ~/Library/Application Support/hdhrVCRplus/hdhr_VCR-{hostname}.json
 Models.swift               All data types (Show, HDHRDevice, GuideEntry, AppConfig, EpochDate, …)
+DiscordNotifier.swift      Module-level sendDiscordEmbed() — posts a single embed to a Discord webhook URL
 AddShowMode.swift          Enum: .menu vs .wizard add-show modes
 ChannelIconCache.swift     Actor: async disk-backed cache for channel logo images
 Views/
@@ -150,6 +151,11 @@ func invalidateAll()
 - `nextGuideEpisode(for show:)` — delegates to `guideStore.nextEpisode()`; respects channel/device filters for SeriesID(Channel) vs SeriesID(All)
 - `upcomingGuideEpisodes(seriesID:after:limit:)` — returns up to `limit` upcoming `(channel, entry)` tuples for a SeriesID across all devices; used by the guide summary panel
 - `watchInVLC(url:)` — opens a stream URL in `/Applications/VLC.app` via `NSWorkspace`; no-op if VLC not installed or `Watch_in_VLC` is false
+- `watchInApp(url:title:deviceId:transcode:)` — opens the VLC in-app player window; fetches `device.statusURL` (`http://hdhr-{DeviceID.lowercased()}.local/status.json`) first and shows an NSAlert if all tuners are occupied; sets `vlcCurrentURL` before opening so the channel picker syncs
+- `testDiscordEvent(_:webhookURL:)` — sends a test embed to the draft webhook URL using real show data (recording > active > any); always passes `enabled: true` regardless of toggle state
+- `discordShow(_:show:color:enabled:extra:webhookURL:)` — private; builds and sends a show embed; `webhookURL` param overrides `config.Discord_webhook_url` (used by test buttons)
+- `discordError(_:detail:color:enabled:webhookURL:)` — private; sends a plain error embed
+- `formatFileSize(_:)` — private static; formats bytes as `"X.XX GB"` / `"X.X MB"` / `"X KB"`
 
 ---
 
@@ -207,6 +213,21 @@ All `Date?` fields in `Show` use the `EpochDate` wrapper struct, which:
 - `Filter: [String]?` — genre tags from the SiliconDust guide API (e.g. `["Drama", "Series"]`). Absent from some devices/channels; decodes as `nil` via synthesized `Codable` when the key is missing.
 - `firstGenre: String?` — computed shorthand for `Filter?.first`; used for guide cell coloring and the genre filter picker.
 
+### `HDHRDevice` computed properties
+- `localHostname: String` — `"hdhr-{DeviceID.lowercased()}.local"` (mDNS name)
+- `statusURL: String` — `"http://{localHostname}/status.json"` — live tuner status endpoint
+
+### `DeviceTunerInfo` (Models.swift)
+Decodable struct for one entry in the `/status.json` array:
+```swift
+struct DeviceTunerInfo: Decodable {
+    let Resource: String       // e.g. "tuner0"
+    let VctNumber: String?     // present only when tuner is in use
+    let TargetIP: String?      // client receiving the stream
+}
+```
+A tuner is considered occupied when `VctNumber != nil`.
+
 ---
 
 ## Config File
@@ -229,6 +250,17 @@ Series_scan_retry_hours Int     4      hours to wait before re-scanning guide fo
 Network_interface       String  ""     bind UDP discovery + curl to this interface; empty = Auto; utun* = VPN
 Verbose_curl            Bool    false  enable -v curl logging to ~/Library/Logs/hdhr_VCR_curl.log
 Watch_in_VLC            Bool    false  show "Watch in VLC" buttons in menus (only when VLC installed)
+Discord_webhook_url     String  ""     Discord webhook URL; blank = no Discord notifications
+Discord_on_start        Bool    true   send embed when a recording starts
+Discord_on_complete     Bool    true   send embed when a recording completes (includes Format + File Size)
+Discord_on_failed       Bool    true   send embed on recording failure
+Discord_on_paused       Bool    true   send embed when a show is paused
+Discord_on_skipped      Bool    true   send embed when recording skipped (disk full)
+Discord_on_conflict     Bool    true   send embed on tuner conflict
+Discord_on_guide_error  Bool    true   send embed on guide load failure
+Discord_on_upnext       Bool    false  send embed for Up Next reminder
+Discord_on_soon         Bool    false  send embed for Recording Soon reminder
+Discord_on_show_added   Bool    false  send embed when a show is added
 Hdhr_setup_folder       String  ""     default recording folder (POSIX path; empty = ~/Documents/hdhr_videos)
 Config_version          String  "1"    format version marker
 ```
@@ -279,6 +311,8 @@ Single `MenuBarExtra` with `.menu` style (native cascading NSMenu).
 **On-air filter**: entries shown in the "currently airing" section require `startDate <= now && endDate > now` — shows that have already ended are excluded even if `startDate` is in the past.
 
 **VLC Watch Now**: when `config.Watch_in_VLC` is true and `/Applications/VLC.app` exists, "Watch in VLC" appears in recording submenus and on-air guide entry submenus. `AppState.watchInVLC(url:)` opens the stream URL with VLC via `NSWorkspace.shared.open(_:withApplicationAt:)`.
+
+**Watch Now! (in-app VLC player)**: when `VLCBridge.shared.isAvailable` is true (VLC installed), "Watch Now!" appears in on-air guide summary panels and recording submenus. No easter egg gate. `AppState.watchInApp(url:title:deviceId:transcode:)` checks tuner availability via `/status.json` before opening; if all tuners are in use (all entries have `VctNumber != nil`), shows an NSAlert instead of opening the player. Sets `@Published var vlcCurrentURL` before opening so the channel picker in an already-open window syncs to the new channel.
 
 **Dark mode**: Info text uses `Color(NSColor.labelColor)` and `Color(NSColor.secondaryLabelColor)` — these are guaranteed to be white/gray in dark mode, unlike `.foregroundStyle(.primary)` which can be overridden by NSMenu's disabled-item dimming.
 
@@ -348,16 +382,27 @@ func guideEntryColor(for entry: GuideEntry, onAir: Bool) -> Color
 | General | Launch at Login toggle (`SMAppService`); Add Show mode (menu vs wizard) |
 | Recording | Default folder, transcode, min disk, fail threshold; "Watch in VLC" toggle (only shown when `/Applications/VLC.app` exists) |
 | Guide | Guide hours, series scan retry |
-| Notifications | Up Next timing, Recording alert timing |
+| Notifications | Up Next timing, Recording alert timing, Discord webhook URL + per-event toggles |
 | Advanced | Idle check interval, verbose curl toggle + log path, config file path |
 | About | App image (local `app.jpg` from bundle), version, history text, GitHub link; 5-tap surprise on the logo |
 
-**Draft/save pattern**: all config controls bind to a `@State private var draft: AppConfig`. Changes are not written to disk until the user clicks **Save** (⌘S). An "Unsaved changes" label and **Discard** button appear when `draft != state.config` (`isDirty`).
+**Draft/save pattern**: all config controls bind to a `@State private var draft: AppConfig`. Changes are not written to disk until the user clicks **Save & Close** (Return, always enabled — saves if dirty then closes) or **Save** (⌘S, only enabled when dirty). An "Unsaved changes" label and **Discard** button appear when `draft != state.config` (`isDirty`). **Save & Close** is the rightmost, prominent default button.
 
 **Close warning**: a `WindowCloseInterceptor: NSViewRepresentable` attaches an `NSWindowDelegate` to the settings window. `windowShouldClose` checks `isDirty` and presents an `NSAlert` with **Save / Discard / Cancel** — Cancel keeps the window open.
 
 **Config fields added**:
 - `Watch_in_VLC: Bool = false` — enables VLC streaming buttons in menus
+- `Discord_webhook_url: String = ""` — Discord webhook endpoint; blank = silent no-op
+- `Discord_on_start: Bool = true` — Recording Started embed
+- `Discord_on_complete: Bool = true` — Recording Complete embed (includes Format + File Size fields)
+- `Discord_on_failed: Bool = true` — Recording Failed embed
+- `Discord_on_paused: Bool = true` — Show Paused embed
+- `Discord_on_skipped: Bool = true` — Recording Skipped (disk full) embed
+- `Discord_on_conflict: Bool = true` — Tuner Conflict embed
+- `Discord_on_guide_error: Bool = true` — Guide Load Failed embed
+- `Discord_on_upnext: Bool = false` — Up Next reminder embed
+- `Discord_on_soon: Bool = false` — Recording Soon reminder embed
+- `Discord_on_show_added: Bool = false` — Show Added embed
 
 ---
 
