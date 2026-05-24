@@ -169,6 +169,7 @@ struct VLCPlayerView: View {
 final class VLCPlayerWindowManager {
     static let shared = VLCPlayerWindowManager()
     private var window: NSWindow?
+    private var closeObserver: WindowCloseObserver?  // strong ref — NSWindow.delegate is weak
 
     /// DeviceID of the tuner currently occupied by the player window; nil when closed.
     private(set) var currentDeviceID: String?
@@ -200,7 +201,9 @@ final class VLCPlayerWindowManager {
         win.title = title
         win.contentView = NSHostingView(rootView: playerView)
         win.isReleasedWhenClosed = false   // retain for reuse on next open()
-        win.delegate = WindowCloseObserver(manager: self)
+        let observer = WindowCloseObserver(manager: self)
+        closeObserver = observer
+        win.delegate = observer
         win.center()
         win.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
