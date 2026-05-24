@@ -423,10 +423,11 @@ struct AddShowView: View {
                             .buttonStyle(WhiteOutlineButtonStyle(borderColor: Color(red: 1.0, green: 0.482, blue: 0.0)))
                             .disabled(selectedChannel == nil)
                         }
-                        if onAir, state.config.Player_unlocked {
+                        if onAir, state.config.Player_unlocked, VLCBridge.shared.isAvailable {
                             Button("Watch in App") {
                                 state.watchInApp(url: selectedChannel?.URL ?? "",
-                                                 title: selectedEntry?.Title ?? "Live TV")
+                                                 title: selectedEntry?.Title ?? "Live TV",
+                                                 deviceId: selectedDevice?.DeviceID)
                             }
                             .buttonStyle(WhiteOutlineButtonStyle(borderColor: .blue))
                             .disabled(selectedChannel == nil)

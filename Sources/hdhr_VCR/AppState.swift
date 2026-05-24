@@ -1030,15 +1030,13 @@ final class AppState: ObservableObject {
         return Self.shortTimeFormatter.string(from: d)
     }
 
-    func watchInApp(url: String, title: String, transcode: String? = nil) {
+    func watchInApp(url: String, title: String, deviceId: String? = nil, transcode: String? = nil) {
+        guard config.Player_unlocked, VLCBridge.shared.isAvailable else { return }
         let profile = (transcode ?? config.Default_transcode).lowercased().trimmingCharacters(in: .whitespaces)
-        // AVPlayer requires H.264 — fall back to 'heavy' when profile is none/empty
-        // (VLC handles raw MPEG-2 natively but AVFoundation's VideoToolbox does not)
-        let playerProfile = (profile.isEmpty || profile == "none") ? "heavy" : profile
-        let raw = "\(url)?transcode=\(playerProfile)"
-        guard config.Player_unlocked,
-              let streamURL = URL(string: raw) else { return }
-        PlayerWindowManager.shared.play(url: streamURL, title: title)
+        let streamURL = (profile.isEmpty || profile == "none") ? url : "\(url)?transcode=\(profile)"
+        let device = devices.first { $0.DeviceID == (deviceId ?? "") } ?? devices.first
+        guard let device else { return }
+        VLCPlayerWindowManager.shared.open(url: streamURL, title: title, device: device, appState: self)
     }
 
     func watchInVLC(url: String, transcode: String? = nil) {

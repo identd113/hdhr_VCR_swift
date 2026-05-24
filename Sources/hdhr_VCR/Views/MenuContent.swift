@@ -315,8 +315,8 @@ struct MenuContent: View {
                     Text("Watch in VLC").foregroundColor(vlcOrange)
                 }
             }
-            if state.config.Player_unlocked && isOnAir {
-                Button("Watch in App") { state.watchInApp(url: channel.URL ?? "", title: entry.Title) }
+            if state.config.Player_unlocked && VLCBridge.shared.isAvailable && isOnAir {
+                Button("Watch in App") { state.watchInApp(url: channel.URL ?? "", title: entry.Title, deviceId: device.DeviceID) }
             }
         } label: {
             Label {
@@ -380,9 +380,9 @@ struct MenuContent: View {
                     Text("Watch in VLC").foregroundColor(vlcOrange)
                 }
             }
-            if state.config.Player_unlocked {
+            if state.config.Player_unlocked && VLCBridge.shared.isAvailable {
                 Button("Watch in App") {
-                    state.watchInApp(url: show.show_url, title: show.show_title, transcode: show.show_transcode)
+                    state.watchInApp(url: show.show_url, title: show.show_title, deviceId: show.hdhr_record, transcode: show.show_transcode)
                 }
             }
             Button("Edit…") { editShow(show) }
