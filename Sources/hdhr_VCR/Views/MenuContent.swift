@@ -316,7 +316,7 @@ struct MenuContent: View {
                 }
             }
             if state.config.Player_unlocked && VLCBridge.shared.isAvailable && isOnAir {
-                Button("Watch in App") { state.watchInApp(url: channel.URL ?? "", title: entry.Title, deviceId: device.DeviceID) }
+                Button("Watch Now!") { state.watchInApp(url: channel.URL ?? "", title: entry.Title, deviceId: device.DeviceID) }
             }
         } label: {
             Label {
@@ -381,7 +381,7 @@ struct MenuContent: View {
                 }
             }
             if state.config.Player_unlocked && VLCBridge.shared.isAvailable {
-                Button("Watch in App") {
+                Button("Watch Now!") {
                     state.watchInApp(url: show.show_url, title: show.show_title, deviceId: show.hdhr_record, transcode: show.show_transcode)
                 }
             }

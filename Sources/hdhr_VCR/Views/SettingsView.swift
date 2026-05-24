@@ -656,7 +656,7 @@ struct SettingsView: View {
         .alert("In-App Live Streaming Unlocked!", isPresented: $showEasterEgg) {
             Button("OK") {}
         } message: {
-            Text("Tap \"Watch in App\" in the cable guide or recording menus to play streams in a pop-out window. Volume and full-screen controls are built in.")
+            Text("Tap \"Watch Now!\" in the cable guide or recording menus to play streams in a pop-out window. Volume and full-screen controls are built in.")
         }
     }
 
