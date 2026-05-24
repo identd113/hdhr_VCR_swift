@@ -55,7 +55,7 @@ struct EditShowView: View {
                 dismiss()
             }
         }
-        .background(WindowCloseInterceptor(isDirty: isDirty, onSave: saveWithoutDismiss))
+        .background(WindowCloseInterceptor(isDirty: isDirty, canSave: true, onSave: saveWithoutDismiss))
         .onAppear { loadShow() }
     }
 

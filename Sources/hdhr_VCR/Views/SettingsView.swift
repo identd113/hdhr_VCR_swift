@@ -45,6 +45,18 @@ struct SettingsView: View {
     @State private var brewBusy: Bool = false
     @State private var brewStatus: String = ""
 
+    // Discord webhook test state
+    private enum WebhookTestStatus { case idle, untested, testing, passed, failed }
+    @State private var webhookTestStatus: WebhookTestStatus = .idle
+    @State private var webhookTestInProgress: Bool = false
+
+    private var webhookNeedsTest: Bool {
+        draft.Discord_enabled
+            && !draft.Discord_webhook_url.isEmpty
+            && draft.Discord_webhook_url != state.config.Discord_webhook_url
+            && webhookTestStatus != .passed
+    }
+
     private var isDirty: Bool {
         draft != state.config
             || draftAddShowMode   != addShowMode
@@ -69,41 +81,44 @@ struct SettingsView: View {
 
             // ── Persistent save bar ────────────────────────────────────────
             HStack {
-                if isDirty {
+                if webhookNeedsTest {
+                    Label("Test the webhook before saving", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                    Button("Discard") { discardDraft() }
+                        .foregroundStyle(.secondary)
+                } else if isDirty {
                     Text("Unsaved changes")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Button("Discard") {
-                        draft              = state.config
-                        draftAddShowMode   = addShowMode
-                        draftSaveDirectory = defaultSaveDirectory
-                        draftLaunchAtLogin = SMAppService.mainApp.status == .enabled
-                        draftSimulatedOS   = simulatedMacOSVersion
-                    }
+                    Button("Discard") { discardDraft() }
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
                 Button("Save") { applyAndSave() }
-                    .disabled(!isDirty)
+                    .disabled(!isDirty || webhookNeedsTest)
                     .keyboardShortcut("s", modifiers: .command)
                 Button("Save & Close") {
-                    if isDirty { applyAndSave() }
+                    if isDirty && !webhookNeedsTest { applyAndSave() }
                     NSApp.keyWindow?.close()
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(isDirty ? .orange : .accentColor)
+                .tint((isDirty && !webhookNeedsTest) ? .orange : .accentColor)
                 .keyboardShortcut(.defaultAction)
+                .disabled(webhookNeedsTest)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
         }
         .frame(width: 560, height: 520)
-        .background(WindowCloseInterceptor(isDirty: isDirty, onSave: applyAndSave))
+        .background(WindowCloseInterceptor(isDirty: isDirty, canSave: !webhookNeedsTest, onSave: applyAndSave))
         .onAppear {
             draft               = state.config
             draftAddShowMode    = addShowMode
             draftSaveDirectory  = defaultSaveDirectory
             draftLaunchAtLogin  = SMAppService.mainApp.status == .enabled
+            // Existing saved URL is considered verified (was tested when first saved)
+            webhookTestStatus   = state.config.Discord_webhook_url.isEmpty ? .idle : .passed
             // Clear a stale saved interface: if the named NIC isn't available right now
             // (e.g. VPN disconnected), reset to Auto immediately in both draft AND live
             // config. Without the live-config clear, a Discard-and-close would leave the
@@ -120,6 +135,15 @@ struct SettingsView: View {
             if simulatedMacOSVersion == real { simulatedMacOSVersion = 0 }
             draftSimulatedOS = simulatedMacOSVersion
         }
+    }
+
+    private func discardDraft() {
+        draft              = state.config
+        draftAddShowMode   = addShowMode
+        draftSaveDirectory = defaultSaveDirectory
+        draftLaunchAtLogin = SMAppService.mainApp.status == .enabled
+        draftSimulatedOS   = simulatedMacOSVersion
+        webhookTestStatus  = state.config.Discord_webhook_url.isEmpty ? .idle : .passed
     }
 
     private func applyAndSave() {
@@ -298,44 +322,68 @@ struct SettingsView: View {
                 }
             }
 
-            Section("Discord Webhook") {
-                TextField("https://discord.com/api/webhooks/…", text: $draft.Discord_webhook_url)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(.body, design: .monospaced))
-                Text("Paste a Discord webhook URL to send rich notifications to a channel. Leave blank to disable.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            Section("Discord") {
+                Toggle("Enable Discord notifications", isOn: $draft.Discord_enabled)
+
+                if draft.Discord_enabled {
+                    HStack(spacing: 8) {
+                        TextField("Webhook URL", text: $draft.Discord_webhook_url)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(.body, design: .monospaced))
+                            .onChange(of: draft.Discord_webhook_url) {
+                                if draft.Discord_webhook_url != state.config.Discord_webhook_url {
+                                    webhookTestStatus = draft.Discord_webhook_url.isEmpty ? .idle : .untested
+                                } else {
+                                    webhookTestStatus = draft.Discord_webhook_url.isEmpty ? .idle : .passed
+                                }
+                            }
+
+                        if webhookTestStatus == .testing {
+                            ProgressView().controlSize(.small).frame(width: 60)
+                        } else {
+                            Button("Test") {
+                                webhookTestStatus = .testing
+                                Task {
+                                    let ok = await state.checkWebhookURL(draft.Discord_webhook_url)
+                                    webhookTestStatus = ok ? .passed : .failed
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(draft.Discord_webhook_url.isEmpty)
+                            .frame(width: 60)
+                        }
+                    }
+
+                    switch webhookTestStatus {
+                    case .passed:
+                        Label("Verified", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(.green).font(.caption)
+                    case .failed:
+                        Label("Connection failed — check the URL", systemImage: "xmark.circle.fill")
+                            .foregroundStyle(.red).font(.caption)
+                    case .untested:
+                        Text("Test the webhook before saving.")
+                            .foregroundStyle(.orange).font(.caption)
+                    default:
+                        EmptyView()
+                    }
+                }
             }
 
-            Section("Discord — Recording Events") {
-                discordRow("Recording Started",  event: "start",    isOn: $draft.Discord_on_start)
-                discordRow("Recording Complete", event: "complete",  isOn: $draft.Discord_on_complete)
-                discordRow("Recording Failed",   event: "failed",   isOn: $draft.Discord_on_failed)
+            if draft.Discord_enabled && !draft.Discord_webhook_url.isEmpty {
+                Section("Notify when…") {
+                    Toggle("Recording started",             isOn: $draft.Discord_on_start)
+                    Toggle("Recording complete",            isOn: $draft.Discord_on_complete)
+                    Toggle("Recording failed",              isOn: $draft.Discord_on_failed)
+                    Toggle("Show paused",                   isOn: $draft.Discord_on_paused)
+                    Toggle("Skipped — disk full",           isOn: $draft.Discord_on_skipped)
+                    Toggle("Tuner conflict",                isOn: $draft.Discord_on_conflict)
+                    Toggle("Guide load failed",             isOn: $draft.Discord_on_guide_error)
+                    Toggle("Show added",                    isOn: $draft.Discord_on_show_added)
+                    Toggle("Up Next reminder",              isOn: $draft.Discord_on_upnext)
+                    Toggle("Recording Soon reminder",       isOn: $draft.Discord_on_soon)
+                }
             }
-            .disabled(draft.Discord_webhook_url.isEmpty)
-            .opacity(draft.Discord_webhook_url.isEmpty ? 0.4 : 1)
-
-            Section("Discord — Show Management") {
-                discordRow("Show Paused (max failures / no air days)", event: "paused",     isOn: $draft.Discord_on_paused)
-                discordRow("Skipped — Disk Full",                      event: "skipped",    isOn: $draft.Discord_on_skipped)
-                discordRow("Tuner Conflict",                           event: "conflict",   isOn: $draft.Discord_on_conflict)
-                discordRow("Show Added",                               event: "show_added", isOn: $draft.Discord_on_show_added)
-            }
-            .disabled(draft.Discord_webhook_url.isEmpty)
-            .opacity(draft.Discord_webhook_url.isEmpty ? 0.4 : 1)
-
-            Section("Discord — Alerts") {
-                discordRow("Up Next",        event: "upnext", isOn: $draft.Discord_on_upnext)
-                discordRow("Recording Soon", event: "soon",   isOn: $draft.Discord_on_soon)
-            }
-            .disabled(draft.Discord_webhook_url.isEmpty)
-            .opacity(draft.Discord_webhook_url.isEmpty ? 0.4 : 1)
-
-            Section("Discord — Errors") {
-                discordRow("Guide Load Failed", event: "guide_error", isOn: $draft.Discord_on_guide_error)
-            }
-            .disabled(draft.Discord_webhook_url.isEmpty)
-            .opacity(draft.Discord_webhook_url.isEmpty ? 0.4 : 1)
         }
         .formStyle(.grouped)
         .navigationTitle("Notifications")
@@ -486,18 +534,6 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .navigationTitle("Maintenance")
-    }
-
-    @ViewBuilder
-    private func discordRow(_ label: String, event: String, isOn: Binding<Bool>) -> some View {
-        HStack {
-            Text(label)
-            Spacer()
-            Button("Test") { state.testDiscordEvent(event, webhookURL: draft.Discord_webhook_url) }
-                .buttonStyle(.bordered)
-                .controlSize(.mini)
-            Toggle("", isOn: isOn).labelsHidden()
-        }
     }
 
     @ViewBuilder
@@ -793,6 +829,7 @@ struct SettingsView: View {
 
 struct WindowCloseInterceptor: NSViewRepresentable {
     let isDirty: Bool
+    let canSave: Bool
     let onSave: () -> Void
 
     func makeNSView(context: Context) -> NSView {
@@ -805,32 +842,45 @@ struct WindowCloseInterceptor: NSViewRepresentable {
 
     func updateNSView(_ nsView: NSView, context: Context) {
         context.coordinator.isDirty = isDirty
+        context.coordinator.canSave = canSave
         context.coordinator.onSave  = onSave
     }
 
-    func makeCoordinator() -> Coordinator { Coordinator(isDirty: isDirty, onSave: onSave) }
+    func makeCoordinator() -> Coordinator { Coordinator(isDirty: isDirty, canSave: canSave, onSave: onSave) }
 
     class Coordinator: NSObject, NSWindowDelegate {
         var isDirty: Bool
+        var canSave: Bool
         var onSave:  () -> Void
 
-        init(isDirty: Bool, onSave: @escaping () -> Void) {
+        init(isDirty: Bool, canSave: Bool, onSave: @escaping () -> Void) {
             self.isDirty = isDirty
+            self.canSave = canSave
             self.onSave  = onSave
         }
 
         func windowShouldClose(_ sender: NSWindow) -> Bool {
             guard isDirty else { return true }
             let alert = NSAlert()
-            alert.messageText     = "Unsaved Settings"
-            alert.informativeText = "Save your changes before closing?"
-            alert.addButton(withTitle: "Save")
-            alert.addButton(withTitle: "Discard")
-            alert.addButton(withTitle: "Cancel")
-            switch alert.runModal() {
-            case .alertFirstButtonReturn:  onSave(); return true
-            case .alertSecondButtonReturn: return true
-            default:                       return false
+            alert.messageText = "Unsaved Settings"
+            if canSave {
+                alert.informativeText = "Save your changes before closing?"
+                alert.addButton(withTitle: "Save")
+                alert.addButton(withTitle: "Discard")
+                alert.addButton(withTitle: "Cancel")
+                switch alert.runModal() {
+                case .alertFirstButtonReturn:  onSave(); return true
+                case .alertSecondButtonReturn: return true
+                default:                       return false
+                }
+            } else {
+                alert.informativeText = "The Discord webhook must be tested before saving. Discard webhook changes?"
+                alert.addButton(withTitle: "Discard Changes")
+                alert.addButton(withTitle: "Cancel")
+                switch alert.runModal() {
+                case .alertFirstButtonReturn: return true
+                default:                      return false
+                }
             }
         }
     }

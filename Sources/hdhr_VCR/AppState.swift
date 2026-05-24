@@ -1098,11 +1098,32 @@ final class AppState: ObservableObject {
         return entries.first { abs($0.StartTime - target) < 120 }
     }
 
+    /// Sends a minimal test embed and returns true if the webhook responds with HTTP 2xx.
+    func checkWebhookURL(_ url: String) async -> Bool {
+        guard !url.isEmpty,
+              let parsed = URL(string: url),
+              let host = parsed.host,
+              host.contains("discord") else { return false }
+        var req = URLRequest(url: parsed, timeoutInterval: 10)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let embed: [String: Any] = ["embeds": [["title": "hdhrVCRplus — Connection test ✓",
+                                                 "description": "Webhook verified. Ready to send notifications.",
+                                                 "color": 0x2ECC71]]]
+        guard let body = try? JSONSerialization.data(withJSONObject: embed) else { return false }
+        req.httpBody = body
+        guard let (_, resp) = try? await URLSession.shared.data(for: req),
+              let http = resp as? HTTPURLResponse else { return false }
+        return (200..<300).contains(http.statusCode)
+    }
+
     private func discordShow(_ event: String, show: Show, color: Int, enabled: Bool,
                              extra: [(name: String, value: String, inline: Bool)] = [],
                              webhookURL: String? = nil) {
         let url = webhookURL ?? config.Discord_webhook_url
         guard enabled, !url.isEmpty else { return }
+        // Respect the master toggle for production sends; test calls pass an explicit webhookURL
+        if webhookURL == nil { guard config.Discord_enabled else { return } }
 
         let entry = guideEntryForShow(show)
 
@@ -1164,6 +1185,7 @@ final class AppState: ObservableObject {
                               webhookURL: String? = nil) {
         let url = webhookURL ?? config.Discord_webhook_url
         guard enabled, !url.isEmpty else { return }
+        if webhookURL == nil { guard config.Discord_enabled else { return } }
         let embed: [String: Any] = [
             "title":       event,
             "description": detail,
