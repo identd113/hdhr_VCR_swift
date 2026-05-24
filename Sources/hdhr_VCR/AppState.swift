@@ -844,35 +844,46 @@ final class AppState: ObservableObject {
         if natural {
             // Verify the output file was actually created and is non-empty
             let path = show.show_recording_path
-            if !path.isEmpty {
-                let attrs = try? FileManager.default.attributesOfItem(atPath: path)
-                let size = attrs?[.size] as? Int ?? 0
-                if size == 0 {
-                    shows[index].show_fail_count += 1
-                    shows[index].show_fail_reason = "Output file missing or empty"
-                    glog("[\(show.show_title)] STOP file missing or empty — fail_count=\(shows[index].show_fail_count)")
-                    notify("Recording Failed", body: show.show_title, subtitle: "File not written — check disk space and URL")
-                    discordShow("❌ Recording Failed", show: show, color: 0xE74C3C, enabled: config.Discord_on_failed,
-                                extra: [("Reason", "Output file missing or empty — check disk space and stream URL", false)])
-                    await scheduleNextAir(index: index)
-                    return
-                }
-                glog("[\(show.show_title)] STOP natural size=\(size / 1024)KB → \(path)")
+            let fileAttrs = path.isEmpty ? nil : (try? FileManager.default.attributesOfItem(atPath: path))
+            let fileSize  = fileAttrs?[.size] as? Int ?? 0
+
+            if !path.isEmpty && fileSize == 0 {
+                shows[index].show_fail_count += 1
+                shows[index].show_fail_reason = "Output file missing or empty"
+                glog("[\(show.show_title)] STOP file missing or empty — fail_count=\(shows[index].show_fail_count)")
+                notify("Recording Failed", body: show.show_title, subtitle: "File not written — check disk space and URL")
+                discordShow("❌ Recording Failed", show: show, color: 0xE74C3C, enabled: config.Discord_on_failed,
+                            extra: [("Reason", "Output file missing or empty — check disk space and stream URL", false)])
+                await scheduleNextAir(index: index)
+                return
             }
+            if !path.isEmpty {
+                glog("[\(show.show_title)] STOP natural size=\(fileSize / 1024)KB → \(path)")
+            }
+
+            // File info fields appended to every Recording Complete embed
+            var fileFields: [(name: String, value: String, inline: Bool)] = []
+            if !path.isEmpty && fileSize > 0 {
+                let ext = URL(fileURLWithPath: path).pathExtension.uppercased()
+                if !ext.isEmpty { fileFields.append(("Format", ext, true)) }
+                fileFields.append(("File Size", Self.formatFileSize(fileSize), true))
+            }
+
             await scheduleNextAir(index: index)
             let completedShow = shows[index]
             if !completedShow.show_active {
                 notify("Recording Complete", body: show.show_title, subtitle: "Single episode recorded — show deactivated")
                 discordShow("✅ Recording Complete", show: show, color: 0x3498DB, enabled: config.Discord_on_complete,
-                            extra: [("Note", "Single episode — show deactivated", false)])
+                            extra: fileFields + [("Note", "Single episode — show deactivated", false)])
             } else if let next = completedShow.show_next.date {
                 let f = DateFormatter(); f.dateStyle = .short; f.timeStyle = .short
                 notify("Recording Complete", body: show.show_title, subtitle: "Next: \(f.string(from: next))")
                 discordShow("✅ Recording Complete", show: show, color: 0x3498DB, enabled: config.Discord_on_complete,
-                            extra: [("Next Airing", f.string(from: next), false)])
+                            extra: fileFields + [("Next Airing", f.string(from: next), false)])
             } else {
                 notify("Recording Complete", body: show.show_title, subtitle: "")
-                discordShow("✅ Recording Complete", show: show, color: 0x3498DB, enabled: config.Discord_on_complete)
+                discordShow("✅ Recording Complete", show: show, color: 0x3498DB, enabled: config.Discord_on_complete,
+                            extra: fileFields)
             }
         }
     }
@@ -1138,6 +1149,14 @@ final class AppState: ObservableObject {
             "footer":      ["text": "hdhr VCR"]
         ]
         sendDiscordEmbed(to: url, embed: embed)
+    }
+
+    private static func formatFileSize(_ bytes: Int) -> String {
+        let mb = Double(bytes) / (1024 * 1024)
+        let gb = mb / 1024
+        if gb >= 1 { return String(format: "%.2f GB", gb) }
+        if mb >= 1 { return String(format: "%.1f MB", mb) }
+        return String(format: "%.0f KB", Double(bytes) / 1024)
     }
 
     func testDiscordEvent(_ eventType: String, webhookURL: String) {
