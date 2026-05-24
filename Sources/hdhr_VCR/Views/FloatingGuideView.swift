@@ -267,7 +267,7 @@ struct FloatingGuideView: View {
                             if onAir,
                                state.config.Watch_in_VLC,
                                FileManager.default.fileExists(atPath: "/Applications/VLC.app") {
-                                Button("Watch in VLC") { state.watchInVLC(url: selectedChannel?.URL ?? "") }
+                                Button("Watch in VLC") { state.watchInVLC(url: selectedChannel?.URL ?? "", deviceId: selectedDevice?.DeviceID) }
                                 .buttonStyle(WhiteOutlineButtonStyle(borderColor: Color(red: 1.0, green: 0.482, blue: 0.0)))
                                 .disabled(selectedChannel == nil)
                             }

@@ -1,7 +1,8 @@
 import SwiftUI
 import AppKit
 
-private let vlcOrange = Color(red: 1.0, green: 0.482, blue: 0.0)
+private let vlcOrange   = Color(red: 1.0, green: 0.482, blue: 0.0)
+private let watchNowBlue = Color(red: 0.2, green: 0.6, blue: 1.0)
 
 struct MenuContent: View {
     @EnvironmentObject var state: AppState
@@ -267,56 +268,28 @@ struct MenuContent: View {
             if let existing = managedShow(for: entry) {
                 Button("Edit Show…") { editShow(existing) }
             } else {
-                // Single ───────────────────────────────────────────────────────
-                Button("Single — record once") {
-                    state.addShowFromGuide(entry: entry, type: .single, device: device, channel: channel)
-                }
-
-                Divider()
-
-                // DateTime: repeats this same day + time on this channel
                 Button {
-                    state.addShowFromGuide(entry: entry, type: .dateTime, device: device, channel: channel)
+                    state.pendingAddEntry = (device, channel, entry)
+                    state.pendingAddEntryGeneration += 1
+                    open("add-show")
                 } label: {
-                    VStack(alignment: .leading) {
-                        Text("DateTime — same day & time")
-                        Text("Repeats on \(weekdayName(entry.startDate))s at \(state.shortTime(entry.startDate)) on Channel \(channel.GuideNumber)")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-
-                // SeriesID Channel: any episode, this channel only
-                Button {
-                    state.addShowFromGuide(entry: entry, type: .seriesChannel, device: device, channel: channel)
-                } label: {
-                    VStack(alignment: .leading) {
-                        Text("SeriesID — this channel")
-                        Text("Any episode on Channel \(channel.GuideNumber)")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-
-                // SeriesID All: any episode, any channel
-                Button {
-                    state.addShowFromGuide(entry: entry, type: .seriesAll, device: device, channel: channel)
-                } label: {
-                    VStack(alignment: .leading) {
-                        Text("SeriesID — all channels")
-                        if let sid = entry.SeriesID {
-                            Text("Matches \(sid) anywhere in the guide")
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
+                    Label {
+                        Text("Record…").foregroundColor(.red)
+                    } icon: {
+                        Image(systemName: "record.circle").foregroundColor(.red)
                     }
                 }
             }
 
             if state.config.Watch_in_VLC && isOnAir {
-                Button(action: { state.watchInVLC(url: channel.URL ?? "") }) {
+                Button(action: { state.watchInVLC(url: channel.URL ?? "", deviceId: device.DeviceID) }) {
                     Text("Watch in VLC").foregroundColor(vlcOrange)
                 }
             }
             if VLCBridge.shared.isAvailable && isOnAir {
-                Button("Watch Now!") { state.watchInApp(url: channel.URL ?? "", title: entry.Title, deviceId: device.DeviceID) }
+                Button(action: { state.watchInApp(url: channel.URL ?? "", title: entry.Title, deviceId: device.DeviceID) }) {
+                    Text("Watch Now!").foregroundColor(watchNowBlue)
+                }
             }
         } label: {
             Label {
@@ -376,13 +349,13 @@ struct MenuContent: View {
                 }
             }
             if state.config.Watch_in_VLC {
-                Button(action: { state.watchInVLC(url: show.show_url, transcode: show.show_transcode) }) {
+                Button(action: { state.watchInVLC(url: show.show_url, transcode: show.show_transcode, deviceId: show.hdhr_record) }) {
                     Text("Watch in VLC").foregroundColor(vlcOrange)
                 }
             }
             if VLCBridge.shared.isAvailable {
-                Button("Watch Now!") {
-                    state.watchInApp(url: show.show_url, title: show.show_title, deviceId: show.hdhr_record, transcode: show.show_transcode)
+                Button(action: { state.watchInApp(url: show.show_url, title: show.show_title, deviceId: show.hdhr_record, transcode: show.show_transcode) }) {
+                    Text("Watch Now!").foregroundColor(watchNowBlue)
                 }
             }
             Button("Edit…") { editShow(show) }

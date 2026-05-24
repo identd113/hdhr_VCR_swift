@@ -34,6 +34,8 @@ final class AppState: ObservableObject {
     @Published var isStartingUp: Bool = true
 
     @Published var editingShowId: String? = nil
+    @Published var pendingAddEntry: (device: HDHRDevice, channel: LineupEntry, entry: GuideEntry)? = nil
+    @Published var pendingAddEntryGeneration: Int = 0   // bumped each time a new entry is set; drives onChange in AddShowView
     @Published var tunerStatus: [String: TunerStatus] = [:]  // showId → last polled vstatus
     @Published var vlcCurrentURL: String = ""               // raw URL (no transcode query) playing in VLCPlayerView
 
@@ -449,19 +451,20 @@ final class AppState: ObservableObject {
     }
 
     /// Rebuilds the pre-filtered entry cache used by the Add Show cascading menu.
-    /// Limits each channel to on-air + next 3 upcoming entries so menu construction
-    /// is an O(1) dict read instead of O(entries) filter per channel per open.
+    /// Rebuilds pre-filtered guide entry lists for the Add Show cascade menu.
+    /// Stores all guide entries per channel (on-air first, then upcoming) so
+    /// menu construction is an O(1) dict read instead of O(entries) per open.
     /// Called automatically via guideByDevice.didSet after every guide load.
     func rebuildMenuEntries() {
         let now = Date()
 
-        // ── Add Show channel menu: on-air + next 2 per channel ────────────────
+        // ── Add Show channel menu: all entries from the guide ─────────────────
         var channelResult: [String: [GuideEntry]] = [:]
         for device in devices {
             for ch in lineups[device.DeviceID] ?? [] {
-                let all      = guideStore.entries(deviceId: device.DeviceID, channelNum: ch.GuideNumber)
-                let onAir    = all.filter { $0.startDate <= now && $0.endDate > now }
-                let upcoming = Array(all.filter { $0.startDate > now }.prefix(2))
+                let all   = guideStore.entries(deviceId: device.DeviceID, channelNum: ch.GuideNumber)
+                let onAir = all.filter { $0.startDate <= now && $0.endDate > now }
+                let upcoming = all.filter { $0.startDate > now }
                 channelResult["\(device.DeviceID):\(ch.GuideNumber)"] = onAir + upcoming
             }
         }
@@ -1282,7 +1285,7 @@ final class AppState: ObservableObject {
         }
     }
 
-    func watchInVLC(url: String, transcode: String? = nil) {
+    func watchInVLC(url: String, transcode: String? = nil, deviceId: String? = nil) {
         let profile = (transcode ?? config.Default_transcode).lowercased().trimmingCharacters(in: .whitespaces)
         let raw = profile.isEmpty || profile == "none" ? url : "\(url)?transcode=\(profile)"
         guard config.Watch_in_VLC,
@@ -1290,8 +1293,27 @@ final class AppState: ObservableObject {
         let vlcPath = "/Applications/VLC.app"
         guard FileManager.default.fileExists(atPath: vlcPath),
               let vlcApp = URL(string: "file://\(vlcPath)") else { return }
-        NSWorkspace.shared.open([streamURL], withApplicationAt: vlcApp,
-                                configuration: .init()) { _, _ in }
+        let device = devices.first { $0.DeviceID == (deviceId ?? "") }
+        Task {
+            if let device,
+               let statusURL = URL(string: device.statusURL),
+               let (data, _) = try? await URLSession.shared.data(from: statusURL),
+               let tuners = try? JSONDecoder().decode([DeviceTunerInfo].self, from: data) {
+                let tunerCount = device.TunerCount ?? 2
+                let active = tuners.filter { $0.VctNumber != nil }.count
+                if active >= tunerCount {
+                    let alert = NSAlert()
+                    alert.messageText = "No Tuner Available"
+                    alert.informativeText = "All \(tunerCount) tuner\(tunerCount == 1 ? "" : "s") on \(device.DeviceID) are in use. Stop a recording or close another stream to free up a tuner."
+                    alert.alertStyle = .warning
+                    alert.addButton(withTitle: "OK")
+                    alert.runModal()
+                    return
+                }
+            }
+            NSWorkspace.shared.open([streamURL], withApplicationAt: vlcApp,
+                                    configuration: .init()) { _, _ in }
+        }
     }
 
     // MARK: - Tuner signal status

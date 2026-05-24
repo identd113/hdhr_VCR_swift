@@ -110,8 +110,12 @@ struct AddShowView: View {
         .onExitCommand { dismiss() }
         .onAppear {
             show.show_transcode = state.config.Default_transcode
-            if selectedDevice == nil { selectedDevice = state.devices.first }
-            step = .guide
+            if let pending = state.pendingAddEntry {
+                applyPendingEntry(pending)
+            } else {
+                if selectedDevice == nil { selectedDevice = state.devices.first }
+                step = .guide
+            }
         }
     }
 
@@ -308,6 +312,10 @@ struct AddShowView: View {
             selectedChannel = (state.lineups[selectedDevice?.DeviceID ?? ""] ?? [])
                 .first(where: { $0.GuideNumber == firstCh.GuideNumber })
         }
+        .onChange(of: state.pendingAddEntryGeneration) { _, _ in
+            // Fired when the user taps "Record…" from the menu while the window is already open.
+            if let pending = state.pendingAddEntry { applyPendingEntry(pending) }
+        }
     }
 
     // ── Summary panel ─────────────────────────────────────────────────────────
@@ -419,7 +427,7 @@ struct AddShowView: View {
                         if onAir,
                            state.config.Watch_in_VLC,
                            FileManager.default.fileExists(atPath: "/Applications/VLC.app") {
-                            Button("Watch in VLC") { state.watchInVLC(url: selectedChannel?.URL ?? "") }
+                            Button("Watch in VLC") { state.watchInVLC(url: selectedChannel?.URL ?? "", deviceId: selectedDevice?.DeviceID) }
                             .buttonStyle(WhiteOutlineButtonStyle(borderColor: Color(red: 1.0, green: 0.482, blue: 0.0)))
                             .disabled(selectedChannel == nil)
                         }
@@ -701,6 +709,15 @@ struct AddShowView: View {
             selectedChannel = lineupList.first(where: { $0.GuideNumber == ch.GuideNumber })
             return
         }
+    }
+
+    private func applyPendingEntry(_ pending: (device: HDHRDevice, channel: LineupEntry, entry: GuideEntry)) {
+        selectedDevice  = pending.device
+        selectedChannel = pending.channel
+        selectedEntry   = pending.entry
+        applyGuideEntry()
+        step = .details
+        state.pendingAddEntry = nil
     }
 
     private func applyGuideEntry() {
