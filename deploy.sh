@@ -4,6 +4,15 @@ set -e
 APP="hdhrVCRplus.app"
 BINARY="$APP/Contents/MacOS/hdhr_VCR"
 
+echo "==> Checking prerequisites…"
+if ! xcode-select -p &>/dev/null || ! command -v swift &>/dev/null; then
+    echo "    Xcode Command Line Tools not found. Launching installer…"
+    xcode-select --install
+    echo "    Complete the installer dialog, then re-run ./deploy.sh"
+    exit 1
+fi
+echo "    Xcode Command Line Tools: OK"
+
 echo "==> Stopping running instance…"
 pkill -x hdhr_VCR 2>/dev/null && echo "    Stopped." || echo "    Not running."
 
