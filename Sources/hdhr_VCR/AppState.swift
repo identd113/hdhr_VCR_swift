@@ -777,9 +777,6 @@ final class AppState: ObservableObject {
                 glog("[\(show.show_title)] MISSED START — window open since \(shortTime(show.show_next.date)), still not recording", level: .warning)
             }
 
-            if !show.show_recording, nextDate <= now + 10, endDate > now {
-                await startRecording(index: i); dirty = true
-            }
             if show.show_recording, endDate <= now {
                 await stopRecording(index: i, natural: true); dirty = true
             }
@@ -801,6 +798,18 @@ final class AppState: ObservableObject {
                 await scheduleNextAir(index: i); dirty = true
             }
         }
+
+        // Start recordings in favorite-first order so favorited channels win the last tuner slot
+        // when multiple shows compete for the same tuner at the same time.
+        let readyIndices = shows.indices.filter { i in
+            let s = shows[i]
+            guard s.show_active, !s.show_recording, !s.show_paused,
+                  let next = s.show_next.date, let end = s.show_end.date else { return false }
+            return next <= now + 10 && end > now
+        }.sorted { isFavoriteChannel(shows[$0]) && !isFavoriteChannel(shows[$1]) }
+        if !readyIndices.isEmpty { dirty = true }
+        for i in readyIndices { await startRecording(index: i) }
+
         if dirty { saveConfig() }
 
         // Refresh vstatus for each active recording so the recording submenu shows live signal data
@@ -1079,6 +1088,27 @@ final class AppState: ObservableObject {
             shows[i].show_active.toggle()
         }
         shows[i].show_fail_count = 0; shows[i].show_fail_reason = ""; saveConfig()
+    }
+
+    // MARK: - Favorites
+
+    /// True when the show's scheduled channel is marked favorite on its device.
+    func isFavoriteChannel(_ show: Show) -> Bool {
+        lineups[show.hdhr_record]?.first { $0.GuideNumber == show.show_channel }?.isFavorite ?? false
+    }
+
+    /// Toggle favorite on the device, then reload lineup so the UI reflects the new state.
+    func toggleFavorite(device: HDHRDevice, channel: LineupEntry) async {
+        let newFav = !channel.isFavorite
+        do {
+            try await hdhrManager.setFavorite(device: device, channel: channel, favorite: newFav)
+        } catch {
+            glog("[Favorite] toggle failed for ch \(channel.GuideNumber): \(error)", level: .error)
+            return
+        }
+        if let fresh = try? await hdhrManager.fetchLineup(for: device) {
+            lineups[device.DeviceID] = fresh
+        }
     }
 
     func pauseShow(_ show: Show) {

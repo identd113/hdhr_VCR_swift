@@ -259,4 +259,20 @@ final class HDHRManager {
         lineup.first { $0.GuideNumber == channel }?.URL
     }
 
+    /// Toggle the favorite flag for a channel on the device.
+    /// POST http://{device-ip}/lineup.post?favorite=+GuideNumber  (mark)
+    /// POST http://{device-ip}/lineup.post?favorite=-GuideNumber  (unmark)
+    func setFavorite(device: HDHRDevice, channel: LineupEntry, favorite: Bool) async throws {
+        let prefix = favorite ? "+" : "-"
+        guard let url = URL(string: "http://\(device.LocalIP)/lineup.post?favorite=\(prefix)\(channel.GuideNumber)") else {
+            throw URLError(.badURL)
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        let (_, resp) = try await dataSession.data(for: req)
+        if let http = resp as? HTTPURLResponse, http.statusCode >= 400 {
+            throw URLError(.badServerResponse)
+        }
+    }
+
 }

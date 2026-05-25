@@ -333,6 +333,15 @@ struct LineupEntry: Codable, Identifiable {
     var URL: String?
     var HD: Int?
     var Favorite: Int?
+    var isFavorite: Bool { Favorite == 1 }
+}
+
+extension String {
+    // Natural channel-number sort: "5.1" → (5, 1), "10.2" → (10, 2)
+    var channelSortKey: (Int, Int) {
+        let parts = split(separator: ".").compactMap { Int($0) }
+        return (parts.first ?? 0, parts.dropFirst().first ?? 0)
+    }
 }
 
 struct GuideChannel: Codable {
