@@ -202,6 +202,7 @@ struct SettingsView: View {
                         Image(systemName: draftAddShowMode == mode ? "largecircle.fill.circle" : "circle")
                             .foregroundStyle(draftAddShowMode == mode ? Color.accentColor : .secondary)
                             .font(.title3)
+                            .accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(mode.label).fontWeight(.medium)
                             Text(mode.detail).font(.caption).foregroundStyle(.secondary)
@@ -660,9 +661,11 @@ struct SettingsView: View {
                             .resizable()
                             .aspectRatio(contentMode: .fit)
                             .cornerRadius(12)
+                            .accessibilityLabel("hdhr VCR app icon")
                     } else {
                         Image(systemName: "antenna.radiowaves.left.and.right")
                             .font(.system(size: 80)).foregroundStyle(.secondary)
+                            .accessibilityLabel("hdhr VCR app icon")
                     }
                 }
                 .frame(width: 180, height: 180)
@@ -709,6 +712,7 @@ struct SettingsView: View {
                 if let ver = updateVersion {
                     HStack(spacing: 8) {
                         Image(systemName: "arrow.down.circle.fill").foregroundStyle(.blue)
+                            .accessibilityHidden(true)
                         Text("Update \(ver) is available")
                             .fontWeight(.medium).foregroundStyle(.blue)
                         Spacer()

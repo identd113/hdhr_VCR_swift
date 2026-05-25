@@ -9,6 +9,21 @@ struct MenuContent: View {
     @Environment(\.openWindow) var openWindow
     @AppStorage("addShowMode") private var addShowMode: AddShowMode = .menu
 
+    // Yellow upper-left corner triangle rendered via AppKit — Path/Canvas don't convert to NSImage in NSMenu
+    static let managedFlagImage: NSImage = {
+        let sz: CGFloat = 14
+        return NSImage(size: NSSize(width: sz, height: sz), flipped: false) { rect in
+            NSColor.systemYellow.setFill()
+            let path = NSBezierPath()
+            path.move(to: NSPoint(x: 0,          y: rect.height))  // top-left  (right angle)
+            path.line(to: NSPoint(x: rect.width, y: rect.height))  // top-right
+            path.line(to: NSPoint(x: 0,          y: 0))            // bottom-left
+            path.close()
+            path.fill()
+            return true
+        }
+    }()
+
     // Static so DateFormatter is created once for the app lifetime, not once per guide entry shown
     private static let timeFormatter: DateFormatter = {
         let f = DateFormatter(); f.timeStyle = .short; f.dateStyle = .none; return f
@@ -89,27 +104,45 @@ struct MenuContent: View {
         }
 
         // ── Next Up ────────────────────────────────────────────────────────
-        // Compute slotShows here so the Scheduled section can exclude them (avoids
-        // showing the same show in both Next Up and Scheduled at the same time).
+        // Shows starting within the next hour, grouped by start time (bucketed to minute).
         let now = Date()
-        let slotShows: [Show] = {
-            guard let t = activeShows.compactMap({ $0.show_next.date }).filter({ $0 > now }).min()
-            else { return [] }
-            return activeShows.filter {
-                guard let d = $0.show_next.date else { return false }
-                return abs(d.timeIntervalSince(t)) < 5 * 60
+        let nextUpGroups: [(time: Date, shows: [Show])] = {
+            let cutoff = now + 60 * 60
+            let cal = Calendar.current
+            var byMinute: [Date: [Show]] = [:]
+            for show in activeShows {
+                guard let d = show.show_next.date, d > now, d <= cutoff else { continue }
+                var c = cal.dateComponents([.year, .month, .day, .hour, .minute], from: d)
+                c.second = 0
+                let bucket = cal.date(from: c) ?? d
+                byMinute[bucket, default: []].append(show)
             }
+            return byMinute.sorted { $0.key < $1.key }.map { (time: $0.key, shows: $0.value) }
         }()
-        let slotShowIds   = Set(slotShows.map { $0.show_id })
-        let remainingActive = activeShows.filter { !slotShowIds.contains($0.show_id) }
+        let nextUpIds       = Set(nextUpGroups.flatMap { $0.shows }.map { $0.show_id })
+        let remainingActive = activeShows.filter { !nextUpIds.contains($0.show_id) }
 
-        if !slotShows.isEmpty {
-            Section("Next Up") {
-                ForEach(slotShows) { show in
-                    if let next = show.show_next.date {
-                        menuInfo("\(Self.timeFormatter.string(from: next)) · \(show.show_length) min", font: .caption, secondary: true)
+        if !nextUpGroups.isEmpty {
+            if state.devices.count > 1 {
+                ForEach(state.devices) { device in
+                    let deviceGroups = nextUpGroups
+                        .map { (time: $0.time, shows: $0.shows.filter { $0.hdhr_record == device.DeviceID }) }
+                        .filter { !$0.shows.isEmpty }
+                    if !deviceGroups.isEmpty {
+                        Section("Up Next · \(device.DeviceID)") {
+                            ForEach(deviceGroups, id: \.time) { group in
+                                menuInfo(Self.timeFormatter.string(from: group.time), font: .footnote, secondary: true)
+                                ForEach(group.shows) { scheduledMenu($0, showChannel: true) }
+                            }
+                        }
                     }
-                    scheduledMenu(show)
+                }
+            } else {
+                Section("Up Next") {
+                    ForEach(nextUpGroups, id: \.time) { group in
+                        menuInfo(Self.timeFormatter.string(from: group.time), font: .footnote, secondary: true)
+                        ForEach(group.shows) { scheduledMenu($0, showChannel: true) }
+                    }
                 }
             }
             Divider()
@@ -136,8 +169,19 @@ struct MenuContent: View {
                 }
             }
             if !pausedShows.isEmpty {
-                Section("Paused") {
-                    ForEach(pausedShows) { show in pausedMenu(show) }
+                if state.devices.count > 1 {
+                    ForEach(state.devices) { device in
+                        let devicePaused = pausedShows.filter { $0.hdhr_record == device.DeviceID }
+                        if !devicePaused.isEmpty {
+                            Section("Paused · \(device.DeviceID)") {
+                                ForEach(devicePaused) { pausedMenu($0) }
+                            }
+                        }
+                    }
+                } else {
+                    Section("Paused") {
+                        ForEach(pausedShows) { pausedMenu($0) }
+                    }
                 }
             }
         }
@@ -265,9 +309,11 @@ struct MenuContent: View {
                         .resizable()
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 16, height: 16)
+                        .accessibilityHidden(true)
                 } else {
                     Image(systemName: "tv")
                         .frame(width: 16, height: 16)
+                        .accessibilityHidden(true)
                 }
             }
         }
@@ -281,7 +327,9 @@ struct MenuContent: View {
 
     @ViewBuilder
     private func entryMenu(entry: GuideEntry, device: HDHRDevice, channel: LineupEntry, isOnAir: Bool) -> some View {
-        let entryColor = guideEntryColor(for: entry, onAir: isOnAir)
+        let entryColor  = guideEntryColor(for: entry, onAir: isOnAir)
+        let existing    = managedShow(for: entry)
+        let isManaged   = existing != nil
         Menu {
             Rectangle()
                 .fill(entryColor.opacity(0.65))
@@ -295,8 +343,10 @@ struct MenuContent: View {
                 menuInfo(truncateSynopsis(syn, limit: 120), font: .callout, maxWidth: 240)
             }
             Divider()
-            if let existing = managedShow(for: entry) {
-                Button("Edit Show…") { editShow(existing) }
+            if let show = existing {
+                Button("Skip")            { Task { await state.skipRecording(showId: show.show_id) } }
+                Button("Edit…")           { editShow(show) }
+                Button("Delete…", role: .destructive) { state.confirmAndDeleteShow(show) }
             } else {
                 Button {
                     state.pendingAddEntry = (device, channel, entry)
@@ -320,7 +370,17 @@ struct MenuContent: View {
                 }
             }
         } label: {
-            Text(entryLabel(entry, isOnAir: isOnAir))
+            if isManaged {
+                Label {
+                    Text(entryLabel(entry, isOnAir: isOnAir))
+                } icon: {
+                    Image(nsImage: Self.managedFlagImage)
+                        .resizable()
+                        .frame(width: 14, height: 14)
+                }
+            } else {
+                Text(entryLabel(entry, isOnAir: isOnAir))
+            }
         }
     }
 
@@ -344,27 +404,18 @@ struct MenuContent: View {
 
             showInfoHeader(show, entry: currentEntry)
             Divider()
-            menuInfo("Channel \(show.show_channel) · \(show.state.rawValue) · tuner \(show.hdhr_record)", font: .footnote, secondary: true)
-            menuInfo("\(elapsedLabel(since: started)) elapsed · \(remainingLabel(until: ends)) left", font: .footnote, secondary: true)
+            menuInfo("\(show.state.rawValue) · Channel \(show.show_channel)", font: .footnote)
+            menuInfo("\(Self.timeFormatter.string(from: started)) · \(show.show_length) min", font: .footnote, secondary: true)
             if inBonusTime {
                 menuInfo("🏈 Bonus Time (+\(state.config.Sports_padding_minutes) min)", font: .footnote, secondary: true)
             }
+            menuInfo("tuner \(show.hdhr_record)", font: .footnote, secondary: true)
             if let sig = state.tunerStatus[show.show_id] {
                 menuInfo(sig.displayString, font: .footnote, secondary: true)
             }
             Divider()
-            Button("Stop Recording", role: .destructive) {
-                let alert = NSAlert()
-                alert.messageText     = "Stop recording \"\(show.show_title)\"?"
-                alert.informativeText = "This pauses the show. Use \"Skip This Airing\" to skip to the next airing instead."
-                alert.addButton(withTitle: "Stop & Pause")
-                alert.addButton(withTitle: "Keep Recording")
-                alert.alertStyle = .warning
-                if alert.runModal() == .alertFirstButtonReturn {
-                    state.stopRecording(showId: show.show_id)
-                }
-            }
-            Button("Skip This Airing") { Task { await state.skipRecording(showId: show.show_id) } }
+            Button("Skip", role: .destructive) { Task { await state.skipRecording(showId: show.show_id) } }
+            Button("Delete…", role: .destructive) { state.confirmAndDeleteShow(show) }
             if !show.show_recording_path.isEmpty {
                 Button("Show Recording in Finder") {
                     NSWorkspace.shared.selectFile(show.show_recording_path,
@@ -388,15 +439,16 @@ struct MenuContent: View {
     }
 
     @ViewBuilder
-    private func scheduledMenu(_ show: Show) -> some View {
+    private func scheduledMenu(_ show: Show, showChannel: Bool = false) -> some View {
         // Pre-computed in AppState.rebuildMenuEntries() every idle tick and after guide loads —
         // avoids O(series entries) scan per show per menu open.
-        let conflict = state.conflictingShowIDs.contains(show.show_id)
-        let prefix   = conflict ? "⚠️ " : ""
-        let schEntry = state.menuScheduledEntry[show.show_id]
-        let schEp    = schEntry.flatMap { episodeInfoLabel($0) }
-        let schLabel = schEp.map { "\(prefix)\(stateIcon(show)) \(show.show_title) · \($0)" }
-                   ?? "\(prefix)\(stateIcon(show)) \(show.show_title)"
+        let conflict  = state.conflictingShowIDs.contains(show.show_id)
+        let prefix    = conflict ? "⚠️ " : ""
+        let schEntry  = state.menuScheduledEntry[show.show_id]
+        let schEp     = schEntry.flatMap { episodeInfoLabel($0) }
+        let chSuffix  = showChannel ? "  ch \(show.show_channel)" : ""
+        let schLabel  = schEp.map { "\(prefix)\(stateIcon(show)) \(show.show_title) · \($0)\(chSuffix)" }
+                    ?? "\(prefix)\(stateIcon(show)) \(show.show_title)\(chSuffix)"
 
         Menu(schLabel) {
             let now  = Date()
@@ -411,12 +463,8 @@ struct MenuContent: View {
                 menuInfo("⚠️ Conflict — all tuners busy at this time", font: .footnote, secondary: true)
             }
 
-            // Timing: starts in / ended
-            if next > now {
-                menuInfo("In \(relativeLabel(next.timeIntervalSince(now))) · \(show.show_length) min", font: .footnote, secondary: true)
-            } else if ends > now {
-                menuInfo("Started \(relativeLabel(now.timeIntervalSince(next))) ago · \(remainingLabel(until: ends)) left", font: .footnote, secondary: true)
-            }
+            // Timing: start time · duration
+            menuInfo("\(Self.timeFormatter.string(from: next)) · \(show.show_length) min", font: .footnote, secondary: true)
 
             // Upcoming recording slots — source depends on show type
             let upcoming: [(channel: String, date: Date)] = {
@@ -447,15 +495,7 @@ struct MenuContent: View {
             Divider()
             Button("Edit…")      { editShow(show) }
             Button("Pause") { state.pauseShow(show) }
-            Button("Delete…", role: .destructive) {
-                let alert = NSAlert()
-                alert.messageText     = "Delete \"\(show.show_title)\"?"
-                alert.informativeText = "This cannot be undone."
-                alert.addButton(withTitle: "Delete")
-                alert.addButton(withTitle: "Cancel")
-                alert.alertStyle = .warning
-                if alert.runModal() == .alertFirstButtonReturn { state.deleteShow(show) }
-            }
+            Button("Delete…", role: .destructive) { state.confirmAndDeleteShow(show) }
         }
     }
 
@@ -478,15 +518,7 @@ struct MenuContent: View {
             Divider()
             Button("Resume Now") { state.resumeShow(show) }
             Button("Edit…") { editShow(show) }
-            Button("Delete…", role: .destructive) {
-                let alert = NSAlert()
-                alert.messageText     = "Delete \"\(show.show_title)\"?"
-                alert.informativeText = "This cannot be undone."
-                alert.addButton(withTitle: "Delete")
-                alert.addButton(withTitle: "Cancel")
-                alert.alertStyle = .warning
-                if alert.runModal() == .alertFirstButtonReturn { state.deleteShow(show) }
-            }
+            Button("Delete…", role: .destructive) { state.confirmAndDeleteShow(show) }
         }
     }
 
@@ -573,6 +605,18 @@ struct MenuContent: View {
                 RoundedRectangle(cornerRadius: 6)
                     .fill(Color(NSColor.separatorColor))
                     .frame(width: 460, height: 258)
+            }
+            .accessibilityLabel("\(show.show_title) poster")
+            .overlay(alignment: .topTrailing) {
+                Path { p in
+                    p.move(to:    CGPoint(x: 0,  y: 0))
+                    p.addLine(to: CGPoint(x: 24, y: 0))
+                    p.addLine(to: CGPoint(x: 24, y: 24))
+                    p.closeSubpath()
+                }
+                .fill(Color.yellow)
+                .frame(width: 24, height: 24)
+                .accessibilityLabel("Already scheduled")
             }
         }
         menuInfo(show.show_title, font: .title3, maxWidth: 460)

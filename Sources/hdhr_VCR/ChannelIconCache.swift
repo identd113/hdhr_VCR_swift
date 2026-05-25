@@ -68,6 +68,7 @@ actor ChannelIconCache {
 struct ChannelIcon: View {
     let urlString: String?
     let size: CGFloat
+    var accessibilityLabel: String? = nil   // nil = decorative (hidden from VoiceOver)
 
     @State private var img: NSImage? = nil
 
@@ -82,6 +83,8 @@ struct ChannelIcon: View {
             }
         }
         .frame(width: size, height: size)
+        .accessibilityLabel(accessibilityLabel.map(Text.init) ?? Text(""))
+        .accessibilityHidden(accessibilityLabel == nil)
         .task(id: urlString) {
             guard let s = urlString, !s.isEmpty else { img = nil; return }
             img = await ChannelIconCache.shared.image(for: s)

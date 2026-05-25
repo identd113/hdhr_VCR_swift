@@ -52,23 +52,30 @@ Window IDs → titles: `"add-show"` → "Add Show", `"edit-show"` → "Edit Show
 [Header: one line per device — DeviceID  active/slots]
 [Status message — secondary color]
 Divider
-Section "Recording Now"       ← only when shows are recording
+[Add Show — cascading menu or "Add Show…" button based on mode]
+Divider
+Settings…
+Divider
+Section "Recording Now"              ← only when shows are recording (single tuner)
+Section "Recording · DeviceID"       ← per device when multiple tuners present
   recordingMenu(show) …
 Divider
-Section "Next Up"             ← shows within 5 min of the nearest upcoming airing
-  [start time] · [duration]  ← small caption above each row
-  scheduledMenu(show) …
-Section "Scheduled"           ← remaining active, non-recording shows sorted by show_next
-  scheduledMenu(show) …
-Section "Paused"              ← show_active && show_paused shows
-  pausedMenu(show) …
+Section "Up Next"                    ← shows starting within the next hour (single tuner)
+Section "Up Next · DeviceID"         ← per device when multiple tuners present
+  [secondary text: "8:00 PM"]        ← time label — no divider, groups shows by slot
+  scheduledMenu(show, showChannel:true) …   ← "ch 5.1" appended to label
 Divider
-[Add Show — cascading menu or "Add Show…" button based on mode]
-Refresh Guide
-Settings…
+Section "Scheduled"                  ← remaining active shows (single tuner)
+Section "Scheduled · DeviceID"       ← per device when multiple tuners
+  scheduledMenu(show) …
+Section "Paused"                     ← show_active && show_paused (single tuner)
+Section "Paused · DeviceID"          ← per device when multiple tuners
+  pausedMenu(show) …
 Divider
 Quit hdhrVCRplus
 ```
+
+**Multi-tuner section separation**: all four show sections (Recording, Up Next, Scheduled, Paused) split into per-device sub-sections when `state.devices.count > 1`. Each sub-section is labeled `"SectionName · DeviceID"`. When only one tuner is present the device suffix is omitted.
 
 ### Header
 
@@ -78,60 +85,58 @@ One `Text` line per device: `"105404BE  1/4"` (DeviceID + `active/totalTuners`).
 
 ## Recording Now — `recordingMenu(_:)`
 
-Menu label: `🔴 [Title]`
+Menu label: `🔴 [Title]` (or `🔴 [Title] · S02E05` when guide entry is found for the airing)
 
-Submenu contents (in order):
-1. **Poster image** — `AsyncImage` of `show.show_logo_url` (120×80, cornerRadius 4) if non-empty
-2. **Title** — `.headline`, `labelColor`
-3. **Episode info** — synchronous lookup from `state.guideEntries(deviceId: show.hdhr_record, channelNum: show.show_channel)`, finding the entry where `startDate <= now && endDate > now`. Shows `episodeInfoLabel(entry)` (`"S02E05 · The One Where…"`) in `labelColor`
-4. **Synopsis** — up to 3 lines from `currentEntry?.Synopsis`, in `labelColor`
-5. Divider
-6. **Channel + type** — `"Channel 5.1 · SeriesID(All)"`, `secondaryLabelColor`
-7. **Elapsed + remaining** — `"2h 15m elapsed · 45m left"` via `elapsedLabel(since:)` / `remainingLabel(until:)`
-8. **Tuner signal** — shown when `state.tunerStatus[show.show_id]` is set (polled each idle tick via `fetchTunerStatus`): `"Signal: 78% · lock: qam256 · 12.4 Mbps"`, `secondaryLabelColor`
-9. Divider
-10. **Stop Recording** → confirms via `NSAlert` ("Stop & Pause" / "Keep Recording"), then `state.stopRecording(showId:)` — pauses show (`show_paused = true`), kills curl PID, moves to Paused section
-11. **Skip This Airing** → `state.skipRecording(showId:)` — stops recording, advances schedule to next airing without incrementing fail count
-12. **Watch in VLC** — shown when `config.Watch_in_VLC` and `/Applications/VLC.app` exists; button label text uses VLC orange (`Color(red: 1.0, green: 0.482, blue: 0.0)`)
-13. **Edit…** — sets `state.editingShowId`, opens `"edit-show"` window
-
-The guide lookup is a **synchronous read from the in-memory cache** (`guideStore.channelEntryIndex`). No network call. If the cache is empty, episode/synopsis items are absent gracefully.
+Submenu contents — uses `showInfoHeader(show, entry:)` for the top block, then:
+1. **Type + channel** — `"SeriesID(All) · Channel 5.1"`, full `labelColor`
+2. **Start time + duration** — `"8:00 PM · 60 min"`, `secondaryLabelColor`
+3. **Bonus Time callout** — `"🏈 Bonus Time (+N min)"` when a sports show records past guide end
+4. **Tuner ID** — `"tuner 105404BE"`, `secondaryLabelColor`
+5. **Signal** — shown when `state.tunerStatus[show.show_id]` is set: `"Signal: 78% · lock: qam256 · 12.4 Mbps"`, `secondaryLabelColor`
+6. Divider
+7. **Skip** (destructive) — `state.skipRecording(showId:)`: stops recording, advances schedule to next airing, no fail-count increment
+8. **Delete…** (destructive) — `state.confirmAndDeleteShow(show)`: stops recording + shows confirmation alert with poster image, then removes the show entirely
+9. **Show Recording in Finder** — shown when `show_recording_path` is non-empty
+10. **Watch in VLC** / **Watch Now!** — conditional on VLC availability (same as scheduled)
+11. **Edit…**
 
 ---
 
-## Scheduled Shows — `scheduledMenu(_:)`
+## `showInfoHeader(_:entry:)` — Shared Poster Panel
+
+Used by `recordingMenu`, `scheduledMenu`, and `pausedMenu`. Renders:
+
+1. **Poster** — `AsyncImage` of `show.show_logo_url` (460×258, cornerRadius 6) with a gray placeholder when absent. Always carries a yellow 24pt right-angle triangle overlay in the top-right corner (`Path`, `.fill(.yellow)`) — all shows in these sections are already managed, so the flag is always visible. Accessibility label: `"\(show.show_title) poster"` on the image; `"Already scheduled"` on the triangle.
+2. **Title** — `menuInfo(show.show_title, font: .title3, maxWidth: 460)`
+3. **Episode info** — `episodeInfoLabel(entry)` if the entry is non-nil
+4. **Synopsis** — `entry.Synopsis` truncated to 160 chars
+
+---
+
+## Scheduled Shows — `scheduledMenu(_:showChannel:)`
 
 Source: `state.activeShows` — sorted by `show_next` ascending.
 
-Menu label: `[stateIcon] [Title]` — prefixed with `⚠️` when a tuner conflict is detected for the show's next airing.
+`showChannel: Bool = false` — when `true` (used in Up Next), `"  ch 5.1"` is appended to the menu label so the channel is visible without opening the submenu.
+
+Menu label: `[stateIcon] [Title]` (+ optional `  ch 5.1`) — prefixed with `⚠️` when a tuner conflict is detected.
 
 State icons: `1️⃣` Single · `📅` DateTime · `🔂` SeriesID(Channel) · `🔁` SeriesID(All)
 
-Submenu (in order):
-1. **Poster image** — `AsyncImage` of `show.show_logo_url` (120×80, cornerRadius 4) if non-empty
-2. **Title** — `.headline`, `labelColor`
-3. **Type + channel** — `"SeriesID(All) · Channel 5.1"`, full `labelColor`
-4. **Synopsis** — from the guide entry at `show_next` ±5 min, `.footnote`, `secondaryLabelColor`
-5. Divider
-6. **Episode info** — guide entry at `show_next` ±5 min:
-   ```swift
-   let scheduledEntry = guideEntries.first {
-       abs($0.startDate.timeIntervalSince(next)) < 5 * 60
-   }
-   ```
-   Shows `episodeInfoLabel(scheduledEntry)` in `labelColor` if found
-7. **Timing** — `"In 2h 15m · 60 min"` or `"Started 5m ago · 55m left"`, full `labelColor`
-8. **Next SeriesID episode** (SeriesID shows only) — calls `state.nextGuideEpisode(for:)` → `guideStore.nextEpisode(seriesID:channelNum:deviceId:)`. Shows `"Channel 5.1 · 8:00 PM"` and episode info, in full `labelColor`
-9. **Conflict warning** — orange `"⚠️ Conflict: all N tuners busy at this time"` if `state.hasConflict(for: show)` returns true
-10. **Failure warning** — orange `"⚠️ N failure(s): reason"` if `show_fail_count > 0`
-11. Divider
-12. **Edit…**, **Pause** → `state.pauseShow(show)` (sets `show_paused = true`, reason "Manually paused"), **Delete…** (destructive, `NSAlert` confirmation)
+Submenu — uses `showInfoHeader(show, entry:)` for the top block, then:
+1. **Type + channel** — `"SeriesID(All) · Channel 5.1"`, full `labelColor`
+2. **Conflict warning** — `"⚠️ Conflict — all tuners busy at this time"`, `secondaryLabelColor`
+3. **Start time + duration** — `"8:00 PM · 60 min"` (absolute start time · recording length), `secondaryLabelColor`
+4. **Upcoming slots** — for DateTime: next 3 weekday occurrences; for SeriesID: from `state.menuUpcomingSlots[show.show_id]`. Each slot: `"Channel 5.1 · Thu 8:00 PM"` or `"Channel 5.1 · 8:00 PM"` (omits weekday when today). Preceded by "Upcoming" header when count > 1.
+5. **Failure warning** — `"⚠️ N failure(s): reason"` when `show_fail_count > 0`
+6. Divider
+7. **Edit…**, **Pause**, **Delete…** (destructive — uses `confirmAndDeleteShow`)
 
-All timing and episode text uses full `labelColor` (not `secondaryLabelColor`) for readability — the dim gray was too low-contrast in the menu.
+### Up Next section
 
-### Next Up section
+Shows in `activeShows` whose `show_next` falls within the **next 60 minutes** appear in the **"Up Next"** section above "Scheduled". Shows are bucketed by start time (rounded to the minute) and grouped under a secondary `menuInfo` time label (e.g. `"8:00 PM"`) — plain text, no divider, so it sits flush under the section header. Each show in Up Next has `showChannel: true` so the channel is visible in the row label. Shows in Up Next are excluded from the Scheduled section.
 
-Shows in `activeShows` whose `show_next` is within 5 minutes of the nearest upcoming airing are promoted to a **"Next Up"** section above "Scheduled". Each row is preceded by a small caption line: `"10:30 PM · 60 min"` (static clock time + recording duration). This avoids a countdown string that would force a redraw every minute. The remaining shows appear in the standard "Scheduled" section below.
+**Why `menuInfo` not `Section` for time groups**: `Section` adds its own separator divider above its label. Using a nested `Section` for each time slot caused a double-divider gap between `"Up Next"` and the first time label. `menuInfo` renders as a plain non-interactive label item with no preceding divider.
 
 ---
 
@@ -143,7 +148,7 @@ A show enters this state via: fail threshold, manual stop, skip, disk full, miss
 
 Menu label: `⏸ [Title]`
 
-Submenu: show type + channel, pause reason (if `show_fail_reason` is non-empty), next attempt time (if `show_next` is in the future), then **Resume Now** → `state.resumeShow(show)`, **Edit…**, **Delete…** (destructive).
+Submenu — uses `showInfoHeader(show, entry:)`, then: show type + channel, pause reason (if `show_fail_reason` non-empty), next attempt time (if `show_next` is future), then **Resume Now** → `state.resumeShow(show)`, **Edit…**, **Delete…** (destructive — uses `confirmAndDeleteShow`).
 
 ---
 
@@ -157,11 +162,14 @@ The cascade is intentionally **two levels deep only** — device and channel. Sw
 For a single device, goes straight to channel list. For multiple, wraps each device in an outer `Menu(device.DeviceID)`. In both paths, `state.ensureGuideLoaded(for:)` is called immediately via a `let _ = { ... }()` side-effect — required because SwiftUI `Menu` bodies evaluate eagerly when the menu opens.
 
 **Level 2 — Channels** (`channelMenus(for:)` → `channelMenu(device:channel:)`):
-Reads `state.lineups[device.DeviceID]`. Only channels with guide data (`menuGuideEntries` non-empty) are shown. Each channel is a flat `Button` (not a submenu) showing:
-- Channel logo (16×16) from `channelIconImages` — O(1) dict lookup; falls back to `tv` SF Symbol
-- `"5.1  NBC HD"` label with HD badge when `lineup.HD == 1`
+Reads `state.lineups[device.DeviceID]`. Channels are sorted favorites-first (`isFavorite` desc), then by numeric channel number (`channelSortKey`). Only channels with guide data (`menuGuideEntries` non-empty) are shown. Favorites appear under a `"★  FAVORITES"` italic text header; others follow after a `Divider`. Each channel is a `Menu` (submenu) showing:
+- Channel logo (16×16) from `channelIconImages` — O(1) dict lookup; falls back to `tv` SF Symbol; `.accessibilityHidden(true)`
+- `"5.1  NBC HD ★"` label — HD badge when `lineup.HD == 1`, star suffix when `isFavorite`
 
-Clicking a channel sets `state.pendingAddChannel = (device, channel)`, bumps `pendingAddChannelGeneration`, and opens `"add-show"`. The wizard opens at the guide step with that device and channel pre-selected.
+**Guide entries within a channel** (`entryMenu(entry:device:channel:isOnAir:)`):
+Each entry is a `Menu` with a color accent bar (genre color). When the entry matches a managed show (`managedShow(for:)` lookup by SeriesID then title), the menu label uses a `Label` with `Self.managedFlagImage` (14×14 yellow AppKit triangle) as the icon, and the submenu shows **Skip** / **Edit…** / **Delete…** instead of **Record…**. Unmanaged entries show a **Record…** button that opens the wizard pre-filled.
+
+**`managedFlagImage`** is a `static let NSImage` drawn via `NSBezierPath` + `NSColor.systemYellow` — right-angle at top-left, vertex at bottom-left. `Path`/`Canvas` do not render in NSMenu item labels; only `NSImage` and SF Symbols work reliably.
 
 **Channel logo loading**: logos are pre-fetched into `AppState.channelIconImages: [String: NSImage]` during guide load via `prefetchChannelIcons(_:)`. The URL→image dict is populated with a single actor hop after all downloads complete, so menu access is always synchronous. `channelImageURLs: [String: String]` maps `"deviceId:channelNum"` → image URL; both dicts are rebuilt in `rebuildMenuEntries()` after each guide load.
 
@@ -171,14 +179,30 @@ Clicking a channel sets `state.pendingAddChannel = (device, channel)`, bumps `pe
 
 | Function | Purpose |
 |---|---|
+| `showInfoHeader(_:entry:)` | Shared poster + title + episode + synopsis block; always shows yellow flag triangle |
+| `managedShow(for:)` | Looks up an existing `Show` for a guide entry by SeriesID then title |
 | `stateIcon(_:)` | Emoji for show type |
 | `relativeLabel(_:)` | "2h 15m", "45m", "30s" from a `TimeInterval` |
 | `elapsedLabel(since:)` | `relativeLabel(Date().timeIntervalSince(start))` |
 | `remainingLabel(until:)` | `relativeLabel(end.timeIntervalSince(Date()))` |
-| `timeRange(_:)` | `"8:00 PM – 9:00 PM"` — inside show submenus |
+| `upcomingLabel(channel:date:)` | `"Channel 5.1 · Thu 8:00 PM"` / `"Channel 5.1 · 8:00 PM"` for today |
+| `nextDateTimeOccurrences(for:count:)` | Next N weekday+time slots for a DateTime show (local calendar) |
+| `timeRange(_:)` | `"8:00 PM – 9:00 PM"` — inside entry submenus |
 | `weekdayName(_:)` | Full weekday name from a `Date` |
 | `episodeInfoLabel(_:)` | Joins `EpisodeNumber` + `EpisodeTitle` with ` · `; nil if both empty |
+| `truncateSynopsis(_:limit:)` | Clips to 160 chars at a word boundary |
+| `entryLabel(_:isOnAir:)` | `"▶ 8:00 PM  Title"` (on air) or `"8:00 PM  Title"` |
 | `editShow(_:)` | Sets `state.editingShowId`, calls `open("edit-show")` |
+
+## `confirmAndDeleteShow` (AppState)
+
+All delete actions in menus and `EditShowView` call `AppState.confirmAndDeleteShow(_ show:, then completion:)`. It:
+1. Looks up the show's poster URL from the guide cache (`nextGuideEpisode` for series, title match for singles)
+2. Fetches the image async via `URLSession`
+3. Shows an `NSAlert` with `alert.icon = image`, "Delete / Cancel" buttons
+4. Calls `deleteShow(show)` (which also calls `recordingManager.stop`) + `completion()` on confirm
+
+`EditShowView` passes `{ dismiss() }` as the completion so the window closes after deletion. Menu callers pass `{}` (default).
 
 ---
 

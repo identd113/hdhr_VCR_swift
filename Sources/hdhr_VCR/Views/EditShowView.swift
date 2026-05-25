@@ -119,17 +119,7 @@ struct EditShowView: View {
     private var navBar: some View {
         HStack {
             Button("Delete", role: .destructive) {
-                let title = show?.show_title ?? "this show"
-                let alert = NSAlert()
-                alert.messageText     = "Delete \"\(title)\"?"
-                alert.informativeText = "This cannot be undone."
-                alert.addButton(withTitle: "Delete")
-                alert.addButton(withTitle: "Cancel")
-                alert.alertStyle = .warning
-                if alert.runModal() == .alertFirstButtonReturn {
-                    if let s = show { state.deleteShow(s) }
-                    dismiss()
-                }
+                if let s = show { state.confirmAndDeleteShow(s) { dismiss() } }
             }
             Spacer()
             Button("Save") { save() }.buttonStyle(.borderedProminent)

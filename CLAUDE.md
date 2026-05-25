@@ -232,8 +232,8 @@ All `Date?` fields in `Show` use the `EpochDate` wrapper struct, which:
 - `firstGenre: String?` — computed shorthand for `Filter?.first`; used for guide cell coloring and the genre filter picker.
 
 ### `HDHRDevice` computed properties
-- `localHostname: String` — `"hdhr-{DeviceID.lowercased()}.local"` (mDNS name)
-- `statusURL: String` — `"http://{localHostname}/status.json"` — live tuner status endpoint
+- `lineupURL: String` — always `"http://{LocalIP}/lineup.json"` — **never** uses `LineupURL` from discover.json which may contain an mDNS hostname (`hdhomerun.local`) that can fail on unreliable networks
+- `statusURL: String` — `"http://{LocalIP}/status.json"` — live tuner status endpoint
 
 ### `DeviceTunerInfo` (Models.swift)
 Decodable struct for one entry in the `/status.json` array:
@@ -307,23 +307,28 @@ Single `MenuBarExtra` with `.menu` style (native cascading NSMenu).
 
 **Structure:**
 - Header: tuner count + recording usage + status message
-- "Recording Now" section — shows type+channel, elapsed time, time remaining; "Stop & Pause" (NSAlert confirm), "Skip This Airing", optionally "Watch in VLC", and "Edit…" actions
-- "Next Up" section — shows within 5 min of the nearest upcoming airing; each row preceded by `"10:30 PM · 60 min"` caption (static clock time, not countdown)
-- "Scheduled" section — remaining active shows; state icon + title label; submenu shows type/channel, start time, upcoming slots, failure count; actions: Edit…, Pause, Delete…
-- "Paused" section (`show_active && show_paused`) — shows pause reason + next attempt time; actions: Resume Now, Edit…, Delete…
+- "Recording Now" / "Recording · DeviceID" — type+channel, start time, duration; **Skip** (stops + advances) and **Delete…** (stops + confirms + removes) actions; optionally "Watch in VLC", "Watch Now!", "Edit…"
+- "Up Next" / "Up Next · DeviceID" — shows starting within the **next 60 minutes**, bucketed by start time (minute precision). Within each device section, time labels appear as secondary-text `menuInfo` items (no inner divider) followed by show rows. Show rows append `"  ch 5.1"` to the label. All four show sections (Recording, Up Next, Scheduled, Paused) split into per-device sub-sections when multiple tuners are present.
+- "Scheduled" / "Scheduled · DeviceID" — remaining active shows; state icon + title; submenu: poster, type/channel, start time · duration, upcoming slots, failure count; actions: Edit…, Pause, Delete…
+- "Paused" / "Paused · DeviceID" — shows pause reason + next attempt; actions: Resume Now, Edit…, Delete…
 - Add Show (mode-dependent — see below)
-- Refresh Guide, Settings, Quit
+- Settings, Quit
 
 **Show state icons in scheduled list:**
-- Single: 1️⃣ · DateTime: 📅 · SeriesID(Channel): 📺 · SeriesID(All): 🔁
+- Single: 1️⃣ · DateTime: 📅 · SeriesID(Channel): 🔂 · SeriesID(All): 🔁
+
+**Delete confirmation** — all delete actions use `AppState.confirmAndDeleteShow(_ show:, then completion:)`. It fetches the poster image async then shows an `NSAlert` with the image set as `alert.icon`. Calling `deleteShow` also calls `recordingManager.stop` so stopping a recording before removal is automatic.
+
+**Yellow managed flag** — all show info panels (`showInfoHeader`) include a 24pt yellow right-angle triangle in the top-right corner of the poster image. All shows in Recording/Scheduled/Paused are managed by definition, so the flag is always visible there. In guide entry menus (`entryMenu`), the flag uses a 14×14 `NSImage` (AppKit `NSBezierPath`) because SwiftUI `Path`/`Canvas` don't render in NSMenu item labels.
 
 **Add Show modes** (toggled in Settings → General):
-- `.menu` — two-level cascading menu: (Device →) Channel. Clicking a channel opens the Add Show wizard at the guide step for that channel. Device level is skipped when there is only one tuner.
+- `.menu` — cascading menu: (Device →) Channel → guide entries. Clicking an entry opens the wizard pre-filled; managed entries show Skip/Edit/Delete instead of Record.
 - `.wizard` — opens `AddShowView` window (3-step wizard). Default.
 
 **Add Show menu hierarchy** (`.menu` mode):
 1. **Device** (omitted if only 1 tuner) — triggers `ensureGuideLoaded` on open
-2. **Channel** — flat `Button` items (not submenus); shows channel logo (16×16 from `channelIconImages`) + number + name + HD badge. Only channels with guide data are shown. Clicking sets `state.pendingAddChannel = (device, channel)` and opens `"add-show"`. The wizard opens at the guide step with device+channel pre-selected.
+2. **Channel** — each channel is a `Menu` (submenu) sorted favorites-first. Favorites grouped under `"★  FAVORITES"` header. Channel logo (16×16) + number + name + HD badge + `★` suffix. Only channels with guide data shown.
+3. **Guide entries** — on-air entries then upcoming; managed entries show a yellow triangle `NSImage` icon + Skip/Edit/Delete; unmanaged show Record.
 
 **Why no guide entry submenus in `.menu` mode**: SwiftUI `Menu {}` evaluates all nested content eagerly when the parent opens. Building entry submenus for ~100 channels (each with multiple Text/Button views) on every menu click caused noticeable lag. The AppKit solution (`NSMenuDelegate` + lazy `menuNeedsUpdate`) was rejected as too complex. The two-level cascade keeps the menu snappy; the wizard handles guide browsing in a window where SwiftUI is designed for it.
 

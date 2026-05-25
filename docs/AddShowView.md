@@ -115,7 +115,8 @@ VStack(spacing: 0) {
 Displayed in the top 1/3 of the guide step content area. Background color matches the selected guide cell color via `guideEntryColor(for:onAir:)` (module-level function in `CableGuideView.swift`, non-private so `AddShowView` can call it).
 
 When a show is selected:
-- **Poster image** — `AsyncImage`, `frame(width: 180).frame(maxHeight: .infinity)` (fills HStack height dynamically), cornerRadius 7
+- **Poster image** — `AsyncImage`, `frame(width: 180).frame(maxHeight: .infinity)` (fills HStack height dynamically), cornerRadius 7. Carries `.accessibilityLabel("\(entry.Title) poster")`. Has a yellow 20pt right-angle triangle overlay in the top-right corner via `managedFlag(isManaged)` — shown when the entry matches an already-scheduled show (SeriesID or title match against `state.shows`).
+- **`managedFlag(_:)` helper** — `@ViewBuilder` that draws a `Path`-based yellow triangle when the bool is true, with `.accessibilityLabel("Already scheduled")`.
 - **"🔴 Recording Now" badge** — shown if the selected channel is actively recording (`recordingShows` match by channel + time)
 - **Title** — `.title3`, bold, white with drop shadow
 - **Episode info** — `episodeInfoLabel(entry)` → `"S02E05 · The Episode Title"`, `.subheadline`

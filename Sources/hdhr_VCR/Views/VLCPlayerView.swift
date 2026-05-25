@@ -123,6 +123,7 @@ struct VLCPlayerView: View {
             // Volume
             Image(systemName: "speaker.wave.2")
                 .foregroundStyle(.secondary)
+                .accessibilityLabel("Volume")
             Slider(value: $volume, in: 0...100)
                 .frame(width: 100)
                 .onChange(of: volume) { _, v in
@@ -133,6 +134,7 @@ struct VLCPlayerView: View {
             if !systemDevices.isEmpty {
                 Divider().frame(height: 18)
                 Image(systemName: "airplayaudio").foregroundStyle(.secondary)
+                    .accessibilityLabel("Audio output")
                 Picker("Audio Output", selection: $selectedDevice) {
                     ForEach(systemDevices, id: \.id) { dev in
                         Text(dev.name).tag(dev.id)

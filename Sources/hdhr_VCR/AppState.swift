@@ -1166,6 +1166,37 @@ final class AppState: ObservableObject {
     }
     func deleteShow(_ show: Show) { recordingManager.stop(showId: show.show_id); shows.removeAll { $0.show_id == show.show_id }; saveConfig() }
 
+    /// Shows a delete confirmation alert with the show's poster image (fetched async).
+    /// Calls `then()` after deletion — use for dismiss() in EditShowView.
+    func confirmAndDeleteShow(_ show: Show, then completion: @escaping () -> Void = {}) {
+        Task {
+            let imageURL: String?
+            if show.show_use_seriesid {
+                imageURL = nextGuideEpisode(for: show)?.entry.ImageURL
+            } else {
+                let entries = guideEntries(deviceId: show.hdhr_record, channelNum: show.show_channel)
+                imageURL = entries.first { $0.Title == show.show_title }?.ImageURL
+                    ?? entries.first?.ImageURL
+            }
+            var icon: NSImage? = nil
+            if let urlStr = imageURL, let url = URL(string: urlStr),
+               let (data, _) = try? await URLSession.shared.data(from: url) {
+                icon = NSImage(data: data)
+            }
+            let alert = NSAlert()
+            alert.messageText     = "Delete \"\(show.show_title)\"?"
+            alert.informativeText = "This cannot be undone."
+            if let icon { alert.icon = icon }
+            alert.addButton(withTitle: "Delete")
+            alert.addButton(withTitle: "Cancel")
+            alert.alertStyle = .warning
+            if alert.runModal() == .alertFirstButtonReturn {
+                deleteShow(show)
+                completion()
+            }
+        }
+    }
+
     // MARK: - Maintenance actions (Settings → Maintenance panel)
 
     /// Re-run scheduleNextAir for every active SeriesID show using the current guide cache.

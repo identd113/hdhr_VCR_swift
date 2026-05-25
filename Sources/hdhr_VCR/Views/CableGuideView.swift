@@ -634,28 +634,36 @@ private struct ShowBlocksRow: View, Equatable {
             .padding(.top, 4)
             .frame(width: max(1, cellW - (isSelected ? 20 : 8)), alignment: .topLeading)
 
+            if isManaged {
+                let flagSize: CGFloat = 22
+                Path { path in
+                    path.move(to:    CGPoint(x: cellW - flagSize, y: 0))
+                    path.addLine(to: CGPoint(x: cellW,            y: 0))
+                    path.addLine(to: CGPoint(x: cellW,            y: flagSize))
+                    path.closeSubpath()
+                }
+                .fill(Color.yellow)
+                .accessibilityLabel("Already scheduled")
+            }
+
             if isSelected {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 12, weight: .bold))
                     .foregroundColor(.white)
                     .offset(x: cellW - 18, y: 4)
+                    .accessibilityLabel("Selected")
             } else if isRecording {
-                // Red dot — currently recording
+                // Red dot centred inside the yellow flag triangle
                 Circle().fill(Color.red).frame(width: 8, height: 8)
-                    .offset(x: cellW - 11, y: 4)
+                    .offset(x: cellW - 12, y: 3)
+                    .accessibilityLabel("Recording now")
             } else if isNextUp {
                 // Orange clock — records within 30 min
                 Image(systemName: "clock.badge.fill")
                     .font(.system(size: 10, weight: .bold))
                     .foregroundColor(.orange)
                     .offset(x: cellW - 14, y: 4)
-            }
-
-            if isManaged {
-                Image(systemName: "bookmark.fill")
-                    .font(.system(size: 9))
-                    .foregroundColor(.white.opacity(0.9))
-                    .offset(x: 4, y: rowH - 20)
+                    .accessibilityLabel("Recording soon")
             }
         }
         .frame(width: cellW, height: rowH - 2)

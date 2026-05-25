@@ -291,13 +291,12 @@ struct HDHRDevice: Identifiable, Equatable {
     var TunerCount: Int?
     var FirmwareVersion: String?
     var DeviceAuth: String?   // used to call SiliconDust cloud guide API (EXTEND and similar)
-    var LineupURL: String?    // raw lineup URL from discover.json (uses mDNS host if available)
+    var LineupURL: String?    // from discover.json; stored but not used — lineupURL always uses LocalIP
 
-    var localHostname: String { "hdhr-\(DeviceID.lowercased()).local" }
     var streamBase: String { "http://\(LocalIP):5004" }
     var guideURL:   String { "http://\(LocalIP)/guide.json" }
-    var lineupURL:  String { LineupURL ?? "http://\(LocalIP)/lineup.json" }
-    var statusURL:  String { "http://\(LocalIP)/status.json" }  // IP avoids mDNS lookup failures
+    var lineupURL:  String { "http://\(LocalIP)/lineup.json" }  // always IP — LineupURL from discover.json may contain mDNS hostname
+    var statusURL:  String { "http://\(LocalIP)/status.json" }
 }
 
 extension HDHRDevice: Codable {

@@ -142,6 +142,7 @@ struct AddShowView: View {
                     let channelCount = state.lineups[device.DeviceID]?.count ?? 0
                     HStack {
                         Image(systemName: "antenna.radiowaves.left.and.right")
+                            .accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: 2) {
                             HStack {
                                 Text(device.DeviceID).bold()
@@ -240,6 +241,7 @@ struct AddShowView: View {
                     dismiss()
                 } label: {
                     Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        .accessibilityLabel("Open guide in floating window")
                 }
                 .help("Open guide in floating window")
                 Text("[\(allChannels.count) ch]").font(.caption2).foregroundStyle(.orange)
@@ -347,6 +349,12 @@ struct AddShowView: View {
             }
             let isSportsBonusEntry = entry.firstGenre?.lowercased().contains("sports") == true
                                   && state.config.Sports_padding_enabled
+            let isManaged: Bool = {
+                if let sid = entry.SeriesID, !sid.isEmpty {
+                    return state.shows.contains { $0.show_seriesid == sid }
+                }
+                return state.shows.contains { $0.show_title == entry.Title }
+            }()
 
             ZStack(alignment: .topTrailing) {
             HStack(alignment: .top, spacing: 16) {
@@ -357,15 +365,18 @@ struct AddShowView: View {
                     } placeholder: {
                         Color.white.opacity(0.2)
                     }
+                    .accessibilityLabel("\(entry.Title) poster")
                     .frame(width: 180)
                     .frame(maxHeight: .infinity)
                     .cornerRadius(7)
                     .clipped()
+                    .overlay(alignment: .topTrailing) { managedFlag(isManaged) }
                 } else {
                     RoundedRectangle(cornerRadius: 7)
                         .fill(Color.white.opacity(0.2))
                         .frame(width: 180)
                         .frame(maxHeight: .infinity)
+                        .overlay(alignment: .topTrailing) { managedFlag(isManaged) }
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -449,6 +460,7 @@ struct AddShowView: View {
                                 } icon: {
                                     Image(nsImage: NSWorkspace.shared.icon(forFile: "/Applications/VLC.app"))
                                         .resizable().scaledToFit().frame(width: 16, height: 16)
+                                        .accessibilityHidden(true)
                                 }
                             }
                             .buttonStyle(WhiteOutlineButtonStyle(borderColor: Color(red: 1.0, green: 0.482, blue: 0.0)))
@@ -532,6 +544,20 @@ struct AddShowView: View {
             Text("Select a show from the grid")
                 .foregroundStyle(.tertiary)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    @ViewBuilder private func managedFlag(_ show: Bool) -> some View {
+        if show {
+            Path { p in
+                p.move(to:    CGPoint(x: 0,  y: 0))
+                p.addLine(to: CGPoint(x: 20, y: 0))
+                p.addLine(to: CGPoint(x: 20, y: 20))
+                p.closeSubpath()
+            }
+            .fill(Color.yellow)
+            .frame(width: 20, height: 20)
+            .accessibilityLabel("Already scheduled")
         }
     }
 

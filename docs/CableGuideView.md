@@ -111,11 +111,13 @@ The `lineupEntry?.GuideNumber` field is included because a `nil → non-nil` cha
 |---|---|
 | On-air (unselected) | Full opacity + `Color.white.opacity(0.12)` white wash overlay |
 | Selected | White stroke border (2.5pt) + `checkmark.circle.fill` icon + `Color.white.opacity(0.15)` fill |
-| Currently recording | Red stroke border (1.5pt) + red circle dot, top-right corner |
-| Starts within 30 min | Orange stroke border (1.5pt) + `clock.badge.fill` icon (orange), top-right corner |
-| Managed (any) | `bookmark.fill` icon (white, 0.9 opacity), bottom-left corner |
+| Currently recording | Red stroke border (1.5pt) + red circle dot (8pt, centred inside the yellow triangle) |
+| Starts within 30 min | Orange stroke border (1.5pt) + `clock.badge.fill` icon (orange), top-right area |
+| Managed (any) | Yellow 22pt right-angle triangle, top-right corner (`Path`, `.fill(.yellow)`) drawn **before** status icons so the red dot renders on top of the triangle |
 | Filter mismatch | 0.2 opacity, `allowsHitTesting(false)` |
 | Bonus Time | Dotted `RoundedRectangle` sibling at `cellX + cellW + 2`; `.zIndex(1)` so it renders above the next block; next show's title is drawn inside the box so it remains readable even when fully covered; tapping the bonus box selects the overlapped next show |
+
+**Managed triangle sizing rationale**: the triangle is 22pt so the 8pt red recording dot (offset `x: cellW-12, y: 3`) sits fully inside the triangle without overflowing. Triangle vertices: `(cellW-22, 0) → (cellW, 0) → (cellW, 22)` — right angle at top-right corner.
 
 Recording vs. next-up precedence: `isNextUp` is only true when `!isRecording` — the red recording state always takes visual priority. Both use SeriesID-first matching with title as fallback to avoid false positives when unrelated shows share a name.
 
@@ -140,6 +142,20 @@ For managed sports shows, a dotted `RoundedRectangle` is drawn as a sibling view
 The time header scrolls horizontally automatically (it's inside the `ScrollView`) and stays pinned vertically via `LazyVStack(pinnedViews: [.sectionHeaders])` — no `timeHeaderOffset` synchronization needed.
 
 - `channelScrollOffset` → `.offset(y: -channelScrollOffset)` on the fixed channel column, inside `.clipped()`
+
+### Channel column scroll forwarding
+
+`channelColumnFixed` has `.background(ChannelScrollForwarder())` — an `NSViewRepresentable` that installs a local `NSEvent` monitor for `.scrollWheel` events. When a scroll event lands in the channel column, it is forwarded to the `NSScrollView` via `sv.scrollWheel(with: event)`. **X is saved before and restored after** to prevent the forwarded event from shifting the time axis:
+
+```swift
+let savedX = sv.contentView.bounds.origin.x
+sv.scrollWheel(with: event)
+var pt = sv.contentView.bounds.origin
+if pt.x != savedX { pt.x = savedX; sv.contentView.scroll(to: pt); sv.reflectScrolledClipView(sv.contentView) }
+return nil   // consume — don't forward to default handler
+```
+
+The monitor returns `nil` (consuming the event) so the channel column itself doesn't scroll horizontally. `VerticalScrollTracker` picks up the resulting `NSScrollView` movement and drives `channelScrollOffset` as normal.
 
 ---
 

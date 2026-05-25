@@ -191,6 +191,12 @@ struct FloatingGuideView: View {
             }
             let isSportsBonusEntry = entry.firstGenre?.lowercased().contains("sports") == true
                                   && state.config.Sports_padding_enabled
+            let isManaged: Bool = {
+                if let sid = entry.SeriesID, !sid.isEmpty {
+                    return state.shows.contains { $0.show_seriesid == sid }
+                }
+                return state.shows.contains { $0.show_title == entry.Title }
+            }()
 
             ZStack(alignment: .topTrailing) {
                 HStack(alignment: .top, spacing: 14) {
@@ -200,13 +206,16 @@ struct FloatingGuideView: View {
                         } placeholder: {
                             Color.white.opacity(0.2)
                         }
+                        .accessibilityLabel("\(entry.Title) poster")
                         .frame(width: 140, height: 100)
                         .cornerRadius(7)
                         .clipped()
+                        .overlay(alignment: .topTrailing) { managedFlag(isManaged) }
                     } else {
                         RoundedRectangle(cornerRadius: 7)
                             .fill(Color.white.opacity(0.2))
                             .frame(width: 140, height: 100)
+                            .overlay(alignment: .topTrailing) { managedFlag(isManaged) }
                     }
 
                     VStack(alignment: .leading, spacing: 4) {
@@ -283,6 +292,7 @@ struct FloatingGuideView: View {
                                     } icon: {
                                         Image(nsImage: NSWorkspace.shared.icon(forFile: "/Applications/VLC.app"))
                                             .resizable().scaledToFit().frame(width: 16, height: 16)
+                                            .accessibilityHidden(true)
                                     }
                                 }
                                 .buttonStyle(WhiteOutlineButtonStyle(borderColor: Color(red: 1.0, green: 0.482, blue: 0.0)))
@@ -341,6 +351,20 @@ struct FloatingGuideView: View {
     }
 
     // MARK: - Helpers
+
+    @ViewBuilder private func managedFlag(_ show: Bool) -> some View {
+        if show {
+            Path { p in
+                p.move(to:    CGPoint(x: 0,  y: 0))
+                p.addLine(to: CGPoint(x: 20, y: 0))
+                p.addLine(to: CGPoint(x: 20, y: 20))
+                p.closeSubpath()
+            }
+            .fill(Color.yellow)
+            .frame(width: 20, height: 20)
+            .accessibilityLabel("Already scheduled")
+        }
+    }
 
     private func episodeInfoLabel(_ entry: GuideEntry) -> String? {
         let parts = [entry.EpisodeNumber, entry.EpisodeTitle]
