@@ -48,7 +48,7 @@ struct MenuContent: View {
         // binding to let avoids re-running the filter for every reference below
         let recordingShows = state.recordingShows
         let activeShows    = state.activeShows
-        let inactiveShows  = state.inactiveShows
+        let pausedShows    = state.pausedShows
 
         // ── Header ────────────────────────────────────────────────────────
         ForEach(state.devices) { device in
@@ -103,17 +103,20 @@ struct MenuContent: View {
         let slotShowIds   = Set(slotShows.map { $0.show_id })
         let remainingActive = activeShows.filter { !slotShowIds.contains($0.show_id) }
 
-        if !slotShows.isEmpty, let slotTime = slotShows.first?.show_next.date {
+        if !slotShows.isEmpty {
             Section("Next Up") {
-                menuInfo("\(Self.timeFormatter.string(from: slotTime)) · in \(relativeLabel(slotTime.timeIntervalSince(now)))",
-                         font: .footnote, secondary: true)
-                ForEach(slotShows) { scheduledMenu($0) }
+                ForEach(slotShows) { show in
+                    if let next = show.show_next.date {
+                        menuInfo("\(Self.timeFormatter.string(from: next)) · \(show.show_length) min", font: .caption, secondary: true)
+                    }
+                    scheduledMenu(show)
+                }
             }
             Divider()
         }
 
         // ── Scheduled shows ───────────────────────────────────────────────
-        if activeShows.isEmpty && inactiveShows.isEmpty {
+        if activeShows.isEmpty && pausedShows.isEmpty {
             Text("No shows scheduled").foregroundStyle(.secondary)
         } else {
             if !remainingActive.isEmpty {
@@ -132,9 +135,9 @@ struct MenuContent: View {
                     }
                 }
             }
-            if !inactiveShows.isEmpty {
+            if !pausedShows.isEmpty {
                 Section("Paused") {
-                    ForEach(inactiveShows) { show in pausedMenu(show) }
+                    ForEach(pausedShows) { show in pausedMenu(show) }
                 }
             }
         }
@@ -205,100 +208,29 @@ struct MenuContent: View {
 
     @ViewBuilder
     private func channelMenu(device: HDHRDevice, channel: LineupEntry) -> some View {
-        // Pre-filtered cache: on-air + next 3 upcoming entries, rebuilt after each guide load.
-        // O(1) dict lookup instead of O(entries) filter × 100 channels per menu open.
-        let entries   = state.menuGuideEntries["\(device.DeviceID):\(channel.GuideNumber)"] ?? []
-        let loading   = state.isGuideLoading(for: device.DeviceID)
         let hdBadge   = channel.HD == 1 ? " HD" : ""
         let label     = "\(channel.GuideNumber)  \(channel.GuideName)\(hdBadge)"
-        let now       = Date()
-        let onAir     = entries.filter { $0.startDate <= now && $0.endDate > now }
-        let upcoming  = entries.filter { $0.startDate > now }
+        // O(1) channel logo lookup — both dicts rebuilt once per guide load, not per menu open
+        let logoImage = state.channelImageURLs["\(device.DeviceID):\(channel.GuideNumber)"]
+                            .flatMap { state.channelIconImages[$0] }
 
-        Menu(label) {
-            // Blue accent bar (drama hue from guide palette) marks the entry-list depth
-            Rectangle()
-                .fill(Color(hue: 0.60, saturation: 0.75, brightness: 0.85).opacity(0.65))
-                .frame(height: 5)
-            if entries.isEmpty {
-                if loading {
-                    Text("Fetching guide…").foregroundStyle(.secondary)
-                } else {
-                    Text("No upcoming shows").foregroundStyle(.secondary)
-                    Button("Load guide") { state.ensureGuideLoaded(for: device.DeviceID) }
-                }
-            } else {
-                ForEach(onAir) { entry in
-                    entryMenu(entry: entry, device: device, channel: channel, isOnAir: true)
-                }
-                if !onAir.isEmpty && !upcoming.isEmpty { Divider() }
-                ForEach(upcoming) { entry in
-                    entryMenu(entry: entry, device: device, channel: channel, isOnAir: false)
-                }
-            }
-        }
-    }
-
-    // MARK: ── Level 4 (or 5): Show entry + type selection ───────────────
-    // Label in the parent menu: "8:00 PM  Jeopardy! (30 min)"
-    // Submenu: synopsis, divider, Add as Single / Add as Series → (3 types)
-
-    @ViewBuilder
-    private func entryMenu(entry: GuideEntry, device: HDHRDevice, channel: LineupEntry, isOnAir: Bool = false) -> some View {
-        let entryColor = guideEntryColor(for: entry, onAir: isOnAir)
-        Menu {
-
-            // Genre color accent bar — matches the show block color in the cable guide
-            Rectangle()
-                .fill(entryColor.opacity(0.65))
-                .frame(height: 5)
-
-            // Info panel — mirrors showInfoHeader style (title3 → callout episode → caption time → callout synopsis).
-            // No photo: entry.ImageURL is intentionally not loaded (would fire URLSession tasks per entry).
-            menuInfo(entry.Title, font: .title3, maxWidth: 240)
-            if let ep = episodeInfoLabel(entry) {
-                menuInfo(ep, font: .callout, maxWidth: 240)
-            }
-            menuInfo(timeRange(entry), font: .caption, maxWidth: 240)
-            if let syn = entry.Synopsis, !syn.isEmpty {
-                menuInfo(truncateSynopsis(syn, limit: 120), font: .callout, maxWidth: 240)
-            }
-            Divider()
-
-            if let existing = managedShow(for: entry) {
-                Button("Edit Show…") { editShow(existing) }
-            } else {
-                Button {
-                    state.pendingAddEntry = (device, channel, entry)
-                    state.pendingAddEntryGeneration += 1
-                    open("add-show")
-                } label: {
-                    Label {
-                        Text("Record…").foregroundColor(.red)
-                    } icon: {
-                        Image(systemName: "record.circle").foregroundColor(.red)
-                    }
-                }
-            }
-
-            if state.config.Watch_in_VLC && isOnAir {
-                Button(action: { state.watchInVLC(url: channel.URL ?? "", deviceId: device.DeviceID) }) {
-                    Label { Text("Watch in VLC").foregroundColor(vlcOrange) }
-                          icon: { Image(systemName: "arrow.up.forward.app").foregroundColor(vlcOrange) }
-                }
-            }
-            if VLCBridge.shared.isAvailable && isOnAir {
-                Button(action: { state.watchInApp(url: channel.URL ?? "", title: entry.Title, deviceId: device.DeviceID) }) {
-                    Label { Text("Watch Now!").foregroundColor(watchNowBlue) }
-                          icon: { Image(systemName: "play.tv.fill").foregroundColor(watchNowBlue) }
-                }
-            }
+        Button {
+            state.pendingAddChannel = (device, channel)
+            state.pendingAddChannelGeneration += 1
+            open("add-show")
         } label: {
             Label {
-                Text(entryLabel(entry, isOnAir: isOnAir))
+                Text(label)
             } icon: {
-                Image(systemName: "square.fill")
-                    .foregroundStyle(entryColor)
+                if let logoImage {
+                    Image(nsImage: logoImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 16, height: 16)
+                } else {
+                    Image(systemName: "tv")
+                        .frame(width: 16, height: 16)
+                }
             }
         }
     }
@@ -335,8 +267,8 @@ struct MenuContent: View {
             Button("Stop Recording", role: .destructive) {
                 let alert = NSAlert()
                 alert.messageText     = "Stop recording \"\(show.show_title)\"?"
-                alert.informativeText = "This deactivates the show. Use \"Skip This Airing\" to skip without deactivating."
-                alert.addButton(withTitle: "Stop & Deactivate")
+                alert.informativeText = "This pauses the show. Use \"Skip This Airing\" to skip to the next airing instead."
+                alert.addButton(withTitle: "Stop & Pause")
                 alert.addButton(withTitle: "Keep Recording")
                 alert.alertStyle = .warning
                 if alert.runModal() == .alertFirstButtonReturn {
@@ -425,7 +357,7 @@ struct MenuContent: View {
             }
             Divider()
             Button("Edit…")      { editShow(show) }
-            Button("Deactivate") { state.toggleActive(show) }
+            Button("Pause") { state.pauseShow(show) }
             Button("Delete…", role: .destructive) {
                 let alert = NSAlert()
                 alert.messageText     = "Delete \"\(show.show_title)\"?"
@@ -449,11 +381,14 @@ struct MenuContent: View {
             Divider()
             menuInfo("\(show.state.rawValue) · Channel \(show.show_channel)", font: .footnote, secondary: true)
             if !show.show_fail_reason.isEmpty {
-                menuInfo("Last error: \(show.show_fail_reason)", font: .footnote, secondary: true)
+                menuInfo("Reason: \(show.show_fail_reason)", font: .footnote, secondary: true)
+            }
+            if let next = show.show_next.date, next > Date() {
+                menuInfo("Next attempt: \(Self.timeFormatter.string(from: next))", font: .footnote, secondary: true)
             }
             Divider()
-            Button("Activate")  { state.toggleActive(show) }
-            Button("Edit…")     { editShow(show) }
+            Button("Resume Now") { state.resumeShow(show) }
+            Button("Edit…") { editShow(show) }
             Button("Delete…", role: .destructive) {
                 let alert = NSAlert()
                 alert.messageText     = "Delete \"\(show.show_title)\"?"
@@ -574,12 +509,6 @@ struct MenuContent: View {
                 // expanding the menu horizontally to fit a single long line.
                 .frame(width: maxWidth, alignment: .leading)
         }
-    }
-
-    // "▶ 8:00 PM  Jeopardy! (30 min)" or "8:00 PM  Jeopardy! (30 min)"
-    private func entryLabel(_ entry: GuideEntry, isOnAir: Bool = false) -> String {
-        let prefix = isOnAir ? "▶ " : ""
-        return "\(prefix)\(Self.timeFormatter.string(from: entry.startDate))  \(entry.Title) (\(entry.durationMinutes)m)"
     }
 
     // "8:00 PM – 8:30 PM"

@@ -27,6 +27,8 @@ final class AppState: ObservableObject {
     // O(1) managed-show lookup for entryMenu — rebuilt alongside menu entries.
     var managedShowBySeriesID: [String: Show] = [:]
     var managedShowByTitle:    [String: Show] = [:]
+    // O(1) channel logo lookup for channelMenu — "deviceId:channelNum" → ImageURL — rebuilt alongside menu entries.
+    var channelImageURLs: [String: String] = [:]
     @Published var guideRevision: Int = 0                        // increments each time guide data successfully loads
     @Published var config = AppConfig()
     @Published var statusMessage = "Starting…"
@@ -37,13 +39,24 @@ final class AppState: ObservableObject {
     @Published var editingShowId: String? = nil
     @Published var pendingAddEntry: (device: HDHRDevice, channel: LineupEntry, entry: GuideEntry)? = nil
     @Published var pendingAddEntryGeneration: Int = 0   // bumped each time a new entry is set; drives onChange in AddShowView
+    @Published var pendingAddChannel: (device: HDHRDevice, channel: LineupEntry)? = nil
+    @Published var pendingAddChannelGeneration: Int = 0  // bumped each time pendingAddChannel is set
     @Published var tunerStatus: [String: TunerStatus] = [:]  // showId → last polled vstatus
     @Published var vlcCurrentURL: String = ""               // raw URL (no transcode query) playing in VLCPlayerView
+    @Published var channelIconImages: [String: NSImage] = [:]  // ImageURL → NSImage; populated during prefetch for sync menu use
 
+    // True once at least one tuner is found with a populated lineup and guide data.
+    // Drives the status icon opacity — stays dimmed until the app is genuinely usable.
+    var isReady: Bool {
+        !devices.isEmpty &&
+        lineups.values.contains { !$0.isEmpty } &&
+        guideByDevice.values.contains { !$0.isEmpty }
+    }
     var isRecording: Bool      { shows.contains { $0.show_recording } }
     var recordingShows: [Show] { shows.filter { $0.show_recording && ($0.show_end.date ?? .distantPast) > Date() } }
-    var activeShows: [Show]    { shows.filter { $0.show_active && !$0.show_recording }
+    var activeShows: [Show]    { shows.filter { $0.show_active && !$0.show_recording && !$0.show_paused }
                                       .sorted { ($0.show_next.date ?? .distantFuture) < ($1.show_next.date ?? .distantFuture) } }
+    var pausedShows: [Show]    { shows.filter { $0.show_active && $0.show_paused } }
     var inactiveShows: [Show]  { shows.filter { !$0.show_active } }
 
     var nextShowMinutes: Double? {
@@ -145,36 +158,17 @@ final class AppState: ObservableObject {
         }
     }
 
-    func logGuide(_ msg: String) { glog(msg) }
-
-    // Static — ISO8601DateFormatter is expensive; single MainActor caller makes static safe
-    private static let logFormatter = ISO8601DateFormatter()
-    // Kept open for the app's lifetime to avoid open/seek/close syscalls on every log line.
-    private var logHandle: FileHandle?
-
-    private func glog(_ msg: String) {
-        print(msg)
-        let ts = Self.logFormatter.string(from: Date())
-        let line = "[\(ts)] \(msg)\n"
-        guard let data = line.data(using: .utf8) else { return }
-        let path = GuideStore.guideLogPath
-        if logHandle == nil {
-            if !FileManager.default.fileExists(atPath: path) {
-                FileManager.default.createFile(atPath: path, contents: nil)
-            }
-            logHandle = FileHandle(forWritingAtPath: path)
-            logHandle?.seekToEndOfFile()
-        }
-        try? logHandle?.write(contentsOf: data)
-    }
+    func logGuide(_ msg: String, level: LogLevel = .info) { glog(msg, level: level) }
 
     /// Extract unique device IPs from saved show stream URLs so discovery can try them directly.
+    /// .local hostnames are excluded — they require mDNS resolution and add nothing over mDNSDiscover().
     private func knownHostsFromShows() -> [String] {
         var seen = Set<String>()
         return shows.compactMap { show -> String? in
             guard !show.show_url.isEmpty,
                   let host = URL(string: show.show_url)?.host,
                   !host.isEmpty,
+                  !host.hasSuffix(".local"),
                   seen.insert(host).inserted else { return nil }
             return host
         }
@@ -184,7 +178,7 @@ final class AppState: ObservableObject {
         guard let file = configManager.load() else { statusMessage = "No config found"; return }
         config = file.config
         let allShows = file.the_shows.map { var s = $0; s.show_recording = false; return s }
-        let filtered = allShows.filter { !($0.state == .single && !$0.show_active) }
+        let filtered = allShows.filter { $0.show_active }
         shows = filtered
         if filtered.count < allShows.count { saveConfig() }
         statusMessage = "\(shows.count) shows loaded"
@@ -229,7 +223,7 @@ final class AppState: ObservableObject {
 
             shows[i].show_recording = true
             recordingManager.reattach(showId: showId, pid: pid)
-            print("[Startup] Reattached '\(shows[i].show_title)' pid=\(pid) ends \(endDate)")
+            glog("[Startup] Reattached '\(shows[i].show_title)' pid=\(pid) ends \(endDate)")
         }
     }
 
@@ -237,7 +231,7 @@ final class AppState: ObservableObject {
         do {
             try configManager.save(ConfigFile(config: config, the_shows: shows))
         } catch {
-            glog("[Config] Save failed: \(error)")
+            glog("[Config] Save failed: \(error)", level: .error)
             statusMessage = "Config save error — check log"
         }
     }
@@ -253,7 +247,7 @@ final class AppState: ObservableObject {
                 glog("[Discovery] \(devices.count) tuner(s): \(devices.map { "\($0.DeviceID) \($0.LocalIP)" }.joined(separator: ", "))")
                 return
             } catch {
-                glog("[Discovery] attempt \(attempt)/\(attempts) failed: \(error)") // surface failures instead of silently retrying
+                glog("[Discovery] attempt \(attempt)/\(attempts) failed: \(error)", level: .warning) // surface failures instead of silently retrying
                 if attempt < attempts {
                     try? await Task.sleep(nanoseconds: 1_000_000_000)
                 }
@@ -273,7 +267,10 @@ final class AppState: ObservableObject {
         devices.append(contentsOf: newDevices)
         await fetchAllLineups(for: newDevices)
         let results = await guideStore.loadAll(devices: newDevices, hours: config.GuideHours)
-        for (deviceId, ok) in results where ok { guideApiBackoff.removeValue(forKey: deviceId) }
+        for (deviceId, ok) in results {
+            if ok { guideApiBackoff.removeValue(forKey: deviceId) }
+            else  { guideApiBackoff[deviceId, default: APIBackoff()].recordFailure() }
+        }
         guideByDevice = guideStore.channelsByDevice
     }
 
@@ -335,7 +332,7 @@ final class AppState: ObservableObject {
 
             shows[i].show_url = freshURL
             dirty = true
-            print("[AppState] show_url updated for '\(show.show_title)': \(storedHost) → \(device.LocalIP)")
+            glog("[AppState] show_url updated for '\(show.show_title)': \(storedHost) → \(device.LocalIP)")
         }
         if dirty { saveConfig() }
     }
@@ -391,7 +388,7 @@ final class AppState: ObservableObject {
             }
         }
         if guideByDevice.values.contains(where: { !$0.isEmpty }) { guideRevision += 1 }
-        print("[Guide] Refresh complete")
+        glog("[Guide] Refresh complete")
         let allChannels = guideByDevice.values.flatMap { $0 }
         Task { await prefetchChannelIcons(allChannels) }
     }
@@ -428,19 +425,22 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Download any channel icons not already on disk; update menu bar status while working.
+    /// Download missing channel icons and warm the mem cache from disk; populate channelIconImages for sync menu lookup.
     private func prefetchChannelIcons(_ channels: [GuideChannel]) async {
         let urls = Array(Set(channels.compactMap { $0.ImageURL }.filter { !$0.isEmpty }))
         guard !urls.isEmpty else { return }
         let needed = await ChannelIconCache.shared.countMissing(in: urls)
-        guard needed > 0 else { return }
-        statusMessage = "Caching \(needed) channel icon(s)…"
+        if needed > 0 { statusMessage = "Caching \(needed) channel icon(s)…" }
+        // Always fetch all URLs — loads disk→mem even when nothing needs downloading
         await withTaskGroup(of: Void.self) { group in
             for url in urls {
                 group.addTask { _ = await ChannelIconCache.shared.image(for: url) }
             }
         }
-        statusMessage = "\(shows.count) show(s) — \(devices.count) tuner(s) ready"
+        if needed > 0 { statusMessage = "\(shows.count) show(s) — \(devices.count) tuner(s) ready" }
+        // One actor hop to read the full mem dict; single @Published assignment regardless of icon count
+        let fetched = await ChannelIconCache.shared.allCachedImages(for: urls)
+        channelIconImages = channelIconImages.merging(fetched) { _, new in new }
     }
 
     func isGuideLoading(for deviceId: String) -> Bool {
@@ -482,10 +482,21 @@ final class AppState: ObservableObject {
         managedShowBySeriesID = bySeriesID
         managedShowByTitle    = byTitle
 
+        // ── O(1) channel logo URL lookup for channelMenu ──────────────────────
+        var imageURLs: [String: String] = [:]
+        for (deviceId, channels) in guideByDevice {
+            for ch in channels {
+                if let url = ch.ImageURL, !url.isEmpty {
+                    imageURLs["\(deviceId):\(ch.GuideNumber)"] = url
+                }
+            }
+        }
+        channelImageURLs = imageURLs
+
         // ── Scheduled menu: guide entry + upcoming slots per active show ──────
         var scheduledResult: [String: GuideEntry] = [:]
         var upcomingResult:  [String: [(channel: String, date: Date)]] = [:]
-        for show in shows where show.show_active {
+        for show in shows where show.show_active && !show.show_paused {
             let schNext = show.show_next.date ?? .distantFuture
             // Replicate scheduledMenu's schEntry logic: direct match first, series fallback
             let direct = guideStore.entries(deviceId: show.hdhr_record, channelNum: show.show_channel)
@@ -515,7 +526,7 @@ final class AppState: ObservableObject {
             return (d.DeviceID, t)
         })
         var newConflicts = Set<String>()
-        let activeShows = shows.filter { $0.show_active }
+        let activeShows = shows.filter { $0.show_active && !$0.show_paused }
         for show in activeShows {
             guard let next = show.show_next.date,
                   let end  = show.show_end.date,
@@ -694,6 +705,12 @@ final class AppState: ObservableObject {
             ensureGuideLoaded(for: device.DeviceID)
         }
 
+        // Warn if any active show is assigned to a device we can no longer see
+        let knownIDs = Set(devices.map { $0.DeviceID })
+        for show in activeShows where !show.hdhr_record.isEmpty && !knownIDs.contains(show.hdhr_record) {
+            glog("[\(show.show_title)] device \(show.hdhr_record) not found — show may miss its recording", level: .warning)
+        }
+
         // Probe for newly-connected tuners every 5 minutes (merge-only — safe during active recordings)
         if now.timeIntervalSince(lastDeviceProbe) > 300 {
             lastDeviceProbe = now
@@ -710,6 +727,25 @@ final class AppState: ObservableObject {
             guard show.show_active else { continue }
             let nextDate = show.show_next.date ?? .distantFuture
             let endDate  = show.show_end.date  ?? .distantPast
+
+            // Auto-resume paused shows:
+            // - window expired (failed/stopped): advance to next airing and un-pause
+            // - next airing imminent (skip): just un-pause so recording starts next tick
+            if show.show_paused {
+                if endDate <= now {
+                    shows[i].show_paused = false
+                    shows[i].show_fail_count = 0
+                    shows[i].show_fail_reason = ""
+                    glog("[\(show.show_title)] auto-resuming — paused window expired, rescheduling")
+                    await scheduleNextAir(index: i)
+                    dirty = true
+                } else if nextDate <= now + 10 {
+                    shows[i].show_paused = false
+                    glog("[\(show.show_title)] auto-resuming — next airing imminent")
+                    dirty = true
+                }
+                continue
+            }
 
             let minutesAway = nextDate.timeIntervalSince(now) / 60
 
@@ -735,6 +771,12 @@ final class AppState: ObservableObject {
                 dirty = true
             }
 
+            // Show window is open and we're not recording — warn if we're past the start time
+            // with no obvious reason (not tuner-full, not paused, not already handled above)
+            if !show.show_recording, nextDate < now - 30, endDate > now {
+                glog("[\(show.show_title)] MISSED START — window open since \(shortTime(show.show_next.date)), still not recording", level: .warning)
+            }
+
             if !show.show_recording, nextDate <= now + 10, endDate > now {
                 await startRecording(index: i); dirty = true
             }
@@ -744,7 +786,8 @@ final class AppState: ObservableObject {
             if show.show_recording, endDate > now, !recordingManager.isRunning(showId: show.show_id) {
                 shows[i].show_recording = false; shows[i].show_fail_count += 1
                 shows[i].show_fail_reason = "curl exited unexpectedly"
-                glog("[\(show.show_title)] FAIL curl exited unexpectedly — fail_count=\(shows[i].show_fail_count)")
+                shows[i].show_paused = true
+                glog("[\(show.show_title)] FAIL curl exited unexpectedly — fail_count=\(shows[i].show_fail_count)", level: .error)
                 notify("Recording Failed", body: show.show_title, subtitle: "curl exited unexpectedly")
                 discordShow("❌ Recording Failed", show: show, color: 0xE74C3C, enabled: config.Discord_on_failed,
                             extra: [("Reason", "curl exited unexpectedly", false), ("Fail Count", "\(shows[i].show_fail_count)", true)])
@@ -754,7 +797,7 @@ final class AppState: ObservableObject {
             // Happens when the app restarts after curl exits normally but before the idle loop
             // fires the natural-stop handler above (which requires show_recording == true).
             if !show.show_recording, endDate <= now, nextDate < now {
-                glog("[\(show.show_title)] stranded show_next in past — advancing")
+                glog("[\(show.show_title)] stranded show_next in past — advancing", level: .warning)
                 await scheduleNextAir(index: i); dirty = true
             }
         }
@@ -779,7 +822,7 @@ final class AppState: ObservableObject {
            let tunerCount = device.TunerCount {
             let active = recordingShows.filter { $0.hdhr_record == show.hdhr_record }.count
             if active >= tunerCount {
-                glog("[\(show.show_title)] TUNER FULL \(show.hdhr_record): \(active)/\(tunerCount) — skipping start")
+                glog("[\(show.show_title)] TUNER FULL \(show.hdhr_record): \(active)/\(tunerCount) — skipping start", level: .warning)
                 return
             }
         }
@@ -788,21 +831,30 @@ final class AppState: ObservableObject {
                let url = hdhrManager.streamURL(for: show.show_channel, lineup: lu) {
                 shows[index].show_url = url; show.show_url = url
             } else {
-                glog("[\(show.show_title)] NO STREAM URL — ch=\(show.show_channel) device=\(show.hdhr_record)")
-                shows[index].show_fail_count += 1; shows[index].show_fail_reason = "No stream URL"; return
+                glog("[\(show.show_title)] NO STREAM URL — ch=\(show.show_channel) device=\(show.hdhr_record)", level: .error)
+                shows[index].show_fail_count += 1; shows[index].show_fail_reason = "No stream URL"
+                shows[index].show_paused = true; return
             }
         }
+        if show.show_fail_count == failThreshold - 1 {
+            glog("[\(show.show_title)] WARNING — fail_count=\(show.show_fail_count)/\(failThreshold), one more failure will pause this show", level: .warning)
+        }
         guard show.show_fail_count < failThreshold else {
-            glog("[\(show.show_title)] PAUSED — fail threshold \(failThreshold) reached")
-            shows[index].show_active = false
-            notify("Recording Paused", body: show.show_title, subtitle: "Failed \(failThreshold)× — deactivated")
+            glog("[\(show.show_title)] PAUSED — fail threshold \(failThreshold) reached", level: .warning)
+            if show.state == .single {
+                shows[index].show_active = false  // singles auto-clean on restart; no point keeping them
+            } else {
+                shows[index].show_paused = true   // recoverable; auto-resumes after window expires
+            }
+            notify("Recording Paused", body: show.show_title, subtitle: "Failed \(failThreshold)× — will retry next airing")
             discordShow("⏸ Recording Paused", show: show, color: 0xE67E22, enabled: config.Discord_on_paused,
-                        extra: [("Reason", "Failed \(failThreshold)× — deactivated", false)])
+                        extra: [("Reason", "Failed \(failThreshold)× — will retry next airing", false)])
             return
         }
         guard diskOK(for: show) else {
-            glog("[\(show.show_title)] DISK FULL — skipping recording")
+            glog("[\(show.show_title)] DISK FULL — skipping recording", level: .warning)
             shows[index].show_fail_count += 1; shows[index].show_fail_reason = "Disk too full"
+            shows[index].show_paused = true
             notify("Recording Skipped", body: show.show_title, subtitle: "Disk over \(Int(maxDiskPct))%")
             discordShow("💾 Recording Skipped", show: show, color: 0xE67E22, enabled: config.Discord_on_skipped,
                         extra: [("Reason", "Disk over \(Int(maxDiskPct))% — free up space", false)])
@@ -826,9 +878,10 @@ final class AppState: ObservableObject {
                                        verbose: config.Verbose_curl,
                                        networkInterface: config.Network_interface)
         } catch {
-            glog("[\(show.show_title)] LAUNCH ERROR: \(error)")
+            glog("[\(show.show_title)] LAUNCH ERROR: \(error)", level: .error)
             shows[index].show_fail_count += 1
             shows[index].show_fail_reason = "Launch failed: \(error.localizedDescription)"
+            shows[index].show_paused = true
             notify("Recording Failed", body: show.show_title, subtitle: "Could not launch — \(error.localizedDescription)")
             discordShow("❌ Recording Failed", show: show, color: 0xE74C3C, enabled: config.Discord_on_failed,
                         extra: [("Reason", "Launch failed: \(error.localizedDescription)", false)])
@@ -850,6 +903,8 @@ final class AppState: ObservableObject {
         tunerStatus.removeValue(forKey: showId)
         shows[i].show_recording = false
         shows[i].show_last = EpochDate(Date())
+        shows[i].show_paused = true
+        shows[i].show_fail_reason = "Skipped"
         await scheduleNextAir(index: i)
         saveConfig()
     }
@@ -862,10 +917,8 @@ final class AppState: ObservableObject {
         shows[index].show_last = EpochDate(Date())
 
         if !natural {
-            // Manual stop: deactivate the show so it moves to Paused in the menu
-            // and won't reschedule automatically — user can reactivate from Paused section
             glog("[\(show.show_title)] STOP manual")
-            shows[index].show_active = false
+            shows[index].show_paused = true
             shows[index].show_fail_reason = "Manually stopped"
             saveConfig()
             return
@@ -879,7 +932,8 @@ final class AppState: ObservableObject {
         if !path.isEmpty && fileSize == 0 {
             shows[index].show_fail_count += 1
             shows[index].show_fail_reason = "Output file missing or empty"
-            glog("[\(show.show_title)] STOP file missing or empty — fail_count=\(shows[index].show_fail_count)")
+            glog("[\(show.show_title)] STOP file missing or empty — fail_count=\(shows[index].show_fail_count)", level: .error)
+            shows[index].show_paused = true
             notify("Recording Failed", body: show.show_title, subtitle: "File not written — check disk space and URL")
             discordShow("❌ Recording Failed", show: show, color: 0xE74C3C, enabled: config.Discord_on_failed,
                         extra: [("Reason", "Output file missing or empty — check disk space and stream URL", false)])
@@ -936,8 +990,8 @@ final class AppState: ObservableObject {
                 glog("[\(show.show_title)] NEXT \(shortTime(next)) ch=\(show.show_channel)")
             } else {
                 // No matching air day found (show_air_date is empty or invalid) — pause rather than loop forever
-                glog("[\(show.show_title)] PAUSED — no air days configured")
-                shows[index].show_active = false
+                glog("[\(show.show_title)] PAUSED — no air days configured", level: .warning)
+                shows[index].show_paused = true
                 shows[index].show_fail_reason = "No air days configured"
                 notify("Show Paused", body: show.show_title, subtitle: "No air days configured — edit show to fix")
                 discordShow("⏸ Show Paused", show: show, color: 0xE67E22, enabled: config.Discord_on_paused,
@@ -988,7 +1042,7 @@ final class AppState: ObservableObject {
                     }
                 }
             }
-            glog("[\(show.show_title)] no episode found — retry in \(config.Series_scan_retry_hours)h")
+            glog("[\(show.show_title)] no episode found — retry in \(config.Series_scan_retry_hours)h", level: .warning)
             shows[index].show_next = EpochDate(Date().addingTimeInterval(Double(config.Series_scan_retry_hours) * 3600))
         }
     }
@@ -1019,7 +1073,21 @@ final class AppState: ObservableObject {
     }
     func toggleActive(_ show: Show) {
         guard let i = shows.firstIndex(where: { $0.show_id == show.show_id }) else { return }
-        shows[i].show_active.toggle(); shows[i].show_fail_count = 0; shows[i].show_fail_reason = ""; saveConfig()
+        if shows[i].show_paused {
+            shows[i].show_paused = false
+        } else {
+            shows[i].show_active.toggle()
+        }
+        shows[i].show_fail_count = 0; shows[i].show_fail_reason = ""; saveConfig()
+    }
+
+    func pauseShow(_ show: Show) {
+        guard let i = shows.firstIndex(where: { $0.show_id == show.show_id }) else { return }
+        shows[i].show_paused = true; shows[i].show_fail_reason = "Manually paused"; saveConfig()
+    }
+    func resumeShow(_ show: Show) {
+        guard let i = shows.firstIndex(where: { $0.show_id == show.show_id }) else { return }
+        shows[i].show_paused = false; shows[i].show_fail_count = 0; shows[i].show_fail_reason = ""; saveConfig()
     }
     func deleteShow(_ show: Show) { recordingManager.stop(showId: show.show_id); shows.removeAll { $0.show_id == show.show_id }; saveConfig() }
 
@@ -1027,7 +1095,7 @@ final class AppState: ObservableObject {
 
     /// Re-run scheduleNextAir for every active SeriesID show using the current guide cache.
     func rescheduleAllSeries() async {
-        let indices = shows.indices.filter { shows[$0].show_active && shows[$0].show_use_seriesid }
+        let indices = shows.indices.filter { shows[$0].show_active && !shows[$0].show_paused && shows[$0].show_use_seriesid }
         for i in indices { await scheduleNextAir(index: i) }
         saveConfig()
     }
@@ -1046,10 +1114,12 @@ final class AppState: ObservableObject {
         saveConfig()
     }
 
-    /// Reactivate all paused shows and clear their fail counts.
+    /// Reactivate all paused/inactive shows and clear their fail counts.
     func reactivatePausedShows() {
-        for i in shows.indices where !shows[i].show_active {
-            shows[i].show_active = true; shows[i].show_fail_count = 0; shows[i].show_fail_reason = ""
+        for i in shows.indices {
+            if shows[i].show_paused { shows[i].show_paused = false }
+            else if !shows[i].show_active { shows[i].show_active = true }
+            shows[i].show_fail_count = 0; shows[i].show_fail_reason = ""
         }
         saveConfig()
     }
@@ -1072,6 +1142,11 @@ final class AppState: ObservableObject {
               let total = attrs[.systemSize] as? Double, let free = attrs[.systemFreeSize] as? Double,
               total > 0 else { return true }
         let minFreeBytes = config.Min_disk_free_gb * 1_073_741_824
+        let freeGB = free / 1_073_741_824
+        // Warn when within 2× the minimum threshold so there's time to act before recordings are skipped
+        if free < minFreeBytes * 2 {
+            glog("[\(show.show_title)] DISK LOW — \(String(format: "%.1f", freeGB)) GB free (threshold \(config.Min_disk_free_gb) GB)", level: .warning)
+        }
         return ((total - free) / total * 100) < maxDiskPct && free > minFreeBytes
     }
 
@@ -1390,7 +1465,7 @@ final class AppState: ObservableObject {
               let tunerCount = device.TunerCount,
               tunerCount > 0 else { return false }
         let overlapping = shows.filter { other in
-            guard other.show_active,
+            guard other.show_active, !other.show_paused,
                   other.show_id != show.show_id,
                   other.hdhr_record == show.hdhr_record,
                   let oNext = other.show_next.date,

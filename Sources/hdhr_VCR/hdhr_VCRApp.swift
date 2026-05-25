@@ -24,7 +24,7 @@ struct hdhr_VCRApp: App {
         setbuf(stdout, nil)
         setbuf(stderr, nil)
         let stamp = ISO8601DateFormatter().string(from: Date())
-        print("\n=== hdhrVCRplus launched \(stamp) ===")
+        glog("=== hdhrVCRplus launched \(stamp) ===")
 
         // Hide Dock icon — menu bar only.
         NSApplication.shared.setActivationPolicy(.accessory)
@@ -88,6 +88,8 @@ struct hdhr_VCRApp: App {
         .defaultSize(width: 1280, height: 820)
     }
 
+    // Silently open+close the menu so SwiftUI builds the view graph while the icon is still dimmed.
+    // The startup opacity signals "not ready" so any accidental click during pre-warm is harmless.
     @ViewBuilder
     private var statusLabel: some View {
         if appState.isRecording {
@@ -100,11 +102,11 @@ struct hdhr_VCRApp: App {
                 .foregroundStyle(.orange, .primary)
         } else if let icon = appIconMenuBar {
             Image(nsImage: icon)
-                .opacity(appState.isStartingUp ? 0.4 : 1.0)
+                .opacity(appState.isReady ? 1.0 : 0.3)
         } else {
             // Fallback: no bundle resources (e.g. direct swift build)
             Image(systemName: "tv")
-                .opacity(appState.isStartingUp ? 0.4 : 1.0)
+                .opacity(appState.isReady ? 1.0 : 0.3)
         }
     }
 }

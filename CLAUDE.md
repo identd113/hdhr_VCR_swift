@@ -138,8 +138,9 @@ func invalidateAll()
 ### AppState computed properties
 - `isRecording: Bool` — any show has `show_recording == true`
 - `recordingShows: [Show]` — recording and `show_end > now`
-- `activeShows: [Show]` — `show_active && !show_recording`, sorted by `show_next`
-- `inactiveShows: [Show]` — `!show_active`
+- `activeShows: [Show]` — `show_active && !show_recording && !show_paused`, sorted by `show_next`
+- `pausedShows: [Show]` — `show_active && show_paused`
+- `inactiveShows: [Show]` — `!show_active` (only completed singles; auto-removed on startup by `loadConfig`)
 - `nextShowMinutes: Double?` — minutes until the nearest upcoming active show; drives the orange clock.badge menu bar icon (≤ 30 min)
 
 ### AppState guide helpers
@@ -150,6 +151,8 @@ func invalidateAll()
 - `guideEntries(deviceId:channelNum:)` — delegates to `guideStore.entries()`
 - `nextGuideEpisode(for show:)` — delegates to `guideStore.nextEpisode()`; respects channel/device filters for SeriesID(Channel) vs SeriesID(All)
 - `upcomingGuideEpisodes(seriesID:after:limit:)` — returns up to `limit` upcoming `(channel, entry)` tuples for a SeriesID across all devices; used by the guide summary panel
+- `pauseShow(_ show:)` — sets `show_paused = true`, `show_fail_reason = "Manually paused"`, saves config
+- `resumeShow(_ show:)` — clears `show_paused`, resets `show_fail_count` and `show_fail_reason`, saves config
 - `watchInVLC(url:)` — opens a stream URL in `/Applications/VLC.app` via `NSWorkspace`; no-op if VLC not installed or `Watch_in_VLC` is false
 - `watchInApp(url:title:deviceId:transcode:)` — opens the VLC in-app player window; fetches `device.statusURL` (`http://hdhr-{DeviceID.lowercased()}.local/status.json`) first and shows an NSAlert if all tuners are occupied; sets `vlcCurrentURL` before opening so the channel picker syncs
 - `testDiscordEvent(_:webhookURL:)` — sends a test embed to the draft webhook URL using real show data (recording > active > any); always passes `enabled: true` regardless of toggle state
@@ -182,6 +185,21 @@ Toggle in Settings → Advanced → "Verbose curl logging". When enabled:
 - Adds `-v` flag to curl
 - Appends curl stderr to `~/Library/Logs/hdhr_VCR_curl.log`
 - Each recording block begins with a timestamp header and the full `caffeinate -i /usr/bin/curl ...` command
+
+---
+
+## Show State Flags
+
+Beyond the 4-state recording type model, two boolean flags control whether a show is active and schedulable:
+
+- **`show_active: Bool`** — `false` only for completed Singles (auto-removed by `loadConfig` on startup). Never set to `false` for series or error conditions.
+- **`show_paused: Bool`** — `true` for any recoverable pause: fail threshold hit, manual stop, skip, disk full, missing output, no air days, or user-initiated via the **Pause** menu button. Auto-resumes when the scheduled window expires or the next airing is imminent. Paused shows appear in the "Paused" menu section with a **Resume Now** button.
+
+Menu section routing:
+- `show_recording == true` → Recording Now
+- `show_active && !show_paused && !show_recording` → Scheduled / Next Up
+- `show_active && show_paused` → Paused
+- `!show_active` → auto-removed at startup (never shown)
 
 ---
 
@@ -289,9 +307,10 @@ Single `MenuBarExtra` with `.menu` style (native cascading NSMenu).
 
 **Structure:**
 - Header: tuner count + recording usage + status message
-- "Recording Now" section — shows type+channel, elapsed time, time remaining; "Stop Recording", optionally "Watch in VLC", and "Edit…" actions
-- "Scheduled" section — shows state icon + title; submenu shows type/channel, time until air, next SeriesID episode from guide cache, failure count
-- "Paused" section (inactive shows) — activate, edit, delete actions
+- "Recording Now" section — shows type+channel, elapsed time, time remaining; "Stop & Pause" (NSAlert confirm), "Skip This Airing", optionally "Watch in VLC", and "Edit…" actions
+- "Next Up" section — shows within 5 min of the nearest upcoming airing; each row preceded by `"10:30 PM · 60 min"` caption (static clock time, not countdown)
+- "Scheduled" section — remaining active shows; state icon + title label; submenu shows type/channel, start time, upcoming slots, failure count; actions: Edit…, Pause, Delete…
+- "Paused" section (`show_active && show_paused`) — shows pause reason + next attempt time; actions: Resume Now, Edit…, Delete…
 - Add Show (mode-dependent — see below)
 - Refresh Guide, Settings, Quit
 
@@ -299,16 +318,16 @@ Single `MenuBarExtra` with `.menu` style (native cascading NSMenu).
 - Single: 1️⃣ · DateTime: 📅 · SeriesID(Channel): 📺 · SeriesID(All): 🔁
 
 **Add Show modes** (toggled in Settings → General):
-- `.menu` — inline cascading menu: (Device →) Channel → Guide Entry → Single/Series submenu. Device level is skipped when there is only one tuner.
+- `.menu` — two-level cascading menu: (Device →) Channel. Clicking a channel opens the Add Show wizard at the guide step for that channel. Device level is skipped when there is only one tuner.
 - `.wizard` — opens `AddShowView` window (3-step wizard). Default.
 
 **Add Show menu hierarchy** (`.menu` mode):
 1. **Device** (omitted if only 1 tuner) — triggers `ensureGuideLoaded` on open
-2. **Channel** — lists all lineup entries with HD badge; each opens a guide submenu
-3. **Guide entry** — `entryMenu`: currently-airing entries prefixed with `▶` and a colored genre square; future entries plain with colored square. On-air entries include "Watch in VLC" when enabled.
-4. **Entry submenu**: poster image (AsyncImage, best-effort); title; episode number · episode title (if available); time range; synopsis; "Record once (Single)"; "Record as series…" → DateTime / SeriesID(Channel) / SeriesID(All)
+2. **Channel** — flat `Button` items (not submenus); shows channel logo (16×16 from `channelIconImages`) + number + name + HD badge. Only channels with guide data are shown. Clicking sets `state.pendingAddChannel = (device, channel)` and opens `"add-show"`. The wizard opens at the guide step with device+channel pre-selected.
 
-**On-air filter**: entries shown in the "currently airing" section require `startDate <= now && endDate > now` — shows that have already ended are excluded even if `startDate` is in the past.
+**Why no guide entry submenus in `.menu` mode**: SwiftUI `Menu {}` evaluates all nested content eagerly when the parent opens. Building entry submenus for ~100 channels (each with multiple Text/Button views) on every menu click caused noticeable lag. The AppKit solution (`NSMenuDelegate` + lazy `menuNeedsUpdate`) was rejected as too complex. The two-level cascade keeps the menu snappy; the wizard handles guide browsing in a window where SwiftUI is designed for it.
+
+**Channel logos**: pre-fetched into `AppState.channelIconImages: [String: NSImage]` during guide load. `channelImageURLs: [String: String]` maps `"deviceId:channelNum"` → URL. Both dicts are rebuilt in `rebuildMenuEntries()` — O(1) synchronous access in the menu builder, no async calls at click time.
 
 **VLC Watch Now**: when `config.Watch_in_VLC` is true and `/Applications/VLC.app` exists, "Watch in VLC" appears in recording submenus and on-air guide entry submenus. `AppState.watchInVLC(url:)` opens the stream URL with VLC via `NSWorkspace.shared.open(_:withApplicationAt:)`.
 
@@ -403,6 +422,29 @@ func guideEntryColor(for entry: GuideEntry, onAir: Bool) -> Color
 - `Discord_on_upnext: Bool = false` — Up Next reminder embed
 - `Discord_on_soon: Bool = false` — Recording Soon reminder embed
 - `Discord_on_show_added: Bool = false` — Show Added embed
+
+---
+
+## Logging
+
+All log output goes through a single global free function in `Models.swift`:
+
+```swift
+func glog(_ msg: String, level: LogLevel = .info)
+```
+
+`LogLevel` enum: `.info` ("INFO"), `.warning` ("WARN"), `.error` ("ERROR").
+
+Log file: `~/Library/Logs/hdhr_VCR_guide.log`  
+Format: `[2026-05-25T04:01:24Z] [INFO] message`
+
+The file descriptor is opened with `O_APPEND` on every call — each `write()` is atomic across actors and threads with no shared mutable state. `Date().ISO8601Format()` is used for timestamps (value-type, thread-safe).
+
+Use `glog("message")` for info, `glog("message", level: .warning)` for warnings, `glog("message", level: .error)` for errors. All files (`AppState`, `GuideStore`, `RecordingManager`, `HDHRManager`, `ConfigManager`, `DiscordNotifier`, `hdhr_VCRApp`) use this function — no `print()` calls.
+
+Anomaly detection log lines are emitted from the idle loop for conditions like:
+- Show whose `show_next` is in the past but `show_end` is still future (missed start)
+- Active show assigned to an unknown device ID
 
 ---
 

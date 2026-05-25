@@ -112,6 +112,8 @@ struct AddShowView: View {
             show.show_transcode = state.config.Default_transcode
             if let pending = state.pendingAddEntry {
                 applyPendingEntry(pending)
+            } else if let pending = state.pendingAddChannel {
+                applyPendingChannel(pending)
             } else {
                 if selectedDevice == nil { selectedDevice = state.devices.first }
                 step = .guide
@@ -315,6 +317,10 @@ struct AddShowView: View {
         .onChange(of: state.pendingAddEntryGeneration) { _, _ in
             // Fired when the user taps "Record…" from the menu while the window is already open.
             if let pending = state.pendingAddEntry { applyPendingEntry(pending) }
+        }
+        .onChange(of: state.pendingAddChannelGeneration) { _, _ in
+            // Fired when the user taps a channel in the menu cascade while the window is already open.
+            if let pending = state.pendingAddChannel { applyPendingChannel(pending) }
         }
     }
 
@@ -720,6 +726,14 @@ struct AddShowView: View {
             selectedChannel = lineupList.first(where: { $0.GuideNumber == ch.GuideNumber })
             return
         }
+    }
+
+    private func applyPendingChannel(_ pending: (device: HDHRDevice, channel: LineupEntry)) {
+        selectedDevice  = pending.device
+        selectedChannel = pending.channel
+        selectedEntry   = nil
+        step = .guide
+        state.pendingAddChannel = nil
     }
 
     private func applyPendingEntry(_ pending: (device: HDHRDevice, channel: LineupEntry, entry: GuideEntry)) {

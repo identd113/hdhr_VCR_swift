@@ -30,6 +30,16 @@ actor ChannelIconCache {
         }.count
     }
 
+    /// Single actor hop to read multiple entries from the mem cache — used by prefetchChannelIcons
+    /// to avoid N individual async calls when all icons are already loaded.
+    func allCachedImages(for urlStrings: [String]) -> [String: NSImage] {
+        var result: [String: NSImage] = [:]
+        for url in urlStrings {
+            if let img = mem[url] { result[url] = img }
+        }
+        return result
+    }
+
     func image(for urlString: String) async -> NSImage? {
         if let hit = mem[urlString] { return hit }
 
