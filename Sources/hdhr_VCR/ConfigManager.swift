@@ -27,7 +27,7 @@ final class ConfigManager {
         if let bakData = try? Data(contentsOf: oldBak) {
             try? bakData.write(to: configURL.appendingPathExtension("bak"), options: .atomic)
         }
-        print("[ConfigManager] migrated config from ~/Documents to Application Support")
+        glog("[ConfigManager] migrated config from ~/Documents to Application Support")
     }
 
     func load() -> ConfigFile? {
@@ -41,11 +41,11 @@ final class ConfigManager {
         let backup = configURL.appendingPathExtension("bak")
         if let data = try? Data(contentsOf: backup),
            let file = try? decoder.decode(ConfigFile.self, from: data) {
-            print("[ConfigManager] Main config missing/corrupt — restored from backup")
+            glog("[ConfigManager] Main config missing/corrupt — restored from backup", level: .warning)
             try? data.write(to: configURL, options: .atomic)
             return file
         }
-        print("[ConfigManager] No config or backup — fresh install")
+        glog("[ConfigManager] No config or backup — fresh install")
         return nil
     }
 
