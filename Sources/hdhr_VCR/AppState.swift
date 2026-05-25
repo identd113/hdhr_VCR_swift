@@ -253,6 +253,7 @@ final class AppState: ObservableObject {
                 glog("[Discovery] \(devices.count) tuner(s): \(devices.map { "\($0.DeviceID) \($0.LocalIP)" }.joined(separator: ", "))")
                 return
             } catch {
+                glog("[Discovery] attempt \(attempt)/\(attempts) failed: \(error)") // surface failures instead of silently retrying
                 if attempt < attempts {
                     try? await Task.sleep(nanoseconds: 1_000_000_000)
                 }
@@ -870,50 +871,47 @@ final class AppState: ObservableObject {
             return
         }
 
-        if natural {
-            // Verify the output file was actually created and is non-empty
-            let path = show.show_recording_path
-            let fileAttrs = path.isEmpty ? nil : (try? FileManager.default.attributesOfItem(atPath: path))
-            let fileSize  = fileAttrs?[.size] as? Int ?? 0
+        // Verify the output file was actually created and is non-empty
+        let path = show.show_recording_path
+        let fileAttrs = path.isEmpty ? nil : (try? FileManager.default.attributesOfItem(atPath: path))
+        let fileSize  = fileAttrs?[.size] as? Int ?? 0
 
-            if !path.isEmpty && fileSize == 0 {
-                shows[index].show_fail_count += 1
-                shows[index].show_fail_reason = "Output file missing or empty"
-                glog("[\(show.show_title)] STOP file missing or empty — fail_count=\(shows[index].show_fail_count)")
-                notify("Recording Failed", body: show.show_title, subtitle: "File not written — check disk space and URL")
-                discordShow("❌ Recording Failed", show: show, color: 0xE74C3C, enabled: config.Discord_on_failed,
-                            extra: [("Reason", "Output file missing or empty — check disk space and stream URL", false)])
-                await scheduleNextAir(index: index)
-                return
-            }
-            if !path.isEmpty {
-                glog("[\(show.show_title)] STOP natural size=\(fileSize / 1024)KB → \(path)")
-            }
-
-            // File info fields appended to every Recording Complete embed
-            var fileFields: [(name: String, value: String, inline: Bool)] = []
-            if !path.isEmpty && fileSize > 0 {
-                let ext = URL(fileURLWithPath: path).pathExtension.uppercased()
-                if !ext.isEmpty { fileFields.append(("Format", ext, true)) }
-                fileFields.append(("File Size", Self.formatFileSize(fileSize), true))
-            }
-
+        if !path.isEmpty && fileSize == 0 {
+            shows[index].show_fail_count += 1
+            shows[index].show_fail_reason = "Output file missing or empty"
+            glog("[\(show.show_title)] STOP file missing or empty — fail_count=\(shows[index].show_fail_count)")
+            notify("Recording Failed", body: show.show_title, subtitle: "File not written — check disk space and URL")
+            discordShow("❌ Recording Failed", show: show, color: 0xE74C3C, enabled: config.Discord_on_failed,
+                        extra: [("Reason", "Output file missing or empty — check disk space and stream URL", false)])
             await scheduleNextAir(index: index)
-            let completedShow = shows[index]
-            if !completedShow.show_active {
-                notify("Recording Complete", body: show.show_title, subtitle: "Single episode recorded — show deactivated")
-                discordShow("✅ Recording Complete", show: show, color: 0x3498DB, enabled: config.Discord_on_complete,
-                            extra: fileFields + [("Note", "Single episode — show deactivated", false)])
-            } else if let next = completedShow.show_next.date {
-                let f = DateFormatter(); f.dateStyle = .short; f.timeStyle = .short
-                notify("Recording Complete", body: show.show_title, subtitle: "Next: \(f.string(from: next))")
-                discordShow("✅ Recording Complete", show: show, color: 0x3498DB, enabled: config.Discord_on_complete,
-                            extra: fileFields + [("Next Airing", f.string(from: next), false)])
-            } else {
-                notify("Recording Complete", body: show.show_title, subtitle: "")
-                discordShow("✅ Recording Complete", show: show, color: 0x3498DB, enabled: config.Discord_on_complete,
-                            extra: fileFields)
-            }
+            return
+        }
+        if !path.isEmpty {
+            glog("[\(show.show_title)] STOP natural size=\(fileSize / 1024)KB → \(path)")
+        }
+
+        // File info fields appended to every Recording Complete embed
+        var fileFields: [(name: String, value: String, inline: Bool)] = []
+        if !path.isEmpty && fileSize > 0 {
+            let ext = URL(fileURLWithPath: path).pathExtension.uppercased()
+            if !ext.isEmpty { fileFields.append(("Format", ext, true)) }
+            fileFields.append(("File Size", Self.formatFileSize(fileSize), true))
+        }
+
+        await scheduleNextAir(index: index)
+        let completedShow = shows[index]
+        if !completedShow.show_active {
+            notify("Recording Complete", body: show.show_title, subtitle: "Single episode recorded — show deactivated")
+            discordShow("✅ Recording Complete", show: show, color: 0x3498DB, enabled: config.Discord_on_complete,
+                        extra: fileFields + [("Note", "Single episode — show deactivated", false)])
+        } else if let next = completedShow.show_next.date {
+            notify("Recording Complete", body: show.show_title, subtitle: "Next: \(Self.completionDateFormatter.string(from: next))")
+            discordShow("✅ Recording Complete", show: show, color: 0x3498DB, enabled: config.Discord_on_complete,
+                        extra: fileFields + [("Next Airing", Self.completionDateFormatter.string(from: next), false)])
+        } else {
+            notify("Recording Complete", body: show.show_title, subtitle: "")
+            discordShow("✅ Recording Complete", show: show, color: 0x3498DB, enabled: config.Discord_on_complete,
+                        extra: fileFields)
         }
     }
 
@@ -1263,6 +1261,10 @@ final class AppState: ObservableObject {
         let f = DateFormatter(); f.timeStyle = .short; return f
     }()
 
+    private static let completionDateFormatter: DateFormatter = {
+        let f = DateFormatter(); f.dateStyle = .short; f.timeStyle = .short; return f
+    }()
+
     func shortTime(_ date: Date?) -> String {
         guard let d = date else { return "?" }
         return Self.shortTimeFormatter.string(from: d)
@@ -1307,8 +1309,8 @@ final class AppState: ObservableObject {
         guard config.Watch_in_VLC,
               let streamURL = URL(string: raw) else { return }
         let vlcPath = "/Applications/VLC.app"
-        guard FileManager.default.fileExists(atPath: vlcPath),
-              let vlcApp = URL(string: "file://\(vlcPath)") else { return }
+        guard FileManager.default.fileExists(atPath: vlcPath) else { return }
+        let vlcApp = URL(fileURLWithPath: vlcPath) // URL(fileURLWithPath:) handles spaces/special chars correctly
         let device = devices.first { $0.DeviceID == (deviceId ?? "") }
         Task {
             if let device,
