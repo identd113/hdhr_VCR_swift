@@ -46,10 +46,10 @@ final class RecordingManager {
         let showIdCopy = showId
         Task.detached(priority: .utility) { [weak self] in
             if let curlPid = self?.findCurlChild(of: pid) {
-                await MainActor.run { self?.curlPids[showIdCopy] = curlPid }
+                await MainActor.run { [weak self] in self?.curlPids[showIdCopy] = curlPid }
             }
         }
-        print("[Rec] Started \(showId) pid=\(pid) verbose=\(verbose): \(streamURL) → \(outputPath)")
+        glog("[Rec] Started \(showId) pid=\(pid) verbose=\(verbose): \(streamURL) → \(outputPath)")
     }
 
     // MARK: - Stop
@@ -65,7 +65,7 @@ final class RecordingManager {
             kill(-pid, SIGTERM)
             pids.removeValue(forKey: showId)
         }
-        print("[Rec] Stopped \(showId)")
+        glog("[Rec] Stopped \(showId)")
     }
 
     // MARK: - Reattach (startup resume)
@@ -73,7 +73,13 @@ final class RecordingManager {
     /// Register an already-running caffeinate PID without launching a new process.
     func reattach(showId: String, pid: Int32) {
         pids[showId] = pid
-        print("[Rec] Reattached \(showId) pid=\(pid)")
+        let showIdCopy = showId
+        Task.detached(priority: .utility) { [weak self] in
+            if let curlPid = self?.findCurlChild(of: pid) {
+                await MainActor.run { [weak self] in self?.curlPids[showIdCopy] = curlPid }
+            }
+        }
+        glog("[Rec] Reattached \(showId) pid=\(pid)")
     }
 
     // MARK: - Status
@@ -138,7 +144,7 @@ final class RecordingManager {
     // MARK: - Curl child discovery
 
     /// Uses pgrep to find curl's PID as a child of caffeinate.
-    private func findCurlChild(of parentPid: Int32) -> Int32? {
+    nonisolated private func findCurlChild(of parentPid: Int32) -> Int32? {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
         p.arguments = ["-P", "\(parentPid)"]
