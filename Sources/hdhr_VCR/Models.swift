@@ -1,5 +1,26 @@
 import Foundation
 
+// MARK: - LogLevel
+
+enum LogLevel: String {
+    case info    = "INFO"
+    case warning = "WARN"
+    case error   = "ERROR"
+}
+
+/// Universal log function. Safe to call from any actor or thread —
+/// O_APPEND makes each open/write/close atomic; Date().ISO8601Format() has no shared state.
+func glog(_ msg: String, level: LogLevel = .info) {
+    let ts = Date().ISO8601Format()
+    let line = "[\(ts)] [\(level.rawValue)] \(msg)\n"
+    guard let data = line.data(using: .utf8) else { return }
+    let path = GuideStore.guideLogPath
+    let fd = open(path, O_WRONLY | O_CREAT | O_APPEND, 0o644)
+    guard fd >= 0 else { return }
+    defer { close(fd) }
+    data.withUnsafeBytes { _ = write(fd, $0.baseAddress!, data.count) }
+}
+
 // MARK: - EpochDate
 // Decodes from string epoch ("1234567890"), numeric epoch, or "missing value" string.
 // Always encodes as string epoch for JSON compat with the AppleScript app.
@@ -50,6 +71,7 @@ struct Show: Identifiable, Equatable {
     var show_next: EpochDate
     var show_end: EpochDate
     var show_active: Bool
+    var show_paused: Bool           // auto-paused (failures, manual stop, skip); recovers automatically
     var hdhr_record: String         // device ID, e.g. "105404BE"
     var show_url: String            // stream URL from lineup
     var show_seriesid: String
@@ -100,7 +122,7 @@ struct Show: Identifiable, Equatable {
             show_title: "", show_is_series: false, show_use_seriesid: false,
             show_use_seriesid_all: false, show_air_date: [], show_channel: channel,
             show_time: 20.0, show_length: 60, show_next: EpochDate(), show_end: EpochDate(),
-            show_active: true, hdhr_record: device, show_url: "", show_seriesid: "",
+            show_active: true, show_paused: false, hdhr_record: device, show_url: "", show_seriesid: "",
             show_fail_count: 0, show_fail_reason: "", show_logo_url: "", show_transcode: "none",
             show_tags: "", show_recording: false, show_last: EpochDate(),
             notify_upnext_time: EpochDate(), notify_recording_time: EpochDate(),
@@ -123,7 +145,7 @@ extension Show: Codable {
     enum CodingKeys: String, CodingKey {
         case show_id, show_title, show_is_series, show_use_seriesid, show_use_seriesid_all
         case show_air_date, show_channel, show_time, show_length
-        case show_next, show_end, show_active, hdhr_record, show_url
+        case show_next, show_end, show_active, show_paused, hdhr_record, show_url
         case show_seriesid, show_fail_count, show_fail_reason, show_logo_url
         case show_transcode, show_tags, show_recording, show_last
         case notify_upnext_time, notify_recording_time
@@ -146,6 +168,7 @@ extension Show: Codable {
         show_next          = (try? c.decode(EpochDate.self, forKey: .show_next)) ?? EpochDate()
         show_end           = (try? c.decode(EpochDate.self, forKey: .show_end)) ?? EpochDate()
         show_active        = (try? c.decode(Bool.self,   forKey: .show_active)) ?? true
+        show_paused        = (try? c.decode(Bool.self,   forKey: .show_paused)) ?? false
         hdhr_record        = (try? c.decode(String.self, forKey: .hdhr_record)) ?? ""
         show_url           = (try? c.decode(String.self, forKey: .show_url)) ?? ""
         show_seriesid      = (try? c.decode(String.self, forKey: .show_seriesid)) ?? ""
