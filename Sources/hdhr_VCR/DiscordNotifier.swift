@@ -20,7 +20,7 @@ func sendDiscordEmbed(to webhookURL: String, embed: [String: Any]) {
         guard let (_, resp) = try? await URLSession.shared.data(for: req),
               let http = resp as? HTTPURLResponse else { return }
         if http.statusCode < 200 || http.statusCode >= 300 {
-            print("[Discord] HTTP \(http.statusCode) — check webhook URL or rate limit")
+            glog("[Discord] HTTP \(http.statusCode) — check webhook URL or rate limit", level: .error)
         }
     }
 }
