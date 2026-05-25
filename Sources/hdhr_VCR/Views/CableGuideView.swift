@@ -72,6 +72,77 @@ private struct VerticalScrollTracker: NSViewRepresentable {
     }
 }
 
+// ── Scroll forwarder: mouse wheel over channel column scrolls the guide ───────
+// NSEvent monitor intercepts scrollWheel events while the mouse hovers over the
+// channel column, finds the sibling NSScrollView, and forwards them there.
+private final class ChannelScrollForwarderNSView: NSView {
+    private var trackingArea: NSTrackingArea?
+    private var isHovering = false
+    private var monitor: Any?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window != nil { setupMonitor() } else { teardownMonitor() }
+    }
+
+    private func setupMonitor() {
+        guard monitor == nil else { return }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+            guard let self, self.isHovering, let sv = self.findScrollView() else { return event }
+            // Preserve horizontal position so the time axis never shifts
+            let savedX = sv.contentView.bounds.origin.x
+            sv.scrollWheel(with: event)
+            var pt = sv.contentView.bounds.origin
+            if pt.x != savedX {
+                pt.x = savedX
+                sv.contentView.scroll(to: pt)
+                sv.reflectScrolledClipView(sv.contentView)
+            }
+            return nil
+        }
+    }
+
+    private func teardownMonitor() {
+        if let m = monitor { NSEvent.removeMonitor(m); monitor = nil }
+    }
+
+    deinit { teardownMonitor() }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let ta = trackingArea { removeTrackingArea(ta) }
+        let ta = NSTrackingArea(rect: bounds,
+            options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+            owner: self, userInfo: nil)
+        addTrackingArea(ta); trackingArea = ta
+    }
+
+    override func mouseEntered(with event: NSEvent) { isHovering = true }
+    override func mouseExited(with event: NSEvent)  { isHovering = false }
+
+    private func findScrollView() -> NSScrollView? {
+        var current: NSView = self
+        while let parent = current.superview {
+            for sibling in parent.subviews where sibling !== current {
+                if let sv = firstScrollView(in: sibling) { return sv }
+            }
+            current = parent
+        }
+        return nil
+    }
+
+    private func firstScrollView(in view: NSView, depth: Int = 0) -> NSScrollView? {
+        if let sv = view as? NSScrollView { return sv }
+        guard depth < 8 else { return nil }
+        return view.subviews.compactMap { firstScrollView(in: $0, depth: depth + 1) }.first
+    }
+}
+
+private struct ChannelScrollForwarder: NSViewRepresentable {
+    func makeNSView(context: Context) -> ChannelScrollForwarderNSView { ChannelScrollForwarderNSView() }
+    func updateNSView(_ v: ChannelScrollForwarderNSView, context: Context) {}
+}
+
 // ── Cable-style TV guide grid ─────────────────────────────────────────────────
 // Rows = channels, columns = 30-min time slots, cells span proportional to show duration.
 // Channel column floats outside the ScrollView (truly pinned — SwiftUI culls offset-faked columns).
@@ -79,6 +150,7 @@ private struct VerticalScrollTracker: NSViewRepresentable {
 // Vertical sync: NSView.boundsDidChangeNotification on the NSScrollView clip view — the only
 // mechanism that fires on every scroll frame on macOS (SwiftUI preference/onScrollGeometryChange
 // fire only during view re-evaluation, not on AppKit layer-level scroll movements).
+
 
 struct CableGuideView: View {
     let allChannels:      [GuideChannel]
@@ -102,9 +174,10 @@ struct CableGuideView: View {
     var onToggleFavorite: ((LineupEntry) -> Void)? = nil  // called when star is tapped
 
     // ── Layout constants ───────────────────────────────────────────────────────
-    private let channelColW: CGFloat = 116
-    private let rowH:        CGFloat = 52
-    private let headerH:     CGFloat = 26
+    private let channelColW:  CGFloat = 116
+    private let rowH:         CGFloat = 52
+    private let headerH:      CGFloat = 26
+    private let sectionSepH:  CGFloat = 20   // height of favorites/all-channels divider rows (must match in both column and grid)
     // pxPerMin scales up on wider windows so the grid fills available space
     @State private var availableGridWidth: CGFloat = 0
     private var pxPerMin: CGFloat {
@@ -115,10 +188,13 @@ struct CableGuideView: View {
     // ── State ──────────────────────────────────────────────────────────────────
     @State private var channelScrollOffset: CGFloat = 0
 
-    // Cached hot-path values — rebuilt once on appear/change, not on every render
-    @State private var lineupByNumber: [String: LineupEntry] = [:]
-    @State private var displayStart:   Date   = Date()
-    @State private var timeSlots:      [Date] = []
+    // lineupByNumber is computed directly from the lineup prop so Favorite changes
+    // are visible immediately on the same render frame — no onChange delay.
+    private var lineupByNumber: [String: LineupEntry] {
+        Dictionary(uniqueKeysWithValues: lineup.map { ($0.GuideNumber, $0) })
+    }
+    @State private var displayStart: Date   = Date()
+    @State private var timeSlots:    [Date] = []
 
     // ── Derived layout values (O(1) math from cached state) ───────────────────
     private var displayEnd:   Date   { displayStart.addingTimeInterval(Double(guideHours) * 3600) }
@@ -142,7 +218,6 @@ struct CableGuideView: View {
             }
         })
         .onAppear { rebuildCaches() }
-        .onChange(of: lineup)             { _ in rebuildCaches() }
         .onChange(of: guideHours)         { _ in rebuildCaches() }
         .onChange(of: availableGridWidth) { _ in rebuildCaches() }
     }
@@ -150,7 +225,6 @@ struct CableGuideView: View {
     // ── Cache rebuild ──────────────────────────────────────────────────────────
 
     private func rebuildCaches() {
-        lineupByNumber = Dictionary(uniqueKeysWithValues: lineup.map { ($0.GuideNumber, $0) })
         let secs = Int(Date().timeIntervalSince1970)
         displayStart = Date(timeIntervalSince1970: Double((secs / 1800) * 1800) - 1800)
         let end = displayStart.addingTimeInterval(Double(guideHours) * 3600)
@@ -174,7 +248,17 @@ struct CableGuideView: View {
             // Labels track vertical scroll via channelScrollOffset
             ZStack(alignment: .top) {
                 VStack(spacing: 0) {
-                    ForEach(allChannels) { ch in channelLabelCell(ch) }
+                    let favCount = allChannels.filter { lineupByNumber[$0.GuideNumber]?.isFavorite == true }.count
+                    let favs   = Array(allChannels.prefix(favCount))
+                    let others = Array(allChannels.dropFirst(favCount))
+                    if !favs.isEmpty {
+                        channelSectionLabel("★  FAVORITES", accent: true)
+                        ForEach(favs) { ch in channelLabelCell(ch) }
+                    }
+                    if !favs.isEmpty && !others.isEmpty {
+                        channelSectionLabel("ALL CHANNELS", accent: false)
+                    }
+                    ForEach(others) { ch in channelLabelCell(ch) }
                 }
                 .offset(y: -channelScrollOffset)
             }
@@ -184,6 +268,7 @@ struct CableGuideView: View {
         .frame(width: channelColW)
         .clipped()
         .background(Color(NSColor.windowBackgroundColor))
+        .background(ChannelScrollForwarder())
     }
 
     private func channelLabelCell(_ ch: GuideChannel) -> some View {
@@ -209,13 +294,11 @@ struct CableGuideView: View {
             Spacer(minLength: 0)
 
             if let lu {
-                Button {
-                    onToggleFavorite?(lu)
-                } label: {
+                Button { onToggleFavorite?(lu) } label: {
                     Text(lu.isFavorite ? "★" : "☆")
-                        .font(.system(size: 13))
+                        .font(.system(size: 16))
                         .foregroundColor(lu.isFavorite ? .yellow : Color(NSColor.tertiaryLabelColor))
-                        .frame(width: 16)
+                        .frame(width: 22, height: 22)
                 }
                 .buttonStyle(.plain)
                 .help(lu.isFavorite ? "Remove from favorites" : "Add to favorites")
@@ -229,6 +312,17 @@ struct CableGuideView: View {
     }
 
     // ── Time header — lives inside the ScrollView as a LazyVStack section header ──
+
+    private func channelSectionLabel(_ title: String, accent: Bool) -> some View {
+        Text(title)
+            .font(.system(size: 9, weight: .bold))
+            .foregroundColor(accent ? Color.yellow.opacity(0.9) : Color(NSColor.secondaryLabelColor))
+            .frame(width: channelColW, height: sectionSepH, alignment: .leading)
+            .padding(.leading, 6)
+            .background(Color(NSColor.controlBackgroundColor))
+            .overlay(Rectangle().frame(height: 0.5)
+                .foregroundColor(Color(NSColor.separatorColor)), alignment: .bottom)
+    }
 
     private func scrollingTimeHeader(nowX: CGFloat) -> some View {
         ZStack(alignment: .leading) {
@@ -268,7 +362,49 @@ struct CableGuideView: View {
             ScrollView([.horizontal, .vertical]) {
                 LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
                     Section {
-                        ForEach(allChannels) { ch in
+                        let favCount = allChannels.filter { lineupByNumber[$0.GuideNumber]?.isFavorite == true }.count
+                        let favs   = Array(allChannels.prefix(favCount))
+                        let others = Array(allChannels.dropFirst(favCount))
+                        if !favs.isEmpty {
+                            // Spacer matching the "★ FAVORITES" channel column label
+                            Color(NSColor.controlBackgroundColor).frame(height: sectionSepH)
+                        }
+                        ForEach(favs) { ch in
+                            let entries = visibleEntries(ch)
+                            ShowBlocksRow(
+                                channel:            ch,
+                                entries:            entries,
+                                lineupEntry:        lineupByNumber[ch.GuideNumber],
+                                displayStart:       displayStart,
+                                totalW:             totalW,
+                                rowH:               rowH,
+                                pxPerMin:           pxPerMin,
+                                timeSlots:          timeSlots,
+                                selectedEntry:      selectedEntry,
+                                selectedChannel:    selectedChannel,
+                                managedSeriesIDs:   managedSeriesIDs,
+                                managedTitles:      managedTitles,
+                                recordingSeriesIDs: recordingSeriesIDs,
+                                recordingTitles:    recordingTitles,
+                                nextUpSeriesIDs:    nextUpSeriesIDs,
+                                nextUpTitles:       nextUpTitles,
+                                bonusSeriesIDs:     bonusSeriesIDs,
+                                bonusTitles:        bonusTitles,
+                                bonusMinutes:       bonusMinutes,
+                                genreFilter:        genreFilter,
+                                onSelect: { entry, lu in
+                                    selectedEntry   = entry
+                                    selectedChannel = lu
+                                },
+                                onConfirm: onConfirm
+                            )
+                            .equatable()
+                        }
+                        if !favs.isEmpty && !others.isEmpty {
+                            // Spacer matching the "ALL CHANNELS" channel column divider
+                            Color(NSColor.controlBackgroundColor).frame(height: sectionSepH)
+                        }
+                        ForEach(others) { ch in
                             let entries = visibleEntries(ch)
                             ShowBlocksRow(
                                 channel:            ch,

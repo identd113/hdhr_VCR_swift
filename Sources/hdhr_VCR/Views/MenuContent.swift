@@ -202,9 +202,14 @@ struct MenuContent: View {
                 if a.isFavorite != b.isFavorite { return a.isFavorite }
                 return a.GuideNumber.channelSortKey < b.GuideNumber.channelSortKey
             }
-            ForEach(sorted, id: \.GuideNumber) { ch in
-                channelMenu(device: device, channel: ch)
+            let favs   = sorted.filter(\.isFavorite)
+            let others = sorted.filter { !$0.isFavorite }
+            if !favs.isEmpty {
+                Text("★  FAVORITES").foregroundStyle(.secondary).italic()
+                ForEach(favs, id: \.GuideNumber) { ch in channelMenu(device: device, channel: ch) }
             }
+            if !favs.isEmpty && !others.isEmpty { Divider() }
+            ForEach(others, id: \.GuideNumber) { ch in channelMenu(device: device, channel: ch) }
         }
     }
 

@@ -91,7 +91,7 @@ struct FloatingGuideView: View {
                             onConfirm:          {},  // no-op — browse only
                             onToggleFavorite: { lu in
                                 guard let device = selectedDevice else { return }
-                                Task { await state.toggleFavorite(device: device, channel: lu) }
+                                state.toggleFavorite(device: device, channel: lu)
                             }
                         )
                     }
@@ -112,6 +112,10 @@ struct FloatingGuideView: View {
             state.guideStore.invalidate(deviceId: id)
             allChannels = []
             refreshToken = UUID()
+        }
+        .onChange(of: state.lineups[selectedDevice?.DeviceID ?? ""] ?? []) { newLineup in
+            guard let id = selectedDevice?.DeviceID, !allChannels.isEmpty else { return }
+            allChannels = sortedGuideChannels(allChannels, deviceId: id)
         }
         .onChange(of: allChannels.count) { count in
             guard count > 0, selectedEntry == nil else { return }

@@ -271,6 +271,7 @@ final class HDHRManager {
         req.httpMethod = "POST"
         let (_, resp) = try await dataSession.data(for: req)
         if let http = resp as? HTTPURLResponse, http.statusCode >= 400 {
+            glog("[Favorite] device returned HTTP \(http.statusCode) for \(url)", level: .error)
             throw URLError(.badServerResponse)
         }
     }

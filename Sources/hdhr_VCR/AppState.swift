@@ -45,6 +45,10 @@ final class AppState: ObservableObject {
     @Published var vlcCurrentURL: String = ""               // raw URL (no transcode query) playing in VLCPlayerView
     @Published var channelIconImages: [String: NSImage] = [:]  // ImageURL → NSImage; populated during prefetch for sync menu use
 
+    // Tracks optimistically-toggled favorite state: [deviceId: [GuideNumber: expectedBool]]
+    // Cleared per-device after the next lineup reload; mismatches are logged as warnings.
+    private var pendingFavoriteToggles: [String: [String: Bool]] = [:]
+
     // True once at least one tuner is found with a populated lineup and guide data.
     // Drives the status icon opacity — stays dimmed until the app is genuinely usable.
     var isReady: Bool {
@@ -307,7 +311,10 @@ final class AppState: ObservableObject {
                 }
             }
             for await (id, lu) in group {
-                if let lu { lineups[id] = lu }
+                if let lu {
+                    reconcileFavorites(deviceId: id, freshLineup: lu)
+                    lineups[id] = lu
+                }
             }
         }
         // After lineups are current, fix any stale show URLs caused by device IP changes
@@ -1097,18 +1104,56 @@ final class AppState: ObservableObject {
         lineups[show.hdhr_record]?.first { $0.GuideNumber == show.show_channel }?.isFavorite ?? false
     }
 
-    /// Toggle favorite on the device, then reload lineup so the UI reflects the new state.
-    func toggleFavorite(device: HDHRDevice, channel: LineupEntry) async {
-        let newFav = !channel.isFavorite
-        do {
-            try await hdhrManager.setFavorite(device: device, channel: channel, favorite: newFav)
-        } catch {
-            glog("[Favorite] toggle failed for ch \(channel.GuideNumber): \(error)", level: .error)
-            return
+    /// Optimistically toggle favorite: mutates lineups in place immediately (instant UI update),
+    /// fires the POST in the background, and reverts on failure. Next natural lineup reload
+    /// reconciles against the device's actual state via reconcileFavorites.
+    /// Synchronous entry point — called directly from Button action on MainActor.
+    /// Mutates lineups immediately (SwiftUI sees the change this render frame),
+    /// then fires the POST in a background Task. Reverts only if POST fails.
+    func toggleFavorite(device: HDHRDevice, channel: LineupEntry) {
+        let newFav   = !channel.isFavorite
+        let deviceId = device.DeviceID
+        let chNum    = channel.GuideNumber
+        let arrow    = "\(channel.isFavorite ? "★" : "☆") → \(newFav ? "★" : "☆")"
+
+        // Immediate lineup mutation — fires objectWillChange right now, no Task overhead
+        if var entries = lineups[deviceId],
+           let idx = entries.firstIndex(where: { $0.GuideNumber == chNum }) {
+            entries[idx].Favorite = newFav ? 1 : 0
+            lineups[deviceId] = entries
+            glog("[Favorite] ch \(chNum) \(arrow) — UI updated, POST firing")
+        } else {
+            glog("[Favorite] ch \(chNum) \(arrow) — lineup missing for \(deviceId)", level: .warning)
         }
-        if let fresh = try? await hdhrManager.fetchLineup(for: device) {
-            lineups[device.DeviceID] = fresh
+        pendingFavoriteToggles[deviceId, default: [:]][chNum] = newFav
+
+        Task {
+            do {
+                try await hdhrManager.setFavorite(device: device, channel: channel, favorite: newFav)
+                glog("[Favorite] ch \(chNum) \(arrow) — POST 200 OK")
+            } catch {
+                glog("[Favorite] ch \(chNum) \(arrow) — POST failed (\(error)), reverting", level: .error)
+                if var entries = lineups[deviceId],
+                   let idx = entries.firstIndex(where: { $0.GuideNumber == chNum }) {
+                    entries[idx].Favorite = newFav ? 0 : 1
+                    lineups[deviceId] = entries
+                }
+                pendingFavoriteToggles[deviceId]?.removeValue(forKey: chNum)
+            }
         }
+    }
+
+    /// Called by fetchAllLineups after a fresh lineup arrives. Logs any channel whose
+    /// actual Favorite value doesn't match what we optimistically set.
+    private func reconcileFavorites(deviceId: String, freshLineup: [LineupEntry]) {
+        guard let pending = pendingFavoriteToggles[deviceId], !pending.isEmpty else { return }
+        for (chNum, expected) in pending {
+            if let actual = freshLineup.first(where: { $0.GuideNumber == chNum }),
+               actual.isFavorite != expected {
+                glog("[Favorite] mismatch on reload ch \(chNum): expected \(expected), device says \(actual.isFavorite)", level: .warning)
+            }
+        }
+        pendingFavoriteToggles.removeValue(forKey: deviceId)
     }
 
     func pauseShow(_ show: Show) {

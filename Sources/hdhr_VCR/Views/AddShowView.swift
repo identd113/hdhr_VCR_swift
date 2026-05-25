@@ -283,7 +283,7 @@ struct AddShowView: View {
                             },
                             onToggleFavorite: { lu in
                                 guard let device = selectedDevice else { return }
-                                Task { await state.toggleFavorite(device: device, channel: lu) }
+                                state.toggleFavorite(device: device, channel: lu)
                             }
                         )
                     }
@@ -307,6 +307,10 @@ struct AddShowView: View {
             state.logGuide("[Wizard] guideRevision fired — \(ch.count) channels pulled into view")
             allChannels = ch
             isLoadingGuide = false
+        }
+        .onChange(of: state.lineups[selectedDevice?.DeviceID ?? ""] ?? []) { _, _ in
+            guard let id = selectedDevice?.DeviceID, !allChannels.isEmpty else { return }
+            allChannels = sortedGuideChannels(allChannels, deviceId: id)
         }
         .onChange(of: allChannels.count) { _, count in
             guard count > 0, selectedEntry == nil else { return }
