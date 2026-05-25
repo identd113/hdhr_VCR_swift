@@ -1,4 +1,5 @@
 import AppKit
+import CoreAudio
 
 // ── C struct mirrors matching libvlc header layouts exactly ──────────────────
 // Used to walk linked lists returned by libvlc_audio_output_list_get /
@@ -40,6 +41,20 @@ private typealias vlc_adev_list_get_fn   = @convention(c) (OpaquePointer?, Unsaf
 private typealias vlc_adev_list_rel_fn   = @convention(c) (UnsafeMutableRawPointer?) -> Void
 private typealias vlc_adev_set_fn        = @convention(c) (OpaquePointer?, UnsafePointer<CChar>?, UnsafePointer<CChar>?) -> Void
 
+// ── CoreAudio device change monitoring ───────────────────────────────────────
+
+private final class AudioDeviceChangeContext {
+    let callback: () -> Void
+    init(_ cb: @escaping () -> Void) { callback = cb }
+}
+
+private let audioDeviceChangeProc: AudioObjectPropertyListenerProc = { _, _, _, clientData in
+    guard let clientData else { return noErr }
+    let ctx = Unmanaged<AudioDeviceChangeContext>.fromOpaque(clientData).takeUnretainedValue()
+    DispatchQueue.main.async { ctx.callback() }
+    return noErr
+}
+
 // ── VLCBridge ────────────────────────────────────────────────────────────────
 // Loads libvlc.dylib from VLC.app at runtime via dlopen.
 // No compile-time dependency — the app builds without VLC installed.
@@ -62,6 +77,7 @@ final class VLCBridge {
     private(set) var drawableView: NSView?
     /// URL queued before the drawable view was ready; played in setDrawable().
     private var pendingURL: String?
+    private var deviceChangeContext: AudioDeviceChangeContext?
 
     private let _new:          vlc_new_fn?
     private let _release:      vlc_release_fn?
@@ -234,5 +250,84 @@ final class VLCBridge {
                 _adevSet?(mp, outp, devp)
             }
         }
+    }
+
+    // MARK: - System Audio Devices (CoreAudio HAL)
+
+    /// All CoreAudio output devices: built-in speakers, USB, Bluetooth (AirPods etc.), AirPlay receivers.
+    /// Returns (id: CoreAudio device UID, name: display name).
+    /// Pass the UID to setAudioDevice(output: "auhal", deviceId: uid) to route VLC there.
+    func systemAudioOutputDevices() -> [(id: String, name: String)] {
+        var addr = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices,
+                                              mScope:    kAudioObjectPropertyScopeGlobal,
+                                              mElement:  kAudioObjectPropertyElementMain)
+        var size: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size) == noErr,
+              size > 0 else { return [] }
+        let count = Int(size) / MemoryLayout<AudioDeviceID>.size
+        var ids = [AudioDeviceID](repeating: 0, count: count)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &ids) == noErr else { return [] }
+        return ids.compactMap { deviceID in
+            // Skip devices with no output streams (e.g. input-only microphones)
+            var streamAddr = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreams,
+                                                         mScope:    kAudioObjectPropertyScopeOutput,
+                                                         mElement:  kAudioObjectPropertyElementMain)
+            var streamSize: UInt32 = 0
+            guard AudioObjectGetPropertyDataSize(deviceID, &streamAddr, 0, nil, &streamSize) == noErr,
+                  streamSize > 0 else { return nil }
+            guard let uid  = coreAudioString(deviceID, kAudioDevicePropertyDeviceUID),
+                  let name = coreAudioString(deviceID, kAudioObjectPropertyName) else { return nil }
+            return (id: uid, name: name)
+        }
+    }
+
+    /// UID of the current system-default output device (matches System Settings → Sound → Output).
+    func systemDefaultOutputUID() -> String? {
+        var addr = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+                                              mScope:    kAudioObjectPropertyScopeGlobal,
+                                              mElement:  kAudioObjectPropertyElementMain)
+        var deviceID: AudioDeviceID = 0
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &deviceID) == noErr else { return nil }
+        return coreAudioString(deviceID, kAudioDevicePropertyDeviceUID)
+    }
+
+    // MARK: - Device Change Monitoring
+
+    func startDeviceChangeMonitoring(callback: @escaping () -> Void) {
+        let ctx = AudioDeviceChangeContext(callback)
+        deviceChangeContext = ctx
+        var addr = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices,
+                                              mScope:    kAudioObjectPropertyScopeGlobal,
+                                              mElement:  kAudioObjectPropertyElementMain)
+        AudioObjectAddPropertyListener(AudioObjectID(kAudioObjectSystemObject), &addr,
+                                       audioDeviceChangeProc,
+                                       Unmanaged.passUnretained(ctx).toOpaque())
+    }
+
+    func stopDeviceChangeMonitoring() {
+        guard let ctx = deviceChangeContext else { return }
+        var addr = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices,
+                                              mScope:    kAudioObjectPropertyScopeGlobal,
+                                              mElement:  kAudioObjectPropertyElementMain)
+        AudioObjectRemovePropertyListener(AudioObjectID(kAudioObjectSystemObject), &addr,
+                                          audioDeviceChangeProc,
+                                          Unmanaged.passUnretained(ctx).toOpaque())
+        deviceChangeContext = nil
+    }
+
+    private func coreAudioString(_ objectID: AudioObjectID, _ selector: AudioObjectPropertySelector) -> String? {
+        var addr = AudioObjectPropertyAddress(mSelector: selector,
+                                              mScope:    kAudioObjectPropertyScopeGlobal,
+                                              mElement:  kAudioObjectPropertyElementMain)
+        // CoreAudio returns a +1 retained CFStringRef; use Unmanaged to take ownership safely.
+        var propSize = UInt32(MemoryLayout<UnsafeRawPointer>.size)
+        var rawPtr: UnsafeRawPointer? = nil
+        let status = withUnsafeMutablePointer(to: &rawPtr) {
+            AudioObjectGetPropertyData(objectID, &addr, 0, nil, &propSize, $0)
+        }
+        guard status == noErr, let p = rawPtr else { return nil }
+        let s = Unmanaged<CFString>.fromOpaque(p).takeRetainedValue() as String
+        return s.isEmpty ? nil : s
     }
 }

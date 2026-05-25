@@ -283,12 +283,14 @@ struct MenuContent: View {
 
             if state.config.Watch_in_VLC && isOnAir {
                 Button(action: { state.watchInVLC(url: channel.URL ?? "", deviceId: device.DeviceID) }) {
-                    Text("Watch in VLC").foregroundColor(vlcOrange)
+                    Label { Text("Watch in VLC").foregroundColor(vlcOrange) }
+                          icon: { Image(systemName: "arrow.up.forward.app").foregroundColor(vlcOrange) }
                 }
             }
             if VLCBridge.shared.isAvailable && isOnAir {
                 Button(action: { state.watchInApp(url: channel.URL ?? "", title: entry.Title, deviceId: device.DeviceID) }) {
-                    Text("Watch Now!").foregroundColor(watchNowBlue)
+                    Label { Text("Watch Now!").foregroundColor(watchNowBlue) }
+                          icon: { Image(systemName: "play.tv.fill").foregroundColor(watchNowBlue) }
                 }
             }
         } label: {
@@ -350,12 +352,14 @@ struct MenuContent: View {
             }
             if state.config.Watch_in_VLC {
                 Button(action: { state.watchInVLC(url: show.show_url, transcode: show.show_transcode, deviceId: show.hdhr_record) }) {
-                    Text("Watch in VLC").foregroundColor(vlcOrange)
+                    Label { Text("Watch in VLC").foregroundColor(vlcOrange) }
+                          icon: { Image(systemName: "arrow.up.forward.app").foregroundColor(vlcOrange) }
                 }
             }
             if VLCBridge.shared.isAvailable {
                 Button(action: { state.watchInApp(url: show.show_url, title: show.show_title, deviceId: show.hdhr_record, transcode: show.show_transcode) }) {
-                    Text("Watch Now!").foregroundColor(watchNowBlue)
+                    Label { Text("Watch Now!").foregroundColor(watchNowBlue) }
+                          icon: { Image(systemName: "play.tv.fill").foregroundColor(watchNowBlue) }
                 }
             }
             Button("Edit…") { editShow(show) }

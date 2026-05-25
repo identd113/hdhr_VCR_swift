@@ -31,6 +31,7 @@ final class AppState: ObservableObject {
     @Published var config = AppConfig()
     @Published var statusMessage = "Starting…"
     @Published var notifyPermission = false
+    private let notificationDelegate = NotificationActionDelegate()
     @Published var isStartingUp: Bool = true
 
     @Published var editingShowId: String? = nil
@@ -714,7 +715,8 @@ final class AppState: ObservableObject {
             // "Up Next" notification — fires once at Notify_upnext minutes before
             let upNextDue = (show.notify_upnext_time.date ?? .distantPast) <= now
             if !show.show_recording, upNextDue, minutesAway > 0, minutesAway <= config.Notify_upnext {
-                notify("Up Next", body: show.show_title, subtitle: "Starts in \(Int(minutesAway)) min on Channel \(show.show_channel)")
+                notify("Up Next", body: show.show_title, subtitle: "Starts in \(Int(minutesAway)) min on Channel \(show.show_channel)",
+                       categoryIdentifier: "upnext", userInfo: ["show_id": show.show_id])
                 discordShow("🔔 Up Next", show: show, color: 0x9B59B6, enabled: config.Discord_on_upnext,
                             extra: [("Starts In", "\(Int(minutesAway)) min", true)])
                 shows[i].notify_upnext_time = EpochDate(now.addingTimeInterval(config.Notify_upnext * 60))
@@ -724,7 +726,8 @@ final class AppState: ObservableObject {
             // "Recording About to Start" notification — fires once at Notify_recording minutes before
             let recNotifyDue = (show.notify_recording_time.date ?? .distantPast) <= now
             if !show.show_recording, recNotifyDue, minutesAway > 0, minutesAway <= config.Notify_recording {
-                notify("Recording Soon", body: show.show_title, subtitle: "Starts in \(Int(minutesAway)) min on Channel \(show.show_channel)")
+                notify("Recording Soon", body: show.show_title, subtitle: "Starts in \(Int(minutesAway)) min on Channel \(show.show_channel)",
+                       categoryIdentifier: "recording.soon", userInfo: ["show_id": show.show_id])
                 discordShow("⏱ Recording Soon", show: show, color: 0x9B59B6, enabled: config.Discord_on_soon,
                             extra: [("Starts In", "\(Int(minutesAway)) min", true)])
                 shows[i].notify_recording_time = EpochDate(now.addingTimeInterval(config.Notify_recording * 60))
@@ -834,7 +837,8 @@ final class AppState: ObservableObject {
         shows[index].show_fail_count = max(0, show.show_fail_count - 1)
         // Stamp notify_recording_time so the "Recording Soon" pre-notification won't re-fire
         shows[index].notify_recording_time = EpochDate(Date().addingTimeInterval(config.Notify_recording * 60))
-        notify("Recording Started", body: show.show_title, subtitle: "Channel \(show.show_channel) — ends \(shortTime(show.show_end.date))")
+        notify("Recording Started", body: show.show_title, subtitle: "Channel \(show.show_channel) — ends \(shortTime(show.show_end.date))",
+               categoryIdentifier: "recording.started", userInfo: ["show_id": show.show_id])
         discordShow("🔴 Recording Started", show: show, color: 0x2ECC71, enabled: config.Discord_on_start,
                     extra: [("Ends", shortTime(show.show_end.date), true)])
     }
@@ -1073,17 +1077,29 @@ final class AppState: ObservableObject {
         return ((total - free) / total * 100) < maxDiskPct && free > minFreeBytes
     }
 
-    func notify(_ title: String, body: String, subtitle: String) {
+    func notify(_ title: String, body: String, subtitle: String,
+                categoryIdentifier: String = "", userInfo: [AnyHashable: Any] = [:]) {
         guard notifyPermission else { return }
         let c = UNMutableNotificationContent()
         c.title = title; c.body = body
         if !subtitle.isEmpty { c.subtitle = subtitle }
         c.sound = .default
+        if !categoryIdentifier.isEmpty { c.categoryIdentifier = categoryIdentifier }
+        if !userInfo.isEmpty { c.userInfo = userInfo }
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: c, trigger: nil))
     }
 
     func requestNotifyPermission() async {
         notifyPermission = (try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])) ?? false
+        let skipAction = UNNotificationAction(identifier: "SKIP_AIRING",    title: "Skip This Airing", options: [])
+        let stopAction = UNNotificationAction(identifier: "STOP_RECORDING", title: "Stop Recording",    options: [.destructive])
+        UNUserNotificationCenter.current().setNotificationCategories([
+            UNNotificationCategory(identifier: "upnext",            actions: [skipAction], intentIdentifiers: [], options: []),
+            UNNotificationCategory(identifier: "recording.soon",    actions: [skipAction], intentIdentifiers: [], options: []),
+            UNNotificationCategory(identifier: "recording.started", actions: [stopAction], intentIdentifiers: [], options: [])
+        ])
+        notificationDelegate.appState = self
+        UNUserNotificationCenter.current().delegate = notificationDelegate
     }
 
     // MARK: - Discord
@@ -1403,6 +1419,24 @@ final class AppState: ObservableObject {
             recordingManager.stopAll(); saveConfig(); NSApplication.shared.terminate(nil)
         default:                       // Go Back — cancel
             break
+        }
+    }
+}
+
+// MARK: - Notification Action Delegate
+
+// UNUserNotificationCenterDelegate requires NSObject — use a small forwarder rather than making AppState inherit NSObject.
+final class NotificationActionDelegate: NSObject, UNUserNotificationCenterDelegate {
+    weak var appState: AppState?
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                didReceive response: UNNotificationResponse) async {
+        let showId = response.notification.request.content.userInfo["show_id"] as? String ?? ""
+        guard !showId.isEmpty else { return }
+        switch response.actionIdentifier {
+        case "SKIP_AIRING":    await appState?.skipRecording(showId: showId)
+        case "STOP_RECORDING": await MainActor.run { appState?.stopRecording(showId: showId) }
+        default: break
         }
     }
 }

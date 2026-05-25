@@ -1,5 +1,11 @@
 import SwiftUI
 import AppKit
+import MediaPlayer
+
+private extension Notification.Name {
+    static let vlcChannelNext = Notification.Name("vlcChannelNext")
+    static let vlcChannelPrev = Notification.Name("vlcChannelPrev")
+}
 
 // ── VLCVideoSurface ───────────────────────────────────────────────────────────
 // Zero-overhead NSView that VLC renders video into.
@@ -33,9 +39,7 @@ struct VLCPlayerView: View {
     @State private var selectedChannel: LineupEntry?
     @State private var suppressNextChannelPlay = false
     @State private var volume: Double = 50
-    @State private var audioOutputs: [(name: String, description: String)] = []
-    @State private var selectedOutput: String = ""
-    @State private var audioDevices: [(id: String, name: String)] = []
+    @State private var systemDevices: [(id: String, name: String)] = []
     @State private var selectedDevice: String = ""
 
     private var lineup: [LineupEntry] {
@@ -52,12 +56,16 @@ struct VLCPlayerView: View {
         }
         .onAppear {
             volume = Double(VLCBridge.shared.volume())
-            audioOutputs = VLCBridge.shared.audioOutputs()
-            if selectedOutput.isEmpty, let first = audioOutputs.first {
-                selectedOutput = first.name
-            }
             refreshAudioDevices()
+            VLCBridge.shared.startDeviceChangeMonitoring { refreshAudioDevices() }
             syncChannel(to: initialURL)
+            let cc = MPRemoteCommandCenter.shared()
+            cc.stopCommand.isEnabled = true
+            cc.stopCommand.addTarget { _ in Task { @MainActor in VLCBridge.shared.stop() }; return .success }
+            cc.nextTrackCommand.isEnabled = true
+            cc.nextTrackCommand.addTarget { _ in NotificationCenter.default.post(name: .vlcChannelNext, object: nil); return .success }
+            cc.previousTrackCommand.isEnabled = true
+            cc.previousTrackCommand.addTarget { _ in NotificationCenter.default.post(name: .vlcChannelPrev, object: nil); return .success }
         }
         .onChange(of: state.vlcCurrentURL) { _, rawURL in
             // Sync picker when watchInApp is called while the window is already open.
@@ -65,6 +73,23 @@ struct VLCPlayerView: View {
         }
         .onDisappear {
             VLCBridge.shared.stop()
+            VLCBridge.shared.stopDeviceChangeMonitoring()
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+            MPNowPlayingInfoCenter.default().playbackState  = .stopped
+            let cc = MPRemoteCommandCenter.shared()
+            cc.stopCommand.removeTarget(nil)
+            cc.nextTrackCommand.removeTarget(nil)
+            cc.previousTrackCommand.removeTarget(nil)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .vlcChannelNext)) { _ in
+            guard let ch = selectedChannel,
+                  let idx = lineup.firstIndex(where: { $0.GuideNumber == ch.GuideNumber }) else { return }
+            selectedChannel = lineup[idx < lineup.count - 1 ? idx + 1 : 0]
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .vlcChannelPrev)) { _ in
+            guard let ch = selectedChannel,
+                  let idx = lineup.firstIndex(where: { $0.GuideNumber == ch.GuideNumber }) else { return }
+            selectedChannel = lineup[idx > 0 ? idx - 1 : lineup.count - 1]
         }
     }
 
@@ -87,6 +112,14 @@ struct VLCPlayerView: View {
 
             Spacer()
 
+            // Live wall-clock time — meaningful for live TV; no elapsed/scrubbing concept
+            TimelineView(.periodic(from: .now, by: 1.0)) { ctx in
+                Text(ctx.date, style: .time)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .frame(minWidth: 70)
+            }
+
             // Volume
             Image(systemName: "speaker.wave.2")
                 .foregroundStyle(.secondary)
@@ -96,34 +129,19 @@ struct VLCPlayerView: View {
                     VLCBridge.shared.setVolume(Int(v))
                 }
 
-            // Audio output picker (e.g. auhal / display)
-            if !audioOutputs.isEmpty {
+            // Audio output picker — all CoreAudio output devices (built-in, Bluetooth, AirPlay, USB)
+            if !systemDevices.isEmpty {
                 Divider().frame(height: 18)
-                Picker("Output", selection: $selectedOutput) {
-                    ForEach(audioOutputs, id: \.name) { out in
-                        Text(out.description).tag(out.name)
-                    }
-                }
-                .labelsHidden()
-                .frame(maxWidth: 150)
-                .onChange(of: selectedOutput) { _, name in
-                    VLCBridge.shared.setAudioOutput(name)
-                    refreshAudioDevices()
-                }
-            }
-
-            // Audio device picker (e.g. Built-in Speakers, AirPods)
-            // Only shown when there are multiple devices to choose from.
-            if audioDevices.count > 1 {
-                Picker("Device", selection: $selectedDevice) {
-                    ForEach(audioDevices, id: \.id) { dev in
+                Image(systemName: "airplayaudio").foregroundStyle(.secondary)
+                Picker("Audio Output", selection: $selectedDevice) {
+                    ForEach(systemDevices, id: \.id) { dev in
                         Text(dev.name).tag(dev.id)
                     }
                 }
                 .labelsHidden()
-                .frame(maxWidth: 180)
+                .frame(maxWidth: 200)
                 .onChange(of: selectedDevice) { _, devId in
-                    VLCBridge.shared.setAudioDevice(output: selectedOutput, deviceId: devId)
+                    VLCBridge.shared.setAudioDevice(output: "auhal", deviceId: devId)
                 }
             }
         }
@@ -140,6 +158,7 @@ struct VLCPlayerView: View {
         if let match = lineup.first(where: { ($0.URL ?? "").hasPrefix(base) || base.hasPrefix($0.URL ?? "") }) {
             suppressNextChannelPlay = true
             selectedChannel = match
+            updateNowPlaying(channel: match)
         }
     }
 
@@ -151,12 +170,26 @@ struct VLCPlayerView: View {
             ? rawURL
             : "\(rawURL)?transcode=\(transcode)"
         VLCBridge.shared.play(url: url)
+        updateNowPlaying(channel: ch)
+    }
+
+    private func updateNowPlaying(channel: LineupEntry) {
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = [
+            MPMediaItemPropertyTitle:             channel.GuideName,
+            MPMediaItemPropertyArtist:            "Ch \(channel.GuideNumber)",
+            MPNowPlayingInfoPropertyIsLiveStream: true
+        ]
+        MPNowPlayingInfoCenter.default().playbackState = .playing
     }
 
     private func refreshAudioDevices() {
-        audioDevices = VLCBridge.shared.audioDevices(forOutput: selectedOutput)
-        if !audioDevices.isEmpty, !audioDevices.contains(where: { $0.id == selectedDevice }) {
-            selectedDevice = audioDevices[0].id
+        systemDevices = VLCBridge.shared.systemAudioOutputDevices()
+        guard !systemDevices.isEmpty else { return }
+        // Pre-select system default; fall back to first device if default isn't in the list.
+        if selectedDevice.isEmpty || !systemDevices.contains(where: { $0.id == selectedDevice }) {
+            let uid = VLCBridge.shared.systemDefaultOutputUID() ?? systemDevices[0].id
+            selectedDevice = uid
+            VLCBridge.shared.setAudioDevice(output: "auhal", deviceId: uid)
         }
     }
 }

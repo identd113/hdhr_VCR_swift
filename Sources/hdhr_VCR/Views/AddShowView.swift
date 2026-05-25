@@ -427,15 +427,26 @@ struct AddShowView: View {
                         if onAir,
                            state.config.Watch_in_VLC,
                            FileManager.default.fileExists(atPath: "/Applications/VLC.app") {
-                            Button("Watch in VLC") { state.watchInVLC(url: selectedChannel?.URL ?? "", deviceId: selectedDevice?.DeviceID) }
+                            Button {
+                                state.watchInVLC(url: selectedChannel?.URL ?? "", deviceId: selectedDevice?.DeviceID)
+                            } label: {
+                                Label {
+                                    Text("Watch in VLC")
+                                } icon: {
+                                    Image(nsImage: NSWorkspace.shared.icon(forFile: "/Applications/VLC.app"))
+                                        .resizable().scaledToFit().frame(width: 16, height: 16)
+                                }
+                            }
                             .buttonStyle(WhiteOutlineButtonStyle(borderColor: Color(red: 1.0, green: 0.482, blue: 0.0)))
                             .disabled(selectedChannel == nil)
                         }
                         if onAir, VLCBridge.shared.isAvailable {
-                            Button("Watch Now!") {
+                            Button {
                                 state.watchInApp(url: selectedChannel?.URL ?? "",
                                                  title: selectedEntry?.Title ?? "Live TV",
                                                  deviceId: selectedDevice?.DeviceID)
+                            } label: {
+                                Label("Watch Now!", systemImage: "play.tv.fill")
                             }
                             .buttonStyle(WhiteOutlineButtonStyle(borderColor: .blue))
                             .disabled(selectedChannel == nil)
