@@ -161,7 +161,7 @@ struct SettingsView: View {
             do {
                 if draftLaunchAtLogin { try SMAppService.mainApp.register() }
                 else                  { try SMAppService.mainApp.unregister() }
-            } catch { print("[Settings] Login item: \(error)") }
+            } catch { glog("[Settings] Login item: \(error)", level: .error) }
         }
         // Changing the network interface requires fresh device discovery and guide data
         // so curl and UDP both bind to the correct NIC immediately.
@@ -451,7 +451,7 @@ struct SettingsView: View {
             Section("Shows") {
                 maintenanceRow("Rescan Series",
                                "Re-check the guide for updated next-air times on all active SeriesID shows") {
-                    let count = state.shows.filter { $0.show_active && $0.show_use_seriesid }.count
+                    let count = state.shows.filter { $0.show_active && !$0.show_paused && $0.show_use_seriesid }.count
                     await state.rescheduleAllSeries()
                     return "\(count) series show(s) rescheduled"
                 }
