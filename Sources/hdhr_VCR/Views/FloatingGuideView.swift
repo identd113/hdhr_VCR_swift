@@ -88,7 +88,11 @@ struct FloatingGuideView: View {
                             bonusTitles:        bonusTitles,
                             bonusMinutes:       state.config.Sports_padding_minutes,
                             genreFilter:        genreFilter,
-                            onConfirm:          {}   // no-op — browse only
+                            onConfirm:          {},  // no-op — browse only
+                            onToggleFavorite: { lu in
+                                guard let device = selectedDevice else { return }
+                                Task { await state.toggleFavorite(device: device, channel: lu) }
+                            }
                         )
                     }
                 }
@@ -374,7 +378,7 @@ struct FloatingGuideView: View {
         defer { isLoadingGuide = false }
 
         if state.guideStore.isFresh(deviceId: id) {
-            allChannels = state.guideStore.channels(deviceId: id)
+            allChannels = sortedGuideChannels(state.guideStore.channels(deviceId: id), deviceId: id)
             state.guideByDevice = state.guideStore.channelsByDevice
             return
         }
@@ -383,12 +387,23 @@ struct FloatingGuideView: View {
                 try? await Task.sleep(nanoseconds: 200_000_000)
             }
             let ch = state.guideStore.channels(deviceId: id)
-            if !ch.isEmpty { allChannels = ch; return }
+            if !ch.isEmpty { allChannels = sortedGuideChannels(ch, deviceId: id); return }
         }
         state.guideStore.verbose = state.config.Verbose_curl
         await state.guideStore.load(for: device, hours: state.config.GuideHours)
         state.guideByDevice = state.guideStore.channelsByDevice
-        allChannels = state.guideStore.channels(deviceId: id)
+        allChannels = sortedGuideChannels(state.guideStore.channels(deviceId: id), deviceId: id)
+    }
+
+    // Favorites first, then numeric channel order.
+    private func sortedGuideChannels(_ channels: [GuideChannel], deviceId: String) -> [GuideChannel] {
+        let favNums = Set((state.lineups[deviceId] ?? []).filter(\.isFavorite).map(\.GuideNumber))
+        return channels.sorted { a, b in
+            let af = favNums.contains(a.GuideNumber)
+            let bf = favNums.contains(b.GuideNumber)
+            if af != bf { return af }
+            return a.GuideNumber.channelSortKey < b.GuideNumber.channelSortKey
+        }
     }
 }
 

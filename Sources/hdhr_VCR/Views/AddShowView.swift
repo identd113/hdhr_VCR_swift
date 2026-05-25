@@ -280,6 +280,10 @@ struct AddShowView: View {
                             onConfirm: {
                                 applyGuideEntry()
                                 step = .details
+                            },
+                            onToggleFavorite: { lu in
+                                guard let device = selectedDevice else { return }
+                                Task { await state.toggleFavorite(device: device, channel: lu) }
                             }
                         )
                     }
@@ -686,7 +690,7 @@ struct AddShowView: View {
         if state.guideStore.isFresh(deviceId: id) {
             let ch = state.guideStore.channels(deviceId: id)
             state.logGuide("[Wizard] cache hit — \(ch.count) channels, first guide counts: \(ch.prefix(3).map { "\($0.GuideNumber):\($0.Guide?.count ?? 0)" }.joined(separator: ", "))")
-            allChannels = ch
+            allChannels = sortedGuideChannels(ch, deviceId: id)
             return
         }
 
@@ -700,7 +704,7 @@ struct AddShowView: View {
             state.logGuide("[Wizard] startup finished — \(ch.count) channels")
             if !ch.isEmpty {
                 state.guideByDevice = state.guideStore.channelsByDevice
-                allChannels = ch
+                allChannels = sortedGuideChannels(ch, deviceId: id)
                 return
             }
             state.logGuide("[Wizard] startup gave 0 channels — falling through to fresh load")
@@ -713,7 +717,18 @@ struct AddShowView: View {
         state.guideByDevice = state.guideStore.channelsByDevice
         let ch = state.guideStore.channels(deviceId: id)
         state.logGuide("[Wizard] fetch complete — \(ch.count) channels")
-        allChannels = ch
+        allChannels = sortedGuideChannels(ch, deviceId: id)
+    }
+
+    // Favorites first, then numeric channel order.
+    private func sortedGuideChannels(_ channels: [GuideChannel], deviceId: String) -> [GuideChannel] {
+        let favNums = Set((state.lineups[deviceId] ?? []).filter(\.isFavorite).map(\.GuideNumber))
+        return channels.sorted { a, b in
+            let af = favNums.contains(a.GuideNumber)
+            let bf = favNums.contains(b.GuideNumber)
+            if af != bf { return af }
+            return a.GuideNumber.channelSortKey < b.GuideNumber.channelSortKey
+        }
     }
 
     /// Called after lineup is confirmed loaded. Fixes selectedChannel when auto-select fired
@@ -805,7 +820,9 @@ struct AddShowView: View {
 
 // Allow LineupEntry to be used with List selection
 extension LineupEntry: Hashable, Equatable {
-    static func == (lhs: LineupEntry, rhs: LineupEntry) -> Bool { lhs.GuideNumber == rhs.GuideNumber }
+    static func == (lhs: LineupEntry, rhs: LineupEntry) -> Bool {
+        lhs.GuideNumber == rhs.GuideNumber && lhs.Favorite == rhs.Favorite
+    }
     func hash(into hasher: inout Hasher) { hasher.combine(GuideNumber) }
 }
 extension HDHRDevice: Hashable {
