@@ -28,6 +28,7 @@ final class GuideStore {
     private var seriesIndex: [String: [SeriesMatch]] = [:]         // seriesID → sorted matches
     private var loadingDevices: Set<String> = []
     private var loadTimestamps: [String: Date] = [:]
+    private var logHandle: FileHandle?
 
     var verbose: Bool = false
 
@@ -311,15 +312,14 @@ final class GuideStore {
         print("[GuideStore] \(msg)")   // also to console for debug builds
         guard let data = line.data(using: .utf8) else { return }
         let path = Self.guideLogPath
-        if FileManager.default.fileExists(atPath: path) {
-            if let fh = FileHandle(forWritingAtPath: path) {
-                fh.seekToEndOfFile()
-                try? fh.write(contentsOf: data)
-                fh.closeFile()
+        if logHandle == nil {
+            if !FileManager.default.fileExists(atPath: path) {
+                FileManager.default.createFile(atPath: path, contents: nil)
             }
-        } else {
-            FileManager.default.createFile(atPath: path, contents: data)
+            logHandle = FileHandle(forWritingAtPath: path)
+            logHandle?.seekToEndOfFile()
         }
+        try? logHandle?.write(contentsOf: data)
     }
 
     // Kept for backward compat (verbose-gated callers)
