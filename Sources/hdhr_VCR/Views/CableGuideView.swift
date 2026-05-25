@@ -99,9 +99,10 @@ struct CableGuideView: View {
     let bonusMinutes:     Int                 // how many minutes of Bonus Time to visualize
     let genreFilter:      String?             // nil = show all; non-nil = dim non-matching
     var onConfirm: (() -> Void)? = nil        // called on double-click to advance wizard
+    var onToggleFavorite: ((LineupEntry) -> Void)? = nil  // called when star is tapped
 
     // ── Layout constants ───────────────────────────────────────────────────────
-    private let channelColW: CGFloat = 100
+    private let channelColW: CGFloat = 116
     private let rowH:        CGFloat = 52
     private let headerH:     CGFloat = 26
     // pxPerMin scales up on wider windows so the grid fills available space
@@ -141,7 +142,7 @@ struct CableGuideView: View {
             }
         })
         .onAppear { rebuildCaches() }
-        .onChange(of: lineup.count)       { _ in rebuildCaches() }
+        .onChange(of: lineup)             { _ in rebuildCaches() }
         .onChange(of: guideHours)         { _ in rebuildCaches() }
         .onChange(of: availableGridWidth) { _ in rebuildCaches() }
     }
@@ -187,7 +188,7 @@ struct CableGuideView: View {
 
     private func channelLabelCell(_ ch: GuideChannel) -> some View {
         let lu = lineupByNumber[ch.GuideNumber]
-        return HStack(spacing: 5) {
+        return HStack(spacing: 4) {
             ChannelIcon(urlString: ch.ImageURL, size: 28)
 
             VStack(alignment: .leading, spacing: 1) {
@@ -203,6 +204,21 @@ struct CableGuideView: View {
                         .font(.system(size: 8, weight: .heavy))
                         .foregroundColor(Color.accentColor)
                 }
+            }
+
+            Spacer(minLength: 0)
+
+            if let lu {
+                Button {
+                    onToggleFavorite?(lu)
+                } label: {
+                    Text(lu.isFavorite ? "★" : "☆")
+                        .font(.system(size: 13))
+                        .foregroundColor(lu.isFavorite ? .yellow : Color(NSColor.tertiaryLabelColor))
+                        .frame(width: 16)
+                }
+                .buttonStyle(.plain)
+                .help(lu.isFavorite ? "Remove from favorites" : "Add to favorites")
             }
         }
         .padding(.horizontal, 5)
