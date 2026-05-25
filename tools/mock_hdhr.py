@@ -12,8 +12,16 @@ Requirements:
   - Must run as root (port 80 + loopback alias setup)
 
 Usage:
-    sudo python3 tools/mock_hdhr.py              # auto-discovers the attached HDHomeRun
-    sudo python3 tools/mock_hdhr.py --real-ip 192.168.x.x  # override with a specific IP
+    sudo python3 tools/mock_hdhr.py              # normal mock (proxies everything)
+    sudo python3 tools/mock_hdhr.py --bad-tuner  # returns 404 for lineup + guide
+    sudo python3 tools/mock_hdhr.py --real-ip 192.168.x.x  # override device IP
+
+Fault-injection flags simulate specific failure modes:
+  --bad-lineup  /lineup.json + /lineup_status.json → 404 (no channel list)
+  --bad-guide   /guide.json → 500 (no EPG data)
+  --bad-tuner   both of the above combined
+
+/discover.json always responds normally so the device remains discoverable.
 
 Stop with Ctrl+C — the loopback alias is removed automatically on exit.
 """
@@ -36,6 +44,10 @@ MOCK_IP        = "127.0.0.2"
 CONTROL_PORT   = 80
 DISCOVER_PORT  = 65001
 MOCK_DEVICE_ID = "FFFF0001"
+
+# Paths that return errors in --bad-tuner mode
+LINEUP_PATHS = {"/lineup.json", "/lineup_status.json"}
+GUIDE_PATHS  = {"/guide.json"}
 
 
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
@@ -173,15 +185,22 @@ def remove_loopback_alias():
 # ── HTTP control server ───────────────────────────────────────────────────────
 
 class ControlHandler(BaseHTTPRequestHandler):
-    real_ip:   str  = ""
-    real_info: dict = {}
+    real_ip:    str  = ""
+    real_info:  dict = {}
+    bad_lineup: bool = False
+    bad_guide:  bool = False
 
     def log_message(self, fmt, *args):
         print(f"[HTTP] {fmt % args}")
 
     def do_GET(self):
-        if self.path.split("?")[0] == "/discover.json":
+        path = self.path.split("?")[0]
+        if path == "/discover.json":
             self._send_json(self._mock_discover())
+        elif self.bad_lineup and path in LINEUP_PATHS:
+            self._send_error(404, f"bad-lineup: {path} not available")
+        elif self.bad_guide and path in GUIDE_PATHS:
+            self._send_error(500, f"bad-guide: {path} not available")
         else:
             self._proxy("GET")
 
@@ -190,14 +209,28 @@ class ControlHandler(BaseHTTPRequestHandler):
 
     def _mock_discover(self) -> dict:
         """Real device info with DeviceID, name, and URLs swapped for the mock.
-        DeviceAuth is kept from the real device so the cloud guide API works."""
-        d        = dict(self.real_info)
+        DeviceAuth is fetched live from the real device so it never goes stale
+        (the token can rotate; the mock restarts less often than the app does)."""
+        try:
+            with urllib.request.urlopen(
+                f"http://{self.real_ip}/discover.json", timeout=3
+            ) as resp:
+                live_info = json.loads(resp.read())
+        except Exception:
+            live_info = self.real_info  # fall back to startup snapshot on error
+        d        = dict(live_info)
         hostname = mdns_hostname(MOCK_DEVICE_ID)
         d["DeviceID"]     = MOCK_DEVICE_ID
         d["FriendlyName"] = d.get("FriendlyName", "HDHomeRun") + " (Mock)"
         d["ModelNumber"]  = d.get("ModelNumber",  "HDHR")       + "-MOCK"
         d["BaseURL"]      = f"http://{hostname}"
         d["LineupURL"]    = f"http://{hostname}/lineup.json"
+        if self.bad_lineup and self.bad_guide:
+            d["FriendlyName"] += " [BAD]"
+        elif self.bad_lineup:
+            d["FriendlyName"] += " [NO-LINEUP]"
+        elif self.bad_guide:
+            d["FriendlyName"] += " [NO-GUIDE]"
         return d
 
     def _proxy(self, method: str):
@@ -235,6 +268,14 @@ class ControlHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _send_error(self, code: int, message: str):
+        body = message.encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "text/plain")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 
@@ -243,25 +284,38 @@ def main():
         description="Mock HDHomeRun — multi-tuner testing for hdhr_VCR",
         epilog=(
             "Examples:\n"
-            "  sudo python3 tools/mock_hdhr.py                          # auto-discover\n"
+            "  sudo python3 tools/mock_hdhr.py                          # normal proxy\n"
+            "  sudo python3 tools/mock_hdhr.py --bad-lineup             # lineup → 404\n"
+            "  sudo python3 tools/mock_hdhr.py --bad-guide              # guide → 500\n"
+            "  sudo python3 tools/mock_hdhr.py --bad-tuner              # both\n"
             "  sudo python3 tools/mock_hdhr.py --real-ip 192.168.1.100  # explicit IP\n"
             "\n"
             "The mock advertises itself as device FFFF0001 on 127.0.0.2.\n"
-            "All API requests are proxied to the real device; only /discover.json\n"
-            "has DeviceID/name/URL fields swapped. DeviceAuth is kept so the\n"
-            "cloud guide API works for both devices.\n"
-            "\n"
             "Ctrl+C cleans up the loopback alias and mDNS registration automatically."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     ap.add_argument("--real-ip", metavar="IP", default=None,
                     help="IP of the real HDHomeRun (auto-discovered if omitted)")
+    ap.add_argument("--bad-lineup", action="store_true",
+                    help="/lineup.json + /lineup_status.json → 404")
+    ap.add_argument("--bad-guide", action="store_true",
+                    help="/guide.json → 500")
+    ap.add_argument("--bad-tuner", action="store_true",
+                    help="Shorthand for --bad-lineup --bad-guide")
     args = ap.parse_args()
+
+    bad_lineup = args.bad_lineup or args.bad_tuner
+    bad_guide  = args.bad_guide  or args.bad_tuner
 
     if os.geteuid() != 0:
         print("Error: must run as root (sudo) to bind port 80 and manage the loopback alias.")
-        suffix = f" --real-ip {args.real_ip}" if args.real_ip else ""
+        flags = []
+        if bad_lineup and bad_guide: flags.append("--bad-tuner")
+        elif bad_lineup: flags.append("--bad-lineup")
+        elif bad_guide:  flags.append("--bad-guide")
+        if args.real_ip: flags.append(f"--real-ip {args.real_ip}")
+        suffix = (" " + " ".join(flags)) if flags else ""
         print(f"\n  sudo python3 {sys.argv[0]}{suffix}")
         sys.exit(1)
 
@@ -287,9 +341,14 @@ def main():
         real_info = {}
 
     friendly = real_info.get("FriendlyName", "HDHomeRun") + " (Mock)"
+    if bad_lineup and bad_guide: friendly += " [BAD]"
+    elif bad_lineup:             friendly += " [NO-LINEUP]"
+    elif bad_guide:              friendly += " [NO-GUIDE]"
 
-    ControlHandler.real_ip   = real_ip
-    ControlHandler.real_info = real_info
+    ControlHandler.real_ip    = real_ip
+    ControlHandler.real_info  = real_info
+    ControlHandler.bad_lineup = bad_lineup
+    ControlHandler.bad_guide  = bad_guide
 
     add_loopback_alias()
     mdns_proc = register_mdns(MOCK_DEVICE_ID, friendly, MOCK_IP)
@@ -312,9 +371,12 @@ def main():
         remove_loopback_alias()
         sys.exit(1)
 
+    blocked = sorted((LINEUP_PATHS if bad_lineup else set()) | (GUIDE_PATHS if bad_guide else set()))
+    mode = "normal (proxying all requests)" if not blocked else f"fault injection: {', '.join(blocked)}"
     print(f"\nMock HDHomeRun ready:")
     print(f"  Device ID : {MOCK_DEVICE_ID}")
     print(f"  Name      : {friendly}")
+    print(f"  Mode      : {mode}")
     print(f"  Control   : http://{MOCK_IP}:{CONTROL_PORT}/")
     print(f"  Proxying  : http://{real_ip}/")
     print(f"\nCtrl+C to stop and remove the loopback alias.\n")
