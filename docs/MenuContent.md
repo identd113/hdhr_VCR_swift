@@ -1,5 +1,60 @@
 # MenuContent.swift — Menu Bar Dropdown
 
+## Visual Appearance
+
+### Menu bar icon
+A small custom TV icon sits in the macOS menu bar. It changes state based on app activity:
+- **Starting up** — icon rendered at 30% opacity (dimmed), indicating the app is not yet ready
+- **Idle** — full-opacity TV icon, black in light mode / white in dark mode
+- **Show starting soon** — replaced with an orange `clock.badge.fill` SF Symbol when any show starts within 30 minutes
+- **Recording** — replaced with a red `record.circle.fill` SF Symbol when any show is actively recording
+
+### Dropdown menu
+Clicking the icon opens a native macOS cascading menu (NSMenu style). The menu has no custom background — it uses the system's standard menu appearance (dark translucent on macOS). Items are full-width, standard menu item height (~22pt). Interactive items highlight in system accent color on hover.
+
+**Header rows** (non-interactive, at the top):
+- One row per detected HDHomeRun device: `"105404BE  1/4"` — DeviceID left-aligned, active/total tuners right of it. Text is full `labelColor` (white in dark mode) when that device is recording, `secondaryLabelColor` (gray) when idle.
+- Status message row: small gray secondary text (e.g. `"Ready"`, `"Fetching guide…"`)
+
+Immediately below the header: **Add Show** (cascading menu or button), then **Settings…**, then a divider.
+
+**Recording Now** section (only visible when recording):
+- Section header: `"Recording Now"` (single tuner) or `"Recording · 105404BE"` (per device, multiple tuners) — macOS section label style, uppercase gray small text with separator
+- Each recording: `"🔴 Show Title"` menu item, right-arrow indicates submenu
+
+**Up Next** section (only visible when shows start within 60 min):
+- Same section header pattern: `"Up Next"` or `"Up Next · 105404BE"`
+- Within the section: secondary-color footnote-size time labels (`"8:00 PM"`) with no preceding separator, followed by show items with `"  ch 5.1"` appended to the title
+
+**Scheduled** section: `"Scheduled"` or `"Scheduled · DeviceID"` header, shows listed with state icon prefix
+
+**Paused** section: `"Paused"` or `"Paused · DeviceID"` header, shows prefixed with `⏸`
+
+A divider separates show sections from the **Quit hdhrVCRplus** destructive button at the bottom.
+
+### Show submenu appearance (recording, scheduled, paused)
+Opening a show's submenu reveals a rich detail panel:
+
+1. **Poster image** — 460pt wide, 258pt tall, cornerRadius 6, fills the menu width. A 24pt yellow right-angle triangle is overlaid in the top-right corner (always visible for managed shows). If no poster URL: a gray rounded rectangle placeholder fills the same space.
+2. **Title** — `.title3` size, `labelColor`
+3. **Episode info** — `.callout` size, if present
+4. **Synopsis** — up to 160 chars, `.callout` size, `labelColor`
+
+Below the poster block, secondary metadata in `.footnote` / `.caption` size using `labelColor` or `secondaryLabelColor`:
+- Type and channel: `"SeriesID(All) · Channel 5.1"`
+- Start time and duration: `"8:00 PM · 60 min"` (secondary color)
+- Tuner: `"tuner 105404BE"` (secondary color)
+- Conflict, failure, or bonus time warnings in secondary color
+
+Action buttons at the bottom of the submenu (standard blue text, destructive items in red).
+
+### Add Show channel cascade (menu mode)
+Level 1 — amber 5pt accent bar at the top of the channel list. Favorites grouped under a yellow-tinted `"★  FAVORITES"` small-caps label; regular channels below after a divider.
+
+Each channel item: 16×16 channel logo (or `tv` SF Symbol), then `"5.1  NBC HD ★"` text. Managed entries show a 14pt yellow triangle as the label icon (left side).
+
+Each channel's submenu: blue 5pt accent bar, then entry list. On-air entries prefixed with `"▶"`. Managed entry labels show yellow triangle icon.
+
 ## Intent
 
 `MenuContent` is the entire visible UI of the app while the menu is closed. It is the `body` of the `MenuBarExtra` scene declared with `.menu` style in `hdhr_VCRApp.swift`. Every interaction the user has with the app — starting, stopping, scheduling, editing, and adding shows — flows through here or through a window it opens.

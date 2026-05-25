@@ -1,5 +1,68 @@
 # AddShowView.swift — Add Show Wizard
 
+## Visual Appearance
+
+### Overall window
+Fixed **560×540** for steps 1 and 3; expands to resizable **min 1100×720** for the guide step. The window animates between sizes with a 0.2s ease-in-out. Escape closes the window from any step.
+
+**Top of window (all steps)**: 2–3 small 8pt circles in a row, left-padded under the top edge — progress indicator. Filled accent-color circle = current step; hollow gray circle = other step. Only `guide` and `details` steps show (device step is usually skipped automatically). Below the circles: a `Divider`.
+
+### Step 1 — Device selection (usually auto-skipped)
+White background. Title `"Select Tuner"` in `.title2` left-padded, with a `"Refresh"` labeled button (↺ icon) at the right.
+
+If no devices: centered `EmptyStateView` — `wifi.slash` SF Symbol, `"No tuners found"` title, description text.
+
+If devices present: macOS `List` with rows, each row:
+- `antenna.radiowaves.left.and.right` SF Symbol icon (decorative, hidden from VoiceOver)
+- **DeviceID** in bold on the left
+- `"Recording N"` in red bold caption on the right (if recording)
+- Below: `"192.168.1.x · 4 tuners · 106 channels · fw 20240101"` in caption secondary color
+- Selected row highlighted in system accent color
+
+Nav bar (bottom): **Next** button (`.borderedProminent`) enabled when a device is selected.
+
+### Step 2 — Guide (cable grid)
+**Compact toolbar** (single row, ~42pt tall, `windowBackgroundColor` background):
+- Left: `Menu` showing current tuner name with disclosure indicator (hidden when only 1 tuner)
+- `"Genre:"` secondary label + `Picker` (up to 160pt wide) for genre filtering (hidden when no genres in guide data)
+- Right side: spinning `ProgressView` (0.7× scale) while loading; `"Now"` button with `clock.arrow.circlepath` icon; `"Refresh"` button with `arrow.clockwise` icon; pop-out button (`arrow.up.left.and.arrow.down.right` icon); `"[106 ch]"` in caption orange
+A `Divider` separates toolbar from content.
+
+**Content area** (fills remaining height via `GeometryReader`):
+- **Top 1/3** — Summary panel (see below)
+- Thin `Divider`
+- **Bottom 2/3** — `CableGuideView` grid
+
+**Summary panel** (when a show is selected):
+Background: the guide block's genre color at 90% opacity (e.g. blue for drama, amber for comedy, green for sports). All text is white with black drop shadow (`radius: 1.5, x: 0, y: 1`).
+
+Layout (HStack, 14pt horizontal padding, 10pt vertical padding):
+- **Left**: poster image, 180pt wide, fills panel height, cornerRadius 7, `.aspectRatio(.fill)`. White semi-transparent placeholder if no URL. Yellow 20pt triangle overlay at top-right corner if show is already scheduled. If on-air: `"Recording Now"` red badge with `record.circle.fill` icon.
+- **Right** (VStack, 4pt spacing):
+  - Title: `.title3` bold white, 1 line
+  - Genre badge (if non-"series"): small all-caps text on `Color.white.opacity(0.20)` rounded rectangle, 3pt cornerRadius
+  - Episode info: `.subheadline` white
+  - Original airdate: `"Orig. Jan 15, 2024"` in `.caption` at 80% opacity
+  - Synopsis: `.callout` white, up to 3 lines
+  - Upcoming airings: `"Channel 5.1 Thu 8:00 PM · Channel 5.1 Fri 10:00 PM"` in `.caption2` at 85% opacity
+  - Bottom row: 52×52 channel icon + `"Channel 5.1 · 8:00 PM – 9:00 PM"` caption + optional **Watch in VLC** / **Watch Now!** buttons + **Record** / **Edit Show** button
+  - **Record** button: `.borderedProminent` in red (white outline style); **Edit Show** in blue when show is already managed
+  - Bonus Time: orange `StarburstBadge` overlaid top-right of the ZStack when a sports show is selected
+  - Overlap warning: small white caption at bottom, invisible (opacity 0) when no overlap
+
+**Empty summary** (nothing selected): `"Select a show from the grid"` centered in `.tertiary` color.
+
+Dark gradient scrim (`black 28% → black 4%`, leading to trailing) behind the text column as `.multiply` blend mode — improves contrast on light genre backgrounds without tinting.
+
+### Step 3 — Details
+Fixed 560×540 window. White/system background. `ScrollView` containing a `VStack` with 16pt spacing.
+
+- Form fields using `ShowFormSection` (shared with `EditShowView`)
+- `LabeledContent` for channel (TextField, 80pt wide) and length (60pt wide number field)
+- Bottom-right: orange `StarburstBadge` (115pt size) floats via `.overlay(alignment: .bottomTrailing)`, springs in on appear if sports show + Bonus Time enabled
+
+**Nav bar** (bottom): **Back** on left, **Save** (`.borderedProminent`) on right. A `Divider` above.
+
 ## Intent
 
 `AddShowView` is a 3-step wizard window for adding a new recording schedule. It guides the user from tuner selection → cable guide browsing → recording details. It is the primary way new shows get added when the app is in Wizard mode (vs. the inline cascading menu mode).

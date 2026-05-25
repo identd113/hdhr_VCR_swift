@@ -1,5 +1,33 @@
 # StarburstBadge.swift — Animated Sports Bonus Time Badge
 
+## Visual Appearance
+
+### At rest
+A solid **orange** 12-point starburst polygon, `size` × `size` (default 100pt, 90pt in EditShowView, 115pt in AddShowView details). The starburst has alternating outer and inner radii (`outerR` and `0.55 × outerR`), making it look like a sale/badge shape.
+
+Centered inside the starburst: `"+N min"` in white `.caption` bold. At 100pt size this text is ~12pt, clearly legible. At the default orange color (SwiftUI `Color.orange`) the badge reads as warm and energetic.
+
+No border, no shadow, no background behind the badge — it floats directly over whatever is behind it (form background, summary panel, etc.).
+
+### Pop-in animation (on appear)
+The badge slams in over ~0.4 seconds:
+1. Instantly jumps to 130% scale + rotated -240° (behind the content plane)
+2. Quickly shrinks to 82% scale + rotates +18° over 0.18s (cubic easing — swings past resting position)
+3. Springs to 100% scale + 0° rotation (spring response 0.32, damping 0.38 — noticeably bouncy)
+
+The net visual effect: the badge pops in spinning fast from the upper-right, overshoots slightly, then bounces to rest. The `initialValue.scale = 0` keeps it invisible before the first pop fires from `onAppear`.
+
+### 5-tap celebration animation
+After the 5th tap on the badge:
+1. Badge compresses to ~70% scale (0.07s linear — a quick press-squish feel)
+2. Explodes outward to 125% scale while spinning a full 360° (0.22s cubic)
+3. Springs back to 100% scale + 0° rotation (spring response 0.38, damping 0.40 — light bounce)
+
+Because `celebCount` is incremented on every 5th tap, repeated celebrations trigger cleanly (360° end = 0° visually, so the next keyframe sequence starts from the same neutral state).
+
+### Transition
+When the sports show type is deselected (badge removed from the hierarchy): `.scale(scale: 0.05).combined(with: .opacity)` removal transition — shrinks to nearly nothing and fades out simultaneously.
+
 ## Intent
 
 `StarburstBadge` is an orange 12-point starburst that indicates a sports show has Bonus Time enabled. It displays `"+N min"` where N is `state.config.Sports_padding_minutes`. It appears:

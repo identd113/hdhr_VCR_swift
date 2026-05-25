@@ -1,5 +1,32 @@
 # VLCPlayerView.swift — VLC In-App Player Window
 
+## Visual Appearance
+
+### Overall window
+`NSWindow` created by `VLCPlayerWindowManager`. Initial size **960×600**, resizable and closable. Title = the show/channel name passed at open time. Centers on first open; re-uses same position on subsequent opens (not re-centered).
+
+### Layout
+`VStack(spacing: 0)`:
+1. **Toolbar** (~42pt tall, `windowBackgroundColor` background)
+2. **Video surface** (fills all remaining space, black background)
+
+### Toolbar
+`HStack(spacing: 10)`, 12pt horizontal and 8pt vertical padding:
+
+- **Channel picker** (left, max 220pt wide): standard `Picker` popup — rows show `"5.1  NBC"` channel number + name. Hidden label. Updates `selectedChannel` on change, which triggers `playChannel()`.
+- **Spacer**
+- **Live clock** (center): `TimelineView(.periodic(from: .now, by: 1.0))` rendering current wall time in monospacedDigit secondary-color text, min 70pt width. Updates every second — appropriate for live TV where there's no elapsed/scrubbing concept.
+- **Volume section**:
+  - `speaker.wave.2` SF Symbol in secondary color (accessibilityLabel: `"Volume"`)
+  - `Slider(in: 0...100)`, 100pt wide
+- **Divider** (18pt tall, visible only when audio devices are present)
+- **Audio output section** (when devices present):
+  - `airplayaudio` SF Symbol in secondary color (accessibilityLabel: `"Audio output"`)
+  - `Picker` (max 200pt wide) listing all CoreAudio output devices by name — built-in speakers, Bluetooth, AirPlay, USB audio
+
+### Video surface
+`VLCVideoSurface: NSViewRepresentable` — a plain `NSView` with `wantsLayer = true` and black `CALayer` background. VLC renders directly into this layer via `VLCBridge.shared.setDrawable(_:)`. The view expands to fill all space below the toolbar using `.frame(maxWidth: .infinity, maxHeight: .infinity)`. No SwiftUI content overlays — the video layer is purely AppKit.
+
 ## Intent
 
 Replaces `PlayerView.swift` (AVKit / `AVPlayer`). AVPlayer cannot decode MPEG-2 transport streams — the native broadcast format from HDHomeRun tuners — and silently failed on any show with `transcode = none`. The VLC-based player decodes MPEG-2 natively, so the user's configured transcode setting is respected without any forced override.

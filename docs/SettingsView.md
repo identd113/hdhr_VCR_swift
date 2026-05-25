@@ -1,5 +1,83 @@
 # SettingsView.swift — Settings Window
 
+## Visual Appearance
+
+### Overall window
+Fixed **560×520**. Standard macOS window chrome. Title: `"Settings"`.
+
+### Layout
+`VStack` with no spacing: `NavigationSplitView` fills the top portion, a `Divider`, then a persistent save bar at the bottom (~42pt tall).
+
+**Sidebar** (left column, 150–200pt wide):
+macOS `List` with items using `Label(name, systemImage: icon)`. Icons and category names:
+- `gear` General
+- `record.circle` Recording
+- `tv` Guide
+- `bell.badge` Notifications
+- `terminal` Advanced
+- `wrench.and.screwdriver` Maintenance
+- `info.circle` About
+
+Selected row highlighted in accent color.
+
+**Detail area** (right): `Form` with `.grouped` style (rounded-rect sections on macOS). Each category shows its own `Form` with `Section` headers. Navigation title appears at the top of the detail area.
+
+**Save bar** (bottom, always visible):
+- `"Unsaved changes"` secondary small text + `"Discard"` secondary-color button when dirty
+- `"Test the webhook before saving"` orange warning + Discard when webhook untested
+- Right side: `"Save"` button (disabled when clean or webhook untested, ⌘S shortcut) + **"Save & Close"** prominent button (orange tint when dirty, blue/accent when clean, Return shortcut)
+
+### Category: General
+Two `Section` groups:
+- **System**: `Toggle("Launch at Login")`
+- **Add Show Method**: two custom radio rows (HStack). Each row: circle/filled-circle SF Symbol icon in accent or secondary + VStack with mode name (medium weight) + description (caption secondary). Tapping anywhere on the row selects it.
+
+### Category: Recording
+One `Section`:
+- Default folder: `LabeledContent` with secondary path text + `"Choose…"` + optional `"Reset"` buttons
+- Default transcode: inline `Picker` — None / Heavy / Mobile / Internet 720
+- Min free disk: `Stepper` showing `"Min free disk: N GB"`, range 1–100
+- Pause after N failures: `Stepper`, range 1–10
+- Watch in VLC: `Toggle` (only visible when VLC is installed)
+- Bonus Time for sports: `Toggle`; when on, reveals a `Stepper` for bonus minutes (10–60, step 5)
+
+### Category: Guide
+One `Section`:
+- Guide hours: `Stepper` `"Show next N hours"`, range 1–48
+- Series scan retry: `Stepper` `"Series scan retry: N hr"`, range 1–24
+- `"Update Guides Now"` `.borderedProminent` button
+
+### Category: Notifications
+**Notifications** section: Up Next minutes `Stepper` (5–120, step 5); Recording alert minutes `Stepper` (1–60). Orange `Label` warning when recording alert fires at or after Up Next.
+
+**Discord** section: `Toggle("Enable Discord notifications")`. When enabled: `HStack` with monospaced `TextField` for webhook URL + `"Test"` `.bordered` button (or `ProgressView` while testing). Status labels:
+- Passed: green `checkmark.circle.fill` + `"Verified"`
+- Failed: red `xmark.circle.fill` + error text
+- Untested: orange text `"Test the webhook before saving."`
+
+**Notify when…** section (visible only when enabled + URL set): 10 toggles for individual event types.
+
+### Category: Advanced
+Three sections:
+- **Network**: `Picker` for discovery/recording interface (`"Auto"` default + available NICs with display names). Caption explaining VPN usage.
+- **Performance**: `Stepper` for idle check interval (5–60s, step 5)
+- **Logging**: `Toggle("Verbose curl logging")`; when on: caption with log path (text-selectable) + `"Show curl log in Finder"` button
+- **Config File**: caption with config path (text-selectable) + `"Show config in Finder"` button
+
+### Category: Maintenance
+Sections: Shows, Guide & Devices, Tools (if Homebrew found), Developer (if macOS > 13).
+
+Each action row: title in medium weight + description in caption secondary + `"Run"` `.bordered` button on the right (or `ProgressView(.small)` while running).
+
+When a task finishes: green `checkmark.circle.fill` + result message in a separate `Section`.
+
+**Tools section** (Homebrew): brew install rows for VLC and HDHomeRun CLI; result label in green/red.
+
+**Developer section**: `Picker` to simulate an older macOS version (for testing layout on macOS 14). Orange warning label when simulating.
+
+### Category: About
+See `docs/README.md` or the About section description — app image, version, changelog, GitHub link, easter egg.
+
 ## Intent
 
 `SettingsView` is a `NavigationSplitView` settings window (sidebar + detail, like Finder column view). All app configuration lives here. Changes are held in a `draft: AppConfig` until the user explicitly presses **Save** (⌘S) — nothing writes to disk mid-edit.

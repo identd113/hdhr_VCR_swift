@@ -1,5 +1,61 @@
 # CableGuideView.swift — Cable TV Guide Grid
 
+## Visual Appearance
+
+The guide fills the entire available area below its parent's toolbar and to the right of the pinned channel column. It looks and behaves like a cable TV interactive program guide.
+
+### Channel label column (left, 116pt wide, pinned)
+- **Top-left corner cell**: accent-color background (macOS default blue), white bold `"CHANNEL"` label in 10pt font, 26pt tall — aligns exactly with the time header.
+- **Favorites separator row** (20pt tall, when favorites exist): `windowBackgroundColor` fill, bottom 0.5pt separator line, yellow-tinted bold `"★  FAVORITES"` label in 9pt, left-padded 6pt.
+- **Channel rows** (52pt tall each): `windowBackgroundColor` background, 0.5pt separator border on all sides at 35% opacity.
+  - Left: 28×28 `ChannelIcon` (channel logo image, rounded, or blank if no URL)
+  - Center: channel number in 11pt bold, channel name in 10pt secondary color below, `"HD"` badge in 8pt heavy accent color if `HD == 1`
+  - Right: star button — `"★"` in yellow (16pt) if favorited, `"☆"` in tertiary label color if not; 22×22 tap target, plain button style
+- **All Channels separator** (20pt, when both groups present): same style as Favorites separator, text `"ALL CHANNELS"` in secondary label color.
+- Column background: `windowBackgroundColor`; clipped so rows scrolling off top/bottom are invisible.
+
+### Time header (26pt tall, pinned vertically, scrolls horizontally)
+- Background: accent color at 80% opacity (blue-ish strip spanning full guide width)
+- 30-minute slot labels: white 10pt medium-weight text left-padded 5pt, each spanning `slotW` pixels
+- **Red "now" line**: 2pt wide red `Rectangle` positioned at the current time's X offset — the only red element in the header, making the current moment immediately obvious.
+
+### Guide grid cells (show blocks)
+Each show occupies a rectangular block spanning `duration × pxPerMin` pixels wide and `rowH - 2` (50pt) tall. Inside the block:
+- **Background**: genre color (see below) at full opacity for on-air shows; 75% opacity for future shows
+- **Show title**: white, 11pt bold, padded 4pt top and 8pt left, up to 4 lines, `lineLimit` set to available height
+- **Time label**: `"8:00 PM"` in white at 80% opacity, 9pt, at the top-left
+
+**Block background colors by genre:**
+| Genre | Color |
+|---|---|
+| Drama | Blue (hue 0.60, sat 0.65, bri 0.52) |
+| Comedy | Amber (hue 0.13, sat 0.65, bri 0.52) |
+| News | Crimson (hue 0.95, sat 0.60, bri 0.50) |
+| Sports | Green (hue 0.33, sat 0.65, bri 0.46) |
+| Reality | Orange (hue 0.07, sat 0.65, bri 0.52) |
+| Movie | Purple (hue 0.75, sat 0.55, bri 0.50) |
+| Talk | Teal (hue 0.48, sat 0.60, bri 0.48) |
+| Children | Steel blue (hue 0.56, sat 0.50, bri 0.50) |
+| No genre | Hash of SeriesID/Title → one of 8 palette colors |
+
+**Block decorations (Z-ordered bottom to top):**
+1. **Filter-dimmed** — non-matching genre blocks at 20% opacity, `allowsHitTesting(false)`
+2. **On-air wash** — `Color.white.opacity(0.12)` overlay on currently-airing blocks
+3. **Yellow managed triangle** — 22pt right-angle triangle, `Path.fill(.yellow)`, upper-right corner. Vertices: `(cellW-22, 0) → (cellW, 0) → (cellW, 22)`. Always rendered on top of the block background, below status icons.
+4. **Selected border** — 2.5pt white stroke + `Color.white.opacity(0.15)` fill overlay when selected
+5. **Status icons** (rendered after triangle so they appear on top of it):
+   - Selected: `checkmark.circle.fill` (12pt bold white) at `(cellW-18, 4)`
+   - Recording: 8pt red `Circle` at `(cellW-12, 3)` — centred inside the yellow triangle
+   - Next-up: `clock.badge.fill` (10pt orange) at `(cellW-14, 4)`
+
+**Row background**: `underPageBackgroundColor` (very dark gray/black in dark mode) spans the full grid width per row. Vertical slot dividers: 0.5pt `separatorColor` at 18% opacity at every 30-minute boundary.
+
+### Bonus Time dotted box
+For managed sports shows, a dotted `RoundedRectangle` (cornerRadius 4, stroke 1.5pt, `secondaryLabelColor`) appears immediately to the right of the show block. Width = `bonusMinutes × pxPerMin`. When the box is wider than 60pt, a `"Bonus Time"` label appears inside in secondary color. The box has `.zIndex(1)` so it renders above the next channel's blocks.
+
+### Section separators (favorites / all channels)
+Between the favorites group and the general channel list, a 20pt-tall `Color(NSColor.controlBackgroundColor)` row spans the full grid width — matching the channel column's separator label row height exactly so both columns stay visually aligned across the divider.
+
 ## Intent
 
 `CableGuideView` is a reusable cable-TV-style program guide grid. Rows are channels, columns are 30-minute time slots, and show blocks span proportionally to their duration. Both axes scroll simultaneously. The channel label column stays pinned on the left while the grid scrolls horizontally.

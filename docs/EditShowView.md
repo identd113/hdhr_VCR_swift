@@ -1,5 +1,30 @@
 # EditShowView.swift — Edit Existing Show
 
+## Visual Appearance
+
+### Overall window
+Fixed **480×520**. Standard macOS window chrome. Title: `"Edit Show"`. While loading (`show == nil`): centered `ProgressView("Loading…")` fills the window.
+
+### Form area (ScrollView, fills window above nav bar)
+White/system background. `VStack` with 16pt spacing, 16pt padding on all sides:
+
+- **`"Edit Show"`** title in `.title2`
+- **`ShowFormSection`** — shared form fields (title field, type picker, days toggles, transcode picker, folder row) — see `ShowFormSection.md`
+- **`LabeledContent("Channel")`** — `TextField` with placeholder `"e.g. 5.4"`, 80pt wide
+- **`LabeledContent("Length (min)")`** — numeric `TextField`, 60pt wide, placeholder `"60"`
+- **Failures row** (only when `show_fail_count > 0`): `LabeledContent("Failures")` — orange text `"3 — Output file missing"` + blue `"Reset"` button
+- **SeriesID row**: `LabeledContent("SeriesID")` — secondary-color text, `"none"` if empty
+- **Stream URL row**: `LabeledContent("Stream URL")` — secondary-color caption, 1-line truncated; `"not set"` if empty
+
+**Sports Bonus Time badge**: when `show_bonus_time == true` AND `Sports_padding_enabled`, an orange 90pt `StarburstBadge` floats at the bottom-right corner of the form via `.overlay(alignment: .bottomTrailing)`, 12pt from the edges. It animates in on appear and out with a shrink-to-zero + fade on dismiss.
+
+### Nav bar (bottom, ~52pt tall)
+`HStack` with 16pt padding. `Divider` above.
+- **Left**: `"Delete"` button in destructive red — triggers `confirmAndDeleteShow` (async poster fetch + NSAlert)
+- **Right**: `"Save"` button in `.borderedProminent` (accent color / blue)
+
+Both buttons are always visible and enabled (Delete enabled any time a show is loaded; Save enabled always). Escape triggers a dirty-check alert with Save / Discard / Cancel options.
+
 ## Intent
 
 `EditShowView` is a simple form window for modifying an existing scheduled show. It opens from the menu (via "Edit…" in any show submenu) and allows changing the title, channel, show type, air days, duration, transcode profile, and recording folder. It is the only place where an existing show's metadata can be changed after it was added.

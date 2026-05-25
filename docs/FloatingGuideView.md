@@ -1,5 +1,33 @@
 # FloatingGuideView.swift — Standalone Guide Browser
 
+## Visual Appearance
+
+### Overall window
+Minimum **1100×720**, no maximum. Resizable. Floating above other windows (via `FloatingWindowLevelSetter`). No title bar decorations beyond the standard macOS close/minimize/zoom buttons. Window title: `"Cable Guide"`.
+
+### Toolbar (top bar, ~42pt tall)
+Single horizontal row, `windowBackgroundColor` background, 10pt horizontal padding:
+- **Tuner picker** (left, up to 170pt wide): `"Tuner:"` secondary label + popup picker showing DeviceID. Hidden when only 1 tuner.
+- **Genre filter** (left of center, up to 160pt wide): `"Genre:"` secondary label + popup picker with `"All"` + genre list. Hidden when no genres present.
+- **Right side**: spinning `ProgressView` while loading; `"Now"` button (`clock.arrow.circlepath`); `"Refresh"` button (`arrow.clockwise`, disabled while loading)
+
+A `Divider` below the toolbar.
+
+### Content area
+`GeometryReader` splits height into two vertical regions:
+
+**Summary panel (top 1/3 of content height)**:
+Same appearance as `AddShowView` step 2 summary panel:
+- Genre-color background at 90% opacity; all text white with drop shadow
+- Left: poster image (140×100, cornerRadius 7) with optional yellow 20pt managed flag triangle at top-right corner; placeholder `Color.white.opacity(0.2)` rounded rectangle when no image
+- Right: title (`.title3` bold), `"🔴 Recording Now"` badge if applicable, genre badge (white bg), episode info, original airdate, synopsis (3 lines), upcoming airings, channel icon + time range, **Watch in VLC** / **Watch Now!** buttons
+- No Record button — this view is browse-only
+- Orange `StarburstBadge` (100pt) overlaid top-right when a sports show is selected with Bonus Time enabled
+- `"Select a show from the grid"` tertiary placeholder when nothing is selected
+
+**Guide grid (bottom 2/3 of content height)**:
+Identical to `CableGuideView` appearance described in `CableGuideView.md`. When no guide data and not loading: `EmptyStateView` — `tv.slash` SF Symbol, `"No guide data"` title, description.
+
 ## Intent
 
 `FloatingGuideView` is a browse-only cable guide window that can be opened independently of the Add Show wizard. It uses the same `CableGuideView` grid and summary panel as `AddShowView` step 2, but has no Record button, no wizard navigation, and no step-advance behavior. The user can browse what's on across all tuners, see Bonus Time overlaps, and optionally Watch in VLC for on-air shows.
