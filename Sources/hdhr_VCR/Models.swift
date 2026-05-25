@@ -45,7 +45,7 @@ struct Show: Identifiable, Equatable {
     var show_use_seriesid_all: Bool
     var show_air_date: [String]
     var show_channel: String
-    var show_time: Double           // UTC decimal hours (0–24), e.g. 20.5 = 8:30 PM UTC
+    var show_time: Double           // local decimal hours (0–24), e.g. 20.5 = 8:30 PM local time
     var show_length: Int            // minutes
     var show_next: EpochDate
     var show_end: EpochDate
@@ -274,7 +274,7 @@ struct HDHRDevice: Identifiable, Equatable {
     var streamBase: String { "http://\(LocalIP):5004" }
     var guideURL:   String { "http://\(LocalIP)/guide.json" }
     var lineupURL:  String { LineupURL ?? "http://\(LocalIP)/lineup.json" }
-    var statusURL:  String { "http://\(localHostname)/status.json" }
+    var statusURL:  String { "http://\(LocalIP)/status.json" }  // IP avoids mDNS lookup failures
 }
 
 extension HDHRDevice: Codable {
