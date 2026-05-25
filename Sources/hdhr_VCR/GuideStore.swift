@@ -28,7 +28,6 @@ final class GuideStore {
     private var seriesIndex: [String: [SeriesMatch]] = [:]         // seriesID → sorted matches
     private var loadingDevices: Set<String> = []
     private var loadTimestamps: [String: Date] = [:]
-    private var logHandle: FileHandle?
 
     var verbose: Bool = false
 
@@ -70,7 +69,7 @@ final class GuideStore {
             return false
         }
         guard let url = Self.guideURL(for: device, hours: hours) else {
-            glog("[\(id)] ERROR: could not build guide URL — DeviceAuth:\(device.DeviceAuth != nil ? "present" : "nil")  LocalIP:'\(device.LocalIP)'")
+            glog("[\(id)] ERROR: could not build guide URL — DeviceAuth:\(device.DeviceAuth != nil ? "present" : "nil")  LocalIP:'\(device.LocalIP)'", level: .error)
             return false
         }
 
@@ -83,22 +82,23 @@ final class GuideStore {
             let (data, response) = try await session.data(from: url)
             let ms = Int(Date().timeIntervalSince(t0) * 1000)
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-            glog("[\(id)] HTTP \(status)  \(data.count) bytes  \(ms)ms")
+            let levelHttp: LogLevel = status == 200 ? .info : .warning
+            glog("[\(id)] HTTP \(status)  \(data.count) bytes  \(ms)ms", level: levelHttp)
 
             // Log first 500 chars of raw response to help diagnose unexpected formats
             if let preview = String(data: data.prefix(500), encoding: .utf8) {
                 glog("[\(id)] response preview: \(preview)")
             } else {
-                glog("[\(id)] response is not UTF-8 — binary or empty")
+                glog("[\(id)] response is not UTF-8 — binary or empty", level: .warning)
             }
 
             guard status == 200 else {
-                glog("[\(id)] ERROR: non-200 status, aborting parse")
+                glog("[\(id)] ERROR: non-200 status, aborting parse", level: .error)
                 return false
             }
 
             guard !data.isEmpty else {
-                glog("[\(id)] ERROR: empty response body")
+                glog("[\(id)] ERROR: empty response body", level: .error)
                 return false
             }
 
@@ -106,10 +106,10 @@ final class GuideStore {
             do {
                 channels = try JSONDecoder().decode([GuideChannel].self, from: data)
             } catch {
-                glog("[\(id)] PARSE ERROR: \(error)")
+                glog("[\(id)] PARSE ERROR: \(error)", level: .error)
                 // Log more of the raw response on parse failure for diagnosis
                 if let full = String(data: data.prefix(2000), encoding: .utf8) {
-                    glog("[\(id)] raw response (2000 chars): \(full)")
+                    glog("[\(id)] raw response (2000 chars): \(full)", level: .error)
                 }
                 return false
             }
@@ -126,7 +126,7 @@ final class GuideStore {
             }
 
             if entryCount == 0 {
-                glog("[\(id)] WARNING: channels loaded but ALL have 0 guide entries — check GuideHours setting or API response")
+                glog("[\(id)] WARNING: channels loaded but ALL have 0 guide entries — check GuideHours setting or API response", level: .warning)
             }
 
             buildIndex(deviceId: id, channels: channels)
@@ -135,7 +135,7 @@ final class GuideStore {
             return true
 
         } catch {
-            glog("[\(id)] NETWORK ERROR: \(error)")
+            glog("[\(id)] NETWORK ERROR: \(error)", level: .error)
             return false
         }
     }
@@ -300,28 +300,4 @@ final class GuideStore {
         glog("All guide caches invalidated")
     }
 
-    // MARK: - File logging
-
-    // Static — ISO8601DateFormatter is expensive; GuideStore is actor-isolated so static is safe
-    private static let logFormatter = ISO8601DateFormatter()
-
-    /// Always-on log to ~/Library/Logs/hdhr_VCR_guide.log
-    private func glog(_ msg: String) {
-        let ts = Self.logFormatter.string(from: Date())
-        let line = "[\(ts)] \(msg)\n"
-        print("[GuideStore] \(msg)")   // also to console for debug builds
-        guard let data = line.data(using: .utf8) else { return }
-        let path = Self.guideLogPath
-        if logHandle == nil {
-            if !FileManager.default.fileExists(atPath: path) {
-                FileManager.default.createFile(atPath: path, contents: nil)
-            }
-            logHandle = FileHandle(forWritingAtPath: path)
-            logHandle?.seekToEndOfFile()
-        }
-        try? logHandle?.write(contentsOf: data)
-    }
-
-    // Kept for backward compat (verbose-gated callers)
-    private func log(_ msg: String) { glog(msg) }
 }
