@@ -34,7 +34,7 @@ final class HDHRManager {
         var found = fromKnown
         for dev in fromMDNS where !found.contains(where: { $0.DeviceID == dev.DeviceID }) { found.append(dev) }
         for dev in fromUDP  where !found.contains(where: { $0.DeviceID == dev.DeviceID }) { found.append(dev) }
-        print("[Discovery] known=\(fromKnown.count) mDNS=\(fromMDNS.count) UDP=\(fromUDP.count) merged=\(found.count)")
+        glog("[Discovery] known=\(fromKnown.count) mDNS=\(fromMDNS.count) UDP=\(fromUDP.count) merged=\(found.count)")
 
         if found.isEmpty {
             guard let cloud = try? await cloudDiscover(), !cloud.isEmpty else {
@@ -47,7 +47,7 @@ final class HDHRManager {
         if found.contains(where: { $0.DeviceAuth == nil }),
            let cloud = try? await cloudDiscover(), !cloud.isEmpty {
             found = supplementDeviceAuth(local: found, cloud: cloud)
-            print("[Discovery] DeviceAuth supplemented from cloud")
+            glog("[Discovery] DeviceAuth supplemented from cloud")
         }
 
         return found
@@ -82,15 +82,17 @@ final class HDHRManager {
         }
     }
 
-    /// Copy DeviceAuth from cloud-discovered devices into matching locally-discovered ones.
-    /// Preserves the local device's IP, lineup URL, and all other fields.
+    /// Copy DeviceAuth into locally-discovered devices that are missing it.
+    /// Prefers auth already present on another local device (same network = same SiliconDust
+    /// account) over the cloud's per-device auth — cloud may return a device-specific token
+    /// that doesn't cover the guide subscription (e.g. mock device with test DeviceID).
     private func supplementDeviceAuth(local: [HDHRDevice], cloud: [HDHRDevice]) -> [HDHRDevice] {
-        local.map { dev in
-            guard dev.DeviceAuth == nil,
-                  let match = cloud.first(where: { $0.DeviceID == dev.DeviceID }),
-                  let auth = match.DeviceAuth else { return dev }
+        let localAuth = local.compactMap { $0.DeviceAuth }.first
+        return local.map { dev in
+            guard dev.DeviceAuth == nil else { return dev }
             var updated = dev
-            updated.DeviceAuth = auth
+            updated.DeviceAuth = localAuth
+                              ?? cloud.first(where: { $0.DeviceID == dev.DeviceID })?.DeviceAuth
             return updated
         }
     }
@@ -135,7 +137,7 @@ final class HDHRManager {
         // Tunnel/VPN interfaces don't support broadcast — skip UDP entirely.
         // Known-hosts discovery handles remote devices via their saved IPs.
         guard interface.isEmpty || !isPointToPointInterface(interface) else {
-            print("[Discovery] UDP skipped — \(interface) is a tunnel, no broadcast support")
+            glog("[Discovery] UDP skipped — \(interface) is a tunnel, no broadcast support", level: .warning)
             return []
         }
 
@@ -159,7 +161,7 @@ final class HDHRManager {
             } else {
                 // Interface name not recognised by the kernel — bind is skipped and UDP goes
                 // out on the OS default route. Log so the user can spot a misconfigured name.
-                print("[Discovery] UDP: if_nametoindex('\(interface)') returned 0 — unknown interface, binding skipped")
+                glog("[Discovery] UDP: if_nametoindex('\(interface)') returned 0 — unknown interface, binding skipped", level: .warning)
             }
         }
 
