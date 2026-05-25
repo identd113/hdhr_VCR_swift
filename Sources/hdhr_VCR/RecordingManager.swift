@@ -42,8 +42,14 @@ final class RecordingManager {
                                     arguments: ["-i", "/usr/bin/curl"] + curlArgs,
                                     stderrPath: logPath)
         pids[showId] = pid
-        if let curlPid = findCurlChild(of: pid) { curlPids[showId] = curlPid }
-        print("[Rec] Started \(showId) pid=\(pid) curl=\(curlPids[showId].map { "\($0)" } ?? "?") verbose=\(verbose): \(streamURL) → \(outputPath)")
+        // Find curl child off the main actor — pgrep blocks; curlPids is only used for stop() SIGTERM
+        let showIdCopy = showId
+        Task.detached(priority: .utility) { [weak self] in
+            if let curlPid = self?.findCurlChild(of: pid) {
+                await MainActor.run { self?.curlPids[showIdCopy] = curlPid }
+            }
+        }
+        print("[Rec] Started \(showId) pid=\(pid) verbose=\(verbose): \(streamURL) → \(outputPath)")
     }
 
     // MARK: - Stop
