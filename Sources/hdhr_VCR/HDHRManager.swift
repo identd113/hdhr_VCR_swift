@@ -204,7 +204,11 @@ final class HDHRManager {
                     }
                 }
             }
-            guard n > 8, buf[0] == 0x00, buf[1] == 0x03 else { break }  // DISCOVER_REPLY = 0x0003
+            if n <= 0 {
+                if n < 0 && errno == EINTR { continue }  // signal interrupt — retry
+                break                                     // SO_RCVTIMEO expired (EAGAIN) or error
+            }
+            guard n > 8, buf[0] == 0x00, buf[1] == 0x03 else { continue }  // DISCOVER_REPLY = 0x0003
 
             // Parse TLV payload for DeviceID tag (0x02)
             let payloadLen = Int(buf[2]) << 8 | Int(buf[3])

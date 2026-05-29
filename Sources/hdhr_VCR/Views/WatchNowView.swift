@@ -19,23 +19,23 @@ struct WatchNowView: View {
         state.devices.first { $0.DeviceID == selectedDeviceId } ?? state.devices.first
     }
 
-    // Returns one LineupEntry per unique on-air channel.
-    // LineupEntry.id == GuideNumber — stable, unique per channel, safe as ForEach id.
+    // Returns one (channel, entry) pair per unique on-air channel.
+    // Keyed by LineupEntry.id (GuideNumber) — stable, unique per channel, safe as ForEach id.
     // GuideEntry.id == StartTime — NOT safe for ForEach (many channels share a start time).
-    private var onAirChannels: [LineupEntry] {
+    private var onAirChannels: [(channel: LineupEntry, entry: GuideEntry)] {
         guard let device = selectedDevice else { return [] }
         var seen = Set<String>()
         return (state.lineups[device.DeviceID] ?? [])
-            .filter { ch in
-                // Keep first occurrence per GuideNumber to strip lineup duplicates
-                guard seen.insert(ch.GuideNumber).inserted else { return false }
-                // Only include channels with a currently-airing show
-                return state.guideEntries(deviceId: device.DeviceID, channelNum: ch.GuideNumber)
-                    .contains { $0.startDate <= now && $0.endDate > now }
+            .compactMap { ch -> (channel: LineupEntry, entry: GuideEntry)? in
+                guard seen.insert(ch.GuideNumber).inserted else { return nil }
+                guard let entry = state.guideEntries(deviceId: device.DeviceID, channelNum: ch.GuideNumber)
+                    .first(where: { $0.startDate <= now && $0.endDate > now })
+                else { return nil }
+                return (ch, entry)
             }
             .sorted { a, b in
-                if a.isFavorite != b.isFavorite { return a.isFavorite }
-                return a.GuideNumber.channelSortKey < b.GuideNumber.channelSortKey
+                if a.channel.isFavorite != b.channel.isFavorite { return a.channel.isFavorite }
+                return a.channel.GuideNumber.channelSortKey < b.channel.GuideNumber.channelSortKey
             }
     }
 
@@ -78,35 +78,28 @@ struct WatchNowView: View {
     }
 
     @ViewBuilder
-    private func channelRow(_ ch: LineupEntry, device: HDHRDevice, snap: Date) -> some View {
-        let entry = state.guideEntries(deviceId: device.DeviceID, channelNum: ch.GuideNumber)
-            .first { $0.startDate <= snap && $0.endDate > snap }
-        if let entry {
-            WatchNowRow(
-                device: device,
-                channel: ch,
-                entry: entry,
-                posterImage: entry.ImageURL.flatMap { posterCache[$0] }
-            )
-            .task(id: entry.ImageURL) {
-                guard let urlStr = entry.ImageURL,
-                      posterCache[urlStr] == nil else { return }
-                if let img = await ChannelIconCache.shared.image(for: urlStr) {
-                    posterCache[urlStr] = img
-                }
+    private func channelRow(_ pair: (channel: LineupEntry, entry: GuideEntry), device: HDHRDevice) -> some View {
+        let (ch, entry) = pair
+        WatchNowRow(
+            device: device,
+            channel: ch,
+            entry: entry,
+            posterImage: entry.ImageURL.flatMap { posterCache[$0] }
+        )
+        .task(id: entry.ImageURL) {
+            guard let urlStr = entry.ImageURL,
+                  posterCache[urlStr] == nil else { return }
+            if let img = await ChannelIconCache.shared.image(for: urlStr) {
+                posterCache[urlStr] = img
             }
-            Divider().padding(.leading, 14)
         }
+        Divider().padding(.leading, 14)
     }
 
     private func prefetchPosters() async {
-        guard let device = selectedDevice else { return }
-        let snap = now
-        for ch in onAirChannels {
-            guard let urlStr = state.guideEntries(deviceId: device.DeviceID, channelNum: ch.GuideNumber)
-                .first(where: { $0.startDate <= snap && $0.endDate > snap })?.ImageURL,
-                  posterCache[urlStr] == nil
-            else { continue }
+        for pair in onAirChannels {
+            guard let urlStr = pair.entry.ImageURL,
+                  posterCache[urlStr] == nil else { continue }
             if let img = await ChannelIconCache.shared.image(for: urlStr) {
                 posterCache[urlStr] = img
             }
@@ -157,21 +150,20 @@ struct WatchNowView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let device = selectedDevice {
-            let snap   = now
-            let favs   = channels.filter(\.isFavorite)
-            let others = channels.filter { !$0.isFavorite }
+            let favs   = channels.filter { $0.channel.isFavorite }
+            let others = channels.filter { !$0.channel.isFavorite }
 
             ScrollView {
                 VStack(spacing: 0) {
                     if !favs.isEmpty {
                         favTopBorder
-                        ForEach(favs) { ch in
-                            channelRow(ch, device: device, snap: snap)
+                        ForEach(favs, id: \.channel.id) { pair in
+                            channelRow(pair, device: device)
                         }
                         favBottomBorder
                     }
-                    ForEach(others) { ch in
-                        channelRow(ch, device: device, snap: snap)
+                    ForEach(others, id: \.channel.id) { pair in
+                        channelRow(pair, device: device)
                     }
                 }
             }

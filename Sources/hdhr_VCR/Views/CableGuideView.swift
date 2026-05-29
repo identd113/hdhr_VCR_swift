@@ -188,8 +188,7 @@ struct CableGuideView: View {
     // ── State ──────────────────────────────────────────────────────────────────
     @State private var channelScrollOffset: CGFloat = 0
 
-    // lineupByNumber is computed directly from the lineup prop so Favorite changes
-    // are visible immediately on the same render frame — no onChange delay.
+    // Computed fresh each render so Favorite changes are visible immediately — no onChange delay.
     private var lineupByNumber: [String: LineupEntry] {
         Dictionary(uniqueKeysWithValues: lineup.map { ($0.GuideNumber, $0) })
     }
@@ -237,7 +236,8 @@ struct CableGuideView: View {
     // ── Fixed channel column (floats outside ScrollView — never culled) ────────
 
     private var channelColumnFixed: some View {
-        VStack(spacing: 0) {
+        let lbn = lineupByNumber
+        return VStack(spacing: 0) {
             // Corner cell — matches scrollingTimeHeader height exactly
             Text("CHANNEL")
                 .font(.system(size: 10, weight: .bold))
@@ -248,17 +248,17 @@ struct CableGuideView: View {
             // Labels track vertical scroll via channelScrollOffset
             ZStack(alignment: .top) {
                 VStack(spacing: 0) {
-                    let favCount = allChannels.filter { lineupByNumber[$0.GuideNumber]?.isFavorite == true }.count
+                    let favCount = allChannels.filter { lbn[$0.GuideNumber]?.isFavorite == true }.count
                     let favs   = Array(allChannels.prefix(favCount))
                     let others = Array(allChannels.dropFirst(favCount))
                     if !favs.isEmpty {
                         channelSectionLabel("★  FAVORITES", accent: true)
-                        ForEach(favs) { ch in channelLabelCell(ch) }
+                        ForEach(favs) { ch in channelLabelCell(ch, lineupEntry: lbn[ch.GuideNumber]) }
                     }
                     if !favs.isEmpty && !others.isEmpty {
                         channelSectionLabel("ALL CHANNELS", accent: false)
                     }
-                    ForEach(others) { ch in channelLabelCell(ch) }
+                    ForEach(others) { ch in channelLabelCell(ch, lineupEntry: lbn[ch.GuideNumber]) }
                 }
                 .offset(y: -channelScrollOffset)
             }
@@ -271,9 +271,8 @@ struct CableGuideView: View {
         .background(ChannelScrollForwarder())
     }
 
-    private func channelLabelCell(_ ch: GuideChannel) -> some View {
-        let lu = lineupByNumber[ch.GuideNumber]
-        return HStack(spacing: 4) {
+    private func channelLabelCell(_ ch: GuideChannel, lineupEntry lu: LineupEntry?) -> some View {
+        HStack(spacing: 4) {
             ChannelIcon(urlString: ch.ImageURL, size: 28)
 
             VStack(alignment: .leading, spacing: 1) {
@@ -358,11 +357,12 @@ struct CableGuideView: View {
 
     private var guideScrollView: some View {
         let nowX = CGFloat(Date().timeIntervalSince(displayStart) / 60) * pxPerMin
+        let lbn  = lineupByNumber
         return ScrollViewReader { proxy in
             ScrollView([.horizontal, .vertical]) {
                 LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
                     Section {
-                        let favCount = allChannels.filter { lineupByNumber[$0.GuideNumber]?.isFavorite == true }.count
+                        let favCount = allChannels.filter { lbn[$0.GuideNumber]?.isFavorite == true }.count
                         let favs   = Array(allChannels.prefix(favCount))
                         let others = Array(allChannels.dropFirst(favCount))
                         if !favs.isEmpty {
@@ -374,7 +374,7 @@ struct CableGuideView: View {
                             ShowBlocksRow(
                                 channel:            ch,
                                 entries:            entries,
-                                lineupEntry:        lineupByNumber[ch.GuideNumber],
+                                lineupEntry:        lbn[ch.GuideNumber],
                                 displayStart:       displayStart,
                                 totalW:             totalW,
                                 rowH:               rowH,
@@ -409,7 +409,7 @@ struct CableGuideView: View {
                             ShowBlocksRow(
                                 channel:            ch,
                                 entries:            entries,
-                                lineupEntry:        lineupByNumber[ch.GuideNumber],
+                                lineupEntry:        lbn[ch.GuideNumber],
                                 displayStart:       displayStart,
                                 totalW:             totalW,
                                 rowH:               rowH,
@@ -477,11 +477,15 @@ struct CableGuideView: View {
         return filtered.sorted { $0.StartTime < $1.StartTime }
     }
 
-    private func formatSlot(_ d: Date) -> String {
+    // "jmm" template: j means preferred hour format for the locale (12h or 24h)
+    private static let slotFormatter: DateFormatter = {
         let f = DateFormatter()
-        // "jmm" template: j means preferred hour format for the locale (12h or 24h)
         f.dateFormat = DateFormatter.dateFormat(fromTemplate: "jmm", options: 0, locale: .current)
-        return f.string(from: d)
+        return f
+    }()
+
+    private func formatSlot(_ d: Date) -> String {
+        Self.slotFormatter.string(from: d)
     }
 }
 

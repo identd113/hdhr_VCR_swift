@@ -535,7 +535,6 @@ final class AppState: ObservableObject {
             return (d.DeviceID, t)
         })
         var newConflicts = Set<String>()
-        let activeShows = shows.filter { $0.show_active && !$0.show_paused }
         for show in activeShows {
             guard let next = show.show_next.date,
                   let end  = show.show_end.date,
@@ -759,6 +758,7 @@ final class AppState: ObservableObject {
                     dirty = true
                 } else if nextDate <= now + 10 {
                     shows[i].show_paused = false
+                    shows[i].show_fail_count = 0; shows[i].show_fail_reason = ""
                     glog("[\(show.show_title)] auto-resuming — next airing imminent")
                     dirty = true
                 }
@@ -1110,10 +1110,12 @@ final class AppState: ObservableObject {
         guard let i = shows.firstIndex(where: { $0.show_id == show.show_id }) else { return }
         if shows[i].show_paused {
             shows[i].show_paused = false
+            shows[i].show_fail_count = 0; shows[i].show_fail_reason = ""
+            saveConfig()
         } else {
-            shows[i].show_active.toggle()
+            shows.remove(at: i)
+            saveConfig()
         }
-        shows[i].show_fail_count = 0; shows[i].show_fail_reason = ""; saveConfig()
     }
 
     // MARK: - Favorites
