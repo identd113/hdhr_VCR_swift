@@ -41,6 +41,15 @@ struct VLCPlayerView: View {
     @State private var volume: Double = 50
     @State private var systemDevices: [(id: String, name: String)] = []
     @State private var selectedDevice: String = ""
+    @State private var posterHidden: Bool = false
+    @State private var posterNSImage: NSImage? = nil
+
+    private var currentGuideEntry: GuideEntry? {
+        guard let ch = selectedChannel else { return nil }
+        let now = Date()
+        return state.guideEntries(deviceId: device.DeviceID, channelNum: ch.GuideNumber)
+            .first { $0.startDate <= now && $0.endDate > now }
+    }
 
     private var lineup: [LineupEntry] {
         (state.lineups[device.DeviceID] ?? []).sorted {
@@ -51,8 +60,20 @@ struct VLCPlayerView: View {
     var body: some View {
         VStack(spacing: 0) {
             toolbar
-            VLCVideoSurface()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            ZStack {
+                VLCVideoSurface()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                if !posterHidden {
+                    posterOverlay
+                        .transition(.opacity)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .animation(.easeOut(duration: 0.35), value: posterHidden)
+            .task(id: currentGuideEntry?.ImageURL) {
+                guard let url = currentGuideEntry?.ImageURL else { posterNSImage = nil; return }
+                posterNSImage = await ChannelIconCache.shared.image(for: url)
+            }
         }
         .onAppear {
             volume = Double(VLCBridge.shared.volume())
@@ -93,6 +114,89 @@ struct VLCPlayerView: View {
         }
     }
 
+    // MARK: - Poster overlay
+
+    private var posterOverlay: some View {
+        let entry = currentGuideEntry
+        return ZStack {
+            Color.black
+
+            HStack(alignment: .center, spacing: 24) {
+                // Poster image
+                Group {
+                    if let img = posterNSImage {
+                        Image(nsImage: img)
+                            .resizable()
+                            .scaledToFit()
+                    } else {
+                        Image(systemName: "tv")
+                            .font(.system(size: 48))
+                            .foregroundStyle(.white.opacity(0.25))
+                    }
+                }
+                .frame(width: 300)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                // Episode info + synopsis
+                VStack(alignment: .leading, spacing: 8) {
+                    if let entry {
+                        Text(entry.Title)
+                            .font(.title2.bold())
+                            .foregroundStyle(.white)
+                            .lineLimit(2)
+
+                        let epNum   = entry.EpisodeNumber
+                        let epTitle = entry.EpisodeTitle
+                        switch (epNum, epTitle) {
+                        case (let n?, let t?):
+                            Text("\(n)  \(t)")
+                                .font(.subheadline)
+                                .foregroundStyle(.white.opacity(0.75))
+                                .lineLimit(1)
+                        case (let n?, nil):
+                            Text(n)
+                                .font(.subheadline)
+                                .foregroundStyle(.white.opacity(0.75))
+                        case (nil, let t?):
+                            Text(t)
+                                .font(.subheadline)
+                                .foregroundStyle(.white.opacity(0.75))
+                                .lineLimit(1)
+                        case (nil, nil):
+                            EmptyView()
+                        }
+
+                        if let synopsis = entry.Synopsis, !synopsis.isEmpty {
+                            Text(synopsis)
+                                .font(.callout)
+                                .foregroundStyle(.white.opacity(0.6))
+                                .lineLimit(4)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+
+                    Button {
+                        posterHidden = true
+                    } label: {
+                        Label("Start", systemImage: "play.fill")
+                            .font(.title3.bold())
+                            .padding(.horizontal, 22)
+                            .padding(.vertical, 12)
+                            .background(.ultraThinMaterial)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .foregroundStyle(.white)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 4)
+                }
+                .frame(maxWidth: 360, alignment: .leading)
+            }
+            .padding(32)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+    }
+
     // MARK: - Toolbar
 
     private var toolbar: some View {
@@ -106,6 +210,8 @@ struct VLCPlayerView: View {
             .labelsHidden()
             .frame(maxWidth: 220)
             .onChange(of: selectedChannel) { _, ch in
+                posterHidden = false
+                posterNSImage = nil
                 if suppressNextChannelPlay { suppressNextChannelPlay = false; return }
                 if let ch { playChannel(ch) }
             }
