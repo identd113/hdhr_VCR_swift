@@ -534,12 +534,15 @@ final class AppState: ObservableObject {
             guard let t = d.TunerCount, t > 0 else { return nil }
             return (d.DeviceID, t)
         })
+        // Include recording shows so a scheduled show that overlaps with an already-recording
+        // show is correctly flagged — activeShows excludes show_recording == true shows.
+        let candidateShows = shows.filter { $0.show_active && !$0.show_paused }
         var newConflicts = Set<String>()
-        for show in activeShows {
+        for show in candidateShows {
             guard let next = show.show_next.date,
                   let end  = show.show_end.date,
                   let tunerCount = deviceMap[show.hdhr_record] else { continue }
-            let overlapping = activeShows.filter { other in
+            let overlapping = candidateShows.filter { other in
                 guard other.show_id != show.show_id,
                       other.hdhr_record == show.hdhr_record,
                       let oNext = other.show_next.date,
@@ -1014,6 +1017,9 @@ final class AppState: ObservableObject {
     func scheduleNextAir(index: Int) async {
         guard index < shows.count else { return }
         let show = shows[index]
+        // Keys are "showId-epoch" — once show_next advances the old key is stale.
+        // Remove on every reschedule so the set doesn't accumulate indefinitely.
+        conflictNotifiedKeys = conflictNotifiedKeys.filter { !$0.hasPrefix("\(show.show_id)-") }
         switch show.state {
         case .single:
             glog("[\(show.show_title)] DONE single — deactivated")

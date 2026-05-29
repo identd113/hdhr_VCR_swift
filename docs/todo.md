@@ -6,6 +6,8 @@ All original feature requests have been implemented. Items below are quality-of-
 
 ## Menu Bar (MenuContent.swift)
 
+- **Yellow "already scheduled" triangle shows on all existing-show menu popups** — the triangle in `showInfoHeader` was designed to flag already-scheduled entries while browsing the Add Show guide, but it lives in a shared helper also used by `recordingMenu`, `scheduledMenu`, and `pausedMenu`. In those contexts it's always true and conveys nothing. Fix: add a `showManagedBadge: Bool = false` parameter and only pass `true` from the guide-browsing context (AddShowView step 2 / CableGuideView).
+
 - **Elapsed/remaining timer doesn't tick** — times are computed when the menu opens and stay static. NSMenu doesn't auto-refresh; a real-time display would require a window-based popover for recording detail.
 
 - **No "Record Now" shortcut** — there is no direct path to immediately record a show that's currently on air without going through Watch Now or the Add Show wizard.
