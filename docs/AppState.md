@@ -30,6 +30,7 @@ Runs every `config.Idle_timer_interval` seconds on MainActor:
   - Stops recording naturally if `show_end <= now`.
   - Detects unexpected caffeinate exit → increments fail count, sends notification.
 - Conflict notifications: when a show can't start because all tuners are full, fires once per show+episode window (`conflictNotifiedKeys` set keyed by `"showID-show_next_epoch"`).
+- Calls `fetchDeviceStatus(for:)` once per device — a single `/status.json` fetch per device covers both the menu-header occupancy count and per-recording vstatus signal data (one targeted `/tunerN/vstatus` per recording show, identified from the status.json result). This replaced two separate loops (`fetchDeviceOccupancy` + `fetchTunerStatus`) that fired O(tunerCount) HTTP calls per recording.
 
 ---
 

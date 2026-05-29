@@ -391,21 +391,25 @@ struct MenuContent: View {
         let now = Date()
         let dayNames = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"]
         let airIndices = show.show_air_date.compactMap { dayNames.firstIndex(of: $0.lowercased()) }
-        let hours = Int(show.show_time)
+        guard !airIndices.isEmpty else { return [] }
+        let hours   = Int(show.show_time)
         let minutes = Int((show.show_time - Double(hours)) * 60)
-        var results: [Date] = []
-        var check = now
-        guard let limit = cal.date(byAdding: .day, value: 60, to: now) else { return [] }
-        while results.count < count && check < limit {
-            let idx = cal.component(.weekday, from: check) - 1  // 0 = Sunday
-            if airIndices.contains(idx) {
-                var c = cal.dateComponents([.year, .month, .day], from: check)
+        let todayWeekday = cal.component(.weekday, from: now) - 1  // 0 = Sunday
+
+        // For each air weekday, jump directly to its next occurrence using modulo (≤7 steps).
+        // Generate enough per-weekday occurrences to cover count, then sort and trim.
+        let weeksNeeded = (count / airIndices.count) + 2
+        var candidates: [Date] = []
+        for target in airIndices {
+            let daysUntil = (target - todayWeekday + 7) % 7
+            for week in 0..<weeksNeeded {
+                guard let base = cal.date(byAdding: .day, value: daysUntil + week * 7, to: now) else { continue }
+                var c = cal.dateComponents([.year, .month, .day], from: base)
                 c.hour = hours; c.minute = minutes
-                if let d = cal.date(from: c), d > now { results.append(d) }
+                if let d = cal.date(from: c), d > now { candidates.append(d) }
             }
-            check = cal.date(byAdding: .day, value: 1, to: check) ?? check
         }
-        return results
+        return Array(candidates.sorted().prefix(count))
     }
 
     // Shared show-info panel used by recordingMenu, scheduledMenu, and pausedMenu.

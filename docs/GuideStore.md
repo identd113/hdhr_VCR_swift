@@ -22,7 +22,8 @@ Returns `nil` if neither DeviceAuth nor LocalIP is available (logs a diagnostic)
 |---|---|---|
 | `channelsByDevice` | `deviceId` | `[GuideChannel]` — mirrored into `AppState.guideByDevice` |
 | `channelEntryIndex` | `"deviceId:channelNum"` | `[GuideEntry]` sorted by `StartTime` |
-| `seriesIndex` | `seriesID` | `[SeriesMatch]` sorted by `StartTime`; each carries `deviceId`, `channelNum`, `entry` |
+| `seriesIndex` | `seriesID` | `[SeriesMatch]` sorted by `StartTime` (lazily — sorted on first query per series, not at build time); each carries `deviceId`, `channelNum`, `entry` |
+| `unsortedSeries` | — | `Set<String>` of series IDs needing sort on next `nextEpisode`/`nextEpisodes`/`currentEpisode` call |
 
 ---
 
@@ -39,6 +40,14 @@ func isFresh(deviceId: String, within interval: TimeInterval) -> Bool  // defaul
 func invalidate(deviceId: String)
 func invalidateAll()
 ```
+
+---
+
+## Lazy Series Sort
+
+`buildIndex` appends entries into `seriesIndex` but does **not** sort them — it marks affected series in `unsortedSeries` instead. `sortIfNeeded(_:)` is called at the top of `nextEpisode`, `nextEpisodes`, and `currentEpisode`; it sorts only the queried series on first access, then removes it from `unsortedSeries`. This defers the O(series × entries log entries) sort cost from guide-load time (main-actor, synchronous) to first-query time (typically spread across the first idle-loop `rebuildMenuEntries` call after load).
+
+`invalidate(deviceId:)` prunes `unsortedSeries` to only entries still in `seriesIndex`. `invalidateAll()` clears it entirely.
 
 ---
 

@@ -160,11 +160,12 @@ final class AppState: ObservableObject {
         isStartingUp = false
         glog("[Startup] complete")
 
-        // Pre-warm SwiftUI's JIT compiler for MenuContent so first menu click has no delay.
-        // Creating an NSHostingView forces a full layout pass; the view is discarded immediately.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
-            guard let self else { return }
-            let v = NSHostingView(rootView: MenuContent().environmentObject(self))
+        // Pre-warm SwiftUI's JIT compiler so the first menu click has no delay.
+        // A minimal placeholder exercises the same view types (Text, Button, Menu, Divider)
+        // without evaluating the live show/guide data — avoids the O(shows × entries) layout
+        // cost of rendering full MenuContent at startup.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            let v = NSHostingView(rootView: MenuJITPlaceholder())
             v.frame = CGRect(x: 0, y: 0, width: 320, height: 600)
             _ = v.fittingSize
         }
@@ -344,10 +345,11 @@ final class AppState: ObservableObject {
     /// The lineup URL is authoritative — the device embeds its own current IP in it.
     private func updateShowURLsFromLineups() {
         var dirty = false
+        let deviceMap = Dictionary(uniqueKeysWithValues: devices.map { ($0.DeviceID, $0) })
         for i in shows.indices {
             let show = shows[i]
             guard !show.show_url.isEmpty,
-                  let device = devices.first(where: { $0.DeviceID == show.hdhr_record }),
+                  let device = deviceMap[show.hdhr_record],
                   let storedHost = URL(string: show.show_url)?.host,
                   storedHost != device.LocalIP,           // IP has changed since URL was saved
                   let lineup = lineups[show.hdhr_record],
@@ -825,14 +827,10 @@ final class AppState: ObservableObject {
 
         if dirty { saveConfig() }
 
-        // Refresh vstatus for each active recording so the recording submenu shows live signal data
-        for show in recordingShows {
-            Task { await fetchTunerStatus(for: show) }
-        }
-
-        // Poll status.json for each device to get live tuner occupancy for the menu header
+        // One /status.json fetch per device covers both menu-header occupancy counts and
+        // per-recording vstatus — avoids O(tunerCount) separate HTTP calls per recording.
         for device in devices {
-            Task { await fetchDeviceOccupancy(for: device) }
+            Task { await fetchDeviceStatus(for: device) }
         }
 
         // Re-sync menu caches with current show states (show_next changes after recordings complete).
@@ -1539,33 +1537,26 @@ final class AppState: ObservableObject {
 
     // MARK: - Tuner signal status
 
-    private func fetchDeviceOccupancy(for device: HDHRDevice) async {
+    /// Fetches /status.json once per device, updates occupancy for the menu header, then
+    /// fetches /tunerN/vstatus for each recording show on that device using the tuner index
+    /// from the status response — O(1) vstatus calls per show instead of O(tunerCount).
+    private func fetchDeviceStatus(for device: HDHRDevice) async {
         guard let url = URL(string: device.statusURL),
               let (data, _) = try? await URLSession.shared.data(from: url),
               let tuners = try? JSONDecoder().decode([DeviceTunerInfo].self, from: data)
         else { return }
+
         deviceTunerOccupancy[device.DeviceID] = tuners
-    }
 
-    func fetchTunerStatus(for show: Show) async {
-        // Resolve device IP from the known-device list; fall back to the host in show_url
-        let ip: String
-        if let deviceIP = devices.first(where: { $0.DeviceID == show.hdhr_record })?.LocalIP {
-            ip = deviceIP
-        } else if let host = URL(string: show.show_url)?.host {
-            ip = host
-        } else {
-            return
-        }
-        let tunerCount = devices.first(where: { $0.DeviceID == show.hdhr_record })?.TunerCount ?? 4
+        for show in recordingShows where show.hdhr_record == device.DeviceID {
+            // status.json lists only active tuners; VctNumber is the channel it's streaming.
+            guard let match = tuners.first(where: { $0.VctNumber == show.show_channel }),
+                  let idx   = Int(match.Resource.dropFirst(5)),   // "tuner0" → 0
+                  let vsURL = URL(string: "http://\(device.LocalIP)/tuner\(idx)/vstatus"),
+                  let (vsData, _) = try? await URLSession.shared.data(from: vsURL),
+                  let text = String(data: vsData, encoding: .utf8)
+            else { continue }
 
-        var best: TunerStatus? = nil
-        for n in 0..<tunerCount {
-            guard let url = URL(string: "http://\(ip)/tuner\(n)/vstatus") else { continue }
-            guard let (data, _) = try? await URLSession.shared.data(from: url),
-                  let text = String(data: data, encoding: .utf8) else { continue }
-
-            // Parse space-separated key=value pairs
             var kv: [String: String] = [:]
             for token in text.split(separator: " ") {
                 let parts = token.split(separator: "=", maxSplits: 1)
@@ -1573,22 +1564,12 @@ final class AppState: ObservableObject {
             }
             let lock = kv["lock"] ?? "none"
             guard lock != "none" else { continue }
-
-            let status = TunerStatus(
+            tunerStatus[show.show_id] = TunerStatus(
                 signalStrength: Int(kv["ss"]  ?? "0") ?? 0,
                 signalQuality:  Int(kv["snq"] ?? "0") ?? 0,
                 lockType:       lock,
                 bitrateMbps:    Double(kv["bps"] ?? "0").map { $0 / 1_000_000 } ?? 0
             )
-            // Prefer the tuner whose channel matches the show's channel
-            if kv["ch"] == show.show_channel {
-                best = status
-                break
-            }
-            if best == nil { best = status }  // first locked tuner as fallback
-        }
-        if let status = best {
-            tunerStatus[show.show_id] = status
         }
     }
 
@@ -1633,6 +1614,22 @@ final class AppState: ObservableObject {
         default:                       // Go Back — cancel
             break
         }
+    }
+}
+
+// MARK: - JIT Warmup Placeholder
+
+/// Minimal SwiftUI view used only at startup to pre-warm the JIT compiler for menu rendering.
+/// Uses the same primitive types as MenuContent (Text, Button, Menu, Divider) without accessing
+/// any live app state, so layout cost is O(1) rather than O(shows × guide entries).
+private struct MenuJITPlaceholder: View {
+    var body: some View {
+        Text("").font(.headline)
+        Text("").foregroundStyle(Color.secondary)
+        Button("") {}
+        Menu("") { Text(""); Divider(); Button("") {} }
+        Divider()
+        Text("").font(.footnote).foregroundStyle(Color.secondary)
     }
 }
 

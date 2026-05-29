@@ -56,14 +56,4 @@ All original feature requests have been implemented. Items below are quality-of-
 
 Items identified during audit but deferred (medium or low impact, no user-visible regression).
 
-- **#1 — Idle vstatus fetches fire unconditionally** (`AppState.idleLoop` ~line 596): `fetchTunerStatus` runs every 10 s for each active recording regardless of whether anyone is watching the recording submenu. Each call fires O(tunerCount) HTTP requests. Fix: track NSMenu open/close state and only poll while the menu is visible, or throttle to 30–60 s.
-
-- **#4 — Guide index sort is eager** (`GuideStore.buildIndex`): After every guide load, all series entries are sorted — O(series × entries log entries) on the main actor. Fix: sort lazily (only when `nextEpisode` is first queried for a given series ID); skip re-sort if the series was already sorted.
-
-- **#6 — Device lookup in `updateShowURLsFromLineups` is O(shows × devices)** (`AppState`): `devices.first(where:)` is called once per show. Fix: build a `[DeviceID: HDHRDevice]` dictionary before the loop (O(devices)) and use O(1) lookups inside.
-
-- **#7 — DateTime "next occurrences" loops through 60 calendar days per show** (`MenuContent.nextDateTimeOccurrences`): Fix: compute the next matching weekday with modulo arithmetic (jump directly rather than stepping day-by-day) to reduce 60 Calendar iterations to ≤7.
-
-- **#8 — Startup JIT warm-up renders full MenuContent synchronously** (`AppState.startup` +2 s): The `NSHostingView + fittingSize` pass forces a full layout of the menu tree including all show submenus. Fix: render a minimal placeholder view (just the header + a few static items) instead of the live state-driven MenuContent.
-
 - **#10 — `guideStore.entries()` rebuilds key string on every call** (`GuideStore`): `"\(deviceId):\(channelNum)"` string interpolation happens at each call site. Fix: pass a pre-built key, or add a direct `entries(key:)` overload that accepts a pre-computed string.

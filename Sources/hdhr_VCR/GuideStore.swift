@@ -26,6 +26,7 @@ final class GuideStore {
     private(set) var channelsByDevice: [String: [GuideChannel]] = [:]
     private var channelEntryIndex: [String: [GuideEntry]] = [:]   // "devId:chNum" → sorted entries
     private var seriesIndex: [String: [SeriesMatch]] = [:]         // seriesID → sorted matches
+    private var unsortedSeries: Set<String> = []                   // series needing sort on next query
     private var loadingDevices: Set<String> = []
     private var loadTimestamps: [String: Date] = [:]
 
@@ -182,12 +183,17 @@ final class GuideStore {
                 seriesIndex[sid, default: []].append(
                     SeriesMatch(deviceId: deviceId, channelNum: ch.GuideNumber, entry: entry)
                 )
+                unsortedSeries.insert(sid)
             }
         }
-        // Keep series index sorted so nextEpisode can do a linear scan and stop early
-        for key in seriesIndex.keys {
-            seriesIndex[key]?.sort { $0.entry.StartTime < $1.entry.StartTime }
-        }
+        // Series sort is deferred to first query via sortIfNeeded(_:) — avoids
+        // O(series × entries log entries) on the main actor at guide load time.
+    }
+
+    private func sortIfNeeded(_ seriesID: String) {
+        guard unsortedSeries.contains(seriesID) else { return }
+        seriesIndex[seriesID]?.sort { $0.entry.StartTime < $1.entry.StartTime }
+        unsortedSeries.remove(seriesID)
     }
 
     // MARK: - Queries
@@ -212,6 +218,7 @@ final class GuideStore {
         deviceId: String? = nil,
         after: Date = Date()
     ) -> SeriesMatch? {
+        sortIfNeeded(seriesID)
         let epoch = Int(after.timeIntervalSince1970)
         return seriesIndex[seriesID]?.first { m in
             m.entry.StartTime > epoch
@@ -223,6 +230,7 @@ final class GuideStore {
     /// Up to `limit` upcoming episodes matching seriesID with StartTime > after.
     /// The index is already sorted by StartTime so no additional sort is needed.
     func nextEpisodes(seriesID: String, after: Date = Date(), limit: Int = 4) -> [SeriesMatch] {
+        sortIfNeeded(seriesID)
         let epoch = Int(after.timeIntervalSince1970)
         let all = seriesIndex[seriesID]?.filter { $0.entry.StartTime > epoch } ?? []
         // Same airing appears once per device when multiple tuners share a channel lineup;
@@ -240,6 +248,7 @@ final class GuideStore {
         deviceId: String? = nil,
         at date: Date = Date()
     ) -> SeriesMatch? {
+        sortIfNeeded(seriesID)
         let epoch = Int(date.timeIntervalSince1970)
         return seriesIndex[seriesID]?.first { m in
             m.entry.StartTime <= epoch && m.entry.EndTime > epoch
@@ -287,6 +296,7 @@ final class GuideStore {
             seriesIndex[key]?.removeAll { $0.deviceId == deviceId }
         }
         seriesIndex = seriesIndex.filter { !$1.isEmpty }
+        unsortedSeries = unsortedSeries.filter { seriesIndex[$0] != nil }
         loadTimestamps.removeValue(forKey: deviceId)
         glog("[\(deviceId)] cache invalidated")
     }
@@ -295,6 +305,7 @@ final class GuideStore {
         channelsByDevice = [:]
         channelEntryIndex = [:]
         seriesIndex = [:]
+        unsortedSeries = []
         loadTimestamps = [:]
         glog("All guide caches invalidated")
     }
