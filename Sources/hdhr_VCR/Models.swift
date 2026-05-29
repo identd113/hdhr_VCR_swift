@@ -106,11 +106,15 @@ struct Show: Identifiable, Equatable {
         return show_temp_dir.isEmpty ? (NSHomeDirectory() + "/Movies/hdhr_videos") : show_temp_dir
     }
 
+    private static let outputDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")  // fixed format, must not vary by locale
+        f.dateFormat = "yyyyMMdd_HHmm"
+        return f
+    }()
+
     func outputPath(date: Date = Date()) -> String {
-        let fmt = DateFormatter()
-        fmt.locale = Locale(identifier: "en_US_POSIX")  // fixed format, must not vary by locale
-        fmt.dateFormat = "yyyyMMdd_HHmm"
-        let dateStr = fmt.string(from: date)
+        let dateStr = Self.outputDateFormatter.string(from: date)
         let safe = show_title.replacingOccurrences(of: "/", with: "-")
         let ext = (show_transcode.lowercased() == "none" || show_transcode.isEmpty) ? ".m2ts" : ".mkv"
         return (posixRecordDir as NSString).appendingPathComponent("\(safe)_\(show_channel)_\(dateStr)\(ext)")

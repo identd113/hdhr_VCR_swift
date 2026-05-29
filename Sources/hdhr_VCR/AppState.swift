@@ -1113,17 +1113,7 @@ final class AppState: ObservableObject {
         guard let i = shows.firstIndex(where: { $0.show_id == show.show_id }) else { return }
         shows[i] = show; saveConfig()
     }
-    func toggleActive(_ show: Show) {
-        guard let i = shows.firstIndex(where: { $0.show_id == show.show_id }) else { return }
-        if shows[i].show_paused {
-            shows[i].show_paused = false
-            shows[i].show_fail_count = 0; shows[i].show_fail_reason = ""
-            saveConfig()
-        } else {
-            shows.remove(at: i)
-            saveConfig()
-        }
-    }
+
 
     // MARK: - Favorites
 
