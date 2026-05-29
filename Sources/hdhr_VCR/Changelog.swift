@@ -1,6 +1,14 @@
 // Hand-maintained changelog displayed in Settings → About.
 // Update this file when shipping new features; keep most-recent version at the top.
 let appChangelog = """
+## 2026-05-29 (260529-1145)
+- Deactivating a show now deletes it immediately — no more "inactive" limbo state that was lost on restart
+- Show stuck in a fail→pause→resume loop no longer re-pauses immediately — fail count cleared on auto-resume
+- CableGuideView: lineup dictionary built once per render instead of once per channel row — smoother scrolling on large lineups
+- CableGuideView: time-slot formatter is now a static instance — eliminates repeated DateFormatter allocation during guide scroll
+- WatchNowView: guide entry resolved once per channel per refresh instead of twice — halves guide lookups on each 30 s tick
+- UDP device discovery: EINTR no longer terminates the receive loop early — transient signal interrupts are retried
+
 ## 2026-05-29 (260529-0957)
 - VLC player: poster overlay with Start button — stream buffers silently on open; poster + title + synopsis fill the video area until Start is clicked, then fades to live video; poster reappears on channel change
 - Tuner conflict notifications fire once per show+episode window, not every idle tick — eliminates per-tick spam when a show can't start due to a full tuner
