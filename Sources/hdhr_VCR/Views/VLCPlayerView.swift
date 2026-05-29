@@ -38,7 +38,7 @@ struct VLCPlayerView: View {
 
     @State private var selectedChannel: LineupEntry?
     @State private var suppressNextChannelPlay = false
-    @State private var volume: Double = 50
+    @AppStorage("vlcVolume") private var volume: Double = 50
     @State private var systemDevices: [(id: String, name: String)] = []
     @State private var selectedDevice: String = ""
     @State private var posterHidden: Bool = false
@@ -76,7 +76,7 @@ struct VLCPlayerView: View {
             }
         }
         .onAppear {
-            volume = Double(VLCBridge.shared.volume())
+            VLCBridge.shared.setVolume(0)   // muted until Start is clicked
             refreshAudioDevices()
             VLCBridge.shared.startDeviceChangeMonitoring { refreshAudioDevices() }
             syncChannel(to: initialURL)
@@ -177,6 +177,7 @@ struct VLCPlayerView: View {
 
                     Button {
                         posterHidden = true
+                        VLCBridge.shared.setVolume(Int(volume))
                     } label: {
                         Label("Start", systemImage: "play.fill")
                             .font(.title3.bold())
@@ -212,6 +213,7 @@ struct VLCPlayerView: View {
             .onChange(of: selectedChannel) { _, ch in
                 posterHidden = false
                 posterNSImage = nil
+                VLCBridge.shared.setVolume(0)
                 if suppressNextChannelPlay { suppressNextChannelPlay = false; return }
                 if let ch { playChannel(ch) }
             }
@@ -321,6 +323,7 @@ final class VLCPlayerWindowManager {
     /// If the window is already showing, the stream is switched immediately.
     func open(url: String, title: String, device: HDHRDevice, appState: AppState) {
         currentDeviceID = device.DeviceID
+        VLCBridge.shared.setVolume(0)   // mute before buffering starts; Start click unmutes
         VLCBridge.shared.play(url: url)
 
         if let win = window {
