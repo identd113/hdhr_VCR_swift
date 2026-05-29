@@ -78,6 +78,15 @@ struct hdhr_VCRApp: App {
         .windowResizability(.contentSize)
         .defaultSize(width: 560, height: 440)
 
+        // Watch Now window — shows currently-airing shows as poster cards
+        WindowGroup("Watch Now", id: "watch-now") {
+            WatchNowView()
+                .environmentObject(appState)
+        }
+        .windowStyle(.titleBar)
+        .windowResizability(.contentMinSize)
+        .defaultSize(width: 420, height: 620)
+
         // Floating cable guide — opened from the Add Show guide step pop-out button
         WindowGroup("Cable Guide", id: "cable-guide") {
             FloatingGuideView()
