@@ -295,7 +295,7 @@ struct MenuContent: View {
                     if let d = show.show_next.date { return [(show.show_channel, d)] }
                     return []
                 case .dateTime:
-                    return nextDateTimeOccurrences(for: show, count: 3).map { (show.show_channel, $0) }
+                    return state.nextDateTimeOccurrences(for: show, after: Date(), count: 3).map { (show.show_channel, $0) }
                 case .seriesChannel, .seriesAll:
                     return state.menuUpcomingSlots[show.show_id] ?? []
                 }
@@ -382,34 +382,6 @@ struct MenuContent: View {
         let t = Self.timeFormatter.string(from: date)
         if Calendar.current.isDateInToday(date) { return "Channel \(channel) · \(t)" }
         return "Channel \(channel) · \(Self.shortWeekdayFormatter.string(from: date)) \(t)"
-    }
-
-    // Next N weekday+time occurrences for a DateTime show, computed from show_air_date / show_time.
-    // AppState.nextDateTime(for:) has no after: parameter so we derive occurrences locally.
-    private func nextDateTimeOccurrences(for show: Show, count: Int) -> [Date] {
-        let cal = Calendar.current
-        let now = Date()
-        let dayNames = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"]
-        let airIndices = show.show_air_date.compactMap { dayNames.firstIndex(of: $0.lowercased()) }
-        guard !airIndices.isEmpty else { return [] }
-        let hours   = Int(show.show_time)
-        let minutes = Int((show.show_time - Double(hours)) * 60)
-        let todayWeekday = cal.component(.weekday, from: now) - 1  // 0 = Sunday
-
-        // For each air weekday, jump directly to its next occurrence using modulo (≤7 steps).
-        // Generate enough per-weekday occurrences to cover count, then sort and trim.
-        let weeksNeeded = (count / airIndices.count) + 2
-        var candidates: [Date] = []
-        for target in airIndices {
-            let daysUntil = (target - todayWeekday + 7) % 7
-            for week in 0..<weeksNeeded {
-                guard let base = cal.date(byAdding: .day, value: daysUntil + week * 7, to: now) else { continue }
-                var c = cal.dateComponents([.year, .month, .day], from: base)
-                c.hour = hours; c.minute = minutes
-                if let d = cal.date(from: c), d > now { candidates.append(d) }
-            }
-        }
-        return Array(candidates.sorted().prefix(count))
     }
 
     // Shared show-info panel used by recordingMenu, scheduledMenu, and pausedMenu.

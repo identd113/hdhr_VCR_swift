@@ -1089,21 +1089,36 @@ final class AppState: ObservableObject {
         }
     }
 
-    func nextDateTime(for show: Show) -> Date? {
-        let dayMap = ["Sunday":1,"Monday":2,"Tuesday":3,"Wednesday":4,"Thursday":5,"Friday":6,"Saturday":7]
+    /// All DateTime show occurrences after `after`, up to `count`.
+    /// Pass `after: Date()` to include today's airing if it hasn't happened yet (menu display).
+    /// Pass `after: startOfTomorrow` to always skip today (rescheduling after a completed recording).
+    func nextDateTimeOccurrences(for show: Show, after: Date = Date(), count: Int = 1) -> [Date] {
         let cal = Calendar.current
-        let h = Int(show.show_time)
-        let m = Int((show.show_time.truncatingRemainder(dividingBy: 1)) * 60)
-        for offset in 1...7 {
-            let candidate = Date().addingTimeInterval(Double(offset) * 86400)
-            let weekday = cal.component(.weekday, from: candidate)
-            let dayName = dayMap.first { $0.value == weekday }?.key ?? ""
-            guard show.show_air_date.contains(dayName) else { continue }
-            var comps = cal.dateComponents([.year, .month, .day], from: candidate)
-            comps.hour = h; comps.minute = m; comps.second = 0
-            return cal.date(from: comps)
+        let dayNames = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"]
+        let airIndices = show.show_air_date.compactMap { dayNames.firstIndex(of: $0.lowercased()) }
+        guard !airIndices.isEmpty else { return [] }
+        let hours   = Int(show.show_time)
+        let minutes = Int((show.show_time - Double(hours)) * 60)
+        let baseWeekday = cal.component(.weekday, from: after) - 1  // 0 = Sunday
+        let weeksNeeded = max(2, (count / max(1, airIndices.count)) + 2)
+        var candidates: [Date] = []
+        for target in airIndices {
+            let daysUntil = (target - baseWeekday + 7) % 7
+            for week in 0..<weeksNeeded {
+                guard let base = cal.date(byAdding: .day, value: daysUntil + week * 7, to: after) else { continue }
+                var c = cal.dateComponents([.year, .month, .day], from: base)
+                c.hour = hours; c.minute = minutes; c.second = 0
+                if let d = cal.date(from: c), d > after { candidates.append(d) }
+            }
         }
-        return nil
+        return Array(candidates.sorted().prefix(count))
+    }
+
+    func nextDateTime(for show: Show) -> Date? {
+        // Always skip today — a completed recording should never reschedule to the same day.
+        let tomorrow = Calendar.current.date(byAdding: .day, value: 1,
+                           to: Calendar.current.startOfDay(for: Date()))!
+        return nextDateTimeOccurrences(for: show, after: tomorrow).first
     }
 
     // MARK: - Show CRUD
