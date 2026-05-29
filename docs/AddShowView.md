@@ -219,11 +219,12 @@ show.show_channel  = channel.GuideNumber
 show.show_length   = entry.durationMinutes
 show.show_next     = EpochDate(entry.startDate)
 show.show_end      = EpochDate(entry.endDate)
-show.show_seriesid = entry.SeriesID ?? ""
-show.show_logo_url = entry.ImageURL ?? ""
-show.show_genre    = entry.firstGenre ?? ""   // Bonus Time detection uses this at recording time
-show.hdhr_record   = device.DeviceID
-show.show_url      = channel.URL ?? ""
+show.show_seriesid   = entry.SeriesID ?? ""
+show.show_logo_url   = entry.ImageURL ?? ""
+show.show_genre      = entry.firstGenre ?? ""
+show.show_bonus_time = entry.firstGenre?.lowercased().contains("sports") == true  // auto-enables Bonus Time for sports
+show.hdhr_record     = device.DeviceID
+show.show_url        = channel.URL ?? ""
 ```
 
 Local time extraction (all times are **local, not UTC**):
@@ -232,7 +233,7 @@ let comps = Calendar.current.dateComponents([.hour, .minute, .weekday], from: en
 show.show_time = Double(comps.hour ?? 20) + Double(comps.minute ?? 0) / 60.0
 ```
 
-Air day is pre-populated from the guide's local weekday. Series type defaults to `.seriesChannel` if `entry.SeriesID != nil`, otherwise `.single`.
+Air day is pre-populated from the guide's local weekday. Series type always resets to `.single` — the user must manually pick a series type after selecting a guide entry.
 
 ---
 

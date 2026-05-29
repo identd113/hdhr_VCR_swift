@@ -33,7 +33,7 @@ Watch_in_VLC_initialized Bool   false   set true after first VLC auto-detect; pr
 Player_unlocked         Bool    false   gates the in-app VLC player (unlocked by 5-tap easter egg on About logo)
 Sports_padding_enabled  Bool    true    master Bonus Time toggle; extends recording past guide end for sports shows
 Sports_padding_minutes  Int     30      Bonus Time extension duration in minutes (10–60, step 5)
-Discord_enabled         Bool    false   master Discord on/off toggle; distinct from having a non-empty webhook URL
+Discord_enabled         Bool    false   master Discord on/off toggle; decode fallback is `!Discord_webhook_url.isEmpty` (auto-enables for existing configs that already have a webhook set)
 Discord_webhook_url     String  ""      Discord webhook URL; blank = disabled
 Discord_on_start        Bool    true    embed when recording starts
 Discord_on_complete     Bool    true    embed when recording completes (includes file size)

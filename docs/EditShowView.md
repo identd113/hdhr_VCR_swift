@@ -124,8 +124,6 @@ Calls `state.confirmAndDeleteShow(s) { dismiss() }` — same flow as menu-based 
 
 ## What Still Needs Doing
 
-- **No confirmation on Delete** — a show can be deleted by accident. An `NSAlert` "Delete [Title]? This cannot be undone." would prevent unintentional data loss.
-
 - **No guide integration** — if a user wants to fix a broken show URL, reschedule to a different channel, or see what the guide says about the next episode, they have to do it manually (edit channel, edit stream URL). A "Pick from guide" button on the Channel row would be a significant quality-of-life improvement.
 
 - **Stream URL is read-only** — the stream URL is shown but can't be edited. If a device's IP changes and the URL is stale, the only fix is to delete and re-add the show. The URL field should be editable.

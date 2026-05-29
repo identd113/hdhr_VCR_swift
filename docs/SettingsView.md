@@ -158,14 +158,9 @@ Sidebar entries (with SF Symbol icons):
 
 #### Discord Webhook
 
-- **Webhook URL** — `TextField` bound to `draft.Discord_webhook_url`. Monospaced font. Leave blank to disable all Discord notifications. `sendDiscordEmbed()` in `DiscordNotifier.swift` silently no-ops for blank or non-discord.com URLs.
-- **Toggle sections** — four grouped sections, each `.disabled` + dimmed (opacity 0.4) when the URL is blank:
-  - **Recording Events**: Recording Started, Recording Complete, Recording Failed
-  - **Show Management**: Show Paused, Skipped — Disk Full, Tuner Conflict, Show Added
-  - **Alerts**: Up Next, Recording Soon
-  - **Errors**: Guide Load Failed
-- Each row is an `HStack { Text(label) Spacer() Button("Test") Toggle("", ...) }`. The **Test** button sends a live embed to the **draft** URL (not the saved config URL) using real show data (`recordingShows.first ?? activeShows.first ?? shows.first`) via `AppState.testDiscordEvent(_:webhookURL:)`. Always passes `enabled: true` so the test fires regardless of whether the toggle is on.
-- The `discordRow(_:event:isOn:)` `@ViewBuilder` helper in `SettingsView` produces each row.
+- **Webhook URL** — `TextField` bound to `draft.Discord_webhook_url`. Monospaced font. Shown only when `draft.Discord_enabled` is true. Leave blank (or disable the master toggle) to suppress all Discord notifications. `sendDiscordEmbed()` in `DiscordNotifier.swift` silently no-ops for blank or non-discord.com URLs.
+- **Test button** — a single `.bordered` `"Test"` button next to the URL field; replaced by `ProgressView(.small)` while testing. Calls `state.checkWebhookURL(draft.Discord_webhook_url)` (sends a real ping to Discord). Disabled when the URL is blank.
+- **`Section("Notify when…")`** — flat list of 10 plain `Toggle` rows, shown only when `draft.Discord_enabled && !draft.Discord_webhook_url.isEmpty`. No per-row Test buttons, no sub-sections, no helper function. Event names: Recording started, Recording complete, Recording failed, Show paused, Skipped — disk full, Tuner conflict, Guide load failed, Show added, Up Next reminder, Recording Soon reminder.
 
 #### Discord embed structure
 
