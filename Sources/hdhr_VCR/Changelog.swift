@@ -6,6 +6,36 @@ let appChangelog = """
 - DeviceAuth cloud token now refreshed every 5 minutes via device probe — guide no longer goes stale after long uptimes on EXTEND devices
 - Recording stops are now guaranteed to complete before new recordings start on the same tick, preventing tuner-count races at show boundaries
 
+## 2026-05-24 (260524-0119)
+- Discord webhook notifications (Settings → Notifications): rich embeds per event with show poster, episode info, and genre tags; per-event toggles; Test button sends a live embed without saving
+- Watch Now! ungated — in-app VLC player button appears whenever VLC is installed; easter egg no longer required
+- Tuner availability check — Watch Now! shows an alert when all tuners are occupied before opening the player
+- Channel picker sync — VLC player picker syncs to the channel you opened Watch Now! from; switching channels while the window is open also updates the picker
+- Settings: Save & Close is now the default (Return) button; Save (⌘S) only enabled when dirty
+
+## 2026-05-23 (260523-1751)
+- Config moved to ~/Library/Application Support/hdhrVCRplus/; auto-migrated from ~/Documents on first launch; old file preserved for AppleScript app compatibility
+- Unbuffered log output — log lines written to disk immediately after every glog() call
+- Cable guide vertical scroll sync — replaced onScrollGeometryChange with VerticalScrollTracker (NSViewRepresentable) that fires on every AppKit scroll frame
+- Guide summary poster fills panel height; channel icon enlarged to 52 pt
+- Stale channel icon cleared when switching to a channel with no logo
+- Wizard SeriesID scheduling fixed — now correctly schedules from the current or nearest airing
+- Watch in App gated on on-air entries only, consistent with Watch in VLC
+
+## 2026-05-23 (260523-1212)
+- Duplicate show guard — Record replaced with Edit Show for already-managed shows (SeriesID or title match); opens EditShowView directly
+- Per-show Bonus Time flag (show_bonus_time) — any show type can enable Bonus Time; existing configs migrate automatically with genre-based fallback
+- Bonus-time overrun box redesigned — filled with genre color, shows the overlapped show's title, tapping it selects that show in the summary panel
+- ShowFormSection extracted — shared form fields used by both Add Show wizard and Edit Show
+- Starburst badge in Add Show details step and Edit Show when Bonus Time is enabled
+
+## 2026-05-22 (260522-2057)
+- Multi-selection bug fixed — guide blocks no longer highlight across all channels at the same start time; caused by nil == nil when lineup data was absent
+- Record and Watch in VLC buttons reliably enabled — lineup re-fetched on demand if missing (recovers from silent startup failures)
+- FloatingGuideView lineup fix — lineup no longer cleared on device change; buttons always resolve correctly
+- StarburstBadge extracted to standalone reusable component with pop-in and 5-tap celebration keyframe animation
+- macOS 14 minimum — deployment target raised from macOS 13; keyframeAnimator now available without availability guards
+
 ## 2026-05-22 (260522-1600)
 - Code-review fixes: Discard button now resets OS-sim picker draft; stale-interface clear propagates to live config (prevents dead-interface curl failures after Discard-close); refreshGuides() guards against concurrent runs and stops suppressing retries after an empty-devices refresh; if_nametoindex=0 now logs a diagnostic instead of silently skipping the interface bind
 
@@ -32,6 +62,23 @@ let appChangelog = """
 - App icon (AppIcon.icns) generated from app.jpg; shown in Finder and Force Quit
 - macOS 13+ compatibility (deployment target lowered from 15); version-adaptive scroll, EmptyStateView
 - OS simulation picker in Maintenance → Developer
+
+## 2026-05-22 (260522-1210)
+- Project renamed to hdhrVCRplus — bundle name, identifier, Quit button, and process marker updated
+- App icon in menu bar — local bundle image scaled to menu bar height; dimmed during startup
+- Tuner signal in recording submenu — signal %, lock type, and bitrate polled from /tuner{N}/vstatus each tick
+- Recording conflict detection — ⚠️ badge on scheduled shows when all tuner slots are occupied at start time
+- Skip This Airing — stops the current recording and advances to the next scheduled airing without incrementing fail count
+- Cable guide dynamic width — guide fills window width; window resizable from 1100×720 minimum
+- Next Up submenus — full submenu with poster, synopsis, episode info, timing, and actions
+- Watch in VLC auto-enabled on first launch if VLC is installed
+- Config recovery from backup — restores from .json.bak if main config is missing or corrupt
+
+## 2026-05-22 (v1.0.0)
+- SeriesID title fallback — falls back to title match when guide omits SeriesID for an airing
+- Maintenance panel (Settings → Maintenance): Rescan Series, Reset Fail Counts, Reactivate Paused, Refresh Guide, Rediscover Devices
+- Recording process survives force-quit — launched via posix_spawn in its own POSIX session; boot-resume reattaches on next launch
+- Add Show moved to top of main menu
 
 ## 2026-05-22
 - Next Up section in main menu (next recording time slot + all shows)
