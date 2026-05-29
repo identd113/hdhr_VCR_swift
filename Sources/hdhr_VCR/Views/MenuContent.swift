@@ -67,17 +67,32 @@ struct MenuContent: View {
 
         // ── Header ────────────────────────────────────────────────────────
         ForEach(state.devices) { device in
-            let slots  = device.TunerCount ?? 1
-            let active = recordingShows.filter { $0.hdhr_record == device.DeviceID }.count
-            Text("\(device.DeviceID)  \(active)/\(slots)")
-                .foregroundStyle(active > 0 ? Color(NSColor.labelColor) : Color(NSColor.secondaryLabelColor))
+            let slots     = device.TunerCount ?? 1
+            let appCount  = recordingShows.filter { $0.hdhr_record == device.DeviceID }.count
+            let liveInfo  = state.deviceTunerOccupancy[device.DeviceID]
+            let liveCount = liveInfo?.filter { $0.VctNumber != nil }.count ?? appCount
+            let mismatch  = liveInfo != nil && liveCount != appCount
+            Text("\(device.DeviceID)  \(liveCount)/\(slots)\(mismatch ? "  ⚠ app expects \(appCount)" : "")")
+                .foregroundStyle(liveCount > 0 ? Color(NSColor.labelColor) : Color(NSColor.secondaryLabelColor))
+            if !state.isStartingUp {
+                if state.lineups[device.DeviceID]?.isEmpty ?? true {
+                    Text("   ⚠  No channel lineup")
+                        .foregroundStyle(Color(NSColor.systemOrange))
+                }
+                if state.guideByDevice[device.DeviceID]?.isEmpty ?? true {
+                    Text("   ⚠  Guide unavailable")
+                        .foregroundStyle(Color(NSColor.systemOrange))
+                }
+            }
         }
         Text(state.statusMessage).foregroundStyle(Color(NSColor.secondaryLabelColor))
+        // ── Watch Now ─────────────────────────────────────────────────────
+        watchNowMenu
         // ── Add Show ──────────────────────────────────────────────────────
         if addShowMode == .menu {
             addShowMenu
         } else {
-            Button("Add Show…") { open("add-show") }
+            Button { open("add-show") } label: { Label("Add Show…", systemImage: "plus") }
         }
         Divider()
 
@@ -131,8 +146,9 @@ struct MenuContent: View {
                     if !deviceGroups.isEmpty {
                         Section("Up Next · \(device.DeviceID)") {
                             ForEach(deviceGroups, id: \.time) { group in
-                                menuInfo(Self.timeFormatter.string(from: group.time), font: .footnote, secondary: true)
-                                ForEach(group.shows) { scheduledMenu($0, showChannel: true) }
+                                Section(Self.timeFormatter.string(from: group.time)) {
+                                    ForEach(group.shows) { scheduledMenu($0, showChannel: true) }
+                                }
                             }
                         }
                     }
@@ -140,8 +156,9 @@ struct MenuContent: View {
             } else {
                 Section("Up Next") {
                     ForEach(nextUpGroups, id: \.time) { group in
-                        menuInfo(Self.timeFormatter.string(from: group.time), font: .footnote, secondary: true)
-                        ForEach(group.shows) { scheduledMenu($0, showChannel: true) }
+                        Section(Self.timeFormatter.string(from: group.time)) {
+                            ForEach(group.shows) { scheduledMenu($0, showChannel: true) }
+                        }
                     }
                 }
             }
@@ -195,24 +212,47 @@ struct MenuContent: View {
 
     @ViewBuilder
     private var addShowMenu: some View {
-        let menuLabel = "Add Show"
         if state.devices.isEmpty {
             Text("No tuners detected").foregroundStyle(.secondary)
         } else if state.devices.count == 1, let device = state.devices.first {
-            Menu(menuLabel) {
+            Menu {
                 // Trigger guide fetch as soon as this menu renders
                 let _ = { state.ensureGuideLoaded(for: device.DeviceID) }()
                 channelMenus(for: device)
+            } label: {
+                Label("Add Show", systemImage: "plus")
             }
         } else {
             // Level 2: device chooser
-            Menu(menuLabel) {
+            Menu {
                 ForEach(state.devices) { device in
                     Menu(device.DeviceID) {
                         let _ = { state.ensureGuideLoaded(for: device.DeviceID) }()
                         channelMenus(for: device)
                     }
                 }
+            } label: {
+                Label("Add Show", systemImage: "plus")
+            }
+        }
+    }
+
+    // MARK: ── Watch Now ───────────────────────────────────────────────────
+    // Opens a dedicated window with poster-card grid; no cascade needed.
+
+    @ViewBuilder
+    private var watchNowMenu: some View {
+        if !state.devices.isEmpty {
+            Button {
+                if let w = NSApp.windows.first(where: { $0.title == "Watch Now" }) {
+                    w.makeKeyAndOrderFront(nil)
+                } else {
+                    state.watchNowDeviceId = nil
+                    open("watch-now")
+                }
+            } label: {
+                Label("Watch Now", systemImage: "play.tv.fill")
+                    .foregroundStyle(watchNowBlue)
             }
         }
     }
@@ -319,7 +359,7 @@ struct MenuContent: View {
         }
     }
 
-    // "8:00 PM  Jeopardy! (30 min)" / "🔴 8:00 PM  Jeopardy! (30 min)"
+    // "8:00 PM  Jeopardy! (30 min)" / "▶ 8:00 PM  Jeopardy! (30 min)"
     private func entryLabel(_ entry: GuideEntry, isOnAir: Bool) -> String {
         let prefix = isOnAir ? "▶ " : ""
         return "\(prefix)\(Self.timeFormatter.string(from: entry.startDate))  \(entry.Title)"

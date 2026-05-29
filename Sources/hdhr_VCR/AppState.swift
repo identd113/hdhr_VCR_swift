@@ -37,11 +37,13 @@ final class AppState: ObservableObject {
     @Published var isStartingUp: Bool = true
 
     @Published var editingShowId: String? = nil
+    @Published var watchNowDeviceId: String? = nil
     @Published var pendingAddEntry: (device: HDHRDevice, channel: LineupEntry, entry: GuideEntry)? = nil
     @Published var pendingAddEntryGeneration: Int = 0   // bumped each time a new entry is set; drives onChange in AddShowView
     @Published var pendingAddChannel: (device: HDHRDevice, channel: LineupEntry)? = nil
     @Published var pendingAddChannelGeneration: Int = 0  // bumped each time pendingAddChannel is set
-    @Published var tunerStatus: [String: TunerStatus] = [:]  // showId → last polled vstatus
+    @Published var tunerStatus: [String: TunerStatus] = [:]         // showId → last polled vstatus
+    @Published var deviceTunerOccupancy: [String: [DeviceTunerInfo]] = [:]  // deviceId → live status.json snapshot
     @Published var vlcCurrentURL: String = ""               // raw URL (no transcode query) playing in VLCPlayerView
     @Published var channelIconImages: [String: NSImage] = [:]  // ImageURL → NSImage; populated during prefetch for sync menu use
 
@@ -69,6 +71,14 @@ final class AppState: ObservableObject {
             .filter { $0 > 0 }
             .min()
     }
+
+    /// Devices that have both a non-empty lineup and guide data — the ones actually usable for recording.
+    var availableDeviceCount: Int {
+        devices.filter {
+            !(lineups[$0.DeviceID]?.isEmpty ?? true) && !(guideByDevice[$0.DeviceID]?.isEmpty ?? true)
+        }.count
+    }
+
 
     let configManager    = ConfigManager()
     let hdhrManager      = HDHRManager()
@@ -361,7 +371,7 @@ final class AppState: ObservableObject {
         }
         let loadedCount = guideByDevice.values.reduce(0) { $0 + $1.count }
         if loadedCount > 0 { lastGuideRefresh = Date(); guideRevision += 1 }
-        statusMessage = "\(shows.count) show(s) — \(devices.count) tuner(s) ready"
+        statusMessage = "\(shows.count) show(s) — \(availableDeviceCount) tuner(s) ready"
         let allChannels = guideByDevice.values.flatMap { $0 }
         Task { await prefetchChannelIcons(allChannels) }
     }
@@ -444,7 +454,7 @@ final class AppState: ObservableObject {
                 group.addTask { _ = await ChannelIconCache.shared.image(for: url) }
             }
         }
-        if needed > 0 { statusMessage = "\(shows.count) show(s) — \(devices.count) tuner(s) ready" }
+        if needed > 0 { statusMessage = "\(shows.count) show(s) — \(availableDeviceCount) tuner(s) ready" }
         // One actor hop to read the full mem dict; single @Published assignment regardless of icon count
         let fetched = await ChannelIconCache.shared.allCachedImages(for: urls)
         channelIconImages = channelIconImages.merging(fetched) { _, new in new }
@@ -822,6 +832,11 @@ final class AppState: ObservableObject {
         // Refresh vstatus for each active recording so the recording submenu shows live signal data
         for show in recordingShows {
             Task { await fetchTunerStatus(for: show) }
+        }
+
+        // Poll status.json for each device to get live tuner occupancy for the menu header
+        for device in devices {
+            Task { await fetchDeviceOccupancy(for: device) }
         }
 
         // Re-sync menu caches with current show states (show_next changes after recordings complete).
@@ -1516,6 +1531,14 @@ final class AppState: ObservableObject {
     }
 
     // MARK: - Tuner signal status
+
+    private func fetchDeviceOccupancy(for device: HDHRDevice) async {
+        guard let url = URL(string: device.statusURL),
+              let (data, _) = try? await URLSession.shared.data(from: url),
+              let tuners = try? JSONDecoder().decode([DeviceTunerInfo].self, from: data)
+        else { return }
+        deviceTunerOccupancy[device.DeviceID] = tuners
+    }
 
     func fetchTunerStatus(for show: Show) async {
         // Resolve device IP from the known-device list; fall back to the host in show_url

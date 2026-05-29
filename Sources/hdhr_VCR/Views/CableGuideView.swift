@@ -632,7 +632,7 @@ private struct ShowBlocksRow: View, Equatable {
             }
             .padding(.horizontal, 4)
             .padding(.top, 4)
-            .frame(width: max(1, cellW - (isSelected ? 20 : 8)), alignment: .topLeading)
+            .frame(width: max(1, cellW - 8), alignment: .topLeading)
 
             if isManaged {
                 let flagSize: CGFloat = 22
@@ -646,13 +646,7 @@ private struct ShowBlocksRow: View, Equatable {
                 .accessibilityLabel("Already scheduled")
             }
 
-            if isSelected {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(.white)
-                    .offset(x: cellW - 18, y: 4)
-                    .accessibilityLabel("Selected")
-            } else if isRecording {
+            if isRecording {
                 // Red dot centred inside the yellow flag triangle
                 Circle().fill(Color.red).frame(width: 8, height: 8)
                     .offset(x: cellW - 12, y: 3)
