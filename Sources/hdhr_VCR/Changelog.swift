@@ -1,6 +1,11 @@
 // Hand-maintained changelog displayed in Settings → About.
 // Update this file when shipping new features; keep most-recent version at the top.
 let appChangelog = """
+## 2026-05-29 (260529)
+- All log output (guide, curl, app) consolidated into a single ~/Library/Logs/hdhrVCRplus.log
+- DeviceAuth cloud token now refreshed every 5 minutes via device probe — guide no longer goes stale after long uptimes on EXTEND devices
+- Recording stops are now guaranteed to complete before new recordings start on the same tick, preventing tuner-count races at show boundaries
+
 ## 2026-05-22 (260522-1600)
 - Code-review fixes: Discard button now resets OS-sim picker draft; stale-interface clear propagates to live config (prevents dead-interface curl failures after Discard-close); refreshGuides() guards against concurrent runs and stops suppressing retries after an empty-devices refresh; if_nametoindex=0 now logs a diagnostic instead of silently skipping the interface bind
 
