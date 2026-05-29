@@ -255,6 +255,7 @@ struct AddShowView: View {
                 VStack(spacing: 0) {
                     summaryPanel
                         .frame(height: proxy.size.height / 3)
+                        .clipped()
 
                     Divider()
 
@@ -368,8 +369,7 @@ struct AddShowView: View {
                     .accessibilityLabel("\(entry.Title) poster")
                     .frame(width: 180)
                     .frame(maxHeight: .infinity)
-                    .cornerRadius(7)
-                    .clipped()
+                    .clipShape(RoundedRectangle(cornerRadius: 7))
                     .overlay(alignment: .topTrailing) { managedFlag(isManaged) }
                 } else {
                     RoundedRectangle(cornerRadius: 7)
