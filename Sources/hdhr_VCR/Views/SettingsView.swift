@@ -141,8 +141,16 @@ struct SettingsView: View {
     }
 
     private func applyAndSave() {
-        let intervalChanged   = draft.Idle_timer_interval != state.config.Idle_timer_interval
-        let interfaceChanged  = draft.Network_interface   != state.config.Network_interface
+        let old = state.config
+        if draft.Idle_timer_interval != old.Idle_timer_interval { glog("[Settings] IdleTimerInterval: \(old.Idle_timer_interval) → \(draft.Idle_timer_interval)") }
+        if draft.Network_interface   != old.Network_interface   { glog("[Settings] NetworkInterface: '\(old.Network_interface)' → '\(draft.Network_interface)'") }
+        if draft.Discord_webhook_url != old.Discord_webhook_url { glog("[Settings] DiscordWebhook changed") }
+        if draft.Discord_enabled     != old.Discord_enabled     { glog("[Settings] DiscordEnabled: \(old.Discord_enabled) → \(draft.Discord_enabled)") }
+        if draft.Hdhr_setup_folder   != old.Hdhr_setup_folder   { glog("[Settings] SaveFolder: '\(old.Hdhr_setup_folder)' → '\(draft.Hdhr_setup_folder)'") }
+        if draft.GuideHours          != old.GuideHours          { glog("[Settings] GuideHours: \(old.GuideHours) → \(draft.GuideHours)") }
+        if draft.Default_transcode   != old.Default_transcode   { glog("[Settings] DefaultTranscode: '\(old.Default_transcode)' → '\(draft.Default_transcode)'") }
+        let intervalChanged   = draft.Idle_timer_interval != old.Idle_timer_interval
+        let interfaceChanged  = draft.Network_interface   != old.Network_interface
         state.config = draft
         state.saveConfig()
         if intervalChanged { state.startTimer() }

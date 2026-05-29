@@ -57,15 +57,15 @@ final class AppState: ObservableObject {
         guideByDevice.values.contains { !$0.isEmpty }
     }
     var isRecording: Bool      { shows.contains { $0.show_recording } }
-    var recordingShows: [Show] { shows.filter { $0.show_recording && ($0.show_end.date ?? .distantPast) > Date() } }
+    var recordingShows: [Show] { shows.filter { $0.show_recording && ($0.show_end ?? .distantPast) > Date() } }
     var activeShows: [Show]    { shows.filter { $0.show_active && !$0.show_recording && !$0.show_paused }
-                                      .sorted { ($0.show_next.date ?? .distantFuture) < ($1.show_next.date ?? .distantFuture) } }
+                                      .sorted { ($0.show_next ?? .distantFuture) < ($1.show_next ?? .distantFuture) } }
     var pausedShows: [Show]    { shows.filter { $0.show_active && $0.show_paused } }
     var inactiveShows: [Show]  { shows.filter { !$0.show_active } }
 
     var nextShowMinutes: Double? {
         activeShows
-            .compactMap { $0.show_next.date.map { $0.timeIntervalSince(Date()) / 60 } }
+            .compactMap { $0.show_next.map { $0.timeIntervalSince(Date()) / 60 } }
             .filter { $0 > 0 }
             .min()
     }
@@ -190,7 +190,7 @@ final class AppState: ObservableObject {
     func loadConfig() {
         guard let file = configManager.load() else { statusMessage = "No config found"; return }
         config = file.config
-        let allShows = file.the_shows.map { var s = $0; s.show_recording = false; return s }
+        let allShows = file.shows.map { var s = $0; s.show_recording = false; return s }
         let filtered = allShows.filter { $0.show_active }
         shows = filtered
         if filtered.count < allShows.count { saveConfig() }
@@ -232,7 +232,7 @@ final class AppState: ObservableObject {
             guard !showId.isEmpty else { continue }
 
             guard let i = shows.firstIndex(where: { $0.show_id == showId }),
-                  let endDate = shows[i].show_end.date, endDate > now else { continue }
+                  let endDate = shows[i].show_end, endDate > now else { continue }
 
             shows[i].show_recording = true
             recordingManager.reattach(showId: showId, pid: pid)
@@ -242,7 +242,7 @@ final class AppState: ObservableObject {
 
     func saveConfig() {
         do {
-            try configManager.save(ConfigFile(config: config, the_shows: shows))
+            try configManager.save(ConfigFile(config: config, shows: shows))
         } catch {
             glog("[Config] Save failed: \(error)", level: .error)
             statusMessage = "Config save error — check log"
@@ -330,8 +330,11 @@ final class AppState: ObservableObject {
             }
             for await (id, lu) in group {
                 if let lu {
+                    glog("[Lineup] \(id) loaded \(lu.count) channels")
                     reconcileFavorites(deviceId: id, freshLineup: lu)
                     lineups[id] = lu
+                } else {
+                    glog("[Lineup] \(id) fetch failed", level: .warning)
                 }
             }
         }
@@ -506,7 +509,7 @@ final class AppState: ObservableObject {
         var scheduledResult: [String: GuideEntry] = [:]
         var upcomingResult:  [String: [(channel: String, date: Date)]] = [:]
         for show in shows where show.show_active && !show.show_paused {
-            let schNext = show.show_next.date ?? .distantFuture
+            let schNext = show.show_next ?? .distantFuture
             // Replicate scheduledMenu's schEntry logic: direct match first, series fallback
             let direct = guideStore.entries(deviceId: show.hdhr_record, channelNum: show.show_channel)
             if let hit = direct.first(where: { abs($0.startDate.timeIntervalSince(schNext)) < 5 * 60 }) {
@@ -539,14 +542,14 @@ final class AppState: ObservableObject {
         let candidateShows = shows.filter { $0.show_active && !$0.show_paused }
         var newConflicts = Set<String>()
         for show in candidateShows {
-            guard let next = show.show_next.date,
-                  let end  = show.show_end.date,
+            guard let next = show.show_next,
+                  let end  = show.show_end,
                   let tunerCount = deviceMap[show.hdhr_record] else { continue }
             let overlapping = candidateShows.filter { other in
                 guard other.show_id != show.show_id,
                       other.hdhr_record == show.hdhr_record,
-                      let oNext = other.show_next.date,
-                      let oEnd  = other.show_end.date
+                      let oNext = other.show_next,
+                      let oEnd  = other.show_end
                 else { return false }
                 return oNext < end && oEnd > next
             }.count
@@ -582,8 +585,8 @@ final class AppState: ObservableObject {
         show.show_transcode = config.Default_transcode
         show.show_title     = entry.Title
         show.show_length    = entry.durationMinutes
-        show.show_next      = EpochDate(entry.startDate)
-        show.show_end       = EpochDate(entry.endDate)
+        show.show_next      = entry.startDate
+        show.show_end       = entry.endDate
         show.show_seriesid  = entry.SeriesID ?? ""
         show.show_logo_url  = entry.ImageURL ?? ""
         show.show_url       = channel.URL ?? ""
@@ -616,9 +619,9 @@ final class AppState: ObservableObject {
 
         if hasConflict(for: show) {
             notify("Recording Conflict", body: show.show_title,
-                   subtitle: "All tuners on \(show.hdhr_record) are busy at \(shortTime(show.show_next.date))")
+                   subtitle: "All tuners on \(show.hdhr_record) are busy at \(shortTime(show.show_next))")
             discordShow("⚠️ Tuner Conflict", show: show, color: 0xF1C40F, enabled: config.Discord_on_conflict,
-                        extra: [("Note", "All tuners on \(show.hdhr_record) are busy at \(shortTime(show.show_next.date))", false)])
+                        extra: [("Note", "All tuners on \(show.hdhr_record) are busy at \(shortTime(show.show_next))", false)])
         }
         addShow(show)
         notify("Show Added", body: show.show_title, subtitle: type.rawValue)
@@ -637,8 +640,8 @@ final class AppState: ObservableObject {
         // Helper: apply a SeriesMatch to the show — uses m.deviceId for lineup lookup so
         // SeriesID(All) works correctly when the episode is on a different device than browsed.
         func apply(_ m: GuideStore.SeriesMatch) {
-            show.show_next    = EpochDate(m.entry.startDate)
-            show.show_end     = EpochDate(m.entry.endDate)
+            show.show_next    = m.entry.startDate
+            show.show_end     = m.entry.endDate
             show.show_channel = m.channelNum
             show.hdhr_record  = m.deviceId
             if let url = hdhrManager.streamURL(for: m.channelNum, lineup: lineups[m.deviceId] ?? []) {
@@ -737,7 +740,7 @@ final class AppState: ObservableObject {
         // Pass 1: stop all completed recordings before any new ones start
         for i in shows.indices {
             guard shows[i].show_active, shows[i].show_recording,
-                  let end = shows[i].show_end.date, end <= now else { continue }
+                  let end = shows[i].show_end, end <= now else { continue }
             await stopRecording(index: i, natural: true)
             dirty = true
         }
@@ -746,8 +749,8 @@ final class AppState: ObservableObject {
         for i in shows.indices {
             let show = shows[i]
             guard show.show_active else { continue }
-            let nextDate = show.show_next.date ?? .distantFuture
-            let endDate  = show.show_end.date  ?? .distantPast
+            let nextDate = show.show_next ?? .distantFuture
+            let endDate  = show.show_end  ?? .distantPast
 
             // Auto-resume paused shows:
             // - window expired (failed/stopped): advance to next airing and un-pause
@@ -772,31 +775,31 @@ final class AppState: ObservableObject {
             let minutesAway = nextDate.timeIntervalSince(now) / 60
 
             // "Up Next" notification — fires once at Notify_upnext minutes before
-            let upNextDue = (show.notify_upnext_time.date ?? .distantPast) <= now
+            let upNextDue = (show.notify_upnext_time ?? .distantPast) <= now
             if !show.show_recording, upNextDue, minutesAway > 0, minutesAway <= config.Notify_upnext {
                 notify("Up Next", body: show.show_title, subtitle: "Starts in \(Int(minutesAway)) min on Channel \(show.show_channel)",
                        categoryIdentifier: "upnext", userInfo: ["show_id": show.show_id])
                 discordShow("🔔 Up Next", show: show, color: 0x9B59B6, enabled: config.Discord_on_upnext,
                             extra: [("Starts In", "\(Int(minutesAway)) min", true)])
-                shows[i].notify_upnext_time = EpochDate(now.addingTimeInterval(config.Notify_upnext * 60))
+                shows[i].notify_upnext_time = now.addingTimeInterval(config.Notify_upnext * 60)
                 dirty = true
             }
 
             // "Recording About to Start" notification — fires once at Notify_recording minutes before
-            let recNotifyDue = (show.notify_recording_time.date ?? .distantPast) <= now
+            let recNotifyDue = (show.notify_recording_time ?? .distantPast) <= now
             if !show.show_recording, recNotifyDue, minutesAway > 0, minutesAway <= config.Notify_recording {
                 notify("Recording Soon", body: show.show_title, subtitle: "Starts in \(Int(minutesAway)) min on Channel \(show.show_channel)",
                        categoryIdentifier: "recording.soon", userInfo: ["show_id": show.show_id])
                 discordShow("⏱ Recording Soon", show: show, color: 0x9B59B6, enabled: config.Discord_on_soon,
                             extra: [("Starts In", "\(Int(minutesAway)) min", true)])
-                shows[i].notify_recording_time = EpochDate(now.addingTimeInterval(config.Notify_recording * 60))
+                shows[i].notify_recording_time = now.addingTimeInterval(config.Notify_recording * 60)
                 dirty = true
             }
 
             // Show window is open and we're not recording — warn if we're past the start time
             // with no obvious reason (not tuner-full, not paused, not already handled above)
             if !show.show_recording, nextDate < now - 30, endDate > now {
-                glog("[\(show.show_title)] MISSED START — window open since \(shortTime(show.show_next.date)), still not recording", level: .warning)
+                glog("[\(show.show_title)] MISSED START — window open since \(shortTime(show.show_next)), still not recording", level: .warning)
             }
 
             if show.show_recording, endDate > now, !recordingManager.isRunning(showId: show.show_id) {
@@ -823,7 +826,7 @@ final class AppState: ObservableObject {
         let readyIndices = shows.indices.filter { i in
             let s = shows[i]
             guard s.show_active, !s.show_recording, !s.show_paused,
-                  let next = s.show_next.date, let end = s.show_end.date else { return false }
+                  let next = s.show_next, let end = s.show_end else { return false }
             return next <= now + 10 && end > now
         }.sorted { isFavoriteChannel(shows[$0]) && !isFavoriteChannel(shows[$1]) }
         if !readyIndices.isEmpty { dirty = true }
@@ -853,7 +856,7 @@ final class AppState: ObservableObject {
             if active >= tunerCount {
                 glog("[\(show.show_title)] TUNER FULL \(show.hdhr_record): \(active)/\(tunerCount) — skipping start", level: .warning)
                 // Fire conflict notification once per show+episode window to avoid per-tick spam.
-                let key = "\(show.show_id)-\(show.show_next.date?.timeIntervalSince1970 ?? 0)"
+                let key = "\(show.show_id)-\(show.show_next?.timeIntervalSince1970 ?? 0)"
                 if !conflictNotifiedKeys.contains(key) {
                     conflictNotifiedKeys.insert(key)
                     notify("Tuner Conflict", body: show.show_title,
@@ -899,15 +902,15 @@ final class AppState: ObservableObject {
                         extra: [("Reason", "Disk over \(Int(maxDiskPct))% — free up space", false)])
             return
         }
-        let path = show.outputPath(date: show.show_next.date ?? Date())
-        var endDate = show.show_end.date ?? Date().addingTimeInterval(Double(show.show_length) * 60)
+        let path = show.outputPath(date: show.show_next ?? Date())
+        var endDate = show.show_end ?? Date().addingTimeInterval(Double(show.show_length) * 60)
         // Bonus Time: extend recording past the guide end for sports shows so overtime isn't cut off
         if config.Sports_padding_enabled && show.show_bonus_time {
             endDate = endDate.addingTimeInterval(Double(config.Sports_padding_minutes) * 60)
-            // Update stored show_end so the idle loop's natural-stop check uses the padded time
-            shows[index].show_end = EpochDate(endDate)
             glog("[\(show.show_title)] Bonus Time +\(config.Sports_padding_minutes) min applied")
         }
+        // Always persist endDate so the idle-loop natural-stop check and notifications use it
+        shows[index].show_end = endDate
         let remainingSecs = max(60, Int(endDate.timeIntervalSince(Date())))
         glog("[\(show.show_title)] START ch=\(show.show_channel) dur=\(remainingSecs)s transcode=\(show.show_transcode) → \(path)")
         do {
@@ -929,19 +932,20 @@ final class AppState: ObservableObject {
         shows[index].show_recording = true; shows[index].show_recording_path = path
         shows[index].show_fail_count = max(0, show.show_fail_count - 1)
         // Stamp notify_recording_time so the "Recording Soon" pre-notification won't re-fire
-        shows[index].notify_recording_time = EpochDate(Date().addingTimeInterval(config.Notify_recording * 60))
-        notify("Recording Started", body: show.show_title, subtitle: "Channel \(show.show_channel) — ends \(shortTime(show.show_end.date))",
+        shows[index].notify_recording_time = Date().addingTimeInterval(config.Notify_recording * 60)
+        notify("Recording Started", body: show.show_title, subtitle: "Channel \(show.show_channel) — ends \(shortTime(endDate))",
                categoryIdentifier: "recording.started", userInfo: ["show_id": show.show_id])
         discordShow("🔴 Recording Started", show: show, color: 0x2ECC71, enabled: config.Discord_on_start,
-                    extra: [("Ends", shortTime(show.show_end.date), true)])
+                    extra: [("Ends", shortTime(endDate), true)])
     }
 
     func skipRecording(showId: String) async {
         guard let i = shows.firstIndex(where: { $0.show_id == showId }) else { return }
+        glog("[\(shows[i].show_title)] SKIP — paused until next airing")
         recordingManager.stop(showId: showId)
         tunerStatus.removeValue(forKey: showId)
         shows[i].show_recording = false
-        shows[i].show_last = EpochDate(Date())
+        shows[i].show_last = Date()
         shows[i].show_paused = true
         shows[i].show_fail_reason = "Skipped"
         await scheduleNextAir(index: i)
@@ -953,7 +957,7 @@ final class AppState: ObservableObject {
         recordingManager.stop(showId: show.show_id)
         tunerStatus.removeValue(forKey: show.show_id)
         shows[index].show_recording = false
-        shows[index].show_last = EpochDate(Date())
+        shows[index].show_last = Date()
 
         if !natural {
             glog("[\(show.show_title)] STOP manual")
@@ -997,7 +1001,7 @@ final class AppState: ObservableObject {
             notify("Recording Complete", body: show.show_title, subtitle: "Single episode recorded — show deactivated")
             discordShow("✅ Recording Complete", show: show, color: 0x3498DB, enabled: config.Discord_on_complete,
                         extra: fileFields + [("Note", "Single episode — show deactivated", false)])
-        } else if let next = completedShow.show_next.date {
+        } else if let next = completedShow.show_next {
             notify("Recording Complete", body: show.show_title, subtitle: "Next: \(Self.completionDateFormatter.string(from: next))")
             discordShow("✅ Recording Complete", show: show, color: 0x3498DB, enabled: config.Discord_on_complete,
                         extra: fileFields + [("Next Airing", Self.completionDateFormatter.string(from: next), false)])
@@ -1027,8 +1031,8 @@ final class AppState: ObservableObject {
             shows[index].show_active = false
         case .dateTime:
             if let next = nextDateTime(for: show) {
-                shows[index].show_next = EpochDate(next)
-                shows[index].show_end  = EpochDate(next.addingTimeInterval(Double(show.show_length) * 60))
+                shows[index].show_next = next
+                shows[index].show_end  = next.addingTimeInterval(Double(show.show_length) * 60)
                 glog("[\(show.show_title)] NEXT \(shortTime(next)) ch=\(show.show_channel)")
             } else {
                 // No matching air day found (show_air_date is empty or invalid) — pause rather than loop forever
@@ -1053,8 +1057,8 @@ final class AppState: ObservableObject {
                 // Use match.deviceId for lineup lookup — SeriesID(All) may resolve to a different device.
                 let now = Date()
                 func applyMatch(_ match: GuideStore.SeriesMatch) {
-                    shows[index].show_next    = EpochDate(match.entry.startDate)
-                    shows[index].show_end     = EpochDate(match.entry.endDate)
+                    shows[index].show_next    = match.entry.startDate
+                    shows[index].show_end     = match.entry.endDate
                     shows[index].show_channel = match.channelNum
                     shows[index].show_genre   = match.entry.firstGenre ?? ""
                     shows[index].hdhr_record  = match.deviceId
@@ -1085,7 +1089,7 @@ final class AppState: ObservableObject {
                 }
             }
             glog("[\(show.show_title)] no episode found — retry in \(config.Series_scan_retry_hours)h", level: .warning)
-            shows[index].show_next = EpochDate(Date().addingTimeInterval(Double(config.Series_scan_retry_hours) * 3600))
+            shows[index].show_next = Date().addingTimeInterval(Double(config.Series_scan_retry_hours) * 3600)
         }
     }
 
@@ -1123,9 +1127,14 @@ final class AppState: ObservableObject {
 
     // MARK: - Show CRUD
 
-    func addShow(_ show: Show)    { guard !shows.contains(where: { $0.show_id == show.show_id }) else { return }; shows.append(show); saveConfig() }
+    func addShow(_ show: Show) {
+        guard !shows.contains(where: { $0.show_id == show.show_id }) else { return }
+        glog("[Show] Added '\(show.show_title)' ch=\(show.show_channel) \(show.show_is_series ? "series" : "single")")
+        shows.append(show); saveConfig()
+    }
     func updateShow(_ show: Show) {
         guard let i = shows.firstIndex(where: { $0.show_id == show.show_id }) else { return }
+        glog("[Show] Updated '\(show.show_title)'")
         shows[i] = show; saveConfig()
     }
 
@@ -1191,13 +1200,18 @@ final class AppState: ObservableObject {
 
     func pauseShow(_ show: Show) {
         guard let i = shows.firstIndex(where: { $0.show_id == show.show_id }) else { return }
+        glog("[\(show.show_title)] PAUSED manual")
         shows[i].show_paused = true; shows[i].show_fail_reason = "Manually paused"; saveConfig()
     }
     func resumeShow(_ show: Show) {
         guard let i = shows.firstIndex(where: { $0.show_id == show.show_id }) else { return }
+        glog("[\(show.show_title)] RESUMED")
         shows[i].show_paused = false; shows[i].show_fail_count = 0; shows[i].show_fail_reason = ""; saveConfig()
     }
-    func deleteShow(_ show: Show) { recordingManager.stop(showId: show.show_id); shows.removeAll { $0.show_id == show.show_id }; saveConfig() }
+    func deleteShow(_ show: Show) {
+        glog("[Show] Deleted '\(show.show_title)'")
+        recordingManager.stop(showId: show.show_id); shows.removeAll { $0.show_id == show.show_id }; saveConfig()
+    }
 
     /// Shows a delete confirmation alert with the show's poster image (fetched async).
     /// Calls `then()` after deletion — use for dismiss() in EditShowView.
@@ -1322,7 +1336,7 @@ final class AppState: ObservableObject {
 
     // Finds the guide entry matching show_next for a given show, used to enrich Discord embeds.
     private func guideEntryForShow(_ show: Show) -> GuideEntry? {
-        guard let startDate = show.show_next.date else { return nil }
+        guard let startDate = show.show_next else { return nil }
         let target = Int(startDate.timeIntervalSince1970)
         let entries = guideStore.entries(deviceId: show.hdhr_record, channelNum: show.show_channel,
                                          after: startDate.addingTimeInterval(-60))
@@ -1385,7 +1399,7 @@ final class AppState: ObservableObject {
             ["name": "Channel", "value": show.show_channel,     "inline": true],
             ["name": "Type",    "value": show.state.rawValue,   "inline": true]
         ]
-        if let start = show.show_next.date, let end = show.show_end.date {
+        if let start = show.show_next, let end = show.show_end {
             let range = "\(Self.discordTimeFmt.string(from: start)) – \(Self.discordTimeFmt.string(from: end))"
             fields.append(["name": "Time", "value": range, "inline": true])
         }
@@ -1563,10 +1577,17 @@ final class AppState: ObservableObject {
         deviceTunerOccupancy[device.DeviceID] = tuners
 
         for show in recordingShows where show.hdhr_record == device.DeviceID {
-            // status.json lists only active tuners; VctNumber is the channel it's streaming.
-            guard let match = tuners.first(where: { $0.VctNumber == show.show_channel }),
-                  let idx   = Int(match.Resource.dropFirst(5)),   // "tuner0" → 0
-                  let vsURL = URL(string: "http://\(device.LocalIP)/tuner\(idx)/vstatus"),
+            // Prefer tuner whose VctNumber matches the show's channel; fall back to any locked tuner.
+            // VctNumber format (e.g. "5.1") should match GuideNumber, but device firmware may differ.
+            let match = tuners.first(where: { $0.VctNumber == show.show_channel })
+                     ?? tuners.first(where: { $0.VctNumber != nil })
+            guard let match,
+                  let idx = Int(match.Resource.dropFirst(5))   // "tuner0" → 0
+            else {
+                if !tuners.isEmpty { glog("[\(show.show_title)] vstatus: no locked tuner found in status.json (resource=\(tuners.map(\.Resource)))", level: .warning) }
+                continue
+            }
+            guard let vsURL = URL(string: "http://\(device.LocalIP)/tuner\(idx)/vstatus"),
                   let (vsData, _) = try? await URLSession.shared.data(from: vsURL),
                   let text = String(data: vsData, encoding: .utf8)
             else { continue }
@@ -1590,8 +1611,8 @@ final class AppState: ObservableObject {
     // MARK: - Conflict detection
 
     func hasConflict(for show: Show) -> Bool {
-        guard let next = show.show_next.date,
-              let end  = show.show_end.date,
+        guard let next = show.show_next,
+              let end  = show.show_end,
               let device = devices.first(where: { $0.DeviceID == show.hdhr_record }),
               let tunerCount = device.TunerCount,
               tunerCount > 0 else { return false }
@@ -1599,8 +1620,8 @@ final class AppState: ObservableObject {
             guard other.show_active, !other.show_paused,
                   other.show_id != show.show_id,
                   other.hdhr_record == show.hdhr_record,
-                  let oNext = other.show_next.date,
-                  let oEnd  = other.show_end.date
+                  let oNext = other.show_next,
+                  let oEnd  = other.show_end
             else { return false }
             return oNext < end && oEnd > next
         }

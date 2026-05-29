@@ -83,7 +83,7 @@ let device: HDHRDevice    // fixed at window-open; determines which lineup the c
 let initialURL: String    // stream URL active when the window opened; drives initial channel selection
 
 @State private var selectedChannel: LineupEntry?
-@State private var volume: Double = 50
+@AppStorage("vlcVolume") private var volume: Double = 50   // persists across sessions
 @State private var audioOutputs: [(name: String, description: String)] = []
 @State private var selectedOutput: String = ""
 @State private var audioDevices: [(id: String, name: String)] = []
@@ -123,7 +123,7 @@ Returns the currently-airing `GuideEntry` for the selected channel. Used by the 
 
 ```swift
 .onAppear {
-    volume = Double(VLCBridge.shared.volume())
+    VLCBridge.shared.setVolume(0)   // muted until Start is clicked; volume restored from @AppStorage
     audioOutputs = VLCBridge.shared.audioOutputs()
     if selectedOutput.isEmpty, let first = audioOutputs.first {
         selectedOutput = first.name
@@ -135,6 +135,8 @@ Returns the currently-airing `GuideEntry` for the selected channel. Used by the 
     syncChannel(to: rawURL)
 }
 ```
+
+`volume` is not read back from VLC on appear because the player is already muted at open time — reading back would return `0`, overwriting the user's saved preference. `@AppStorage("vlcVolume")` preserves the last-used volume across sessions; `setVolume(Int(volume))` in the Start button action restores it at the moment the user dismisses the overlay.
 
 `syncChannel(to:)` strips query params, matches against `lineup`, sets `suppressNextChannelPlay = true`, then sets `selectedChannel`. The `suppressNextChannelPlay` flag prevents the `onChange(of: selectedChannel)` handler from calling `playChannel()` when the selection change was driven by `syncChannel` rather than a user tap — avoiding a redundant second `_mpPlay` call on an already-playing stream.
 
@@ -182,7 +184,7 @@ When the player opens or changes channel, a full-area `posterOverlay` view sits 
 
 **Why**: VLC begins buffering the stream immediately when `open()` is called (before the window appears). By the time the user reads the episode info and clicks Start, VLC has had several seconds to buffer — the stream plays instantly rather than showing a spinner.
 
-**Poster reappears** on channel change: `onChange(of: selectedChannel)` resets `posterHidden = false` and `posterNSImage = nil` before calling `playChannel()`, so each channel switch shows the overlay while the new stream buffers.
+**Poster reappears** on channel change: `onChange(of: selectedChannel)` resets `posterHidden = false`, `posterNSImage = nil`, and calls `setVolume(0)` before calling `playChannel()`, so the new stream buffers silently behind the overlay until Start is clicked.
 
 ### Layout (`posterOverlay`)
 
@@ -199,7 +201,7 @@ ZStack (black background, fills video area)
       Start button
         — Label("Start", systemImage: "play.fill"), .title3.bold
         — .ultraThinMaterial background, RoundedRectangle(10pt)
-        — sets posterHidden = true on tap
+        — sets posterHidden = true and calls setVolume(Int(volume)) on tap
 ```
 
 ### Poster image loading
@@ -219,6 +221,7 @@ final class VLCPlayerWindowManager {
     private var window: NSWindow?
 
     func open(url: String, title: String, device: HDHRDevice, appState: AppState) {
+        VLCBridge.shared.setVolume(0)            // mute before buffering starts; Start click unmutes
         VLCBridge.shared.play(url: url)          // always start/switch the stream immediately
         if let win = window {
             win.title = title
@@ -242,6 +245,8 @@ By default, macOS releases (deallocates) an `NSWindow` when it is closed. For a 
 Without this, the second `open()` call would create a new window with a new `NSHostingView`, triggering `VLCVideoSurface.makeNSView` again — which would call `setDrawable` again and interrupt any stream that was resumed before the window appeared.
 
 ### Stream-First Design
+
+`VLCBridge.shared.setVolume(0)` is called in `open()` **before** `play()`, so the stream always starts muted regardless of how the window was opened (first open or channel switch via an external "Watch Now!" click). The Start button inside the running window then calls `setVolume(Int(volume))` to restore audio.
 
 `VLCBridge.shared.play(url: url)` is called **before** any window logic. This means:
 - The stream starts immediately on first open, before the window appears

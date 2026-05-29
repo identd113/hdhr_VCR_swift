@@ -86,8 +86,9 @@ Views/
 ### Testing recordings without live TV
 Set `show_next` to `now + 30s` and `show_end` to `now + 2min`. The idle loop picks it up and attempts curl. Check `show_fail_reason` if it fails; enable verbose curl to see the raw HTTP exchange.
 
-### Issue tracking
-Unrelated bugs found during work go in `ISSUES.md` — do not fix inline. Note the commit hash when resolved.
+### Issue and TODO tracking
+- Unrelated bugs found during work go in `ISSUES.md` — do not fix inline. Note the commit hash when resolved.
+- Deferred features and improvements go in `TODO.md`. Remove the entry when complete.
 
 ---
 

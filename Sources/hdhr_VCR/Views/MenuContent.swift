@@ -105,7 +105,7 @@ struct MenuContent: View {
             let cal = Calendar.current
             var byMinute: [Date: [Show]] = [:]
             for show in activeShows {
-                guard let d = show.show_next.date, d > now, d <= cutoff else { continue }
+                guard let d = show.show_next, d > now, d <= cutoff else { continue }
                 var c = cal.dateComponents([.year, .month, .day, .hour, .minute], from: d)
                 c.second = 0
                 let bucket = cal.date(from: c) ?? d
@@ -219,8 +219,8 @@ struct MenuContent: View {
         let isSportsBonus = state.config.Sports_padding_enabled && show.show_bonus_time
         let bonusPadding  = isSportsBonus ? TimeInterval(state.config.Sports_padding_minutes * 60) : 0
         Menu(menuTitle) {
-            let started      = show.show_next.date ?? recNow
-            let guideEnd     = show.show_end.date  ?? recNow
+            let started      = show.show_next ?? recNow
+            let guideEnd     = show.show_end  ?? recNow
             let ends         = guideEnd.addingTimeInterval(bonusPadding)
             let inBonusTime  = isSportsBonus && recNow > guideEnd
 
@@ -274,8 +274,8 @@ struct MenuContent: View {
 
         Menu(schLabel) {
             let now  = Date()
-            let next = show.show_next.date ?? .distantFuture
-            let ends = show.show_end.date  ?? .distantFuture
+            let next = show.show_next ?? .distantFuture
+            let ends = show.show_end  ?? .distantFuture
 
             showInfoHeader(show, entry: schEntry)
             Divider()
@@ -292,7 +292,7 @@ struct MenuContent: View {
             let upcoming: [(channel: String, date: Date)] = {
                 switch show.state {
                 case .single:
-                    if let d = show.show_next.date { return [(show.show_channel, d)] }
+                    if let d = show.show_next { return [(show.show_channel, d)] }
                     return []
                 case .dateTime:
                     return state.nextDateTimeOccurrences(for: show, after: Date(), count: 3).map { (show.show_channel, $0) }
@@ -326,7 +326,7 @@ struct MenuContent: View {
         Menu("⏸ \(show.show_title)") {
             let pausedEntries = state.guideEntries(deviceId: show.hdhr_record, channelNum: show.show_channel)
             let pausedEntry   = pausedEntries.first {
-                abs($0.startDate.timeIntervalSince(show.show_next.date ?? .distantPast)) < 5 * 60
+                abs($0.startDate.timeIntervalSince(show.show_next ?? .distantPast)) < 5 * 60
             }
             showInfoHeader(show, entry: pausedEntry)
             Divider()
@@ -334,7 +334,7 @@ struct MenuContent: View {
             if !show.show_fail_reason.isEmpty {
                 menuInfo("Reason: \(show.show_fail_reason)", font: .footnote, secondary: true)
             }
-            if let next = show.show_next.date, next > Date() {
+            if let next = show.show_next, next > Date() {
                 menuInfo("Next attempt: \(Self.timeFormatter.string(from: next))", font: .footnote, secondary: true)
             }
             Divider()

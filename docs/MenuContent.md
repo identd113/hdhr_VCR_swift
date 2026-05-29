@@ -222,7 +222,6 @@ A plain `Button` with `Label("Add Show…", systemImage: "plus")`. Opens the `"a
 | `elapsedLabel(since:)` | `relativeLabel(Date().timeIntervalSince(start))` |
 | `remainingLabel(until:)` | `relativeLabel(end.timeIntervalSince(Date()))` |
 | `upcomingLabel(channel:date:)` | `"Channel 5.1 · Thu 8:00 PM"` / `"Channel 5.1 · 8:00 PM"` for today |
-| `nextDateTimeOccurrences(for:count:)` | Next N weekday+time slots for a DateTime show (local calendar) |
 | `timeRange(_:)` | `"8:00 PM – 9:00 PM"` — inside entry submenus |
 | `weekdayName(_:)` | Full weekday name from a `Date` |
 | `episodeInfoLabel(_:)` | Joins `EpisodeNumber` + `EpisodeTitle` with ` · `; nil if both empty |

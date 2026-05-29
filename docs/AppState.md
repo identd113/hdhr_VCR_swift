@@ -30,7 +30,7 @@ Runs every `config.Idle_timer_interval` seconds on MainActor:
   - Stops recording naturally if `show_end <= now`.
   - Detects unexpected caffeinate exit → increments fail count, sends notification.
 - Conflict notifications: when a show can't start because all tuners are full, fires once per show+episode window (`conflictNotifiedKeys` set keyed by `"showID-show_next_epoch"`).
-- Calls `fetchDeviceStatus(for:)` once per device — a single `/status.json` fetch per device covers both the menu-header occupancy count and per-recording vstatus signal data (one targeted `/tunerN/vstatus` per recording show, identified from the status.json result). This replaced two separate loops (`fetchDeviceOccupancy` + `fetchTunerStatus`) that fired O(tunerCount) HTTP calls per recording.
+- Calls `fetchDeviceStatus(for:)` once per device — a single `/status.json` fetch per device covers both the menu-header occupancy count and per-recording vstatus signal data (one targeted `/tunerN/vstatus` per recording show, identified from the status.json result). Tuner matching: prefers the tuner whose `VctNumber` equals `show.show_channel`; falls back to any locked tuner when the format doesn't match exactly (sub-channel firmware variation). Logs a warning if no locked tuner is found at all.
 
 ---
 
@@ -77,6 +77,8 @@ Falls back to **SiliconDust cloud API** (`http://discover.hdhomerun.com/discover
 | `guideEntries(deviceId:channelNum:)` | Delegates to `guideStore.entries()` |
 | `nextGuideEpisode(for show:)` | Delegates to `guideStore.nextEpisode()`; respects channel/device filters |
 | `upcomingGuideEpisodes(seriesID:after:limit:)` | Up to `limit` upcoming `(channel, entry)` tuples across all devices |
+| `nextDateTimeOccurrences(for:after:count:)` | Returns up to `count` DateTime occurrences after `after`. Pass `after: Date()` to include today's airing (menu display); pass `after: startOfTomorrow` to skip today (rescheduling after a completed recording). Uses modulo arithmetic over air-day indices. |
+| `nextDateTime(for:)` | One-liner wrapper — calls `nextDateTimeOccurrences(for:after:startOfTomorrow, count:1).first`. Always skips today so a completed recording never re-schedules to the same day. |
 
 ---
 
@@ -84,6 +86,7 @@ Falls back to **SiliconDust cloud API** (`http://discover.hdhomerun.com/discover
 
 | Method | Description |
 |---|---|
+| `startRecording(index:)` | Computes `endDate` (show_end ?? show_length fallback, then +bonus padding if active). Always writes `shows[index].show_end = endDate` before launching so the idle-loop natural-stop and notifications both use the final value. Notification and Discord "Ends" field use `endDate`, not the pre-padding `show.show_end`. |
 | `pauseShow(_:)` | Sets `show_paused = true`, `show_fail_reason = "Manually paused"`, saves config |
 | `resumeShow(_:)` | Clears `show_paused`, resets fail count + reason, saves config |
 | `watchInVLC(url:)` | Opens stream in `/Applications/VLC.app` via `NSWorkspace`; no-op if VLC absent or `Watch_in_VLC` false |
@@ -101,3 +104,5 @@ In a SwiftUI `.menu`-style `MenuBarExtra`, the menu body re-evaluates on every `
 **Never assign `guideByDevice = ...` unconditionally after a failed/empty response.** A failed load that assigns `guideByDevice` triggers `didSet → rebuildMenuEntries → @Published changes → re-eval → ...` at ~35ms/loop, freezing the menu. Guards: `ensureGuideLoaded` only assigns when `guideStore.channels(deviceId:)` is non-empty; `guideApiBackoff: [String: APIBackoff]` enforces exponential backoff (1 → 5 → 15 → 30 → 60 min) on failed devices.
 
 `rebuildMenuEntries()` is called from `guideByDevice.didSet` (after every guide load) and from the idle loop (guarded by `menuIsOpen`). It rebuilds: `managedShowBySeriesID`/`managedShowByTitle` (O(1) show lookups for WatchNow + menus), `channelImageURLs` (logo URL map for WatchNow), `menuScheduledEntry`/`menuUpcomingSlots` (pre-computed guide matches for scheduled/paused menus), and `conflictingShowIDs` (one O(N²) conflict pass instead of one per open).
+
+**Conflict detection** uses `candidateShows = shows.filter { show_active && !show_paused }` — this includes currently-recording shows (`show_recording == true`), unlike `activeShows` which excludes them. A scheduled show that overlaps an already-recording show is therefore correctly flagged. `conflictNotifiedKeys` (keyed by `"showID-show_next_epoch"`) is pruned on each `scheduleNextAir` call so stale epoch keys don't accumulate across airings.

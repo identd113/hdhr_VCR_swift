@@ -44,11 +44,15 @@ Called after each recording completes and file verification passes:
 
 ---
 
-## EpochDate
+## Show Output Path
 
-Wrapper struct for all `Date?` fields in `Show`:
-- **Decodes** from string epoch (`"1234567890"`), numeric epoch, or `"missing value"` / empty / `"0"` → `nil`
-- **Encodes** as string epoch for JSON compatibility with the AppleScript app's JSONHelper format
+`Show.outputPath(for:date:)` builds the recording file path. The `DateFormatter` used for the timestamp suffix (`outputDateFormatter`) is a `private static let` — allocated once per app session, not on every recording start.
+
+---
+
+## Date Fields in Show
+
+All five date fields (`show_next`, `show_end`, `show_last`, `notify_upnext_time`, `notify_recording_time`) are `Date?`. `nil` means "not set." The config encoder uses ISO8601; the decoder accepts ISO8601 or legacy string/numeric epoch (for migrating v1 configs). The old `EpochDate` wrapper type is gone.
 
 ---
 

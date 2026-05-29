@@ -1,8 +1,8 @@
 # Issue Log
 
-Historical record of bugs and back-and-forth problems encountered during development. Used as a "don't repeat this" reference during code reviews. Unrelated bugs found during work should be added here rather than fixed inline.
+Historical record of bugs and hard-won fixes encountered during development. Used as a "don't repeat this" reference during code reviews. Unrelated bugs found during work go here rather than fixed inline — note the resolving commit when done. Deferred features go in `TODO.md`.
 
-**Format**: each issue has a status (`RESOLVED` / `OPEN`), a brief description, what was tried, what worked, and the resolving commit if known.
+**Format**: each issue has a status (`RESOLVED`), a brief description, what was tried, what worked, and the resolving commit if known.
 
 ---
 

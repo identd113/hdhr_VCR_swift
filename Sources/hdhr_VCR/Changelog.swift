@@ -1,6 +1,20 @@
 // Hand-maintained changelog displayed in Settings → About.
 // Update this file when shipping new features; keep most-recent version at the top.
 let appChangelog = """
+## 2026-05-29 (260529-1620)
+- Recording Started notification now shows the correct end time when Bonus Time is active (was showing the un-padded guide end instead of the extended time)
+- Tuner signal data now falls back to any locked tuner when the channel number format in status.json doesn't match exactly — fixes missing signal strength on some sub-channel configurations
+- Config v2 migration failure (e.g. disk full) now logs a warning instead of silently retrying on every launch
+
+## 2026-05-29 (260529-1534)
+- Config format updated to v2: dates now stored as ISO8601 strings ("2026-05-30T21:00:00Z") instead of string epochs — existing configs auto-migrate on first launch
+- "the_shows" JSON key renamed to "shows"; Mac alias path conversion removed; Int/Double type ambiguity in show_length, show_fail_count, and Min_disk_free_gb eliminated
+
+## 2026-05-29 (260529-1432)
+- VLC player: audio is now muted until Start is clicked — stream buffers silently; Start restores saved volume; volume persists across sessions
+- Conflict indicator: a scheduled show overlapping an already-recording show now correctly gets the conflict triangle (was limited to scheduled-vs-scheduled)
+- Default recording folder is now ~/Movies/hdhr_videos consistently (was ~/Documents/hdhr_videos or bare ~/Movies depending on code path)
+
 ## 2026-05-29 (260529-1145)
 - Deactivating a show now deletes it immediately — no more "inactive" limbo state that was lost on restart
 - Show stuck in a fail→pause→resume loop no longer re-pauses immediately — fail count cleared on auto-resume

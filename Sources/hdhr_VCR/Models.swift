@@ -21,40 +21,6 @@ func glog(_ msg: String, level: LogLevel = .info) {
     data.withUnsafeBytes { _ = write(fd, $0.baseAddress!, data.count) }
 }
 
-// MARK: - EpochDate
-// Decodes from string epoch ("1234567890"), numeric epoch, or "missing value" string.
-// Always encodes as string epoch for JSON compat with the AppleScript app.
-
-struct EpochDate: Codable, Equatable {
-    var date: Date?
-
-    init(_ date: Date? = nil) { self.date = date }
-
-    init(from decoder: Decoder) throws {
-        let c = try decoder.singleValueContainer()
-        if let str = try? c.decode(String.self) {
-            if let epoch = Double(str), epoch > 0 {
-                date = Date(timeIntervalSince1970: epoch)
-            } else {
-                date = nil  // "missing value", "0", empty
-            }
-        } else if let epoch = try? c.decode(Double.self), epoch > 0 {
-            date = Date(timeIntervalSince1970: epoch)
-        } else {
-            date = nil
-        }
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var c = encoder.singleValueContainer()
-        if let d = date {
-            try c.encode(String(Int(d.timeIntervalSince1970)))
-        } else {
-            try c.encode("missing value")
-        }
-    }
-}
-
 // MARK: - Show
 
 struct Show: Identifiable, Equatable {
@@ -68,8 +34,8 @@ struct Show: Identifiable, Equatable {
     var show_channel: String
     var show_time: Double           // local decimal hours (0–24), e.g. 20.5 = 8:30 PM local time
     var show_length: Int            // minutes
-    var show_next: EpochDate
-    var show_end: EpochDate
+    var show_next: Date?
+    var show_end: Date?
     var show_active: Bool
     var show_paused: Bool           // auto-paused (failures, manual stop, skip); recovers automatically
     var hdhr_record: String         // device ID, e.g. "105404BE"
@@ -81,10 +47,10 @@ struct Show: Identifiable, Equatable {
     var show_transcode: String      // "none", "heavy", "mobile", "internet720"…
     var show_tags: String
     var show_recording: Bool
-    var show_last: EpochDate
-    var notify_upnext_time: EpochDate
-    var notify_recording_time: EpochDate
-    var show_dir: String            // recording destination (Mac alias or POSIX)
+    var show_last: Date?
+    var notify_upnext_time: Date?
+    var notify_recording_time: Date?
+    var show_dir: String            // recording destination (POSIX path)
     var show_temp_dir: String       // same as show_dir in most configs
     var show_recording_path: String // path of active/last recording file
     var show_genre: String          // first genre tag from guide (e.g. "Sports")
@@ -97,13 +63,8 @@ struct Show: Identifiable, Equatable {
         return .dateTime
     }
 
-    // Convert Mac alias path "Vol:Dir:Sub:" → "/Volumes/Vol/Dir/Sub"
     var posixRecordDir: String {
-        if show_temp_dir.contains(":") && !show_temp_dir.hasPrefix("/") {
-            let parts = show_temp_dir.split(separator: ":", omittingEmptySubsequences: true)
-            return "/Volumes/" + parts.joined(separator: "/")
-        }
-        return show_temp_dir.isEmpty ? (NSHomeDirectory() + "/Movies/hdhr_videos") : show_temp_dir
+        show_temp_dir.isEmpty ? (NSHomeDirectory() + "/Movies/hdhr_videos") : show_temp_dir
     }
 
     private static let outputDateFormatter: DateFormatter = {
@@ -125,11 +86,11 @@ struct Show: Identifiable, Equatable {
             show_id: UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased(),
             show_title: "", show_is_series: false, show_use_seriesid: false,
             show_use_seriesid_all: false, show_air_date: [], show_channel: channel,
-            show_time: 20.0, show_length: 60, show_next: EpochDate(), show_end: EpochDate(),
+            show_time: 20.0, show_length: 60, show_next: nil, show_end: nil,
             show_active: true, show_paused: false, hdhr_record: device, show_url: "", show_seriesid: "",
             show_fail_count: 0, show_fail_reason: "", show_logo_url: "", show_transcode: "none",
-            show_tags: "", show_recording: false, show_last: EpochDate(),
-            notify_upnext_time: EpochDate(), notify_recording_time: EpochDate(),
+            show_tags: "", show_recording: false, show_last: nil,
+            notify_upnext_time: nil, notify_recording_time: nil,
             show_dir: "", show_temp_dir: "", show_recording_path: "", show_genre: "",
             show_bonus_time: false
         )
@@ -166,26 +127,23 @@ extension Show: Codable {
         show_air_date      = (try? c.decode([String].self, forKey: .show_air_date)) ?? []
         show_channel       = (try? c.decode(String.self, forKey: .show_channel)) ?? ""
         show_time          = (try? c.decode(Double.self, forKey: .show_time)) ?? 20.0
-        // show_length may arrive as Double from JSONHelper
-        if let i = try? c.decode(Int.self, forKey: .show_length) { show_length = i }
-        else { show_length = Int((try? c.decode(Double.self, forKey: .show_length)) ?? 60) }
-        show_next          = (try? c.decode(EpochDate.self, forKey: .show_next)) ?? EpochDate()
-        show_end           = (try? c.decode(EpochDate.self, forKey: .show_end)) ?? EpochDate()
+        show_length        = (try? c.decode(Int.self, forKey: .show_length)) ?? 60
+        show_next          = try? c.decode(Date.self, forKey: .show_next)
+        show_end           = try? c.decode(Date.self, forKey: .show_end)
         show_active        = (try? c.decode(Bool.self,   forKey: .show_active)) ?? true
         show_paused        = (try? c.decode(Bool.self,   forKey: .show_paused)) ?? false
         hdhr_record        = (try? c.decode(String.self, forKey: .hdhr_record)) ?? ""
         show_url           = (try? c.decode(String.self, forKey: .show_url)) ?? ""
         show_seriesid      = (try? c.decode(String.self, forKey: .show_seriesid)) ?? ""
-        if let i = try? c.decode(Int.self, forKey: .show_fail_count) { show_fail_count = i }
-        else { show_fail_count = Int((try? c.decode(Double.self, forKey: .show_fail_count)) ?? 0) }
+        show_fail_count    = (try? c.decode(Int.self, forKey: .show_fail_count)) ?? 0
         show_fail_reason   = (try? c.decode(String.self, forKey: .show_fail_reason)) ?? ""
         show_logo_url      = (try? c.decode(String.self, forKey: .show_logo_url)) ?? ""
         show_transcode     = (try? c.decode(String.self, forKey: .show_transcode)) ?? "none"
         show_tags          = (try? c.decode(String.self, forKey: .show_tags)) ?? ""
         show_recording     = (try? c.decode(Bool.self,   forKey: .show_recording)) ?? false
-        show_last          = (try? c.decode(EpochDate.self, forKey: .show_last)) ?? EpochDate()
-        notify_upnext_time     = (try? c.decode(EpochDate.self, forKey: .notify_upnext_time)) ?? EpochDate()
-        notify_recording_time  = (try? c.decode(EpochDate.self, forKey: .notify_recording_time)) ?? EpochDate()
+        show_last          = try? c.decode(Date.self, forKey: .show_last)
+        notify_upnext_time     = try? c.decode(Date.self, forKey: .notify_upnext_time)
+        notify_recording_time  = try? c.decode(Date.self, forKey: .notify_recording_time)
         show_dir           = (try? c.decode(String.self, forKey: .show_dir)) ?? ""
         show_temp_dir      = (try? c.decode(String.self, forKey: .show_temp_dir)) ?? ""
         show_recording_path = (try? c.decode(String.self, forKey: .show_recording_path)) ?? ""
@@ -215,7 +173,6 @@ struct AppConfig: Equatable {
     var Series_scan_retry_hours: Int = 4     // hours to wait before retrying guide scan
 
     // Default recording folder (POSIX path; empty = ~/Movies/hdhr_videos)
-    // Stored here for compat with the AppleScript config (Hdhr_setup_folder field).
     var Hdhr_setup_folder: String = ""
 
     var Network_interface: String = ""  // empty = Auto (OS chooses interface)
@@ -226,7 +183,7 @@ struct AppConfig: Equatable {
     // Bonus Time: extends recording past the guide end for sports shows
     var Sports_padding_enabled: Bool = true
     var Sports_padding_minutes: Int  = 30   // user-settable 10–60 min, default 30
-    var Config_version: String = "1"
+    var Config_version: String = "2"
 
     // Discord webhook
     var Discord_webhook_url: String  = ""
@@ -251,8 +208,7 @@ extension AppConfig: Codable {
         GuideHours            = (try? c.decode(Int.self,     forKey: .GuideHours))            ?? 24
         Default_transcode     = (try? c.decode(String.self,  forKey: .Default_transcode))     ?? "none"
         Fail_count_setting    = (try? c.decode(Int.self,     forKey: .Fail_count_setting))    ?? 3
-        if let d = try? c.decode(Double.self, forKey: .Min_disk_free_gb) { Min_disk_free_gb = d }
-        else { Min_disk_free_gb = Double((try? c.decode(Int.self, forKey: .Min_disk_free_gb)) ?? 10) }
+        Min_disk_free_gb      = (try? c.decode(Double.self,  forKey: .Min_disk_free_gb))      ?? 10.0
         Idle_timer_interval   = (try? c.decode(Int.self,     forKey: .Idle_timer_interval))   ?? 10
         Series_scan_retry_hours = (try? c.decode(Int.self,   forKey: .Series_scan_retry_hours)) ?? 4
         Hdhr_setup_folder     = (try? c.decode(String.self,  forKey: .Hdhr_setup_folder))     ?? ""
@@ -282,7 +238,19 @@ extension AppConfig: Codable {
 
 struct ConfigFile: Codable {
     var config: AppConfig
-    var the_shows: [Show]
+    var shows: [Show]
+}
+
+extension ConfigFile {
+    // Custom decoder: accepts both "shows" (v2) and "the_shows" (v1 legacy key)
+    init(from decoder: Decoder) throws {
+        enum K: String, CodingKey { case config, shows, the_shows }
+        let c = try decoder.container(keyedBy: K.self)
+        config = try c.decode(AppConfig.self, forKey: .config)
+        shows = (try? c.decode([Show].self, forKey: .shows))
+             ?? (try? c.decode([Show].self, forKey: .the_shows))
+             ?? []
+    }
 }
 
 // MARK: - HDHomeRun Device

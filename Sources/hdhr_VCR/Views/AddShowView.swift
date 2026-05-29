@@ -186,7 +186,7 @@ struct AddShowView: View {
         // Next up: active shows whose next air is within 30 min (matches menu bar orange-clock threshold)
         let now30 = Date()
         let nextUpShows = state.activeShows.filter {
-            guard let d = $0.show_next.date else { return false }
+            guard let d = $0.show_next else { return false }
             return d > now30 && d.timeIntervalSince(now30) <= 30 * 60
         }
         let nextUpSeriesIDs = Set(nextUpShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
@@ -345,8 +345,8 @@ struct AddShowView: View {
             let channelIcon = allChannels.first(where: { $0.GuideNumber == selectedChannel?.GuideNumber })?.ImageURL
             let isRecordingNow = state.recordingShows.contains { show in
                 show.show_channel == selectedChannel?.GuideNumber &&
-                (show.show_next.date ?? .distantFuture) <= Date() &&
-                (show.show_end.date  ?? .distantPast)   >  Date()
+                (show.show_next ?? .distantFuture) <= Date() &&
+                (show.show_end  ?? .distantPast)   >  Date()
             }
             let isSportsBonusEntry = entry.firstGenre?.lowercased().contains("sports") == true
                                   && state.config.Sports_padding_enabled
@@ -795,8 +795,8 @@ struct AddShowView: View {
         show.show_title    = entry.Title
         show.show_channel  = channel.GuideNumber
         show.show_length   = entry.durationMinutes
-        show.show_next     = EpochDate(entry.startDate)
-        show.show_end      = EpochDate(entry.endDate)
+        show.show_next     = entry.startDate
+        show.show_end      = entry.endDate
         show.show_seriesid = entry.SeriesID ?? ""
         show.show_logo_url = entry.ImageURL ?? ""
         show.show_genre    = entry.firstGenre ?? ""

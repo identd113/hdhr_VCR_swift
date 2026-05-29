@@ -62,7 +62,7 @@ struct FloatingGuideView: View {
                         let recordingTitles = Set(state.recordingShows.map { $0.show_title })
                         let now30 = Date()
                         let nextUpShows = state.activeShows.filter {
-                            guard let d = $0.show_next.date else { return false }
+                            guard let d = $0.show_next else { return false }
                             return d > now30 && d.timeIntervalSince(now30) <= 30 * 60
                         }
                         let nextUpSeriesIDs = Set(nextUpShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
@@ -186,8 +186,8 @@ struct FloatingGuideView: View {
             let channelIcon = allChannels.first(where: { $0.GuideNumber == selectedChannel?.GuideNumber })?.ImageURL
             let isRecordingNow = state.recordingShows.contains { show in
                 show.show_channel == selectedChannel?.GuideNumber &&
-                (show.show_next.date ?? .distantFuture) <= Date() &&
-                (show.show_end.date  ?? .distantPast)   >  Date()
+                (show.show_next ?? .distantFuture) <= Date() &&
+                (show.show_end  ?? .distantPast)   >  Date()
             }
             let isSportsBonusEntry = entry.firstGenre?.lowercased().contains("sports") == true
                                   && state.config.Sports_padding_enabled

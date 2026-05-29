@@ -3,9 +3,13 @@
 ## File
 
 **Location**: `~/Library/Application Support/hdhrVCRplus/hdhr_VCR-{hostname}.json`  
-**Migration**: on first launch, `ConfigManager` copies `~/Documents/hdhr_VCR-{hostname}.json` to the new path; old file preserved for AppleScript app compatibility.  
-**Backup**: `.json.bak` written before each save.  
-**Format shared** with the AppleScript app — both can read the same config.
+**Backup**: `.json.bak` written before each save.
+
+**Format versions**:
+- v2 (current): dates encoded as ISO8601 strings (`"2026-05-30T21:00:00Z"`), top-level shows key is `"shows"`.
+- v1 (legacy): dates encoded as string epochs (`"1748613600"`), top-level shows key is `"the_shows"`.
+
+`ConfigManager` auto-migrates v1 → v2 on first load and saves immediately. If the save fails (disk full, permissions), a warning is logged and migration retries on the next launch. The custom date decoder also accepts numeric epoch, so any format round-trips correctly.
 
 ## Adding a New Field
 
@@ -46,7 +50,7 @@ Discord_on_upnext       Bool    false   embed for Up Next reminder
 Discord_on_soon         Bool    false   embed for Recording Soon reminder
 Discord_on_show_added   Bool    false   embed when show is added
 Hdhr_setup_folder       String  ""      default recording folder (POSIX path; empty = ~/Movies/hdhr_videos)
-Config_version          String  "1"     format version marker
+Config_version          String  "2"     format version marker; "2" = ISO8601 dates + "shows" key
 ```
 
 ---

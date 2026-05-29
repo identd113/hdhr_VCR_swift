@@ -11,55 +11,92 @@ final class ConfigManager {
             .appendingPathComponent("hdhrVCRplus")
         try? FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
         configURL = appSupport.appendingPathComponent("hdhr_VCR-\(hostname).json")
-        migrateFromDocumentsIfNeeded()
-    }
-
-    // One-time migration: move the config from ~/Documents (TCC-protected) to Application Support.
-    // After migration the old file is left in place so the AppleScript app can still use it.
-    private func migrateFromDocumentsIfNeeded() {
-        guard !FileManager.default.fileExists(atPath: configURL.path) else { return }
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let oldURL = docs.appendingPathComponent("hdhr_VCR-\(hostname).json")
-        guard let data = try? Data(contentsOf: oldURL) else { return }
-        try? data.write(to: configURL, options: .atomic)
-        // Also copy backup so first save still has a prior version to back up from
-        let oldBak = oldURL.appendingPathExtension("bak")
-        if let bakData = try? Data(contentsOf: oldBak) {
-            try? bakData.write(to: configURL.appendingPathExtension("bak"), options: .atomic)
-        }
-        glog("[ConfigManager] migrated config from ~/Documents to Application Support")
     }
 
     func load() -> ConfigFile? {
-        let decoder = JSONDecoder()
-        // Try main config first
+        let decoder = Self.makeDecoder()
+        // Try main config
         if let data = try? Data(contentsOf: configURL),
            let file = try? decoder.decode(ConfigFile.self, from: data) {
-            return file
+            return maybeUpgrade(file)
         }
-        // Fall back to backup — restore it as the main file so future saves have a base
+        // Fall back to backup — restore as main so future saves have a base
         let backup = configURL.appendingPathExtension("bak")
         if let data = try? Data(contentsOf: backup),
            let file = try? decoder.decode(ConfigFile.self, from: data) {
             glog("[ConfigManager] Main config missing/corrupt — restored from backup", level: .warning)
             try? data.write(to: configURL, options: .atomic)
-            return file
+            return maybeUpgrade(file)
         }
-        glog("[ConfigManager] No config or backup — fresh install")
+        // Final fallback: ~/Documents (last-ever migration from old TCC-protected location)
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let docsURL = docs.appendingPathComponent("hdhr_VCR-\(hostname).json")
+        if let data = try? Data(contentsOf: docsURL),
+           let file = try? decoder.decode(ConfigFile.self, from: data) {
+            glog("[ConfigManager] Migrated config from ~/Documents")
+            return maybeUpgrade(file)
+        }
+        glog("[ConfigManager] No config found — fresh install")
         return nil
     }
 
     func save(_ file: ConfigFile) throws {
-        // Backup before write
         let backup = configURL.appendingPathExtension("bak")
         try? FileManager.default.removeItem(at: backup)
         try? FileManager.default.copyItem(at: configURL, to: backup)
-
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let data = try encoder.encode(file)
+        let data = try Self.makeEncoder().encode(file)
         try data.write(to: configURL, options: .atomic)
+        glog("[Config] Saved \(configURL.lastPathComponent)")
     }
 
     var configPath: String { configURL.path }
+
+    // MARK: - Private
+
+    /// Upgrades config to v2 on first load from a legacy format and saves immediately.
+    private func maybeUpgrade(_ file: ConfigFile) -> ConfigFile {
+        guard file.config.Config_version != "2" else { return file }
+        // Warn about any Mac alias paths that will no longer auto-convert
+        for show in file.shows where show.show_temp_dir.contains(":") && !show.show_temp_dir.hasPrefix("/") {
+            glog("[ConfigManager] '\(show.show_title)' has Mac alias path '\(show.show_temp_dir)' — clear show_temp_dir if recording path is wrong", level: .warning)
+        }
+        var upgraded = file
+        upgraded.config.Config_version = "2"
+        do {
+            try save(upgraded)
+            glog("[ConfigManager] Migrated config to v2 (ISO8601 dates, 'shows' key)")
+        } catch {
+            glog("[ConfigManager] v2 migration save failed — will retry next launch: \(error)", level: .warning)
+        }
+        return upgraded
+    }
+
+    /// Decoder that handles both ISO8601 (v2) and legacy string/numeric epoch (v1) date formats.
+    private static func makeDecoder() -> JSONDecoder {
+        let d = JSONDecoder()
+        d.dateDecodingStrategy = .custom { decoder in
+            let c = try decoder.singleValueContainer()
+            if let str = try? c.decode(String.self) {
+                // v2: ISO8601
+                if let date = ISO8601DateFormatter().date(from: str) { return date }
+                // v1: string epoch ("1748613600")
+                if let epoch = Double(str), epoch > 0 { return Date(timeIntervalSince1970: epoch) }
+                // "missing value", "0", empty — throw so try? decodes as nil
+                throw DecodingError.dataCorruptedError(in: c, debugDescription: "Not a valid date: \(str)")
+            }
+            // v1: numeric epoch
+            if let epoch = try? c.decode(Double.self), epoch > 0 {
+                return Date(timeIntervalSince1970: epoch)
+            }
+            throw DecodingError.dataCorruptedError(in: c, debugDescription: "Cannot decode date")
+        }
+        return d
+    }
+
+    private static func makeEncoder() -> JSONEncoder {
+        let e = JSONEncoder()
+        e.outputFormatting = [.prettyPrinted, .sortedKeys]
+        e.dateEncodingStrategy = .iso8601
+        return e
+    }
 }
