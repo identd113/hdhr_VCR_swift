@@ -37,7 +37,7 @@ A `Divider` separates toolbar from content.
 Background: the guide block's genre color at 90% opacity (e.g. blue for drama, amber for comedy, green for sports). All text is white with black drop shadow (`radius: 1.5, x: 0, y: 1`).
 
 Layout (HStack, 14pt horizontal padding, 10pt vertical padding):
-- **Left**: poster image, 180pt wide, fills panel height, cornerRadius 7, `.aspectRatio(.fill)`. White semi-transparent placeholder if no URL. Yellow 20pt triangle overlay at top-right corner if show is already scheduled. If on-air: `"Recording Now"` red badge with `record.circle.fill` icon.
+- **Left**: poster image, 180pt wide, fills panel height, `.aspectRatio(.fill)`, `.clipShape(RoundedRectangle(cornerRadius: 7))`. White semi-transparent placeholder if no URL. Yellow 20pt triangle overlay at top-right corner if show is already scheduled. If on-air: `"Recording Now"` red badge with `record.circle.fill` icon.
 - **Right** (VStack, 4pt spacing):
   - Title: `.title3` bold white, 1 line
   - Genre badge (if non-"series"): small all-caps text on `Color.white.opacity(0.20)` rounded rectangle, 3pt cornerRadius
@@ -157,6 +157,7 @@ VStack(spacing: 0) {
     VStack(spacing: 0) {
       summaryPanel
         .frame(height: proxy.size.height / 3)
+        .clipped()                 ← prevents HStack padding from overflowing the panel frame
       Divider
       CableGuideView(...)          ← NO .frame() here — GeometryReader distributes height
     }
@@ -178,7 +179,7 @@ VStack(spacing: 0) {
 Displayed in the top 1/3 of the guide step content area. Background color matches the selected guide cell color via `guideEntryColor(for:onAir:)` (module-level function in `CableGuideView.swift`, non-private so `AddShowView` can call it).
 
 When a show is selected:
-- **Poster image** — `AsyncImage`, `frame(width: 180).frame(maxHeight: .infinity)` (fills HStack height dynamically), cornerRadius 7. Carries `.accessibilityLabel("\(entry.Title) poster")`. Has a yellow 20pt right-angle triangle overlay in the top-right corner via `managedFlag(isManaged)` — shown when the entry matches an already-scheduled show (SeriesID or title match against `state.shows`).
+- **Poster image** — `AsyncImage`, `.frame(width: 180).frame(maxHeight: .infinity)` (fills HStack height dynamically), clipped and rounded via `.clipShape(RoundedRectangle(cornerRadius: 7))`. Carries `.accessibilityLabel("\(entry.Title) poster")`. Has a yellow 20pt right-angle triangle overlay in the top-right corner via `managedFlag(isManaged)` — shown when the entry matches an already-scheduled show (SeriesID or title match against `state.shows`). **Important**: `.clipShape` is used instead of `.cornerRadius + .clipped()` because the latter clips to a rectangle, allowing image content to bleed past the rounded corners.
 - **`managedFlag(_:)` helper** — `@ViewBuilder` that draws a `Path`-based yellow triangle when the bool is true, with `.accessibilityLabel("Already scheduled")`.
 - **"🔴 Recording Now" badge** — shown if the selected channel is actively recording (`recordingShows` match by channel + time)
 - **Title** — `.title3`, bold, white with drop shadow

@@ -44,9 +44,10 @@ Each show occupies a rectangular block spanning `duration × pxPerMin` pixels wi
 3. **Yellow managed triangle** — 22pt right-angle triangle, `Path.fill(.yellow)`, upper-right corner. Vertices: `(cellW-22, 0) → (cellW, 0) → (cellW, 22)`. Always rendered on top of the block background, below status icons.
 4. **Selected border** — 2.5pt white stroke + `Color.white.opacity(0.15)` fill overlay when selected
 5. **Status icons** (rendered after triangle so they appear on top of it):
-   - Selected: `checkmark.circle.fill` (12pt bold white) at `(cellW-18, 4)`
    - Recording: 8pt red `Circle` at `(cellW-12, 3)` — centred inside the yellow triangle
    - Next-up: `clock.badge.fill` (10pt orange) at `(cellW-14, 4)`
+
+**Show title text frame**: `max(1, cellW - 8)` wide (constant 8pt right margin, regardless of selection state).
 
 **Row background**: `underPageBackgroundColor` (very dark gray/black in dark mode) spans the full grid width per row. Vertical slot dividers: 0.5pt `separatorColor` at 18% opacity at every 30-minute boundary.
 

@@ -13,10 +13,11 @@ A small custom TV icon sits in the macOS menu bar. It changes state based on app
 Clicking the icon opens a native macOS cascading menu (NSMenu style). The menu has no custom background — it uses the system's standard menu appearance (dark translucent on macOS). Items are full-width, standard menu item height (~22pt). Interactive items highlight in system accent color on hover.
 
 **Header rows** (non-interactive, at the top):
-- One row per detected HDHomeRun device: `"105404BE  1/4"` — DeviceID left-aligned, active/total tuners right of it. Text is full `labelColor` (white in dark mode) when that device is recording, `secondaryLabelColor` (gray) when idle.
-- Status message row: small gray secondary text (e.g. `"Ready"`, `"Fetching guide…"`)
+- One row per detected HDHomeRun device: `"105404BE  1/4"` — DeviceID left-aligned, live-active/total-tuners. Live count comes from polling `status.json` each idle tick (`deviceTunerOccupancy`); falls back to the app's own recording count before the first poll. Full `labelColor` when recording; `secondaryLabelColor` when idle. If the live count differs from the app's expected count, appends `"  ⚠ app expects N"`.
+- Per-device orange warning rows (shown after startup, hidden during startup): `"   ⚠  No channel lineup"` when `lineups[deviceId]` is empty; `"   ⚠  Guide unavailable"` when `guideByDevice[deviceId]` is empty. Both conditions read `@Published` properties directly so SwiftUI reliably re-renders when either changes.
+- Status message row: `"16 show(s) — 1 tuner(s) ready"` — the tuner count uses `availableDeviceCount`, which excludes any device that has an empty lineup or empty guide data.
 
-Immediately below the header: **Add Show** (cascading menu or button), then **Settings…**, then a divider.
+Immediately below the header: **Watch Now** button (when devices present), **Add Show** (cascading menu or label-button based on mode), then **Settings…**, then a divider.
 
 **Recording Now** section (only visible when recording):
 - Section header: `"Recording Now"` (single tuner) or `"Recording · 105404BE"` (per device, multiple tuners) — macOS section label style, uppercase gray small text with separator
@@ -24,7 +25,7 @@ Immediately below the header: **Add Show** (cascading menu or button), then **Se
 
 **Up Next** section (only visible when shows start within 60 min):
 - Same section header pattern: `"Up Next"` or `"Up Next · 105404BE"`
-- Within the section: secondary-color footnote-size time labels (`"8:00 PM"`) with no preceding separator, followed by show items with `"  ch 5.1"` appended to the title
+- Within the section: shows bucketed by start time, each time slot rendered as a `Section` header (`"8:00 PM"`) with its shows below; show items have `"  ch 5.1"` appended to the title
 
 **Scheduled** section: `"Scheduled"` or `"Scheduled · DeviceID"` header, shows listed with state icon prefix
 
@@ -104,10 +105,11 @@ Window IDs → titles: `"add-show"` → "Add Show", `"edit-show"` → "Edit Show
 ## Top-Level Menu Structure
 
 ```
-[Header: one line per device — DeviceID  active/slots]
-[Status message — secondary color]
-Divider
-[Add Show — cascading menu or "Add Show…" button based on mode]
+[Header: one line per device — DeviceID  liveCount/slots]
+  [⚠ warning rows — orange — lineup/guide failure, after startup]
+[Status message — secondary color, uses availableDeviceCount]
+[Watch Now — Label("Watch Now", systemImage: "play.tv.fill"), when devices present]
+[Add Show — Label("Add Show", systemImage: "plus") or cascade based on mode]
 Divider
 Settings…
 Divider
@@ -117,8 +119,8 @@ Section "Recording · DeviceID"       ← per device when multiple tuners presen
 Divider
 Section "Up Next"                    ← shows starting within the next hour (single tuner)
 Section "Up Next · DeviceID"         ← per device when multiple tuners present
-  [secondary text: "8:00 PM"]        ← time label — no divider, groups shows by slot
-  scheduledMenu(show, showChannel:true) …   ← "ch 5.1" appended to label
+  Section "8:00 PM"                  ← time-slot Section groups shows by start minute
+    scheduledMenu(show, showChannel:true) …   ← "ch 5.1" appended to label
 Divider
 Section "Scheduled"                  ← remaining active shows (single tuner)
 Section "Scheduled · DeviceID"       ← per device when multiple tuners
@@ -134,7 +136,9 @@ Quit hdhrVCRplus
 
 ### Header
 
-One `Text` line per device: `"105404BE  1/4"` (DeviceID + `active/totalTuners`). Active count is filtered by `hdhr_record == device.DeviceID` across `recordingShows`. Full `labelColor` when that device has active recordings; `secondaryLabelColor` when idle. Below device lines: `state.statusMessage` in secondary color.
+One `Text` line per device: `"105404BE  1/4"` (DeviceID + `liveCount/totalTuners`). `liveCount` comes from `state.deviceTunerOccupancy[deviceId]` — the decoded `/status.json` array polled each idle tick; falls back to `recordingShows` count before the first poll. Full `labelColor` when recording; `secondaryLabelColor` when idle. If `liveCount != appCount` (and occupancy has been polled at least once), appends `"  ⚠ app expects N"`.
+
+After startup, each device row is followed by zero or more orange warning rows (one per issue): `"   ⚠  No channel lineup"` when `state.lineups[deviceId]` is nil or empty; `"   ⚠  Guide unavailable"` when `state.guideByDevice[deviceId]` is nil or empty. Both are gated on `!state.isStartingUp` and read `@Published` vars directly — SwiftUI reliably re-renders when either changes. Devices with active warnings are excluded from `availableDeviceCount`, so `state.statusMessage` reads e.g. `"16 show(s) — 1 tuner(s) ready"` when one of two devices is unhealthy.
 
 ---
 
@@ -189,9 +193,7 @@ Submenu — uses `showInfoHeader(show, entry:)` for the top block, then:
 
 ### Up Next section
 
-Shows in `activeShows` whose `show_next` falls within the **next 60 minutes** appear in the **"Up Next"** section above "Scheduled". Shows are bucketed by start time (rounded to the minute) and grouped under a secondary `menuInfo` time label (e.g. `"8:00 PM"`) — plain text, no divider, so it sits flush under the section header. Each show in Up Next has `showChannel: true` so the channel is visible in the row label. Shows in Up Next are excluded from the Scheduled section.
-
-**Why `menuInfo` not `Section` for time groups**: `Section` adds its own separator divider above its label. Using a nested `Section` for each time slot caused a double-divider gap between `"Up Next"` and the first time label. `menuInfo` renders as a plain non-interactive label item with no preceding divider.
+Shows in `activeShows` whose `show_next` falls within the **next 60 minutes** appear in the **"Up Next"** section above "Scheduled". Shows are bucketed by start time (rounded to the minute); each bucket renders as a nested `Section("8:00 PM")` containing its shows. Each show in Up Next has `showChannel: true` so the channel is visible in the row label. Shows in Up Next are excluded from the Scheduled section.
 
 ---
 
@@ -207,9 +209,15 @@ Submenu — uses `showInfoHeader(show, entry:)`, then: show type + channel, paus
 
 ---
 
+## Watch Now — `watchNowMenu`
+
+A `Button` with `Label("Watch Now", systemImage: "play.tv.fill")` in a blue tint (`watchNowBlue = Color(red: 0.2, green: 0.6, blue: 1.0)`). Shown when `state.devices` is non-empty. Opens the `"watch-now"` `WindowGroup` (`WatchNowView`) — a 420×620 poster-card grid of currently-airing shows. If the window is already open, brings it to front instead of opening a duplicate.
+
+---
+
 ## Add Show — `addShowMenu` Cascade
 
-Only shown when `addShowMode == .menu` (set in Settings → General → Add Show Method). Otherwise a plain `Button("Add Show…")` opens the wizard.
+Only shown when `addShowMode == .menu` (set in Settings → General → Add Show Method). Otherwise a `Button` with `Label("Add Show…", systemImage: "plus")` opens the wizard.
 
 The cascade is intentionally **two levels deep only** — device and channel. SwiftUI's `Menu {}` evaluates all nested content eagerly when the parent opens, so adding a third level (guide entries) for ~100 channels caused the entire entry tree to be built on every menu open. The cascade stops at channel level; clicking a channel opens the wizard.
 
