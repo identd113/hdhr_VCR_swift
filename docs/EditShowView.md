@@ -68,7 +68,7 @@ Called from `.onAppear`. Reads `state.editingShowId`, finds the matching show in
 - `airDays` — `Set(show.show_air_date)`
 - `recordFolder` — `URL(fileURLWithPath: show.posixRecordDir)`, falling back to `state.defaultSaveDir`
 
-`posixRecordDir` handles Mac alias paths (`"Vol:Dir:Sub:"` → `"/Volumes/Vol/Dir/Sub"`). If `show_temp_dir` is empty, falls back to `~/Movies`.
+`posixRecordDir` handles Mac alias paths (`"Vol:Dir:Sub:"` → `"/Volumes/Vol/Dir/Sub"`). If `show_temp_dir` is empty, falls back to `~/Movies/hdhr_videos`.
 
 ### Show Type Changes — `applySeriesType()`
 

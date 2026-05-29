@@ -664,13 +664,14 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// The default recording folder: UserDefaults override → config Hdhr_setup_folder → ~/Documents/hdhr_videos.
+    /// The default recording folder: UserDefaults override → config Hdhr_setup_folder → ~/Movies/hdhr_videos.
+    /// ~/Movies is TCC-free for non-sandboxed apps and visible in the Finder sidebar.
     var defaultSaveDir: URL {
         let stored = UserDefaults.standard.string(forKey: "defaultSaveDirectory") ?? ""
         if !stored.isEmpty { return URL(fileURLWithPath: stored) }
         if !config.Hdhr_setup_folder.isEmpty { return URL(fileURLWithPath: config.Hdhr_setup_folder) }
         let dir = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Documents/hdhr_videos")
+            .appendingPathComponent("Movies/hdhr_videos")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }

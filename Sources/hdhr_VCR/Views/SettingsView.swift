@@ -726,7 +726,7 @@ struct SettingsView: View {
         if !state.config.Hdhr_setup_folder.isEmpty {
             return (state.config.Hdhr_setup_folder as NSString).lastPathComponent + " (from config)"
         }
-        return "Movies (default)"
+        return "hdhr_videos (default)"
     }
 
     // MARK: - Changelog parsing

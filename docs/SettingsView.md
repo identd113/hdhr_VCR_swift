@@ -132,7 +132,7 @@ Sidebar entries (with SF Symbol icons):
 
 ### Recording
 
-- **Default folder** — label (last path component) + Choose… + Reset. Stored in `@AppStorage("defaultSaveDirectory")` (not `AppConfig`). Priority order for resolution: UserDefaults → `config.Hdhr_setup_folder` → `~/Documents/hdhr_videos`.
+- **Default folder** — label (last path component) + Choose… + Reset. Stored in `@AppStorage("defaultSaveDirectory")` (not `AppConfig`). Priority order for resolution: UserDefaults → `config.Hdhr_setup_folder` → `~/Movies/hdhr_videos`.
 - **Default transcode** — `Picker`: None / Heavy / Mobile / Internet 720. Stored in `draft.Default_transcode`.
 - **Min free disk** — `Stepper` (1–100 GB). Recording is refused when free space is below this threshold (`AppState.diskOK(for:)`).
 - **Pause after N failures** — `Stepper` (1–10). After `Fail_count_setting` consecutive failures, `show_active = false` and the show moves to Paused. Each successful recording start decrements `show_fail_count` by 1.

@@ -103,7 +103,7 @@ struct Show: Identifiable, Equatable {
             let parts = show_temp_dir.split(separator: ":", omittingEmptySubsequences: true)
             return "/Volumes/" + parts.joined(separator: "/")
         }
-        return show_temp_dir.isEmpty ? (NSHomeDirectory() + "/Movies") : show_temp_dir
+        return show_temp_dir.isEmpty ? (NSHomeDirectory() + "/Movies/hdhr_videos") : show_temp_dir
     }
 
     func outputPath(date: Date = Date()) -> String {
@@ -210,7 +210,7 @@ struct AppConfig: Equatable {
     // Series
     var Series_scan_retry_hours: Int = 4     // hours to wait before retrying guide scan
 
-    // Default recording folder (POSIX path; empty = ~/Movies)
+    // Default recording folder (POSIX path; empty = ~/Movies/hdhr_videos)
     // Stored here for compat with the AppleScript config (Hdhr_setup_folder field).
     var Hdhr_setup_folder: String = ""
 

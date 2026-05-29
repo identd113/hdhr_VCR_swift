@@ -45,7 +45,7 @@ Discord_on_guide_error  Bool    true    embed on guide load failure
 Discord_on_upnext       Bool    false   embed for Up Next reminder
 Discord_on_soon         Bool    false   embed for Recording Soon reminder
 Discord_on_show_added   Bool    false   embed when show is added
-Hdhr_setup_folder       String  ""      default recording folder (POSIX path; empty = ~/Documents/hdhr_videos)
+Hdhr_setup_folder       String  ""      default recording folder (POSIX path; empty = ~/Movies/hdhr_videos)
 Config_version          String  "1"     format version marker
 ```
 
@@ -56,4 +56,4 @@ Config_version          String  "1"     format version marker
 Priority order:
 1. `UserDefaults["defaultSaveDirectory"]` — set by folder picker in Settings
 2. `config.Hdhr_setup_folder` — from config JSON
-3. `~/Documents/hdhr_videos` — created automatically if absent
+3. `~/Movies/hdhr_videos` — created automatically if absent
