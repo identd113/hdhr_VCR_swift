@@ -2,6 +2,8 @@
 
 Swift/SwiftUI rewrite of the AppleScript hdhr_VCR app. Runs as a macOS menu bar app (no Dock icon) that records TV shows from HDHomeRun tuners using guide-based scheduling.
 
+> **Working conventions** (commits, reviews, visual changes, deploy rules, issue tracking): see [`.claude/CONVENTIONS.md`](.claude/CONVENTIONS.md).
+
 ---
 
 ## Build & Deploy
@@ -19,11 +21,13 @@ The `.app` bundle is committed to the repo at `hdhrVCRplus.app/`. The binary ins
 - `LSUIElement = true` — hides the Dock icon
 - `NSAppTransportSecurity / NSAllowsArbitraryLoads = true` — allows HTTP image URLs from guide API
 
+**Deploy failures**: if a build fails, update `deploy.sh` to compensate. If build artifacts or temp files appear in the repo, add the parent to `.gitignore` (targeted wildcard if the parent folder is too broad).
+
 ---
 
 ## Documentation
 
-Detailed per-view docs are in `docs/`. Load as needed:
+Detailed per-view docs are in `docs/`. **These are the source of truth for visual layout and style.** Always read the relevant doc before editing a view. If a doc contradicts the code, flag it and stop — do not silently reconcile. Any visual removal or change requires explicit user approval. Load as needed:
 - [CableGuideView](docs/CableGuideView.md) — cable grid layout, scroll sync (VerticalScrollTracker), color system, per-block decorations, performance
 - [CableGuideView Pitfalls](docs/CableGuideView_pitfalls.md) — 10 failed layout attempts and why they broke; read before touching guide/AddShowView outer structure
 - [AddShowView](docs/AddShowView.md) — 3-step wizard, device step, guide step, details step with starburst
@@ -487,3 +491,14 @@ The idle loop's `rebuildMenuEntries()` is guarded by `menuIsOpen` (set via `.onA
 swift test
 ```
 Tests live in `Tests/hdhr_VCRTests/`. The test target uses `unsafeFlags` to link against the Swift Testing framework from CommandLineTools (see `Package.swift`).
+
+### Issue tracking
+Unrelated bugs found during work go in `ISSUES.md` at the repo root — do not fix inline. When resolved, note the commit hash there. `ISSUES.md` is the historical "don't repeat this" reference used during code reviews.
+
+---
+
+## Custom Scripts
+
+| Script | Purpose |
+|---|---|
+| `deploy.sh` | Stop app → `swift build` → copy binary into `.app` → launch. Run `./deploy.sh --help` for options. |
