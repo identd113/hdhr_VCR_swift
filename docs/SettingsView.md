@@ -28,9 +28,8 @@ Selected row highlighted in accent color.
 - Right side: `"Save"` button (disabled when clean or webhook untested, ⌘S shortcut) + **"Save & Close"** prominent button (orange tint when dirty, blue/accent when clean, Return shortcut)
 
 ### Category: General
-Two `Section` groups:
+One `Section`:
 - **System**: `Toggle("Launch at Login")`
-- **Add Show Method**: two custom radio rows (HStack). Each row: circle/filled-circle SF Symbol icon in accent or secondary + VStack with mode name (medium weight) + description (caption secondary). Tapping anywhere on the row selects it.
 
 ### Category: Recording
 One `Section`:

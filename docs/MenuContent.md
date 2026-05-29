@@ -16,7 +16,7 @@ Clicking the icon opens a native macOS cascading menu (NSMenu style). The menu h
 - One row per detected HDHomeRun device: `"105404BE  1/4"` — DeviceID left-aligned, live-active/total-tuners. Live count comes from polling `status.json` each idle tick (`deviceTunerOccupancy`); falls back to the app's own recording count before the first poll. Color: `systemOrange` when the device has lineup/guide warnings; full `labelColor` when recording (no warnings); `secondaryLabelColor` when idle and healthy. If the live count differs from the app's expected count, appends `"  ⚠ app expects N"`. After startup, missing lineup or guide data appends `"  ⚠ no lineup"` or `"  ⚠ no guide"` (or both, comma-separated) to the same line.
 - Status message row: `"16 show(s) — 1 tuner(s) ready"` — the tuner count uses `availableDeviceCount`, which excludes any device that has an empty lineup or empty guide data.
 
-Immediately below the header: **Watch Now** button (when devices present), **Add Show** (cascading menu or label-button based on mode), then **Settings…**, then a divider.
+Immediately below the header: **Watch Now** button (when devices present), **Add Show…** button (opens wizard window), then **Settings…**, then a divider.
 
 **Recording Now** section (only visible when recording):
 - Section header: `"Recording Now"` (single tuner) or `"Recording · 105404BE"` (per device, multiple tuners) — macOS section label style, uppercase gray small text with separator
@@ -48,13 +48,6 @@ Below the poster block, secondary metadata in `.footnote` / `.caption` size usin
 
 Action buttons at the bottom of the submenu (standard blue text, destructive items in red).
 
-### Add Show channel cascade (menu mode)
-Level 1 — amber 5pt accent bar at the top of the channel list. Favorites grouped under a yellow-tinted `"★  FAVORITES"` small-caps label; regular channels below after a divider.
-
-Each channel item: 16×16 channel logo (or `tv` SF Symbol), then `"5.1  NBC HD ★"` text. Managed entries show a 14pt yellow triangle as the label icon (left side).
-
-Each channel's submenu: blue 5pt accent bar, then entry list. On-air entries prefixed with `"▶"`. Managed entry labels show yellow triangle icon.
-
 ## Intent
 
 `MenuContent` is the entire visible UI of the app while the menu is closed. It is the `body` of the `MenuBarExtra` scene declared with `.menu` style in `hdhr_VCRApp.swift`. Every interaction the user has with the app — starting, stopping, scheduling, editing, and adding shows — flows through here or through a window it opens.
@@ -82,7 +75,7 @@ private func open(_ id: String) {
 
 The `DispatchQueue.main.async` is essential: `.menu`-style `MenuBarExtra` dismisses the menu synchronously on interaction. Calling `openWindow` before the menu is fully dismissed can cause the window to appear behind the menu or fail silently. The deferred dispatch fires after the menu is gone.
 
-Window IDs → titles: `"add-show"` → "Add Show", `"edit-show"` → "Edit Show", `"settings"` → "Settings"
+Window IDs → titles: `"add-show"` → "Add Show", `"edit-show"` → "Edit Show", `"settings"` → "Settings", `"watch-now"` → "Watch Now", `"cable-guide"` → "Cable Guide"
 
 ---
 
@@ -107,7 +100,7 @@ Window IDs → titles: `"add-show"` → "Add Show", `"edit-show"` → "Edit Show
 [Header: one line per device — DeviceID  liveCount/slots  ⚠ no lineup, no guide (inline, orange)]
 [Status message — secondary color, uses availableDeviceCount]
 [Watch Now — Label("Watch Now", systemImage: "play.tv.fill"), when devices present]
-[Add Show — Label("Add Show", systemImage: "plus") or cascade based on mode]
+[Add Show… — Button, opens wizard window]
 Divider
 Settings…
 Divider
@@ -213,26 +206,9 @@ A `Button` with `Label("Watch Now", systemImage: "play.tv.fill")` in a blue tint
 
 ---
 
-## Add Show — `addShowMenu` Cascade
+## Add Show — `Button`
 
-Only shown when `addShowMode == .menu` (set in Settings → General → Add Show Method). Otherwise a `Button` with `Label("Add Show…", systemImage: "plus")` opens the wizard.
-
-The cascade is intentionally **two levels deep only** — device and channel. SwiftUI's `Menu {}` evaluates all nested content eagerly when the parent opens, so adding a third level (guide entries) for ~100 channels caused the entire entry tree to be built on every menu open. The cascade stops at channel level; clicking a channel opens the wizard.
-
-**Level 1 — Device** (skipped for single-tuner setups):
-For a single device, goes straight to channel list. For multiple, wraps each device in an outer `Menu(device.DeviceID)`. In both paths, `state.ensureGuideLoaded(for:)` is called immediately via a `let _ = { ... }()` side-effect — required because SwiftUI `Menu` bodies evaluate eagerly when the menu opens.
-
-**Level 2 — Channels** (`channelMenus(for:)` → `channelMenu(device:channel:)`):
-Reads `state.lineups[device.DeviceID]`. Channels are sorted favorites-first (`isFavorite` desc), then by numeric channel number (`channelSortKey`). Only channels with guide data (`menuGuideEntries` non-empty) are shown. Favorites appear under a `"★  FAVORITES"` italic text header; others follow after a `Divider`. Each channel is a `Menu` (submenu) showing:
-- Channel logo (16×16) from `channelIconImages` — O(1) dict lookup; falls back to `tv` SF Symbol; `.accessibilityHidden(true)`
-- `"5.1  NBC HD ★"` label — HD badge when `lineup.HD == 1`, star suffix when `isFavorite`
-
-**Guide entries within a channel** (`entryMenu(entry:device:channel:isOnAir:)`):
-Each entry is a `Menu` with a color accent bar (genre color). When the entry matches a managed show (`managedShow(for:)` lookup by SeriesID then title), the menu label uses a `Label` with `Self.managedFlagImage` (14×14 yellow AppKit triangle) as the icon, and the submenu shows **Skip** / **Edit…** / **Delete…** instead of **Record…**. Unmanaged entries show a **Record…** button that opens the wizard pre-filled.
-
-**`managedFlagImage`** is a `static let NSImage` drawn via `NSBezierPath` + `NSColor.systemYellow` — right-angle at top-left, vertex at bottom-left. `Path`/`Canvas` do not render in NSMenu item labels; only `NSImage` and SF Symbols work reliably.
-
-**Channel logo loading**: logos are pre-fetched into `AppState.channelIconImages: [String: NSImage]` during guide load via `prefetchChannelIcons(_:)`. The URL→image dict is populated with a single actor hop after all downloads complete, so menu access is always synchronous. `channelImageURLs: [String: String]` maps `"deviceId:channelNum"` → image URL; both dicts are rebuilt in `rebuildMenuEntries()` after each guide load.
+A plain `Button` with `Label("Add Show…", systemImage: "plus")`. Opens the `"add-show"` `WindowGroup` (`AddShowView`) — a 3-step wizard. The old cascading menu (device → channel → guide entries) was removed; that browsing path is now covered by **Watch Now**.
 
 ---
 
@@ -241,7 +217,6 @@ Each entry is a `Menu` with a color accent bar (genre color). When the entry mat
 | Function | Purpose |
 |---|---|
 | `showInfoHeader(_:entry:)` | Shared poster + title + episode + synopsis block; always shows yellow flag triangle |
-| `managedShow(for:)` | Looks up an existing `Show` for a guide entry by SeriesID then title |
 | `stateIcon(_:)` | Emoji for show type |
 | `relativeLabel(_:)` | "2h 15m", "45m", "30s" from a `TimeInterval` |
 | `elapsedLabel(since:)` | `relativeLabel(Date().timeIntervalSince(start))` |
@@ -252,7 +227,6 @@ Each entry is a `Menu` with a color accent bar (genre color). When the entry mat
 | `weekdayName(_:)` | Full weekday name from a `Date` |
 | `episodeInfoLabel(_:)` | Joins `EpisodeNumber` + `EpisodeTitle` with ` · `; nil if both empty |
 | `truncateSynopsis(_:limit:)` | Clips to 160 chars at a word boundary |
-| `entryLabel(_:isOnAir:)` | `"▶ 8:00 PM  Title"` (on air) or `"8:00 PM  Title"` |
 | `editShow(_:)` | Sets `state.editingShowId`, calls `open("edit-show")` |
 
 ## `confirmAndDeleteShow` (AppState)
@@ -279,4 +253,4 @@ All informational text explicitly uses `Color(NSColor.labelColor)` or `Color(NSC
 
 - **Bonus Time indicator in recording menu** — when a sports show is recording past the guide end in Bonus Time, there's no callout like "🏈 Bonus Time" in the menu. The remaining-time counter shows the padded end time, but the user has no visible explanation.
 
-- **No "Record Now" shortcut** — there's no direct path to immediately record a show that's currently on air without going through the full Add Show cascade.
+- **No "Record Now" shortcut** — there's no direct path to immediately record a show that's currently on air without going through Watch Now or the Add Show wizard.

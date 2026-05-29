@@ -60,6 +60,7 @@ Views/
 - [EditShowView](docs/EditShowView.md) — edit show window
 - [SettingsView](docs/SettingsView.md) — draft/save pattern, WindowCloseInterceptor, Maintenance section
 - [StarburstBadge](docs/StarburstBadge.md) — keyframeAnimator sequences, 5-tap easter egg
+- [WatchNowView](docs/WatchNowView.md) — live "what's on" poster-card grid, per-channel row, Watch/Record/Edit actions
 - [VLCPlayerView](docs/VLCPlayerView.md) — VLC in-app player, poster overlay, channel picker, audio selectors
 - [VLCBridge](docs/VLCBridge.md) — dlopen runtime loader for libvlc.dylib, @convention(c) typedefs
 - [ShowFormSection](docs/ShowFormSection.md) — shared form fields (AddShowView + EditShowView)

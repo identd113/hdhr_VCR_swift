@@ -24,14 +24,13 @@ struct WatchNowView: View {
     // GuideEntry.id == StartTime — NOT safe for ForEach (many channels share a start time).
     private var onAirChannels: [LineupEntry] {
         guard let device = selectedDevice else { return [] }
-        let key = "\(device.DeviceID):"
         var seen = Set<String>()
         return (state.lineups[device.DeviceID] ?? [])
             .filter { ch in
                 // Keep first occurrence per GuideNumber to strip lineup duplicates
                 guard seen.insert(ch.GuideNumber).inserted else { return false }
                 // Only include channels with a currently-airing show
-                return (state.menuGuideEntries["\(key)\(ch.GuideNumber)"] ?? [])
+                return state.guideEntries(deviceId: device.DeviceID, channelNum: ch.GuideNumber)
                     .contains { $0.startDate <= now && $0.endDate > now }
             }
             .sorted { a, b in
@@ -79,8 +78,8 @@ struct WatchNowView: View {
     }
 
     @ViewBuilder
-    private func channelRow(_ ch: LineupEntry, device: HDHRDevice, key: String, snap: Date) -> some View {
-        let entry = (state.menuGuideEntries["\(key)\(ch.GuideNumber)"] ?? [])
+    private func channelRow(_ ch: LineupEntry, device: HDHRDevice, snap: Date) -> some View {
+        let entry = state.guideEntries(deviceId: device.DeviceID, channelNum: ch.GuideNumber)
             .first { $0.startDate <= snap && $0.endDate > snap }
         if let entry {
             WatchNowRow(
@@ -103,9 +102,8 @@ struct WatchNowView: View {
     private func prefetchPosters() async {
         guard let device = selectedDevice else { return }
         let snap = now
-        let key = "\(device.DeviceID):"
         for ch in onAirChannels {
-            guard let urlStr = (state.menuGuideEntries["\(key)\(ch.GuideNumber)"] ?? [])
+            guard let urlStr = state.guideEntries(deviceId: device.DeviceID, channelNum: ch.GuideNumber)
                 .first(where: { $0.startDate <= snap && $0.endDate > snap })?.ImageURL,
                   posterCache[urlStr] == nil
             else { continue }
@@ -160,7 +158,6 @@ struct WatchNowView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let device = selectedDevice {
             let snap   = now
-            let key    = "\(device.DeviceID):"
             let favs   = channels.filter(\.isFavorite)
             let others = channels.filter { !$0.isFavorite }
 
@@ -169,12 +166,12 @@ struct WatchNowView: View {
                     if !favs.isEmpty {
                         favTopBorder
                         ForEach(favs) { ch in
-                            channelRow(ch, device: device, key: key, snap: snap)
+                            channelRow(ch, device: device, snap: snap)
                         }
                         favBottomBorder
                     }
                     ForEach(others) { ch in
-                        channelRow(ch, device: device, key: key, snap: snap)
+                        channelRow(ch, device: device, snap: snap)
                     }
                 }
             }

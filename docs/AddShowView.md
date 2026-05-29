@@ -25,7 +25,7 @@ Nav bar (bottom): **Next** button (`.borderedProminent`) enabled when a device i
 **Compact toolbar** (single row, ~42pt tall, `windowBackgroundColor` background):
 - Left: `Menu` showing current tuner name with disclosure indicator (hidden when only 1 tuner)
 - `"Genre:"` secondary label + `Picker` (up to 160pt wide) for genre filtering (hidden when no genres in guide data)
-- Right side: spinning `ProgressView` (0.7× scale) while loading; `"Now"` button with `clock.arrow.circlepath` icon; `"Refresh"` button with `arrow.clockwise` icon; pop-out button (`arrow.up.left.and.arrow.down.right` icon); `"[106 ch]"` in caption orange
+- Right side: spinning `ProgressView` (0.7× scale) while loading; `"Now"` button with `clock.arrow.circlepath` icon; `"Refresh"` button with `arrow.clockwise` icon; pop-out button (`arrow.up.left.and.arrow.down.right` icon) — calls `openWindow(id: "cable-guide")` to open `FloatingGuideView` as a standalone browse window; `"[106 ch]"` in caption orange
 A `Divider` separates toolbar from content.
 
 **Content area** (fills remaining height via `GeometryReader`):
@@ -287,8 +287,6 @@ For SeriesID shows (`show_use_seriesid == true`), `resolveSeriesAir(show:device:
 ---
 
 ## What Still Needs Doing
-
-- **No back button from step 3 to step 2** — if the user wants to pick a different guide entry after reaching Details, they have to Cancel and start over. A "Back" button should return to the guide with the previous selection intact.
 
 - **No way to manually set a stream URL** — if a channel's URL can't be resolved from the lineup, the user can't override it in the wizard. The step 3 form could show the resolved URL and allow edits.
 

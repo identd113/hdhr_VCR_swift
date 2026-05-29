@@ -16,7 +16,7 @@ func stop(showId:)
 
 ## Process Model
 
-Each recording produces **two ps lines**: `caffeinate -i` (parent) + `curl` (child). Both contain `show_id:xxx` and `appname:hdhr_VCR_swift` so `reattachRecordings()` can find them after a restart.
+Each recording produces **two ps lines**: `caffeinate -i` (parent) + `curl` (child). Both contain `show_id:xxx` and `appname:hdhrVCRplus` so `reattachRecordings()` can find them after a restart.
 
 - `durationSeconds` = **remaining time until `show_end`** (not total show length) — handles late starts and boot-resume correctly.
 - Stream URL: `{channel_url}?duration={seconds}&transcode={profile}`

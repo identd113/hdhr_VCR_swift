@@ -105,7 +105,7 @@ Replaces the matching show in `state.shows` by ID, then writes the config to dis
 
 ### Delete
 
-Calls `state.deleteShow(s)` (which also calls `recordingManager.stop(showId:)` to halt any in-progress recording) and dismisses. No confirmation dialog — the delete is immediate and irreversible.
+Calls `state.confirmAndDeleteShow(s) { dismiss() }` — same flow as menu-based deletion: fetches the show's poster image async, shows an `NSAlert` with the image and "Delete / Cancel" buttons, then stops any in-progress recording and removes the show on confirm. The window dismisses after deletion via the completion closure.
 
 ### Folder Picker — `chooseFolder()`
 

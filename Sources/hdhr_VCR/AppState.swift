@@ -9,15 +9,10 @@ final class AppState: ObservableObject {
     @Published var devices: [HDHRDevice] = []
     @Published var lineups: [String: [LineupEntry]] = [:]       // deviceId → channel lineup
     @Published var guideByDevice: [String: [GuideChannel]] = [:] {  // mirror of guideStore.channelsByDevice
-        // Always rebuild on guide load — this is infrequent (startup + periodic refresh) and
-        // must populate menuGuideEntries even if the menu happens to be open at load time.
-        // The feedback loop that previously made this dangerous (403 → guideByDevice = → didSet
-        // → rebuild → re-eval → 403 → ...) is broken by ensureGuideLoaded's success-only guard.
+        // Rebuild caches on guide load (infrequent). The 403 feedback loop is broken by
+        // ensureGuideLoaded's success-only guard on guideByDevice assignment.
         didSet { rebuildMenuEntries() }
     }
-    // Pre-filtered entries for the Add Show cascading menu — on-air + next 2 upcoming per channel.
-    // Rebuilt after every guide load so menu construction is an O(1) dict read.
-    @Published var menuGuideEntries: [String: [GuideEntry]] = [:]
     // Per-show guide entry for the scheduled menu label and info header — avoids O(series) scan per open.
     @Published var menuScheduledEntry: [String: GuideEntry] = [:]
     // Pre-computed upcoming slots for SeriesID shows — avoids O(series) nextEpisodes scan per open.
@@ -481,27 +476,10 @@ final class AppState: ObservableObject {
         guideStore.entries(deviceId: deviceId, channelNum: channelNum)
     }
 
-    /// Rebuilds the pre-filtered entry cache used by the Add Show cascading menu.
-    /// Rebuilds pre-filtered guide entry lists for the Add Show cascade menu.
-    /// Stores all guide entries per channel (on-air first, then upcoming) so
-    /// menu construction is an O(1) dict read instead of O(entries) per open.
-    /// Called automatically via guideByDevice.didSet after every guide load.
     func rebuildMenuEntries() {
         let now = Date()
 
-        // ── Add Show channel menu: all entries from the guide ─────────────────
-        var channelResult: [String: [GuideEntry]] = [:]
-        for device in devices {
-            for ch in lineups[device.DeviceID] ?? [] {
-                let all   = guideStore.entries(deviceId: device.DeviceID, channelNum: ch.GuideNumber)
-                let onAir = all.filter { $0.startDate <= now && $0.endDate > now }
-                let upcoming = all.filter { $0.startDate > now }
-                channelResult["\(device.DeviceID):\(ch.GuideNumber)"] = onAir + upcoming
-            }
-        }
-        menuGuideEntries = channelResult
-
-        // ── O(1) managed-show lookup dicts for entryMenu ──────────────────────
+        // ── O(1) managed-show lookup dicts (WatchNowView + scheduledMenu) ─────
         var bySeriesID: [String: Show] = [:]
         var byTitle:    [String: Show] = [:]
         for show in shows {

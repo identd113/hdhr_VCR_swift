@@ -32,7 +32,7 @@ Identical to `CableGuideView` appearance described in `CableGuideView.md`. When 
 
 `FloatingGuideView` is a browse-only cable guide window that can be opened independently of the Add Show wizard. It uses the same `CableGuideView` grid and summary panel as `AddShowView` step 2, but has no Record button, no wizard navigation, and no step-advance behavior. The user can browse what's on across all tuners, see Bonus Time overlaps, and optionally Watch in VLC for on-air shows.
 
-It is opened from the Add Show wizard via a pop-out button (or from any other trigger in the future). Window minimum: **1100×720**, no maximum.
+It is opened from the Add Show wizard via a pop-out button (`openWindow(id: "cable-guide")`), or from any other trigger in the future. Window ID: `"cable-guide"`. Window minimum: **1100×720**, no maximum.
 
 ---
 

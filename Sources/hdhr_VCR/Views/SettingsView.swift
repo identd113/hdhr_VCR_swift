@@ -27,13 +27,11 @@ private enum SettingsCategory: String, CaseIterable, Identifiable {
 
 struct SettingsView: View {
     @EnvironmentObject var state: AppState
-    @AppStorage("addShowMode") private var addShowMode: AddShowMode = .menu
     @AppStorage("defaultSaveDirectory") private var defaultSaveDirectory: String = ""
     @AppStorage("simulatedMacOSVersion") private var simulatedMacOSVersion: Int = 0
     @State private var selection: SettingsCategory? = .general
     @State private var draft: AppConfig = AppConfig()
     // Shadow drafts for settings that live outside AppConfig — applied only on Save
-    @State private var draftAddShowMode:   AddShowMode = .menu
     @State private var draftSaveDirectory: String      = ""
     @State private var draftLaunchAtLogin: Bool        = false
     @State private var draftSimulatedOS:   Int         = 0
@@ -58,7 +56,6 @@ struct SettingsView: View {
 
     private var isDirty: Bool {
         draft != state.config
-            || draftAddShowMode   != addShowMode
             || draftSaveDirectory != defaultSaveDirectory
             || draftLaunchAtLogin != (SMAppService.mainApp.status == .enabled)
             || draftSimulatedOS   != simulatedMacOSVersion
@@ -113,7 +110,6 @@ struct SettingsView: View {
         .background(WindowCloseInterceptor(isDirty: isDirty, canSave: !webhookNeedsTest, onSave: applyAndSave))
         .onAppear {
             draft               = state.config
-            draftAddShowMode    = addShowMode
             draftSaveDirectory  = defaultSaveDirectory
             draftLaunchAtLogin  = SMAppService.mainApp.status == .enabled
             // Existing saved URL is considered verified (was tested when first saved)
@@ -138,7 +134,6 @@ struct SettingsView: View {
 
     private func discardDraft() {
         draft              = state.config
-        draftAddShowMode   = addShowMode
         draftSaveDirectory = defaultSaveDirectory
         draftLaunchAtLogin = SMAppService.mainApp.status == .enabled
         draftSimulatedOS   = simulatedMacOSVersion
@@ -152,7 +147,6 @@ struct SettingsView: View {
         state.saveConfig()
         if intervalChanged { state.startTimer() }
         // Commit settings that live outside AppConfig
-        addShowMode          = draftAddShowMode
         defaultSaveDirectory = draftSaveDirectory
         simulatedMacOSVersion = draftSimulatedOS
         let loginEnabled = SMAppService.mainApp.status == .enabled
@@ -195,22 +189,6 @@ struct SettingsView: View {
                 Toggle("Launch at Login", isOn: $draftLaunchAtLogin)
             }
 
-            Section("Add Show Method") {
-                ForEach(AddShowMode.allCases, id: \.self) { mode in
-                    HStack(alignment: .top, spacing: 12) {
-                        Image(systemName: draftAddShowMode == mode ? "largecircle.fill.circle" : "circle")
-                            .foregroundStyle(draftAddShowMode == mode ? Color.accentColor : .secondary)
-                            .font(.title3)
-                            .accessibilityHidden(true)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(mode.label).fontWeight(.medium)
-                            Text(mode.detail).font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
-                    .contentShape(Rectangle())
-                    .onTapGesture { draftAddShowMode = mode }
-                }
-            }
         }
         .formStyle(.grouped)
         .navigationTitle("General")

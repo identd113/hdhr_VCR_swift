@@ -8,13 +8,11 @@ All original feature requests have been implemented. Items below are quality-of-
 
 - **Elapsed/remaining timer doesn't tick** — times are computed when the menu opens and stay static. NSMenu doesn't auto-refresh; a real-time display would require a window-based popover for recording detail.
 
-- **No "Record Now" shortcut** — there is no direct path to immediately record a show that's currently on air without going through the full Add Show cascade.
+- **No "Record Now" shortcut** — there is no direct path to immediately record a show that's currently on air without going through Watch Now or the Add Show wizard.
 
 ---
 
 ## Add Show Wizard (AddShowView.swift)
-
-- **No "Back" from Details to Guide** — if the user wants to pick a different guide entry after reaching step 3, they must Cancel and restart from step 1. A "Back" button should return to the guide with the previous selection intact.
 
 - **Genre filter resets silently on tuner change** — when the tuner picker changes, `genreFilter` resets to `nil` because `availableGenres` repopulates. The user gets no indication this happened.
 
@@ -36,7 +34,7 @@ All original feature requests have been implemented. Items below are quality-of-
 
 ## Settings (SettingsView.swift)
 
-- **No per-show overrides** — transcode profile, Bonus Time, and fail threshold all apply globally. A useful future feature: per-show overrides so one show always transcodes to Mobile, or one sports show gets 60 min of Bonus Time.
+- **No per-show fail threshold or bonus duration** — transcode profile and Bonus Time on/off are already per-show (stored on `Show`, editable via EditShowView). The fail threshold (`Fail_count_setting`) and Bonus Time duration (`Sports_padding_minutes`) remain global-only. A useful future feature: per-show overrides for these two settings.
 
 - **No export / import config** — power users managing multiple machines must copy the JSON manually. "Export config…" / "Import config…" buttons in Advanced would be user-friendly.
 
@@ -61,8 +59,6 @@ Items identified during audit but deferred (medium or low impact, no user-visibl
 - **#1 — Idle vstatus fetches fire unconditionally** (`AppState.idleLoop` ~line 596): `fetchTunerStatus` runs every 10 s for each active recording regardless of whether anyone is watching the recording submenu. Each call fires O(tunerCount) HTTP requests. Fix: track NSMenu open/close state and only poll while the menu is visible, or throttle to 30–60 s.
 
 - **#4 — Guide index sort is eager** (`GuideStore.buildIndex`): After every guide load, all series entries are sorted — O(series × entries log entries) on the main actor. Fix: sort lazily (only when `nextEpisode` is first queried for a given series ID); skip re-sort if the series was already sorted.
-
-- **#5 — menuGuideEntries still splits on-air/upcoming at menu render time** (`MenuContent.channelMenu`): The pre-cached array (≤4 entries) is filtered twice per channel at open time. Fix: store `(onAir: [GuideEntry], upcoming: [GuideEntry])` tuples in the cache so the menu just reads pre-split slices with no filtering.
 
 - **#6 — Device lookup in `updateShowURLsFromLineups` is O(shows × devices)** (`AppState`): `devices.first(where:)` is called once per show. Fix: build a `[DeviceID: HDHRDevice]` dictionary before the loop (O(devices)) and use O(1) lookups inside.
 

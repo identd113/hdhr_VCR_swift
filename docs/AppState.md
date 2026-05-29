@@ -7,7 +7,7 @@
 ## Startup (`AppState.startup`)
 
 1. `loadConfig()` — reads JSON, resets all `show_recording = false`; sets `guideStore.verbose`. Auto-removes inactive Single shows (already recorded; no further scheduling needed).
-2. `reattachRecordings()` — scans `ps -Axo pid,args` for `caffeinate` lines with `show_id:` + `hdhr_VCR_swift`. If the show's `show_end` is still future, sets `show_recording = true` and registers the PID — recording continues uninterrupted. **Read pipe data before `waitUntilExit()`** to avoid deadlock when ps output exceeds the ~64 KB pipe buffer.
+2. `reattachRecordings()` — scans `ps -Axo pid,args` for `caffeinate` lines with `show_id:` + `hdhrVCRplus`. If the show's `show_end` is still future, sets `show_recording = true` and registers the PID — recording continues uninterrupted. **Read pipe data before `waitUntilExit()`** to avoid deadlock when ps output exceeds the ~64 KB pipe buffer.
 3. Notification permission (background `Task` — non-blocking).
 4. `discoverDevices(knownHosts:attempts:10)` — up to 10 retries with 1 s pauses; idle loop retries on each tick if devices remain empty.
 5. `fetchAllGuides()` — parallel guide load for all devices; mirrors result into `guideByDevice`.
@@ -95,8 +95,8 @@ Falls back to **SiliconDust cloud API** (`http://discover.hdhomerun.com/discover
 
 ## @Published Safety Rule
 
-In a SwiftUI `.menu`-style `MenuBarExtra`, the menu body re-evaluates on every `@Published` change. `ensureGuideLoaded` is called inline via `let _ = { }()`, so a re-evaluation triggers a network call.
+In a SwiftUI `.menu`-style `MenuBarExtra`, the menu body re-evaluates on every `@Published` change.
 
-**Never assign `guideByDevice = ...` unconditionally after a failed/empty response.** A failed load that assigns `guideByDevice` triggers `didSet → rebuildMenuEntries → 3 @Published changes → re-eval → ensureGuideLoaded → HTTP → failure → assign → ...` at ~35ms/loop, freezing the menu. Guards: `ensureGuideLoaded` only assigns when `guideStore.channels(deviceId:)` is non-empty; `guideLoadFailTimes` enforces 5-minute backoff on failed devices.
+**Never assign `guideByDevice = ...` unconditionally after a failed/empty response.** A failed load that assigns `guideByDevice` triggers `didSet → rebuildMenuEntries → @Published changes → re-eval → ...` at ~35ms/loop, freezing the menu. Guards: `ensureGuideLoaded` only assigns when `guideStore.channels(deviceId:)` is non-empty; `guideApiBackoff: [String: APIBackoff]` enforces exponential backoff (1 → 5 → 15 → 30 → 60 min) on failed devices.
 
-`rebuildMenuEntries()` in the idle loop is guarded by `menuIsOpen`. The `guideByDevice.didSet` is **not** guarded — guide loads must always populate `menuGuideEntries` even when the menu is open.
+`rebuildMenuEntries()` is called from `guideByDevice.didSet` (after every guide load) and from the idle loop (guarded by `menuIsOpen`). It rebuilds: `managedShowBySeriesID`/`managedShowByTitle` (O(1) show lookups for WatchNow + menus), `channelImageURLs` (logo URL map for WatchNow), `menuScheduledEntry`/`menuUpcomingSlots` (pre-computed guide matches for scheduled/paused menus), and `conflictingShowIDs` (one O(N²) conflict pass instead of one per open).

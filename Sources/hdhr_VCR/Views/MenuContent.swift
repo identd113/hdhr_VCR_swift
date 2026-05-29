@@ -7,22 +7,6 @@ private let watchNowBlue = Color(red: 0.2, green: 0.6, blue: 1.0)
 struct MenuContent: View {
     @EnvironmentObject var state: AppState
     @Environment(\.openWindow) var openWindow
-    @AppStorage("addShowMode") private var addShowMode: AddShowMode = .menu
-
-    // Yellow upper-left corner triangle rendered via AppKit — Path/Canvas don't convert to NSImage in NSMenu
-    static let managedFlagImage: NSImage = {
-        let sz: CGFloat = 14
-        return NSImage(size: NSSize(width: sz, height: sz), flipped: false) { rect in
-            NSColor.systemYellow.setFill()
-            let path = NSBezierPath()
-            path.move(to: NSPoint(x: 0,          y: rect.height))  // top-left  (right angle)
-            path.line(to: NSPoint(x: rect.width, y: rect.height))  // top-right
-            path.line(to: NSPoint(x: 0,          y: 0))            // bottom-left
-            path.close()
-            path.fill()
-            return true
-        }
-    }()
 
     // Static so DateFormatter is created once for the app lifetime, not once per guide entry shown
     private static let timeFormatter: DateFormatter = {
@@ -88,11 +72,7 @@ struct MenuContent: View {
         // ── Watch Now ─────────────────────────────────────────────────────
         watchNowMenu
         // ── Add Show ──────────────────────────────────────────────────────
-        if addShowMode == .menu {
-            addShowMenu
-        } else {
-            Button { open("add-show") } label: { Label("Add Show…", systemImage: "plus") }
-        }
+        Button { open("add-show") } label: { Label("Add Show…", systemImage: "plus") }
         Divider()
 
         Button("Settings…")    { open("settings") }
@@ -206,36 +186,6 @@ struct MenuContent: View {
         Button("Quit hdhrVCRplus", role: .destructive) { state.quit() }
     }
 
-    // MARK: ── Level 1: Add Show ──────────────────────────────────────────
-    // If only 1 device, skip the device level and go straight to channels.
-
-    @ViewBuilder
-    private var addShowMenu: some View {
-        if state.devices.isEmpty {
-            Text("No tuners detected").foregroundStyle(.secondary)
-        } else if state.devices.count == 1, let device = state.devices.first {
-            Menu {
-                // Trigger guide fetch as soon as this menu renders
-                let _ = { state.ensureGuideLoaded(for: device.DeviceID) }()
-                channelMenus(for: device)
-            } label: {
-                Label("Add Show", systemImage: "plus")
-            }
-        } else {
-            // Level 2: device chooser
-            Menu {
-                ForEach(state.devices) { device in
-                    Menu(device.DeviceID) {
-                        let _ = { state.ensureGuideLoaded(for: device.DeviceID) }()
-                        channelMenus(for: device)
-                    }
-                }
-            } label: {
-                Label("Add Show", systemImage: "plus")
-            }
-        }
-    }
-
     // MARK: ── Watch Now ───────────────────────────────────────────────────
     // Opens a dedicated window with poster-card grid; no cascade needed.
 
@@ -252,173 +202,6 @@ struct MenuContent: View {
             } label: {
                 Label("Watch Now…", systemImage: "play.tv.fill")
                     .foregroundStyle(watchNowBlue)
-            }
-        }
-    }
-
-    // MARK: ── Level 2 (or 3): Channel list ──────────────────────────────
-
-    @ViewBuilder
-    private func channelMenus(for device: HDHRDevice) -> some View {
-        let channels = state.lineups[device.DeviceID] ?? []
-        let loading  = state.isGuideLoading(for: device.DeviceID)
-        // Only build submenus for channels that have cached guide entries — avoids constructing
-        // empty Menu views for 30-50 channels with no guide data, which SwiftUI evaluates eagerly.
-        let populated = channels.filter {
-            !(state.menuGuideEntries["\(device.DeviceID):\($0.GuideNumber)"] ?? []).isEmpty
-        }
-        // Amber accent bar (comedy/warm hue from the guide genre palette) marks the channel-list depth
-        Rectangle()
-            .fill(Color(hue: 0.13, saturation: 0.75, brightness: 0.90).opacity(0.65))
-            .frame(height: 5)
-        if channels.isEmpty {
-            Text("No channels — try Refresh Guide").foregroundStyle(.secondary)
-        } else if populated.isEmpty {
-            if loading {
-                Text("Fetching guide…").foregroundStyle(.secondary)
-            } else {
-                Text("No upcoming shows").foregroundStyle(.secondary)
-                Button("Load guide") { state.ensureGuideLoaded(for: device.DeviceID) }
-            }
-        } else {
-            let sorted = populated.sorted { a, b in
-                if a.isFavorite != b.isFavorite { return a.isFavorite }
-                return a.GuideNumber.channelSortKey < b.GuideNumber.channelSortKey
-            }
-            let favs   = sorted.filter(\.isFavorite)
-            let others = sorted.filter { !$0.isFavorite }
-            if !favs.isEmpty {
-                Text("★  FAVORITES").foregroundStyle(.secondary).italic()
-                ForEach(favs, id: \.GuideNumber) { ch in channelMenu(device: device, channel: ch) }
-            }
-            if !favs.isEmpty && !others.isEmpty { Divider() }
-            ForEach(others, id: \.GuideNumber) { ch in channelMenu(device: device, channel: ch) }
-        }
-    }
-
-    // MARK: ── Level 3 (or 4): Guide entries for a channel ───────────────
-    // Each entry is a flat Button (not a nested Menu) — avoids eager evaluation of
-    // per-entry submenus for all ~100 channels when the channel list opens.
-
-    @ViewBuilder
-    private func channelMenu(device: HDHRDevice, channel: LineupEntry) -> some View {
-        let entries  = state.menuGuideEntries["\(device.DeviceID):\(channel.GuideNumber)"] ?? []
-        let loading  = state.isGuideLoading(for: device.DeviceID)
-        let now      = Date()
-        let onAir    = entries.filter { $0.startDate <= now && $0.endDate > now }
-        let upcoming = entries.filter { $0.startDate > now }
-        let hdBadge  = channel.HD == 1 ? " HD" : ""
-        let star     = channel.isFavorite ? " ★" : ""
-        let chLabel  = "\(channel.GuideNumber)  \(channel.GuideName)\(hdBadge)\(star)"
-        let logoImage = state.channelImageURLs["\(device.DeviceID):\(channel.GuideNumber)"]
-                            .flatMap { state.channelIconImages[$0] }
-
-        Menu {
-            Rectangle()
-                .fill(Color(hue: 0.60, saturation: 0.75, brightness: 0.85).opacity(0.65))
-                .frame(height: 5)
-            if entries.isEmpty {
-                if loading {
-                    Text("Fetching guide…").foregroundStyle(.secondary)
-                } else {
-                    Text("No upcoming shows").foregroundStyle(.secondary)
-                    Button("Load guide") { state.ensureGuideLoaded(for: device.DeviceID) }
-                }
-            } else {
-                ForEach(onAir) { entry in
-                    entryMenu(entry: entry, device: device, channel: channel, isOnAir: true)
-                }
-                if !onAir.isEmpty && !upcoming.isEmpty { Divider() }
-                ForEach(upcoming) { entry in
-                    entryMenu(entry: entry, device: device, channel: channel, isOnAir: false)
-                }
-            }
-            Divider()
-            Button("Browse channel in guide…") {
-                state.pendingAddChannel = (device, channel)
-                state.pendingAddChannelGeneration += 1
-                open("add-show")
-            }
-        } label: {
-            Label {
-                Text(chLabel)
-            } icon: {
-                if let logoImage {
-                    Image(nsImage: logoImage)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 16, height: 16)
-                        .accessibilityHidden(true)
-                } else {
-                    Image(systemName: "tv")
-                        .frame(width: 16, height: 16)
-                        .accessibilityHidden(true)
-                }
-            }
-        }
-    }
-
-    // "8:00 PM  Jeopardy! (30 min)" / "▶ 8:00 PM  Jeopardy! (30 min)"
-    private func entryLabel(_ entry: GuideEntry, isOnAir: Bool) -> String {
-        let prefix = isOnAir ? "▶ " : ""
-        return "\(prefix)\(Self.timeFormatter.string(from: entry.startDate))  \(entry.Title)"
-    }
-
-    @ViewBuilder
-    private func entryMenu(entry: GuideEntry, device: HDHRDevice, channel: LineupEntry, isOnAir: Bool) -> some View {
-        let entryColor  = guideEntryColor(for: entry, onAir: isOnAir)
-        let existing    = managedShow(for: entry)
-        let isManaged   = existing != nil
-        Menu {
-            Rectangle()
-                .fill(entryColor.opacity(0.65))
-                .frame(height: 5)
-            menuInfo(entry.Title, font: .title3, maxWidth: 240)
-            if let ep = episodeInfoLabel(entry) {
-                menuInfo(ep, font: .callout, maxWidth: 240)
-            }
-            menuInfo(timeRange(entry), font: .caption, maxWidth: 240)
-            if let syn = entry.Synopsis, !syn.isEmpty {
-                menuInfo(truncateSynopsis(syn, limit: 120), font: .callout, maxWidth: 240)
-            }
-            Divider()
-            if let show = existing {
-                Button("Skip")            { Task { await state.skipRecording(showId: show.show_id) } }
-                Button("Edit…")           { editShow(show) }
-                Button("Delete…", role: .destructive) { state.confirmAndDeleteShow(show) }
-            } else {
-                Button {
-                    state.pendingAddEntry = (device, channel, entry)
-                    state.pendingAddEntryGeneration += 1
-                    open("add-show")
-                } label: {
-                    Label { Text("Record…").foregroundColor(.red) }
-                          icon: { Image(systemName: "record.circle").foregroundColor(.red) }
-                }
-            }
-            if state.config.Watch_in_VLC && isOnAir {
-                Button(action: { state.watchInVLC(url: channel.URL ?? "", deviceId: device.DeviceID) }) {
-                    Label { Text("Watch in VLC").foregroundColor(vlcOrange) }
-                          icon: { Image(systemName: "arrow.up.forward.app").foregroundColor(vlcOrange) }
-                }
-            }
-            if VLCBridge.shared.isAvailable && isOnAir {
-                Button(action: { state.watchInApp(url: channel.URL ?? "", title: entry.Title, deviceId: device.DeviceID) }) {
-                    Label { Text("Watch Now!").foregroundColor(watchNowBlue) }
-                          icon: { Image(systemName: "play.tv.fill").foregroundColor(watchNowBlue) }
-                }
-            }
-        } label: {
-            if isManaged {
-                Label {
-                    Text(entryLabel(entry, isOnAir: isOnAir))
-                } icon: {
-                    Image(nsImage: Self.managedFlagImage)
-                        .resizable()
-                        .frame(width: 14, height: 14)
-                }
-            } else {
-                Text(entryLabel(entry, isOnAir: isOnAir))
             }
         }
     }
@@ -566,13 +349,6 @@ struct MenuContent: View {
     private func editShow(_ show: Show) {
         state.editingShowId = show.show_id
         open("edit-show")
-    }
-
-    private func managedShow(for entry: GuideEntry) -> Show? {
-        if let sid = entry.SeriesID, !sid.isEmpty {
-            return state.managedShowBySeriesID[sid]
-        }
-        return state.managedShowByTitle[entry.Title]
     }
 
     private func stateIcon(_ show: Show) -> String {

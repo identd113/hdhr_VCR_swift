@@ -88,7 +88,7 @@ HStack(alignment: .top, spacing: 0) {
 ### Layout Constants
 
 ```swift
-private let channelColW: CGFloat = 100    // fixed channel label column width
+private let channelColW: CGFloat = 116    // fixed channel label column width
 private let rowH:        CGFloat = 52     // row height per channel
 private let headerH:     CGFloat = 26     // time header bar height
 // pxPerMin is dynamic — scales to fill available width (min 4.2 px/min)
