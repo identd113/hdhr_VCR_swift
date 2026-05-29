@@ -187,7 +187,7 @@ After `show_end` passes, the idle loop calls `stopRecording(index:natural:true)`
 ### Verbose curl logging
 Toggle in Settings → Advanced → "Verbose curl logging". When enabled:
 - Adds `-v` flag to curl
-- Appends curl stderr to `~/Library/Logs/hdhr_VCR_curl.log`
+- Appends curl stderr to `~/Library/Logs/hdhrVCRplus.log`
 - Each recording block begins with a timestamp header and the full `caffeinate -i /usr/bin/curl ...` command
 
 ---
@@ -270,7 +270,7 @@ Min_disk_free_gb        Double  10.0   refuse to record below this free space (G
 Idle_timer_interval     Int     10     seconds between idle loop checks (min enforced: 5)
 Series_scan_retry_hours Int     4      hours to wait before re-scanning guide for a series episode
 Network_interface       String  ""     bind UDP discovery + curl to this interface; empty = Auto; utun* = VPN
-Verbose_curl            Bool    false  enable -v curl logging to ~/Library/Logs/hdhr_VCR_curl.log
+Verbose_curl            Bool    false  enable -v curl logging to ~/Library/Logs/hdhrVCRplus.log
 Watch_in_VLC            Bool    false  show "Watch in VLC" buttons in menus (only when VLC installed)
 Discord_webhook_url     String  ""     Discord webhook URL; blank = no Discord notifications
 Discord_on_start        Bool    true   send embed when a recording starts
@@ -444,7 +444,7 @@ func glog(_ msg: String, level: LogLevel = .info)
 
 `LogLevel` enum: `.info` ("INFO"), `.warning` ("WARN"), `.error` ("ERROR").
 
-Log file: `~/Library/Logs/hdhr_VCR_guide.log`  
+Log file: `~/Library/Logs/hdhrVCRplus.log`  
 Format: `[2026-05-25T04:01:24Z] [INFO] message`
 
 The file descriptor is opened with `O_APPEND` on every call — each `write()` is atomic across actors and threads with no shared mutable state. `Date().ISO8601Format()` is used for timestamps (value-type, thread-safe).

@@ -748,6 +748,15 @@ final class AppState: ObservableObject {
         if now.timeIntervalSince(lastGuideRefresh) > refreshInterval {
             Task { await refreshGuides() }
         }
+        // Pass 1: stop all completed recordings before any new ones start
+        for i in shows.indices {
+            guard shows[i].show_active, shows[i].show_recording,
+                  let end = shows[i].show_end.date, end <= now else { continue }
+            await stopRecording(index: i, natural: true)
+            dirty = true
+        }
+
+        // Pass 2: per-show housekeeping — notifications, fail detection, stranded advance
         for i in shows.indices {
             let show = shows[i]
             guard show.show_active else { continue }
@@ -803,9 +812,6 @@ final class AppState: ObservableObject {
                 glog("[\(show.show_title)] MISSED START — window open since \(shortTime(show.show_next.date)), still not recording", level: .warning)
             }
 
-            if show.show_recording, endDate <= now {
-                await stopRecording(index: i, natural: true); dirty = true
-            }
             if show.show_recording, endDate > now, !recordingManager.isRunning(showId: show.show_id) {
                 shows[i].show_recording = false; shows[i].show_fail_count += 1
                 shows[i].show_fail_reason = "curl exited unexpectedly"

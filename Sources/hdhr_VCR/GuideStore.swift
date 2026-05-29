@@ -31,7 +31,7 @@ final class GuideStore {
 
     var verbose: Bool = false
 
-    static let guideLogPath = NSHomeDirectory() + "/Library/Logs/hdhr_VCR_guide.log"
+    static let guideLogPath = NSHomeDirectory() + "/Library/Logs/hdhrVCRplus.log"
 
     // Injected at init so tests can supply a mock session
     private let session: URLSession
