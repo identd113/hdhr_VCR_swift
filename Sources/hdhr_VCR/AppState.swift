@@ -275,6 +275,15 @@ final class AppState: ObservableObject {
     private func probeForNewDevices() async {
         guard let found = try? await hdhrManager.discoverDevices(knownHosts: knownHostsFromShows(), interface: config.Network_interface) else { return }
         let existingIDs = Set(devices.map { $0.DeviceID })
+
+        // Merge-update DeviceAuth + LocalIP on existing devices so cloud tokens stay fresh
+        let freshByID = Dictionary(uniqueKeysWithValues: found.map { ($0.DeviceID, $0) })
+        for i in devices.indices {
+            guard let fresh = freshByID[devices[i].DeviceID] else { continue }
+            if fresh.DeviceAuth != nil  { devices[i].DeviceAuth = fresh.DeviceAuth }
+            if !fresh.LocalIP.isEmpty   { devices[i].LocalIP    = fresh.LocalIP    }
+        }
+
         let newDevices  = found.filter { !existingIDs.contains($0.DeviceID) }
         guard !newDevices.isEmpty else { return }
         glog("[DeviceProbe] \(newDevices.count) new tuner(s): \(newDevices.map { $0.DeviceID }.joined(separator: ", "))")

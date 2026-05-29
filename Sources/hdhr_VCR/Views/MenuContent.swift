@@ -251,7 +251,7 @@ struct MenuContent: View {
                     open("watch-now")
                 }
             } label: {
-                Label("Watch Now", systemImage: "play.tv.fill")
+                Label("Watch Now…", systemImage: "play.tv.fill")
                     .foregroundStyle(watchNowBlue)
             }
         }
