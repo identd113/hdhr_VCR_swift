@@ -25,7 +25,9 @@
   - `Picker` (max 200pt wide) listing all CoreAudio output devices by name — built-in speakers, Bluetooth, AirPlay, USB audio
 
 ### Video surface
-`VLCVideoSurface: NSViewRepresentable` — a plain `NSView` with `wantsLayer = true` and black `CALayer` background. VLC renders directly into this layer via `VLCBridge.shared.setDrawable(_:)`. The view expands to fill all space below the toolbar using `.frame(maxWidth: .infinity, maxHeight: .infinity)`. No SwiftUI content overlays — the video layer is purely AppKit.
+`VLCVideoSurface: NSViewRepresentable` — a plain `NSView` with `wantsLayer = true` and black `CALayer` background. VLC renders directly into this layer via `VLCBridge.shared.setDrawable(_:)`.
+
+The video surface is wrapped in a `ZStack` with a **poster overlay** sitting on top. The overlay is visible when `posterHidden == false` and fades out with `.easeOut(duration: 0.35)` when the user clicks **Start**. The poster reappears (by resetting `posterHidden = false`) whenever `selectedChannel` changes.
 
 ## Intent
 
@@ -86,6 +88,8 @@ let initialURL: String    // stream URL active when the window opened; drives in
 @State private var selectedOutput: String = ""
 @State private var audioDevices: [(id: String, name: String)] = []
 @State private var selectedDevice: String = ""
+@State private var posterHidden: Bool = false   // false = show poster overlay; true = live video visible
+@State private var posterNSImage: NSImage? = nil // poster fetched via ChannelIconCache for currentGuideEntry
 ```
 
 `device` is fixed at window-open time. There is no device switching in the player toolbar — the channel picker always shows channels from the device that was streaming when the window was opened. This keeps the UI simple and avoids the complexity of re-discovering tuner availability mid-session.
@@ -101,6 +105,19 @@ private var lineup: [LineupEntry] {
 ```
 
 Reads from `AppState.lineups` (already loaded at app startup). `localizedStandardCompare` sorts guide numbers correctly: `2`, `2.1`, `2.2`, `5.1`, `10`, `10.1` rather than lexicographic order which would put `10` before `2`.
+
+### currentGuideEntry Computed Property
+
+```swift
+private var currentGuideEntry: GuideEntry? {
+    guard let ch = selectedChannel else { return nil }
+    let now = Date()
+    return state.guideEntries(deviceId: device.DeviceID, channelNum: ch.GuideNumber)
+        .first { $0.startDate <= now && $0.endDate > now }
+}
+```
+
+Returns the currently-airing `GuideEntry` for the selected channel. Used by the poster overlay to display title, episode info, synopsis, and to fetch the poster image via `ChannelIconCache`. A `.task(id: currentGuideEntry?.ImageURL)` on the ZStack re-fetches the poster image whenever the on-air entry changes (e.g. top-of-hour handoff).
 
 ### onAppear / Channel Sync
 
@@ -156,6 +173,40 @@ Reads `config.Default_transcode` (not the show's per-show transcode, since the c
 ### onDisappear
 
 Calls `VLCBridge.shared.stop()` when the window closes. This releases the current media object and stops the stream cleanly. The player itself (`VLCBridge.shared.mediaPlayer`) is not destroyed — it stays alive for the next `open()` call.
+
+---
+
+## Poster Overlay
+
+When the player opens or changes channel, a full-area `posterOverlay` view sits on top of `VLCVideoSurface`. It displays the currently-airing show's poster image, title, episode number + title, and synopsis. A **Start** button at the bottom-left of the info column dismisses the overlay with a 0.35s fade, revealing the live video underneath.
+
+**Why**: VLC begins buffering the stream immediately when `open()` is called (before the window appears). By the time the user reads the episode info and clicks Start, VLC has had several seconds to buffer — the stream plays instantly rather than showing a spinner.
+
+**Poster reappears** on channel change: `onChange(of: selectedChannel)` resets `posterHidden = false` and `posterNSImage = nil` before calling `playChannel()`, so each channel switch shows the overlay while the new stream buffers.
+
+### Layout (`posterOverlay`)
+
+```
+ZStack (black background, fills video area)
+  HStack (32pt padding, centered vertically)
+    Poster image (300pt wide, clipShape RoundedRectangle 8pt)
+      — Image(nsImage: posterNSImage) or tv SF Symbol placeholder at 25% white
+    VStack (max 360pt, leading alignment)
+      Title (.title2.bold, white, 2 lines max)
+      Episode info (.subheadline, white 75% opacity)
+        — switches on (EpisodeNumber?, EpisodeTitle?) to handle 4 cases
+      Synopsis (.callout, white 60% opacity, 4 lines max)
+      Start button
+        — Label("Start", systemImage: "play.fill"), .title3.bold
+        — .ultraThinMaterial background, RoundedRectangle(10pt)
+        — sets posterHidden = true on tap
+```
+
+### Poster image loading
+
+`.task(id: currentGuideEntry?.ImageURL)` on the ZStack body runs whenever the on-air entry's poster URL changes. It calls `ChannelIconCache.shared.image(for: url)` — the same disk-backed actor cache used by channel logos. `posterNSImage` is set to `nil` first (showing the placeholder) until the async fetch returns.
+
+**Why `ChannelIconCache` and not `AsyncImage`**: `AsyncImage` has no way to prevent redundant fetches or persist images across view invalidations. The cache avoids re-downloading the same poster on every channel-picker re-evaluation and makes the overlay feel instant when switching back to a previously-seen channel.
 
 ---
 

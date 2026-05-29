@@ -72,18 +72,17 @@ struct MenuContent: View {
             let liveInfo  = state.deviceTunerOccupancy[device.DeviceID]
             let liveCount = liveInfo?.filter { $0.VctNumber != nil }.count ?? appCount
             let mismatch  = liveInfo != nil && liveCount != appCount
-            Text("\(device.DeviceID)  \(liveCount)/\(slots)\(mismatch ? "  ⚠ app expects \(appCount)" : "")")
-                .foregroundStyle(liveCount > 0 ? Color(NSColor.labelColor) : Color(NSColor.secondaryLabelColor))
-            if !state.isStartingUp {
-                if state.lineups[device.DeviceID]?.isEmpty ?? true {
-                    Text("   ⚠  No channel lineup")
-                        .foregroundStyle(Color(NSColor.systemOrange))
-                }
-                if state.guideByDevice[device.DeviceID]?.isEmpty ?? true {
-                    Text("   ⚠  Guide unavailable")
-                        .foregroundStyle(Color(NSColor.systemOrange))
-                }
-            }
+            let noLineup  = !state.isStartingUp && (state.lineups[device.DeviceID]?.isEmpty ?? true)
+            let noGuide   = !state.isStartingUp && (state.guideByDevice[device.DeviceID]?.isEmpty ?? true)
+            let warnings  = [noLineup ? "no lineup" : nil, noGuide ? "no guide" : nil]
+                                .compactMap { $0 }.joined(separator: ", ")
+            let hasWarn   = !warnings.isEmpty
+            Text("\(device.DeviceID)  \(liveCount)/\(slots)" +
+                 (mismatch ? "  ⚠ app expects \(appCount)" : "") +
+                 (hasWarn  ? "  ⚠ \(warnings)" : ""))
+                .foregroundStyle(hasWarn    ? Color(NSColor.systemOrange) :
+                                 liveCount > 0 ? Color(NSColor.labelColor) :
+                                                 Color(NSColor.secondaryLabelColor))
         }
         Text(state.statusMessage).foregroundStyle(Color(NSColor.secondaryLabelColor))
         // ── Watch Now ─────────────────────────────────────────────────────

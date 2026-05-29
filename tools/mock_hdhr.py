@@ -35,6 +35,7 @@ import struct
 import subprocess
 import sys
 import threading
+import time
 import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -143,6 +144,19 @@ def udp_thread():
             print(f"[UDP] Error: {e}")
 
 
+# ── DeviceAuth background refresh ────────────────────────────────────────────
+
+def auth_refresh_loop(interval: int):
+    """Periodically re-fetch DeviceAuth from the real device.
+
+    Keeps the fallback cache in ControlHandler.real_info current so a temporary
+    real-device outage doesn't cause the mock to serve an expired token."""
+    print(f"[DeviceAuth] Background refresh every {interval}s")
+    while True:
+        time.sleep(interval)
+        ControlHandler.refresh_real_info()
+
+
 # ── mDNS registration ─────────────────────────────────────────────────────────
 
 def mdns_hostname(device_id: str) -> str:
@@ -189,6 +203,29 @@ class ControlHandler(BaseHTTPRequestHandler):
     real_info:  dict = {}
     bad_lineup: bool = False
     bad_guide:  bool = False
+    _info_lock  = threading.Lock()   # guards real_info dict replacement
+
+    @classmethod
+    def refresh_real_info(cls) -> bool:
+        """Re-fetch /discover.json from the real device and update the fallback cache.
+        Returns True if DeviceAuth changed (token rotation detected)."""
+        try:
+            with urllib.request.urlopen(
+                f"http://{cls.real_ip}/discover.json", timeout=5
+            ) as resp:
+                fresh = json.loads(resp.read())
+            with cls._info_lock:
+                old_auth = cls.real_info.get("DeviceAuth", "")
+                new_auth = fresh.get("DeviceAuth", "")
+                cls.real_info = fresh
+            if new_auth != old_auth:
+                status = "changed" if old_auth else "acquired"
+                print(f"[DeviceAuth] Refreshed from {cls.real_ip} — token {status}")
+                return True
+            return False
+        except Exception as e:
+            print(f"[DeviceAuth] Background refresh failed: {e}")
+            return False
 
     def log_message(self, fmt, *args):
         print(f"[HTTP] {fmt % args}")
@@ -201,6 +238,8 @@ class ControlHandler(BaseHTTPRequestHandler):
             self._send_error(404, f"bad-lineup: {path} not available")
         elif self.bad_guide and path in GUIDE_PATHS:
             self._send_error(500, f"bad-guide: {path} not available")
+        elif path in GUIDE_PATHS:
+            self._proxy_guide()
         else:
             self._proxy("GET")
 
@@ -209,15 +248,16 @@ class ControlHandler(BaseHTTPRequestHandler):
 
     def _mock_discover(self) -> dict:
         """Real device info with DeviceID, name, and URLs swapped for the mock.
-        DeviceAuth is fetched live from the real device so it never goes stale
-        (the token can rotate; the mock restarts less often than the app does)."""
+        DeviceAuth is fetched live from the real device on every request so it
+        never goes stale. Falls back to the background-refreshed cache on error."""
         try:
             with urllib.request.urlopen(
                 f"http://{self.real_ip}/discover.json", timeout=3
             ) as resp:
                 live_info = json.loads(resp.read())
         except Exception:
-            live_info = self.real_info  # fall back to startup snapshot on error
+            with ControlHandler._info_lock:
+                live_info = dict(ControlHandler.real_info)  # background-refreshed cache
         d        = dict(live_info)
         hostname = mdns_hostname(MOCK_DEVICE_ID)
         d["DeviceID"]     = MOCK_DEVICE_ID
@@ -233,8 +273,60 @@ class ControlHandler(BaseHTTPRequestHandler):
             d["FriendlyName"] += " [NO-GUIDE]"
         return d
 
+    def _proxy_guide(self):
+        """Proxy /guide.json — uses the cloud API when DeviceAuth is present (EXTEND devices),
+        otherwise falls back to the real device's local endpoint."""
+        with ControlHandler._info_lock:
+            device_auth = ControlHandler.real_info.get("DeviceAuth", "")
+
+        # Preserve any query params the caller sent (e.g. Duration=N)
+        query = self.path.split("?", 1)[1] if "?" in self.path else ""
+
+        if device_auth:
+            # EXTEND / cloud-guide device — forward to SiliconDust cloud API
+            cloud_q = f"DeviceAuth={device_auth}"
+            if query:
+                cloud_q += f"&{query}"
+            url = f"https://api.hdhomerun.com/api/guide.php?{cloud_q}"
+            print(f"[Proxy] → GET /guide.json (cloud) DeviceAuth={device_auth[:6]}…")
+        else:
+            # Local-guide device — proxy directly to the real device
+            url = f"http://{self.real_ip}{self.path}"
+            print(f"[Proxy] → GET /guide.json (local) → {url}")
+
+        try:
+            req = urllib.request.Request(url)
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                data         = resp.read()
+                content_type = resp.headers.get("Content-Type", "application/json")
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+        except BrokenPipeError:
+            pass  # client disconnected mid-transfer; nothing to send back
+        except urllib.error.HTTPError as e:
+            print(f"[Proxy] ✗ guide → HTTP {e.code}")
+            try:
+                self.send_response(e.code)
+                self.end_headers()
+            except BrokenPipeError:
+                pass
+        except Exception as e:
+            print(f"[Proxy] ✗ guide: {e}")
+            try:
+                self.send_response(502)
+                self.end_headers()
+            except BrokenPipeError:
+                pass
+
     def _proxy(self, method: str):
-        url = f"http://{self.real_ip}{self.path}"
+        url  = f"http://{self.real_ip}{self.path}"
+        path = self.path.split("?")[0]
+        # Log forwarding of important device API paths so it's visible in the terminal.
+        if path in LINEUP_PATHS | GUIDE_PATHS | {"/status.json", "/lineup_status.json"}:
+            print(f"[Proxy] → {method} {self.path}")
         try:
             body = None
             if method == "POST":
@@ -252,13 +344,22 @@ class ControlHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(data)
 
+        except BrokenPipeError:
+            pass  # client disconnected mid-transfer
         except urllib.error.HTTPError as e:
-            self.send_response(e.code)
-            self.end_headers()
+            print(f"[Proxy] ✗ {method} {url} → HTTP {e.code}")
+            try:
+                self.send_response(e.code)
+                self.end_headers()
+            except BrokenPipeError:
+                pass
         except Exception as e:
-            print(f"[HTTP] proxy {method} {url}: {e}")
-            self.send_response(502)
-            self.end_headers()
+            print(f"[Proxy] ✗ {method} {url}: {e}")
+            try:
+                self.send_response(502)
+                self.end_headers()
+            except BrokenPipeError:
+                pass
 
     def _send_json(self, obj):
         data = json.dumps(obj).encode()
@@ -284,11 +385,12 @@ def main():
         description="Mock HDHomeRun — multi-tuner testing for hdhr_VCR",
         epilog=(
             "Examples:\n"
-            "  sudo python3 tools/mock_hdhr.py                          # normal proxy\n"
-            "  sudo python3 tools/mock_hdhr.py --bad-lineup             # lineup → 404\n"
-            "  sudo python3 tools/mock_hdhr.py --bad-guide              # guide → 500\n"
-            "  sudo python3 tools/mock_hdhr.py --bad-tuner              # both\n"
-            "  sudo python3 tools/mock_hdhr.py --real-ip 192.168.1.100  # explicit IP\n"
+            "  sudo python3 tools/mock_hdhr.py                              # normal proxy\n"
+            "  sudo python3 tools/mock_hdhr.py --bad-lineup                 # lineup → 404\n"
+            "  sudo python3 tools/mock_hdhr.py --bad-guide                  # guide → 500\n"
+            "  sudo python3 tools/mock_hdhr.py --bad-tuner                  # both\n"
+            "  sudo python3 tools/mock_hdhr.py --real-ip 192.168.1.100      # explicit IP\n"
+            "  sudo python3 tools/mock_hdhr.py --auth-refresh 300           # refresh DeviceAuth every 5m\n"
             "\n"
             "The mock advertises itself as device FFFF0001 on 127.0.0.2.\n"
             "Ctrl+C cleans up the loopback alias and mDNS registration automatically."
@@ -303,6 +405,8 @@ def main():
                     help="/guide.json → 500")
     ap.add_argument("--bad-tuner", action="store_true",
                     help="Shorthand for --bad-lineup --bad-guide")
+    ap.add_argument("--auth-refresh", metavar="SECS", type=int, default=1800,
+                    help="How often to re-fetch DeviceAuth from the real device (default: 1800s)")
     args = ap.parse_args()
 
     bad_lineup = args.bad_lineup or args.bad_tuner
@@ -353,6 +457,10 @@ def main():
     add_loopback_alias()
     mdns_proc = register_mdns(MOCK_DEVICE_ID, friendly, MOCK_IP)
 
+    threading.Thread(
+        target=auth_refresh_loop, args=(args.auth_refresh,), daemon=True
+    ).start()
+
     def shutdown(sig=None, frame=None):
         print()
         unregister_mdns(mdns_proc)
@@ -372,13 +480,16 @@ def main():
         sys.exit(1)
 
     blocked = sorted((LINEUP_PATHS if bad_lineup else set()) | (GUIDE_PATHS if bad_guide else set()))
-    mode = "normal (proxying all requests)" if not blocked else f"fault injection: {', '.join(blocked)}"
+    mode    = "normal (proxying all requests)" if not blocked else f"fault injection: {', '.join(blocked)}"
+    proxied = "/lineup.json, /guide.json, /status.json, /lineup_status.json (+ all others)"
     print(f"\nMock HDHomeRun ready:")
-    print(f"  Device ID : {MOCK_DEVICE_ID}")
-    print(f"  Name      : {friendly}")
-    print(f"  Mode      : {mode}")
-    print(f"  Control   : http://{MOCK_IP}:{CONTROL_PORT}/")
-    print(f"  Proxying  : http://{real_ip}/")
+    print(f"  Device ID      : {MOCK_DEVICE_ID}")
+    print(f"  Name           : {friendly}")
+    print(f"  Mode           : {mode}")
+    print(f"  Control        : http://{MOCK_IP}:{CONTROL_PORT}/")
+    print(f"  Proxying to    : http://{real_ip}/")
+    print(f"  Forwarding     : {proxied}")
+    print(f"  DeviceAuth     : {'present' if real_info.get('DeviceAuth') else 'absent'} (refresh every {args.auth_refresh}s)")
     print(f"\nCtrl+C to stop and remove the loopback alias.\n")
 
     control_server.serve_forever()

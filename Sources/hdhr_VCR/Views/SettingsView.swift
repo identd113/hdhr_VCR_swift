@@ -37,7 +37,6 @@ struct SettingsView: View {
     @State private var draftSaveDirectory: String      = ""
     @State private var draftLaunchAtLogin: Bool        = false
     @State private var draftSimulatedOS:   Int         = 0
-    @State private var liveChangelog: String? = nil
     @State private var easterEggTaps = 0
     @State private var showEasterEgg = false
     @State private var maintenanceStatus: String = ""
@@ -649,8 +648,7 @@ struct SettingsView: View {
     // MARK: - About
 
     private var aboutView: some View {
-        let raw = liveChangelog ?? appChangelog
-        let (filteredText, latestVersion) = Self.parseChangelog(raw)
+        let (filteredText, latestVersion) = Self.parseChangelog(appChangelog)
         let updateVersion = latestVersion.flatMap { $0 > appVersion ? $0 : nil }
 
         return ScrollView {
@@ -734,15 +732,6 @@ struct SettingsView: View {
             .padding()
         }
         .navigationTitle("About")
-        .task {
-            guard liveChangelog == nil,
-                  let url = URL(string: "https://raw.githubusercontent.com/identd113/hdhr_VCR_swift/main/CHANGELOG.md"),
-                  let (data, resp) = try? await URLSession.shared.data(from: url),
-                  (resp as? HTTPURLResponse)?.statusCode == 200,
-                  let text = String(data: data, encoding: .utf8)
-            else { return }
-            liveChangelog = text
-        }
         .alert("In-App Live Streaming Unlocked!", isPresented: $showEasterEgg) {
             Button("OK") {}
         } message: {

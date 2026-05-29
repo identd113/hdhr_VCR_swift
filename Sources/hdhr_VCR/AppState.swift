@@ -24,6 +24,9 @@ final class AppState: ObservableObject {
     @Published var menuUpcomingSlots: [String: [(channel: String, date: Date)]] = [:]
     // Pre-computed set of show IDs with scheduling conflicts — rebuilt alongside menu entries.
     var conflictingShowIDs: Set<String> = []
+    // Tracks which show+episode windows have already fired a runtime conflict notification.
+    // Key = "showID-show_next_epoch" so it auto-clears when show_next advances.
+    private var conflictNotifiedKeys: Set<String> = []
     // O(1) managed-show lookup for entryMenu — rebuilt alongside menu entries.
     var managedShowBySeriesID: [String: Show] = [:]
     var managedShowByTitle:    [String: Show] = [:]
@@ -869,6 +872,16 @@ final class AppState: ObservableObject {
             let active = recordingShows.filter { $0.hdhr_record == show.hdhr_record }.count
             if active >= tunerCount {
                 glog("[\(show.show_title)] TUNER FULL \(show.hdhr_record): \(active)/\(tunerCount) — skipping start", level: .warning)
+                // Fire conflict notification once per show+episode window to avoid per-tick spam.
+                let key = "\(show.show_id)-\(show.show_next.date?.timeIntervalSince1970 ?? 0)"
+                if !conflictNotifiedKeys.contains(key) {
+                    conflictNotifiedKeys.insert(key)
+                    notify("Tuner Conflict", body: show.show_title,
+                           subtitle: "All tuners on \(show.hdhr_record) are busy")
+                    discordShow("⚠️ Tuner Conflict", show: show, color: 0xF1C40F,
+                                enabled: config.Discord_on_conflict,
+                                extra: [("Note", "All \(tunerCount) tuners on \(show.hdhr_record) are busy", false)])
+                }
                 return
             }
         }
@@ -1349,6 +1362,7 @@ final class AppState: ObservableObject {
                              extra: [(name: String, value: String, inline: Bool)] = [],
                              webhookURL: String? = nil) {
         let url = webhookURL ?? config.Discord_webhook_url
+        glog("[Discord] discordShow \(event) enabled=\(enabled) urlEmpty=\(url.isEmpty) masterEnabled=\(config.Discord_enabled)")
         guard enabled, !url.isEmpty else { return }
         // Respect the master toggle for production sends; test calls pass an explicit webhookURL
         if webhookURL == nil { guard config.Discord_enabled else { return } }

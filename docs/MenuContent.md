@@ -13,8 +13,7 @@ A small custom TV icon sits in the macOS menu bar. It changes state based on app
 Clicking the icon opens a native macOS cascading menu (NSMenu style). The menu has no custom background — it uses the system's standard menu appearance (dark translucent on macOS). Items are full-width, standard menu item height (~22pt). Interactive items highlight in system accent color on hover.
 
 **Header rows** (non-interactive, at the top):
-- One row per detected HDHomeRun device: `"105404BE  1/4"` — DeviceID left-aligned, live-active/total-tuners. Live count comes from polling `status.json` each idle tick (`deviceTunerOccupancy`); falls back to the app's own recording count before the first poll. Full `labelColor` when recording; `secondaryLabelColor` when idle. If the live count differs from the app's expected count, appends `"  ⚠ app expects N"`.
-- Per-device orange warning rows (shown after startup, hidden during startup): `"   ⚠  No channel lineup"` when `lineups[deviceId]` is empty; `"   ⚠  Guide unavailable"` when `guideByDevice[deviceId]` is empty. Both conditions read `@Published` properties directly so SwiftUI reliably re-renders when either changes.
+- One row per detected HDHomeRun device: `"105404BE  1/4"` — DeviceID left-aligned, live-active/total-tuners. Live count comes from polling `status.json` each idle tick (`deviceTunerOccupancy`); falls back to the app's own recording count before the first poll. Color: `systemOrange` when the device has lineup/guide warnings; full `labelColor` when recording (no warnings); `secondaryLabelColor` when idle and healthy. If the live count differs from the app's expected count, appends `"  ⚠ app expects N"`. After startup, missing lineup or guide data appends `"  ⚠ no lineup"` or `"  ⚠ no guide"` (or both, comma-separated) to the same line.
 - Status message row: `"16 show(s) — 1 tuner(s) ready"` — the tuner count uses `availableDeviceCount`, which excludes any device that has an empty lineup or empty guide data.
 
 Immediately below the header: **Watch Now** button (when devices present), **Add Show** (cascading menu or label-button based on mode), then **Settings…**, then a divider.
@@ -105,8 +104,7 @@ Window IDs → titles: `"add-show"` → "Add Show", `"edit-show"` → "Edit Show
 ## Top-Level Menu Structure
 
 ```
-[Header: one line per device — DeviceID  liveCount/slots]
-  [⚠ warning rows — orange — lineup/guide failure, after startup]
+[Header: one line per device — DeviceID  liveCount/slots  ⚠ no lineup, no guide (inline, orange)]
 [Status message — secondary color, uses availableDeviceCount]
 [Watch Now — Label("Watch Now", systemImage: "play.tv.fill"), when devices present]
 [Add Show — Label("Add Show", systemImage: "plus") or cascade based on mode]
@@ -138,7 +136,7 @@ Quit hdhrVCRplus
 
 One `Text` line per device: `"105404BE  1/4"` (DeviceID + `liveCount/totalTuners`). `liveCount` comes from `state.deviceTunerOccupancy[deviceId]` — the decoded `/status.json` array polled each idle tick; falls back to `recordingShows` count before the first poll. Full `labelColor` when recording; `secondaryLabelColor` when idle. If `liveCount != appCount` (and occupancy has been polled at least once), appends `"  ⚠ app expects N"`.
 
-After startup, each device row is followed by zero or more orange warning rows (one per issue): `"   ⚠  No channel lineup"` when `state.lineups[deviceId]` is nil or empty; `"   ⚠  Guide unavailable"` when `state.guideByDevice[deviceId]` is nil or empty. Both are gated on `!state.isStartingUp` and read `@Published` vars directly — SwiftUI reliably re-renders when either changes. Devices with active warnings are excluded from `availableDeviceCount`, so `state.statusMessage` reads e.g. `"16 show(s) — 1 tuner(s) ready"` when one of two devices is unhealthy.
+After startup, lineup/guide failures are appended inline to the device row: `"  ⚠ no lineup"`, `"  ⚠ no guide"`, or `"  ⚠ no lineup, no guide"`. The entire row turns `systemOrange` when any warning is present — a single visual pop replaces the earlier pattern of separate orange rows below each device. Both conditions read `@Published` vars directly so SwiftUI reliably re-renders when either changes. Devices with active warnings are excluded from `availableDeviceCount`, so `state.statusMessage` reads e.g. `"16 show(s) — 1 tuner(s) ready"` when one of two devices is unhealthy.
 
 ---
 

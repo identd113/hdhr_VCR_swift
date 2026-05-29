@@ -1,10 +1,25 @@
 // Hand-maintained changelog displayed in Settings → About.
 // Update this file when shipping new features; keep most-recent version at the top.
 let appChangelog = """
+## 2026-05-29 (260529-0957)
+- VLC player: poster overlay with Start button — stream buffers silently on open; poster + title + synopsis fill the video area until Start is clicked, then fades to live video; poster reappears on channel change
+- Tuner conflict notifications fire once per show+episode window, not every idle tick — eliminates per-tick spam when a show can't start due to a full tuner
+- Discord sends now log success or failure to hdhrVCRplus.log for easier webhook debugging
+- Menu header device warnings consolidated inline: "DEVID 0/4  ⚠ no lineup, no guide" in orange instead of separate warning rows below each device
+
+## 2026-05-29 (260529-0830)
+- About screen changelog now reads from the bundled Changelog.swift instead of fetching CHANGELOG.md from GitHub
+- Mock HDHomeRun tool: DeviceAuth background refresh thread keeps fallback cache current; proxy logging for lineup/guide/status requests; --auth-refresh flag
+
 ## 2026-05-29 (260529)
 - All log output (guide, curl, app) consolidated into a single ~/Library/Logs/hdhrVCRplus.log
 - DeviceAuth cloud token now refreshed every 5 minutes via device probe — guide no longer goes stale after long uptimes on EXTEND devices
 - Recording stops are now guaranteed to complete before new recordings start on the same tick, preventing tuner-count races at show boundaries
+
+## 2026-05-28 (260528-2055)
+- Menu header: live tuner occupancy polled from status.json each idle tick — shows real active/total count; flags count mismatch vs app's expected recording count
+- Menu header: orange device health warnings (no lineup, no guide) after startup; unhealthy devices excluded from the "N tuner(s) ready" status count
+- Guide summary panel poster now correctly clipped with clipShape(RoundedRectangle) — content no longer bleeds past rounded corners
 
 ## 2026-05-24 (260524-0119)
 - Discord webhook notifications (Settings → Notifications): rich embeds per event with show poster, episode info, and genre tags; per-event toggles; Test button sends a live embed without saving

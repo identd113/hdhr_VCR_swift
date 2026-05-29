@@ -43,16 +43,15 @@ final class GuideStore {
 
     // MARK: - URL building
 
-    /// Canonical guide URL for a device. Duration is always in seconds.
+    /// Canonical guide URL for a device. Duration is in hours (the API accepts hours directly).
     /// - Cloud devices (has DeviceAuth): SiliconDust cloud API
     /// - Local devices: device's own /guide.json endpoint
     nonisolated static func guideURL(for device: HDHRDevice, hours: Int = 12) -> URL? {
-        let durationSecs = hours * 3600
         if let auth = device.DeviceAuth {
-            return URL(string: "https://api.hdhomerun.com/api/guide.php?DeviceAuth=\(auth)&Duration=\(durationSecs)")
+            return URL(string: "https://api.hdhomerun.com/api/guide.php?DeviceAuth=\(auth)&Duration=\(hours)")
         }
         if device.LocalIP.isEmpty { return nil }
-        return URL(string: "http://\(device.LocalIP)/guide.json?Duration=\(durationSecs)")
+        return URL(string: "http://\(device.LocalIP)/guide.json?Duration=\(hours)")
     }
 
     // MARK: - Loading

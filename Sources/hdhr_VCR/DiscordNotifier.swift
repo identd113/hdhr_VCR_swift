@@ -16,11 +16,20 @@ func sendDiscordEmbed(to webhookURL: String, embed: [String: Any]) {
     guard let data = try? JSONSerialization.data(withJSONObject: body) else { return }
     req.httpBody = data
 
+    glog("[Discord] sending embed to \(url.host ?? webhookURL)")
     Task {
-        guard let (_, resp) = try? await URLSession.shared.data(for: req),
-              let http = resp as? HTTPURLResponse else { return }
-        if http.statusCode < 200 || http.statusCode >= 300 {
-            glog("[Discord] HTTP \(http.statusCode) — check webhook URL or rate limit", level: .error)
+        do {
+            let (_, resp) = try await URLSession.shared.data(for: req)
+            guard let http = resp as? HTTPURLResponse else {
+                glog("[Discord] unexpected response type", level: .warning); return
+            }
+            if http.statusCode < 200 || http.statusCode >= 300 {
+                glog("[Discord] HTTP \(http.statusCode) — check webhook URL or rate limit", level: .error)
+            } else {
+                glog("[Discord] sent OK (\(http.statusCode))")
+            }
+        } catch {
+            glog("[Discord] send failed: \(error)", level: .error)
         }
     }
 }
