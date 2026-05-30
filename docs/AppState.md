@@ -75,6 +75,8 @@ Falls back to **SiliconDust cloud API** (`http://discover.hdhomerun.com/discover
 | `ensureGuideLoaded(for deviceId:)` | Loads a device if channels absent and not already loading; safe to call repeatedly |
 | `ensureLineupLoaded(for device:)` | Re-fetches lineup if nil/empty; called at guide-step open in AddShowView + FloatingGuideView |
 | `guideEntries(deviceId:channelNum:)` | Delegates to `guideStore.entries()` |
+| `bonusOverlapWarning(for:channel:deviceId:)` | Returns warning string when `entry` starts inside another show's bonus-time extension on the same channel; `nil` otherwise. Used by AddShowView and FloatingGuideView summary panels. |
+| `handleGuideLoadFailure(deviceId:)` | Private. Records backoff failure + sends notify/Discord embed on first failure per streak; subsequent retries are silent. Called from `refreshGuides` and `ensureGuideLoaded`. |
 | `nextGuideEpisode(for show:)` | Delegates to `guideStore.nextEpisode()`; respects channel/device filters |
 | `upcomingGuideEpisodes(seriesID:after:limit:)` | Up to `limit` upcoming `(channel, entry)` tuples across all devices |
 | `nextDateTimeOccurrences(for:after:count:)` | Returns up to `count` DateTime occurrences after `after`. Pass `after: Date()` to include today's airing (menu display); pass `after: startOfTomorrow` to skip today (rescheduling after a completed recording). Uses modulo arithmetic over air-day indices. |

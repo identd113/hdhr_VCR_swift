@@ -138,7 +138,7 @@ Displays the same information as `AddShowView`'s summary panel with a few differ
 **Differences from AddShowView:**
 - No Record button (browse-only)
 - No "Watch in App" button (Player_unlocked not relevant here)
-- Shows a Bonus Time overlap warning via `bonusOverlapWarning(for:channel:device:)` — see below
+- Shows a Bonus Time overlap warning via `state.bonusOverlapWarning(for:channel:deviceId:)` (AppState method) — see below
 
 **Common with AddShowView:**
 - Background color from `guideEntryColor(for:onAir:)`
@@ -149,9 +149,13 @@ Displays the same information as `AddShowView`'s summary panel with a few differ
 
 ---
 
-## `bonusOverlapWarning(for:channel:device:)`
+## `bonusOverlapWarning(for:channel:deviceId:)` — AppState method
 
-Detects when the selected show's start time falls inside an earlier show's bonus-time extension on the same channel:
+Detects when the selected show's start time falls inside an earlier show's bonus-time extension on the same channel. Lives on `AppState` (moved from per-view private helper):
+
+```swift
+func bonusOverlapWarning(for entry: GuideEntry, channel: LineupEntry, deviceId: String) -> String?
+```
 
 ```swift
 for other in channelEntries {
@@ -161,12 +165,12 @@ for other in channelEntries {
     guard isBonusShow else { continue }
     let bonusEndEpoch = other.EndTime + bonusMin * 60
     guard bonusEndEpoch > entry.StartTime else { continue }    // actually overlaps
-    let overlapMin = (bonusEndEpoch - entry.StartTime) / 60
+    let overlapMin = max(1, (bonusEndEpoch - entry.StartTime) / 60)
     return "⚠️ First \(overlapMin) min overlap with extended recording of \"\(other.Title)\""
 }
 ```
 
-The warning is shown as `.caption` white text below the time range. It is the user's signal that if this show is scheduled, its first N minutes will be lost to the bonus time extension of the preceding show. This appears in `FloatingGuideView` because it is a browse-only view where the user is deciding what to add — in `AddShowView` the same information is implicit from the Bonus Time dotted box.
+The warning is shown as `.caption` white text below the time range. It is the user's signal that if this show is scheduled, its first N minutes will be lost to the bonus time extension of the preceding show. Call site passes `deviceId: device.DeviceID`.
 
 ---
 
@@ -178,9 +182,9 @@ The warning is shown as `.caption` white text below the time range. It is the us
 
 ## Date Formatters
 
-Three `static let` formatters (created once):
+Three module-level `let` formatters defined once in `GuideViewHelpers.swift` and shared across `AddShowView`, `FloatingGuideView`, and `CableGuideView`:
 - `origAirdateFormatter` — `.medium` date, no time (e.g. `"Jan 15, 2025"`)
 - `upcomingFormatter` — `"Ejmm"` template: short weekday + locale-preferred hour (e.g. `"Thu 8:00 PM"`)
 - `timeRangeFormatter` — `"jmm"` template: locale-preferred hour only (e.g. `"8:00 PM"`)
 
-All three use `DateFormatter.dateFormat(fromTemplate:options:locale:)` so they respect the user's 12h/24h preference.
+All three use `DateFormatter.dateFormat(fromTemplate:options:locale:)` so they respect the user's 12h/24h preference. `guideTimeRange(_:)` is also a free function in `GuideViewHelpers.swift` wrapping `timeRangeFormatter`.

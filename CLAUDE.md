@@ -43,6 +43,7 @@ Views/
   EditShowView.swift       Edit existing show
   SettingsView.swift       NavigationSplitView settings window
   StarburstBadge.swift     Animated starburst badge for Bonus Time
+  GuideViewHelpers.swift   Shared guide-view utilities: ManagedFlagView, sortedGuideChannels, guideTimeRange, shared DateFormatters
 ```
 
 ---

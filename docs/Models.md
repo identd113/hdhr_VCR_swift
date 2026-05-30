@@ -56,10 +56,20 @@ All five date fields (`show_next`, `show_end`, `show_last`, `notify_upnext_time`
 
 ---
 
+## Show Failure Helpers
+
+Two mutating methods on `Show` consolidate the repeated failure-state field group:
+
+- `recordFailure(reason: String)` — increments `show_fail_count`, sets `show_fail_reason`, sets `show_paused = true`. Used at every recording-start failure path.
+- `clearFailures()` — zeros `show_fail_count` and clears `show_fail_reason`. Callers that also un-pause a show set `show_paused = false` separately (intentional — paused state is independent of the failure counters in some flows such as `resetAllFailCounts`).
+
+---
+
 ## GuideEntry Notable Fields
 
 - `Filter: [String]?` — genre tags (e.g. `["Drama", "Series"]`). Absent from some devices; decodes as `nil` when key is missing.
 - `firstGenre: String?` — computed shorthand for `Filter?.first`; used for guide cell coloring and genre filter picker.
+- `episodeInfoLabel: String?` — computed property; joins `EpisodeNumber` and `EpisodeTitle` with `"  ·  "`, returning `nil` when both are absent. Used in menus and guide summary panels.
 
 ---
 

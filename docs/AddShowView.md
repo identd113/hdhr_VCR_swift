@@ -183,7 +183,7 @@ When a show is selected:
 - **`ManagedFlagView`** — shared struct in `GuideViewHelpers.swift` that draws a `Path`-based yellow right-angle triangle when rendered, with `.accessibilityLabel("Already scheduled")`. Default size 20pt; CableGuideView uses `ManagedFlagView(size: 22)`.
 - **"🔴 Recording Now" badge** — shown if the selected channel is actively recording (`recordingShows` match by channel + time)
 - **Title** — `.title3`, bold, white with drop shadow
-- **Episode info** — `episodeInfoLabel(entry)` → `"S02E05 · The Episode Title"`, `.subheadline`
+- **Episode info** — `entry.episodeInfoLabel` → `"S02E05 · The Episode Title"`, `.subheadline`
 - **Synopsis** — up to 3 lines, `.callout`
 - **Upcoming airings** (SeriesID shows) — calls `state.upcomingGuideEpisodes(seriesID:)` → `"ch 5.1 Thu 8:00 PM · ch 5.1 Fri 10:00 PM"`, `.caption2`
 - **Channel icon** — `ChannelIcon(urlString:size:52)` from `ChannelIconCache`; sourced from `GuideChannel.ImageURL` (not `LineupEntry`, which has no icon); sets `img = nil` on nil `urlString` to prevent stale logo bleed when switching to a channel without an icon
@@ -281,8 +281,8 @@ For SeriesID shows (`show_use_seriesid == true`), `resolveSeriesAir(show:device:
 | `applyGuideEntry()` | Copies guide entry + channel fields onto `show`; sets `show_genre` |
 | `save()` | Applies series type flags + folder; calls `state.addShow(show)` |
 | `chooseFolder()` | `NSOpenPanel` folder picker; writes to `UserDefaults["defaultSaveDirectory"]` |
-| `episodeInfoLabel(_:)` | Joins `EpisodeNumber` + `EpisodeTitle` with ` · ` |
-| `guideTimeRange(_:)` | Returns `"8:00 PM – 9:00 PM"` string |
+| `entry.episodeInfoLabel` | `GuideEntry` extension (Models.swift); joins `EpisodeNumber` + `EpisodeTitle` with ` · ` |
+| `guideTimeRange(_:)` | Free function in `GuideViewHelpers.swift`; returns `"8:00 PM – 9:00 PM"` string |
 | `goForward()` / `goBack()` | Step navigation logic |
 
 ---

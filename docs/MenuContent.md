@@ -158,7 +158,7 @@ Used by `recordingMenu`, `scheduledMenu`, and `pausedMenu`. Renders:
 
 1. **Poster** — `AsyncImage` of `show.show_logo_url` (460×258, cornerRadius 6) with a gray placeholder when absent. Always carries a yellow 24pt right-angle triangle overlay in the top-right corner (`Path`, `.fill(.yellow)`) — all shows in these sections are already managed, so the flag is always visible. Accessibility label: `"\(show.show_title) poster"` on the image; `"Already scheduled"` on the triangle.
 2. **Title** — `menuInfo(show.show_title, font: .title3, maxWidth: 460)`
-3. **Episode info** — `episodeInfoLabel(entry)` if the entry is non-nil
+3. **Episode info** — `entry.episodeInfoLabel` if the entry is non-nil
 4. **Synopsis** — `entry.Synopsis` truncated to 160 chars
 
 ---
@@ -224,7 +224,7 @@ A plain `Button` with `Label("Add Show…", systemImage: "plus")`. Opens the `"a
 | `upcomingLabel(channel:date:)` | `"Channel 5.1 · Thu 8:00 PM"` / `"Channel 5.1 · 8:00 PM"` for today |
 | `timeRange(_:)` | `"8:00 PM – 9:00 PM"` — inside entry submenus |
 | `weekdayName(_:)` | Full weekday name from a `Date` |
-| `episodeInfoLabel(_:)` | Joins `EpisodeNumber` + `EpisodeTitle` with ` · `; nil if both empty |
+| `entry.episodeInfoLabel` | `GuideEntry` extension (Models.swift); joins `EpisodeNumber` + `EpisodeTitle` with ` · `; nil if both empty |
 | `truncateSynopsis(_:limit:)` | Clips to 160 chars at a word boundary |
 | `editShow(_:)` | Sets `state.editingShowId`, calls `open("edit-show")` |
 
