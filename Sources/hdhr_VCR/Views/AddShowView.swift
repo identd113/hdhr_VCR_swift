@@ -3,21 +3,6 @@ import SwiftUI
 // Multi-step wizard: Device → Channel → Guide entry → Details → Save
 struct AddShowView: View {
 
-    // Static so these are created once, not on every guide cell tap or summaryPanel render
-    private static let origAirdateFormatter: DateFormatter = {
-        let f = DateFormatter(); f.dateStyle = .medium; f.timeStyle = .none; return f
-    }()
-    private static let upcomingFormatter: DateFormatter = {
-        let f = DateFormatter()
-        // "Ejmm": E=short weekday, j=locale-preferred hour (12h or 24h), mm=minutes
-        f.dateFormat = DateFormatter.dateFormat(fromTemplate: "Ejmm", options: 0, locale: .current)
-        return f
-    }()
-    private static let timeRangeFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = DateFormatter.dateFormat(fromTemplate: "jmm", options: 0, locale: .current)
-        return f
-    }()
     @EnvironmentObject var state: AppState
     @Environment(\.dismiss) var dismiss
     @Environment(\.openWindow) private var openWindow
@@ -313,7 +298,7 @@ struct AddShowView: View {
         }
         .onChange(of: state.lineups[selectedDevice?.DeviceID ?? ""] ?? []) { _, _ in
             guard let id = selectedDevice?.DeviceID, !allChannels.isEmpty else { return }
-            allChannels = sortedGuideChannels(allChannels, deviceId: id)
+            allChannels = sortedGuideChannels(allChannels, favorites: Set((state.lineups[id] ?? []).filter(\.isFavorite).map(\.GuideNumber)))
         }
         .onChange(of: allChannels.count) { _, count in
             guard count > 0, selectedEntry == nil else { return }
@@ -370,13 +355,13 @@ struct AddShowView: View {
                     .frame(width: 180)
                     .frame(maxHeight: .infinity)
                     .clipShape(RoundedRectangle(cornerRadius: 7))
-                    .overlay(alignment: .topTrailing) { managedFlag(isManaged) }
+                    .overlay(alignment: .topTrailing) { if isManaged { ManagedFlagView() } }
                 } else {
                     RoundedRectangle(cornerRadius: 7)
                         .fill(Color.white.opacity(0.2))
                         .frame(width: 180)
                         .frame(maxHeight: .infinity)
-                        .overlay(alignment: .topTrailing) { managedFlag(isManaged) }
+                        .overlay(alignment: .topTrailing) { if isManaged { ManagedFlagView() } }
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -403,7 +388,7 @@ struct AddShowView: View {
                             .shadow(color: .black.opacity(0.35), radius: 1.5, x: 0, y: 1)
                     }
 
-                    if let ep = episodeInfoLabel(entry) {
+                    if let ep = entry.episodeInfoLabel {
                         // Full white + shadow so episode info reads clearly on all genre colors
                         Text(ep)
                             .font(.subheadline)
@@ -415,7 +400,7 @@ struct AddShowView: View {
                     // Original air date — present on most episodes; lets the user distinguish
                     // first-runs from repeats without needing to know the episode number
                     if let airdate = entry.OriginalAirdate {
-                        Text("Orig. \(Self.origAirdateFormatter.string(from: Date(timeIntervalSince1970: TimeInterval(airdate))))")
+                        Text("Orig. \(origAirdateFormatter.string(from: Date(timeIntervalSince1970: TimeInterval(airdate))))")
                             .font(.caption)
                             .foregroundColor(.white.opacity(0.80))
                             .shadow(color: .black.opacity(0.35), radius: 1.5, x: 0, y: 1)
@@ -433,7 +418,7 @@ struct AddShowView: View {
                     if let sid = entry.SeriesID, !sid.isEmpty {
                         let upcoming = state.upcomingGuideEpisodes(seriesID: sid)
                         if !upcoming.isEmpty {
-                                let labels = upcoming.map { "Channel \($0.channel) \(Self.upcomingFormatter.string(from: $0.entry.startDate))" }
+                                let labels = upcoming.map { "Channel \($0.channel) \(upcomingFormatter.string(from: $0.entry.startDate))" }
                             Text(labels.joined(separator: "  ·  "))
                                 .font(.caption2)
                                 .foregroundColor(.white.opacity(0.85))
@@ -508,7 +493,7 @@ struct AddShowView: View {
                     // Always rendered (opacity 0 when absent) so the button row above stays at a fixed vertical position.
                     let overlapWarning: String? = {
                         guard let device = selectedDevice, let ch = selectedChannel else { return nil }
-                        return bonusOverlapWarning(for: entry, channel: ch, device: device)
+                        return state.bonusOverlapWarning(for: entry, channel: ch, deviceId: device.DeviceID)
                     }()
                     Text(overlapWarning ?? " ")
                         .font(.caption)
@@ -545,53 +530,6 @@ struct AddShowView: View {
                 .foregroundStyle(.tertiary)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-    }
-
-    @ViewBuilder private func managedFlag(_ show: Bool) -> some View {
-        if show {
-            Path { p in
-                p.move(to:    CGPoint(x: 0,  y: 0))
-                p.addLine(to: CGPoint(x: 20, y: 0))
-                p.addLine(to: CGPoint(x: 20, y: 20))
-                p.closeSubpath()
-            }
-            .fill(Color.yellow)
-            .frame(width: 20, height: 20)
-            .accessibilityLabel("Already scheduled")
-        }
-    }
-
-    private func episodeInfoLabel(_ entry: GuideEntry) -> String? {
-        let parts = [entry.EpisodeNumber, entry.EpisodeTitle]
-            .compactMap { s -> String? in
-                guard let s, !s.isEmpty else { return nil }
-                return s
-            }
-        return parts.isEmpty ? nil : parts.joined(separator: "  ·  ")
-    }
-
-    private func guideTimeRange(_ entry: GuideEntry) -> String {
-        return "\(Self.timeRangeFormatter.string(from: entry.startDate)) – \(Self.timeRangeFormatter.string(from: entry.endDate))"
-    }
-
-    // Returns a warning string when `entry` starts during another show's bonus-time extension on the same channel.
-    // e.g. "⚠️ First 30 min overlap with extended recording of \"PGA Tour Golf\""
-    private func bonusOverlapWarning(for entry: GuideEntry, channel: LineupEntry, device: HDHRDevice) -> String? {
-        let bonusMin = state.config.Sports_padding_minutes
-        let bonusShows = state.shows.filter { $0.show_bonus_time }
-        let bonusSeriesIDs = Set(bonusShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
-        let bonusTitles   = Set(bonusShows.map { $0.show_title })
-        let channelEntries = state.guideEntries(deviceId: device.DeviceID, channelNum: channel.GuideNumber)
-        for other in channelEntries {
-            guard other.EndTime <= entry.StartTime else { continue }  // only shows that end at or before this one starts
-            let isBonusShow = other.SeriesID.map { bonusSeriesIDs.contains($0) } ?? bonusTitles.contains(other.Title)
-            guard isBonusShow else { continue }
-            let bonusEndEpoch = other.EndTime + bonusMin * 60
-            guard bonusEndEpoch > entry.StartTime else { continue }
-            let overlapMin = (bonusEndEpoch - entry.StartTime) / 60
-            return "⚠️ First \(overlapMin) min overlap with extended recording of \"\(other.Title)\""
-        }
-        return nil
     }
 
     // MARK: - Tuner menu helpers
@@ -720,7 +658,7 @@ struct AddShowView: View {
         if state.guideStore.isFresh(deviceId: id) {
             let ch = state.guideStore.channels(deviceId: id)
             state.logGuide("[Wizard] cache hit — \(ch.count) channels, first guide counts: \(ch.prefix(3).map { "\($0.GuideNumber):\($0.Guide?.count ?? 0)" }.joined(separator: ", "))")
-            allChannels = sortedGuideChannels(ch, deviceId: id)
+            allChannels = sortedGuideChannels(ch, favorites: Set((state.lineups[id] ?? []).filter(\.isFavorite).map(\.GuideNumber)))
             return
         }
 
@@ -734,7 +672,7 @@ struct AddShowView: View {
             state.logGuide("[Wizard] startup finished — \(ch.count) channels")
             if !ch.isEmpty {
                 state.guideByDevice = state.guideStore.channelsByDevice
-                allChannels = sortedGuideChannels(ch, deviceId: id)
+                allChannels = sortedGuideChannels(ch, favorites: Set((state.lineups[id] ?? []).filter(\.isFavorite).map(\.GuideNumber)))
                 return
             }
             state.logGuide("[Wizard] startup gave 0 channels — falling through to fresh load")
@@ -747,18 +685,7 @@ struct AddShowView: View {
         state.guideByDevice = state.guideStore.channelsByDevice
         let ch = state.guideStore.channels(deviceId: id)
         state.logGuide("[Wizard] fetch complete — \(ch.count) channels")
-        allChannels = sortedGuideChannels(ch, deviceId: id)
-    }
-
-    // Favorites first, then numeric channel order.
-    private func sortedGuideChannels(_ channels: [GuideChannel], deviceId: String) -> [GuideChannel] {
-        let favNums = Set((state.lineups[deviceId] ?? []).filter(\.isFavorite).map(\.GuideNumber))
-        return channels.sorted { a, b in
-            let af = favNums.contains(a.GuideNumber)
-            let bf = favNums.contains(b.GuideNumber)
-            if af != bf { return af }
-            return a.GuideNumber.channelSortKey < b.GuideNumber.channelSortKey
-        }
+        allChannels = sortedGuideChannels(ch, favorites: Set((state.lineups[id] ?? []).filter(\.isFavorite).map(\.GuideNumber)))
     }
 
     /// Called after lineup is confirmed loaded. Fixes selectedChannel when auto-select fired

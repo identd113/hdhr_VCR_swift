@@ -213,7 +213,7 @@ struct MenuContent: View {
         let recNow       = Date()
         let recEntries   = state.guideEntries(deviceId: show.hdhr_record, channelNum: show.show_channel)
         let currentEntry = recEntries.first { $0.startDate <= recNow && $0.endDate > recNow }
-        let recEp        = currentEntry.flatMap { episodeInfoLabel($0) }
+        let recEp        = currentEntry.flatMap { $0.episodeInfoLabel }
         let menuTitle    = recEp.map { "🔴 \(show.show_title) · \($0)" } ?? "🔴 \(show.show_title)"
         // Bonus Time: sports shows record past the guide end — adjust the displayed end time
         let isSportsBonus = state.config.Sports_padding_enabled && show.show_bonus_time
@@ -267,7 +267,7 @@ struct MenuContent: View {
         let conflict  = state.conflictingShowIDs.contains(show.show_id)
         let prefix    = conflict ? "⚠️ " : ""
         let schEntry  = state.menuScheduledEntry[show.show_id]
-        let schEp     = schEntry.flatMap { episodeInfoLabel($0) }
+        let schEp     = schEntry.flatMap { $0.episodeInfoLabel }
         let chSuffix  = showChannel ? "  ch \(show.show_channel)" : ""
         let schLabel  = schEp.map { "\(prefix)\(stateIcon(show)) \(show.show_title) · \($0)\(chSuffix)" }
                     ?? "\(prefix)\(stateIcon(show)) \(show.show_title)\(chSuffix)"
@@ -411,7 +411,7 @@ struct MenuContent: View {
             }
         }
         menuInfo(show.show_title, font: .title3, maxWidth: 460)
-        if let ep = entry.flatMap({ episodeInfoLabel($0) }) {
+        if let ep = entry?.episodeInfoLabel {
             menuInfo(ep, font: .callout, maxWidth: 460)
         }
         if let syn = entry?.Synopsis, !syn.isEmpty {
@@ -453,13 +453,5 @@ struct MenuContent: View {
         return String(text[..<cut]) + "…"
     }
 
-    private func episodeInfoLabel(_ entry: GuideEntry) -> String? {
-        let parts = [entry.EpisodeNumber, entry.EpisodeTitle]
-            .compactMap { s -> String? in
-                guard let s, !s.isEmpty else { return nil }
-                return s
-            }
-        return parts.isEmpty ? nil : parts.joined(separator: "  ·  ")
-    }
 }
 

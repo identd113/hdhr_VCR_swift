@@ -95,6 +95,17 @@ struct Show: Identifiable, Equatable {
             show_bonus_time: false
         )
     }
+
+    mutating func recordFailure(reason: String) {
+        show_fail_count += 1
+        show_fail_reason = reason
+        show_paused = true
+    }
+
+    mutating func clearFailures() {
+        show_fail_count = 0
+        show_fail_reason = ""
+    }
 }
 
 enum ShowState: String, CaseIterable {
@@ -363,4 +374,14 @@ struct GuideEntry: Codable, Identifiable, Hashable {
     var endDate:   Date { Date(timeIntervalSince1970: TimeInterval(EndTime)) }
     var durationMinutes: Int { (EndTime - StartTime) / 60 }
     var firstGenre: String? { Filter?.first }
+}
+
+extension GuideEntry {
+    var episodeInfoLabel: String? {
+        let parts = [EpisodeNumber, EpisodeTitle].compactMap { s -> String? in
+            guard let s, !s.isEmpty else { return nil }
+            return s
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: "  ·  ")
+    }
 }

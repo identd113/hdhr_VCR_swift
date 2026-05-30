@@ -406,14 +406,7 @@ final class AppState: ObservableObject {
             if ok {
                 guideApiBackoff.removeValue(forKey: deviceId)
             } else {
-                guideApiBackoff[deviceId, default: APIBackoff()].recordFailure()
-                if var backoff = guideApiBackoff[deviceId], !backoff.notifiedUser {
-                    backoff.notifiedUser = true
-                    guideApiBackoff[deviceId] = backoff
-                    let mins = backoff.minutesUntilRetry
-                    notify("Guide Load Failed", body: deviceId, subtitle: "API error — retry in \(mins) min")
-                    discordError("Guide Load Failed", detail: "Device \(deviceId) — API error, retry in \(mins) min", color: 0x95A5A6, enabled: config.Discord_on_guide_error)
-                }
+                handleGuideLoadFailure(deviceId: deviceId)
             }
         }
         if guideByDevice.values.contains(where: { !$0.isEmpty }) { guideRevision += 1 }
@@ -441,15 +434,8 @@ final class AppState: ObservableObject {
                 guideByDevice = guideStore.channelsByDevice
                 await prefetchChannelIcons(guideStore.channels(deviceId: deviceId))
             } else {
-                guideApiBackoff[deviceId, default: APIBackoff()].recordFailure()
                 // Notify user on first failure; subsequent backoff retries are silent
-                if var backoff = guideApiBackoff[deviceId], !backoff.notifiedUser {
-                    backoff.notifiedUser = true
-                    guideApiBackoff[deviceId] = backoff
-                    let mins = backoff.minutesUntilRetry
-                    notify("Guide Load Failed", body: deviceId, subtitle: "API error — retry in \(mins) min")
-                    discordError("Guide Load Failed", detail: "Device \(deviceId) — API error, retry in \(mins) min", color: 0x95A5A6, enabled: config.Discord_on_guide_error)
-                }
+                handleGuideLoadFailure(deviceId: deviceId)
             }
         }
     }
@@ -479,6 +465,24 @@ final class AppState: ObservableObject {
     /// Guide entries for a device+channel still airing or upcoming within GuideHours.
     func guideEntries(deviceId: String, channelNum: String) -> [GuideEntry] {
         guideStore.entries(deviceId: deviceId, channelNum: channelNum)
+    }
+
+    func bonusOverlapWarning(for entry: GuideEntry, channel: LineupEntry, deviceId: String) -> String? {
+        let bonusMin = config.Sports_padding_minutes
+        let bonusShows = shows.filter { $0.show_bonus_time }
+        let bonusSeriesIDs = Set(bonusShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
+        let bonusTitles   = Set(bonusShows.map { $0.show_title })
+        let channelEntries = guideEntries(deviceId: deviceId, channelNum: channel.GuideNumber)
+        for other in channelEntries {
+            guard other.EndTime <= entry.StartTime else { continue }
+            let isBonusShow = other.SeriesID.map { bonusSeriesIDs.contains($0) } ?? bonusTitles.contains(other.Title)
+            guard isBonusShow else { continue }
+            let bonusEndEpoch = other.EndTime + bonusMin * 60
+            guard bonusEndEpoch > entry.StartTime else { continue }
+            let overlapMin = max(1, (bonusEndEpoch - entry.StartTime) / 60)
+            return "⚠️ First \(overlapMin) min overlap with extended recording of \"\(other.Title)\""
+        }
+        return nil
     }
 
     func rebuildMenuEntries() {
@@ -758,14 +762,13 @@ final class AppState: ObservableObject {
             if show.show_paused {
                 if endDate <= now {
                     shows[i].show_paused = false
-                    shows[i].show_fail_count = 0
-                    shows[i].show_fail_reason = ""
+                    shows[i].clearFailures()
                     glog("[\(show.show_title)] auto-resuming — paused window expired, rescheduling")
                     await scheduleNextAir(index: i)
                     dirty = true
                 } else if nextDate <= now + 10 {
                     shows[i].show_paused = false
-                    shows[i].show_fail_count = 0; shows[i].show_fail_reason = ""
+                    shows[i].clearFailures()
                     glog("[\(show.show_title)] auto-resuming — next airing imminent")
                     dirty = true
                 }
@@ -803,9 +806,8 @@ final class AppState: ObservableObject {
             }
 
             if show.show_recording, endDate > now, !recordingManager.isRunning(showId: show.show_id) {
-                shows[i].show_recording = false; shows[i].show_fail_count += 1
-                shows[i].show_fail_reason = "curl exited unexpectedly"
-                shows[i].show_paused = true
+                shows[i].show_recording = false
+                shows[i].recordFailure(reason: "curl exited unexpectedly")
                 glog("[\(show.show_title)] FAIL curl exited unexpectedly — fail_count=\(shows[i].show_fail_count)", level: .error)
                 notify("Recording Failed", body: show.show_title, subtitle: "curl exited unexpectedly")
                 discordShow("❌ Recording Failed", show: show, color: 0xE74C3C, enabled: config.Discord_on_failed,
@@ -874,8 +876,7 @@ final class AppState: ObservableObject {
                 shows[index].show_url = url; show.show_url = url
             } else {
                 glog("[\(show.show_title)] NO STREAM URL — ch=\(show.show_channel) device=\(show.hdhr_record)", level: .error)
-                shows[index].show_fail_count += 1; shows[index].show_fail_reason = "No stream URL"
-                shows[index].show_paused = true; return
+                shows[index].recordFailure(reason: "No stream URL"); return
             }
         }
         if show.show_fail_count == failThreshold - 1 {
@@ -895,8 +896,7 @@ final class AppState: ObservableObject {
         }
         guard diskOK(for: show) else {
             glog("[\(show.show_title)] DISK FULL — skipping recording", level: .warning)
-            shows[index].show_fail_count += 1; shows[index].show_fail_reason = "Disk too full"
-            shows[index].show_paused = true
+            shows[index].recordFailure(reason: "Disk too full")
             notify("Recording Skipped", body: show.show_title, subtitle: "Disk over \(Int(maxDiskPct))%")
             discordShow("💾 Recording Skipped", show: show, color: 0xE67E22, enabled: config.Discord_on_skipped,
                         extra: [("Reason", "Disk over \(Int(maxDiskPct))% — free up space", false)])
@@ -921,9 +921,7 @@ final class AppState: ObservableObject {
                                        networkInterface: config.Network_interface)
         } catch {
             glog("[\(show.show_title)] LAUNCH ERROR: \(error)", level: .error)
-            shows[index].show_fail_count += 1
-            shows[index].show_fail_reason = "Launch failed: \(error.localizedDescription)"
-            shows[index].show_paused = true
+            shows[index].recordFailure(reason: "Launch failed: \(error.localizedDescription)")
             notify("Recording Failed", body: show.show_title, subtitle: "Could not launch — \(error.localizedDescription)")
             discordShow("❌ Recording Failed", show: show, color: 0xE74C3C, enabled: config.Discord_on_failed,
                         extra: [("Reason", "Launch failed: \(error.localizedDescription)", false)])
@@ -973,10 +971,8 @@ final class AppState: ObservableObject {
         let fileSize  = fileAttrs?[.size] as? Int ?? 0
 
         if !path.isEmpty && fileSize == 0 {
-            shows[index].show_fail_count += 1
-            shows[index].show_fail_reason = "Output file missing or empty"
+            shows[index].recordFailure(reason: "Output file missing or empty")
             glog("[\(show.show_title)] STOP file missing or empty — fail_count=\(shows[index].show_fail_count)", level: .error)
-            shows[index].show_paused = true
             notify("Recording Failed", body: show.show_title, subtitle: "File not written — check disk space and URL")
             discordShow("❌ Recording Failed", show: show, color: 0xE74C3C, enabled: config.Discord_on_failed,
                         extra: [("Reason", "Output file missing or empty — check disk space and stream URL", false)])
@@ -1206,7 +1202,7 @@ final class AppState: ObservableObject {
     func resumeShow(_ show: Show) {
         guard let i = shows.firstIndex(where: { $0.show_id == show.show_id }) else { return }
         glog("[\(show.show_title)] RESUMED")
-        shows[i].show_paused = false; shows[i].show_fail_count = 0; shows[i].show_fail_reason = ""; saveConfig()
+        shows[i].show_paused = false; shows[i].clearFailures(); saveConfig()
     }
     func deleteShow(_ show: Show) {
         glog("[Show] Deleted '\(show.show_title)'")
@@ -1263,7 +1259,7 @@ final class AppState: ObservableObject {
 
     /// Zero out fail counts on every show without changing active/inactive state.
     func resetAllFailCounts() {
-        for i in shows.indices { shows[i].show_fail_count = 0; shows[i].show_fail_reason = "" }
+        for i in shows.indices { shows[i].clearFailures() }
         saveConfig()
     }
 
@@ -1272,7 +1268,7 @@ final class AppState: ObservableObject {
         for i in shows.indices {
             if shows[i].show_paused { shows[i].show_paused = false }
             else if !shows[i].show_active { shows[i].show_active = true }
-            shows[i].show_fail_count = 0; shows[i].show_fail_reason = ""
+            shows[i].clearFailures()
         }
         saveConfig()
     }
@@ -1425,6 +1421,16 @@ final class AppState: ObservableObject {
         ]
         if !show.show_logo_url.isEmpty { embed["thumbnail"] = ["url": show.show_logo_url] }
         sendDiscordEmbed(to: url, embed: embed)
+    }
+
+    private func handleGuideLoadFailure(deviceId: String) {
+        guideApiBackoff[deviceId, default: APIBackoff()].recordFailure()
+        guard var backoff = guideApiBackoff[deviceId], !backoff.notifiedUser else { return }
+        backoff.notifiedUser = true
+        guideApiBackoff[deviceId] = backoff
+        let mins = backoff.minutesUntilRetry
+        notify("Guide Load Failed", body: deviceId, subtitle: "API error — retry in \(mins) min")
+        discordError("Guide Load Failed", detail: "Device \(deviceId) — API error, retry in \(mins) min", color: 0x95A5A6, enabled: config.Discord_on_guide_error)
     }
 
     private func discordError(_ event: String, detail: String, color: Int = 0x95A5A6, enabled: Bool,
@@ -1583,10 +1589,7 @@ final class AppState: ObservableObject {
                      ?? tuners.first(where: { $0.VctNumber != nil })
             guard let match,
                   let idx = Int(match.Resource.dropFirst(5))   // "tuner0" → 0
-            else {
-                if !tuners.isEmpty { glog("[\(show.show_title)] vstatus: no locked tuner found in status.json (resource=\(tuners.map(\.Resource)))", level: .warning) }
-                continue
-            }
+            else { continue }
             guard let vsURL = URL(string: "http://\(device.LocalIP)/tuner\(idx)/vstatus"),
                   let (vsData, _) = try? await URLSession.shared.data(from: vsURL),
                   let text = String(data: vsData, encoding: .utf8)

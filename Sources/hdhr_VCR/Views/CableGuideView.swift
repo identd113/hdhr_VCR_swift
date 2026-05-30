@@ -638,18 +638,6 @@ private struct ShowBlocksRow: View, Equatable {
             .padding(.top, 4)
             .frame(width: max(1, cellW - 8), alignment: .topLeading)
 
-            if isManaged {
-                let flagSize: CGFloat = 22
-                Path { path in
-                    path.move(to:    CGPoint(x: cellW - flagSize, y: 0))
-                    path.addLine(to: CGPoint(x: cellW,            y: 0))
-                    path.addLine(to: CGPoint(x: cellW,            y: flagSize))
-                    path.closeSubpath()
-                }
-                .fill(Color.yellow)
-                .accessibilityLabel("Already scheduled")
-            }
-
             if isRecording {
                 // Red dot centred inside the yellow flag triangle
                 Circle().fill(Color.red).frame(width: 8, height: 8)
@@ -665,6 +653,9 @@ private struct ShowBlocksRow: View, Equatable {
             }
         }
         .frame(width: cellW, height: rowH - 2)
+        .overlay(alignment: .topTrailing) {
+            if isManaged { ManagedFlagView(size: 22) }
+        }
         .offset(x: cellX, y: 1)
         .opacity(matchesFilter ? 1.0 : 0.2)
         .allowsHitTesting(matchesFilter)
