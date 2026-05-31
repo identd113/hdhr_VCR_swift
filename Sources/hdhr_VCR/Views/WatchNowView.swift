@@ -235,7 +235,8 @@ struct WatchNowRow: View {
                     .foregroundStyle(.white.opacity(0.4))
             }
         }
-        .frame(width: 96, height: 68)
+        .containerRelativeFrame(.horizontal) { w, _ in min(w * 0.34, 220) }
+        .aspectRatio(96.0/68.0, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .overlay(alignment: .topTrailing) {
             if let show = managedShow {

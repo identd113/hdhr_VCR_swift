@@ -32,7 +32,9 @@ Favorites section header: 2pt amber top bar, `"★  Favorites"` caption.bold in 
 
 Each card is an `HStack(alignment: .top, spacing: 10)` with 14pt horizontal and 10pt vertical padding.
 
-### Poster thumbnail (left, 96×68pt)
+### Poster thumbnail (left, proportional)
+Width = 34% of scroll-container width, capped at 220pt (`.containerRelativeFrame(.horizontal) { w, _ in min(w * 0.34, 220) }`); height derived by `.aspectRatio(96.0/68.0, contentMode: .fit)`. At default 420pt window ≈ 143×101pt (~50% larger than the former hardcoded 96×68pt). Scales with window resize.
+
 `ZStack`:
 - Background: genre color from `guideEntryColor(for:onAir:true)` at 55% opacity
 - Poster image (`.scaledToFill`) if available from `ChannelIconCache`, or `tv` SF Symbol at 40% white

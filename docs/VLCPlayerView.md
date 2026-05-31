@@ -196,8 +196,9 @@ When the player opens or changes channel, a full-area `posterOverlay` view sits 
 ```
 ZStack (black background, fills video area)
   HStack (32pt padding, centered vertically)
-    Poster image (300pt wide, clipShape RoundedRectangle 8pt)
-      — Image(nsImage: posterNSImage) or tv SF Symbol placeholder at 25% white
+    Poster image (30% of video-area width, `.containerRelativeFrame(.horizontal) { w, _ in w * 0.30 }`, clipShape RoundedRectangle 8pt)
+      — Image(nsImage: posterNSImage) .resizable().scaledToFit(), or tv SF Symbol placeholder at 25% white
+      — scales with player window resize; at default 960pt window ≈ 288pt wide
     VStack (max 360pt, leading alignment)
       Title (.title2.bold, white, 2 lines max)
       Episode info (.subheadline, white 75% opacity)

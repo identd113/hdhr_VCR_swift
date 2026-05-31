@@ -2,6 +2,10 @@
 
 > In-app changelog (Settings → About) is maintained in [`Sources/hdhr_VCR/Changelog.swift`](Sources/hdhr_VCR/Changelog.swift).
 
+## 2026-05-31 (260531-0137)
+
+- **Proportional poster images** — Watch Now thumbnails are now ~50% larger (34% of window width, capped at 220pt, aspect-ratio locked at 96:68) and scale with window resize instead of being fixed at 96×68pt; VLC player poster overlay scales to 30% of the player window width instead of a hardcoded 300pt
+
 ## 2026-05-31 (260531-0001)
 
 - **Buffered live TV playback** — the in-app VLC player now builds and maintains an ~8-second live buffer to absorb brief signal drops invisibly. Uses an adaptive rate controller: starts at the user-configured floor rate (default 93%), ramping toward 100% as the buffer fills over ~3 minutes, then holds at 1.0× to maintain the lag. `--drop-late-frames` and `--avcodec-hurry-up` tell VLC to drop corrupt/late frames rather than showing artifacts.

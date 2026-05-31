@@ -138,7 +138,7 @@ struct VLCPlayerView: View {
                             .foregroundStyle(.white.opacity(0.25))
                     }
                 }
-                .frame(width: 300)
+                .containerRelativeFrame(.horizontal) { w, _ in w * 0.30 }
                 .clipShape(RoundedRectangle(cornerRadius: 8))
 
                 // Episode info + synopsis
