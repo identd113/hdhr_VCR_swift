@@ -596,7 +596,7 @@ final class AppState: ObservableObject {
         show.show_url       = channel.URL ?? ""
         show.show_genre     = entry.firstGenre ?? ""
         show.show_dir       = folder.path
-        show.show_temp_dir  = folder.path
+        show.show_temp_dir  = NSHomeDirectory() + "/Movies/hdhr_videos"
 
         // Local decimal hour from guide start time (matches what the user sees in the guide)
         let comps = Calendar.current.dateComponents([.hour, .minute], from: entry.startDate)
@@ -903,6 +903,9 @@ final class AppState: ObservableObject {
             return
         }
         let path = show.outputPath(date: show.show_next ?? Date())
+        if !show.show_dir.isEmpty, show.posixRecordDir != show.show_dir {
+            glog("[\(show.show_title)] Primary folder unavailable — recording to fallback: \(show.posixRecordDir)", level: .warning)
+        }
         var endDate = show.show_end ?? Date().addingTimeInterval(Double(show.show_length) * 60)
         // Bonus Time: extend recording past the guide end for sports shows so overtime isn't cut off
         if config.Sports_padding_enabled && show.show_bonus_time {

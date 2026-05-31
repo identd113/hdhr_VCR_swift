@@ -64,7 +64,12 @@ struct Show: Identifiable, Equatable {
     }
 
     var posixRecordDir: String {
-        show_temp_dir.isEmpty ? (NSHomeDirectory() + "/Movies/hdhr_videos") : show_temp_dir
+        let primary  = show_dir.isEmpty      ? (NSHomeDirectory() + "/Movies/hdhr_videos") : show_dir
+        let fallback = show_temp_dir.isEmpty ? (NSHomeDirectory() + "/Movies/hdhr_videos") : show_temp_dir
+        guard primary != fallback else { return primary }
+        // Use primary only when its parent directory exists (i.e. the volume is mounted)
+        let parent = URL(fileURLWithPath: primary).deletingLastPathComponent().path
+        return FileManager.default.fileExists(atPath: parent) ? primary : fallback
     }
 
     private static let outputDateFormatter: DateFormatter = {
