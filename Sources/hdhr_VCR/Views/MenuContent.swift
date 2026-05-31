@@ -70,7 +70,8 @@ struct MenuContent: View {
         // ── Header ────────────────────────────────────────────────────────
         ForEach(state.devices) { device in
             let slots     = device.TunerCount ?? 1
-            let appCount  = recordingShows.filter { $0.hdhr_record == device.DeviceID }.count
+            let vlcUsing  = VLCPlayerWindowManager.shared.currentDeviceID == device.DeviceID ? 1 : 0
+            let appCount  = recordingShows.filter { $0.hdhr_record == device.DeviceID }.count + vlcUsing
             let liveInfo  = state.deviceTunerOccupancy[device.DeviceID]
             let liveCount = liveInfo?.filter { $0.VctNumber != nil }.count ?? appCount
             let mismatch  = liveInfo != nil && liveCount != appCount
@@ -87,19 +88,6 @@ struct MenuContent: View {
                                                  Color(NSColor.secondaryLabelColor))
         }
         Text(state.statusMessage).foregroundStyle(Color(NSColor.secondaryLabelColor))
-        // ── Now Watching ──────────────────────────────────────────────────
-        if let info = nowWatchingInfo {
-            Button {
-                DispatchQueue.main.async { VLCPlayerWindowManager.shared.focus() }
-            } label: {
-                Label {
-                    Text("Ch \(info.channel.GuideNumber)  \(info.channel.GuideName)" +
-                         (info.entry.map { " · \($0.Title)" } ?? ""))
-                } icon: {
-                    Image(systemName: "play.tv.fill").foregroundStyle(watchNowBlue)
-                }
-            }
-        }
         // ── Watch Now ─────────────────────────────────────────────────────
         watchNowMenu
         // ── Add Show ──────────────────────────────────────────────────────
@@ -109,6 +97,22 @@ struct MenuContent: View {
         Button("Settings…")    { open("settings") }
         Divider()
 
+        // ── Now Watching ──────────────────────────────────────────────────
+        if let info = nowWatchingInfo {
+            let watchDeviceId = VLCPlayerWindowManager.shared.currentDeviceID ?? ""
+            Section("Watching" + (watchDeviceId.isEmpty ? "" : " · \(watchDeviceId)")) {
+                Button {
+                    DispatchQueue.main.async { VLCPlayerWindowManager.shared.focus() }
+                } label: {
+                    Label {
+                        Text("Ch \(info.channel.GuideNumber)  \(info.channel.GuideName)" +
+                             (info.entry.map { " · \($0.Title)" } ?? ""))
+                    } icon: {
+                        Image(systemName: "play.tv.fill").foregroundStyle(watchNowBlue)
+                    }
+                }
+            }
+        }
         // ── Recording now ─────────────────────────────────────────────────
         if !recordingShows.isEmpty {
             if state.devices.count > 1 {
