@@ -158,7 +158,7 @@ func guideEntryColor(for entry: GuideEntry, onAir: Bool) -> Color {
 
 ### `==` Implementation
 
-Compares: `channel.GuideNumber`, `entries.count`, `selectedEntry?.StartTime`, `selectedChannel?.GuideNumber`, `lineupEntry?.GuideNumber`, `genreFilter`, `displayStart`, `managedSeriesIDs`, `managedTitles`, `recordingSeriesIDs`, `recordingTitles`, `nextUpSeriesIDs`, `nextUpTitles`, `bonusSeriesIDs`, `bonusTitles`, `bonusMinutes`.
+Compares: `channel.GuideNumber`, `entries.count`, `selectedEntry?.StartTime`, `selectedChannel?.GuideNumber`, `lineupEntry?.GuideNumber`, `genreFilter`, `displayStart`, `deviceId`, `managedSeriesIDs`, `managedTitles`, `managedDTSingleSlotKeys`, `recordingSeriesIDs`, `recordingTitles`, `nextUpSeriesIDs`, `nextUpTitles`, `bonusSeriesIDs`, `bonusTitles`, `bonusMinutes`.
 
 The `lineupEntry?.GuideNumber` field is included because a `nil → non-nil` change (lineup arriving after a cached guide load) must force a re-evaluation so that tap handlers get the real `LineupEntry` reference instead of nil. Without this, the first tap after a cold load does nothing — the handler calls `onSelect(entry, nil)` and `AddShowView` can't advance because `selectedChannel == nil`.
 
@@ -218,9 +218,10 @@ The monitor returns `nil` (consuming the event) so the channel column itself doe
 
 ## Performance Optimizations
 
-- **Cached state** (`lineupByNumber`, `displayStart`, `timeSlots`) rebuilt once via `rebuildCaches()` on appear/lineup/guideHours/width changes — not on scroll.
+- **`lbn`/`favs`/`others` computed once per body evaluation** — `lineupByNumber` (a `Dictionary` build over `lineup`) and the favorites/others split are computed once in `body` and passed to both `channelColumnFixed` and `guideScrollView`. Avoids rebuilding the dictionary twice per render.
+- **Cached state** (`displayStart`, `timeSlots`) rebuilt once via `rebuildCaches()` on appear/guideHours/width changes — not on scroll.
 - **`ShowBlocksRow.equatable()`** — skips body re-eval for unchanged rows during scroll.
-- **`visibleEntries(_:)`** — filters each channel's entries to the display window before passing to rows.
+- **`visibleEntries(_:)`** — filters only; no sort. `GuideStore.buildIndex` pre-sorts each channel's `Guide` array when indexing, so `ch.Guide` is already in `StartTime` order by the time the view reads it.
 - **No `LazyVStack`** — eager rendering of ~106 rows is fast because `.equatable()` skips unchanged rows.
 
 ---
@@ -235,8 +236,10 @@ The monitor returns `nil` (consuming the event) so the channel column itself doe
 | `selectedEntry` | `@Binding GuideEntry?` | Currently selected guide cell |
 | `selectedChannel` | `@Binding LineupEntry?` | Channel of the selected cell |
 | `snapToNow` | `@Binding Bool` | Set true to scroll grid to current time |
-| `managedSeriesIDs` | `Set<String>` | Shows already scheduled — bookmark badge |
-| `managedTitles` | `Set<String>` | Title-based fallback for managed badge |
+| `deviceId` | `String` | DeviceID of the device whose guide is shown — used to key DateTime/Single slot matches |
+| `managedSeriesIDs` | `Set<String>` | SeriesID(Channel/All) shows — yellow flag on any matching episode |
+| `managedTitles` | `Set<String>` | Title fallback for SeriesID shows that have no SeriesID in the entry |
+| `managedDTSingleSlotKeys` | `Set<String>` | DateTime/Single shows — `"deviceId:channel:epoch"` keys; yellow flag only on the exact scheduled slot |
 | `recordingSeriesIDs` | `Set<String>` | Shows currently recording — red border + dot |
 | `recordingTitles` | `Set<String>` | Title-based fallback for recording badge |
 | `nextUpSeriesIDs` | `Set<String>` | Shows recording within 30 min — orange border + clock |

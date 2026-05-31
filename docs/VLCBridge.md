@@ -46,6 +46,54 @@ On success, init creates:
 
 ---
 
+## Buffered Playback & Rate Controller
+
+Every `play(url:)` call applies three media options before starting:
+
+```swift
+"--network-caching=2000"  // 2s initial prebuffer — near-instant start
+"--drop-late-frames"      // drop corrupt/late frames rather than showing artifacts
+"--avcodec-hurry-up"      // drop non-essential B-frames under decode pressure
+```
+
+An adaptive rate controller runs every 3 seconds via a repeating `Timer` (`statsTimer`):
+
+- **Fill phase**: Plays at `minRate` (from `AppConfig.Player_buffer_min_rate`; default 0.93). Stream arrives ~7% faster than consumed — VLC's demux buffer grows.
+- **Hold phase**: Rate ramps linearly toward 1.0 as `estimatedLagSec` approaches the 8-second target. At 8s the rate reaches 1.0 and the buffer stabilises.
+- **Auto catch-up**: Same tick polls `libvlc_media_player_get_stats`. If `i_demux_corrupted` rises by >15 or `i_lost_pictures` rises by >20 in 3s, calls `catchUpToLive()` with a 30s debounce.
+
+Rate formula applied every tick:
+```
+estimatedLagSec += (1.0 - currentRate) * 3.0   // capped at 8.0
+fillRatio = estimatedLagSec / 8.0
+newRate   = minRate + (1.0 - minRate) * fillRatio
+```
+
+`catchUpToLive()` calls `play(url: currentURL)`, which stops the stream, resets `estimatedLagSec` to 0, and restarts the fill phase from scratch.
+
+When `minRate == 1.0` (buffering disabled in Settings), rate control is skipped entirely; the stats timer still runs for corruption detection only.
+
+### Logging
+
+Every significant controller event is logged to `hdhrVCRplus.log`:
+
+| Event | Level | Message |
+|---|---|---|
+| VLC loaded | INFO | `[VLC] loaded version 3.0.21 Vetinari` |
+| VLC 4+ detected | WARN | `[VLC] WARNING: VLC 4.x detected — stats struct changed…` |
+| Rate accepted | INFO | `[VLC] rate set to 0.93 (fill phase)` |
+| Rate ignored | WARN | `[VLC] WARNING: set_rate(0.93) ignored — actual rate is 1.00; buffer will not grow…` |
+| Rate ramp tick | INFO | `[VLC] rate → 0.961 (lag ~3s / 8s)` |
+| Stats call failed | WARN | `[VLC] WARNING: get_stats returned N — stats polling skipped (may indicate VLC 4 struct mismatch)` |
+| Auto catch-up | INFO | `[VLC] signal corruption detected (corrupt=N lost=N) — catching up to live` |
+
+### Known risks
+
+- **VLC 4.x stats struct** — `VLCStats` mirrors the VLC 3.x `libvlc_media_stats_t` field layout. VLC 4 reorganised the struct; on VLC 4 the corruption/lost-frame counters will read garbage. The version check at init logs a WARNING if major ≥ 4, and the stats return-value check logs a WARNING if the call returns non-1. Both degrade gracefully: auto catch-up stops working but playback is unaffected.
+- **`set_rate` on live streams** — `libvlc_media_player_set_rate` may be silently ignored for non-seekable streams on some VLC versions. After setting rate, `libvlc_media_player_get_rate` is called to verify; a mismatch logs a WARNING. If ignored, the buffer never grows but playback continues normally at 1.0x.
+
+---
+
 ## C Struct Mirrors
 
 libvlc returns linked lists for audio outputs and devices. Since we have no VLC headers at compile time, the structs are mirrored in Swift:
@@ -106,16 +154,23 @@ _mpSetNSO?(mp, Unmanaged.passUnretained(view).toOpaque())
 
 ```swift
 func play(url: String) {
+    stopStatsTimer()
     _mpStop?(mp)
     if let old = currentMedia { _mediaRelease?(old); currentMedia = nil }
     guard let media = url.withCString({ _mediaNL?(inst, $0) }) else { return }
-    currentMedia = media
+    for opt in ["--network-caching=2000", "--drop-late-frames", "--avcodec-hurry-up"] {
+        opt.withCString { _mediaAddOpt?(media, $0) }
+    }
+    currentURL = url; currentMedia = media
+    estimatedLagSec = 0; currentRate = minRate
     _mpSetMedia?(mp, media)
     _ = _mpPlay?(mp)
+    _ = _mpSetRate?(mp, minRate)   // verified immediately after; logs WARNING if ignored
+    startStatsTimer()
 }
 ```
 
-The sequence stop → release old media → new media → set on player → play is the correct libvlc pattern. Skipping `_mpStop` before setting new media can leave the previous stream in flight and produce audio bleed. The `currentMedia` reference is retained because libvlc does not retain the media object after `libvlc_media_player_set_media` — releasing it immediately would deallocate the media while VLC is still reading it.
+The sequence stop → cancel timer → release old media → add options → set on player → play → set rate → start timer is the correct libvlc pattern. `libvlc_media_add_option` must be called before `libvlc_media_player_set_media` — options set after that call are silently ignored. The `currentMedia` reference is retained because libvlc does not retain the media object after `libvlc_media_player_set_media`.
 
 ---
 
@@ -144,9 +199,12 @@ Setting a device requires passing both the output name and device ID to `libvlc_
 
 ```swift
 var isAvailable: Bool                                          // false when VLC not installed
+var minRate: Float                                             // fill-phase floor (0.90–1.0); set from AppConfig
+var currentURL: String?                                        // URL currently playing; nil when stopped
 func setDrawable(_ view: NSView)                              // must be called before first play()
-func play(url: String)                                        // stop + switch to new URL
-func stop()                                                   // stop + release current media
+func play(url: String)                                        // stop + switch to new URL; resets rate controller
+func stop()                                                   // stop + release media; cancels stats timer
+func catchUpToLive()                                          // discard buffer, reconnect at live edge
 func volume() -> Int                                          // 0–100
 func setVolume(_ v: Int)                                      // 0–100
 func audioOutputs() -> [(name: String, description: String)]

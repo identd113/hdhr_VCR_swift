@@ -2,6 +2,15 @@
 
 > In-app changelog (Settings → About) is maintained in [`Sources/hdhr_VCR/Changelog.swift`](Sources/hdhr_VCR/Changelog.swift).
 
+## 2026-05-31 (260531-0001)
+
+- **Buffered live TV playback** — the in-app VLC player now builds and maintains an ~8-second live buffer to absorb brief signal drops invisibly. Uses an adaptive rate controller: starts at the user-configured floor rate (default 93%), ramping toward 100% as the buffer fills over ~3 minutes, then holds at 1.0× to maintain the lag. `--drop-late-frames` and `--avcodec-hurry-up` tell VLC to drop corrupt/late frames rather than showing artifacts.
+- **Auto catch-up on bad signal** — polls `libvlc_media_player_get_stats` every 3 seconds; if `i_demux_corrupted` rises by >15 or `i_lost_pictures` rises by >20 in a single tick, the stream restarts at the live edge automatically (30s debounce). The rate controller resets and the fill phase begins again.
+- **Catch Up button** — `⟳` button in the VLC player toolbar; discards buffered content and reconnects at the live edge on demand without showing the poster overlay or requiring a Start click.
+- **Min buffer rate setting** — Settings → Recording → Min buffer rate picker (90%–100%, default 93%). Sets the floor speed during the fill phase; 100% disables buffering entirely while keeping the Catch Up button functional.
+- **Buffering diagnostics** — VLC version logged at startup; WARNING if VLC 4+ detected (stats struct changed); rate acceptance verified after `set_rate` and logged as WARNING if ignored; stats call failures logged; rate ramp ticks logged to `hdhrVCRplus.log`.
+- **Discord progress updates** — new "Progress updates (every 5 min)" toggle in Settings → Discord. When enabled, the Recording Started embed is edited in-place every 5 minutes with elapsed and remaining time (e.g. "32m elapsed · 28m remaining"). Completion and failure events also edit the same message rather than posting a new one, so each recording produces a single Discord message that tracks its full lifecycle. Uses `?wait=true` capture on the start embed and `PATCH /messages/{id}` for edits.
+
 ## 2026-05-30
 
 - **Code modularization** — extracted duplicated helpers from AddShowView, FloatingGuideView, MenuContent, and CableGuideView into a shared `GuideViewHelpers.swift`: `ManagedFlagView` (yellow corner triangle), `sortedGuideChannels(_:favorites:)`, `guideTimeRange(_:)`, and shared DateFormatters (`origAirdateFormatter`, `upcomingFormatter`, `timeRangeFormatter`). `GuideEntry.episodeInfoLabel` moved to a Models.swift extension. `bonusOverlapWarning` moved to AppState. Show failure field mutations consolidated into `Show.recordFailure(reason:)` and `Show.clearFailures()`. Guide API backoff+notify logic deduplicated into `handleGuideLoadFailure(deviceId:)`. Net: −139 lines, no behaviour changes.

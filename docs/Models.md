@@ -56,6 +56,12 @@ All five date fields (`show_next`, `show_end`, `show_last`, `notify_upnext_time`
 
 ---
 
+## Discord Tracking Field
+
+`discord_start_msg_id: String` (default `""`) — stores the Discord message ID returned by the `?wait=true` webhook response when a "Recording Started" embed is sent. Used by `AppState` to edit that embed in-place at completion, failure, or on progress updates. Persisted in config JSON so that a restart during a recording can still edit the original start message. Cleared to `""` after the recording ends (success or failure).
+
+---
+
 ## Show Failure Helpers
 
 Two mutating methods on `Show` consolidate the repeated failure-state field group:
@@ -69,7 +75,7 @@ Two mutating methods on `Show` consolidate the repeated failure-state field grou
 
 - `Filter: [String]?` — genre tags (e.g. `["Drama", "Series"]`). Absent from some devices; decodes as `nil` when key is missing.
 - `firstGenre: String?` — computed shorthand for `Filter?.first`; used for guide cell coloring and genre filter picker.
-- `episodeInfoLabel: String?` — computed property; joins `EpisodeNumber` and `EpisodeTitle` with `"  ·  "`, returning `nil` when both are absent. Used in menus and guide summary panels.
+- `episodeInfoLabel: String?` — computed property; joins `EpisodeNumber` and `EpisodeTitle` with `" · "`, returning `nil` when both are absent or empty. Used in WatchNowView, AddShowView, and FloatingGuideView summary panels.
 
 ---
 

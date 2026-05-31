@@ -160,7 +160,7 @@ Sidebar entries (with SF Symbol icons):
 
 - **Webhook URL** — `TextField` bound to `draft.Discord_webhook_url`. Monospaced font. Shown only when `draft.Discord_enabled` is true. Leave blank (or disable the master toggle) to suppress all Discord notifications. `sendDiscordEmbed()` in `DiscordNotifier.swift` silently no-ops for blank or non-discord.com URLs.
 - **Test button** — a single `.bordered` `"Test"` button next to the URL field; replaced by `ProgressView(.small)` while testing. Calls `state.checkWebhookURL(draft.Discord_webhook_url)` (sends a real ping to Discord). Disabled when the URL is blank.
-- **`Section("Notify when…")`** — flat list of 10 plain `Toggle` rows, shown only when `draft.Discord_enabled && !draft.Discord_webhook_url.isEmpty`. No per-row Test buttons, no sub-sections, no helper function. Event names: Recording started, Recording complete, Recording failed, Show paused, Skipped — disk full, Tuner conflict, Guide load failed, Show added, Up Next reminder, Recording Soon reminder.
+- **`Section("Notify when…")`** — flat list of 11 plain `Toggle` rows, shown only when `draft.Discord_enabled && !draft.Discord_webhook_url.isEmpty`. No per-row Test buttons, no sub-sections, no helper function. Event names: Recording started, Recording complete, Recording failed, Show paused, Skipped — disk full, Tuner conflict, Guide load failed, Show added, Up Next reminder, Recording Soon reminder, **Progress updates (every 5 min)** (`Discord_on_progress` — edits the start embed in-place every 5 min with elapsed/remaining time while recording).
 
 #### Discord embed structure
 

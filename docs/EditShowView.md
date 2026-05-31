@@ -53,7 +53,7 @@ ScrollView {
   }
 }
 navBar: [Delete] ... [Save]
-Escape key: `.onExitCommand { dismiss() }` on root Group — dismisses without saving
+Escape key: `.onExitCommand` on root Group — shows dirty-check `NSAlert` (Save / Discard / Cancel) when unsaved changes exist; dismisses immediately if clean
 ```
 
 ---
@@ -68,7 +68,7 @@ Called from `.onAppear`. Reads `state.editingShowId`, finds the matching show in
 - `airDays` — `Set(show.show_air_date)`
 - `recordFolder` — `URL(fileURLWithPath: show.posixRecordDir)`, falling back to `state.defaultSaveDir`
 
-`posixRecordDir` handles Mac alias paths (`"Vol:Dir:Sub:"` → `"/Volumes/Vol/Dir/Sub"`). If `show_temp_dir` is empty, falls back to `~/Movies/hdhr_videos`.
+`posixRecordDir` uses `show_dir` as the primary path. If `show_dir`'s parent directory doesn't exist (i.e. the volume is unmounted), it falls back to `show_temp_dir` (or `~/Movies/hdhr_videos` if that's also empty). This means recordings automatically redirect to a local fallback when a NAS or external drive goes offline.
 
 ### Show Type Changes — `applySeriesType()`
 
@@ -135,7 +135,5 @@ Calls `state.confirmAndDeleteShow(s) { dismiss() }` — same flow as menu-based 
 - **SeriesID is read-only** — the SeriesID is shown but can't be changed. If the SiliconDust guide changes a series' ID (which happens occasionally), the only fix is delete + re-add.
 
 - **No "Schedule Now" button** — for debugging, it would be useful to immediately trigger a scheduling pass for a show (force it to find its next episode in the guide) without waiting for the idle loop.
-
-- **No unsaved-changes warning on close** — unlike `SettingsView`, `EditShowView` has no `WindowCloseInterceptor`. Closing the window or pressing Escape discards edits silently.
 
 - **No undo** — once Save is pressed, the old values are gone. A Revert button (or Cancel-to-original) is the standard macOS pattern and would make this view safer to use.

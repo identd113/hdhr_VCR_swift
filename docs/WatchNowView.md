@@ -37,27 +37,25 @@ Each card is an `HStack(alignment: .top, spacing: 10)` with 14pt horizontal and 
 - Background: genre color from `guideEntryColor(for:onAir:true)` at 55% opacity
 - Poster image (`.scaledToFill`) if available from `ChannelIconCache`, or `tv` SF Symbol at 40% white
 - Clip: `RoundedRectangle(cornerRadius: 6)`
-- **Yellow managed flag**: 18×18pt `Path`-based right-angle triangle at `.topTrailing` when the airing show matches a managed show (via SeriesID then title)
+- **Yellow managed flag**: `ManagedFlagView(size: 18)` at `.topTrailing`. SeriesID(Channel/All) shows: shown on any matching episode. DateTime/Single shows: shown only when `device.DeviceID`, `channel.GuideNumber`, and `entry.StartTime` all match the scheduled slot.
 
 ### Info column (right)
 `VStack(alignment: .leading, spacing: 3)`:
 - Channel logo (16×16) + `"ch 5.1  NBC HD"` caption.bold secondary + `"🔴 Recording"` red badge when `managedShow?.show_recording == true`
 - Show title — `.subheadline.bold`, 1 line
-- Episode subtitle (EpisodeNumber + EpisodeTitle) — `.caption` secondary, 1 line; omitted when both are nil
+- Episode subtitle — `entry.episodeInfoLabel` (`.caption` secondary, 1 line); format: `"S01E05 · Episode Title"`, or just the non-nil part if only one is present; omitted when both are absent
 - Time range + remaining — `.caption2` tertiary, e.g. `"8:00 PM – 9:00 PM  ·  42m left"`
 - **Action row** (`.controlSize(.small)`):
   - **Watch** (`.borderedProminent`, `watchNowBlue`) — `state.watchInApp(url:title:deviceId:)`; shown only when `VLCBridge.shared.isAvailable`
-  - **VLC** (`.bordered`, VLC orange) — `state.watchInVLC(url:deviceId:)`; shown only when `config.Watch_in_VLC`
+  - **VLC** (`.borderedProminent`, VLC orange) — `state.watchInVLC(url:deviceId:)`; shown only when `config.Watch_in_VLC`
   - **Edit** (`.bordered`) — opens `"edit-show"` window for managed shows
-  - **Record** (`.bordered`, red tint) — sets `state.pendingAddEntry` and opens `"add-show"` window for unmanaged shows
+  - **Record** (`.borderedProminent`, red tint) — sets `state.pendingAddEntry` and opens `"add-show"` window for unmanaged shows
 
 ---
 
 ## Data Flow
 
-`onAirChannels` — computed from `state.lineups[selectedDeviceId]` filtered to channels where `state.menuGuideEntries` contains a currently-airing entry (StartTime ≤ now < EndTime). Favorites sort before others; within each group sorted by `channelSortKey`.
-
-`state.menuGuideEntries` is pre-built by `rebuildMenuEntries()` in the idle loop — access is O(1); no guide fetch happens inside this view.
+`onAirChannels` — iterates `state.lineups[selectedDeviceId]`, calls `state.guideEntries(deviceId:channelNum:)` per channel to find a currently-airing entry (StartTime ≤ now < EndTime), deduplicates by GuideNumber, then sorts favorites first, then by `channelSortKey`. `guideEntries` reads from `GuideStore.channelEntryIndex` (pre-built at guide load time) — no network fetch happens inside this view.
 
 `state.watchNowDeviceId` — set by `MenuContent.watchNowMenu` before calling `open("watch-now")`. `onAppear` seeds `selectedDeviceId` from this value; `onChange` syncs it if the menu sets a new value while the window is already open.
 

@@ -14,6 +14,14 @@ Settings → About uses a custom `renderChangelog()` `@ViewBuilder` in `Settings
 
 ---
 
+## FloatingGuideView: summaryPanel isManaged uses O(n) search instead of Set lookup
+
+`summaryPanel` is a separate `@ViewBuilder private var` and can't access the `managedSeriesIDs`/`managedTitles`/`managedDTSingleSlotKeys` Sets built in `body`. Lines 185-200 re-derive them via `contains(where:)` on `state.shows` on every render. Fix: promote the three sets to `private var` computed properties on `FloatingGuideView` so both `body` and `summaryPanel` use O(1) Set lookups from the same source.
+
+**Key file**: `Sources/hdhr_VCR/Views/FloatingGuideView.swift` lines 42-49 (body) and 185-200 (summaryPanel).
+
+---
+
 ## Colored guide entry rows in .menu add-show cascade
 
 Color the background of each guide entry row in the `.menu` mode add-show cascade (channel submenu → entry list) with the genre color, matching the cable guide grid.

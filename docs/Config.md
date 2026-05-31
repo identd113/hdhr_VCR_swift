@@ -35,6 +35,7 @@ Verbose_curl            Bool    false   add -v to curl; stderr appended to hdhrV
 Watch_in_VLC            Bool    false   show "Watch in VLC" buttons (only when VLC installed)
 Watch_in_VLC_initialized Bool   false   set true after first VLC auto-detect; prevents overriding user's toggle on subsequent launches
 Player_unlocked         Bool    false   gates the in-app VLC player (unlocked by 5-tap easter egg on About logo)
+Player_buffer_min_rate  Int     93      floor playback rate % for adaptive buffer fill (90–100); 100 = disabled
 Sports_padding_enabled  Bool    true    master Bonus Time toggle; extends recording past guide end for sports shows
 Sports_padding_minutes  Int     30      Bonus Time extension duration in minutes (10–60, step 5)
 Discord_enabled         Bool    false   master Discord on/off toggle; decode fallback is `!Discord_webhook_url.isEmpty` (auto-enables for existing configs that already have a webhook set)
@@ -49,6 +50,7 @@ Discord_on_guide_error  Bool    true    embed on guide load failure
 Discord_on_upnext       Bool    false   embed for Up Next reminder
 Discord_on_soon         Bool    false   embed for Recording Soon reminder
 Discord_on_show_added   Bool    false   embed when show is added
+Discord_on_progress     Bool    false   edit the "Recording Started" embed every 5 min with elapsed/remaining time
 Hdhr_setup_folder       String  ""      default recording folder (POSIX path; empty = ~/Movies/hdhr_videos)
 Config_version          String  "2"     format version marker; "2" = ISO8601 dates + "shows" key
 ```

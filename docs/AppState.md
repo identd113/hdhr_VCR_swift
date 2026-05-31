@@ -29,6 +29,7 @@ Runs every `config.Idle_timer_interval` seconds on MainActor:
   - Starts recording if `show_next <= now + 10s` AND `show_end > now`.
   - Stops recording naturally if `show_end <= now`.
   - Detects unexpected caffeinate exit → increments fail count, sends notification.
+  - Fires Discord progress update (PATCH) once per 5-minute boundary for active recordings when `Discord_on_progress` is enabled and `discord_start_msg_id` is set.
 - Conflict notifications: when a show can't start because all tuners are full, fires once per show+episode window (`conflictNotifiedKeys` set keyed by `"showID-show_next_epoch"`).
 - Calls `fetchDeviceStatus(for:)` once per device — a single `/status.json` fetch per device covers both the menu-header occupancy count and per-recording vstatus signal data (one targeted `/tunerN/vstatus` per recording show, identified from the status.json result). Tuner matching: prefers the tuner whose `VctNumber` equals `show.show_channel`; falls back to any locked tuner when the format doesn't match exactly (sub-channel firmware variation). Logs a warning if no locked tuner is found at all.
 
@@ -88,7 +89,7 @@ Falls back to **SiliconDust cloud API** (`http://discover.hdhomerun.com/discover
 
 | Method | Description |
 |---|---|
-| `startRecording(index:)` | Computes `endDate` (show_end ?? show_length fallback, then +bonus padding if active). Always writes `shows[index].show_end = endDate` before launching so the idle-loop natural-stop and notifications both use the final value. Notification and Discord "Ends" field use `endDate`, not the pre-padding `show.show_end`. |
+| `startRecording(index:)` | Computes `endDate` (show_end ?? show_length fallback, then +bonus padding if active). Always writes `shows[index].show_end = endDate` before launching so the idle-loop natural-stop and notifications both use the final value. Notification and Discord "Ends" field use `endDate`, not the pre-padding `show.show_end`. When `Discord_on_start` is enabled, sends the embed with `?wait=true` via `sendDiscordEmbedCapturing` (async `Task`) to capture the message ID, which is stored in `shows[i].discord_start_msg_id` for later editing. |
 | `pauseShow(_:)` | Sets `show_paused = true`, `show_fail_reason = "Manually paused"`, saves config |
 | `resumeShow(_:)` | Clears `show_paused`, resets fail count + reason, saves config |
 | `watchInVLC(url:)` | Opens stream in `/Applications/VLC.app` via `NSWorkspace`; no-op if VLC absent or `Watch_in_VLC` false |
@@ -96,6 +97,18 @@ Falls back to **SiliconDust cloud API** (`http://discover.hdhomerun.com/discover
 | `confirmAndDeleteShow(_:then:)` | Fetches poster async → NSAlert with image → stops recording + removes show |
 | `testDiscordEvent(_:webhookURL:)` | Sends test embed using real show data; always passes `enabled: true` |
 | `formatFileSize(_:)` | Private static; formats bytes as `"X.XX GB"` / `"X.X MB"` / `"X KB"` |
+
+---
+
+## Discord Embed Flow
+
+Recording lifecycle embeds edit the original "Recording Started" message in-place rather than posting new messages:
+
+1. **Recording starts** — `startRecording` calls `sendDiscordEmbedCapturing` (async `Task`). Discord echoes the created message when `?wait=true`; the message ID is stored in `show.discord_start_msg_id`.
+2. **Progress update** — the idle loop checks once per 5-minute boundary: if `show_recording && !discord_start_msg_id.isEmpty && Discord_on_progress`, it calls `editDiscordEmbed` with an "⏺ Recording In Progress" embed containing `"Xm elapsed · Ym remaining"`.
+3. **Recording ends** — `stopRecording` / file-verify path passes `editMessageId: show.discord_start_msg_id` to `discordShow`, which calls `editDiscordEmbed` (PATCH) instead of `sendDiscordEmbed` (POST). `discord_start_msg_id` is cleared to `""` after.
+
+**Helper split**: `buildDiscordShowEmbed(event:show:color:extra:)` builds the `[String: Any]` embed dict (author, title, description, fields, thumbnail, footer). `discordShow` wraps it with guard checks and routes to either `sendDiscordEmbed` or `editDiscordEmbed` based on `editMessageId`. `sendDiscordEmbedCapturing` and `editDiscordEmbed` are free functions in `DiscordNotifier.swift`.
 
 ---
 

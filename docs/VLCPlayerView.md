@@ -15,7 +15,8 @@
 
 - **Channel picker** (left, max 220pt wide): standard `Picker` popup — rows show `"5.1  NBC"` channel number + name. Hidden label. Updates `selectedChannel` on change, which triggers `playChannel()`.
 - **Spacer**
-- **Live clock** (center): `TimelineView(.periodic(from: .now, by: 1.0))` rendering current wall time in monospacedDigit secondary-color text, min 70pt width. Updates every second — appropriate for live TV where there's no elapsed/scrubbing concept.
+- **Catch Up button** (`arrow.clockwise.circle`, `.plain` style): calls `VLCBridge.shared.catchUpToLive()` — stops the stream, discards the accumulated buffer, and reconnects at the live edge. The rate controller resets and the fill phase starts over. The poster overlay does **not** re-appear after catch-up (it only shows on a fresh channel switch, not on a same-channel restart).
+- **Live clock**: `TimelineView(.periodic(from: .now, by: 1.0))` rendering current wall time in monospacedDigit secondary-color text, min 70pt width. Updates every second.
 - **Volume section**:
   - `speaker.wave.2` SF Symbol in secondary color (accessibilityLabel: `"Volume"`)
   - `Slider(in: 0...100)`, 100pt wide
@@ -149,13 +150,17 @@ Pre-selection via `syncChannel` only updates `selectedChannel` — it does **not
 ### Toolbar Layout
 
 ```
-[Channel picker ─────────] Spacer [🔊] [─── slider ───] | [Output picker] [Device picker]
+[Channel picker ─────────] Spacer [⟳] [🕐] [🔊] [─── slider ───] | [Output picker] [Device picker]
 ```
 
 - **Channel picker**: `.labelsHidden()`, max width 220 pt, tags use `Optional(ch)` to match the `LineupEntry?` binding
+- **Catch Up button** (`arrow.clockwise.circle`): calls `VLCBridge.shared.catchUpToLive()` — discards the accumulated buffer and reconnects at the live edge. Poster overlay does NOT re-appear after catch-up (it only appears on a fresh channel switch).
+- **Clock**: live wall-clock `TimelineView`, monospaced
 - **Volume**: speaker icon + `Slider(value:in:0...100)`. `onChange` maps to `VLCBridge.shared.setVolume(Int(v))`.
 - **Audio output picker**: only shown when `!audioOutputs.isEmpty`. Selecting an output also triggers `refreshAudioDevices()` because the device list is output-scoped.
 - **Audio device picker**: only shown when `audioDevices.count > 1`. Hiding it when there is only one device avoids a pointless single-item picker cluttering the toolbar on most setups.
+
+`VLCBridge.shared.minRate` is set from `state.config.Player_buffer_min_rate / 100.0` in `.onAppear`, `.onChange(of: state.config.Player_buffer_min_rate)`, and in `VLCPlayerWindowManager.open()` before `play()` so the rate is correct for window-open channel switches.
 
 ### playChannel
 

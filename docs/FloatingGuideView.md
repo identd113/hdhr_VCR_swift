@@ -115,6 +115,10 @@ Single row: `[Tuner picker (multi-tuner only)] [Genre picker (when available)] �
 
 | Parameter | Source |
 |---|---|
+| `deviceId` | `selectedDevice?.DeviceID ?? ""` — keys DateTime/Single slot matching |
+| `managedSeriesIDs` | `Set` of `show_seriesid` from SeriesID(Channel/All) shows — yellow flag on any episode |
+| `managedTitles` | `Set` of `show_title` from the same SeriesID shows — title fallback when entry has no SeriesID |
+| `managedDTSingleSlotKeys` | `Set` of `"deviceId:channel:epoch"` from DateTime/Single shows — yellow flag only on the exact slot |
 | `recordingSeriesIDs` | `Set` of `show_seriesid` from `state.recordingShows` |
 | `recordingTitles` | `Set` of `show_title` from `state.recordingShows` |
 | `nextUpSeriesIDs` | `Set` of `show_seriesid` from `state.activeShows` where `show_next` is within 30 min |
@@ -137,7 +141,7 @@ Displays the same information as `AddShowView`'s summary panel with a few differ
 
 **Differences from AddShowView:**
 - No Record button (browse-only)
-- No "Watch in App" button (Player_unlocked not relevant here)
+- **Watch Now!** button (`play.tv.fill`, blue) shown when `onAir && VLCBridge.shared.isAvailable` — calls `state.watchInApp(url:title:deviceId:)`; no `Player_unlocked` gate
 - Shows a Bonus Time overlap warning via `state.bonusOverlapWarning(for:channel:deviceId:)` (AppState method) — see below
 
 **Common with AddShowView:**

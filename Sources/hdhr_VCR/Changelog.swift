@@ -1,6 +1,13 @@
 // Hand-maintained changelog displayed in Settings → About.
 // Update this file when shipping new features; keep most-recent version at the top.
 let appChangelog = """
+## 2026-05-31 (260531-0001)
+- Buffered live TV playback — in-app player builds an ~8-second buffer to absorb signal drops; adaptive rate controller starts at the configured floor rate (default 93%) and ramps to 100% as the buffer fills; corrupt/late frames dropped rather than shown as artifacts
+- Auto catch-up on bad signal — corruption stats polled every 3 seconds; stream restarts at live edge automatically when signal degrades beyond threshold (30s debounce)
+- Catch Up button (⟳) in VLC player toolbar — manually discard buffer and reconnect at live edge without showing poster
+- Min buffer rate setting (Settings → Recording, 90–100%, default 93%) — sets fill-phase floor speed; 100% disables buffering
+- Discord progress updates — new toggle in Settings → Discord; edits the Recording Started embed in-place every 5 minutes with elapsed/remaining time; completion and failure also edit the same message instead of posting a new one
+
 ## 2026-05-29 (260529-1620)
 - Recording Started notification now shows the correct end time when Bonus Time is active (was showing the un-padded guide end instead of the extended time)
 - Tuner signal data now falls back to any locked tuner when the channel number format in status.json doesn't match exactly — fixes missing signal strength on some sub-channel configurations
