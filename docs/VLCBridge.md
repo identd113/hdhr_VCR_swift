@@ -201,10 +201,12 @@ Setting a device requires passing both the output name and device ID to `libvlc_
 var isAvailable: Bool                                          // false when VLC not installed
 var minRate: Float                                             // fill-phase floor (0.90–1.0); set from AppConfig
 var currentURL: String?                                        // URL currently playing; nil when stopped
+@Published var bufferInfo: VLCBufferInfo                      // rate/lag/bitrate snapshot; published every 3s tick
 func setDrawable(_ view: NSView)                              // must be called before first play()
 func play(url: String)                                        // stop + switch to new URL; resets rate controller
 func stop()                                                   // stop + release media; cancels stats timer
 func catchUpToLive()                                          // discard buffer, reconnect at live edge
+func videoNativeSize() -> CGSize?                             // pixel dims from libvlc_video_get_size; nil until decoding
 func volume() -> Int                                          // 0–100
 func setVolume(_ v: Int)                                      // 0–100
 func audioOutputs() -> [(name: String, description: String)]
@@ -212,3 +214,19 @@ func setAudioOutput(_ name: String)
 func audioDevices(forOutput: String) -> [(id: String, name: String)]
 func setAudioDevice(output: String, deviceId: String)
 ```
+
+### VLCBufferInfo
+
+Published snapshot of the live buffer state, updated on every `tickController` tick:
+
+```swift
+struct VLCBufferInfo {
+    var lagSec:       Double  // estimated buffer lag behind live edge (0..8s)
+    var rate:         Float   // current playback rate (minRate..1.0)
+    var demuxBitrate: Float   // f_demux_bitrate from libvlc stats (kB/s); 0 when stats unavailable
+    var corrupted:    Int32   // cumulative i_demux_corrupted count
+    var enabled:      Bool    // false when minRate == 1.0 (buffering disabled)
+}
+```
+
+`rate`/`lag` are published unconditionally each tick (before the stats guard) so the buffer monitor bar remains functional even when `_mpGetStats` is unavailable (VLC 4+). `demuxBitrate` and `corrupted` retain their previous values when stats are skipped.

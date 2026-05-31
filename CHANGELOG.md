@@ -2,6 +2,18 @@
 
 > In-app changelog (Settings → About) is maintained in [`Sources/hdhr_VCR/Changelog.swift`](Sources/hdhr_VCR/Changelog.swift).
 
+## 2026-05-31 (260531-0223)
+
+- **Native resolution button** — `aspectratio` icon in VLC player toolbar; calls `libvlc_video_get_size`, divides by screen backing scale, and resizes the window to display video at 1:1 physical pixels; no-op until the first frame is decoded
+- **Buffer monitor icon** — `waveform` SF Symbol added to the left of the fill bar; color tracks fill state (accent while filling, green when full)
+- **Speed up to live** — catch-up button updated to `forward.end.circle` icon with tooltip "Speed up to live — discard buffer and jump to live edge"
+- **Native resolution** — `videoNativeSize()` added to `VLCBridge` via `libvlc_video_get_size`; `VLCPlayerWindowManager.sizeToNativeVideo()` handles window resize
+
+## 2026-05-31 (260531-0157)
+
+- **Buffer monitor** — `waveform` icon + fill-bar capsule in VLC player toolbar (visible only when buffering enabled); fill = lag / 8s, blue while filling, green when full (≥ 7s); hover popover shows lag, rate, bitrate, and corruption count. `VLCBridge` made `ObservableObject`; `VLCBufferInfo` published every 3s; rate/lag published unconditionally before stats guard so bar works on VLC 4+
+- **Watch Now focus-or-open** — clicking Watch Now in the menu now brings the existing window forward if already open, matching Add Show / Edit Show / Settings behaviour
+
 ## 2026-05-31 (260531-0137)
 
 - **Proportional poster images** — Watch Now thumbnails are now ~50% larger (34% of window width, capped at 220pt, aspect-ratio locked at 96:68) and scale with window resize instead of being fixed at 96×68pt; VLC player poster overlay scales to 30% of the player window width instead of a hardcoded 300pt

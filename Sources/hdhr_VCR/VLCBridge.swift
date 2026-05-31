@@ -60,6 +60,7 @@ private typealias vlc_media_add_opt_fn   = @convention(c) (OpaquePointer?, Unsaf
 private typealias vlc_mp_set_rate_fn     = @convention(c) (OpaquePointer?, Float) -> Int32
 private typealias vlc_mp_get_rate_fn     = @convention(c) (OpaquePointer?) -> Float
 private typealias vlc_mp_get_stats_fn    = @convention(c) (OpaquePointer?, UnsafeMutableRawPointer?) -> Int32
+private typealias vlc_video_get_size_fn  = @convention(c) (OpaquePointer?, UInt32, UnsafeMutablePointer<UInt32>?, UnsafeMutablePointer<UInt32>?) -> Int32
 private typealias vlc_get_version_fn     = @convention(c) () -> UnsafePointer<CChar>?
 
 // ── CoreAudio device change monitoring ───────────────────────────────────────
@@ -139,10 +140,11 @@ final class VLCBridge: ObservableObject {
     private let _adevListRel:  vlc_adev_list_rel_fn?
     private let _adevSet:      vlc_adev_set_fn?
     private let _mediaAddOpt:  vlc_media_add_opt_fn?
-    private let _mpSetRate:    vlc_mp_set_rate_fn?
-    private let _mpGetRate:    vlc_mp_get_rate_fn?
-    private let _mpGetStats:   vlc_mp_get_stats_fn?
-    private let _getVersion:   vlc_get_version_fn?
+    private let _mpSetRate:     vlc_mp_set_rate_fn?
+    private let _mpGetRate:     vlc_mp_get_rate_fn?
+    private let _mpGetStats:    vlc_mp_get_stats_fn?
+    private let _videoGetSize:  vlc_video_get_size_fn?
+    private let _getVersion:    vlc_get_version_fn?
 
     private init() {
         let vlcLib = "/Applications/VLC.app/Contents/MacOS/lib/"
@@ -178,6 +180,7 @@ final class VLCBridge: ObservableObject {
         _mpSetRate    = sym("libvlc_media_player_set_rate")
         _mpGetRate    = sym("libvlc_media_player_get_rate")
         _mpGetStats   = sym("libvlc_media_player_get_stats")
+        _videoGetSize = sym("libvlc_video_get_size")
         _getVersion   = sym("libvlc_get_version")
 
         isAvailable = h != nil && _new != nil && _mpNew != nil
@@ -278,6 +281,15 @@ final class VLCBridge: ObservableObject {
     func catchUpToLive() {
         guard let url = currentURL else { return }
         play(url: url)
+    }
+
+    /// Returns the video's native pixel dimensions once decoding has started; nil otherwise.
+    func videoNativeSize() -> CGSize? {
+        guard let mp = mediaPlayer, let fn = _videoGetSize else { return nil }
+        var w: UInt32 = 0
+        var h: UInt32 = 0
+        guard fn(mp, 0, &w, &h) == 0, w > 0, h > 0 else { return nil }
+        return CGSize(width: CGFloat(w), height: CGFloat(h))
     }
 
     // MARK: - Rate controller (private)

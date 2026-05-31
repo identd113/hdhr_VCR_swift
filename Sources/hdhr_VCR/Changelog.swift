@@ -1,6 +1,14 @@
 // Hand-maintained changelog displayed in Settings → About.
 // Update this file when shipping new features; keep most-recent version at the top.
 let appChangelog = """
+## 2026-05-31 (260531-0223)
+- Native resolution button (aspectratio icon) in VLC player toolbar — resizes window to 1:1 physical pixels using the stream's actual decoded dimensions
+- Buffer monitor now shows a waveform icon; catch-up button updated to forward.end.circle with "Speed up to live" tooltip
+
+## 2026-05-31 (260531-0157)
+- Buffer monitor in VLC player toolbar — waveform icon + fill bar showing live buffer fill (0–8s); hover for lag, rate, bitrate, and corruption count
+- Watch Now focus-or-open — clicking Watch Now in the menu brings the existing window forward if already open
+
 ## 2026-05-31 (260531-0137)
 - Proportional poster images — Watch Now thumbnails are ~50% larger and scale with window resize; VLC player poster also scales with the player window
 

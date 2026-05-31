@@ -228,15 +228,25 @@ struct VLCPlayerView: View {
 
             if bridge.bufferInfo.enabled { bufferMonitor }
 
-            // Catch Up: discard buffer and reconnect at live edge
+            // Native resolution: resize window to 1:1 physical pixels
             Button {
-                VLCBridge.shared.catchUpToLive()
+                VLCPlayerWindowManager.shared.sizeToNativeVideo()
             } label: {
-                Image(systemName: "arrow.clockwise.circle")
+                Image(systemName: "aspectratio")
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
-            .help("Catch up to live — discards buffer and reconnects")
+            .help("Native resolution — resize window to 1:1 pixels")
+
+            // Speed up to live: discard buffer and reconnect at live edge
+            Button {
+                VLCBridge.shared.catchUpToLive()
+            } label: {
+                Image(systemName: "forward.end.circle")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Speed up to live — discard buffer and jump to live edge")
 
             // Live wall-clock time — meaningful for live TV; no elapsed/scrubbing concept
             TimelineView(.periodic(from: .now, by: 1.0)) { ctx in
@@ -284,12 +294,17 @@ struct VLCPlayerView: View {
         let info = bridge.bufferInfo
         let fill = min(1.0, info.lagSec / 8.0)
         let barColor: Color = fill > 0.875 ? .green : .accentColor
-        return ZStack(alignment: .leading) {
-            Capsule().fill(.secondary.opacity(0.18))
-            Capsule().fill(barColor.opacity(0.85))
-                .frame(width: max(3, 50 * fill))
+        return HStack(spacing: 4) {
+            Image(systemName: "waveform")
+                .font(.caption2)
+                .foregroundStyle(barColor.opacity(0.9))
+            ZStack(alignment: .leading) {
+                Capsule().fill(.secondary.opacity(0.18))
+                Capsule().fill(barColor.opacity(0.85))
+                    .frame(width: max(3, 50 * fill))
+            }
+            .frame(width: 50, height: 6)
         }
-        .frame(width: 50, height: 6)
         .onHover { bufferInfoHovered = $0 }
         .popover(isPresented: $bufferInfoHovered, arrowEdge: .bottom) { bufferPopover }
     }
@@ -413,6 +428,18 @@ final class VLCPlayerWindowManager {
         win.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         self.window = win
+    }
+
+    /// Resize the window so the video surface is displayed at 1:1 physical pixels.
+    func sizeToNativeVideo() {
+        guard let win = window,
+              let pixels = VLCBridge.shared.videoNativeSize() else { return }
+        let scale   = win.screen?.backingScaleFactor ?? 2.0
+        let videoW  = pixels.width  / scale
+        let videoH  = pixels.height / scale
+        let toolbar = CGFloat(44)   // fixed: toolbar padding 8+8 + row ~26pt
+        win.setContentSize(CGSize(width: videoW, height: videoH + toolbar))
+        win.center()
     }
 
     fileprivate func playerWindowDidClose() {
