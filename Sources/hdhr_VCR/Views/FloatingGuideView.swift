@@ -39,10 +39,14 @@ struct FloatingGuideView: View {
                         EmptyStateView(title: "No guide data", systemImage: "tv.slash",
                                    description: "Guide data unavailable — tap Refresh to retry.")
                     } else {
-                        let managedSeriesIDs = Set(state.shows.compactMap {
-                            $0.show_seriesid.isEmpty ? nil : $0.show_seriesid
+                        let seriesIDShows    = state.shows.filter { $0.state == .seriesChannel || $0.state == .seriesAll }
+                        let managedSeriesIDs = Set(seriesIDShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
+                        let managedTitles    = Set(seriesIDShows.map { $0.show_title })
+                        // DateTime/Single shows: yellow only on the exact device+channel+slot
+                        let managedDTSingleSlotKeys: Set<String> = Set(state.shows.compactMap { show in
+                            guard show.state == .single || show.state == .dateTime, let next = show.show_next else { return nil }
+                            return "\(show.hdhr_record):\(show.show_channel):\(Int(next.timeIntervalSince1970))"
                         })
-                        let managedTitles = Set(state.shows.map { $0.show_title })
                         let recordingSeriesIDs = Set(state.recordingShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
                         let recordingTitles = Set(state.recordingShows.map { $0.show_title })
                         let now30 = Date()
@@ -63,8 +67,10 @@ struct FloatingGuideView: View {
                             selectedEntry:      $selectedEntry,
                             selectedChannel:    $selectedChannel,
                             snapToNow:          $snapToNow,
-                            managedSeriesIDs:   managedSeriesIDs,
-                            managedTitles:      managedTitles,
+                            deviceId:                selectedDevice?.DeviceID ?? "",
+                            managedSeriesIDs:        managedSeriesIDs,
+                            managedTitles:           managedTitles,
+                            managedDTSingleSlotKeys: managedDTSingleSlotKeys,
                             recordingSeriesIDs: recordingSeriesIDs,
                             recordingTitles:    recordingTitles,
                             nextUpSeriesIDs:    nextUpSeriesIDs,
@@ -177,10 +183,20 @@ struct FloatingGuideView: View {
             let isSportsBonusEntry = entry.firstGenre?.lowercased().contains("sports") == true
                                   && state.config.Sports_padding_enabled
             let isManaged: Bool = {
+                // SeriesID(Channel/All): yellow on any matching episode
+                let seriesIDShows = state.shows.filter { $0.state == .seriesChannel || $0.state == .seriesAll }
                 if let sid = entry.SeriesID, !sid.isEmpty {
-                    return state.shows.contains { $0.show_seriesid == sid }
+                    if seriesIDShows.contains(where: { $0.show_seriesid == sid }) { return true }
+                } else {
+                    if seriesIDShows.contains(where: { $0.show_title == entry.Title }) { return true }
                 }
-                return state.shows.contains { $0.show_title == entry.Title }
+                // DateTime/Single: only flag the exact device+channel+slot
+                return state.shows.contains { show in
+                    (show.state == .single || show.state == .dateTime) &&
+                    show.hdhr_record  == selectedDevice?.DeviceID &&
+                    show.show_channel == selectedChannel?.GuideNumber &&
+                    Int(show.show_next?.timeIntervalSince1970 ?? -1) == entry.StartTime
+                }
             }()
 
             ZStack(alignment: .topTrailing) {

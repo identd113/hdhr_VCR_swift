@@ -247,15 +247,23 @@ struct WatchNowRow: View {
         .frame(width: 96, height: 68)
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .overlay(alignment: .topTrailing) {
-            if managedShow != nil {
-                Path { p in
-                    p.move(to:    CGPoint(x: 0,  y: 0))
-                    p.addLine(to: CGPoint(x: 18, y: 0))
-                    p.addLine(to: CGPoint(x: 18, y: 18))
-                    p.closeSubpath()
+            if let show = managedShow {
+                // SeriesID shows: yellow on any matching episode. DateTime/Single: only the scheduled slot.
+                let isSeriesBased = show.state == .seriesChannel || show.state == .seriesAll
+                let showYellow    = isSeriesBased
+                    || (show.hdhr_record  == device.DeviceID
+                        && show.show_channel == channel.GuideNumber
+                        && Int(show.show_next?.timeIntervalSince1970 ?? -1) == entry.StartTime)
+                if showYellow {
+                    Path { p in
+                        p.move(to:    CGPoint(x: 0,  y: 0))
+                        p.addLine(to: CGPoint(x: 18, y: 0))
+                        p.addLine(to: CGPoint(x: 18, y: 18))
+                        p.closeSubpath()
+                    }
+                    .fill(Color.yellow)
+                    .frame(width: 18, height: 18)
                 }
-                .fill(Color.yellow)
-                .frame(width: 18, height: 18)
             }
         }
     }
@@ -319,7 +327,7 @@ struct WatchNowRow: View {
                 } label: {
                     Label("VLC", systemImage: "arrow.up.forward.app").font(.caption.bold())
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.borderedProminent)
                 .tint(watchNowOrange)
                 .controlSize(.small)
             }
@@ -352,7 +360,7 @@ struct WatchNowRow: View {
                 } label: {
                     Label("Record", systemImage: "record.circle").font(.caption.bold())
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.borderedProminent)
                 .tint(.red)
                 .controlSize(.small)
             }

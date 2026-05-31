@@ -159,8 +159,10 @@ struct CableGuideView: View {
     @Binding var selectedEntry:   GuideEntry?
     @Binding var selectedChannel: LineupEntry?
     @Binding var snapToNow:       Bool        // set true externally to snap grid to now
-    let managedSeriesIDs:   Set<String>         // shows already scheduled (by SeriesID)
-    let managedTitles:      Set<String>         // shows already scheduled (by title fallback)
+    let deviceId:                String         // device whose guide is being shown
+    let managedSeriesIDs:        Set<String>   // SeriesID(Channel/All) shows — any episode gets yellow
+    let managedTitles:           Set<String>   // title fallback for SeriesID shows (no SeriesID in entry)
+    let managedDTSingleSlotKeys: Set<String>   // DateTime/Single shows — "deviceId:channel:epoch" for specific slot
     let recordingSeriesIDs: Set<String>         // shows currently recording
     let recordingTitles:    Set<String>
     let nextUpSeriesIDs:    Set<String>         // shows recording within 30 min
@@ -382,8 +384,10 @@ struct CableGuideView: View {
                                 timeSlots:          timeSlots,
                                 selectedEntry:      selectedEntry,
                                 selectedChannel:    selectedChannel,
-                                managedSeriesIDs:   managedSeriesIDs,
-                                managedTitles:      managedTitles,
+                                deviceId:                deviceId,
+                                managedSeriesIDs:        managedSeriesIDs,
+                                managedTitles:           managedTitles,
+                                managedDTSingleSlotKeys: managedDTSingleSlotKeys,
                                 recordingSeriesIDs: recordingSeriesIDs,
                                 recordingTitles:    recordingTitles,
                                 nextUpSeriesIDs:    nextUpSeriesIDs,
@@ -417,8 +421,10 @@ struct CableGuideView: View {
                                 timeSlots:          timeSlots,
                                 selectedEntry:      selectedEntry,
                                 selectedChannel:    selectedChannel,
-                                managedSeriesIDs:   managedSeriesIDs,
-                                managedTitles:      managedTitles,
+                                deviceId:                deviceId,
+                                managedSeriesIDs:        managedSeriesIDs,
+                                managedTitles:           managedTitles,
+                                managedDTSingleSlotKeys: managedDTSingleSlotKeys,
                                 recordingSeriesIDs: recordingSeriesIDs,
                                 recordingTitles:    recordingTitles,
                                 nextUpSeriesIDs:    nextUpSeriesIDs,
@@ -502,8 +508,10 @@ private struct ShowBlocksRow: View, Equatable {
     let timeSlots:        [Date]
     let selectedEntry:    GuideEntry?
     let selectedChannel:  LineupEntry?
-    let managedSeriesIDs:   Set<String>
-    let managedTitles:      Set<String>
+    let deviceId:                String
+    let managedSeriesIDs:        Set<String>
+    let managedTitles:           Set<String>
+    let managedDTSingleSlotKeys: Set<String>
     let recordingSeriesIDs: Set<String>
     let recordingTitles:    Set<String>
     let nextUpSeriesIDs:    Set<String>
@@ -524,8 +532,10 @@ private struct ShowBlocksRow: View, Equatable {
         lhs.lineupEntry?.GuideNumber     == rhs.lineupEntry?.GuideNumber &&   // nil→value change must re-evaluate tap handlers
         lhs.genreFilter                  == rhs.genreFilter &&
         lhs.displayStart                 == rhs.displayStart &&
+        lhs.deviceId                     == rhs.deviceId &&
         lhs.managedSeriesIDs             == rhs.managedSeriesIDs &&
         lhs.managedTitles                == rhs.managedTitles &&
+        lhs.managedDTSingleSlotKeys      == rhs.managedDTSingleSlotKeys &&
         lhs.recordingSeriesIDs           == rhs.recordingSeriesIDs &&
         lhs.recordingTitles              == rhs.recordingTitles &&
         lhs.nextUpSeriesIDs              == rhs.nextUpSeriesIDs &&
@@ -586,10 +596,16 @@ private struct ShowBlocksRow: View, Equatable {
         let isSelected = selectedEntry?.id == entry.id
                           && lineupEntry != nil
                           && selectedChannel?.GuideNumber == lineupEntry?.GuideNumber
-        // When SeriesID is present use it exclusively; title is fallback only for entries
-        // that have no SeriesID so unrelated shows sharing a name don't get false badges.
-        let isManaged   = entry.SeriesID.map { managedSeriesIDs.contains($0) }
-                       ?? managedTitles.contains(entry.Title)
+        // SeriesID(Channel/All) shows: yellow on any matching episode (by SeriesID, or title when
+        // the entry has no SeriesID). DateTime/Single shows: only the specific scheduled slot matches.
+        let isManaged: Bool = {
+            if let sid = entry.SeriesID, !sid.isEmpty {
+                if managedSeriesIDs.contains(sid) { return true }
+            } else {
+                if managedTitles.contains(entry.Title) { return true }
+            }
+            return managedDTSingleSlotKeys.contains("\(deviceId):\(channel.GuideNumber):\(entry.StartTime)")
+        }()
         let isRecording = entry.SeriesID.map { recordingSeriesIDs.contains($0) }
                        ?? recordingTitles.contains(entry.Title)
         let isNextUp    = !isRecording && (entry.SeriesID.map { nextUpSeriesIDs.contains($0) }

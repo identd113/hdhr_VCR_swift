@@ -161,10 +161,14 @@ struct AddShowView: View {
     }
 
     private var guideStep: some View {
-        let managedSeriesIDs = Set(state.shows.compactMap {
-            $0.show_seriesid.isEmpty ? nil : $0.show_seriesid
+        let seriesIDShows    = state.shows.filter { $0.state == .seriesChannel || $0.state == .seriesAll }
+        let managedSeriesIDs = Set(seriesIDShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
+        let managedTitles    = Set(seriesIDShows.map { $0.show_title })
+        // DateTime/Single shows: yellow only on the exact device+channel+slot
+        let managedDTSingleSlotKeys: Set<String> = Set(state.shows.compactMap { show in
+            guard show.state == .single || show.state == .dateTime, let next = show.show_next else { return nil }
+            return "\(show.hdhr_record):\(show.show_channel):\(Int(next.timeIntervalSince1970))"
         })
-        let managedTitles = Set(state.shows.map { $0.show_title })
         // Recording now
         let recordingSeriesIDs = Set(state.recordingShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
         let recordingTitles    = Set(state.recordingShows.map { $0.show_title })
@@ -255,8 +259,10 @@ struct AddShowView: View {
                             selectedEntry:      $selectedEntry,
                             selectedChannel:    $selectedChannel,
                             snapToNow:          $snapToNow,
-                            managedSeriesIDs:   managedSeriesIDs,
-                            managedTitles:      managedTitles,
+                            deviceId:                selectedDevice?.DeviceID ?? "",
+                            managedSeriesIDs:        managedSeriesIDs,
+                            managedTitles:           managedTitles,
+                            managedDTSingleSlotKeys: managedDTSingleSlotKeys,
                             recordingSeriesIDs: recordingSeriesIDs,
                             recordingTitles:    recordingTitles,
                             nextUpSeriesIDs:    nextUpSeriesIDs,
