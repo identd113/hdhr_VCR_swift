@@ -29,6 +29,8 @@ http://<record-engine-ip>:4999/auto/v<channel>?ClientID=<UUID>&SessionID=<hex32>
 
 ClientID and SessionID belong to this path only (see below).
 
+**Note:** The SiliconDust documentation wiki calls this path "Old-Live-TV" — there may be a newer protocol. The findings here are based on the documented `Old-Live-TV.md` spec.
+
 ---
 
 ## ClientID and SessionID
@@ -42,10 +44,14 @@ ClientID and SessionID belong to this path only (see below).
 
 **Purpose:** The Record Engine tracks which ClientID holds which tuner. Sending the same ClientID with a new SessionID tells the engine to free the previous tuner and allocate a new one — enabling seamless channel switching without a gap. Without them, the old connection must fully close before the new tuner can start.
 
+**Multi-instance:** if two player windows are open simultaneously (picture-in-picture), each gets its own ClientID so they don't interfere with each other's tuner allocation.
+
 **Channel change pattern:**
 - Same `ClientID` across the whole session
 - New `SessionID` each time the channel changes
 - Seek within a channel: same `ClientID` + same `SessionID` + `Range: bytes=<offset>-` header
+
+**Seek response:** The device returns a `Content-Range` header with the actual byte offset granted — it may differ from what was requested if the seek point is before the oldest buffered data or past the live edge.
 
 ### Confirmed on port 5004 (2026-05-31)
 
@@ -103,7 +109,43 @@ A separate mechanism used by apps like MythTV and TVHeadend that bypass port 500
 - Keepalive: send the 4-byte lockkey as a UDP packet to device port 5004 every ~1 second while streaming
 - Idle timeout: ~30 seconds if no keepalive and no active stream
 
+**GET vs SET:** `GET` commands on the control protocol are always permitted without a lockkey — only `SET` commands (channel change, PID filter, etc.) require it.
+
+**Stale lock recovery:** If the app crashes without releasing the lock, the ~30s idle timeout should free it. TVHeadend found this unreliable and added startup logic to detect locks held by the local IP and force-release them (`SET /tunerN/lockkey force`).
+
+**libhdhomerun function names** (for reference if ever implementing): `hdhomerun_device_tuner_lockkey_request`, `hdhomerun_device_tuner_lockkey_release`, `hdhomerun_device_tuner_lockkey_force`.
+
 **Not relevant to hdhr_VCR's curl approach.** Only needed if implementing direct device control without going through port 5004.
+
+---
+
+## Transcode Profiles (port 5004 `?transcode=`)
+
+| Profile | Meaning |
+|---|---|
+| `none` | Raw stream, no transcode (MPEG-2 or H.264 as broadcast) |
+| `heavy` | High-quality H.264 |
+| `mobile` | Low-bitrate H.264 for mobile |
+| `internet720` | 720p H.264 for internet streaming |
+
+hdhr_VCR passes the user's `Default_transcode` config value directly. VLC handles MPEG-2 natively so `none` works without forced transcode for OTA.
+
+---
+
+## Duration Parameter
+
+`?duration=<seconds>` causes the device to close the stream after N seconds. hdhr_VCR calculates this as `show_end - now` at recording start so the device self-terminates if curl dies unexpectedly. Without it, the stream runs until the TCP connection is closed.
+
+---
+
+## Known Open Source Implementations (for reference)
+
+- **libhdhomerun** (github.com/Silicondust/libhdhomerun) — official C library; canonical source for control protocol details
+- **TVHeadend** — full lockkey implementation including stale-lock recovery at startup
+- **pyhdhr** — Python client, simpler reference
+- **jblachly/dvr** — has useful `HDHomeRun_notes.md` with practical streaming observations
+
+Primary documentation sources: `info.hdhomerun.com/info/http_api`, `info.hdhomerun.com/info/dvr_api:live_tv`, SiliconDust documentation wiki (github.com/Silicondust/documentation).
 
 ---
 
