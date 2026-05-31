@@ -60,6 +60,16 @@ The device returns an `X-HDHomeRun-Error` HTTP response header when a recording 
 
 ---
 
+## Capture X-HDHomeRun-Resource response header to identify allocated tuner
+
+The device returns `X-HDHomeRun-Resource: tunerN` in the HTTP response headers when a stream starts (confirmed on port 5004). The app currently identifies which tuner a recording is using by polling `/status.json` and matching by channel number — fragile when two shows share a channel or the match is ambiguous.
+
+Capturing this header at stream start gives an exact tuner identity with no polling. Pass `-D -` (dump headers to stdout mixed with body) or use a separate `curl -I` HEAD request to read it before the body stream begins. Store as `show_tuner_resource` on `Show` (e.g. `"tuner1"`); use it to target `/tunerN/vstatus` directly instead of searching by channel.
+
+**Key files**: `RecordingManager.swift`, `Models.swift` (`Show` struct), `AppState.swift` (vstatus polling ~line 1634).
+
+---
+
 ## Colored guide entry rows in .menu add-show cascade
 
 Color the background of each guide entry row in the `.menu` mode add-show cascade (channel submenu → entry list) with the genre color, matching the cable guide grid.
