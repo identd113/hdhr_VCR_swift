@@ -55,6 +55,7 @@ struct Show: Identifiable, Equatable {
     var show_recording_path: String // path of active/last recording file
     var show_genre: String          // first genre tag from guide (e.g. "Sports")
     var show_bonus_time: Bool       // true = extend recording past guide end
+    var discord_start_msg_id: String = ""  // message ID of the "Recording Started" embed; "" = none
 
     var state: ShowState {
         if !show_is_series { return .single }
@@ -131,6 +132,7 @@ extension Show: Codable {
         case show_transcode, show_tags, show_recording, show_last
         case notify_upnext_time, notify_recording_time
         case show_dir, show_temp_dir, show_recording_path, show_genre, show_bonus_time
+        case discord_start_msg_id
     }
 
     init(from decoder: Decoder) throws {
@@ -166,6 +168,7 @@ extension Show: Codable {
         show_genre          = (try? c.decode(String.self, forKey: .show_genre)) ?? ""
         show_bonus_time     = (try? c.decode(Bool.self,   forKey: .show_bonus_time))
             ?? show_genre.lowercased().contains("sports")
+        discord_start_msg_id = (try? c.decode(String.self, forKey: .discord_start_msg_id)) ?? ""
     }
 }
 
@@ -196,6 +199,7 @@ struct AppConfig: Equatable {
     var Watch_in_VLC: Bool = false
     var Watch_in_VLC_initialized: Bool = false  // set true after first auto-detect so user toggles are preserved
     var Player_unlocked: Bool = false           // unlocked via 5-tap on About logo
+    var Player_buffer_min_rate: Int = 93        // adaptive buffer fill-phase floor (90–100); 100 = disabled
     // Bonus Time: extends recording past the guide end for sports shows
     var Sports_padding_enabled: Bool = true
     var Sports_padding_minutes: Int  = 30   // user-settable 10–60 min, default 30
@@ -210,10 +214,11 @@ struct AppConfig: Equatable {
     var Discord_on_skipped:  Bool    = true    // Skipped — disk full
     var Discord_on_conflict: Bool    = true    // Tuner Conflict
     var Discord_on_guide_error: Bool = true    // Guide Load Failed
-    var Discord_on_upnext:   Bool    = false   // Up Next reminder
-    var Discord_on_soon:     Bool    = false   // Recording Soon reminder
+    var Discord_on_upnext:    Bool   = false   // Up Next reminder
+    var Discord_on_soon:      Bool   = false   // Recording Soon reminder
     var Discord_on_show_added: Bool  = false   // Show Added
-    var Discord_enabled:     Bool    = false   // Master enable/disable toggle
+    var Discord_on_progress:  Bool   = false   // Edit start embed every 5 min with elapsed/remaining
+    var Discord_enabled:      Bool   = false   // Master enable/disable toggle
 }
 
 extension AppConfig: Codable {
@@ -233,6 +238,7 @@ extension AppConfig: Codable {
         Watch_in_VLC          = (try? c.decode(Bool.self,    forKey: .Watch_in_VLC))          ?? false
         Watch_in_VLC_initialized = (try? c.decode(Bool.self, forKey: .Watch_in_VLC_initialized)) ?? false
         Player_unlocked          = (try? c.decode(Bool.self, forKey: .Player_unlocked))          ?? false
+        Player_buffer_min_rate   = (try? c.decode(Int.self,  forKey: .Player_buffer_min_rate))   ?? 93
         Sports_padding_enabled  = (try? c.decode(Bool.self,   forKey: .Sports_padding_enabled))  ?? true
         Sports_padding_minutes  = (try? c.decode(Int.self,    forKey: .Sports_padding_minutes))  ?? 30
         Config_version          = (try? c.decode(String.self,  forKey: .Config_version))         ?? "1"
@@ -247,6 +253,7 @@ extension AppConfig: Codable {
         Discord_on_upnext       = (try? c.decode(Bool.self,   forKey: .Discord_on_upnext))       ?? false
         Discord_on_soon         = (try? c.decode(Bool.self,   forKey: .Discord_on_soon))         ?? false
         Discord_on_show_added   = (try? c.decode(Bool.self,   forKey: .Discord_on_show_added))   ?? false
+        Discord_on_progress     = (try? c.decode(Bool.self,   forKey: .Discord_on_progress))     ?? false
         // Migration: existing configs with a URL had Discord working, so default to enabled for them.
         Discord_enabled         = (try? c.decode(Bool.self,   forKey: .Discord_enabled))         ?? !Discord_webhook_url.isEmpty
     }
@@ -387,6 +394,6 @@ extension GuideEntry {
             guard let s, !s.isEmpty else { return nil }
             return s
         }
-        return parts.isEmpty ? nil : parts.joined(separator: "  ·  ")
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 }

@@ -169,23 +169,30 @@ final class GuideStore {
         }
         seriesIndex = seriesIndex.filter { !$1.isEmpty }
 
-        channelsByDevice[deviceId] = channels
         let nilCount   = channels.filter { $0.Guide == nil }.count
         let emptyCount = channels.filter { $0.Guide?.isEmpty == true }.count
         glog("[\(deviceId)] buildIndex: \(channels.count) channels — \(nilCount) Guide=nil, \(emptyCount) Guide=[]")
 
-        for ch in channels {
-            let key = "\(deviceId):\(ch.GuideNumber)"
-            let sorted = (ch.Guide ?? []).sorted { $0.StartTime < $1.StartTime }
-            channelEntryIndex[key] = sorted
+        // Sort each channel's Guide in-place so CableGuideView reads pre-sorted data.
+        var sortedChannels = channels
+        for i in sortedChannels.indices {
+            let key    = "\(deviceId):\(sortedChannels[i].GuideNumber)"
+            guard let guide = sortedChannels[i].Guide else {
+                channelEntryIndex[key] = []
+                continue
+            }
+            let sorted = guide.sorted { $0.StartTime < $1.StartTime }
+            sortedChannels[i].Guide = sorted
+            channelEntryIndex[key]  = sorted
             for entry in sorted {
                 guard let sid = entry.SeriesID else { continue }
                 seriesIndex[sid, default: []].append(
-                    SeriesMatch(deviceId: deviceId, channelNum: ch.GuideNumber, entry: entry)
+                    SeriesMatch(deviceId: deviceId, channelNum: sortedChannels[i].GuideNumber, entry: entry)
                 )
                 unsortedSeries.insert(sid)
             }
         }
+        channelsByDevice[deviceId] = sortedChannels
         // Series sort is deferred to first query via sortIfNeeded(_:) — avoids
         // O(series × entries log entries) on the main actor at guide load time.
     }

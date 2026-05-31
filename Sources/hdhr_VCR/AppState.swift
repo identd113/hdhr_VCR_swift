@@ -811,8 +811,28 @@ final class AppState: ObservableObject {
                 glog("[\(show.show_title)] FAIL curl exited unexpectedly — fail_count=\(shows[i].show_fail_count)", level: .error)
                 notify("Recording Failed", body: show.show_title, subtitle: "curl exited unexpectedly")
                 discordShow("❌ Recording Failed", show: show, color: 0xE74C3C, enabled: config.Discord_on_failed,
-                            extra: [("Reason", "curl exited unexpectedly", false), ("Fail Count", "\(shows[i].show_fail_count)", true)])
+                            extra: [("Reason", "curl exited unexpectedly", false), ("Fail Count", "\(shows[i].show_fail_count)", true)],
+                            editMessageId: show.discord_start_msg_id.isEmpty ? nil : show.discord_start_msg_id)
+                shows[i].discord_start_msg_id = ""
                 dirty = true
+            }
+
+            // Discord progress update — edit start embed once per 5-min boundary during active recordings
+            if show.show_recording, !show.discord_start_msg_id.isEmpty,
+               config.Discord_on_progress, config.Discord_enabled, !config.Discord_webhook_url.isEmpty {
+                let elapsedSec = Int(now.timeIntervalSince(show.show_next ?? now))
+                let prevSec    = elapsedSec - config.Idle_timer_interval
+                let interval   = 5 * 60
+                if elapsedSec > 0, elapsedSec / interval > max(0, prevSec) / interval {
+                    let elapsedMin   = elapsedSec / 60
+                    let totalMin     = show.show_end.map { Int($0.timeIntervalSince(show.show_next ?? $0) / 60) } ?? show.show_length
+                    let remainingMin = max(0, show.show_end.map { Int($0.timeIntervalSince(now) / 60) } ?? (totalMin - elapsedMin))
+                    let progressText = "\(elapsedMin)m elapsed · \(remainingMin)m remaining"
+                    let embed = buildDiscordShowEmbed(event: "⏺ Recording In Progress", show: show,
+                                                     color: 0xE67E22, extra: [("Progress", progressText, false)])
+                    editDiscordEmbed(webhookURL: config.Discord_webhook_url,
+                                     messageId: show.discord_start_msg_id, embed: embed)
+                }
             }
             // Advance shows stranded with a past window and show_recording = false.
             // Happens when the app restarts after curl exits normally but before the idle loop
@@ -936,8 +956,19 @@ final class AppState: ObservableObject {
         shows[index].notify_recording_time = Date().addingTimeInterval(config.Notify_recording * 60)
         notify("Recording Started", body: show.show_title, subtitle: "Channel \(show.show_channel) — ends \(shortTime(endDate))",
                categoryIdentifier: "recording.started", userInfo: ["show_id": show.show_id])
-        discordShow("🔴 Recording Started", show: show, color: 0x2ECC71, enabled: config.Discord_on_start,
-                    extra: [("Ends", shortTime(endDate), true)])
+        // Capture message ID so completion/failure can edit this embed in-place.
+        if config.Discord_on_start, config.Discord_enabled, !config.Discord_webhook_url.isEmpty {
+            let embed  = buildDiscordShowEmbed(event: "🔴 Recording Started", show: shows[index],
+                                               color: 0x2ECC71, extra: [("Ends", shortTime(endDate), true)])
+            let url    = config.Discord_webhook_url
+            let showId = show.show_id
+            Task {
+                let msgId = await sendDiscordEmbedCapturing(to: url, embed: embed)
+                if let i = shows.firstIndex(where: { $0.show_id == showId }) {
+                    shows[i].discord_start_msg_id = msgId ?? ""
+                }
+            }
+        }
     }
 
     func skipRecording(showId: String) async {
@@ -978,7 +1009,9 @@ final class AppState: ObservableObject {
             glog("[\(show.show_title)] STOP file missing or empty — fail_count=\(shows[index].show_fail_count)", level: .error)
             notify("Recording Failed", body: show.show_title, subtitle: "File not written — check disk space and URL")
             discordShow("❌ Recording Failed", show: show, color: 0xE74C3C, enabled: config.Discord_on_failed,
-                        extra: [("Reason", "Output file missing or empty — check disk space and stream URL", false)])
+                        extra: [("Reason", "Output file missing or empty — check disk space and stream URL", false)],
+                        editMessageId: show.discord_start_msg_id.isEmpty ? nil : show.discord_start_msg_id)
+            shows[index].discord_start_msg_id = ""
             await scheduleNextAir(index: index)
             return
         }
@@ -996,19 +1029,23 @@ final class AppState: ObservableObject {
 
         await scheduleNextAir(index: index)
         let completedShow = shows[index]
+        let startMsgId = show.discord_start_msg_id.isEmpty ? nil : show.discord_start_msg_id
         if !completedShow.show_active {
             notify("Recording Complete", body: show.show_title, subtitle: "Single episode recorded — show deactivated")
             discordShow("✅ Recording Complete", show: show, color: 0x3498DB, enabled: config.Discord_on_complete,
-                        extra: fileFields + [("Note", "Single episode — show deactivated", false)])
+                        extra: fileFields + [("Note", "Single episode — show deactivated", false)],
+                        editMessageId: startMsgId)
         } else if let next = completedShow.show_next {
             notify("Recording Complete", body: show.show_title, subtitle: "Next: \(Self.completionDateFormatter.string(from: next))")
             discordShow("✅ Recording Complete", show: show, color: 0x3498DB, enabled: config.Discord_on_complete,
-                        extra: fileFields + [("Next Airing", Self.completionDateFormatter.string(from: next), false)])
+                        extra: fileFields + [("Next Airing", Self.completionDateFormatter.string(from: next), false)],
+                        editMessageId: startMsgId)
         } else {
             notify("Recording Complete", body: show.show_title, subtitle: "")
             discordShow("✅ Recording Complete", show: show, color: 0x3498DB, enabled: config.Discord_on_complete,
-                        extra: fileFields)
+                        extra: fileFields, editMessageId: startMsgId)
         }
+        shows[index].discord_start_msg_id = ""
     }
 
     func stopRecording(showId: String) {
@@ -1361,42 +1398,28 @@ final class AppState: ObservableObject {
         return (200..<300).contains(http.statusCode)
     }
 
-    private func discordShow(_ event: String, show: Show, color: Int, enabled: Bool,
-                             extra: [(name: String, value: String, inline: Bool)] = [],
-                             webhookURL: String? = nil) {
-        let url = webhookURL ?? config.Discord_webhook_url
-        glog("[Discord] discordShow \(event) enabled=\(enabled) urlEmpty=\(url.isEmpty) masterEnabled=\(config.Discord_enabled)")
-        guard enabled, !url.isEmpty else { return }
-        // Respect the master toggle for production sends; test calls pass an explicit webhookURL
-        if webhookURL == nil { guard config.Discord_enabled else { return } }
-
+    // Builds the embed dict for a show event. Shared by discordShow and the async capturing path.
+    private func buildDiscordShowEmbed(event: String, show: Show, color: Int,
+                                       extra: [(name: String, value: String, inline: Bool)]) -> [String: Any] {
         let entry = guideEntryForShow(show)
 
-        // ── Channel author (icon + name at top of embed) ───────────────────────
         let channel = guideStore.channels(deviceId: show.hdhr_record)
                                 .first { $0.GuideNumber == show.show_channel }
 
-        // ── Description ───────────────────────────────────────────────────────
-        // Line 1: bold show title
-        // Line 2: episode number · episode title (when available)
-        // Line 3: synopsis (truncated to 200 chars)
         var descLines: [String] = ["**\(show.show_title)**"]
         let epNum   = entry?.EpisodeNumber?.trimmingCharacters(in: .whitespaces) ?? ""
         let epTitle = entry?.EpisodeTitle?.trimmingCharacters(in: .whitespaces) ?? ""
         if !epNum.isEmpty || !epTitle.isEmpty {
-            let epLine = [epNum, epTitle].filter { !$0.isEmpty }.joined(separator: " · ")
-            descLines.append(epLine)
+            descLines.append([epNum, epTitle].filter { !$0.isEmpty }.joined(separator: " · "))
         }
         if let synopsis = entry?.Synopsis, !synopsis.isEmpty {
             let s = synopsis.count > 200 ? String(synopsis.prefix(200)) + "…" : synopsis
             descLines.append(s)
         }
-        let description = descLines.joined(separator: "\n")
 
-        // ── Fields ────────────────────────────────────────────────────────────
         var fields: [[String: Any]] = [
-            ["name": "Channel", "value": show.show_channel,     "inline": true],
-            ["name": "Type",    "value": show.state.rawValue,   "inline": true]
+            ["name": "Channel", "value": show.show_channel,   "inline": true],
+            ["name": "Type",    "value": show.state.rawValue, "inline": true]
         ]
         if let start = show.show_next, let end = show.show_end {
             let range = "\(Self.discordTimeFmt.string(from: start)) – \(Self.discordTimeFmt.string(from: end))"
@@ -1404,26 +1427,41 @@ final class AppState: ObservableObject {
         }
         for e in extra { fields.append(["name": e.name, "value": e.value, "inline": e.inline]) }
 
-        // Filter tags formatted as `Tag` code-style "buttons"
         let tags = entry?.Filter ?? (show.show_genre.isEmpty ? [] : [show.show_genre])
         if !tags.isEmpty {
             fields.append(["name": "Tags", "value": tags.map { "`\($0)`" }.joined(separator: " "), "inline": false])
         }
 
-        // Author line: "CH 2.1 · PBS" with channel logo icon
         var authorDict: [String: Any] = ["name": "CH \(show.show_channel)\(channel.map { " · \($0.GuideName)" } ?? "")"]
         if let iconURL = channel?.ImageURL, !iconURL.isEmpty { authorDict["icon_url"] = iconURL }
 
         var embed: [String: Any] = [
             "author":      authorDict,
             "title":       event,
-            "description": description,
+            "description": descLines.joined(separator: "\n"),
             "color":       color,
             "fields":      fields,
             "footer":      ["text": "hdhr VCR  ·  \(show.hdhr_record)"]
         ]
         if !show.show_logo_url.isEmpty { embed["thumbnail"] = ["url": show.show_logo_url] }
-        sendDiscordEmbed(to: url, embed: embed)
+        return embed
+    }
+
+    private func discordShow(_ event: String, show: Show, color: Int, enabled: Bool,
+                             extra: [(name: String, value: String, inline: Bool)] = [],
+                             webhookURL: String? = nil,
+                             editMessageId: String? = nil) {
+        let url = webhookURL ?? config.Discord_webhook_url
+        glog("[Discord] discordShow \(event) enabled=\(enabled) urlEmpty=\(url.isEmpty) masterEnabled=\(config.Discord_enabled)")
+        guard enabled, !url.isEmpty else { return }
+        if webhookURL == nil { guard config.Discord_enabled else { return } }
+
+        let embed = buildDiscordShowEmbed(event: event, show: show, color: color, extra: extra)
+        if let msgId = editMessageId, !msgId.isEmpty {
+            editDiscordEmbed(webhookURL: url, messageId: msgId, embed: embed)
+        } else {
+            sendDiscordEmbed(to: url, embed: embed)
+        }
     }
 
     private func handleGuideLoadFailure(deviceId: String) {

@@ -18,6 +18,21 @@ private struct vlc_audio_output_device_t {
     let psz_description: UnsafePointer<CChar>?
 }
 
+// Mirrors libvlc_media_stats_t (VLC 3.x layout). Field order and types must match exactly.
+// VLC 4.x changed this struct — if stats polling misbehaves on VLC 4, disable it.
+private struct VLCStats {
+    var i_read_bytes:          Int32 = 0
+    var f_input_bitrate:       Float = 0
+    var i_demux_read_bytes:    Int32 = 0
+    var f_demux_bitrate:       Float = 0
+    var i_demux_corrupted:     Int32 = 0
+    var i_demux_discontinuity: Int32 = 0
+    var i_decoded_video:       Int32 = 0
+    var i_decoded_audio:       Int32 = 0
+    var i_displayed_pictures:  Int32 = 0
+    var i_lost_pictures:       Int32 = 0
+}
+
 // ── Function pointer typedefs (all @convention(c)) ───────────────────────────
 
 private typealias vlc_new_fn             = @convention(c) (Int32, UnsafePointer<UnsafePointer<CChar>?>?) -> OpaquePointer?
@@ -40,6 +55,11 @@ private typealias vlc_aout_set_fn        = @convention(c) (OpaquePointer?, Unsaf
 private typealias vlc_adev_list_get_fn   = @convention(c) (OpaquePointer?, UnsafePointer<CChar>?) -> UnsafeMutableRawPointer?
 private typealias vlc_adev_list_rel_fn   = @convention(c) (UnsafeMutableRawPointer?) -> Void
 private typealias vlc_adev_set_fn        = @convention(c) (OpaquePointer?, UnsafePointer<CChar>?, UnsafePointer<CChar>?) -> Void
+private typealias vlc_media_add_opt_fn   = @convention(c) (OpaquePointer?, UnsafePointer<CChar>?) -> Void
+private typealias vlc_mp_set_rate_fn     = @convention(c) (OpaquePointer?, Float) -> Int32
+private typealias vlc_mp_get_rate_fn     = @convention(c) (OpaquePointer?) -> Float
+private typealias vlc_mp_get_stats_fn    = @convention(c) (OpaquePointer?, UnsafeMutableRawPointer?) -> Int32
+private typealias vlc_get_version_fn     = @convention(c) () -> UnsafePointer<CChar>?
 
 // ── CoreAudio device change monitoring ───────────────────────────────────────
 
@@ -79,6 +99,17 @@ final class VLCBridge {
     private var pendingURL: String?
     private var deviceChangeContext: AudioDeviceChangeContext?
 
+    // MARK: - Buffer rate controller state
+    /// Minimum playback rate (fill-phase floor). Set from AppConfig by VLCPlayerView. 1.0 = disabled.
+    var minRate: Float = 0.93
+    private(set) var currentURL: String?
+    private var statsTimer:      Timer?
+    private var currentRate:     Float  = 1.0
+    private var estimatedLagSec: Double = 0.0
+    private var lastCorrupted:   Int32  = 0
+    private var lastLost:        Int32  = 0
+    private var catchUpCooldown: Date   = .distantPast
+
     private let _new:          vlc_new_fn?
     private let _release:      vlc_release_fn?
     private let _mediaNL:      vlc_media_new_loc_fn?
@@ -97,6 +128,11 @@ final class VLCBridge {
     private let _adevListGet:  vlc_adev_list_get_fn?
     private let _adevListRel:  vlc_adev_list_rel_fn?
     private let _adevSet:      vlc_adev_set_fn?
+    private let _mediaAddOpt:  vlc_media_add_opt_fn?
+    private let _mpSetRate:    vlc_mp_set_rate_fn?
+    private let _mpGetRate:    vlc_mp_get_rate_fn?
+    private let _mpGetStats:   vlc_mp_get_stats_fn?
+    private let _getVersion:   vlc_get_version_fn?
 
     private init() {
         let vlcLib = "/Applications/VLC.app/Contents/MacOS/lib/"
@@ -128,9 +164,25 @@ final class VLCBridge {
         _adevListGet  = sym("libvlc_audio_output_device_list_get")
         _adevListRel  = sym("libvlc_audio_output_device_list_release")
         _adevSet      = sym("libvlc_audio_output_device_set")
+        _mediaAddOpt  = sym("libvlc_media_add_option")
+        _mpSetRate    = sym("libvlc_media_player_set_rate")
+        _mpGetRate    = sym("libvlc_media_player_get_rate")
+        _mpGetStats   = sym("libvlc_media_player_get_stats")
+        _getVersion   = sym("libvlc_get_version")
 
         isAvailable = h != nil && _new != nil && _mpNew != nil
         guard isAvailable else { return }
+
+        // Log VLC version; warn if VLC 4+ (stats struct layout changed — auto catch-up may misbehave).
+        if let versionFn = _getVersion, let versionPtr = versionFn() {
+            let version = String(cString: versionPtr)
+            let major = Int(version.prefix(while: { $0.isNumber })) ?? 0
+            if major >= 4 {
+                glog("[VLC] WARNING: VLC \(version) detected — stats struct changed in VLC 4; corruption auto-detect may read wrong fields. Buffer rate control still works.", level: .warning)
+            } else {
+                glog("[VLC] loaded version \(version)")
+            }
+        }
 
         // libvlc_new loads 300+ plugins — run off-main to avoid blocking the UI.
         // C function pointers are plain values, safe to capture across threads.
@@ -171,23 +223,100 @@ final class VLCBridge {
 
     /// Switch to a new stream URL (or start playback if idle).
     /// Stops current media, sets new media on the same player, resumes play.
+    /// Always applies 2s network cache, drops late/corrupt frames, and starts the rate controller.
     func play(url: String) {
         guard drawableView != nil else { pendingURL = url; return }
         guard let inst = vlcInstance, let mp = mediaPlayer else { pendingURL = url; return }
+        stopStatsTimer()
         _mpStop?(mp)
         if let old = currentMedia { _mediaRelease?(old); currentMedia = nil }
         guard let media = url.withCString({ _mediaNL?(inst, $0) }) else { return }
-        currentMedia = media
+        for opt in ["--network-caching=2000", "--drop-late-frames", "--avcodec-hurry-up"] {
+            opt.withCString { _mediaAddOpt?(media, $0) }
+        }
+        currentURL        = url
+        currentMedia      = media
+        estimatedLagSec   = 0.0
+        currentRate       = minRate
+        lastCorrupted     = 0
+        lastLost          = 0
         _mpSetMedia?(mp, media)
         _ = _mpPlay?(mp)
+        if minRate < 1.0 {
+            _ = _mpSetRate?(mp, minRate)
+            // Verify rate was accepted — live streams may ignore it on some VLC versions.
+            let actual = _mpGetRate?(mp) ?? 1.0
+            if abs(actual - minRate) > 0.01 {
+                glog("[VLC] WARNING: set_rate(\(String(format: "%.2f", minRate))) ignored — actual rate is \(String(format: "%.2f", actual)); buffer will not grow. Playback unaffected.", level: .warning)
+            } else {
+                glog("[VLC] rate set to \(String(format: "%.2f", minRate)) (fill phase)")
+            }
+        }
+        startStatsTimer()
     }
 
     func stop() {
-        pendingURL = nil
+        stopStatsTimer()
+        currentURL   = nil
+        pendingURL   = nil
         drawableView = nil
         guard let mp = mediaPlayer else { return }
         _mpStop?(mp)
         if let old = currentMedia { _mediaRelease?(old); currentMedia = nil }
+    }
+
+    /// Discard buffered content and reconnect to the live edge. Resets the rate controller.
+    func catchUpToLive() {
+        guard let url = currentURL else { return }
+        play(url: url)
+    }
+
+    // MARK: - Rate controller (private)
+
+    private func startStatsTimer() {
+        guard minRate < 1.0 || _mpGetStats != nil else { return }
+        statsTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.tickController() }
+        }
+    }
+
+    private func stopStatsTimer() {
+        statsTimer?.invalidate()
+        statsTimer = nil
+    }
+
+    private func tickController() {
+        guard let mp = mediaPlayer else { return }
+
+        // Adaptive rate: ramp from minRate toward 1.0 as estimated buffer lag grows toward 8s.
+        if minRate < 1.0 {
+            estimatedLagSec = min(8.0, estimatedLagSec + Double(1.0 - currentRate) * 3.0)
+            let fillRatio   = Float(estimatedLagSec / 8.0)
+            let newRate     = minRate + (1.0 - minRate) * fillRatio
+            if abs(newRate - currentRate) > 0.001 {
+                currentRate = newRate
+                _ = _mpSetRate?(mp, newRate)
+                glog("[VLC] rate → \(String(format: "%.3f", newRate)) (lag ~\(Int(estimatedLagSec))s / 8s)")
+            }
+        }
+
+        // Corruption detection: auto catch-up on sustained signal loss.
+        guard let getStats = _mpGetStats else { return }
+        var s = VLCStats()
+        let ok = withUnsafeMutableBytes(of: &s) { getStats(mp, $0.baseAddress) }
+        guard ok == 1 else {
+            glog("[VLC] WARNING: get_stats returned \(ok) — stats polling skipped (may indicate VLC 4 struct mismatch)", level: .warning)
+            return
+        }
+        let corruptDelta = s.i_demux_corrupted - lastCorrupted
+        let lostDelta    = s.i_lost_pictures   - lastLost
+        lastCorrupted    = s.i_demux_corrupted
+        lastLost         = s.i_lost_pictures
+        guard corruptDelta > 15 || lostDelta > 20 else { return }
+        guard Date() > catchUpCooldown else { return }
+        catchUpCooldown = Date().addingTimeInterval(30)
+        glog("[VLC] signal corruption detected (corrupt=\(corruptDelta) lost=\(lostDelta)) — catching up to live")
+        catchUpToLive()
     }
 
     // MARK: - Volume  (UI scale 0–100; VLC scale 0–200, unity = 100)

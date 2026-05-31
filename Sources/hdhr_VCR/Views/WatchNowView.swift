@@ -198,15 +198,6 @@ struct WatchNowRow: View {
         return m == 0 ? "\(h)h left" : "\(h)h \(m)m left"
     }
 
-    private var episodeSubtitle: String? {
-        switch (entry.EpisodeNumber, entry.EpisodeTitle) {
-        case (let n?, let t?): return "\(n)  \(t)"
-        case (let n?, nil):    return n
-        case (nil, let t?):    return t
-        case (nil, nil):       return nil
-        }
-    }
-
     private var channelLogo: NSImage? {
         state.channelImageURLs["\(device.DeviceID):\(channel.GuideNumber)"]
             .flatMap { state.channelIconImages[$0] }
@@ -254,16 +245,7 @@ struct WatchNowRow: View {
                     || (show.hdhr_record  == device.DeviceID
                         && show.show_channel == channel.GuideNumber
                         && Int(show.show_next?.timeIntervalSince1970 ?? -1) == entry.StartTime)
-                if showYellow {
-                    Path { p in
-                        p.move(to:    CGPoint(x: 0,  y: 0))
-                        p.addLine(to: CGPoint(x: 18, y: 0))
-                        p.addLine(to: CGPoint(x: 18, y: 18))
-                        p.closeSubpath()
-                    }
-                    .fill(Color.yellow)
-                    .frame(width: 18, height: 18)
-                }
+                if showYellow { ManagedFlagView(size: 18) }
             }
         }
     }
@@ -294,7 +276,7 @@ struct WatchNowRow: View {
             Text(entry.Title)
                 .font(.subheadline.bold())
                 .lineLimit(1)
-            if let sub = episodeSubtitle {
+            if let sub = entry.episodeInfoLabel {
                 Text(sub)
                     .font(.caption)
                     .foregroundStyle(.secondary)

@@ -239,6 +239,13 @@ struct SettingsView: View {
                 if FileManager.default.fileExists(atPath: "/Applications/VLC.app") {
                     Toggle("Watch in VLC", isOn: $draft.Watch_in_VLC)
                         .help("Show a 'Watch in VLC' option for live and recording streams")
+
+                    Picker("Min buffer rate", selection: $draft.Player_buffer_min_rate) {
+                        ForEach(Array(stride(from: 90, through: 100, by: 1)), id: \.self) { pct in
+                            Text(pct == 100 ? "100% (disabled)" : "\(pct)%").tag(pct)
+                        }
+                    }
+                    .help("Floor playback speed for the in-app player. Lower fills the 8-second live buffer faster; 100% disables buffering.")
                 }
 
                 // Bonus Time: add extra recording past the guide end for sports shows
@@ -368,6 +375,7 @@ struct SettingsView: View {
                     Toggle("Show added",                    isOn: $draft.Discord_on_show_added)
                     Toggle("Up Next reminder",              isOn: $draft.Discord_on_upnext)
                     Toggle("Recording Soon reminder",       isOn: $draft.Discord_on_soon)
+                    Toggle("Progress updates (every 5 min)", isOn: $draft.Discord_on_progress)
                 }
             }
         }

@@ -76,6 +76,7 @@ struct VLCPlayerView: View {
             }
         }
         .onAppear {
+            VLCBridge.shared.minRate = Float(state.config.Player_buffer_min_rate) / 100.0
             VLCBridge.shared.setVolume(0)   // muted until Start is clicked
             refreshAudioDevices()
             VLCBridge.shared.startDeviceChangeMonitoring { refreshAudioDevices() }
@@ -91,6 +92,9 @@ struct VLCPlayerView: View {
         .onChange(of: state.vlcCurrentURL) { _, rawURL in
             // Sync picker when watchInApp is called while the window is already open.
             syncChannel(to: rawURL)
+        }
+        .onChange(of: state.config.Player_buffer_min_rate) { _, pct in
+            VLCBridge.shared.minRate = Float(pct) / 100.0
         }
         .onDisappear {
             VLCBridge.shared.stop()
@@ -220,6 +224,16 @@ struct VLCPlayerView: View {
 
             Spacer()
 
+            // Catch Up: discard buffer and reconnect at live edge
+            Button {
+                VLCBridge.shared.catchUpToLive()
+            } label: {
+                Image(systemName: "arrow.clockwise.circle")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Catch up to live — discards buffer and reconnects")
+
             // Live wall-clock time — meaningful for live TV; no elapsed/scrubbing concept
             TimelineView(.periodic(from: .now, by: 1.0)) { ctx in
                 Text(ctx.date, style: .time)
@@ -323,6 +337,7 @@ final class VLCPlayerWindowManager {
     /// If the window is already showing, the stream is switched immediately.
     func open(url: String, title: String, device: HDHRDevice, appState: AppState) {
         currentDeviceID = device.DeviceID
+        VLCBridge.shared.minRate = Float(appState.config.Player_buffer_min_rate) / 100.0
         VLCBridge.shared.setVolume(0)   // mute before buffering starts; Start click unmutes
         VLCBridge.shared.play(url: url)
 
