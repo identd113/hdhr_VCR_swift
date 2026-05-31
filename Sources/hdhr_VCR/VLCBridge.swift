@@ -59,6 +59,7 @@ private typealias vlc_adev_set_fn        = @convention(c) (OpaquePointer?, Unsaf
 private typealias vlc_media_add_opt_fn   = @convention(c) (OpaquePointer?, UnsafePointer<CChar>?) -> Void
 private typealias vlc_mp_set_rate_fn     = @convention(c) (OpaquePointer?, Float) -> Int32
 private typealias vlc_mp_get_rate_fn     = @convention(c) (OpaquePointer?) -> Float
+private typealias vlc_mp_get_state_fn    = @convention(c) (OpaquePointer?) -> Int32
 private typealias vlc_mp_get_stats_fn    = @convention(c) (OpaquePointer?, UnsafeMutableRawPointer?) -> Int32
 private typealias vlc_video_get_size_fn  = @convention(c) (OpaquePointer?, UInt32, UnsafeMutablePointer<UInt32>?, UnsafeMutablePointer<UInt32>?) -> Int32
 private typealias vlc_get_version_fn     = @convention(c) () -> UnsafePointer<CChar>?
@@ -114,6 +115,8 @@ final class VLCBridge: ObservableObject {
     /// Minimum playback rate (fill-phase floor). Set from AppConfig by VLCPlayerView. 1.0 = disabled.
     var minRate: Float = 0.93
     @Published var bufferInfo = VLCBufferInfo()
+    @Published var hasError:   Bool = false
+    @Published var isPlaying:  Bool = false   // true only after libvlc_Playing (state 3) confirmed
     private(set) var currentURL: String?
     private var statsTimer:      Timer?
     private var currentRate:     Float  = 1.0
@@ -142,6 +145,7 @@ final class VLCBridge: ObservableObject {
     private let _mediaAddOpt:  vlc_media_add_opt_fn?
     private let _mpSetRate:     vlc_mp_set_rate_fn?
     private let _mpGetRate:     vlc_mp_get_rate_fn?
+    private let _mpGetState:    vlc_mp_get_state_fn?
     private let _mpGetStats:    vlc_mp_get_stats_fn?
     private let _videoGetSize:  vlc_video_get_size_fn?
     private let _getVersion:    vlc_get_version_fn?
@@ -179,6 +183,7 @@ final class VLCBridge: ObservableObject {
         _mediaAddOpt  = sym("libvlc_media_add_option")
         _mpSetRate    = sym("libvlc_media_player_set_rate")
         _mpGetRate    = sym("libvlc_media_player_get_rate")
+        _mpGetState   = sym("libvlc_media_player_get_state")
         _mpGetStats   = sym("libvlc_media_player_get_stats")
         _videoGetSize = sym("libvlc_video_get_size")
         _getVersion   = sym("libvlc_get_version")
@@ -252,13 +257,17 @@ final class VLCBridge: ObservableObject {
         }
         glog("[VLC] play url=\(url)")
         stopStatsTimer()
+        hasError  = false
+        isPlaying = false
         _mpStop?(mp)
         if let old = currentMedia { _mediaRelease?(old); currentMedia = nil }
         guard let media = url.withCString({ _mediaNL?(inst, $0) }) else {
             glog("[VLC] ERROR: libvlc_media_new_location returned nil for url=\(url)", level: .error)
             return
         }
-        for opt in ["--network-caching=2000", "--drop-late-frames", "--avcodec-hurry-up"] {
+        // --no-audio-time-stretch prevents VLC from crashing audio init on MPEG-2 streams
+        // where the sample rate is reported as 0 before the first audio frame arrives.
+        for opt in ["--network-caching=2000", "--drop-late-frames", "--avcodec-hurry-up", "--no-audio-time-stretch"] {
             opt.withCString { _mediaAddOpt?(media, $0) }
         }
         currentURL        = url
@@ -287,6 +296,8 @@ final class VLCBridge: ObservableObject {
         // drawableView is cleared so a subsequent play() queues as pending; the window goes black.
         glog("[VLC] stop called — drawable=\(drawableView != nil ? "had view" : "already nil") currentURL=\(currentURL ?? "none")")
         stopStatsTimer()
+        hasError  = false
+        isPlaying = false
         currentURL   = nil
         pendingURL   = nil
         drawableView = nil
@@ -301,6 +312,8 @@ final class VLCBridge: ObservableObject {
     func releasePlayer() {
         glog("[VLC] releasePlayer — stopping and releasing mediaPlayer, currentURL=\(currentURL ?? "none")")
         stopStatsTimer()
+        hasError  = false
+        isPlaying = false
         currentURL   = nil
         pendingURL   = nil
         drawableView = nil
@@ -363,6 +376,21 @@ final class VLCBridge: ObservableObject {
 
     private func tickController() {
         guard let mp = mediaPlayer else { return }
+
+        if let getState = _mpGetState {
+            let state = getState(mp)
+            if state == 7 {  // libvlc_Error: connection refused, no route to host, etc.
+                glog("[VLC] stream error state — publishing hasError", level: .error)
+                hasError  = true
+                isPlaying = false
+                stopStatsTimer()
+                return
+            }
+            if state == 3 && !isPlaying {  // libvlc_Playing: first confirmed decode tick
+                isPlaying = true
+                glog("[VLC] stream playing confirmed")
+            }
+        }
 
         // Adaptive rate: ramp from minRate toward 1.0 as estimated buffer lag grows toward 8s.
         if minRate < 1.0 {

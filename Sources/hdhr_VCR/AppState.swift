@@ -952,6 +952,7 @@ final class AppState: ObservableObject {
         }
         shows[index].show_recording = true; shows[index].show_recording_path = path
         shows[index].show_fail_count = max(0, show.show_fail_count - 1)
+        refreshTunerOccupancy()
         // Stamp notify_recording_time so the "Recording Soon" pre-notification won't re-fire
         shows[index].notify_recording_time = Date().addingTimeInterval(config.Notify_recording * 60)
         notify("Recording Started", body: show.show_title, subtitle: "Channel \(show.show_channel) — ends \(shortTime(endDate))",
@@ -990,6 +991,7 @@ final class AppState: ObservableObject {
         recordingManager.stop(showId: show.show_id)
         tunerStatus.removeValue(forKey: show.show_id)
         shows[index].show_recording = false
+        refreshTunerOccupancy()
         shows[index].show_last = Date()
 
         if !natural {
@@ -1589,6 +1591,7 @@ final class AppState: ObservableObject {
             }
             vlcCurrentURL = url
             mgr.open(url: streamURL, title: title, device: device, appState: self)
+            refreshTunerOccupancy()
         }
     }
 
@@ -1624,6 +1627,15 @@ final class AppState: ObservableObject {
     }
 
     // MARK: - Tuner signal status
+
+    /// Polls every device's /status.json immediately after any tuner-affecting event
+    /// (recording start/stop, VLC open/close/channel-switch) so the menu header stays current.
+    func refreshTunerOccupancy() {
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_500_000_000)   // 1.5s — let device register the change
+            for device in devices { await fetchDeviceStatus(for: device) }
+        }
+    }
 
     /// Fetches /status.json once per device, updates occupancy for the menu header, then
     /// fetches /tunerN/vstatus for each recording show on that device using the tuner index
