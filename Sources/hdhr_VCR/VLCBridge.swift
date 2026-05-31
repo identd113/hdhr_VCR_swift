@@ -223,11 +223,13 @@ final class VLCBridge: ObservableObject {
     /// Attach an NSView for VLC to render video into.
     /// Call this from VLCVideoSurface.makeNSView so it's set before the first play().
     func setDrawable(_ view: NSView) {
+        glog("[VLC] setDrawable view=\(ObjectIdentifier(view)) mp=\(mediaPlayer != nil ? "ready" : "nil") pending=\(pendingURL != nil ? "yes" : "no")")
         drawableView = view
         guard let mp = mediaPlayer else { return }
         _mpSetNSO?(mp, Unmanaged.passUnretained(view).toOpaque())
         if let url = pendingURL {
             pendingURL = nil
+            glog("[VLC] setDrawable firing pending play: \(url)")
             play(url: url)
         }
     }
@@ -238,12 +240,24 @@ final class VLCBridge: ObservableObject {
     /// Stops current media, sets new media on the same player, resumes play.
     /// Always applies 2s network cache, drops late/corrupt frames, and starts the rate controller.
     func play(url: String) {
-        guard drawableView != nil else { pendingURL = url; return }
-        guard let inst = vlcInstance, let mp = mediaPlayer else { pendingURL = url; return }
+        guard drawableView != nil else {
+            glog("[VLC] play deferred — no drawable yet, queuing as pending: \(url)", level: .warning)
+            pendingURL = url
+            return
+        }
+        guard let inst = vlcInstance, let mp = mediaPlayer else {
+            glog("[VLC] play deferred — vlcInstance=\(vlcInstance != nil ? "ok" : "nil") mediaPlayer=\(mediaPlayer != nil ? "ok" : "nil"), queuing: \(url)", level: .warning)
+            pendingURL = url
+            return
+        }
+        glog("[VLC] play url=\(url)")
         stopStatsTimer()
         _mpStop?(mp)
         if let old = currentMedia { _mediaRelease?(old); currentMedia = nil }
-        guard let media = url.withCString({ _mediaNL?(inst, $0) }) else { return }
+        guard let media = url.withCString({ _mediaNL?(inst, $0) }) else {
+            glog("[VLC] ERROR: libvlc_media_new_location returned nil for url=\(url)", level: .error)
+            return
+        }
         for opt in ["--network-caching=2000", "--drop-late-frames", "--avcodec-hurry-up"] {
             opt.withCString { _mediaAddOpt?(media, $0) }
         }
@@ -253,7 +267,8 @@ final class VLCBridge: ObservableObject {
         currentRate       = minRate
         lastCorrupted     = 0
         _mpSetMedia?(mp, media)
-        _ = _mpPlay?(mp)
+        let rc = _mpPlay?(mp) ?? -1
+        if rc != 0 { glog("[VLC] WARNING: libvlc_media_player_play returned \(rc)", level: .warning) }
         if minRate < 1.0 {
             _ = _mpSetRate?(mp, minRate)
             // Verify rate was accepted — live streams may ignore it on some VLC versions.
@@ -268,6 +283,10 @@ final class VLCBridge: ObservableObject {
     }
 
     func stop() {
+        // drawableView is cleared so a subsequent play() queues as pending.
+        // If stop() is called while the window stays open (e.g. remote-command Stop key),
+        // the drawable will never be re-set and the window stays black — see known issue.
+        glog("[VLC] stop called — drawable=\(drawableView != nil ? "had view" : "already nil") currentURL=\(currentURL ?? "none")")
         stopStatsTimer()
         currentURL   = nil
         pendingURL   = nil
@@ -279,7 +298,11 @@ final class VLCBridge: ObservableObject {
 
     /// Discard buffered content and reconnect to the live edge. Resets the rate controller.
     func catchUpToLive() {
-        guard let url = currentURL else { return }
+        guard let url = currentURL else {
+            glog("[VLC] catchUpToLive — no currentURL, ignoring")
+            return
+        }
+        glog("[VLC] catchUpToLive — reconnecting to: \(url)")
         play(url: url)
     }
 

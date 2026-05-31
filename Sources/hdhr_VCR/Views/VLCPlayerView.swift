@@ -17,6 +17,7 @@ private struct VLCVideoSurface: NSViewRepresentable {
         let v = NSView()
         v.wantsLayer = true
         v.layer?.backgroundColor = CGColor(gray: 0, alpha: 1)
+        glog("[VLC] VLCVideoSurface.makeNSView — new drawable view=\(ObjectIdentifier(v))")
         VLCBridge.shared.setDrawable(v)
         return v
     }
@@ -78,6 +79,7 @@ struct VLCPlayerView: View {
             }
         }
         .onAppear {
+            glog("[VLC] VLCPlayerView.onAppear device=\(device.DeviceID) initialURL=\(initialURL)")
             VLCBridge.shared.minRate = Float(state.config.Player_buffer_min_rate) / 100.0
             VLCBridge.shared.setVolume(0)   // muted until Start is clicked
             refreshAudioDevices()
@@ -85,7 +87,13 @@ struct VLCPlayerView: View {
             syncChannel(to: initialURL)
             let cc = MPRemoteCommandCenter.shared()
             cc.stopCommand.isEnabled = true
-            cc.stopCommand.addTarget { _ in Task { @MainActor in VLCBridge.shared.stop() }; return .success }
+            cc.stopCommand.addTarget { _ in
+                // Remote stop (media key / Now Playing widget) — calls VLCBridge.stop() which
+                // clears drawableView; window will go black until closed and reopened.
+                glog("[VLC] remote stopCommand received")
+                Task { @MainActor in VLCBridge.shared.stop() }
+                return .success
+            }
             cc.nextTrackCommand.isEnabled = true
             cc.nextTrackCommand.addTarget { _ in NotificationCenter.default.post(name: .vlcChannelNext, object: nil); return .success }
             cc.previousTrackCommand.isEnabled = true
@@ -93,12 +101,17 @@ struct VLCPlayerView: View {
         }
         .onChange(of: state.vlcCurrentURL) { _, rawURL in
             // Sync picker when watchInApp is called while the window is already open.
+            glog("[VLC] vlcCurrentURL changed → syncChannel: \(rawURL.isEmpty ? "(empty)" : rawURL)")
             syncChannel(to: rawURL)
         }
         .onChange(of: state.config.Player_buffer_min_rate) { _, pct in
+            glog("[VLC] Player_buffer_min_rate changed → \(pct)%")
             VLCBridge.shared.minRate = Float(pct) / 100.0
         }
         .onDisappear {
+            // Called when the window closes. VLCBridge.stop() clears drawableView — safe here
+            // because the window (and VLCVideoSurface) are going away.
+            glog("[VLC] VLCPlayerView.onDisappear")
             VLCBridge.shared.stop()
             VLCBridge.shared.stopDeviceChangeMonitoring()
             MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
@@ -341,21 +354,55 @@ struct VLCPlayerView: View {
         guard !url.isEmpty else { return }
         let base = url.components(separatedBy: "?").first ?? url
         if let match = lineup.first(where: { ($0.URL ?? "").hasPrefix(base) || base.hasPrefix($0.URL ?? "") }) {
+            glog("[VLC] syncChannel matched \(match.GuideNumber) \(match.GuideName) for url=\(base)")
             suppressNextChannelPlay = true
             selectedChannel = match
             updateNowPlaying(channel: match)
+        } else {
+            glog("[VLC] syncChannel no match in \(lineup.count)-entry lineup for url=\(base)", level: .warning)
         }
     }
 
     private func playChannel(_ ch: LineupEntry) {
-        guard let rawURL = ch.URL, !rawURL.isEmpty else { return }
+        guard let rawURL = ch.URL, !rawURL.isEmpty else {
+            glog("[VLC] playChannel skipped — no URL for ch=\(ch.GuideNumber) \(ch.GuideName)", level: .warning)
+            return
+        }
         let transcode = state.config.Default_transcode.lowercased()
         // VLC handles MPEG-2 natively — no forced transcode; "none" = raw stream
         let url = (transcode.isEmpty || transcode == "none")
             ? rawURL
             : "\(rawURL)?transcode=\(transcode)"
-        VLCBridge.shared.play(url: url)
-        updateNowPlaying(channel: ch)
+        glog("[VLC] playChannel \(ch.GuideNumber) \(ch.GuideName) → \(url)")
+
+        Task {
+            // Check live tuner occupancy before switching. Our current stream occupies one slot;
+            // if all OTHER slots are also taken, the switch may fail because the HDHR may not
+            // see our old slot as free before the new connection arrives.
+            if let statusURL = URL(string: device.statusURL),
+               let (data, _) = try? await URLSession.shared.data(from: statusURL),
+               let tuners = try? JSONDecoder().decode([DeviceTunerInfo].self, from: data) {
+                let tunerCount  = device.TunerCount ?? 2
+                let active      = tuners.filter { $0.VctNumber != nil }.count
+                // Assume our stream is one of the active tuners if VLCBridge has a current URL.
+                let weActive    = VLCBridge.shared.currentURL != nil ? 1 : 0
+                let otherActive = active - weActive
+                glog("[VLC] channel switch → ch \(ch.GuideNumber): \(active)/\(tunerCount) tuners active (ours=\(weActive) other=\(otherActive))")
+                if otherActive >= tunerCount {
+                    glog("[VLC] WARNING: all \(tunerCount) tuner(s) appear occupied by other streams — switch may fail", level: .warning)
+                    let alert = NSAlert()
+                    alert.messageText = "Tuners May Be Full"
+                    alert.informativeText = "\(otherActive) of \(tunerCount) tuner\(tunerCount == 1 ? "" : "s") on \(device.DeviceID) appear occupied by recordings or other streams. Switching channels may fail."
+                    alert.alertStyle = .warning
+                    alert.addButton(withTitle: "Switch Anyway")
+                    alert.addButton(withTitle: "Cancel")
+                    guard alert.runModal() == .alertFirstButtonReturn else { return }
+                }
+            }
+            state.vlcCurrentURL = rawURL   // keep Now Watching indicator current on channel switch
+            VLCBridge.shared.play(url: url)
+            updateNowPlaying(channel: ch)
+        }
     }
 
     private func updateNowPlaying(channel: LineupEntry) {
@@ -418,11 +465,13 @@ final class VLCPlayerWindowManager {
         VLCBridge.shared.play(url: url)
 
         if let win = window {
+            glog("[VLC] WindowManager.open — reusing existing window, title=\(title)")
             win.title = title
             win.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
         }
+        glog("[VLC] WindowManager.open — creating new window, device=\(device.DeviceID) url=\(url)")
 
         let playerView = VLCPlayerView(device: device, initialURL: url)
             .environmentObject(appState)
@@ -458,6 +507,7 @@ final class VLCPlayerWindowManager {
     }
 
     fileprivate func playerWindowDidClose() {
+        glog("[VLC] WindowManager.playerWindowDidClose")
         VLCBridge.shared.stop()
         currentDeviceID = nil
         window = nil
