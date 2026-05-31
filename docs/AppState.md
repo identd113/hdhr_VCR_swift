@@ -32,6 +32,7 @@ Runs every `config.Idle_timer_interval` seconds on MainActor:
   - Fires Discord progress update (PATCH) once per 5-minute boundary for active recordings when `Discord_on_progress` is enabled and `discord_start_msg_id` is set.
 - Conflict notifications: when a show can't start because all tuners are full, fires once per show+episode window (`conflictNotifiedKeys` set keyed by `"showID-show_next_epoch"`).
 - Calls `fetchDeviceStatus(for:)` once per device — a single `/status.json` fetch per device covers both the menu-header occupancy count and per-recording vstatus signal data (one targeted `/tunerN/vstatus` per recording show, identified from the status.json result). Tuner matching: prefers the tuner whose `VctNumber` equals `show.show_channel`; falls back to any locked tuner when the format doesn't match exactly (sub-channel firmware variation). Logs a warning if no locked tuner is found at all.
+- **Tuner audit**: after storing `deviceTunerOccupancy`, `fetchDeviceStatus` logs `[TunerAudit] DEVID: N/M active  rec=N vlc=N` every tick — `active` is the raw count of locked tuners from `status.json`, `rec` is `recordingShows.filter { hdhr_record == device.DeviceID }.count`, and `vlc` is 1 when `VLCPlayerWindowManager.shared.currentDeviceID` matches this device. Unexpected tuner usage (e.g. a leak after a delete) is immediately visible in the log.
 
 ---
 
@@ -121,3 +122,21 @@ In a SwiftUI `.menu`-style `MenuBarExtra`, the menu body re-evaluates on every `
 `rebuildMenuEntries()` is called from `guideByDevice.didSet` (after every guide load) and from the idle loop (guarded by `menuIsOpen`). It rebuilds: `managedShowBySeriesID`/`managedShowByTitle` (O(1) show lookups for WatchNow + menus), `channelImageURLs` (logo URL map for WatchNow), `menuScheduledEntry`/`menuUpcomingSlots` (pre-computed guide matches for scheduled/paused menus), and `conflictingShowIDs` (one O(N²) conflict pass instead of one per open).
 
 **Conflict detection** uses `candidateShows = shows.filter { show_active && !show_paused }` — this includes currently-recording shows (`show_recording == true`), unlike `activeShows` which excludes them. A scheduled show that overlaps an already-recording show is therefore correctly flagged. `conflictNotifiedKeys` (keyed by `"showID-show_next_epoch"`) is pruned on each `scheduleNextAir` call so stale epoch keys don't accumulate across airings.
+
+---
+
+## Show Delete / Skip (`deleteShow`, `skipRecording`)
+
+Both functions call `recordingManager.stop(showId:)` first (kills caffeinate+curl PIDs), then `VLCPlayerWindowManager.shared.closeIfPlayingURL(show.show_url)` — if the in-app VLC player is currently streaming the deleted/skipped show's URL the player window is closed, freeing the tuner.
+
+`deleteShow` removes the show from `shows` and saves config. `skipRecording` additionally marks `show_paused = true`, sets `show_fail_reason = "Skipped"`, and calls `scheduleNextAir` to advance to the next airing.
+
+---
+
+## Quit (`quit()`)
+
+All three exit branches call `VLCBridge.shared.stop()` before terminating so the in-app player releases its HDHR tuner immediately:
+
+- **No recordings** — `VLCBridge.stop()` → `recordingManager.stopAll()` → `NSApplication.terminate(nil)`
+- **Keep Recording & Quit** — `VLCBridge.stop()` → `NSApplication.terminate(nil)` (curl+caffeinate orphaned; reattach on relaunch)
+- **Stop Recordings & Quit** — `VLCBridge.stop()` → `recordingManager.stopAll()` → `NSApplication.terminate(nil)`

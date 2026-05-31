@@ -171,17 +171,35 @@ private func playChannel(_ ch: LineupEntry) {
     guard let rawURL = ch.URL, !rawURL.isEmpty else { return }
     let transcode = state.config.Default_transcode.lowercased()
     let url = (transcode.isEmpty || transcode == "none")
-        ? rawURL
-        : "\(rawURL)?transcode=\(transcode)"
+        ? rawURL : "\(rawURL)?transcode=\(transcode)"
+
+    // Buffer immediately — stream starts the moment the poster appears.
+    state.vlcCurrentURL = rawURL        // keeps Now Watching indicator accurate
     VLCBridge.shared.play(url: url)
+    updateNowPlaying(channel: ch)
+
+    // Tuner check runs in background after play() so it never delays buffering.
+    Task { /* fetch status.json, log active/total, warn if over capacity */ }
 }
 ```
 
-Reads `config.Default_transcode` (not the show's per-show transcode, since the channel picker is device/lineup-level, not show-level). When transcode is `"none"` or empty, the raw stream URL is used — VLC decodes MPEG-2 natively so no transcode is needed. This is the key difference from the old AVPlayer path, which always forced `heavy`.
+Reads `config.Default_transcode` (not per-show transcode — the picker is device/lineup-level, not show-level). When transcode is `"none"` or empty the raw stream URL is used; VLC decodes MPEG-2 natively.
 
-### onDisappear
+**Immediate buffering**: `play()` is called synchronously, before the background Task that checks tuner occupancy. The poster overlay is visible from the moment the channel changes, so every millisecond of poster time is also buffer-build time. By the time the user reads the episode info and clicks Start, the stream has been filling at `minRate` since the picker change.
 
-Calls `VLCBridge.shared.stop()` when the window closes. This releases the current media object and stops the stream cleanly. The player itself (`VLCBridge.shared.mediaPlayer`) is not destroyed — it stays alive for the next `open()` call.
+**Now Watching sync**: `state.vlcCurrentURL = rawURL` is set here (in addition to `watchInApp`) so that picker-driven channel switches keep the Now Watching indicator in the menu bar accurate. Without this, the indicator would show the old channel until the next `watchInApp` call.
+
+**Background tuner check**: after `play()` returns, a `Task` fetches `status.json` and logs `[VLC] post-switch tuner status ch X.X: N/M active (ours=N other=N)`. If all non-VLC slots appear occupied it logs a warning. No alert is shown — the stream is already running and the HDHR may succeed regardless.
+
+**Start button log**: the Start button (which dismisses the poster overlay) logs `[VLC] Start clicked — buffer ~X.Xs built before unmute`, showing exactly how much buffer headroom accumulated during the poster phase.
+
+### onAppear / onDisappear
+
+`onAppear` logs `[VLC] VLCPlayerView.onAppear device=… initialURL=…`, sets up the rate controller, audio devices, media-key remote commands, and calls `syncChannel`.
+
+`onDisappear` logs `[VLC] VLCPlayerView.onDisappear` and calls `VLCBridge.shared.stop()`, which releases the current media object and stops the stream. The player (`VLCBridge.shared.mediaPlayer`) is not destroyed — it stays alive for the next `open()` call.
+
+**Remote stop command (known issue)**: the Now Playing / media-key Stop command calls `VLCBridge.stop()`, which clears `drawableView = nil`. Every subsequent `play()` then queues as pending but the SwiftUI view is still alive so `makeNSView` never re-fires — the window goes black until closed and reopened. This is logged as `[VLC] remote stopCommand received` immediately before `[VLC] stop called — drawable=had view`. If this sequence appears in the log it confirms the black-screen cause.
 
 ---
 
@@ -250,9 +268,11 @@ final class VLCPlayerWindowManager {
 }
 ```
 
-**`focus()`**: brings the player window to the front without switching the stream. Called from the "Now Watching" button in `MenuContent` so the user can jump straight back to the player. No-op when `window` is nil (player is closed).
+**`focus()`**: brings the player window to the front without switching the stream. Called from the "Now Watching" button in `MenuContent` (via `DispatchQueue.main.async` to defer past NSMenu teardown). No-op when `window` is nil.
 
-**`closeIfPlayingURL(_ url: String)`**: closes the player window if `appState.vlcCurrentURL == url` (exact equality on the raw base URL). Called from `AppState.deleteShow` and `AppState.skipRecording` to tear down the in-app player when the show being removed is the one currently streaming. No-op when the URL doesn't match or no window is open; triggers the normal `windowWillClose → playerWindowDidClose` teardown chain which stops VLCBridge and clears `vlcCurrentURL`.
+**`closeIfPlayingURL(_ url: String)`**: closes the player window if `appState.vlcCurrentURL == url` (exact equality on the raw base URL, no query params). Called from `AppState.deleteShow` and `AppState.skipRecording` immediately after `recordingManager.stop()` — if the user is watching the same channel they just deleted/skipped, the VLC window tears down cleanly and the tuner is freed. No-op when the URL doesn't match or no window is open. Triggers `windowWillClose → playerWindowDidClose → VLCBridge.stop()`.
+
+**`playerWindowDidClose()`**: called by `WindowCloseObserver.windowWillClose`. Calls `VLCBridge.shared.stop()`, clears `currentDeviceID`, sets `window = nil`, and clears `appState?.vlcCurrentURL = ""`. The `appState` weak reference is set in `open()` and persists for the window lifetime.
 
 ### Singleton NSWindow with isReleasedWhenClosed = false
 
@@ -317,6 +337,44 @@ private(set) var currentDeviceID: String?
 Set to `device.DeviceID` in `open()`, cleared to `nil` in `playerWindowDidClose()`. Read by `watchInApp` to skip the tuner availability check when the player already occupies a slot on the target device (channel switching should always be allowed without a free-tuner check).
 
 `playerWindowDidClose()` also clears `appState?.vlcCurrentURL = ""` so the "Now Watching" indicator in `MenuContent` disappears when the window is closed.
+
+---
+
+## Logging Reference
+
+All VLC log lines are prefixed `[VLC]` and written via `glog()` to `~/Library/Logs/hdhrVCRplus.log`.
+
+| Log line | When it fires |
+|---|---|
+| `VLCVideoSurface.makeNSView — new drawable view=…` | SwiftUI creates the NSView VLC renders into |
+| `setDrawable view=… mp=ready/nil pending=yes/no` | Drawable attached; shows whether mediaPlayer is ready and whether a pending URL is queued |
+| `setDrawable firing pending play: …` | Drawable set while a URL was queued — plays immediately |
+| `play url=…` | Normal play/switch; stream starts |
+| `play deferred — no drawable yet` ⚠ | Drawable is nil (VLC not yet attached to a view); URL queued as pending. **Primary black-screen precursor.** |
+| `play deferred — vlcInstance=nil / mediaPlayer=nil` ⚠ | VLC library not yet initialised; URL queued as pending |
+| `WARNING: libvlc_media_player_play returned N` ⚠ | libvlc rejected the play call |
+| `stop called — drawable=had view/already nil currentURL=…` | stop() called; tracks whether drawable was still live |
+| `remote stopCommand received` ⚠ | Media key or Now Playing widget Stop pressed — **calls stop(), clears drawable, causes black screen** |
+| `catchUpToLive — reconnecting to: …` | Manual or auto catch-up triggered |
+| `VLCPlayerView.onAppear device=… initialURL=…` | Player view appeared (window opened or SwiftUI re-mount) |
+| `VLCPlayerView.onDisappear` | Window closed; stop() about to be called |
+| `vlcCurrentURL changed → syncChannel: …` | watchInApp or playChannel updated vlcCurrentURL |
+| `syncChannel matched X.X ChName for url=…` | Channel picker pre-selected to match the playing URL |
+| `syncChannel no match in N-entry lineup for url=…` ⚠ | No lineup entry matches the URL — picker may be wrong |
+| `playChannel X.X ChName → url` | User changed the channel picker; stream switching |
+| `Start clicked — buffer ~X.Xs built before unmute` | User dismissed poster overlay; shows buffer depth at that moment |
+| `post-switch tuner status ch X.X: N/M active (ours=N other=N)` | Post-switch status.json check result |
+| `WARNING: all N tuner(s) appear occupied` ⚠ | Other streams hold all slots after the switch |
+| `WindowManager.open — reusing existing window` | Channel switch on an already-open player |
+| `WindowManager.open — creating new window, device=… url=…` | First open; NSWindow being created |
+| `WindowManager.playerWindowDidClose` | Window closed; VLCBridge.stop() about to fire |
+
+**Black screen diagnosis sequence** — look for this pattern to confirm the remote-Stop cause:
+```
+[VLC] remote stopCommand received
+[VLC] stop called — drawable=had view currentURL=http://…
+[VLC] play deferred — no drawable yet, queuing as pending: http://…
+```
 
 ---
 

@@ -1,7 +1,16 @@
 // Hand-maintained changelog displayed in Settings → About.
 // Update this file when shipping new features; keep most-recent version at the top.
 let appChangelog = """
+## 2026-05-31 (260531-1324)
+- Tuner audit — active/expected tuner count logged every idle tick; unexpected usage visible immediately in ~/Library/Logs/hdhrVCRplus.log
+- VLC stop on quit — in-app player releases its tuner immediately on app exit in all quit paths
+
+## 2026-05-31 (260531-1212)
+- Channel buffering — new channel starts buffering the instant the poster appears; Start button logs how much buffer built before unmute
+- VLC diagnostic logging — comprehensive log coverage of play/stop/drawable/channel-switch/window-open paths to track down black-screen cause
+
 ## 2026-05-31 (260531-0239)
+- Close VLC player on show delete/skip — deleting or skipping a show closes the in-app player if it is streaming that channel, freeing the tuner
 - Now Watching indicator — when the VLC player is open, the menu shows a button with the current channel and on-air show title; clicking it focuses the player window without switching the stream
 
 ## 2026-05-31 (260531-0223)

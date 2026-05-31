@@ -2,6 +2,24 @@
 
 > In-app changelog (Settings → About) is maintained in [`Sources/hdhr_VCR/Changelog.swift`](Sources/hdhr_VCR/Changelog.swift).
 
+## 2026-05-31 (260531-1324)
+
+- **Tuner audit log** — `fetchDeviceStatus` now logs `[TunerAudit] DEVID: N/M active  rec=N vlc=N` every idle tick (~10s), making unexpected tuner usage immediately visible in the log without manual status endpoint polling
+- **VLC stop on quit** — `quit()` now calls `VLCBridge.shared.stop()` in all three exit branches (fast-quit, Keep Recording & Quit, Stop Recordings & Quit) so the in-app player releases its tuner immediately on app exit rather than relying on OS-level cleanup
+
+## 2026-05-31 (260531-1212)
+
+- **Immediate channel buffering** — `playChannel` now calls `VLCBridge.play()` immediately when the channel picker changes so the new stream starts buffering the moment the poster overlay appears; tuner status check moved to a fire-and-forget background Task that logs results without blocking stream start
+- **Now Watching tracks channel switches** — `state.vlcCurrentURL` is now updated by `playChannel` (picker-driven switches), not only by `watchInApp`, so the Now Watching indicator stays accurate after switching channels inside the player
+- **Start button logs buffer depth** — clicking Start to dismiss the poster overlay logs `[VLC] Start clicked — buffer ~X.Xs built before unmute` showing how much headroom accumulated while the poster was visible
+- **Post-switch tuner log** — after each channel switch, `playChannel` fetches `status.json` and logs `[VLC] post-switch tuner status ch X.X: N/M active (ours=N other=N)`; warns if other streams appear to have taken all slots
+- **VLC diagnostic logging** — comprehensive `[VLC]` log lines throughout `VLCBridge` and `VLCPlayerView` to diagnose the black-screen issue: `play()` logs URL and warns when deferred to pending (drawable not ready); `stop()` logs drawable state at call time; `setDrawable()` logs view identity and pending-URL handoff; `catchUpToLive()` logs the reconnect URL; `syncChannel()` logs match result; `playChannel()` logs channel + URL; `WindowManager.open` logs reuse vs new window; remote Stop command (media key / Now Playing) logged as the likely black-screen cause — clears `drawableView`, leaving window black until closed
+
+## 2026-05-31 (260531-0239)
+
+- **Close VLC player on show delete/skip** — deleting or skipping a show now closes the in-app VLC player window if it is currently streaming that show's URL, freeing the tuner immediately alongside the recording PID kill; uses `VLCPlayerWindowManager.closeIfPlayingURL(_:)` — exact URL match, no-op when the player is on a different channel
+- **URL match fix** — `nowWatchingInfo` channel lookup now uses exact URL equality instead of a bidirectional prefix check, preventing false matches when one channel URL is a prefix of another (e.g. `v5.1` matching when watching `v5.10`)
+
 ## 2026-05-31 (260531-0239)
 
 - **Now Watching indicator** — when the VLC player is open, a `play.tv.fill` button appears in the menu between the status row and Watch Now showing the current channel number, name, and on-air show title (e.g. "Ch 5.1  NBC · Jeopardy!"); clicking it focuses the player window without switching the stream. Disappears automatically when the player window is closed.
