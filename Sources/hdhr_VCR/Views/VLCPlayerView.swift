@@ -195,6 +195,8 @@ struct VLCPlayerView: View {
                     }
 
                     Button {
+                        let lag = VLCBridge.shared.bufferInfo.lagSec
+                        glog("[VLC] Start clicked — buffer ~\(String(format: "%.1f", lag))s built before unmute")
                         posterHidden = true
                         VLCBridge.shared.setVolume(Int(volume))
                     } label: {
@@ -375,33 +377,28 @@ struct VLCPlayerView: View {
             : "\(rawURL)?transcode=\(transcode)"
         glog("[VLC] playChannel \(ch.GuideNumber) \(ch.GuideName) → \(url)")
 
+        // Start buffering immediately — the poster overlay is visible so the user
+        // hasn't clicked Start yet; we want the buffer building the whole time they
+        // are reading the poster info. VLCBridge.play() resets estimatedLagSec=0 and
+        // rate=minRate, so the rate controller begins filling the buffer right away.
+        state.vlcCurrentURL = rawURL
+        VLCBridge.shared.play(url: url)
+        updateNowPlaying(channel: ch)
+
+        // Check tuner occupancy in the background — stream is already started, this
+        // is for logging and a non-blocking warning if we appear to be over capacity.
         Task {
-            // Check live tuner occupancy before switching. Our current stream occupies one slot;
-            // if all OTHER slots are also taken, the switch may fail because the HDHR may not
-            // see our old slot as free before the new connection arrives.
-            if let statusURL = URL(string: device.statusURL),
-               let (data, _) = try? await URLSession.shared.data(from: statusURL),
-               let tuners = try? JSONDecoder().decode([DeviceTunerInfo].self, from: data) {
-                let tunerCount  = device.TunerCount ?? 2
-                let active      = tuners.filter { $0.VctNumber != nil }.count
-                // Assume our stream is one of the active tuners if VLCBridge has a current URL.
-                let weActive    = VLCBridge.shared.currentURL != nil ? 1 : 0
-                let otherActive = active - weActive
-                glog("[VLC] channel switch → ch \(ch.GuideNumber): \(active)/\(tunerCount) tuners active (ours=\(weActive) other=\(otherActive))")
-                if otherActive >= tunerCount {
-                    glog("[VLC] WARNING: all \(tunerCount) tuner(s) appear occupied by other streams — switch may fail", level: .warning)
-                    let alert = NSAlert()
-                    alert.messageText = "Tuners May Be Full"
-                    alert.informativeText = "\(otherActive) of \(tunerCount) tuner\(tunerCount == 1 ? "" : "s") on \(device.DeviceID) appear occupied by recordings or other streams. Switching channels may fail."
-                    alert.alertStyle = .warning
-                    alert.addButton(withTitle: "Switch Anyway")
-                    alert.addButton(withTitle: "Cancel")
-                    guard alert.runModal() == .alertFirstButtonReturn else { return }
-                }
+            guard let statusURL = URL(string: device.statusURL),
+                  let (data, _) = try? await URLSession.shared.data(from: statusURL),
+                  let tuners = try? JSONDecoder().decode([DeviceTunerInfo].self, from: data) else { return }
+            let tunerCount  = device.TunerCount ?? 2
+            let active      = tuners.filter { $0.VctNumber != nil }.count
+            let weActive    = VLCBridge.shared.currentURL != nil ? 1 : 0
+            let otherActive = active - weActive
+            glog("[VLC] post-switch tuner status ch \(ch.GuideNumber): \(active)/\(tunerCount) active (ours=\(weActive) other=\(otherActive))")
+            if otherActive >= tunerCount {
+                glog("[VLC] WARNING: all \(tunerCount) tuner(s) appear occupied by other streams — stream may have been rejected", level: .warning)
             }
-            state.vlcCurrentURL = rawURL   // keep Now Watching indicator current on channel switch
-            VLCBridge.shared.play(url: url)
-            updateNowPlaying(channel: ch)
         }
     }
 
