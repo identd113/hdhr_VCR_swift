@@ -43,6 +43,8 @@ struct VLCPlayerView: View {
     @State private var selectedDevice: String = ""
     @State private var posterHidden: Bool = false
     @State private var posterNSImage: NSImage? = nil
+    @ObservedObject private var bridge = VLCBridge.shared
+    @State private var bufferInfoHovered = false
 
     private var currentGuideEntry: GuideEntry? {
         guard let ch = selectedChannel else { return nil }
@@ -224,6 +226,8 @@ struct VLCPlayerView: View {
 
             Spacer()
 
+            if bridge.bufferInfo.enabled { bufferMonitor }
+
             // Catch Up: discard buffer and reconnect at live edge
             Button {
                 VLCBridge.shared.catchUpToLive()
@@ -272,6 +276,48 @@ struct VLCPlayerView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(Color(NSColor.windowBackgroundColor))
+    }
+
+    // MARK: - Buffer monitor
+
+    private var bufferMonitor: some View {
+        let info = bridge.bufferInfo
+        let fill = min(1.0, info.lagSec / 8.0)
+        let barColor: Color = fill > 0.875 ? .green : .accentColor
+        return ZStack(alignment: .leading) {
+            Capsule().fill(.secondary.opacity(0.18))
+            Capsule().fill(barColor.opacity(0.85))
+                .frame(width: max(3, 50 * fill))
+        }
+        .frame(width: 50, height: 6)
+        .onHover { bufferInfoHovered = $0 }
+        .popover(isPresented: $bufferInfoHovered, arrowEdge: .bottom) { bufferPopover }
+    }
+
+    private var bufferPopover: some View {
+        let info = bridge.bufferInfo
+        let pct  = Int((min(info.lagSec, 8.0) / 8.0 * 100).rounded())
+        return VStack(alignment: .leading, spacing: 5) {
+            Text("Live Buffer").font(.subheadline.bold())
+            Divider()
+            row("Lag",       String(format: "%.1fs / 8s  (%d%%)", info.lagSec, pct))
+            row("Rate",      String(format: "%.3f×", info.rate))
+            if info.demuxBitrate > 0 {
+                row("Bitrate", String(format: "%.0f kB/s", info.demuxBitrate))
+            }
+            row("Corrupted", "\(info.corrupted)")
+        }
+        .padding(12)
+        .frame(minWidth: 210)
+        .font(.caption)
+    }
+
+    private func row(_ label: String, _ value: String) -> some View {
+        HStack {
+            Text(label).foregroundStyle(.secondary)
+            Spacer()
+            Text(value).monospacedDigit()
+        }
     }
 
     // MARK: - Helpers

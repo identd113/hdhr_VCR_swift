@@ -28,9 +28,10 @@ struct MenuContent: View {
             NSApp.activate(ignoringOtherApps: true)
             let title: String
             switch id {
-            case "add-show":  title = "Add Show"
-            case "edit-show": title = "Edit Show"
-            case "settings":  title = "Settings"
+            case "add-show":   title = "Add Show"
+            case "edit-show":  title = "Edit Show"
+            case "settings":   title = "Settings"
+            case "watch-now":  title = "Watch Now"
             default:          title = id
             }
             if let w = NSApp.windows.first(where: { $0.title == title }) {

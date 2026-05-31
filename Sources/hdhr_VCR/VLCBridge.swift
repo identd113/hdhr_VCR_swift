@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import CoreAudio
 
 // ── C struct mirrors matching libvlc header layouts exactly ──────────────────
@@ -77,11 +78,20 @@ private let audioDeviceChangeProc: AudioObjectPropertyListenerProc = { _, _, _, 
 
 // ── VLCBridge ────────────────────────────────────────────────────────────────
 // Loads libvlc.dylib from VLC.app at runtime via dlopen.
+// Snapshot of the live buffer state, published on every tickController tick.
+struct VLCBufferInfo {
+    var lagSec:       Double = 0     // estimated buffer lag behind live edge (0..8s target)
+    var rate:         Float  = 1.0   // current playback rate (minRate..1.0 while filling, 1.0 when full)
+    var demuxBitrate: Float  = 0     // f_demux_bitrate from libvlc stats (kB/s)
+    var corrupted:    Int32  = 0     // cumulative i_demux_corrupted count
+    var enabled:      Bool   = false // false when minRate == 1.0 (buffering disabled)
+}
+
 // No compile-time dependency — the app builds without VLC installed.
 // All methods must be called from the MainActor.
 
 @MainActor
-final class VLCBridge {
+final class VLCBridge: ObservableObject {
     static let shared = VLCBridge()
 
     private let libHandle: UnsafeMutableRawPointer?
@@ -102,6 +112,7 @@ final class VLCBridge {
     // MARK: - Buffer rate controller state
     /// Minimum playback rate (fill-phase floor). Set from AppConfig by VLCPlayerView. 1.0 = disabled.
     var minRate: Float = 0.93
+    @Published var bufferInfo = VLCBufferInfo()
     private(set) var currentURL: String?
     private var statsTimer:      Timer?
     private var currentRate:     Float  = 1.0
@@ -298,6 +309,11 @@ final class VLCBridge {
             }
         }
 
+        // Publish rate/lag state unconditionally — bar is visible even when stats are unavailable.
+        bufferInfo = VLCBufferInfo(lagSec: estimatedLagSec, rate: currentRate,
+                                   demuxBitrate: bufferInfo.demuxBitrate,
+                                   corrupted: bufferInfo.corrupted, enabled: minRate < 1.0)
+
         // Corruption detection: auto catch-up on sustained signal loss.
         guard let getStats = _mpGetStats else { return }
         var s = VLCStats()
@@ -308,6 +324,9 @@ final class VLCBridge {
         }
         let corruptDelta = s.i_demux_corrupted - lastCorrupted
         lastCorrupted    = s.i_demux_corrupted
+        // Update bitrate and corrupted count now that we have fresh stats.
+        bufferInfo.demuxBitrate = s.f_demux_bitrate
+        bufferInfo.corrupted    = lastCorrupted
         // i_lost_pictures is a rendering metric — it spikes when the window is backgrounded
         // (macOS stops compositing the surface). Only use i_demux_corrupted (stream-level) to
         // avoid false catch-up loops when the window isn't visible.
