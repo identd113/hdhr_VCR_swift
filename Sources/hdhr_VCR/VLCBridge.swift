@@ -107,7 +107,6 @@ final class VLCBridge {
     private var currentRate:     Float  = 1.0
     private var estimatedLagSec: Double = 0.0
     private var lastCorrupted:   Int32  = 0
-    private var lastLost:        Int32  = 0
     private var catchUpCooldown: Date   = .distantPast
 
     private let _new:          vlc_new_fn?
@@ -239,7 +238,6 @@ final class VLCBridge {
         estimatedLagSec   = 0.0
         currentRate       = minRate
         lastCorrupted     = 0
-        lastLost          = 0
         _mpSetMedia?(mp, media)
         _ = _mpPlay?(mp)
         if minRate < 1.0 {
@@ -309,13 +307,14 @@ final class VLCBridge {
             return
         }
         let corruptDelta = s.i_demux_corrupted - lastCorrupted
-        let lostDelta    = s.i_lost_pictures   - lastLost
         lastCorrupted    = s.i_demux_corrupted
-        lastLost         = s.i_lost_pictures
-        guard corruptDelta > 15 || lostDelta > 20 else { return }
+        // i_lost_pictures is a rendering metric — it spikes when the window is backgrounded
+        // (macOS stops compositing the surface). Only use i_demux_corrupted (stream-level) to
+        // avoid false catch-up loops when the window isn't visible.
+        guard corruptDelta > 15 else { return }
         guard Date() > catchUpCooldown else { return }
         catchUpCooldown = Date().addingTimeInterval(30)
-        glog("[VLC] signal corruption detected (corrupt=\(corruptDelta) lost=\(lostDelta)) — catching up to live")
+        glog("[VLC] stream corruption detected (i_demux_corrupted delta=\(corruptDelta)) — catching up to live")
         catchUpToLive()
     }
 

@@ -22,6 +22,44 @@ Settings → About uses a custom `renderChangelog()` `@ViewBuilder` in `Settings
 
 ---
 
+## HDHomeRun Record Engine routing for seamless channel switching
+
+The in-app VLC player currently streams directly from the device (port 5004). On channel change, the old TCP connection closes and a new one opens — the tuner must fully release before the next one can start, producing a 1–3 second blank gap.
+
+The HDHomeRun Record Engine (SiliconDust DVR daemon, port 4999) supports `ClientID` (UUID, per-player-instance) and `SessionID` (random hex32, regenerated per channel request). Routing through it instead of port 5004 allows the engine to pre-allocate the new tuner before releasing the old one, eliminating the gap. The stream URL becomes:
+
+```
+http://<record-engine-ip>:4999/auto/v<channel>?ClientID=<UUID>&SessionID=<hex32>
+```
+
+Same `ClientID` across the session; new `SessionID` on each channel change. Seeking reuses the same `ClientID`+`SessionID` with a `Range:` header.
+
+**Prerequisites**: User must be running the HDHomeRun DVR software (ships with the "HDHomeRun" macOS app). The record engine IP is discoverable via `/discover.json` or mDNS. Should fall back to direct port 5004 if no record engine is found.
+
+**Key files**: `VLCBridge.swift` (`play(url:)`), `VLCPlayerView.swift` (`playChannel(_:)`), `AppState.swift` (device discovery), `AppConfig` (new field for ClientID persistence).
+
+---
+
+## Parse X-HDHomeRun-Error response header from curl recordings
+
+The device returns an `X-HDHomeRun-Error` HTTP response header when a recording stream fails at the device level. Currently, curl exits with a non-zero code and the app logs "curl exited unexpectedly" with no further detail. Parsing this header would give precise `show_fail_reason` values.
+
+**Error codes** (from HDHomeRun HTTP API docs):
+- 804 — Tuner In Use
+- 805 — All Tuners In Use
+- 806 — Tune Failed
+- 807 — No Video Data
+- 808 — DVR Failure
+- 809 — Playback Connection Limit
+- 810 — DVR Full
+- 811 — Content Protection Required
+
+**Implementation**: Pass `-D -` (dump headers to stdout) or `-i` to curl and parse the `X-HDHomeRun-Error:` line before the body. Or use a separate `curl -I` (HEAD) preflight to check availability before starting the recording stream.
+
+**Key files**: `RecordingManager.swift` (curl invocation), `AppState.swift` (`checkRecordingHealth` / start logic).
+
+---
+
 ## Colored guide entry rows in .menu add-show cascade
 
 Color the background of each guide entry row in the `.menu` mode add-show cascade (channel submenu → entry list) with the genre color, matching the cable guide grid.
