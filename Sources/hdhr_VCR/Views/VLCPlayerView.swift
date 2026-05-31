@@ -109,10 +109,11 @@ struct VLCPlayerView: View {
             VLCBridge.shared.minRate = Float(pct) / 100.0
         }
         .onDisappear {
-            // Called when the window closes. VLCBridge.stop() clears drawableView — safe here
-            // because the window (and VLCVideoSurface) are going away.
+            // Safety-net for window close — releasePlayer() is idempotent so calling it here
+            // after playerWindowDidClose() already ran is fine. Catches any path where the
+            // window delegate didn't fire (e.g. window deallocated without close()).
             glog("[VLC] VLCPlayerView.onDisappear")
-            VLCBridge.shared.stop()
+            VLCBridge.shared.releasePlayer()
             VLCBridge.shared.stopDeviceChangeMonitoring()
             MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
             MPNowPlayingInfoCenter.default().playbackState  = .stopped
@@ -357,9 +358,13 @@ struct VLCPlayerView: View {
         let base = url.components(separatedBy: "?").first ?? url
         if let match = lineup.first(where: { ($0.URL ?? "").hasPrefix(base) || base.hasPrefix($0.URL ?? "") }) {
             glog("[VLC] syncChannel matched \(match.GuideNumber) \(match.GuideName) for url=\(base)")
+            updateNowPlaying(channel: match)
+            // Only suppress and update picker if the channel is actually changing — if it's
+            // already selected, setting it again won't fire onChange, leaving suppress=true
+            // and swallowing the next user-initiated picker selection.
+            guard selectedChannel?.GuideNumber != match.GuideNumber else { return }
             suppressNextChannelPlay = true
             selectedChannel = match
-            updateNowPlaying(channel: match)
         } else {
             glog("[VLC] syncChannel no match in \(lineup.count)-entry lineup for url=\(base)", level: .warning)
         }
@@ -459,6 +464,7 @@ final class VLCPlayerWindowManager {
         currentDeviceID = device.DeviceID
         VLCBridge.shared.minRate = Float(appState.config.Player_buffer_min_rate) / 100.0
         VLCBridge.shared.setVolume(0)   // mute before buffering starts; Start click unmutes
+        VLCBridge.shared.ensurePlayer() // create fresh player if previous session released it
         VLCBridge.shared.play(url: url)
 
         if let win = window {
@@ -505,7 +511,7 @@ final class VLCPlayerWindowManager {
 
     fileprivate func playerWindowDidClose() {
         glog("[VLC] WindowManager.playerWindowDidClose")
-        VLCBridge.shared.stop()
+        VLCBridge.shared.releasePlayer() // full teardown — releases mediaPlayer so tuner is freed
         currentDeviceID = nil
         window = nil
         appState?.vlcCurrentURL = ""   // clear "now watching" indicator in menu

@@ -1559,6 +1559,15 @@ final class AppState: ObservableObject {
         let mgr = VLCPlayerWindowManager.shared
 
         Task {
+            // If this exact channel is already playing, just surface the window — don't restart
+            // the stream or mute. Re-opening the same channel from WatchNow while it's playing
+            // would otherwise call setVolume(0) in mgr.open() with no posterHidden reset, leaving
+            // the user with no audio and no Start button to recover from it.
+            let rawBase = url.components(separatedBy: "?").first ?? url
+            let alreadyPlaying = mgr.currentDeviceID == device.DeviceID
+                && (VLCBridge.shared.currentURL?.components(separatedBy: "?").first ?? "") == rawBase
+            if alreadyPlaying { mgr.focus(); return }
+
             // Switching channels in an already-open player on this device reuses the same slot —
             // skip the availability check so we don't block a legal channel switch.
             if mgr.currentDeviceID != device.DeviceID {
@@ -1683,7 +1692,7 @@ final class AppState: ObservableObject {
 
     func quit() {
         guard isRecording else {
-            VLCBridge.shared.stop(); recordingManager.stopAll(); saveConfig(); NSApplication.shared.terminate(nil); return
+            VLCBridge.shared.releasePlayer(); recordingManager.stopAll(); saveConfig(); NSApplication.shared.terminate(nil); return
         }
         let alert = NSAlert()
         alert.messageText = "Recordings in progress"
@@ -1696,9 +1705,9 @@ final class AppState: ObservableObject {
         NSApp.activate(ignoringOtherApps: true)
         switch alert.runModal() {
         case .alertFirstButtonReturn:  // keep recordings running, quit
-            VLCBridge.shared.stop(); saveConfig(); NSApplication.shared.terminate(nil)
+            VLCBridge.shared.releasePlayer(); saveConfig(); NSApplication.shared.terminate(nil)
         case .alertSecondButtonReturn: // stop all, then quit
-            VLCBridge.shared.stop(); recordingManager.stopAll(); saveConfig(); NSApplication.shared.terminate(nil)
+            VLCBridge.shared.releasePlayer(); recordingManager.stopAll(); saveConfig(); NSApplication.shared.terminate(nil)
         default:                       // Go Back — cancel
             break
         }

@@ -283,9 +283,8 @@ final class VLCBridge: ObservableObject {
     }
 
     func stop() {
-        // drawableView is cleared so a subsequent play() queues as pending.
-        // If stop() is called while the window stays open (e.g. remote-command Stop key),
-        // the drawable will never be re-set and the window stays black — see known issue.
+        // Lightweight stop used for remote-command Stop key — keeps the player alive for reuse.
+        // drawableView is cleared so a subsequent play() queues as pending; the window goes black.
         glog("[VLC] stop called — drawable=\(drawableView != nil ? "had view" : "already nil") currentURL=\(currentURL ?? "none")")
         stopStatsTimer()
         currentURL   = nil
@@ -294,6 +293,39 @@ final class VLCBridge: ObservableObject {
         guard let mp = mediaPlayer else { return }
         _mpStop?(mp)
         if let old = currentMedia { _mediaRelease?(old); currentMedia = nil }
+    }
+
+    /// Full teardown called on window close — stops, releases, and nils the media player so
+    /// libvlc drops its HTTP connection and frees the tuner immediately. ensurePlayer() must
+    /// be called before the next play() session.
+    func releasePlayer() {
+        glog("[VLC] releasePlayer — stopping and releasing mediaPlayer, currentURL=\(currentURL ?? "none")")
+        stopStatsTimer()
+        currentURL   = nil
+        pendingURL   = nil
+        drawableView = nil
+        guard let mp = mediaPlayer else { return }
+        _mpStop?(mp)
+        if let old = currentMedia { _mediaRelease?(old); currentMedia = nil }
+        _mpRelease?(mp)
+        mediaPlayer = nil
+        glog("[VLC] releasePlayer — mediaPlayer released, tuner freed")
+    }
+
+    /// Create a fresh media player from the already-loaded vlcInstance.
+    /// Called by VLCPlayerWindowManager.open() before each new player session.
+    func ensurePlayer() {
+        guard mediaPlayer == nil else { return }
+        guard let inst = vlcInstance, let mpNewFn = _mpNew else {
+            glog("[VLC] ensurePlayer — vlcInstance or _mpNew not ready, will retry via pendingURL path", level: .warning)
+            return
+        }
+        mediaPlayer = mpNewFn(inst)
+        glog("[VLC] ensurePlayer — new mediaPlayer created")
+        // Re-attach drawable if it was set before the player was ready.
+        if let view = drawableView, let mp = mediaPlayer {
+            _mpSetNSO?(mp, Unmanaged.passUnretained(view).toOpaque())
+        }
     }
 
     /// Discard buffered content and reconnect to the live edge. Resets the rate controller.
