@@ -194,12 +194,8 @@ struct MenuContent: View {
     private var watchNowMenu: some View {
         if !state.devices.isEmpty {
             Button {
-                if let w = NSApp.windows.first(where: { $0.title == "Watch Now" }) {
-                    w.makeKeyAndOrderFront(nil)
-                } else {
-                    state.watchNowDeviceId = nil
-                    open("watch-now")
-                }
+                state.watchNowDeviceId = nil
+                open("watch-now")
             } label: {
                 Label("Watch Now…", systemImage: "play.tv.fill")
                     .foregroundStyle(watchNowBlue)
