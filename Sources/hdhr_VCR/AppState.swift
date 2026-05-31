@@ -1627,6 +1627,11 @@ final class AppState: ObservableObject {
 
         deviceTunerOccupancy[device.DeviceID] = tuners
 
+        let active   = tuners.filter { $0.VctNumber != nil }.count
+        let recCount = recordingShows.filter { $0.hdhr_record == device.DeviceID }.count
+        let vlcOpen  = VLCPlayerWindowManager.shared.currentDeviceID == device.DeviceID ? 1 : 0
+        glog("[TunerAudit] \(device.DeviceID): \(active)/\(device.TunerCount ?? 0) active  rec=\(recCount) vlc=\(vlcOpen)")
+
         for show in recordingShows where show.hdhr_record == device.DeviceID {
             // Prefer tuner whose VctNumber matches the show's channel; fall back to any locked tuner.
             // VctNumber format (e.g. "5.1") should match GuideNumber, but device firmware may differ.
@@ -1678,7 +1683,7 @@ final class AppState: ObservableObject {
 
     func quit() {
         guard isRecording else {
-            recordingManager.stopAll(); saveConfig(); NSApplication.shared.terminate(nil); return
+            VLCBridge.shared.stop(); recordingManager.stopAll(); saveConfig(); NSApplication.shared.terminate(nil); return
         }
         let alert = NSAlert()
         alert.messageText = "Recordings in progress"
@@ -1691,9 +1696,9 @@ final class AppState: ObservableObject {
         NSApp.activate(ignoringOtherApps: true)
         switch alert.runModal() {
         case .alertFirstButtonReturn:  // keep recordings running, quit
-            saveConfig(); NSApplication.shared.terminate(nil)
+            VLCBridge.shared.stop(); saveConfig(); NSApplication.shared.terminate(nil)
         case .alertSecondButtonReturn: // stop all, then quit
-            recordingManager.stopAll(); saveConfig(); NSApplication.shared.terminate(nil)
+            VLCBridge.shared.stop(); recordingManager.stopAll(); saveConfig(); NSApplication.shared.terminate(nil)
         default:                       // Go Back — cancel
             break
         }
