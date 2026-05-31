@@ -30,7 +30,7 @@
 ### Video surface
 `VLCVideoSurface: NSViewRepresentable` — a plain `NSView` with `wantsLayer = true` and black `CALayer` background. VLC renders directly into this layer via `VLCBridge.shared.setDrawable(_:)`.
 
-The video surface is wrapped in a `ZStack` with a **poster overlay** sitting on top. The overlay is visible when `posterHidden == false` and fades out with `.easeOut(duration: 0.35)` when the user clicks **Start**. The poster reappears (by resetting `posterHidden = false`) whenever `selectedChannel` changes.
+The video surface is wrapped in a `ZStack` with a **poster overlay** and an **error overlay** sitting on top. The poster is visible when `posterHidden == false && !bridge.hasError` and fades out with `.easeOut(duration: 0.35)` when the user clicks **Start**. The poster reappears (by resetting `posterHidden = false`) whenever `selectedChannel` changes. The error overlay (see below) appears on top of both the video and poster when `bridge.hasError == true`, suppressing the poster entirely until the user retries.
 
 ## Intent
 
@@ -191,6 +191,10 @@ Reads `config.Default_transcode` (not per-show transcode — the picker is devic
 
 **Background tuner check**: after `play()` returns, a `Task` fetches `status.json` and logs `[VLC] post-switch tuner status ch X.X: N/M active (ours=N other=N)`. If all non-VLC slots appear occupied it logs a warning. No alert is shown — the stream is already running and the HDHR may succeed regardless.
 
+**Tuner occupancy refresh**: `state.refreshTunerOccupancy()` is called after every channel switch so the menu header reflects the new tuner state within ~1.5 s.
+
+**Start button — gated on `isPlaying`**: the Start button is disabled and shows a spinner + "Connecting…" until `VLCBridge.shared.isPlaying` becomes `true` (first `libvlc_Playing` state confirmation, ~3 s after stream open). Once enabled it shows the normal play icon + "Start". This prevents the user from unmuting before any data has arrived.
+
 **Start button log**: the Start button (which dismisses the poster overlay) logs `[VLC] Start clicked — buffer ~X.Xs built before unmute`, showing exactly how much buffer headroom accumulated during the poster phase.
 
 ### onAppear / onDisappear
@@ -210,6 +214,26 @@ When the player opens or changes channel, a full-area `posterOverlay` view sits 
 **Why**: VLC begins buffering the stream immediately when `open()` is called (before the window appears). By the time the user reads the episode info and clicks Start, VLC has had several seconds to buffer — the stream plays instantly rather than showing a spinner.
 
 **Poster reappears** on channel change: `onChange(of: selectedChannel)` resets `posterHidden = false`, `posterNSImage = nil`, and calls `setVolume(0)` before calling `playChannel()`, so the new stream buffers silently behind the overlay until Start is clicked.
+
+### Error Overlay (`errorOverlay`)
+
+When `VLCBridge.shared.hasError` is `true` (set when `libvlc_media_player_get_state` returns 7 = `libvlc_Error`), the `errorOverlay` appears on top of both the video surface and the poster overlay.
+
+```
+ZStack (black 85% opacity, fills video area)
+  VStack (spacing 16)
+    exclamationmark.triangle.fill SF Symbol (44pt, orange)
+    "Stream Unavailable" (.title2.bold, white)
+    host URL string (.callout, white 50% opacity) — e.g. "hdhr-105404be.local"
+    Retry button
+      — Label("Retry", systemImage: "arrow.clockwise"), .callout.bold
+      — .ultraThinMaterial background, RoundedRectangle(8pt)
+      — sets posterHidden = false, calls VLCBridge.shared.catchUpToLive()
+```
+
+The overlay appears within ~3 seconds of a stream failure (one rate-controller tick). It suppresses the poster (condition `!bridge.hasError` on the poster's `if`) so the user always sees the error rather than a confusing "Start" button that would do nothing.
+
+Clicking **Retry** resets `posterHidden = false` (returns to poster state so the buffer can rebuild) and calls `catchUpToLive()`, which calls `play(url: currentURL)` — resetting `hasError = false` and starting the fill phase again.
 
 ### Layout (`posterOverlay`)
 
@@ -272,7 +296,7 @@ final class VLCPlayerWindowManager {
 
 **`closeIfPlayingURL(_ url: String)`**: closes the player window if `appState.vlcCurrentURL == url` (exact equality on the raw base URL, no query params). Called from `AppState.deleteShow` and `AppState.skipRecording` immediately after `recordingManager.stop()` — if the user is watching the same channel they just deleted/skipped, the VLC window tears down cleanly and the tuner is freed. No-op when the URL doesn't match or no window is open. Triggers `windowWillClose → playerWindowDidClose → VLCBridge.stop()`.
 
-**`playerWindowDidClose()`**: called by `WindowCloseObserver.windowWillClose`. Calls `VLCBridge.shared.stop()`, clears `currentDeviceID`, sets `window = nil`, and clears `appState?.vlcCurrentURL = ""`. The `appState` weak reference is set in `open()` and persists for the window lifetime.
+**`playerWindowDidClose()`**: called by `WindowCloseObserver.windowWillClose`. Calls `VLCBridge.shared.releasePlayer()` (full teardown — releases `mediaPlayer` so the tuner is freed immediately), clears `currentDeviceID`, sets `window = nil`, clears `appState?.vlcCurrentURL = ""`, and calls `appState?.refreshTunerOccupancy()` so the menu header reflects the freed tuner within ~1.5 s. The `appState` weak reference is set in `open()` and persists for the window lifetime.
 
 ### Singleton NSWindow with isReleasedWhenClosed = false
 
@@ -363,6 +387,8 @@ All VLC log lines are prefixed `[VLC]` and written via `glog()` to `~/Library/Lo
 | `syncChannel no match in N-entry lineup for url=…` ⚠ | No lineup entry matches the URL — picker may be wrong |
 | `playChannel X.X ChName → url` | User changed the channel picker; stream switching |
 | `Start clicked — buffer ~X.Xs built before unmute` | User dismissed poster overlay; shows buffer depth at that moment |
+| `stream playing confirmed` | `libvlc_Playing` (state 3) detected on first tick — Start button enabled |
+| `stream error state — publishing hasError` ⚠ | `libvlc_Error` (state 7) detected — error overlay shown |
 | `post-switch tuner status ch X.X: N/M active (ours=N other=N)` | Post-switch status.json check result |
 | `WARNING: all N tuner(s) appear occupied` ⚠ | Other streams hold all slots after the switch |
 | `WindowManager.open — reusing existing window` | Channel switch on an already-open player |

@@ -1,6 +1,14 @@
 // Hand-maintained changelog displayed in Settings → About.
 // Update this file when shipping new features; keep most-recent version at the top.
 let appChangelog = """
+## 2026-05-31 (260531-1625)
+- VLC error overlay — stream failure (no connection, no route to host) shows orange triangle + Retry instead of silent black screen; detected within ~3s via libvlc state polling
+- Start button gating — poster overlay Start button shows spinner + "Connecting…" until VLC confirms the stream is playing; prevents clicking before data flows
+- MPEG-2 audio fix — --no-audio-time-stretch option prevents audio init crash on live streams before first audio frame arrives
+- Tuner count real-time refresh — menu header updates within ~1.5s of recording start/stop, VLC open/close, or channel switch
+- Tuner count includes VLC player — recording + watching = "app expects 2" instead of 1
+- Now Watching section — moved above Recording Now with "Watching · DeviceID" section header
+
 ## 2026-05-31 (260531-1324)
 - Tuner audit — active/expected tuner count logged every idle tick; unexpected usage visible immediately in ~/Library/Logs/hdhrVCRplus.log
 - VLC stop on quit — in-app player releases its tuner immediately on app exit in all quit paths

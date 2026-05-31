@@ -13,10 +13,14 @@ A small custom TV icon sits in the macOS menu bar. It changes state based on app
 Clicking the icon opens a native macOS cascading menu (NSMenu style). The menu has no custom background — it uses the system's standard menu appearance (dark translucent on macOS). Items are full-width, standard menu item height (~22pt). Interactive items highlight in system accent color on hover.
 
 **Header rows** (non-interactive, at the top):
-- One row per detected HDHomeRun device: `"105404BE  1/4"` — DeviceID left-aligned, live-active/total-tuners. Live count comes from polling `status.json` each idle tick (`deviceTunerOccupancy`); falls back to the app's own recording count before the first poll. Color: `systemOrange` when the device has lineup/guide warnings; full `labelColor` when recording (no warnings); `secondaryLabelColor` when idle and healthy. If the live count differs from the app's expected count, appends `"  ⚠ app expects N"`. After startup, missing lineup or guide data appends `"  ⚠ no lineup"` or `"  ⚠ no guide"` (or both, comma-separated) to the same line.
+- One row per detected HDHomeRun device: `"105404BE  1/4"` — DeviceID left-aligned, live-active/total-tuners. Live count comes from polling `status.json` each idle tick (`deviceTunerOccupancy`); falls back to the app's own recording count before the first poll. The "app expects N" count includes both active recordings **and** the VLC player if it is open on that device — recording one show while watching counts as 2. Color: `systemOrange` when the device has lineup/guide warnings; full `labelColor` when recording (no warnings); `secondaryLabelColor` when idle and healthy. If the live count differs from the app's expected count, appends `"  ⚠ app expects N"`. After startup, missing lineup or guide data appends `"  ⚠ no lineup"` or `"  ⚠ no guide"` (or both, comma-separated) to the same line.
 - Status message row: `"16 show(s) — 1 tuner(s) ready"` — the tuner count uses `availableDeviceCount`, which excludes any device that has an empty lineup or empty guide data.
 
-Immediately below the header: optional **Now Watching** indicator (when VLC is playing), **Watch Now** button (when devices present), **Add Show…** button (opens wizard window), then **Settings…**, then a divider.
+Immediately below the header: **Watch Now** button (when devices present), **Add Show…** button, then **Settings…**, then a divider.
+
+**Watching** section (only visible when VLC player is open, appears directly above Recording Now):
+- Section header: `"Watching"` (single device) or `"Watching · 105404BE"` (shows which device's tuner is in use)
+- One button: `"Ch 5.1  NBC · Show Title"` with a `play.tv.fill` icon in blue; clicking it focuses the VLC player window
 
 **Recording Now** section (only visible when recording):
 - Section header: `"Recording Now"` (single tuner) or `"Recording · 105404BE"` (per device, multiple tuners) — macOS section label style, uppercase gray small text with separator

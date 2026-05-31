@@ -48,13 +48,16 @@ On success, init creates:
 
 ## Buffered Playback & Rate Controller
 
-Every `play(url:)` call applies three media options before starting:
+Every `play(url:)` call applies four media options before starting:
 
 ```swift
-"--network-caching=2000"  // 2s initial prebuffer — near-instant start
-"--drop-late-frames"      // drop corrupt/late frames rather than showing artifacts
-"--avcodec-hurry-up"      // drop non-essential B-frames under decode pressure
+"--network-caching=2000"     // 2s initial prebuffer — near-instant start
+"--drop-late-frames"         // drop corrupt/late frames rather than showing artifacts
+"--avcodec-hurry-up"         // drop non-essential B-frames under decode pressure
+"--no-audio-time-stretch"    // prevent audio init crash when sample rate is 0 on first MPEG-2 frame
 ```
+
+`--no-audio-time-stretch` is specifically required for live MPEG-2 transport streams from HDHomeRun tuners. VLC's audio time-stretch module tries to initialize before the first audio frame arrives, sees a 0 Hz sample rate, and fails with `too low audio sample frequency (0)` / `module not functional`. The option prevents that module from loading for live streams.
 
 An adaptive rate controller runs every 3 seconds via a repeating `Timer` (`statsTimer`):
 
@@ -73,6 +76,18 @@ newRate   = minRate + (1.0 - minRate) * fillRatio
 
 When `minRate == 1.0` (buffering disabled in Settings), rate control is skipped entirely; the stats timer still runs for corruption detection only.
 
+### Stream state detection
+
+Each `tickController` tick calls `libvlc_media_player_get_state` before the rate-control logic:
+
+| State value | libvlc constant | Action |
+|---|---|---|
+| 3 | `libvlc_Playing` | Sets `isPlaying = true` on first confirmation; enables Start button in UI |
+| 7 | `libvlc_Error` | Sets `hasError = true`, stops timer; error overlay appears in UI |
+| other | — | No action; rate controller proceeds normally |
+
+`hasError` and `isPlaying` are reset to `false` in `play()`, `stop()`, and `releasePlayer()` so state is clean on every new stream attempt.
+
 ### Logging
 
 Every significant controller event is logged to `hdhrVCRplus.log`:
@@ -84,6 +99,8 @@ Every significant controller event is logged to `hdhrVCRplus.log`:
 | Rate accepted | INFO | `[VLC] rate set to 0.93 (fill phase)` |
 | Rate ignored | WARN | `[VLC] WARNING: set_rate(0.93) ignored — actual rate is 1.00; buffer will not grow…` |
 | Rate ramp tick | INFO | `[VLC] rate → 0.961 (lag ~3s / 8s)` |
+| Stream playing confirmed | INFO | `[VLC] stream playing confirmed` |
+| Stream error state | ERROR | `[VLC] stream error state — publishing hasError` |
 | Stats call failed | WARN | `[VLC] WARNING: get_stats returned N — stats polling skipped (may indicate VLC 4 struct mismatch)` |
 | Auto catch-up | INFO | `[VLC] signal corruption detected (corrupt=N lost=N) — catching up to live` |
 
@@ -202,9 +219,12 @@ var isAvailable: Bool                                          // false when VLC
 var minRate: Float                                             // fill-phase floor (0.90–1.0); set from AppConfig
 var currentURL: String?                                        // URL currently playing; nil when stopped
 @Published var bufferInfo: VLCBufferInfo                      // rate/lag/bitrate snapshot; published every 3s tick
+@Published var hasError:   Bool                               // true when libvlc_Error (state 7) detected; cleared on play/stop/release
+@Published var isPlaying:  Bool                               // true after libvlc_Playing (state 3) first confirmed; cleared on play/stop/release
 func setDrawable(_ view: NSView)                              // must be called before first play()
-func play(url: String)                                        // stop + switch to new URL; resets rate controller
-func stop()                                                   // stop + release media; cancels stats timer
+func play(url: String)                                        // stop + switch to new URL; resets rate controller, hasError, isPlaying
+func stop()                                                   // stop + release media; cancels stats timer; clears hasError, isPlaying
+func releasePlayer()                                          // full teardown; releases mediaPlayer; clears hasError, isPlaying
 func catchUpToLive()                                          // discard buffer, reconnect at live edge
 func videoNativeSize() -> CGSize?                             // pixel dims from libvlc_video_get_size; nil until decoding
 func volume() -> Int                                          // 0–100

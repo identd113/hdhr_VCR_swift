@@ -2,6 +2,15 @@
 
 > In-app changelog (Settings → About) is maintained in [`Sources/hdhr_VCR/Changelog.swift`](Sources/hdhr_VCR/Changelog.swift).
 
+## 2026-05-31 (260531-1625)
+
+- **VLC error overlay** — when VLC hits a fatal stream error (connection refused, no route to host, etc.), an orange triangle + "Stream Unavailable" overlay appears within ~3 seconds instead of a silent black screen; a Retry button restarts the stream. Powered by `libvlc_media_player_get_state` (state 7 = `libvlc_Error`) polled each rate-controller tick.
+- **Start button gating** — the poster overlay's Start button now shows a spinner + "Connecting…" (disabled) until VLC confirms `libvlc_Playing` (state 3); prevents unmuting a stream that hasn't connected yet. `VLCBridge` publishes `isPlaying: Bool` updated each tick.
+- **MPEG-2 audio init fix** — added `--no-audio-time-stretch` media option to prevent the `too low audio sample frequency (0)` crash that occurs on live MPEG-2 streams before the first audio frame arrives.
+- **Real-time tuner occupancy refresh** — `AppState.refreshTunerOccupancy()` polls `/status.json` 1.5 s after any tuner-affecting event (recording start/stop, VLC open/close, channel switch) so the menu header count updates promptly instead of waiting for the next idle-loop tick (~10 s).
+- **Tuner count includes VLC player** — the "app expects N" figure in the menu header now counts the VLC player as +1 tuner on its device; recording one show while watching = "app expects 2".
+- **Now Watching section** — moved below the Settings divider, directly above Recording Now; wrapped in a `Section("Watching · <deviceID>")` header matching the style of Recording Now / Scheduled.
+
 ## 2026-05-31 (260531-1324)
 
 - **Tuner audit log** — `fetchDeviceStatus` now logs `[TunerAudit] DEVID: N/M active  rec=N vlc=N` every idle tick (~10s), making unexpected tuner usage immediately visible in the log without manual status endpoint polling
