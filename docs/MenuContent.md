@@ -16,7 +16,7 @@ Clicking the icon opens a native macOS cascading menu (NSMenu style). The menu h
 - One row per detected HDHomeRun device: `"105404BE  1/4"` — DeviceID left-aligned, live-active/total-tuners. Live count comes from polling `status.json` each idle tick (`deviceTunerOccupancy`); falls back to the app's own recording count before the first poll. Color: `systemOrange` when the device has lineup/guide warnings; full `labelColor` when recording (no warnings); `secondaryLabelColor` when idle and healthy. If the live count differs from the app's expected count, appends `"  ⚠ app expects N"`. After startup, missing lineup or guide data appends `"  ⚠ no lineup"` or `"  ⚠ no guide"` (or both, comma-separated) to the same line.
 - Status message row: `"16 show(s) — 1 tuner(s) ready"` — the tuner count uses `availableDeviceCount`, which excludes any device that has an empty lineup or empty guide data.
 
-Immediately below the header: **Watch Now** button (when devices present), **Add Show…** button (opens wizard window), then **Settings…**, then a divider.
+Immediately below the header: optional **Now Watching** indicator (when VLC is playing), **Watch Now** button (when devices present), **Add Show…** button (opens wizard window), then **Settings…**, then a divider.
 
 **Recording Now** section (only visible when recording):
 - Section header: `"Recording Now"` (single tuner) or `"Recording · 105404BE"` (per device, multiple tuners) — macOS section label style, uppercase gray small text with separator
@@ -99,6 +99,7 @@ Window IDs → titles: `"add-show"` → "Add Show", `"edit-show"` → "Edit Show
 ```
 [Header: one line per device — DeviceID  liveCount/slots  ⚠ no lineup, no guide (inline, orange)]
 [Status message — secondary color, uses availableDeviceCount]
+[Now Watching — "Ch 5.1  NBC · Show Title", play.tv.fill icon, only when vlcCurrentURL is non-empty]
 [Watch Now — Label("Watch Now", systemImage: "play.tv.fill"), when devices present]
 [Add Show… — Button, opens wizard window]
 Divider
@@ -197,6 +198,22 @@ A show enters this state via: fail threshold, manual stop, skip, disk full, miss
 Menu label: `⏸ [Title]`
 
 Submenu — uses `showInfoHeader(show, entry:)`, then: show type + channel, pause reason (if `show_fail_reason` non-empty), next attempt time (if `show_next` is future), then **Resume Now** → `state.resumeShow(show)`, **Edit…**, **Delete…** (destructive — uses `confirmAndDeleteShow`).
+
+---
+
+## Now Watching — `nowWatchingInfo`
+
+A `Button` shown when `state.vlcCurrentURL` is non-empty (i.e. the VLC player window is active). Clicking it calls `VLCPlayerWindowManager.shared.focus()` — brings the player window to the front without switching the stream.
+
+Label format: `"Ch 5.1  NBC · Show Title"` where the channel comes from matching `vlcCurrentURL` against the device lineups (URL prefix comparison, strips query params), and the show title is the currently-airing `GuideEntry` for that channel. The `· Show Title` suffix is omitted when no guide entry is found. Icon: `play.tv.fill` in `watchNowBlue`.
+
+`nowWatchingInfo` is a private computed property that:
+1. Returns `nil` when `vlcCurrentURL` is empty
+2. Strips query params from the URL, then scans all device lineups for a `LineupEntry` whose `URL` matches exactly (equality check against the stripped base URL)
+3. Looks up the current guide entry via `state.guideEntries(deviceId:channelNum:)` and filters to the entry spanning `Date()`
+4. Returns `(channel: LineupEntry, entry: GuideEntry?)`
+
+`vlcCurrentURL` is set in `AppState.watchInApp()` before calling `open()`, and cleared to `""` in `VLCPlayerWindowManager.playerWindowDidClose()` when the window is closed — so this button disappears when the player is dismissed.
 
 ---
 

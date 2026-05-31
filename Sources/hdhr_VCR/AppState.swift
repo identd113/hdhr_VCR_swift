@@ -975,6 +975,7 @@ final class AppState: ObservableObject {
         guard let i = shows.firstIndex(where: { $0.show_id == showId }) else { return }
         glog("[\(shows[i].show_title)] SKIP — paused until next airing")
         recordingManager.stop(showId: showId)
+        VLCPlayerWindowManager.shared.closeIfPlayingURL(shows[i].show_url)
         tunerStatus.removeValue(forKey: showId)
         shows[i].show_recording = false
         shows[i].show_last = Date()
@@ -1246,7 +1247,10 @@ final class AppState: ObservableObject {
     }
     func deleteShow(_ show: Show) {
         glog("[Show] Deleted '\(show.show_title)'")
-        recordingManager.stop(showId: show.show_id); shows.removeAll { $0.show_id == show.show_id }; saveConfig()
+        recordingManager.stop(showId: show.show_id)
+        VLCPlayerWindowManager.shared.closeIfPlayingURL(show.show_url)
+        shows.removeAll { $0.show_id == show.show_id }
+        saveConfig()
     }
 
     /// Shows a delete confirmation alert with the show's poster image (fetched async).

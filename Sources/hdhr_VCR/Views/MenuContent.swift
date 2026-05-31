@@ -42,6 +42,23 @@ struct MenuContent: View {
         }
     }
 
+    // Returns the channel + current guide entry for the active VLC stream, or nil when nothing is playing.
+    private var nowWatchingInfo: (channel: LineupEntry, entry: GuideEntry?)? {
+        guard !state.vlcCurrentURL.isEmpty else { return nil }
+        let base = state.vlcCurrentURL.components(separatedBy: "?").first ?? state.vlcCurrentURL
+        for device in state.devices {
+            guard let channel = (state.lineups[device.DeviceID] ?? []).first(where: {
+                let u = $0.URL ?? ""
+                return !u.isEmpty && u == base
+            }) else { continue }
+            let now   = Date()
+            let entry = state.guideEntries(deviceId: device.DeviceID, channelNum: channel.GuideNumber)
+                .first { $0.startDate <= now && $0.endDate > now }
+            return (channel, entry)
+        }
+        return nil
+    }
+
     var body: some View {
 
         // Compute derived show lists once — each is a filter/sort over shows[];
@@ -70,6 +87,19 @@ struct MenuContent: View {
                                                  Color(NSColor.secondaryLabelColor))
         }
         Text(state.statusMessage).foregroundStyle(Color(NSColor.secondaryLabelColor))
+        // ── Now Watching ──────────────────────────────────────────────────
+        if let info = nowWatchingInfo {
+            Button {
+                DispatchQueue.main.async { VLCPlayerWindowManager.shared.focus() }
+            } label: {
+                Label {
+                    Text("Ch \(info.channel.GuideNumber)  \(info.channel.GuideName)" +
+                         (info.entry.map { " · \($0.Title)" } ?? ""))
+                } icon: {
+                    Image(systemName: "play.tv.fill").foregroundStyle(watchNowBlue)
+                }
+            }
+        }
         // ── Watch Now ─────────────────────────────────────────────────────
         watchNowMenu
         // ── Add Show ──────────────────────────────────────────────────────

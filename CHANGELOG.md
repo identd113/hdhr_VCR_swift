@@ -2,6 +2,12 @@
 
 > In-app changelog (Settings → About) is maintained in [`Sources/hdhr_VCR/Changelog.swift`](Sources/hdhr_VCR/Changelog.swift).
 
+## 2026-05-31 (260531-0239)
+
+- **Now Watching indicator** — when the VLC player is open, a `play.tv.fill` button appears in the menu between the status row and Watch Now showing the current channel number, name, and on-air show title (e.g. "Ch 5.1  NBC · Jeopardy!"); clicking it focuses the player window without switching the stream. Disappears automatically when the player window is closed.
+- **VLCPlayerWindowManager.focus()** — new method that brings the player window to the front without affecting the stream; used by the Now Watching button and available for future callers
+- **Player window clear on close** — `vlcCurrentURL` is now cleared to `""` when the VLC player window is dismissed, ensuring the Now Watching button never lingers after the player is gone
+
 ## 2026-05-31 (260531-0223)
 
 - **Native resolution button** — `aspectratio` icon in VLC player toolbar; calls `libvlc_video_get_size`, divides by screen backing scale, and resizes the window to display video at 1:1 physical pixels; no-op until the first frame is decoded

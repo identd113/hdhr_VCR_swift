@@ -1,6 +1,9 @@
 // Hand-maintained changelog displayed in Settings → About.
 // Update this file when shipping new features; keep most-recent version at the top.
 let appChangelog = """
+## 2026-05-31 (260531-0239)
+- Now Watching indicator — when the VLC player is open, the menu shows a button with the current channel and on-air show title; clicking it focuses the player window without switching the stream
+
 ## 2026-05-31 (260531-0223)
 - Native resolution button (aspectratio icon) in VLC player toolbar — resizes window to 1:1 physical pixels using the stream's actual decoded dimensions
 - Buffer monitor now shows a waveform icon; catch-up button updated to forward.end.circle with "Speed up to live" tooltip

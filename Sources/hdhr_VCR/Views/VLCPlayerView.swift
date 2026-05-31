@@ -391,12 +391,27 @@ final class VLCPlayerWindowManager {
 
     /// DeviceID of the tuner currently occupied by the player window; nil when closed.
     private(set) var currentDeviceID: String?
+    private weak var appState: AppState?
 
     private init() {}
+
+    /// Bring the player window to the front without switching the stream.
+    func focus() {
+        guard let win = window else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        win.makeKeyAndOrderFront(nil)
+    }
+
+    /// Close the player window if it is currently playing the given URL.
+    func closeIfPlayingURL(_ url: String) {
+        guard !url.isEmpty, appState?.vlcCurrentURL == url else { return }
+        window?.close()   // triggers windowWillClose → playerWindowDidClose
+    }
 
     /// Open (or bring forward) the player window and start playing url on device.
     /// If the window is already showing, the stream is switched immediately.
     func open(url: String, title: String, device: HDHRDevice, appState: AppState) {
+        self.appState = appState
         currentDeviceID = device.DeviceID
         VLCBridge.shared.minRate = Float(appState.config.Player_buffer_min_rate) / 100.0
         VLCBridge.shared.setVolume(0)   // mute before buffering starts; Start click unmutes
@@ -446,6 +461,7 @@ final class VLCPlayerWindowManager {
         VLCBridge.shared.stop()
         currentDeviceID = nil
         window = nil
+        appState?.vlcCurrentURL = ""   // clear "now watching" indicator in menu
     }
 }
 

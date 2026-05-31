@@ -227,8 +227,16 @@ ZStack (black background, fills video area)
 final class VLCPlayerWindowManager {
     static let shared = VLCPlayerWindowManager()
     private var window: NSWindow?
+    private weak var appState: AppState?   // stored so playerWindowDidClose can clear vlcCurrentURL
+
+    func focus() {
+        guard let win = window else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        win.makeKeyAndOrderFront(nil)
+    }
 
     func open(url: String, title: String, device: HDHRDevice, appState: AppState) {
+        self.appState = appState
         VLCBridge.shared.setVolume(0)            // mute before buffering starts; Start click unmutes
         VLCBridge.shared.play(url: url)          // always start/switch the stream immediately
         if let win = window {
@@ -241,6 +249,10 @@ final class VLCPlayerWindowManager {
     }
 }
 ```
+
+**`focus()`**: brings the player window to the front without switching the stream. Called from the "Now Watching" button in `MenuContent` so the user can jump straight back to the player. No-op when `window` is nil (player is closed).
+
+**`closeIfPlayingURL(_ url: String)`**: closes the player window if `appState.vlcCurrentURL == url` (exact equality on the raw base URL). Called from `AppState.deleteShow` and `AppState.skipRecording` to tear down the in-app player when the show being removed is the one currently streaming. No-op when the URL doesn't match or no window is open; triggers the normal `windowWillClose → playerWindowDidClose` teardown chain which stops VLCBridge and clears `vlcCurrentURL`.
 
 ### Singleton NSWindow with isReleasedWhenClosed = false
 
@@ -303,6 +315,8 @@ private(set) var currentDeviceID: String?
 ```
 
 Set to `device.DeviceID` in `open()`, cleared to `nil` in `playerWindowDidClose()`. Read by `watchInApp` to skip the tuner availability check when the player already occupies a slot on the target device (channel switching should always be allowed without a free-tuner check).
+
+`playerWindowDidClose()` also clears `appState?.vlcCurrentURL = ""` so the "Now Watching" indicator in `MenuContent` disappears when the window is closed.
 
 ---
 
