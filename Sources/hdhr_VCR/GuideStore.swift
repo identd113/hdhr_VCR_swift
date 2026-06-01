@@ -210,9 +210,13 @@ final class GuideStore {
 
     /// Guide entries for a device+channel whose EndTime is after `after` (default: now).
     func entries(deviceId: String, channelNum: String, after: Date = Date()) -> [GuideEntry] {
+        entries(key: "\(deviceId):\(channelNum)", after: after)
+    }
+
+    /// Pre-built key overload — avoids string allocation at call sites that already have the key.
+    private func entries(key: String, after: Date = Date()) -> [GuideEntry] {
         let epoch = Int(after.timeIntervalSince1970)
-        return (channelEntryIndex["\(deviceId):\(channelNum)"] ?? [])
-            .filter { $0.EndTime > epoch }
+        return (channelEntryIndex[key] ?? []).filter { $0.EndTime > epoch }
     }
 
     /// First episode matching seriesID with StartTime > after, optionally constrained by
