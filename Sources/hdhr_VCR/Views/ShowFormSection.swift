@@ -43,6 +43,7 @@ struct ShowFormSection: View {
                 }
                 .pickerStyle(.segmented)
                 .onChange(of: seriesType) { _ in onSeriesTypeChange() }
+                .help("Single: one recording on a specific date and time. DateTime: repeats weekly on selected days. Series Channel: records new episodes on this channel via SeriesID matching. Series All: records new episodes on any channel.")
             }
 
             if seriesType == .dateTime || seriesType == .single {
@@ -66,6 +67,9 @@ struct ShowFormSection: View {
                         }
                     }
                 }
+                .help(seriesType == .single
+                      ? "The day of the week this one-time recording will air."
+                      : "All days of the week this show airs — select every applicable day.")
             }
 
             LabeledContent("Transcode") {
@@ -75,6 +79,7 @@ struct ShowFormSection: View {
                     Text("Mobile").tag("mobile")
                     Text("Internet 720").tag("internet720")
                 }
+                .help("None keeps the raw MPEG stream (recommended). Heavy, Mobile, and Internet 720 transcode the stream to reduce file size or target a specific playback device.")
             }
 
             if state.config.Sports_padding_enabled {

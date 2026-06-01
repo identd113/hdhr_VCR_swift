@@ -302,6 +302,7 @@ struct CableGuideView: View {
                         .frame(width: 22, height: 22)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(lu.isFavorite ? "Remove from favorites" : "Add to favorites")
                 .help(lu.isFavorite ? "Remove from favorites" : "Add to favorites")
             }
         }
@@ -529,7 +530,10 @@ private struct ShowBlocksRow: View, Equatable {
         lhs.nextUpTitles                 == rhs.nextUpTitles &&
         lhs.bonusSeriesIDs               == rhs.bonusSeriesIDs &&
         lhs.bonusTitles                  == rhs.bonusTitles &&
-        lhs.bonusMinutes                 == rhs.bonusMinutes
+        lhs.bonusMinutes                 == rhs.bonusMinutes &&
+        lhs.totalW                       == rhs.totalW       &&
+        lhs.rowH                         == rhs.rowH         &&
+        lhs.pxPerMin                     == rhs.pxPerMin
     }
 
     var body: some View {
@@ -599,9 +603,19 @@ private struct ShowBlocksRow: View, Equatable {
                        ?? nextUpTitles.contains(entry.Title))
         let isBonusTime = entry.SeriesID.map { bonusSeriesIDs.contains($0) }
                        ?? bonusTitles.contains(entry.Title)
+        let alreadyManaged = isManaged || isRecording || isNextUp
         let matchesFilter: Bool = {
             guard let f = genreFilter else { return true }
             return entry.Filter?.contains(where: { $0.caseInsensitiveCompare(f) == .orderedSame }) ?? false
+        }()
+        let accessLabel: String = {
+            var parts = [entry.Title]
+            if let ep = entry.EpisodeTitle, !ep.isEmpty { parts.append(ep) }
+            parts.append(guideTimeRange(entry))
+            if isRecording    { parts.append("Recording now") }
+            else if isNextUp  { parts.append("Recording soon") }
+            else if isManaged { parts.append("Scheduled") }
+            return parts.joined(separator: ", ")
         }()
 
         ZStack(alignment: .topLeading) {
@@ -642,17 +656,15 @@ private struct ShowBlocksRow: View, Equatable {
             .frame(width: max(1, cellW - 8), alignment: .topLeading)
 
             if isRecording {
-                // Red dot centred inside the yellow flag triangle
                 Circle().fill(Color.red).frame(width: 8, height: 8)
                     .offset(x: cellW - 12, y: 3)
-                    .accessibilityLabel("Recording now")
+                    .accessibilityHidden(true)
             } else if isNextUp {
-                // Orange clock — records within 30 min
                 Image(systemName: "clock.badge.fill")
                     .font(.system(size: 10, weight: .bold))
                     .foregroundColor(.orange)
                     .offset(x: cellW - 14, y: 4)
-                    .accessibilityLabel("Recording soon")
+                    .accessibilityHidden(true)
             }
         }
         .frame(width: cellW, height: rowH - 2)
@@ -662,6 +674,15 @@ private struct ShowBlocksRow: View, Equatable {
         .offset(x: cellX, y: 1)
         .opacity(matchesFilter ? 1.0 : 0.2)
         .allowsHitTesting(matchesFilter)
+        .accessibilityHidden(!matchesFilter)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessLabel)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction(.default) { onSelect(entry, lineupEntry) }
+        .accessibilityAction(named: alreadyManaged ? "View" : "Record") {
+            onSelect(entry, lineupEntry)
+            if !alreadyManaged { onConfirm?() }
+        }
         .onTapGesture {
             onSelect(entry, lineupEntry)
         }
@@ -697,7 +718,12 @@ private struct ShowBlocksRow: View, Equatable {
             .frame(width: bonusW, height: rowH - 2)
             .offset(x: cellX + cellW + 2, y: 1)
             .opacity(matchesFilter ? 1.0 : 0.2)
+            .accessibilityHidden(!matchesFilter)
             .zIndex(1)              // render above the next show's block
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(nextEntry.map { "Bonus Time overlap — \($0.Title)" } ?? "Bonus Time")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction(.default) { if let ne = nextEntry { onSelect(ne, lineupEntry) } }
             .onTapGesture {
                 // Tap selects the overlapped show in the summary panel
                 if let ne = nextEntry { onSelect(ne, lineupEntry) }

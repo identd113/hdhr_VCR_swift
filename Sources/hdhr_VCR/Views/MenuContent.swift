@@ -427,17 +427,6 @@ struct MenuContent: View {
                     .frame(width: 460, height: 258)
             }
             .accessibilityLabel("\(show.show_title) poster")
-            .overlay(alignment: .topTrailing) {
-                Path { p in
-                    p.move(to:    CGPoint(x: 0,  y: 0))
-                    p.addLine(to: CGPoint(x: 24, y: 0))
-                    p.addLine(to: CGPoint(x: 24, y: 24))
-                    p.closeSubpath()
-                }
-                .fill(Color.yellow)
-                .frame(width: 24, height: 24)
-                .accessibilityLabel("Already scheduled")
-            }
         }
         menuInfo(show.show_title, font: .title3, maxWidth: 460)
         if let ep = entry?.episodeInfoLabel {

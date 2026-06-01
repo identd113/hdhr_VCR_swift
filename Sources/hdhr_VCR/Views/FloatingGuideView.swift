@@ -26,6 +26,20 @@ struct FloatingGuideView: View {
             .sorted()
     }
 
+    private var managedSets: (seriesIDs: Set<String>, titles: Set<String>) {
+        let shows = state.shows.filter { $0.state == .seriesChannel || $0.state == .seriesAll }
+        return (
+            Set(shows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid }),
+            Set(shows.map { $0.show_title })
+        )
+    }
+    private var managedDTSingleSlotKeys: Set<String> {
+        Set(state.shows.compactMap { show in
+            guard show.state == .single || show.state == .dateTime, let next = show.show_next else { return nil }
+            return "\(show.hdhr_record):\(show.show_channel):\(Int(next.timeIntervalSince1970))"
+        })
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             toolbar
@@ -39,14 +53,8 @@ struct FloatingGuideView: View {
                         EmptyStateView(title: "No guide data", systemImage: "tv.slash",
                                    description: "Guide data unavailable — tap Refresh to retry.")
                     } else {
-                        let seriesIDShows    = state.shows.filter { $0.state == .seriesChannel || $0.state == .seriesAll }
-                        let managedSeriesIDs = Set(seriesIDShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
-                        let managedTitles    = Set(seriesIDShows.map { $0.show_title })
-                        // DateTime/Single shows: yellow only on the exact device+channel+slot
-                        let managedDTSingleSlotKeys: Set<String> = Set(state.shows.compactMap { show in
-                            guard show.state == .single || show.state == .dateTime, let next = show.show_next else { return nil }
-                            return "\(show.hdhr_record):\(show.show_channel):\(Int(next.timeIntervalSince1970))"
-                        })
+                        // managedSeriesIDs/managedTitles/managedDTSingleSlotKeys are computed properties
+                        // shared with summaryPanel — no local re-derivation needed here.
                         let recordingSeriesIDs = Set(state.recordingShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
                         let recordingTitles = Set(state.recordingShows.map { $0.show_title })
                         let now30 = Date()
@@ -68,8 +76,8 @@ struct FloatingGuideView: View {
                             selectedChannel:    $selectedChannel,
                             snapToNow:          $snapToNow,
                             deviceId:                selectedDevice?.DeviceID ?? "",
-                            managedSeriesIDs:        managedSeriesIDs,
-                            managedTitles:           managedTitles,
+                            managedSeriesIDs:        managedSets.seriesIDs,
+                            managedTitles:           managedSets.titles,
                             managedDTSingleSlotKeys: managedDTSingleSlotKeys,
                             recordingSeriesIDs: recordingSeriesIDs,
                             recordingTitles:    recordingTitles,
@@ -102,6 +110,7 @@ struct FloatingGuideView: View {
             guard let id = newDevice?.DeviceID else { return }
             state.guideStore.invalidate(deviceId: id)
             allChannels = []
+            genreFilter = nil
             refreshToken = UUID()
         }
         .onChange(of: state.lineups[selectedDevice?.DeviceID ?? ""] ?? []) { newLineup in
@@ -183,20 +192,14 @@ struct FloatingGuideView: View {
             let isSportsBonusEntry = entry.firstGenre?.lowercased().contains("sports") == true
                                   && state.config.Sports_padding_enabled
             let isManaged: Bool = {
-                // SeriesID(Channel/All): yellow on any matching episode
-                let seriesIDShows = state.shows.filter { $0.state == .seriesChannel || $0.state == .seriesAll }
                 if let sid = entry.SeriesID, !sid.isEmpty {
-                    if seriesIDShows.contains(where: { $0.show_seriesid == sid }) { return true }
+                    if managedSets.seriesIDs.contains(sid) { return true }
                 } else {
-                    if seriesIDShows.contains(where: { $0.show_title == entry.Title }) { return true }
+                    if managedSets.titles.contains(entry.Title) { return true }
                 }
-                // DateTime/Single: only flag the exact device+channel+slot
-                return state.shows.contains { show in
-                    (show.state == .single || show.state == .dateTime) &&
-                    show.hdhr_record  == selectedDevice?.DeviceID &&
-                    show.show_channel == selectedChannel?.GuideNumber &&
-                    Int(show.show_next?.timeIntervalSince1970 ?? -1) == entry.StartTime
-                }
+                return managedDTSingleSlotKeys.contains(
+                    "\(selectedDevice?.DeviceID ?? ""):\(selectedChannel?.GuideNumber ?? ""):\(entry.StartTime)"
+                )
             }()
 
             ZStack(alignment: .topTrailing) {
@@ -296,6 +299,7 @@ struct FloatingGuideView: View {
                                             .accessibilityHidden(true)
                                     }
                                 }
+                                .accessibilityLabel("Watch \(entry.Title) in VLC")
                                 .buttonStyle(WhiteOutlineButtonStyle(borderColor: Color(red: 1.0, green: 0.482, blue: 0.0)))
                                 .disabled(selectedChannel == nil)
                             }
@@ -307,6 +311,7 @@ struct FloatingGuideView: View {
                                 } label: {
                                     Label("Watch Now!", systemImage: "play.tv.fill")
                                 }
+                                .accessibilityLabel("Watch \(entry.Title)")
                                 .buttonStyle(WhiteOutlineButtonStyle(borderColor: .blue))
                                 .disabled(selectedChannel == nil)
                             }

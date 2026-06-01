@@ -54,6 +54,14 @@ struct AddShowView: View {
                         .frame(width: 8, height: 8)
                 }
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel({
+                switch step {
+                case .device:  return "Select tuner"
+                case .guide:   return "Step 1 of 2: Guide"
+                case .details: return "Step 2 of 2: Details"
+                }
+            }())
             .padding(.horizontal).padding(.top, 12)
 
             Divider().padding(.top, 8)
@@ -188,7 +196,7 @@ struct AddShowView: View {
         return VStack(spacing: 0) {
             // ── Compact toolbar: tuner + genre filter + actions ───────────────
             HStack(spacing: 10) {
-                if !state.devices.isEmpty {
+                if state.devices.count > 1 {
                     Menu { ForEach(state.devices) { tunerMenuItem($0) } } label: { tunerMenuButton }
                         .frame(maxWidth: 220)
                 }
@@ -293,6 +301,7 @@ struct AddShowView: View {
             state.guideStore.invalidate(deviceId: id)
             allChannels = []
             refreshToken = UUID()
+            genreFilter = nil   // new device has different genres — stale filter is misleading
         }
         .onChange(of: state.guideRevision) { _, _ in
             guard let id = selectedDevice?.DeviceID, allChannels.isEmpty else { return }

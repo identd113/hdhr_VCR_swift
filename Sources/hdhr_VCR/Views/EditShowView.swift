@@ -82,6 +82,7 @@ struct EditShowView: View {
                         set: { show?.show_channel = $0 }))
                         .frame(width: 80)
                 }
+                .help("The HDHomeRun guide channel number (e.g. 5.1, 9.2). Change this to redirect the recording to a different channel.")
 
                 LabeledContent("Length (min)") {
                     TextField("60", value: Binding(
@@ -89,6 +90,7 @@ struct EditShowView: View {
                         set: { show?.show_length = $0 }), format: .number)
                         .frame(width: 60)
                 }
+                .help("Recording duration in minutes, set from the guide end time. Bonus Time adds extra minutes automatically for sports shows.")
 
                 if s.show_fail_count > 0 {
                     LabeledContent("Failures") {
@@ -106,11 +108,13 @@ struct EditShowView: View {
                 LabeledContent("SeriesID") {
                     Text(s.show_seriesid.isEmpty ? "none" : s.show_seriesid).foregroundStyle(.secondary)
                 }
+                .help("The HDHomeRun series identifier used for smart recording. When set, hdhr_VCR matches any future airing of this series automatically, on this channel or across all channels.")
 
                 LabeledContent("Stream URL") {
                     Text(s.show_url.isEmpty ? "not set" : s.show_url)
                         .foregroundStyle(.secondary).font(.caption).lineLimit(1)
                 }
+                .help("The HDHomeRun tuner stream URL for this channel's live feed. Set automatically when the show is added from the guide.")
             }
             .padding()
         }

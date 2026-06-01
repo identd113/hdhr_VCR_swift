@@ -224,18 +224,21 @@ struct SettingsView: View {
                     Text("Mobile").tag("mobile")
                     Text("Internet 720").tag("internet720")
                 }
+                .help("Applied to all new shows unless overridden per show. None keeps the raw MPEG stream (recommended).")
 
                 Stepper(
                     "Min free disk: \(draft.Min_disk_free_gb, specifier: "%.0f") GB",
                     value: $draft.Min_disk_free_gb,
                     in: 1...100, step: 1
                 )
+                .help("Recordings are skipped when the save drive has less free space than this threshold.")
 
                 Stepper(
                     "Pause after \(draft.Fail_count_setting) failure(s)",
                     value: $draft.Fail_count_setting,
                     in: 1...10
                 )
+                .help("A show is automatically paused after this many consecutive recording failures. Reset using Maintenance → Reactivate Paused Shows, or Edit Show → Reset.")
 
                 if FileManager.default.fileExists(atPath: "/Applications/VLC.app") {
                     Toggle("Watch in VLC", isOn: $draft.Watch_in_VLC)
@@ -273,11 +276,13 @@ struct SettingsView: View {
                     value: $draft.GuideHours,
                     in: 1...48
                 )
+                .help("How many hours of future programming the guide fetches and displays. Longer windows let you schedule further out but take more time to download.")
                 Stepper(
                     "Series scan retry: \(draft.Series_scan_retry_hours) hr",
                     value: $draft.Series_scan_retry_hours,
                     in: 1...24
                 )
+                .help("How often hdhr_VCR re-checks the guide to find an upcoming episode for series shows that have no scheduled air time.")
                 Button("Update Guides Now") {
                     state.refreshAll()
                 }
@@ -301,6 +306,7 @@ struct SettingsView: View {
                     ),
                     in: 5...120, step: 5
                 )
+                .help("A macOS notification is sent this many minutes before a show's scheduled start — an early heads-up that a recording is coming.")
                 Stepper(
                     "Recording alert: \(Int(draft.Notify_recording)) min before",
                     value: Binding(
@@ -309,6 +315,7 @@ struct SettingsView: View {
                     ),
                     in: 1...60
                 )
+                .help("A second macOS notification fires this many minutes before recording begins — a last-minute reminder, firing closer to start than Up Next.")
                 if draft.Notify_recording >= draft.Notify_upnext {
                     Label("Recording alert fires at or after Up Next — the Up Next notification won't appear first.", systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)
@@ -318,6 +325,7 @@ struct SettingsView: View {
 
             Section("Discord") {
                 Toggle("Enable Discord notifications", isOn: $draft.Discord_enabled)
+                    .help("Post recording status updates to a Discord channel via webhook URL.")
 
                 if draft.Discord_enabled {
                     HStack(spacing: 8) {
@@ -405,6 +413,7 @@ struct SettingsView: View {
                     value: $draft.Idle_timer_interval,
                     in: 5...60, step: 5
                 )
+                .help("How often the app checks for recordings due to start or end. Lower values give more precise timing at the cost of slightly more CPU.")
             }
 
             Section("Logging") {
