@@ -169,12 +169,9 @@ Pre-selection via `syncChannel` only updates `selectedChannel` — it does **not
 ```swift
 private func playChannel(_ ch: LineupEntry) {
     guard let rawURL = ch.URL, !rawURL.isEmpty else { return }
-    let transcode = state.config.Default_transcode.lowercased()
-    let url = (transcode.isEmpty || transcode == "none")
-        ? rawURL : "\(rawURL)?transcode=\(transcode)"
+    let url = state.config.applyTranscode(rawURL)   // "none"/empty → raw; otherwise appends ?transcode=…
 
     // Buffer immediately — stream starts the moment the poster appears.
-    state.vlcCurrentURL = rawURL        // keeps Now Watching indicator accurate
     VLCBridge.shared.play(url: url)
     updateNowPlaying(channel: ch)
 
@@ -183,11 +180,11 @@ private func playChannel(_ ch: LineupEntry) {
 }
 ```
 
-Reads `config.Default_transcode` (not per-show transcode — the picker is device/lineup-level, not show-level). When transcode is `"none"` or empty the raw stream URL is used; VLC decodes MPEG-2 natively.
+Uses `AppConfig.applyTranscode(_:override:)` — applies `Default_transcode` without a per-show override (the picker is device/lineup-level, not show-level). When transcode is `"none"` or empty the raw stream URL is used; VLC decodes MPEG-2 natively.
 
 **Immediate buffering**: `play()` is called synchronously, before the background Task that checks tuner occupancy. The poster overlay is visible from the moment the channel changes, so every millisecond of poster time is also buffer-build time. By the time the user reads the episode info and clicks Start, the stream has been filling at `minRate` since the picker change.
 
-**Now Watching sync**: `state.vlcCurrentURL = rawURL` is set here (in addition to `watchInApp`) so that picker-driven channel switches keep the Now Watching indicator in the menu bar accurate. Without this, the indicator would show the old channel until the next `watchInApp` call.
+**Now Watching sync**: `VLCBridge.play(url:)` sets `currentURL` synchronously (drawable already exists for an open window). The Combine sink in `AppState` picks this up immediately and updates `vlcCurrentURL` — no manual assignment needed in `playChannel`.
 
 **Background tuner check**: after `play()` returns, a `Task` fetches `status.json` and logs `[VLC] post-switch tuner status ch X.X: N/M active (ours=N other=N)`. If all non-VLC slots appear occupied it logs a warning. No alert is shown — the stream is already running and the HDHR may succeed regardless.
 
@@ -201,7 +198,7 @@ Reads `config.Default_transcode` (not per-show transcode — the picker is devic
 
 `onAppear` logs `[VLC] VLCPlayerView.onAppear device=… initialURL=…`, sets up the rate controller, audio devices, media-key remote commands, and calls `syncChannel`.
 
-`onDisappear` logs `[VLC] VLCPlayerView.onDisappear` and calls `VLCBridge.shared.stop()`, which releases the current media object and stops the stream. The player (`VLCBridge.shared.mediaPlayer`) is not destroyed — it stays alive for the next `open()` call.
+`onDisappear` logs `[VLC] VLCPlayerView.onDisappear` and calls `VLCBridge.shared.releasePlayer()` — full teardown: stops the stream, releases the media object, releases and nils the media player, and frees the tuner immediately. This is a safety net; `playerWindowDidClose()` normally fires first via the window delegate. `releasePlayer()` is idempotent so calling it twice is harmless.
 
 **Remote stop command (known issue)**: the Now Playing / media-key Stop command calls `VLCBridge.stop()`, which clears `drawableView = nil`. Every subsequent `play()` then queues as pending but the SwiftUI view is still alive so `makeNSView` never re-fires — the window goes black until closed and reopened. This is logged as `[VLC] remote stopCommand received` immediately before `[VLC] stop called — drawable=had view`. If this sequence appears in the log it confirms the black-screen cause.
 
@@ -280,6 +277,7 @@ final class VLCPlayerWindowManager {
     func open(url: String, title: String, device: HDHRDevice, appState: AppState) {
         self.appState = appState
         VLCBridge.shared.setVolume(0)            // mute before buffering starts; Start click unmutes
+        VLCBridge.shared.ensurePlayer()          // recreate mediaPlayer if releasePlayer() was called on last close
         VLCBridge.shared.play(url: url)          // always start/switch the stream immediately
         if let win = window {
             win.title = title
@@ -294,9 +292,9 @@ final class VLCPlayerWindowManager {
 
 **`focus()`**: brings the player window to the front without switching the stream. Called from the "Now Watching" button in `MenuContent` (via `DispatchQueue.main.async` to defer past NSMenu teardown). No-op when `window` is nil.
 
-**`closeIfPlayingURL(_ url: String)`**: closes the player window if `appState.vlcCurrentURL == url` (exact equality on the raw base URL, no query params). Called from `AppState.deleteShow` and `AppState.skipRecording` immediately after `recordingManager.stop()` — if the user is watching the same channel they just deleted/skipped, the VLC window tears down cleanly and the tuner is freed. No-op when the URL doesn't match or no window is open. Triggers `windowWillClose → playerWindowDidClose → VLCBridge.stop()`.
+**`closeIfPlayingURL(_ url: String)`**: closes the player window if `VLCBridge.shared.currentURL?.urlBase == url` (raw base URL, no query params — reads directly from VLCBridge, no `appState` reference needed). Called from `AppState.deleteShow` and `AppState.skipRecording` immediately after `recordingManager.stop()` — if the user is watching the same channel they just deleted/skipped, the VLC window tears down cleanly and the tuner is freed. No-op when the URL doesn't match or no window is open. Triggers `windowWillClose → playerWindowDidClose → VLCBridge.releasePlayer()`.
 
-**`playerWindowDidClose()`**: called by `WindowCloseObserver.windowWillClose`. Calls `VLCBridge.shared.releasePlayer()` (full teardown — releases `mediaPlayer` so the tuner is freed immediately), clears `currentDeviceID`, sets `window = nil`, clears `appState?.vlcCurrentURL = ""`, and calls `appState?.refreshTunerOccupancy()` so the menu header reflects the freed tuner within ~1.5 s. The `appState` weak reference is set in `open()` and persists for the window lifetime.
+**`playerWindowDidClose()`**: called by `WindowCloseObserver.windowWillClose`. Calls `VLCBridge.shared.releasePlayer()` (full teardown — releases `mediaPlayer` so the tuner is freed immediately; also nils `currentURL`, which triggers the Combine chain in `AppState` to clear `vlcCurrentURL` automatically), clears `currentDeviceID`, sets `window = nil`, and calls `appState?.refreshTunerOccupancy()` so the menu header reflects the freed tuner within ~1.5 s. No explicit `vlcCurrentURL = ""` needed — the Combine sink handles it. The `appState` weak reference is set in `open()` and persists for the window lifetime.
 
 ### Singleton NSWindow with isReleasedWhenClosed = false
 
@@ -332,18 +330,16 @@ func watchInApp(url: String, title: String, deviceId: String? = nil, transcode: 
     if VLCPlayerWindowManager.shared.currentDeviceID != deviceId {
         // fetch /status.json and alert if all tuners occupied
     }
-    let profile = (transcode ?? config.Default_transcode).lowercased().trimmingCharacters(in: .whitespaces)
-    let streamURL = (profile.isEmpty || profile == "none") ? url : "\(url)?transcode=\(profile)"
+    let streamURL = config.applyTranscode(url, override: transcode)
     let device = devices.first { $0.DeviceID == (deviceId ?? "") } ?? devices.first
     guard let device else { return }
-    vlcCurrentURL = url   // raw URL (no transcode suffix) — syncs channel picker
     VLCPlayerWindowManager.shared.open(url: streamURL, title: title, device: device, appState: self)
 }
 ```
 
 **Tuner availability check**: before opening, `watchInApp` fetches `device.statusURL` (`http://hdhr-{DeviceID}.local/status.json`) and decodes a `[DeviceTunerInfo]` array. If all entries have `VctNumber != nil` (all tuners occupied), it shows an NSAlert explaining why the player can't open. The check is **skipped** when `VLCPlayerWindowManager.shared.currentDeviceID == deviceId` — the player window already holds a tuner slot on that device, so switching channels doesn't need a free slot.
 
-`vlcCurrentURL` is set to the raw URL (without transcode suffix) before calling `open()`. This publishes to the SwiftUI tree so `onChange(of: state.vlcCurrentURL)` in a running `VLCPlayerView` fires immediately and syncs the channel picker.
+`vlcCurrentURL` is no longer set manually here. `open()` calls `VLCBridge.play()`, which sets `currentURL` on the bridge; the Combine sink in `AppState` maps that through `.urlBase` and updates `vlcCurrentURL` automatically. `onChange(of: state.vlcCurrentURL)` in a running `VLCPlayerView` fires and syncs the channel picker.
 
 `deviceId` call sites:
 - Guide entry menu (`entryMenu`): passes `device.DeviceID`
@@ -360,13 +356,17 @@ private(set) var currentDeviceID: String?
 
 Set to `device.DeviceID` in `open()`, cleared to `nil` in `playerWindowDidClose()`. Read by `watchInApp` to skip the tuner availability check when the player already occupies a slot on the target device (channel switching should always be allowed without a free-tuner check).
 
-`playerWindowDidClose()` also clears `appState?.vlcCurrentURL = ""` so the "Now Watching" indicator in `MenuContent` disappears when the window is closed.
+`playerWindowDidClose()` calls `releasePlayer()`, which nils `VLCBridge.currentURL`; the Combine chain in `AppState` picks this up and clears `vlcCurrentURL` — the "Now Watching" indicator disappears without any explicit assignment in the close path.
 
 ---
 
 ## Logging Reference
 
-All VLC log lines are prefixed `[VLC]` and written via `glog()` to `~/Library/Logs/hdhrVCRplus.log`.
+All VLC log lines are prefixed `[VLC]` and written via `glog()` to the unified logging system (OSLog subsystem `com.hdhr.vcrplus`). View live with:
+```
+log stream --level debug --predicate 'subsystem == "com.hdhr.vcrplus"'
+```
+Or open Console.app → use Settings → Advanced → Logging → "Show App Log in Console".
 
 | Log line | When it fires |
 |---|---|

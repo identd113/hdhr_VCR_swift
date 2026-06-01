@@ -217,7 +217,7 @@ Label format: `"Ch 5.1  NBC · Show Title"` where the channel comes from matchin
 3. Looks up the current guide entry via `state.guideEntries(deviceId:channelNum:)` and filters to the entry spanning `Date()`
 4. Returns `(channel: LineupEntry, entry: GuideEntry?)`
 
-`vlcCurrentURL` is set in `AppState.watchInApp()` before calling `open()`, and cleared to `""` in `VLCPlayerWindowManager.playerWindowDidClose()` when the window is closed — so this button disappears when the player is dismissed.
+`vlcCurrentURL` is driven by a Combine sink in `AppState.init` that maps `VLCBridge.shared.$currentURL` (the URL actually loaded by libvlc) through `.urlBase` — stripping any `?transcode=…` query param — and assigns it to `$vlcCurrentURL`. It updates automatically whenever VLC starts or stops playing; no manual assignment is needed at call sites. When `VLCBridge.releasePlayer()` is called on window close, `currentURL` becomes `nil`, the Combine chain fires, and `vlcCurrentURL` clears to `""` — so this button disappears without any explicit clearing in `playerWindowDidClose`.
 
 ---
 

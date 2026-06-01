@@ -60,7 +60,7 @@ One `Section`:
 Three sections:
 - **Network**: `Picker` for discovery/recording interface (`"Auto"` default + available NICs with display names). Caption explaining VPN usage.
 - **Performance**: `Stepper` for idle check interval (5–60s, step 5)
-- **Logging**: `Toggle("Verbose curl logging")`; when on: caption with log path (text-selectable) + `"Show curl log in Finder"` button
+- **Logging**: `"Show App Log in Console"` button (opens Console.app for OSLog output) + selectable filter hint label (`subsystem == "com.hdhr.vcrplus"`). `Toggle("Verbose curl logging")`; when on: caption with curl log path (text-selectable) + `"Show curl log in Finder"` button
 - **Config File**: caption with config path (text-selectable) + `"Show config in Finder"` button
 
 ### Category: Maintenance
@@ -109,7 +109,7 @@ Sidebar entries (with SF Symbol icons):
 
 | Category | Icon | Contents |
 |---|---|---|
-| General | `gear` | Launch at Login, Add Show Method |
+| General | `gear` | Launch at Login |
 | Recording | `record.circle` | Folder, transcode, disk, failures, VLC, Bonus Time |
 | Guide | `tv` | Guide hours, series scan retry |
 | Notifications | `bell.badge` | Up Next timing, Recording alert timing |
@@ -121,12 +121,7 @@ Sidebar entries (with SF Symbol icons):
 
 ### General
 
-- **Launch at Login** — `SMAppService.mainApp` toggle. Uses `register()`/`unregister()` from `ServiceManagement`. Errors are printed but not surfaced to the user.
-- **Add Show Method** — radio-style chooser between:
-  - **Wizard** — opens `AddShowView` window (3-step guide browser). Default.
-  - **Menu** — inline cascading menu from the menu bar (Device → Channel → Entry → Type)
-  
-  Stored in `@AppStorage("addShowMode")` (`AddShowMode` enum), not in `AppConfig`.
+- **Launch at Login** — `SMAppService.mainApp` toggle. Uses `register()`/`unregister()` from `ServiceManagement`. Errors are logged but not surfaced to the user.
 
 ---
 
@@ -137,6 +132,7 @@ Sidebar entries (with SF Symbol icons):
 - **Min free disk** — `Stepper` (1–100 GB). Recording is refused when free space is below this threshold (`AppState.diskOK(for:)`).
 - **Pause after N failures** — `Stepper` (1–10). After `Fail_count_setting` consecutive failures, `show_active = false` and the show moves to Paused. Each successful recording start decrements `show_fail_count` by 1.
 - **Watch in VLC** — `Toggle`, only shown when `/Applications/VLC.app` exists. Enables "Watch in VLC" buttons throughout the app. Stored in `draft.Watch_in_VLC`. **Auto-initialized**: on first launch (when `Watch_in_VLC_initialized == false`), the setting is auto-enabled if VLC is installed, then `Watch_in_VLC_initialized` is set to true so subsequent user toggles are never overridden.
+- **Min buffer rate** — `Picker` (90–100%, or `"100% (disabled)"`), only shown when VLC is installed. Sets the fill-phase floor for the in-app player's 8-second live buffer. Lower values fill the buffer faster; 100% disables buffering entirely. Stored in `draft.Player_buffer_min_rate`.
 - **Bonus Time for sports** — `Toggle` (on by default). Extends recording past the guide end for shows where `show_genre` contains "sports". Stored in `draft.Sports_padding_enabled`.
 - **Bonus Time duration** — `Stepper` (10–60 min, step 5, default 30). Only visible when Bonus Time toggle is on. Stored in `draft.Sports_padding_minutes`.
 
@@ -186,7 +182,8 @@ Recording Complete embeds additionally include **Format** (file extension, e.g. 
   - URLSession HTTP requests rely on OS routing — correct for VPN since the VPN routes the remote subnet through the tunnel automatically
   - Leave on Auto for single-NIC setups.
 - **Idle check interval** — `Stepper` (5–60 sec, step 5). How often the idle loop fires. Minimum enforced at 5s (`max(5, config.Idle_timer_interval)`). Changing this calls `state.startTimer()` immediately via `applyAndSave()`.
-- **Verbose curl logging** — `Toggle`. Adds `-v` to curl args and pipes curl stderr to `~/Library/Logs/hdhrVCRplus.log`. When enabled, shows the log path (selectable text) and a "Show curl log in Finder" button. Log path is `RecordingManager.curlLogPath` (static let).
+- **App log** — `"Show App Log in Console"` button. Opens Console.app; app logs now go to OSLog (subsystem `com.hdhr.vcrplus`) rather than a file. A selectable filter hint label appears below the button for copy-paste into Console or Terminal (`log stream --level debug --predicate 'subsystem == "com.hdhr.vcrplus"'`).
+- **Verbose curl logging** — `Toggle`. Adds `-v` to curl args and pipes curl stderr to `~/Library/Logs/hdhrVCRplus.log`. When enabled, shows the curl log path (selectable text) and a "Show curl log in Finder" button. Log path is `RecordingManager.curlLogPath` (static let). Rotated at 5 MB by `writeCurlLogHeader` before each new recording session.
 - **Config file path** — read-only display (`state.configManager.configPath`) + "Show config in Finder" button using `NSWorkspace.shared.selectFile(_:inFileViewerRootedAtPath:)`.
 
 ---
