@@ -121,6 +121,7 @@ struct WatchNowView: View {
             Image(systemName: "play.tv.fill")
                 .foregroundStyle(watchNowBlue)
                 .font(.title3)
+                .accessibilityHidden(true)
             Text("Watch Now")
                 .font(.headline)
             Spacer()
@@ -151,6 +152,7 @@ struct WatchNowView: View {
                 Image(systemName: "tv.slash")
                     .font(.system(size: 40))
                     .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
                 Text("Nothing on right now")
                     .foregroundStyle(.secondary)
                 if let device = selectedDevice, state.isGuideLoading(for: device.DeviceID) {
@@ -216,13 +218,29 @@ struct WatchNowRow: View {
         if let sid = entry.SeriesID, !sid.isEmpty {
             return state.managedShowBySeriesID[sid]
         }
-        return state.managedShowByTitle[entry.Title]
+        // Multiple shows can share a title (e.g. "News" on different channels).
+        // For series shows any match by title is correct; for single-slot shows
+        // narrow to the specific device+channel so the wrong entry doesn't win.
+        return state.managedShowByTitle[entry.Title]?.first {
+            $0.state == .seriesChannel || $0.state == .seriesAll
+                || ($0.hdhr_record == device.DeviceID && $0.show_channel == channel.GuideNumber)
+        }
     }
 
     var body: some View {
+        let managed = managedShow
+        let scheduled: Bool = {
+            guard let show = managed else { return false }
+            if show.state == .seriesChannel || show.state == .seriesAll { return true }
+            // Guard explicitly — ?? -1 would spuriously match a guide entry with StartTime == -1.
+            guard let nextDate = show.show_next else { return false }
+            return show.hdhr_record  == device.DeviceID
+                && show.show_channel == channel.GuideNumber
+                && Int(nextDate.timeIntervalSince1970) == entry.StartTime
+        }()
         HStack(alignment: .top, spacing: 10) {
-            posterThumb
-            infoColumn
+            posterThumb(isScheduled: scheduled)
+            infoColumn(managed: managed, isScheduled: scheduled)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 14)
@@ -231,7 +249,7 @@ struct WatchNowRow: View {
     }
 
     @ViewBuilder
-    private var posterThumb: some View {
+    private func posterThumb(isScheduled: Bool) -> some View {
         ZStack {
             guideEntryColor(for: entry, onAir: true).opacity(0.55)
             if let img = posterImage {
@@ -247,21 +265,14 @@ struct WatchNowRow: View {
         .containerRelativeFrame(.horizontal) { w, _ in min(w * 0.34, 220) }
         .aspectRatio(96.0/68.0, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 6))
+        .accessibilityHidden(true)
         .overlay(alignment: .topTrailing) {
-            if let show = managedShow {
-                // SeriesID shows: yellow on any matching episode. DateTime/Single: only the scheduled slot.
-                let isSeriesBased = show.state == .seriesChannel || show.state == .seriesAll
-                let showYellow    = isSeriesBased
-                    || (show.hdhr_record  == device.DeviceID
-                        && show.show_channel == channel.GuideNumber
-                        && Int(show.show_next?.timeIntervalSince1970 ?? -1) == entry.StartTime)
-                if showYellow { ManagedFlagView(size: 18) }
-            }
+            if isScheduled { ManagedFlagView(size: 18) }
         }
     }
 
     @ViewBuilder
-    private var infoColumn: some View {
+    private func infoColumn(managed: Show?, isScheduled: Bool) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 4) {
                 if let logo = channelLogo {
@@ -269,15 +280,17 @@ struct WatchNowRow: View {
                         .resizable()
                         .scaledToFit()
                         .frame(width: 16, height: 16)
+                        .accessibilityHidden(true)
                 }
                 Text("ch \(channel.GuideNumber)  \(channel.GuideName)\(channel.HD == 1 ? " HD" : "")")
                     .font(.caption.bold())
                     .foregroundStyle(.secondary)
-                if managedShow?.show_recording == true {
+                if managed?.show_recording == true {
                     Spacer(minLength: 6)
                     Image(systemName: "record.circle.fill")
                         .foregroundStyle(.red)
                         .font(.caption.bold())
+                        .accessibilityHidden(true)
                     Text("Recording")
                         .font(.caption.bold())
                         .foregroundStyle(.red)
@@ -286,6 +299,7 @@ struct WatchNowRow: View {
             Text(entry.Title)
                 .font(.subheadline.bold())
                 .lineLimit(1)
+                .accessibilityLabel(isScheduled ? "\(entry.Title), scheduled" : entry.Title)
             if let sub = entry.episodeInfoLabel {
                 Text(sub)
                     .font(.caption)
@@ -295,13 +309,13 @@ struct WatchNowRow: View {
             Text("\(timeRange)  ·  \(timeRemaining)")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
-            actionRow
+            actionRow(managed: managed)
                 .padding(.top, 2)
         }
     }
 
     @ViewBuilder
-    private var actionRow: some View {
+    private func actionRow(managed: Show?) -> some View {
         HStack(spacing: 6) {
             if VLCBridge.shared.isAvailable {
                 Button {
@@ -309,6 +323,7 @@ struct WatchNowRow: View {
                 } label: {
                     Label("Watch", systemImage: "play.tv.fill").font(.caption.bold())
                 }
+                .accessibilityLabel("Watch \(entry.Title)")
                 .buttonStyle(.borderedProminent)
                 .tint(watchNowBlue)
                 .controlSize(.small)
@@ -319,11 +334,12 @@ struct WatchNowRow: View {
                 } label: {
                     Label("VLC", systemImage: "arrow.up.forward.app").font(.caption.bold())
                 }
+                .accessibilityLabel("Watch \(entry.Title) in VLC")
                 .buttonStyle(.borderedProminent)
                 .tint(watchNowOrange)
                 .controlSize(.small)
             }
-            if let show = managedShow {
+            if let show = managed {
                 Button {
                     state.editingShowId = show.show_id
                     NSApp.activate(ignoringOtherApps: true)
@@ -335,6 +351,7 @@ struct WatchNowRow: View {
                 } label: {
                     Label("Edit", systemImage: "pencil").font(.caption.bold())
                 }
+                .accessibilityLabel("Edit \(entry.Title)")
                 .buttonStyle(.bordered)
                 .controlSize(.small)
             } else {
@@ -350,6 +367,7 @@ struct WatchNowRow: View {
                 } label: {
                     Label("Record", systemImage: "record.circle").font(.caption.bold())
                 }
+                .accessibilityLabel("Record \(entry.Title)")
                 .buttonStyle(.borderedProminent)
                 .tint(.red)
                 .controlSize(.small)

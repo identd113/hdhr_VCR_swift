@@ -24,7 +24,7 @@ final class AppState: ObservableObject {
     private var conflictNotifiedKeys: Set<String> = []
     // O(1) managed-show lookup for entryMenu — rebuilt alongside menu entries.
     var managedShowBySeriesID: [String: Show] = [:]
-    var managedShowByTitle:    [String: Show] = [:]
+    var managedShowByTitle:    [String: [Show]] = [:]
     // O(1) channel logo lookup for channelMenu — "deviceId:channelNum" → ImageURL — rebuilt alongside menu entries.
     var channelImageURLs: [String: String] = [:]
     @Published var guideRevision: Int = 0                        // increments each time guide data successfully loads
@@ -535,10 +535,10 @@ final class AppState: ObservableObject {
 
         // ── O(1) managed-show lookup dicts (WatchNowView + scheduledMenu) ─────
         var bySeriesID: [String: Show] = [:]
-        var byTitle:    [String: Show] = [:]
+        var byTitle:    [String: [Show]] = [:]
         for show in shows {
             if !show.show_seriesid.isEmpty { bySeriesID[show.show_seriesid] = show }
-            byTitle[show.show_title] = show
+            byTitle[show.show_title, default: []].append(show)
         }
         managedShowBySeriesID = bySeriesID
         managedShowByTitle    = byTitle
