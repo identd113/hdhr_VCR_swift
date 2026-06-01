@@ -109,11 +109,7 @@ struct SettingsView: View {
         .frame(width: 560, height: 520)
         .background(WindowCloseInterceptor(isDirty: isDirty, canSave: !webhookNeedsTest, onSave: applyAndSave))
         .onAppear {
-            draft               = state.config
-            draftSaveDirectory  = defaultSaveDirectory
-            draftLaunchAtLogin  = SMAppService.mainApp.status == .enabled
-            // Existing saved URL is considered verified (was tested when first saved)
-            webhookTestStatus   = state.config.Discord_webhook_url.isEmpty ? .idle : .passed
+            resetDrafts()
             // Clear a stale saved interface: if the named NIC isn't available right now
             // (e.g. VPN disconnected), reset to Auto immediately in both draft AND live
             // config. Without the live-config clear, a Discard-and-close would leave the
@@ -127,18 +123,23 @@ struct SettingsView: View {
             }
             // Migrate: a previous build stored realVersion for "current"; normalize to 0.
             let real = ProcessInfo.processInfo.operatingSystemVersion.majorVersion
-            if simulatedMacOSVersion == real { simulatedMacOSVersion = 0 }
-            draftSimulatedOS = simulatedMacOSVersion
+            if simulatedMacOSVersion == real {
+                simulatedMacOSVersion = 0
+                draftSimulatedOS = 0   // re-sync after migration
+            }
         }
     }
 
-    private func discardDraft() {
+    private func resetDrafts() {
         draft              = state.config
         draftSaveDirectory = defaultSaveDirectory
         draftLaunchAtLogin = SMAppService.mainApp.status == .enabled
         draftSimulatedOS   = simulatedMacOSVersion
+        // Existing saved URL is considered verified (was tested when first saved)
         webhookTestStatus  = state.config.Discord_webhook_url.isEmpty ? .idle : .passed
     }
+
+    private func discardDraft() { resetDrafts() }
 
     private func applyAndSave() {
         let old = state.config
@@ -407,6 +408,20 @@ struct SettingsView: View {
             }
 
             Section("Logging") {
+                Button("Show App Log in Console") {
+                    // Opens Console.app and pre-fills the search field with the subsystem.
+                    // macOS 12+ supports the x-apple.systempreferences: URL for Console;
+                    // falling back to direct launch keeps it working on older builds.
+                    let subsystem = "com.hdhr.vcrplus"
+                    if let url = URL(string: "x-apple.systempreferences:com.apple.Console?subsystem=\(subsystem)") {
+                        NSWorkspace.shared.open(url)
+                    } else {
+                        NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Utilities/Console.app"))
+                    }
+                }
+                Text("Filter: subsystem == \"\(Bundle.main.bundleIdentifier ?? "com.hdhr.vcrplus")\"")
+                    .font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+
                 Toggle("Verbose curl logging", isOn: $draft.Verbose_curl)
                 if draft.Verbose_curl {
                     Text("curl stderr → \(RecordingManager.curlLogPath)")

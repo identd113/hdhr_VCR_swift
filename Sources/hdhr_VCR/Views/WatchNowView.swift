@@ -1,9 +1,6 @@
 import SwiftUI
 import AppKit
 
-private let watchNowBlue   = Color(red: 0.2, green: 0.6, blue: 1.0)
-private let watchNowOrange = Color(red: 1.0, green: 0.482, blue: 0.0)
-
 // MARK: ── Window ──────────────────────────────────────────────────────────────
 
 struct WatchNowView: View {
@@ -344,13 +341,11 @@ struct WatchNowRow: View {
                 Button {
                     state.pendingAddEntry = (device, channel, entry)
                     state.pendingAddEntryGeneration += 1
-                    DispatchQueue.main.async {
-                        NSApp.activate(ignoringOtherApps: true)
-                        if let w = NSApp.windows.first(where: { $0.title == "Add Show" }) {
-                            w.makeKeyAndOrderFront(nil)
-                        } else {
-                            openWindow(id: "add-show")
-                        }
+                    NSApp.activate(ignoringOtherApps: true)
+                    if let w = NSApp.windows.first(where: { $0.title == "Add Show" }) {
+                        w.makeKeyAndOrderFront(nil)
+                    } else {
+                        openWindow(id: "add-show")
                     }
                 } label: {
                     Label("Record", systemImage: "record.circle").font(.caption.bold())

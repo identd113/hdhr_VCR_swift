@@ -1,8 +1,6 @@
 import SwiftUI
 import AppKit
 
-private let vlcOrange   = Color(red: 1.0, green: 0.482, blue: 0.0)
-private let watchNowBlue = Color(red: 0.2, green: 0.6, blue: 1.0)
 
 struct MenuContent: View {
     @EnvironmentObject var state: AppState
@@ -277,8 +275,8 @@ struct MenuContent: View {
             }
             if state.config.Watch_in_VLC {
                 Button(action: { state.watchInVLC(url: show.show_url, transcode: show.show_transcode, deviceId: show.hdhr_record) }) {
-                    Label { Text("Watch in VLC").foregroundColor(vlcOrange) }
-                          icon: { Image(systemName: "arrow.up.forward.app").foregroundColor(vlcOrange) }
+                    Label { Text("Watch in VLC").foregroundColor(watchNowOrange) }
+                          icon: { Image(systemName: "arrow.up.forward.app").foregroundColor(watchNowOrange) }
                 }
             }
             if VLCBridge.shared.isAvailable {

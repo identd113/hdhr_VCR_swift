@@ -1,5 +1,9 @@
 import SwiftUI
 
+// Shared brand colors used by MenuContent, WatchNowView, and VLCPlayerView.
+let watchNowBlue   = Color(red: 0.2, green: 0.6, blue: 1.0)
+let watchNowOrange = Color(red: 1.0, green: 0.482, blue: 0.0)
+
 // Shared DateFormatters used by AddShowView, FloatingGuideView, and CableGuideView.
 let origAirdateFormatter: DateFormatter = {
     let f = DateFormatter(); f.dateStyle = .medium; f.timeStyle = .none; return f
