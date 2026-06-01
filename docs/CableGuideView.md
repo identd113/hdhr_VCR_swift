@@ -43,7 +43,7 @@ Each show occupies a rectangular block spanning `duration × pxPerMin` pixels wi
 2. **On-air wash** — `Color.white.opacity(0.12)` overlay on currently-airing blocks
 3. **Yellow managed triangle** — 22pt right-angle triangle, `Path.fill(.yellow)`, upper-right corner. Vertices: `(cellW-22, 0) → (cellW, 0) → (cellW, 22)`. Always rendered on top of the block background, below status icons.
 4. **Selected border** — 2.5pt white stroke + `Color.white.opacity(0.15)` fill overlay when selected
-5. **Status icons** (rendered after triangle so they appear on top of it):
+5. **Status icons** (rendered after triangle so they appear on top of it; both are `.accessibilityHidden(true)` — their status is folded into the cell's composite accessibility label instead):
    - Recording: 8pt red `Circle` at `(cellW-12, 3)` — centred inside the yellow triangle
    - Next-up: `clock.badge.fill` (10pt orange) at `(cellW-14, 4)`
 
@@ -181,6 +181,16 @@ Recording vs. next-up precedence: `isNextUp` is only true when `!isRecording` �
 ### Selection logic
 
 Selection compares `entry.id` (= `StartTime`) AND `lineupEntry != nil` AND `selectedChannel?.GuideNumber == lineupEntry?.GuideNumber`. The explicit `lineupEntry != nil` guard is required because Swift evaluates `nil == nil` as `true` — without it, when the lineup is absent every entry at the same `StartTime` across all channels appears selected simultaneously. Tap = single-select. Double-tap (`.simultaneousGesture(TapGesture(count: 2))`) calls `onConfirm?()` to advance the wizard.
+
+### Accessibility
+
+Each show block is a single collapsed accessibility element (`.accessibilityElement(children: .ignore)` + `.accessibilityAddTraits(.isButton)`). Its label is built at render time: `"Title[, EpisodeTitle], HH:MM – HH:MM[, Recording now | Recording soon | Scheduled]"`. Two actions are registered:
+- **Default** (VO+Space): calls `onSelect(entry, lineupEntry)` — selects the cell and populates the summary panel.
+- **"Record"** (VO+Cmd+Space action chooser): calls `onSelect` then `onConfirm?()` — selects and immediately advances (no-op in FloatingGuideView which passes `onConfirm: {}`).
+
+The favorite star button has `.accessibilityLabel("Add to favorites")` / `"Remove from favorites"` matching its `.help()` text.
+
+The bonus time dotted box is also a collapsed accessible button: label `"Bonus Time overlap — [next show title]"`, default action selects the next show.
 
 ---
 

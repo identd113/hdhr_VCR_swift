@@ -1,8 +1,10 @@
-# PlayerView.swift — In-App Video Player
+# PlayerView.swift — In-App Video Player (SUPERSEDED)
 
-## Intent
+> **This file is superseded by `VLCPlayerView.swift` + `VLCBridge.swift`.** AVPlayer does not support MPEG-2 transport streams (the native HDHomeRun format), so this player was replaced with a VLC-based implementation. `Player_unlocked` and the 5-tap easter egg no longer exist in the codebase. This document is kept as a historical reference only — do not add new call sites or resurrect this code.
 
-`PlayerView.swift` provides a pop-out AVKit player window for watching live HDTV streams in-app. It is gated behind a `Player_unlocked` easter egg (5-tap on the About logo in Settings). Once unlocked, "Watch in App" buttons appear in the guide summary panel and recording menus alongside "Watch in VLC".
+## Intent (Historical)
+
+`PlayerView.swift` provided a pop-out AVKit player window for watching live HDTV streams in-app. It was gated behind a `Player_unlocked` easter egg (5-tap on the About logo in Settings). Once unlocked, "Watch in App" buttons appeared in the guide summary panel and recording menus alongside "Watch in VLC".
 
 The player is managed by a singleton `PlayerWindowManager` — calling `play()` reuses the same window rather than opening duplicates.
 

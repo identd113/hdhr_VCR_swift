@@ -4,7 +4,9 @@ Deferred features and improvements. Add items here when a task is punted. Remove
 
 ---
 
-## Watch Now plays live recording file instead of opening a new tuner
+## Player / Watch Now
+
+### Watch Now plays live recording file instead of opening a new tuner
 
 When the VLC player is opened for a show that is currently being recorded on the same device, it opens a fresh HTTP stream to the tuner — consuming a second tuner slot unnecessarily. Instead, VLC should play the partial `.ts` file being written by curl, which is valid as a growing file.
 
@@ -20,21 +22,116 @@ This applies everywhere "Watch Now" / "Watch in App" is offered: `WatchNowView`,
 
 ---
 
-## FloatingGuideView: summaryPanel isManaged uses O(n) search instead of Set lookup
+### Closed captioning / subtitle track selector
 
-`summaryPanel` is a separate `@ViewBuilder private var` and can't access the `managedSeriesIDs`/`managedTitles`/`managedDTSingleSlotKeys` Sets built in `body`. Lines 185-200 re-derive them via `contains(where:)` on `state.shows` on every render. Fix: promote the three sets to `private var` computed properties on `FloatingGuideView` so both `body` and `summaryPanel` use O(1) Set lookups from the same source.
+Add a closed captioning option to `WatchNowView` (and the in-app VLC player). HDHomeRun streams carry CEA-608/708 captions embedded in the MPEG-2/H.264 stream; VLC can decode and render them.
 
-**Key file**: `Sources/hdhr_VCR/Views/FloatingGuideView.swift` lines 42-49 (body) and 185-200 (summaryPanel).
+**Implementation notes**:
+- `VLCBridge` already opens the stream — add `libvlc_video_set_spu(mp, track)` to select a subtitle track (SPU track in VLC terminology).
+- `libvlc_video_get_spu_count(mp)` and `libvlc_video_get_spu_description(mp)` enumerate available tracks.
+- Expose a CC toggle button in `VLCPlayerView` toolbar (next to the audio output picker). When tapped, cycle through available SPU tracks or show a picker.
+- Surface a simpler CC on/off toggle in `WatchNowView`'s action row so the user can enable captions before the player opens (pass a `captionsEnabled: Bool` flag through `watchInApp()`).
+- Add `CC_enabled: Bool = false` to `AppConfig` so the preference persists.
+- **Timing caveat**: SPU track enumeration only works after the media is playing — enable CC once tracks load rather than passing a pre-open flag.
+
+**Key files**: `VLCBridge.swift` (SPU track API), `VLCPlayerView.swift` (toolbar toggle), `WatchNowView.swift` (action row option), `AppConfig` (new field), `SettingsView.swift` (optional default toggle).
 
 ---
 
-## Colored guide entry rows in .menu add-show cascade
+### Elapsed/remaining timer in recording menu doesn't tick
+
+Times shown in `recordingMenu` / `scheduledMenu` are computed when the menu opens and stay static for the duration it's open. NSMenu doesn't auto-refresh its view hierarchy. A real-time display would require redesigning recording detail as a window-based popover.
+
+---
+
+### No "Record Now" shortcut
+
+No direct path to immediately record an in-progress show without going through Watch Now or the Add Show wizard. A quick-action from `MenuContent` or `WatchNowView` would skip the wizard for shows currently on air.
+
+---
+
+## Recording
+
+### No retry backoff for failed shows
+
+Failed shows go straight to Paused after N consecutive failures with no grace period. A short wait (e.g. 5 minutes) before retrying the next eligible airing would handle transient network blips without deactivating the show.
+
+**Key files**: `AppState.swift` (idle loop / failure handling), `AppConfig` (optional backoff duration field).
+
+---
+
+### DeviceAuth via UDP tag 0x2B
+
+`HDHRManager.udpDiscoverSync()` reads only tag `0x02` (DeviceID) from the UDP discovery reply. The EXTEND device also includes DeviceAuth in tag `0x2B`. Parsing it would populate `HDHRDevice.DeviceAuth` from UDP so the guide API works when the device's HTTP server is sleeping or unreachable.
+
+Confirmed DeviceAuth from live UDP packet on device `105404BE`; guide URL with that token returns 106 channels.
+
+**Key file**: `HDHRManager.swift` → `udpDiscoverSync()`.
+
+---
+
+## Add Show / Edit Show
+
+### No time offset picker for DateTime shows
+
+Air time is locked to the guide entry's start time. Users who want to record a few minutes early have no control in the wizard.
+
+---
+
+### `show_genre` not exposed in Edit Show
+
+The genre field (used for Bonus Time detection) is set from the guide on add but can't be corrected in Edit. Shows added before Bonus Time can't get a genre retroactively without delete + re-add.
+
+---
+
+### SeriesID is read-only in Edit Show
+
+Can't update `show_seriesid` if SiliconDust changes a series' ID (which happens occasionally). Only fix today is delete + re-add.
+
+---
+
+## Settings
+
+### No per-show fail threshold or bonus duration
+
+`Fail_count_setting` and `Sports_padding_minutes` are global-only. Per-show overrides would be useful for shows that regularly run long or need different failure tolerance.
+
+---
+
+### No export / import config
+
+Power users managing multiple machines must copy the JSON manually. Export / Import buttons in the Advanced settings section would simplify this.
+
+---
+
+## UI / Guide
+
+### Colored guide entry rows in .menu add-show cascade
 
 Color the background of each guide entry row in the `.menu` mode add-show cascade (channel submenu → entry list) with the genre color, matching the cable guide grid.
 
 **Implementation notes**: SwiftUI `Menu {}` maps to native `NSMenuItem`; `.background()` modifiers are ignored at row level. Requires AppKit interop:
-1. Create a `ColoredMenuItemView: NSView` subclass that draws genre color at low opacity as background, checks `enclosingMenuItem?.isHighlighted` in `draw(_:)` to show `NSColor.selectedMenuItemColor` on hover.
+1. Create a `ColoredMenuItemView: NSView` subclass that draws genre color at low opacity; check `enclosingMenuItem?.isHighlighted` in `draw(_:)` to show `NSColor.selectedMenuItemColor` on hover.
 2. Build entries imperatively and assign `.view = ColoredMenuItemView(...)` on each `NSMenuItem`.
-3. `NSMenu` calls `setNeedsDisplay()` on the custom view when highlight state changes — checking `isHighlighted` in `draw` is sufficient, no KVO needed.
+3. `NSMenu` calls `setNeedsDisplay()` on highlight state changes — checking `isHighlighted` in `draw` is sufficient, no KVO needed.
 
-**Key file**: `Sources/hdhr_VCR/Views/MenuContent.swift` → `entryMenu()` (~line 250); `entryColor` already computed via `guideEntryColor(for:onAir:)`.
+**Key file**: `MenuContent.swift` → `entryMenu()` (~line 250); `entryColor` already computed via `guideEntryColor(for:onAir:)`.
+
+---
+
+## Code Quality
+
+### Add `Show.isSeries` computed property
+
+`state == .seriesChannel || state == .seriesAll` is duplicated verbatim across at least four files (`WatchNowView.swift:226`, `AddShowView.swift:172`, `AppState.swift:1134`, `CableGuideView.swift`). If a third series state is added, every manual guard must be found and updated individually.
+
+Add to `Show` in `Models.swift`:
+```swift
+var isSeries: Bool { state == .seriesChannel || state == .seriesAll }
+```
+
+---
+
+### Deduplicate watch/record accessibility label strings
+
+`"Watch \(entry.Title) in VLC"` and `"Watch \(entry.Title)"` are hardcoded in both `FloatingGuideView.swift:299` and `WatchNowView.swift:318`. Extract to a small free function in `GuideViewHelpers.swift`.

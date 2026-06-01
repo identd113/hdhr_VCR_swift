@@ -5,7 +5,7 @@
 ### Overall window
 Fixed **560×540** for steps 1 and 3; expands to resizable **min 1100×720** for the guide step. The window animates between sizes with a 0.2s ease-in-out. Escape closes the window from any step.
 
-**Top of window (all steps)**: 2–3 small 8pt circles in a row, left-padded under the top edge — progress indicator. Filled accent-color circle = current step; hollow gray circle = other step. Only `guide` and `details` steps show (device step is usually skipped automatically). Below the circles: a `Divider`.
+**Top of window (all steps)**: 2 small 8pt circles in a row, left-padded under the top edge — progress indicator. Filled accent-color circle = current step; hollow gray circle = other step. `guide` and `details` steps only — `ForEach([Step.guide, .details])` always produces exactly 2 dots. Below the circles: a `Divider`.
 
 ### Step 1 — Device selection (usually auto-skipped)
 White background. Title `"Select Tuner"` in `.title2` left-padded, with a `"Refresh"` labeled button (↺ icon) at the right.
@@ -77,7 +77,7 @@ Window size: **560×540** for steps 1 and 3; **resizable** (min 1100×720, ideal
 enum Step { case device, guide, details }
 ```
 
-A progress indicator (3 dots, filled vs hollow) tracks position. Step content fills the main area. A nav bar (Back / Next or Save) is shown for steps 1 and 3. The guide step hides the nav bar entirely; Record appears in the summary panel. **Escape key** dismisses the window from any step (`.onExitCommand { dismiss() }` on the root VStack).
+A progress indicator (2 dots, filled vs hollow) tracks position across the `guide` and `details` steps. Step content fills the main area. A nav bar (Back / Next or Save) is shown for steps 1 and 3. The guide step hides the nav bar entirely; Record appears in the summary panel. **Escape key** dismisses the window from any step (`.onExitCommand { dismiss() }` on the root VStack).
 
 ### Step 1 — Device
 
@@ -93,7 +93,7 @@ A **Refresh** button runs `state.discoverDevices()` in a `Task` in case the init
 
 ### Step 2 — Guide
 
-Full cable-guide layout powered by `CableGuideView`. Guide step hides the bottom nav bar to reclaim ~48px for the grid; Cancel moves to the compact toolbar, and Record appears in the summary panel.
+Full cable-guide layout powered by `CableGuideView`. Guide step hides the bottom nav bar to reclaim ~48px for the grid. Record appears in the summary panel. **Escape** (`.onExitCommand`) dismisses the wizard from any step — there is no Cancel button in the toolbar.
 
 **Window resizes** when `step == .guide` — a `.frame()` modifier on the outer `VStack` switches between fixed 560×540 (steps 1 and 3) and resizable with min 1100×720 (step 2):
 ```swift
@@ -110,13 +110,11 @@ The window animates between sizes with `.animation(.easeInOut(duration: 0.2), va
 
 **Guide loading**: `.task(id: taskId)` fires `loadAllGuide()` when `selectedDevice` or `refreshToken` changes. `taskId = "\(deviceId):\(refreshToken)"`.
 
-**Bonus Time data**: computed from `state.shows` filtered to sports shows with `Sports_padding_enabled`:
+**Bonus Time data**: computed from `state.shows` filtered to shows with `show_bonus_time == true`:
 ```swift
-let sportShows = state.shows.filter {
-    state.config.Sports_padding_enabled && $0.show_genre.lowercased().contains("sports")
-}
-let bonusSeriesIDs = Set(sportShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
-let bonusTitles    = Set(sportShows.map { $0.show_title })
+let bonusShows    = state.shows.filter { $0.show_bonus_time }
+let bonusSeriesIDs = Set(bonusShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
+let bonusTitles    = Set(bonusShows.map { $0.show_title })
 ```
 These are passed to `CableGuideView` along with `bonusMinutes: state.config.Sports_padding_minutes` so the dotted Bonus Time overlay box renders on matching guide entries.
 
@@ -124,13 +122,13 @@ These are passed to `CableGuideView` along with `bonusMinutes: state.config.Spor
 
 **Genre filter resets**: when the tuner picker changes, `availableGenres` repopulates and `genreFilter` becomes invalid (stale genre string). It resets to `nil`.
 
-**Tuner switch cache invalidation**: `onChange(of: selectedDevice)` calls `state.guideStore.invalidate(deviceId:)` and removes the lineup from `state.lineups` for the newly selected device, then bumps `refreshToken`. This forces a fresh guide and lineup fetch for the new tuner.
+**Tuner switch cache invalidation**: `onChange(of: selectedDevice)` calls `state.guideStore.invalidate(deviceId:)` and bumps `refreshToken`. Lineups are **not** cleared — clearing them would leave `CableGuideView` without lineup data and disable the Record button. `genreFilter` is also reset to `nil` so a stale filter from the previous tuner doesn't leave the guide non-interactive.
 
 **`guideRevision` observation**: `onChange(of: state.guideRevision)` catches guide updates triggered by the idle loop while the wizard is open, pulling fresh channels into `allChannels` if they were empty.
 
 ### Step 3 — Details
 
-`ScrollView { ZStack(alignment: .topTrailing) { form; starburst } }` layout — the form scrolls normally and the starburst badge floats at the top-right.
+`ScrollView` containing the form fields, with a `StarburstBadge` floating at the bottom-right via `.overlay(alignment: .bottomTrailing)` on the outer `Group { switch step }` — outside and above the `ScrollView`.
 
 Form fields:
 - **Title** — `TextField` pre-populated by `applyGuideEntry()`
@@ -189,7 +187,7 @@ When a show is selected:
 - **Channel icon** — `ChannelIcon(urlString:size:52)` from `ChannelIconCache`; sourced from `GuideChannel.ImageURL` (not `LineupEntry`, which has no icon); sets `img = nil` on nil `urlString` to prevent stale logo bleed when switching to a channel without an icon
 - **Time range** — `"ch 5.1 · 8:00 PM – 9:00 PM"`, `.caption`
 - **Watch in VLC** button — conditional on `config.Watch_in_VLC && VLC installed && onAir`
-- **Watch in App** button — conditional on `onAir && config.Player_unlocked` (easter egg: 5-tap About logo)
+- **Watch Now!** button — conditional on `onAir && VLCBridge.shared.isAvailable`
 - **Record** button — `.borderedProminent`; calls `applyGuideEntry()` then advances to step 3
 
 Placeholder `"Select a show from the grid"` shown when nothing is selected.
@@ -259,13 +257,13 @@ For SeriesID shows (`show_use_seriesid == true`), `resolveSeriesAir(show:device:
 ## Compact Toolbar (Guide Step)
 
 ```
-[Cancel]  [Tuner: ▾ (multi-tuner only)]  [Genre: ▾ (when genres available)]
-          ─────────────────────────  Spacer  ─────────────────────────
-          [ProgressView]  [Now ⏱]  [Refresh ↺]  [N ch]
+[Tuner: ▾ (multi-tuner only)]  [Genre: ▾ (when genres available)]
+─────────────────────────  Spacer  ─────────────────────────
+[ProgressView]  [Now ⏱]  [Refresh ↺]  [↗]  [N ch]
 ```
 
-- **Escape** — `.onExitCommand { dismiss() }` on root VStack dismisses from any step; the nav bar has no Cancel button
-- **Tuner picker** — hidden when `state.devices.count == 1`; changing selection invalidates cache for that device and bumps `refreshToken`
+- **Escape** — `.onExitCommand { dismiss() }` on root VStack dismisses from any step; there is no Cancel button
+- **Tuner picker** — hidden when `state.devices.count <= 1`; changing selection invalidates cache for that device and bumps `refreshToken`
 - **Genre picker** — shown only when `availableGenres` is non-empty. Dims non-matching show blocks to 0.2 opacity
 - **`[N ch]`** — orange `.caption2` text showing `allChannels.count`; useful for debugging guide load issues
 - **Now** — sets `snapToNow = true`, which `CableGuideView`'s `ScrollViewReader` uses to scroll to the current time
@@ -292,8 +290,6 @@ For SeriesID shows (`show_use_seriesid == true`), `resolveSeriesAir(show:device:
 - **No way to manually set a stream URL** — if a channel's URL can't be resolved from the lineup, the user can't override it in the wizard. The step 3 form could show the resolved URL and allow edits.
 
 - **Time picker for DateTime shows** — air time is always taken from the guide entry's start time. If the user wants to schedule 5 minutes early, there's no control for that.
-
-- **Genre filter resets on tuner change** — when the tuner picker changes, `genreFilter` silently resets to `nil` because `availableGenres` repopulates with the new channel list.
 
 - **Single device step skip + slow discovery** — if discovery is still running when the wizard opens, it might auto-select a device that isn't the preferred one. A loading indicator at the device step ("Discovering tuners…") would be cleaner.
 

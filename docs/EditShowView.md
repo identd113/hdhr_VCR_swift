@@ -10,11 +10,11 @@ White/system background. `VStack` with 16pt spacing, 16pt padding on all sides:
 
 - **`"Edit Show"`** title in `.title2`
 - **`ShowFormSection`** — shared form fields (title field, type picker, days toggles, transcode picker, folder row) — see `ShowFormSection.md`
-- **`LabeledContent("Channel")`** — `TextField` with placeholder `"e.g. 5.4"`, 80pt wide
-- **`LabeledContent("Length (min)")`** — numeric `TextField`, 60pt wide, placeholder `"60"`
+- **`LabeledContent("Channel")`** — `TextField` with placeholder `"e.g. 5.4"`, 80pt wide. Tooltip: guide channel number format and redirect use.
+- **`LabeledContent("Length (min)")`** — numeric `TextField`, 60pt wide, placeholder `"60"`. Tooltip: set from guide end time; Bonus Time adds extra minutes for sports.
 - **Failures row** (only when `show_fail_count > 0`): `LabeledContent("Failures")` — orange text `"3 — Output file missing"` + blue `"Reset"` button
-- **SeriesID row**: `LabeledContent("SeriesID")` — secondary-color text, `"none"` if empty
-- **Stream URL row**: `LabeledContent("Stream URL")` — secondary-color caption, 1-line truncated; `"not set"` if empty
+- **SeriesID row**: `LabeledContent("SeriesID")` — secondary-color text, `"none"` if empty. Tooltip: HDHomeRun series identifier used for smart cross-channel matching.
+- **Stream URL row**: `LabeledContent("Stream URL")` — secondary-color caption, 1-line truncated; `"not set"` if empty. Tooltip: tuner stream URL, set automatically from the guide.
 
 **Sports Bonus Time badge**: when `show_bonus_time == true` AND `Sports_padding_enabled`, an orange 90pt `StarburstBadge` floats at the bottom-right corner of the form via `.overlay(alignment: .bottomTrailing)`, 12pt from the edges. It animates in on appear and out with a shrink-to-zero + fade on dismiss.
 

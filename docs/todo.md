@@ -1,51 +1,8 @@
-# hdhrVCRplus — Known Improvements / TODO
+# TODO / Issues
 
-All original feature requests have been implemented. Items below are quality-of-life enhancements surfaced during development. They are not bugs or missing features.
+Tracking has been consolidated into the root-level files:
 
----
+- **`TODO.md`** — deferred features and improvements
+- **`ISSUES.md`** — bugs and problems (open and resolved)
 
-## Menu Bar (MenuContent.swift)
-
-- **Yellow "already scheduled" triangle shows on all existing-show menu popups** — the triangle in `showInfoHeader` was designed to flag already-scheduled entries while browsing the Add Show guide, but it lives in a shared helper also used by `recordingMenu`, `scheduledMenu`, and `pausedMenu`. In those contexts it's always true and conveys nothing. Fix: add a `showManagedBadge: Bool = false` parameter and only pass `true` from the guide-browsing context (AddShowView step 2 / CableGuideView).
-
-- **Elapsed/remaining timer doesn't tick** — times are computed when the menu opens and stay static. NSMenu doesn't auto-refresh; a real-time display would require a window-based popover for recording detail.
-
-- **No "Record Now" shortcut** — there is no direct path to immediately record a show that's currently on air without going through Watch Now or the Add Show wizard.
-
----
-
-## Add Show Wizard (AddShowView.swift)
-
-- **Genre filter resets silently on tuner change** — when the tuner picker changes, `genreFilter` resets to `nil` because `availableGenres` repopulates. The user gets no indication this happened.
-
-- **No time offset picker for DateTime shows** — air time is locked to the guide entry's start time. Users who want to record 5 minutes early have no control for that in the wizard.
-
----
-
-## Edit Show (EditShowView.swift)
-
-- **`show_genre` not exposed** — the genre field (used for Bonus Time detection) is set when a show is added from the guide, but can't be corrected in Edit. Shows added before the Bonus Time feature can't get it retroactively without a re-add.
-
-- **SeriesID is read-only** — can't update if SiliconDust changes a series' ID (which happens occasionally). Only fix today is delete + re-add.
-
----
-
-## Settings (SettingsView.swift)
-
-- **No per-show fail threshold or bonus duration** — transcode profile and Bonus Time on/off are already per-show (stored on `Show`, editable via EditShowView). The fail threshold (`Fail_count_setting`) and Bonus Time duration (`Sports_padding_minutes`) remain global-only. A useful future feature: per-show overrides for these two settings.
-
-- **No export / import config** — power users managing multiple machines must copy the JSON manually. "Export config…" / "Import config…" buttons in Advanced would be user-friendly.
-
----
-
-## Recording Engine
-
-- **No retry backoff** — failed shows go straight to Paused after N consecutive failures with no grace period or exponential backoff. A short wait (e.g. 5 min) before retrying the next eligible airing would handle transient network blips without deactivating the show.
-
----
-
-## Performance Backlog
-
-Items identified during audit but deferred (medium or low impact, no user-visible regression).
-
-- **#10 — `guideStore.entries()` rebuilds key string on every call** (`GuideStore`): `"\(deviceId):\(channelNum)"` string interpolation happens at each call site. Fix: pass a pre-built key, or add a direct `entries(key:)` overload that accepts a pre-computed string.
+All items from this file have been migrated to those two files.

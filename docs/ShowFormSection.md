@@ -11,8 +11,11 @@
 ```
 Title        — TextField bound to show.show_title
 Type         — Segmented Picker (ShowState.allCases): Single | DateTime | SeriesID(Channel) | SeriesID(All)
+               Tooltip: explains each mode
 Day/Days     — Weekday toggle buttons (only for .single and .dateTime)
+               Tooltip: single-day vs. multi-day selection intent
 Transcode    — Picker: None | Heavy | Mobile | Internet 720
+               Tooltip: None keeps raw MPEG; others transcode for size/device
 Bonus Time   — Toggle (only when state.config.Sports_padding_enabled); bound to show.show_bonus_time
 Folder       — Last path component of recordFolder + a button (label from folderButtonLabel param)
 ```

@@ -15,17 +15,21 @@
 
 - **Channel picker** (left, max 220pt wide): standard `Picker` popup — rows show `"5.1  NBC"` channel number + name. Hidden label. Updates `selectedChannel` on change, which triggers `playChannel()`.
 - **Spacer**
-- **Buffer monitor** (visible only when buffering is enabled, i.e. `minRate < 1.0`): `waveform` SF Symbol + 50pt fill-bar capsule. Bar fill = `estimatedLagSec / 8s`; blue while filling, green when ≥ 87.5% full (≥ 7s). Hover → popover showing lag, rate, bitrate (kB/s from `f_demux_bitrate`), and cumulative corruption count. Driven by `@Published VLCBridge.bufferInfo` (updated every 3s by the rate controller tick). Published unconditionally so the bar appears even when `_mpGetStats` is unavailable (VLC 4+).
+- **Buffer monitor** (visible only when buffering is enabled, i.e. `minRate < 1.0`): `waveform` SF Symbol (`.accessibilityHidden(true)`) + 50pt fill-bar capsule. Bar fill = `estimatedLagSec / 8s`; blue while filling, green when ≥ 87.5% full (≥ 7s). Hover → popover showing lag, rate, bitrate (kB/s from `f_demux_bitrate`), and cumulative corruption count. Driven by `@Published VLCBridge.bufferInfo` (updated every 3s by the rate controller tick). Published unconditionally so the bar appears even when `_mpGetStats` is unavailable (VLC 4+). Accessibility: collapsed to a single element — `.accessibilityLabel("Live buffer")`, `.accessibilityValue("N of 8 seconds")` using whole seconds to avoid flooding VoiceOver with fine-grained changes on each 3-second tick.
 - **Native resolution button** (`aspectratio`, `.plain` style): calls `VLCPlayerWindowManager.shared.sizeToNativeVideo()` — reads the stream's pixel dimensions via `libvlc_video_get_size`, divides by the screen's backing scale factor to get logical points, adds 44pt for the toolbar, and resizes the window with `setContentSize` + `center()`. No-op if no video frame has been decoded yet. Tooltip: `"Native resolution — resize window to 1:1 pixels"`.
 - **Speed up to live button** (`forward.end.circle`, `.plain` style): calls `VLCBridge.shared.catchUpToLive()` — stops the stream, discards the accumulated buffer, and reconnects at the live edge. The rate controller resets and the fill phase starts over. The poster overlay does **not** re-appear after catch-up (it only shows on a fresh channel switch, not on a same-channel restart). Tooltip: `"Speed up to live — discard buffer and jump to live edge"`.
 - **Live clock**: `TimelineView(.periodic(from: .now, by: 1.0))` rendering current wall time in monospacedDigit secondary-color text, min 70pt width. Updates every second.
 - **Volume section**:
-  - `speaker.wave.2` SF Symbol in secondary color (accessibilityLabel: `"Volume"`)
-  - `Slider(in: 0...100)`, 100pt wide
+  - `speaker.wave.2` SF Symbol in secondary color (`.accessibilityHidden(true)` — decorative)
+  - `Slider(in: 0...100)`, 100pt wide, `.accessibilityLabel("Volume")`
 - **Divider** (18pt tall, visible only when audio devices are present)
-- **Audio output section** (when devices present):
+- **Audio output section** (when `systemDevices` non-empty):
   - `airplayaudio` SF Symbol in secondary color (accessibilityLabel: `"Audio output"`)
-  - `Picker` (max 200pt wide) listing all CoreAudio output devices by name — built-in speakers, Bluetooth, AirPlay, USB audio
+  - `Picker` (max 200pt wide) listing all CoreAudio output devices by name — built-in speakers, Bluetooth, AirPlay, USB audio. Selecting routes VLC to that device via `setAudioDevice(output: "auhal", deviceId:)`.
+- **Divider** (18pt tall, visible only when 2+ screens available)
+- **Screen/display section** (when `availableScreens.count > 1`):
+  - `airplayvideo` SF Symbol button (`.menuStyle(.borderlessButton)`, max 24pt wide) — opens a `Menu` listing all `NSScreen.screens` by `localizedName`. Selecting moves the player window to the centre of that screen via `VLCPlayerWindowManager.shared.moveToScreen(_:)`. `moveToScreen` deminiaturizes the window first (otherwise `setFrameOrigin` is silently ignored), then clamps the resulting origin so a window larger than the target screen can't be placed off-screen (e.g. 1080p player on a 720p AirPlay receiver). AirPlay displays appear here once connected via Control Center → Screen Mirroring. Tooltip: `"Move to display"`. Accessibility label: `"Select display"`.
+  - Screen list refreshes automatically on `NSApplication.didChangeScreenParametersNotification`.
 
 ### Video surface
 `VLCVideoSurface: NSViewRepresentable` — a plain `NSView` with `wantsLayer = true` and black `CALayer` background. VLC renders directly into this layer via `VLCBridge.shared.setDrawable(_:)`.
@@ -36,7 +40,7 @@ The video surface is wrapped in a `ZStack` with a **poster overlay** and an **er
 
 Replaces `PlayerView.swift` (AVKit / `AVPlayer`). AVPlayer cannot decode MPEG-2 transport streams — the native broadcast format from HDHomeRun tuners — and silently failed on any show with `transcode = none`. The VLC-based player decodes MPEG-2 natively, so the user's configured transcode setting is respected without any forced override.
 
-The player opens as a detached `NSWindow` with a SwiftUI toolbar above the video surface. It has a channel picker, volume slider, audio output selector, and audio device selector. The window is reusable — opening it a second time switches the stream rather than creating a new window.
+The player opens as a detached `NSWindow` with a SwiftUI toolbar above the video surface. It has a channel picker, volume slider, audio device selector, and a screen/display picker (shown when multiple displays are connected, including AirPlay). The window is reusable — opening it a second time switches the stream rather than creating a new window.
 
 Gate: `VLCBridge.shared.isAvailable` (VLC.app installed at `/Applications/VLC.app`) must be true for "Watch Now!" buttons to appear. No easter egg gate — the player is always accessible when VLC is installed.
 
@@ -86,11 +90,10 @@ let device: HDHRDevice    // fixed at window-open; determines which lineup the c
 let initialURL: String    // stream URL active when the window opened; drives initial channel selection
 
 @State private var selectedChannel: LineupEntry?
-@AppStorage("vlcVolume") private var volume: Double = 50   // persists across sessions
-@State private var audioOutputs: [(name: String, description: String)] = []
-@State private var selectedOutput: String = ""
-@State private var audioDevices: [(id: String, name: String)] = []
-@State private var selectedDevice: String = ""
+@AppStorage("vlcVolume") private var volume: Double = 50         // persists across sessions
+@State private var systemDevices: [(id: String, name: String)] = []  // CoreAudio output devices
+@State private var selectedDevice: String = ""                   // CoreAudio device UID of active output
+@State private var availableScreens: [NSScreen] = []                // populated in onAppear — NSScreen.screens is main-thread-only
 @State private var posterHidden: Bool = false   // false = show poster overlay; true = live video visible
 @State private var posterNSImage: NSImage? = nil // poster fetched via ChannelIconCache for currentGuideEntry
 ```
@@ -124,20 +127,7 @@ Returns the currently-airing `GuideEntry` for the selected channel. Used by the 
 
 ### onAppear / Channel Sync
 
-```swift
-.onAppear {
-    VLCBridge.shared.setVolume(0)   // muted until Start is clicked; volume restored from @AppStorage
-    audioOutputs = VLCBridge.shared.audioOutputs()
-    if selectedOutput.isEmpty, let first = audioOutputs.first {
-        selectedOutput = first.name
-    }
-    refreshAudioDevices()
-    syncChannel(to: initialURL)
-}
-.onChange(of: state.vlcCurrentURL) { _, rawURL in
-    syncChannel(to: rawURL)
-}
-```
+`.onAppear` populates `availableScreens = NSScreen.screens` (main-thread-only; unsafe to set as a `@State` default), calls `refreshAudioDevices()` — populates `systemDevices` from `VLCBridge.shared.systemAudioOutputDevices()`, pre-selects the system default via `systemDefaultOutputUID()`, and routes VLC to it immediately with `setAudioDevice(output: "auhal", deviceId:)`. `startDeviceChangeMonitoring` is also started, calling `refreshAudioDevices()` whenever CoreAudio devices change (Bluetooth connect, AirPlay connect, etc.).
 
 `volume` is not read back from VLC on appear because the player is already muted at open time — reading back would return `0`, overwriting the user's saved preference. `@AppStorage("vlcVolume")` preserves the last-used volume across sessions; `setVolume(Int(volume))` in the Start button action restores it at the moment the user dismisses the overlay.
 
@@ -152,15 +142,17 @@ Pre-selection via `syncChannel` only updates `selectedChannel` — it does **not
 ### Toolbar Layout
 
 ```
-[Channel picker ─────────] Spacer [⟳] [🕐] [🔊] [─── slider ───] | [Output picker] [Device picker]
+[Channel picker ─────────] Spacer [buffer] [1:1] [⏭] [🕐] [🔊] [─── slider ───] | [♩ audio picker] | [📺 screen menu]
 ```
 
 - **Channel picker**: `.labelsHidden()`, max width 220 pt, tags use `Optional(ch)` to match the `LineupEntry?` binding
-- **Catch Up button** (`arrow.clockwise.circle`): calls `VLCBridge.shared.catchUpToLive()` — discards the accumulated buffer and reconnects at the live edge. Poster overlay does NOT re-appear after catch-up (it only appears on a fresh channel switch).
+- **Buffer monitor**: visible only when `bufferInfo.enabled` (i.e. `minRate < 1.0`)
+- **Native resolution button** (`aspectratio`): calls `sizeToNativeVideo()`
+- **Catch Up button** (`forward.end.circle`): calls `VLCBridge.shared.catchUpToLive()` — discards the accumulated buffer and reconnects at the live edge. Poster overlay does NOT re-appear after catch-up (it only appears on a fresh channel switch).
 - **Clock**: live wall-clock `TimelineView`, monospaced
 - **Volume**: speaker icon + `Slider(value:in:0...100)`. `onChange` maps to `VLCBridge.shared.setVolume(Int(v))`.
-- **Audio output picker**: only shown when `!audioOutputs.isEmpty`. Selecting an output also triggers `refreshAudioDevices()` because the device list is output-scoped.
-- **Audio device picker**: only shown when `audioDevices.count > 1`. Hiding it when there is only one device avoids a pointless single-item picker cluttering the toolbar on most setups.
+- **Audio device picker**: shown when `!systemDevices.isEmpty`. Lists all CoreAudio output devices (built-in, Bluetooth, AirPlay audio, USB). `onChange` calls `setAudioDevice(output: "auhal", deviceId:)`.
+- **Screen menu**: shown when `availableScreens.count > 1`. `airplayvideo` icon button opens a `Menu` of `NSScreen.localizedName` entries. Selecting calls `VLCPlayerWindowManager.shared.moveToScreen(_:)` to centre the window on that display. AirPlay video displays appear here once connected via Control Center → Screen Mirroring.
 
 `VLCBridge.shared.minRate` is set from `state.config.Player_buffer_min_rate / 100.0` in `.onAppear`, `.onChange(of: state.config.Player_buffer_min_rate)`, and in `VLCPlayerWindowManager.open()` before `play()` so the rate is correct for window-open channel switches.
 
@@ -294,7 +286,7 @@ final class VLCPlayerWindowManager {
 
 **`closeIfPlayingURL(_ url: String)`**: closes the player window if `VLCBridge.shared.currentURL?.urlBase == url` (raw base URL, no query params — reads directly from VLCBridge, no `appState` reference needed). Called from `AppState.deleteShow` and `AppState.skipRecording` immediately after `recordingManager.stop()` — if the user is watching the same channel they just deleted/skipped, the VLC window tears down cleanly and the tuner is freed. No-op when the URL doesn't match or no window is open. Triggers `windowWillClose → playerWindowDidClose → VLCBridge.releasePlayer()`.
 
-**`playerWindowDidClose()`**: called by `WindowCloseObserver.windowWillClose`. Calls `VLCBridge.shared.releasePlayer()` (full teardown — releases `mediaPlayer` so the tuner is freed immediately; also nils `currentURL`, which triggers the Combine chain in `AppState` to clear `vlcCurrentURL` automatically), clears `currentDeviceID`, sets `window = nil`, and calls `appState?.refreshTunerOccupancy()` so the menu header reflects the freed tuner within ~1.5 s. No explicit `vlcCurrentURL = ""` needed — the Combine sink handles it. The `appState` weak reference is set in `open()` and persists for the window lifetime.
+**`playerWindowDidClose()`**: called by `WindowCloseObserver.windowWillClose`. Calls `VLCBridge.shared.stopDeviceChangeMonitoring()` first — `windowWillClose` fires before `onDisappear`, so without this the CoreAudio device-change listener would fire callbacks into a partially torn-down view. Then calls `VLCBridge.shared.releasePlayer()` (full teardown — releases `mediaPlayer` so the tuner is freed immediately; also nils `currentURL`, which triggers the Combine chain in `AppState` to clear `vlcCurrentURL` automatically), clears `currentDeviceID`, sets `window = nil`, and calls `appState?.refreshTunerOccupancy()` so the menu header reflects the freed tuner within ~1.5 s. No explicit `vlcCurrentURL = ""` needed — the Combine sink handles it. The `appState` weak reference is set in `open()` and persists for the window lifetime.
 
 ### Singleton NSWindow with isReleasedWhenClosed = false
 
@@ -412,7 +404,7 @@ Or open Console.app → use Settings → Advanced → Logging → "Show App Log 
 | `AVPlayer` + `AVPlayerView` | `VLCVideoSurface` (NSView drawable) |
 | Forced `transcode=heavy` for all streams | Respects show/default transcode; "none" = raw stream |
 | No channel picker | Channel picker for current device's lineup |
-| No audio output control | Audio output + device pickers |
+| No audio output control | CoreAudio device picker + screen/AirPlay display selector |
 | MPEG-2 fails silently | MPEG-2 plays natively via VLC |
 
 ---

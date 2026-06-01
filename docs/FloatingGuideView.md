@@ -20,7 +20,7 @@ A `Divider` below the toolbar.
 Same appearance as `AddShowView` step 2 summary panel:
 - Genre-color background at 90% opacity; all text white with drop shadow
 - Left: poster image (140×100, cornerRadius 7) with optional yellow 20pt managed flag triangle at top-right corner; placeholder `Color.white.opacity(0.2)` rounded rectangle when no image
-- Right: title (`.title3` bold), `"🔴 Recording Now"` badge if applicable, genre badge (white bg), episode info, original airdate, synopsis (3 lines), upcoming airings, channel icon + time range, **Watch in VLC** / **Watch Now!** buttons
+- Right: title (`.title3` bold), `"🔴 Recording Now"` badge if applicable, genre badge (white bg), episode info, original airdate, synopsis (3 lines), upcoming airings, channel icon + time range, **Watch in VLC** / **Watch Now!** buttons (`.accessibilityLabel("Watch [title] in VLC")` / `"Watch [title]"` respectively)
 - No Record button — this view is browse-only
 - Orange `StarburstBadge` (100pt) overlaid top-right when a sports show is selected with Bonus Time enabled
 - `"Select a show from the grid"` tertiary placeholder when nothing is selected

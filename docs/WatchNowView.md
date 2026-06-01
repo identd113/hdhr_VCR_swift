@@ -35,23 +35,27 @@ Each card is an `HStack(alignment: .top, spacing: 10)` with 14pt horizontal and 
 ### Poster thumbnail (left, proportional)
 Width = 34% of scroll-container width, capped at 220pt (`.containerRelativeFrame(.horizontal) { w, _ in min(w * 0.34, 220) }`); height derived by `.aspectRatio(96.0/68.0, contentMode: .fit)`. At default 420pt window ≈ 143×101pt (~50% larger than the former hardcoded 96×68pt). Scales with window resize.
 
-`ZStack`:
+`ZStack` (`.accessibilityHidden(true)` — entirely decorative):
 - Background: genre color from `guideEntryColor(for:onAir:true)` at 55% opacity
 - Poster image (`.scaledToFill`) if available from `ChannelIconCache`, or `tv` SF Symbol at 40% white
 - Clip: `RoundedRectangle(cornerRadius: 6)`
-- **Yellow managed flag**: `ManagedFlagView(size: 18)` at `.topTrailing`. SeriesID(Channel/All) shows: shown on any matching episode. DateTime/Single shows: shown only when `device.DeviceID`, `channel.GuideNumber`, and `entry.StartTime` all match the scheduled slot.
+- **Yellow managed flag**: `ManagedFlagView(size: 18)` at `.topTrailing`, driven by the `isScheduled` computed property (see below).
+
+**`managedShow` computed property** — looks up the scheduled show for this guide entry. Checks `state.managedShowBySeriesID` first (when `entry.SeriesID` is non-empty), then falls back to `state.managedShowByTitle[entry.Title]` — a `[String: [Show]]` dict (multiple shows can share a title, e.g. "News" on different channels). From the array, picks the first entry that is either a series show (title match is sufficient regardless of channel) or matches the specific `device.DeviceID` + `channel.GuideNumber`. This prevents a show scheduled on ch 5.1 from shadowing an unscheduled "News" on ch 9.1.
+
+**`isScheduled` computed property** — returns `true` when: the show is series-based (`seriesChannel` / `seriesAll`), OR when it's a DateTime/Single show where `hdhr_record`, `show_channel`, and `show_next` all match the current entry's device/channel/StartTime. `show_next` is nil-guarded explicitly — a `?? -1` sentinel would spuriously match any guide entry with `StartTime == -1`. Used by both the managed-flag overlay and the title's accessibility label.
 
 ### Info column (right)
 `VStack(alignment: .leading, spacing: 3)`:
-- Channel logo (16×16) + `"ch 5.1  NBC HD"` caption.bold secondary + `"🔴 Recording"` red badge when `managedShow?.show_recording == true`
-- Show title — `.subheadline.bold`, 1 line
+- Channel logo (16×16, `.accessibilityHidden(true)`) + `"ch 5.1  NBC HD"` caption.bold secondary + `"🔴 Recording"` red badge (icon `.accessibilityHidden(true)`) when `managedShow?.show_recording == true`
+- Show title — `.subheadline.bold`, 1 line; `.accessibilityLabel` appends `", scheduled"` when `isScheduled` is true, surfacing the managed-flag state for VoiceOver (the flag itself is hidden inside the decorative ZStack)
 - Episode subtitle — `entry.episodeInfoLabel` (`.caption` secondary, 1 line); format: `"S01E05 · Episode Title"`, or just the non-nil part if only one is present; omitted when both are absent
 - Time range + remaining — `.caption2` tertiary, e.g. `"8:00 PM – 9:00 PM  ·  42m left"`
-- **Action row** (`.controlSize(.small)`):
-  - **Watch** (`.borderedProminent`, `watchNowBlue`) — `state.watchInApp(url:title:deviceId:)`; shown only when `VLCBridge.shared.isAvailable`
-  - **VLC** (`.borderedProminent`, VLC orange) — `state.watchInVLC(url:deviceId:)`; shown only when `config.Watch_in_VLC`
-  - **Edit** (`.bordered`) — opens `"edit-show"` window for managed shows
-  - **Record** (`.borderedProminent`, red tint) — sets `state.pendingAddEntry` and opens `"add-show"` window for unmanaged shows
+- **Action row** (`.controlSize(.small)`); each button has an `.accessibilityLabel` that includes the show title so VoiceOver can distinguish rows:
+  - **Watch** (`.borderedProminent`, `watchNowBlue`) — `state.watchInApp(url:title:deviceId:)`; shown only when `VLCBridge.shared.isAvailable`; label `"Watch [title]"`
+  - **VLC** (`.borderedProminent`, VLC orange) — `state.watchInVLC(url:deviceId:)`; shown only when `config.Watch_in_VLC`; label `"Watch [title] in VLC"`
+  - **Edit** (`.bordered`) — opens `"edit-show"` window for managed shows; label `"Edit [title]"`
+  - **Record** (`.borderedProminent`, red tint) — sets `state.pendingAddEntry` and opens `"add-show"` window for unmanaged shows; label `"Record [title]"`
 
 ---
 

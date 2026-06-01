@@ -34,7 +34,6 @@ Network_interface       String  ""      bind UDP discovery + curl to NIC; empty 
 Verbose_curl            Bool    false   add -v to curl; stderr appended to hdhrVCRplus.log
 Watch_in_VLC            Bool    false   show "Watch in VLC" buttons (only when VLC installed)
 Watch_in_VLC_initialized Bool   false   set true after first VLC auto-detect; prevents overriding user's toggle on subsequent launches
-Player_unlocked         Bool    false   gates the in-app VLC player (unlocked by 5-tap easter egg on About logo)
 Player_buffer_min_rate  Int     93      floor playback rate % for adaptive buffer fill (90–100); 100 = disabled
 Sports_padding_enabled  Bool    true    master Bonus Time toggle; extends recording past guide end for sports shows
 Sports_padding_minutes  Int     30      Bonus Time extension duration in minutes (10–60, step 5)

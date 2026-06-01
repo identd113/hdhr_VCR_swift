@@ -111,48 +111,6 @@ Every significant controller event is logged to `hdhrVCRplus.log`:
 
 ---
 
-## C Struct Mirrors
-
-libvlc returns linked lists for audio outputs and devices. Since we have no VLC headers at compile time, the structs are mirrored in Swift:
-
-```swift
-private struct vlc_audio_output_t {
-    let psz_name:        UnsafePointer<CChar>?
-    let psz_description: UnsafePointer<CChar>?
-    let p_next:          UnsafeMutablePointer<vlc_audio_output_t>?
-}
-
-private struct vlc_audio_output_device_t {
-    let p_next:          UnsafeMutablePointer<vlc_audio_output_device_t>?
-    let psz_device:      UnsafePointer<CChar>?
-    let psz_description: UnsafePointer<CChar>?
-}
-```
-
-**Field order is critical** — it must exactly match the layout in `libvlc_media_player.h`. Note that `vlc_audio_output_device_t` has `p_next` first (before the string fields), which is the opposite of `vlc_audio_output_t`. Getting this wrong produces garbage reads or crashes.
-
----
-
-## @convention(c) Typedef Constraints
-
-Swift's `@convention(c)` requires that all parameter and return types be representable in Objective-C. Swift structs — even those containing only C-compatible types — do **not** satisfy this requirement. This caused a build failure when the list get/release typedefs used typed `UnsafeMutablePointer<vlc_audio_output_t>`.
-
-**Fix**: the list get/release typedefs use `UnsafeMutableRawPointer` instead:
-
-```swift
-private typealias vlc_aout_list_get_fn = @convention(c) (OpaquePointer?) -> UnsafeMutableRawPointer?
-private typealias vlc_aout_list_rel_fn = @convention(c) (UnsafeMutableRawPointer?) -> Void
-```
-
-The typed pointer is recovered via `bindMemory` at the call site:
-```swift
-var node = rawHead.bindMemory(to: vlc_audio_output_t.self, capacity: 1)
-```
-
-This is safe because `rawHead` is the address of the first node in a libvlc-allocated linked list whose layout we know exactly.
-
----
-
 ## Drawable
 
 `libvlc_media_player_set_nsobject` takes an Objective-C `id` — VLC's way of accepting an `NSView` as its render target on macOS. Swift has no direct cast from `NSView` to `void*`, so:
@@ -199,16 +157,11 @@ libvlc uses 0–200 (100 = unity gain). The UI uses 0–100. The bridge maps:
 
 ---
 
-## Audio Output vs Audio Device
+## Audio Device
 
-These are two separate concepts in libvlc:
+The player routes audio through `auhal` (CoreAudio) on macOS. Devices are enumerated directly from the CoreAudio HAL via `systemAudioOutputDevices()` — this includes built-in speakers, USB/Bluetooth headphones, and AirPlay audio receivers when they are active. `setAudioDevice(output:deviceId:)` passes `"auhal"` as the output and the CoreAudio device UID as the device ID.
 
-- **Audio output** (`libvlc_audio_output_*`) — the output *module*, e.g. `auhal` (CoreAudio) or `display` (HDMI/DisplayPort output). On macOS there are usually 2.
-- **Audio device** (`libvlc_audio_output_device_*`) — the specific hardware device within an output module, e.g. "Built-in Speakers", "AirPods Pro", "HDMI". There may be many.
-
-The device list is output-scoped: you call `libvlc_audio_output_device_list_get(instance, outputName)` — a different list per output module. The bridge's `audioDevices(forOutput:)` takes the output name string for this reason.
-
-Setting a device requires passing both the output name and device ID to `libvlc_audio_output_device_set`.
+`startDeviceChangeMonitoring(callback:)` registers a CoreAudio property listener for `kAudioHardwarePropertyDevices`. It guards against double-registration: if `deviceChangeContext` is already set it calls `stopDeviceChangeMonitoring()` first, ensuring the old opaque pointer is removed before ARC frees it (a freed pointer left registered with CoreAudio is a use-after-free on the next device-change event). `stopDeviceChangeMonitoring()` removes the listener and nils `deviceChangeContext`.
 
 ---
 
@@ -229,10 +182,9 @@ func catchUpToLive()                                          // discard buffer,
 func videoNativeSize() -> CGSize?                             // pixel dims from libvlc_video_get_size; nil until decoding
 func volume() -> Int                                          // 0–100
 func setVolume(_ v: Int)                                      // 0–100
-func audioOutputs() -> [(name: String, description: String)]
-func setAudioOutput(_ name: String)
-func audioDevices(forOutput: String) -> [(id: String, name: String)]
-func setAudioDevice(output: String, deviceId: String)
+func setAudioDevice(output: String, deviceId: String)         // output = "auhal"; deviceId = CoreAudio device UID
+func systemAudioOutputDevices() -> [(id: String, name: String)]  // all CoreAudio output devices (built-in, BT, AirPlay, USB)
+func systemDefaultOutputUID() -> String?                      // UID of current system-default output device
 ```
 
 ### VLCBufferInfo
