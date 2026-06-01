@@ -97,11 +97,23 @@ struct WatchNowView: View {
     }
 
     private func prefetchPosters() async {
-        for pair in onAirChannels {
-            guard let urlStr = pair.entry.ImageURL,
-                  posterCache[urlStr] == nil else { continue }
-            if let img = await ChannelIconCache.shared.image(for: urlStr) {
-                posterCache[urlStr] = img
+        let urls = onAirChannels.compactMap { $0.entry.ImageURL }
+
+        // Single actor hop: everything already in memory appears immediately.
+        let cached = await ChannelIconCache.shared.allCachedImages(for: urls)
+        posterCache.merge(cached) { existing, _ in existing }
+
+        // Fetch any disk/network misses concurrently rather than one at a time.
+        let missing = urls.filter { posterCache[$0] == nil }
+        await withTaskGroup(of: (String, NSImage)?.self) { group in
+            for url in missing {
+                group.addTask {
+                    guard let img = await ChannelIconCache.shared.image(for: url) else { return nil }
+                    return (url, img)
+                }
+            }
+            for await result in group {
+                if let (url, img) = result { posterCache[url] = img }
             }
         }
     }

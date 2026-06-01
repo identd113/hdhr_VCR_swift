@@ -59,6 +59,7 @@ private typealias vlc_adev_set_fn        = @convention(c) (OpaquePointer?, Unsaf
 private typealias vlc_media_add_opt_fn   = @convention(c) (OpaquePointer?, UnsafePointer<CChar>?) -> Void
 private typealias vlc_mp_set_rate_fn     = @convention(c) (OpaquePointer?, Float) -> Int32
 private typealias vlc_mp_get_rate_fn     = @convention(c) (OpaquePointer?) -> Float
+private typealias vlc_mp_get_state_fn    = @convention(c) (OpaquePointer?) -> Int32
 private typealias vlc_mp_get_stats_fn    = @convention(c) (OpaquePointer?, UnsafeMutableRawPointer?) -> Int32
 private typealias vlc_video_get_size_fn  = @convention(c) (OpaquePointer?, UInt32, UnsafeMutablePointer<UInt32>?, UnsafeMutablePointer<UInt32>?) -> Int32
 private typealias vlc_get_version_fn     = @convention(c) () -> UnsafePointer<CChar>?
@@ -114,7 +115,9 @@ final class VLCBridge: ObservableObject {
     /// Minimum playback rate (fill-phase floor). Set from AppConfig by VLCPlayerView. 1.0 = disabled.
     var minRate: Float = 0.93
     @Published var bufferInfo = VLCBufferInfo()
-    private(set) var currentURL: String?
+    @Published var hasError:   Bool = false
+    @Published var isPlaying:  Bool = false   // true only after libvlc_Playing (state 3) confirmed
+    @Published private(set) var currentURL: String?
     private var statsTimer:      Timer?
     private var currentRate:     Float  = 1.0
     private var estimatedLagSec: Double = 0.0
@@ -142,6 +145,7 @@ final class VLCBridge: ObservableObject {
     private let _mediaAddOpt:  vlc_media_add_opt_fn?
     private let _mpSetRate:     vlc_mp_set_rate_fn?
     private let _mpGetRate:     vlc_mp_get_rate_fn?
+    private let _mpGetState:    vlc_mp_get_state_fn?
     private let _mpGetStats:    vlc_mp_get_stats_fn?
     private let _videoGetSize:  vlc_video_get_size_fn?
     private let _getVersion:    vlc_get_version_fn?
@@ -179,6 +183,7 @@ final class VLCBridge: ObservableObject {
         _mediaAddOpt  = sym("libvlc_media_add_option")
         _mpSetRate    = sym("libvlc_media_player_set_rate")
         _mpGetRate    = sym("libvlc_media_player_get_rate")
+        _mpGetState   = sym("libvlc_media_player_get_state")
         _mpGetStats   = sym("libvlc_media_player_get_stats")
         _videoGetSize = sym("libvlc_video_get_size")
         _getVersion   = sym("libvlc_get_version")
@@ -252,13 +257,17 @@ final class VLCBridge: ObservableObject {
         }
         glog("[VLC] play url=\(url)")
         stopStatsTimer()
+        hasError  = false
+        isPlaying = false
         _mpStop?(mp)
         if let old = currentMedia { _mediaRelease?(old); currentMedia = nil }
         guard let media = url.withCString({ _mediaNL?(inst, $0) }) else {
             glog("[VLC] ERROR: libvlc_media_new_location returned nil for url=\(url)", level: .error)
             return
         }
-        for opt in ["--network-caching=2000", "--drop-late-frames", "--avcodec-hurry-up"] {
+        // --no-audio-time-stretch prevents VLC from crashing audio init on MPEG-2 streams
+        // where the sample rate is reported as 0 before the first audio frame arrives.
+        for opt in ["--network-caching=2000", "--drop-late-frames", "--avcodec-hurry-up", "--no-audio-time-stretch"] {
             opt.withCString { _mediaAddOpt?(media, $0) }
         }
         currentURL        = url
@@ -286,13 +295,7 @@ final class VLCBridge: ObservableObject {
         // Lightweight stop used for remote-command Stop key — keeps the player alive for reuse.
         // drawableView is cleared so a subsequent play() queues as pending; the window goes black.
         glog("[VLC] stop called — drawable=\(drawableView != nil ? "had view" : "already nil") currentURL=\(currentURL ?? "none")")
-        stopStatsTimer()
-        currentURL   = nil
-        pendingURL   = nil
-        drawableView = nil
-        guard let mp = mediaPlayer else { return }
-        _mpStop?(mp)
-        if let old = currentMedia { _mediaRelease?(old); currentMedia = nil }
+        stopAndClearState()
     }
 
     /// Full teardown called on window close — stops, releases, and nils the media player so
@@ -300,16 +303,25 @@ final class VLCBridge: ObservableObject {
     /// be called before the next play() session.
     func releasePlayer() {
         glog("[VLC] releasePlayer — stopping and releasing mediaPlayer, currentURL=\(currentURL ?? "none")")
+        stopAndClearState()
+        guard let mp = mediaPlayer else { return }
+        _mpRelease?(mp)
+        mediaPlayer = nil
+        glog("[VLC] releasePlayer — mediaPlayer released, tuner freed")
+    }
+
+    /// Shared teardown: stops the stats timer, resets state flags, stops media, releases current media object.
+    /// Does NOT release the media player itself — call releasePlayer() for full teardown.
+    private func stopAndClearState() {
         stopStatsTimer()
+        hasError     = false
+        isPlaying    = false
         currentURL   = nil
         pendingURL   = nil
         drawableView = nil
         guard let mp = mediaPlayer else { return }
         _mpStop?(mp)
         if let old = currentMedia { _mediaRelease?(old); currentMedia = nil }
-        _mpRelease?(mp)
-        mediaPlayer = nil
-        glog("[VLC] releasePlayer — mediaPlayer released, tuner freed")
     }
 
     /// Create a fresh media player from the already-loaded vlcInstance.
@@ -364,6 +376,21 @@ final class VLCBridge: ObservableObject {
     private func tickController() {
         guard let mp = mediaPlayer else { return }
 
+        if let getState = _mpGetState {
+            let state = getState(mp)
+            if state == 7 {  // libvlc_Error: connection refused, no route to host, etc.
+                glog("[VLC] stream error state — publishing hasError", level: .error)
+                hasError  = true
+                isPlaying = false
+                stopStatsTimer()
+                return
+            }
+            if state == 3 && !isPlaying {  // libvlc_Playing: first confirmed decode tick
+                isPlaying = true
+                glog("[VLC] stream playing confirmed")
+            }
+        }
+
         // Adaptive rate: ramp from minRate toward 1.0 as estimated buffer lag grows toward 8s.
         if minRate < 1.0 {
             estimatedLagSec = min(8.0, estimatedLagSec + Double(1.0 - currentRate) * 3.0)
@@ -376,24 +403,26 @@ final class VLCBridge: ObservableObject {
             }
         }
 
-        // Publish rate/lag state unconditionally — bar is visible even when stats are unavailable.
-        bufferInfo = VLCBufferInfo(lagSec: estimatedLagSec, rate: currentRate,
-                                   demuxBitrate: bufferInfo.demuxBitrate,
-                                   corrupted: bufferInfo.corrupted, enabled: minRate < 1.0)
-
-        // Corruption detection: auto catch-up on sustained signal loss.
-        guard let getStats = _mpGetStats else { return }
-        var s = VLCStats()
-        let ok = withUnsafeMutableBytes(of: &s) { getStats(mp, $0.baseAddress) }
-        guard ok == 1 else {
-            glog("[VLC] WARNING: get_stats returned \(ok) — stats polling skipped (may indicate VLC 4 struct mismatch)", level: .warning)
-            return
+        // Resolve stats fields — carry previous values when stats are unavailable.
+        var newBitrate   = bufferInfo.demuxBitrate
+        var newCorrupted = bufferInfo.corrupted
+        var corruptDelta: Int32 = 0
+        if let getStats = _mpGetStats {
+            var s = VLCStats()
+            let ok = withUnsafeMutableBytes(of: &s) { getStats(mp, $0.baseAddress) }
+            if ok == 1 {
+                corruptDelta  = s.i_demux_corrupted - lastCorrupted
+                lastCorrupted = s.i_demux_corrupted
+                newBitrate    = s.f_demux_bitrate
+                newCorrupted  = lastCorrupted
+            } else {
+                glog("[VLC] WARNING: get_stats returned \(ok) — stats polling skipped (may indicate VLC 4 struct mismatch)", level: .warning)
+            }
         }
-        let corruptDelta = s.i_demux_corrupted - lastCorrupted
-        lastCorrupted    = s.i_demux_corrupted
-        // Update bitrate and corrupted count now that we have fresh stats.
-        bufferInfo.demuxBitrate = s.f_demux_bitrate
-        bufferInfo.corrupted    = lastCorrupted
+        // Single publish per tick — bar is always updated, bitrate/corrupted carry forward when stats fail.
+        bufferInfo = VLCBufferInfo(lagSec: estimatedLagSec, rate: currentRate,
+                                   demuxBitrate: newBitrate, corrupted: newCorrupted,
+                                   enabled: minRate < 1.0)
         // i_lost_pictures is a rendering metric — it spikes when the window is backgrounded
         // (macOS stops compositing the surface). Only use i_demux_corrupted (stream-level) to
         // avoid false catch-up loops when the window isn't visible.

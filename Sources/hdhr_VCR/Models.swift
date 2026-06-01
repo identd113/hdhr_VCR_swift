@@ -1,24 +1,21 @@
 import Foundation
+import OSLog
 
 // MARK: - LogLevel
 
-enum LogLevel: String {
-    case info    = "INFO"
-    case warning = "WARN"
-    case error   = "ERROR"
+enum LogLevel {
+    case info, warning, error
 }
 
-/// Universal log function. Safe to call from any actor or thread —
-/// O_APPEND makes each open/write/close atomic; Date().ISO8601Format() has no shared state.
+private let appLog = Logger(subsystem: "com.hdhr.vcrplus", category: "app")
+
+/// Universal log function. Safe to call from any actor or thread.
 func glog(_ msg: String, level: LogLevel = .info) {
-    let ts = Date().ISO8601Format()
-    let line = "[\(ts)] [\(level.rawValue)] \(msg)\n"
-    guard let data = line.data(using: .utf8) else { return }
-    let path = GuideStore.guideLogPath
-    let fd = open(path, O_WRONLY | O_CREAT | O_APPEND, 0o644)
-    guard fd >= 0 else { return }
-    defer { close(fd) }
-    data.withUnsafeBytes { _ = write(fd, $0.baseAddress!, data.count) }
+    switch level {
+    case .info:    appLog.info("\(msg, privacy: .public)")
+    case .warning: appLog.warning("\(msg, privacy: .public)")
+    case .error:   appLog.error("\(msg, privacy: .public)")
+    }
 }
 
 // MARK: - Show
@@ -55,7 +52,8 @@ struct Show: Identifiable, Equatable {
     var show_recording_path: String // path of active/last recording file
     var show_genre: String          // first genre tag from guide (e.g. "Sports")
     var show_bonus_time: Bool       // true = extend recording past guide end
-    var discord_start_msg_id: String = ""  // message ID of the "Recording Started" embed; "" = none
+    var discord_start_msg_id: String = ""   // message ID of the "Recording Started" embed; "" = none
+    var show_tuner_resource: String  = ""   // e.g. "tuner0" — from X-HDHomeRun-Resource response header
 
     var state: ShowState {
         if !show_is_series { return .single }
@@ -132,7 +130,7 @@ extension Show: Codable {
         case show_transcode, show_tags, show_recording, show_last
         case notify_upnext_time, notify_recording_time
         case show_dir, show_temp_dir, show_recording_path, show_genre, show_bonus_time
-        case discord_start_msg_id
+        case discord_start_msg_id, show_tuner_resource
     }
 
     init(from decoder: Decoder) throws {
@@ -169,6 +167,7 @@ extension Show: Codable {
         show_bonus_time     = (try? c.decode(Bool.self,   forKey: .show_bonus_time))
             ?? show_genre.lowercased().contains("sports")
         discord_start_msg_id = (try? c.decode(String.self, forKey: .discord_start_msg_id)) ?? ""
+        show_tuner_resource  = (try? c.decode(String.self, forKey: .show_tuner_resource))  ?? ""
     }
 }
 
@@ -204,6 +203,13 @@ struct AppConfig: Equatable {
     var Sports_padding_enabled: Bool = true
     var Sports_padding_minutes: Int  = 30   // user-settable 10–60 min, default 30
     var Config_version: String = "2"
+
+    /// Returns `baseURL` with a `?transcode=<profile>` query appended when the effective
+    /// profile is not empty or "none". `override` takes precedence over `Default_transcode`.
+    func applyTranscode(_ baseURL: String, override: String? = nil) -> String {
+        let profile = (override ?? Default_transcode).lowercased().trimmingCharacters(in: .whitespaces)
+        return (profile.isEmpty || profile == "none") ? baseURL : "\(baseURL)?transcode=\(profile)"
+    }
 
     // Discord webhook
     var Discord_webhook_url: String  = ""
@@ -336,6 +342,9 @@ extension String {
         let parts = split(separator: ".").compactMap { Int($0) }
         return (parts.first ?? 0, parts.dropFirst().first ?? 0)
     }
+
+    // Stream URL without a transcode query: "http://host/auto?transcode=ts" → "http://host/auto"
+    var urlBase: String { components(separatedBy: "?").first ?? self }
 }
 
 struct GuideChannel: Codable {

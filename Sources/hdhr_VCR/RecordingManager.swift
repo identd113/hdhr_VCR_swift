@@ -2,8 +2,9 @@ import Foundation
 
 @MainActor
 final class RecordingManager {
-    private var pids:     [String: Int32] = [:]   // caffeinate PID per show
-    private var curlPids: [String: Int32] = [:]   // curl child PID (for explicit kill on manual stop)
+    private var pids:        [String: Int32]   = [:]   // caffeinate PID per show
+    private var curlPids:    [String: Int32]   = [:]   // curl child PID (for explicit kill on manual stop)
+    private var headerFiles: [String: String]  = [:]   // --dump-header file path per show
 
     static let curlLogPath = NSHomeDirectory() + "/Library/Logs/hdhrVCRplus.log"
 
@@ -27,7 +28,10 @@ final class RecordingManager {
         ]
         if !networkInterface.isEmpty { curlArgs += ["--interface", networkInterface] }
         if verbose { curlArgs.append("-v") }
-        curlArgs += [streamURL, "-o", outputPath]
+        // Dump response headers to a temp file so we can read X-HDHomeRun-Error on failure.
+        let hdrPath = "/tmp/hdhrVCRplus-\(showId).headers"
+        headerFiles[showId] = hdrPath
+        curlArgs += ["--dump-header", hdrPath, streamURL, "-o", outputPath]
 
         let dir = (outputPath as NSString).deletingLastPathComponent
         try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
@@ -65,7 +69,60 @@ final class RecordingManager {
             kill(-pid, SIGTERM)
             pids.removeValue(forKey: showId)
         }
+        clearHeaderFile(showId: showId)
         glog("[Rec] Stopped \(showId)")
+    }
+
+    // MARK: - HDHomeRun error header
+
+    /// Reads X-HDHomeRun-Resource from the curl dump-header file (e.g. "tuner0") without
+    /// deleting the file — the error reader owns the delete when curl eventually exits.
+    func readHDHRResource(showId: String) -> String? {
+        guard let path = headerFiles[showId],
+              let content = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
+        for line in content.components(separatedBy: "\n") {
+            guard line.lowercased().hasPrefix("x-hdhomerun-resource:") else { continue }
+            let value = line.dropFirst("x-hdhomerun-resource:".count)
+                           .trimmingCharacters(in: .whitespaces).lowercased()
+            return value.isEmpty ? nil : value
+        }
+        return nil
+    }
+
+    /// Reads X-HDHomeRun-Error from the curl dump-header file for a show, deletes the file,
+    /// and returns a human-readable error string — or nil if no device-level error was reported.
+    func readAndClearHDHRError(showId: String) -> String? {
+        defer { clearHeaderFile(showId: showId) }
+        guard let path = headerFiles[showId],
+              let content = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
+        for line in content.components(separatedBy: "\n") {
+            let lower = line.lowercased()
+            guard lower.hasPrefix("x-hdhomerun-error:") else { continue }
+            let code = line.dropFirst("x-hdhomerun-error:".count)
+                          .trimmingCharacters(in: .whitespaces)
+            return hdhrErrorLabel(code)
+        }
+        return nil
+    }
+
+    private func clearHeaderFile(showId: String) {
+        if let path = headerFiles.removeValue(forKey: showId) {
+            try? FileManager.default.removeItem(atPath: path)
+        }
+    }
+
+    private func hdhrErrorLabel(_ code: String) -> String {
+        switch code {
+        case "804": return "Tuner In Use (804)"
+        case "805": return "All Tuners In Use (805)"
+        case "806": return "Tune Failed (806)"
+        case "807": return "No Video Data (807)"
+        case "808": return "DVR Failure (808)"
+        case "809": return "Playback Connection Limit (809)"
+        case "810": return "DVR Full (810)"
+        case "811": return "Content Protection Required (811)"
+        default:    return "Device error \(code)"
+        }
     }
 
     // MARK: - Reattach (startup resume)
@@ -164,6 +221,11 @@ final class RecordingManager {
 
     private func writeCurlLogHeader(showId: String, curlArgs: [String], outputPath: String) {
         let path = Self.curlLogPath
+        // Rotate at 5 MB so the file doesn't grow unbounded across many verbose recordings.
+        if let attrs = try? FileManager.default.attributesOfItem(atPath: path),
+           let size = attrs[.size] as? Int, size > 5 * 1024 * 1024 {
+            try? "".write(toFile: path, atomically: false, encoding: .utf8)
+        }
         if !FileManager.default.fileExists(atPath: path) {
             FileManager.default.createFile(atPath: path, contents: nil)
         }

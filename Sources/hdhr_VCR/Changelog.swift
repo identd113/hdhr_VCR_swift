@@ -1,6 +1,22 @@
 // Hand-maintained changelog displayed in Settings → About.
 // Update this file when shipping new features; keep most-recent version at the top.
 let appChangelog = """
+## 2026-05-31 (260531-1950)
+- **Exact tuner identity from `X-HDHomeRun-Resource` header** — reuses the existing `--dump-header` file from the X-HDHomeRun-Error feature; `RecordingManager.readHDHRResource()` peeks at the file 1.5s after recording starts (without deleting it) and stores the result as `show_tuner_resource` on `Show`; `fetchDeviceStatus` now targets `/tunerN/vstatus` directly via this value instead of searching by channel number, eliminating the ambiguous-match problem when two shows share the same channel
+
+## 2026-05-31 (260531-1930)
+- **About logo signal pulse** — tapping the app icon in Settings → About fires three concentric rings that expand outward and fade, staggered 150 ms apart, like a broadcast signal radiating from the icon; replaces the old 5-tap easter egg (Watch Now is no longer gated)
+
+## 2026-05-31 (260531-1720)
+- **Discord embed recovery on restart** — at startup, `reattachRecordings()` now checks every show that has a `discord_start_msg_id` but wasn't reattached as actively recording; if the output file exists with size > 0 it sends a "✅ Recording Complete (before restart)" PATCH, otherwise a "⚠️ Recording Interrupted" PATCH; the ID is cleared before the network call so a crash during send can't re-trigger on the next launch
+
+## 2026-05-31 (260531-1710)
+- **Watch Now poster images appear instantly** — `prefetchPosters()` now calls `ChannelIconCache.allCachedImages(for:)` first (single actor hop) to populate the local cache from everything already in memory, then fetches any disk/network misses concurrently via `withTaskGroup` instead of awaiting each image serially; previously 20 channels = 20 sequential waits even when all icons were cached
+
+## 2026-05-31 (260531-1700)
+- **X-HDHomeRun-Error header parsing** — when a recording curl process exits unexpectedly, the app now reads the `X-HDHomeRun-Error` response header dumped by `--dump-header` and maps it to a human-readable reason (e.g. "Tuner In Use (804)", "No Video Data (807)", "DVR Full (810)"); falls back to "curl exited unexpectedly" if no device-level error header was written; reason shown in menu, notification, and Discord embed
+- **Native Markdown changelog** — Settings → About now renders the changelog with `NSAttributedString(markdown:)` in an `NSTextView`; proper heading sizes, real bullet lists, and inline code instead of the hand-parsed `.caption` renderer
+
 ## 2026-05-31 (260531-1625)
 - VLC error overlay — stream failure (no connection, no route to host) shows orange triangle + Retry instead of silent black screen; detected within ~3s via libvlc state polling
 - Start button gating — poster overlay Start button shows spinner + "Connecting…" until VLC confirms the stream is playing; prevents clicking before data flows

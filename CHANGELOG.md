@@ -2,6 +2,11 @@
 
 > In-app changelog (Settings → About) is maintained in [`Sources/hdhr_VCR/Changelog.swift`](Sources/hdhr_VCR/Changelog.swift).
 
+## 2026-05-31 (260531-1700)
+
+- **`X-HDHomeRun-Error` header parsing** — `RecordingManager` now passes `--dump-header /tmp/hdhrVCRplus-<showId>.headers` to every curl recording. When curl exits unexpectedly mid-recording, `AppState` reads the header file via `readAndClearHDHRError(showId:)` and maps the error code to a human-readable string (e.g. "Tuner In Use (804)", "No Video Data (807)", "DVR Full (810)"). The precise reason replaces "curl exited unexpectedly" everywhere it appears: `show_fail_reason`, the system notification subtitle, and the Discord embed `Reason` field. Falls back to "curl exited unexpectedly" if no `X-HDHomeRun-Error` header was written (connection-level failures). Header file is cleaned up on both stop and read.
+- **Native Markdown changelog** — Settings → About replaces the hand-parsed `renderChangelog()` `@ViewBuilder` with a `MarkdownView: NSViewRepresentable` backed by `NSTextView` + `AttributedString(markdown:options: .init(interpretedSyntax: .full))`. Delivers proper heading sizes, real bullet lists, inline code, and bold text. Height is self-measured via `layoutManager.usedRect(for:)` after each layout pass and injected as `.frame(height:)` so the view grows with content.
+
 ## 2026-05-31 (260531-1625)
 
 - **VLC error overlay** — when VLC hits a fatal stream error (connection refused, no route to host, etc.), an orange triangle + "Stream Unavailable" overlay appears within ~3 seconds instead of a silent black screen; a Retry button restarts the stream. Powered by `libvlc_media_player_get_state` (state 7 = `libvlc_Error`) polled each rate-controller tick.

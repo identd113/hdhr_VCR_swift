@@ -114,7 +114,15 @@ final class AppState: ObservableObject {
     // Guards guideByDevice.didSet and idle-loop rebuilds so @Published changes don't redraw the menu.
     var menuIsOpen: Bool = false
 
-    init() { Task { await startup() } }
+    init() {
+        // Keep vlcCurrentURL in sync with VLCBridge.currentURL so any close path that
+        // nils currentURL (releasePlayer → stopAndClearState) automatically clears the
+        // "now watching" indicator without every caller needing to do it explicitly.
+        VLCBridge.shared.$currentURL
+            .map { $0?.urlBase ?? "" }
+            .assign(to: &$vlcCurrentURL)
+        Task { await startup() }
+    }
 
     // MARK: - Startup
 
@@ -235,9 +243,46 @@ final class AppState: ObservableObject {
                   let endDate = shows[i].show_end, endDate > now else { continue }
 
             shows[i].show_recording = true
+            shows[i].show_tuner_resource = ""   // will be re-captured by captureResourceHeaders()
             recordingManager.reattach(showId: showId, pid: pid)
             glog("[Startup] Reattached '\(shows[i].show_title)' pid=\(pid) ends \(endDate)")
         }
+
+        // Any show with a discord_start_msg_id that wasn't reattached as actively recording
+        // had its completion/failure embed skipped over the restart. Send a recovery embed now
+        // and clear the ID so it doesn't linger into the next recording cycle.
+        var needsSave = false
+        for i in shows.indices {
+            guard !shows[i].discord_start_msg_id.isEmpty, !shows[i].show_recording else { continue }
+            let show  = shows[i]
+            let msgId = show.discord_start_msg_id
+            let path  = show.show_recording_path
+            let fileSize = path.isEmpty ? 0 :
+                ((try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? Int ?? 0)
+
+            // Clear before the network send — a crash during send won't re-trigger on next launch.
+            shows[i].discord_start_msg_id = ""
+            needsSave = true
+
+            glog("[Startup] Recovering Discord embed for '\(show.show_title)' — file size \(fileSize / 1024)KB")
+
+            if fileSize > 0 {
+                var fileFields: [(name: String, value: String, inline: Bool)] = []
+                let ext = URL(fileURLWithPath: path).pathExtension.uppercased()
+                if !ext.isEmpty { fileFields.append(("Format", ext, true)) }
+                fileFields.append(("File Size", Self.formatFileSize(fileSize), true))
+                fileFields.append(("Note", "Completed before app restart", false))
+                discordShow("✅ Recording Complete", show: show, color: 0x3498DB,
+                            enabled: config.Discord_on_complete,
+                            extra: fileFields, editMessageId: msgId)
+            } else {
+                discordShow("⚠️ Recording Interrupted", show: show, color: 0xE67E22,
+                            enabled: config.Discord_on_failed,
+                            extra: [("Note", "App restarted — recording status unknown", false)],
+                            editMessageId: msgId)
+            }
+        }
+        if needsSave { saveConfig() }
     }
 
     func saveConfig() {
@@ -807,11 +852,14 @@ final class AppState: ObservableObject {
 
             if show.show_recording, endDate > now, !recordingManager.isRunning(showId: show.show_id) {
                 shows[i].show_recording = false
-                shows[i].recordFailure(reason: "curl exited unexpectedly")
-                glog("[\(show.show_title)] FAIL curl exited unexpectedly — fail_count=\(shows[i].show_fail_count)", level: .error)
-                notify("Recording Failed", body: show.show_title, subtitle: "curl exited unexpectedly")
+                shows[i].show_tuner_resource = ""
+                let hdhrReason = recordingManager.readAndClearHDHRError(showId: show.show_id)
+                let failReason = hdhrReason ?? "curl exited unexpectedly"
+                shows[i].recordFailure(reason: failReason)
+                glog("[\(show.show_title)] FAIL \(failReason) — fail_count=\(shows[i].show_fail_count)", level: .error)
+                notify("Recording Failed", body: show.show_title, subtitle: failReason)
                 discordShow("❌ Recording Failed", show: show, color: 0xE74C3C, enabled: config.Discord_on_failed,
-                            extra: [("Reason", "curl exited unexpectedly", false), ("Fail Count", "\(shows[i].show_fail_count)", true)],
+                            extra: [("Reason", failReason, false), ("Fail Count", "\(shows[i].show_fail_count)", true)],
                             editMessageId: show.discord_start_msg_id.isEmpty ? nil : show.discord_start_msg_id)
                 shows[i].discord_start_msg_id = ""
                 dirty = true
@@ -952,6 +1000,7 @@ final class AppState: ObservableObject {
         }
         shows[index].show_recording = true; shows[index].show_recording_path = path
         shows[index].show_fail_count = max(0, show.show_fail_count - 1)
+        refreshTunerOccupancy()
         // Stamp notify_recording_time so the "Recording Soon" pre-notification won't re-fire
         shows[index].notify_recording_time = Date().addingTimeInterval(config.Notify_recording * 60)
         notify("Recording Started", body: show.show_title, subtitle: "Channel \(show.show_channel) — ends \(shortTime(endDate))",
@@ -990,6 +1039,8 @@ final class AppState: ObservableObject {
         recordingManager.stop(showId: show.show_id)
         tunerStatus.removeValue(forKey: show.show_id)
         shows[index].show_recording = false
+        shows[index].show_tuner_resource = ""
+        refreshTunerOccupancy()
         shows[index].show_last = Date()
 
         if !natural {
@@ -1554,8 +1605,7 @@ final class AppState: ObservableObject {
         guard VLCBridge.shared.isAvailable else { return }
         let device = devices.first { $0.DeviceID == (deviceId ?? "") } ?? devices.first
         guard let device else { return }
-        let profile = (transcode ?? config.Default_transcode).lowercased().trimmingCharacters(in: .whitespaces)
-        let streamURL = (profile.isEmpty || profile == "none") ? url : "\(url)?transcode=\(profile)"
+        let streamURL = config.applyTranscode(url, override: transcode)
         let mgr = VLCPlayerWindowManager.shared
 
         Task {
@@ -1563,9 +1613,9 @@ final class AppState: ObservableObject {
             // the stream or mute. Re-opening the same channel from WatchNow while it's playing
             // would otherwise call setVolume(0) in mgr.open() with no posterHidden reset, leaving
             // the user with no audio and no Start button to recover from it.
-            let rawBase = url.components(separatedBy: "?").first ?? url
+            let rawBase = url.urlBase
             let alreadyPlaying = mgr.currentDeviceID == device.DeviceID
-                && (VLCBridge.shared.currentURL?.components(separatedBy: "?").first ?? "") == rawBase
+                && (VLCBridge.shared.currentURL?.urlBase ?? "") == rawBase
             if alreadyPlaying { mgr.focus(); return }
 
             // Switching channels in an already-open player on this device reuses the same slot —
@@ -1587,14 +1637,13 @@ final class AppState: ObservableObject {
                     }
                 }
             }
-            vlcCurrentURL = url
             mgr.open(url: streamURL, title: title, device: device, appState: self)
+            refreshTunerOccupancy()
         }
     }
 
     func watchInVLC(url: String, transcode: String? = nil, deviceId: String? = nil) {
-        let profile = (transcode ?? config.Default_transcode).lowercased().trimmingCharacters(in: .whitespaces)
-        let raw = profile.isEmpty || profile == "none" ? url : "\(url)?transcode=\(profile)"
+        let raw = config.applyTranscode(url, override: transcode)
         guard config.Watch_in_VLC,
               let streamURL = URL(string: raw) else { return }
         let vlcPath = "/Applications/VLC.app"
@@ -1625,6 +1674,27 @@ final class AppState: ObservableObject {
 
     // MARK: - Tuner signal status
 
+    /// Polls every device's /status.json immediately after any tuner-affecting event
+    /// (recording start/stop, VLC open/close/channel-switch) so the menu header stays current.
+    func refreshTunerOccupancy() {
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_500_000_000)   // 1.5s — let device register the change
+            captureResourceHeaders()
+            for device in devices { await fetchDeviceStatus(for: device) }
+        }
+    }
+
+    /// Reads X-HDHomeRun-Resource from the header dump file for any recording show that doesn't
+    /// yet have a tuner identity. Called 1.5s after recording start — curl has the response headers by then.
+    private func captureResourceHeaders() {
+        for i in shows.indices where shows[i].show_recording && shows[i].show_tuner_resource.isEmpty {
+            if let resource = recordingManager.readHDHRResource(showId: shows[i].show_id) {
+                shows[i].show_tuner_resource = resource
+                glog("[Rec] \(shows[i].show_title) tuner resource: \(resource)")
+            }
+        }
+    }
+
     /// Fetches /status.json once per device, updates occupancy for the menu header, then
     /// fetches /tunerN/vstatus for each recording show on that device using the tuner index
     /// from the status response — O(1) vstatus calls per show instead of O(tunerCount).
@@ -1642,9 +1712,12 @@ final class AppState: ObservableObject {
         glog("[TunerAudit] \(device.DeviceID): \(active)/\(device.TunerCount ?? 0) active  rec=\(recCount) vlc=\(vlcOpen)")
 
         for show in recordingShows where show.hdhr_record == device.DeviceID {
-            // Prefer tuner whose VctNumber matches the show's channel; fall back to any locked tuner.
-            // VctNumber format (e.g. "5.1") should match GuideNumber, but device firmware may differ.
-            let match = tuners.first(where: { $0.VctNumber == show.show_channel })
+            // Prefer exact tuner from the X-HDHomeRun-Resource response header (captured at stream start).
+            // Fall back to VctNumber channel match, then any locked tuner.
+            let match = (!show.show_tuner_resource.isEmpty
+                            ? tuners.first(where: { $0.Resource.lowercased() == show.show_tuner_resource })
+                            : nil)
+                     ?? tuners.first(where: { $0.VctNumber == show.show_channel })
                      ?? tuners.first(where: { $0.VctNumber != nil })
             guard let match,
                   let idx = Int(match.Resource.dropFirst(5))   // "tuner0" → 0
@@ -1692,7 +1765,11 @@ final class AppState: ObservableObject {
 
     func quit() {
         guard isRecording else {
-            VLCBridge.shared.releasePlayer(); recordingManager.stopAll(); saveConfig(); NSApplication.shared.terminate(nil); return
+            VLCBridge.shared.releasePlayer()
+            recordingManager.stopAll()
+            saveConfig()
+            NSApplication.shared.terminate(nil)
+            return
         }
         let alert = NSAlert()
         alert.messageText = "Recordings in progress"
@@ -1705,9 +1782,14 @@ final class AppState: ObservableObject {
         NSApp.activate(ignoringOtherApps: true)
         switch alert.runModal() {
         case .alertFirstButtonReturn:  // keep recordings running, quit
-            VLCBridge.shared.releasePlayer(); saveConfig(); NSApplication.shared.terminate(nil)
+            VLCBridge.shared.releasePlayer()
+            saveConfig()
+            NSApplication.shared.terminate(nil)
         case .alertSecondButtonReturn: // stop all, then quit
-            VLCBridge.shared.releasePlayer(); recordingManager.stopAll(); saveConfig(); NSApplication.shared.terminate(nil)
+            VLCBridge.shared.releasePlayer()
+            recordingManager.stopAll()
+            saveConfig()
+            NSApplication.shared.terminate(nil)
         default:                       // Go Back — cancel
             break
         }

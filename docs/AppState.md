@@ -7,7 +7,7 @@
 ## Startup (`AppState.startup`)
 
 1. `loadConfig()` — reads JSON, resets all `show_recording = false`; sets `guideStore.verbose`. Auto-removes inactive Single shows (already recorded; no further scheduling needed).
-2. `reattachRecordings()` — scans `ps -Axo pid,args` for `caffeinate` lines with `show_id:` + `hdhrVCRplus`. If the show's `show_end` is still future, sets `show_recording = true` and registers the PID — recording continues uninterrupted. **Read pipe data before `waitUntilExit()`** to avoid deadlock when ps output exceeds the ~64 KB pipe buffer.
+2. `reattachRecordings()` — scans `ps -Axo pid,args` for `caffeinate` lines with `show_id:` + `hdhrVCRplus`. If the show's `show_end` is still future, sets `show_recording = true`, clears `show_tuner_resource` (will be re-captured by `captureResourceHeaders`), and registers the PID — recording continues uninterrupted. **Read pipe data before `waitUntilExit()`** to avoid deadlock when ps output exceeds the ~64 KB pipe buffer. After the PID scan, any show that has a non-empty `discord_start_msg_id` but was **not** reattached (i.e. its recording ended while the app was down) gets a recovery Discord embed: "✅ Recording Complete" if the output file has non-zero size, or "⚠️ Recording Interrupted" otherwise. The `discord_start_msg_id` is cleared to `""` in config **before** the network send — a crash during the PATCH won't re-trigger the recovery on the next launch.
 3. Notification permission (background `Task` — non-blocking).
 4. `discoverDevices(knownHosts:attempts:10)` — up to 10 retries with 1 s pauses; idle loop retries on each tick if devices remain empty.
 5. `fetchAllGuides()` — parallel guide load for all devices; mirrors result into `guideByDevice`.
@@ -28,10 +28,10 @@ Runs every `config.Idle_timer_interval` seconds on MainActor:
   - Fires "Recording Soon" notification once at `Notify_recording` minutes before; stamps `notify_recording_time`.
   - Starts recording if `show_next <= now + 10s` AND `show_end > now`.
   - Stops recording naturally if `show_end <= now`.
-  - Detects unexpected caffeinate exit → increments fail count, sends notification.
+  - Detects unexpected caffeinate exit → reads `X-HDHomeRun-Error` from the curl header dump via `RecordingManager.readAndClearHDHRError` (precise device error code, e.g. "Tuner In Use (804)"), falls back to `"curl exited unexpectedly"` if no header was written; clears `show_tuner_resource`; increments fail count, sends notification.
   - Fires Discord progress update (PATCH) once per 5-minute boundary for active recordings when `Discord_on_progress` is enabled and `discord_start_msg_id` is set.
 - Conflict notifications: when a show can't start because all tuners are full, fires once per show+episode window (`conflictNotifiedKeys` set keyed by `"showID-show_next_epoch"`).
-- Calls `fetchDeviceStatus(for:)` once per device — a single `/status.json` fetch per device covers both the menu-header occupancy count and per-recording vstatus signal data (one targeted `/tunerN/vstatus` per recording show, identified from the status.json result). Tuner matching: prefers the tuner whose `VctNumber` equals `show.show_channel`; falls back to any locked tuner when the format doesn't match exactly (sub-channel firmware variation). Logs a warning if no locked tuner is found at all.
+- Calls `captureResourceHeaders()` then `fetchDeviceStatus(for:)` once per device (via `refreshTunerOccupancy`). `captureResourceHeaders` reads `X-HDHomeRun-Resource` from the curl header dump for any recording show whose `show_tuner_resource` is still empty — stores e.g. `"tuner0"` directly on the show. `fetchDeviceStatus` uses this value first when targeting `/tunerN/vstatus`; falls back to VctNumber channel match, then any locked tuner. Logs a warning if no locked tuner is found at all.
 - **Tuner audit**: after storing `deviceTunerOccupancy`, `fetchDeviceStatus` logs `[TunerAudit] DEVID: N/M active  rec=N vlc=N` every tick — `active` is the raw count of locked tuners from `status.json`, `rec` is `recordingShows.filter { hdhr_record == device.DeviceID }.count`, and `vlc` is 1 when `VLCPlayerWindowManager.shared.currentDeviceID` matches this device. Unexpected tuner usage (e.g. a leak after a delete) is immediately visible in the log.
 
 ---
@@ -95,6 +95,8 @@ Falls back to **SiliconDust cloud API** (`http://discover.hdhomerun.com/discover
 | `resumeShow(_:)` | Clears `show_paused`, resets fail count + reason, saves config |
 | `watchInVLC(url:)` | Opens stream in `/Applications/VLC.app` via `NSWorkspace`; no-op if VLC absent or `Watch_in_VLC` false |
 | `watchInApp(url:title:deviceId:transcode:)` | Opens VLC in-app player; checks `/status.json` first, alerts if all tuners occupied; sets `vlcCurrentURL` |
+| `refreshTunerOccupancy()` | Fires a Task that sleeps 1.5 s, then calls `captureResourceHeaders()` + `fetchDeviceStatus` for every device. Called after recording start/stop, VLC open/close, and channel switch so the menu header count stays current. |
+| `captureResourceHeaders()` | Private. For each recording show with empty `show_tuner_resource`, calls `RecordingManager.readHDHRResource` to read `X-HDHomeRun-Resource` from the curl header dump file. Stores result (e.g. `"tuner0"`) on the show for use by `fetchDeviceStatus`. |
 | `confirmAndDeleteShow(_:then:)` | Fetches poster async → NSAlert with image → stops recording + removes show |
 | `testDiscordEvent(_:webhookURL:)` | Sends test embed using real show data; always passes `enabled: true` |
 | `formatFileSize(_:)` | Private static; formats bytes as `"X.XX GB"` / `"X.X MB"` / `"X KB"` |
@@ -108,6 +110,8 @@ Recording lifecycle embeds edit the original "Recording Started" message in-plac
 1. **Recording starts** — `startRecording` calls `sendDiscordEmbedCapturing` (async `Task`). Discord echoes the created message when `?wait=true`; the message ID is stored in `show.discord_start_msg_id`.
 2. **Progress update** — the idle loop checks once per 5-minute boundary: if `show_recording && !discord_start_msg_id.isEmpty && Discord_on_progress`, it calls `editDiscordEmbed` with an "⏺ Recording In Progress" embed containing `"Xm elapsed · Ym remaining"`.
 3. **Recording ends** — `stopRecording` / file-verify path passes `editMessageId: show.discord_start_msg_id` to `discordShow`, which calls `editDiscordEmbed` (PATCH) instead of `sendDiscordEmbed` (POST). `discord_start_msg_id` is cleared to `""` after.
+
+4. **App restart recovery** — `reattachRecordings()` (step 2 of startup) scans for shows with a non-empty `discord_start_msg_id` that were not reattached as actively recording. For each, it sends a recovery embed: "✅ Recording Complete" if `show_recording_path` file has non-zero size, or "⚠️ Recording Interrupted" otherwise. The ID is cleared before the send so a crash during the PATCH doesn't re-trigger on the next launch.
 
 **Helper split**: `buildDiscordShowEmbed(event:show:color:extra:)` builds the `[String: Any]` embed dict (author, title, description, fields, thumbnail, footer). `discordShow` wraps it with guard checks and routes to either `sendDiscordEmbed` or `editDiscordEmbed` based on `editMessageId`. `sendDiscordEmbedCapturing` and `editDiscordEmbed` are free functions in `DiscordNotifier.swift`.
 

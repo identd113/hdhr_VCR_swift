@@ -24,10 +24,6 @@ All original feature requests have been implemented. Items below are quality-of-
 
 ## Edit Show (EditShowView.swift)
 
-- **Stream URL is read-only** — displayed but not editable. If a device's IP changes, the only fix is delete + re-add the show.
-
-- **`show_next` (next air time) is not editable** — can't correct a drifted schedule without editing the config JSON directly.
-
 - **`show_genre` not exposed** — the genre field (used for Bonus Time detection) is set when a show is added from the guide, but can't be corrected in Edit. Shows added before the Bonus Time feature can't get it retroactively without a re-add.
 
 - **SeriesID is read-only** — can't update if SiliconDust changes a series' ID (which happens occasionally). Only fix today is delete + re-add.
@@ -39,12 +35,6 @@ All original feature requests have been implemented. Items below are quality-of-
 - **No per-show fail threshold or bonus duration** — transcode profile and Bonus Time on/off are already per-show (stored on `Show`, editable via EditShowView). The fail threshold (`Fail_count_setting`) and Bonus Time duration (`Sports_padding_minutes`) remain global-only. A useful future feature: per-show overrides for these two settings.
 
 - **No export / import config** — power users managing multiple machines must copy the JSON manually. "Export config…" / "Import config…" buttons in Advanced would be user-friendly.
-
----
-
-## Cable Guide (CableGuideView.swift)
-
-- **No "jump to channel" shortcut** — the only way to find a specific channel is to scroll. A channel number search field or picker in the compact toolbar would help on large lineups (100+ channels).
 
 ---
 

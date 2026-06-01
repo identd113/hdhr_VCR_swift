@@ -66,13 +66,18 @@ struct VLCPlayerView: View {
             ZStack {
                 VLCVideoSurface()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                if !posterHidden {
+                if !posterHidden && !bridge.hasError {
                     posterOverlay
+                        .transition(.opacity)
+                }
+                if bridge.hasError {
+                    errorOverlay
                         .transition(.opacity)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .animation(.easeOut(duration: 0.35), value: posterHidden)
+            .animation(.easeOut(duration: 0.35), value: bridge.hasError)
             .task(id: currentGuideEntry?.ImageURL) {
                 guard let url = currentGuideEntry?.ImageURL else { posterNSImage = nil; return }
                 posterNSImage = await ChannelIconCache.shared.image(for: url)
@@ -201,20 +206,65 @@ struct VLCPlayerView: View {
                         posterHidden = true
                         VLCBridge.shared.setVolume(Int(volume))
                     } label: {
-                        Label("Start", systemImage: "play.fill")
-                            .font(.title3.bold())
-                            .padding(.horizontal, 22)
-                            .padding(.vertical, 12)
-                            .background(.ultraThinMaterial)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                            .foregroundStyle(.white)
+                        HStack(spacing: 8) {
+                            if bridge.isPlaying {
+                                Image(systemName: "play.fill")
+                            } else {
+                                ProgressView().controlSize(.small)
+                            }
+                            Text(bridge.isPlaying ? "Start" : "Connecting…")
+                        }
+                        .font(.title3.bold())
+                        .padding(.horizontal, 22)
+                        .padding(.vertical, 12)
+                        .background(.ultraThinMaterial)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .foregroundStyle(bridge.isPlaying ? .white : .white.opacity(0.45))
                     }
                     .buttonStyle(.plain)
+                    .disabled(!bridge.isPlaying)
                     .padding(.top, 4)
                 }
                 .frame(maxWidth: 360, alignment: .leading)
             }
             .padding(32)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+    }
+
+    // MARK: - Error overlay
+
+    private var errorOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.85)
+            VStack(spacing: 16) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 44))
+                    .foregroundStyle(.orange)
+                Text("Stream Unavailable")
+                    .font(.title2.bold())
+                    .foregroundStyle(.white)
+                if let host = bridge.currentURL.flatMap({ URL(string: $0)?.host }) {
+                    Text(host)
+                        .font(.callout)
+                        .foregroundStyle(.white.opacity(0.5))
+                        .lineLimit(1)
+                }
+                Button {
+                    posterHidden = false
+                    VLCBridge.shared.catchUpToLive()
+                } label: {
+                    Label("Retry", systemImage: "arrow.clockwise")
+                        .font(.callout.bold())
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 10)
+                        .background(.ultraThinMaterial)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .foregroundStyle(.white)
+                }
+                .buttonStyle(.plain)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
@@ -355,7 +405,7 @@ struct VLCPlayerView: View {
 
     private func syncChannel(to url: String) {
         guard !url.isEmpty else { return }
-        let base = url.components(separatedBy: "?").first ?? url
+        let base = url.urlBase
         if let match = lineup.first(where: { ($0.URL ?? "").hasPrefix(base) || base.hasPrefix($0.URL ?? "") }) {
             glog("[VLC] syncChannel matched \(match.GuideNumber) \(match.GuideName) for url=\(base)")
             updateNowPlaying(channel: match)
@@ -375,20 +425,17 @@ struct VLCPlayerView: View {
             glog("[VLC] playChannel skipped — no URL for ch=\(ch.GuideNumber) \(ch.GuideName)", level: .warning)
             return
         }
-        let transcode = state.config.Default_transcode.lowercased()
         // VLC handles MPEG-2 natively — no forced transcode; "none" = raw stream
-        let url = (transcode.isEmpty || transcode == "none")
-            ? rawURL
-            : "\(rawURL)?transcode=\(transcode)"
+        let url = state.config.applyTranscode(rawURL)
         glog("[VLC] playChannel \(ch.GuideNumber) \(ch.GuideName) → \(url)")
 
         // Start buffering immediately — the poster overlay is visible so the user
         // hasn't clicked Start yet; we want the buffer building the whole time they
         // are reading the poster info. VLCBridge.play() resets estimatedLagSec=0 and
         // rate=minRate, so the rate controller begins filling the buffer right away.
-        state.vlcCurrentURL = rawURL
         VLCBridge.shared.play(url: url)
         updateNowPlaying(channel: ch)
+        state.refreshTunerOccupancy()
 
         // Check tuner occupancy in the background — stream is already started, this
         // is for logging and a non-blocking warning if we appear to be over capacity.
@@ -453,7 +500,7 @@ final class VLCPlayerWindowManager {
 
     /// Close the player window if it is currently playing the given URL.
     func closeIfPlayingURL(_ url: String) {
-        guard !url.isEmpty, appState?.vlcCurrentURL == url else { return }
+        guard !url.isEmpty, VLCBridge.shared.currentURL?.urlBase == url else { return }
         window?.close()   // triggers windowWillClose → playerWindowDidClose
     }
 
@@ -511,10 +558,10 @@ final class VLCPlayerWindowManager {
 
     fileprivate func playerWindowDidClose() {
         glog("[VLC] WindowManager.playerWindowDidClose")
-        VLCBridge.shared.releasePlayer() // full teardown — releases mediaPlayer so tuner is freed
+        VLCBridge.shared.releasePlayer() // full teardown — releases mediaPlayer and nils currentURL; Combine auto-clears vlcCurrentURL
         currentDeviceID = nil
         window = nil
-        appState?.vlcCurrentURL = ""   // clear "now watching" indicator in menu
+        appState?.refreshTunerOccupancy()
     }
 }
 

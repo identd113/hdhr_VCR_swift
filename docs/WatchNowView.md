@@ -63,7 +63,7 @@ Width = 34% of scroll-container width, capped at 220pt (`.containerRelativeFrame
 
 Auto-refresh: `Timer.publish(every: 30, on: .main, in: .common)` fires every 30 seconds to update `now`, which drives `onAirChannels` recomputation and `.task(id: entry.ImageURL)` poster re-checks.
 
-Poster images: fetched via `ChannelIconCache.shared.image(for:)` (disk-backed actor cache). `prefetchPosters()` fires on appear and on device change via `.task(id: selectedDeviceId)` to warm the cache before the user scrolls.
+Poster images: fetched via `ChannelIconCache.shared` (disk-backed actor with in-memory `mem` dict). `prefetchPosters()` fires on appear and on device change via `.task(id: selectedDeviceId)`. It runs in two passes: (1) a single actor hop via `allCachedImages(for:)` to populate `posterCache` with everything already in memory — images from prior opens appear instantly; (2) any remaining misses are fetched concurrently via `withTaskGroup` (disk reads and network downloads all in parallel). Per-row `.task(id: entry.ImageURL)` handles any rows that appear after the initial prefetch (e.g. after a 30-second timer tick).
 
 ---
 

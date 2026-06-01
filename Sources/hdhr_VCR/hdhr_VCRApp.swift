@@ -5,26 +5,7 @@ struct hdhr_VCRApp: App {
     @StateObject private var appState = AppState()
 
     init() {
-        // Redirect stdout + stderr to ~/Library/Logs/hdhrVCRplus.log so all print()
-        // calls are persisted regardless of how the app was launched (.app bundle,
-        // Login Item, or direct binary). Truncate to 0 when the file exceeds 5 MB
-        // so it doesn't grow without bound across many restarts.
-        let logURL = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Logs/hdhrVCRplus.log")
-        let logPath = logURL.path
-        if let attrs = try? FileManager.default.attributesOfItem(atPath: logPath),
-           let size = attrs[.size] as? Int, size > 5 * 1024 * 1024 {
-            try? "".write(toFile: logPath, atomically: false, encoding: .utf8)
-        }
-        freopen(logPath, "a", stdout)
-        freopen(logPath, "a", stderr)
-        // Disable stdio buffering so every print() line lands on disk immediately.
-        // Without this, output is fully buffered (8 KB chunks) when stdout is a file,
-        // causing log entries to appear delayed or missing after a crash/kill.
-        setbuf(stdout, nil)
-        setbuf(stderr, nil)
-        let stamp = ISO8601DateFormatter().string(from: Date())
-        glog("=== hdhrVCRplus launched \(stamp) ===")
+        glog("=== hdhrVCRplus launched ===")
 
         // Hide Dock icon — menu bar only.
         NSApplication.shared.setActivationPolicy(.accessory)
