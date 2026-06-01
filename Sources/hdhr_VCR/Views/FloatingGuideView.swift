@@ -27,7 +27,7 @@ struct FloatingGuideView: View {
     }
 
     private var managedSets: (seriesIDs: Set<String>, titles: Set<String>) {
-        let shows = state.shows.filter { $0.state == .seriesChannel || $0.state == .seriesAll }
+        let shows = state.shows.filter { $0.isSeries }
         return (
             Set(shows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid }),
             Set(shows.map { $0.show_title })
@@ -299,7 +299,7 @@ struct FloatingGuideView: View {
                                             .accessibilityHidden(true)
                                     }
                                 }
-                                .accessibilityLabel("Watch \(entry.Title) in VLC")
+                                .accessibilityLabel(watchInVLCLabel(entry.Title))
                                 .buttonStyle(WhiteOutlineButtonStyle(borderColor: Color(red: 1.0, green: 0.482, blue: 0.0)))
                                 .disabled(selectedChannel == nil)
                             }
@@ -311,7 +311,7 @@ struct FloatingGuideView: View {
                                 } label: {
                                     Label("Watch Now!", systemImage: "play.tv.fill")
                                 }
-                                .accessibilityLabel("Watch \(entry.Title)")
+                                .accessibilityLabel(watchInAppLabel(entry.Title))
                                 .buttonStyle(WhiteOutlineButtonStyle(borderColor: .blue))
                                 .disabled(selectedChannel == nil)
                             }

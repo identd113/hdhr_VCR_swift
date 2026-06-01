@@ -222,8 +222,7 @@ struct WatchNowRow: View {
         // For series shows any match by title is correct; for single-slot shows
         // narrow to the specific device+channel so the wrong entry doesn't win.
         return state.managedShowByTitle[entry.Title]?.first {
-            $0.state == .seriesChannel || $0.state == .seriesAll
-                || ($0.hdhr_record == device.DeviceID && $0.show_channel == channel.GuideNumber)
+            $0.isSeries || ($0.hdhr_record == device.DeviceID && $0.show_channel == channel.GuideNumber)
         }
     }
 
@@ -231,7 +230,7 @@ struct WatchNowRow: View {
         let managed = managedShow
         let scheduled: Bool = {
             guard let show = managed else { return false }
-            if show.state == .seriesChannel || show.state == .seriesAll { return true }
+            if show.isSeries { return true }
             // Guard explicitly — ?? -1 would spuriously match a guide entry with StartTime == -1.
             guard let nextDate = show.show_next else { return false }
             return show.hdhr_record  == device.DeviceID
@@ -323,7 +322,7 @@ struct WatchNowRow: View {
                 } label: {
                     Label("Watch", systemImage: "play.tv.fill").font(.caption.bold())
                 }
-                .accessibilityLabel("Watch \(entry.Title)")
+                .accessibilityLabel(watchInAppLabel(entry.Title))
                 .buttonStyle(.borderedProminent)
                 .tint(watchNowBlue)
                 .controlSize(.small)
@@ -334,7 +333,7 @@ struct WatchNowRow: View {
                 } label: {
                     Label("VLC", systemImage: "arrow.up.forward.app").font(.caption.bold())
                 }
-                .accessibilityLabel("Watch \(entry.Title) in VLC")
+                .accessibilityLabel(watchInVLCLabel(entry.Title))
                 .buttonStyle(.borderedProminent)
                 .tint(watchNowOrange)
                 .controlSize(.small)

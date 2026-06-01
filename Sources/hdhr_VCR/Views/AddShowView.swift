@@ -169,7 +169,7 @@ struct AddShowView: View {
     }
 
     private var guideStep: some View {
-        let seriesIDShows    = state.shows.filter { $0.state == .seriesChannel || $0.state == .seriesAll }
+        let seriesIDShows    = state.shows.filter { $0.isSeries }
         let managedSeriesIDs = Set(seriesIDShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
         let managedTitles    = Set(seriesIDShows.map { $0.show_title })
         // DateTime/Single shows: yellow only on the exact device+channel+slot
@@ -773,9 +773,9 @@ struct AddShowView: View {
         guard let folder = recordFolder else { return }
         // Apply series type flags
         show.show_is_series         = seriesType != .single
-        show.show_use_seriesid      = seriesType == .seriesChannel || seriesType == .seriesAll
+        show.show_use_seriesid      = seriesType.isSeries
         show.show_use_seriesid_all  = seriesType == .seriesAll
-        show.show_air_date          = seriesType == .seriesChannel || seriesType == .seriesAll
+        show.show_air_date          = seriesType.isSeries
             ? ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
             : Array(airDays)
         show.show_dir               = folder.path

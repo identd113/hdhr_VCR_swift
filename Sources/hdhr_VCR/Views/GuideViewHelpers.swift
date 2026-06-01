@@ -20,6 +20,10 @@ let timeRangeFormatter: DateFormatter = {
     return f
 }()
 
+// Accessibility labels shared by FloatingGuideView and WatchNowView — single source of truth.
+func watchInAppLabel(_ title: String) -> String { "Watch \(title)" }
+func watchInVLCLabel(_ title: String) -> String { "Watch \(title) in VLC" }
+
 func guideTimeRange(_ entry: GuideEntry) -> String {
     "\(timeRangeFormatter.string(from: entry.startDate)) – \(timeRangeFormatter.string(from: entry.endDate))"
 }

@@ -22,6 +22,7 @@ func glog(_ msg: String, level: LogLevel = .info) {
 
 struct Show: Identifiable, Equatable {
     var id: String { show_id }
+    var isSeries: Bool { state.isSeries }
     var show_id: String
     var show_title: String
     var show_is_series: Bool
@@ -117,6 +118,8 @@ enum ShowState: String, CaseIterable {
     case dateTime = "DateTime"
     case seriesChannel = "SeriesID(Channel)"
     case seriesAll = "SeriesID(All)"
+
+    var isSeries: Bool { self == .seriesChannel || self == .seriesAll }
 }
 
 // MARK: - Codable conformance (custom to handle missing / renamed fields)

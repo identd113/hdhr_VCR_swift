@@ -121,17 +121,4 @@ Color the background of each guide entry row in the `.menu` mode add-show cascad
 
 ## Code Quality
 
-### Add `Show.isSeries` computed property
-
-`state == .seriesChannel || state == .seriesAll` is duplicated verbatim across at least four files (`WatchNowView.swift:226`, `AddShowView.swift:172`, `AppState.swift:1134`, `CableGuideView.swift`). If a third series state is added, every manual guard must be found and updated individually.
-
-Add to `Show` in `Models.swift`:
-```swift
-var isSeries: Bool { state == .seriesChannel || state == .seriesAll }
-```
-
----
-
-### Deduplicate watch/record accessibility label strings
-
-`"Watch \(entry.Title) in VLC"` and `"Watch \(entry.Title)"` are hardcoded in both `FloatingGuideView.swift:299` and `WatchNowView.swift:318`. Extract to a small free function in `GuideViewHelpers.swift`.
+*(no open items)*

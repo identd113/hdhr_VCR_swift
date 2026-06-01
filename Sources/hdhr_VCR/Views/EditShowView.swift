@@ -150,9 +150,9 @@ struct EditShowView: View {
 
     private func applySeriesType() {
         show?.show_is_series        = seriesType != .single
-        show?.show_use_seriesid     = seriesType == .seriesChannel || seriesType == .seriesAll
+        show?.show_use_seriesid     = seriesType.isSeries
         show?.show_use_seriesid_all = seriesType == .seriesAll
-        if seriesType == .seriesChannel || seriesType == .seriesAll {
+        if seriesType.isSeries {
             airDays = Set(weekdays)
         }
     }
@@ -167,7 +167,7 @@ struct EditShowView: View {
         guard var s = show else { return }
         s.show_air_date         = Array(airDays)
         s.show_is_series        = seriesType != .single
-        s.show_use_seriesid     = seriesType == .seriesChannel || seriesType == .seriesAll
+        s.show_use_seriesid     = seriesType.isSeries
         s.show_use_seriesid_all = seriesType == .seriesAll
         if let folder = recordFolder {
             s.show_dir      = folder.path
