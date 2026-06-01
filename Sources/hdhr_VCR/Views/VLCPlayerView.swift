@@ -42,6 +42,7 @@ struct VLCPlayerView: View {
     @AppStorage("vlcVolume") private var volume: Double = 50
     @State private var systemDevices: [(id: String, name: String)] = []
     @State private var selectedDevice: String = ""
+    @State private var availableScreens: [NSScreen] = []
     @State private var posterHidden: Bool = false
     @State private var posterNSImage: NSImage? = nil
     @ObservedObject private var bridge = VLCBridge.shared
@@ -85,6 +86,7 @@ struct VLCPlayerView: View {
         }
         .onAppear {
             glog("[VLC] VLCPlayerView.onAppear device=\(device.DeviceID) initialURL=\(initialURL)")
+            availableScreens = NSScreen.screens   // NSScreen.screens is main-thread-only; safe here
             VLCBridge.shared.minRate = Float(state.config.Player_buffer_min_rate) / 100.0
             VLCBridge.shared.setVolume(0)   // muted until Start is clicked
             refreshAudioDevices()
@@ -136,6 +138,9 @@ struct VLCPlayerView: View {
             guard let ch = selectedChannel,
                   let idx = lineup.firstIndex(where: { $0.GuideNumber == ch.GuideNumber }) else { return }
             selectedChannel = lineup[idx > 0 ? idx - 1 : lineup.count - 1]
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in
+            availableScreens = NSScreen.screens
         }
     }
 
@@ -325,9 +330,10 @@ struct VLCPlayerView: View {
             // Volume
             Image(systemName: "speaker.wave.2")
                 .foregroundStyle(.secondary)
-                .accessibilityLabel("Volume")
+                .accessibilityHidden(true)
             Slider(value: $volume, in: 0...100)
                 .frame(width: 100)
+                .accessibilityLabel("Volume")
                 .onChange(of: volume) { _, v in
                     VLCBridge.shared.setVolume(Int(v))
                 }
@@ -348,6 +354,26 @@ struct VLCPlayerView: View {
                     VLCBridge.shared.setAudioDevice(output: "auhal", deviceId: devId)
                 }
             }
+
+            // Screen picker — shown when a second display (including AirPlay) is available.
+            // Connect an AirPlay display via Control Center → Screen Mirroring first.
+            if availableScreens.count > 1 {
+                Divider().frame(height: 18)
+                Menu {
+                    ForEach(availableScreens, id: \.displayID) { screen in
+                        Button(screen.localizedName) {
+                            VLCPlayerWindowManager.shared.moveToScreen(screen)
+                        }
+                    }
+                } label: {
+                    Image(systemName: "airplayvideo")
+                        .foregroundStyle(.secondary)
+                }
+                .menuStyle(.borderlessButton)
+                .frame(maxWidth: 24)
+                .help("Move to display")
+                .accessibilityLabel("Select display")
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -364,6 +390,7 @@ struct VLCPlayerView: View {
             Image(systemName: "waveform")
                 .font(.caption2)
                 .foregroundStyle(barColor.opacity(0.9))
+                .accessibilityHidden(true)
             ZStack(alignment: .leading) {
                 Capsule().fill(.secondary.opacity(0.18))
                 Capsule().fill(barColor.opacity(0.85))
@@ -371,6 +398,9 @@ struct VLCPlayerView: View {
             }
             .frame(width: 50, height: 6)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Live buffer")
+        .accessibilityValue("\(min(8, Int(info.lagSec.rounded()))) of 8 seconds")
         .onHover { bufferInfoHovered = $0 }
         .popover(isPresented: $bufferInfoHovered, arrowEdge: .bottom) { bufferPopover }
     }
@@ -544,6 +574,21 @@ final class VLCPlayerWindowManager {
         self.window = win
     }
 
+    /// Move the player window to the centre of the given screen (handles AirPlay displays).
+    func moveToScreen(_ screen: NSScreen) {
+        guard let win = window else { return }
+        // setFrameOrigin is silently ignored while miniaturized; deminiaturize first.
+        if win.isMiniaturized { win.deminiaturize(nil) }
+        let sf = screen.visibleFrame
+        let wf = win.frame
+        // Clamp so the window can't be placed off-screen when it's larger than the target display.
+        let x = max(sf.minX, sf.minX + (sf.width  - wf.width)  / 2)
+        let y = max(sf.minY, sf.minY + (sf.height - wf.height) / 2)
+        win.setFrameOrigin(NSPoint(x: x, y: y))
+        win.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
     /// Resize the window so the video surface is displayed at 1:1 physical pixels.
     func sizeToNativeVideo() {
         guard let win = window,
@@ -558,6 +603,9 @@ final class VLCPlayerWindowManager {
 
     fileprivate func playerWindowDidClose() {
         glog("[VLC] WindowManager.playerWindowDidClose")
+        // Stop audio listener before releasing the player — windowWillClose fires before onDisappear,
+        // so without this the CoreAudio callback fires into a partially torn-down view.
+        VLCBridge.shared.stopDeviceChangeMonitoring()
         VLCBridge.shared.releasePlayer() // full teardown — releases mediaPlayer and nils currentURL; Combine auto-clears vlcCurrentURL
         currentDeviceID = nil
         window = nil
@@ -569,4 +617,10 @@ private final class WindowCloseObserver: NSObject, NSWindowDelegate {
     weak var manager: VLCPlayerWindowManager?
     init(manager: VLCPlayerWindowManager) { self.manager = manager }
     func windowWillClose(_ notification: Notification) { manager?.playerWindowDidClose() }
+}
+
+private extension NSScreen {
+    var displayID: CGDirectDisplayID {
+        (deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value ?? 0
+    }
 }
