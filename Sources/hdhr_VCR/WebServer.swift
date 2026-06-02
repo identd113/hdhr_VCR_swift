@@ -561,7 +561,7 @@ final class WebServer {
             rowsHTML = "<div style=\"padding:24px;color:#555;text-align:center;font-size:.85rem\">No guide data — loading…</div>"
         }
 
-        // ── Watch Now cards (streaming links kept; no streaming from guide summary) ──
+        // ── What's On Now cards (info only — no streaming; playback requires the Mac app) ──
         var cards = ""
         for device in state.devices {
             for (ch, entry) in nowByDevice[device.DeviceID] ?? [] {
@@ -756,7 +756,7 @@ final class WebServer {
         <div class="g-hdr"><div class="g-hdr-ch">Channel</div><div class="g-hdr-tl">\(ticksHTML)</div></div>
         \(rowsHTML)
         </div></div>
-        <details><summary>Watch Now — live cards with stream links</summary>
+        <details><summary>What's On Now</summary>
         <div class="grid">\(cards)</div></details>
         \(showsSection)
         <script>

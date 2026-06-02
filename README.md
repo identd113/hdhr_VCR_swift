@@ -28,7 +28,7 @@ You already paid for an HDHomeRun tuner and a cable/antenna subscription. You sh
 | **Cable guide grid** | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **Built-in player** | ✅ VLC | ✅ | ✅ | ✅ | ✅ |
 | **Discord notifications** | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **LAN web UI** | ✅ | ✅ | ✅ | ✅ | ❌ |
+| **LAN web UI** | ✅ guide/schedule | ✅ + stream | ✅ + stream | ✅ + stream | ❌ |
 | **Cloud-free** | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **Open source** | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **Auto-updates** | ✅ Sparkle | ✅ | ✅ | ✅ | ✅ |
@@ -88,7 +88,7 @@ You already paid for an HDHomeRun tuner and a cable/antenna subscription. You sh
 
 ### Remote access
 
-- **LAN web UI** — built-in web server (port 1980) serves a cable grid, schedule, and Watch Now page accessible from any browser on your network. No port forwarding needed; subnet-guarded.
+- **LAN web UI** — built-in web server (port 1980) serves a cable guide grid, schedule view, and what's-on-now cards accessible from any browser on your network. No port forwarding needed; subnet-guarded. (Viewing is Mac-only via the in-app VLC player.)
 
 ### Multi-device & formats
 
@@ -103,7 +103,7 @@ You already paid for an HDHomeRun tuner and a cable/antenna subscription. You sh
 
 **Sparkle auto-updater** — Check for Updates button in Settings → About. Updates are signed and verified automatically.
 
-**LAN web server** — Browse the cable guide, manage your schedule, and watch live TV from any browser on your network. Enable in Settings → Web Server.
+**LAN web server** — Browse the cable guide and manage your schedule from any browser on your network. Shows what's airing now per device with tuner status. Enable in Settings → Web Server. (Live streaming requires the Mac app's built-in VLC player.)
 
 **Built-in VLC player** — "Watch Now!" streams live TV directly in the app. Includes a channel picker, volume, and audio output controls. Free tuner check before opening.
 
