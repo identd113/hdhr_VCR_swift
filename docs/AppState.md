@@ -8,11 +8,12 @@
 
 1. `loadConfig()` — reads JSON, resets all `show_recording = false`; sets `guideStore.verbose`. Auto-removes inactive Single shows (already recorded; no further scheduling needed).
 2. `reattachRecordings()` — scans `ps -Axo pid,args` for `caffeinate` lines with `show_id:` + `hdhrVCRplus`. If the show's `show_end` is still future, sets `show_recording = true`, clears `show_tuner_resource` (will be re-captured by `captureResourceHeaders`), and registers the PID — recording continues uninterrupted. **Read pipe data before `waitUntilExit()`** to avoid deadlock when ps output exceeds the ~64 KB pipe buffer. After the PID scan, any show that has a non-empty `discord_start_msg_id` but was **not** reattached (i.e. its recording ended while the app was down) gets a recovery Discord embed: "✅ Recording Complete" if the output file has non-zero size, or "⚠️ Recording Interrupted" otherwise. The `discord_start_msg_id` is cleared to `""` in config **before** the network send — a crash during the PATCH won't re-trigger the recovery on the next launch.
-3. Notification permission (background `Task` — non-blocking).
-4. `discoverDevices(knownHosts:attempts:10)` — up to 10 retries with 1 s pauses; idle loop retries on each tick if devices remain empty.
-5. `fetchAllGuides()` — parallel guide load for all devices; mirrors result into `guideByDevice`.
-6. `startTimer()` — fires `idleLoop()` every `config.Idle_timer_interval` seconds (default 10, min 5).
-7. Sets `isStartingUp = false` (menu bar icon switches from dimmed to normal/red-dot).
+3. `setupWebServer()` — binds the NWListener on `config.Web_server_port` immediately after config load, before device discovery. Port is available within ~1 s of launch; responses that require guide data are delayed by main-actor availability, not by the startup sequence itself.
+4. Notification permission (background `Task` — non-blocking).
+5. `discoverDevices(knownHosts:attempts:10)` — up to 10 retries with 1 s pauses; idle loop retries on each tick if devices remain empty.
+6. `fetchAllGuides()` — parallel guide load for all devices; mirrors result into `guideByDevice`.
+7. `startTimer()` — fires `idleLoop()` every `config.Idle_timer_interval` seconds (default 10, min 5).
+8. Sets `isStartingUp = false` (menu bar icon switches from dimmed to normal/red-dot).
 
 ---
 
@@ -65,6 +66,21 @@ Falls back to **SiliconDust cloud API** (`http://discover.hdhomerun.com/discover
 | `inactiveShows` | `!show_active` (completed singles; auto-removed at startup) |
 | `nextShowMinutes` | Minutes until nearest active show; drives orange `clock.badge` icon when ≤ 30 |
 | `availableDeviceCount` | Excludes devices with missing lineup or guide; used in status message |
+| `onAirNow(for:at:)` | Returns one `(channel: LineupEntry, entry: GuideEntry)` per unique on-air channel for a device at `date` (default `Date()`), sorted favorites-first then by channel number. Used by `WatchNowView` and `WebServer.buildNowJSON`. |
+
+---
+
+## Web Server
+
+`webServer: WebServer` — `NWListener`-backed LAN HTTP server (see [WebServer.md](WebServer.md)).
+
+| Property / Method | Description |
+|---|---|
+| `@Published webServerRunning: Bool` | `true` once NWListener reaches `.ready` state |
+| `@Published webServerError: String?` | Non-nil when the listener fails (port in use, OS error, etc.) |
+| `setupWebServer()` | Starts, restarts, or stops the server based on `config.Web_server_enabled` and `config.Web_server_port`. Called at step 3 of `startup()` and again whenever Settings saves a changed web server config. |
+
+The web server is stopped explicitly in all three `quit()` exit branches before `NSApplication.terminate(nil)`.
 
 ---
 

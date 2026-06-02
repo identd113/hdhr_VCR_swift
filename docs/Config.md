@@ -50,6 +50,8 @@ Discord_on_upnext       Bool    false   embed for Up Next reminder
 Discord_on_soon         Bool    false   embed for Recording Soon reminder
 Discord_on_show_added   Bool    false   embed when show is added
 Discord_on_progress     Bool    false   edit the "Recording Started" embed every 5 min with elapsed/remaining time
+Web_server_enabled      Bool    false   enable NWListener LAN web server (Settings → Web Server)
+Web_server_port         Int     1980    TCP port for the web server (1025–65534; macOS requires root for <1024)
 Hdhr_setup_folder       String  ""      default recording folder (POSIX path; empty = ~/Movies/hdhr_videos)
 Config_version          String  "2"     format version marker; "2" = ISO8601 dates + "shows" key
 ```
