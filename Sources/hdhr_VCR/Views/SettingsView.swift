@@ -39,6 +39,14 @@ struct SettingsView: View {
     @State private var draftSimulatedOS:   Int         = 0
     @State private var logoTapCount  = 0
     @State private var changelogHeight: CGFloat = 0
+
+    private static let changelogText: String = {
+        guard let url = Bundle.main.url(forResource: "CHANGELOG", withExtension: "md"),
+              let raw = try? String(contentsOf: url, encoding: .utf8),
+              let range = raw.range(of: "\n## ") else { return "" }
+        // Strip the file title; return only the version sections
+        return String(raw[range.lowerBound...]).trimmingCharacters(in: .newlines)
+    }()
     @State private var maintenanceStatus: String = ""
     @State private var maintenanceBusy: Bool = false
     @State private var brewBusy: Bool = false
@@ -738,7 +746,7 @@ struct SettingsView: View {
     // MARK: - About
 
     private var aboutView: some View {
-        let (filteredText, _) = Self.parseChangelog(appChangelog)
+        let (filteredText, _) = Self.parseChangelog(Self.changelogText)
 
         return ScrollView {
             VStack(spacing: 20) {

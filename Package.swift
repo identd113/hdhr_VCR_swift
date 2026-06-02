@@ -16,7 +16,8 @@ let package = Package(
             dependencies: [
                 .product(name: "Sparkle", package: "Sparkle")
             ],
-            path: "Sources/hdhr_VCR"
+            path: "Sources/hdhr_VCR",
+            resources: [.copy("CHANGELOG.md")]
         ),
         .testTarget(
             name: "hdhr_VCRTests",
