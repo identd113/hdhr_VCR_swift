@@ -15,6 +15,7 @@ macOS `List` with items using `Label(name, systemImage: icon)`. Icons and catego
 - `tv` Guide
 - `bell.badge` Notifications
 - `terminal` Advanced
+- `globe` Web Server
 - `wrench.and.screwdriver` Maintenance
 - `info.circle` About
 
@@ -114,6 +115,7 @@ Sidebar entries (with SF Symbol icons):
 | Guide | `tv` | Guide hours, series scan retry |
 | Notifications | `bell.badge` | Up Next timing, Recording alert timing |
 | Advanced | `terminal` | Network interface, idle interval, verbose curl, config file path |
+| Web Server | `globe` | Enable/disable LAN web server, port, access URL |
 | Maintenance | `wrench.and.screwdriver` | Show maintenance, guide/device ops, brew tool installs, Developer (OS sim) |
 | About | `info.circle` | App logo, version, history, GitHub link |
 
@@ -188,6 +190,19 @@ Recording Complete embeds additionally include **Format** (file extension, e.g. 
 
 ---
 
+### Web Server
+
+- **Enable Web Server** — `Toggle` bound to `draft.Web_server_enabled`. Off by default. Warning label: *"Local network access only. No authentication. Do not expose this port to the internet."*
+- **Port** — `TextField` (value binding, `.number` format), shown when enabled. Validated 1025–65534. Invalid values show an orange warning and block the Save button and `WindowCloseInterceptor`.
+- **Access row** — shown only when `state.config.Web_server_enabled && state.webServerRunning`. Displays `http://{ip}:{port}` as selectable monospaced text with an **Open** `Link`. IP is resolved by `availableNetworkInterfaces()` filtering out `utun*` VPN interfaces; falls back to `"localhost"`. The link uses the device's IP directly (not an mDNS `.local` hostname) to prevent browser HTTPS upgrades.
+- **Error banner** — shown when `state.webServerError` is non-nil (port in use, OS cancellation, etc.).
+
+Saving with changed `Web_server_enabled` or `Web_server_port` calls `state.setupWebServer()` immediately to start, restart, or stop the listener.
+
+See [WebServer.md](WebServer.md) for full route and feature documentation.
+
+---
+
 ### Maintenance
 
 One-tap operations for recovering from stuck states. Each uses `maintenanceRow(_:_:action:)` — a helper that takes a title string, a description string, and an async closure that returns a result string. The result is shown in a green `Label` at the bottom of the section after completion.
@@ -241,16 +256,27 @@ An `NSViewRepresentable` that attaches an `NSWindowDelegate` to the settings win
 func windowShouldClose(_ sender: NSWindow) -> Bool {
     guard isDirty else { return true }
     let alert = NSAlert()
-    alert.addButton(withTitle: "Save")
-    alert.addButton(withTitle: "Discard")
-    alert.addButton(withTitle: "Cancel")
-    switch alert.runModal() {
-    case .alertFirstButtonReturn:  onSave(); return true   // save + close
-    case .alertSecondButtonReturn: return true              // discard + close
-    default:                       return false             // cancel — keep open
+    if canSave {
+        // Normal dirty state: offer Save / Discard / Cancel
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Discard")
+        alert.addButton(withTitle: "Cancel")
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:  onSave(); return true
+        case .alertSecondButtonReturn: return true
+        default:                       return false
+        }
+    } else {
+        // Validation error blocks saving (untested webhook or invalid port)
+        alert.informativeText = "Settings can't be saved yet — fix the validation error first. Discard changes?"
+        alert.addButton(withTitle: "Discard Changes")
+        alert.addButton(withTitle: "Cancel")
+        return alert.runModal() == .alertFirstButtonReturn
     }
 }
 ```
+
+`canSave` is `!webhookNeedsTest && !webPortInvalid` — false when the Discord webhook is untested **or** the web server port is out of range. The alert message is generic so it applies to either validation failure.
 
 ---
 

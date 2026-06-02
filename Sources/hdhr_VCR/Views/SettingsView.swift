@@ -9,6 +9,7 @@ private enum SettingsCategory: String, CaseIterable, Identifiable {
     case guide         = "Guide"
     case notifications = "Notifications"
     case advanced      = "Advanced"
+    case webServer     = "Web Server"
     case maintenance   = "Maintenance"
     case about         = "About"
 
@@ -19,6 +20,7 @@ private enum SettingsCategory: String, CaseIterable, Identifiable {
         case .guide:         return "tv"
         case .notifications: return "bell.badge"
         case .advanced:      return "terminal"
+        case .webServer:     return "globe"
         case .maintenance:   return "wrench.and.screwdriver"
         case .about:         return "info.circle"
         }
@@ -54,6 +56,11 @@ struct SettingsView: View {
             && webhookTestStatus != .passed
     }
 
+    private var webPortInvalid: Bool {
+        draft.Web_server_enabled
+            && (draft.Web_server_port < 1025 || draft.Web_server_port > 65534)
+    }
+
     private var isDirty: Bool {
         draft != state.config
             || draftSaveDirectory != defaultSaveDirectory
@@ -83,6 +90,12 @@ struct SettingsView: View {
                         .foregroundStyle(.orange)
                     Button("Discard") { discardDraft() }
                         .foregroundStyle(.secondary)
+                } else if webPortInvalid {
+                    Label("Fix the web server port before saving", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                    Button("Discard") { discardDraft() }
+                        .foregroundStyle(.secondary)
                 } else if isDirty {
                     Text("Unsaved changes")
                         .font(.caption)
@@ -91,23 +104,24 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
+                let canSave = isDirty && !webhookNeedsTest && !webPortInvalid
                 Button("Save") { applyAndSave() }
-                    .disabled(!isDirty || webhookNeedsTest)
+                    .disabled(!canSave)
                     .keyboardShortcut("s", modifiers: .command)
                 Button("Save & Close") {
-                    if isDirty && !webhookNeedsTest { applyAndSave() }
+                    if canSave { applyAndSave() }
                     NSApp.keyWindow?.close()
                 }
                 .buttonStyle(.borderedProminent)
-                .tint((isDirty && !webhookNeedsTest) ? .orange : .accentColor)
+                .tint(canSave ? .orange : .accentColor)
                 .keyboardShortcut(.defaultAction)
-                .disabled(webhookNeedsTest)
+                .disabled(webhookNeedsTest || webPortInvalid)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
         }
         .frame(width: 560, height: 520)
-        .background(WindowCloseInterceptor(isDirty: isDirty, canSave: !webhookNeedsTest, onSave: applyAndSave))
+        .background(WindowCloseInterceptor(isDirty: isDirty, canSave: !webhookNeedsTest && !webPortInvalid, onSave: applyAndSave))
         .onAppear {
             resetDrafts()
             // Clear a stale saved interface: if the named NIC isn't available right now
@@ -152,6 +166,8 @@ struct SettingsView: View {
         if draft.Default_transcode   != old.Default_transcode   { glog("[Settings] DefaultTranscode: '\(old.Default_transcode)' → '\(draft.Default_transcode)'") }
         let intervalChanged   = draft.Idle_timer_interval != old.Idle_timer_interval
         let interfaceChanged  = draft.Network_interface   != old.Network_interface
+        let webServerChanged  = draft.Web_server_enabled  != old.Web_server_enabled
+                             || draft.Web_server_port     != old.Web_server_port
         state.config = draft
         state.saveConfig()
         if intervalChanged { state.startTimer() }
@@ -175,6 +191,7 @@ struct SettingsView: View {
                 await state.refreshGuide()
             }
         }
+        if webServerChanged { state.setupWebServer() }
     }
 
     @ViewBuilder
@@ -185,6 +202,7 @@ struct SettingsView: View {
         case .guide:         guideView
         case .notifications: notificationsView
         case .advanced:      advancedView
+        case .webServer:     webServerView
         case .maintenance:   maintenanceView
         case .about:         aboutView
         }
@@ -462,6 +480,60 @@ struct SettingsView: View {
         .navigationTitle("Advanced")
     }
 
+    // MARK: - Web Server
+
+    private var webServerView: some View {
+        Form {
+            Section("Web Server") {
+                Toggle("Enable Web Server", isOn: $draft.Web_server_enabled)
+                    .help("Serve a Watch Now web page on your local network. No authentication — trusted LAN use only.")
+                if draft.Web_server_enabled {
+                    HStack {
+                        Text("Port")
+                        TextField("1980", value: $draft.Web_server_port, format: .number)
+                            .frame(width: 80)
+                            .multilineTextAlignment(.trailing)
+                    }
+                    .help("Port number (1025–65534). macOS requires root for ports below 1024. Default: 1980.")
+                    if draft.Web_server_port < 1025 || draft.Web_server_port > 65534 {
+                        Label("Port must be between 1025 and 65534", systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
+                }
+                Text("Local network access only. No authentication. Do not expose this port to the internet.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if state.config.Web_server_enabled && state.webServerRunning {
+                let ip = availableNetworkInterfaces().first(where: { !$0.name.hasPrefix("utun") })?.ip ?? "localhost"
+                let urlStr = "http://\(ip):\(state.config.Web_server_port)"
+                Section("Access") {
+                    HStack {
+                        Text(urlStr)
+                            .font(.system(.body, design: .monospaced))
+                            .textSelection(.enabled)
+                        Spacer()
+                        Link("Open", destination: URL(string: urlStr)!)
+                    }
+                    Text("Open in a browser on any device on your local network.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if let err = state.webServerError {
+                Section {
+                    Label(err, systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.red)
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .navigationTitle("Web Server")
+    }
+
     // MARK: - Maintenance
 
     private var maintenanceView: some View {
@@ -666,8 +738,7 @@ struct SettingsView: View {
     // MARK: - About
 
     private var aboutView: some View {
-        let (filteredText, latestVersion) = Self.parseChangelog(appChangelog)
-        let updateVersion = latestVersion.flatMap { $0 > appVersion ? $0 : nil }
+        let (filteredText, _) = Self.parseChangelog(appChangelog)
 
         return ScrollView {
             VStack(spacing: 20) {
@@ -715,28 +786,20 @@ struct SettingsView: View {
 
                 Divider()
 
-                if let ver = updateVersion {
-                    HStack(spacing: 8) {
-                        Image(systemName: "arrow.down.circle.fill").foregroundStyle(.blue)
-                            .accessibilityHidden(true)
-                        Text("Update \(ver) is available")
-                            .fontWeight(.medium).foregroundStyle(.blue)
-                        Spacer()
-                        Link("Releases",
-                             destination: URL(string: "https://github.com/identd113/hdhr_VCR_swift/releases")!)
-                            .buttonStyle(.bordered)
-                    }
+                HStack {
+                    Button("Check for Updates") { state.checkForUpdates() }
+                        .buttonStyle(.bordered)
+                    Spacer()
+                    Link("View on GitHub",
+                         destination: URL(string: "https://github.com/identd113/hdhr_VCR_swift")!)
+                        .buttonStyle(.bordered)
                 }
 
-                Text(updateVersion != nil ? "Changelog (current version)" : "Changelog")
+                Text("Changelog")
                     .font(.headline)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 MarkdownView(markdown: filteredText, height: $changelogHeight)
                     .frame(height: max(100, changelogHeight))
-
-                Link("View on GitHub",
-                     destination: URL(string: "https://github.com/identd113/hdhr_VCR_swift")!)
-                    .buttonStyle(.bordered)
             }
             .padding()
         }
@@ -915,7 +978,7 @@ struct WindowCloseInterceptor: NSViewRepresentable {
                 default:                       return false
                 }
             } else {
-                alert.informativeText = "The Discord webhook must be tested before saving. Discard webhook changes?"
+                alert.informativeText = "Settings can't be saved yet — fix the validation error first. Discard changes?"
                 alert.addButton(withTitle: "Discard Changes")
                 alert.addButton(withTitle: "Cancel")
                 switch alert.runModal() {

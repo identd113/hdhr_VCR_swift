@@ -28,6 +28,21 @@ func guideTimeRange(_ entry: GuideEntry) -> String {
     "\(timeRangeFormatter.string(from: entry.startDate)) – \(timeRangeFormatter.string(from: entry.endDate))"
 }
 
+func timeRemaining(until endDate: Date) -> String {
+    let mins = Int(max(0, endDate.timeIntervalSinceNow) / 60)
+    if mins < 1  { return "ending soon" }
+    if mins < 60 { return "\(mins)m left" }
+    let h = mins / 60; let m = mins % 60
+    return m == 0 ? "\(h)h left" : "\(h)h \(m)m left"
+}
+
+func he(_ s: String) -> String {
+    s.replacingOccurrences(of: "&",  with: "&amp;")
+     .replacingOccurrences(of: "<",  with: "&lt;")
+     .replacingOccurrences(of: ">",  with: "&gt;")
+     .replacingOccurrences(of: "\"", with: "&quot;")
+}
+
 struct ManagedFlagView: View {
     var size: CGFloat = 20
     var body: some View {

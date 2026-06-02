@@ -73,6 +73,7 @@ Views/
 - [RecordingManager](docs/RecordingManager.md) — caffeinate+curl process model, stop, file verification, verbose logging
 - [Models](docs/Models.md) — 4-state show model, state flags, scheduleNextAir, EpochDate, GuideEntry, HDHRDevice, DeviceTunerInfo, glog
 - [Config](docs/Config.md) — file location/migration, all AppConfig fields with defaults, save dir resolution
+- [WebServer](docs/WebServer.md) — NWListener LAN web server, guide/schedule/delete routes, device switcher, tuner popover, JSON API, IPv4+IPv6 subnet guard
 
 ---
 
@@ -97,5 +98,8 @@ Set `show_next` to `now + 30s` and `show_end` to `now + 2min`. The idle loop pic
 
 | Script | Purpose |
 |---|---|
-| `deploy.sh` | Stop → build → copy binary → launch. `./deploy.sh --help` for options. |
+| `deploy.sh` | Stop → build (debug) → copy binary → ad-hoc sign with Hardened Runtime → launch. |
+| `deploy_release.sh` | Stop → build (release) → Developer ID sign → notarize → staple → launch. `--skip-notarize` to sign only. |
+| `tools/setup_signing.sh` | One-time interactive walkthrough: generates CSR, imports Developer ID cert, stores notarization credentials in keychain, patches `deploy_release.sh`. Run before first `deploy_release.sh`. |
+| `tools/generate_sparkle_keys.sh` | One-time EdDSA key generation for Sparkle update signing. Patches the public key into `Info.plist`; private key saved to `~/.sparkle_private_key`. Run once, before first release. |
 | `tools/mock_hdhr.py` | Fake HDHomeRun device for testing discovery, guide, and fault injection. |

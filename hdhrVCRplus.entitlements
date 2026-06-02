@@ -5,6 +5,9 @@
     <!-- Outbound HTTP: HDHomeRun device discovery, guide API, Discord webhooks -->
     <key>com.apple.security.network.client</key>
     <true/>
+    <!-- Inbound TCP: LAN web server (NWListener requires this under Hardened Runtime) -->
+    <key>com.apple.security.network.server</key>
+    <true/>
     <!-- dlopen of libvlc.dylib + libvlccore.dylib from VLC.app (signed by VideoLAN, not our team) -->
     <key>com.apple.security.cs.disable-library-validation</key>
     <true/>

@@ -227,6 +227,10 @@ struct AppConfig: Equatable {
     var Discord_on_show_added: Bool  = false   // Show Added
     var Discord_on_progress:  Bool   = false   // Edit start embed every 5 min with elapsed/remaining
     var Discord_enabled:      Bool   = false   // Master enable/disable toggle
+
+    // Web server
+    var Web_server_enabled: Bool = false
+    var Web_server_port:    Int  = 1980
 }
 
 extension AppConfig: Codable {
@@ -263,6 +267,8 @@ extension AppConfig: Codable {
         Discord_on_progress     = (try? c.decode(Bool.self,   forKey: .Discord_on_progress))     ?? false
         // Migration: existing configs with a URL had Discord working, so default to enabled for them.
         Discord_enabled         = (try? c.decode(Bool.self,   forKey: .Discord_enabled))         ?? !Discord_webhook_url.isEmpty
+        Web_server_enabled      = (try? c.decode(Bool.self,   forKey: .Web_server_enabled))      ?? false
+        Web_server_port         = (try? c.decode(Int.self,    forKey: .Web_server_port))         ?? 1980
     }
 }
 

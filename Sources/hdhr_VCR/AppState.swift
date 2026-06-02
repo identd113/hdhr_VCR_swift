@@ -2,6 +2,7 @@ import Foundation
 import UserNotifications
 import AppKit
 import SwiftUI
+import Sparkle
 
 @MainActor
 final class AppState: ObservableObject {
@@ -63,6 +64,24 @@ final class AppState: ObservableObject {
     var pausedShows: [Show]    { shows.filter { $0.show_active && $0.show_paused } }
     var inactiveShows: [Show]  { shows.filter { !$0.show_active } }
 
+    // Returns one (channel, entry) pair per unique on-air channel for the given device,
+    // sorted favorites-first, then by channel number.
+    func onAirNow(for device: HDHRDevice, at date: Date = Date()) -> [(channel: LineupEntry, entry: GuideEntry)] {
+        var seen = Set<String>()
+        return (lineups[device.DeviceID] ?? [])
+            .compactMap { ch -> (channel: LineupEntry, entry: GuideEntry)? in
+                guard seen.insert(ch.GuideNumber).inserted else { return nil }
+                guard let entry = guideEntries(deviceId: device.DeviceID, channelNum: ch.GuideNumber)
+                    .first(where: { $0.startDate <= date && $0.endDate > date })
+                else { return nil }
+                return (ch, entry)
+            }
+            .sorted { a, b in
+                if a.channel.isFavorite != b.channel.isFavorite { return a.channel.isFavorite }
+                return a.channel.GuideNumber.channelSortKey < b.channel.GuideNumber.channelSortKey
+            }
+    }
+
     var nextShowMinutes: Double? {
         activeShows
             .compactMap { $0.show_next.map { $0.timeIntervalSince(Date()) / 60 } }
@@ -82,6 +101,16 @@ final class AppState: ObservableObject {
     let hdhrManager      = HDHRManager()
     let recordingManager = RecordingManager()
     let guideStore       = GuideStore()
+    let webServer        = WebServer()
+    @Published var webServerRunning: Bool    = false
+    @Published var webServerError:   String? = nil
+
+    // Sparkle auto-updater — startingUpdater:true begins background checks immediately.
+    // The controller owns the update UI; call checkForUpdates() to show the panel on demand.
+    let updaterController = SPUStandardUpdaterController(
+        startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
+
+    func checkForUpdates() { updaterController.checkForUpdates(nil) }
 
     // Exponential backoff for repeated guide API failures per device.
     // Delays: 1 min → 5 min → 15 min → 30 min → 1 hour (capped).
@@ -143,10 +172,15 @@ final class AppState: ObservableObject {
         await reattachRecordings()
         glog("[Startup] recordings reattached")
 
-        // 3. Notification permission — fire-and-forget; must not block discovery
+        // 3. Start the web server now — port binding doesn't need devices or guide data.
+        //    Starting here means the server is up within ~1s of launch instead of waiting
+        //    for the full discovery + guide fetch sequence to complete.
+        setupWebServer()
+
+        // 4. Notification permission — fire-and-forget; must not block discovery
         Task { await requestNotifyPermission() }
 
-        // 4. Discover tuners + lineups — 10 attempts, 1s apart
+        // 6. Discover tuners + lineups — 10 attempts, 1s apart
         let knownHosts = knownHostsFromShows()
         glog("[Startup] discovering — knownHosts=\(knownHosts)")
         await discoverDevices(knownHosts: knownHosts, attempts: 10)
@@ -155,7 +189,7 @@ final class AppState: ObservableObject {
             glog("[Startup]   \(d.DeviceID)  LocalIP='\(d.LocalIP)'  DeviceAuth=\(d.DeviceAuth ?? "nil")")
         }
 
-        // 5. Guide — only if tuners found; idleLoop will retry if this fails
+        // 7. Guide — only if tuners found; idleLoop will retry if this fails
         if !devices.isEmpty {
             await fetchAllGuides()
             let ch = guideByDevice.values.reduce(0) { $0 + $1.count }
@@ -176,6 +210,22 @@ final class AppState: ObservableObject {
             let v = NSHostingView(rootView: MenuJITPlaceholder())
             v.frame = CGRect(x: 0, y: 0, width: 320, height: 600)
             _ = v.fittingSize
+        }
+    }
+
+    func setupWebServer() {
+        guard config.Web_server_enabled else {
+            webServer.stop()                       // no-op (and silent) if already stopped
+            if webServerRunning  { webServerRunning  = false }
+            if webServerError != nil { webServerError = nil }
+            return
+        }
+        webServerError = nil
+        webServer.start(port: config.Web_server_port, appState: self) { [weak self] (errorMsg: String?) in
+            guard let self else { return }
+            self.webServerRunning = (errorMsg == nil)
+            self.webServerError   = errorMsg
+            if errorMsg == nil { self.webServer.updateTXTRecord() }
         }
     }
 
@@ -913,6 +963,8 @@ final class AppState: ObservableObject {
         // Re-sync menu caches with current show states (show_next changes after recordings complete).
         // Skip while the menu is open — @Published changes would cause SwiftUI to redraw it mid-display.
         if !menuIsOpen { rebuildMenuEntries() }
+
+        if webServerRunning { webServer.updateTXTRecord() }
     }
 
     // MARK: - Recording
@@ -1767,6 +1819,7 @@ final class AppState: ObservableObject {
         guard isRecording else {
             VLCBridge.shared.releasePlayer()
             recordingManager.stopAll()
+            webServer.stop()
             saveConfig()
             NSApplication.shared.terminate(nil)
             return
@@ -1783,11 +1836,13 @@ final class AppState: ObservableObject {
         switch alert.runModal() {
         case .alertFirstButtonReturn:  // keep recordings running, quit
             VLCBridge.shared.releasePlayer()
+            webServer.stop()
             saveConfig()
             NSApplication.shared.terminate(nil)
         case .alertSecondButtonReturn: // stop all, then quit
             VLCBridge.shared.releasePlayer()
             recordingManager.stopAll()
+            webServer.stop()
             saveConfig()
             NSApplication.shared.terminate(nil)
         default:                       // Go Back — cancel

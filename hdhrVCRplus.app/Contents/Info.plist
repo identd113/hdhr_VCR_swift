@@ -27,5 +27,14 @@
         <key>NSAllowsArbitraryLoads</key>
         <true/>
     </dict>
+    <!-- Required for NWListener mDNS service registration (web server LAN advertisement) -->
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>hdhrVCR+ serves a Watch Now page on your local network.</string>
+    <!-- Sparkle auto-update feed (raw GitHub URL so the appcast.xml in the repo is always live) -->
+    <key>SUFeedURL</key>
+    <string>https://raw.githubusercontent.com/identd113/hdhr_VCR_swift/main/appcast.xml</string>
+    <!-- EdDSA public key for Sparkle update signature verification -->
+    <key>SUPublicEDKey</key>
+    <string>BaNxyGsmR3wZu+mfHEfxm+Yy9O0WmfNXkGl+VbkI5OQ=</string>
 </dict>
 </plist>

@@ -21,19 +21,7 @@ struct WatchNowView: View {
     // GuideEntry.id == StartTime — NOT safe for ForEach (many channels share a start time).
     private var onAirChannels: [(channel: LineupEntry, entry: GuideEntry)] {
         guard let device = selectedDevice else { return [] }
-        var seen = Set<String>()
-        return (state.lineups[device.DeviceID] ?? [])
-            .compactMap { ch -> (channel: LineupEntry, entry: GuideEntry)? in
-                guard seen.insert(ch.GuideNumber).inserted else { return nil }
-                guard let entry = state.guideEntries(deviceId: device.DeviceID, channelNum: ch.GuideNumber)
-                    .first(where: { $0.startDate <= now && $0.endDate > now })
-                else { return nil }
-                return (ch, entry)
-            }
-            .sorted { a, b in
-                if a.channel.isFavorite != b.channel.isFavorite { return a.channel.isFavorite }
-                return a.channel.GuideNumber.channelSortKey < b.channel.GuideNumber.channelSortKey
-            }
+        return state.onAirNow(for: device, at: now)
     }
 
     var body: some View {
@@ -201,13 +189,7 @@ struct WatchNowRow: View {
         "\(Self.timeFmt.string(from: entry.startDate)) – \(Self.timeFmt.string(from: entry.endDate))"
     }
 
-    private var timeRemaining: String {
-        let mins = Int(max(0, entry.endDate.timeIntervalSinceNow) / 60)
-        if mins < 1  { return "ending soon" }
-        if mins < 60 { return "\(mins)m left" }
-        let h = mins / 60; let m = mins % 60
-        return m == 0 ? "\(h)h left" : "\(h)h \(m)m left"
-    }
+    private var timeRemainingStr: String { timeRemaining(until: entry.endDate) }
 
     private var channelLogo: NSImage? {
         state.channelImageURLs["\(device.DeviceID):\(channel.GuideNumber)"]
@@ -305,7 +287,7 @@ struct WatchNowRow: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
-            Text("\(timeRange)  ·  \(timeRemaining)")
+            Text("\(timeRange)  ·  \(timeRemainingStr)")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
             actionRow(managed: managed)
