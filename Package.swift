@@ -22,6 +22,7 @@ let package = Package(
             name: "hdhr_VCRTests",
             dependencies: ["hdhr_VCR"],
             path: "Tests/hdhr_VCRTests",
+            exclude: ["__Snapshots__"],   // reference PNGs — accessed by filesystem path, not bundled
             swiftSettings: [
                 .unsafeFlags(["-F", devFw])
             ],
