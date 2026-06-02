@@ -148,5 +148,8 @@ func makeTestAppState(
     s.lineups = lineups
     s.isStartingUp = false
     s.statusMessage = "Ready"
+    // Prevent the async startup() task from binding port 1980, which conflicts
+    // with the running app during a full `swift test` run (smoke tests hit :1980).
+    s.config.Web_server_enabled = false
     return s
 }
