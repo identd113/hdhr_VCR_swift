@@ -831,8 +831,8 @@ final class AppState: ObservableObject {
             Task { await probeForNewDevices() }
         }
 
-        // Refresh lineup + guide every GuideHours / 2 (default: every 12 h, min: 1 h)
-        let refreshInterval = max(3600.0, Double(config.GuideHours) * 1800.0)
+        // Refresh lineup + guide every GuideHours / 4 (default: every 6 h, min: 1 h)
+        let refreshInterval = max(3600.0, Double(config.GuideHours) * 900.0)
         if now.timeIntervalSince(lastGuideRefresh) > refreshInterval {
             Task { await refreshGuides() }
         }
