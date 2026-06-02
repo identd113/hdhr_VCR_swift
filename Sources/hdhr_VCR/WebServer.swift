@@ -1027,25 +1027,23 @@ final class WebServer {
     private func buildTXTRecord(state: AppState) -> NWTXTRecord {
         var dict: [String: String] = ["path": "/", "port": "\(activePort)"]
 
-        let deviceByID = Dictionary(uniqueKeysWithValues: state.devices.map { ($0.DeviceID, $0) })
-
         // All current recordings — rec, rec2, rec3, … (one key per show)
-        // Format: "Title · Channel · TunerName [· tunerN]"
+        // Format: "Title · Channel · DeviceID [· tunerN]"
         for (i, show) in state.recordingShows.enumerated() {
-            let key    = i == 0 ? "rec" : "rec\(i + 1)"
-            let tuner  = deviceByID[show.hdhr_record]?.displayName ?? show.hdhr_record
-            let slot   = show.show_tuner_resource.isEmpty ? tuner : "\(tuner) · \(show.show_tuner_resource)"
-            dict[key]  = String("\(show.show_title) · \(show.show_channel) · \(slot)".prefix(120))
+            let key  = i == 0 ? "rec" : "rec\(i + 1)"
+            let slot = show.show_tuner_resource.isEmpty
+                ? show.hdhr_record
+                : "\(show.hdhr_record) · \(show.show_tuner_resource)"
+            dict[key] = String("\(show.show_title) · \(show.show_channel) · \(slot)".prefix(120))
         }
 
         // Up to 3 upcoming shows — next, next2, next3
-        // Format: "Title · Channel · TunerName · in Xm"
+        // Format: "Title · Channel · DeviceID · in Xh Ym"
         let upcoming = state.activeShows.filter { $0.show_next != nil }.prefix(3)
         for (i, show) in upcoming.enumerated() {
-            let key   = i == 0 ? "next" : "next\(i + 1)"
-            let rel   = txtRelativeTime(show.show_next!)
-            let tuner = deviceByID[show.hdhr_record]?.displayName ?? show.hdhr_record
-            dict[key] = String("\(show.show_title) · \(show.show_channel) · \(tuner) · \(rel)".prefix(120))
+            let key = i == 0 ? "next" : "next\(i + 1)"
+            let rel = txtRelativeTime(show.show_next!)
+            dict[key] = String("\(show.show_title) · \(show.show_channel) · \(show.hdhr_record) · \(rel)".prefix(120))
         }
 
         return NWTXTRecord(dict)

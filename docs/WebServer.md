@@ -337,10 +337,10 @@ When the listener reaches `.ready`, it advertises via `NWListener.Service`:
 |---|---|---|
 | `path` | `/` | `/` |
 | `port` | Web server port | `1980` |
-| `rec`, `rec2`, … | `"Title · Channel · TunerName [· tunerN]"` for each active recording | `"Jeopardy! · 5.1 · HDHomeRun FLEX 4K · tuner0"` |
-| `next`, `next2`, `next3` | `"Title · Channel · TunerName · in Xh Ym"` for the next 3 upcoming shows | `"60 Minutes · 8.1 · HDHomeRun FLEX 4K · in 2h 15m"` |
+| `rec`, `rec2`, … | `"Title · Channel · DeviceID [· tunerN]"` for each active recording | `"Jeopardy! · 5.1 · 105404BE · tuner0"` |
+| `next`, `next2`, `next3` | `"Title · Channel · DeviceID · in Xh Ym"` for the next 3 upcoming shows | `"60 Minutes · 8.1 · 105404BE · in 2h 15m"` |
 
-**Tuner name** is `HDHRDevice.FriendlyName` (e.g. `"HDHomeRun FLEX 4K"`) decoded from the device's `discover.json`. Devices found only via UDP broadcast (before a full device-info fetch) fall back to `DeviceID` (e.g. `"105404BE"`). For active recordings, `show_tuner_resource` (e.g. `"tuner0"`) is appended when available — it is populated 1.5 s after recording starts from the `X-HDHomeRun-Resource` response header.
+**DeviceID** is the 8-character hex tuner ID (e.g. `"105404BE"`) stored on each show as `hdhr_record`. For active recordings, `show_tuner_resource` (e.g. `"tuner0"`) is appended when available — populated ~1.5 s after recording starts from the `X-HDHomeRun-Resource` response header.
 
 All values are truncated to 120 characters. The TXT record is refreshed on `.ready` and on every idle loop tick. `listener?.service` reassignment updates Bonjour in-place without restarting the listener. Advertisement is withdrawn when `stop()` calls `listener?.cancel()`.
 

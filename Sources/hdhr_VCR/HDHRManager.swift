@@ -235,7 +235,6 @@ final class HDHRManager {
             seenIPs.insert(ipStr)
 
             found.append(HDHRDevice(DeviceID: String(format: "%08X", deviceID),
-                                    FriendlyName: nil,
                                     LocalIP: ipStr, BaseURL: "http://\(ipStr)",
                                     TunerCount: nil, FirmwareVersion: nil))
         }

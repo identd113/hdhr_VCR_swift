@@ -294,16 +294,12 @@ extension ConfigFile {
 struct HDHRDevice: Identifiable, Equatable {
     var id: String { DeviceID }
     var DeviceID: String
-    var FriendlyName: String?   // e.g. "HDHomeRun FLEX 4K" — from discover.json; nil for UDP-only discoveries
-    var LocalIP: String         // present in cloud response; extracted from BaseURL for local/mDNS responses
+    var LocalIP: String     // present in cloud response; extracted from BaseURL for local/mDNS responses
     var BaseURL: String?
     var TunerCount: Int?
     var FirmwareVersion: String?
-    var DeviceAuth: String?     // used to call SiliconDust cloud guide API (EXTEND and similar)
-    var LineupURL: String?      // from discover.json; stored but not used — lineupURL always uses LocalIP
-
-    /// Human-readable label for menus and mDNS TXT records: FriendlyName when available, DeviceID otherwise.
-    var displayName: String { FriendlyName ?? DeviceID }
+    var DeviceAuth: String?   // used to call SiliconDust cloud guide API (EXTEND and similar)
+    var LineupURL: String?    // from discover.json; stored but not used — lineupURL always uses LocalIP
 
     var streamBase: String { "http://\(LocalIP):5004" }
     var guideURL:   String { "http://\(LocalIP)/guide.json" }
@@ -313,12 +309,11 @@ struct HDHRDevice: Identifiable, Equatable {
 
 extension HDHRDevice: Codable {
     enum CodingKeys: String, CodingKey {
-        case DeviceID, FriendlyName, LocalIP, BaseURL, TunerCount, FirmwareVersion, DeviceAuth, LineupURL
+        case DeviceID, LocalIP, BaseURL, TunerCount, FirmwareVersion, DeviceAuth, LineupURL
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         DeviceID        = try  c.decode(String.self, forKey: .DeviceID)
-        FriendlyName    = try? c.decode(String.self, forKey: .FriendlyName)
         BaseURL         = try? c.decode(String.self, forKey: .BaseURL)
         TunerCount      = try? c.decode(Int.self,    forKey: .TunerCount)
         FirmwareVersion = try? c.decode(String.self, forKey: .FirmwareVersion)
