@@ -89,7 +89,7 @@ private let sampleGuideJSON = """
 ]
 """
 
-// MARK: - URL building
+// MARK: - URL building (stateless — no MockURLProtocol, can run concurrently)
 
 @Suite("GuideStore URL building")
 struct GuideStoreURLTests {
@@ -97,22 +97,21 @@ struct GuideStoreURLTests {
     @Test func localDevice_defaultHours() {
         let device = makeLocalDevice(ip: "192.168.1.100")
         let url = GuideStore.guideURL(for: device)
-        #expect(url?.absoluteString == "http://192.168.1.100/guide.json?Duration=43200",
-                "Default 12 hours = 43200 seconds")
+        // Duration is in hours directly (API changed from seconds in 979a9f2)
+        #expect(url?.absoluteString == "http://192.168.1.100/guide.json?Duration=12")
     }
 
     @Test func localDevice_customHours() {
         let device = makeLocalDevice(ip: "10.0.0.5")
         let url = GuideStore.guideURL(for: device, hours: 24)
-        #expect(url?.absoluteString == "http://10.0.0.5/guide.json?Duration=86400",
-                "24 hours = 86400 seconds")
+        #expect(url?.absoluteString == "http://10.0.0.5/guide.json?Duration=24")
     }
 
     @Test func cloudDevice() {
         let device = makeCloudDevice(auth: "token99")
         let url = GuideStore.guideURL(for: device, hours: 12)
         #expect(url?.absoluteString ==
-                "https://api.hdhomerun.com/api/guide.php?DeviceAuth=token99&Duration=43200")
+                "https://api.hdhomerun.com/api/guide.php?DeviceAuth=token99&Duration=12")
     }
 
     @Test func cloudDevice_usesCloudHostNotLocal() {
@@ -123,254 +122,265 @@ struct GuideStoreURLTests {
     }
 }
 
-// MARK: - Load and populate
+// MARK: - MockURLProtocol-dependent suites (serialized to prevent handler collisions)
+//
+// MockURLProtocol.requestHandler is a static var shared across all tests. Swift Testing
+// runs suites concurrently by default; without serialization, test B in suite Y can
+// overwrite the handler set by test A in suite X before A's URLSession request fires.
+// Wrapping all affected suites under a single .serialized parent prevents this race.
 
-@Suite("GuideStore load")
-struct GuideStoreLoadTests {
+@Suite("GuideStore (mock-network)", .serialized)
+struct GuideStoreMockNetworkTests {
 
-    @Test @MainActor func load_populatesChannelsByDevice() async {
-        let store = GuideStore(session: makeSession())
-        let device = makeLocalDevice()
-        MockURLProtocol.requestHandler = { req in
-            (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!)
+    // MARK: - Load and populate
+
+    @Suite("GuideStore load")
+    struct GuideStoreLoadTests {
+
+        @Test @MainActor func load_populatesChannelsByDevice() async {
+            let store = GuideStore(session: makeSession())
+            let device = makeLocalDevice()
+            MockURLProtocol.requestHandler = { req in
+                (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!)
+            }
+            await store.load(for: device)
+            #expect(store.channels(deviceId: device.DeviceID).count == 2)
         }
-        await store.load(for: device)
-        #expect(store.channels(deviceId: device.DeviceID).count == 2)
-    }
 
-    @Test @MainActor func load_marksTimestampFresh() async {
-        let store = GuideStore(session: makeSession())
-        let device = makeLocalDevice()
-        #expect(!store.isFresh(deviceId: device.DeviceID))
-        MockURLProtocol.requestHandler = { req in
-            (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!)
+        @Test @MainActor func load_marksTimestampFresh() async {
+            let store = GuideStore(session: makeSession())
+            let device = makeLocalDevice()
+            #expect(!store.isFresh(deviceId: device.DeviceID))
+            MockURLProtocol.requestHandler = { req in
+                (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!)
+            }
+            await store.load(for: device)
+            #expect(store.isFresh(deviceId: device.DeviceID))
         }
-        await store.load(for: device)
-        #expect(store.isFresh(deviceId: device.DeviceID))
-    }
 
-    @Test @MainActor func load_networkError_doesNotCrash() async {
-        let store = GuideStore(session: makeSession())
-        let device = makeLocalDevice()
-        MockURLProtocol.requestHandler = { _ in throw URLError(.notConnectedToInternet) }
-        await store.load(for: device)
-        #expect(store.channels(deviceId: device.DeviceID).isEmpty)
-        #expect(!store.isFresh(deviceId: device.DeviceID))
-    }
-
-    @Test @MainActor func load_badJSON_doesNotCrash() async {
-        let store = GuideStore(session: makeSession())
-        let device = makeLocalDevice()
-        MockURLProtocol.requestHandler = { req in
-            (okResponse(for: req.url!), Data("not json".utf8))
+        @Test @MainActor func load_networkError_doesNotCrash() async {
+            let store = GuideStore(session: makeSession())
+            let device = makeLocalDevice()
+            MockURLProtocol.requestHandler = { _ in throw URLError(.notConnectedToInternet) }
+            await store.load(for: device)
+            #expect(store.channels(deviceId: device.DeviceID).isEmpty)
+            #expect(!store.isFresh(deviceId: device.DeviceID))
         }
-        await store.load(for: device)
-        #expect(store.channels(deviceId: device.DeviceID).isEmpty)
-    }
-}
 
-// MARK: - Channel entry index
-
-@Suite("GuideStore channel entries")
-struct GuideStoreEntryTests {
-
-    @Test @MainActor func entries_allPresentBeforeCutoff() async {
-        let store = GuideStore(session: makeSession())
-        let device = makeLocalDevice()
-        MockURLProtocol.requestHandler = { req in
-            (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!)
+        @Test @MainActor func load_badJSON_doesNotCrash() async {
+            let store = GuideStore(session: makeSession())
+            let device = makeLocalDevice()
+            MockURLProtocol.requestHandler = { req in
+                (okResponse(for: req.url!), Data("not json".utf8))
+            }
+            await store.load(for: device)
+            #expect(store.channels(deviceId: device.DeviceID).isEmpty)
         }
-        await store.load(for: device)
-        let before = Date(timeIntervalSince1970: 1_000_000_000)
-        let entries = store.entries(deviceId: device.DeviceID, channelNum: "5.1", after: before)
-        #expect(entries.count == 2)
     }
 
-    @Test @MainActor func entries_noneAfterCutoff() async {
-        let store = GuideStore(session: makeSession())
-        let device = makeLocalDevice()
-        MockURLProtocol.requestHandler = { req in
-            (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!)
+    // MARK: - Channel entry index
+
+    @Suite("GuideStore channel entries")
+    struct GuideStoreEntryTests {
+
+        @Test @MainActor func entries_allPresentBeforeCutoff() async {
+            let store = GuideStore(session: makeSession())
+            let device = makeLocalDevice()
+            MockURLProtocol.requestHandler = { req in
+                (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!)
+            }
+            await store.load(for: device)
+            let before = Date(timeIntervalSince1970: 1_000_000_000)
+            let entries = store.entries(deviceId: device.DeviceID, channelNum: "5.1", after: before)
+            #expect(entries.count == 2)
         }
-        await store.load(for: device)
-        let after = Date(timeIntervalSince1970: 2_001_000_000)  // past all sample entries
-        let entries = store.entries(deviceId: device.DeviceID, channelNum: "5.1", after: after)
-        #expect(entries.isEmpty)
-    }
 
-    @Test @MainActor func entries_sortedByStartTime() async {
-        let store = GuideStore(session: makeSession())
-        let device = makeLocalDevice()
-        MockURLProtocol.requestHandler = { req in
-            (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!)
+        @Test @MainActor func entries_noneAfterCutoff() async {
+            let store = GuideStore(session: makeSession())
+            let device = makeLocalDevice()
+            MockURLProtocol.requestHandler = { req in
+                (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!)
+            }
+            await store.load(for: device)
+            let after = Date(timeIntervalSince1970: 2_001_000_000)
+            let entries = store.entries(deviceId: device.DeviceID, channelNum: "5.1", after: after)
+            #expect(entries.isEmpty)
         }
-        await store.load(for: device)
-        let before = Date(timeIntervalSince1970: 1_000_000_000)
-        let entries = store.entries(deviceId: device.DeviceID, channelNum: "5.1", after: before)
-        #expect(entries.first?.Title == "Local News")
-        #expect(entries.last?.Title == "The Daily Show")
-    }
 
-    @Test @MainActor func entries_unknownChannel_isEmpty() async {
-        let store = GuideStore(session: makeSession())
-        let device = makeLocalDevice()
-        MockURLProtocol.requestHandler = { req in
-            (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!)
+        @Test @MainActor func entries_sortedByStartTime() async {
+            let store = GuideStore(session: makeSession())
+            let device = makeLocalDevice()
+            MockURLProtocol.requestHandler = { req in
+                (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!)
+            }
+            await store.load(for: device)
+            let before = Date(timeIntervalSince1970: 1_000_000_000)
+            let entries = store.entries(deviceId: device.DeviceID, channelNum: "5.1", after: before)
+            #expect(entries.first?.Title == "Local News")
+            #expect(entries.last?.Title == "The Daily Show")
         }
-        await store.load(for: device)
-        let entries = store.entries(deviceId: device.DeviceID, channelNum: "99.9")
-        #expect(entries.isEmpty)
-    }
-}
 
-// MARK: - Series index
-
-@Suite("GuideStore series lookup")
-struct GuideStoreSeriesTests {
-
-    @Test @MainActor func nextEpisode_findsFirstMatch() async {
-        let store = GuideStore(session: makeSession())
-        let device = makeLocalDevice()
-        MockURLProtocol.requestHandler = { req in
-            (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!)
+        @Test @MainActor func entries_unknownChannel_isEmpty() async {
+            let store = GuideStore(session: makeSession())
+            let device = makeLocalDevice()
+            MockURLProtocol.requestHandler = { req in
+                (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!)
+            }
+            await store.load(for: device)
+            let entries = store.entries(deviceId: device.DeviceID, channelNum: "99.9")
+            #expect(entries.isEmpty)
         }
-        await store.load(for: device)
-        let before = Date(timeIntervalSince1970: 1_000_000_000)
-        let match = store.nextEpisode(seriesID: "ds456", after: before)
-        #expect(match != nil)
-        #expect(match?.entry.Title == "The Daily Show")
     }
 
-    @Test @MainActor func nextEpisode_channelFilter_picks81() async {
-        let store = GuideStore(session: makeSession())
-        let device = makeLocalDevice()
-        MockURLProtocol.requestHandler = { req in
-            (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!)
+    // MARK: - Series index
+
+    @Suite("GuideStore series lookup")
+    struct GuideStoreSeriesTests {
+
+        @Test @MainActor func nextEpisode_findsFirstMatch() async {
+            let store = GuideStore(session: makeSession())
+            let device = makeLocalDevice()
+            MockURLProtocol.requestHandler = { req in
+                (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!)
+            }
+            await store.load(for: device)
+            let before = Date(timeIntervalSince1970: 1_000_000_000)
+            let match = store.nextEpisode(seriesID: "ds456", after: before)
+            #expect(match != nil)
+            #expect(match?.entry.Title == "The Daily Show")
         }
-        await store.load(for: device)
-        let before = Date(timeIntervalSince1970: 1_000_000_000)
-        let match = store.nextEpisode(seriesID: "ds456", channelNum: "8.1", after: before)
-        #expect(match?.entry.EpisodeTitle == "Episode B")
-        #expect(match?.channelNum == "8.1")
-    }
 
-    @Test @MainActor func nextEpisode_channelFilter_noMatch() async {
-        let store = GuideStore(session: makeSession())
-        let device = makeLocalDevice()
-        MockURLProtocol.requestHandler = { req in
-            (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!)
+        @Test @MainActor func nextEpisode_channelFilter_picks81() async {
+            let store = GuideStore(session: makeSession())
+            let device = makeLocalDevice()
+            MockURLProtocol.requestHandler = { req in
+                (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!)
+            }
+            await store.load(for: device)
+            let before = Date(timeIntervalSince1970: 1_000_000_000)
+            let match = store.nextEpisode(seriesID: "ds456", channelNum: "8.1", after: before)
+            #expect(match?.entry.EpisodeTitle == "Episode B")
+            #expect(match?.channelNum == "8.1")
         }
-        await store.load(for: device)
-        let before = Date(timeIntervalSince1970: 1_000_000_000)
-        let match = store.nextEpisode(seriesID: "ds456", channelNum: "99.9", after: before)
-        #expect(match == nil)
-    }
 
-    @Test @MainActor func nextEpisode_afterCutoff_returnsNil() async {
-        let store = GuideStore(session: makeSession())
-        let device = makeLocalDevice()
-        MockURLProtocol.requestHandler = { req in
-            (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!)
+        @Test @MainActor func nextEpisode_channelFilter_noMatch() async {
+            let store = GuideStore(session: makeSession())
+            let device = makeLocalDevice()
+            MockURLProtocol.requestHandler = { req in
+                (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!)
+            }
+            await store.load(for: device)
+            let before = Date(timeIntervalSince1970: 1_000_000_000)
+            let match = store.nextEpisode(seriesID: "ds456", channelNum: "99.9", after: before)
+            #expect(match == nil)
         }
-        await store.load(for: device)
-        let after = Date(timeIntervalSince1970: 2_001_000_000)
-        let match = store.nextEpisode(seriesID: "ds456", after: after)
-        #expect(match == nil)
-    }
 
-    @Test @MainActor func nextEpisode_unknownSeriesID_returnsNil() async {
-        let store = GuideStore(session: makeSession())
-        let device = makeLocalDevice()
-        MockURLProtocol.requestHandler = { req in
-            (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!)
+        @Test @MainActor func nextEpisode_afterCutoff_returnsNil() async {
+            let store = GuideStore(session: makeSession())
+            let device = makeLocalDevice()
+            MockURLProtocol.requestHandler = { req in
+                (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!)
+            }
+            await store.load(for: device)
+            let after = Date(timeIntervalSince1970: 2_001_000_000)
+            let match = store.nextEpisode(seriesID: "ds456", after: after)
+            #expect(match == nil)
         }
-        await store.load(for: device)
-        #expect(store.nextEpisode(seriesID: "does-not-exist") == nil)
-    }
-}
 
-// MARK: - Invalidation
-
-@Suite("GuideStore invalidation")
-struct GuideStoreInvalidationTests {
-
-    @Test @MainActor func invalidate_clearsOneDevice() async {
-        let store = GuideStore(session: makeSession())
-        let device = makeLocalDevice()
-        MockURLProtocol.requestHandler = { req in
-            (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!)
+        @Test @MainActor func nextEpisode_unknownSeriesID_returnsNil() async {
+            let store = GuideStore(session: makeSession())
+            let device = makeLocalDevice()
+            MockURLProtocol.requestHandler = { req in
+                (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!)
+            }
+            await store.load(for: device)
+            #expect(store.nextEpisode(seriesID: "does-not-exist") == nil)
         }
-        await store.load(for: device)
-        #expect(!store.channels(deviceId: device.DeviceID).isEmpty)
-
-        store.invalidate(deviceId: device.DeviceID)
-        #expect(store.channels(deviceId: device.DeviceID).isEmpty)
-        #expect(!store.isFresh(deviceId: device.DeviceID))
-        let before = Date(timeIntervalSince1970: 1_000_000_000)
-        #expect(store.nextEpisode(seriesID: "ds456", after: before) == nil,
-                "Series index should be cleared after invalidation")
     }
 
-    @Test @MainActor func invalidateAll_clearsEverything() async {
-        let store = GuideStore(session: makeSession())
-        let d1 = makeLocalDevice(ip: "1.1.1.1", id: "DEV1")
-        let d2 = makeLocalDevice(ip: "2.2.2.2", id: "DEV2")
-        MockURLProtocol.requestHandler = { req in
-            (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!)
+    // MARK: - Invalidation
+
+    @Suite("GuideStore invalidation")
+    struct GuideStoreInvalidationTests {
+
+        @Test @MainActor func invalidate_clearsOneDevice() async {
+            let store = GuideStore(session: makeSession())
+            let device = makeLocalDevice()
+            MockURLProtocol.requestHandler = { req in
+                (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!)
+            }
+            await store.load(for: device)
+            #expect(!store.channels(deviceId: device.DeviceID).isEmpty)
+
+            store.invalidate(deviceId: device.DeviceID)
+            #expect(store.channels(deviceId: device.DeviceID).isEmpty)
+            #expect(!store.isFresh(deviceId: device.DeviceID))
+            let before = Date(timeIntervalSince1970: 1_000_000_000)
+            #expect(store.nextEpisode(seriesID: "ds456", after: before) == nil,
+                    "Series index should be cleared after invalidation")
         }
-        await store.loadAll(devices: [d1, d2])
-        #expect(store.channelsByDevice.count == 2)
 
-        store.invalidateAll()
-        #expect(store.channelsByDevice.isEmpty)
-        #expect(!store.isFresh(deviceId: d1.DeviceID))
-        #expect(!store.isFresh(deviceId: d2.DeviceID))
-    }
-}
+        @Test @MainActor func invalidateAll_clearsEverything() async {
+            let store = GuideStore(session: makeSession())
+            let d1 = makeLocalDevice(ip: "1.1.1.1", id: "DEV1")
+            let d2 = makeLocalDevice(ip: "2.2.2.2", id: "DEV2")
+            MockURLProtocol.requestHandler = { req in
+                (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!)
+            }
+            await store.loadAll(devices: [d1, d2])
+            #expect(store.channelsByDevice.count == 2)
 
-// MARK: - loadAll
-
-@Suite("GuideStore loadAll")
-struct GuideStoreLoadAllTests {
-
-    @Test @MainActor func loadAll_loadsMultipleDevices() async {
-        let store = GuideStore(session: makeSession())
-        let d1 = makeLocalDevice(ip: "1.1.1.1", id: "DEV1")
-        let d2 = makeLocalDevice(ip: "2.2.2.2", id: "DEV2")
-        MockURLProtocol.requestHandler = { req in
-            (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!)
+            store.invalidateAll()
+            #expect(store.channelsByDevice.isEmpty)
+            #expect(!store.isFresh(deviceId: d1.DeviceID))
+            #expect(!store.isFresh(deviceId: d2.DeviceID))
         }
-        await store.loadAll(devices: [d1, d2])
-        #expect(store.channelsByDevice.count == 2)
-        #expect(store.isFresh(deviceId: d1.DeviceID))
-        #expect(store.isFresh(deviceId: d2.DeviceID))
     }
 
-    @Test @MainActor func loadAll_emptyList_isNoop() async {
-        let store = GuideStore(session: makeSession())
-        await store.loadAll(devices: [])
-        #expect(store.channelsByDevice.isEmpty)
-    }
-}
+    // MARK: - loadAll
 
-// MARK: - isFresh
+    @Suite("GuideStore loadAll")
+    struct GuideStoreLoadAllTests {
 
-@Suite("GuideStore freshness")
-struct GuideStoreFreshnessTests {
-
-    @Test @MainActor func isFresh_defaultInterval() async {
-        let store = GuideStore(session: makeSession())
-        let device = makeLocalDevice()
-        MockURLProtocol.requestHandler = { req in
-            (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!)
+        @Test @MainActor func loadAll_loadsMultipleDevices() async {
+            let store = GuideStore(session: makeSession())
+            let d1 = makeLocalDevice(ip: "1.1.1.1", id: "DEV1")
+            let d2 = makeLocalDevice(ip: "2.2.2.2", id: "DEV2")
+            MockURLProtocol.requestHandler = { req in
+                (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!)
+            }
+            await store.loadAll(devices: [d1, d2])
+            #expect(store.channelsByDevice.count == 2)
+            #expect(store.isFresh(deviceId: d1.DeviceID))
+            #expect(store.isFresh(deviceId: d2.DeviceID))
         }
-        await store.load(for: device)
-        #expect(store.isFresh(deviceId: device.DeviceID), "Just loaded — must be fresh within 1h window")
-        #expect(!store.isFresh(deviceId: device.DeviceID, within: 0), "0-second window — must not be fresh")
+
+        @Test @MainActor func loadAll_emptyList_isNoop() async {
+            let store = GuideStore(session: makeSession())
+            await store.loadAll(devices: [])
+            #expect(store.channelsByDevice.isEmpty)
+        }
     }
 
-    @Test @MainActor func isFresh_beforeLoad_isFalse() {
-        let store = GuideStore(session: makeSession())
-        #expect(!store.isFresh(deviceId: "NEVER-LOADED"))
+    // MARK: - isFresh
+
+    @Suite("GuideStore freshness")
+    struct GuideStoreFreshnessTests {
+
+        @Test @MainActor func isFresh_defaultInterval() async {
+            let store = GuideStore(session: makeSession())
+            let device = makeLocalDevice()
+            MockURLProtocol.requestHandler = { req in
+                (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!)
+            }
+            await store.load(for: device)
+            #expect(store.isFresh(deviceId: device.DeviceID), "Just loaded — must be fresh within 1h window")
+            #expect(!store.isFresh(deviceId: device.DeviceID, within: 0), "0-second window — must not be fresh")
+        }
+
+        @Test @MainActor func isFresh_beforeLoad_isFalse() {
+            let store = GuideStore(session: makeSession())
+            #expect(!store.isFresh(deviceId: "NEVER-LOADED"))
+        }
     }
 }
