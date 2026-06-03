@@ -79,6 +79,7 @@ Falls back to **SiliconDust cloud API** (`http://discover.hdhomerun.com/discover
 | `@Published webServerRunning: Bool` | `true` once NWListener reaches `.ready` state |
 | `@Published webServerError: String?` | Non-nil when the listener fails (port in use, OS error, etc.) |
 | `setupWebServer()` | Starts, restarts, or stops the server based on `config.Web_server_enabled` and `config.Web_server_port`. Called at step 3 of `startup()` and again whenever Settings saves a changed web server config. |
+| `discordWebDelete(_ show: Show)` | `@MainActor`. Called by `WebServer.handleDelete` before clearing state. Edits the existing "Recording Started" Discord embed in-place (if `discord_start_msg_id` is non-empty) using `Discord_on_start` as the gate — the embed was created under that flag, so the update follows the same preference. No-op when `show_recording == false` or `discord_start_msg_id` is empty. |
 
 The web server is stopped explicitly in all three `quit()` exit branches before `NSApplication.terminate(nil)`.
 

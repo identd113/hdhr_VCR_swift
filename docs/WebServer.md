@@ -26,6 +26,7 @@ func updateTXTRecord()   // @MainActor — refreshes mDNS TXT record; called fro
 |---|---|---|
 | GET | `/` or `/index.html` | Full guide HTML page |
 | GET | `/api/now.json` | JSON array of on-air entries (see schema below) |
+| GET | `/api/shows-html` | HTML fragment for the shows section; polled by the page's JS every 30 s to refresh recording/scheduled/paused tables without a full reload |
 | POST | `/api/record` | Schedule a recording |
 | POST | `/api/delete` | Remove a managed show and stop any active recording |
 | anything else | | 404 plain text |
@@ -73,7 +74,7 @@ Schedules a recording by calling `state.addShowFromGuide(entry:type:device:chann
 
 ## POST /api/delete
 
-Removes a managed show from the schedule and stops any active recording. Mirrors the in-app delete path: `recordingManager.stop()` → clear `show_url` and `show_recording` → `state.deleteShow()` → save config.
+Removes a managed show from the schedule and stops any active recording. Flow: `state.discordWebDelete(show)` (edits the existing "Recording Started" Discord embed in-place if one was created) → `recordingManager.stop()` → clear `show_url` and `show_recording` → `state.deleteShow()` → save config.
 
 The stream URL is explicitly cleared on the live show record *before* `deleteShow` is called so the idle loop cannot race in and restart the recording in the gap.
 
@@ -103,19 +104,24 @@ Self-contained HTML with all CSS inlined. Auto-refreshes every 60 seconds via `<
 
 Page structure (top to bottom):
 
-1. **Page header** — title + device link (single device) or device switcher bar (multiple devices)
+1. **Page header** — `h1` title + `≡` status toggle button + tuner badge / device link (single device) or device switcher bar (multiple devices)
 2. **Tuner popover** (`#t-pop`) — fixed overlay; shown by clicking a tuner badge
 3. **Summary panel** (`#sum`) — always visible; selected show details + actions
 4. **Record type modal** (`#rec-modal`) — fixed overlay; appears on Record click
-5. **Guide grid** — 6-hour scrollable cable-guide grid
-6. **Watch Now cards** — collapsible; on-air show info cards (no streaming links)
-7. **Shows section** — collapsible tables: recording / scheduled / paused
+5. **Status panel** (`#status-panel`) — hidden by default; toggled by the `≡` button in the header. Contains:
+   - **Watch Now cards** (`<details open>`) — on-air show info cards (no streaming links)
+   - **Shows section** (`#shows-section`) — collapsible tables: recording / scheduled / paused
+6. **Guide grid** — scrollable cable-guide grid (width/time-window depends on UA; see below)
+
+**`≡` status button** (`#status-btn`): `background:none` button next to the h1. Clicking calls `toggleStatus()` which toggles `#status-panel` display and updates `aria-expanded`. Button color shifts from `var(--t4)` (muted) to `var(--ac)` (accent) when the panel is open.
+
+**Auto-select on load**: after `setDev('')` initializes the guide, an IIFE finds the first visible `.g-row` and selects the currently-airing `.g-prog` on that row, populating the summary panel immediately without requiring a click.
 
 ---
 
 ### Device switcher bar / header
 
-**Single device:** `h1` title + tuner badge + device web UI link (`http://{LocalIP}/`) inline.
+**Single device:** `h1` title + `≡` status toggle button + tuner badge + device web UI link (`http://{LocalIP}/`) inline.
 
 **Multiple devices:** `h1` on its own line, then `#dev-bar` with:
 - **All Tuners** button (`.d-btn.d-sel` when active) — shows all channels, deduplicates by `GuideNumber` (first-device-wins) via JS
@@ -185,11 +191,20 @@ On **Schedule**: `confirmRecord()` POSTs to `/api/record`. On success, the guide
 
 ### Guide grid
 
-A cable-TV-style horizontal time grid. **Six hours** starting from the previous 30-minute boundary.
+A cable-TV-style horizontal time grid. Window width depends on the requesting client's User-Agent:
+
+| Client | Window | Default (GuideHours = 24) |
+|---|---|---|
+| Desktop (Macintosh / Windows / Linux UA) | `GuideHours / 2` hours | 12 h |
+| Mobile (iPhone / iPad / Android UA) | `GuideHours / 4` hours | 6 h |
+
+`isDesktopUA(_ ua: String)` (private helper) classifies the UA server-side. Modern iPads in desktop-browsing mode report `"Macintosh"` and receive the wider window. Window always starts at the previous 30-minute boundary (`winStart = (nowTs / 1800) * 1800`).
+
+`div.gi` `min-width` = `max(1200, winSec / 1800 * 100)` px — scales up for wider windows so program blocks never compress below a readable width.
 
 **Layout:**
 - `div.gw` — scroll container (`overflow: auto; max-height: 60vh`)
-- `div.gi` — inner, `min-width: 1200px`
+- `div.gi` — inner, `min-width` scales with window (see above)
 - Sticky time-header (`top: 0; z-index: 10`)
 - Sticky channel column (`left: 0; z-index: 2`) — 130 px wide
 - Corner cell `z-index: 11`
@@ -198,9 +213,11 @@ A cable-TV-style horizontal time grid. **Six hours** starting from the previous 
 
 Each `.g-row` carries `data-dev` and `data-ch` for device filtering.
 
-**Time header:** 7 hourly ticks at `i/6 × 100%` + red "now" bar.
+**`setDev()` and DOM caching**: `.g-row` and `.card` NodeLists are cached into `_rows` / `_cards` at page load and reused on every device switch — avoids repeated `querySelectorAll` calls.
 
-**Vertical gridlines:** CSS `repeating-linear-gradient` at every **8.3333%** (= 30 min ÷ 360 min).
+**Time header:** 7 ticks at `winSec/6` intervals (e.g. 2 h apart for a 12 h window, 1 h apart for 6 h) + red "now" bar.
+
+**Vertical gridlines:** CSS `repeating-linear-gradient` at every **8.3333%** of the timeline element width. Since the timeline spans `winSec` seconds, each gridline represents `winSec × 0.08333 / 60` minutes — 30 min for the mobile 6 h window, 60 min for the desktop 12 h window.
 
 **Program block color coding:**
 
@@ -285,7 +302,8 @@ Empty blocks are omitted.
 | `cancelRecord()` | Hides modal |
 | `confirmRecord()` | POSTs `/api/record`; updates block + summary in-place on success |
 | `doDelete()` | POSTs `/api/delete`; removes badge/color from block, restores Record button |
-| `setDev(id)` | Filters guide rows and Watch Now cards by `data-dev`; empty string = All (with JS dedup) |
+| `setDev(id)` | Filters guide rows and Watch Now cards by `data-dev`; empty string = All (with JS dedup); uses cached `_rows`/`_cards` NodeLists |
+| `toggleStatus()` | Shows/hides `#status-panel`; updates `#status-btn` color and `aria-expanded` |
 | `devFull(devId)` | Returns true if `tuners[devId].a >= tuners[devId].t` |
 | `showTunerInfo(devId, anchor)` | Opens tuner popover anchored below the clicked badge |
 | `closeTunerPop()` | Hides tuner popover |
@@ -338,7 +356,7 @@ When the listener reaches `.ready`, it advertises via `NWListener.Service`:
 | `path` | `/` | `/` |
 | `port` | Web server port | `1980` |
 | `rec`, `rec2`, … | `"Title · Channel · DeviceID [· tunerN]"` for each active recording | `"Jeopardy! · 5.1 · 105404BE · tuner0"` |
-| `next`, `next2`, `next3` | `"Title · Channel · DeviceID · in Xh Ym"` for the next 3 upcoming shows | `"60 Minutes · 8.1 · 105404BE · in 2h 15m"` |
+| `next` | `"Title · Channel · DeviceID · in Xh Ym"` for the nearest upcoming show | `"60 Minutes · 8.1 · 105404BE · in 2h 15m"` |
 
 **DeviceID** is the 8-character hex tuner ID (e.g. `"105404BE"`) stored on each show as `hdhr_record`. For active recordings, `show_tuner_resource` (e.g. `"tuner0"`) is appended when available — populated ~1.5 s after recording starts from the `X-HDHomeRun-Resource` response header.
 

@@ -271,6 +271,4 @@ All informational text explicitly uses `Color(NSColor.labelColor)` or `Color(NSC
 
 - **Elapsed timer doesn't tick** — elapsed/remaining times are static (computed when menu opens). NSMenu doesn't refresh automatically; a real-time display would require a window-based popover for recording detail.
 
-- **Bonus Time indicator in recording menu** — when a sports show is recording past the guide end in Bonus Time, there's no callout like "🏈 Bonus Time" in the menu. The remaining-time counter shows the padded end time, but the user has no visible explanation.
-
 - **No "Record Now" shortcut** — there's no direct path to immediately record a show that's currently on air without going through Watch Now or the Add Show wizard.

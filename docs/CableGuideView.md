@@ -232,7 +232,7 @@ The monitor returns `nil` (consuming the event) so the channel column itself doe
 - **Cached state** (`displayStart`, `timeSlots`) rebuilt once via `rebuildCaches()` on appear/guideHours/width changes — not on scroll.
 - **`ShowBlocksRow.equatable()`** — skips body re-eval for unchanged rows during scroll.
 - **`visibleEntries(_:)`** — filters only; no sort. `GuideStore.buildIndex` pre-sorts each channel's `Guide` array when indexing, so `ch.Guide` is already in `StartTime` order by the time the view reads it.
-- **No `LazyVStack`** — eager rendering of ~106 rows is fast because `.equatable()` skips unchanged rows.
+- **`LazyVStack(pinnedViews: [.sectionHeaders])`** wraps the row `ForEach` so only visible rows instantiate; `.equatable()` additionally skips body re-evaluation for unchanged visible rows during scroll.
 
 ---
 
