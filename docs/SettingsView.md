@@ -208,7 +208,7 @@ See [WebServer.md](WebServer.md) for full route and feature documentation.
 One-tap operations for recovering from stuck states. Each uses `maintenanceRow(_:_:action:)` — a helper that takes a title string, a description string, and an async closure that returns a result string. The result is shown in a green `Label` at the bottom of the section after completion.
 
 **Shows section:**
-- **Rescan Series** — calls `state.rescheduleAllSeries()`, which iterates all active SeriesID shows, reloads each device's guide if stale, and resets `show_next` to the next matching episode. Result: `"N series show(s) rescheduled"`.
+- **Rescan Series** — calls `state.rescheduleAllSeries()`, which iterates all active, non-paused, non-recording SeriesID shows, reloads each device's guide if stale, and resets `show_next` to the next matching episode. The count shown in the result excludes currently-recording shows. Result: `"N series show(s) rescheduled"`.
 - **Reset Fail Counts** — calls `state.resetAllFailCounts()`, zeroing `show_fail_count` and clearing `show_fail_reason` on every show without touching `show_active`. Useful when shows get stuck in Paused after transient network failures.
 - **Reactivate Paused Shows** — calls `state.reactivatePausedShows()`, setting `show_active = true` on all inactive shows and resetting their fail counts. Result: count of shows reactivated.
 
