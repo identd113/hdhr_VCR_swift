@@ -299,7 +299,7 @@ final class WebServer {
         }
         guard let body,
               let obj = try? JSONSerialization.jsonObject(with: body) as? [String: Any]
-        else { return .badRequest("Missing required fields") }
+        else { return .badRequest("Missing or invalid JSON body") }
 
         let showId   = obj["showId"]      as? String ?? ""
         let deviceId = obj["deviceId"]    as? String ?? ""
@@ -307,7 +307,7 @@ final class WebServer {
         let title    = obj["title"]       as? String ?? ""
 
         guard !showId.isEmpty || (!deviceId.isEmpty && !guideNum.isEmpty)
-        else { return .badRequest("Missing required fields") }
+        else { return .badRequest("Missing required field: showId or (deviceId + guideNumber)") }
 
         // Primary: showId (from edit modal). Fallback: active recording on device+channel, then title match.
         let show: Show? = !showId.isEmpty

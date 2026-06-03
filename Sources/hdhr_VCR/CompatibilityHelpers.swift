@@ -1,18 +1,6 @@
 import SwiftUI
 import Darwin
 
-/// Returns true if the effective macOS major version is ≥ `major`.
-/// Checks the "simulatedMacOSVersion" UserDefaults key first, so the
-/// developer can preview compatibility shims on the current machine without
-/// needing an older Mac (set via Settings → Maintenance → Developer).
-/// 0 = unset (use real OS); storing the real version number also means "not simulating".
-func effectiveMacOS(_ major: Int) -> Bool {
-    let sim  = UserDefaults.standard.integer(forKey: "simulatedMacOSVersion")
-    let real = ProcessInfo.processInfo.operatingSystemVersion.majorVersion
-    if sim > 0 && sim != real { return sim >= major }
-    return real >= major
-}
-
 /// Network interface entry for the interface picker.
 struct NetworkInterfaceInfo: Identifiable {
     var id: String { name }
@@ -84,8 +72,7 @@ func availableNetworkInterfaces() -> [NetworkInterfaceInfo] {
 
 // MARK: - EmptyStateView
 
-/// Compatibility wrapper for ContentUnavailableView (macOS 14+).
-/// Shows the native view on macOS 14+ unless an older OS is being simulated.
+/// Thin wrapper around ContentUnavailableView for call-site convenience.
 struct EmptyStateView: View {
     let title: String
     let systemImage: String

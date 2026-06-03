@@ -1024,7 +1024,7 @@ final class AppState: ObservableObject {
                 shows[index].show_url = url; show.show_url = url
             } else {
                 glog("[\(show.show_title)] NO STREAM URL — ch=\(show.show_channel) device=\(show.hdhr_record)", level: .error)
-                shows[index].recordFailure(reason: "No stream URL"); return
+                shows[index].recordFailure(reason: "No stream URL for ch \(show.show_channel) on \(show.hdhr_record)"); return
             }
         }
         if show.show_fail_count == failThreshold - 1 {
@@ -1044,7 +1044,7 @@ final class AppState: ObservableObject {
         }
         guard diskOK(for: show) else {
             glog("[\(show.show_title)] DISK FULL — skipping recording", level: .warning)
-            shows[index].recordFailure(reason: "Disk too full")
+            shows[index].recordFailure(reason: "Disk over \(Int(maxDiskPct))% — free up space")
             notify("Recording Skipped", body: show.show_title, subtitle: "Disk over \(Int(maxDiskPct))%")
             discordShow("💾 Recording Skipped", show: show, color: 0xE67E22, enabled: config.Discord_on_skipped,
                         extra: [("Reason", "Disk over \(Int(maxDiskPct))% — free up space", false)])
@@ -1146,7 +1146,7 @@ final class AppState: ObservableObject {
         let fileSize  = fileAttrs?[.size] as? Int ?? 0
 
         if !path.isEmpty && fileSize == 0 {
-            shows[index].recordFailure(reason: "Output file missing or empty")
+            shows[index].recordFailure(reason: "Output file missing or empty — check disk space")
             glog("[\(show.show_title)] STOP file missing or empty — fail_count=\(shows[index].show_fail_count)", level: .error)
             notify("Recording Failed", body: show.show_title, subtitle: "File not written — check disk space and URL")
             discordShow("❌ Recording Failed", show: show, color: 0xE74C3C, enabled: config.Discord_on_failed,
