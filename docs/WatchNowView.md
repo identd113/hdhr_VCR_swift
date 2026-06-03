@@ -55,7 +55,7 @@ Width = 34% of scroll-container width, capped at 220pt (`.containerRelativeFrame
   - **Watch** (`.borderedProminent`, `watchNowBlue`) — `state.watchInApp(url:title:deviceId:)`; shown only when `VLCBridge.shared.isAvailable`; label `"Watch [title]"`
   - **VLC** (`.borderedProminent`, VLC orange) — `state.watchInVLC(url:deviceId:)`; shown only when `config.Watch_in_VLC`; label `"Watch [title] in VLC"`
   - **Edit** (`.bordered`) — opens `"edit-show"` window for managed shows; label `"Edit [title]"`
-  - **Record** (`.borderedProminent`, red tint) — sets `state.pendingAddEntry` and opens `"add-show"` window for unmanaged shows; label `"Record [title]"`
+  - **Record** (`.borderedProminent`, red tint) — for unmanaged shows: calls `state.tunersFull(for: device.DeviceID)` first; if all tuners are occupied, shows an "All Tuners Busy" alert and does **not** open the Add Show window (the show is on air now and would immediately fail). If tuners are available, sets `state.pendingAddEntry` and opens `"add-show"`. Label: `"Record [title]"`
 
 ---
 

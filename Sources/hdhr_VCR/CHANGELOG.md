@@ -1,5 +1,12 @@
 # hdhrVCRplus Changelog
 
+## 2026-06-03 (260603-1501)
+
+- **VLC stream counts as an occupied tuner** — the tuner-full gate in `startRecording` now adds `VLCPlayerWindowManager.shared.currentDeviceID == deviceId ? 1 : 0` to the recording count before comparing against `TunerCount`. Previously, watching live TV via the in-app player consumed a tuner the scheduler couldn't see, causing a second recording to start, receive an 805 "All Tuners In Use" error from the device, and spin in a fail→retry loop. New helper `AppState.tunersFull(for: deviceId)` encapsulates the combined check and is reused by the WatchNow guard below.
+- **WatchNow Record button — tuner-full block** — clicking **Record** on a currently-airing show now calls `tunersFull(for:)` first; if all tuners are busy it shows an alert ("All Tuners Busy — free a tuner first") and does **not** open the Add Show window. Shows not currently on air are unaffected — their window opens normally since tuners may be free by airtime.
+- **Stop-recording PGID fix** — `RecordingManager.stop()` was sending `kill(-caffenatePID, SIGTERM)` intending a process-group kill, but on macOS `caffeinate` joins the curl child's process group after forking, so the actual PGID equals the curl PID, not the caffeinate PID. Changed to direct `kill(caffenatePID, SIGTERM)` and `kill(curlPID, SIGTERM)` — both processes are killed individually and reliably. Deleting a currently-recording show (via UI or web endpoint) now always tears down the recording.
+- **Reattach captures curl PID directly** — `reattachRecordings()` already iterates `ps -Axo pid,args` at startup; it now matches both caffeinate and curl lines in the same pass and calls `recordingManager.reattachCurlPid(showId:pid:)` for the curl process. This replaces the async `pgrep -P caffeinate_pid` approach that was unreliable when the PGID mismatch was present. Log now shows both PIDs: `[Startup] Reattached 'Title' caffeinate=N` and `[Startup] Reattached 'Title' curl=N`.
+
 ## 2026-06-03 (260603-1011)
 
 - **Web edit modal — type-change reschedule** — changing a show's type to seriesChannel or seriesAll from the web UI now immediately triggers `rescheduleAllSeries()` so the guide is searched right away; previously `show_next` was left at the old single-episode timestamp until the next guide refresh.

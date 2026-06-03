@@ -300,9 +300,14 @@ final class AppState: ObservableObject {
 
         let now    = Date()
 
+        // Two passes: caffeinate PIDs first (authoritative — sets show_recording), then curl PIDs.
+        // Both processes appear in ps with show_id: in their args; we collect both so stop() can
+        // kill each one directly — the process-group kill is unreliable because caffeinate moves
+        // itself into the curl child's process group on macOS, so PGID != caffeinate PID.
+        var curlLines: [(pid: Int32, showId: String)] = []
+
         for line in output.components(separatedBy: "\n") {
-            guard line.contains("caffeinate"),
-                  line.contains("show_id:"),
+            guard line.contains("show_id:"),
                   line.contains("hdhrVCRplus") else { continue }
 
             let trimmed = line.trimmingCharacters(in: .whitespaces)
@@ -314,13 +319,20 @@ final class AppState: ObservableObject {
             let showId = String(tail.prefix(while: { !$0.isWhitespace && $0 != "'" && $0 != "\"" }))
             guard !showId.isEmpty else { continue }
 
-            guard let i = shows.firstIndex(where: { $0.show_id == showId }),
-                  let endDate = shows[i].show_end, endDate > now else { continue }
+            if line.contains("caffeinate") {
+                guard let i = shows.firstIndex(where: { $0.show_id == showId }),
+                      let endDate = shows[i].show_end, endDate > now else { continue }
+                shows[i].show_recording = true
+                shows[i].show_tuner_resource = ""   // will be re-captured by captureResourceHeaders()
+                recordingManager.reattach(showId: showId, pid: pid)
+                glog("[Startup] Reattached '\(shows[i].show_title)' pid=\(pid) ends \(endDate)")
+            } else if line.contains("/usr/bin/curl") {
+                curlLines.append((pid, showId))
+            }
+        }
 
-            shows[i].show_recording = true
-            shows[i].show_tuner_resource = ""   // will be re-captured by captureResourceHeaders()
-            recordingManager.reattach(showId: showId, pid: pid)
-            glog("[Startup] Reattached '\(shows[i].show_title)' pid=\(pid) ends \(endDate)")
+        for (pid, showId) in curlLines {
+            recordingManager.reattachCurlPid(showId: showId, pid: pid)
         }
 
         // Any show with a discord_start_msg_id that wasn't reattached as actively recording
@@ -1011,7 +1023,10 @@ final class AppState: ObservableObject {
         // Enforce tuner limit: skip if all slots on this device are already occupied
         if let device = devices.first(where: { $0.DeviceID == show.hdhr_record }),
            let tunerCount = device.TunerCount {
-            let active = recordingShows.filter { $0.hdhr_record == show.hdhr_record }.count
+            let recActive = recordingShows.filter { $0.hdhr_record == show.hdhr_record }.count
+            // VLC counts as an occupied tuner on whichever device it's streaming from.
+            let vlcActive = VLCPlayerWindowManager.shared.currentDeviceID == show.hdhr_record ? 1 : 0
+            let active = recActive + vlcActive
             if active >= tunerCount {
                 glog("[\(show.show_title)] TUNER FULL \(show.hdhr_record): \(active)/\(tunerCount) — skipping start", level: .warning)
                 // Fire conflict notification once per show+episode window to avoid per-tick spam.
@@ -1865,6 +1880,16 @@ final class AppState: ObservableObject {
     }
 
     // MARK: - Conflict detection
+
+    /// True when every tuner on `deviceId` is already occupied (recordings + VLC).
+    /// Used by WatchNowView to block adding a currently-airing show that can't start.
+    func tunersFull(for deviceId: String) -> Bool {
+        guard let device = devices.first(where: { $0.DeviceID == deviceId }),
+              let tunerCount = device.TunerCount, tunerCount > 0 else { return false }
+        let recActive = recordingShows.filter { $0.hdhr_record == deviceId }.count
+        let vlcActive = VLCPlayerWindowManager.shared.currentDeviceID == deviceId ? 1 : 0
+        return recActive + vlcActive >= tunerCount
+    }
 
     func hasConflict(for show: Show) -> Bool {
         guard let next = show.show_next,

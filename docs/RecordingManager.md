@@ -28,7 +28,7 @@ Each recording produces **two ps lines**: `caffeinate -i` (parent) + `curl` (chi
 
 ## Stop
 
-`stop()` calls `p.terminate()` and sends `SIGTERM` to the process group (`kill(-pid, SIGTERM)`) so the curl child dies even if `Process` no longer tracks it.
+`stop()` sends `SIGTERM` to both the curl PID (via `curlPids`) and the caffeinate PID directly. **Do not use `kill(-caffenatePID, SIGTERM)` (process-group kill)** — on macOS, `caffeinate` moves itself into the curl child's process group after forking, so the process group ID equals the curl PID, not the caffeinate PID; the negative-PID form targets the wrong group and does nothing.
 
 On successful recording start, `show_fail_count` is decremented by 1 (min 0) to give recovering shows headroom.
 
@@ -77,4 +77,4 @@ Toggle in Settings → Advanced → "Verbose curl logging". When enabled:
 ps -Aa | grep show_id | grep -v grep   # two lines per active recording
 ```
 
-The caffeinate PID is what RecordingManager tracks. `kill -0 <pid>` is the liveness check.
+Both the caffeinate PID (`pids`) and the curl PID (`curlPids`) are tracked. `kill(pid, 0)` is the liveness check (against the caffeinate PID). At startup, `reattachRecordings()` populates both by scanning `ps -Axo pid,args` in a single pass: lines containing `"caffeinate"` → `pids`; lines containing `/usr/bin/curl` (without caffeinate) → `curlPids` via `reattachCurlPid(showId:pid:)`. This replaces the old async `pgrep -P caffeinate_pid` approach which was unreliable due to the PGID mismatch.

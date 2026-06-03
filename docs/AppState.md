@@ -68,6 +68,7 @@ Falls back to **SiliconDust cloud API** (`http://discover.hdhomerun.com/discover
 | `nextShowMinutes` | Minutes until nearest active show; drives orange `clock.badge` icon when ≤ 30 |
 | `availableDeviceCount` | Excludes devices with missing lineup or guide; used in status message |
 | `onAirNow(for:at:)` | Returns one `(channel: LineupEntry, entry: GuideEntry)` per unique on-air channel for a device at `date` (default `Date()`), sorted favorites-first then by channel number. Used by `WatchNowView` and `WebServer.buildNowJSON`. |
+| `tunersFull(for: deviceId)` | Returns `true` when every tuner on the device is occupied. Counts **both** active recordings (`recordingShows`) and the in-app VLC stream (`VLCPlayerWindowManager.shared.currentDeviceID`). Use this — never count recordings alone — because watching and recording occupy tuners equally. Used by `startRecording` and `WatchNowView`. |
 
 ---
 

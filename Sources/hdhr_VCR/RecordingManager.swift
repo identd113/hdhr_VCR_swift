@@ -65,8 +65,9 @@ final class RecordingManager {
             curlPids.removeValue(forKey: showId)
         }
         if let pid = pids[showId] {
-            // Kill the entire caffeinate process group (caffeinate + curl child)
-            kill(-pid, SIGTERM)
+            // Kill caffeinate directly. Group kill (kill(-pid)) is unreliable because on macOS
+            // caffeinate joins the curl child's process group, so PGID != caffeinate PID.
+            kill(pid, SIGTERM)
             pids.removeValue(forKey: showId)
         }
         clearHeaderFile(showId: showId)
@@ -130,13 +131,15 @@ final class RecordingManager {
     /// Register an already-running caffeinate PID without launching a new process.
     func reattach(showId: String, pid: Int32) {
         pids[showId] = pid
-        let showIdCopy = showId
-        Task.detached(priority: .utility) { [weak self] in
-            if let curlPid = self?.findCurlChild(of: pid) {
-                await MainActor.run { [weak self] in self?.curlPids[showIdCopy] = curlPid }
-            }
-        }
-        glog("[Rec] Reattached \(showId) pid=\(pid)")
+        glog("[Rec] Reattached \(showId) caffeinate=\(pid)")
+    }
+
+    /// Register a curl PID found in ps during startup reattach. Called after reattach() so both
+    /// halves of the pair are killable independently — the group kill is unreliable on macOS
+    /// because caffeinate moves itself into the curl child's process group.
+    func reattachCurlPid(showId: String, pid: Int32) {
+        curlPids[showId] = pid
+        glog("[Rec] Reattached \(showId) curl=\(pid)")
     }
 
     // MARK: - Status

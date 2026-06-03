@@ -181,6 +181,8 @@ struct WatchNowRow: View {
     let entry: GuideEntry
     let posterImage: NSImage?
 
+    @State private var showTunerFullAlert = false
+
     private static let timeFmt: DateFormatter = {
         let f = DateFormatter(); f.timeStyle = .short; f.dateStyle = .none; return f
     }()
@@ -227,6 +229,12 @@ struct WatchNowRow: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .alert("All Tuners Busy", isPresented: $showTunerFullAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            let count = device.TunerCount.map { "\($0)" } ?? "all"
+            Text("\(entry.Title) is on now, but \(count) tuner(s) on \(device.DeviceID) are occupied. Free a tuner first, then add this show.")
+        }
     }
 
     @ViewBuilder
@@ -337,13 +345,17 @@ struct WatchNowRow: View {
                 .controlSize(.small)
             } else {
                 Button {
-                    state.pendingAddEntry = (device, channel, entry)
-                    state.pendingAddEntryGeneration += 1
-                    NSApp.activate(ignoringOtherApps: true)
-                    if let w = NSApp.windows.first(where: { $0.title == "Add Show" }) {
-                        w.makeKeyAndOrderFront(nil)
+                    if state.tunersFull(for: device.DeviceID) {
+                        showTunerFullAlert = true
                     } else {
-                        openWindow(id: "add-show")
+                        state.pendingAddEntry = (device, channel, entry)
+                        state.pendingAddEntryGeneration += 1
+                        NSApp.activate(ignoringOtherApps: true)
+                        if let w = NSApp.windows.first(where: { $0.title == "Add Show" }) {
+                            w.makeKeyAndOrderFront(nil)
+                        } else {
+                            openWindow(id: "add-show")
+                        }
                     }
                 } label: {
                     Label("Record", systemImage: "record.circle").font(.caption.bold())

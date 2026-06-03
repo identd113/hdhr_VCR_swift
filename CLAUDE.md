@@ -85,6 +85,13 @@ Views/
 3. Add `init(from:)` decode line with fallback default
 4. Update `Show.blank()` initializer
 
+### Tuner occupancy — watching and recording are equivalent
+A VLC in-app stream occupies a tuner on the device just as a recording does. Any logic that reasons about how many tuners are in use **must** count both:
+- `recordingShows.filter { $0.hdhr_record == deviceId }.count` — active recordings
+- `VLCPlayerWindowManager.shared.currentDeviceID == deviceId ? 1 : 0` — VLC stream
+
+The helper `AppState.tunersFull(for: deviceId)` encapsulates this. Use it rather than counting recordings alone. The same combined count is used in `startRecording` (tuner-full gate), `WatchNowView` (Record button guard), and conflict detection.
+
 ### Testing recordings without live TV
 Set `show_next` to `now + 30s` and `show_end` to `now + 2min`. The idle loop picks it up and attempts curl. Check `show_fail_reason` if it fails; enable verbose curl to see the raw HTTP exchange.
 
