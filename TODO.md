@@ -22,22 +22,6 @@ This applies everywhere "Watch Now" / "Watch in App" is offered: `WatchNowView`,
 
 ---
 
-### Closed captioning / subtitle track selector
-
-Add a closed captioning option to `WatchNowView` (and the in-app VLC player). HDHomeRun streams carry CEA-608/708 captions embedded in the MPEG-2/H.264 stream; VLC can decode and render them.
-
-**Implementation notes**:
-- `VLCBridge` already opens the stream — add `libvlc_video_set_spu(mp, track)` to select a subtitle track (SPU track in VLC terminology).
-- `libvlc_video_get_spu_count(mp)` and `libvlc_video_get_spu_description(mp)` enumerate available tracks.
-- Expose a CC toggle button in `VLCPlayerView` toolbar (next to the audio output picker). When tapped, cycle through available SPU tracks or show a picker.
-- Surface a simpler CC on/off toggle in `WatchNowView`'s action row so the user can enable captions before the player opens (pass a `captionsEnabled: Bool` flag through `watchInApp()`).
-- Add `CC_enabled: Bool = false` to `AppConfig` so the preference persists.
-- **Timing caveat**: SPU track enumeration only works after the media is playing — enable CC once tracks load rather than passing a pre-open flag.
-
-**Key files**: `VLCBridge.swift` (SPU track API), `VLCPlayerView.swift` (toolbar toggle), `WatchNowView.swift` (action row option), `AppConfig` (new field), `SettingsView.swift` (optional default toggle).
-
----
-
 ### Elapsed/remaining timer in recording menu doesn't tick
 
 Times shown in `recordingMenu` / `scheduledMenu` are computed when the menu opens and stay static for the duration it's open. NSMenu doesn't auto-refresh its view hierarchy. A real-time display would require redesigning recording detail as a window-based popover.
@@ -121,4 +105,8 @@ Color the background of each guide entry row in the `.menu` mode add-show cascad
 
 ## Code Quality
 
-*(no open items)*
+### Remove unused `_release` symbol from VLCBridge
+
+`_release` (`libvlc_release`) is loaded via `dlsym` in `VLCBridge.init()` but never called. The VLC instance lives for the app's entire lifetime so releasing it is never needed. Remove the stored property, typedef, and `sym()` lookup.
+
+**Key file**: `VLCBridge.swift`.
