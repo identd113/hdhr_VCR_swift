@@ -138,6 +138,39 @@ hdhr_VCR passes the user's `Default_transcode` config value directly. VLC handle
 
 ---
 
+## Guide API
+
+### Device tested
+
+HDHomeRun EXTEND, Model HDTC-2US, Firmware 20260313, DeviceID 105404BE, at 10.0.2.101. Tested 2026-06-03.
+
+### Local `/guide.json` — Not present on EXTEND
+
+The local HTTP server on this device returns **404 Not Found** for `/guide.json`. The device does not serve guide data locally. Guide data requires the cloud API authenticated via DeviceAuth.
+
+### Cloud API — `https://api.hdhomerun.com/api/guide.php`
+
+Supports an optional `Start` epoch parameter that controls the beginning of the guide window:
+
+- **Without `Start`**: response contains shows starting from approximately now.
+- **With `Start=<epoch>`**: response starts from that epoch. Shows that were airing at that moment are included — the window begins at the given timestamp, not at the show's StartTime.
+
+Confirmed: `Start=now-3600` returned shows with StartTime going back ~2 hours (i.e., shows that were airing at the start time), while a no-Start call returned only shows from current time onward.
+
+`Duration` remains in hours and controls the window length forward from `Start`.
+
+**URL formats:**
+
+```
+# No Start (window begins now)
+https://api.hdhomerun.com/api/guide.php?DeviceAuth=<auth>&Duration=<hours>
+
+# With Start (window begins at epoch)
+https://api.hdhomerun.com/api/guide.php?DeviceAuth=<auth>&Start=<epoch>&Duration=<hours>
+```
+
+---
+
 ## Known Open Source Implementations (for reference)
 
 - **libhdhomerun** (github.com/Silicondust/libhdhomerun) — official C library; canonical source for control protocol details
@@ -158,4 +191,4 @@ Primary documentation sources: `info.hdhomerun.com/info/http_api`, `info.hdhomer
 | `/status.json` | Active tuner occupancy: Resource, VctNumber, TargetIP |
 | `/tunerN/vstatus` | Per-tuner signal: ss, snq, lock, bps (key-value text) |
 | `/lineup.post?favorite=±N` | Mark/unmark channel favorite |
-| `api.hdhomerun.com/api/guide.php` | Cloud guide data (DeviceAuth gated) |
+| `api.hdhomerun.com/api/guide.php` | Cloud guide data (DeviceAuth gated); optional `Start=<epoch>` shifts window start; `Duration` in hours from Start |

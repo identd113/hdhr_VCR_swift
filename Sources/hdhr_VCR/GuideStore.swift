@@ -46,11 +46,14 @@ final class GuideStore {
     /// - Cloud devices (has DeviceAuth): SiliconDust cloud API
     /// - Local devices: device's own /guide.json endpoint
     nonisolated static func guideURL(for device: HDHRDevice, hours: Int = 12) -> URL? {
+        // Start 1 hour before now so displayStart's 30-60 min lookback always has data.
+        // Duration +1 preserves the configured future window despite the earlier start.
+        let start = Int(Date().timeIntervalSince1970) - 3600
         if let auth = device.DeviceAuth {
-            return URL(string: "https://api.hdhomerun.com/api/guide.php?DeviceAuth=\(auth)&Duration=\(hours)")
+            return URL(string: "https://api.hdhomerun.com/api/guide.php?DeviceAuth=\(auth)&Start=\(start)&Duration=\(hours + 1)")
         }
         if device.LocalIP.isEmpty { return nil }
-        return URL(string: "http://\(device.LocalIP)/guide.json?Duration=\(hours)")
+        return URL(string: "http://\(device.LocalIP)/guide.json?Start=\(start)&Duration=\(hours + 1)")
     }
 
     // MARK: - Loading
