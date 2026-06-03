@@ -1,8 +1,10 @@
 #!/bin/bash
 # Release build: Developer ID signing + notarization.
 # Usage:
-#   ./deploy_release.sh                  # sign + notarize + staple + open
-#   ./deploy_release.sh --skip-notarize  # sign only (for testing the signing step)
+#   ./deploy_release.sh <version>                  # sign + notarize + staple + open
+#   ./deploy_release.sh <version> --skip-notarize  # sign only (for testing the signing step)
+#
+# <version> is the semantic version string, e.g.: 1.3.0
 #
 # Prerequisites:
 #   1. Apple Developer Program membership ($99/year)
@@ -25,7 +27,18 @@ NOTARY_PROFILE="hdhrVCR-notary"   # name used in store-credentials above
 # ─────────────────────────────────────────────────────────────────────────────
 
 SKIP_NOTARIZE=0
-[[ "$1" == "--skip-notarize" ]] && SKIP_NOTARIZE=1
+RELEASE_VERSION=""
+for _arg in "$@"; do
+    case "$_arg" in
+        --skip-notarize) SKIP_NOTARIZE=1 ;;
+        *) RELEASE_VERSION="$_arg" ;;
+    esac
+done
+if [ -z "$RELEASE_VERSION" ]; then
+    echo "Usage: ./deploy_release.sh <version> [--skip-notarize]"
+    echo "       e.g.: ./deploy_release.sh 1.3.0"
+    exit 1
+fi
 
 echo "==> Stopping running instance…"
 pkill -x hdhr_VCR 2>/dev/null && echo "    Stopped." || echo "    Not running."
@@ -33,7 +46,14 @@ pkill -x hdhr_VCR 2>/dev/null && echo "    Stopped." || echo "    Not running."
 echo "==> Generating version…"
 APP_VERSION="$(date +%y%m%d-%H%M)"
 printf 'let appVersion = "%s"\n' "$APP_VERSION" > Sources/hdhr_VCR/Version.swift
-echo "    Version: $APP_VERSION"
+# Derive a monotonic CFBundleVersion from the semver (e.g. 1.3.0 → 10300)
+IFS='.' read -r _VER_MAJOR _VER_MINOR _VER_PATCH <<< "$RELEASE_VERSION"
+_BUILD_NUM=$(( _VER_MAJOR * 10000 + _VER_MINOR * 100 + _VER_PATCH ))
+_PLIST="$APP/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $RELEASE_VERSION" "$_PLIST"
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $_BUILD_NUM" "$_PLIST"
+echo "    Build stamp:  $APP_VERSION"
+echo "    Release:      $RELEASE_VERSION (CFBundleVersion $_BUILD_NUM)"
 
 echo "==> Building (release)…"
 swift build -c release
@@ -129,13 +149,14 @@ else
     echo "    Add this <item> block to appcast.xml (or run tools/publish_release.sh):"
     echo "    ─────────────────────────────────────────────────────────────────────"
     printf '    <item>\n'
-    printf '        <title>Version %s</title>\n' "$APP_VERSION"
+    printf '        <title>Version %s</title>\n' "$RELEASE_VERSION"
     printf '        <pubDate>%s</pubDate>\n' "$(date -u '+%a, %d %b %Y %H:%M:%S +0000')"
-    printf '        <sparkle:version>%s</sparkle:version>\n' "$APP_VERSION"
+    printf '        <sparkle:version>%s</sparkle:version>\n' "$_BUILD_NUM"
+    printf '        <sparkle:shortVersionString>%s</sparkle:shortVersionString>\n' "$RELEASE_VERSION"
     printf '        <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>\n'
     printf '        <description><![CDATA[<ul><li>See Settings → About for changelog</li></ul>]]></description>\n'
     printf '        <enclosure\n'
-    printf '            url="https://github.com/identd113/hdhr_VCR_swift/releases/download/%s/hdhrVCRplus.zip"\n' "$APP_VERSION"
+    printf '            url="https://github.com/identd113/hdhr_VCR_swift/releases/download/v%s/hdhrVCRplus.zip"\n' "$RELEASE_VERSION"
     printf '            length="%s"\n' "$ZIP_SIZE"
     printf '            type="application/octet-stream"\n'
     printf '            sparkle:edSignature="%s"\n' "$SPARKLE_SIG"
