@@ -394,6 +394,12 @@ final class WebServer {
         // dateTime shows: only badge on their specific scheduled channel, not every airing everywhere.
         let mgdDateTimeCh = Set(activeMgd.filter { !$0.isSeries }
                                          .map { "\($0.show_title)|\($0.show_channel)" })
+        // Shared managed-show predicate — used in both the guide grid and What's On Now cards.
+        let checkMgd: (GuideEntry, LineupEntry) -> Bool = { e, ch in
+            if let sid = e.SeriesID, !sid.isEmpty, mgdSID.contains(sid) { return true }
+            if mgdTitSeries.contains(e.Title) { return true }
+            return mgdDateTimeCh.contains("\(e.Title)|\(ch.GuideNumber)")
+        }
 
         // ── Per-device tuner counts (total slots vs. currently occupied) ────────
         // active = live status.json snapshot; falls back to scheduled recording count.
@@ -508,7 +514,7 @@ final class WebServer {
         }
 
         // ── Guide grid rows — one row per (device × channel); JS deduplicates the "All" view ──
-        var rowsHTML = ""
+        var rowParts: [String] = []
         // Collect on-air entries here so the Watch Now section can reuse them without a second
         // full lineup × guideStore walk (onAirNow internally does the same walk).
         var nowByDevice: [String: [(ch: LineupEntry, entry: GuideEntry)]] = [:]
@@ -534,7 +540,7 @@ final class WebServer {
                     : "<img class=\"g-logo\" src=\"\(he(logoURL))\" onerror=\"this.style.display='none'\" alt=\"\">"
                 let isRecCh  = recChannelsByDevice[device.DeviceID]?.contains(ch.GuideNumber) ?? false
 
-                var blocksHTML = "<div class=\"g-now-bar\" style=\"left:\(nowPct)%\"></div>"
+                var blockParts: [String] = ["<div class=\"g-now-bar\" style=\"left:\(nowPct)%\"></div>"]
                 for e in entries {
                     let cs = max(e.StartTime, winStart) - winStart
                     let ce = min(e.EndTime,   winEnd)   - winStart
@@ -543,11 +549,7 @@ final class WebServer {
                     let isNow      = e.StartTime <= nowTs && e.EndTime > nowTs
                     if isNow { nowByDevice[device.DeviceID, default: []].append((ch, e)) }
                     let isEntryRec = isRecCh && isNow
-                    let isMgd: Bool = {
-                        if let sid = e.SeriesID, !sid.isEmpty, mgdSID.contains(sid) { return true }
-                        if mgdTitSeries.contains(e.Title) { return true }
-                        return mgdDateTimeCh.contains("\(e.Title)|\(ch.GuideNumber)")
-                    }()
+                    let isMgd      = checkMgd(e, ch)
                     var cls = "g-prog"
                     if isEntryRec      { cls += " g-prog-rec"   }
                     else if isNow      { cls += " g-prog-now"   }
@@ -583,18 +585,18 @@ final class WebServer {
                     } ?? ""
                     let da = "data-title=\"\(he(e.Title))\" data-syn=\"\(he(synAttr))\" data-poster=\"\(he(e.ImageURL ?? ""))\" data-ep=\"\(he(e.episodeInfoLabel ?? ""))\" data-date=\"\(he(dateAttr))\" data-genre=\"\(he(e.firstGenre ?? ""))\" data-start=\"\(e.StartTime)\" data-end=\"\(e.EndTime)\" data-device=\"\(he(device.DeviceID))\" data-num=\"\(he(ch.GuideNumber))\" data-chname=\"\(he(ch.GuideName))\" data-logo=\"\(he(logoURL))\" data-series=\"\(he(e.SeriesID ?? ""))\" data-managed=\"\(isMgd ? 1 : 0)\" data-recording=\"\(isEntryRec ? 1 : 0)\""
 
-                    blocksHTML += "<div class=\"\(cls)\" style=\"left:\(pct(cs))%;width:\(pct(ce - cs))%\" title=\"\(tip)\" \(da) onclick=\"showInfo(this)\"><div class=\"g-pi\">\(badge)<span class=\"g-ti\">\(he(e.Title))</span>\(subH)</div></div>"
+                    blockParts.append("<div class=\"\(cls)\" style=\"left:\(pct(cs))%;width:\(pct(ce - cs))%\" title=\"\(tip)\" \(da) onclick=\"showInfo(this)\"><div class=\"g-pi\">\(badge)<span class=\"g-ti\">\(he(e.Title))</span>\(subH)</div></div>")
                 }
 
-                rowsHTML += "<div class=\"g-row\" data-dev=\"\(he(device.DeviceID))\" data-ch=\"\(he(ch.GuideNumber))\"><div class=\"g-ch\">\(logoHTML)<div class=\"g-cl\"><span class=\"g-cn\">\(he(chLabel))</span><span class=\"g-cname\">\(he(ch.GuideName))</span></div></div><div class=\"g-tl\">\(blocksHTML)</div></div>"
+                rowParts.append("<div class=\"g-row\" data-dev=\"\(he(device.DeviceID))\" data-ch=\"\(he(ch.GuideNumber))\"><div class=\"g-ch\">\(logoHTML)<div class=\"g-cl\"><span class=\"g-cn\">\(he(chLabel))</span><span class=\"g-cname\">\(he(ch.GuideName))</span></div></div><div class=\"g-tl\">\(blockParts.joined())</div></div>")
             }
         }
-        if rowsHTML.isEmpty {
-            rowsHTML = "<div style=\"padding:24px;color:#555;text-align:center;font-size:.85rem\">No guide data — loading…</div>"
-        }
+        let rowsHTML = rowParts.isEmpty
+            ? "<div style=\"padding:24px;color:#555;text-align:center;font-size:.85rem\">No guide data — loading…</div>"
+            : rowParts.joined()
 
         // ── What's On Now cards (info only — no streaming; playback requires the Mac app) ──
-        var cards = ""
+        var cardParts: [String] = []
         for device in state.devices {
             for (ch, entry) in nowByDevice[device.DeviceID] ?? [] {
                 let logoURL   = state.channelImageURLs["\(device.DeviceID):\(ch.GuideNumber)"] ?? ""
@@ -609,20 +611,16 @@ final class WebServer {
                     return ""
                 }()
                 let isRec     = recording.contains { $0.hdhr_record == device.DeviceID && $0.show_channel == ch.GuideNumber }
-                let isManaged: Bool = {
-                    if let sid = entry.SeriesID, !sid.isEmpty, mgdSID.contains(sid) { return true }
-                    if mgdTitSeries.contains(entry.Title) { return true }
-                    return mgdDateTimeCh.contains("\(entry.Title)|\(ch.GuideNumber)")
-                }()
+                let isManaged = checkMgd(entry, ch)
                 var badges = ""
                 if isRec     { badges += "<span class=\"badge rec\">● Recording</span> " }
                 if isManaged { badges += "<span class=\"badge sched\">★ Scheduled</span>" }
                 let posterHTML = posterURL.isEmpty ? "" : "<img class=\"poster\" src=\"\(he(posterURL))\" onerror=\"this.style.display='none'\" alt=\"\">"
                 let logoHTML   = logoURL.isEmpty   ? "" : "<img class=\"logo\" src=\"\(he(logoURL))\" onerror=\"this.style.display='none'\" alt=\"\">"
-                cards += "<div class=\"card\" data-dev=\"\(he(device.DeviceID))\">\(posterHTML)<div class=\"meta\">\(logoHTML)<span class=\"ch\">\(chLabel)</span><div class=\"title\">\(he(entry.Title))</div>\(sub.isEmpty ? "" : "<div class=\"sub\">\(sub)</div>")<div class=\"time\">\(he(guideTimeRange(entry))) · \(he(timeRemaining(until: entry.endDate)))</div><div class=\"badges\">\(badges)</div></div></div>"
+                cardParts.append("<div class=\"card\" data-dev=\"\(he(device.DeviceID))\">\(posterHTML)<div class=\"meta\">\(logoHTML)<span class=\"ch\">\(chLabel)</span><div class=\"title\">\(he(entry.Title))</div>\(sub.isEmpty ? "" : "<div class=\"sub\">\(sub)</div>")<div class=\"time\">\(he(guideTimeRange(entry))) · \(he(timeRemaining(until: entry.endDate)))</div><div class=\"badges\">\(badges)</div></div></div>")
             }
         }
-        if cards.isEmpty { cards = "<p class=\"empty\">No guide data — loading…</p>" }
+        let cards = cardParts.isEmpty ? "<p class=\"empty\">No guide data — loading…</p>" : cardParts.joined()
 
         // ── Shows section ─────────────────────────────────────────────────────
         let showsSection = buildShowsSection(state: state)
@@ -1086,15 +1084,17 @@ final class WebServer {
           btn.setAttribute('aria-expanded',open?'false':'true');
         }
         var curDev='';
+        var _rows=document.querySelectorAll('.g-row');
+        var _cards=document.querySelectorAll('.card');
         function setDev(id){
           curDev=id;
           document.querySelectorAll('.d-btn').forEach(function(b){b.classList.toggle('d-sel',b.dataset.dev===id);});
           var seen={};
-          document.querySelectorAll('.g-row').forEach(function(r){
+          _rows.forEach(function(r){
             if(id){r.style.display=r.dataset.dev===id?'':'none';}
             else{var ch=r.dataset.ch;if(!seen[ch]){r.style.display='';seen[ch]=true;}else{r.style.display='none';}}
           });
-          document.querySelectorAll('.card').forEach(function(c){
+          _cards.forEach(function(c){
             c.style.display=(!id||c.dataset.dev===id)?'':'none';
           });
         }
@@ -1102,7 +1102,7 @@ final class WebServer {
         // Auto-select the current-timeslot program on the first visible channel row
         (function(){
           var nowTs=Math.floor(Date.now()/1000);
-          var first=Array.from(document.querySelectorAll('.g-row')).find(function(r){return r.style.display!=='none';});
+          var first=Array.from(_rows).find(function(r){return r.style.display!=='none';});
           if(!first)return;
           var prog=Array.from(first.querySelectorAll('.g-prog')).find(function(el){return +el.dataset.start<=nowTs&&+el.dataset.end>nowTs;});
           if(prog)showInfo(prog);
