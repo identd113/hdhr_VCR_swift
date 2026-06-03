@@ -25,8 +25,10 @@ func updateTXTRecord()   // @MainActor — refreshes mDNS TXT record; called fro
 | Method | Path | Response |
 |---|---|---|
 | GET | `/` or `/index.html` | Full guide HTML page |
+| GET | `/api/ping` | `{"ok":true}` — health check; also used as self-ping after bind |
 | GET | `/api/now.json` | JSON array of on-air entries (see schema below) |
-| GET | `/api/shows-html` | HTML fragment for the shows section; polled by the page's JS every 30 s to refresh recording/scheduled/paused tables without a full reload |
+| GET | `/api/shows-html` | HTML fragment for the schedule popover body; used by `refreshShowsSection()` |
+| GET | `/api/tuners.json` | JSON object `{deviceId: {t, a, surl}}` — per-device total/active tuner counts; polled by `refreshTuners()` every 30 s |
 | POST | `/api/record` | Schedule a recording |
 | POST | `/api/delete` | Remove a managed show and stop any active recording |
 | anything else | | 404 plain text |
@@ -98,7 +100,10 @@ Match priority: recording show on exact device+channel first, then active show m
 
 ## HTML page — visual layout
 
-Self-contained HTML with all CSS inlined. Auto-refreshes every 60 seconds via `<meta http-equiv="refresh" content="60">`.
+Self-contained HTML with all CSS inlined. Auto-refreshes every **30 seconds** via JavaScript `setInterval` — no full page reload, no flash. Two JS functions run on each tick:
+
+- **`refreshGuide()`** — `GET /` → DOMParser → swaps `.gi` (guide grid), `#sum-ph` (summary placeholder), `#sched-pop-body` (schedule popover)
+- **`refreshTuners()`** — `GET /api/tuners.json` → updates the `tuners` JS variable + repaints `.t-info` button text/class and `.d-btn` `d-full` state without touching the guide DOM
 
 **Dark theme:** body `#141414` · channel column `#1a1a1a` · default program block `#2c2c2c / #484848 border`.
 
@@ -122,7 +127,6 @@ Page structure (top to bottom):
 **Single device:** `h1` title + `≡` status toggle button + tuner badge + device web UI link (`http://{LocalIP}/`) inline.
 
 **Multiple devices:** `h1` on its own line, then `#dev-bar` with:
-- **All Tuners** button (`.d-btn.d-sel` when active) — shows all channels, deduplicates by `GuideNumber` (first-device-wins) via JS
 - Per device: **HDHR-XXXXXXXX** filter button (`.d-btn`) + **↗** link to device web UI + tuner badge
 
 Clicking a device button calls `setDev(devId)` which filters guide rows to that device via `data-dev` attributes.
@@ -308,6 +312,24 @@ Content is embedded at page build time; `refreshShowsSection()` fetches `/api/sh
 - `var recsByDev` — `{deviceId: [{tuner, title, ch, chname}, …], …}` — active recording detail for popover
 
 Both variables are serialised via `JSONSerialization` (not string interpolation) and passed through `jsEscapeForScript()` before embedding in the `<script>` block. This replaces `<`, `>`, and `&` with `\uXXXX` escapes so a show title or device ID containing `</script>` cannot terminate the script element. Device filter buttons use `onclick="setDev(this.dataset.dev)"` / `onclick="showTunerInfo(this.dataset.dev,this)"` — the DeviceID is read from the already-HTML-escaped `data-dev` attribute rather than interpolated into a JS string literal.
+
+---
+
+## JSON schema — `/api/tuners.json`
+
+Object keyed by device ID. Used by `refreshTuners()` to update tuner badges without a page reload.
+
+```json
+{
+  "105404BE": { "t": 2, "a": 1, "surl": "http://192.168.1.x/status.json" }
+}
+```
+
+| Key | Type | Meaning |
+|---|---|---|
+| `t` | Int | Total tuner count (`TunerCount` from device) |
+| `a` | Int | Active (in-use) tuners — slots where `VctNumber != nil` in `deviceTunerOccupancy` |
+| `surl` | String | `http://{LocalIP}/status.json` for the device detail link in the tuner popover |
 
 ---
 

@@ -1,6 +1,5 @@
 import SwiftUI
 import AppKit
-import ServiceManagement
 
 private enum SettingsCategory: String, CaseIterable, Identifiable {
     var id: String { rawValue }
@@ -37,6 +36,29 @@ struct SettingsView: View {
     @State private var draftSaveDirectory: String      = ""
     @State private var draftLaunchAtLogin: Bool        = false
     @State private var draftSimulatedOS:   Int         = 0
+    @State private var loginItemError: String          = ""
+
+    private var launchAgentPlistURL: URL {
+        FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("LaunchAgents/com.hdhr.vcrplus.plist")
+    }
+
+    // LaunchAgent plist — works regardless of code signing, no BTM approval needed
+    private var launchAtLoginRegistered: Bool {
+        FileManager.default.fileExists(atPath: launchAgentPlistURL.path)
+    }
+
+    private func writeLaunchAgent() throws {
+        let plist: [String: Any] = [
+            "Label": "com.hdhr.vcrplus",
+            "ProgramArguments": ["/usr/bin/open", "-a", Bundle.main.bundleURL.path],
+            "RunAtLoad": true
+        ]
+        let dir = launchAgentPlistURL.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let data = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
+        try data.write(to: launchAgentPlistURL)
+    }
     @State private var logoTapCount  = 0
     @State private var changelogHeight: CGFloat = 0
 
@@ -72,7 +94,7 @@ struct SettingsView: View {
     private var isDirty: Bool {
         draft != state.config
             || draftSaveDirectory != defaultSaveDirectory
-            || draftLaunchAtLogin != (SMAppService.mainApp.status == .enabled)
+            || draftLaunchAtLogin != launchAtLoginRegistered
             || draftSimulatedOS   != simulatedMacOSVersion
     }
 
@@ -155,7 +177,8 @@ struct SettingsView: View {
     private func resetDrafts() {
         draft              = state.config
         draftSaveDirectory = defaultSaveDirectory
-        draftLaunchAtLogin = SMAppService.mainApp.status == .enabled
+        draftLaunchAtLogin = launchAtLoginRegistered
+        loginItemError = ""
         draftSimulatedOS   = simulatedMacOSVersion
         // Existing saved URL is considered verified (was tested when first saved)
         webhookTestStatus  = state.config.Discord_webhook_url.isEmpty ? .idle : .passed
@@ -182,12 +205,16 @@ struct SettingsView: View {
         // Commit settings that live outside AppConfig
         defaultSaveDirectory = draftSaveDirectory
         simulatedMacOSVersion = draftSimulatedOS
-        let loginEnabled = SMAppService.mainApp.status == .enabled
-        if draftLaunchAtLogin != loginEnabled {
+        loginItemError = ""
+        if draftLaunchAtLogin != launchAtLoginRegistered {
             do {
-                if draftLaunchAtLogin { try SMAppService.mainApp.register() }
-                else                  { try SMAppService.mainApp.unregister() }
-            } catch { glog("[Settings] Login item: \(error)", level: .error) }
+                if draftLaunchAtLogin { try writeLaunchAgent() }
+                else                  { try FileManager.default.removeItem(at: launchAgentPlistURL) }
+            } catch {
+                glog("[Settings] Login item: \(error)", level: .error)
+                draftLaunchAtLogin = launchAtLoginRegistered
+                loginItemError = error.localizedDescription
+            }
         }
         // Changing the network interface requires fresh device discovery and guide data
         // so curl and UDP both bind to the correct NIC immediately.
@@ -222,6 +249,11 @@ struct SettingsView: View {
         Form {
             Section("System") {
                 Toggle("Launch at Login", isOn: $draftLaunchAtLogin)
+                if !loginItemError.isEmpty {
+                    Label(loginItemError, systemImage: "xmark.circle.fill")
+                        .font(.caption).foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
         }

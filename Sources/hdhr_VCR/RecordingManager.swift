@@ -146,7 +146,16 @@ final class RecordingManager {
 
     func isRunning(showId: String) -> Bool {
         guard let pid = pids[showId] else { return false }
-        return kill(pid, 0) == 0
+        var status: Int32 = 0
+        let wret = waitpid(pid, &status, WNOHANG)
+        if wret == 0 { return true }   // our child, still running
+        if wret > 0 {                  // our child exited — zombie reaped
+            pids.removeValue(forKey: showId); return false
+        }
+        // ECHILD: not our child — orphaned to launchd after an app restart.
+        // launchd auto-reaps orphan zombies so kill(pid,0) is reliable here.
+        if kill(pid, 0) == 0 { return true }
+        pids.removeValue(forKey: showId); return false
     }
 
     func stopAll() {

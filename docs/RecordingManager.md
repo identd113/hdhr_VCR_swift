@@ -23,7 +23,7 @@ Each recording produces **two ps lines**: `caffeinate -i` (parent) + `curl` (chi
 - `durationSeconds` = **remaining time until `show_end`** (not total show length) — handles late starts and boot-resume correctly.
 - Stream URL: `{channel_url}?duration={seconds}&transcode={profile}`
 - curl `--max-time` = `durationSeconds + 120` (2-minute buffer against network stalls)
-- PIDs stored in `pids: [String: Int32]`; liveness checked via `kill(pid, 0)` — more reliable than `Process.isRunning`.
+- PIDs stored in `pids: [String: Int32]`; liveness checked via `isRunning(showId:)` — see below.
 - `--dump-header /tmp/hdhrVCRplus-{showId}.headers` is always passed to curl so response headers are captured to disk. The file is used for two purposes after the stream starts (see below).
 
 ## Stop
@@ -71,10 +71,28 @@ Toggle in Settings → Advanced → "Verbose curl logging". When enabled:
 
 ---
 
+## Liveness Check — `isRunning(showId:)`
+
+Uses `waitpid(pid, &status, WNOHANG)` as the primary check, with `kill(pid, 0)` as a fallback for reattached (orphaned) processes:
+
+```
+waitpid returns 0      → our direct child, still running → true
+waitpid returns pid    → our direct child exited; zombie reaped → false
+waitpid returns -1 (ECHILD) → not our child (orphaned to launchd after an app restart)
+  kill(pid, 0) == 0   → process exists (launchd reaps orphan zombies, so no false positives) → true
+  kill(pid, 0) != 0   → process gone → false
+```
+
+**Why `waitpid` instead of just `kill(pid, 0)`:** `kill(pid, 0)` returns 0 for zombie processes — exited but not yet reaped. This caused `show_recording` to stay `true` for the full scheduled window even after curl and caffeinate had both exited, making the show appear as "Recording" while the HDHR tuner was actually free.
+
+**Why the `ECHILD` fallback:** `waitpid` only works for direct children. After an app restart, reattached caffeinate processes are orphaned and adopted by launchd — they are no longer children of the new process. For these, `waitpid` returns `ECHILD` and `kill(pid, 0)` is used instead. launchd auto-reaps orphan zombies so the `kill` check is reliable in this case.
+
+---
+
 ## Checking Live Status
 
 ```bash
 ps -Aa | grep show_id | grep -v grep   # two lines per active recording
 ```
 
-Both the caffeinate PID (`pids`) and the curl PID (`curlPids`) are tracked. `kill(pid, 0)` is the liveness check (against the caffeinate PID). At startup, `reattachRecordings()` populates both by scanning `ps -Axo pid,args` in a single pass: lines containing `"caffeinate"` → `pids`; lines containing `/usr/bin/curl` (without caffeinate) → `curlPids` via `reattachCurlPid(showId:pid:)`. This replaces the old async `pgrep -P caffeinate_pid` approach which was unreliable due to the PGID mismatch.
+Both the caffeinate PID (`pids`) and the curl PID (`curlPids`) are tracked. At startup, `reattachRecordings()` populates both by scanning `ps -Axo pid,args` in a single pass: lines containing `"caffeinate"` → `pids`; lines containing `/usr/bin/curl` (without caffeinate) → `curlPids` via `reattachCurlPid(showId:pid:)`. This replaces the old async `pgrep -P caffeinate_pid` approach which was unreliable due to the PGID mismatch.

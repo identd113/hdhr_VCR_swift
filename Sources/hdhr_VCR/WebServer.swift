@@ -44,7 +44,13 @@ final class WebServer {
             switch state {
             case .ready:
                 glog("[WebServer] Listening on port \(clamped)")
-                DispatchQueue.main.async { self.stateCallback?(nil) }
+                // Self-ping to confirm end-to-end HTTP is working (not just port binding).
+                Task { [weak self] in
+                    guard let self else { return }
+                    let ok = await self.selfPing(port: clamped)
+                    if !ok { glog("[WebServer] Self-ping failed — port bound but not responding", level: .warning) }
+                    DispatchQueue.main.async { self.stateCallback?(ok ? nil : "Server started but did not respond to /api/ping") }
+                }
             case .failed(let err):
                 glog("[WebServer] Failed: \(err)", level: .error)
                 DispatchQueue.main.async { self.stateCallback?(err.localizedDescription) }
@@ -236,6 +242,9 @@ final class WebServer {
         case "/", "/index.html":
             let html = buildHTML(state: state, isDesktop: isDesktopUA(userAgent))
             return .ok(contentType: "text/html; charset=utf-8", body: Data(html.utf8))
+
+        case "/api/ping":
+            return .ok(contentType: "application/json", body: Data(#"{"ok":true}"#.utf8))
 
         case "/api/now.json":
             let data = buildNowJSON(state: state)
@@ -608,7 +617,7 @@ final class WebServer {
             deviceBarHTML = ""
         } else if state.devices.count > 1 {
             headerHTML = "<div style=\"display:flex;align-items:center;gap:8px\"><h1 style=\"margin:0\">hdhrVCR+ · Guide</h1>\(statusBtn)</div>"
-            var bar = "<div id=\"dev-bar\"><button class=\"d-btn d-sel\" data-dev=\"\" onclick=\"setDev('')\">All Tuners</button>"
+            var bar = "<div id=\"dev-bar\">"
             for d in state.devices {
                 let uiURL = "http://\(d.LocalIP)/"
                 let label = he("HDHR-\(d.DeviceID.uppercased())")
@@ -1622,5 +1631,15 @@ final class WebServer {
             }
         }
         return false
+    }
+
+    // MARK: - Self-ping
+
+    // GETs /api/ping on loopback to confirm end-to-end HTTP routing is working after bind.
+    private func selfPing(port: Int) async -> Bool {
+        guard let url = URL(string: "http://127.0.0.1:\(port)/api/ping") else { return false }
+        let req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 3)
+        guard let (_, resp) = try? await URLSession.shared.data(for: req) else { return false }
+        return (resp as? HTTPURLResponse)?.statusCode == 200
     }
 }

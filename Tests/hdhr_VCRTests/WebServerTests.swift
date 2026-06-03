@@ -141,19 +141,10 @@ struct AppConfigWebServerTests {
 // These tests connect to the running app on localhost:1980.
 // They are skipped automatically when the port is not open — safe to run in CI.
 
-private func serverAvailable(port: Int = 1980) -> Bool {
-    let sock = socket(AF_INET, SOCK_STREAM, 0)
-    guard sock >= 0 else { return false }
-    defer { close(sock) }
-    var addr = sockaddr_in()
-    addr.sin_family = sa_family_t(AF_INET)
-    addr.sin_port = in_port_t(port).bigEndian
-    addr.sin_addr.s_addr = inet_addr("127.0.0.1")
-    return withUnsafePointer(to: &addr) {
-        $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-            connect(sock, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
-        }
-    } == 0
+// Pings /api/ping to confirm the server is up and responding end-to-end (not just port-bound).
+private func serverAvailable(port: Int = 1980) async -> Bool {
+    guard let (status, _) = try? await get("/api/ping", port: port) else { return false }
+    return status == 200
 }
 
 private func get(_ path: String, port: Int = 1980, timeout: Double = 5) async throws -> (Int, Data) {
@@ -168,8 +159,16 @@ private func get(_ path: String, port: Int = 1980, timeout: Double = 5) async th
 @Suite("Post-deploy: web server smoke tests (requires running app on :1980)")
 struct WebServerSmokeTests {
 
+    @Test func pingReturnsOk() async throws {
+        guard await serverAvailable() else { return }
+        let (status, body) = try await get("/api/ping")
+        #expect(status == 200)
+        let json = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+        #expect(json?["ok"] as? Bool == true)
+    }
+
     @Test func rootReturnsHTML() async throws {
-        guard serverAvailable() else { return }
+        guard await serverAvailable() else { return }
         let (status, body) = try await get("/")
         #expect(status == 200)
         let html = String(data: body, encoding: .utf8) ?? ""
@@ -178,7 +177,7 @@ struct WebServerSmokeTests {
     }
 
     @Test func rootContentTypeIsHTML() async throws {
-        guard serverAvailable() else { return }
+        guard await serverAvailable() else { return }
         let url = URL(string: "http://127.0.0.1:1980/")!
         let (_, resp) = try await URLSession.shared.data(from: url)
         let ct = (resp as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Type") ?? ""
@@ -186,7 +185,7 @@ struct WebServerSmokeTests {
     }
 
     @Test func nowJsonReturnsValidArray() async throws {
-        guard serverAvailable() else { return }
+        guard await serverAvailable() else { return }
         let (status, body) = try await get("/api/now.json")
         #expect(status == 200)
         let json = try JSONSerialization.jsonObject(with: body) as? [[String: Any]]
@@ -200,13 +199,13 @@ struct WebServerSmokeTests {
     }
 
     @Test func unknownRouteReturns404() async throws {
-        guard serverAvailable() else { return }
+        guard await serverAvailable() else { return }
         let (status, _) = try await get("/no/such/path")
         #expect(status == 404)
     }
 
     @Test func indexHtmlEqualsRoot() async throws {
-        guard serverAvailable() else { return }
+        guard await serverAvailable() else { return }
         let (s1, d1) = try await get("/")
         let (s2, d2) = try await get("/index.html")
         #expect(s1 == 200)
@@ -216,7 +215,7 @@ struct WebServerSmokeTests {
     }
 
     @Test func connectionClosedAfterResponse() async throws {
-        guard serverAvailable() else { return }
+        guard await serverAvailable() else { return }
         // Verify server sends Connection: close so connections don't hang
         let url = URL(string: "http://127.0.0.1:1980/api/now.json")!
         let (_, resp) = try await URLSession.shared.data(from: url)
@@ -225,7 +224,7 @@ struct WebServerSmokeTests {
     }
 
     @Test func postToRecordWithoutBodyReturns400() async throws {
-        guard serverAvailable() else { return }
+        guard await serverAvailable() else { return }
         let url = URL(string: "http://127.0.0.1:1980/api/record")!
         var req = URLRequest(url: url, timeoutInterval: 5)
         req.httpMethod = "POST"

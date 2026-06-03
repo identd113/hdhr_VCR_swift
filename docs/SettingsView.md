@@ -123,7 +123,7 @@ Sidebar entries (with SF Symbol icons):
 
 ### General
 
-- **Launch at Login** — `SMAppService.mainApp` toggle. Uses `register()`/`unregister()` from `ServiceManagement`. Errors are logged but not surfaced to the user.
+- **Launch at Login** — writes/deletes `~/Library/LaunchAgents/com.hdhr.vcrplus.plist` (a `RunAtLoad` plist that calls `open -a <bundle path>`). Does **not** use `SMAppService` — the plist approach works regardless of code signing and requires no BTM approval. Toggle reverts on write failure; error shown in red below the toggle.
 
 ---
 
