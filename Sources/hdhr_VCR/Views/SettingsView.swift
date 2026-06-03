@@ -549,7 +549,7 @@ struct SettingsView: View {
             Section("Shows") {
                 maintenanceRow("Rescan Series",
                                "Re-check the guide for updated next-air times on all active SeriesID shows") {
-                    let count = state.shows.filter { $0.show_active && !$0.show_paused && $0.show_use_seriesid }.count
+                    let count = state.shows.filter { $0.show_active && !$0.show_paused && !$0.show_recording && $0.show_use_seriesid }.count
                     await state.rescheduleAllSeries()
                     return "\(count) series show(s) rescheduled"
                 }

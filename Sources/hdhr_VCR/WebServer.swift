@@ -227,6 +227,7 @@ final class WebServer {
         if method == "POST" {
             if path == "/api/record" { return handleRecord(state: state, body: body) }
             if path == "/api/delete" { return handleDelete(state: state, body: body) }
+            if path == "/api/edit"   { return handleEdit(state: state, body: body) }
             return .notFound("Not found: \(path)")
         }
 
@@ -241,7 +242,7 @@ final class WebServer {
             return .ok(contentType: "application/json", body: data)
 
         case "/api/shows-html":
-            let html = buildShowsSection(state: state)
+            let html = buildSchedPopHTML(state: state)
             return .ok(contentType: "text/html; charset=utf-8", body: Data(html.utf8))
 
         default:
@@ -297,21 +298,27 @@ final class WebServer {
                 body: (try? JSONSerialization.data(withJSONObject: dict)) ?? Data("{}".utf8))
         }
         guard let body,
-              let obj      = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
-              let deviceId = obj["deviceId"]    as? String,
-              let guideNum = obj["guideNumber"] as? String
+              let obj = try? JSONSerialization.jsonObject(with: body) as? [String: Any]
         else { return .badRequest("Missing required fields") }
 
-        let title = obj["title"] as? String ?? ""
+        let showId   = obj["showId"]      as? String ?? ""
+        let deviceId = obj["deviceId"]    as? String ?? ""
+        let guideNum = obj["guideNumber"] as? String ?? ""
+        let title    = obj["title"]       as? String ?? ""
 
-        // Prefer an active recording on that exact device+channel, then fall back to title match.
-        let show = state.recordingShows.first(where: {
-                       $0.hdhr_record == deviceId && $0.show_channel == guideNum
-                   }) ?? state.shows.first(where: {
-                       $0.show_active &&
-                       ($0.show_channel == guideNum || $0.isSeries) &&
-                       $0.show_title == title
-                   })
+        guard !showId.isEmpty || (!deviceId.isEmpty && !guideNum.isEmpty)
+        else { return .badRequest("Missing required fields") }
+
+        // Primary: showId (from edit modal). Fallback: active recording on device+channel, then title match.
+        let show: Show? = !showId.isEmpty
+            ? state.shows.first(where: { $0.show_id == showId })
+            : state.recordingShows.first(where: {
+                  $0.hdhr_record == deviceId && $0.show_channel == guideNum
+              }) ?? state.shows.first(where: {
+                  $0.show_active &&
+                  $0.show_channel == guideNum &&
+                  $0.show_title == title
+              })
         guard let show else { return json(["ok": false, "error": "Show not found"]) }
 
         // Edit the Discord "Recording Started" embed before clearing state — show is a struct
@@ -327,20 +334,124 @@ final class WebServer {
         return json(["ok": true, "title": show.show_title])
     }
 
+    // Updates show type and/or pause state by showId. Called from the web edit modal.
+    @MainActor
+    private func handleEdit(state: AppState, body: Data?) -> WebResponse {
+        func json(_ dict: [String: Any]) -> WebResponse {
+            .ok(contentType: "application/json",
+                body: (try? JSONSerialization.data(withJSONObject: dict)) ?? Data("{}".utf8))
+        }
+        guard let body,
+              let obj    = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+              let showId = obj["showId"] as? String,
+              let show   = state.shows.first(where: { $0.show_id == showId })
+        else { return .badRequest("Missing required field: showId") }
+
+        var updated = show
+        let allDays = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"]
+
+        if let typeStr = obj["showType"] as? String {
+            switch typeStr {
+            case "single":
+                updated.show_is_series = false; updated.show_use_seriesid = false; updated.show_use_seriesid_all = false
+            case "dateTime":
+                updated.show_is_series = true; updated.show_use_seriesid = false; updated.show_use_seriesid_all = false
+                if updated.show_air_date.isEmpty { updated.show_air_date = allDays }
+            case "seriesChannel":
+                updated.show_is_series = true; updated.show_use_seriesid = true; updated.show_use_seriesid_all = false
+                updated.show_air_date = allDays
+            case "seriesAll":
+                updated.show_is_series = true; updated.show_use_seriesid = true; updated.show_use_seriesid_all = true
+                updated.show_air_date = allDays
+            default: break
+            }
+        }
+
+        if let paused = obj["paused"] as? Bool {
+            updated.show_paused = paused
+            if paused { updated.show_fail_reason = "Manually paused" } else { updated.clearFailures() }
+        }
+        if let title = obj["title"] as? String, !title.isEmpty { updated.show_title = title }
+        if let ch = obj["channel"] as? String, !ch.isEmpty { updated.show_channel = ch }
+        if let len = obj["length"] as? Int, len > 0 { updated.show_length = len }
+        if let bonus = obj["bonusTime"] as? Bool { updated.show_bonus_time = bonus }
+        if let transcode = obj["transcode"] as? String { updated.show_transcode = transcode }
+        if let saveDir = obj["saveDir"] as? String, !saveDir.isEmpty {
+            updated.show_dir = saveDir
+            updated.show_temp_dir = saveDir
+        }
+        if let airDays = obj["airDays"] as? [String] { updated.show_air_date = airDays }
+        if let reset = obj["resetFailures"] as? Bool, reset { updated.clearFailures(); updated.show_active = true }
+
+        state.updateShow(updated)
+        // If the show was just promoted to a seriesID type, search the guide immediately
+        // so show_next is set before the next idle loop tick.
+        if updated.show_use_seriesid && !show.show_use_seriesid {
+            Task { await state.rescheduleAllSeries() }
+        }
+        return json(["ok": true, "title": updated.show_title])
+    }
+
+    private func showTypeStr(_ show: Show) -> String {
+        switch show.state {
+        case .single:        return "single"
+        case .dateTime:      return "dateTime"
+        case .seriesChannel: return "seriesChannel"
+        case .seriesAll:     return "seriesAll"
+        }
+    }
+
     // MARK: - HTML / JSON generation
 
     @MainActor
-    private func buildShowsSection(state: AppState) -> String {
-        func showRow(_ s: Show) -> String {
-            "<tr><td>\(he(s.show_title))</td><td>\(he(s.show_channel))</td></tr>"
+    private func buildSchedPopHTML(state: AppState) -> String {
+        // Common row builder — embeds all data needed by openEditShow() JS.
+        func showRow(_ s: Show, recording: Bool = false, prefix: String = "") -> String {
+            let t = showTypeStr(s)
+            let ad = s.show_air_date.joined(separator: ",")
+            let da = "data-id=\"\(he(s.show_id))\" data-title=\"\(he(s.show_title))\" data-ch=\"\(he(s.show_channel))\" data-type=\"\(t)\" data-paused=\"\(s.show_paused ? 1 : 0)\" data-recording=\"\(recording ? 1 : 0)\" data-length=\"\(s.show_length)\" data-bonus=\"\(s.show_bonus_time ? 1 : 0)\" data-dir=\"\(he(s.show_dir))\" data-transcode=\"\(he(s.show_transcode))\" data-seriesid=\"\(he(s.show_seriesid))\" data-airdays=\"\(he(ad))\" data-failcount=\"\(s.show_fail_count)\" data-failreason=\"\(he(s.show_fail_reason))\""
+            return "<div class=\"sp-row\" \(da) onclick=\"openEditShow(this)\">"
+                 + "<div class=\"sp-t\">\(prefix)\(he(s.show_title))</div>"
+                 + "<div class=\"sp-ch\">Ch \(he(s.show_channel))</div>"
+                 + "</div>"
         }
-        func showsTable(_ rows: String, _ label: String) -> String {
-            guard !rows.isEmpty else { return "" }
-            return "<details><summary>\(label)</summary><table><tr><th>Title</th><th>Channel</th></tr>\(rows)</table></details>"
+
+        var parts: [String] = []
+
+        if !state.recordingShows.isEmpty {
+            let rows = state.recordingShows.map { showRow($0, recording: true, prefix: "<span class=\"sp-rec\">●</span> ") }.joined()
+            parts.append("<div class=\"sp-sec\"><div class=\"sp-hdr\">Recording</div>\(rows)</div>")
         }
-        return showsTable(state.recordingShows.map(showRow).joined(),  "● Recording")
-             + showsTable(state.activeShows.map(showRow).joined(),     "★ Scheduled")
-             + showsTable(state.pausedShows.map(showRow).joined(),     "⏸ Paused")
+
+        // Sort by next air time ascending; shows without a date sort to the end.
+        let sortedActive = state.activeShows.sorted {
+            ($0.show_next?.timeIntervalSince1970 ?? .infinity) < ($1.show_next?.timeIntervalSince1970 ?? .infinity)
+        }
+        let upNext     = sortedActive.first(where: { $0.show_next != nil })
+        let restActive = sortedActive.filter { $0.show_id != upNext?.show_id }
+
+        if let next = upNext {
+            if !parts.isEmpty { parts.append("<div class=\"sp-div\"></div>") }
+            let rel = txtRelativeTime(next.show_next!)
+            let t   = showTypeStr(next)
+            let nad = next.show_air_date.joined(separator: ",")
+            let da  = "data-id=\"\(he(next.show_id))\" data-title=\"\(he(next.show_title))\" data-ch=\"\(he(next.show_channel))\" data-type=\"\(t)\" data-paused=\"0\" data-recording=\"0\" data-length=\"\(next.show_length)\" data-bonus=\"\(next.show_bonus_time ? 1 : 0)\" data-dir=\"\(he(next.show_dir))\" data-transcode=\"\(he(next.show_transcode))\" data-seriesid=\"\(he(next.show_seriesid))\" data-airdays=\"\(he(nad))\" data-failcount=\"\(next.show_fail_count)\" data-failreason=\"\(he(next.show_fail_reason))\""
+            parts.append("<div class=\"sp-sec\"><div class=\"sp-hdr\">Up Next</div><div class=\"sp-row\" \(da) onclick=\"openEditShow(this)\"><div class=\"sp-t\">\(he(next.show_title))</div><div class=\"sp-ch\">Ch \(he(next.show_channel)) · <span style=\"color:var(--ac)\">\(he(rel))</span></div></div></div>")
+        }
+
+        if !restActive.isEmpty {
+            if !parts.isEmpty { parts.append("<div class=\"sp-div\"></div>") }
+            let rows = restActive.map { showRow($0) }.joined()
+            parts.append("<div class=\"sp-sec\"><div class=\"sp-hdr\">Scheduled</div>\(rows)</div>")
+        }
+
+        if !state.pausedShows.isEmpty {
+            if !parts.isEmpty { parts.append("<div class=\"sp-div\"></div>") }
+            let rows = state.pausedShows.map { showRow($0, prefix: "<span style=\"color:var(--t4)\">⏸</span> ") }.joined()
+            parts.append("<div class=\"sp-sec\"><div class=\"sp-hdr\">Paused</div>\(rows)</div>")
+        }
+
+        return parts.isEmpty ? "<div class=\"sp-empty\">No shows scheduled.</div>" : parts.joined()
     }
 
     @MainActor
@@ -484,7 +595,7 @@ final class WebServer {
         }
 
         // ── Status toggle button — sits next to h1 in the header; reveals the status panel ──
-        let statusBtn = "<button id=\"status-btn\" onclick=\"toggleStatus()\" title=\"What's On Now &amp; scheduled shows\" aria-expanded=\"false\" style=\"background:none;border:none;cursor:pointer;color:var(--t4);font-size:1.1rem;padding:2px 6px;line-height:1;border-radius:4px\">≡</button>"
+        let statusBtn = "<button id=\"status-btn\" onclick=\"openSchedPop(this)\" title=\"Schedule &amp; recordings\" aria-expanded=\"false\" style=\"background:none;border:none;cursor:pointer;color:var(--t4);font-size:1.1rem;padding:2px 6px;line-height:1;border-radius:4px\">≡</button>"
 
         // ── Device bar (shown when >1 device; links to local HDHR web UI) ──────
         let headerHTML: String
@@ -515,9 +626,6 @@ final class WebServer {
 
         // ── Guide grid rows — one row per (device × channel); JS deduplicates the "All" view ──
         var rowParts: [String] = []
-        // Collect on-air entries here so the Watch Now section can reuse them without a second
-        // full lineup × guideStore walk (onAirNow internally does the same walk).
-        var nowByDevice: [String: [(ch: LineupEntry, entry: GuideEntry)]] = [:]
 
         for device in state.devices {
             let sorted = (state.lineups[device.DeviceID] ?? [])
@@ -547,7 +655,6 @@ final class WebServer {
                     guard ce > cs else { continue }
 
                     let isNow      = e.StartTime <= nowTs && e.EndTime > nowTs
-                    if isNow { nowByDevice[device.DeviceID, default: []].append((ch, e)) }
                     let isEntryRec = isRecCh && isNow
                     let isMgd      = checkMgd(e, ch)
                     var cls = "g-prog"
@@ -595,35 +702,30 @@ final class WebServer {
             ? "<div style=\"padding:24px;color:#555;text-align:center;font-size:.85rem\">No guide data — loading…</div>"
             : rowParts.joined()
 
-        // ── What's On Now cards (info only — no streaming; playback requires the Mac app) ──
-        var cardParts: [String] = []
-        for device in state.devices {
-            for (ch, entry) in nowByDevice[device.DeviceID] ?? [] {
-                let logoURL   = state.channelImageURLs["\(device.DeviceID):\(ch.GuideNumber)"] ?? ""
-                let posterURL = entry.ImageURL ?? ""
-                let isHD      = (ch.HD ?? 0) != 0
-                let chLabel   = isHD ? "\(he(ch.GuideNumber))  \(he(ch.GuideName)) HD" : "\(he(ch.GuideNumber))  \(he(ch.GuideName))"
-                let sub: String = {
-                    if let ep = entry.EpisodeTitle, !ep.isEmpty { return he(ep) }
-                    if let ts = entry.OriginalAirdate {
-                        return he(origAirdateFormatter.string(from: Date(timeIntervalSince1970: TimeInterval(ts))))
-                    }
-                    return ""
-                }()
-                let isRec     = recording.contains { $0.hdhr_record == device.DeviceID && $0.show_channel == ch.GuideNumber }
-                let isManaged = checkMgd(entry, ch)
-                var badges = ""
-                if isRec     { badges += "<span class=\"badge rec\">● Recording</span> " }
-                if isManaged { badges += "<span class=\"badge sched\">★ Scheduled</span>" }
-                let posterHTML = posterURL.isEmpty ? "" : "<img class=\"poster\" src=\"\(he(posterURL))\" onerror=\"this.style.display='none'\" alt=\"\">"
-                let logoHTML   = logoURL.isEmpty   ? "" : "<img class=\"logo\" src=\"\(he(logoURL))\" onerror=\"this.style.display='none'\" alt=\"\">"
-                cardParts.append("<div class=\"card\" data-dev=\"\(he(device.DeviceID))\">\(posterHTML)<div class=\"meta\">\(logoHTML)<span class=\"ch\">\(chLabel)</span><div class=\"title\">\(he(entry.Title))</div>\(sub.isEmpty ? "" : "<div class=\"sub\">\(sub)</div>")<div class=\"time\">\(he(guideTimeRange(entry))) · \(he(timeRemaining(until: entry.endDate)))</div><div class=\"badges\">\(badges)</div></div></div>")
-            }
+        // ── Summary placeholder: current recording or next scheduled show ────
+        let phSorted = state.activeShows.sorted {
+            ($0.show_next?.timeIntervalSince1970 ?? .infinity) < ($1.show_next?.timeIntervalSince1970 ?? .infinity)
         }
-        let cards = cardParts.isEmpty ? "<p class=\"empty\">No guide data — loading…</p>" : cardParts.joined()
+        func phLogo(_ deviceId: String, _ ch: String) -> String {
+            let url = state.channelImageURLs["\(deviceId):\(ch)"] ?? ""
+            guard !url.isEmpty else { return "" }
+            return "<img src=\"\(he(url))\" onerror=\"this.style.display='none'\" style=\"width:36px;height:36px;object-fit:contain;border-radius:4px;flex-shrink:0;margin-right:12px\">"
+        }
+        let sumPhHTML: String
+        if let rec = recording.first {
+            var sub = ""
+            if let next = phSorted.first(where: { $0.show_next != nil && $0.show_id != rec.show_id }) {
+                sub = "<div style=\"font-size:.7rem;color:var(--t4);margin-top:2px\"><span style=\"color:var(--ac)\">★</span> \(he(next.show_title)) · \(he(txtRelativeTime(next.show_next!)))</div>"
+            }
+            sumPhHTML = "\(phLogo(rec.hdhr_record, rec.show_channel))<div><div style=\"font-size:.82rem;font-weight:600;color:var(--t0)\"><span style=\"color:#ff8080\">●</span> Recording: \(he(rec.show_title))</div>\(sub)</div>"
+        } else if let next = phSorted.first(where: { $0.show_next != nil }) {
+            sumPhHTML = "\(phLogo(next.hdhr_record, next.show_channel))<div><div style=\"font-size:.82rem;font-weight:600;color:var(--t0)\"><span style=\"color:var(--ac)\">★</span> Up Next: \(he(next.show_title))</div><div style=\"font-size:.7rem;color:var(--t4);margin-top:2px\">\(he(txtRelativeTime(next.show_next!)))</div></div>"
+        } else {
+            sumPhHTML = "<div style=\"font-size:.85rem;color:var(--t5)\">Select a show from the guide</div>"
+        }
 
-        // ── Shows section ─────────────────────────────────────────────────────
-        let showsSection = buildShowsSection(state: state)
+        // ── Schedule popover content ──────────────────────────────────────────
+        let schedPopHTML = buildSchedPopHTML(state: state)
 
         // ── Assemble ──────────────────────────────────────────────────────────
         return """
@@ -679,7 +781,7 @@ final class WebServer {
         #theme-sw button:hover{background:var(--s3);color:var(--t0)}
         #theme-sw button.th-sel{background:var(--ac);color:#fff}
         /* ── Summary panel ── */
-        .s-syn{overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+        .s-syn{overflow:hidden;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical}
         #sum{border-color:var(--b1)!important}
         #sum-ph{background:var(--s1)!important;color:var(--t5)!important}
         #sum-title{color:var(--t0)!important}
@@ -691,8 +793,19 @@ final class WebServer {
         html.lm #sum-del.danger{background:#fcd4d4!important;color:#8b0000!important;border-color:#cc3030!important}
         #sum button:not(#sum-btn):not(#sum-del){color:var(--t6)!important}
         html.lm #sum-genre{color:rgba(0,0,0,.65)!important;background:rgba(0,0,0,.1)!important}
-        #sum-grad{background:linear-gradient(to right,rgba(0,0,0,.35),rgba(0,0,0,.05))}
+        #sum-grad{background:linear-gradient(to right,rgba(0,0,0,.35),rgba(0,0,0,.05));padding:8px 10px!important;gap:1px!important}
         html.lm #sum-grad{background:linear-gradient(to right,rgba(0,0,0,.04),transparent)}
+        #sum-poster{width:72px!important;min-width:72px!important;object-fit:contain!important;background:var(--bg)}
+        #sum-actions{margin-top:3px!important}
+        @media(max-width:600px){
+          #sum-date{display:none!important}
+          #sum-syn{display:none!important}
+          #sum-grad{padding:6px 8px!important}
+        }
+        @media(min-width:601px)and(max-width:960px){
+          #sum-poster{width:56px!important;min-width:56px!important}
+          #sum-syn{display:none!important}
+        }
         /* ── Tuner popover ── */
         #t-pop-c{background:var(--s3)!important;border-color:var(--b5)!important}
         #t-pop-hdr{color:var(--t0)!important}
@@ -759,35 +872,40 @@ final class WebServer {
         .g-r{font-style:normal;font-weight:700;color:#ff8080;font-size:.68rem;margin-right:2px}
         .g-s{font-style:normal;font-weight:700;color:#70e870;font-size:.68rem;margin-right:2px}
         html.lm .g-s{color:#2a8a2a}
-        /* ── Watch Now / details ── */
-        details{margin-top:8px}
-        summary{cursor:pointer;font-size:.85rem;color:var(--t3);padding:6px 0;list-style:none;user-select:none}
-        summary::-webkit-details-marker{display:none}
-        summary::before{content:"▶  ";font-size:.62rem;color:var(--t5)}
-        details[open] summary::before{content:"▼  "}
-        .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px;margin-top:10px}
-        .card{background:var(--s3);border:1px solid var(--b3);border-radius:10px;overflow:hidden;display:flex;flex-direction:column}
-        .poster{width:100%;height:130px;object-fit:cover}
-        .meta{padding:11px;flex:1;display:flex;flex-direction:column;gap:4px}
-        .logo{width:22px;height:22px;object-fit:contain;vertical-align:middle;margin-right:5px}
-        .ch{font-size:.78rem;color:var(--t3)}
-        .title{font-weight:700;font-size:.95rem;line-height:1.2;color:var(--t0)}
-        .sub{font-size:.8rem;color:var(--t2)}
-        .time{font-size:.74rem;color:var(--t3)}
-        .badges{font-size:.72rem;margin-top:3px}
-        .badge{border-radius:4px;padding:2px 7px;font-weight:600}
-        .rec{background:#4a1414;color:#ff9090;border:1px solid #7a2020}
-        .sched{background:#184018;color:#80e880;border:1px solid #306030}
-        html.lm .rec{background:#fce8e8;color:#8b0000;border-color:#cc3030}
-        html.lm .sched{background:#e8f5e8;color:#1a5c1a;border-color:#3a8a3a}
-        .empty{color:var(--t5);padding:20px;text-align:center;font-size:.85rem}
-        table{width:100%;border-collapse:collapse;margin-top:8px;font-size:.82rem}
-        th,td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--b0)}
-        th{color:var(--t3);font-weight:600}
-        td{color:var(--t2)}
+        /* ── Schedule popover ── */
+        #sched-pop-c{background:var(--s3)!important;border-color:var(--b5)!important}
+        .sp-sec{padding:10px 14px}
+        .sp-hdr{font-size:.68rem;font-weight:700;color:var(--t4);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px}
+        .sp-row{padding:5px 0;border-bottom:1px solid var(--b0);cursor:pointer}
+        .sp-row:last-child{border-bottom:none}
+        .sp-row:hover .sp-t{color:var(--ac)}
+        .sp-t{font-size:.82rem;color:var(--t0);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color .12s}
+        .sp-ch{font-size:.7rem;color:var(--t4);margin-top:1px}
+        .sp-rec{color:#ff8080}
+        html.lm .sp-rec{color:#cc2020}
+        .sp-div{height:1px;background:var(--b1);margin:2px 0}
+        .sp-empty{font-size:.8rem;color:var(--t5);padding:12px 14px;text-align:center}
+        /* ── Edit show modal ── */
+        #edit-modal>div{background:var(--s2)!important;border-color:var(--b2)!important}
+        #em-rec-warn{color:#ff9090!important;background:#3c1818!important;border-color:#883030!important}
+        html.lm #em-rec-warn{color:#8b0000!important;background:#fce8e8!important;border-color:#cc3030!important}
         .rm-lbl{display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:9px 11px;border-radius:7px;border:1px solid var(--b3);transition:border-color .15s}
         .rm-lbl:hover{border-color:var(--t4)}
         .rm-lbl input{margin-top:3px;flex-shrink:0;accent-color:#c0392b}
+        .em-row{display:flex;flex-direction:column;gap:3px;margin-bottom:8px}
+        .em-lbl{font-size:.68rem;color:var(--t4);font-weight:600;text-transform:uppercase;letter-spacing:.06em}
+        .em-input{background:var(--bg);border:1px solid var(--b3);border-radius:5px;padding:5px 8px;font-size:.82rem;color:var(--t0);width:100%;outline:none;font-family:inherit}
+        .em-input:focus{border-color:var(--ac)}
+        select.em-input{cursor:pointer}
+        .em-input-sm{width:84px}
+        .em-fail{font-size:.75rem;color:#ff9090;padding:5px 8px;background:#3c1818;border:1px solid #883030;border-radius:5px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+        html.lm .em-fail{color:#8b0000;background:#fce8e8;border-color:#cc3030}
+        .day-btn{background:var(--s4);border:1px solid var(--b3);color:var(--t3);border-radius:4px;padding:4px 7px;font-size:.72rem;cursor:pointer;transition:background .12s,border-color .12s,color .12s}
+        .day-btn.sel{background:var(--ac);border-color:var(--ac);color:#fff}
+        .em-days{display:flex;gap:4px;flex-wrap:wrap}
+        .em-check{display:flex;align-items:center;gap:7px;font-size:.82rem;color:var(--t1);cursor:pointer;margin-bottom:8px}
+        .em-check input{accent-color:var(--ac)}
+        .em-sid{font-size:.72rem;color:var(--t4);font-family:monospace;word-break:break-all;margin-top:2px}
         </style>
         </head>
         <body>
@@ -811,22 +929,21 @@ final class WebServer {
           </div>
         </div>
         <div id="sum" style="border:1px solid #333;border-radius:8px;margin-bottom:16px;display:flex;align-items:stretch;overflow:hidden;min-height:44px">
-          <div id="sum-ph" style="flex:1;display:flex;align-items:center;justify-content:center;color:#777;font-size:.85rem;background:#1a1a1a;padding:16px">Select a show from the guide</div>
+          <div id="sum-ph" style="flex:1;display:flex;align-items:center;padding:12px 16px;background:#1a1a1a">\(sumPhHTML)</div>
           <div id="sum-c" style="display:none;flex:1;flex-direction:row">
-            <img id="sum-poster" src="" alt="" style="width:120px;min-width:120px;object-fit:cover;display:none" onerror="this.style.display='none'">
-            <div id="sum-grad" style="flex:1;padding:12px 14px;display:flex;flex-direction:column;gap:3px;overflow:hidden">
+            <img id="sum-poster" src="" alt="" style="width:72px;min-width:72px;object-fit:contain;display:none" onerror="this.style.display='none'">
+            <div id="sum-grad" style="flex:1;padding:8px 10px;display:flex;flex-direction:column;gap:1px;overflow:hidden">
               <div id="sum-title" style="font-size:.92rem;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
               <div id="sum-genre" style="display:none;font-size:.6rem;font-weight:700;color:rgba(255,255,255,.85);background:rgba(255,255,255,.18);border-radius:3px;padding:2px 6px;align-self:flex-start;letter-spacing:.06em"></div>
               <div id="sum-ep"   style="display:none;font-size:.78rem;color:#ddd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
               <div id="sum-date" style="display:none;font-size:.68rem;color:rgba(255,255,255,.7)"></div>
               <div id="sum-syn"  class="s-syn" style="display:none;font-size:.76rem;color:#e0e0e0;line-height:1.35"></div>
-              <div id="sum-actions" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px">
+              <div id="sum-actions" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:3px">
                 <span id="sum-note" style="display:none;font-size:.75rem;font-style:italic;color:rgba(255,255,255,.75)"></span>
-                <button id="sum-btn" onclick="doRecord()" style="display:none;font-size:.75rem;padding:5px 14px;border-radius:5px;border:none;cursor:pointer;font-weight:600;background:#c0392b;color:#fff">Record</button>
-                <button id="sum-del" onclick="doDelete()" style="display:none;font-size:.75rem;padding:5px 14px;border-radius:5px;cursor:pointer;font-weight:600">Delete</button>
+                <button id="sum-btn" onclick="doRecord()" style="display:none;font-size:.75rem;padding:4px 12px;border-radius:5px;border:none;cursor:pointer;font-weight:600;background:#c0392b;color:#fff">Record</button>
+                <button id="sum-del" onclick="doDelete()" style="display:none;font-size:.75rem;padding:4px 12px;border-radius:5px;cursor:pointer;font-weight:600">Delete</button>
               </div>
-              <div style="flex:1"></div>
-              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px">
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:3px">
                 <img id="sum-logo" src="" alt="" style="width:24px;height:24px;object-fit:contain;display:none" onerror="this.style.display='none'">
                 <span id="sum-ct" style="font-size:.68rem;color:rgba(255,255,255,.8)"></span>
               </div>
@@ -849,15 +966,45 @@ final class WebServer {
             </div>
           </div>
         </div>
+        <div id="edit-modal" onclick="if(event.target===this)closeEditShow()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:201;align-items:center;justify-content:center;padding:20px">
+          <div style="background:#1c1c1e;border:1px solid #383838;border-radius:12px;padding:20px 22px;width:400px;max-width:calc(100vw - 32px);max-height:calc(100vh - 40px);overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.6)">
+            <div style="font-weight:700;font-size:.88rem;color:var(--t0);margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--b2)">Edit Show</div>
+            <div class="em-row"><div class="em-lbl">Title</div><input id="em-title-in" class="em-input" type="text" placeholder="Show title"></div>
+            <div style="display:flex;gap:8px;margin-bottom:8px">
+              <div class="em-row" style="margin-bottom:0;flex:0 0 auto"><div class="em-lbl">Channel</div><input id="em-ch-in" class="em-input em-input-sm" type="text" placeholder="e.g. 5.4"></div>
+              <div class="em-row" style="margin-bottom:0;flex:0 0 auto"><div class="em-lbl">Length (min)</div><input id="em-len-in" class="em-input em-input-sm" type="number" min="1" max="1440" placeholder="60"></div>
+            </div>
+            <div class="em-row"><div class="em-lbl">Type</div><div id="em-type-opts" style="display:flex;flex-direction:column;gap:5px;margin-top:2px"></div></div>
+            <div id="em-days-row" class="em-row" style="display:none"><div class="em-lbl">Days</div><div class="em-days" id="em-days"></div></div>
+            <div id="em-bonus-row" style="margin-bottom:8px"><label class="em-check"><input type="checkbox" id="em-bonus"> Bonus Time (extend recording for sports)</label></div>
+            <div class="em-row"><div class="em-lbl">Transcode</div><select id="em-transcode" class="em-input"><option value="none">None (copy stream)</option><option value="heavy">Heavy (H.264 CRF 18)</option><option value="mobile">Mobile (480p H.264)</option><option value="internet720">Internet 720 (720p H.264)</option></select></div>
+            <div class="em-row"><div class="em-lbl">Save Directory</div><input id="em-dir-in" class="em-input" type="text" placeholder="/path/to/folder" style="font-size:.72rem;font-family:monospace"></div>
+            <div id="em-sid-row" style="display:none;margin-bottom:8px"><div class="em-lbl">SeriesID</div><div id="em-sid" class="em-sid"></div></div>
+            <div id="em-fail-row" style="display:none" class="em-fail"><span id="em-fail-txt"></span><button id="em-reset" onclick="doEditReset()" style="font-size:.72rem;padding:3px 8px;border-radius:4px;border:1px solid currentColor;background:transparent;color:inherit;cursor:pointer;flex-shrink:0;white-space:nowrap">Reset</button></div>
+            <div id="em-rec-warn" style="display:none;font-size:.74rem;color:#ff9090;background:#3c1818;border:1px solid #883030;border-radius:6px;padding:7px 10px;margin-bottom:10px">● Recording now — delete will stop the active recording.</div>
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--b2)">
+              <button id="em-del" onclick="doEditDelete()" style="font-size:.78rem;padding:6px 14px;border-radius:6px;border:1px solid #883030;background:#3c1010;color:#ff9090;font-weight:600;cursor:pointer">Delete</button>
+              <div style="display:flex;gap:8px">
+                <button id="em-pause" onclick="doEditPause()" style="display:none;font-size:.78rem;padding:6px 14px;border-radius:6px;border:1px solid #444;background:transparent;color:#aaa;cursor:pointer"></button>
+                <button onclick="closeEditShow()" style="font-size:.78rem;padding:6px 16px;border-radius:6px;border:1px solid #444;background:transparent;color:#aaa;cursor:pointer">Cancel</button>
+                <button id="em-save" onclick="confirmEdit()" style="font-size:.78rem;padding:6px 16px;border-radius:6px;border:none;background:#1a5abf;color:#fff;font-weight:600;cursor:pointer">Save</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div id="sched-pop" onclick="if(event.target===this)closeSchedPop()" style="display:none;position:fixed;inset:0;z-index:150">
+          <div id="sched-pop-c" style="position:absolute;min-width:260px;max-width:340px;max-height:70vh;overflow-y:auto;background:#1e1e1e;border:1px solid #484848;border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.75)">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--b1);position:sticky;top:0;background:inherit">
+              <span style="font-size:.82rem;font-weight:600;color:var(--t0)">Schedule</span>
+              <button onclick="closeSchedPop()" style="background:none;border:none;color:var(--t5);font-size:.9rem;cursor:pointer;padding:0 0 0 12px;line-height:1">✕</button>
+            </div>
+            <div id="sched-pop-body">\(schedPopHTML)</div>
+          </div>
+        </div>
         <div class="gw"><div class="gi">
         <div class="g-hdr"><div class="g-hdr-ch">Channel</div><div class="g-hdr-tl">\(ticksHTML)</div></div>
         \(rowsHTML)
         </div></div>
-        <div id="status-panel" style="display:none;margin-bottom:16px">
-        <details open><summary>What's On Now</summary>
-        <div class="grid">\(cards)</div></details>
-        <div id="shows-section">\(showsSection)</div>
-        </div>
         <script>
         \(tunerJS)
         \(recsByDevJS)
@@ -985,7 +1132,7 @@ final class WebServer {
                 note.style.color=j.tunerFull?(isLM()?'#c07000':'#ffcc66'):'var(--t2)';
                 note.style.display='inline';
                 del.textContent='Remove';del.style.background='';del.style.color='';del.style.display='inline-block';del.disabled=false;
-                refreshShowsSection();
+                refreshGuide();
               });
             } else {
               return r.text().then(function(t){
@@ -1006,7 +1153,20 @@ final class WebServer {
         }
         function refreshShowsSection(){
           fetch('/api/shows-html').then(function(r){return r.text();}).then(function(h){
-            var s=document.getElementById('shows-section');if(s)s.innerHTML=h;
+            var s=document.getElementById('sched-pop-body');if(s)s.innerHTML=h;
+          }).catch(function(){});
+        }
+        function refreshGuide(){
+          fetch('/').then(function(r){return r.text();}).then(function(html){
+            var doc=new DOMParser().parseFromString(html,'text/html');
+            var newGi=doc.querySelector('.gi'),oldGi=document.querySelector('.gi');
+            if(newGi&&oldGi)oldGi.innerHTML=newGi.innerHTML;
+            var newPh=doc.getElementById('sum-ph'),oldPh=document.getElementById('sum-ph');
+            if(newPh&&oldPh)oldPh.innerHTML=newPh.innerHTML;
+            var newSb=doc.getElementById('sched-pop-body'),oldSb=document.getElementById('sched-pop-body');
+            if(newSb&&oldSb)oldSb.innerHTML=newSb.innerHTML;
+            _rows=document.querySelectorAll('.g-row');
+            setDev(curDev);
           }).catch(function(){});
         }
         function doDelete(){
@@ -1033,7 +1193,7 @@ final class WebServer {
               document.getElementById('sum-btn').textContent='Record';document.getElementById('sum-btn').style.background='#c0392b';
               document.getElementById('sum-btn').style.color='#fff';document.getElementById('sum-btn').style.display='inline-block';
               document.getElementById('sum-btn').disabled=false;
-              refreshShowsSection();
+              refreshGuide();
             } else {
               del.textContent=_delLabel;del.disabled=false;
               note.textContent='Error: '+(j.error||'Delete failed');note.style.color='#ff8080';note.style.fontStyle='normal';note.style.display='inline';
@@ -1075,17 +1235,140 @@ final class WebServer {
           document.getElementById('t-pop').style.display='block';
         }
         function closeTunerPop(){document.getElementById('t-pop').style.display='none';}
-        function toggleStatus(){
-          var p=document.getElementById('status-panel');
+        function openSchedPop(anchor){
+          var pop=document.getElementById('sched-pop');
+          if(pop.style.display!=='none'){closeSchedPop();return;}
+          var c=document.getElementById('sched-pop-c');
+          var rect=anchor.getBoundingClientRect();
+          c.style.left=Math.max(8,Math.min(rect.left,window.innerWidth-360))+'px';
+          c.style.top=(rect.bottom+8)+'px';
+          pop.style.display='block';
+          anchor.style.color='var(--ac)';anchor.setAttribute('aria-expanded','true');
+        }
+        function closeSchedPop(){
+          document.getElementById('sched-pop').style.display='none';
           var btn=document.getElementById('status-btn');
-          var open=p.style.display!=='none';
-          p.style.display=open?'none':'block';
-          btn.style.color=open?'var(--t4)':'var(--ac)';
-          btn.setAttribute('aria-expanded',open?'false':'true');
+          if(btn){btn.style.color='var(--t4)';btn.setAttribute('aria-expanded','false');}
+        }
+        // ── Edit show modal ──
+        var _editId='',_editPaused=false,_editRec=false,_editType='single';
+        var _dayNames=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+        var _dayShort=['Su','M','Tu','W','Th','F','Sa'];
+        function updateDaysVisibility(){
+          document.getElementById('em-days-row').style.display=(_editType==='single'||_editType==='dateTime')?'flex':'none';
+        }
+        function toggleDay(btn){
+          if(_editType==='single'){
+            document.querySelectorAll('#em-days .day-btn').forEach(function(b){b.classList.remove('sel');});
+            btn.classList.add('sel');
+          } else {
+            btn.classList.toggle('sel');
+          }
+        }
+        function openEditShow(el){
+          var d=el.dataset;
+          _editId=d.id;_editPaused=d.paused==='1';_editRec=d.recording==='1';_editType=d.type||'single';
+          document.getElementById('em-title-in').value=d.title||'';
+          document.getElementById('em-ch-in').value=d.ch||'';
+          document.getElementById('em-len-in').value=d.length||'60';
+          var opts=document.getElementById('em-type-opts');opts.innerHTML='';
+          recOpts.forEach(function(o){
+            var lbl=document.createElement('label');lbl.className='rm-lbl';
+            var inp=document.createElement('input');inp.type='radio';inp.name='em-type';inp.value=o.v;
+            if(o.v===_editType)inp.checked=true;
+            inp.onchange=function(){_editType=this.value;updateDaysVisibility();};
+            var info=document.createElement('div');
+            info.innerHTML='<div class="rm-opt-l">'+o.l+'</div><div class="rm-opt-d">'+o.d+'</div>';
+            lbl.appendChild(inp);lbl.appendChild(info);opts.appendChild(lbl);
+          });
+          var selDays=(d.airdays||'').split(',').filter(Boolean);
+          var daysEl=document.getElementById('em-days');daysEl.innerHTML='';
+          _dayNames.forEach(function(day,i){
+            var btn=document.createElement('button');
+            btn.type='button';btn.className='day-btn'+(selDays.indexOf(day)>=0?' sel':'');
+            btn.textContent=_dayShort[i];btn.dataset.day=day;
+            btn.onclick=function(){toggleDay(this);};
+            daysEl.appendChild(btn);
+          });
+          updateDaysVisibility();
+          document.getElementById('em-bonus').checked=d.bonus==='1';
+          document.getElementById('em-bonus-row').style.display=_editRec?'none':'block';
+          document.getElementById('em-transcode').value=d.transcode||'none';
+          document.getElementById('em-dir-in').value=d.dir||'';
+          var sid=d.seriesid||'';
+          var sidRow=document.getElementById('em-sid-row');
+          if(sid){document.getElementById('em-sid').textContent=sid;sidRow.style.display='block';}
+          else{sidRow.style.display='none';}
+          var fc=parseInt(d.failcount)||0;
+          var failRow=document.getElementById('em-fail-row');
+          if(fc>0){document.getElementById('em-fail-txt').textContent=fc+' failure'+(fc>1?'s':'')+' — '+(d.failreason||'');failRow.style.display='flex';}
+          else{failRow.style.display='none';}
+          document.getElementById('em-rec-warn').style.display=_editRec?'block':'none';
+          var pb=document.getElementById('em-pause');
+          pb.textContent=_editPaused?'Resume':'Pause';pb.style.display=_editRec?'none':'inline-block';
+          document.getElementById('em-del').textContent=_editRec?'Stop & Delete':'Delete';
+          document.getElementById('edit-modal').style.display='flex';
+        }
+        function closeEditShow(){document.getElementById('edit-modal').style.display='none';}
+        function doEditPause(){
+          var pb=document.getElementById('em-pause');
+          pb.disabled=true;pb.textContent='…';
+          var np=!_editPaused;
+          fetch('/api/edit',{method:'POST',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({showId:_editId,paused:np})})
+          .then(function(r){return r.json();})
+          .then(function(j){
+            pb.disabled=false;
+            if(j.ok){_editPaused=np;pb.textContent=_editPaused?'Resume':'Pause';refreshGuide();}
+            else{pb.textContent=_editPaused?'Resume':'Pause';}
+          }).catch(function(){pb.disabled=false;pb.textContent=_editPaused?'Resume':'Pause';});
+        }
+        function doEditReset(){
+          var btn=document.getElementById('em-reset');btn.disabled=true;btn.textContent='…';
+          fetch('/api/edit',{method:'POST',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({showId:_editId,resetFailures:true})})
+          .then(function(r){return r.json();})
+          .then(function(j){
+            btn.disabled=false;btn.textContent='Reset';
+            if(j.ok){document.getElementById('em-fail-row').style.display='none';}
+          }).catch(function(){btn.disabled=false;btn.textContent='Reset';});
+        }
+        function confirmEdit(){
+          var ck=document.querySelector('input[name="em-type"]:checked');if(!ck)return;
+          var btn=document.getElementById('em-save');btn.disabled=true;btn.textContent='Saving…';
+          var selDays=Array.from(document.querySelectorAll('#em-days .day-btn.sel')).map(function(b){return b.dataset.day;});
+          var payload={
+            showId:_editId,showType:ck.value,
+            title:document.getElementById('em-title-in').value.trim(),
+            channel:document.getElementById('em-ch-in').value.trim(),
+            length:parseInt(document.getElementById('em-len-in').value)||60,
+            bonusTime:document.getElementById('em-bonus').checked,
+            transcode:document.getElementById('em-transcode').value,
+            saveDir:document.getElementById('em-dir-in').value.trim(),
+            airDays:selDays
+          };
+          fetch('/api/edit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
+          .then(function(r){return r.json();})
+          .then(function(j){
+            btn.disabled=false;btn.textContent='Save';
+            if(j.ok){closeEditShow();refreshGuide();}
+            else{btn.style.background='#6a1010';btn.textContent='Error: '+(j.error||'failed');}
+          }).catch(function(){btn.disabled=false;btn.textContent='Save';});
+        }
+        function doEditDelete(){
+          var btn=document.getElementById('em-del');
+          var lbl=btn.textContent;
+          btn.disabled=true;btn.textContent='Deleting…';
+          fetch('/api/delete',{method:'POST',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({showId:_editId})})
+          .then(function(r){return r.json();})
+          .then(function(j){
+            btn.disabled=false;btn.textContent=lbl;
+            if(j.ok){closeEditShow();refreshGuide();}
+          }).catch(function(){btn.disabled=false;btn.textContent=lbl;});
         }
         var curDev='';
         var _rows=document.querySelectorAll('.g-row');
-        var _cards=document.querySelectorAll('.card');
         function setDev(id){
           curDev=id;
           document.querySelectorAll('.d-btn').forEach(function(b){b.classList.toggle('d-sel',b.dataset.dev===id);});
@@ -1093,9 +1376,6 @@ final class WebServer {
           _rows.forEach(function(r){
             if(id){r.style.display=r.dataset.dev===id?'':'none';}
             else{var ch=r.dataset.ch;if(!seen[ch]){r.style.display='';seen[ch]=true;}else{r.style.display='none';}}
-          });
-          _cards.forEach(function(c){
-            c.style.display=(!id||c.dataset.dev===id)?'':'none';
           });
         }
         setDev('');

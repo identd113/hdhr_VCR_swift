@@ -1,5 +1,14 @@
 # hdhrVCRplus Changelog
 
+## 2026-06-03 (260603-1011)
+
+- **Web edit modal — type-change reschedule** — changing a show's type to seriesChannel or seriesAll from the web UI now immediately triggers `rescheduleAllSeries()` so the guide is searched right away; previously `show_next` was left at the old single-episode timestamp until the next guide refresh.
+- **Web edit modal — save-directory sync** — editing the save directory now always updates `show_temp_dir` to match; the old guard (`if show_temp_dir.isEmpty`) meant a second edit left `show_temp_dir` stale, writing in-progress recordings to the original path.
+- **Web edit modal — day picker deselect-all fix** — in single-episode mode, clicking the already-selected day button no longer deselects it (leaving zero days selected and wiping `show_air_date` on Save); the clicked button always remains selected.
+- **Web delete — channel-required fallback** — the title-match fallback in `handleDelete` no longer accepts a series show as a match by title alone regardless of channel (`|| $0.isSeries` removed); both series and non-series shows now require a channel match, preventing wrong-show deletion when two shows share a title.
+- **Series bump interval** — when no guide episode is found for a series show, `show_next` is now bumped by `Series_scan_retry_hours` (not `GuideHours`); the shorter interval means the idle loop retries sooner and the bump window is consistent with the manual rescan setting.
+- **Rescan Series count fix** — the "Rescan Series" maintenance row now excludes currently-recording shows from its reported count, matching the `!show_recording` guard in `rescheduleAllSeries()` that was already skipping them.
+
 ## 2026-06-02 (260602-sparkle)
 
 - **Sparkle auto-updater** — `SPUStandardUpdaterController` integrated; Settings → About now has a **Check for Updates** button that opens Sparkle's standard update panel. The in-changelog version comparison and manual "Update available" banner have been removed in favour of Sparkle handling all update discovery and installation. `SUFeedURL` in Info.plist points to the repo's `appcast.xml`; `SUPublicEDKey` is set to the EdDSA public key matching `~/.sparkle_private_key` (generated once by `tools/generate_sparkle_keys.sh`). `deploy.sh` and `deploy_release.sh` updated to bundle and sign `Sparkle.framework` (including its nested XPC services and `Updater.app`) inside-out before signing the main bundle.

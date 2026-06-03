@@ -40,6 +40,8 @@ final class AppState: ObservableObject {
     @Published var notifyPermission = false
     private let notificationDelegate = NotificationActionDelegate()
     @Published var isStartingUp: Bool = true
+    // Set to true in tests: startup() returns immediately, preventing idleLoop from running.
+    var skipStartup = false
 
     @Published var editingShowId: String? = nil
     @Published var watchNowDeviceId: String? = nil
@@ -111,12 +113,10 @@ final class AppState: ObservableObject {
     @Published var webServerRunning: Bool    = false
     @Published var webServerError:   String? = nil
 
-    // Sparkle auto-updater — startingUpdater:true begins background checks immediately.
-    // The controller owns the update UI; call checkForUpdates() to show the panel on demand.
-    let updaterController = SPUStandardUpdaterController(
-        startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
+    // Sparkle auto-updater — created in startup() so tests (skipStartup=true) never touch it.
+    private(set) var updaterController: SPUStandardUpdaterController?
 
-    func checkForUpdates() { updaterController.checkForUpdates(nil) }
+    func checkForUpdates() { updaterController?.checkForUpdates(nil) }
 
     // Exponential backoff for repeated guide API failures per device.
     // Delays: 1 min → 5 min → 15 min → 30 min → 1 hour (capped).
@@ -162,6 +162,10 @@ final class AppState: ObservableObject {
     // MARK: - Startup
 
     func startup() async {
+        guard !skipStartup else { return }
+        // Sparkle: startingUpdater:true begins background checks immediately.
+        updaterController = SPUStandardUpdaterController(
+            startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
         // Intercept SIGTERM (pkill, launchd stop) to flush config before the process dies.
         // Re-raises SIGTERM with the default handler so the process exits normally without
         // triggering the quit dialog — recordings survive as orphans via POSIX_SPAWN_SETSID.
@@ -529,6 +533,9 @@ final class AppState: ObservableObject {
         glog("[Guide] Refresh complete")
         let allChannels = guideByDevice.values.flatMap { $0 }
         Task { await prefetchChannelIcons(allChannels) }
+        // Re-evaluate all series shows against fresh guide data so any that were bumped
+        // past the guide window get scheduled as soon as a matching episode appears.
+        await rescheduleAllSeries()
     }
 
     /// Trigger a guide load for a single device (idleLoop / menu fallback).
@@ -1258,8 +1265,14 @@ final class AppState: ObservableObject {
                     }
                 }
             }
-            glog("[\(show.show_title)] no episode found — retry in \(config.Series_scan_retry_hours)h", level: .warning)
-            shows[index].show_next = Date().addingTimeInterval(Double(config.Series_scan_retry_hours) * 3600)
+            // Bump show_next if stranded (nil or past). If it's already a future guide match,
+            // leave it — rescheduleAllSeries will override it when a real episode appears.
+            if shows[index].show_next == nil || shows[index].show_next! <= Date() {
+                glog("[\(show.show_title)] no episode found — retry in \(config.Series_scan_retry_hours)h", level: .warning)
+                shows[index].show_next = Date().addingTimeInterval(Double(config.Series_scan_retry_hours) * 3600)
+            } else {
+                glog("[\(show.show_title)] no episode found in guide — show_next already future, leaving unchanged", level: .warning)
+            }
         }
     }
 
@@ -1421,7 +1434,7 @@ final class AppState: ObservableObject {
 
     /// Re-run scheduleNextAir for every active SeriesID show using the current guide cache.
     func rescheduleAllSeries() async {
-        let indices = shows.indices.filter { shows[$0].show_active && !shows[$0].show_paused && shows[$0].show_use_seriesid }
+        let indices = shows.indices.filter { shows[$0].show_active && !shows[$0].show_paused && !shows[$0].show_recording && shows[$0].show_use_seriesid }
         for i in indices { await scheduleNextAir(index: i) }
         saveConfig()
     }
