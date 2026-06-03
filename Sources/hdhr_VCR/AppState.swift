@@ -23,6 +23,12 @@ final class AppState: ObservableObject {
     // Tracks which show+episode windows have already fired a runtime conflict notification.
     // Key = "showID-show_next_epoch" so it auto-clears when show_next advances.
     private var conflictNotifiedKeys: Set<String> = []
+    // Shows whose recording was interrupted by an app quit and will be relaunched this session.
+    // Suppresses the duplicate Discord "Recording Started" on the first relaunch after startup.
+    private var suppressStartDiscord: Set<String> = []
+    // Retained DispatchSource for SIGTERM — saves config before the process exits so
+    // show_recording_path and discord_start_msg_id survive pkill during development.
+    private var sigtermSource: DispatchSourceSignal?
     // O(1) managed-show lookup for entryMenu — rebuilt alongside menu entries.
     var managedShowBySeriesID: [String: Show] = [:]
     var managedShowByTitle:    [String: [Show]] = [:]
@@ -156,6 +162,18 @@ final class AppState: ObservableObject {
     // MARK: - Startup
 
     func startup() async {
+        // Intercept SIGTERM (pkill, launchd stop) to flush config before the process dies.
+        // Re-raises SIGTERM with the default handler so the process exits normally without
+        // triggering the quit dialog — recordings survive as orphans via POSIX_SPAWN_SETSID.
+        signal(SIGTERM, SIG_IGN)
+        sigtermSource = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+        sigtermSource?.setEventHandler { [weak self] in
+            self?.saveConfig()
+            signal(SIGTERM, SIG_DFL)
+            raise(SIGTERM)
+        }
+        sigtermSource?.resume()
+
         // 1. Config first — shows visible in menu immediately
         loadConfig()
         guideStore.verbose = config.Verbose_curl
@@ -312,6 +330,9 @@ final class AppState: ObservableObject {
 
             // Clear before the network send — a crash during send won't re-trigger on next launch.
             shows[i].discord_start_msg_id = ""
+            // Suppress the duplicate "Recording Started" Discord embed when the idle loop
+            // relaunches this show — the "Interrupted" embed already tells the story.
+            suppressStartDiscord.insert(show.show_id)
             needsSave = true
 
             glog("[Startup] Recovering Discord embed for '\(show.show_title)' — file size \(fileSize / 1024)KB")
@@ -1055,10 +1076,16 @@ final class AppState: ObservableObject {
         refreshTunerOccupancy()
         // Stamp notify_recording_time so the "Recording Soon" pre-notification won't re-fire
         shows[index].notify_recording_time = Date().addingTimeInterval(config.Notify_recording * 60)
+        // Save immediately so show_recording_path is on disk before any signal can kill the app.
+        // The idle loop also saves at the end of the tick, but this closes the SIGKILL window.
+        saveConfig()
         notify("Recording Started", body: show.show_title, subtitle: "Channel \(show.show_channel) — ends \(shortTime(endDate))",
                categoryIdentifier: "recording.started", userInfo: ["show_id": show.show_id])
         // Capture message ID so completion/failure can edit this embed in-place.
-        if config.Discord_on_start, config.Discord_enabled, !config.Discord_webhook_url.isEmpty {
+        // Skip the Discord embed on the first relaunch after a quit-interrupted recording —
+        // the startup "Recording Interrupted" embed already covered this session.
+        let resumedAfterQuit = suppressStartDiscord.remove(show.show_id) != nil
+        if !resumedAfterQuit, config.Discord_on_start, config.Discord_enabled, !config.Discord_webhook_url.isEmpty {
             let embed  = buildDiscordShowEmbed(event: "🔴 Recording Started", show: shows[index],
                                                color: 0x2ECC71, extra: [("Ends", shortTime(endDate), true)])
             let url    = config.Discord_webhook_url
@@ -1067,6 +1094,9 @@ final class AppState: ObservableObject {
                 let msgId = await sendDiscordEmbedCapturing(to: url, embed: embed)
                 if let i = shows.firstIndex(where: { $0.show_id == showId }) {
                     shows[i].discord_start_msg_id = msgId ?? ""
+                    // Persist the message ID immediately so the startup recovery embed works
+                    // even if the app is killed before the next idle-loop saveConfig().
+                    saveConfig()
                 }
             }
         }
@@ -1552,6 +1582,19 @@ final class AppState: ObservableObject {
         ]
         if !show.show_logo_url.isEmpty { embed["thumbnail"] = ["url": show.show_logo_url] }
         return embed
+    }
+
+    // Called by WebServer when a recording is stopped or deleted via the web UI.
+    // Edits the existing "Recording Started" Discord embed in-place (if one exists).
+    // Uses Discord_on_start (not on_complete) — the embed was created under that flag,
+    // so the update should follow the same gate rather than completion-notification prefs.
+    @MainActor
+    func discordWebDelete(_ show: Show) {
+        guard show.show_recording, !show.discord_start_msg_id.isEmpty else { return }
+        discordShow("🛑 Recording Stopped", show: show, color: 0xE67E22,
+                    enabled: config.Discord_on_start,
+                    extra: [("Via", "Web UI", false)],
+                    editMessageId: show.discord_start_msg_id)
     }
 
     private func discordShow(_ event: String, show: Show, color: Int, enabled: Bool,

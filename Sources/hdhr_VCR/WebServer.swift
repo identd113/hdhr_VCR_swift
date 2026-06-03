@@ -124,16 +124,20 @@ final class WebServer {
             let headerSection = data[..<sepRange.lowerBound]
             let bodyBytes     = data[sepRange.upperBound...]
 
-            // Parse Content-Length from headers
+            // Parse Content-Length and User-Agent from headers
             let headerText    = String(data: headerSection, encoding: .utf8) ?? ""
             var contentLength = 0
+            var userAgent     = ""
             for line in headerText.components(separatedBy: "\r\n").dropFirst() {
                 let lower = line.lowercased()
                 if lower.hasPrefix("content-length:") {
                     contentLength = Int(lower.dropFirst("content-length:".count)
                                            .trimmingCharacters(in: .whitespaces)) ?? 0
-                    break
+                } else if lower.hasPrefix("user-agent:") {
+                    userAgent = String(line.dropFirst("user-agent:".count)
+                                          .trimmingCharacters(in: .whitespaces))
                 }
+                if contentLength > 0, !userAgent.isEmpty { break }
             }
 
             // Early rejection on an oversized Content-Length prevents waiting to accumulate
@@ -158,7 +162,7 @@ final class WebServer {
             let body: Data? = contentLength > 0 ? Data(bodyBytes.prefix(contentLength)) : nil
 
             Task {
-                let response = await self.route(method: method, path: cleanPath, body: body)
+                let response = await self.route(method: method, path: cleanPath, body: body, userAgent: userAgent)
                 self.send(response, on: conn)
             }
         }
@@ -166,13 +170,13 @@ final class WebServer {
 
     // MARK: - Routing
 
-    private func route(method: String, path: String, body: Data?) async -> WebResponse {
+    private func route(method: String, path: String, body: Data?, userAgent: String) async -> WebResponse {
         // Refresh tuner occupancy from each device's status.json before serving the HTML page
         // so the counts are always live rather than waiting for the next idle-loop tick.
         if method == "GET", path == "/" || path == "/index.html" {
             await refreshTunerOccupancy()
         }
-        return await MainActor.run { routeOnMain(method: method, path: path, body: body) }
+        return await MainActor.run { routeOnMain(method: method, path: path, body: body, userAgent: userAgent) }
     }
 
     private func refreshTunerOccupancy() async {
@@ -216,7 +220,7 @@ final class WebServer {
     }
 
     @MainActor
-    private func routeOnMain(method: String, path: String, body: Data?) -> WebResponse {
+    private func routeOnMain(method: String, path: String, body: Data?, userAgent: String) -> WebResponse {
         guard let state = appState else { return .notFound("App state unavailable") }
 
         // POST routes
@@ -229,12 +233,16 @@ final class WebServer {
         // GET routes
         switch path {
         case "/", "/index.html":
-            let html = buildHTML(state: state)
+            let html = buildHTML(state: state, isDesktop: isDesktopUA(userAgent))
             return .ok(contentType: "text/html; charset=utf-8", body: Data(html.utf8))
 
         case "/api/now.json":
             let data = buildNowJSON(state: state)
             return .ok(contentType: "application/json", body: data)
+
+        case "/api/shows-html":
+            let html = buildShowsSection(state: state)
+            return .ok(contentType: "text/html; charset=utf-8", body: Data(html.utf8))
 
         default:
             return .notFound("Not found: \(path)")
@@ -306,6 +314,9 @@ final class WebServer {
                    })
         guard let show else { return json(["ok": false, "error": "Show not found"]) }
 
+        // Edit the Discord "Recording Started" embed before clearing state — show is a struct
+        // copy so show.show_recording / discord_start_msg_id still reflect the original values.
+        state.discordWebDelete(show)
         // Clear url/recording on the live copy so nothing re-queues while deleteShow runs;
         // deleteShow() owns the stop() call and uses the original show copy's URL for VLC close.
         if let idx = state.shows.firstIndex(where: { $0.show_id == show.show_id }) {
@@ -319,12 +330,27 @@ final class WebServer {
     // MARK: - HTML / JSON generation
 
     @MainActor
-    private func buildHTML(state: AppState) -> String {
+    private func buildShowsSection(state: AppState) -> String {
+        func showRow(_ s: Show) -> String {
+            "<tr><td>\(he(s.show_title))</td><td>\(he(s.show_channel))</td></tr>"
+        }
+        func showsTable(_ rows: String, _ label: String) -> String {
+            guard !rows.isEmpty else { return "" }
+            return "<details><summary>\(label)</summary><table><tr><th>Title</th><th>Channel</th></tr>\(rows)</table></details>"
+        }
+        return showsTable(state.recordingShows.map(showRow).joined(),  "● Recording")
+             + showsTable(state.activeShows.map(showRow).joined(),     "★ Scheduled")
+             + showsTable(state.pausedShows.map(showRow).joined(),     "⏸ Paused")
+    }
 
-        // ── Time window: 6 h from the previous 30-min boundary ──────────────
+    @MainActor
+    private func buildHTML(state: AppState, isDesktop: Bool) -> String {
+
+        // ── Time window: 1/2 of GuideHours for desktop, 1/4 for mobile ──────
         let nowTs    = Int(Date().timeIntervalSince1970)
         let halfHour = 30 * 60
-        let winSec   = 6 * 60 * 60          // 360 min
+        let winSec   = isDesktop ? state.config.GuideHours * 3600 / 2
+                                 : state.config.GuideHours * 3600 / 4
         let winStart = (nowTs / halfHour) * halfHour
         let winEnd   = winStart + winSec
         // Integer-only percentage formatter — avoids ~1500 String(format:) calls per full guide render.
@@ -336,10 +362,13 @@ final class WebServer {
             return "\(whole).\(frac / 1000)\((frac / 100) % 10)\((frac / 10) % 10)\(frac % 10)"
         }
         let nowPct = pct(nowTs - winStart)
+        // Grid min-width: 100px per 30-min slot so text stays readable at any window size.
+        let guideMinWidth = max(1200, winSec / 1800 * 100)
 
-        // ── Time tick labels: one per hour (0 h … 6 h = 7 marks) ────────────
+        // ── Time tick labels: 7 marks evenly spaced across the window ────────
+        // Interval = winSec/6 → 1h steps for 6h window, 2h steps for 12h window, etc.
         let ticksHTML: String = (0...6).map { i in
-            let ts  = winStart + i * 2 * halfHour   // every 60 min
+            let ts  = winStart + i * (winSec / 6)
             let lbl = he(timeRangeFormatter.string(from: Date(timeIntervalSince1970: TimeInterval(ts))))
             return "<div class=\"g-tick\" style=\"left:\(pct(i * winSec / 6))%\">\(lbl)</div>"
         }.joined() + "<div class=\"g-now-tick\" style=\"left:\(nowPct)%\"></div>"
@@ -448,6 +477,9 @@ final class WebServer {
             return "<button class=\"\(cls)\" data-dev=\"\(he(devId))\" onclick=\"showTunerInfo(this.dataset.dev,this)\" title=\"Click to see active recordings\">\(label)</button>"
         }
 
+        // ── Status toggle button — sits next to h1 in the header; reveals the status panel ──
+        let statusBtn = "<button id=\"status-btn\" onclick=\"toggleStatus()\" title=\"What's On Now &amp; scheduled shows\" aria-expanded=\"false\" style=\"background:none;border:none;cursor:pointer;color:var(--t4);font-size:1.1rem;padding:2px 6px;line-height:1;border-radius:4px\">≡</button>"
+
         // ── Device bar (shown when >1 device; links to local HDHR web UI) ──────
         let headerHTML: String
         let deviceBarHTML: String
@@ -455,10 +487,10 @@ final class WebServer {
             let uiURL = "http://\(d.LocalIP)/"
             let label = "HDHR-\(d.DeviceID.uppercased())"
             let dt    = devTuners[d.DeviceID]!
-            headerHTML = "<div style=\"display:flex;align-items:center;gap:10px;margin-bottom:14px\"><h1 style=\"margin:0\">hdhrVCR+ · Guide</h1>\(tunerInfoBtn(d.DeviceID, dt))<a href=\"\(he(uiURL))\" target=\"_blank\" style=\"font-size:.75rem;color:#666;text-decoration:none\" title=\"Open \(he(label)) device web UI\">\(he(label)) ↗</a></div>"
+            headerHTML = "<div style=\"display:flex;align-items:center;gap:10px\"><h1 style=\"margin:0\">hdhrVCR+ · Guide</h1>\(statusBtn)\(tunerInfoBtn(d.DeviceID, dt))<a href=\"\(he(uiURL))\" target=\"_blank\" style=\"font-size:.75rem;color:#666;text-decoration:none\" title=\"Open \(he(label)) device web UI\">\(he(label)) ↗</a></div>"
             deviceBarHTML = ""
         } else if state.devices.count > 1 {
-            headerHTML = "<h1>hdhrVCR+ · Guide</h1>"
+            headerHTML = "<div style=\"display:flex;align-items:center;gap:8px\"><h1 style=\"margin:0\">hdhrVCR+ · Guide</h1>\(statusBtn)</div>"
             var bar = "<div id=\"dev-bar\"><button class=\"d-btn d-sel\" data-dev=\"\" onclick=\"setDev('')\">All Tuners</button>"
             for d in state.devices {
                 let uiURL = "http://\(d.LocalIP)/"
@@ -471,7 +503,7 @@ final class WebServer {
             bar += "</div>"
             deviceBarHTML = bar
         } else {
-            headerHTML = "<h1>hdhrVCR+ · Guide</h1>"
+            headerHTML = "<div style=\"display:flex;align-items:center;gap:8px\"><h1 style=\"margin:0\">hdhrVCR+ · Guide</h1>\(statusBtn)</div>"
             deviceBarHTML = ""
         }
 
@@ -593,16 +625,7 @@ final class WebServer {
         if cards.isEmpty { cards = "<p class=\"empty\">No guide data — loading…</p>" }
 
         // ── Shows section ─────────────────────────────────────────────────────
-        func showRow(_ s: Show) -> String {
-            "<tr><td>\(he(s.show_title))</td><td>\(he(s.show_channel))</td></tr>"
-        }
-        func showsTable(_ rows: String, _ label: String) -> String {
-            guard !rows.isEmpty else { return "" }
-            return "<details><summary>\(label)</summary><table><tr><th>Title</th><th>Channel</th></tr>\(rows)</table></details>"
-        }
-        let showsSection = showsTable(recording.map(showRow).joined(), "● Recording")
-                         + showsTable(state.activeShows.map(showRow).joined(),    "★ Scheduled")
-                         + showsTable(state.pausedShows.map(showRow).joined(),    "⏸ Paused")
+        let showsSection = buildShowsSection(state: state)
 
         // ── Assemble ──────────────────────────────────────────────────────────
         return """
@@ -613,51 +636,109 @@ final class WebServer {
         <meta name="viewport" content="width=device-width,initial-scale=1">
         <meta http-equiv="refresh" content="60">
         <title>hdhrVCR+</title>
+        <script>(function(){try{var m=localStorage.getItem('theme')||'dark';if(m==='light'||(m==='auto'&&window.matchMedia('(prefers-color-scheme:light)').matches))document.documentElement.classList.add('lm');}catch(e){}})();</script>
         <style>
         *{box-sizing:border-box;margin:0;padding:0}
-        body{background:#141414;color:#f0f0f0;font-family:-apple-system,sans-serif;padding:16px}
-        h1{font-size:1.15rem;color:#d0d0d0;margin-bottom:0}
-        /* ── Device switcher bar ────────────────────────────────── */
+        /* ── Theme variables: dark default (.lm = light mode active) ── */
+        :root{
+          --bg:#141414;--s1:#1a1a1a;--s2:#1c1c1c;--s3:#1e1e1e;--s4:#222222;
+          --b0:#252525;--b1:#333333;--b2:#383838;--b3:#3a3a3a;--b4:#444444;--b5:#484848;
+          --t0:#f0f0f0;--t1:#e8e8e8;--t2:#d0d0d0;--t3:#aaaaaa;--t4:#888888;--t5:#777777;--t6:#666666;
+          --pg:#2c2c2c;--pgb:#484848;--ac:#5aacff;--acb:#0e1f35;
+        }
+        html.lm{
+          --bg:#f0f2f5;--s1:#f4f5f7;--s2:#f8f8fa;--s3:#ffffff;--s4:#eeeeee;
+          --b0:#e4e4e4;--b1:#d8d8d8;--b2:#c8c8c8;--b3:#d0d0d0;--b4:#bbbbbb;--b5:#b8b8b8;
+          --t0:#111111;--t1:#222222;--t2:#444444;--t3:#666666;--t4:#888888;--t5:#888888;--t6:#999999;
+          --pg:#e0e0e8;--pgb:#ababbb;--ac:#0069cc;--acb:#e0eeff;
+        }
+        body{background:var(--bg);color:var(--t0);font-family:-apple-system,sans-serif;padding:16px}
+        h1{font-size:1.15rem;color:var(--t2);margin-bottom:0}
+        a[target="_blank"]{color:var(--t6)!important;text-decoration:none}
+        /* ── Device switcher bar ── */
         #dev-bar{display:flex;gap:6px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
-        .d-btn{background:#222;border:1px solid #444;color:#bbb;border-radius:5px;padding:5px 12px;font-size:.78rem;cursor:pointer;transition:border-color .15s,color .15s,background .15s}
-        .d-btn:hover{border-color:#666;color:#eee;background:#2a2a2a}
-        .d-btn.d-sel{border-color:#5aacff;color:#5aacff;background:#0e1f35}
+        .d-btn{background:var(--s4);border:1px solid var(--b4);color:var(--t3);border-radius:5px;padding:5px 12px;font-size:.78rem;cursor:pointer;transition:border-color .15s,color .15s,background .15s}
+        .d-btn:hover{border-color:var(--b5);color:var(--t0);background:var(--s3)}
+        .d-btn.d-sel{border-color:var(--ac);color:var(--ac);background:var(--acb)}
         .d-btn.d-full{border-color:#c03030;color:#ff8080;background:#2a1010}
         .d-btn.d-full:hover{border-color:#e04040;color:#ffaaaa}
         .d-btn.d-full.d-sel{border-color:#ff8080;color:#ff8080;background:#3a1010}
-        .d-ui{color:#666;font-size:.85rem;text-decoration:none;padding:0 2px;line-height:1}
-        .d-ui:hover{color:#5aacff}
-        .t-info{background:#222;border:1px solid #444;color:#aaa;border-radius:4px;padding:2px 8px;font-size:.72rem;cursor:pointer;transition:border-color .15s,color .15s}
-        .t-info:hover{border-color:#666;color:#eee}
+        html.lm .d-btn.d-full{border-color:#cc3030;color:#8b0000;background:#fce8e8}
+        html.lm .d-btn.d-full:hover{border-color:#aa2020;color:#660000}
+        html.lm .d-btn.d-full.d-sel{border-color:#cc3030;color:#8b0000;background:#fcd4d4}
+        .d-ui{color:var(--t6);font-size:.85rem;text-decoration:none;padding:0 2px;line-height:1}
+        .d-ui:hover{color:var(--ac)}
+        .t-info{background:var(--s4);border:1px solid var(--b4);color:var(--t3);border-radius:4px;padding:2px 8px;font-size:.72rem;cursor:pointer;transition:border-color .15s,color .15s}
+        .t-info:hover{border-color:var(--b5);color:var(--t0)}
         .t-info-full{background:#2a1010;border-color:#883030;color:#ff9090}
         .t-info-full:hover{border-color:#cc4444;color:#ffbbbb}
-        /* ── Summary panel ──────────────────────────────────────── */
+        html.lm .t-info-full{background:#fce8e8;border-color:#cc3030;color:#8b0000}
+        html.lm .t-info-full:hover{border-color:#aa2020;color:#660000}
+        /* ── Theme switcher (3-dot segmented control) ── */
+        #theme-sw{display:flex;background:var(--s4);border:1px solid var(--b4);border-radius:6px;overflow:hidden;flex-shrink:0;margin-right:8px}
+        #theme-sw button{background:none;border:none;border-right:1px solid var(--b4);padding:5px 9px;cursor:pointer;color:var(--t4);font-size:.8rem;line-height:1;transition:background .12s,color .12s}
+        #theme-sw button:last-child{border-right:none}
+        #theme-sw button:hover{background:var(--s3);color:var(--t0)}
+        #theme-sw button.th-sel{background:var(--ac);color:#fff}
+        /* ── Summary panel ── */
         .s-syn{overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
-        /* ── Guide grid ────────────────────────────────────────── */
-        .gw{overflow:auto;max-height:60vh;border:1px solid #333;border-radius:8px;margin-bottom:20px;background:#141414}
-        .gi{min-width:1200px}
-        .g-hdr{display:flex;position:sticky;top:0;z-index:10;background:#1c1c1c;border-bottom:1px solid #383838}
-        .g-hdr-ch{width:130px;min-width:130px;position:sticky;left:0;z-index:11;background:#1c1c1c;border-right:1px solid #383838;padding:6px 8px;font-size:.65rem;color:#888;text-transform:uppercase;letter-spacing:.07em}
+        #sum{border-color:var(--b1)!important}
+        #sum-ph{background:var(--s1)!important;color:var(--t5)!important}
+        #sum-title{color:var(--t0)!important}
+        #sum-ep,#sum-syn{color:var(--t0)!important}
+        #sum-date{color:var(--t3)!important}
+        #sum-ct{color:var(--t2)!important}
+        #sum-del{background:var(--s4)!important;color:var(--t2)!important;border-color:var(--b4)!important}
+        #sum-del.danger{background:#6a1010!important;color:#ffaaaa!important;border-color:#883030!important}
+        html.lm #sum-del.danger{background:#fcd4d4!important;color:#8b0000!important;border-color:#cc3030!important}
+        #sum button:not(#sum-btn):not(#sum-del){color:var(--t6)!important}
+        html.lm #sum-genre{color:rgba(0,0,0,.65)!important;background:rgba(0,0,0,.1)!important}
+        #sum-grad{background:linear-gradient(to right,rgba(0,0,0,.35),rgba(0,0,0,.05))}
+        html.lm #sum-grad{background:linear-gradient(to right,rgba(0,0,0,.04),transparent)}
+        /* ── Tuner popover ── */
+        #t-pop-c{background:var(--s3)!important;border-color:var(--b5)!important}
+        #t-pop-hdr{color:var(--t0)!important}
+        #t-pop-c button{color:var(--t6)!important}
+        #t-pop-status{color:var(--ac)!important;border-color:var(--b0)!important}
+        /* ── Record modal ── */
+        #rec-modal>div{background:var(--s2)!important;border-color:var(--b2)!important}
+        #rm-title{color:var(--t0)!important}
+        #rm-ch{color:var(--t4)!important}
+        #rm-sid{background:var(--bg)!important;color:var(--t4)!important}
+        #rm-sid-val{color:var(--t3)!important}
+        #rec-modal button:first-child{border-color:var(--b4)!important;color:var(--t3)!important;background:transparent!important}
+        .rm-opt-l{font-size:.82rem;font-weight:500;color:var(--t1)}
+        .rm-opt-d{font-size:.7rem;color:var(--t4);margin-top:1px}
+        html.lm #rm-tuner{color:#7a3c00;background:#fff8e8;border-color:#d09020}
+        /* ── Guide grid ── */
+        .gw{overflow:auto;max-height:60vh;border:1px solid var(--b1);border-radius:8px;margin-bottom:20px;background:var(--bg)}
+        .gi{min-width:\(guideMinWidth)px}
+        #status-btn:hover{color:var(--t0)!important}
+        .g-hdr{display:flex;position:sticky;top:0;z-index:10;background:var(--s2);border-bottom:1px solid var(--b2)}
+        .g-hdr-ch{width:130px;min-width:130px;position:sticky;left:0;z-index:11;background:var(--s2);border-right:1px solid var(--b2);padding:6px 8px;font-size:.65rem;color:var(--t4);text-transform:uppercase;letter-spacing:.07em}
         .g-hdr-tl{flex:1;position:relative;height:32px}
-        .g-tick{position:absolute;top:50%;transform:translate(-50%,-50%);font-size:.68rem;color:#999;white-space:nowrap;pointer-events:none}
+        .g-tick{position:absolute;top:50%;transform:translate(-50%,-50%);font-size:.68rem;color:var(--t4);white-space:nowrap;pointer-events:none}
         .g-now-tick{position:absolute;top:0;bottom:0;width:2px;background:rgba(255,90,90,.65);pointer-events:none}
-        .g-row{display:flex;border-bottom:1px solid #252525}
+        .g-row{display:flex;border-bottom:1px solid var(--b0)}
         .g-row:last-child{border-bottom:none}
-        .g-ch{width:130px;min-width:130px;display:flex;align-items:center;gap:6px;padding:5px 8px;position:sticky;left:0;z-index:2;background:#1a1a1a;border-right:1px solid #333}
+        .g-ch{width:130px;min-width:130px;display:flex;align-items:center;gap:6px;padding:5px 8px;position:sticky;left:0;z-index:2;background:var(--s1);border-right:1px solid var(--b1)}
         .g-logo{width:24px;height:24px;object-fit:contain;flex-shrink:0}
-        .g-logo-ph{width:24px;height:24px;border-radius:3px;background:#303030;display:flex;align-items:center;justify-content:center;font-size:.75rem;color:#888;flex-shrink:0}
+        .g-logo-ph{width:24px;height:24px;border-radius:3px;background:var(--s4);display:flex;align-items:center;justify-content:center;font-size:.75rem;color:var(--t4);flex-shrink:0}
         .g-cl{overflow:hidden;flex:1}
-        .g-cn{display:block;font-size:.68rem;color:#aaa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
-        .g-cname{display:block;font-size:.72rem;color:#e8e8e8;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-        /* 30-min gridlines — 8.3333% = 30 min ÷ 360 min (6 h window) */
-        .g-tl{flex:1;position:relative;min-height:54px;background:repeating-linear-gradient(90deg,transparent,transparent calc(8.3333% - 1px),#252525 calc(8.3333% - 1px),#252525 8.3333%)}
+        .g-cn{display:block;font-size:.68rem;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
+        .g-cname{display:block;font-size:.72rem;color:var(--t1);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        /* 30-min gridlines */
+        .g-tl{flex:1;position:relative;min-height:54px;background:repeating-linear-gradient(90deg,transparent,transparent calc(8.3333% - 1px),var(--b0) calc(8.3333% - 1px),var(--b0) 8.3333%)}
         .g-now-bar{position:absolute;top:0;bottom:0;width:2px;background:rgba(255,90,90,.75);z-index:1;pointer-events:none}
-        .g-prog{position:absolute;top:4px;bottom:4px;border-radius:5px;overflow:hidden;background:#2c2c2c;border:1px solid #484848;min-width:3px;cursor:pointer}
-        .g-prog:hover{filter:brightness(1.2);border-color:#777;z-index:3}
-        .g-prog.g-sel{border-color:#fff!important;box-shadow:0 0 0 1px rgba(255,255,255,.5);z-index:4}
+        .g-prog{position:absolute;top:4px;bottom:4px;border-radius:5px;overflow:hidden;background:var(--pg);border:1px solid var(--pgb);min-width:3px;cursor:pointer}
+        .g-prog:hover{filter:brightness(1.1);border-color:var(--t5);z-index:3}
+        .g-prog.g-sel{border-color:var(--t0)!important;box-shadow:0 0 0 1px rgba(128,128,128,.5);z-index:4}
         .g-prog-now  {background:#1c3820;border-color:#3a6a40}
         .g-prog-rec  {background:#3c1818;border-color:#c03030}
         .g-prog-sched{background:#1a1a40;border-color:#4848c8}
+        html.lm .g-prog-now  {background:#c8edce;border-color:#3a7a44}
+        html.lm .g-prog-rec  {background:#fcd4d4;border-color:#cc3030}
+        html.lm .g-prog-sched{background:#d4d4f8;border-color:#5050cc}
         .gg-drama    {background:hsl(216,50%,26%)}
         .gg-comedy   {background:hsl(47,55%,26%)}
         .gg-news     {background:hsl(342,50%,24%)}
@@ -666,42 +747,60 @@ final class WebServer {
         .gg-movie    {background:hsl(270,45%,26%)}
         .gg-talk     {background:hsl(173,50%,21%)}
         .gg-children {background:hsl(202,45%,24%)}
+        html.lm .gg-drama    {background:hsl(216,55%,88%)}
+        html.lm .gg-comedy   {background:hsl(47,65%,88%)}
+        html.lm .gg-news     {background:hsl(342,55%,88%)}
+        html.lm .gg-sports   {background:hsl(119,60%,87%)}
+        html.lm .gg-reality  {background:hsl(25,65%,88%)}
+        html.lm .gg-movie    {background:hsl(270,50%,88%)}
+        html.lm .gg-talk     {background:hsl(173,55%,87%)}
+        html.lm .gg-children {background:hsl(202,55%,87%)}
         .g-pi{padding:3px 6px;height:100%;display:flex;flex-direction:column;justify-content:center;gap:1px;overflow:hidden}
-        .g-ti{font-size:.78rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#f0f0f0;line-height:1.25}
-        .g-sub{font-size:.65rem;color:#c0c0c0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25}
+        .g-ti{font-size:.78rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--t0);line-height:1.25}
+        .g-sub{font-size:.65rem;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25}
         .g-r{font-style:normal;font-weight:700;color:#ff8080;font-size:.68rem;margin-right:2px}
         .g-s{font-style:normal;font-weight:700;color:#70e870;font-size:.68rem;margin-right:2px}
-        /* ── Watch Now cards ────────────────────────────────────── */
+        html.lm .g-s{color:#2a8a2a}
+        /* ── Watch Now / details ── */
         details{margin-top:8px}
-        summary{cursor:pointer;font-size:.85rem;color:#aaa;padding:6px 0;list-style:none;user-select:none}
+        summary{cursor:pointer;font-size:.85rem;color:var(--t3);padding:6px 0;list-style:none;user-select:none}
         summary::-webkit-details-marker{display:none}
-        summary::before{content:"▶  ";font-size:.62rem;color:#777}
+        summary::before{content:"▶  ";font-size:.62rem;color:var(--t5)}
         details[open] summary::before{content:"▼  "}
         .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px;margin-top:10px}
-        .card{background:#1e1e1e;border:1px solid #3a3a3a;border-radius:10px;overflow:hidden;display:flex;flex-direction:column}
+        .card{background:var(--s3);border:1px solid var(--b3);border-radius:10px;overflow:hidden;display:flex;flex-direction:column}
         .poster{width:100%;height:130px;object-fit:cover}
         .meta{padding:11px;flex:1;display:flex;flex-direction:column;gap:4px}
         .logo{width:22px;height:22px;object-fit:contain;vertical-align:middle;margin-right:5px}
-        .ch{font-size:.78rem;color:#aaa}
-        .title{font-weight:700;font-size:.95rem;line-height:1.2;color:#f0f0f0}
-        .sub{font-size:.8rem;color:#ccc}
-        .time{font-size:.74rem;color:#aaa}
+        .ch{font-size:.78rem;color:var(--t3)}
+        .title{font-weight:700;font-size:.95rem;line-height:1.2;color:var(--t0)}
+        .sub{font-size:.8rem;color:var(--t2)}
+        .time{font-size:.74rem;color:var(--t3)}
         .badges{font-size:.72rem;margin-top:3px}
         .badge{border-radius:4px;padding:2px 7px;font-weight:600}
         .rec{background:#4a1414;color:#ff9090;border:1px solid #7a2020}
         .sched{background:#184018;color:#80e880;border:1px solid #306030}
-        .empty{color:#777;padding:20px;text-align:center;font-size:.85rem}
+        html.lm .rec{background:#fce8e8;color:#8b0000;border-color:#cc3030}
+        html.lm .sched{background:#e8f5e8;color:#1a5c1a;border-color:#3a8a3a}
+        .empty{color:var(--t5);padding:20px;text-align:center;font-size:.85rem}
         table{width:100%;border-collapse:collapse;margin-top:8px;font-size:.82rem}
-        th,td{text-align:left;padding:5px 8px;border-bottom:1px solid #2e2e2e}
-        th{color:#aaa;font-weight:600}
-        td{color:#ddd}
-        .rm-lbl{display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:9px 11px;border-radius:7px;border:1px solid #3a3a3a;transition:border-color .15s}
-        .rm-lbl:hover{border-color:#666}
+        th,td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--b0)}
+        th{color:var(--t3);font-weight:600}
+        td{color:var(--t2)}
+        .rm-lbl{display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:9px 11px;border-radius:7px;border:1px solid var(--b3);transition:border-color .15s}
+        .rm-lbl:hover{border-color:var(--t4)}
         .rm-lbl input{margin-top:3px;flex-shrink:0;accent-color:#c0392b}
         </style>
         </head>
         <body>
-        \(headerHTML)
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <div>\(headerHTML)</div>
+          <div id="theme-sw">
+            <button data-m="dark"  onclick="setTheme('dark')"  title="Dark">◗</button>
+            <button data-m="auto"  onclick="setTheme('auto')"  title="Auto (system)">◐</button>
+            <button data-m="light" onclick="setTheme('light')" title="Light">◖</button>
+          </div>
+        </div>
         \(deviceBarHTML)
         <div id="t-pop" onclick="if(event.target===this)closeTunerPop()" style="display:none;position:fixed;inset:0;z-index:200">
           <div id="t-pop-c" style="position:absolute;background:#1e1e1e;border:1px solid #484848;border-radius:10px;padding:14px 16px;min-width:240px;max-width:340px;box-shadow:0 8px 32px rgba(0,0,0,.75)">
@@ -717,7 +816,7 @@ final class WebServer {
           <div id="sum-ph" style="flex:1;display:flex;align-items:center;justify-content:center;color:#777;font-size:.85rem;background:#1a1a1a;padding:16px">Select a show from the guide</div>
           <div id="sum-c" style="display:none;flex:1;flex-direction:row">
             <img id="sum-poster" src="" alt="" style="width:120px;min-width:120px;object-fit:cover;display:none" onerror="this.style.display='none'">
-            <div style="flex:1;padding:12px 14px;display:flex;flex-direction:column;gap:3px;overflow:hidden;background:linear-gradient(to right,rgba(0,0,0,.35),rgba(0,0,0,.05))">
+            <div id="sum-grad" style="flex:1;padding:12px 14px;display:flex;flex-direction:column;gap:3px;overflow:hidden">
               <div id="sum-title" style="font-size:.92rem;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
               <div id="sum-genre" style="display:none;font-size:.6rem;font-weight:700;color:rgba(255,255,255,.85);background:rgba(255,255,255,.18);border-radius:3px;padding:2px 6px;align-self:flex-start;letter-spacing:.06em"></div>
               <div id="sum-ep"   style="display:none;font-size:.78rem;color:#ddd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
@@ -726,7 +825,7 @@ final class WebServer {
               <div id="sum-actions" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px">
                 <span id="sum-note" style="display:none;font-size:.75rem;font-style:italic;color:rgba(255,255,255,.75)"></span>
                 <button id="sum-btn" onclick="doRecord()" style="display:none;font-size:.75rem;padding:5px 14px;border-radius:5px;border:none;cursor:pointer;font-weight:600;background:#c0392b;color:#fff">Record</button>
-                <button id="sum-del" onclick="doDelete()" style="display:none;font-size:.75rem;padding:5px 14px;border-radius:5px;border:1px solid #555;cursor:pointer;font-weight:600;background:#2a2a2a;color:#ddd">Delete</button>
+                <button id="sum-del" onclick="doDelete()" style="display:none;font-size:.75rem;padding:5px 14px;border-radius:5px;cursor:pointer;font-weight:600">Delete</button>
               </div>
               <div style="flex:1"></div>
               <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px">
@@ -756,15 +855,29 @@ final class WebServer {
         <div class="g-hdr"><div class="g-hdr-ch">Channel</div><div class="g-hdr-tl">\(ticksHTML)</div></div>
         \(rowsHTML)
         </div></div>
-        <details><summary>What's On Now</summary>
+        <div id="status-panel" style="display:none;margin-bottom:16px">
+        <details open><summary>What's On Now</summary>
         <div class="grid">\(cards)</div></details>
-        \(showsSection)
+        <div id="shows-section">\(showsSection)</div>
+        </div>
         <script>
         \(tunerJS)
         \(recsByDevJS)
         var _d='',_n='',_s=0,_e=0,_ser='';
         function hej(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
-        function gc(g){var m={drama:'hsl(216,50%,26%)',comedy:'hsl(47,55%,26%)',news:'hsl(342,50%,24%)',sports:'hsl(119,55%,21%)',reality:'hsl(25,55%,24%)',movie:'hsl(270,45%,26%)',talk:'hsl(173,50%,21%)',children:'hsl(202,45%,24%)'};return m[(g||'').toLowerCase()]||'#1e1e2a';}
+        // Theme: .lm class on <html> = light mode active
+        var _mq=window.matchMedia('(prefers-color-scheme:light)');
+        var _themeMode='dark';
+        function applyLM(on){document.documentElement.classList.toggle('lm',on);document.querySelectorAll('#theme-sw button').forEach(function(b){b.classList.toggle('th-sel',b.dataset.m===_themeMode);});}
+        function setTheme(m){_themeMode=m;try{localStorage.setItem('theme',m);}catch(e){}applyLM(m==='light'||(m==='auto'&&_mq.matches));}
+        _mq.addEventListener('change',function(e){if(_themeMode==='auto')applyLM(e.matches);});
+        (function(){try{_themeMode=localStorage.getItem('theme')||'dark';}catch(e){}applyLM(_themeMode==='light'||(_themeMode==='auto'&&_mq.matches));})();
+        function isLM(){return document.documentElement.classList.contains('lm');}
+        function gc(g){
+          var dk={drama:'hsl(216,50%,26%)',comedy:'hsl(47,55%,26%)',news:'hsl(342,50%,24%)',sports:'hsl(119,55%,21%)',reality:'hsl(25,55%,24%)',movie:'hsl(270,45%,26%)',talk:'hsl(173,50%,21%)',children:'hsl(202,45%,24%)'};
+          var lk={drama:'hsl(216,55%,88%)',comedy:'hsl(47,65%,88%)',news:'hsl(342,55%,88%)',sports:'hsl(119,60%,87%)',reality:'hsl(25,65%,88%)',movie:'hsl(270,50%,88%)',talk:'hsl(173,55%,87%)',children:'hsl(202,55%,87%)'};
+          var m=isLM()?lk:dk;return m[(g||'').toLowerCase()]||(isLM()?'#f0f0f4':'#1e1e2a');
+        }
         function ft(d){var h=d.getHours(),m=d.getMinutes(),ap=h>=12?'PM':'AM';h=h%12||12;return h+(m?':'+(m<10?'0':'')+m:'')+' '+ap;}
         function so(id,v){var e=document.getElementById(id);if(v){e.textContent=v;e.style.display='block';}else{e.style.display='none';}}
         function devFull(devId){var t=tuners[devId];return t&&t.t>0&&t.a>=t.t;}
@@ -790,18 +903,18 @@ final class WebServer {
           var note=document.getElementById('sum-note');
           // Reset all action elements first
           btn.style.display='none';del.style.display='none';note.style.display='none';
-          del.disabled=false;del.textContent='Delete';del.style.background='#2a2a2a';del.style.color='#ddd';
+          del.disabled=false;del.textContent='Delete';del.classList.remove('danger');del.style.background='';del.style.color='';
           if(+d.recording){
             note.textContent='● Recording now';note.style.color='#ff8080';note.style.display='inline';
-            del.textContent='Stop & Delete';del.style.background='#6a1010';del.style.color='#ffaaaa';del.style.display='inline-block';
+            del.textContent='Stop & Delete';del.classList.add('danger');del.style.display='inline-block';
           } else if(+d.managed){
-            note.textContent='★ Already scheduled';note.style.color='rgba(255,255,255,.75)';note.style.display='inline';
+            note.textContent='★ Already scheduled';note.style.color='var(--t2)';note.style.display='inline';
             del.textContent='Remove';del.style.display='inline-block';
           } else {
             var nowTs=Math.floor(Date.now()/1000);
             var isLive=(_s<=nowTs&&_e>nowTs);
             if(isLive&&devFull(_d)){
-              btn.textContent='⚠ Record (tuner full)';btn.style.background='#7a4a00';btn.style.color='#ffcc66';
+              btn.textContent='⚠ Record (tuner full)';btn.style.background=isLM()?'#e08000':'#7a4a00';btn.style.color=isLM()?'#fff':'#ffcc66';
               btn.title='All tuners busy — show will be queued when a tuner is free';
             } else {
               btn.textContent='Record';btn.style.background='#c0392b';btn.style.color='#fff';btn.title='';
@@ -831,7 +944,7 @@ final class WebServer {
             var inp=document.createElement('input');inp.type='radio';inp.name='rm-type';inp.value=o.v;
             if(first){inp.checked=true;first=false;}
             var info=document.createElement('div');
-            info.innerHTML='<div style="font-size:.82rem;color:#ddd;font-weight:500">'+o.l+'</div><div style="font-size:.7rem;color:#666;margin-top:1px">'+o.d+'</div>';
+            info.innerHTML='<div class="rm-opt-l">'+o.l+'</div><div class="rm-opt-d">'+o.d+'</div>';
             lbl.appendChild(inp);lbl.appendChild(info);opts.appendChild(lbl);
           });
           document.getElementById('rm-sid').style.display='none';
@@ -871,48 +984,68 @@ final class WebServer {
                 var note=document.getElementById('sum-note');
                 var del=document.getElementById('sum-del');
                 note.textContent=j.tunerFull?'⚠ Queued — all tuners busy':'★ Scheduled';
-                note.style.color=j.tunerFull?'#ffcc66':'rgba(255,255,255,.75)';
+                note.style.color=j.tunerFull?(isLM()?'#c07000':'#ffcc66'):'var(--t2)';
                 note.style.display='inline';
-                del.textContent='Remove';del.style.background='#2a2a2a';del.style.color='#ddd';del.style.display='inline-block';del.disabled=false;
+                del.textContent='Remove';del.style.background='';del.style.color='';del.style.display='inline-block';del.disabled=false;
+                refreshShowsSection();
               });
             } else {
               return r.text().then(function(t){
-                try{var j=JSON.parse(t);btn.textContent='Error: '+(j.error||t);}catch(x){btn.textContent='Error: '+t;}
-                btn.style.background='#4a1010';btn.style.color='#ff6b6b';btn.disabled=false;
-              }).catch(function(){btn.textContent='Error ('+r.status+')';btn.disabled=false;});
+                var msg;try{var j=JSON.parse(t);msg='Error: '+(j.error||t);}catch(x){msg='Error: '+t;}
+                btn.textContent=msg;btn.style.background=isLM()?'#fce8e8':'#4a1010';btn.style.color=isLM()?'#8b0000':'#ff6b6b';btn.disabled=false;
+                var note=document.getElementById('sum-note');note.textContent=msg;note.style.color=isLM()?'#cc2020':'#ff8080';note.style.display='inline';
+              }).catch(function(){
+                btn.textContent='Error ('+r.status+')';btn.disabled=false;
+                var note=document.getElementById('sum-note');note.textContent='Error ('+r.status+')';note.style.color=isLM()?'#cc2020':'#ff8080';note.style.display='inline';
+              });
             }
           })
           .catch(function(e){
-            btn.textContent='Error: '+(e.message||'network');
-            btn.style.background='#4a1010';btn.style.color='#ff6b6b';btn.disabled=false;
+            var msg='Error: '+(e.message||'network');
+            btn.textContent=msg;btn.style.background=isLM()?'#fce8e8':'#4a1010';btn.style.color=isLM()?'#8b0000':'#ff6b6b';btn.disabled=false;
+            var note=document.getElementById('sum-note');note.textContent=msg;note.style.color=isLM()?'#cc2020':'#ff8080';note.style.display='inline';
           });
+        }
+        function refreshShowsSection(){
+          fetch('/api/shows-html').then(function(r){return r.text();}).then(function(h){
+            var s=document.getElementById('shows-section');if(s)s.innerHTML=h;
+          }).catch(function(){});
         }
         function doDelete(){
           var del=document.getElementById('sum-del');
+          var _delLabel=del.textContent;
           del.disabled=true;del.textContent='Deleting…';
           var title=document.getElementById('sum-title').textContent||'';
           fetch('/api/delete',{method:'POST',headers:{'Content-Type':'application/json'},
             body:JSON.stringify({deviceId:_d,guideNumber:_n,startTime:_s,title:title})})
           .then(function(r){return r.json();})
           .then(function(j){
+            var note=document.getElementById('sum-note');
             if(j.ok){
-              // Update guide block in place
+              // Update guide tile in place — restore g-prog-now if the show is still airing
               var sel=document.querySelector('.g-prog.g-sel');
               if(sel){
                 sel.classList.remove('g-prog-rec','g-prog-sched','g-prog-now');sel.dataset.managed='0';sel.dataset.recording='0';
                 var badge=sel.querySelector('.g-r,.g-s');if(badge)badge.remove();
+                var nowTs=Math.floor(Date.now()/1000);
+                if(_s<=nowTs&&_e>nowTs){sel.classList.add('g-prog-now');}
               }
               del.style.display='none';
-              var note=document.getElementById('sum-note');
-              note.textContent='✓ Deleted';note.style.color='#aaa';note.style.fontStyle='normal';note.style.display='inline';
+              note.textContent='✓ Deleted';note.style.color='var(--t3)';note.style.fontStyle='normal';note.style.display='inline';
               document.getElementById('sum-btn').textContent='Record';document.getElementById('sum-btn').style.background='#c0392b';
               document.getElementById('sum-btn').style.color='#fff';document.getElementById('sum-btn').style.display='inline-block';
               document.getElementById('sum-btn').disabled=false;
+              refreshShowsSection();
             } else {
-              del.textContent='Error';del.disabled=false;
+              del.textContent=_delLabel;del.disabled=false;
+              note.textContent='Error: '+(j.error||'Delete failed');note.style.color='#ff8080';note.style.fontStyle='normal';note.style.display='inline';
             }
           })
-          .catch(function(){del.textContent='Error';del.disabled=false;});
+          .catch(function(e){
+            var del=document.getElementById('sum-del');del.textContent=_delLabel;del.disabled=false;
+            var note=document.getElementById('sum-note');
+            note.textContent='Error: '+(e.message||'network');note.style.color='#ff8080';note.style.fontStyle='normal';note.style.display='inline';
+          });
         }
         function showTunerInfo(devId,anchor){
           var recs=recsByDev[devId]||[];
@@ -921,16 +1054,16 @@ final class WebServer {
           document.getElementById('t-pop-hdr').textContent=(dt.t>0?dt.a+'/'+dt.t+' tuners':'Tuners')+(full?' — FULL':'');
           var list=document.getElementById('t-pop-list');
           if(recs.length===0){
-            list.innerHTML='<div style="color:#888;font-size:.8rem;padding:4px 0">No active recordings</div>';
+            list.innerHTML='<div style="color:var(--t4);font-size:.8rem;padding:4px 0">No active recordings</div>';
           } else {
             list.innerHTML=recs.map(function(r){
               var chLabel=hej(r.ch)+(r.chname?' · '+hej(r.chname):'');
-              return '<div style="display:flex;flex-direction:column;gap:2px;padding:6px 0;border-bottom:1px solid #2e2e2e">'
+              return '<div style="display:flex;flex-direction:column;gap:2px;padding:6px 0;border-bottom:1px solid var(--b0)">'
                 +'<div style="display:flex;align-items:center;gap:8px">'
-                  +'<span style="font-size:.67rem;color:#888;min-width:48px;flex-shrink:0">'+hej(r.tuner)+'</span>'
-                  +'<span style="font-size:.78rem;font-weight:600;color:#5aacff;white-space:nowrap">'+chLabel+'</span>'
+                  +'<span style="font-size:.67rem;color:var(--t4);min-width:48px;flex-shrink:0">'+hej(r.tuner)+'</span>'
+                  +'<span style="font-size:.78rem;font-weight:600;color:var(--ac);white-space:nowrap">'+chLabel+'</span>'
                 +'</div>'
-                +'<div style="font-size:.82rem;color:#f0f0f0;padding-left:56px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+hej(r.title)+'</div>'
+                +'<div style="font-size:.82rem;color:var(--t0);padding-left:56px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+hej(r.title)+'</div>'
                 +'</div>';
             }).join('');
           }
@@ -944,6 +1077,14 @@ final class WebServer {
           document.getElementById('t-pop').style.display='block';
         }
         function closeTunerPop(){document.getElementById('t-pop').style.display='none';}
+        function toggleStatus(){
+          var p=document.getElementById('status-panel');
+          var btn=document.getElementById('status-btn');
+          var open=p.style.display!=='none';
+          p.style.display=open?'none':'block';
+          btn.style.color=open?'var(--t4)':'var(--ac)';
+          btn.setAttribute('aria-expanded',open?'false':'true');
+        }
         var curDev='';
         function setDev(id){
           curDev=id;
@@ -958,6 +1099,14 @@ final class WebServer {
           });
         }
         setDev('');
+        // Auto-select the current-timeslot program on the first visible channel row
+        (function(){
+          var nowTs=Math.floor(Date.now()/1000);
+          var first=Array.from(document.querySelectorAll('.g-row')).find(function(r){return r.style.display!=='none';});
+          if(!first)return;
+          var prog=Array.from(first.querySelectorAll('.g-prog')).find(function(el){return +el.dataset.start<=nowTs&&+el.dataset.end>nowTs;});
+          if(prog)showInfo(prog);
+        })();
         </script>
         </body>
         </html>
@@ -1037,13 +1186,10 @@ final class WebServer {
             dict[key] = String("\(show.show_title) · \(show.show_channel) · \(slot)".prefix(120))
         }
 
-        // Up to 3 upcoming shows — next, next2, next3
+        // Next upcoming show — "next" only; TXT records don't benefit from next2/next3
         // Format: "Title · Channel · DeviceID · in Xh Ym"
-        let upcoming = state.activeShows.filter { $0.show_next != nil }.prefix(3)
-        for (i, show) in upcoming.enumerated() {
-            let key = i == 0 ? "next" : "next\(i + 1)"
-            let rel = txtRelativeTime(show.show_next!)
-            dict[key] = String("\(show.show_title) · \(show.show_channel) · \(show.hdhr_record) · \(rel)".prefix(120))
+        if let next = state.activeShows.first(where: { $0.show_next != nil }) {
+            dict["next"] = String("\(next.show_title) · \(next.show_channel) · \(next.hdhr_record) · \(txtRelativeTime(next.show_next!))".prefix(120))
         }
 
         return NWTXTRecord(dict)
@@ -1108,6 +1254,16 @@ final class WebServer {
         s.replacingOccurrences(of: "<",  with: "\\u003c")
          .replacingOccurrences(of: ">",  with: "\\u003e")
          .replacingOccurrences(of: "&",  with: "\\u0026")
+    }
+
+    // MARK: - User-Agent helpers
+
+    // Returns true for desktop browser UAs (macOS/Windows/Linux without mobile tokens).
+    // Used to serve a wider guide time window (1/2 GuideHours) to desktop clients.
+    private func isDesktopUA(_ ua: String) -> Bool {
+        let l = ua.lowercased()
+        if l.contains("mobile") || l.contains("iphone") || l.contains("ipad") || l.contains("android") { return false }
+        return l.contains("macintosh") || l.contains("windows") || l.contains("linux")
     }
 
     // MARK: - Subnet guard
