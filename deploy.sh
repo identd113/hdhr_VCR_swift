@@ -66,6 +66,7 @@ echo "==> Signing…"
 # codesign --options runtime rejects FinderInfo as "detritus"; iCloud races faster than
 # a single xattr -cr call between the Sparkle component signs and the bundle sign.
 _TMP_DIR=$(mktemp -d)
+[ -d "$_TMP_DIR" ] || { echo "==> ERROR: mktemp failed"; exit 1; }
 _TMP_APP="$_TMP_DIR/hdhrVCRplus.app"
 cp -R "$APP" "$_TMP_APP"
 find "$_TMP_APP" -name "._*" -delete

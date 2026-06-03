@@ -23,6 +23,9 @@ final class AppState: ObservableObject {
     // Tracks which show+episode windows have already fired a runtime conflict notification.
     // Key = "showID-show_next_epoch" so it auto-clears when show_next advances.
     private var conflictNotifiedKeys: Set<String> = []
+    // Tracks which show+episode windows have already fired a MISSED START warning.
+    // Same "showID-show_next_epoch" key pattern as conflictNotifiedKeys.
+    private var missedStartNotifiedKeys: Set<String> = []
     // Shows whose recording was interrupted by an app quit and will be relaunched this session.
     // Suppresses the duplicate Discord "Recording Started" on the first relaunch after startup.
     private var suppressStartDiscord: Set<String> = []
@@ -922,10 +925,15 @@ final class AppState: ObservableObject {
                 dirty = true
             }
 
-            // Show window is open and we're not recording — warn if we're past the start time
-            // with no obvious reason (not tuner-full, not paused, not already handled above)
+            // Show window is open and we're not recording — warn once per window if we're past
+            // the start time with no obvious reason (not tuner-full, not paused, not handled above).
+            // Fires once per "showId-epoch" key so retrying shows don't spam the log every tick.
             if !show.show_recording, nextDate < now - 30, endDate > now {
-                glog("[\(show.show_title)] MISSED START — window open since \(shortTime(show.show_next)), still not recording", level: .warning)
+                let missedKey = "\(show.show_id)-\(show.show_next.map { Int($0.timeIntervalSince1970) } ?? 0)"
+                if !missedStartNotifiedKeys.contains(missedKey) {
+                    missedStartNotifiedKeys.insert(missedKey)
+                    glog("[\(show.show_title)] MISSED START — window open since \(shortTime(show.show_next)), still not recording", level: .warning)
+                }
             }
 
             if show.show_recording, endDate > now, !recordingManager.isRunning(showId: show.show_id) {
@@ -946,7 +954,8 @@ final class AppState: ObservableObject {
             // Discord progress update — edit start embed once per 5-min boundary during active recordings
             if show.show_recording, !show.discord_start_msg_id.isEmpty,
                config.Discord_on_progress, config.Discord_enabled, !config.Discord_webhook_url.isEmpty {
-                let elapsedSec = Int(now.timeIntervalSince(show.show_next ?? now))
+                guard let showStart = show.show_next else { continue }
+                let elapsedSec = Int(now.timeIntervalSince(showStart))
                 let prevSec    = elapsedSec - config.Idle_timer_interval
                 let interval   = 5 * 60
                 if elapsedSec > 0, elapsedSec / interval > max(0, prevSec) / interval {
@@ -1201,7 +1210,8 @@ final class AppState: ObservableObject {
         let show = shows[index]
         // Keys are "showId-epoch" — once show_next advances the old key is stale.
         // Remove on every reschedule so the set doesn't accumulate indefinitely.
-        conflictNotifiedKeys = conflictNotifiedKeys.filter { !$0.hasPrefix("\(show.show_id)-") }
+        conflictNotifiedKeys    = conflictNotifiedKeys.filter    { !$0.hasPrefix("\(show.show_id)-") }
+        missedStartNotifiedKeys = missedStartNotifiedKeys.filter { !$0.hasPrefix("\(show.show_id)-") }
         switch show.state {
         case .single:
             glog("[\(show.show_title)] DONE single — deactivated")
@@ -1267,7 +1277,7 @@ final class AppState: ObservableObject {
             }
             // Bump show_next if stranded (nil or past). If it's already a future guide match,
             // leave it — rescheduleAllSeries will override it when a real episode appears.
-            if shows[index].show_next == nil || shows[index].show_next! <= Date() {
+            if shows[index].show_next.map({ $0 <= Date() }) ?? true {
                 glog("[\(show.show_title)] no episode found — retry in \(config.Series_scan_retry_hours)h", level: .warning)
                 shows[index].show_next = Date().addingTimeInterval(Double(config.Series_scan_retry_hours) * 3600)
             } else {
@@ -1479,7 +1489,10 @@ final class AppState: ObservableObject {
     func diskOK(for show: Show) -> Bool {
         guard let attrs = try? FileManager.default.attributesOfFileSystem(forPath: show.posixRecordDir),
               let total = attrs[.systemSize] as? Double, let free = attrs[.systemFreeSize] as? Double,
-              total > 0 else { return true }
+              total > 0 else {
+            glog("[\(show.show_title)] diskOK: could not read filesystem stats for \(show.posixRecordDir) — assuming OK", level: .warning)
+            return true
+        }
         let minFreeBytes = config.Min_disk_free_gb * 1_073_741_824
         let freeGB = free / 1_073_741_824
         // Warn when within 2× the minimum threshold so there's time to act before recordings are skipped

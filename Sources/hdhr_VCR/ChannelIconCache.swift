@@ -60,7 +60,7 @@ actor ChannelIconCache {
               let img = NSImage(data: data) else { failedURLs.insert(urlString); return nil }
 
         mem[urlString] = img
-        if mem.count > 250 { mem.removeAll() }
+        if mem.count > 600 { mem.removeAll() }
         try? data.write(to: diskPath)
         return img
     }

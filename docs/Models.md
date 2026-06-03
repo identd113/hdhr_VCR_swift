@@ -24,7 +24,7 @@ Shows have exactly one of four states, determined by boolean flags:
 Two booleans control schedulability beyond the 4-state type:
 
 - **`show_active`** — `false` only for completed Singles. Never set `false` for series or error conditions.
-- **`show_paused`** — `true` for any recoverable pause: fail threshold, manual stop, skip, disk full, missing output, no air days, or user action. Paused shows appear in the "Paused" menu section with **Resume Now**.
+- **`show_paused`** — `true` when the fail threshold is reached, or for: manual stop, skip, disk full, missing output, no air days, or user action. Paused shows appear in the "Paused" menu section with **Resume Now**. A recording failure alone does NOT pause the show — `startRecording` retries up to `Fail_count_setting` times (once per idle loop tick) before setting this flag.
 
 Menu section routing:
 - `show_recording == true` → Recording Now
@@ -46,7 +46,7 @@ Called after each recording completes and file verification passes:
 
 ## Show Output Path
 
-`Show.outputPath(for:date:)` builds the recording file path. The `DateFormatter` used for the timestamp suffix (`outputDateFormatter`) is a `private static let` — allocated once per app session, not on every recording start.
+`Show.outputPath(date:)` builds the recording file path. The `DateFormatter` used for the timestamp suffix (`outputDateFormatter`) is a `private static let` — allocated once per app session, not on every recording start.
 
 ---
 
@@ -68,7 +68,7 @@ All five date fields (`show_next`, `show_end`, `show_last`, `notify_upnext_time`
 
 Two mutating methods on `Show` consolidate the repeated failure-state field group:
 
-- `recordFailure(reason: String)` — increments `show_fail_count`, sets `show_fail_reason`, sets `show_paused = true`. Used at every recording-start failure path.
+- `recordFailure(reason: String)` — increments `show_fail_count` and sets `show_fail_reason`. Does NOT set `show_paused` — the caller (`startRecording`) checks the count against `Fail_count_setting` and pauses only after the threshold is exceeded, allowing one retry per idle loop tick.
 - `clearFailures()` — zeros `show_fail_count` and clears `show_fail_reason`. Callers that also un-pause a show set `show_paused = false` separately (intentional — paused state is independent of the failure counters in some flows such as `resetAllFailCounts`).
 
 ---
