@@ -101,6 +101,9 @@ Every significant controller event is logged to `hdhrVCRplus.log`:
 | Rate ramp tick | INFO | `[VLC] rate → 0.961 (lag ~3s / 8s)` |
 | Stream playing confirmed | INFO | `[VLC] stream playing confirmed` |
 | Stream error state | ERROR | `[VLC] stream error state — publishing hasError` |
+| Track descriptions loaded | INFO | `[VLC] tracks — audio: 1:English, 2:Spanish  spu: 0:CC1` |
+| Audio track selected | INFO | `[VLC] setAudioTrack id=2` |
+| SPU/CC track selected | INFO | `[VLC] setSpuTrack id=0 (on)` / `id=-1 (off)` |
 | Stats call failed | WARN | `[VLC] WARNING: get_stats returned N — stats polling skipped (may indicate VLC 4 struct mismatch)` |
 | Auto catch-up | INFO | `[VLC] signal corruption detected (corrupt=N lost=N) — catching up to live` |
 
