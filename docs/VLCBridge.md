@@ -172,8 +172,10 @@ var isAvailable: Bool                                          // false when VLC
 var minRate: Float                                             // fill-phase floor (0.90–1.0); set from AppConfig
 var currentURL: String?                                        // URL currently playing; nil when stopped
 @Published var bufferInfo: VLCBufferInfo                      // rate/lag/bitrate snapshot; published every 3s tick
-@Published var hasError:   Bool                               // true when libvlc_Error (state 7) detected; cleared on play/stop/release
-@Published var isPlaying:  Bool                               // true after libvlc_Playing (state 3) first confirmed; cleared on play/stop/release
+@Published var hasError:    Bool                              // true when libvlc_Error (state 7) detected; cleared on play/stop/release
+@Published var isPlaying:   Bool                              // true after libvlc_Playing (state 3) first confirmed; cleared on play/stop/release
+@Published var audioTracks: [(id: Int32, name: String)]       // stream audio tracks; empty = single/unknown; populated ~3s after playing
+@Published var spuTracks:   [(id: Int32, name: String)]       // CC/subtitle tracks; empty = none detected; populated ~3s after playing
 func setDrawable(_ view: NSView)                              // must be called before first play()
 func play(url: String)                                        // stop + switch to new URL; resets rate controller, hasError, isPlaying
 func stop()                                                   // stop + release media; cancels stats timer; clears hasError, isPlaying
@@ -185,6 +187,9 @@ func setVolume(_ v: Int)                                      // 0–100
 func setAudioDevice(output: String, deviceId: String)         // output = "auhal"; deviceId = CoreAudio device UID
 func systemAudioOutputDevices() -> [(id: String, name: String)]  // all CoreAudio output devices (built-in, BT, AirPlay, USB)
 func systemDefaultOutputUID() -> String?                      // UID of current system-default output device
+func fetchTracks()                                            // poll libvlc for audio/SPU track descriptions; called from tickController; retries until audio found
+func setAudioTrack(id: Int32)                                 // select audio track by libvlc track id
+func setSpuTrack(id: Int32)                                   // select CC/subtitle track; −1 = off
 ```
 
 ### VLCBufferInfo

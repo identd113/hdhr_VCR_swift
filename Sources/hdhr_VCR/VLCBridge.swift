@@ -42,6 +42,9 @@ private typealias vlc_mp_get_state_fn    = @convention(c) (OpaquePointer?) -> In
 private typealias vlc_mp_get_stats_fn    = @convention(c) (OpaquePointer?, UnsafeMutableRawPointer?) -> Int32
 private typealias vlc_video_get_size_fn  = @convention(c) (OpaquePointer?, UInt32, UnsafeMutablePointer<UInt32>?, UnsafeMutablePointer<UInt32>?) -> Int32
 private typealias vlc_get_version_fn     = @convention(c) () -> UnsafePointer<CChar>?
+private typealias vlc_track_desc_fn      = @convention(c) (OpaquePointer?) -> OpaquePointer?
+private typealias vlc_track_rel_fn       = @convention(c) (OpaquePointer?) -> Void
+private typealias vlc_track_set_fn       = @convention(c) (OpaquePointer?, Int32) -> Int32
 
 // ── CoreAudio device change monitoring ───────────────────────────────────────
 
@@ -98,12 +101,15 @@ final class VLCBridge: ObservableObject {
     @Published var bufferInfo = VLCBufferInfo()
     @Published var hasError:   Bool = false
     @Published var isPlaying:  Bool = false   // true only after libvlc_Playing (state 3) confirmed
+    @Published var audioTracks: [(id: Int32, name: String)] = []  // stream audio tracks; empty = single/unknown
+    @Published var spuTracks:   [(id: Int32, name: String)] = []  // CC/subtitle tracks; empty = none detected
     @Published private(set) var currentURL: String?
     private var statsTimer:      Timer?
     private var currentRate:     Float  = 1.0
     private var estimatedLagSec: Double = 0.0
     private var lastCorrupted:   Int32  = 0
     private var catchUpCooldown: Date   = .distantPast
+    private var tracksFetched:   Bool   = false
 
     private let _new:          vlc_new_fn?
     private let _release:      vlc_release_fn?
@@ -125,6 +131,11 @@ final class VLCBridge: ObservableObject {
     private let _mpGetStats:    vlc_mp_get_stats_fn?
     private let _videoGetSize:  vlc_video_get_size_fn?
     private let _getVersion:    vlc_get_version_fn?
+    private let _audioTrackDesc:   vlc_track_desc_fn?  // libvlc_audio_get_track_description
+    private let _audioSetTrack:    vlc_track_set_fn?   // libvlc_audio_set_track
+    private let _spuDesc:          vlc_track_desc_fn?  // libvlc_video_get_spu_description
+    private let _spuSet:           vlc_track_set_fn?   // libvlc_video_set_spu
+    private let _trackDescRelease: vlc_track_rel_fn?   // libvlc_track_description_list_release
 
     private init() {
         let vlcLib = "/Applications/VLC.app/Contents/MacOS/lib/"
@@ -158,6 +169,11 @@ final class VLCBridge: ObservableObject {
         _mpGetStats   = sym("libvlc_media_player_get_stats")
         _videoGetSize = sym("libvlc_video_get_size")
         _getVersion   = sym("libvlc_get_version")
+        _audioTrackDesc   = sym("libvlc_audio_get_track_description")
+        _audioSetTrack    = sym("libvlc_audio_set_track")
+        _spuDesc          = sym("libvlc_video_get_spu_description")
+        _spuSet           = sym("libvlc_video_set_spu")
+        _trackDescRelease = sym("libvlc_track_description_list_release")
 
         isAvailable = h != nil && _new != nil && _mpNew != nil
         guard isAvailable else { return }
@@ -288,11 +304,14 @@ final class VLCBridge: ObservableObject {
     /// Does NOT release the media player itself — call releasePlayer() for full teardown.
     private func stopAndClearState() {
         stopStatsTimer()
-        hasError     = false
-        isPlaying    = false
-        currentURL   = nil
-        pendingURL   = nil
-        drawableView = nil
+        hasError      = false
+        isPlaying     = false
+        currentURL    = nil
+        pendingURL    = nil
+        drawableView  = nil
+        audioTracks   = []
+        spuTracks     = []
+        tracksFetched = false
         guard let mp = mediaPlayer else { return }
         _mpStop?(mp)
         if let old = currentMedia { _mediaRelease?(old); currentMedia = nil }
@@ -365,6 +384,8 @@ final class VLCBridge: ObservableObject {
                 glog("[VLC] stream playing confirmed")
             }
         }
+        // Fetch track descriptions once playing; retry every tick until audio tracks appear.
+        if isPlaying && !tracksFetched { fetchTracks() }
 
         // Adaptive rate: ramp from minRate toward 1.0 as estimated buffer lag grows toward 8s.
         if minRate < 1.0 {
@@ -406,6 +427,58 @@ final class VLCBridge: ObservableObject {
         catchUpCooldown = Date().addingTimeInterval(30)
         glog("[VLC] stream corruption detected (i_demux_corrupted delta=\(corruptDelta)) — catching up to live")
         catchUpToLive()
+    }
+
+    // MARK: - Track selection (audio tracks and CC/subtitle tracks)
+
+    /// Fetch audio and SPU track descriptions from libvlc. Called from tickController once
+    /// playing; retries every 3s until audio tracks appear (they may not be ready immediately).
+    func fetchTracks() {
+        guard let mp = mediaPlayer else { return }
+        if let ptr = _audioTrackDesc?(mp) {
+            let filtered = parseTrackDescriptions(ptr).filter { $0.id >= 0 }
+            if !filtered.isEmpty {
+                audioTracks   = filtered
+                tracksFetched = true
+            }
+        }
+        if tracksFetched, let ptr = _spuDesc?(mp) {
+            spuTracks = parseTrackDescriptions(ptr).filter { $0.id >= 0 }
+        }
+        if !audioTracks.isEmpty {
+            glog("[VLC] tracks — audio: \(audioTracks.map { "\($0.id):\($0.name)" }.joined(separator: ", "))" +
+                 (spuTracks.isEmpty ? "" : "  spu: \(spuTracks.map { "\($0.id):\($0.name)" }.joined(separator: ", "))"))
+        }
+    }
+
+    func setAudioTrack(id: Int32) {
+        guard let mp = mediaPlayer else { return }
+        _ = _audioSetTrack?(mp, id)
+        glog("[VLC] setAudioTrack id=\(id)")
+    }
+
+    func setSpuTrack(id: Int32) {
+        guard let mp = mediaPlayer else { return }
+        _ = _spuSet?(mp, id)
+        glog("[VLC] setSpuTrack id=\(id) (\(id < 0 ? "off" : "on"))")
+    }
+
+    /// Walk a libvlc_track_description_t linked list and return (id, name) pairs.
+    /// C layout on 64-bit: i_id Int32 at offset 0, psz_name ptr at offset 8, p_next ptr at offset 16.
+    /// Releases the list via libvlc_track_description_list_release before returning.
+    private func parseTrackDescriptions(_ ptr: OpaquePointer) -> [(id: Int32, name: String)] {
+        var result: [(id: Int32, name: String)] = []
+        var raw: UnsafeRawPointer? = UnsafeRawPointer(ptr)
+        while let r = raw {
+            let id      = r.load(fromByteOffset: 0,  as: Int32.self)
+            let namePtr = r.load(fromByteOffset: 8,  as: UnsafePointer<CChar>?.self)
+            let nextPtr = r.load(fromByteOffset: 16, as: OpaquePointer?.self)
+            let name    = namePtr.map { String(cString: $0) } ?? ""
+            result.append((id: id, name: name.isEmpty ? "Track \(result.count + 1)" : name))
+            raw = nextPtr.map { UnsafeRawPointer($0) }
+        }
+        _trackDescRelease?(ptr)
+        return result
     }
 
     // MARK: - Volume  (UI scale 0–100; VLC scale 0–200, unity = 100)

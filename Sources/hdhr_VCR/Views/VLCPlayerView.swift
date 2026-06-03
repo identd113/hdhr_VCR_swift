@@ -39,6 +39,8 @@ struct VLCPlayerView: View {
 
     @State private var selectedChannel: LineupEntry?
     @State private var suppressNextChannelPlay = false
+    @State private var selectedAudioTrackId: Int32 = -1  // -1 = not yet loaded; set when audioTracks first appear
+    @State private var selectedSpuTrackId:   Int32 = -1  // -1 = CC off (default)
     @AppStorage("vlcVolume") private var volume: Double = 50
     @State private var systemDevices: [(id: String, name: String)] = []
     @State private var selectedDevice: String = ""
@@ -114,6 +116,16 @@ struct VLCPlayerView: View {
         .onChange(of: state.config.Player_buffer_min_rate) { _, pct in
             glog("[VLC] Player_buffer_min_rate changed → \(pct)%")
             VLCBridge.shared.minRate = Float(pct) / 100.0
+        }
+        .onChange(of: bridge.audioTracks.count) { _, count in
+            // When audio tracks first appear, sync picker to first track (VLC already plays it).
+            guard count > 0, selectedAudioTrackId < 0 else { return }
+            selectedAudioTrackId = bridge.audioTracks[0].id
+        }
+        .onChange(of: bridge.spuTracks.count) { _, count in
+            // Explicitly disable CC on every channel load; some streams auto-enable it.
+            guard count > 0 else { return }
+            VLCBridge.shared.setSpuTrack(id: -1)
         }
         .onDisappear {
             // Safety-net for window close — releasePlayer() is idempotent so calling it here
@@ -292,6 +304,8 @@ struct VLCPlayerView: View {
                 posterNSImage = nil
                 VLCBridge.shared.setVolume(0)
                 if suppressNextChannelPlay { suppressNextChannelPlay = false; return }
+                selectedAudioTrackId = -1
+                selectedSpuTrackId   = -1
                 if let ch { playChannel(ch) }
             }
 
@@ -337,6 +351,44 @@ struct VLCPlayerView: View {
                 .onChange(of: volume) { _, v in
                     VLCBridge.shared.setVolume(Int(v))
                 }
+
+            // Audio track picker — shown when the stream has more than one audio track
+            if bridge.audioTracks.count > 1 {
+                Divider().frame(height: 18)
+                Image(systemName: "headphones")
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Audio track")
+                Picker("Audio Track", selection: $selectedAudioTrackId) {
+                    ForEach(bridge.audioTracks, id: \.id) { track in
+                        Text(track.name).tag(track.id)
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 150)
+                .onChange(of: selectedAudioTrackId) { _, id in
+                    guard id >= 0 else { return }
+                    VLCBridge.shared.setAudioTrack(id: id)
+                }
+            }
+
+            // CC picker — shown only when closed-caption tracks are detected in the stream
+            if !bridge.spuTracks.isEmpty {
+                Divider().frame(height: 18)
+                Image(systemName: "captions.bubble")
+                    .foregroundStyle(selectedSpuTrackId >= 0 ? .primary : .secondary)
+                    .accessibilityLabel("Closed captions")
+                Picker("Captions", selection: $selectedSpuTrackId) {
+                    Text("Off").tag(Int32(-1))
+                    ForEach(bridge.spuTracks, id: \.id) { track in
+                        Text(track.name).tag(track.id)
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 130)
+                .onChange(of: selectedSpuTrackId) { _, id in
+                    VLCBridge.shared.setSpuTrack(id: id)
+                }
+            }
 
             // Audio output picker — all CoreAudio output devices (built-in, Bluetooth, AirPlay, USB)
             if !systemDevices.isEmpty {

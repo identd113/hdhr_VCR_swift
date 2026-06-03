@@ -96,6 +96,8 @@ let initialURL: String    // stream URL active when the window opened; drives in
 @State private var availableScreens: [NSScreen] = []                // populated in onAppear — NSScreen.screens is main-thread-only
 @State private var posterHidden: Bool = false   // false = show poster overlay; true = live video visible
 @State private var posterNSImage: NSImage? = nil // poster fetched via ChannelIconCache for currentGuideEntry
+@State private var selectedAudioTrackId: Int32 = -1  // −1 = not yet loaded; set to first track id when audioTracks appears
+@State private var selectedSpuTrackId:   Int32 = -1  // −1 = CC off (default)
 ```
 
 `device` is fixed at window-open time. There is no device switching in the player toolbar — the channel picker always shows channels from the device that was streaming when the window was opened. This keeps the UI simple and avoids the complexity of re-discovering tuner availability mid-session.
@@ -142,7 +144,7 @@ Pre-selection via `syncChannel` only updates `selectedChannel` — it does **not
 ### Toolbar Layout
 
 ```
-[Channel picker ─────────] Spacer [buffer] [1:1] [⏭] [🕐] [🔊] [─── slider ───] | [♩ audio picker] | [📺 screen menu]
+[Channel picker ─────────] Spacer [buffer] [1:1] [⏭] [🕐] [🔊] [─── slider ───] | [🎧 audio track] | [CC picker] | [♩ audio device] | [📺 screen menu]
 ```
 
 - **Channel picker**: `.labelsHidden()`, max width 220 pt, tags use `Optional(ch)` to match the `LineupEntry?` binding
@@ -151,6 +153,8 @@ Pre-selection via `syncChannel` only updates `selectedChannel` — it does **not
 - **Catch Up button** (`forward.end.circle`): calls `VLCBridge.shared.catchUpToLive()` — discards the accumulated buffer and reconnects at the live edge. Poster overlay does NOT re-appear after catch-up (it only appears on a fresh channel switch).
 - **Clock**: live wall-clock `TimelineView`, monospaced
 - **Volume**: speaker icon + `Slider(value:in:0...100)`. `onChange` maps to `VLCBridge.shared.setVolume(Int(v))`.
+- **Audio track picker** (when `bridge.audioTracks.count > 1`): `headphones` SF Symbol + `Picker` (max 150 pt). Shows all audio tracks returned by `libvlc_audio_get_track_description` with `id ≥ 0`. Appears ~3 s after playback starts (first `tickController` tick after `isPlaying`). Defaults to the first track (already active in VLC). `onChange` calls `VLCBridge.shared.setAudioTrack(id:)`. Reset to unloaded (id = −1) on every channel switch.
+- **CC picker** (when `!bridge.spuTracks.isEmpty`): `captions.bubble` SF Symbol + `Picker` (max 130 pt). First row is always "Off" (tag `Int32(-1)`); remaining rows are CC tracks from `libvlc_video_get_spu_description` with `id ≥ 0`. Icon highlights (`.primary`) when a CC track is active. Defaults to Off; some streams auto-enable CC so `setSpuTrack(id: -1)` is called explicitly when `spuTracks` first loads. `onChange` calls `VLCBridge.shared.setSpuTrack(id:)`. Reset on channel switch.
 - **Audio device picker**: shown when `!systemDevices.isEmpty`. Lists all CoreAudio output devices (built-in, Bluetooth, AirPlay audio, USB). `onChange` calls `setAudioDevice(output: "auhal", deviceId:)`.
 - **Screen menu**: shown when `availableScreens.count > 1`. `airplayvideo` icon button opens a `Menu` of `NSScreen.localizedName` entries. Selecting calls `VLCPlayerWindowManager.shared.moveToScreen(_:)` to centre the window on that display. AirPlay video displays appear here once connected via Control Center → Screen Mirroring.
 
