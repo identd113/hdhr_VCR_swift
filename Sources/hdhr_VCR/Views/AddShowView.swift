@@ -680,7 +680,8 @@ struct AddShowView: View {
         // Startup is already loading this device — wait for it then read
         if state.guideStore.isLoading(deviceId: id) {
             state.logGuide("[Wizard] startup load in progress, waiting...")
-            while state.guideStore.isLoading(deviceId: id) {
+            let deadline = Date().addingTimeInterval(30)
+            while state.guideStore.isLoading(deviceId: id) && Date() < deadline {
                 try? await Task.sleep(nanoseconds: 200_000_000)
             }
             let ch = state.guideStore.channels(deviceId: id)

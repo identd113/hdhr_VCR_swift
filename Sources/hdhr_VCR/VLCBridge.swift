@@ -86,6 +86,8 @@ final class VLCBridge: ObservableObject {
 
     /// Retained so channel switches can reattach the same NSView after stop/play.
     private(set) var drawableView: NSView?
+    /// Extra strong reference keeping the drawable NSView alive until after _mpRelease drains libvlc callbacks.
+    private var retainedDrawable: NSView?
     /// URL queued before the drawable view was ready; played in setDrawable().
     private var pendingURL: String?
     private var deviceChangeContext: AudioDeviceChangeContext?
@@ -186,6 +188,7 @@ final class VLCBridge: ObservableObject {
                 if mp != nil, let url = self.pendingURL, let view = self.drawableView {
                     self.pendingURL = nil
                     self._mpSetNSO?(mp, Unmanaged.passUnretained(view).toOpaque())
+                    self.retainedDrawable = view
                     self.play(url: url)
                 }
             }
@@ -201,6 +204,7 @@ final class VLCBridge: ObservableObject {
         drawableView = view
         guard let mp = mediaPlayer else { return }
         _mpSetNSO?(mp, Unmanaged.passUnretained(view).toOpaque())
+        retainedDrawable = view
         if let url = pendingURL {
             pendingURL = nil
             glog("[VLC] setDrawable firing pending play: \(url)")
@@ -276,6 +280,7 @@ final class VLCBridge: ObservableObject {
         guard let mp = mediaPlayer else { return }
         _mpRelease?(mp)
         mediaPlayer = nil
+        retainedDrawable = nil
         glog("[VLC] releasePlayer — mediaPlayer released, tuner freed")
     }
 
@@ -306,6 +311,7 @@ final class VLCBridge: ObservableObject {
         // Re-attach drawable if it was set before the player was ready.
         if let view = drawableView, let mp = mediaPlayer {
             _mpSetNSO?(mp, Unmanaged.passUnretained(view).toOpaque())
+            retainedDrawable = view
         }
     }
 

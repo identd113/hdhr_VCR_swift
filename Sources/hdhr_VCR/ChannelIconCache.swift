@@ -9,6 +9,7 @@ actor ChannelIconCache {
     static let shared = ChannelIconCache()
 
     private var mem: [String: NSImage] = [:]
+    private var failedURLs: Set<String> = []
     private let dir: URL
 
     private init() {
@@ -42,6 +43,7 @@ actor ChannelIconCache {
 
     func image(for urlString: String) async -> NSImage? {
         if let hit = mem[urlString] { return hit }
+        if failedURLs.contains(urlString) { return nil }
 
         let fileName = URL(string: urlString)?.lastPathComponent ?? "icon.png"
         let diskPath = dir.appendingPathComponent(fileName)
@@ -55,9 +57,10 @@ actor ChannelIconCache {
         guard let url = URL(string: urlString),
               let (data, resp) = try? await URLSession.shared.data(from: url),
               (resp as? HTTPURLResponse)?.statusCode == 200,
-              let img = NSImage(data: data) else { return nil }
+              let img = NSImage(data: data) else { failedURLs.insert(urlString); return nil }
 
         mem[urlString] = img
+        if mem.count > 250 { mem.removeAll() }
         try? data.write(to: diskPath)
         return img
     }

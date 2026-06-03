@@ -6,7 +6,7 @@ func sendDiscordEmbed(to webhookURL: String, embed: [String: Any]) {
     guard !webhookURL.isEmpty,
           let url = URL(string: webhookURL),
           let host = url.host,
-          host.contains("discord") else { return }
+          host.hasSuffix("discord.com") || host.hasSuffix("discordapp.com") else { return }
 
     var req = URLRequest(url: url)
     req.httpMethod = "POST"
@@ -38,7 +38,7 @@ func sendDiscordEmbed(to webhookURL: String, embed: [String: Any]) {
 func sendDiscordEmbedCapturing(to webhookURL: String, embed: [String: Any]) async -> String? {
     guard !webhookURL.isEmpty,
           var components = URLComponents(string: webhookURL),
-          components.host?.contains("discord") == true else { return nil }
+          components.host.map({ $0.hasSuffix("discord.com") || $0.hasSuffix("discordapp.com") }) == true else { return nil }
     components.queryItems = (components.queryItems ?? []) + [URLQueryItem(name: "wait", value: "true")]
     guard let url = components.url else { return nil }
 
@@ -58,12 +58,14 @@ func sendDiscordEmbedCapturing(to webhookURL: String, embed: [String: Any]) asyn
         guard (200..<300).contains(http.statusCode) else {
             glog("[Discord] HTTP \(http.statusCode) on capture send", level: .error); return nil
         }
-        guard let json = try? JSONSerialization.jsonObject(with: respData) as? [String: Any],
-              let msgId = json["id"] as? String else {
-            glog("[Discord] could not parse message ID from response", level: .warning); return nil
+        if let json = try? JSONSerialization.jsonObject(with: respData) as? [String: Any],
+           let msgId = json["id"] as? String {
+            glog("[Discord] sent OK — message ID \(msgId)")
+            return msgId
+        } else {
+            glog("[Discord] message-ID parse failed — HTTP \((resp as? HTTPURLResponse)?.statusCode ?? -1), body prefix: \(String(data: respData.prefix(120), encoding: .utf8) ?? "<binary>")", level: .warning)
+            return nil
         }
-        glog("[Discord] sent OK — message ID \(msgId)")
-        return msgId
     } catch {
         glog("[Discord] capture send failed: \(error)", level: .error)
         return nil
@@ -74,7 +76,7 @@ func sendDiscordEmbedCapturing(to webhookURL: String, embed: [String: Any]) asyn
 func editDiscordEmbed(webhookURL: String, messageId: String, embed: [String: Any]) {
     guard !webhookURL.isEmpty, !messageId.isEmpty,
           let url = URL(string: "\(webhookURL)/messages/\(messageId)"),
-          url.host?.contains("discord") == true else { return }
+          url.host.map({ $0.hasSuffix("discord.com") || $0.hasSuffix("discordapp.com") }) == true else { return }
 
     var req = URLRequest(url: url)
     req.httpMethod = "PATCH"

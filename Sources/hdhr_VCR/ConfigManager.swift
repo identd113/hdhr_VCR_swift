@@ -7,7 +7,7 @@ final class ConfigManager {
     init() {
         hostname = ProcessInfo.processInfo.hostName
         // ~/Library/Application Support/hdhrVCRplus/ — not TCC-protected, survives ad-hoc re-signs
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let appSupport = (FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory)
             .appendingPathComponent("hdhrVCRplus")
         try? FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
         configURL = appSupport.appendingPathComponent("hdhr_VCR-\(hostname).json")

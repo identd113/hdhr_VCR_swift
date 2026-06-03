@@ -1289,6 +1289,23 @@ final class WebServer {
         guard getifaddrs(&ptr) == 0, let base = ptr else { return false }
         defer { freeifaddrs(base) }
 
+        if isIPv6 && remoteIP.hasPrefix("::ffff:") {
+            let ipv4 = String(remoteIP.dropFirst(7))
+            var cur2: UnsafeMutablePointer<ifaddrs>? = base
+            while let iface = cur2 {
+                defer { cur2 = iface.pointee.ifa_next }
+                guard let sa = iface.pointee.ifa_addr,
+                      sa.pointee.sa_family == sa_family_t(AF_INET),
+                      let ma = iface.pointee.ifa_netmask else { continue }
+                var remoteAddr = in_addr()
+                let localAddr  = sa.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { $0.pointee.sin_addr }
+                let maskAddr   = ma.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { $0.pointee.sin_addr }
+                guard inet_pton(AF_INET, ipv4, &remoteAddr) == 1 else { continue }
+                if (localAddr.s_addr & maskAddr.s_addr) == (remoteAddr.s_addr & maskAddr.s_addr) { return true }
+            }
+            return false
+        }
+
         if isIPv6 {
             // Strip zone ID suffix (e.g. "fe80::1%en0" → "fe80::1") before parsing.
             let cleanIP = remoteIP.components(separatedBy: "%").first ?? remoteIP
