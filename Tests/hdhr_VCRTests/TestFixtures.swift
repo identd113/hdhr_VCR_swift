@@ -143,13 +143,14 @@ func makeTestAppState(
     lineups: [String: [LineupEntry]] = [:]
 ) -> AppState {
     let s = AppState()
+    // skipStartup must be set before any suspension point so startup()'s guard fires
+    // before the Task runs on the main actor. Prevents idleLoop from spinning forever.
+    s.skipStartup = true
     s.shows = shows
     s.devices = devices
     s.lineups = lineups
     s.isStartingUp = false
     s.statusMessage = "Ready"
-    // Prevent the async startup() task from binding port 1980, which conflicts
-    // with the running app during a full `swift test` run (smoke tests hit :1980).
     s.config.Web_server_enabled = false
     return s
 }
