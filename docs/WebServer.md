@@ -108,12 +108,10 @@ Page structure (top to bottom):
 2. **Tuner popover** (`#t-pop`) — fixed overlay; shown by clicking a tuner badge
 3. **Summary panel** (`#sum`) — always visible; selected show details + actions
 4. **Record type modal** (`#rec-modal`) — fixed overlay; appears on Record click
-5. **Status panel** (`#status-panel`) — hidden by default; toggled by the `≡` button in the header. Contains:
-   - **Watch Now cards** (`<details open>`) — on-air show info cards (no streaming links)
-   - **Shows section** (`#shows-section`) — collapsible tables: recording / scheduled / paused
+5. **Schedule popover** (`#sched-pop`) — fixed overlay; opened by clicking the `≡` button in the header. Contains: Recording / Up Next / Scheduled sections (`.sp-*` classes).
 6. **Guide grid** — scrollable cable-guide grid (width/time-window depends on UA; see below)
 
-**`≡` status button** (`#status-btn`): `background:none` button next to the h1. Clicking calls `toggleStatus()` which toggles `#status-panel` display and updates `aria-expanded`. Button color shifts from `var(--t4)` (muted) to `var(--ac)` (accent) when the panel is open.
+**`≡` status button** (`#status-btn`): `background:none` button next to the h1. Clicking calls `openSchedPop(this)` which toggles `#sched-pop` (positioned below the button). Calls `closeSchedPop()` on second click or backdrop click. Button color shifts from `var(--t4)` (muted) to `var(--ac)` (accent) when the popover is open.
 
 **Auto-select on load**: after `setDev('')` initializes the guide, an IIFE finds the first visible `.g-row` and selects the currently-airing `.g-prog` on that row, populating the summary panel immediately without requiring a click.
 
@@ -127,7 +125,7 @@ Page structure (top to bottom):
 - **All Tuners** button (`.d-btn.d-sel` when active) — shows all channels, deduplicates by `GuideNumber` (first-device-wins) via JS
 - Per device: **HDHR-XXXXXXXX** filter button (`.d-btn`) + **↗** link to device web UI + tuner badge
 
-Clicking a device button calls `setDev(devId)` which filters guide rows and Watch Now cards to that device via `data-dev` attributes.
+Clicking a device button calls `setDev(devId)` which filters guide rows to that device via `data-dev` attributes.
 
 **Tuner badges** (`.t-info` / `.t-info-full`): show `active/total` slots. Red styling when full. Clicking opens the tuner popover.
 
@@ -213,7 +211,7 @@ A cable-TV-style horizontal time grid. Window width depends on the requesting cl
 
 Each `.g-row` carries `data-dev` and `data-ch` for device filtering.
 
-**`setDev()` and DOM caching**: `.g-row` and `.card` NodeLists are cached into `_rows` / `_cards` at page load and reused on every device switch — avoids repeated `querySelectorAll` calls.
+**`setDev()` and DOM caching**: `.g-row` NodeList is cached into `_rows` at page load and reused on every device switch — avoids repeated `querySelectorAll` calls.
 
 **Time header:** 7 ticks at `winSec/6` intervals (e.g. 2 h apart for a 12 h window, 1 h apart for 6 h) + red "now" bar.
 
@@ -269,26 +267,16 @@ This prevents a `dateTime` show's stored SeriesID from falsely starring unrelate
 
 ---
 
-### Watch Now cards (collapsible `<details>`)
+### Schedule popover (`#sched-pop`)
 
-Info-only cards showing what is currently airing on each channel. **No streaming links** — this section is for context when deciding what to schedule.
+Fixed overlay opened by the `≡` button. Built server-side by `buildSchedPopHTML(state:)` and refreshed via `/api/shows-html` after record/delete actions.
 
-Per-card: poster image · channel logo + label · title · episode/airdate · time range + time remaining · recording/scheduled badges.
+Three sections (`.sp-sec`) separated by `.sp-div` dividers — empty sections are omitted:
+- **Recording** — `state.recordingShows`; title in red `●` prefix (`.sp-rec`)
+- **Up Next** — first `state.activeShows` entry sorted by `show_next` ascending; shows relative time in accent color
+- **Scheduled** — remaining `state.activeShows`
 
-Each `.card` carries `data-dev` for device filtering via `setDev()`.
-
-**Implementation note:** the on-air entries are collected into `nowByDevice` during the guide grid pass (when each entry's `isNow` is evaluated). The Watch Now loop iterates `nowByDevice[device.DeviceID]` directly — it does **not** call `state.onAirNow()`, which would duplicate the full lineup × `guideStore.entries` walk already done by the grid.
-
----
-
-### Shows section
-
-Three collapsible `<details>` blocks (title · channel table):
-- `● Recording` — `state.recordingShows`
-- `★ Scheduled` — `state.activeShows`
-- `⏸ Paused` — `state.pausedShows`
-
-Empty blocks are omitted.
+Content is embedded at page build time; `refreshShowsSection()` fetches `/api/shows-html` on record/delete to update `#sched-pop-body` in place.
 
 ---
 
@@ -302,8 +290,9 @@ Empty blocks are omitted.
 | `cancelRecord()` | Hides modal |
 | `confirmRecord()` | POSTs `/api/record`; updates block + summary in-place on success |
 | `doDelete()` | POSTs `/api/delete`; removes badge/color from block, restores Record button |
-| `setDev(id)` | Filters guide rows and Watch Now cards by `data-dev`; empty string = All (with JS dedup); uses cached `_rows`/`_cards` NodeLists |
-| `toggleStatus()` | Shows/hides `#status-panel`; updates `#status-btn` color and `aria-expanded` |
+| `setDev(id)` | Filters guide rows by `data-dev`; empty string = All (with JS dedup); uses cached `_rows` NodeList |
+| `openSchedPop(anchor)` | Opens `#sched-pop` anchored below the button; toggles closed on second click |
+| `closeSchedPop()` | Hides `#sched-pop`; resets `#status-btn` color and `aria-expanded` |
 | `devFull(devId)` | Returns true if `tuners[devId].a >= tuners[devId].t` |
 | `showTunerInfo(devId, anchor)` | Opens tuner popover anchored below the clicked badge |
 | `closeTunerPop()` | Hides tuner popover |
