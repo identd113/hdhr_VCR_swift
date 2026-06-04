@@ -668,19 +668,17 @@ final class WebServer {
                     if isEntryRec      { cls += " g-prog-rec"   }
                     else if isNow      { cls += " g-prog-now"   }
                     else if isMgd      { cls += " g-prog-sched" }
-                    else {
-                        // Genre color (neutral blocks only; state classes take visual priority)
-                        switch (e.firstGenre ?? "").lowercased() {
-                        case "drama":    cls += " gg-drama"
-                        case "comedy":   cls += " gg-comedy"
-                        case "news":     cls += " gg-news"
-                        case "sports":   cls += " gg-sports"
-                        case "reality":  cls += " gg-reality"
-                        case "movie":    cls += " gg-movie"
-                        case "talk":     cls += " gg-talk"
-                        case "children": cls += " gg-children"
-                        default: break
-                        }
+                    // Genre applied to all blocks; .g-prog-now.gg-* compounds handle the lighter airing variant
+                    switch (e.firstGenre ?? "").lowercased() {
+                    case "drama":    cls += " gg-drama"
+                    case "comedy":   cls += " gg-comedy"
+                    case "news":     cls += " gg-news"
+                    case "sports":   cls += " gg-sports"
+                    case "reality":  cls += " gg-reality"
+                    case "movie":    cls += " gg-movie"
+                    case "talk":     cls += " gg-talk"
+                    case "children": cls += " gg-children"
+                    default: break
                     }
 
                     let badge = ""
@@ -859,28 +857,44 @@ final class WebServer {
         .g-prog{position:absolute;top:4px;bottom:4px;border-radius:5px;overflow:hidden;background:var(--pg);border:1px solid var(--pgb);min-width:3px;cursor:pointer}
         .g-prog:hover{filter:brightness(1.1);border-color:var(--t5);z-index:3}
         .g-prog.g-sel{border-color:var(--t0)!important;box-shadow:0 0 0 1px rgba(128,128,128,.5);z-index:4}
+        .gg-drama    {background:hsl(216,48%,29%)}
+        .gg-comedy   {background:hsl(47,48%,29%)}
+        .gg-news     {background:hsl(342,43%,29%)}
+        .gg-sports   {background:hsl(119,48%,26%)}
+        .gg-reality  {background:hsl(25,48%,29%)}
+        .gg-movie    {background:hsl(270,38%,30%)}
+        .gg-talk     {background:hsl(173,43%,28%)}
+        .gg-children {background:hsl(202,33%,31%)}
+        html.lm .gg-drama    {background:hsl(216,52%,81%)}
+        html.lm .gg-comedy   {background:hsl(47,58%,81%)}
+        html.lm .gg-news     {background:hsl(342,52%,81%)}
+        html.lm .gg-sports   {background:hsl(119,57%,80%)}
+        html.lm .gg-reality  {background:hsl(25,58%,81%)}
+        html.lm .gg-movie    {background:hsl(270,47%,81%)}
+        html.lm .gg-talk     {background:hsl(173,52%,80%)}
+        html.lm .gg-children {background:hsl(202,47%,81%)}
+        .g-prog-now.gg-drama    {background:hsl(216,48%,35%);border-color:hsl(216,52%,50%)}
+        .g-prog-now.gg-comedy   {background:hsl(47,48%,35%);border-color:hsl(47,52%,50%)}
+        .g-prog-now.gg-news     {background:hsl(342,43%,35%);border-color:hsl(342,47%,50%)}
+        .g-prog-now.gg-sports   {background:hsl(119,48%,31%);border-color:hsl(119,52%,46%)}
+        .g-prog-now.gg-reality  {background:hsl(25,48%,35%);border-color:hsl(25,52%,50%)}
+        .g-prog-now.gg-movie    {background:hsl(270,38%,36%);border-color:hsl(270,42%,52%)}
+        .g-prog-now.gg-talk     {background:hsl(173,43%,34%);border-color:hsl(173,47%,49%)}
+        .g-prog-now.gg-children {background:hsl(202,33%,38%);border-color:hsl(202,37%,54%)}
+        html.lm .g-prog-now.gg-drama    {background:hsl(216,55%,88%);border-color:hsl(216,52%,62%)}
+        html.lm .g-prog-now.gg-comedy   {background:hsl(47,65%,88%);border-color:hsl(47,57%,62%)}
+        html.lm .g-prog-now.gg-news     {background:hsl(342,55%,88%);border-color:hsl(342,52%,62%)}
+        html.lm .g-prog-now.gg-sports   {background:hsl(119,60%,87%);border-color:hsl(119,57%,60%)}
+        html.lm .g-prog-now.gg-reality  {background:hsl(25,65%,88%);border-color:hsl(25,57%,62%)}
+        html.lm .g-prog-now.gg-movie    {background:hsl(270,50%,88%);border-color:hsl(270,47%,62%)}
+        html.lm .g-prog-now.gg-talk     {background:hsl(173,55%,87%);border-color:hsl(173,52%,60%)}
+        html.lm .g-prog-now.gg-children {background:hsl(202,55%,87%);border-color:hsl(202,47%,62%)}
         .g-prog-now  {background:#1c3820;border-color:#3a6a40}
         .g-prog-rec  {background:#3c1818;border-color:#c03030}
         .g-prog-sched{background:#1a1a40;border-color:#4848c8}
         html.lm .g-prog-now  {background:#c8edce;border-color:#3a7a44}
         html.lm .g-prog-rec  {background:#fcd4d4;border-color:#cc3030}
         html.lm .g-prog-sched{background:#d4d4f8;border-color:#5050cc}
-        .gg-drama    {background:hsl(216,50%,26%)}
-        .gg-comedy   {background:hsl(47,55%,26%)}
-        .gg-news     {background:hsl(342,50%,24%)}
-        .gg-sports   {background:hsl(119,55%,21%)}
-        .gg-reality  {background:hsl(25,55%,24%)}
-        .gg-movie    {background:hsl(270,45%,26%)}
-        .gg-talk     {background:hsl(173,50%,21%)}
-        .gg-children {background:hsl(202,45%,24%)}
-        html.lm .gg-drama    {background:hsl(216,55%,88%)}
-        html.lm .gg-comedy   {background:hsl(47,65%,88%)}
-        html.lm .gg-news     {background:hsl(342,55%,88%)}
-        html.lm .gg-sports   {background:hsl(119,60%,87%)}
-        html.lm .gg-reality  {background:hsl(25,65%,88%)}
-        html.lm .gg-movie    {background:hsl(270,50%,88%)}
-        html.lm .gg-talk     {background:hsl(173,55%,87%)}
-        html.lm .gg-children {background:hsl(202,55%,87%)}
         .g-pi{padding:3px 6px;height:100%;display:flex;flex-direction:column;justify-content:center;gap:1px;overflow:hidden}
         .g-ti{font-size:.78rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--t0);line-height:1.25}
         .g-sub{font-size:.65rem;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25}
@@ -1039,7 +1053,7 @@ final class WebServer {
         (function(){try{_themeMode=localStorage.getItem('theme')||'dark';}catch(e){}applyLM(_themeMode==='light'||(_themeMode==='auto'&&_mq.matches));})();
         function isLM(){return document.documentElement.classList.contains('lm');}
         function gc(g){
-          var dk={drama:'hsl(216,50%,26%)',comedy:'hsl(47,55%,26%)',news:'hsl(342,50%,24%)',sports:'hsl(119,55%,21%)',reality:'hsl(25,55%,24%)',movie:'hsl(270,45%,26%)',talk:'hsl(173,50%,21%)',children:'hsl(202,45%,24%)'};
+          var dk={drama:'hsl(216,48%,35%)',comedy:'hsl(47,48%,35%)',news:'hsl(342,43%,35%)',sports:'hsl(119,48%,31%)',reality:'hsl(25,48%,35%)',movie:'hsl(270,38%,36%)',talk:'hsl(173,43%,34%)',children:'hsl(202,33%,38%)'};
           var lk={drama:'hsl(216,55%,88%)',comedy:'hsl(47,65%,88%)',news:'hsl(342,55%,88%)',sports:'hsl(119,60%,87%)',reality:'hsl(25,65%,88%)',movie:'hsl(270,50%,88%)',talk:'hsl(173,55%,87%)',children:'hsl(202,55%,87%)'};
           var m=isLM()?lk:dk;return m[(g||'').toLowerCase()]||(isLM()?'#f0f0f4':'#1e1e2a');
         }
