@@ -975,7 +975,7 @@ final class AppState: ObservableObject {
                                                    color: 0x2ECC71, extra: [("Ends", shortTime(shows[i].show_end ?? Date()), true)])
                 let url    = config.Discord_webhook_url
                 let showId = show.show_id
-                Task {
+                Task { @MainActor in
                     let msgId = await sendDiscordEmbedCapturing(to: url, embed: embed)
                     if let j = shows.firstIndex(where: { $0.show_id == showId }) {
                         shows[j].discord_start_msg_id = msgId ?? ""
@@ -1085,6 +1085,8 @@ final class AppState: ObservableObject {
             notify("Recording Paused", body: show.show_title, subtitle: "Failed \(failThreshold)× — will retry next airing")
             discordShow("⏸ Recording Paused", show: show, color: 0xE67E22, enabled: config.Discord_on_paused,
                         extra: [("Reason", "Failed \(failThreshold)× — will retry next airing", false)])
+            conflictNotifiedEpochs.removeValue(forKey: show.show_id)
+            missedStartNotifiedEpochs.removeValue(forKey: show.show_id)
             return
         }
         guard diskOK(for: show) else {
@@ -1172,6 +1174,8 @@ final class AppState: ObservableObject {
             pendingDiscordStart.remove(show.show_id) // embed not yet sent; discard pending
             shows[index].show_paused = true
             shows[index].show_fail_reason = "Manually stopped"
+            conflictNotifiedEpochs.removeValue(forKey: show.show_id)
+            missedStartNotifiedEpochs.removeValue(forKey: show.show_id)
             saveConfig()
             return
         }

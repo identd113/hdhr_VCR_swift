@@ -29,7 +29,7 @@ final class RecordingManager {
         if !networkInterface.isEmpty { curlArgs += ["--interface", networkInterface] }
         if verbose { curlArgs.append("-v") }
         // Dump response headers to a temp file so we can read X-HDHomeRun-Error on failure.
-        let hdrPath = "/tmp/hdhrVCRplus-\(showId).headers"
+        let hdrPath = "\(NSTemporaryDirectory())hdhrVCRplus-\(showId).headers"
         headerFiles[showId] = hdrPath
         curlArgs += ["--dump-header", hdrPath, streamURL, "-o", outputPath]
 

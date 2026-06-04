@@ -43,7 +43,6 @@ struct Show: Identifiable, Equatable {
     var show_fail_reason: String
     var show_logo_url: String
     var show_transcode: String      // "none", "heavy", "mobile", "internet720"…
-    var show_tags: String
     var show_recording: Bool
     var show_last: Date?
     var notify_upnext_time: Date?
@@ -103,7 +102,7 @@ struct Show: Identifiable, Equatable {
             show_time: 20.0, show_length: 60, show_next: nil, show_end: nil,
             show_active: true, show_paused: false, hdhr_record: device, show_url: "", show_seriesid: "",
             show_fail_count: 0, show_fail_reason: "", show_logo_url: "", show_transcode: "none",
-            show_tags: "", show_recording: false, show_last: nil,
+            show_recording: false, show_last: nil,
             notify_upnext_time: nil, notify_recording_time: nil,
             show_dir: "", show_temp_dir: "", show_recording_path: "", show_genre: "",
             show_bonus_time: false
@@ -140,7 +139,7 @@ extension Show: Codable {
         case show_air_date, show_channel, show_time, show_length
         case show_next, show_end, show_active, show_paused, hdhr_record, show_url
         case show_seriesid, show_fail_count, show_fail_reason, show_logo_url
-        case show_transcode, show_tags, show_recording, show_last
+        case show_transcode, show_recording, show_last
         case notify_upnext_time, notify_recording_time
         case show_dir, show_temp_dir, show_recording_path, show_genre, show_bonus_time
         case discord_start_msg_id, show_tuner_resource
@@ -168,7 +167,6 @@ extension Show: Codable {
         show_fail_reason   = (try? c.decode(String.self, forKey: .show_fail_reason)) ?? ""
         show_logo_url      = (try? c.decode(String.self, forKey: .show_logo_url)) ?? ""
         show_transcode     = (try? c.decode(String.self, forKey: .show_transcode)) ?? "none"
-        show_tags          = (try? c.decode(String.self, forKey: .show_tags)) ?? ""
         show_recording     = (try? c.decode(Bool.self,   forKey: .show_recording)) ?? false
         show_last          = try? c.decode(Date.self, forKey: .show_last)
         notify_upnext_time     = try? c.decode(Date.self, forKey: .notify_upnext_time)

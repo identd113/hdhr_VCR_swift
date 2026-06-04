@@ -183,8 +183,9 @@ final class HDHRManager {
         pkt.withUnsafeBytes { raw in
             withUnsafePointer(to: dst) { dstPtr in
                 dstPtr.withMemoryRebound(to: sockaddr.self, capacity: 1) { saPtr in
-                    _ = sendto(sock, raw.baseAddress!, pkt.count, 0, saPtr,
-                               socklen_t(MemoryLayout<sockaddr_in>.size))
+                    let sent = sendto(sock, raw.baseAddress!, pkt.count, 0, saPtr,
+                                      socklen_t(MemoryLayout<sockaddr_in>.size))
+                    if sent < 0 { glog("UDP sendto failed: errno \(errno)", level: .warning) }
                 }
             }
         }
@@ -192,11 +193,12 @@ final class HDHRManager {
         // Collect replies until timeout
         var buf    = [UInt8](repeating: 0, count: 1024)
         var from   = sockaddr_in()
-        var fromLen = socklen_t(MemoryLayout<sockaddr_in>.size)
         var seenIPs = Set<String>()
 
         let bufCapacity = buf.count
         while true {
+            // fromLen must reset before each recvfrom; the syscall may reduce it
+            var fromLen = socklen_t(MemoryLayout<sockaddr_in>.size)
             let n = buf.withUnsafeMutableBytes { raw -> Int in
                 withUnsafeMutablePointer(to: &from) { fromPtr in
                     fromPtr.withMemoryRebound(to: sockaddr.self, capacity: 1) { saPtr in
