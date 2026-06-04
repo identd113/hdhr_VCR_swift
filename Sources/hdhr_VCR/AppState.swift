@@ -29,6 +29,9 @@ final class AppState: ObservableObject {
     // Shows whose recording was interrupted by an app quit and will be relaunched this session.
     // Suppresses the duplicate Discord "Recording Started" on the first relaunch after startup.
     private var suppressStartDiscord: Set<String> = []
+    // Shows whose "Recording Started" embed is deferred until the first idle-loop tick confirms
+    // the curl process is still alive — prevents a Discord ping for a recording that fails instantly.
+    private var pendingDiscordStart: Set<String> = []
     // Retained DispatchSource for SIGTERM — saves config before the process exits so
     // show_recording_path and discord_start_msg_id survive pkill during development.
     private var sigtermSource: DispatchSourceSignal?
@@ -952,6 +955,7 @@ final class AppState: ObservableObject {
             if show.show_recording, endDate > now, !recordingManager.isRunning(showId: show.show_id) {
                 shows[i].show_recording = false
                 shows[i].show_tuner_resource = ""
+                pendingDiscordStart.remove(show.show_id) // never confirmed; skip the start embed
                 let hdhrReason = recordingManager.readAndClearHDHRError(showId: show.show_id)
                 let failReason = hdhrReason ?? "curl exited unexpectedly"
                 shows[i].recordFailure(reason: failReason)
@@ -962,6 +966,23 @@ final class AppState: ObservableObject {
                             editMessageId: show.discord_start_msg_id.isEmpty ? nil : show.discord_start_msg_id)
                 shows[i].discord_start_msg_id = ""
                 dirty = true
+            }
+
+            // First idle-loop confirmation: curl is alive — now send the deferred "Recording Started" embed
+            if show.show_recording, pendingDiscordStart.contains(show.show_id),
+               recordingManager.isRunning(showId: show.show_id) {
+                pendingDiscordStart.remove(show.show_id)
+                let embed  = buildDiscordShowEmbed(event: "🔴 Recording Started", show: shows[i],
+                                                   color: 0x2ECC71, extra: [("Ends", shortTime(shows[i].show_end ?? Date()), true)])
+                let url    = config.Discord_webhook_url
+                let showId = show.show_id
+                Task {
+                    let msgId = await sendDiscordEmbedCapturing(to: url, embed: embed)
+                    if let j = shows.firstIndex(where: { $0.show_id == showId }) {
+                        shows[j].discord_start_msg_id = msgId ?? ""
+                        saveConfig()
+                    }
+                }
             }
 
             // Discord progress update — edit start embed once per 5-min boundary during active recordings
@@ -1116,26 +1137,17 @@ final class AppState: ObservableObject {
         // Skip the Discord embed on the first relaunch after a quit-interrupted recording —
         // the startup "Recording Interrupted" embed already covered this session.
         let resumedAfterQuit = suppressStartDiscord.remove(show.show_id) != nil
+        // Defer the "Recording Started" embed until the first idle-loop tick confirms the process
+        // is still alive — avoids a Discord ping for a recording that fails in the first few seconds.
         if !resumedAfterQuit, config.Discord_on_start, config.Discord_enabled, !config.Discord_webhook_url.isEmpty {
-            let embed  = buildDiscordShowEmbed(event: "🔴 Recording Started", show: shows[index],
-                                               color: 0x2ECC71, extra: [("Ends", shortTime(endDate), true)])
-            let url    = config.Discord_webhook_url
-            let showId = show.show_id
-            Task {
-                let msgId = await sendDiscordEmbedCapturing(to: url, embed: embed)
-                if let i = shows.firstIndex(where: { $0.show_id == showId }) {
-                    shows[i].discord_start_msg_id = msgId ?? ""
-                    // Persist the message ID immediately so the startup recovery embed works
-                    // even if the app is killed before the next idle-loop saveConfig().
-                    saveConfig()
-                }
-            }
+            pendingDiscordStart.insert(show.show_id)
         }
     }
 
     func skipRecording(showId: String) async {
         guard let i = shows.firstIndex(where: { $0.show_id == showId }) else { return }
         glog("[\(shows[i].show_title)] SKIP — paused until next airing")
+        pendingDiscordStart.remove(showId)
         recordingManager.stop(showId: showId)
         VLCPlayerWindowManager.shared.closeIfPlayingURL(shows[i].show_url)
         tunerStatus.removeValue(forKey: showId)
@@ -1158,6 +1170,7 @@ final class AppState: ObservableObject {
 
         if !natural {
             glog("[\(show.show_title)] STOP manual")
+            pendingDiscordStart.remove(show.show_id) // embed not yet sent; discard pending
             shows[index].show_paused = true
             shows[index].show_fail_reason = "Manually stopped"
             saveConfig()
