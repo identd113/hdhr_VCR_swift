@@ -897,8 +897,8 @@ final class WebServer {
         html.lm .sp-rec{color:#cc2020}
         .sp-div{height:1px;background:var(--b1);margin:2px 0}
         .sp-empty{font-size:.8rem;color:var(--t5);padding:12px 14px;text-align:center}
-        /* ── Edit show modal ── */
-        #edit-modal>div{background:var(--s2)!important;border-color:var(--b2)!important}
+        /* ── Record / Edit modals ── */
+        #rec-modal>div,#edit-modal>div{background:var(--s2)!important;border-color:var(--b2)!important}
         #em-rec-warn{color:#ff9090!important;background:#3c1818!important;border-color:#883030!important}
         html.lm #em-rec-warn{color:#8b0000!important;background:#fce8e8!important;border-color:#cc3030!important}
         .rm-lbl{display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:9px 11px;border-radius:7px;border:1px solid var(--b3);transition:border-color .15s}
@@ -964,17 +964,19 @@ final class WebServer {
             <button onclick="closeSummary()" style="background:none;border:none;color:#666;font-size:.9rem;cursor:pointer;padding:6px 10px;align-self:flex-start;flex-shrink:0;margin-top:4px" title="Close">✕</button>
           </div>
         </div>
-        <div id="rec-modal" onclick="if(event.target===this)cancelRecord()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:100;align-items:center;justify-content:center">
-          <div style="background:#1c1c1e;border:1px solid #383838;border-radius:12px;padding:20px 22px;width:340px;max-width:90vw;box-shadow:0 20px 60px rgba(0,0,0,.6)">
-            <div style="margin-bottom:14px">
-              <div id="rm-title" style="font-weight:700;font-size:.95rem;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
-              <div id="rm-ch" style="font-size:.7rem;color:#888;margin-top:2px"></div>
+        <div id="rec-modal" onclick="if(event.target===this)cancelRecord()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:100;align-items:center;justify-content:center;padding:20px">
+          <div style="background:#1c1c1e;border:1px solid #383838;border-radius:12px;padding:20px 22px;width:400px;max-width:calc(100vw - 32px);max-height:calc(100vh - 40px);overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.6)">
+            <div style="font-weight:700;font-size:.88rem;color:var(--t0);margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--b2)">Record Show</div>
+            <div class="em-row">
+              <div class="em-lbl">Show</div>
+              <div id="rm-title" style="font-size:.88rem;color:var(--t0);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+              <div id="rm-ch" style="font-size:.72rem;color:var(--t4);margin-top:1px"></div>
             </div>
-            <div id="rm-opts" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
-            <div id="rm-sid" style="display:none;font-size:.68rem;color:#888;background:#111;border-radius:5px;padding:5px 10px;margin-bottom:10px">SeriesID: <span id="rm-sid-val" style="color:#bbb;font-family:monospace;word-break:break-all"></span></div>
-            <div id="rm-days-row" style="display:none;margin-bottom:10px"><div style="font-size:.75rem;color:var(--t3);margin-bottom:5px">Days</div><div class="em-days" id="rm-days"></div></div>
+            <div class="em-row"><div class="em-lbl">Type</div><div id="rm-opts" style="display:flex;flex-direction:column;gap:5px;margin-top:2px"></div></div>
+            <div id="rm-sid" class="em-row" style="display:none"><div class="em-lbl">SeriesID</div><div id="rm-sid-val" class="em-sid"></div></div>
+            <div id="rm-days-row" class="em-row" style="display:none"><div class="em-lbl">Days</div><div class="em-days" id="rm-days"></div></div>
             <div id="rm-tuner" style="display:none;font-size:.74rem;color:#ffcc66;background:#2a1e00;border:1px solid #7a5500;border-radius:6px;padding:7px 10px;margin-bottom:10px">⚠ All tuners are currently in use. This show will be queued and recorded as soon as a tuner is free.</div>
-            <div style="display:flex;justify-content:flex-end;gap:8px">
+            <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--b2)">
               <button onclick="cancelRecord()" style="font-size:.78rem;padding:6px 16px;border-radius:6px;border:1px solid #444;background:transparent;color:#aaa;cursor:pointer">Cancel</button>
               <button onclick="confirmRecord()" style="font-size:.78rem;padding:6px 16px;border-radius:6px;border:none;background:#c0392b;color:#fff;font-weight:600;cursor:pointer">Schedule</button>
             </div>
@@ -1131,9 +1133,9 @@ final class WebServer {
             var v=(document.querySelector('input[name="rm-type"]:checked')||{}).value||'';
             var isSeries=v==='seriesChannel'||v==='seriesAll';
             var sid=document.getElementById('rm-sid');
-            if(isSeries&&_ser){document.getElementById('rm-sid-val').textContent=_ser;sid.style.display='block';}
+            if(isSeries&&_ser){document.getElementById('rm-sid-val').textContent=_ser;sid.style.display='flex';}
             else{sid.style.display='none';}
-            document.getElementById('rm-days-row').style.display=(v==='dateTime')?'block':'none';
+            document.getElementById('rm-days-row').style.display=(v==='dateTime')?'flex':'none';
           };
           document.getElementById('rec-modal').style.display='flex';
         }
