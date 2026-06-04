@@ -613,16 +613,14 @@ final class WebServer {
             deviceBarHTML = ""
         } else if state.devices.count > 1 {
             headerHTML = "<div style=\"display:flex;align-items:center;gap:8px\">\(statusBtn)<h1 style=\"margin:0\">hdhrVCR+ Guide</h1></div>"
-            var bar = "<div id=\"dev-bar\" style=\"align-items:flex-start\">"
+            var bar = "<div id=\"dev-bar\" style=\"flex-direction:column;align-items:flex-start;gap:4px\">"
             for d in state.devices {
                 let uiURL = "http://\(d.LocalIP)/"
                 let label = he("HDHR-\(d.DeviceID.uppercased())")
                 let dt    = devTuners[d.DeviceID]!
-                bar += "<div style=\"display:inline-flex;flex-direction:column;align-items:flex-start;gap:3px\">"
-                bar += "<div style=\"display:flex;align-items:center;gap:4px\">"
+                bar += "<div style=\"display:flex;align-items:center;gap:6px\">"
                 bar += "<button class=\"d-btn\" data-dev=\"\(he(d.DeviceID))\" onclick=\"setDev(this.dataset.dev)\">\(label)</button>"
                 bar += "<a href=\"\(he(uiURL))\" target=\"_blank\" class=\"d-ui\" title=\"Open \(label) web UI\">↗</a>"
-                bar += "</div>"
                 bar += tunerInfoBtn(d.DeviceID, dt)
                 bar += "</div>"
             }
