@@ -606,10 +606,10 @@ final class WebServer {
             let uiURL = "http://\(d.LocalIP)/"
             let label = "HDHR-\(d.DeviceID.uppercased())"
             let dt    = devTuners[d.DeviceID]!
-            headerHTML = "<div style=\"display:flex;align-items:center;gap:10px\">\(statusBtn)<h1 style=\"margin:0\">hdhrVCR+ · Guide</h1>\(tunerInfoBtn(d.DeviceID, dt))<a href=\"\(he(uiURL))\" target=\"_blank\" style=\"font-size:.75rem;color:#666;text-decoration:none\" title=\"Open \(he(label)) device web UI\">\(he(label)) ↗</a></div>"
+            headerHTML = "<div style=\"display:flex;align-items:center;gap:10px\">\(statusBtn)<h1 style=\"margin:0\">hdhrVCR+ Guide</h1>\(tunerInfoBtn(d.DeviceID, dt))<a href=\"\(he(uiURL))\" target=\"_blank\" style=\"font-size:.75rem;color:#666;text-decoration:none\" title=\"Open \(he(label)) device web UI\">\(he(label)) ↗</a></div>"
             deviceBarHTML = ""
         } else if state.devices.count > 1 {
-            headerHTML = "<div style=\"display:flex;align-items:center;gap:8px\">\(statusBtn)<h1 style=\"margin:0\">hdhrVCR+ · Guide</h1></div>"
+            headerHTML = "<div style=\"display:flex;align-items:center;gap:8px\">\(statusBtn)<h1 style=\"margin:0\">hdhrVCR+ Guide</h1></div>"
             var bar = "<div id=\"dev-bar\">"
             for d in state.devices {
                 let uiURL = "http://\(d.LocalIP)/"
@@ -622,7 +622,7 @@ final class WebServer {
             bar += "</div>"
             deviceBarHTML = bar
         } else {
-            headerHTML = "<div style=\"display:flex;align-items:center;gap:8px\">\(statusBtn)<h1 style=\"margin:0\">hdhrVCR+ · Guide</h1></div>"
+            headerHTML = "<div style=\"display:flex;align-items:center;gap:8px\">\(statusBtn)<h1 style=\"margin:0\">hdhrVCR+ Guide</h1></div>"
             deviceBarHTML = ""
         }
 
