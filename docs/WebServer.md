@@ -318,19 +318,19 @@ Each `.g-row` carries `data-dev` and `data-ch` for device filtering.
 | Class | Condition | Background | Border |
 |---|---|---|---|
 | `.g-prog-rec` | Currently recording | `#3c1818` | `#c03030` (red) |
-| `.g-prog-now` | On air, not recording | `#1c3820` | `#3a6a40` (green) |
+| `.g-prog-now` | On air (no genre) | `#424242` | `#787878` (grey) |
 | `.g-prog-sched` | Managed/scheduled | `#1a1a40` | `#4848c8` (blue) |
-| `.gg-drama` | Drama | `hsl(216,50%,26%)` | — |
-| `.gg-comedy` | Comedy | `hsl(47,55%,26%)` | — |
-| `.gg-news` | News | `hsl(342,50%,24%)` | — |
-| `.gg-sports` | Sports | `hsl(119,55%,21%)` | — |
-| `.gg-reality` | Reality | `hsl(25,55%,24%)` | — |
-| `.gg-movie` | Movie | `hsl(270,45%,26%)` | — |
-| `.gg-talk` | Talk | `hsl(173,50%,21%)` | — |
-| `.gg-children` | Children | `hsl(202,45%,24%)` | — |
-| `.g-prog` (default) | No match | `#2c2c2c` | `#484848` |
+| `.gg-drama` | Drama | `hsl(216,48%,36%)` | — |
+| `.gg-comedy` | Comedy | `hsl(47,48%,36%)` | — |
+| `.gg-news` | News | `hsl(342,43%,36%)` | — |
+| `.gg-sports` | Sports | `hsl(119,48%,33%)` | — |
+| `.gg-reality` | Reality | `hsl(25,48%,36%)` | — |
+| `.gg-movie` | Movie | `hsl(270,58%,38%)` | — |
+| `.gg-talk` | Talk | `hsl(173,43%,34%)` | — |
+| `.gg-children` | Children / Kids | `hsl(315,43%,35%)` | — |
+| `.g-prog` (default) | No genre | `#2c2c2c` | `#484848` |
 
-State classes (rec / now / sched) take precedence over genre. `.g-prog.g-sel` adds white border + glow.
+State classes (rec / now / sched) take precedence over genre. `.g-prog-now.gg-*` two-class selectors override the grey fallback with genre-tinted now-playing colors (e.g. `.g-prog-now.gg-drama` → `hsl(216,52%,44%)`). `.g-prog.g-sel` adds white border + glow.
 
 **Data attributes on every program block:**
 

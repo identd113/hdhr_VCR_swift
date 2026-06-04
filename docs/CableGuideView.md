@@ -28,15 +28,15 @@ Each show occupies a rectangular block spanning `duration × pxPerMin` pixels wi
 **Block background colors by genre:**
 | Genre | Color |
 |---|---|
-| Drama | Blue (hue 0.60, sat 0.65, bri 0.52) |
-| Comedy | Amber (hue 0.13, sat 0.65, bri 0.52) |
-| News | Crimson (hue 0.95, sat 0.60, bri 0.50) |
-| Sports | Green (hue 0.33, sat 0.65, bri 0.46) |
-| Reality | Orange (hue 0.07, sat 0.65, bri 0.52) |
-| Movie | Purple (hue 0.75, sat 0.55, bri 0.50) |
-| Talk | Teal (hue 0.48, sat 0.60, bri 0.48) |
-| Children | Steel blue (hue 0.56, sat 0.50, bri 0.50) |
-| No genre | Hash of SeriesID/Title → one of 8 palette colors |
+| Drama | Blue (hue 0.60, sat 0.65, bri 0.62) |
+| Comedy | Amber (hue 0.13, sat 0.65, bri 0.62) |
+| News | Crimson (hue 0.95, sat 0.60, bri 0.58) |
+| Sports | Green (hue 0.33, sat 0.65, bri 0.56) |
+| Reality | Orange (hue 0.07, sat 0.65, bri 0.62) |
+| Movie | Vivid purple (hue 0.75, sat 0.80, bri 0.68) |
+| Talk | Teal (hue 0.48, sat 0.60, bri 0.58) |
+| Children / Kids | Magenta-pink (hue 0.875, sat 0.60, bri 0.62) |
+| No genre | `Color(white: 0.22)` grey |
 
 **Block decorations (Z-ordered bottom to top):**
 1. **Filter-dimmed** — non-matching genre blocks at 20% opacity, `allowsHitTesting(false)`
