@@ -378,7 +378,6 @@ struct CableGuideView: View {
                                 timeSlots:          timeSlots,
                                 selectedEntry:      selectedEntry,
                                 selectedChannel:    selectedChannel,
-                                deviceId:       deviceId,
                                 managedMatcher: managedMatcher,
                                 recordingSeriesIDs: recordingSeriesIDs,
                                 recordingTitles:    recordingTitles,
@@ -412,7 +411,6 @@ struct CableGuideView: View {
                                 timeSlots:          timeSlots,
                                 selectedEntry:      selectedEntry,
                                 selectedChannel:    selectedChannel,
-                                deviceId:       deviceId,
                                 managedMatcher: managedMatcher,
                                 recordingSeriesIDs: recordingSeriesIDs,
                                 recordingTitles:    recordingTitles,
@@ -490,7 +488,6 @@ private struct ShowBlocksRow: View, Equatable {
     let timeSlots:        [Date]
     let selectedEntry:    GuideEntry?
     let selectedChannel:  LineupEntry?
-    let deviceId:       String
     let managedMatcher: ManagedGuideMatcher
     let recordingSeriesIDs: Set<String>
     let recordingTitles:    Set<String>
@@ -513,7 +510,6 @@ private struct ShowBlocksRow: View, Equatable {
         lhs.lineupEntry?.GuideNumber     == rhs.lineupEntry?.GuideNumber &&   // nil→value change must re-evaluate tap handlers
         lhs.genreFilter                  == rhs.genreFilter &&
         lhs.displayStart                 == rhs.displayStart &&
-        lhs.deviceId                     == rhs.deviceId &&
         lhs.managedMatcher               == rhs.managedMatcher &&
         lhs.recordingSeriesIDs           == rhs.recordingSeriesIDs &&
         lhs.recordingTitles              == rhs.recordingTitles &&
@@ -581,7 +577,7 @@ private struct ShowBlocksRow: View, Equatable {
                           && selectedChannel?.GuideNumber == lineupEntry?.GuideNumber
         // SeriesID(Channel/All) shows: yellow on any matching episode (by SeriesID, or title when
         // the entry has no SeriesID). DateTime/Single shows: only the specific scheduled slot matches.
-        let isManaged = managedMatcher.isManaged(entry: entry, deviceId: deviceId, channelNum: channel.GuideNumber)
+        let isManaged = managedMatcher.isManaged(entry: entry)
         let isRecording = entry.SeriesID.map { recordingSeriesIDs.contains($0) }
                        ?? recordingTitles.contains(entry.Title)
         let isNextUp    = !isRecording && (entry.SeriesID.map { nextUpSeriesIDs.contains($0) }

@@ -182,8 +182,11 @@ final class GuideStore {
                 channelEntryIndex[key] = []
                 continue
             }
+            let chNum  = sortedChannels[i].GuideNumber
             var sorted = guide.sorted { $0.StartTime < $1.StartTime }
-            sorted = sorted.map { entry in var e = entry; e.deviceId = deviceId; return e }
+            sorted = sorted.map { entry in
+                var e = entry; e.deviceId = deviceId; e.channelNum = chNum; return e
+            }
             sortedChannels[i].Guide = sorted
             channelEntryIndex[key]  = sorted
             for entry in sorted {

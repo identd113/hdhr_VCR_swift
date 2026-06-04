@@ -393,7 +393,8 @@ struct GuideEntry: Codable, Identifiable, Hashable {
     static func == (lhs: GuideEntry, rhs: GuideEntry) -> Bool { lhs.StartTime == rhs.StartTime }
     func hash(into hasher: inout Hasher) { hasher.combine(StartTime) }
     var id: Int { StartTime }
-    var deviceId:     String = ""   // not in JSON — stamped after decode
+    var deviceId:    String = ""   // not in JSON — stamped after decode
+    var channelNum:  String = ""   // not in JSON — stamped after decode
     var StartTime: Int
     var EndTime: Int
     var Title: String
@@ -419,8 +420,8 @@ struct GuideEntry: Codable, Identifiable, Hashable {
 
 /// Encapsulates the four managed-show sets and the matching predicate used by both the
 /// SwiftUI cable guide and the web server to decide which guide blocks get a yellow/red flag.
-/// Construct once from the active managed shows, then call isManaged(entry:deviceId:channelNum:)
-/// per block.
+/// Construct once from the active managed shows, then call isManaged(entry:) per block.
+/// Reads entry.deviceId and entry.channelNum — both stamped at decode time.
 struct ManagedGuideMatcher: Equatable {
     let seriesIDs:        Set<String>   // SeriesID(Channel/All) shows
     let titles:           Set<String>   // title fallback for series shows without a SeriesID
@@ -443,14 +444,15 @@ struct ManagedGuideMatcher: Equatable {
         })
     }
 
-    func isManaged(entry: GuideEntry, deviceId: String, channelNum: String) -> Bool {
+    func isManaged(entry: GuideEntry) -> Bool {
         if let sid = entry.SeriesID, !sid.isEmpty, seriesIDs.contains(sid) { return true }
         if titles.contains(entry.Title) { return true }
         let c = Calendar.current.dateComponents([.hour, .minute],
                     from: Date(timeIntervalSince1970: TimeInterval(entry.StartTime)))
         let hhmm = String(format: "%02d:%02d", c.hour ?? 0, c.minute ?? 0)
-        if datetimeSlotKeys.contains("\(deviceId):\(channelNum):\(hhmm)") { return true }
-        return singleSlotKeys.contains("\(deviceId):\(channelNum):\(entry.StartTime)")
+        let dev = entry.deviceId, ch = entry.channelNum
+        if datetimeSlotKeys.contains("\(dev):\(ch):\(hhmm)") { return true }
+        return singleSlotKeys.contains("\(dev):\(ch):\(entry.StartTime)")
     }
 }
 

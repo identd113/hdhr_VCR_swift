@@ -178,11 +178,7 @@ struct FloatingGuideView: View {
             }
             let isSportsBonusEntry = entry.firstGenre?.lowercased().contains("sports") == true
                                   && state.config.Sports_padding_enabled
-            let isManaged = managedMatcher.isManaged(
-                entry: entry,
-                deviceId:   selectedDevice?.DeviceID  ?? "",
-                channelNum: selectedChannel?.GuideNumber ?? ""
-            )
+            let isManaged = managedMatcher.isManaged(entry: entry)
 
             ZStack(alignment: .topTrailing) {
                 HStack(alignment: .top, spacing: 14) {

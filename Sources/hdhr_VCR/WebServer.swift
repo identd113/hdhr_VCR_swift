@@ -653,7 +653,7 @@ final class WebServer {
 
                     let isNow      = e.StartTime <= nowTs && e.EndTime > nowTs
                     let isEntryRec = isRecCh && isNow
-                    let isMgd      = guideMatcher.isManaged(entry: e, deviceId: device.DeviceID, channelNum: ch.GuideNumber)
+                    let isMgd      = guideMatcher.isManaged(entry: e)
                     var cls = "g-prog"
                     if isEntryRec      { cls += " g-prog-rec"   }
                     else if isNow      { cls += " g-prog-now"   }

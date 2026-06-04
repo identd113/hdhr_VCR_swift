@@ -75,7 +75,8 @@ extension GuideEntry {
         episodeTitle: String? = nil,
         seriesID: String? = nil,
         genre: String = "Drama",
-        deviceId: String = "FFFFFFFF"
+        deviceId: String = "FFFFFFFF",
+        channelNum: String = ""
     ) -> GuideEntry {
         let start = Date().addingTimeInterval(offset)
         var e = GuideEntry(
@@ -90,7 +91,8 @@ extension GuideEntry {
             OriginalAirdate: nil,
             Filter: [genre]
         )
-        e.deviceId = deviceId
+        e.deviceId  = deviceId
+        e.channelNum = channelNum
         return e
     }
 }
