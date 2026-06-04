@@ -1,5 +1,22 @@
 # hdhrVCRplus Changelog
 
+## 2026-06-03 (260603-2215)
+
+- **LaunchAgent login item** — Settings → General now has a **Launch at Login** toggle backed by a `LaunchAgent` plist in `~/Library/LaunchAgents`; toggling immediately registers or unregisters the agent without requiring a restart.
+- **`/api/ping` health endpoint** — New `GET /api/ping` returns `{"status":"ok","version":"..."}` for health checks and uptime monitoring. The redundant "All Tuners" device-switcher button removed.
+- **Web guide — triangle flags and live tuner update** — Red triangle corner flags appear on guide blocks for managed shows that are currently recording. The tuner-count badge in the header updates immediately when a recording is started from the web UI, without requiring a page reload.
+- **Cable guide — red recording triangle** — `ManagedFlagView(recording: true)` now draws a red filled triangle on shows that are actively recording, replacing the previous red dot decoration.
+- **Summary panel — theme persistence fix** — The add-show wizard's summary panel now re-applies CSS variable colors when dark/light mode is toggled; previously it retained the initial theme's colors for the rest of the session.
+- **ManagedGuideMatcher / ShowMatcher extraction** — Managed-show matching refactored from six parallel `Set` fields into two named structs: `ManagedGuideMatcher` (4-tier: seriesID, title, `dateTime` slot `device:channel:HH:MM`, `single` epoch `device:channel:epoch`) and `ShowMatcher` (seriesID + title, used for recording / nextUp / bonus). `GuideEntry` and `LineupEntry` now carry a stamped `deviceId`; `GuideEntry` carries `channelNum` — eliminating per-block lookups throughout the guide grid.
+- **dateTime slot matching fix** — Weekly managed shows were not being flagged on the correct device+channel combination. `dateTime`-type matching now uses `device:channel:HH:MM` composite keys instead of bare time-of-day strings.
+- **Web guide — day-of-week selector for weekly repeat** — Scheduling a weekly-repeat show from the record modal now shows a days-of-week row (same UI as the edit modal). The edit modal's days row no longer appears for `single` show type — it is shown only for `dateTime` (weekly). Deselecting to zero days is blocked in both modals.
+- **Web guide — record modal redesign** — Record modal restyled to match edit modal: 400 px dialog, `em-row` / `em-lbl` / `em-input` CSS classes, CSS variable theming, "Record Show" header, border separators, in-place tuner-full feedback message (no separate alert dialog).
+- **Web guide — transcode selector in record modal** — Record modal now includes a Transcode dropdown (None / Heavy / Mobile / Internet 720), matching the edit modal. The selection is passed in the POST body and applied when the show is created; `addShowFromGuide` accepts an optional `transcode:` parameter (nil → config default), leaving all existing call sites unchanged.
+- **Web guide — schedule popup end time** — Recording entries in the hamburger schedule popup now show "· Ends HH:MM AM/PM" in the channel cell alongside the channel number and name.
+- **Web guide — hamburger button position** — The status/hamburger button moved to the upper-left, adjacent to the page title.
+- **Web guide — page title cleanup** — Removed the stray `·` separator from the `<title>` tag (was "hdhrVCR+ · Guide", now "hdhrVCR+ Guide").
+- **Web guide — device header layout** — For a single device, the tuner badge and device link now appear on a second line below the `h1` title. For multiple devices, each device is its own horizontal row (name · link · tuner badge side-by-side) with rows stacked vertically; previously all devices shared one horizontal line.
+
 ## 2026-06-03 (260603-1501)
 
 - **VLC stream counts as an occupied tuner** — the tuner-full gate in `startRecording` now adds `VLCPlayerWindowManager.shared.currentDeviceID == deviceId ? 1 : 0` to the recording count before comparing against `TunerCount`. Previously, watching live TV via the in-app player consumed a tuner the scheduler couldn't see, causing a second recording to start, receive an 805 "All Tuners In Use" error from the device, and spin in a fail→retry loop. New helper `AppState.tunersFull(for: deviceId)` encapsulates the combined check and is reused by the WatchNow guard below.
