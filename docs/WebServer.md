@@ -61,6 +61,7 @@ Schedules a recording by calling `state.addShowFromGuide(entry:type:device:chann
 | `endTime` | no | Unused server-side |
 | `showType` | no | `"single"` (default) · `"dateTime"` · `"seriesChannel"` · `"seriesAll"` |
 | `airDays` | no | Day names for `dateTime` shows (e.g. `["Monday","Friday"]`). When absent or empty, defaults to the day-of-week of `startTime`. |
+| `transcode` | no | Transcode profile: `"none"` (default) · `"heavy"` · `"mobile"` · `"internet720"`. When absent, the show inherits `config.Default_transcode`. |
 
 `showType` maps to `ShowState`:
 
@@ -160,7 +161,7 @@ Promoting a show to a `seriesId` type (`seriesChannel`/`seriesAll`) when it prev
 **Contents:**
 - Show title + channel (read-only display)
 - Type selector (single / weekly / series channel / series any)
-- **Air Days row** — visible for `dateTime` type; 7 checkboxes Sun–Sat
+- **Air Days row** — visible **only for `dateTime`** (weekly repeat) type; 7 Su–Sa toggle buttons. Hidden for all other types. At least one day must remain selected.
 - **SeriesID row** — visible for series types
 - Length field (minutes)
 - Bonus Time toggle
@@ -202,10 +203,13 @@ Page structure (top to bottom):
 
 ### Device switcher bar / header
 
-**Single device:** `h1` title + `≡` status toggle button + tuner badge + device web UI link (`http://{LocalIP}/`) inline.
+**Single device:** `≡` button + column containing `h1` title on the first line, then tuner badge + device web UI link (`http://{LocalIP}/`) on a second line below the title.
 
-**Multiple devices:** `h1` on its own line, then `#dev-bar` with:
-- Per device: **HDHR-XXXXXXXX** filter button (`.d-btn`) + **↗** link to device web UI + tuner badge
+**Multiple devices:** `h1` on its own line, then `#dev-bar` with one column group per device:
+- **Row 1** of each group: **HDHR-XXXXXXXX** filter button (`.d-btn`) + **↗** link to device web UI
+- **Row 2** of each group: tuner badge (`.t-info`) below the device name
+
+Each device group uses `display:inline-flex; flex-direction:column` so name and badge stack vertically. `#dev-bar` uses `align-items:flex-start` so groups of different heights don't stretch.
 
 Clicking a device button calls `setDev(devId)` which filters guide rows to that device via `data-dev` attributes.
 
@@ -266,10 +270,11 @@ Styled to match `#edit-modal`: same 400 px width, `max-height: calc(100vh - 40px
 - **Type row** — `em-lbl` "Type" label + four radio options (`recOpts`): Single episode · Weekly repeat · Series — this channel · Series — any channel
 - **SeriesID row** (`#rm-sid`, `em-row` style) — visible when a series type is selected; value in `em-sid` monospace style
 - **Days row** (`#rm-days-row`, `em-row` style) — visible when "Weekly repeat" (`dateTime`) is selected; 7 Su–Sa toggle buttons pre-checked to the guide entry's day of week. At least one day must remain selected (last-day deselect is blocked).
+- **Transcode row** — `em-lbl` "Transcode" label + `<select id="rm-transcode">` with the same 4 options as the edit modal. Resets to "None (copy stream)" each time the modal opens.
 - **Tuner-full warning** (`#rm-tuner`) — amber banner shown when device is full and show is currently airing
 - **Footer** with border-top separator — Cancel / Schedule buttons
 
-On **Schedule**: `confirmRecord()` collects selected air days from `#rm-days .day-btn.sel` and POSTs to `/api/record` with `airDays` included. On success:
+On **Schedule**: `confirmRecord()` collects selected air days from `#rm-days .day-btn.sel` and the transcode value from `#rm-transcode`, then POSTs both to `/api/record`. The transcode value is applied to the new show (overriding the config default). On success:
 - Guide block gains `.g-prog-rec` + red triangle flag if `recStarted` is true (show currently airing); otherwise `.g-prog-sched` + yellow triangle flag.
 - Summary note shows "● Recording now", "⚠ Queued — all tuners busy", or "★ Scheduled — next idle loop pick-up".
 - Tuner badge `#tun-{devId}` is updated in place with the new active/total count from `tunerActive`/`tunerTotal`.
@@ -397,9 +402,11 @@ Content is embedded at page build time; `refreshShowsSection()` fetches `/api/sh
 |---|---|
 | `showInfo(el)` | `onclick` on program blocks; reads `el.dataset`, populates summary panel, sets globals |
 | `closeSummary()` | Hides summary, restores placeholder, clears `.g-sel` |
-| `doRecord()` | Opens record modal; pre-checks day-of-week button matching guide entry; shows tuner-full warning if applicable |
+| `doRecord()` | Opens record modal; pre-checks day-of-week button matching guide entry; resets transcode to `"none"`; shows tuner-full warning if applicable |
 | `cancelRecord()` | Hides modal |
-| `confirmRecord()` | Collects selected `airDays` from `#rm-days`; POSTs `/api/record`; on success: red flag + `.g-prog-rec` if `recStarted`, yellow flag + `.g-prog-sched` otherwise; updates tuner badge `#tun-{devId}` in place |
+| `confirmRecord()` | Collects `airDays` from `#rm-days` and `transcode` from `#rm-transcode`; POSTs `/api/record`; on success: red flag + `.g-prog-rec` if `recStarted`, yellow flag + `.g-prog-sched` otherwise; updates tuner badge `#tun-{devId}` in place |
+| `updateDaysVisibility()` | Shows `#em-days-row` when `_editType === 'dateTime'`; hides for all other types |
+| `toggleDay(btn)` | Toggles a day-button selection in the edit modal; prevents deselecting the last selected day |
 | `doDelete()` | POSTs `/api/delete`; removes triangle flag/color from block, restores Record button |
 | `doEditFromGuide()` | Reads `data-show-*` attrs from selected `.g-prog` block; calls `openEditShow()` |
 | `openEditShow(el)` | Populates and opens `#edit-modal` from `el.dataset`; handles both guide blocks and schedule popover rows |
