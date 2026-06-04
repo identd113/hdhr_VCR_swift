@@ -1115,7 +1115,10 @@ final class WebServer {
             var btn=document.createElement('button');
             btn.type='button';btn.className='day-btn'+(i===entryDow?' sel':'');
             btn.textContent=_dayShort[i];btn.dataset.day=day;
-            btn.onclick=function(){this.classList.toggle('sel');};
+            btn.onclick=function(){
+              if(this.classList.contains('sel')&&document.querySelectorAll('#rm-days .day-btn.sel').length<=1)return;
+              this.classList.toggle('sel');
+            };
             rmDaysEl.appendChild(btn);
           });
           document.getElementById('rm-days-row').style.display='none';
@@ -1314,6 +1317,7 @@ final class WebServer {
             document.querySelectorAll('#em-days .day-btn').forEach(function(b){b.classList.remove('sel');});
             btn.classList.add('sel');
           } else {
+            if(btn.classList.contains('sel')&&document.querySelectorAll('#em-days .day-btn.sel').length<=1)return;
             btn.classList.toggle('sel');
           }
         }
