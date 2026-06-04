@@ -41,11 +41,9 @@ Each show occupies a rectangular block spanning `duration × pxPerMin` pixels wi
 **Block decorations (Z-ordered bottom to top):**
 1. **Filter-dimmed** — non-matching genre blocks at 20% opacity, `allowsHitTesting(false)`
 2. **On-air wash** — `Color.white.opacity(0.12)` overlay on currently-airing blocks
-3. **Yellow managed triangle** — 22pt right-angle triangle, `Path.fill(.yellow)`, upper-right corner. Vertices: `(cellW-22, 0) → (cellW, 0) → (cellW, 22)`. Always rendered on top of the block background, below status icons.
+3. **Corner triangle** (`ManagedFlagView`, 22pt) — upper-right corner right-angle triangle. Yellow (`Color.yellow`) for scheduled/managed; red-pink (`Color(red:1, green:0.376, blue:0.376)`) for actively recording. Vertices: `(cellW-22, 0) → (cellW, 0) → (cellW, 22)`.
 4. **Selected border** — 2.5pt white stroke + `Color.white.opacity(0.15)` fill overlay when selected
-5. **Status icons** (rendered after triangle so they appear on top of it; both are `.accessibilityHidden(true)` — their status is folded into the cell's composite accessibility label instead):
-   - Recording: 8pt red `Circle` at `(cellW-12, 3)` — centred inside the yellow triangle
-   - Next-up: `clock.badge.fill` (10pt orange) at `(cellW-14, 4)`
+5. **Status icon** — `clock.badge.fill` (10pt orange) at `(cellW-14, 4)` for next-up shows. No separate recording dot — the red triangle is the recording indicator.
 
 **Show title text frame**: `max(1, cellW - 8)` wide (constant 8pt right margin, regardless of selection state).
 
