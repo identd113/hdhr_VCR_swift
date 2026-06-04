@@ -261,12 +261,14 @@ final class WebServer {
 
     // Schedules a single-episode recording for the guide entry identified by
     // deviceId + guideNumber + startTime in the POST body JSON.
+    private func jsonResponse(_ dict: [String: Any]) -> WebResponse {
+        .ok(contentType: "application/json",
+            body: (try? JSONSerialization.data(withJSONObject: dict)) ?? Data("{}".utf8))
+    }
+
     @MainActor
     private func handleRecord(state: AppState, body: Data?) -> WebResponse {
-        func json(_ dict: [String: Any]) -> WebResponse {
-            .ok(contentType: "application/json",
-                body: (try? JSONSerialization.data(withJSONObject: dict)) ?? Data("{}".utf8))
-        }
+        let json = jsonResponse
         guard let body,
               let obj       = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
               let deviceId  = obj["deviceId"]    as? String,
@@ -302,10 +304,7 @@ final class WebServer {
     // Stops any active recording and saves config, same as the in-app Delete flow.
     @MainActor
     private func handleDelete(state: AppState, body: Data?) -> WebResponse {
-        func json(_ dict: [String: Any]) -> WebResponse {
-            .ok(contentType: "application/json",
-                body: (try? JSONSerialization.data(withJSONObject: dict)) ?? Data("{}".utf8))
-        }
+        let json = jsonResponse
         guard let body,
               let obj = try? JSONSerialization.jsonObject(with: body) as? [String: Any]
         else { return .badRequest("Missing or invalid JSON body") }
@@ -346,10 +345,7 @@ final class WebServer {
     // Updates show type and/or pause state by showId. Called from the web edit modal.
     @MainActor
     private func handleEdit(state: AppState, body: Data?) -> WebResponse {
-        func json(_ dict: [String: Any]) -> WebResponse {
-            .ok(contentType: "application/json",
-                body: (try? JSONSerialization.data(withJSONObject: dict)) ?? Data("{}".utf8))
-        }
+        let json = jsonResponse
         guard let body,
               let obj    = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
               let showId = obj["showId"] as? String,

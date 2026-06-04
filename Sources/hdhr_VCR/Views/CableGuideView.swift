@@ -515,7 +515,7 @@ private struct ShowBlocksRow: View, Equatable {
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.channel.GuideNumber          == rhs.channel.GuideNumber &&
         lhs.entries.count                == rhs.entries.count &&
-        lhs.entries.map(\.StartTime)     == rhs.entries.map(\.StartTime) &&
+        zip(lhs.entries, rhs.entries).allSatisfy { $0.StartTime == $1.StartTime } &&
         lhs.selectedEntry?.StartTime     == rhs.selectedEntry?.StartTime &&
         lhs.selectedChannel?.GuideNumber == rhs.selectedChannel?.GuideNumber &&
         lhs.lineupEntry?.GuideNumber     == rhs.lineupEntry?.GuideNumber &&   // nil→value change must re-evaluate tap handlers
@@ -534,7 +534,8 @@ private struct ShowBlocksRow: View, Equatable {
         lhs.bonusMinutes                 == rhs.bonusMinutes &&
         lhs.totalW                       == rhs.totalW       &&
         lhs.rowH                         == rhs.rowH         &&
-        lhs.pxPerMin                     == rhs.pxPerMin
+        lhs.pxPerMin                     == rhs.pxPerMin     &&
+        lhs.timeSlots                    == rhs.timeSlots
     }
 
     var body: some View {
