@@ -45,6 +45,7 @@ func he(_ s: String) -> String {
 
 struct ManagedFlagView: View {
     var size: CGFloat = 20
+    var recording: Bool = false
     var body: some View {
         Path { p in
             p.move(to: .zero)
@@ -52,9 +53,9 @@ struct ManagedFlagView: View {
             p.addLine(to: CGPoint(x: size, y: size))
             p.closeSubpath()
         }
-        .fill(Color.yellow)
+        .fill(recording ? Color(red: 1, green: 0.376, blue: 0.376) : Color.yellow)
         .frame(width: size, height: size)
-        .accessibilityLabel("Already scheduled")
+        .accessibilityLabel(recording ? "Recording now" : "Already scheduled")
     }
 }
 

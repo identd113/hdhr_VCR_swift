@@ -666,7 +666,8 @@ private struct ShowBlocksRow: View, Equatable {
         }
         .frame(width: cellW, height: rowH - 2)
         .overlay(alignment: .topTrailing) {
-            if isManaged { ManagedFlagView(size: 22) }
+            if isRecording      { ManagedFlagView(size: 22, recording: true) }
+            else if isManaged   { ManagedFlagView(size: 22) }
         }
         .offset(x: cellX, y: 1)
         .opacity(matchesFilter ? 1.0 : 0.2)
