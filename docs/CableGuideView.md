@@ -126,32 +126,21 @@ Color logic is in **module-level functions** (not `private` on `CableGuideView`)
 ### Genre color map (`_genreColorMap`)
 
 ```swift
-"drama":    blue       (hue 0.60)
-"comedy":   amber      (hue 0.13)
-"news":     crimson    (hue 0.95)
-"sports":   green      (hue 0.33)
-"reality":  orange     (hue 0.07)
-"movie":    purple     (hue 0.75)
-"talk":     teal       (hue 0.48)
-"children": steel-blue (hue 0.56)
+"drama":    blue          (hue 0.60, sat 0.65, bri 0.52)
+"comedy":   amber         (hue 0.13, sat 0.65, bri 0.52)
+"news":     crimson       (hue 0.95, sat 0.60, bri 0.50)
+"sports":   green         (hue 0.33, sat 0.65, bri 0.46)
+"reality":  orange        (hue 0.07, sat 0.65, bri 0.52)
+"movie":    purple        (hue 0.75, sat 0.65, bri 0.50)
+"talk":     teal          (hue 0.48, sat 0.60, bri 0.48)
+"children": magenta-pink  (hue 0.875, sat 0.60, bri 0.52)
 ```
 
-### Fallback palette (`_guidePalette`)
+`movie` (purple) and `children` (magenta-pink) use distinct hues (270° vs 315°) so they remain visually separate even at low saturation. The web guide uses the same hues in CSS HSL form.
 
-8 colors used when `GuideEntry.Filter` is absent or doesn't match a known genre. Color is selected by `abs((SeriesID ?? Title).hashValue) % 8` — deterministic per series/title, consistent across renders.
+### Fallback — no genre
 
-```
-blue:      hue 0.60, saturation 0.60, brightness 0.52
-purple:    hue 0.75, saturation 0.55, brightness 0.50
-orange:    hue 0.07, saturation 0.65, brightness 0.52
-teal:      hue 0.48, saturation 0.60, brightness 0.48
-green:     hue 0.33, saturation 0.55, brightness 0.46
-crimson:   hue 0.95, saturation 0.60, brightness 0.50
-steel-blue:hue 0.56, saturation 0.50, brightness 0.50
-amber:     hue 0.13, saturation 0.55, brightness 0.50
-```
-
-Saturations vary from 0.50 to 0.65 (not uniform) to differentiate adjacent colors in the grid.
+Shows with no recognized genre tag (`GuideEntry.Filter` absent or unmatched) render as **grey** (`Color(white: 0.32)`). On-air grey shows use full opacity; not-airing use `.opacity(0.75)` (slightly darker). The web guide's `--pg` variable (`#2c2c2c` dark / `#e0e0e8` light) serves the same role for untagged blocks.
 
 ### `guideEntryColor(for:onAir:)`
 

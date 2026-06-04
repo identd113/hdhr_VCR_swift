@@ -421,7 +421,13 @@ struct GuideEntry: Codable, Identifiable, Hashable {
     var startDate: Date { Date(timeIntervalSince1970: TimeInterval(StartTime)) }
     var endDate:   Date { Date(timeIntervalSince1970: TimeInterval(EndTime)) }
     var durationMinutes: Int { (EndTime - StartTime) / 60 }
-    var firstGenre: String? { Filter?.first }
+    // "Movie"/"Movies" wins regardless of position; otherwise skip "Series" meta-tag.
+    // Handles ["Drama","Movie"], ["Movies"] → "Movie"; ["Series","Drama"] → "Drama"
+    var firstGenre: String? {
+        guard let f = Filter else { return nil }
+        if f.contains("Movie") || f.contains("Movies") { return "Movie" }
+        return f.first { $0.lowercased() != "series" }
+    }
 }
 
 // MARK: - ShowMatcher

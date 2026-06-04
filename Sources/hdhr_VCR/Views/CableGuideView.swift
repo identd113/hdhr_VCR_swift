@@ -3,38 +3,24 @@ import AppKit
 
 // ── Module-level colour helpers (used by both CableGuideView and AddShowView) ──
 
-private let _guidePalette: [Color] = [
-    Color(hue: 0.60, saturation: 0.60, brightness: 0.52),  // blue
-    Color(hue: 0.75, saturation: 0.55, brightness: 0.50),  // purple
-    Color(hue: 0.07, saturation: 0.65, brightness: 0.52),  // orange
-    Color(hue: 0.48, saturation: 0.60, brightness: 0.48),  // teal
-    Color(hue: 0.33, saturation: 0.55, brightness: 0.46),  // green
-    Color(hue: 0.95, saturation: 0.60, brightness: 0.50),  // crimson
-    Color(hue: 0.56, saturation: 0.50, brightness: 0.50),  // steel blue
-    Color(hue: 0.13, saturation: 0.55, brightness: 0.50),  // amber
-]
-
 private let _genreColorMap: [String: Color] = [
-    "drama":    Color(hue: 0.60, saturation: 0.65, brightness: 0.52),
-    "comedy":   Color(hue: 0.13, saturation: 0.65, brightness: 0.52),
-    "news":     Color(hue: 0.95, saturation: 0.60, brightness: 0.50),
-    "sports":   Color(hue: 0.33, saturation: 0.65, brightness: 0.46),
-    "reality":  Color(hue: 0.07, saturation: 0.65, brightness: 0.52),
-    "movie":    Color(hue: 0.75, saturation: 0.55, brightness: 0.50),
-    "talk":     Color(hue: 0.48, saturation: 0.60, brightness: 0.48),
-    "children": Color(hue: 0.56, saturation: 0.50, brightness: 0.50),
+    "drama":    Color(hue: 0.60,  saturation: 0.65, brightness: 0.62),  // blue
+    "comedy":   Color(hue: 0.13,  saturation: 0.65, brightness: 0.62),  // amber
+    "news":     Color(hue: 0.95,  saturation: 0.60, brightness: 0.58),  // crimson
+    "sports":   Color(hue: 0.33,  saturation: 0.65, brightness: 0.56),  // green
+    "reality":  Color(hue: 0.07,  saturation: 0.65, brightness: 0.62),  // orange
+    "movie":    Color(hue: 0.75,  saturation: 0.80, brightness: 0.68),  // vivid purple
+    "talk":     Color(hue: 0.48,  saturation: 0.60, brightness: 0.58),  // teal
+    "children": Color(hue: 0.875, saturation: 0.60, brightness: 0.62),  // magenta-pink
+    "kids":     Color(hue: 0.875, saturation: 0.60, brightness: 0.62),  // alias for "kids" guide tag
 ]
 
 /// Returns the display colour for a guide entry.
-/// Uses genre when available, falls back to series/title hash.
+/// Uses genre when available; falls back to grey for untagged shows.
 /// On-air shows use full opacity; future shows are dimmed to 0.75 so on-air stands out.
 func guideEntryColor(for entry: GuideEntry, onAir: Bool) -> Color {
-    if let genre = entry.firstGenre?.lowercased(),
-       let color = _genreColorMap[genre] {
-        return onAir ? color : color.opacity(0.75)
-    }
-    let key  = entry.SeriesID ?? entry.Title
-    let base = _guidePalette[abs(key.hashValue) % _guidePalette.count]
+    let base = _genreColorMap[entry.firstGenre?.lowercased() ?? ""]
+            ?? Color(white: 0.22)
     return onAir ? base : base.opacity(0.75)
 }
 
