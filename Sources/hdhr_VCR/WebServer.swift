@@ -507,14 +507,20 @@ final class WebServer {
             if !s.show_seriesid.isEmpty { mgdSID.insert(s.show_seriesid) }
             mgdTitSeries.insert(s.show_title)
         }
-        // dateTime shows: only badge on their specific scheduled channel, not every airing everywhere.
-        let mgdDateTimeCh = Set(activeMgd.filter { !$0.isSeries }
-                                         .map { "\($0.show_title)|\($0.show_channel)" })
+        // DateTime shows: flag every airing of that title on that channel.
+        let mgdDateTimeCh   = Set(activeMgd.filter { $0.state == .dateTime }
+                                           .map { "\($0.show_title)|\($0.show_channel)" })
+        // Single shows: flag only the one exact scheduled slot (channel:startTime epoch).
+        let mgdSingleSlotCh = Set(activeMgd.compactMap { s -> String? in
+            guard s.state == .single, let next = s.show_next else { return nil }
+            return "\(s.show_channel):\(Int(next.timeIntervalSince1970))"
+        })
         // Shared managed-show predicate — used in both the guide grid and What's On Now cards.
         let checkMgd: (GuideEntry, LineupEntry) -> Bool = { e, ch in
             if let sid = e.SeriesID, !sid.isEmpty, mgdSID.contains(sid) { return true }
             if mgdTitSeries.contains(e.Title) { return true }
-            return mgdDateTimeCh.contains("\(e.Title)|\(ch.GuideNumber)")
+            if mgdDateTimeCh.contains("\(e.Title)|\(ch.GuideNumber)") { return true }
+            return mgdSingleSlotCh.contains("\(ch.GuideNumber):\(e.StartTime)")
         }
         // Returns the managed Show matching a guide entry — used to embed show data attrs on
         // managed blocks so the web edit modal can be opened directly from the guide.

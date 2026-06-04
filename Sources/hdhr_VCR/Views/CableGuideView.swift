@@ -162,7 +162,8 @@ struct CableGuideView: View {
     let deviceId:                String         // device whose guide is being shown
     let managedSeriesIDs:        Set<String>   // SeriesID(Channel/All) shows — any episode gets yellow
     let managedTitles:           Set<String>   // title fallback for SeriesID shows (no SeriesID in entry)
-    let managedDTSingleSlotKeys: Set<String>   // DateTime/Single shows — "deviceId:channel:epoch" for specific slot
+    let managedSingleSlotKeys:   Set<String>   // Single shows — "deviceId:channel:epoch" for the one scheduled slot
+    let managedDateTimeTitleCh:  Set<String>   // DateTime shows — "title|channel" flags every airing on that channel
     let recordingSeriesIDs: Set<String>         // shows currently recording
     let recordingTitles:    Set<String>
     let nextUpSeriesIDs:    Set<String>         // shows recording within 30 min
@@ -383,7 +384,8 @@ struct CableGuideView: View {
                                 deviceId:                deviceId,
                                 managedSeriesIDs:        managedSeriesIDs,
                                 managedTitles:           managedTitles,
-                                managedDTSingleSlotKeys: managedDTSingleSlotKeys,
+                                managedSingleSlotKeys:   managedSingleSlotKeys,
+                                managedDateTimeTitleCh:  managedDateTimeTitleCh,
                                 recordingSeriesIDs: recordingSeriesIDs,
                                 recordingTitles:    recordingTitles,
                                 nextUpSeriesIDs:    nextUpSeriesIDs,
@@ -419,7 +421,8 @@ struct CableGuideView: View {
                                 deviceId:                deviceId,
                                 managedSeriesIDs:        managedSeriesIDs,
                                 managedTitles:           managedTitles,
-                                managedDTSingleSlotKeys: managedDTSingleSlotKeys,
+                                managedSingleSlotKeys:   managedSingleSlotKeys,
+                                managedDateTimeTitleCh:  managedDateTimeTitleCh,
                                 recordingSeriesIDs: recordingSeriesIDs,
                                 recordingTitles:    recordingTitles,
                                 nextUpSeriesIDs:    nextUpSeriesIDs,
@@ -499,7 +502,8 @@ private struct ShowBlocksRow: View, Equatable {
     let deviceId:                String
     let managedSeriesIDs:        Set<String>
     let managedTitles:           Set<String>
-    let managedDTSingleSlotKeys: Set<String>
+    let managedSingleSlotKeys:   Set<String>
+    let managedDateTimeTitleCh:  Set<String>
     let recordingSeriesIDs: Set<String>
     let recordingTitles:    Set<String>
     let nextUpSeriesIDs:    Set<String>
@@ -524,7 +528,8 @@ private struct ShowBlocksRow: View, Equatable {
         lhs.deviceId                     == rhs.deviceId &&
         lhs.managedSeriesIDs             == rhs.managedSeriesIDs &&
         lhs.managedTitles                == rhs.managedTitles &&
-        lhs.managedDTSingleSlotKeys      == rhs.managedDTSingleSlotKeys &&
+        lhs.managedSingleSlotKeys        == rhs.managedSingleSlotKeys  &&
+        lhs.managedDateTimeTitleCh       == rhs.managedDateTimeTitleCh &&
         lhs.recordingSeriesIDs           == rhs.recordingSeriesIDs &&
         lhs.recordingTitles              == rhs.recordingTitles &&
         lhs.nextUpSeriesIDs              == rhs.nextUpSeriesIDs &&
@@ -597,7 +602,8 @@ private struct ShowBlocksRow: View, Equatable {
             } else {
                 if managedTitles.contains(entry.Title) { return true }
             }
-            return managedDTSingleSlotKeys.contains("\(deviceId):\(channel.GuideNumber):\(entry.StartTime)")
+            if managedDateTimeTitleCh.contains("\(entry.Title)|\(channel.GuideNumber)") { return true }
+            return managedSingleSlotKeys.contains("\(deviceId):\(channel.GuideNumber):\(entry.StartTime)")
         }()
         let isRecording = entry.SeriesID.map { recordingSeriesIDs.contains($0) }
                        ?? recordingTitles.contains(entry.Title)

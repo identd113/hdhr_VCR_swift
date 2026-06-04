@@ -172,11 +172,15 @@ struct AddShowView: View {
         let seriesIDShows    = state.shows.filter { $0.isSeries }
         let managedSeriesIDs = Set(seriesIDShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
         let managedTitles    = Set(seriesIDShows.map { $0.show_title })
-        // DateTime/Single shows: yellow only on the exact device+channel+slot
-        let managedDTSingleSlotKeys: Set<String> = Set(state.shows.compactMap { show in
-            guard show.state == .single || show.state == .dateTime, let next = show.show_next else { return nil }
+        // Single shows: yellow on the one exact scheduled slot
+        let managedSingleSlotKeys: Set<String> = Set(state.shows.compactMap { show in
+            guard show.state == .single, let next = show.show_next else { return nil }
             return "\(show.hdhr_record):\(show.show_channel):\(Int(next.timeIntervalSince1970))"
         })
+        // DateTime shows: yellow on every airing of that title on that channel
+        let managedDateTimeTitleCh: Set<String> = Set(state.shows
+            .filter { $0.state == .dateTime }
+            .map { "\($0.show_title)|\($0.show_channel)" })
         // Recording now
         let recordingSeriesIDs = Set(state.recordingShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
         let recordingTitles    = Set(state.recordingShows.map { $0.show_title })
@@ -270,7 +274,8 @@ struct AddShowView: View {
                             deviceId:                selectedDevice?.DeviceID ?? "",
                             managedSeriesIDs:        managedSeriesIDs,
                             managedTitles:           managedTitles,
-                            managedDTSingleSlotKeys: managedDTSingleSlotKeys,
+                            managedSingleSlotKeys:   managedSingleSlotKeys,
+                            managedDateTimeTitleCh:  managedDateTimeTitleCh,
                             recordingSeriesIDs: recordingSeriesIDs,
                             recordingTitles:    recordingTitles,
                             nextUpSeriesIDs:    nextUpSeriesIDs,

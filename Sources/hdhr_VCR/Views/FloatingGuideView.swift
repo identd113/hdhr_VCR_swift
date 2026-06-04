@@ -33,11 +33,14 @@ struct FloatingGuideView: View {
             Set(shows.map { $0.show_title })
         )
     }
-    private var managedDTSingleSlotKeys: Set<String> {
+    private var managedSingleSlotKeys: Set<String> {
         Set(state.shows.compactMap { show in
-            guard show.state == .single || show.state == .dateTime, let next = show.show_next else { return nil }
+            guard show.state == .single, let next = show.show_next else { return nil }
             return "\(show.hdhr_record):\(show.show_channel):\(Int(next.timeIntervalSince1970))"
         })
+    }
+    private var managedDateTimeTitleCh: Set<String> {
+        Set(state.shows.filter { $0.state == .dateTime }.map { "\($0.show_title)|\($0.show_channel)" })
     }
 
     var body: some View {
@@ -53,7 +56,7 @@ struct FloatingGuideView: View {
                         EmptyStateView(title: "No guide data", systemImage: "tv.slash",
                                    description: "Guide data unavailable — tap Refresh to retry.")
                     } else {
-                        // managedSeriesIDs/managedTitles/managedDTSingleSlotKeys are computed properties
+                        // managedSeriesIDs/managedTitles/managedSingleSlotKeys/managedDateTimeTitleCh are computed properties
                         // shared with summaryPanel — no local re-derivation needed here.
                         let recordingSeriesIDs = Set(state.recordingShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
                         let recordingTitles = Set(state.recordingShows.map { $0.show_title })
@@ -78,7 +81,8 @@ struct FloatingGuideView: View {
                             deviceId:                selectedDevice?.DeviceID ?? "",
                             managedSeriesIDs:        managedSets.seriesIDs,
                             managedTitles:           managedSets.titles,
-                            managedDTSingleSlotKeys: managedDTSingleSlotKeys,
+                            managedSingleSlotKeys:   managedSingleSlotKeys,
+                            managedDateTimeTitleCh:  managedDateTimeTitleCh,
                             recordingSeriesIDs: recordingSeriesIDs,
                             recordingTitles:    recordingTitles,
                             nextUpSeriesIDs:    nextUpSeriesIDs,
@@ -197,7 +201,8 @@ struct FloatingGuideView: View {
                 } else {
                     if managedSets.titles.contains(entry.Title) { return true }
                 }
-                return managedDTSingleSlotKeys.contains(
+                if managedDateTimeTitleCh.contains("\(entry.Title)|\(selectedChannel?.GuideNumber ?? "")") { return true }
+                return managedSingleSlotKeys.contains(
                     "\(selectedDevice?.DeviceID ?? ""):\(selectedChannel?.GuideNumber ?? ""):\(entry.StartTime)"
                 )
             }()
