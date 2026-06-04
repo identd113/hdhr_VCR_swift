@@ -470,11 +470,11 @@ final class WebServer {
     @MainActor
     private func buildHTML(state: AppState, isDesktop: Bool) -> String {
 
-        // ── Time window: 1/2 of GuideHours for desktop, 1/4 for mobile ──────
+        // ── Time window: full GuideHours for desktop, 1/2 for mobile ──────
         let nowTs    = Int(Date().timeIntervalSince1970)
         let halfHour = 30 * 60
-        let winSec   = isDesktop ? state.config.GuideHours * 3600 / 2
-                                 : state.config.GuideHours * 3600 / 4
+        let winSec   = isDesktop ? state.config.GuideHours * 3600
+                                 : state.config.GuideHours * 3600 / 2
         let winStart = (nowTs / halfHour) * halfHour
         let winEnd   = winStart + winSec
         // Integer-only percentage formatter — avoids ~1500 String(format:) calls per full guide render.
@@ -849,7 +849,7 @@ final class WebServer {
         .g-now-tick{position:absolute;top:0;bottom:0;width:2px;background:rgba(255,90,90,.65);pointer-events:none}
         .g-row{display:flex;border-bottom:1px solid var(--b0)}
         .g-row:last-child{border-bottom:none}
-        .g-ch{width:130px;min-width:130px;display:flex;align-items:center;gap:6px;padding:5px 8px;position:sticky;left:0;z-index:2;background:var(--s1);border-right:1px solid var(--b1)}
+        .g-ch{width:105px;min-width:105px;display:flex;align-items:center;gap:4px;padding:4px 6px;position:sticky;left:0;z-index:2;background:var(--s1);border-right:1px solid var(--b1)}
         .g-logo{width:24px;height:24px;object-fit:contain;flex-shrink:0}
         .g-logo-ph{width:24px;height:24px;border-radius:3px;background:var(--s4);display:flex;align-items:center;justify-content:center;font-size:.75rem;color:var(--t4);flex-shrink:0}
         .g-cl{overflow:hidden;flex:1}
@@ -1615,7 +1615,7 @@ final class WebServer {
     // MARK: - User-Agent helpers
 
     // Returns true for desktop browser UAs (macOS/Windows/Linux without mobile tokens).
-    // Used to serve a wider guide time window (1/2 GuideHours) to desktop clients.
+    // Used to serve a wider guide time window (full GuideHours) to desktop clients.
     private func isDesktopUA(_ ua: String) -> Bool {
         let l = ua.lowercased()
         if l.contains("mobile") || l.contains("iphone") || l.contains("ipad") || l.contains("android") { return false }
