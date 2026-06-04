@@ -46,7 +46,7 @@ Layout (HStack, 14pt horizontal padding, 10pt vertical padding):
   - Synopsis: `.callout` white, up to 3 lines
   - Upcoming airings: `"Channel 5.1 Thu 8:00 PM · Channel 5.1 Fri 10:00 PM"` in `.caption2` at 85% opacity
   - Bottom row: 52×52 channel icon + `"Channel 5.1 · 8:00 PM – 9:00 PM"` caption + optional **Watch in VLC** / **Watch Now!** buttons + **Record** / **Edit Show** button
-  - **Record** button: `.borderedProminent` in red (white outline style); **Edit Show** in blue when show is already managed
+  - **Record** button: `WhiteOutlineButtonStyle(borderColor: .red)` custom style; **Edit Show** in `WhiteOutlineButtonStyle(borderColor: .blue)` when show is already managed
   - Bonus Time: orange `StarburstBadge` overlaid top-right of the ZStack when a sports show is selected
   - Overlap warning: small white caption at bottom, invisible (opacity 0) when no overlap
 

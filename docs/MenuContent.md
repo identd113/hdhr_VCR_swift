@@ -39,7 +39,7 @@ A divider separates show sections from the **Quit hdhrVCRplus** destructive butt
 ### Show submenu appearance (recording, scheduled, paused)
 Opening a show's submenu reveals a rich detail panel:
 
-1. **Poster image** — 460pt wide, 258pt tall, cornerRadius 6, fills the menu width. A 24pt yellow right-angle triangle is overlaid in the top-right corner (always visible for managed shows). If no poster URL: a gray rounded rectangle placeholder fills the same space.
+1. **Poster image** — 460pt wide, 258pt tall, cornerRadius 6, fills the menu width. If no poster URL: a gray rounded rectangle placeholder fills the same space.
 2. **Title** — `.title3` size, `labelColor`
 3. **Episode info** — `.callout` size, if present
 4. **Synopsis** — up to 160 chars, `.callout` size, `labelColor`
@@ -80,6 +80,8 @@ private func open(_ id: String) {
 The `DispatchQueue.main.async` is essential: `.menu`-style `MenuBarExtra` dismisses the menu synchronously on interaction. Calling `openWindow` before the menu is fully dismissed can cause the window to appear behind the menu or fail silently. The deferred dispatch fires after the menu is gone.
 
 Window IDs → titles: `"add-show"` → "Add Show", `"edit-show"` → "Edit Show", `"settings"` → "Settings", `"watch-now"` → "Watch Now", `"cable-guide"` → "Cable Guide"
+
+Note: `"cable-guide"` is opened directly via `openWindow(id: "cable-guide")` from the guide pop-out button, **not** through the `open()` helper. The `open()` helper matches windows by title; `"cable-guide"` (lowercase id) would not match `"Cable Guide"` (the WindowGroup title), so it falls through without deduplication. Since the floating guide is always launched from a single button, the direct call is correct.
 
 ---
 
@@ -152,7 +154,7 @@ Submenu contents — uses `showInfoHeader(show, entry:)` for the top block, then
 7. **Skip** (destructive) — `state.skipRecording(showId:)`: stops recording, advances schedule to next airing, no fail-count increment
 8. **Delete…** (destructive) — `state.confirmAndDeleteShow(show)`: stops recording + shows confirmation alert with poster image, then removes the show entirely
 9. **Show Recording in Finder** — shown when `show_recording_path` is non-empty
-10. **Watch in VLC** / **Watch Now!** — conditional on VLC availability (same as scheduled)
+10. **Watch in VLC** — shown when `state.config.Watch_in_VLC == true` (user toggle in Settings → Advanced); **Watch Now!** — shown when `VLCBridge.shared.isAvailable` (VLC app installed and dylib loaded). These are independent conditions.
 11. **Edit…**
 
 ---
@@ -161,7 +163,7 @@ Submenu contents — uses `showInfoHeader(show, entry:)` for the top block, then
 
 Used by `recordingMenu`, `scheduledMenu`, and `pausedMenu`. Renders:
 
-1. **Poster** — `AsyncImage` of `show.show_logo_url` (460×258, cornerRadius 6) with a gray placeholder when absent. Always carries a yellow 24pt right-angle triangle overlay in the top-right corner (`Path`, `.fill(.yellow)`) — all shows in these sections are already managed, so the flag is always visible. Accessibility label: `"\(show.show_title) poster"` on the image; `"Already scheduled"` on the triangle.
+1. **Poster** — `AsyncImage` of `show.show_logo_url` (460×258, cornerRadius 6) with a gray placeholder when absent. Accessibility label: `"\(show.show_title) poster"`.
 2. **Title** — `menuInfo(show.show_title, font: .title3, maxWidth: 460)`
 3. **Episode info** — `entry.episodeInfoLabel` if the entry is non-nil
 4. **Synopsis** — `entry.Synopsis` truncated to 160 chars

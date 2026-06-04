@@ -9,8 +9,10 @@ All methods run on `@MainActor`. Network calls yield the actor during I/O; state
 ## URL Building
 
 `guideURL(for:hours:)` — `Duration` parameter is in **hours** (not seconds):
-- **EXTEND / cloud** (DeviceAuth present): `https://api.hdhomerun.com/api/guide.php?DeviceAuth=...&Duration=N`
-- **Local device**: `http://{LocalIP}/guide.json?Duration=N`
+- **EXTEND / cloud** (DeviceAuth present): `https://api.hdhomerun.com/api/guide.php?DeviceAuth=...&Start={epoch}&Duration=N`
+- **Local device**: `http://{LocalIP}/guide.json?Start={epoch}&Duration=N`
+
+`Start` is set to `now - 3600` so the current hour's programs are included even when called mid-hour.
 
 Returns `nil` if neither DeviceAuth nor LocalIP is available (logs a diagnostic).
 

@@ -121,7 +121,7 @@ Single row: `[Tuner picker (multi-tuner only)] [Genre picker (when available)] â
 | `bonusMatcher` | `ShowMatcher` | `ShowMatcher(state.shows.filter { $0.show_bonus_time })` |
 | `onConfirm` | `() -> Void` | `{}` â€” no-op; double-tap does nothing (browse-only) |
 
-`managedMatcher` is a computed `var` (not a `let` binding) so it stays in sync when `state.shows` changes between renders. `recordingMatcher`, `nextUpMatcher`, and `bonusMatcher` are `let` bindings computed inline in `body`.
+`managedMatcher` is a computed `var`. In `body` it is captured once as `let mm = managedMatcher` so both `CableGuideView` and `summaryPanel` share the same snapshot per render. `recordingMatcher`, `nextUpMatcher`, and `bonusMatcher` are also `let` bindings computed inline in `body`.
 
 ---
 

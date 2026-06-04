@@ -63,7 +63,7 @@ An adaptive rate controller runs every 3 seconds via a repeating `Timer` (`stats
 
 - **Fill phase**: Plays at `minRate` (from `AppConfig.Player_buffer_min_rate`; default 0.93). Stream arrives ~7% faster than consumed — VLC's demux buffer grows.
 - **Hold phase**: Rate ramps linearly toward 1.0 as `estimatedLagSec` approaches the 8-second target. At 8s the rate reaches 1.0 and the buffer stabilises.
-- **Auto catch-up**: Same tick polls `libvlc_media_player_get_stats`. If `i_demux_corrupted` rises by >15 or `i_lost_pictures` rises by >20 in 3s, calls `catchUpToLive()` with a 30s debounce.
+- **Auto catch-up**: Same tick polls `libvlc_media_player_get_stats`. If `i_demux_corrupted` rises by >15 in 3s, calls `catchUpToLive()` with a 30s debounce.
 
 Rate formula applied every tick:
 ```
@@ -210,3 +210,66 @@ struct VLCBufferInfo {
 ```
 
 `rate`/`lag` are published unconditionally each tick (before the stats guard) so the buffer monitor bar remains functional even when `_mpGetStats` is unavailable (VLC 4+). `demuxBitrate` and `corrupted` retain their previous values when stats are skipped.
+
+---
+
+## Initialization Details
+
+### `libvlccore.dylib` preload
+
+Before loading `libvlc.dylib`, the init loads:
+
+```swift
+dlopen("/Applications/VLC.app/Contents/MacOS/lib/libvlccore.dylib", RTLD_LAZY | RTLD_GLOBAL)
+```
+
+`RTLD_GLOBAL` exposes `libvlccore`'s symbols to the dynamic linker's global namespace. This is required because `libvlc.dylib` calls into `libvlccore` by symbol name at load time; if the core isn't already globally visible, `libvlc` fails to find its own symbols and the dlopen returns nil.
+
+### `VLC_PLUGIN_PATH`
+
+Set before `libvlc_new` runs:
+
+```swift
+setenv("VLC_PLUGIN_PATH", "/Applications/VLC.app/Contents/MacOS/plugins", 1)
+```
+
+VLC discovers its codec and mux plugins via this path. Without it, `libvlc_new` can't find any decoders and the player creates successfully but nothing plays.
+
+### Off-main-thread `libvlc_new`
+
+`libvlc_new` loads 300+ plugin bundles and takes 0.3–1s depending on the machine. The call runs inside `Task.detached(priority: .userInitiated)` to avoid blocking the main actor (and thus the SwiftUI layout engine) during app startup or first VLC use. The media player, drawable attachment, and initial `play()` call are all serialized after init completes via `@MainActor.run`.
+
+If `play(url:)` is called before init finishes (e.g. a Watch button tapped immediately), the URL is stored in `pendingURL` and replayed as soon as the detached task posts back to the main actor.
+
+---
+
+## `pendingURL` Queue
+
+`pendingURL: String?` holds a single deferred URL when playback is requested before the player is ready:
+
+- **Case 1 — init not yet complete**: `play()` is called but `mediaPlayer` is nil. URL stored in `pendingURL`; the detached `libvlc_new` task checks `pendingURL` after posting to main actor and calls `play()` immediately.
+- **Case 2 — drawable not yet set**: `play()` is called before `setDrawable(_:)`. URL stored in `pendingURL`; `setDrawable` calls `play()` as soon as the view arrives.
+
+At most one URL is queued (last write wins). This is sufficient because `VLCPlayerWindowManager` sequences these calls and never queues more than one.
+
+---
+
+## `retainedDrawable`
+
+`retainedDrawable: NSView?` holds a strong reference to the drawable `NSView` after `releasePlayer()` is called. libvlc dispatches video/drawable callbacks off the main thread; those callbacks can fire briefly after `libvlc_media_player_release` returns. If the NSView is deallocated while a callback is in flight, the result is a use-after-free crash. `retainedDrawable` keeps the view alive until the next `setDrawable` call (which replaces it) or until `ensurePlayer()` is called and attaches the same view to the new player.
+
+---
+
+## `ensurePlayer()`
+
+```swift
+func ensurePlayer()
+```
+
+Recreates the media player after `releasePlayer()` without reloading the full VLC stack. Called by `VLCPlayerWindowManager` when a new player window opens after the previous one was torn down. Steps:
+
+1. Creates a new `mediaPlayer` via `_mpNew?(vlcInstance)`
+2. If `drawableView` is non-nil, calls `setDrawable` immediately (also clears `retainedDrawable`)
+3. If `pendingURL` is set, calls `play(url:)` to start the deferred stream
+
+If `vlcInstance` or `_mpNew` is nil (VLC not loaded), logs a warning and returns without crashing — the `isAvailable` gate in the UI prevents this path from being reached under normal conditions.

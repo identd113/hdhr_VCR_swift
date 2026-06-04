@@ -7,12 +7,14 @@ Launches and tracks `caffeinate -i curl` processes. Prevents sleep during record
 ## API
 
 ```swift
-func start(showId:, url:, outputPath:, durationSeconds:, transcode:, showEnd:, verbose:)
+func start(showId:, url:, outputPath:, durationSeconds:, transcode:, showEnd:, verbose:, networkInterface:)
 func reattach(showId:, pid:)             // register an existing PID without launching (boot-resume)
 func stop(showId:)
 func readHDHRResource(showId:) -> String?    // reads X-HDHomeRun-Resource without deleting the file
 func readAndClearHDHRError(showId:) -> String? // reads X-HDHomeRun-Error, deletes the file
 ```
+
+`networkInterface: String = ""` — when non-empty, appends `--interface <name>` to curl args, binding the stream to a specific NIC. Sourced from `AppConfig.Network_interface`; empty string means auto-select (curl default). Set to empty to let curl pick the default route.
 
 ---
 
@@ -22,6 +24,7 @@ Each recording produces **two ps lines**: `caffeinate -i` (parent) + `curl` (chi
 
 - `durationSeconds` = **remaining time until `show_end`** (not total show length) — handles late starts and boot-resume correctly.
 - Stream URL: `{channel_url}?duration={seconds}&transcode={profile}`
+- curl `--connect-timeout 10` — aborts if the TCP connection to the tuner is not established within 10 seconds (catches unreachable devices quickly without waiting for `--max-time`)
 - curl `--max-time` = `durationSeconds + 120` (2-minute buffer against network stalls)
 - PIDs stored in `pids: [String: Int32]`; liveness checked via `isRunning(showId:)` — see below.
 - `--dump-header /tmp/hdhrVCRplus-{showId}.headers` is always passed to curl so response headers are captured to disk. The file is used for two purposes after the stream starts (see below).
@@ -68,6 +71,7 @@ Toggle in Settings → Advanced → "Verbose curl logging". When enabled:
 - Adds `-v` to curl args.
 - Appends curl stderr to `~/Library/Logs/hdhrVCRplus.log`.
 - Each recording block starts with a timestamp header and the full command line.
+- **Log rotation**: before writing each block header, if the log file exceeds **5 MB**, it is truncated to empty. This prevents unbounded disk growth during long-running verbose sessions.
 
 ---
 

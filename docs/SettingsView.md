@@ -55,7 +55,7 @@ One `Section`:
 - Failed: red `xmark.circle.fill` + error text
 - Untested: orange text `"Test the webhook before saving."`
 
-**Notify when…** section (visible only when enabled + URL set): 10 toggles for individual event types.
+**Notify when…** section (visible only when enabled + URL set): 11 toggles for individual event types.
 
 ### Category: Advanced
 Three sections:
@@ -96,11 +96,11 @@ private var isDirty: Bool { draft != state.config }
 - `.onAppear` seeds `draft = state.config`
 - All controls bind to `$draft.*` — not to `state.config` directly
 - **Save** → `applyAndSave()` sets `state.config = draft`, calls `state.saveConfig()`, and applies side effects: if `Idle_timer_interval` changed, calls `state.startTimer()`; if `Network_interface` changed, invalidates the guide cache and triggers `state.rediscoverDevices()` + `state.refreshGuide()` in a background Task so the new NIC is active immediately
-- **Save & Close** → if `isDirty`, calls `applyAndSave()`, then always closes the window. **Always enabled** (acts as "Done" even when clean). Rightmost button, `.borderedProminent`, triggered by Return (`.defaultAction`). Turns orange when dirty.
+- **Save & Close** → if `isDirty`, calls `applyAndSave()`, then always closes the window. **Always enabled** (acts as "Done" even when clean). Rightmost button, `.borderedProminent`, triggered by Return (`.defaultAction`). Turns orange when `canSave` is true.
 - **Discard** → `draft = state.config`
 - **Close with unsaved changes** → `WindowCloseInterceptor` intercepts and shows an NSAlert: Save / Discard / Cancel
 
-The Save button turns **orange** when `isDirty` (`.tint(isDirty ? .orange : .accentColor)`) — it was always blue and `.disabled` when clean, making it hard to know at a glance whether changes existed.
+The Save button turns **orange** when `canSave` is true (`.tint(canSave ? .orange : .accentColor)`). `canSave = isDirty && !webhookNeedsTest && !webPortInvalid` — dirty changes alone don't enable Save if the webhook hasn't been tested or the port is invalid.
 
 ---
 

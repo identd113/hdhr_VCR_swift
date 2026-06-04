@@ -117,7 +117,7 @@ Calls `state.confirmAndDeleteShow(s) { dismiss() }` — same flow as menu-based 
 
 `EditShowView` edits a local copy of `Show` and calls `state.updateShow(_:)` only on Save. This means:
 - Cancel always discards all edits (local copy is thrown away)
-- No draft-save safety net (unlike `SettingsView` which has `WindowCloseInterceptor`)
+- `WindowCloseInterceptor` intercepts window close when `isDirty` and shows a Save / Discard / Cancel alert — same pattern as `SettingsView`
 - No undo — once Save is pressed, the old values are gone
 
 ---

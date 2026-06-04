@@ -19,8 +19,8 @@ The net visual effect: the badge pops in spinning fast from the upper-right, ove
 
 ### 5-tap celebration animation
 After the 5th tap on the badge:
-1. Badge compresses to ~70% scale (0.07s linear — a quick press-squish feel)
-2. Explodes outward to 125% scale while spinning a full 360° (0.22s cubic)
+1. Badge compresses to ~70% scale (0.10s `CubicKeyframe` — a quick press-squish feel)
+2. Explodes outward to 165% scale while spinning a full 360° (0.22s cubic)
 3. Springs back to 100% scale + 0° rotation (spring response 0.38, damping 0.40 — light bounce)
 
 Because `celebCount` is incremented on every 5th tap, repeated celebrations trigger cleanly (360° end = 0° visually, so the next keyframe sequence starts from the same neutral state).

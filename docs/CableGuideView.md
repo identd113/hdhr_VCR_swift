@@ -140,6 +140,19 @@ Color logic is in **module-level functions** (not `private` on `CableGuideView`)
 
 8 colors used when `GuideEntry.Filter` is absent or doesn't match a known genre. Color is selected by `abs((SeriesID ?? Title).hashValue) % 8` — deterministic per series/title, consistent across renders.
 
+```
+blue:      hue 0.60, saturation 0.60, brightness 0.52
+purple:    hue 0.75, saturation 0.55, brightness 0.50
+orange:    hue 0.07, saturation 0.65, brightness 0.52
+teal:      hue 0.48, saturation 0.60, brightness 0.48
+green:     hue 0.33, saturation 0.55, brightness 0.46
+crimson:   hue 0.95, saturation 0.60, brightness 0.50
+steel-blue:hue 0.56, saturation 0.50, brightness 0.50
+amber:     hue 0.13, saturation 0.55, brightness 0.50
+```
+
+Saturations vary from 0.50 to 0.65 (not uniform) to differentiate adjacent colors in the grid.
+
 ### `guideEntryColor(for:onAir:)`
 
 ```swift

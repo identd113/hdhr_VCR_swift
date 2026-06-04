@@ -27,7 +27,7 @@ func updateTXTRecord()   // @MainActor — refreshes mDNS TXT record; called fro
 | GET | `/` or `/index.html` | Full guide HTML page |
 | GET | `/api/ping` | `{"ok":true}` — health check; also used as self-ping after bind |
 | GET | `/api/now.json` | JSON array of on-air entries (see schema below) |
-| GET | `/api/shows-html` | HTML fragment for the schedule popover body; used by `refreshShowsSection()` |
+| GET | `/api/shows-html` | HTML fragment for the schedule popover body |
 | GET | `/api/tuners.json` | JSON object `{deviceId: {t, a, surl}}` — per-device total/active tuner counts; polled by `refreshTuners()` every 30 s |
 | POST | `/api/record` | Schedule a recording |
 | POST | `/api/delete` | Remove a managed show and stop any active recording |
@@ -178,10 +178,11 @@ On **Save**: `confirmEdit()` POSTs `/api/edit` and closes modal on success. No i
 
 ## HTML page — visual layout
 
-Self-contained HTML with all CSS inlined. Auto-refreshes every **30 seconds** via JavaScript `setInterval` — no full page reload, no flash. Two JS functions run on each tick:
+Self-contained HTML with all CSS inlined. Auto-refreshes every **60 seconds** via `<meta http-equiv="refresh" content="60">` — full page reload; no `setInterval` polling. Tuner occupancy is fetched server-side on every page load (before HTML is served) via `refreshTunerOccupancy()`.
+
+`refreshGuide()` is also called client-side after user actions (record, delete, edit) to update the guide grid without waiting for the full-page reload:
 
 - **`refreshGuide()`** — `GET /` → DOMParser → swaps `.gi` (guide grid), `#sum-ph` (summary placeholder), `#sched-pop-body` (schedule popover)
-- **`refreshTuners()`** — `GET /api/tuners.json` → updates the `tuners` JS variable + repaints `.t-info` button text/class and `.d-btn` `d-full` state without touching the guide DOM
 
 **Dark theme:** body `#141414` · channel column `#1a1a1a` · default program block `#2c2c2c / #484848 border`.
 
@@ -299,7 +300,7 @@ A cable-TV-style horizontal time grid. Window width depends on the requesting cl
 - `div.gw` — scroll container (`overflow: auto; max-height: 60vh`)
 - `div.gi` — inner, `min-width` scales with window (see above)
 - Sticky time-header (`top: 0; z-index: 10`)
-- Sticky channel column (`left: 0; z-index: 2`) — 105 px wide
+- Sticky channel column (`left: 0; z-index: 2`) — both data rows (`.g-ch`) and the header cell (`.g-hdr-ch`) are **105 px** wide. They must match so the `nowPct%` left offset maps to the same pixel position in both the time header and program rows.
 - Corner cell `z-index: 11`
 
 **Rows:** one row per (device × channel). Cross-device deduplication is handled client-side by `setDev('')` on page load — it hides duplicate `GuideNumber` rows keeping the first-device occurrence, giving a clean "All" view.
