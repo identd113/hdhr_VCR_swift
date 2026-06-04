@@ -421,9 +421,10 @@ final class WebServer {
             let t = showTypeStr(s)
             let ad = s.show_air_date.joined(separator: ",")
             let da = "data-id=\"\(he(s.show_id))\" data-title=\"\(he(s.show_title))\" data-ch=\"\(he(s.show_channel))\" data-type=\"\(t)\" data-paused=\"\(s.show_paused ? 1 : 0)\" data-recording=\"\(recording ? 1 : 0)\" data-length=\"\(s.show_length)\" data-bonus=\"\(s.show_bonus_time ? 1 : 0)\" data-dir=\"\(he(s.show_dir))\" data-transcode=\"\(he(s.show_transcode))\" data-seriesid=\"\(he(s.show_seriesid))\" data-airdays=\"\(he(ad))\" data-failcount=\"\(s.show_fail_count)\" data-failreason=\"\(he(s.show_fail_reason))\""
+            let endDetail = recording ? s.show_end.map { " · Ends \(state.shortTime($0))" } ?? "" : ""
             return "<div class=\"sp-row\" \(da) onclick=\"openEditShow(this)\">"
                  + "<div class=\"sp-t\">\(prefix)\(he(s.show_title))</div>"
-                 + "<div class=\"sp-ch\">Ch \(he(s.show_channel))</div>"
+                 + "<div class=\"sp-ch\">Ch \(he(s.show_channel))\(endDetail)</div>"
                  + "</div>"
         }
 
