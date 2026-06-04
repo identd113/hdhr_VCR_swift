@@ -607,14 +607,11 @@ final class AppState: ObservableObject {
 
     func bonusOverlapWarning(for entry: GuideEntry, channel: LineupEntry, deviceId: String) -> String? {
         let bonusMin = config.Sports_padding_minutes
-        let bonusShows = shows.filter { $0.show_bonus_time }
-        let bonusSeriesIDs = Set(bonusShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
-        let bonusTitles   = Set(bonusShows.map { $0.show_title })
+        let bonusMatcher   = ShowMatcher(shows.filter { $0.show_bonus_time })
         let channelEntries = guideEntries(deviceId: deviceId, channelNum: channel.GuideNumber)
         for other in channelEntries {
             guard other.EndTime <= entry.StartTime else { continue }
-            let isBonusShow = other.SeriesID.map { bonusSeriesIDs.contains($0) } ?? bonusTitles.contains(other.Title)
-            guard isBonusShow else { continue }
+            guard bonusMatcher.matches(other) else { continue }
             let bonusEndEpoch = other.EndTime + bonusMin * 60
             guard bonusEndEpoch > entry.StartTime else { continue }
             let overlapMin = max(1, (bonusEndEpoch - entry.StartTime) / 60)

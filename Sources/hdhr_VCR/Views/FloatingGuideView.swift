@@ -44,18 +44,13 @@ struct FloatingGuideView: View {
                                    description: "Guide data unavailable — tap Refresh to retry.")
                     } else {
                         // managedMatcher is a computed property shared with summaryPanel.
-                        let recordingSeriesIDs = Set(state.recordingShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
-                        let recordingTitles = Set(state.recordingShows.map { $0.show_title })
+                        let recordingMatcher = ShowMatcher(state.recordingShows)
                         let now30 = Date()
-                        let nextUpShows = state.activeShows.filter {
+                        let nextUpMatcher = ShowMatcher(state.activeShows.filter {
                             guard let d = $0.show_next else { return false }
                             return d > now30 && d.timeIntervalSince(now30) <= 30 * 60
-                        }
-                        let nextUpSeriesIDs = Set(nextUpShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
-                        let nextUpTitles = Set(nextUpShows.map { $0.show_title })
-                        let bonusShows = state.shows.filter { $0.show_bonus_time }
-                        let bonusSeriesIDs = Set(bonusShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
-                        let bonusTitles = Set(bonusShows.map { $0.show_title })
+                        })
+                        let bonusMatcher = ShowMatcher(state.shows.filter { $0.show_bonus_time })
 
                         CableGuideView(
                             allChannels:        allChannels,
@@ -65,14 +60,11 @@ struct FloatingGuideView: View {
                             selectedChannel:    $selectedChannel,
                             snapToNow:          $snapToNow,
                             deviceId:                selectedDevice?.DeviceID ?? "",
-                            managedMatcher:  managedMatcher,
-                            recordingSeriesIDs: recordingSeriesIDs,
-                            recordingTitles:    recordingTitles,
-                            nextUpSeriesIDs:    nextUpSeriesIDs,
-                            nextUpTitles:       nextUpTitles,
-                            bonusSeriesIDs:     bonusSeriesIDs,
-                            bonusTitles:        bonusTitles,
-                            bonusMinutes:       state.config.Sports_padding_minutes,
+                            managedMatcher:   managedMatcher,
+                            recordingMatcher: recordingMatcher,
+                            nextUpMatcher:    nextUpMatcher,
+                            bonusMatcher:     bonusMatcher,
+                            bonusMinutes:     state.config.Sports_padding_minutes,
                             genreFilter:        genreFilter,
                             onConfirm:          {},  // no-op — browse only
                             onToggleFavorite: { lu in

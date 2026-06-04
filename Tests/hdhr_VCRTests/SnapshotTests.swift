@@ -263,12 +263,13 @@ private struct CableGuidePreview: View {
                 s.show_seriesid = "EP12345"; s.show_is_series = true; s.show_use_seriesid = true
                 return ManagedGuideMatcher(activeManagedShows: [s])
             }(),
-            recordingSeriesIDs: ["EP67890"],
-            recordingTitles: [],
-            nextUpSeriesIDs: [],
-            nextUpTitles: [],
-            bonusSeriesIDs: [],
-            bonusTitles: [],
+            recordingMatcher: {
+                var s = Show.blank(channel: "5.1", device: "FFFFFFFF")
+                s.show_seriesid = "EP67890"; s.show_is_series = true; s.show_use_seriesid = true
+                return ShowMatcher([s])
+            }(),
+            nextUpMatcher:    ShowMatcher([]),
+            bonusMatcher:     ShowMatcher([]),
             bonusMinutes: 30,
             genreFilter: nil
         )

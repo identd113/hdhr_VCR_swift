@@ -160,15 +160,11 @@ struct CableGuideView: View {
     @Binding var selectedChannel: LineupEntry?
     @Binding var snapToNow:       Bool        // set true externally to snap grid to now
     let deviceId:        String               // device whose guide is being shown
-    let managedMatcher:  ManagedGuideMatcher  // encapsulates all managed-show matching logic
-    let recordingSeriesIDs: Set<String>         // shows currently recording
-    let recordingTitles:    Set<String>
-    let nextUpSeriesIDs:    Set<String>         // shows recording within 30 min
-    let nextUpTitles:       Set<String>
-    // Bonus Time: seriesIDs/titles of managed sports shows; used to draw the dotted overtime box
-    let bonusSeriesIDs:   Set<String>
-    let bonusTitles:      Set<String>
-    let bonusMinutes:     Int                 // how many minutes of Bonus Time to visualize
+    let managedMatcher:   ManagedGuideMatcher  // encapsulates all managed-show matching logic
+    let recordingMatcher: ShowMatcher          // shows currently recording
+    let nextUpMatcher:    ShowMatcher          // shows recording within 30 min
+    let bonusMatcher:     ShowMatcher          // sports shows with Bonus Time enabled
+    let bonusMinutes:     Int                  // how many minutes of Bonus Time to visualize
     let genreFilter:      String?             // nil = show all; non-nil = dim non-matching
     var onConfirm: (() -> Void)? = nil        // called on double-click to advance wizard
     var onToggleFavorite: ((LineupEntry) -> Void)? = nil  // called when star is tapped
@@ -378,14 +374,11 @@ struct CableGuideView: View {
                                 timeSlots:          timeSlots,
                                 selectedEntry:      selectedEntry,
                                 selectedChannel:    selectedChannel,
-                                managedMatcher: managedMatcher,
-                                recordingSeriesIDs: recordingSeriesIDs,
-                                recordingTitles:    recordingTitles,
-                                nextUpSeriesIDs:    nextUpSeriesIDs,
-                                nextUpTitles:       nextUpTitles,
-                                bonusSeriesIDs:     bonusSeriesIDs,
-                                bonusTitles:        bonusTitles,
-                                bonusMinutes:       bonusMinutes,
+                                managedMatcher:   managedMatcher,
+                                recordingMatcher: recordingMatcher,
+                                nextUpMatcher:    nextUpMatcher,
+                                bonusMatcher:     bonusMatcher,
+                                bonusMinutes:     bonusMinutes,
                                 genreFilter:        genreFilter,
                                 onSelect: { entry, lu in
                                     selectedEntry   = entry
@@ -411,14 +404,11 @@ struct CableGuideView: View {
                                 timeSlots:          timeSlots,
                                 selectedEntry:      selectedEntry,
                                 selectedChannel:    selectedChannel,
-                                managedMatcher: managedMatcher,
-                                recordingSeriesIDs: recordingSeriesIDs,
-                                recordingTitles:    recordingTitles,
-                                nextUpSeriesIDs:    nextUpSeriesIDs,
-                                nextUpTitles:       nextUpTitles,
-                                bonusSeriesIDs:     bonusSeriesIDs,
-                                bonusTitles:        bonusTitles,
-                                bonusMinutes:       bonusMinutes,
+                                managedMatcher:   managedMatcher,
+                                recordingMatcher: recordingMatcher,
+                                nextUpMatcher:    nextUpMatcher,
+                                bonusMatcher:     bonusMatcher,
+                                bonusMinutes:     bonusMinutes,
                                 genreFilter:        genreFilter,
                                 onSelect: { entry, lu in
                                     selectedEntry   = entry
@@ -488,14 +478,10 @@ private struct ShowBlocksRow: View, Equatable {
     let timeSlots:        [Date]
     let selectedEntry:    GuideEntry?
     let selectedChannel:  LineupEntry?
-    let managedMatcher: ManagedGuideMatcher
-    let recordingSeriesIDs: Set<String>
-    let recordingTitles:    Set<String>
-    let nextUpSeriesIDs:    Set<String>
-    let nextUpTitles:       Set<String>
-    // Bonus Time: sports shows that get an overtime extension — used to draw the dotted overlay box
-    let bonusSeriesIDs:   Set<String>
-    let bonusTitles:      Set<String>
+    let managedMatcher:   ManagedGuideMatcher
+    let recordingMatcher: ShowMatcher
+    let nextUpMatcher:    ShowMatcher
+    let bonusMatcher:     ShowMatcher
     let bonusMinutes:     Int
     let genreFilter:      String?
     var onSelect:  (GuideEntry, LineupEntry?) -> Void
@@ -511,12 +497,9 @@ private struct ShowBlocksRow: View, Equatable {
         lhs.genreFilter                  == rhs.genreFilter &&
         lhs.displayStart                 == rhs.displayStart &&
         lhs.managedMatcher               == rhs.managedMatcher &&
-        lhs.recordingSeriesIDs           == rhs.recordingSeriesIDs &&
-        lhs.recordingTitles              == rhs.recordingTitles &&
-        lhs.nextUpSeriesIDs              == rhs.nextUpSeriesIDs &&
-        lhs.nextUpTitles                 == rhs.nextUpTitles &&
-        lhs.bonusSeriesIDs               == rhs.bonusSeriesIDs &&
-        lhs.bonusTitles                  == rhs.bonusTitles &&
+        lhs.recordingMatcher             == rhs.recordingMatcher &&
+        lhs.nextUpMatcher                == rhs.nextUpMatcher &&
+        lhs.bonusMatcher                 == rhs.bonusMatcher &&
         lhs.bonusMinutes                 == rhs.bonusMinutes &&
         lhs.totalW                       == rhs.totalW       &&
         lhs.rowH                         == rhs.rowH         &&
@@ -578,12 +561,9 @@ private struct ShowBlocksRow: View, Equatable {
         // SeriesID(Channel/All) shows: yellow on any matching episode (by SeriesID, or title when
         // the entry has no SeriesID). DateTime/Single shows: only the specific scheduled slot matches.
         let isManaged = managedMatcher.isManaged(entry: entry)
-        let isRecording = entry.SeriesID.map { recordingSeriesIDs.contains($0) }
-                       ?? recordingTitles.contains(entry.Title)
-        let isNextUp    = !isRecording && (entry.SeriesID.map { nextUpSeriesIDs.contains($0) }
-                       ?? nextUpTitles.contains(entry.Title))
-        let isBonusTime = entry.SeriesID.map { bonusSeriesIDs.contains($0) }
-                       ?? bonusTitles.contains(entry.Title)
+        let isRecording = recordingMatcher.matches(entry)
+        let isNextUp    = !isRecording && nextUpMatcher.matches(entry)
+        let isBonusTime = bonusMatcher.matches(entry)
         let alreadyManaged = isManaged || isRecording || isNextUp
         let matchesFilter: Bool = {
             guard let f = genreFilter else { return true }

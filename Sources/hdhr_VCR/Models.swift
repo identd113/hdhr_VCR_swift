@@ -416,6 +416,24 @@ struct GuideEntry: Codable, Identifiable, Hashable {
     var firstGenre: String? { Filter?.first }
 }
 
+// MARK: - ShowMatcher
+
+/// Matches a guide entry against a set of shows by SeriesID (preferred) or title (fallback).
+/// Used for recording/nextUp/bonus classification — three instances replace six parallel sets.
+struct ShowMatcher: Equatable {
+    let seriesIDs: Set<String>
+    let titles:    Set<String>
+
+    init(_ shows: [Show]) {
+        seriesIDs = Set(shows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
+        titles    = Set(shows.map { $0.show_title })
+    }
+
+    func matches(_ entry: GuideEntry) -> Bool {
+        entry.SeriesID.map { seriesIDs.contains($0) } ?? titles.contains(entry.Title)
+    }
+}
+
 // MARK: - ManagedGuideMatcher
 
 /// Encapsulates the four managed-show sets and the matching predicate used by both the

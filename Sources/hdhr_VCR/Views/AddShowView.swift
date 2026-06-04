@@ -170,21 +170,13 @@ struct AddShowView: View {
 
     private var guideStep: some View {
         let managedMatcher = ManagedGuideMatcher(activeManagedShows: state.shows.filter { $0.show_active && !$0.show_paused })
-        // Recording now
-        let recordingSeriesIDs = Set(state.recordingShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
-        let recordingTitles    = Set(state.recordingShows.map { $0.show_title })
-        // Next up: active shows whose next air is within 30 min (matches menu bar orange-clock threshold)
+        let recordingMatcher = ShowMatcher(state.recordingShows)
         let now30 = Date()
-        let nextUpShows = state.activeShows.filter {
+        let nextUpMatcher = ShowMatcher(state.activeShows.filter {
             guard let d = $0.show_next else { return false }
             return d > now30 && d.timeIntervalSince(now30) <= 30 * 60
-        }
-        let nextUpSeriesIDs = Set(nextUpShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
-        let nextUpTitles    = Set(nextUpShows.map { $0.show_title })
-        // Bonus Time: find managed shows with per-show bonus time enabled so the guide can draw the overtime dotted box
-        let bonusShows = state.shows.filter { $0.show_bonus_time }
-        let bonusSeriesIDs = Set(bonusShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
-        let bonusTitles    = Set(bonusShows.map { $0.show_title })
+        })
+        let bonusMatcher = ShowMatcher(state.shows.filter { $0.show_bonus_time })
 
         return VStack(spacing: 0) {
             // ── Compact toolbar: tuner + genre filter + actions ───────────────
@@ -261,14 +253,11 @@ struct AddShowView: View {
                             selectedChannel:    $selectedChannel,
                             snapToNow:          $snapToNow,
                             deviceId:                selectedDevice?.DeviceID ?? "",
-                            managedMatcher:  managedMatcher,
-                            recordingSeriesIDs: recordingSeriesIDs,
-                            recordingTitles:    recordingTitles,
-                            nextUpSeriesIDs:    nextUpSeriesIDs,
-                            nextUpTitles:       nextUpTitles,
-                            bonusSeriesIDs:     bonusSeriesIDs,
-                            bonusTitles:        bonusTitles,
-                            bonusMinutes:       state.config.Sports_padding_minutes,
+                            managedMatcher:   managedMatcher,
+                            recordingMatcher: recordingMatcher,
+                            nextUpMatcher:    nextUpMatcher,
+                            bonusMatcher:     bonusMatcher,
+                            bonusMinutes:     state.config.Sports_padding_minutes,
                             genreFilter:        genreFilter,
                             onConfirm: {
                                 applyGuideEntry()
