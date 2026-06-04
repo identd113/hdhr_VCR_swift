@@ -163,7 +163,7 @@ struct CableGuideView: View {
     let managedSeriesIDs:        Set<String>   // SeriesID(Channel/All) shows — any episode gets yellow
     let managedTitles:           Set<String>   // title fallback for SeriesID shows (no SeriesID in entry)
     let managedSingleSlotKeys:   Set<String>   // Single shows — "deviceId:channel:epoch" for the one scheduled slot
-    let managedDateTimeTitleCh:  Set<String>   // DateTime shows — "title|channel" flags every airing on that channel
+    let managedDateTimeSlotKeys: Set<String>   // DateTime shows — "deviceId:channel:HH:MM" flags every slot at that time
     let recordingSeriesIDs: Set<String>         // shows currently recording
     let recordingTitles:    Set<String>
     let nextUpSeriesIDs:    Set<String>         // shows recording within 30 min
@@ -385,7 +385,7 @@ struct CableGuideView: View {
                                 managedSeriesIDs:        managedSeriesIDs,
                                 managedTitles:           managedTitles,
                                 managedSingleSlotKeys:   managedSingleSlotKeys,
-                                managedDateTimeTitleCh:  managedDateTimeTitleCh,
+                                managedDateTimeSlotKeys: managedDateTimeSlotKeys,
                                 recordingSeriesIDs: recordingSeriesIDs,
                                 recordingTitles:    recordingTitles,
                                 nextUpSeriesIDs:    nextUpSeriesIDs,
@@ -422,7 +422,7 @@ struct CableGuideView: View {
                                 managedSeriesIDs:        managedSeriesIDs,
                                 managedTitles:           managedTitles,
                                 managedSingleSlotKeys:   managedSingleSlotKeys,
-                                managedDateTimeTitleCh:  managedDateTimeTitleCh,
+                                managedDateTimeSlotKeys: managedDateTimeSlotKeys,
                                 recordingSeriesIDs: recordingSeriesIDs,
                                 recordingTitles:    recordingTitles,
                                 nextUpSeriesIDs:    nextUpSeriesIDs,
@@ -503,7 +503,7 @@ private struct ShowBlocksRow: View, Equatable {
     let managedSeriesIDs:        Set<String>
     let managedTitles:           Set<String>
     let managedSingleSlotKeys:   Set<String>
-    let managedDateTimeTitleCh:  Set<String>
+    let managedDateTimeSlotKeys: Set<String>
     let recordingSeriesIDs: Set<String>
     let recordingTitles:    Set<String>
     let nextUpSeriesIDs:    Set<String>
@@ -529,7 +529,7 @@ private struct ShowBlocksRow: View, Equatable {
         lhs.managedSeriesIDs             == rhs.managedSeriesIDs &&
         lhs.managedTitles                == rhs.managedTitles &&
         lhs.managedSingleSlotKeys        == rhs.managedSingleSlotKeys  &&
-        lhs.managedDateTimeTitleCh       == rhs.managedDateTimeTitleCh &&
+        lhs.managedDateTimeSlotKeys      == rhs.managedDateTimeSlotKeys &&
         lhs.recordingSeriesIDs           == rhs.recordingSeriesIDs &&
         lhs.recordingTitles              == rhs.recordingTitles &&
         lhs.nextUpSeriesIDs              == rhs.nextUpSeriesIDs &&
@@ -602,7 +602,10 @@ private struct ShowBlocksRow: View, Equatable {
             } else {
                 if managedTitles.contains(entry.Title) { return true }
             }
-            if managedDateTimeTitleCh.contains("\(entry.Title)|\(channel.GuideNumber)") { return true }
+            let comps = Calendar.current.dateComponents([.hour, .minute],
+                            from: Date(timeIntervalSince1970: TimeInterval(entry.StartTime)))
+            let hhmm = String(format: "%02d:%02d", comps.hour ?? 0, comps.minute ?? 0)
+            if managedDateTimeSlotKeys.contains("\(deviceId):\(channel.GuideNumber):\(hhmm)") { return true }
             return managedSingleSlotKeys.contains("\(deviceId):\(channel.GuideNumber):\(entry.StartTime)")
         }()
         let isRecording = entry.SeriesID.map { recordingSeriesIDs.contains($0) }

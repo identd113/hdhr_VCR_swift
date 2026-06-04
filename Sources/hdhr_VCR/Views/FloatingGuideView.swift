@@ -39,8 +39,13 @@ struct FloatingGuideView: View {
             return "\(show.hdhr_record):\(show.show_channel):\(Int(next.timeIntervalSince1970))"
         })
     }
-    private var managedDateTimeTitleCh: Set<String> {
-        Set(state.shows.filter { $0.state == .dateTime }.map { "\($0.show_title)|\($0.show_channel)" })
+    private var managedDateTimeSlotKeys: Set<String> {
+        let cal = Calendar.current
+        return Set(state.shows.compactMap { show -> String? in
+            guard show.state == .dateTime, let next = show.show_next else { return nil }
+            let c = cal.dateComponents([.hour, .minute], from: next)
+            return String(format: "\(show.hdhr_record):\(show.show_channel):%02d:%02d", c.hour ?? 0, c.minute ?? 0)
+        })
     }
 
     var body: some View {
@@ -82,7 +87,7 @@ struct FloatingGuideView: View {
                             managedSeriesIDs:        managedSets.seriesIDs,
                             managedTitles:           managedSets.titles,
                             managedSingleSlotKeys:   managedSingleSlotKeys,
-                            managedDateTimeTitleCh:  managedDateTimeTitleCh,
+                            managedDateTimeSlotKeys: managedDateTimeSlotKeys,
                             recordingSeriesIDs: recordingSeriesIDs,
                             recordingTitles:    recordingTitles,
                             nextUpSeriesIDs:    nextUpSeriesIDs,
@@ -201,7 +206,10 @@ struct FloatingGuideView: View {
                 } else {
                     if managedSets.titles.contains(entry.Title) { return true }
                 }
-                if managedDateTimeTitleCh.contains("\(entry.Title)|\(selectedChannel?.GuideNumber ?? "")") { return true }
+                let comps = Calendar.current.dateComponents([.hour, .minute],
+                                from: Date(timeIntervalSince1970: TimeInterval(entry.StartTime)))
+                let hhmm = String(format: "%02d:%02d", comps.hour ?? 0, comps.minute ?? 0)
+                if managedDateTimeSlotKeys.contains("\(selectedDevice?.DeviceID ?? ""):\(selectedChannel?.GuideNumber ?? ""):\(hhmm)") { return true }
                 return managedSingleSlotKeys.contains(
                     "\(selectedDevice?.DeviceID ?? ""):\(selectedChannel?.GuideNumber ?? ""):\(entry.StartTime)"
                 )

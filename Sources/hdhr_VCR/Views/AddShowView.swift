@@ -177,10 +177,13 @@ struct AddShowView: View {
             guard show.state == .single, let next = show.show_next else { return nil }
             return "\(show.hdhr_record):\(show.show_channel):\(Int(next.timeIntervalSince1970))"
         })
-        // DateTime shows: yellow on every airing of that title on that channel
-        let managedDateTimeTitleCh: Set<String> = Set(state.shows
-            .filter { $0.state == .dateTime }
-            .map { "\($0.show_title)|\($0.show_channel)" })
+        // DateTime shows: yellow on every slot at that device:channel:HH:MM time-of-day
+        let cal = Calendar.current
+        let managedDateTimeSlotKeys: Set<String> = Set(state.shows.compactMap { show in
+            guard show.state == .dateTime, let next = show.show_next else { return nil }
+            let c = cal.dateComponents([.hour, .minute], from: next)
+            return String(format: "\(show.hdhr_record):\(show.show_channel):%02d:%02d", c.hour ?? 0, c.minute ?? 0)
+        })
         // Recording now
         let recordingSeriesIDs = Set(state.recordingShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
         let recordingTitles    = Set(state.recordingShows.map { $0.show_title })
@@ -275,7 +278,7 @@ struct AddShowView: View {
                             managedSeriesIDs:        managedSeriesIDs,
                             managedTitles:           managedTitles,
                             managedSingleSlotKeys:   managedSingleSlotKeys,
-                            managedDateTimeTitleCh:  managedDateTimeTitleCh,
+                            managedDateTimeSlotKeys: managedDateTimeSlotKeys,
                             recordingSeriesIDs: recordingSeriesIDs,
                             recordingTitles:    recordingTitles,
                             nextUpSeriesIDs:    nextUpSeriesIDs,
