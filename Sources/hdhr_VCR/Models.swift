@@ -64,12 +64,21 @@ struct Show: Identifiable, Equatable {
     }
 
     var posixRecordDir: String {
-        let primary  = show_dir.isEmpty      ? (NSHomeDirectory() + "/Movies/hdhr_videos") : show_dir
-        let fallback = show_temp_dir.isEmpty ? (NSHomeDirectory() + "/Movies/hdhr_videos") : show_temp_dir
+        let primary  = Self.toPosix(show_dir.isEmpty      ? NSHomeDirectory() + "/Movies/hdhr_videos" : show_dir)
+        let fallback = Self.toPosix(show_temp_dir.isEmpty ? NSHomeDirectory() + "/Movies/hdhr_videos" : show_temp_dir)
         guard primary != fallback else { return primary }
         // Use primary only when its parent directory exists (i.e. the volume is mounted)
         let parent = URL(fileURLWithPath: primary).deletingLastPathComponent().path
         return FileManager.default.fileExists(atPath: parent) ? primary : fallback
+    }
+
+    /// Converts old HFS colon-separated paths (e.g. "Raid6:DVR Tests:") to POSIX
+    /// ("/Volumes/Raid6/DVR Tests"). Already-POSIX paths are returned unchanged.
+    private static func toPosix(_ path: String) -> String {
+        guard !path.hasPrefix("/"), path.contains(":") else { return path }
+        let stripped = path.hasSuffix(":") ? String(path.dropLast()) : path
+        let parts    = stripped.split(separator: ":", omittingEmptySubsequences: false).map(String.init)
+        return "/Volumes/" + parts.joined(separator: "/")
     }
 
     private static let outputDateFormatter: DateFormatter = {
