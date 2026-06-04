@@ -332,10 +332,11 @@ struct FloatingGuideView: View {
         // Guarantee lineup is present before loading guide — recovers from silent startup fetch failures
         await state.ensureLineupLoaded(for: device)
         let id = device.DeviceID
+        let favorites = Set((state.lineups[id] ?? []).filter(\.isFavorite).map(\.GuideNumber))
         defer { isLoadingGuide = false }
 
         if state.guideStore.isFresh(deviceId: id) {
-            allChannels = sortedGuideChannels(state.guideStore.channels(deviceId: id), favorites: Set((state.lineups[id] ?? []).filter(\.isFavorite).map(\.GuideNumber)))
+            allChannels = sortedGuideChannels(state.guideStore.channels(deviceId: id), favorites: favorites)
             state.guideByDevice = state.guideStore.channelsByDevice
             return
         }
@@ -344,12 +345,12 @@ struct FloatingGuideView: View {
                 try? await Task.sleep(nanoseconds: 200_000_000)
             }
             let ch = state.guideStore.channels(deviceId: id)
-            if !ch.isEmpty { allChannels = sortedGuideChannels(ch, favorites: Set((state.lineups[id] ?? []).filter(\.isFavorite).map(\.GuideNumber))); return }
+            if !ch.isEmpty { allChannels = sortedGuideChannels(ch, favorites: favorites); return }
         }
         state.guideStore.verbose = state.config.Verbose_curl
         await state.guideStore.load(for: device, hours: state.config.GuideHours)
         state.guideByDevice = state.guideStore.channelsByDevice
-        allChannels = sortedGuideChannels(state.guideStore.channels(deviceId: id), favorites: Set((state.lineups[id] ?? []).filter(\.isFavorite).map(\.GuideNumber)))
+        allChannels = sortedGuideChannels(state.guideStore.channels(deviceId: id), favorites: favorites)
     }
 }
 

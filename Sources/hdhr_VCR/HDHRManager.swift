@@ -256,9 +256,7 @@ final class HDHRManager {
     func fetchLineup(for device: HDHRDevice) async throws -> [LineupEntry] {
         guard let url = URL(string: device.lineupURL) else { throw URLError(.badURL) }
         let (data, _) = try await dataSession.data(from: url)
-        var entries = try JSONDecoder().decode([LineupEntry].self, from: data)
-        let devId = device.DeviceID
-        entries = entries.map { entry in var e = entry; e.deviceId = devId; return e }
+        let entries = try JSONDecoder().decode([LineupEntry].self, from: data)
         return entries
     }
 

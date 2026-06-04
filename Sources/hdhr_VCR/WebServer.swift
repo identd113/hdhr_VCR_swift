@@ -507,13 +507,18 @@ final class WebServer {
         ).mapValues { Set($0.map { $0.show_channel }) }
         let activeMgd    = state.shows.filter { $0.show_active && !$0.show_paused }
         let guideMatcher = ManagedGuideMatcher(activeManagedShows: activeMgd)
+        // Pre-built O(1) indexes for findManagedShow — avoids O(n) scans per guide block.
+        let activeMgdBySeries = Dictionary(
+            activeMgd.filter { $0.isSeries && !$0.show_seriesid.isEmpty }.map { ($0.show_seriesid, $0) },
+            uniquingKeysWith: { a, _ in a })
+        let activeMgdByTitle  = Dictionary(
+            activeMgd.filter { $0.isSeries }.map { ($0.show_title, $0) },
+            uniquingKeysWith: { a, _ in a })
         // Returns the managed Show matching a guide entry — used to embed show data attrs on
         // managed blocks so the web edit modal can be opened directly from the guide.
         let findManagedShow: (GuideEntry, LineupEntry) -> Show? = { e, ch in
-            if let sid = e.SeriesID, !sid.isEmpty {
-                if let s = activeMgd.first(where: { $0.isSeries && $0.show_seriesid == sid }) { return s }
-            }
-            if let s = activeMgd.first(where: { $0.isSeries && $0.show_title == e.Title }) { return s }
+            if let sid = e.SeriesID, !sid.isEmpty, let s = activeMgdBySeries[sid] { return s }
+            if let s = activeMgdByTitle[e.Title] { return s }
             return activeMgd.first(where: { $0.show_title == e.Title && $0.show_channel == ch.GuideNumber })
         }
 
@@ -681,7 +686,6 @@ final class WebServer {
                     default: break
                     }
 
-                    let badge = ""
                     let sub   = e.EpisodeTitle.flatMap { $0.isEmpty ? nil : $0 } ?? ""
                     let tip   = sub.isEmpty
                         ? "\(he(e.Title))  (\(he(guideTimeRange(e))))"
@@ -704,7 +708,7 @@ final class WebServer {
                         let ad = s.show_air_date.joined(separator: ",")
                         return " data-show-id=\"\(he(s.show_id))\" data-show-type=\"\(showTypeStr(s))\" data-show-paused=\"\(s.show_paused ? 1 : 0)\" data-show-length=\"\(s.show_length)\" data-show-bonus=\"\(s.show_bonus_time ? 1 : 0)\" data-show-transcode=\"\(he(s.show_transcode))\" data-show-seriesid=\"\(he(s.show_seriesid))\" data-show-airdays=\"\(he(ad))\" data-show-failcount=\"\(s.show_fail_count)\" data-show-failreason=\"\(he(s.show_fail_reason))\" data-show-recording=\"\(s.show_recording ? 1 : 0)\""
                     }() : ""
-                    blockParts.append("<div class=\"\(cls)\" style=\"left:\(pct(cs))%;width:\(pct(ce - cs))%\" title=\"\(tip)\" \(da)\(showDA) onclick=\"showInfo(this)\"><div class=\"g-pi\">\(badge)<span class=\"g-ti\">\(he(e.Title))</span>\(subH)</div>\(flagHTML)</div>")
+                    blockParts.append("<div class=\"\(cls)\" style=\"left:\(pct(cs))%;width:\(pct(ce - cs))%\" title=\"\(tip)\" \(da)\(showDA) onclick=\"showInfo(this)\"><div class=\"g-pi\"><span class=\"g-ti\">\(he(e.Title))</span>\(subH)</div>\(flagHTML)</div>")
                 }
 
                 rowParts.append("<div class=\"g-row\" data-dev=\"\(he(device.DeviceID))\" data-ch=\"\(he(ch.GuideNumber))\"><div class=\"g-ch\">\(logoHTML)<div class=\"g-cl\"><span class=\"g-cn\">\(he(chLabel))</span><span class=\"g-cname\">\(he(ch.GuideName))</span></div></div><div class=\"g-tl\">\(blockParts.joined())</div></div>")

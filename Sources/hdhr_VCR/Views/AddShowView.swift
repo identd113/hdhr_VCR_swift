@@ -273,7 +273,7 @@ struct AddShowView: View {
             }
         }
         .task(id: taskId) { await loadAllGuide() }
-        .onChange(of: selectedDevice) { _, newDevice in
+        .onChange(of: selectedDevice) { newDevice in
             // Force fresh guide data whenever the user switches tuners.
             // Lineups are stable (loaded during discovery) — don't clear them or
             // CableGuideView gets an empty lineup and the Record button stays disabled.
@@ -283,7 +283,7 @@ struct AddShowView: View {
             refreshToken = UUID()
             genreFilter = nil   // new device has different genres — stale filter is misleading
         }
-        .onChange(of: state.guideRevision) { _, _ in
+        .onChange(of: state.guideRevision) { _ in
             guard let id = selectedDevice?.DeviceID, allChannels.isEmpty else { return }
             let ch = state.guideStore.channels(deviceId: id)
             guard !ch.isEmpty else { return }
@@ -291,11 +291,11 @@ struct AddShowView: View {
             allChannels = ch
             isLoadingGuide = false
         }
-        .onChange(of: state.lineups[selectedDevice?.DeviceID ?? ""] ?? []) { _, _ in
+        .onChange(of: state.lineups[selectedDevice?.DeviceID ?? ""] ?? []) { _ in
             guard let id = selectedDevice?.DeviceID, !allChannels.isEmpty else { return }
             allChannels = sortedGuideChannels(allChannels, favorites: Set((state.lineups[id] ?? []).filter(\.isFavorite).map(\.GuideNumber)))
         }
-        .onChange(of: allChannels.count) { _, count in
+        .onChange(of: allChannels.count) { count in
             guard count > 0, selectedEntry == nil else { return }
             let now = Date()
             guard let firstCh = allChannels.first,
@@ -330,12 +330,13 @@ struct AddShowView: View {
             }
             let isSportsBonusEntry = entry.firstGenre?.lowercased().contains("sports") == true
                                   && state.config.Sports_padding_enabled
-            let isManaged: Bool = {
+            let managedShow: Show? = {
                 if let sid = entry.SeriesID, !sid.isEmpty {
-                    return state.shows.contains { $0.show_seriesid == sid }
+                    return state.shows.first { $0.show_seriesid == sid }
                 }
-                return state.shows.contains { $0.show_title == entry.Title }
+                return state.shows.first { $0.show_title == entry.Title }
             }()
+            let isManaged = managedShow != nil
 
             ZStack(alignment: .topTrailing) {
             HStack(alignment: .top, spacing: 16) {
@@ -457,14 +458,6 @@ struct AddShowView: View {
                             .buttonStyle(WhiteOutlineButtonStyle(borderColor: .blue))
                             .disabled(selectedChannel == nil)
                         }
-                        let managedShow: Show? = {
-                            guard let entry = selectedEntry else { return nil }
-                            if let sid = entry.SeriesID, !sid.isEmpty {
-                                return state.shows.first { $0.show_seriesid == sid }
-                            }
-                            return state.shows.first { $0.show_title == entry.Title }
-                        }()
-                        let isManaged = managedShow != nil
                         Button {
                             if let existing = managedShow {
                                 state.editingShowId = existing.show_id
@@ -646,6 +639,7 @@ struct AddShowView: View {
         // leaving selectedChannel nil. Now that lineup is confirmed available, fix it.
         repairSelectedChannel(deviceId: device.DeviceID)
         let id = device.DeviceID
+        let favorites = Set((state.lineups[id] ?? []).filter(\.isFavorite).map(\.GuideNumber))
         state.logGuide("[Wizard] loadAllGuide deviceId=\(id) fresh=\(state.guideStore.isFresh(deviceId: id)) loading=\(state.guideStore.isLoading(deviceId: id))")
         defer { isLoadingGuide = false }
 
@@ -653,7 +647,7 @@ struct AddShowView: View {
         if state.guideStore.isFresh(deviceId: id) {
             let ch = state.guideStore.channels(deviceId: id)
             state.logGuide("[Wizard] cache hit — \(ch.count) channels, first guide counts: \(ch.prefix(3).map { "\($0.GuideNumber):\($0.Guide?.count ?? 0)" }.joined(separator: ", "))")
-            allChannels = sortedGuideChannels(ch, favorites: Set((state.lineups[id] ?? []).filter(\.isFavorite).map(\.GuideNumber)))
+            allChannels = sortedGuideChannels(ch, favorites: favorites)
             return
         }
 
@@ -668,7 +662,7 @@ struct AddShowView: View {
             state.logGuide("[Wizard] startup finished — \(ch.count) channels")
             if !ch.isEmpty {
                 state.guideByDevice = state.guideStore.channelsByDevice
-                allChannels = sortedGuideChannels(ch, favorites: Set((state.lineups[id] ?? []).filter(\.isFavorite).map(\.GuideNumber)))
+                allChannels = sortedGuideChannels(ch, favorites: favorites)
                 return
             }
             state.logGuide("[Wizard] startup gave 0 channels — falling through to fresh load")
@@ -681,7 +675,7 @@ struct AddShowView: View {
         state.guideByDevice = state.guideStore.channelsByDevice
         let ch = state.guideStore.channels(deviceId: id)
         state.logGuide("[Wizard] fetch complete — \(ch.count) channels")
-        allChannels = sortedGuideChannels(ch, favorites: Set((state.lineups[id] ?? []).filter(\.isFavorite).map(\.GuideNumber)))
+        allChannels = sortedGuideChannels(ch, favorites: favorites)
     }
 
     /// Called after lineup is confirmed loaded. Fixes selectedChannel when auto-select fired

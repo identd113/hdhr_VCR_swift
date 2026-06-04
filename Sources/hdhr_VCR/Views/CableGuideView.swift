@@ -332,7 +332,7 @@ struct CableGuideView: View {
 
             ForEach(timeSlots, id: \.self) { slot in
                 let x = CGFloat(slot.timeIntervalSince(displayStart) / 60) * pxPerMin
-                Text(formatSlot(slot))
+                Text(timeRangeFormatter.string(from: slot))
                     .font(.system(size: 10, weight: .medium))
                     .foregroundColor(.white)
                     .padding(.leading, 5)
@@ -453,16 +453,6 @@ struct CableGuideView: View {
         (ch.Guide ?? []).filter { $0.endDate > displayStart && $0.startDate < displayEnd }
     }
 
-    // "jmm" template: j means preferred hour format for the locale (12h or 24h)
-    private static let slotFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = DateFormatter.dateFormat(fromTemplate: "jmm", options: 0, locale: .current)
-        return f
-    }()
-
-    private func formatSlot(_ d: Date) -> String {
-        Self.slotFormatter.string(from: d)
-    }
 }
 
 // ── Equatable channel row — SwiftUI skips body re-eval during scroll ──────────

@@ -345,7 +345,6 @@ extension HDHRDevice: Codable {
 
 struct LineupEntry: Codable, Identifiable {
     var id: String { GuideNumber }
-    var deviceId:   String = ""   // not in JSON — stamped after decode
     var GuideNumber: String
     var GuideName: String
     var URL: String?

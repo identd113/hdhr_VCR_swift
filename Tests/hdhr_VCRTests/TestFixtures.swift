@@ -16,16 +16,14 @@ extension HDHRDevice {
 // MARK: - LineupEntry
 
 extension LineupEntry {
-    static func test(number: String = "5.1", name: String = "KFOO", favorite: Bool = false, deviceId: String = "FFFFFFFF") -> LineupEntry {
-        var e = LineupEntry(
+    static func test(number: String = "5.1", name: String = "KFOO", favorite: Bool = false) -> LineupEntry {
+        LineupEntry(
             GuideNumber: number,
             GuideName: name,
             URL: "http://192.168.1.100:5004/auto/v\(number)",
             HD: 1,
             Favorite: favorite ? 1 : nil
         )
-        e.deviceId = deviceId
-        return e
     }
 }
 
@@ -75,8 +73,7 @@ extension GuideEntry {
         episodeTitle: String? = nil,
         seriesID: String? = nil,
         genre: String = "Drama",
-        deviceId: String = "FFFFFFFF",
-        channelNum: String = ""
+        deviceId: String = "FFFFFFFF"
     ) -> GuideEntry {
         let start = Date().addingTimeInterval(offset)
         var e = GuideEntry(
@@ -91,8 +88,7 @@ extension GuideEntry {
             OriginalAirdate: nil,
             Filter: [genre]
         )
-        e.deviceId  = deviceId
-        e.channelNum = channelNum
+        e.deviceId = deviceId
         return e
     }
 }
