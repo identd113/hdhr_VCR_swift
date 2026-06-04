@@ -716,7 +716,7 @@ final class AppState: ObservableObject {
 
     // MARK: - Add show from guide entry (called by menu)
 
-    func addShowFromGuide(entry: GuideEntry, type: ShowState, device: HDHRDevice, channel: LineupEntry) {
+    func addShowFromGuide(entry: GuideEntry, type: ShowState, device: HDHRDevice, channel: LineupEntry, airDays: [String]? = nil) {
         // Use the default directory automatically; user can override per-show via Edit.
         let folder = defaultSaveDir
 
@@ -744,8 +744,12 @@ final class AppState: ObservableObject {
             show.show_air_date = []
         case .dateTime:
             show.show_is_series = true; show.show_use_seriesid = false; show.show_use_seriesid_all = false
-            let weekday = Calendar.current.component(.weekday, from: entry.startDate)
-            show.show_air_date = [["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][weekday - 1]]
+            if let days = airDays, !days.isEmpty {
+                show.show_air_date = days
+            } else {
+                let weekday = Calendar.current.component(.weekday, from: entry.startDate)
+                show.show_air_date = [["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][weekday - 1]]
+            }
         case .seriesChannel:
             show.show_is_series = true; show.show_use_seriesid = true; show.show_use_seriesid_all = false
             show.show_air_date = allDays

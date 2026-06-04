@@ -300,7 +300,8 @@ final class WebServer {
         let nowTs        = Int(Date().timeIntervalSince1970)
         let recStarted   = entry.StartTime <= nowTs && entry.EndTime > nowTs
         let newActive    = recStarted && !tunerFull ? activeTuners + 1 : activeTuners
-        state.addShowFromGuide(entry: entry, type: showType, device: device, channel: ch)
+        let airDays = obj["airDays"] as? [String]
+        state.addShowFromGuide(entry: entry, type: showType, device: device, channel: ch, airDays: airDays)
         return json(["ok": true, "title": entry.Title, "tunerFull": tunerFull,
                      "recStarted": recStarted, "tunerActive": newActive, "tunerTotal": total])
     }
@@ -970,6 +971,7 @@ final class WebServer {
             </div>
             <div id="rm-opts" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
             <div id="rm-sid" style="display:none;font-size:.68rem;color:#888;background:#111;border-radius:5px;padding:5px 10px;margin-bottom:10px">SeriesID: <span id="rm-sid-val" style="color:#bbb;font-family:monospace;word-break:break-all"></span></div>
+            <div id="rm-days-row" style="display:none;margin-bottom:10px"><div style="font-size:.75rem;color:var(--t3);margin-bottom:5px">Days</div><div class="em-days" id="rm-days"></div></div>
             <div id="rm-tuner" style="display:none;font-size:.74rem;color:#ffcc66;background:#2a1e00;border:1px solid #7a5500;border-radius:6px;padding:7px 10px;margin-bottom:10px">⚠ All tuners are currently in use. This show will be queued and recorded as soon as a tuner is free.</div>
             <div style="display:flex;justify-content:flex-end;gap:8px">
               <button onclick="cancelRecord()" style="font-size:.78rem;padding:6px 16px;border-radius:6px;border:1px solid #444;background:transparent;color:#aaa;cursor:pointer">Cancel</button>
@@ -1106,6 +1108,17 @@ final class WebServer {
             lbl.appendChild(inp);lbl.appendChild(info);opts.appendChild(lbl);
           });
           document.getElementById('rm-sid').style.display='none';
+          // Build day buttons — pre-check the day-of-week matching the guide entry
+          var entryDow=new Date(_s*1000).getDay();
+          var rmDaysEl=document.getElementById('rm-days');rmDaysEl.innerHTML='';
+          _dayNames.forEach(function(day,i){
+            var btn=document.createElement('button');
+            btn.type='button';btn.className='day-btn'+(i===entryDow?' sel':'');
+            btn.textContent=_dayShort[i];btn.dataset.day=day;
+            btn.onclick=function(){this.classList.toggle('sel');};
+            rmDaysEl.appendChild(btn);
+          });
+          document.getElementById('rm-days-row').style.display='none';
           // Show tuner-full warning only when the show is live and that device has no free tuners
           var nowTs=Math.floor(Date.now()/1000);
           var isLive=(_s<=nowTs&&_e>nowTs);
@@ -1116,6 +1129,7 @@ final class WebServer {
             var sid=document.getElementById('rm-sid');
             if(isSeries&&_ser){document.getElementById('rm-sid-val').textContent=_ser;sid.style.display='block';}
             else{sid.style.display='none';}
+            document.getElementById('rm-days-row').style.display=(v==='dateTime')?'block':'none';
           };
           document.getElementById('rec-modal').style.display='flex';
         }
@@ -1123,11 +1137,12 @@ final class WebServer {
         function confirmRecord(){
           var checked=document.querySelector('input[name="rm-type"]:checked');
           var type=checked?checked.value:'single';
+          var airDays=Array.from(document.querySelectorAll('#rm-days .day-btn.sel')).map(function(b){return b.dataset.day;});
           cancelRecord();
           var btn=document.getElementById('sum-btn');
           btn.disabled=true;btn.textContent='Scheduling…';
           fetch('/api/record',{method:'POST',headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({deviceId:_d,guideNumber:_n,startTime:_s,endTime:_e,showType:type})})
+            body:JSON.stringify({deviceId:_d,guideNumber:_n,startTime:_s,endTime:_e,showType:type,airDays:airDays})})
           .then(function(r){
             if(r.ok){
               return r.json().then(function(j){
