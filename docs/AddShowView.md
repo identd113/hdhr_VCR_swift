@@ -215,8 +215,8 @@ Copies selected `GuideEntry` and `LineupEntry` fields onto the `show` state vari
 show.show_title    = entry.Title
 show.show_channel  = channel.GuideNumber
 show.show_length   = entry.durationMinutes
-show.show_next     = EpochDate(entry.startDate)
-show.show_end      = EpochDate(entry.endDate)
+show.show_next     = entry.startDate
+show.show_end      = entry.endDate
 show.show_seriesid   = entry.SeriesID ?? ""
 show.show_logo_url   = entry.ImageURL ?? ""
 show.show_genre      = entry.firstGenre ?? ""

@@ -111,23 +111,17 @@ Single row: `[Tuner picker (multi-tuner only)] [Genre picker (when available)] �
 
 ## `CableGuideView` Parameters
 
-`FloatingGuideView` passes several extra sets beyond the basics:
+`FloatingGuideView` passes matcher objects and a no-op confirm closure:
 
-| Parameter | Source |
-|---|---|
-| `deviceId` | `selectedDevice?.DeviceID ?? ""` — keys DateTime/Single slot matching |
-| `managedSeriesIDs` | `Set` of `show_seriesid` from SeriesID(Channel/All) shows — yellow flag on any episode |
-| `managedTitles` | `Set` of `show_title` from the same SeriesID shows — title fallback when entry has no SeriesID |
-| `managedDTSingleSlotKeys` | `Set` of `"deviceId:channel:epoch"` from DateTime/Single shows — yellow flag only on the exact slot |
-| `recordingSeriesIDs` | `Set` of `show_seriesid` from `state.recordingShows` |
-| `recordingTitles` | `Set` of `show_title` from `state.recordingShows` |
-| `nextUpSeriesIDs` | `Set` of `show_seriesid` from `state.activeShows` where `show_next` is within 30 min |
-| `nextUpTitles` | `Set` of `show_title` from the same next-up filter |
-| `bonusSeriesIDs` | `Set` of `show_seriesid` from shows where `show_bonus_time == true` |
-| `bonusTitles` | `Set` of `show_title` from bonus shows |
-| `onConfirm` | `{}` — no-op; double-tap does nothing (browse-only) |
+| Parameter | Type | Source |
+|---|---|---|
+| `managedMatcher` | `ManagedGuideMatcher` | Computed property on the view; wraps `state.shows.filter { $0.show_active && !$0.show_paused }` |
+| `recordingMatcher` | `ShowMatcher` | `ShowMatcher(state.recordingShows)` |
+| `nextUpMatcher` | `ShowMatcher` | `ShowMatcher(state.activeShows.filter { show_next within 30 min })` |
+| `bonusMatcher` | `ShowMatcher` | `ShowMatcher(state.shows.filter { $0.show_bonus_time })` |
+| `onConfirm` | `() -> Void` | `{}` — no-op; double-tap does nothing (browse-only) |
 
-These are computed inline in the `body` before the `CableGuideView` call, using `let` bindings to avoid repeated set construction.
+`managedMatcher` is a computed `var` (not a `let` binding) so it stays in sync when `state.shows` changes between renders. `recordingMatcher`, `nextUpMatcher`, and `bonusMatcher` are `let` bindings computed inline in `body`.
 
 ---
 

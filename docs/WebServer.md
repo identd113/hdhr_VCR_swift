@@ -288,8 +288,8 @@ A cable-TV-style horizontal time grid. Window width depends on the requesting cl
 
 | Client | Window | Default (GuideHours = 24) |
 |---|---|---|
-| Desktop (Macintosh / Windows / Linux UA) | `GuideHours / 2` hours | 12 h |
-| Mobile (iPhone / iPad / Android UA) | `GuideHours / 4` hours | 6 h |
+| Desktop (Macintosh / Windows / Linux UA) | `GuideHours` hours | 24 h |
+| Mobile (iPhone / iPad / Android UA) | `GuideHours / 2` hours | 12 h |
 
 `isDesktopUA(_ ua: String)` (private helper) classifies the UA server-side. Modern iPads in desktop-browsing mode report `"Macintosh"` and receive the wider window. Window always starts at the previous 30-minute boundary (`winStart = (nowTs / 1800) * 1800`).
 
@@ -299,7 +299,7 @@ A cable-TV-style horizontal time grid. Window width depends on the requesting cl
 - `div.gw` — scroll container (`overflow: auto; max-height: 60vh`)
 - `div.gi` — inner, `min-width` scales with window (see above)
 - Sticky time-header (`top: 0; z-index: 10`)
-- Sticky channel column (`left: 0; z-index: 2`) — 130 px wide
+- Sticky channel column (`left: 0; z-index: 2`) — 105 px wide
 - Corner cell `z-index: 11`
 
 **Rows:** one row per (device × channel). Cross-device deduplication is handled client-side by `setDev('')` on page load — it hides duplicate `GuideNumber` rows keeping the first-device occurrence, giving a clean "All" view.
@@ -308,9 +308,9 @@ Each `.g-row` carries `data-dev` and `data-ch` for device filtering.
 
 **`setDev()` and DOM caching**: `.g-row` NodeList is cached into `_rows` at page load and reused on every device switch — avoids repeated `querySelectorAll` calls.
 
-**Time header:** 7 ticks at `winSec/6` intervals (e.g. 2 h apart for a 12 h window, 1 h apart for 6 h) + red "now" bar.
+**Time header:** 7 ticks at `winSec/6` intervals (e.g. 4 h apart for a 24 h desktop window, 2 h apart for a 12 h mobile window) + red "now" bar.
 
-**Vertical gridlines:** CSS `repeating-linear-gradient` at every **8.3333%** of the timeline element width. Since the timeline spans `winSec` seconds, each gridline represents `winSec × 0.08333 / 60` minutes — 30 min for the mobile 6 h window, 60 min for the desktop 12 h window.
+**Vertical gridlines:** CSS `repeating-linear-gradient` at every **8.3333%** of the timeline element width. Since the timeline spans `winSec` seconds, each gridline represents `winSec × 0.08333 / 60` minutes — 60 min for the mobile 12 h window, 120 min for the desktop 24 h window.
 
 **Program block color coding:**
 

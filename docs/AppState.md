@@ -109,7 +109,8 @@ The web server is stopped explicitly in all three `quit()` exit branches before 
 
 | Method | Description |
 |---|---|
-| `startRecording(index:)` | Computes `endDate` (show_end ?? show_length fallback, then +bonus padding if active). Always writes `shows[index].show_end = endDate` before launching so the idle-loop natural-stop and notifications both use the final value. Notification and Discord "Ends" field use `endDate`, not the pre-padding `show.show_end`. When `Discord_on_start` is enabled, sends the embed with `?wait=true` via `sendDiscordEmbedCapturing` (async `Task`) to capture the message ID, which is stored in `shows[i].discord_start_msg_id` for later editing. |
+| `startRecording(index:)` | Computes `endDate` (show_end ?? show_length fallback, then +bonus padding if active). Always writes `shows[index].show_end = endDate` before launching so the idle-loop natural-stop and notifications both use the final value. Notification and Discord "Ends" field use `endDate`, not the pre-padding `show.show_end`. When `Discord_on_start` is enabled, inserts the show ID into `pendingDiscordStart` — the embed is deferred until the first idle-loop tick confirms curl is alive (see Discord Embed Flow). |
+| `updateShow(_ show: Show)` | Replaces the matching show in `shows[]` and saves config. For any active, non-paused, non-recording show whose `state != .single`, fires `scheduleNextAir` immediately via an async Task so type changes (e.g. seriesChannel → seriesAll) and day/time edits take effect without waiting for the idle loop. |
 | `pauseShow(_:)` | Sets `show_paused = true`, `show_fail_reason = "Manually paused"`, saves config |
 | `resumeShow(_:)` | Clears `show_paused`, resets fail count + reason, saves config |
 | `watchInVLC(url:)` | Opens stream in `/Applications/VLC.app` via `NSWorkspace`; no-op if VLC absent or `Watch_in_VLC` false |
@@ -128,11 +129,12 @@ The web server is stopped explicitly in all three `quit()` exit branches before 
 
 Recording lifecycle embeds edit the original "Recording Started" message in-place rather than posting new messages:
 
-1. **Recording starts** — `startRecording` calls `sendDiscordEmbedCapturing` (async `Task`). Discord echoes the created message when `?wait=true`; the message ID is stored in `show.discord_start_msg_id`.
-2. **Progress update** — the idle loop checks once per 5-minute boundary: if `show_recording && !discord_start_msg_id.isEmpty && Discord_on_progress`, it calls `editDiscordEmbed` with an "⏺ Recording In Progress" embed containing `"Xm elapsed · Ym remaining"`.
-3. **Recording ends** — `stopRecording` / file-verify path passes `editMessageId: show.discord_start_msg_id` to `discordShow`, which calls `editDiscordEmbed` (PATCH) instead of `sendDiscordEmbed` (POST). `discord_start_msg_id` is cleared to `""` after.
+1. **Recording starts** — `startRecording` inserts the show ID into `pendingDiscordStart: Set<String>`. The embed is **not sent immediately** — it is deferred to prevent a ping for recordings that fail in the first few seconds.
+2. **First idle-loop confirmation** — on the first tick where `show_recording == true` and `recordingManager.isRunning()` confirms curl is alive, the show ID is removed from `pendingDiscordStart` and `sendDiscordEmbedCapturing` (async `Task`) fires the "🔴 Recording Started" embed. Discord echoes the created message (`?wait=true`); the message ID is stored in `show.discord_start_msg_id`. If curl has already exited before this tick, the start embed is suppressed and only the failure embed is sent.
+3. **Progress update** — the idle loop checks once per 5-minute boundary: if `show_recording && !discord_start_msg_id.isEmpty && Discord_on_progress`, it calls `editDiscordEmbed` with an "⏺ Recording In Progress" embed containing `"Xm elapsed · Ym remaining"`.
+4. **Recording ends** — `stopRecording` / file-verify path passes `editMessageId: show.discord_start_msg_id` to `discordShow`, which calls `editDiscordEmbed` (PATCH) instead of `sendDiscordEmbed` (POST). `discord_start_msg_id` is cleared to `""` after.
 
-4. **App restart recovery** — `reattachRecordings()` (step 2 of startup) scans for shows with a non-empty `discord_start_msg_id` that were not reattached as actively recording. For each, it sends a recovery embed: "✅ Recording Complete" if `show_recording_path` file has non-zero size, or "⚠️ Recording Interrupted" otherwise. The ID is cleared before the send so a crash during the PATCH doesn't re-trigger on the next launch.
+5. **App restart recovery** — `reattachRecordings()` (step 2 of startup) scans for shows with a non-empty `discord_start_msg_id` that were not reattached as actively recording. For each, it sends a recovery embed: "✅ Recording Complete" if `show_recording_path` file has non-zero size, or "⚠️ Recording Interrupted" otherwise. The ID is cleared before the send so a crash during the PATCH doesn't re-trigger on the next launch.
 
 **Helper split**: `buildDiscordShowEmbed(event:show:color:extra:)` builds the `[String: Any]` embed dict (author, title, description, fields, thumbnail, footer). `discordShow` wraps it with guard checks and routes to either `sendDiscordEmbed` or `editDiscordEmbed` based on `editMessageId`. `sendDiscordEmbedCapturing` and `editDiscordEmbed` are free functions in `DiscordNotifier.swift`.
 

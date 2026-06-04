@@ -52,7 +52,7 @@ Each show occupies a rectangular block spanning `duration × pxPerMin` pixels wi
 **Row background**: `underPageBackgroundColor` (very dark gray/black in dark mode) spans the full grid width per row. Vertical slot dividers: 0.5pt `separatorColor` at 18% opacity at every 30-minute boundary.
 
 ### Bonus Time dotted box
-For managed sports shows, a dotted `RoundedRectangle` (cornerRadius 4, stroke 1.5pt, `secondaryLabelColor`) appears immediately to the right of the show block. Width = `bonusMinutes × pxPerMin`. When the box is wider than 60pt, a `"Bonus Time"` label appears inside in secondary color. The box has `.zIndex(1)` so it renders above the next channel's blocks.
+For managed sports shows, a dotted `RoundedRectangle` (cornerRadius 3, stroke 1.5pt `StrokeStyle(lineWidth: 1.5, dash: [4, 3])`) appears immediately to the right of the show block. Width = `bonusMinutes × pxPerMin`. Fill = `bonusColor.opacity(0.70)`, stroke = `bonusColor.opacity(0.90)`, where `bonusColor` is the show's genre color (`guideEntryColor(for: entry, onAir: onAir)`). The next show's title is always rendered inside the box so it remains readable even when fully covered — there is no "Bonus Time" text label. The box has `.zIndex(1)` so it renders above the next channel's blocks.
 
 ### Section separators (favorites / all channels)
 Between the favorites group and the general channel list, a 20pt-tall `Color(NSColor.controlBackgroundColor)` row spans the full grid width — matching the channel column's separator label row height exactly so both columns stay visually aligned across the divider.
@@ -198,7 +198,7 @@ The bonus time dotted box is also a collapsed accessible button: label `"Bonus T
 
 ## Bonus Time Dotted Box
 
-For managed sports shows, a dotted `RoundedRectangle` is drawn as a sibling view at `cellX + cellW + 2` (immediately after the show block). Width = `bonusMinutes * pxPerMin`. "Bonus Time" label shown only when box > 60px wide.
+For managed sports shows, a dotted `RoundedRectangle` (cornerRadius 3) is drawn as a sibling view at `cellX + cellW + 2` (immediately after the show block). Width = `bonusMinutes * pxPerMin`. Fill = `bonusColor.opacity(0.70)`, stroke = `bonusColor.opacity(0.90)` (genre color). The next show's title is rendered inside — no "Bonus Time" text label.
 
 ---
 

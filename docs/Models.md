@@ -81,8 +81,6 @@ Two mutating methods on `Show` consolidate the repeated failure-state field grou
 - `deviceId: String` (default `""`) — **not in JSON; excluded from `CodingKeys`**. Stamped by `GuideStore.buildIndex` from the owning device's `DeviceID` so the device identity travels with the entry.
 - `channelNum: String` (default `""`) — **not in JSON; excluded from `CodingKeys`**. Stamped by `GuideStore.buildIndex` alongside `deviceId` so managed-show slot keys can be built from the entry alone.
 
-`LineupEntry` carries the same non-Codable `deviceId: String` field, stamped by `HDHRManager.fetchLineup(for:)` after the JSON decode.
-
 ---
 
 ## ManagedGuideMatcher
