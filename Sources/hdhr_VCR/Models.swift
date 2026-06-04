@@ -262,7 +262,7 @@ extension AppConfig: Codable {
         Player_buffer_min_rate   = (try? c.decode(Int.self,  forKey: .Player_buffer_min_rate))   ?? 93
         Sports_padding_enabled  = (try? c.decode(Bool.self,   forKey: .Sports_padding_enabled))  ?? true
         Sports_padding_minutes  = (try? c.decode(Int.self,    forKey: .Sports_padding_minutes))  ?? 30
-        Config_version          = (try? c.decode(String.self,  forKey: .Config_version))         ?? "1"
+        Config_version          = (try? c.decode(String.self,  forKey: .Config_version))         ?? "2"
         Discord_webhook_url     = (try? c.decode(String.self, forKey: .Discord_webhook_url))     ?? ""
         Discord_on_start        = (try? c.decode(Bool.self,   forKey: .Discord_on_start))        ?? true
         Discord_on_complete     = (try? c.decode(Bool.self,   forKey: .Discord_on_complete))     ?? true

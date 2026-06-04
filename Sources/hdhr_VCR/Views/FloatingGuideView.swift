@@ -31,19 +31,20 @@ struct FloatingGuideView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
+        // Compute once per render — managedMatcher is used by both CableGuideView and summaryPanel.
+        let mm = managedMatcher
+        return VStack(spacing: 0) {
             toolbar
             Divider()
             GeometryReader { proxy in
                 VStack(spacing: 0) {
-                    summaryPanel
+                    summaryPanel(mm)
                         .frame(height: proxy.size.height / 3)
                     Divider()
                     if allChannels.isEmpty && !isLoadingGuide {
                         EmptyStateView(title: "No guide data", systemImage: "tv.slash",
                                    description: "Guide data unavailable — tap Refresh to retry.")
                     } else {
-                        // managedMatcher is a computed property shared with summaryPanel.
                         let recordingMatcher = ShowMatcher(state.recordingShows)
                         let now30 = Date()
                         let nextUpMatcher = ShowMatcher(state.activeShows.filter {
@@ -60,7 +61,7 @@ struct FloatingGuideView: View {
                             selectedChannel:    $selectedChannel,
                             snapToNow:          $snapToNow,
                             deviceId:                selectedDevice?.DeviceID ?? "",
-                            managedMatcher:   managedMatcher,
+                            managedMatcher:   mm,
                             recordingMatcher: recordingMatcher,
                             nextUpMatcher:    nextUpMatcher,
                             bonusMatcher:     bonusMatcher,
@@ -158,7 +159,7 @@ struct FloatingGuideView: View {
     // MARK: - Summary panel
 
     @ViewBuilder
-    private var summaryPanel: some View {
+    private func summaryPanel(_ matcher: ManagedGuideMatcher) -> some View {
         if let entry = selectedEntry {
             let onAir  = entry.startDate <= Date() && entry.endDate > Date()
             let bgColor = guideEntryColor(for: entry, onAir: onAir)
@@ -170,7 +171,7 @@ struct FloatingGuideView: View {
             }
             let isSportsBonusEntry = entry.firstGenre?.lowercased().contains("sports") == true
                                   && state.config.Sports_padding_enabled
-            let isManaged = managedMatcher.isManaged(entry: entry)
+            let isManaged = matcher.isManaged(entry: entry)
 
             ZStack(alignment: .topTrailing) {
                 HStack(alignment: .top, spacing: 14) {

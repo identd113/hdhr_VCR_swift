@@ -20,12 +20,12 @@ final class AppState: ObservableObject {
     @Published var menuUpcomingSlots: [String: [(channel: String, date: Date)]] = [:]
     // Pre-computed set of show IDs with scheduling conflicts — rebuilt alongside menu entries.
     var conflictingShowIDs: Set<String> = []
-    // Tracks which show+episode windows have already fired a runtime conflict notification.
-    // Key = "showID-show_next_epoch" so it auto-clears when show_next advances.
-    private var conflictNotifiedKeys: Set<String> = []
-    // Tracks which show+episode windows have already fired a MISSED START warning.
-    // Same "showID-show_next_epoch" key pattern as conflictNotifiedKeys.
-    private var missedStartNotifiedKeys: Set<String> = []
+    // Tracks which shows have already fired a runtime conflict notification.
+    // Value = show_next epoch (TimeInterval) for which the notification was sent;
+    // clears on reschedule so a new time slot can notify again.
+    private var conflictNotifiedEpochs: [String: TimeInterval] = [:]
+    // Same pattern as conflictNotifiedEpochs, for MISSED START warnings.
+    private var missedStartNotifiedEpochs: [String: TimeInterval] = [:]
     // Shows whose recording was interrupted by an app quit and will be relaunched this session.
     // Suppresses the duplicate Discord "Recording Started" on the first relaunch after startup.
     private var suppressStartDiscord: Set<String> = []
@@ -648,9 +648,11 @@ final class AppState: ObservableObject {
         channelImageURLs = imageURLs
 
         // ── Scheduled menu: guide entry + upcoming slots per active show ──────
+        // Include recording shows in candidateShows so conflict detection catches them too.
+        let candidateShows = shows.filter { $0.show_active && !$0.show_paused }
         var scheduledResult: [String: GuideEntry] = [:]
         var upcomingResult:  [String: [(channel: String, date: Date)]] = [:]
-        for show in shows where show.show_active && !show.show_paused {
+        for show in candidateShows {
             let schNext = show.show_next ?? .distantFuture
             // Replicate scheduledMenu's schEntry logic: direct match first, series fallback
             let direct = guideStore.entries(deviceId: show.hdhr_record, channelNum: show.show_channel)
@@ -679,9 +681,6 @@ final class AppState: ObservableObject {
             guard let t = d.TunerCount, t > 0 else { return nil }
             return (d.DeviceID, t)
         })
-        // Include recording shows so a scheduled show that overlaps with an already-recording
-        // show is correctly flagged — activeShows excludes show_recording == true shows.
-        let candidateShows = shows.filter { $0.show_active && !$0.show_paused }
         var newConflicts = Set<String>()
         for show in candidateShows {
             guard let next = show.show_next,
@@ -945,9 +944,9 @@ final class AppState: ObservableObject {
             // the start time with no obvious reason (not tuner-full, not paused, not handled above).
             // Fires once per "showId-epoch" key so retrying shows don't spam the log every tick.
             if !show.show_recording, nextDate < now - 30, endDate > now {
-                let missedKey = "\(show.show_id)-\(show.show_next.map { Int($0.timeIntervalSince1970) } ?? 0)"
-                if !missedStartNotifiedKeys.contains(missedKey) {
-                    missedStartNotifiedKeys.insert(missedKey)
+                let missedEpoch = show.show_next?.timeIntervalSince1970 ?? 0
+                if missedStartNotifiedEpochs[show.show_id] != missedEpoch {
+                    missedStartNotifiedEpochs[show.show_id] = missedEpoch
                     glog("[\(show.show_title)] MISSED START — window open since \(shortTime(show.show_next)), still not recording", level: .warning)
                 }
             }
@@ -1052,9 +1051,9 @@ final class AppState: ObservableObject {
             if active >= tunerCount {
                 glog("[\(show.show_title)] TUNER FULL \(show.hdhr_record): \(active)/\(tunerCount) — skipping start", level: .warning)
                 // Fire conflict notification once per show+episode window to avoid per-tick spam.
-                let key = "\(show.show_id)-\(show.show_next?.timeIntervalSince1970 ?? 0)"
-                if !conflictNotifiedKeys.contains(key) {
-                    conflictNotifiedKeys.insert(key)
+                let conflictEpoch = show.show_next?.timeIntervalSince1970 ?? 0
+                if conflictNotifiedEpochs[show.show_id] != conflictEpoch {
+                    conflictNotifiedEpochs[show.show_id] = conflictEpoch
                     notify("Tuner Conflict", body: show.show_title,
                            subtitle: "All tuners on \(show.hdhr_record) are busy")
                     discordShow("⚠️ Tuner Conflict", show: show, color: 0xF1C40F,
@@ -1242,8 +1241,8 @@ final class AppState: ObservableObject {
         let show = shows[index]
         // Keys are "showId-epoch" — once show_next advances the old key is stale.
         // Remove on every reschedule so the set doesn't accumulate indefinitely.
-        conflictNotifiedKeys    = conflictNotifiedKeys.filter    { !$0.hasPrefix("\(show.show_id)-") }
-        missedStartNotifiedKeys = missedStartNotifiedKeys.filter { !$0.hasPrefix("\(show.show_id)-") }
+        conflictNotifiedEpochs.removeValue(forKey: show.show_id)
+        missedStartNotifiedEpochs.removeValue(forKey: show.show_id)
         switch show.state {
         case .single:
             glog("[\(show.show_title)] DONE single — deactivated")
@@ -1361,6 +1360,14 @@ final class AppState: ObservableObject {
         guard let i = shows.firstIndex(where: { $0.show_id == show.show_id }) else { return }
         glog("[Show] Updated '\(show.show_title)'")
         shows[i] = show; saveConfig()
+        // Re-run scheduleNextAir immediately so a type/channel/device change (e.g. seriesChannel →
+        // seriesAll) takes effect without waiting for the next idle-loop tick.
+        guard show.show_active, !show.show_paused, !show.show_recording, show.state != .single else { return }
+        Task { [weak self] in
+            guard let self, let j = self.shows.firstIndex(where: { $0.show_id == show.show_id }) else { return }
+            await self.scheduleNextAir(index: j)
+            self.saveConfig()
+        }
     }
 
 
