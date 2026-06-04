@@ -300,8 +300,9 @@ final class WebServer {
         let nowTs        = Int(Date().timeIntervalSince1970)
         let recStarted   = entry.StartTime <= nowTs && entry.EndTime > nowTs
         let newActive    = recStarted && !tunerFull ? activeTuners + 1 : activeTuners
-        let airDays = obj["airDays"] as? [String]
-        state.addShowFromGuide(entry: entry, type: showType, device: device, channel: ch, airDays: airDays)
+        let airDays  = obj["airDays"]   as? [String]
+        let transcode = obj["transcode"] as? String
+        state.addShowFromGuide(entry: entry, type: showType, device: device, channel: ch, airDays: airDays, transcode: transcode)
         return json(["ok": true, "title": entry.Title, "tunerFull": tunerFull,
                      "recStarted": recStarted, "tunerActive": newActive, "tunerTotal": total])
     }
@@ -608,18 +609,22 @@ final class WebServer {
             let uiURL = "http://\(d.LocalIP)/"
             let label = "HDHR-\(d.DeviceID.uppercased())"
             let dt    = devTuners[d.DeviceID]!
-            headerHTML = "<div style=\"display:flex;align-items:center;gap:10px\">\(statusBtn)<h1 style=\"margin:0\">hdhrVCR+ Guide</h1>\(tunerInfoBtn(d.DeviceID, dt))<a href=\"\(he(uiURL))\" target=\"_blank\" style=\"font-size:.75rem;color:#666;text-decoration:none\" title=\"Open \(he(label)) device web UI\">\(he(label)) ↗</a></div>"
+            headerHTML = "<div style=\"display:flex;align-items:flex-start;gap:10px\">\(statusBtn)<div><h1 style=\"margin:0\">hdhrVCR+ Guide</h1><div style=\"display:flex;align-items:center;gap:6px;margin-top:4px\">\(tunerInfoBtn(d.DeviceID, dt))<a href=\"\(he(uiURL))\" target=\"_blank\" style=\"font-size:.75rem;color:#666;text-decoration:none\" title=\"Open \(he(label)) device web UI\">\(he(label)) ↗</a></div></div></div>"
             deviceBarHTML = ""
         } else if state.devices.count > 1 {
             headerHTML = "<div style=\"display:flex;align-items:center;gap:8px\">\(statusBtn)<h1 style=\"margin:0\">hdhrVCR+ Guide</h1></div>"
-            var bar = "<div id=\"dev-bar\">"
+            var bar = "<div id=\"dev-bar\" style=\"align-items:flex-start\">"
             for d in state.devices {
                 let uiURL = "http://\(d.LocalIP)/"
                 let label = he("HDHR-\(d.DeviceID.uppercased())")
                 let dt    = devTuners[d.DeviceID]!
+                bar += "<div style=\"display:inline-flex;flex-direction:column;align-items:flex-start;gap:3px\">"
+                bar += "<div style=\"display:flex;align-items:center;gap:4px\">"
                 bar += "<button class=\"d-btn\" data-dev=\"\(he(d.DeviceID))\" onclick=\"setDev(this.dataset.dev)\">\(label)</button>"
                 bar += "<a href=\"\(he(uiURL))\" target=\"_blank\" class=\"d-ui\" title=\"Open \(label) web UI\">↗</a>"
+                bar += "</div>"
                 bar += tunerInfoBtn(d.DeviceID, dt)
+                bar += "</div>"
             }
             bar += "</div>"
             deviceBarHTML = bar
@@ -975,6 +980,7 @@ final class WebServer {
             <div class="em-row"><div class="em-lbl">Type</div><div id="rm-opts" style="display:flex;flex-direction:column;gap:5px;margin-top:2px"></div></div>
             <div id="rm-sid" class="em-row" style="display:none"><div class="em-lbl">SeriesID</div><div id="rm-sid-val" class="em-sid"></div></div>
             <div id="rm-days-row" class="em-row" style="display:none"><div class="em-lbl">Days</div><div class="em-days" id="rm-days"></div></div>
+            <div class="em-row"><div class="em-lbl">Transcode</div><select id="rm-transcode" class="em-input"><option value="none">None (copy stream)</option><option value="heavy">Heavy (H.264 CRF 18)</option><option value="mobile">Mobile (480p H.264)</option><option value="internet720">Internet 720 (720p H.264)</option></select></div>
             <div id="rm-tuner" style="display:none;font-size:.74rem;color:#ffcc66;background:#2a1e00;border:1px solid #7a5500;border-radius:6px;padding:7px 10px;margin-bottom:10px">⚠ All tuners are currently in use. This show will be queued and recorded as soon as a tuner is free.</div>
             <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--b2)">
               <button onclick="cancelRecord()" style="font-size:.78rem;padding:6px 16px;border-radius:6px;border:1px solid #444;background:transparent;color:#aaa;cursor:pointer">Cancel</button>
@@ -1125,6 +1131,7 @@ final class WebServer {
             rmDaysEl.appendChild(btn);
           });
           document.getElementById('rm-days-row').style.display='none';
+          document.getElementById('rm-transcode').value='none';
           // Show tuner-full warning only when the show is live and that device has no free tuners
           var nowTs=Math.floor(Date.now()/1000);
           var isLive=(_s<=nowTs&&_e>nowTs);
@@ -1144,11 +1151,12 @@ final class WebServer {
           var checked=document.querySelector('input[name="rm-type"]:checked');
           var type=checked?checked.value:'single';
           var airDays=Array.from(document.querySelectorAll('#rm-days .day-btn.sel')).map(function(b){return b.dataset.day;});
+          var transcode=document.getElementById('rm-transcode').value;
           cancelRecord();
           var btn=document.getElementById('sum-btn');
           btn.disabled=true;btn.textContent='Scheduling…';
           fetch('/api/record',{method:'POST',headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({deviceId:_d,guideNumber:_n,startTime:_s,endTime:_e,showType:type,airDays:airDays})})
+            body:JSON.stringify({deviceId:_d,guideNumber:_n,startTime:_s,endTime:_e,showType:type,airDays:airDays,transcode:transcode})})
           .then(function(r){
             if(r.ok){
               return r.json().then(function(j){
@@ -1313,16 +1321,11 @@ final class WebServer {
         var _dayNames=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
         var _dayShort=['Su','M','Tu','W','Th','F','Sa'];
         function updateDaysVisibility(){
-          document.getElementById('em-days-row').style.display=(_editType==='single'||_editType==='dateTime')?'flex':'none';
+          document.getElementById('em-days-row').style.display=(_editType==='dateTime')?'flex':'none';
         }
         function toggleDay(btn){
-          if(_editType==='single'){
-            document.querySelectorAll('#em-days .day-btn').forEach(function(b){b.classList.remove('sel');});
-            btn.classList.add('sel');
-          } else {
-            if(btn.classList.contains('sel')&&document.querySelectorAll('#em-days .day-btn.sel').length<=1)return;
-            btn.classList.toggle('sel');
-          }
+          if(btn.classList.contains('sel')&&document.querySelectorAll('#em-days .day-btn.sel').length<=1)return;
+          btn.classList.toggle('sel');
         }
         function openEditShow(el){
           var d=el.dataset;
