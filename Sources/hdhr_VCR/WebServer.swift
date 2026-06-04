@@ -295,9 +295,14 @@ final class WebServer {
             }
         }()
         let activeTuners = state.deviceTunerOccupancy[deviceId]?.filter({ $0.VctNumber != nil }).count ?? 0
-        let tunerFull = device.TunerCount.map { activeTuners >= $0 } ?? false
+        let total        = device.TunerCount ?? 0
+        let tunerFull    = total > 0 && activeTuners >= total
+        let nowTs        = Int(Date().timeIntervalSince1970)
+        let recStarted   = entry.StartTime <= nowTs && entry.EndTime > nowTs
+        let newActive    = recStarted && !tunerFull ? activeTuners + 1 : activeTuners
         state.addShowFromGuide(entry: entry, type: showType, device: device, channel: ch)
-        return json(["ok": true, "title": entry.Title, "tunerFull": tunerFull])
+        return json(["ok": true, "title": entry.Title, "tunerFull": tunerFull,
+                     "recStarted": recStarted, "tunerActive": newActive, "tunerTotal": total])
     }
 
     // Removes the show that owns the guide entry identified by deviceId + guideNumber + title.
@@ -588,7 +593,7 @@ final class WebServer {
             let label = "\(dt.active)/\(dt.total)\(dt.isFull ? " — FULL" : "")"
             // data-dev carries the already-he()-escaped DeviceID; onclick reads it via dataset
             // so no DeviceID value ever touches a JS string literal.
-            return "<button class=\"\(cls)\" data-dev=\"\(he(devId))\" onclick=\"showTunerInfo(this.dataset.dev,this)\" title=\"Click to see active recordings\">\(label)</button>"
+            return "<button id=\"tun-\(he(devId))\" class=\"\(cls)\" data-dev=\"\(he(devId))\" onclick=\"showTunerInfo(this.dataset.dev,this)\" title=\"Click to see active recordings\">\(label)</button>"
         }
 
         // ── Status toggle button — sits next to h1 in the header; reveals the status panel ──
@@ -1129,15 +1134,26 @@ final class WebServer {
                 // Update guide block in place — no page reload needed
                 var sel=document.querySelector('.g-prog.g-sel');
                 if(sel){
-                  sel.classList.remove('g-prog-now');sel.classList.add('g-prog-sched');sel.dataset.managed='1';
-                  var pi=sel.querySelector('.g-pi');
-                  if(!sel.querySelector('.g-flag')){var f=document.createElement('div');f.className='g-flag';sel.appendChild(f);}
+                  sel.classList.remove('g-prog-now');
+                  if(j.recStarted){
+                    sel.classList.add('g-prog-rec');sel.dataset.recording='1';
+                    if(!sel.querySelector('.g-flag-rec')){var f=document.createElement('div');f.className='g-flag-rec';sel.appendChild(f);}
+                  } else {
+                    sel.classList.add('g-prog-sched');sel.dataset.managed='1';
+                    if(!sel.querySelector('.g-flag')){var f=document.createElement('div');f.className='g-flag';sel.appendChild(f);}
+                  }
+                }
+                // Refresh tuner count button
+                var tb=document.getElementById('tun-'+_d);
+                if(tb&&j.tunerTotal>0){
+                  tb.textContent=j.tunerActive+'/'+j.tunerTotal+(j.tunerFull?' — FULL':'');
+                  if(j.tunerFull)tb.classList.add('t-info-full');else tb.classList.remove('t-info-full');
                 }
                 btn.style.display='none';
                 var note=document.getElementById('sum-note');
                 var del=document.getElementById('sum-del');
-                note.textContent=j.tunerFull?'⚠ Queued — all tuners busy':'★ Scheduled';
-                note.style.color=j.tunerFull?(isLM()?'#c07000':'#ffcc66'):'var(--t2)';
+                note.textContent=j.recStarted?'● Recording now':j.tunerFull?'⚠ Queued — all tuners busy':'★ Scheduled';
+                note.style.color=j.recStarted?(isLM()?'#cc2020':'#ff8080'):j.tunerFull?(isLM()?'#c07000':'#ffcc66'):'var(--t2)';
                 note.style.display='inline';
                 del.textContent='Remove';del.style.background='';del.style.color='';del.style.display='inline-block';del.disabled=false;
                 refreshGuide();
