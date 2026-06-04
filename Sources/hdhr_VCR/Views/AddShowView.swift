@@ -169,21 +169,7 @@ struct AddShowView: View {
     }
 
     private var guideStep: some View {
-        let seriesIDShows    = state.shows.filter { $0.isSeries }
-        let managedSeriesIDs = Set(seriesIDShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
-        let managedTitles    = Set(seriesIDShows.map { $0.show_title })
-        // Single shows: yellow on the one exact scheduled slot
-        let managedSingleSlotKeys: Set<String> = Set(state.shows.compactMap { show in
-            guard show.state == .single, let next = show.show_next else { return nil }
-            return "\(show.hdhr_record):\(show.show_channel):\(Int(next.timeIntervalSince1970))"
-        })
-        // DateTime shows: yellow on every slot at that device:channel:HH:MM time-of-day
-        let cal = Calendar.current
-        let managedDateTimeSlotKeys: Set<String> = Set(state.shows.compactMap { show in
-            guard show.state == .dateTime, let next = show.show_next else { return nil }
-            let c = cal.dateComponents([.hour, .minute], from: next)
-            return String(format: "\(show.hdhr_record):\(show.show_channel):%02d:%02d", c.hour ?? 0, c.minute ?? 0)
-        })
+        let managedMatcher = ManagedGuideMatcher(activeManagedShows: state.shows.filter { $0.show_active && !$0.show_paused })
         // Recording now
         let recordingSeriesIDs = Set(state.recordingShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
         let recordingTitles    = Set(state.recordingShows.map { $0.show_title })
@@ -275,10 +261,7 @@ struct AddShowView: View {
                             selectedChannel:    $selectedChannel,
                             snapToNow:          $snapToNow,
                             deviceId:                selectedDevice?.DeviceID ?? "",
-                            managedSeriesIDs:        managedSeriesIDs,
-                            managedTitles:           managedTitles,
-                            managedSingleSlotKeys:   managedSingleSlotKeys,
-                            managedDateTimeSlotKeys: managedDateTimeSlotKeys,
+                            managedMatcher:  managedMatcher,
                             recordingSeriesIDs: recordingSeriesIDs,
                             recordingTitles:    recordingTitles,
                             nextUpSeriesIDs:    nextUpSeriesIDs,

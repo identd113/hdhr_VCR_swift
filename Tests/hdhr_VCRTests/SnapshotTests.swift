@@ -258,9 +258,11 @@ private struct CableGuidePreview: View {
             selectedChannel: $selectedChannel,
             snapToNow: $snapToNow,
             deviceId: "FFFFFFFF",
-            managedSeriesIDs: ["EP12345"],
-            managedTitles: [],
-            managedDTSingleSlotKeys: [],
+            managedMatcher: {
+                var s = Show.blank(channel: "5.1", device: "FFFFFFFF")
+                s.show_seriesid = "EP12345"; s.show_is_series = true; s.show_use_seriesid = true
+                return ManagedGuideMatcher(activeManagedShows: [s])
+            }(),
             recordingSeriesIDs: ["EP67890"],
             recordingTitles: [],
             nextUpSeriesIDs: [],

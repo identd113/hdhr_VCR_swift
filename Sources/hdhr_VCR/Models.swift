@@ -336,12 +336,17 @@ extension HDHRDevice: Codable {
 
 struct LineupEntry: Codable, Identifiable {
     var id: String { GuideNumber }
+    var deviceId:   String = ""   // not in JSON — stamped after decode
     var GuideNumber: String
     var GuideName: String
     var URL: String?
     var HD: Int?
     var Favorite: Int?
     var isFavorite: Bool { Favorite == 1 }
+
+    private enum CodingKeys: String, CodingKey {
+        case GuideNumber, GuideName, URL, HD, Favorite
+    }
 }
 
 extension String {
@@ -388,6 +393,7 @@ struct GuideEntry: Codable, Identifiable, Hashable {
     static func == (lhs: GuideEntry, rhs: GuideEntry) -> Bool { lhs.StartTime == rhs.StartTime }
     func hash(into hasher: inout Hasher) { hasher.combine(StartTime) }
     var id: Int { StartTime }
+    var deviceId:     String = ""   // not in JSON — stamped after decode
     var StartTime: Int
     var EndTime: Int
     var Title: String
@@ -399,10 +405,53 @@ struct GuideEntry: Codable, Identifiable, Hashable {
     var OriginalAirdate: Int?
     var Filter: [String]?   // genre tags from SiliconDust guide API (e.g. ["Drama","Series"])
 
+    private enum CodingKeys: String, CodingKey {
+        case StartTime, EndTime, Title, EpisodeTitle, EpisodeNumber, Synopsis, SeriesID, ImageURL, OriginalAirdate, Filter
+    }
+
     var startDate: Date { Date(timeIntervalSince1970: TimeInterval(StartTime)) }
     var endDate:   Date { Date(timeIntervalSince1970: TimeInterval(EndTime)) }
     var durationMinutes: Int { (EndTime - StartTime) / 60 }
     var firstGenre: String? { Filter?.first }
+}
+
+// MARK: - ManagedGuideMatcher
+
+/// Encapsulates the four managed-show sets and the matching predicate used by both the
+/// SwiftUI cable guide and the web server to decide which guide blocks get a yellow/red flag.
+/// Construct once from the active managed shows, then call isManaged(entry:deviceId:channelNum:)
+/// per block.
+struct ManagedGuideMatcher: Equatable {
+    let seriesIDs:        Set<String>   // SeriesID(Channel/All) shows
+    let titles:           Set<String>   // title fallback for series shows without a SeriesID
+    let singleSlotKeys:   Set<String>   // "device:channel:epoch" — single shows, exact slot
+    let datetimeSlotKeys: Set<String>   // "device:channel:HH:MM" — dateTime shows, all matching slots
+
+    init(activeManagedShows: [Show]) {
+        let cal = Calendar.current
+        let seriesShows = activeManagedShows.filter { $0.isSeries }
+        seriesIDs = Set(seriesShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
+        titles    = Set(seriesShows.map { $0.show_title })
+        singleSlotKeys = Set(activeManagedShows.compactMap { s -> String? in
+            guard s.state == .single, let next = s.show_next else { return nil }
+            return "\(s.hdhr_record):\(s.show_channel):\(Int(next.timeIntervalSince1970))"
+        })
+        datetimeSlotKeys = Set(activeManagedShows.compactMap { s -> String? in
+            guard s.state == .dateTime, let next = s.show_next else { return nil }
+            let c = cal.dateComponents([.hour, .minute], from: next)
+            return String(format: "\(s.hdhr_record):\(s.show_channel):%02d:%02d", c.hour ?? 0, c.minute ?? 0)
+        })
+    }
+
+    func isManaged(entry: GuideEntry, deviceId: String, channelNum: String) -> Bool {
+        if let sid = entry.SeriesID, !sid.isEmpty, seriesIDs.contains(sid) { return true }
+        if titles.contains(entry.Title) { return true }
+        let c = Calendar.current.dateComponents([.hour, .minute],
+                    from: Date(timeIntervalSince1970: TimeInterval(entry.StartTime)))
+        let hhmm = String(format: "%02d:%02d", c.hour ?? 0, c.minute ?? 0)
+        if datetimeSlotKeys.contains("\(deviceId):\(channelNum):\(hhmm)") { return true }
+        return singleSlotKeys.contains("\(deviceId):\(channelNum):\(entry.StartTime)")
+    }
 }
 
 extension GuideEntry {

@@ -26,26 +26,8 @@ struct FloatingGuideView: View {
             .sorted()
     }
 
-    private var managedSets: (seriesIDs: Set<String>, titles: Set<String>) {
-        let shows = state.shows.filter { $0.isSeries }
-        return (
-            Set(shows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid }),
-            Set(shows.map { $0.show_title })
-        )
-    }
-    private var managedSingleSlotKeys: Set<String> {
-        Set(state.shows.compactMap { show in
-            guard show.state == .single, let next = show.show_next else { return nil }
-            return "\(show.hdhr_record):\(show.show_channel):\(Int(next.timeIntervalSince1970))"
-        })
-    }
-    private var managedDateTimeSlotKeys: Set<String> {
-        let cal = Calendar.current
-        return Set(state.shows.compactMap { show -> String? in
-            guard show.state == .dateTime, let next = show.show_next else { return nil }
-            let c = cal.dateComponents([.hour, .minute], from: next)
-            return String(format: "\(show.hdhr_record):\(show.show_channel):%02d:%02d", c.hour ?? 0, c.minute ?? 0)
-        })
+    private var managedMatcher: ManagedGuideMatcher {
+        ManagedGuideMatcher(activeManagedShows: state.shows.filter { $0.show_active && !$0.show_paused })
     }
 
     var body: some View {
@@ -61,8 +43,7 @@ struct FloatingGuideView: View {
                         EmptyStateView(title: "No guide data", systemImage: "tv.slash",
                                    description: "Guide data unavailable — tap Refresh to retry.")
                     } else {
-                        // managedSeriesIDs/managedTitles/managedSingleSlotKeys/managedDateTimeTitleCh are computed properties
-                        // shared with summaryPanel — no local re-derivation needed here.
+                        // managedMatcher is a computed property shared with summaryPanel.
                         let recordingSeriesIDs = Set(state.recordingShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
                         let recordingTitles = Set(state.recordingShows.map { $0.show_title })
                         let now30 = Date()
@@ -84,10 +65,7 @@ struct FloatingGuideView: View {
                             selectedChannel:    $selectedChannel,
                             snapToNow:          $snapToNow,
                             deviceId:                selectedDevice?.DeviceID ?? "",
-                            managedSeriesIDs:        managedSets.seriesIDs,
-                            managedTitles:           managedSets.titles,
-                            managedSingleSlotKeys:   managedSingleSlotKeys,
-                            managedDateTimeSlotKeys: managedDateTimeSlotKeys,
+                            managedMatcher:  managedMatcher,
                             recordingSeriesIDs: recordingSeriesIDs,
                             recordingTitles:    recordingTitles,
                             nextUpSeriesIDs:    nextUpSeriesIDs,
@@ -200,20 +178,11 @@ struct FloatingGuideView: View {
             }
             let isSportsBonusEntry = entry.firstGenre?.lowercased().contains("sports") == true
                                   && state.config.Sports_padding_enabled
-            let isManaged: Bool = {
-                if let sid = entry.SeriesID, !sid.isEmpty {
-                    if managedSets.seriesIDs.contains(sid) { return true }
-                } else {
-                    if managedSets.titles.contains(entry.Title) { return true }
-                }
-                let comps = Calendar.current.dateComponents([.hour, .minute],
-                                from: Date(timeIntervalSince1970: TimeInterval(entry.StartTime)))
-                let hhmm = String(format: "%02d:%02d", comps.hour ?? 0, comps.minute ?? 0)
-                if managedDateTimeSlotKeys.contains("\(selectedDevice?.DeviceID ?? ""):\(selectedChannel?.GuideNumber ?? ""):\(hhmm)") { return true }
-                return managedSingleSlotKeys.contains(
-                    "\(selectedDevice?.DeviceID ?? ""):\(selectedChannel?.GuideNumber ?? ""):\(entry.StartTime)"
-                )
-            }()
+            let isManaged = managedMatcher.isManaged(
+                entry: entry,
+                deviceId:   selectedDevice?.DeviceID  ?? "",
+                channelNum: selectedChannel?.GuideNumber ?? ""
+            )
 
             ZStack(alignment: .topTrailing) {
                 HStack(alignment: .top, spacing: 14) {

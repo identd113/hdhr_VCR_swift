@@ -497,37 +497,8 @@ final class WebServer {
         let recChannelsByDevice: [String: Set<String>] = Dictionary(
             grouping: recording, by: { $0.hdhr_record }
         ).mapValues { Set($0.map { $0.show_channel }) }
-        let activeMgd = state.shows.filter { $0.show_active && !$0.show_paused }
-        // SeriesID badge: only shows that are actually using SeriesID matching (seriesChannel/seriesAll).
-        // dateTime shows store a seriesid from guide data but don't record by it — exclude them.
-        // Combined single pass over the isSeries subset to build both mgdSID and mgdTitSeries.
-        var mgdSID      = Set<String>()
-        var mgdTitSeries = Set<String>()
-        for s in activeMgd where s.isSeries {
-            if !s.show_seriesid.isEmpty { mgdSID.insert(s.show_seriesid) }
-            mgdTitSeries.insert(s.show_title)
-        }
-        // DateTime shows: flag every slot at device:channel:HH:MM time-of-day.
-        let cal = Calendar.current
-        let mgdDateTimeSlots = Set(activeMgd.compactMap { s -> String? in
-            guard s.state == .dateTime, let next = s.show_next else { return nil }
-            let c = cal.dateComponents([.hour, .minute], from: next)
-            return String(format: "\(s.hdhr_record):\(s.show_channel):%02d:%02d", c.hour ?? 0, c.minute ?? 0)
-        })
-        // Single shows: flag only the one exact scheduled slot (device:channel:startTime epoch).
-        let mgdSingleSlots = Set(activeMgd.compactMap { s -> String? in
-            guard s.state == .single, let next = s.show_next else { return nil }
-            return "\(s.hdhr_record):\(s.show_channel):\(Int(next.timeIntervalSince1970))"
-        })
-        // Shared managed-show predicate — used in both the guide grid and What's On Now cards.
-        let checkMgd: (GuideEntry, LineupEntry, String) -> Bool = { e, ch, devId in
-            if let sid = e.SeriesID, !sid.isEmpty, mgdSID.contains(sid) { return true }
-            if mgdTitSeries.contains(e.Title) { return true }
-            let c = cal.dateComponents([.hour, .minute], from: Date(timeIntervalSince1970: TimeInterval(e.StartTime)))
-            let hhmm = String(format: "%02d:%02d", c.hour ?? 0, c.minute ?? 0)
-            if mgdDateTimeSlots.contains("\(devId):\(ch.GuideNumber):\(hhmm)") { return true }
-            return mgdSingleSlots.contains("\(devId):\(ch.GuideNumber):\(e.StartTime)")
-        }
+        let activeMgd    = state.shows.filter { $0.show_active && !$0.show_paused }
+        let guideMatcher = ManagedGuideMatcher(activeManagedShows: activeMgd)
         // Returns the managed Show matching a guide entry — used to embed show data attrs on
         // managed blocks so the web edit modal can be opened directly from the guide.
         let findManagedShow: (GuideEntry, LineupEntry) -> Show? = { e, ch in
@@ -682,7 +653,7 @@ final class WebServer {
 
                     let isNow      = e.StartTime <= nowTs && e.EndTime > nowTs
                     let isEntryRec = isRecCh && isNow
-                    let isMgd      = checkMgd(e, ch, device.DeviceID)
+                    let isMgd      = guideMatcher.isManaged(entry: e, deviceId: device.DeviceID, channelNum: ch.GuideNumber)
                     var cls = "g-prog"
                     if isEntryRec      { cls += " g-prog-rec"   }
                     else if isNow      { cls += " g-prog-now"   }

@@ -97,21 +97,32 @@ struct GuideStoreURLTests {
     @Test func localDevice_defaultHours() {
         let device = makeLocalDevice(ip: "192.168.1.100")
         let url = GuideStore.guideURL(for: device)
-        // Duration is in hours directly (API changed from seconds in 979a9f2)
-        #expect(url?.absoluteString == "http://192.168.1.100/guide.json?Duration=12")
+        let comps = URLComponents(url: url!, resolvingAgainstBaseURL: false)!
+        let items = Dictionary(uniqueKeysWithValues: comps.queryItems!.map { ($0.name, $0.value ?? "") })
+        #expect(comps.host == "192.168.1.100")
+        #expect(items["Duration"] == "13")   // hours+1 (lookback window)
+        #expect(items["Start"] != nil)        // epoch-relative; just assert present
     }
 
     @Test func localDevice_customHours() {
         let device = makeLocalDevice(ip: "10.0.0.5")
         let url = GuideStore.guideURL(for: device, hours: 24)
-        #expect(url?.absoluteString == "http://10.0.0.5/guide.json?Duration=24")
+        let comps = URLComponents(url: url!, resolvingAgainstBaseURL: false)!
+        let items = Dictionary(uniqueKeysWithValues: comps.queryItems!.map { ($0.name, $0.value ?? "") })
+        #expect(comps.host == "10.0.0.5")
+        #expect(items["Duration"] == "25")
+        #expect(items["Start"] != nil)
     }
 
     @Test func cloudDevice() {
         let device = makeCloudDevice(auth: "token99")
         let url = GuideStore.guideURL(for: device, hours: 12)
-        #expect(url?.absoluteString ==
-                "https://api.hdhomerun.com/api/guide.php?DeviceAuth=token99&Duration=12")
+        let comps = URLComponents(url: url!, resolvingAgainstBaseURL: false)!
+        let items = Dictionary(uniqueKeysWithValues: comps.queryItems!.map { ($0.name, $0.value ?? "") })
+        #expect(comps.host == "api.hdhomerun.com")
+        #expect(items["DeviceAuth"] == "token99")
+        #expect(items["Duration"] == "13")
+        #expect(items["Start"] != nil)
     }
 
     @Test func cloudDevice_usesCloudHostNotLocal() {
