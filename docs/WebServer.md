@@ -31,6 +31,7 @@ func updateTXTRecord()   // @MainActor — refreshes mDNS TXT record; called fro
 | GET | `/api/tuners.json` | JSON object `{deviceId: {t, a, surl}}` — per-device total/active tuner counts; polled by `refreshTuners()` every 30 s |
 | POST | `/api/record` | Schedule a recording |
 | POST | `/api/delete` | Remove a managed show and stop any active recording |
+| POST | `/api/edit` | Update a managed show's config fields |
 | anything else | | 404 plain text |
 
 ---
@@ -98,6 +99,71 @@ Match priority: recording show on exact device+channel first, then active show m
 
 ---
 
+## POST /api/edit
+
+Updates config fields on an existing managed show. All fields except `showId` are optional — only supplied fields are applied. Cannot be called on a show that is currently recording (the web UI hides the Edit button for recording shows; the server-side handler does not enforce this restriction).
+
+**Request body (JSON):**
+
+```json
+{
+  "showId":        "abc123",
+  "showType":      "seriesAll",
+  "paused":        false,
+  "title":         "Jeopardy!",
+  "channel":       "5.1",
+  "length":        30,
+  "bonusTime":     true,
+  "transcode":     "none",
+  "airDays":       ["Monday","Wednesday","Friday"],
+  "resetFailures": true
+}
+```
+
+| Field | Type | Effect |
+|---|---|---|
+| `showId` | String | **Required.** Identifies the show to update |
+| `showType` | String | `"single"` / `"dateTime"` / `"seriesChannel"` / `"seriesAll"` — updates series flags |
+| `paused` | Bool | Pause or unpause; unpausing calls `clearFailures()` |
+| `title` | String | Show title |
+| `channel` | String | Guide channel number |
+| `length` | Int | Recording length in minutes |
+| `bonusTime` | Bool | Bonus time flag |
+| `transcode` | String | Transcode profile |
+| `airDays` | [String] | Air day list (used for `dateTime` shows) |
+| `resetFailures` | Bool | Clears `show_fail_count`/`show_fail_reason` and sets `show_active = true` |
+
+Promoting a show to a `seriesId` type (`seriesChannel`/`seriesAll`) when it previously was not triggers `rescheduleAllSeries()` immediately so `show_next` is populated before the next idle loop tick.
+
+**Success:** `{"ok": true, "title": "Updated Title"}`  
+**Failure:** `400 Bad Request` — `"Missing required field: showId"` or show not found.
+
+---
+
+## Edit modal (`#edit-modal`)
+
+`position: fixed` overlay (z-index 201). Opened from two paths:
+- **Schedule popover rows** — each `.sp-row` has an `onclick="openEditShow(this)"` handler; `data-*` attrs are embedded by `buildSchedPopHTML`
+- **Guide grid** — Edit button in the summary panel calls `doEditFromGuide()`, which re-packages `data-show-*` attrs from the selected `.g-prog` block into the same shape `openEditShow()` expects
+
+**Contents:**
+- Show title + channel (read-only display)
+- Type selector (single / weekly / series channel / series any)
+- **Air Days row** — visible for `dateTime` type; 7 checkboxes Sun–Sat
+- **SeriesID row** — visible for series types
+- Length field (minutes)
+- Bonus Time toggle
+- Transcode selector
+- Paused toggle
+- **Reset Failures link** — shown when `failcount > 0`; sets `resetFailures: true` in payload
+- Cancel / Save buttons
+
+Save Directory is **not** editable from the web UI — directory path changes require local app access.
+
+On **Save**: `confirmEdit()` POSTs `/api/edit` and closes modal on success. No in-place guide update is performed (the block's triangle and color already reflect its state; title/type changes take effect on the next guide refresh).
+
+---
+
 ## HTML page — visual layout
 
 Self-contained HTML with all CSS inlined. Auto-refreshes every **30 seconds** via JavaScript `setInterval` — no full page reload, no flash. Two JS functions run on each tick:
@@ -113,8 +179,9 @@ Page structure (top to bottom):
 2. **Tuner popover** (`#t-pop`) — fixed overlay; shown by clicking a tuner badge
 3. **Summary panel** (`#sum`) — always visible; selected show details + actions
 4. **Record type modal** (`#rec-modal`) — fixed overlay; appears on Record click
-5. **Schedule popover** (`#sched-pop`) — fixed overlay; opened by clicking the `≡` button in the header. Contains: Recording / Up Next / Scheduled sections (`.sp-*` classes).
-6. **Guide grid** — scrollable cable-guide grid (width/time-window depends on UA; see below)
+5. **Edit modal** (`#edit-modal`) — fixed overlay (z-index 201); appears on Edit click or schedule-popover row click
+6. **Schedule popover** (`#sched-pop`) — fixed overlay; opened by clicking the `≡` button in the header. Contains: Recording / Up Next / Scheduled sections (`.sp-*` classes).
+7. **Guide grid** — scrollable cable-guide grid (width/time-window depends on UA; see below)
 
 **`≡` status button** (`#status-btn`): `background:none` button next to the h1. Clicking calls `openSchedPop(this)` which toggles `#sched-pop` (positioned below the button). Calls `closeSchedPop()` on second click or backdrop click. Button color shifts from `var(--t4)` (muted) to `var(--ac)` (accent) when the popover is open.
 
@@ -169,10 +236,12 @@ Always rendered above the guide grid. Two states:
 | Condition | Elements shown |
 |---|---|
 | `data-recording="1"` | Red italic "● Recording now" note + dark-red "Stop & Delete" button |
-| `data-managed="1"` | Italic "★ Already scheduled" note + grey "Remove" button |
+| `data-managed="1"` | Italic "Already scheduled" note + **Edit** button + grey "Remove" button |
 | Neither | Red "Record" button (amber "⚠ Record (tuner full)" when device is full and show is live) |
 
-**Actions are applied in-place** — no page reload on record or delete. On record success, the selected block gains `.g-prog-sched` + ★ badge and the action row swaps to Scheduled+Remove. On delete success, the block loses its badge/color and the Record button reappears.
+The **Edit** button (`#sum-edit`) is only shown for managed shows that are **not** currently recording — it is intentionally hidden when `data-recording="1"` to prevent changing show config mid-recording. Clicking Edit calls `doEditFromGuide()`, which reads show config from `data-show-*` attrs on the selected `.g-prog` block and opens the edit modal.
+
+**Actions are applied in-place** — no page reload on record or delete. On record success, the selected block gains `.g-prog-sched` + yellow triangle flag and the action row swaps to Scheduled+Remove. On delete success, the block loses its flag/color and the Record button reappears.
 
 ---
 
@@ -260,14 +329,38 @@ State classes (rec / now / sched) take precedence over genre. `.g-prog.g-sel` ad
 | `data-managed` | `1` if managed, else `0` |
 | `data-recording` | `1` if currently recording, else `0` |
 
-**★ badge logic (managed shows):** three separate sets are pre-computed from `activeMgd` (active, non-paused shows only):
+**Corner triangle flags:** a right-triangle CSS flag (`position:absolute; top:0; right:0`) is rendered as a `<div>` child of the program block using the CSS border trick (`border-width: 0 18px 18px 0`):
+- `.g-flag` (yellow `#ffd700`) — managed/scheduled show
+- `.g-flag-rec` (red `#ff6060`) — currently recording
+
+Recording takes precedence; yellow shows only when managed but not recording. There are no star or red-circle badges.
+
+**Managed show matching:** three separate sets are pre-computed from `activeMgd` (active, non-paused shows only) to decide which blocks get a flag and the `data-managed="1"` attribute:
 - `mgdSID` — SeriesIDs of `seriesChannel`/`seriesAll` shows only (`isSeries == true`); `dateTime` shows are excluded even if they have a stored `show_seriesid`
 - `mgdTitSeries` — titles of series shows without a SeriesID
-- `mgdDateTimeCh` — `"title|channel"` pairs for `dateTime` shows; only badges that exact channel, not every airing everywhere
+- `mgdDateTimeCh` — `"title|channel"` pairs for `dateTime` shows; only flags that exact channel, not every airing everywhere
 
-This prevents a `dateTime` show's stored SeriesID from falsely starring unrelated guide entries sharing that ID. Paused shows are excluded from all three sets — the same exclusion applies in `/api/now.json`'s `isScheduled` field so the two badge paths agree.
+This prevents a `dateTime` show's stored SeriesID from falsely flagging unrelated guide entries sharing that ID. Paused shows are excluded from all three sets — the same exclusion applies in `/api/now.json`'s `isScheduled` field so the two flag paths agree.
 
-**● Recording badge:** `isRecCh` is now scoped to the current device (`recChannelsByDevice[device.DeviceID]`). In a multi-device setup, a recording on device A no longer marks the same channel number on device B as Recording.
+**Recording flag scoping:** `isRecCh` is scoped to the current device (`recChannelsByDevice[device.DeviceID]`). A recording on device A does not flag the same channel number on device B.
+
+**Managed show data attributes:** when `isMgd` is true, `findManagedShow(e, ch)` is called to locate the `Show` record and embed its config on the block for use by the edit modal:
+
+| Attribute | Content |
+|---|---|
+| `data-show-id` | `show.show_id` |
+| `data-show-type` | `"single"` / `"dateTime"` / `"seriesChannel"` / `"seriesAll"` |
+| `data-show-paused` | `1` / `0` |
+| `data-show-length` | `show.show_length` (minutes) |
+| `data-show-bonus` | `1` / `0` |
+| `data-show-transcode` | `show.show_transcode` |
+| `data-show-seriesid` | `show.show_seriesid` |
+| `data-show-airdays` | Comma-joined `show.show_air_date` |
+| `data-show-failcount` | `show.show_fail_count` |
+| `data-show-failreason` | `show.show_fail_reason` |
+| `data-show-recording` | `1` if recording, `0` otherwise |
+
+`findManagedShow` matches by SeriesID first, then series title, then exact title+channel.
 
 ---
 
@@ -292,8 +385,12 @@ Content is embedded at page build time; `refreshShowsSection()` fetches `/api/sh
 | `closeSummary()` | Hides summary, restores placeholder, clears `.g-sel` |
 | `doRecord()` | Opens record modal; shows tuner-full warning if applicable |
 | `cancelRecord()` | Hides modal |
-| `confirmRecord()` | POSTs `/api/record`; updates block + summary in-place on success |
-| `doDelete()` | POSTs `/api/delete`; removes badge/color from block, restores Record button |
+| `confirmRecord()` | POSTs `/api/record`; updates block + summary in-place on success; adds yellow triangle flag to block |
+| `doDelete()` | POSTs `/api/delete`; removes triangle flag/color from block, restores Record button |
+| `doEditFromGuide()` | Reads `data-show-*` attrs from selected `.g-prog` block; calls `openEditShow()` |
+| `openEditShow(el)` | Populates and opens `#edit-modal` from `el.dataset`; handles both guide blocks and schedule popover rows |
+| `closeEditShow()` | Hides `#edit-modal` |
+| `confirmEdit()` | POSTs `/api/edit`; closes modal on success |
 | `setDev(id)` | Filters guide rows by `data-dev`; empty string = All (with JS dedup); uses cached `_rows` NodeList |
 | `openSchedPop(anchor)` | Opens `#sched-pop` anchored below the button; toggles closed on second click |
 | `closeSchedPop()` | Hides `#sched-pop`; resets `#status-btn` color and `aria-expanded` |

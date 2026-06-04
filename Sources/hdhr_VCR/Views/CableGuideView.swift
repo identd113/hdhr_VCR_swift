@@ -656,11 +656,7 @@ private struct ShowBlocksRow: View, Equatable {
             .padding(.top, 4)
             .frame(width: max(1, cellW - 8), alignment: .topLeading)
 
-            if isRecording {
-                Circle().fill(Color.red).frame(width: 8, height: 8)
-                    .offset(x: cellW - 12, y: 3)
-                    .accessibilityHidden(true)
-            } else if isNextUp {
+            if isNextUp {
                 Image(systemName: "clock.badge.fill")
                     .font(.system(size: 10, weight: .bold))
                     .foregroundColor(.orange)

@@ -520,6 +520,15 @@ final class WebServer {
             if mgdTitSeries.contains(e.Title) { return true }
             return mgdDateTimeCh.contains("\(e.Title)|\(ch.GuideNumber)")
         }
+        // Returns the managed Show matching a guide entry — used to embed show data attrs on
+        // managed blocks so the web edit modal can be opened directly from the guide.
+        let findManagedShow: (GuideEntry, LineupEntry) -> Show? = { e, ch in
+            if let sid = e.SeriesID, !sid.isEmpty {
+                if let s = activeMgd.first(where: { $0.isSeries && $0.show_seriesid == sid }) { return s }
+            }
+            if let s = activeMgd.first(where: { $0.isSeries && $0.show_title == e.Title }) { return s }
+            return activeMgd.first(where: { $0.show_title == e.Title && $0.show_channel == ch.GuideNumber })
+        }
 
         // ── Per-device tuner counts (total slots vs. currently occupied) ────────
         // active = live status.json snapshot; falls back to scheduled recording count.
@@ -685,8 +694,7 @@ final class WebServer {
                         }
                     }
 
-                    let badge = isEntryRec ? "<b class=\"g-r\">●</b>"
-                              : isMgd      ? "<b class=\"g-s\">★</b>" : ""
+                    let badge = ""
                     let sub   = e.EpisodeTitle.flatMap { $0.isEmpty ? nil : $0 } ?? ""
                     let tip   = sub.isEmpty
                         ? "\(he(e.Title))  (\(he(guideTimeRange(e))))"
@@ -701,7 +709,15 @@ final class WebServer {
                     } ?? ""
                     let da = "data-title=\"\(he(e.Title))\" data-syn=\"\(he(synAttr))\" data-poster=\"\(he(e.ImageURL ?? ""))\" data-ep=\"\(he(e.episodeInfoLabel ?? ""))\" data-date=\"\(he(dateAttr))\" data-genre=\"\(he(e.firstGenre ?? ""))\" data-start=\"\(e.StartTime)\" data-end=\"\(e.EndTime)\" data-device=\"\(he(device.DeviceID))\" data-num=\"\(he(ch.GuideNumber))\" data-chname=\"\(he(ch.GuideName))\" data-logo=\"\(he(logoURL))\" data-series=\"\(he(e.SeriesID ?? ""))\" data-managed=\"\(isMgd ? 1 : 0)\" data-recording=\"\(isEntryRec ? 1 : 0)\""
 
-                    blockParts.append("<div class=\"\(cls)\" style=\"left:\(pct(cs))%;width:\(pct(ce - cs))%\" title=\"\(tip)\" \(da) onclick=\"showInfo(this)\"><div class=\"g-pi\">\(badge)<span class=\"g-ti\">\(he(e.Title))</span>\(subH)</div></div>")
+                    let flagHTML = isEntryRec ? "<div class=\"g-flag-rec\"></div>"
+                                 : isMgd      ? "<div class=\"g-flag\"></div>" : ""
+                    let showDA: String = isMgd ? {
+                        let s = findManagedShow(e, ch)
+                        guard let s else { return "" }
+                        let ad = s.show_air_date.joined(separator: ",")
+                        return " data-show-id=\"\(he(s.show_id))\" data-show-type=\"\(showTypeStr(s))\" data-show-paused=\"\(s.show_paused ? 1 : 0)\" data-show-length=\"\(s.show_length)\" data-show-bonus=\"\(s.show_bonus_time ? 1 : 0)\" data-show-transcode=\"\(he(s.show_transcode))\" data-show-seriesid=\"\(he(s.show_seriesid))\" data-show-airdays=\"\(he(ad))\" data-show-failcount=\"\(s.show_fail_count)\" data-show-failreason=\"\(he(s.show_fail_reason))\" data-show-recording=\"\(s.show_recording ? 1 : 0)\""
+                    }() : ""
+                    blockParts.append("<div class=\"\(cls)\" style=\"left:\(pct(cs))%;width:\(pct(ce - cs))%\" title=\"\(tip)\" \(da)\(showDA) onclick=\"showInfo(this)\"><div class=\"g-pi\">\(badge)<span class=\"g-ti\">\(he(e.Title))</span>\(subH)</div>\(flagHTML)</div>")
                 }
 
                 rowParts.append("<div class=\"g-row\" data-dev=\"\(he(device.DeviceID))\" data-ch=\"\(he(ch.GuideNumber))\"><div class=\"g-ch\">\(logoHTML)<div class=\"g-cl\"><span class=\"g-cn\">\(he(chLabel))</span><span class=\"g-cname\">\(he(ch.GuideName))</span></div></div><div class=\"g-tl\">\(blockParts.joined())</div></div>")
@@ -797,6 +813,7 @@ final class WebServer {
         #sum-ep,#sum-syn{color:var(--t0)!important}
         #sum-date{color:var(--t3)!important}
         #sum-ct{color:var(--t2)!important}
+        #sum-edit{background:var(--s4)!important;color:var(--t2)!important;border-color:var(--b4)!important}
         #sum-del{background:var(--s4)!important;color:var(--t2)!important;border-color:var(--b4)!important}
         #sum-del.danger{background:#6a1010!important;color:#ffaaaa!important;border-color:#883030!important}
         html.lm #sum-del.danger{background:#fcd4d4!important;color:#8b0000!important;border-color:#cc3030!important}
@@ -878,9 +895,9 @@ final class WebServer {
         .g-pi{padding:3px 6px;height:100%;display:flex;flex-direction:column;justify-content:center;gap:1px;overflow:hidden}
         .g-ti{font-size:.78rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--t0);line-height:1.25}
         .g-sub{font-size:.65rem;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25}
-        .g-r{font-style:normal;font-weight:700;color:#ff8080;font-size:.68rem;margin-right:2px}
-        .g-s{font-style:normal;font-weight:700;color:#70e870;font-size:.68rem;margin-right:2px}
-        html.lm .g-s{color:#2a8a2a}
+        .g-flag,.g-flag-rec{position:absolute;top:0;right:0;width:0;height:0;border-style:solid;border-width:0 18px 18px 0;pointer-events:none}
+        .g-flag{border-color:transparent #ffd700 transparent transparent}
+        .g-flag-rec{border-color:transparent #ff6060 transparent transparent}
         /* ── Schedule popover ── */
         #sched-pop-c{background:var(--s3)!important;border-color:var(--b5)!important}
         .sp-sec{padding:10px 14px}
@@ -950,6 +967,7 @@ final class WebServer {
               <div id="sum-actions" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:3px">
                 <span id="sum-note" style="display:none;font-size:.75rem;font-style:italic;color:rgba(255,255,255,.75)"></span>
                 <button id="sum-btn" onclick="doRecord()" style="display:none;font-size:.75rem;padding:4px 12px;border-radius:5px;border:none;cursor:pointer;font-weight:600;background:#c0392b;color:#fff">Record</button>
+                <button id="sum-edit" onclick="doEditFromGuide()" style="display:none;font-size:.75rem;padding:4px 12px;border-radius:5px;cursor:pointer;font-weight:600">Edit</button>
                 <button id="sum-del" onclick="doDelete()" style="display:none;font-size:.75rem;padding:4px 12px;border-radius:5px;cursor:pointer;font-weight:600">Delete</button>
               </div>
               <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:3px">
@@ -987,7 +1005,6 @@ final class WebServer {
             <div id="em-days-row" class="em-row" style="display:none"><div class="em-lbl">Days</div><div class="em-days" id="em-days"></div></div>
             <div id="em-bonus-row" style="margin-bottom:8px"><label class="em-check"><input type="checkbox" id="em-bonus"> Bonus Time (extend recording for sports)</label></div>
             <div class="em-row"><div class="em-lbl">Transcode</div><select id="em-transcode" class="em-input"><option value="none">None (copy stream)</option><option value="heavy">Heavy (H.264 CRF 18)</option><option value="mobile">Mobile (480p H.264)</option><option value="internet720">Internet 720 (720p H.264)</option></select></div>
-            <div class="em-row"><div class="em-lbl">Save Directory</div><input id="em-dir-in" class="em-input" type="text" placeholder="/path/to/folder" style="font-size:.72rem;font-family:monospace"></div>
             <div id="em-sid-row" style="display:none;margin-bottom:8px"><div class="em-lbl">SeriesID</div><div id="em-sid" class="em-sid"></div></div>
             <div id="em-fail-row" style="display:none" class="em-fail"><span id="em-fail-txt"></span><button id="em-reset" onclick="doEditReset()" style="font-size:.72rem;padding:3px 8px;border-radius:4px;border:1px solid currentColor;background:transparent;color:inherit;cursor:pointer;flex-shrink:0;white-space:nowrap">Reset</button></div>
             <div id="em-rec-warn" style="display:none;font-size:.74rem;color:#ff9090;background:#3c1818;border:1px solid #883030;border-radius:6px;padding:7px 10px;margin-bottom:10px">● Recording now — delete will stop the active recording.</div>
@@ -1056,14 +1073,16 @@ final class WebServer {
           var del=document.getElementById('sum-del');
           var note=document.getElementById('sum-note');
           // Reset all action elements first
-          btn.style.display='none';del.style.display='none';note.style.display='none';
+          var edit=document.getElementById('sum-edit');
+          btn.style.display='none';edit.style.display='none';del.style.display='none';note.style.display='none';
           del.disabled=false;del.textContent='Delete';del.classList.remove('danger');del.style.background='';del.style.color='';
           if(+d.recording){
             note.textContent='● Recording now';note.style.color='#ff8080';note.style.display='inline';
             del.textContent='Stop & Delete';del.classList.add('danger');del.style.display='inline-block';
           } else if(+d.managed){
-            note.textContent='★ Already scheduled';note.style.color='var(--t2)';note.style.display='inline';
+            note.textContent='★ Scheduled';note.style.color='var(--t2)';note.style.display='inline';
             del.textContent='Remove';del.style.display='inline-block';
+            if(d.showId)edit.style.display='inline-block';
           } else {
             var nowTs=Math.floor(Date.now()/1000);
             var isLive=(_s<=nowTs&&_e>nowTs);
@@ -1132,7 +1151,7 @@ final class WebServer {
                 if(sel){
                   sel.classList.remove('g-prog-now');sel.classList.add('g-prog-sched');sel.dataset.managed='1';
                   var pi=sel.querySelector('.g-pi');
-                  if(pi&&!sel.querySelector('.g-s')){var b=document.createElement('b');b.className='g-s';b.textContent='★';pi.insertBefore(b,pi.firstChild);}
+                  if(!sel.querySelector('.g-flag')){var f=document.createElement('div');f.className='g-flag';sel.appendChild(f);}
                 }
                 btn.style.display='none';
                 var note=document.getElementById('sum-note');
@@ -1178,6 +1197,19 @@ final class WebServer {
             setDev(curDev);
           }).catch(function(){});
         }
+        function doEditFromGuide(){
+          var sel=document.querySelector('.g-prog.g-sel');
+          if(!sel||!sel.dataset.showId)return;
+          var sd=sel.dataset;
+          openEditShow({dataset:{
+            id:sd.showId, title:sd.title, ch:sd.num,
+            type:sd.showType||'single', paused:sd.showPaused||'0',
+            recording:sd.showRecording||'0', length:sd.showLength||'60',
+            bonus:sd.showBonus||'0', transcode:sd.showTranscode||'none',
+            seriesid:sd.showSeriesid||'', airdays:sd.showAirdays||'',
+            failcount:sd.showFailcount||'0', failreason:sd.showFailreason||''
+          }});
+        }
         function doDelete(){
           var del=document.getElementById('sum-del');
           var _delLabel=del.textContent;
@@ -1193,7 +1225,7 @@ final class WebServer {
               var sel=document.querySelector('.g-prog.g-sel');
               if(sel){
                 sel.classList.remove('g-prog-rec','g-prog-sched','g-prog-now');sel.dataset.managed='0';sel.dataset.recording='0';
-                var badge=sel.querySelector('.g-r,.g-s');if(badge)badge.remove();
+                var flag=sel.querySelector('.g-flag,.g-flag-rec');if(flag)flag.remove();
                 var nowTs=Math.floor(Date.now()/1000);
                 if(_s<=nowTs&&_e>nowTs){sel.classList.add('g-prog-now');}
               }
@@ -1303,7 +1335,6 @@ final class WebServer {
           document.getElementById('em-bonus').checked=d.bonus==='1';
           document.getElementById('em-bonus-row').style.display=_editRec?'none':'block';
           document.getElementById('em-transcode').value=d.transcode||'none';
-          document.getElementById('em-dir-in').value=d.dir||'';
           var sid=d.seriesid||'';
           var sidRow=document.getElementById('em-sid-row');
           if(sid){document.getElementById('em-sid').textContent=sid;sidRow.style.display='block';}
@@ -1353,7 +1384,6 @@ final class WebServer {
             length:parseInt(document.getElementById('em-len-in').value)||60,
             bonusTime:document.getElementById('em-bonus').checked,
             transcode:document.getElementById('em-transcode').value,
-            saveDir:document.getElementById('em-dir-in').value.trim(),
             airDays:selDays
           };
           fetch('/api/edit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
