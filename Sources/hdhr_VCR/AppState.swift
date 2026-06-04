@@ -1104,7 +1104,6 @@ final class AppState: ObservableObject {
             return
         }
         shows[index].show_recording = true; shows[index].show_recording_path = path
-        shows[index].show_fail_count = max(0, show.show_fail_count - 1)
         refreshTunerOccupancy()
         // Stamp notify_recording_time so the "Recording Soon" pre-notification won't re-fire
         shows[index].notify_recording_time = Date().addingTimeInterval(config.Notify_recording * 60)
@@ -1183,6 +1182,10 @@ final class AppState: ObservableObject {
         }
         if !path.isEmpty {
             glog("[\(show.show_title)] STOP natural size=\(fileSize / 1024)KB → \(path)")
+            // Only credit a success once data is confirmed on disk — decrement here rather than
+            // on launch so a show that starts but immediately fails (bad path, stream error) can't
+            // cancel out its own failure and prevent the threshold from being reached.
+            if fileSize > 0 { shows[index].show_fail_count = max(0, shows[index].show_fail_count - 1) }
         }
 
         // File info fields appended to every Recording Complete embed
