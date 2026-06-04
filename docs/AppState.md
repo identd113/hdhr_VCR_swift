@@ -117,6 +117,7 @@ The web server is stopped explicitly in all three `quit()` exit branches before 
 | `refreshTunerOccupancy()` | Fires a Task that sleeps 1.5 s, then calls `captureResourceHeaders()` + `fetchDeviceStatus` for every device. Called after recording start/stop, VLC open/close, and channel switch so the menu header count stays current. |
 | `captureResourceHeaders()` | Private. For each recording show with empty `show_tuner_resource`, calls `RecordingManager.readHDHRResource` to read `X-HDHomeRun-Resource` from the curl header dump file. Stores result (e.g. `"tuner0"`) on the show for use by `fetchDeviceStatus`. |
 | `confirmAndDeleteShow(_:then:)` | Fetches poster async → NSAlert with image → stops recording + removes show |
+| `addShowFromGuide(entry:type:device:channel:airDays:)` | Schedules a show from a guide entry. `airDays: [String]?` is optional — when supplied (e.g. from the web record modal's day selector), it overrides the default for `dateTime` shows. Default behaviour: uses the day-of-week of `entry.startDate`. Called by both the Mac guide wizard and `WebServer.handleRecord`. |
 | `rescheduleAllSeries()` | Re-runs `scheduleNextAir` for every active, non-paused, **non-recording** SeriesID show using the current guide cache. Called from `refreshGuides()` and the Settings Rescan Series maintenance action. |
 | `testDiscordEvent(_:webhookURL:)` | Sends test embed using real show data; always passes `enabled: true` |
 | `formatFileSize(_:)` | Private static; formats bytes as `"X.XX GB"` / `"X.X MB"` / `"X KB"` |

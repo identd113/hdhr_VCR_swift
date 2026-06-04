@@ -78,6 +78,60 @@ Two mutating methods on `Show` consolidate the repeated failure-state field grou
 - `Filter: [String]?` — genre tags (e.g. `["Drama", "Series"]`). Absent from some devices; decodes as `nil` when key is missing.
 - `firstGenre: String?` — computed shorthand for `Filter?.first`; used for guide cell coloring and genre filter picker.
 - `episodeInfoLabel: String?` — computed property; joins `EpisodeNumber` and `EpisodeTitle` with `" · "`, returning `nil` when both are absent or empty. Used in WatchNowView, AddShowView, and FloatingGuideView summary panels.
+- `deviceId: String` (default `""`) — **not in JSON; excluded from `CodingKeys`**. Stamped by `GuideStore.buildIndex` from the owning device's `DeviceID` so the device identity travels with the entry.
+- `channelNum: String` (default `""`) — **not in JSON; excluded from `CodingKeys`**. Stamped by `GuideStore.buildIndex` alongside `deviceId` so managed-show slot keys can be built from the entry alone.
+
+`LineupEntry` carries the same non-Codable `deviceId: String` field, stamped by `HDHRManager.fetchLineup(for:)` after the JSON decode.
+
+---
+
+## ManagedGuideMatcher
+
+`struct ManagedGuideMatcher: Equatable` in `Models.swift` is the **single source of truth** for managed-show identification across all four call sites (CableGuideView, AddShowView, FloatingGuideView, WebServer). Callers pass `activeManagedShows` once at construction; then call `isManaged(entry:)` per block.
+
+```swift
+struct ManagedGuideMatcher: Equatable {
+    let seriesIDs:        Set<String>   // SeriesID(Channel/All) shows
+    let titles:           Set<String>   // title fallback for series shows without a SeriesID
+    let singleSlotKeys:   Set<String>   // "device:channel:epoch" — single shows, exact slot
+    let datetimeSlotKeys: Set<String>   // "device:channel:HH:MM" — dateTime shows, all matching slots
+
+    init(activeManagedShows: [Show])
+
+    // Reads entry.deviceId and entry.channelNum directly — no caller-supplied args.
+    func isManaged(entry: GuideEntry) -> Bool
+}
+```
+
+Matching tiers (in order):
+1. `entry.SeriesID` present and in `seriesIDs` → managed
+2. `entry.Title` in `titles` → managed (series shows whose guide entry has no SeriesID)
+3. `"device:channel:HH:MM"` local-time key in `datetimeSlotKeys` → managed (datetime shows: every weekly slot)
+4. `"device:channel:epoch"` key in `singleSlotKeys` → managed (single shows: exact scheduled slot only)
+
+`dateTime` shows use local-time `HH:MM` so a M-F 7PM show flags every 7PM slot on that channel+device in the guide window, not just the one stored in `show_next`. `single` shows use the epoch so only the specific airing is flagged.
+
+Paused shows are excluded from `activeManagedShows` by all callers — the yellow/red flag only appears for active scheduled shows.
+
+---
+
+## ShowMatcher
+
+`struct ShowMatcher: Equatable` — lightweight version of `ManagedGuideMatcher` used for recording / next-up / bonus classification where only SeriesID + title matching is needed (no slot-key logic).
+
+```swift
+struct ShowMatcher: Equatable {
+    let seriesIDs: Set<String>
+    let titles:    Set<String>
+
+    init(_ shows: [Show])
+
+    func matches(_ entry: GuideEntry) -> Bool
+    // Returns true when entry.SeriesID ∈ seriesIDs, or entry.Title ∈ titles as fallback.
+}
+```
+
+Used by `CableGuideView.ShowBlocksRow`, `AddShowView`, `FloatingGuideView`, and `AppState.bonusOverlapWarning`. Replaces the previous pattern of building two raw `Set<String>` values and testing them inline.
 
 ---
 

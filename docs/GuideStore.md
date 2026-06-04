@@ -20,7 +20,7 @@ Returns `nil` if neither DeviceAuth nor LocalIP is available (logs a diagnostic)
 
 | Index | Key | Value |
 |---|---|---|
-| `channelsByDevice` | `deviceId` | `[GuideChannel]` — mirrored into `AppState.guideByDevice`; Guide arrays are pre-sorted by `StartTime` by `buildIndex` |
+| `channelsByDevice` | `deviceId` | `[GuideChannel]` — mirrored into `AppState.guideByDevice`; Guide arrays are pre-sorted by `StartTime` by `buildIndex`; each entry has `deviceId` and `channelNum` stamped on it |
 | `channelEntryIndex` | `"deviceId:channelNum"` | `[GuideEntry]` sorted by `StartTime` |
 | `seriesIndex` | `seriesID` | `[SeriesMatch]` sorted by `StartTime` (lazily — sorted on first query per series, not at build time); each carries `deviceId`, `channelNum`, `entry` |
 | `unsortedSeries` | — | `Set<String>` of series IDs needing sort on next `nextEpisode`/`nextEpisodes`/`currentEpisode` call |
@@ -48,6 +48,17 @@ func invalidateAll()
 `buildIndex` appends entries into `seriesIndex` but does **not** sort them — it marks affected series in `unsortedSeries` instead. `sortIfNeeded(_:)` is called at the top of `nextEpisode`, `nextEpisodes`, and `currentEpisode`; it sorts only the queried series on first access, then removes it from `unsortedSeries`. This defers the O(series × entries log entries) sort cost from guide-load time (main-actor, synchronous) to first-query time (typically spread across the first idle-loop `rebuildMenuEntries` call after load).
 
 `invalidate(deviceId:)` prunes `unsortedSeries` to only entries still in `seriesIndex`. `invalidateAll()` clears it entirely.
+
+---
+
+## Entry Stamping
+
+`buildIndex` stamps two non-Codable fields on every `GuideEntry` after sorting:
+
+- `entry.deviceId` — set to the owning device's `DeviceID`
+- `entry.channelNum` — set to the channel's `GuideNumber`
+
+These fields are excluded from JSON (`CodingKeys` omits them) and are purely in-memory. They allow `ManagedGuideMatcher.isManaged(entry:)` to build device+channel+slot keys from the entry alone, without callers threading device and channel strings through every call site.
 
 ---
 

@@ -158,7 +158,7 @@ func guideEntryColor(for entry: GuideEntry, onAir: Bool) -> Color {
 
 ### `==` Implementation
 
-Compares: `channel.GuideNumber`, `entries.count`, `selectedEntry?.StartTime`, `selectedChannel?.GuideNumber`, `lineupEntry?.GuideNumber`, `genreFilter`, `displayStart`, `deviceId`, `managedSeriesIDs`, `managedTitles`, `managedDTSingleSlotKeys`, `recordingSeriesIDs`, `recordingTitles`, `nextUpSeriesIDs`, `nextUpTitles`, `bonusSeriesIDs`, `bonusTitles`, `bonusMinutes`.
+Compares: `channel.GuideNumber`, `entries.count` (via `zip`+`allSatisfy` on `StartTime` — no array alloc), `selectedEntry?.StartTime`, `selectedChannel?.GuideNumber`, `lineupEntry?.GuideNumber`, `genreFilter`, `displayStart`, `timeSlots`, `managedMatcher`, `recordingMatcher`, `nextUpMatcher`, `bonusMatcher`, `bonusMinutes`.
 
 The `lineupEntry?.GuideNumber` field is included because a `nil → non-nil` change (lineup arriving after a cached guide load) must force a re-evaluation so that tap handlers get the real `LineupEntry` reference instead of nil. Without this, the first tap after a cold load does nothing — the handler calls `onSelect(entry, nil)` and `AddShowView` can't advance because `selectedChannel == nil`.
 
@@ -168,11 +168,13 @@ The `lineupEntry?.GuideNumber` field is included because a `nil → non-nil` cha
 |---|---|
 | On-air (unselected) | Full opacity + `Color.white.opacity(0.12)` white wash overlay |
 | Selected | White stroke border (2.5pt) + `checkmark.circle.fill` icon + `Color.white.opacity(0.15)` fill |
-| Currently recording | Red stroke border (1.5pt) + red circle dot (8pt, centred inside the yellow triangle) |
+| Currently recording | Red stroke border (1.5pt) + **red 22pt right-angle triangle** (`#ff6060`) top-right corner via `ManagedFlagView(recording: true)` |
 | Starts within 30 min | Orange stroke border (1.5pt) + `clock.badge.fill` icon (orange), top-right area |
-| Managed (any) | Yellow 22pt right-angle triangle, top-right corner (`Path`, `.fill(.yellow)`) drawn **before** status icons so the red dot renders on top of the triangle |
+| Managed but not recording | Yellow 22pt right-angle triangle (`ManagedFlagView(recording: false)`) top-right corner |
 | Filter mismatch | 0.2 opacity, `allowsHitTesting(false)` |
 | Bonus Time | Dotted `RoundedRectangle` sibling at `cellX + cellW + 2`; `.zIndex(1)` so it renders above the next block; next show's title is drawn inside the box so it remains readable even when fully covered; tapping the bonus box selects the overlapped next show |
+
+Recording takes visual priority: the red triangle is shown when `isRecording`; yellow only when `isManaged && !isRecording`. The red circle dot decoration was removed — the triangle alone communicates both states.
 
 **Managed triangle sizing rationale**: the triangle is 22pt so the 8pt red recording dot (offset `x: cellW-12, y: 3`) sits fully inside the triangle without overflowing. Triangle vertices: `(cellW-22, 0) → (cellW, 0) → (cellW, 22)` — right angle at top-right corner.
 
@@ -246,16 +248,13 @@ The monitor returns `nil` (consuming the event) so the channel column itself doe
 | `selectedEntry` | `@Binding GuideEntry?` | Currently selected guide cell |
 | `selectedChannel` | `@Binding LineupEntry?` | Channel of the selected cell |
 | `snapToNow` | `@Binding Bool` | Set true to scroll grid to current time |
-| `deviceId` | `String` | DeviceID of the device whose guide is shown — used to key DateTime/Single slot matches |
-| `managedSeriesIDs` | `Set<String>` | SeriesID(Channel/All) shows — yellow flag on any matching episode |
-| `managedTitles` | `Set<String>` | Title fallback for SeriesID shows that have no SeriesID in the entry |
-| `managedDTSingleSlotKeys` | `Set<String>` | DateTime/Single shows — `"deviceId:channel:epoch"` keys; yellow flag only on the exact scheduled slot |
-| `recordingSeriesIDs` | `Set<String>` | Shows currently recording — red border + dot |
-| `recordingTitles` | `Set<String>` | Title-based fallback for recording badge |
-| `nextUpSeriesIDs` | `Set<String>` | Shows recording within 30 min — orange border + clock |
-| `nextUpTitles` | `Set<String>` | Title-based fallback for next-up badge |
-| `bonusSeriesIDs` | `Set<String>` | Sports shows with Bonus Time — dotted box |
-| `bonusTitles` | `Set<String>` | Title-based fallback for bonus box |
+| `deviceId` | `String` | DeviceID of the device whose guide is shown |
+| `managedMatcher` | `ManagedGuideMatcher` | All managed-show matching tiers (seriesID, title, dateTime slot, single slot) — yellow/red triangle flag |
+| `recordingMatcher` | `ShowMatcher` | Shows currently recording — red triangle flag + red border |
+| `nextUpMatcher` | `ShowMatcher` | Shows starting within 30 min — orange border + clock icon |
+| `bonusMatcher` | `ShowMatcher` | Sports shows with Bonus Time — dotted bonus-time box |
 | `bonusMinutes` | `Int` | Bonus box width in minutes |
 | `genreFilter` | `String?` | nil = all; non-nil = dim non-matching |
 | `onConfirm` | `(() -> Void)?` | Called on double-tap — advances wizard; pass `{}` for browse-only views |
+
+The `managedMatcher`, `recordingMatcher`, `nextUpMatcher`, and `bonusMatcher` parameters replace the previous ten separate `Set<String>` parameters (`managedSeriesIDs`, `managedTitles`, `managedDTSingleSlotKeys`, `recordingSeriesIDs`, `recordingTitles`, `nextUpSeriesIDs`, `nextUpTitles`, `bonusSeriesIDs`, `bonusTitles`). See `ManagedGuideMatcher` and `ShowMatcher` in [Models.md](Models.md).

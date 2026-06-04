@@ -48,7 +48,8 @@ Schedules a recording by calling `state.addShowFromGuide(entry:type:device:chann
   "guideNumber": "5.1",
   "startTime":   1748822400,
   "endTime":     1748826000,
-  "showType":    "single"
+  "showType":    "single",
+  "airDays":     ["Monday","Wednesday","Friday"]
 }
 ```
 
@@ -59,6 +60,7 @@ Schedules a recording by calling `state.addShowFromGuide(entry:type:device:chann
 | `startTime` | yes | Unix timestamp — locates the exact `GuideEntry` via `guideStore.entries(after: .distantPast)` |
 | `endTime` | no | Unused server-side |
 | `showType` | no | `"single"` (default) · `"dateTime"` · `"seriesChannel"` · `"seriesAll"` |
+| `airDays` | no | Day names for `dateTime` shows (e.g. `["Monday","Friday"]`). When absent or empty, defaults to the day-of-week of `startTime`. |
 
 `showType` maps to `ShowState`:
 
@@ -69,8 +71,17 @@ Schedules a recording by calling `state.addShowFromGuide(entry:type:device:chann
 | `"seriesChannel"` | `.seriesChannel` | Record new episodes via SeriesID on this channel |
 | `"seriesAll"` | `.seriesAll` | Record new episodes via SeriesID on any channel |
 
-**Success:** `{"ok": true, "title": "Show Title", "tunerFull": false}`  
-`tunerFull: true` means all tuners were occupied at schedule time — the show is queued and will record when a tuner is free.  
+**Success:** `{"ok": true, "title": "Show Title", "tunerFull": false, "recStarted": false, "tunerActive": 1, "tunerTotal": 2}`
+
+| Response field | Meaning |
+|---|---|
+| `tunerFull` | All tuners occupied at schedule time — show is queued |
+| `recStarted` | `true` when the show is currently on air and recording started immediately |
+| `tunerActive` | Current active-tuner count for this device after scheduling |
+| `tunerTotal` | Total tuner capacity of this device |
+
+The client uses `recStarted` to immediately color the guide block red (`.g-prog-rec`) vs. yellow (`.g-prog-sched`) without a page reload. `tunerActive`/`tunerTotal` are used to update the `tun-{devId}` badge text in place.
+
 **Failure:** `{"ok": false, "error": "reason"}` (HTTP 200) or `400 Bad Request` plain text for missing fields.
 
 ---
@@ -183,7 +194,7 @@ Page structure (top to bottom):
 6. **Schedule popover** (`#sched-pop`) — fixed overlay; opened by clicking the `≡` button in the header. Contains: Recording / Up Next / Scheduled sections (`.sp-*` classes).
 7. **Guide grid** — scrollable cable-guide grid (width/time-window depends on UA; see below)
 
-**`≡` status button** (`#status-btn`): `background:none` button next to the h1. Clicking calls `openSchedPop(this)` which toggles `#sched-pop` (positioned below the button). Calls `closeSchedPop()` on second click or backdrop click. Button color shifts from `var(--t4)` (muted) to `var(--ac)` (accent) when the popover is open.
+**`≡` status button** (`#status-btn`): `background:none` button placed **to the left of the `<h1>` title** in the upper-left header area. Clicking calls `openSchedPop(this)` which toggles `#sched-pop` (positioned below the button). Calls `closeSchedPop()` on second click or backdrop click. Button color shifts from `var(--t4)` (muted) to `var(--ac)` (accent) when the popover is open.
 
 **Auto-select on load**: after `setDev('')` initializes the guide, an IIFE finds the first visible `.g-row` and selects the currently-airing `.g-prog` on that row, populating the summary panel immediately without requiring a click.
 
@@ -247,16 +258,22 @@ The **Edit** button (`#sum-edit`) is only shown for managed shows that are **not
 
 ### Record type modal (`#rec-modal`)
 
-`position: fixed` overlay (z-index 100). Appears when Record is clicked.
+Styled to match `#edit-modal`: same 400 px width, `max-height: calc(100vh - 40px)`, scrollable, themed via `var(--s2)` / `var(--b2)` CSS variables. `position: fixed` overlay (z-index 100). Appears when Record is clicked.
 
-**Contents:**
-- Show title + channel/time (copied from summary)
-- Four radio options (`recOpts`): Single episode · Weekly repeat · Series — this channel · Series — any channel
-- **SeriesID row** (`#rm-sid`) — appears when a series type is selected
+**Contents (top to bottom):**
+- **"Record Show"** header with border-bottom separator
+- **Show row** — `em-lbl` "Show" label + show title + channel/time below (read-only)
+- **Type row** — `em-lbl` "Type" label + four radio options (`recOpts`): Single episode · Weekly repeat · Series — this channel · Series — any channel
+- **SeriesID row** (`#rm-sid`, `em-row` style) — visible when a series type is selected; value in `em-sid` monospace style
+- **Days row** (`#rm-days-row`, `em-row` style) — visible when "Weekly repeat" (`dateTime`) is selected; 7 Su–Sa toggle buttons pre-checked to the guide entry's day of week. At least one day must remain selected (last-day deselect is blocked).
 - **Tuner-full warning** (`#rm-tuner`) — amber banner shown when device is full and show is currently airing
-- Cancel / Schedule buttons
+- **Footer** with border-top separator — Cancel / Schedule buttons
 
-On **Schedule**: `confirmRecord()` POSTs to `/api/record`. On success, the guide block and summary panel are updated in-place (no page reload). If `tunerFull` is true in the response, the note reads "⚠ Queued — all tuners busy".
+On **Schedule**: `confirmRecord()` collects selected air days from `#rm-days .day-btn.sel` and POSTs to `/api/record` with `airDays` included. On success:
+- Guide block gains `.g-prog-rec` + red triangle flag if `recStarted` is true (show currently airing); otherwise `.g-prog-sched` + yellow triangle flag.
+- Summary note shows "● Recording now", "⚠ Queued — all tuners busy", or "★ Scheduled — next idle loop pick-up".
+- Tuner badge `#tun-{devId}` is updated in place with the new active/total count from `tunerActive`/`tunerTotal`.
+- Schedule popover body is refreshed via `/api/shows-html`.
 
 ---
 
@@ -335,12 +352,9 @@ State classes (rec / now / sched) take precedence over genre. `.g-prog.g-sel` ad
 
 Recording takes precedence; yellow shows only when managed but not recording. There are no star or red-circle badges.
 
-**Managed show matching:** three separate sets are pre-computed from `activeMgd` (active, non-paused shows only) to decide which blocks get a flag and the `data-managed="1"` attribute:
-- `mgdSID` — SeriesIDs of `seriesChannel`/`seriesAll` shows only (`isSeries == true`); `dateTime` shows are excluded even if they have a stored `show_seriesid`
-- `mgdTitSeries` — titles of series shows without a SeriesID
-- `mgdDateTimeCh` — `"title|channel"` pairs for `dateTime` shows; only flags that exact channel, not every airing everywhere
+**Managed show matching:** `buildHTML` constructs a `ManagedGuideMatcher(activeManagedShows: activeMgd)` — the same struct used by the SwiftUI cable guide — to decide which blocks get a flag and the `data-managed="1"` attribute. `activeMgd` is active, non-paused shows only; the same exclusion applies in `/api/now.json`'s `isScheduled` field so the two flag paths agree.
 
-This prevents a `dateTime` show's stored SeriesID from falsely flagging unrelated guide entries sharing that ID. Paused shows are excluded from all three sets — the same exclusion applies in `/api/now.json`'s `isScheduled` field so the two flag paths agree.
+The four matching tiers (seriesID → title fallback → datetime `device:channel:HH:MM` → single `device:channel:epoch`) are documented in [Models.md — ManagedGuideMatcher](Models.md). `dateTime` shows are matched by local-time slot so every upcoming weekly airing is flagged, not just the one stored in `show_next`.
 
 **Recording flag scoping:** `isRecCh` is scoped to the current device (`recChannelsByDevice[device.DeviceID]`). A recording on device A does not flag the same channel number on device B.
 
@@ -369,7 +383,7 @@ This prevents a `dateTime` show's stored SeriesID from falsely flagging unrelate
 Fixed overlay opened by the `≡` button. Built server-side by `buildSchedPopHTML(state:)` and refreshed via `/api/shows-html` after record/delete actions.
 
 Three sections (`.sp-sec`) separated by `.sp-div` dividers — empty sections are omitted:
-- **Recording** — `state.recordingShows`; title in red `●` prefix (`.sp-rec`)
+- **Recording** — `state.recordingShows`; title in red `●` prefix (`.sp-rec`); channel cell appends **"· Ends 10:00 PM"** (`state.shortTime(show.show_end)`) so the expected stop time is visible at a glance.
 - **Up Next** — first `state.activeShows` entry sorted by `show_next` ascending; shows relative time in accent color
 - **Scheduled** — remaining `state.activeShows`
 
@@ -383,9 +397,9 @@ Content is embedded at page build time; `refreshShowsSection()` fetches `/api/sh
 |---|---|
 | `showInfo(el)` | `onclick` on program blocks; reads `el.dataset`, populates summary panel, sets globals |
 | `closeSummary()` | Hides summary, restores placeholder, clears `.g-sel` |
-| `doRecord()` | Opens record modal; shows tuner-full warning if applicable |
+| `doRecord()` | Opens record modal; pre-checks day-of-week button matching guide entry; shows tuner-full warning if applicable |
 | `cancelRecord()` | Hides modal |
-| `confirmRecord()` | POSTs `/api/record`; updates block + summary in-place on success; adds yellow triangle flag to block |
+| `confirmRecord()` | Collects selected `airDays` from `#rm-days`; POSTs `/api/record`; on success: red flag + `.g-prog-rec` if `recStarted`, yellow flag + `.g-prog-sched` otherwise; updates tuner badge `#tun-{devId}` in place |
 | `doDelete()` | POSTs `/api/delete`; removes triangle flag/color from block, restores Record button |
 | `doEditFromGuide()` | Reads `data-show-*` attrs from selected `.g-prog` block; calls `openEditShow()` |
 | `openEditShow(el)` | Populates and opens `#edit-modal` from `el.dataset`; handles both guide blocks and schedule popover rows |
