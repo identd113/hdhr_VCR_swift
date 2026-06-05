@@ -1917,6 +1917,26 @@ final class AppState: ObservableObject {
             guard let match,
                   let idx = Int(match.Resource.dropFirst(5))   // "tuner0" → 0
             else { continue }
+
+            // Passive signal collection + alerts use status.json snq — works on all device types
+            // including EXTEND (which returns 404 for /tunerN/vstatus).
+            // Key uses LineupEntry.Frequency (same source views use for lookup) not status.json Frequency.
+            let statusSnq = match.SignalQualityPercent ?? 0
+            if let entry = lineups[device.DeviceID]?.first(where: { $0.GuideNumber == show.show_channel }) {
+                Task { await ChannelSignalStore.shared.record(guideName: entry.GuideName, snq: statusSnq) }
+            }
+            if statusSnq < 30 {
+                let ticks = (signalDropoutTicks[show.show_id] ?? 0) + 1
+                signalDropoutTicks[show.show_id] = ticks
+                if ticks == 2 { sendSignalAlert(show: show, snq: statusSnq, isRecovery: false) }
+            } else {
+                let wasDown = (signalDropoutTicks[show.show_id] ?? 0) >= 2
+                signalDropoutTicks[show.show_id] = 0
+                if wasDown { sendSignalAlert(show: show, snq: statusSnq, isRecovery: true) }
+            }
+
+            // vstatus: additional detail (lock type, bitrate) for the menu signal display.
+            // Optional — EXTEND returns 404 here; collection above already ran.
             guard let vsURL = URL(string: "http://\(device.LocalIP)/tuner\(idx)/vstatus"),
                   let (vsData, _) = try? await URLSession.shared.data(from: vsURL),
                   let text = String(data: vsData, encoding: .utf8)
@@ -1929,96 +1949,47 @@ final class AppState: ObservableObject {
             }
             let lock = kv["lock"] ?? "none"
             guard lock != "none" else { continue }
-            let snq = Int(kv["snq"] ?? "0") ?? 0
             tunerStatus[show.show_id] = TunerStatus(
                 signalStrength: Int(kv["ss"]  ?? "0") ?? 0,
-                signalQuality:  snq,
+                signalQuality:  Int(kv["snq"] ?? "0") ?? 0,
                 lockType:       lock,
                 bitrateMbps:    Double(kv["bps"] ?? "0").map { $0 / 1_000_000 } ?? 0
             )
-
-            // Passive signal history collection — no feature gate; always record during recordings.
-            if let entry = lineups[device.DeviceID]?.first(where: { $0.GuideNumber == show.show_channel }),
-               let freq  = match.Frequency, freq > 0 {
-                Task { await ChannelSignalStore.shared.record(frequency: freq, guideName: entry.GuideName, snq: snq) }
-            }
-
-            // Alert on consecutive low-quality ticks (2 = ~20s of bad signal).
-            if snq < 30 {
-                let ticks = (signalDropoutTicks[show.show_id] ?? 0) + 1
-                signalDropoutTicks[show.show_id] = ticks
-                if ticks == 2 { sendSignalAlert(show: show, snq: snq, isRecovery: false) }
-            } else {
-                let wasDown = (signalDropoutTicks[show.show_id] ?? 0) >= 2
-                signalDropoutTicks[show.show_id] = 0
-                if wasDown { sendSignalAlert(show: show, snq: snq, isRecovery: true) }
-            }
         }
     }
 
     // MARK: - Signal quality helpers
 
-    /// One vstatus poll → average snq across samples. Used by the channel scan.
-    private func sampleVstatus(tunerURL: URL, label: String) async -> Int? {
-        var total = 0
-        var count = 0
-        for _ in 0..<5 {
-            guard let (data, _) = try? await URLSession.shared.data(from: tunerURL),
-                  let text = String(data: data, encoding: .utf8) else { break }
-            var kv: [String: String] = [:]
-            for token in text.split(separator: " ") {
-                let parts = token.split(separator: "=", maxSplits: 1)
-                if parts.count == 2 { kv[String(parts[0])] = String(parts[1]) }
-            }
-            guard kv["lock"] != "none", let snq = Int(kv["snq"] ?? "") else { break }
-            total += snq
-            count += 1
-            try? await Task.sleep(nanoseconds: 2_000_000_000) // 2s between samples
-        }
-        guard count > 0 else { return nil }
-        let avg = total / count
-        glog("[Signal] \(label) avg snq=\(avg)% (\(count) samples)")
-        return avg
-    }
-
-    /// Full channel scan — samples every channel on every device sequentially.
+    /// Full channel scan — tunes each channel briefly and reads snq from status.json.
     func startSignalScan() {
         signalScanTask?.cancel()
         signalScanTask = Task {
             let targets: [(device: HDHRDevice, entry: LineupEntry)] = devices.flatMap { dev in
-                (lineups[dev.DeviceID] ?? []).compactMap { entry in
-                    guard let _ = entry.Frequency else { return nil }
-                    return (dev, entry)
-                }
+                (lineups[dev.DeviceID] ?? []).map { (dev, $0) }
             }
             let total = targets.count
             for (i, target) in targets.enumerated() {
                 guard !Task.isCancelled else { break }
                 let (device, entry) = (target.device, target.entry)
-                guard let freq = entry.Frequency, freq > 0 else { continue }
                 await MainActor.run { signalScanProgress = "Scanning \(entry.GuideName) (\(i+1)/\(total))…" }
-                // Tune via streamBase URL to get a tuner lock, then poll vstatus
+                // Open stream to lock the tuner
                 guard let streamURL = URL(string: "\(device.streamBase)/auto/v\(entry.GuideNumber)"),
                       let (_, resp) = try? await URLSession.shared.data(from: streamURL),
                       (resp as? HTTPURLResponse)?.statusCode == 200 else { continue }
-                // Give tuner a moment to lock
+                // Wait for tuner to lock, then read snq from status.json
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
-                // Find which tuner picked up this channel
                 guard let (statusData, _) = try? await URLSession.shared.data(from: URL(string: device.statusURL)!),
                       let tunerInfos = try? JSONDecoder().decode([DeviceTunerInfo].self, from: statusData),
                       let match = tunerInfos.first(where: { $0.VctNumber == entry.GuideNumber }),
-                      let idx = Int(match.Resource.dropFirst(5)),
-                      let vsURL = URL(string: "http://\(device.LocalIP)/tuner\(idx)/vstatus")
+                      let snq = match.SignalQualityPercent
                 else { continue }
-                if let avgSnq = await sampleVstatus(tunerURL: vsURL, label: entry.GuideName) {
-                    await ChannelSignalStore.shared.record(frequency: freq, guideName: entry.GuideName, snq: avgSnq)
-                    let bucket = await ChannelSignalStore.shared.allBuckets()
-                    await MainActor.run { channelSignalBuckets = bucket }
-                    webServer.broadcastEvent(["type": "signal_update",
-                                              "freq": "\(freq)",
-                                              "gname": entry.GuideName.lowercased(),
-                                              "bucket": bucket["\(freq):\(entry.GuideName.lowercased())"]?.rawValue ?? "noData"])
-                }
+                await ChannelSignalStore.shared.record(guideName: entry.GuideName, snq: snq)
+                let buckets = await ChannelSignalStore.shared.allBuckets()
+                let key = entry.GuideName.lowercased()
+                await MainActor.run { channelSignalBuckets = buckets }
+                webServer.broadcastEvent(["type": "signal_update",
+                                          "gname": key,
+                                          "bucket": buckets[key]?.rawValue ?? "noData"])
             }
             await MainActor.run { signalScanProgress = nil }
         }

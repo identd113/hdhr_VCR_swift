@@ -367,11 +367,10 @@ struct LineupEntry: Codable, Identifiable {
     var URL: String?
     var HD: Int?
     var Favorite: Int?
-    var Frequency: Int?
     var isFavorite: Bool { Favorite == 1 }
 
     private enum CodingKeys: String, CodingKey {
-        case GuideNumber, GuideName, URL, HD, Favorite, Frequency
+        case GuideNumber, GuideName, URL, HD, Favorite
     }
 }
 
@@ -398,10 +397,10 @@ struct GuideChannel: Codable {
 
 /// One entry from /status.json — only present when that tuner is actively streaming.
 struct DeviceTunerInfo: Decodable {
-    let Resource:  String     // "tuner0", "tuner1", …
-    let VctNumber: String?    // channel number if locked
-    let TargetIP:  String?    // client IP receiving the stream
-    let Frequency: Int?       // RF frequency in Hz — used as stable signal storage key
+    let Resource:             String  // "tuner0", "tuner1", …
+    let VctNumber:            String? // channel number if locked
+    let TargetIP:             String? // client IP receiving the stream
+    let SignalQualityPercent: Int?    // snq 0–100 from status.json; used for passive signal collection
 }
 
 struct TunerStatus {

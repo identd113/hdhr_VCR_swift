@@ -277,7 +277,7 @@ struct CableGuideView: View {
             Spacer(minLength: 0)
 
             if showSignalBars {
-                SignalBarsView(bucket: signalBucket(guideName: ch.GuideName, frequency: lu?.Frequency, in: signalBuckets))
+                SignalBarsView(bucket: signalBucket(guideName: ch.GuideName, in: signalBuckets))
                     .padding(.trailing, 2)
             }
 

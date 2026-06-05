@@ -276,7 +276,6 @@ struct WatchNowRow: View {
                     .foregroundStyle(.secondary)
                 if state.config.Signal_quality_enabled {
                     SignalBarsView(bucket: signalBucket(guideName: channel.GuideName,
-                                                        frequency: channel.Frequency,
                                                         in: state.channelSignalBuckets))
                 }
                 if managed?.show_recording == true {

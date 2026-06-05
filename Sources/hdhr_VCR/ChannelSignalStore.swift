@@ -1,8 +1,9 @@
 import Foundation
 
 // ── Channel signal quality history ───────────────────────────────────────────
-// Keyed by "\(frequency):\(guideName.lowercased())" so write-time (status.json
-// tuner lock) and read-time (lineup GuideName) always match.
+// Keyed by guideName.lowercased() — available at both write time (from LineupEntry
+// during recording) and read time (views). GuideName is device-agnostic: the same
+// call sign appears on every device tuned to that multiplex.
 // Persists up to 50 samples per channel in ~/Library/Application Support/hdhrVCRplus/channel_signal_history.json.
 
 actor ChannelSignalStore {
@@ -34,9 +35,9 @@ actor ChannelSignalStore {
         return SignalBucket(avg)
     }
 
-    // Adaptive sample frequency: healthy channels need far fewer checks than troubled ones.
-    func needsSample(frequency: Int, guideName: String) -> Bool {
-        let key = "\(frequency):\(guideName.trimmingCharacters(in: .whitespaces).lowercased())"
+    // Adaptive re-sample frequency: poor channels checked daily, good channels weekly.
+    func needsSample(guideName: String) -> Bool {
+        let key = guideName.trimmingCharacters(in: .whitespaces).lowercased()
         guard let samples = history[key], let last = samples.last else { return true }
         let age = Date().timeIntervalSince(last.ts)
         switch bucketFor(samples) {
@@ -47,10 +48,9 @@ actor ChannelSignalStore {
         }
     }
 
-    func record(frequency: Int, guideName: String, snq: Int) {
-        let name = guideName.trimmingCharacters(in: .whitespaces).lowercased()
-        guard frequency > 0, !name.isEmpty else { return }
-        let key     = "\(frequency):\(name)"
+    func record(guideName: String, snq: Int) {
+        let key = guideName.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !key.isEmpty else { return }
         var samples = history[key, default: []]
         samples.append(ChannelSignalSample(ts: Date(), snq: min(100, max(0, snq))))
         history[key] = Array(samples.suffix(50))

@@ -263,7 +263,6 @@ struct MenuContent: View {
                     if state.config.Signal_quality_enabled,
                        let lu = state.lineups[show.hdhr_record]?.first(where: { $0.GuideNumber == show.show_channel }) {
                         SignalBarsView(bucket: signalBucket(guideName: lu.GuideName,
-                                                            frequency: lu.Frequency,
                                                             in: state.channelSignalBuckets))
                     }
                 }

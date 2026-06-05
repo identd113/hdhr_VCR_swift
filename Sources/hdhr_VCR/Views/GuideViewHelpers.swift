@@ -70,10 +70,9 @@ func sortedGuideChannels(_ channels: [GuideChannel], favorites: Set<String>) -> 
 
 // MARK: - Signal quality UI helpers
 
-/// Resolve a SignalBucket from the pre-computed snapshot. Falls back to .noData when frequency is nil.
-func signalBucket(guideName: String, frequency: Int?, in buckets: [String: SignalBucket]) -> SignalBucket {
-    guard let freq = frequency, freq > 0 else { return .noData }
-    return buckets["\(freq):\(guideName.lowercased())"] ?? .noData
+/// Resolve a SignalBucket from the pre-computed snapshot. Key is guideName.lowercased().
+func signalBucket(guideName: String, in buckets: [String: SignalBucket]) -> SignalBucket {
+    buckets[guideName.lowercased()] ?? .noData
 }
 
 struct SignalBarsView: View {
