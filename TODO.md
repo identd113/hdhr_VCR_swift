@@ -90,6 +90,14 @@ Power users managing multiple machines must copy the JSON manually. Export / Imp
 
 ## UI / Guide
 
+### Replace native cable guide with WKWebView
+
+Embed the existing web guide (`http://localhost:1980/`) in a `WKWebView` instead of maintaining the native SwiftUI cable grid. See full analysis in [`docs/WKWebView_guide_analysis.md`](docs/WKWebView_guide_analysis.md).
+
+**Summary**: Removes ~1,600 lines of fragile AppKit/SwiftUI scroll-sync code. Memory impact is slightly negative (WKWebView WebContent process overhead). Recommended in two phases — FloatingGuideView first (low risk), AddShowView guide step second (needs `WKScriptMessageHandler` bridge).
+
+---
+
 ### Colored guide entry rows in .menu add-show cascade
 
 Color the background of each guide entry row in the `.menu` mode add-show cascade (channel submenu → entry list) with the genre color, matching the cable guide grid.
