@@ -6,7 +6,7 @@ final class RecordingManager {
     private var curlPids:    [String: Int32]   = [:]   // curl child PID (for explicit kill on manual stop)
     private var headerFiles: [String: String]  = [:]   // --dump-header file path per show
 
-    static let curlLogPath = NSHomeDirectory() + "/Library/Logs/hdhrVCRplus.log"
+    static var curlLogPath: String { logFilePath }
 
     // MARK: - Start
 
@@ -27,7 +27,7 @@ final class RecordingManager {
             "-H", "appname:hdhrVCRplus",
         ]
         if !networkInterface.isEmpty { curlArgs += ["--interface", networkInterface] }
-        if verbose { curlArgs.append("-v") }
+        if verbose { curlArgs += ["-v", "--no-progress-meter"] }
         // Dump response headers to a temp file so we can read X-HDHomeRun-Error on failure.
         let hdrPath = "\(NSTemporaryDirectory())hdhrVCRplus-\(showId).headers"
         headerFiles[showId] = hdrPath
@@ -244,13 +244,7 @@ final class RecordingManager {
         guard let fh = FileHandle(forWritingAtPath: path) else { return }
         defer { try? fh.close() }
         fh.seekToEndOfFile()
-        let header = """
-
-=== [\(Date())] showId=\(showId) ===
-Output: \(outputPath)
-/usr/bin/caffeinate -i /usr/bin/curl \(curlArgs.joined(separator: " "))
-
-"""
+        let header = "\n[CURL] \(showId) → \(outputPath) | \(curlArgs.joined(separator: " "))\n"
         fh.write(header.data(using: .utf8) ?? Data())
     }
 }

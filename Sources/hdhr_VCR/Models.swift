@@ -8,13 +8,26 @@ enum LogLevel {
 }
 
 private let appLog = Logger(subsystem: "com.hdhr.vcrplus", category: "app")
+private let logQueue = DispatchQueue(label: "com.hdhr.vcrplus.log", qos: .utility)
+let logFilePath = NSHomeDirectory() + "/Library/Logs/hdhrVCRplus.log"
 
-/// Universal log function. Safe to call from any actor or thread.
+/// Universal log function. Writes to OSLog and ~/Library/Logs/hdhrVCRplus.log. Safe to call from any actor or thread.
 func glog(_ msg: String, level: LogLevel = .info) {
     switch level {
     case .info:    appLog.info("\(msg, privacy: .public)")
     case .warning: appLog.warning("\(msg, privacy: .public)")
     case .error:   appLog.error("\(msg, privacy: .public)")
+    }
+    let tag = level == .info ? "INFO" : level == .warning ? "WARN" : "ERROR"
+    let ts = Date()
+    logQueue.async {
+        let line = "[\(ISO8601DateFormatter().string(from: ts))] [\(tag)] \(msg)\n"
+        let fm = FileManager.default
+        if !fm.fileExists(atPath: logFilePath) { fm.createFile(atPath: logFilePath, contents: nil) }
+        guard let fh = FileHandle(forWritingAtPath: logFilePath) else { return }
+        fh.seekToEndOfFile()
+        fh.write(line.data(using: .utf8) ?? Data())
+        try? fh.close()
     }
 }
 
