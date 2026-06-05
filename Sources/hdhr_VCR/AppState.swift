@@ -57,6 +57,7 @@ final class AppState: ObservableObject {
     @Published var pendingAddChannelGeneration: Int = 0  // bumped each time pendingAddChannel is set
     @Published var tunerStatus: [String: TunerStatus] = [:]         // showId → last polled vstatus
     @Published var deviceTunerOccupancy: [String: [DeviceTunerInfo]] = [:]  // deviceId → live status.json snapshot
+    private var lastTunerAudit: [String: String] = [:]                      // deviceId → last logged audit string; suppresses unchanged lines
     @Published var vlcCurrentURL: String = ""               // raw URL (no transcode query) playing in VLCPlayerView
     @Published var channelIconImages: [String: NSImage] = [:]  // ImageURL → NSImage; populated during prefetch for sync menu use
 
@@ -593,7 +594,10 @@ final class AppState: ObservableObject {
                 group.addTask { _ = await ChannelIconCache.shared.image(for: url) }
             }
         }
-        if needed > 0 { statusMessage = "\(shows.count) show(s) — \(availableDeviceCount) tuner(s) ready" }
+        if needed > 0 {
+            glog("[Icons] downloaded \(needed) new icon(s) — \(urls.count) total cached")
+            statusMessage = "\(shows.count) show(s) — \(availableDeviceCount) tuner(s) ready"
+        }
         // One actor hop to read the full mem dict; single @Published assignment regardless of icon count
         let fetched = await ChannelIconCache.shared.allCachedImages(for: urls)
         channelIconImages = channelIconImages.merging(fetched) { _, new in new }
@@ -1552,6 +1556,7 @@ final class AppState: ObservableObject {
     func notify(_ title: String, body: String, subtitle: String,
                 categoryIdentifier: String = "", userInfo: [AnyHashable: Any] = [:]) {
         guard notifyPermission else { return }
+        glog("[Notify] \(title) — \(body)\(subtitle.isEmpty ? "" : " (\(subtitle))")")
         let c = UNMutableNotificationContent()
         c.title = title; c.body = body
         if !subtitle.isEmpty { c.subtitle = subtitle }
@@ -1675,9 +1680,9 @@ final class AppState: ObservableObject {
                              webhookURL: String? = nil,
                              editMessageId: String? = nil) {
         let url = webhookURL ?? config.Discord_webhook_url
-        glog("[Discord] discordShow \(event) enabled=\(enabled) urlEmpty=\(url.isEmpty) masterEnabled=\(config.Discord_enabled)")
         guard enabled, !url.isEmpty else { return }
         if webhookURL == nil { guard config.Discord_enabled else { return } }
+        glog("[Discord] \(event) — \(show.show_title)")
 
         let embed = buildDiscordShowEmbed(event: event, show: show, color: color, extra: extra)
         if let msgId = editMessageId, !msgId.isEmpty {
@@ -1702,6 +1707,7 @@ final class AppState: ObservableObject {
         let url = webhookURL ?? config.Discord_webhook_url
         guard enabled, !url.isEmpty else { return }
         if webhookURL == nil { guard config.Discord_enabled else { return } }
+        glog("[Discord] \(event) — \(detail)")
         let embed: [String: Any] = [
             "title":       event,
             "description": detail,
@@ -1795,6 +1801,7 @@ final class AppState: ObservableObject {
                     let tunerCount = device.TunerCount ?? 2
                     let active = tuners.filter { $0.VctNumber != nil }.count
                     if active >= tunerCount {
+                        glog("[Watch] BLOCKED — all \(tunerCount) tuner(s) on \(device.DeviceID) in use; '\(title)' not opened", level: .warning)
                         let alert = NSAlert()
                         alert.messageText = "No Tuner Available"
                         alert.informativeText = "All \(tunerCount) tuner\(tunerCount == 1 ? "" : "s") on \(device.DeviceID) are in use. Stop a recording or close another stream to free up a tuner."
@@ -1805,6 +1812,7 @@ final class AppState: ObservableObject {
                     }
                 }
             }
+            glog("[Watch] '\(title)' on \(device.DeviceID)")
             mgr.open(url: streamURL, title: title, device: device, appState: self)
             refreshTunerOccupancy()
         }
@@ -1877,7 +1885,11 @@ final class AppState: ObservableObject {
         let active   = tuners.filter { $0.VctNumber != nil }.count
         let recCount = recordingShows.filter { $0.hdhr_record == device.DeviceID }.count
         let vlcOpen  = VLCPlayerWindowManager.shared.currentDeviceID == device.DeviceID ? 1 : 0
-        glog("[TunerAudit] \(device.DeviceID): \(active)/\(device.TunerCount ?? 0) active  rec=\(recCount) vlc=\(vlcOpen)")
+        let auditLine = "\(device.DeviceID): \(active)/\(device.TunerCount ?? 0) active  rec=\(recCount) vlc=\(vlcOpen)"
+        if lastTunerAudit[device.DeviceID] != auditLine {
+            lastTunerAudit[device.DeviceID] = auditLine
+            glog("[TunerAudit] \(auditLine)")
+        }
 
         for show in recordingShows where show.hdhr_record == device.DeviceID {
             // Prefer exact tuner from the X-HDHomeRun-Resource response header (captured at stream start).
@@ -1943,6 +1955,7 @@ final class AppState: ObservableObject {
 
     func quit() {
         guard isRecording else {
+            glog("=== hdhrVCRplus quit ===")
             VLCBridge.shared.releasePlayer()
             recordingManager.stopAll()
             webServer.stop()
@@ -1961,11 +1974,13 @@ final class AppState: ObservableObject {
         NSApp.activate(ignoringOtherApps: true)
         switch alert.runModal() {
         case .alertFirstButtonReturn:  // keep recordings running, quit
+            glog("=== hdhrVCRplus quit (recordings kept running) ===")
             VLCBridge.shared.releasePlayer()
             webServer.stop()
             saveConfig()
             NSApplication.shared.terminate(nil)
         case .alertSecondButtonReturn: // stop all, then quit
+            glog("=== hdhrVCRplus quit (recordings stopped) ===")
             VLCBridge.shared.releasePlayer()
             recordingManager.stopAll()
             webServer.stop()

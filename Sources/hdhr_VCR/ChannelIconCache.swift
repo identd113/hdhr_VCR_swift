@@ -57,7 +57,11 @@ actor ChannelIconCache {
         guard let url = URL(string: urlString),
               let (data, resp) = try? await URLSession.shared.data(from: url),
               (resp as? HTTPURLResponse)?.statusCode == 200,
-              let img = NSImage(data: data) else { failedURLs.insert(urlString); return nil }
+              let img = NSImage(data: data) else {
+            failedURLs.insert(urlString)
+            glog("[Icons] download failed: \(urlString)", level: .warning)
+            return nil
+        }
 
         mem[urlString] = img
         if mem.count > 600 { mem.removeAll() }
