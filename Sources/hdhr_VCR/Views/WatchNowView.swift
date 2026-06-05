@@ -274,6 +274,11 @@ struct WatchNowRow: View {
                 Text("ch \(channel.GuideNumber)  \(channel.GuideName)\(channel.HD == 1 ? " HD" : "")")
                     .font(.caption.bold())
                     .foregroundStyle(.secondary)
+                if state.config.Signal_quality_enabled {
+                    SignalBarsView(bucket: signalBucket(guideName: channel.GuideName,
+                                                        frequency: channel.Frequency,
+                                                        in: state.channelSignalBuckets))
+                }
                 if managed?.show_recording == true {
                     Spacer(minLength: 6)
                     Image(systemName: "record.circle.fill")
@@ -308,7 +313,8 @@ struct WatchNowRow: View {
         HStack(spacing: 6) {
             if VLCBridge.shared.isAvailable {
                 Button {
-                    state.watchInApp(url: channel.URL ?? "", title: entry.Title, deviceId: device.DeviceID)
+                    state.watchInApp(url: channel.URL ?? "", title: entry.Title, deviceId: device.DeviceID,
+                                     guideNumber: channel.GuideNumber)
                 } label: {
                     Label("Watch", systemImage: "play.tv.fill").font(.caption.bold())
                 }

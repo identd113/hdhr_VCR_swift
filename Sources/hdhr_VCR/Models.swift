@@ -252,6 +252,10 @@ struct AppConfig: Equatable {
     // Web server
     var Web_server_enabled: Bool = false
     var Web_server_port:    Int  = 1980
+
+    // Signal quality
+    var Signal_quality_enabled:      Bool = false  // show signal bars in guide + web UI
+    var Signal_quality_alert_notify: Bool = false  // deliver system notification + Discord on dropout
 }
 
 extension AppConfig: Codable {
@@ -290,6 +294,8 @@ extension AppConfig: Codable {
         Discord_enabled         = (try? c.decode(Bool.self,   forKey: .Discord_enabled))         ?? !Discord_webhook_url.isEmpty
         Web_server_enabled      = (try? c.decode(Bool.self,   forKey: .Web_server_enabled))      ?? false
         Web_server_port         = (try? c.decode(Int.self,    forKey: .Web_server_port))         ?? 1980
+        Signal_quality_enabled      = (try? c.decode(Bool.self, forKey: .Signal_quality_enabled))      ?? false
+        Signal_quality_alert_notify = (try? c.decode(Bool.self, forKey: .Signal_quality_alert_notify)) ?? false
     }
 }
 
@@ -361,10 +367,11 @@ struct LineupEntry: Codable, Identifiable {
     var URL: String?
     var HD: Int?
     var Favorite: Int?
+    var Frequency: Int?
     var isFavorite: Bool { Favorite == 1 }
 
     private enum CodingKeys: String, CodingKey {
-        case GuideNumber, GuideName, URL, HD, Favorite
+        case GuideNumber, GuideName, URL, HD, Favorite, Frequency
     }
 }
 
@@ -391,9 +398,10 @@ struct GuideChannel: Codable {
 
 /// One entry from /status.json — only present when that tuner is actively streaming.
 struct DeviceTunerInfo: Decodable {
-    let Resource: String      // "tuner0", "tuner1", …
+    let Resource:  String     // "tuner0", "tuner1", …
     let VctNumber: String?    // channel number if locked
     let TargetIP:  String?    // client IP receiving the stream
+    let Frequency: Int?       // RF frequency in Hz — used as stable signal storage key
 }
 
 struct TunerStatus {
@@ -405,6 +413,21 @@ struct TunerStatus {
     var displayString: String {
         guard lockType != "none" else { return "Signal: no lock" }
         return "Signal: \(signalStrength)% · \(lockType.uppercased()) · \(String(format: "%.1f", bitrateMbps)) Mbps"
+    }
+}
+
+// MARK: - Signal Quality
+
+struct ChannelSignalSample: Codable {
+    var ts:  Date
+    var snq: Int
+}
+
+enum SignalBucket: String, Codable, Equatable {
+    case noData, poor, fair, good
+
+    init(_ v: Double) {
+        self = v < 0.33 ? .poor : v < 0.66 ? .fair : .good
     }
 }
 

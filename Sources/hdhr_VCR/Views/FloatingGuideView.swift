@@ -71,7 +71,9 @@ struct FloatingGuideView: View {
                             onToggleFavorite: { lu in
                                 guard let device = selectedDevice else { return }
                                 state.toggleFavorite(device: device, channel: lu)
-                            }
+                            },
+                            signalBuckets:    state.channelSignalBuckets,
+                            showSignalBars:   state.config.Signal_quality_enabled
                         )
                     }
                 }
@@ -278,7 +280,8 @@ struct FloatingGuideView: View {
                                 Button {
                                     state.watchInApp(url: selectedChannel?.URL ?? "",
                                                      title: entry.Title,
-                                                     deviceId: selectedDevice?.DeviceID)
+                                                     deviceId: selectedDevice?.DeviceID,
+                                                     guideNumber: selectedChannel?.GuideNumber)
                                 } label: {
                                     Label("Watch Now!", systemImage: "play.tv.fill")
                                 }

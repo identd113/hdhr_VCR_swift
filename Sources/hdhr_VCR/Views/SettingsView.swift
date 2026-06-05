@@ -515,6 +515,31 @@ struct SettingsView: View {
                                                   inFileViewerRootedAtPath: "")
                 }
             }
+
+            Section("Signal Quality") {
+                Toggle("Show signal bars in guide", isOn: $draft.Signal_quality_enabled)
+                    .help("Display signal quality bars in the cable guide and Watch Now view. Signal data is always collected in the background.")
+                Toggle("Send alerts on signal dropout", isOn: $draft.Signal_quality_alert_notify)
+                    .help("Send a system notification and Discord message when a recording's signal drops below 30% for ~20 seconds. Logging is always on regardless of this setting.")
+            }
+
+            if draft.Signal_quality_enabled {
+                Section("Scan Channels") {
+                    Text("Tune each channel briefly to sample signal quality. Results are stored and displayed as bars in the guide.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if let progress = state.signalScanProgress {
+                        Label(progress, systemImage: "antenna.radiowaves.left.and.right")
+                            .font(.caption)
+                        Button("Cancel Scan") { state.cancelSignalScan() }
+                            .foregroundStyle(.red)
+                    } else {
+                        ForEach(state.devices) { device in
+                            Button("Scan \(device.DeviceID)") { state.startSignalScan() }
+                        }
+                    }
+                }
+            }
         }
         .formStyle(.grouped)
         .navigationTitle("Advanced")

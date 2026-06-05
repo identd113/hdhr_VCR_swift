@@ -588,7 +588,7 @@ final class VLCPlayerWindowManager {
 
     /// Open (or bring forward) the player window and start playing url on device.
     /// If the window is already showing, the stream is switched immediately.
-    func open(url: String, title: String, device: HDHRDevice, appState: AppState) {
+    func open(url: String, title: String, device: HDHRDevice, appState: AppState, channelNumber: String? = nil) {
         self.appState = appState
         currentDeviceID = device.DeviceID
         VLCBridge.shared.minRate = Float(appState.config.Player_buffer_min_rate) / 100.0

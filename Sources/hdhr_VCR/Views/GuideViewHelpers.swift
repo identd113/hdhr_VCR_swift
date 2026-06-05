@@ -67,3 +67,36 @@ func sortedGuideChannels(_ channels: [GuideChannel], favorites: Set<String>) -> 
         return a.GuideNumber.channelSortKey < b.GuideNumber.channelSortKey
     }
 }
+
+// MARK: - Signal quality UI helpers
+
+/// Resolve a SignalBucket from the pre-computed snapshot. Falls back to .noData when frequency is nil.
+func signalBucket(guideName: String, frequency: Int?, in buckets: [String: SignalBucket]) -> SignalBucket {
+    guard let freq = frequency, freq > 0 else { return .noData }
+    return buckets["\(freq):\(guideName.lowercased())"] ?? .noData
+}
+
+struct SignalBarsView: View {
+    let bucket: SignalBucket
+
+    var body: some View {
+        if bucket != .noData {
+            HStack(alignment: .bottom, spacing: 1) {
+                bar(4); bar(7, bucket != .poor); bar(10, bucket == .good)
+            }
+        }
+    }
+
+    private func bar(_ h: CGFloat, _ filled: Bool = true) -> some View {
+        RoundedRectangle(cornerRadius: 0.5).frame(width: 3, height: h)
+            .foregroundColor(filled ? barColor : Color.secondary.opacity(0.25))
+    }
+
+    private var barColor: Color {
+        switch bucket {
+        case .poor:          return .red
+        case .fair:          return .yellow
+        case .good, .noData: return .green
+        }
+    }
+}

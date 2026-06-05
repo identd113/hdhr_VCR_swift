@@ -255,7 +255,19 @@ struct MenuContent: View {
 
             showInfoHeader(show, entry: currentEntry)
             Divider()
-            menuInfo("\(show.state.rawValue) · Channel \(show.show_channel)", font: .footnote)
+            Button(action: {}) {
+                HStack(spacing: 6) {
+                    Text("\(show.state.rawValue) · Channel \(show.show_channel)")
+                        .font(.footnote)
+                        .foregroundColor(Color(NSColor.labelColor))
+                    if state.config.Signal_quality_enabled,
+                       let lu = state.lineups[show.hdhr_record]?.first(where: { $0.GuideNumber == show.show_channel }) {
+                        SignalBarsView(bucket: signalBucket(guideName: lu.GuideName,
+                                                            frequency: lu.Frequency,
+                                                            in: state.channelSignalBuckets))
+                    }
+                }
+            }
             menuInfo("\(Self.timeFormatter.string(from: started)) · \(show.show_length) min", font: .footnote, secondary: true)
             if inBonusTime {
                 menuInfo("🏈 Bonus Time (+\(state.config.Sports_padding_minutes) min)", font: .footnote, secondary: true)

@@ -312,6 +312,12 @@ final class WebServer {
             let html = buildSchedPopHTML(state: state)
             return .ok(contentType: "text/html; charset=utf-8", body: Data(html.utf8))
 
+        case "/api/signal":
+            var out: [String: String] = [:]
+            for (key, bucket) in state.channelSignalBuckets { out[key] = bucket.rawValue }
+            let data = (try? JSONSerialization.data(withJSONObject: out)) ?? Data("{}".utf8)
+            return .ok(contentType: "application/json", body: data)
+
         default:
             return .notFound("Not found: \(path)")
         }
@@ -772,7 +778,22 @@ final class WebServer {
                     blockParts.append("<div class=\"\(cls)\" style=\"left:\(pct(cs))%;width:\(pct(ce - cs))%\" title=\"\(tip)\" \(da)\(showDA) onclick=\"showInfo(this)\"><div class=\"g-pi\"><span class=\"g-ti\">\(he(e.Title))</span>\(subH)</div>\(flagHTML)</div>")
                 }
 
-                rowParts.append("<div class=\"g-row\" data-dev=\"\(he(device.DeviceID))\" data-ch=\"\(he(ch.GuideNumber))\"><div class=\"g-ch\">\(logoHTML)<div class=\"g-cl\"><span class=\"g-cn\">\(he(chLabel))</span><span class=\"g-cname\">\(he(ch.GuideName))</span></div></div><div class=\"g-tl\">\(blockParts.joined())</div></div>")
+                let freqAttr  = ch.Frequency.map { "\($0)" } ?? ""
+                let gnameAttr = ch.GuideName.lowercased()
+                let sigBucket = freqAttr.isEmpty ? SignalBucket.noData
+                    : (state.channelSignalBuckets["\(freqAttr):\(gnameAttr)"] ?? .noData)
+                let sigHTML: String = {
+                    guard sigBucket != .noData else { return "" }
+                    let color = sigBucket == .poor ? "#e53935" : sigBucket == .fair ? "#fbc02d" : "#43a047"
+                    let b2Fill = sigBucket != .poor ? "fill:\(color)" : "fill:#555"
+                    let b3Fill = sigBucket == .good ? "fill:\(color)" : "fill:#555"
+                    return "<svg class=\"g-sig\" viewBox=\"0 0 11 10\" width=\"11\" height=\"10\" title=\"Signal: \(sigBucket.rawValue)\">"
+                        + "<rect x=\"0\" y=\"6\" width=\"3\" height=\"4\" fill=\"\(color)\"/>"
+                        + "<rect x=\"4\" y=\"3\" width=\"3\" height=\"7\" \(b2Fill)/>"
+                        + "<rect x=\"8\" y=\"0\" width=\"3\" height=\"10\" \(b3Fill)/>"
+                        + "</svg>"
+                }()
+                rowParts.append("<div class=\"g-row\" data-dev=\"\(he(device.DeviceID))\" data-ch=\"\(he(ch.GuideNumber))\" data-freq=\"\(he(freqAttr))\" data-gname=\"\(he(gnameAttr))\"><div class=\"g-ch\">\(logoHTML)<div class=\"g-cl\"><span class=\"g-cn\">\(he(chLabel))</span><span class=\"g-cname\">\(he(ch.GuideName))</span></div>\(sigHTML)</div><div class=\"g-tl\">\(blockParts.joined())</div></div>")
             }
         }
         let rowsHTML = rowParts.isEmpty
@@ -915,6 +936,7 @@ final class WebServer {
         .g-cl{overflow:hidden;flex:1}
         .g-cn{display:block;font-size:.68rem;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
         .g-cname{display:block;font-size:.72rem;color:var(--t1);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .g-sig{flex-shrink:0;align-self:center}
         /* 30-min gridlines */
         .g-tl{flex:1;position:relative;min-height:54px;background:repeating-linear-gradient(90deg,transparent,transparent calc(8.3333% - 1px),var(--b0) calc(8.3333% - 1px),var(--b0) 8.3333%)}
         .g-now-bar{position:absolute;top:0;bottom:0;width:2px;background:rgba(255,90,90,.75);z-index:1;pointer-events:none}
@@ -1554,7 +1576,31 @@ final class WebServer {
         (function(){
           if(!window.EventSource)return;
           var es=new EventSource('/api/events');
-          es.onmessage=function(e){try{var d=JSON.parse(e.data);if(d&&d.type)refreshGuide();}catch(x){}};
+          es.onmessage=function(e){
+            try{
+              var d=JSON.parse(e.data);
+              if(!d||!d.type)return;
+              if(d.type==='signal_update'&&d.freq&&d.gname&&d.bucket){
+                // Inline DOM update — no full reload needed
+                var bColors={poor:'#e53935',fair:'#fbc02d',good:'#43a047'};
+                var bc=bColors[d.bucket]||null;
+                document.querySelectorAll('.g-row[data-freq="'+d.freq+'"][data-gname="'+d.gname+'"]').forEach(function(row){
+                  var sig=row.querySelector('.g-sig');
+                  if(!bc){if(sig)sig.remove();return;}
+                  var svgStr='<svg class="g-sig" viewBox="0 0 11 10" width="11" height="10">'
+                    +'<rect x="0" y="6" width="3" height="4" fill="'+bc+'"/>'
+                    +'<rect x="4" y="3" width="3" height="7" fill="'+(d.bucket!=='poor'?bc:'#555')+'"/>'
+                    +'<rect x="8" y="0" width="3" height="10" fill="'+(d.bucket==='good'?bc:'#555')+'"/>'
+                    +'</svg>';
+                  var tmp=document.createElement('div');tmp.innerHTML=svgStr;
+                  if(sig){sig.replaceWith(tmp.firstChild);}
+                  else{var cl=row.querySelector('.g-ch');if(cl)cl.appendChild(tmp.firstChild);}
+                });
+              } else {
+                refreshGuide();
+              }
+            }catch(x){}
+          };
         })();
         </script>
         </body>
