@@ -770,6 +770,7 @@ final class AppState: ObservableObject {
                         extra: [("Note", "All tuners on \(show.hdhr_record) are busy at \(shortTime(show.show_next))", false)])
         }
         addShow(show)
+        webServer.broadcastEvent(["type": "show_added", "channel": show.show_channel, "device": show.hdhr_record])
         notify("Show Added", body: show.show_title, subtitle: type.rawValue)
         discordShow("✅ Show Added", show: show, color: 0x1ABC9C, enabled: config.Discord_on_show_added,
                     extra: [("Type", type.rawValue, true)])
@@ -1103,7 +1104,7 @@ final class AppState: ObservableObject {
             glog("[\(show.show_title)] Primary folder unavailable — recording to fallback: \(show.posixRecordDir)", level: .warning)
         }
         var endDate = show.show_end ?? Date().addingTimeInterval(Double(show.show_length) * 60)
-        // Bonus Time: extend recording past the guide end for sports shows so overtime isn't cut off
+        // Bonus Time: extend recording past the guide end when enabled on a show
         if config.Sports_padding_enabled && show.show_bonus_time {
             endDate = endDate.addingTimeInterval(Double(config.Sports_padding_minutes) * 60)
             glog("[\(show.show_title)] Bonus Time +\(config.Sports_padding_minutes) min applied")
@@ -1127,6 +1128,7 @@ final class AppState: ObservableObject {
             return
         }
         shows[index].show_recording = true; shows[index].show_recording_path = path
+        webServer.broadcastEvent(["type": "recording_started", "channel": shows[index].show_channel, "device": shows[index].hdhr_record])
         refreshTunerOccupancy()
         // Stamp notify_recording_time so the "Recording Soon" pre-notification won't re-fire
         shows[index].notify_recording_time = Date().addingTimeInterval(config.Notify_recording * 60)
@@ -1167,6 +1169,7 @@ final class AppState: ObservableObject {
         tunerStatus.removeValue(forKey: show.show_id)
         shows[index].show_recording = false
         shows[index].show_tuner_resource = ""
+        webServer.broadcastEvent(["type": "recording_stopped", "channel": show.show_channel, "device": show.hdhr_record])
         refreshTunerOccupancy()
         shows[index].show_last = Date()
 

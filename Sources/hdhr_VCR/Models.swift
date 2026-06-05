@@ -209,7 +209,7 @@ struct AppConfig: Equatable {
     var Watch_in_VLC: Bool = false
     var Watch_in_VLC_initialized: Bool = false  // set true after first auto-detect so user toggles are preserved
     var Player_buffer_min_rate: Int = 93        // adaptive buffer fill-phase floor (90–100); 100 = disabled
-    // Bonus Time: extends recording past the guide end for sports shows
+    // Bonus Time: extends recording past the guide end for any show
     var Sports_padding_enabled: Bool = true
     var Sports_padding_minutes: Int  = 30   // user-settable 10–60 min, default 30
     var Config_version: String = "2"

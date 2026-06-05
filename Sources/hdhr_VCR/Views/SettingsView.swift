@@ -310,9 +310,9 @@ struct SettingsView: View {
                     .help("Floor playback speed for the in-app player. Lower fills the 8-second live buffer faster; 100% disables buffering.")
                 }
 
-                // Bonus Time: add extra recording past the guide end for sports shows
-                Toggle("Bonus Time for sports", isOn: $draft.Sports_padding_enabled)
-                    .help("Records extra time after the guide end for shows tagged as sports, to capture overtime")
+                // Bonus Time: add extra recording past the guide end (sports shows default to enabled)
+                Toggle("Bonus Time", isOn: $draft.Sports_padding_enabled)
+                    .help("Records extra time after the guide end. Sports shows have this enabled by default; any show can use it.")
                 if draft.Sports_padding_enabled {
                     // Stepper visible only when Bonus Time is on; step by 5 min for convenience
                     Stepper("Bonus Time: \(draft.Sports_padding_minutes) min",

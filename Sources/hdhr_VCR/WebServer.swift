@@ -19,6 +19,10 @@ final class WebServer {
     private let queue = DispatchQueue(label: "hdhrVCRplus.webserver", qos: .utility)
     private weak var appState: AppState?
 
+    // SSE: open connections waiting for push events
+    private var sseConns: [NWConnection] = []
+    private let sseLock  = NSLock()
+
     // MARK: - Lifecycle
 
     func start(port: Int, appState: AppState, onState: @escaping (String?) -> Void) {
@@ -86,9 +90,60 @@ final class WebServer {
     func stop() {
         guard listener != nil else { return }
         stateCallback = nil   // prevent the .cancelled callback from surfacing as an error
+        sseLock.lock()
+        let dying = sseConns; sseConns.removeAll()
+        sseLock.unlock()
+        for c in dying { c.cancel() }
         listener?.cancel()
         listener = nil
         glog("[WebServer] Stopped")
+    }
+
+    // Push a JSON event to all open SSE clients.
+    func broadcastEvent(_ event: [String: Any]) {
+        guard let data = try? JSONSerialization.data(withJSONObject: event),
+              let json = String(data: data, encoding: .utf8) else { return }
+        let bytes = Data("data: \(json)\n\n".utf8)
+        sseLock.lock()
+        let conns = sseConns
+        sseLock.unlock()
+        for conn in conns {
+            conn.send(content: bytes, completion: .contentProcessed({ [weak self] err in
+                if err != nil { self?.removeSSE(conn) }
+            }))
+        }
+    }
+
+    private func removeSSE(_ conn: NWConnection) {
+        sseLock.lock()
+        sseConns.removeAll { $0 === conn }
+        sseLock.unlock()
+    }
+
+    private func registerSSE(_ conn: NWConnection) {
+        let header = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\n\r\n"
+        conn.send(content: Data(header.utf8), completion: .contentProcessed({ [weak self] err in
+            guard let self, err == nil else { conn.cancel(); return }
+            self.sseLock.lock()
+            self.sseConns.append(conn)
+            self.sseLock.unlock()
+            self.sseKeepalive(conn)
+        }))
+    }
+
+    private func sseKeepalive(_ conn: NWConnection) {
+        // Comments every 25s keep the connection alive through proxies; EventSource auto-reconnects if it drops.
+        queue.asyncAfter(deadline: .now() + 25) { [weak self] in
+            guard let self else { return }
+            self.sseLock.lock()
+            let alive = self.sseConns.contains { $0 === conn }
+            self.sseLock.unlock()
+            guard alive else { return }
+            conn.send(content: Data(": ping\n\n".utf8), completion: .contentProcessed({ [weak self] err in
+                if err != nil { self?.removeSSE(conn) }
+                else { self?.sseKeepalive(conn) }
+            }))
+        }
     }
 
     // MARK: - Connection handling
@@ -167,6 +222,9 @@ final class WebServer {
             let cleanPath   = path.components(separatedBy: "?").first ?? path
             let body: Data? = contentLength > 0 ? Data(bodyBytes.prefix(contentLength)) : nil
 
+            if cleanPath == "/api/events" && method == "GET" {
+                self.registerSSE(conn); return
+            }
             Task {
                 let response = await self.route(method: method, path: cleanPath, body: body, userAgent: userAgent)
                 self.send(response, on: conn)
@@ -347,6 +405,7 @@ final class WebServer {
             state.shows[idx].show_recording = false
         }
         state.deleteShow(show)
+        broadcastEvent(["type": "show_deleted", "channel": show.show_channel, "device": show.hdhr_record])
         return json(["ok": true, "title": show.show_title])
     }
 
@@ -397,6 +456,7 @@ final class WebServer {
         if let reset = obj["resetFailures"] as? Bool, reset { updated.clearFailures(); updated.show_active = true }
 
         state.updateShow(updated)
+        broadcastEvent(["type": "show_updated", "channel": updated.show_channel, "device": updated.hdhr_record])
         // If the show was just promoted to a seriesID type, search the guide immediately
         // so show_next is set before the next idle loop tick.
         if updated.show_use_seriesid && !show.show_use_seriesid {
@@ -751,7 +811,6 @@ final class WebServer {
         <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width,initial-scale=1">
-        <meta http-equiv="refresh" content="60">
         <title>hdhrVCR+</title>
         <script>(function(){try{var m=localStorage.getItem('theme')||'dark';if(m==='light'||(m==='auto'&&window.matchMedia('(prefers-color-scheme:light)').matches))document.documentElement.classList.add('lm');}catch(e){}})();</script>
         <style>
@@ -910,6 +969,7 @@ final class WebServer {
         @keyframes sbPop{0%{transform:scale(0) rotate(-240deg);opacity:0}55%{transform:scale(1.28) rotate(12deg);opacity:1}75%{transform:scale(.84) rotate(-3deg)}90%{transform:scale(1.04)}100%{transform:scale(1) rotate(0deg)}}
         @keyframes sbPulse{0%,100%{transform:scale(1) rotate(0deg)}50%{transform:scale(1.07) rotate(5deg)}}
         .sb-web{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;flex-shrink:0;clip-path:polygon(50% 0%,57.1% 23.4%,75% 6.7%,69.4% 30.6%,93.3% 25%,76.6% 42.9%,100% 50%,76.6% 57.1%,93.3% 75%,69.4% 69.4%,75% 93.3%,57.1% 76.6%,50% 100%,42.9% 76.6%,25% 93.3%,30.6% 69.4%,6.7% 75%,23.4% 57.1%,0% 50%,23.4% 42.9%,6.7% 25%,30.6% 30.6%,25% 6.7%,42.9% 23.4%);background:#e86e00;font-size:.5rem;font-weight:800;color:#fff;line-height:1;text-align:center}
+        .sb-web-lg{position:absolute;top:8px;right:10px;width:110px;height:110px;font-size:.72rem;pointer-events:none;z-index:2}
         .sb-anim{animation:sbPop .55s cubic-bezier(.22,1,.36,1) both,sbPulse 2.4s ease-in-out .6s infinite}
         /* ── Schedule popover ── */
         #sched-pop-c{background:var(--s3)!important;border-color:var(--b5)!important}
@@ -969,7 +1029,7 @@ final class WebServer {
         </div>
         <div id="sum" style="border:1px solid #333;border-radius:8px;margin-bottom:16px;display:flex;align-items:stretch;overflow:hidden;min-height:44px">
           <div id="sum-ph" style="flex:1;display:flex;align-items:center;padding:12px 16px;background:#1a1a1a">\(sumPhHTML)</div>
-          <div id="sum-c" style="display:none;flex:1;flex-direction:row">
+          <div id="sum-c" style="display:none;flex:1;flex-direction:row;position:relative">
             <img id="sum-poster" src="" alt="" style="width:72px;min-width:72px;object-fit:contain;display:none" onerror="this.style.display='none'">
             <div id="sum-grad" style="flex:1;padding:8px 10px;display:flex;flex-direction:column;gap:1px;overflow:hidden">
               <div id="sum-title" style="font-size:.92rem;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
@@ -982,18 +1042,19 @@ final class WebServer {
                 <button id="sum-btn" onclick="doRecord()" style="display:none;font-size:.75rem;padding:4px 12px;border-radius:5px;border:none;cursor:pointer;font-weight:600;background:#c0392b;color:#fff">Record</button>
                 <button id="sum-edit" onclick="doEditFromGuide()" style="display:none;font-size:.75rem;padding:4px 12px;border-radius:5px;cursor:pointer;font-weight:600">Edit</button>
                 <button id="sum-del" onclick="doDelete()" style="display:none;font-size:.75rem;padding:4px 12px;border-radius:5px;cursor:pointer;font-weight:600">Delete</button>
-                <span id="sum-bonus-star" class="sb-web" style="display:none"></span>
               </div>
               <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:3px">
                 <img id="sum-logo" src="" alt="" style="width:24px;height:24px;object-fit:contain;display:none" onerror="this.style.display='none'">
                 <span id="sum-ct" style="font-size:.68rem;color:rgba(255,255,255,.8)"></span>
               </div>
             </div>
+            <span id="sum-bonus-star" class="sb-web sb-web-lg" style="display:none"></span>
             <button onclick="closeSummary()" style="background:none;border:none;color:#666;font-size:.9rem;cursor:pointer;padding:6px 10px;align-self:flex-start;flex-shrink:0;margin-top:4px" title="Close">✕</button>
           </div>
         </div>
         <div id="rec-modal" onclick="if(event.target===this)cancelRecord()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:100;align-items:center;justify-content:center;padding:20px">
-          <div style="background:#1c1c1e;border:1px solid #383838;border-radius:12px;padding:20px 22px;width:400px;max-width:calc(100vw - 32px);max-height:calc(100vh - 40px);overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.6)">
+          <div style="background:#1c1c1e;border:1px solid #383838;border-radius:12px;padding:20px 22px;width:400px;max-width:calc(100vw - 32px);max-height:calc(100vh - 40px);overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.6);position:relative">
+            <span id="rm-bonus-star" class="sb-web sb-web-lg" style="display:none"></span>
             <div style="font-weight:700;font-size:.88rem;color:var(--t0);margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--b2)">Record Show</div>
             <div class="em-row">
               <div class="em-lbl">Show</div>
@@ -1004,7 +1065,7 @@ final class WebServer {
             <div id="rm-sid" class="em-row" style="display:none"><div class="em-lbl">SeriesID</div><div id="rm-sid-val" class="em-sid"></div></div>
             <div id="rm-days-row" class="em-row" style="display:none"><div class="em-lbl">Days</div><div class="em-days" id="rm-days"></div></div>
             <div class="em-row"><div class="em-lbl">Transcode</div><select id="rm-transcode" class="em-input"><option value="none">None (copy stream)</option><option value="heavy">Heavy (H.264 CRF 18)</option><option value="mobile">Mobile (480p H.264)</option><option value="internet720">Internet 720 (720p H.264)</option></select></div>
-            <div id="rm-bonus-row" style="margin-bottom:8px;display:flex;align-items:center;gap:8px"><label class="em-check"><input type="checkbox" id="rm-bonus" onchange="toggleRmBonusStar()"> Bonus Time (extend recording for sports)</label><span id="rm-bonus-star" class="sb-web" style="display:none">+<span id="rm-bonus-min"></span>m</span></div>
+            <div id="rm-bonus-row" style="margin-bottom:8px;display:flex;align-items:center;gap:8px"><label class="em-check"><input type="checkbox" id="rm-bonus" onchange="toggleRmBonusStar()"> Bonus Time (extend recording past guide end)</label></div>
             <div id="rm-tuner" style="display:none;font-size:.74rem;color:#ffcc66;background:#2a1e00;border:1px solid #7a5500;border-radius:6px;padding:7px 10px;margin-bottom:10px">⚠ All tuners are currently in use. This show will be queued and recorded as soon as a tuner is free.</div>
             <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--b2)">
               <button onclick="cancelRecord()" style="font-size:.78rem;padding:6px 16px;border-radius:6px;border:1px solid #444;background:transparent;color:#aaa;cursor:pointer">Cancel</button>
@@ -1013,7 +1074,8 @@ final class WebServer {
           </div>
         </div>
         <div id="edit-modal" onclick="if(event.target===this)closeEditShow()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:201;align-items:center;justify-content:center;padding:20px">
-          <div style="background:#1c1c1e;border:1px solid #383838;border-radius:12px;padding:20px 22px;width:400px;max-width:calc(100vw - 32px);max-height:calc(100vh - 40px);overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.6)">
+          <div style="background:#1c1c1e;border:1px solid #383838;border-radius:12px;padding:20px 22px;width:400px;max-width:calc(100vw - 32px);max-height:calc(100vh - 40px);overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.6);position:relative">
+            <span id="em-bonus-star" class="sb-web sb-web-lg" style="display:none"></span>
             <div style="font-weight:700;font-size:.88rem;color:var(--t0);margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--b2)">Edit Show</div>
             <div class="em-row"><div class="em-lbl">Title</div><input id="em-title-in" class="em-input" type="text" placeholder="Show title"></div>
             <div style="display:flex;gap:8px;margin-bottom:8px">
@@ -1022,7 +1084,7 @@ final class WebServer {
             </div>
             <div class="em-row"><div class="em-lbl">Type</div><div id="em-type-opts" style="display:flex;flex-direction:column;gap:5px;margin-top:2px"></div></div>
             <div id="em-days-row" class="em-row" style="display:none"><div class="em-lbl">Days</div><div class="em-days" id="em-days"></div></div>
-            <div id="em-bonus-row" style="margin-bottom:8px;display:flex;align-items:center;gap:8px"><label class="em-check"><input type="checkbox" id="em-bonus" onchange="toggleBonusStar()"> Bonus Time (extend recording for sports)</label><span id="em-bonus-star" class="sb-web" style="display:none">+<span id="em-bonus-min"></span>m</span></div>
+            <div id="em-bonus-row" style="margin-bottom:8px;display:flex;align-items:center;gap:8px"><label class="em-check"><input type="checkbox" id="em-bonus" onchange="toggleBonusStar()"> Bonus Time (extend recording past guide end)</label></div>
             <div class="em-row"><div class="em-lbl">Transcode</div><select id="em-transcode" class="em-input"><option value="none">None (copy stream)</option><option value="heavy">Heavy (H.264 CRF 18)</option><option value="mobile">Mobile (480p H.264)</option><option value="internet720">Internet 720 (720p H.264)</option></select></div>
             <div id="em-sid-row" style="display:none;margin-bottom:8px"><div class="em-lbl">SeriesID</div><div id="em-sid" class="em-sid"></div></div>
             <div id="em-fail-row" style="display:none" class="em-fail"><span id="em-fail-txt"></span><button id="em-reset" onclick="doEditReset()" style="font-size:.72rem;padding:3px 8px;border-radius:4px;border:1px solid currentColor;background:transparent;color:inherit;cursor:pointer;flex-shrink:0;white-space:nowrap">Reset</button></div>
@@ -1053,7 +1115,7 @@ final class WebServer {
         <script>
         \(tunerJS)
         \(recsByDevJS)
-        var _d='',_n='',_s=0,_e=0,_ser='';
+        var _d='',_n='',_s=0,_e=0,_ser='',_genre='';
         function hej(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
         // Theme: .lm class on <html> = light mode active
         var _mq=window.matchMedia('(prefers-color-scheme:light)');
@@ -1069,13 +1131,13 @@ final class WebServer {
         function gc(g){var m=isLM()?_gcLk:_gcDk;return m[(g||'').toLowerCase()]||(isLM()?'#d8d8d8':'#424242');}
         var _bonusMins=\(state.config.Sports_padding_minutes);
         function triggerSb(id){var el=document.getElementById(id);if(!el)return;el.classList.remove('sb-anim');void el.offsetWidth;el.classList.add('sb-anim');}
-        function toggleBonusStar(){var chk=document.getElementById('em-bonus');var star=document.getElementById('em-bonus-star');if(chk.checked){star.style.display='inline-flex';triggerSb('em-bonus-star');}else{star.style.display='none';star.classList.remove('sb-anim');}}
+        function toggleBonusStar(){var chk=document.getElementById('em-bonus');var star=document.getElementById('em-bonus-star');if(chk.checked){star.textContent='+'+_bonusMins+'m';star.style.display='inline-flex';triggerSb('em-bonus-star');}else{star.style.display='none';star.classList.remove('sb-anim');}}
         function ft(d){var h=d.getHours(),m=d.getMinutes(),ap=h>=12?'PM':'AM';h=h%12||12;return h+(m?':'+(m<10?'0':'')+m:'')+' '+ap;}
         function so(id,v){var e=document.getElementById(id);if(v){e.textContent=v;e.style.display='block';}else{e.style.display='none';}}
         function devFull(devId){var t=tuners[devId];return t&&t.t>0&&t.a>=t.t;}
         function showInfo(el){
           var d=el.dataset;
-          _d=d.device;_n=d.num;_s=+d.start;_e=+d.end;_ser=d.series||'';
+          _d=d.device;_n=d.num;_s=+d.start;_e=+d.end;_ser=d.series||'';_genre=d.genre||'';
           document.getElementById('sum-ph').style.display='none';
           var sc=document.getElementById('sum-c');sc.style.display='flex';sc.style.background=gc(d.genre);
           var pi=document.getElementById('sum-poster');
@@ -1161,9 +1223,9 @@ final class WebServer {
           });
           document.getElementById('rm-days-row').style.display='none';
           document.getElementById('rm-transcode').value='none';
-          document.getElementById('rm-bonus').checked=false;
-          document.getElementById('rm-bonus-min').textContent=_bonusMins;
-          var rbstar=document.getElementById('rm-bonus-star');rbstar.style.display='none';rbstar.classList.remove('sb-anim');
+          var _isSports=_genre.toLowerCase().indexOf('sports')>=0;
+          document.getElementById('rm-bonus').checked=_isSports;
+          var rbstar=document.getElementById('rm-bonus-star');rbstar.textContent='+'+_bonusMins+'m';if(_isSports){rbstar.style.display='inline-flex';triggerSb('rm-bonus-star');}else{rbstar.style.display='none';rbstar.classList.remove('sb-anim');}
           // Show tuner-full warning only when the show is live and that device has no free tuners
           var nowTs=Math.floor(Date.now()/1000);
           var isLive=(_s<=nowTs&&_e>nowTs);
@@ -1179,7 +1241,7 @@ final class WebServer {
           document.getElementById('rec-modal').style.display='flex';
         }
         function cancelRecord(){document.getElementById('rec-modal').style.display='none';var rbstar=document.getElementById('rm-bonus-star');rbstar.style.display='none';rbstar.classList.remove('sb-anim');}
-        function toggleRmBonusStar(){var chk=document.getElementById('rm-bonus');var star=document.getElementById('rm-bonus-star');if(chk.checked){star.style.display='inline-flex';triggerSb('rm-bonus-star');}else{star.style.display='none';star.classList.remove('sb-anim');}}
+        function toggleRmBonusStar(){var chk=document.getElementById('rm-bonus');var star=document.getElementById('rm-bonus-star');if(chk.checked){star.textContent='+'+_bonusMins+'m';star.style.display='inline-flex';triggerSb('rm-bonus-star');}else{star.style.display='none';star.classList.remove('sb-anim');}}
         function confirmRecord(){
           var checked=document.querySelector('input[name="rm-type"]:checked');
           var type=checked?checked.value:'single';
@@ -1238,6 +1300,10 @@ final class WebServer {
           });
         }
         function refreshGuide(){
+          var gw=document.querySelector('.gw');
+          var sl=gw?gw.scrollLeft:0,st=gw?gw.scrollTop:0;
+          var prev=document.querySelector('.g-prog.g-sel');
+          var prevStart=prev?prev.dataset.start:null,prevNum=prev?prev.dataset.num:null,prevDev=prev?prev.dataset.device:null;
           fetch('/').then(function(r){return r.text();}).then(function(html){
             var doc=new DOMParser().parseFromString(html,'text/html');
             var newGi=doc.querySelector('.gi'),oldGi=document.querySelector('.gi');
@@ -1248,6 +1314,13 @@ final class WebServer {
             if(newSb&&oldSb)oldSb.innerHTML=newSb.innerHTML;
             _rows=document.querySelectorAll('.g-row');
             setDev(curDev);
+            if(gw){gw.scrollLeft=sl;gw.scrollTop=st;}
+            if(prevStart){
+              var match=Array.from(document.querySelectorAll('.g-prog')).find(function(el){
+                return el.dataset.start===prevStart&&el.dataset.num===prevNum&&el.dataset.device===prevDev;
+              });
+              if(match)showInfo(match);
+            }
           }).catch(function(){});
         }
         function doEditFromGuide(){
@@ -1382,8 +1455,7 @@ final class WebServer {
           });
           updateDaysVisibility();
           document.getElementById('em-bonus').checked=d.bonus==='1';
-          document.getElementById('em-bonus-min').textContent=_bonusMins;
-          var ebstar=document.getElementById('em-bonus-star');
+          var ebstar=document.getElementById('em-bonus-star');ebstar.textContent='+'+_bonusMins+'m';
           if(d.bonus==='1'){ebstar.style.display='inline-flex';triggerSb('em-bonus-star');}else{ebstar.style.display='none';ebstar.classList.remove('sb-anim');}
           document.getElementById('em-bonus-row').style.display=_editRec?'none':'flex';
           document.getElementById('em-transcode').value=d.transcode||'none';
@@ -1477,6 +1549,12 @@ final class WebServer {
           if(!first)return;
           var prog=Array.from(first.querySelectorAll('.g-prog')).find(function(el){return +el.dataset.start<=nowTs&&+el.dataset.end>nowTs;});
           if(prog)showInfo(prog);
+        })();
+        // SSE: receive push events and refresh guide content in place (scroll + selection preserved)
+        (function(){
+          if(!window.EventSource)return;
+          var es=new EventSource('/api/events');
+          es.onmessage=function(e){try{var d=JSON.parse(e.data);if(d&&d.type)refreshGuide();}catch(x){}};
         })();
         </script>
         </body>

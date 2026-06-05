@@ -328,7 +328,7 @@ struct AddShowView: View {
                 (show.show_next ?? .distantFuture) <= Date() &&
                 (show.show_end  ?? .distantPast)   >  Date()
             }
-            let isSportsBonusEntry = entry.firstGenre?.lowercased().contains("sports") == true
+            let defaultBonusTimeOn = entry.firstGenre?.lowercased().contains("sports") == true
                                   && state.config.Sports_padding_enabled
             let managedShow: Show? = {
                 if let sid = entry.SeriesID, !sid.isEmpty {
@@ -508,7 +508,7 @@ struct AddShowView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
 
-            if isSportsBonusEntry {
+            if defaultBonusTimeOn {
                 StarburstBadge(minutes: state.config.Sports_padding_minutes, size: 100)
                     .padding(.trailing, 18).padding(.top, 8)
             }

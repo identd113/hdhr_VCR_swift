@@ -48,7 +48,7 @@ struct StarburstCelebValues: Animatable {
 
 // MARK: - StarburstBadge
 
-// Sports bonus-time badge — orange starburst with football emoji and "+N min" label.
+// Bonus Time badge — orange starburst with "+N min" label.
 //
 // Two stacked keyframeAnimators control the motion independently:
 //   • Pop-in  (popCount)   — slams in from 0, spinning -240°, overshoots scale, springs to rest

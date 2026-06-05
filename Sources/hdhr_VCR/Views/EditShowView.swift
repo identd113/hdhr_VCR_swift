@@ -19,10 +19,10 @@ struct EditShowView: View {
             if let s = show {
                 VStack(alignment: .leading, spacing: 0) {
                     form(for: s)
-                        .overlay(alignment: .bottomTrailing) {
+                        .overlay(alignment: .topTrailing) {
                             if show?.show_bonus_time == true && state.config.Sports_padding_enabled {
-                                StarburstBadge(minutes: state.config.Sports_padding_minutes, size: 90)
-                                    .padding(.trailing, 12).padding(.bottom, 12)
+                                StarburstBadge(minutes: state.config.Sports_padding_minutes, size: 150)
+                                    .padding(.trailing, 16).padding(.top, 16)
                                     .transition(.asymmetric(
                                         insertion: .identity,
                                         removal: .scale(scale: 0.05).combined(with: .opacity)
@@ -90,7 +90,7 @@ struct EditShowView: View {
                         set: { show?.show_length = $0 }), format: .number)
                         .frame(width: 60)
                 }
-                .help("Recording duration in minutes, set from the guide end time. Bonus Time adds extra minutes automatically for sports shows.")
+                .help("Recording duration in minutes, set from the guide end time. Bonus Time adds extra minutes past the guide end.")
 
                 if s.show_fail_count > 0 {
                     LabeledContent("Failures") {
