@@ -905,6 +905,11 @@ final class WebServer {
         .g-flag,.g-flag-rec{position:absolute;top:0;right:0;width:0;height:0;border-style:solid;border-width:0 18px 18px 0;pointer-events:none}
         .g-flag{border-color:transparent #ffd700 transparent transparent}
         .g-flag-rec{border-color:transparent #ff6060 transparent transparent}
+        /* ── Starburst bonus badge ── */
+        @keyframes sbPop{0%{transform:scale(0) rotate(-240deg);opacity:0}55%{transform:scale(1.28) rotate(12deg);opacity:1}75%{transform:scale(.84) rotate(-3deg)}90%{transform:scale(1.04)}100%{transform:scale(1) rotate(0deg)}}
+        @keyframes sbPulse{0%,100%{transform:scale(1) rotate(0deg)}50%{transform:scale(1.07) rotate(5deg)}}
+        .sb-web{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;flex-shrink:0;clip-path:polygon(50% 0%,57.1% 23.4%,75% 6.7%,69.4% 30.6%,93.3% 25%,76.6% 42.9%,100% 50%,76.6% 57.1%,93.3% 75%,69.4% 69.4%,75% 93.3%,57.1% 76.6%,50% 100%,42.9% 76.6%,25% 93.3%,30.6% 69.4%,6.7% 75%,23.4% 57.1%,0% 50%,23.4% 42.9%,6.7% 25%,30.6% 30.6%,25% 6.7%,42.9% 23.4%);background:#e86e00;font-size:.5rem;font-weight:800;color:#fff;line-height:1;text-align:center}
+        .sb-anim{animation:sbPop .55s cubic-bezier(.22,1,.36,1) both,sbPulse 2.4s ease-in-out .6s infinite}
         /* ── Schedule popover ── */
         #sched-pop-c{background:var(--s3)!important;border-color:var(--b5)!important}
         .sp-sec{padding:10px 14px}
@@ -976,6 +981,7 @@ final class WebServer {
                 <button id="sum-btn" onclick="doRecord()" style="display:none;font-size:.75rem;padding:4px 12px;border-radius:5px;border:none;cursor:pointer;font-weight:600;background:#c0392b;color:#fff">Record</button>
                 <button id="sum-edit" onclick="doEditFromGuide()" style="display:none;font-size:.75rem;padding:4px 12px;border-radius:5px;cursor:pointer;font-weight:600">Edit</button>
                 <button id="sum-del" onclick="doDelete()" style="display:none;font-size:.75rem;padding:4px 12px;border-radius:5px;cursor:pointer;font-weight:600">Delete</button>
+                <span id="sum-bonus-star" class="sb-web" style="display:none"></span>
               </div>
               <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:3px">
                 <img id="sum-logo" src="" alt="" style="width:24px;height:24px;object-fit:contain;display:none" onerror="this.style.display='none'">
@@ -1014,7 +1020,7 @@ final class WebServer {
             </div>
             <div class="em-row"><div class="em-lbl">Type</div><div id="em-type-opts" style="display:flex;flex-direction:column;gap:5px;margin-top:2px"></div></div>
             <div id="em-days-row" class="em-row" style="display:none"><div class="em-lbl">Days</div><div class="em-days" id="em-days"></div></div>
-            <div id="em-bonus-row" style="margin-bottom:8px"><label class="em-check"><input type="checkbox" id="em-bonus"> Bonus Time (extend recording for sports)</label></div>
+            <div id="em-bonus-row" style="margin-bottom:8px;display:flex;align-items:center;gap:8px"><label class="em-check"><input type="checkbox" id="em-bonus" onchange="toggleBonusStar()"> Bonus Time (extend recording for sports)</label><span id="em-bonus-star" class="sb-web" style="display:none">+<span id="em-bonus-min"></span>m</span></div>
             <div class="em-row"><div class="em-lbl">Transcode</div><select id="em-transcode" class="em-input"><option value="none">None (copy stream)</option><option value="heavy">Heavy (H.264 CRF 18)</option><option value="mobile">Mobile (480p H.264)</option><option value="internet720">Internet 720 (720p H.264)</option></select></div>
             <div id="em-sid-row" style="display:none;margin-bottom:8px"><div class="em-lbl">SeriesID</div><div id="em-sid" class="em-sid"></div></div>
             <div id="em-fail-row" style="display:none" class="em-fail"><span id="em-fail-txt"></span><button id="em-reset" onclick="doEditReset()" style="font-size:.72rem;padding:3px 8px;border-radius:4px;border:1px solid currentColor;background:transparent;color:inherit;cursor:pointer;flex-shrink:0;white-space:nowrap">Reset</button></div>
@@ -1059,6 +1065,9 @@ final class WebServer {
         var _gcDk={drama:'hsl(216,48%,35%)',comedy:'hsl(47,48%,35%)',news:'hsl(342,43%,35%)',sports:'hsl(119,48%,31%)',reality:'hsl(25,48%,35%)',movie:'hsl(270,58%,38%)',talk:'hsl(173,43%,34%)',children:'hsl(315,43%,35%)'};
         var _gcLk={drama:'hsl(216,55%,88%)',comedy:'hsl(47,65%,88%)',news:'hsl(342,55%,88%)',sports:'hsl(119,60%,87%)',reality:'hsl(25,65%,88%)',movie:'hsl(270,62%,90%)',talk:'hsl(173,55%,87%)',children:'hsl(315,60%,88%)'};
         function gc(g){var m=isLM()?_gcLk:_gcDk;return m[(g||'').toLowerCase()]||(isLM()?'#d8d8d8':'#424242');}
+        var _bonusMins=\(state.config.Sports_padding_minutes);
+        function triggerSb(id){var el=document.getElementById(id);if(!el)return;el.classList.remove('sb-anim');void el.offsetWidth;el.classList.add('sb-anim');}
+        function toggleBonusStar(){var chk=document.getElementById('em-bonus');var star=document.getElementById('em-bonus-star');if(chk.checked){star.style.display='inline-flex';triggerSb('em-bonus-star');}else{star.style.display='none';star.classList.remove('sb-anim');}}
         function ft(d){var h=d.getHours(),m=d.getMinutes(),ap=h>=12?'PM':'AM';h=h%12||12;return h+(m?':'+(m<10?'0':'')+m:'')+' '+ap;}
         function so(id,v){var e=document.getElementById(id);if(v){e.textContent=v;e.style.display='block';}else{e.style.display='none';}}
         function devFull(devId){var t=tuners[devId];return t&&t.t>0&&t.a>=t.t;}
@@ -1086,6 +1095,8 @@ final class WebServer {
           var edit=document.getElementById('sum-edit');
           btn.style.display='none';edit.style.display='none';del.style.display='none';note.style.display='none';
           del.disabled=false;del.textContent='Delete';del.classList.remove('danger');del.style.background='';del.style.color='';
+          var bstar=document.getElementById('sum-bonus-star');
+          bstar.style.display='none';bstar.classList.remove('sb-anim');
           if(+d.recording){
             note.textContent='● Recording now';note.style.color=isLM()?'#cc2020':'#ff8080';note.style.display='inline';
             del.textContent='Stop & Delete';del.classList.add('danger');del.style.display='inline-block';
@@ -1093,6 +1104,7 @@ final class WebServer {
             note.textContent='★ Scheduled';note.style.color='var(--t2)';note.style.display='inline';
             del.textContent='Remove';del.style.display='inline-block';
             if(d.showId)edit.style.display='inline-block';
+            if(d.showBonus==='1'){bstar.textContent='+'+_bonusMins+'m';bstar.style.display='inline-flex';triggerSb('sum-bonus-star');}
           } else {
             var nowTs=Math.floor(Date.now()/1000);
             var isLive=(_s<=nowTs&&_e>nowTs);
@@ -1111,6 +1123,7 @@ final class WebServer {
           document.getElementById('sum-c').style.display='none';
           document.getElementById('sum-ph').style.display='flex';
           document.querySelectorAll('.g-prog.g-sel').forEach(function(b){b.classList.remove('g-sel');});
+          var bstar=document.getElementById('sum-bonus-star');bstar.style.display='none';bstar.classList.remove('sb-anim');
         }
         var recOpts=[
           {v:'single',        l:'Single episode',       d:'Record this airing only',               s:false},
@@ -1363,7 +1376,10 @@ final class WebServer {
           });
           updateDaysVisibility();
           document.getElementById('em-bonus').checked=d.bonus==='1';
-          document.getElementById('em-bonus-row').style.display=_editRec?'none':'block';
+          document.getElementById('em-bonus-min').textContent=_bonusMins;
+          var ebstar=document.getElementById('em-bonus-star');
+          if(d.bonus==='1'){ebstar.style.display='inline-flex';triggerSb('em-bonus-star');}else{ebstar.style.display='none';ebstar.classList.remove('sb-anim');}
+          document.getElementById('em-bonus-row').style.display=_editRec?'none':'flex';
           document.getElementById('em-transcode').value=d.transcode||'none';
           var sid=d.seriesid||'';
           var sidRow=document.getElementById('em-sid-row');
@@ -1379,7 +1395,7 @@ final class WebServer {
           document.getElementById('em-del').textContent=_editRec?'Stop & Delete':'Delete';
           document.getElementById('edit-modal').style.display='flex';
         }
-        function closeEditShow(){document.getElementById('edit-modal').style.display='none';}
+        function closeEditShow(){document.getElementById('edit-modal').style.display='none';var ebstar=document.getElementById('em-bonus-star');ebstar.style.display='none';ebstar.classList.remove('sb-anim');}
         function doEditPause(){
           var pb=document.getElementById('em-pause');
           pb.disabled=true;pb.textContent='…';
