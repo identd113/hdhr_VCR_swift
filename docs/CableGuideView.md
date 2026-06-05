@@ -24,18 +24,7 @@ Each show occupies a rectangular block spanning `duration × pxPerMin` pixels wi
 - **Background**: genre color (see below) at full opacity for on-air shows; 75% opacity for future shows
 - **Show title**: white, 11pt semibold (bold when selected), padded 4pt top and 4pt sides; episode title shown below at 9pt when block > 90pt wide; up to 1 line each
 
-**Block background colors by genre:**
-| Genre | Color |
-|---|---|
-| Drama | Blue (hue 0.60, sat 0.65, bri 0.62) |
-| Comedy | Amber (hue 0.13, sat 0.65, bri 0.62) |
-| News | Crimson (hue 0.95, sat 0.60, bri 0.58) |
-| Sports | Green (hue 0.33, sat 0.65, bri 0.56) |
-| Reality | Orange (hue 0.07, sat 0.65, bri 0.62) |
-| Movie | Vivid purple (hue 0.75, sat 0.80, bri 0.68) |
-| Talk | Teal (hue 0.48, sat 0.60, bri 0.58) |
-| Children / Kids | Magenta-pink (hue 0.875, sat 0.60, bri 0.62) |
-| No genre | `Color(white: 0.22)` grey |
+Block background colors are genre-driven — see [Color System](#color-system) below for the full map and fallback logic.
 
 **Block decorations (Z-ordered bottom to top):**
 1. **Filter-dimmed** — non-matching genre blocks at 20% opacity, `allowsHitTesting(false)`
