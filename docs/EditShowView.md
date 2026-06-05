@@ -92,16 +92,7 @@ When `show.show_fail_count > 0`, a "Failures: N — reason" row appears in orang
 
 ### Save — `save()`
 
-Applies `airDays` and series type flags to the local `show`, applies `recordFolder` to both `show_dir` and `show_temp_dir`, then calls `state.updateShow(s)`:
-
-```swift
-func updateShow(_ show: Show) {
-    guard let i = shows.firstIndex(where: { $0.show_id == show.show_id }) else { return }
-    shows[i] = show; saveConfig()
-}
-```
-
-Replaces the matching show in `state.shows` by ID, then writes the config to disk. The window dismisses after save.
+Applies `airDays` and series type flags to the local `show`, applies `recordFolder` to both `show_dir` and `show_temp_dir`, then calls `state.updateShow(s)`. `updateShow` replaces the matching show by ID, saves config, and for any active, non-paused, non-recording, non-single show fires `scheduleNextAir` immediately in an async Task — so type or channel changes take effect without waiting for the next idle loop tick. The window dismisses after save.
 
 ### Delete
 

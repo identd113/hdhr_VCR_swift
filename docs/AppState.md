@@ -80,7 +80,7 @@ Falls back to **SiliconDust cloud API** (`http://discover.hdhomerun.com/discover
 |---|---|
 | `@Published webServerRunning: Bool` | `true` once NWListener reaches `.ready` state |
 | `@Published webServerError: String?` | Non-nil when the listener fails (port in use, OS error, etc.) |
-| `setupWebServer()` | Starts, restarts, or stops the server based on `config.Web_server_enabled` and `config.Web_server_port`. Called at step 3 of `startup()` and again whenever Settings saves a changed web server config. |
+| `setupWebServer()` | Starts, restarts, or stops the server based on `config.Web_server_enabled` and `config.Web_server_port`. Called at step 4 of `startup()` and again whenever Settings saves a changed web server config. |
 | `discordWebDelete(_ show: Show)` | `@MainActor`. Called by `WebServer.handleDelete` before clearing state. Edits the existing "Recording Started" Discord embed in-place (if `discord_start_msg_id` is non-empty) using `Discord_on_start` as the gate — the embed was created under that flag, so the update follows the same preference. No-op when `show_recording == false` or `discord_start_msg_id` is empty. |
 
 The web server is stopped explicitly in all three `quit()` exit branches before `NSApplication.terminate(nil)`.
@@ -148,7 +148,7 @@ In a SwiftUI `.menu`-style `MenuBarExtra`, the menu body re-evaluates on every `
 
 `rebuildMenuEntries()` is called from `guideByDevice.didSet` (after every guide load) and from the idle loop (guarded by `menuIsOpen`). It rebuilds: `managedShowBySeriesID`/`managedShowByTitle` (O(1) show lookups for WatchNow + menus), `channelImageURLs` (logo URL map for WatchNow), `menuScheduledEntry`/`menuUpcomingSlots` (pre-computed guide matches for scheduled/paused menus), and `conflictingShowIDs` (one O(N²) conflict pass instead of one per open).
 
-**Conflict detection** uses `candidateShows = shows.filter { show_active && !show_paused }` — this includes currently-recording shows (`show_recording == true`), unlike `activeShows` which excludes them. A scheduled show that overlaps an already-recording show is therefore correctly flagged. `conflictNotifiedKeys` (keyed by `"showID-show_next_epoch"`) is pruned on each `scheduleNextAir` call so stale epoch keys don't accumulate across airings.
+**Conflict detection** uses `candidateShows = shows.filter { show_active && !show_paused }` — this includes currently-recording shows (`show_recording == true`), unlike `activeShows` which excludes them. A scheduled show that overlaps an already-recording show is therefore correctly flagged. `conflictNotifiedEpochs: [String: TimeInterval]` (keyed by `show_id`, value = `show_next` epoch) is cleared per show on each `scheduleNextAir`, fail-threshold pause, and manual stop — so stale entries don't accumulate across airings.
 
 ---
 

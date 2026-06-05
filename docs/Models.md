@@ -76,7 +76,7 @@ Two mutating methods on `Show` consolidate the repeated failure-state field grou
 ## GuideEntry Notable Fields
 
 - `Filter: [String]?` — genre tags (e.g. `["Drama", "Series"]`). Absent from some devices; decodes as `nil` when key is missing.
-- `firstGenre: String?` — computed shorthand for `Filter?.first`; used for guide cell coloring and genre filter picker.
+- `firstGenre: String?` — computed property on `Filter`; returns `"Movie"` when `Filter` contains `"Movie"` or `"Movies"` (regardless of position), otherwise returns the first element that is not `"series"` (case-insensitive). Used for guide cell coloring and genre filter picker.
 - `episodeInfoLabel: String?` — computed property; joins `EpisodeNumber` and `EpisodeTitle` with `" · "`, returning `nil` when both are absent or empty. Used in WatchNowView, AddShowView, and FloatingGuideView summary panels.
 - `deviceId: String` (default `""`) — **not in JSON; excluded from `CodingKeys`**. Stamped by `GuideStore.buildIndex` from the owning device's `DeviceID` so the device identity travels with the entry.
 - `channelNum: String` (default `""`) — **not in JSON; excluded from `CodingKeys`**. Stamped by `GuideStore.buildIndex` alongside `deviceId` so managed-show slot keys can be built from the entry alone.

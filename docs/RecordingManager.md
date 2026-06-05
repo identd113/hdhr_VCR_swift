@@ -27,7 +27,7 @@ Each recording produces **two ps lines**: `caffeinate -i` (parent) + `curl` (chi
 - curl `--connect-timeout 10` — aborts if the TCP connection to the tuner is not established within 10 seconds (catches unreachable devices quickly without waiting for `--max-time`)
 - curl `--max-time` = `durationSeconds + 120` (2-minute buffer against network stalls)
 - PIDs stored in `pids: [String: Int32]`; liveness checked via `isRunning(showId:)` — see below.
-- `--dump-header /tmp/hdhrVCRplus-{showId}.headers` is always passed to curl so response headers are captured to disk. The file is used for two purposes after the stream starts (see below).
+- `--dump-header {NSTemporaryDirectory()}hdhrVCRplus-{showId}.headers` is always passed to curl so response headers are captured to disk. The file is used for two purposes after the stream starts (see below).
 
 ## Stop
 

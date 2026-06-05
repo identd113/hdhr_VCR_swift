@@ -22,8 +22,7 @@ The guide fills the entire available area below its parent's toolbar and to the 
 ### Guide grid cells (show blocks)
 Each show occupies a rectangular block spanning `duration × pxPerMin` pixels wide and `rowH - 2` (50pt) tall. Inside the block:
 - **Background**: genre color (see below) at full opacity for on-air shows; 75% opacity for future shows
-- **Show title**: white, 11pt bold, padded 4pt top and 8pt left, up to 4 lines, `lineLimit` set to available height
-- **Time label**: `"8:00 PM"` in white at 80% opacity, 9pt, at the top-left
+- **Show title**: white, 11pt semibold (bold when selected), padded 4pt top and 4pt sides; episode title shown below at 9pt when block > 90pt wide; up to 1 line each
 
 **Block background colors by genre:**
 | Genre | Color |
@@ -124,28 +123,29 @@ Color logic is in **module-level functions** (not `private` on `CableGuideView`)
 ### Genre color map (`_genreColorMap`)
 
 ```swift
-"drama":    blue          (hue 0.60, sat 0.65, bri 0.52)
-"comedy":   amber         (hue 0.13, sat 0.65, bri 0.52)
-"news":     crimson       (hue 0.95, sat 0.60, bri 0.50)
-"sports":   green         (hue 0.33, sat 0.65, bri 0.46)
-"reality":  orange        (hue 0.07, sat 0.65, bri 0.52)
-"movie":    purple        (hue 0.75, sat 0.65, bri 0.50)
-"talk":     teal          (hue 0.48, sat 0.60, bri 0.48)
-"children": magenta-pink  (hue 0.875, sat 0.60, bri 0.52)
+"drama":    blue          (hue 0.60, sat 0.65, bri 0.62)
+"comedy":   amber         (hue 0.13, sat 0.65, bri 0.62)
+"news":     crimson       (hue 0.95, sat 0.60, bri 0.58)
+"sports":   green         (hue 0.33, sat 0.65, bri 0.56)
+"reality":  orange        (hue 0.07, sat 0.65, bri 0.62)
+"movie":    vivid purple  (hue 0.75, sat 0.80, bri 0.68)
+"talk":     teal          (hue 0.48, sat 0.60, bri 0.58)
+"children": magenta-pink  (hue 0.875, sat 0.60, bri 0.62)
+"kids":     (alias — same as children)
 ```
 
-`movie` (purple) and `children` (magenta-pink) use distinct hues (270° vs 315°) so they remain visually separate even at low saturation. The web guide uses the same hues in CSS HSL form.
+`movie` (vivid purple, 270°) and `children` (magenta-pink, 315°) use distinct hues so they remain visually separate. The web guide uses the same hues in CSS HSL form.
 
 ### Fallback — no genre
 
-Shows with no recognized genre tag (`GuideEntry.Filter` absent or unmatched) render as **grey** (`Color(white: 0.32)`). On-air grey shows use full opacity; not-airing use `.opacity(0.75)` (slightly darker). The web guide's `--pg` variable (`#2c2c2c` dark / `#e0e0e8` light) serves the same role for untagged blocks.
+Shows with no recognized genre tag (`GuideEntry.Filter` absent or unmatched) render as **grey** (`Color(white: 0.22)`). On-air grey shows use full opacity; not-airing use `.opacity(0.75)` (slightly darker). The web guide's default block (`#2c2c2c` dark) serves the same role.
 
 ### `guideEntryColor(for:onAir:)`
 
 ```swift
 func guideEntryColor(for entry: GuideEntry, onAir: Bool) -> Color {
     let base = _genreColorMap[entry.firstGenre?.lowercased() ?? ""]
-             ?? _guidePalette[abs((entry.SeriesID ?? entry.Title).hashValue) % 8]
+             ?? Color(white: 0.22)  // grey for untagged shows
     return onAir ? base : base.opacity(0.75)  // future shows dimmed 25%
 }
 ```
@@ -167,7 +167,7 @@ The `lineupEntry?.GuideNumber` field is included because a `nil → non-nil` cha
 | Condition | Visual |
 |---|---|
 | On-air (unselected) | Full opacity + `Color.white.opacity(0.12)` white wash overlay |
-| Selected | White stroke border (2.5pt) + `checkmark.circle.fill` icon + `Color.white.opacity(0.15)` fill |
+| Selected | White stroke border (2.5pt) + `Color.white.opacity(0.15)` fill overlay |
 | Currently recording | Red stroke border (1.5pt) + **red 22pt right-angle triangle** (`#ff6060`) top-right corner via `ManagedFlagView(recording: true)` |
 | Starts within 30 min | Orange stroke border (1.5pt) + `clock.badge.fill` icon (orange), top-right area |
 | Managed but not recording | Yellow 22pt right-angle triangle (`ManagedFlagView(recording: false)`) top-right corner |
@@ -176,7 +176,7 @@ The `lineupEntry?.GuideNumber` field is included because a `nil → non-nil` cha
 
 Recording takes visual priority: the red triangle is shown when `isRecording`; yellow only when `isManaged && !isRecording`. The red circle dot decoration was removed — the triangle alone communicates both states.
 
-**Managed triangle sizing rationale**: the triangle is 22pt so the 8pt red recording dot (offset `x: cellW-12, y: 3`) sits fully inside the triangle without overflowing. Triangle vertices: `(cellW-22, 0) → (cellW, 0) → (cellW, 22)` — right angle at top-right corner.
+**Managed triangle sizing**: 22pt right-angle triangle, upper-right corner. Vertices: `(cellW-22, 0) → (cellW, 0) → (cellW, 22)`.
 
 Recording vs. next-up precedence: `isNextUp` is only true when `!isRecording` — the red recording state always takes visual priority. Both use SeriesID-first matching with title as fallback to avoid false positives when unrelated shows share a name.
 

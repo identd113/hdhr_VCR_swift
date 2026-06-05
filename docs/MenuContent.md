@@ -68,7 +68,14 @@ Windows are opened with a dedicated `open(_:)` helper rather than calling `openW
 private func open(_ id: String) {
     DispatchQueue.main.async {
         NSApp.activate(ignoringOtherApps: true)
-        // Bring existing window to front instead of opening a duplicate
+        let title: String
+        switch id {
+        case "add-show":  title = "Add Show"
+        case "edit-show": title = "Edit Show"
+        case "settings":  title = "Settings"
+        case "watch-now": title = "Watch Now"
+        default:          title = id   // cable-guide: not in map, always opens via openWindow
+        }
         if let w = NSApp.windows.first(where: { $0.title == title }) {
             w.makeKeyAndOrderFront(nil); return
         }
