@@ -718,12 +718,13 @@ final class AppState: ObservableObject {
 
     // MARK: - Add show from guide entry (called by menu)
 
-    func addShowFromGuide(entry: GuideEntry, type: ShowState, device: HDHRDevice, channel: LineupEntry, airDays: [String]? = nil, transcode: String? = nil) {
+    func addShowFromGuide(entry: GuideEntry, type: ShowState, device: HDHRDevice, channel: LineupEntry, airDays: [String]? = nil, transcode: String? = nil, bonusTime: Bool = false) {
         // Use the default directory automatically; user can override per-show via Edit.
         let folder = defaultSaveDir
 
         var show = Show.blank(channel: channel.GuideNumber, device: device.DeviceID)
-        show.show_transcode = transcode ?? config.Default_transcode
+        show.show_transcode  = transcode ?? config.Default_transcode
+        show.show_bonus_time = bonusTime
         show.show_title     = entry.Title
         show.show_length    = entry.durationMinutes
         show.show_next      = entry.startDate

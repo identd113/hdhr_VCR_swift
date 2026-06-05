@@ -300,9 +300,10 @@ final class WebServer {
         let nowTs        = Int(Date().timeIntervalSince1970)
         let recStarted   = entry.StartTime <= nowTs && entry.EndTime > nowTs
         let newActive    = recStarted && !tunerFull ? activeTuners + 1 : activeTuners
-        let airDays  = obj["airDays"]   as? [String]
+        let airDays   = obj["airDays"]   as? [String]
         let transcode = obj["transcode"] as? String
-        state.addShowFromGuide(entry: entry, type: showType, device: device, channel: ch, airDays: airDays, transcode: transcode)
+        let bonusTime = obj["bonusTime"] as? Bool ?? false
+        state.addShowFromGuide(entry: entry, type: showType, device: device, channel: ch, airDays: airDays, transcode: transcode, bonusTime: bonusTime)
         return json(["ok": true, "title": entry.Title, "tunerFull": tunerFull,
                      "recStarted": recStarted, "tunerActive": newActive, "tunerTotal": total])
     }
@@ -1003,6 +1004,7 @@ final class WebServer {
             <div id="rm-sid" class="em-row" style="display:none"><div class="em-lbl">SeriesID</div><div id="rm-sid-val" class="em-sid"></div></div>
             <div id="rm-days-row" class="em-row" style="display:none"><div class="em-lbl">Days</div><div class="em-days" id="rm-days"></div></div>
             <div class="em-row"><div class="em-lbl">Transcode</div><select id="rm-transcode" class="em-input"><option value="none">None (copy stream)</option><option value="heavy">Heavy (H.264 CRF 18)</option><option value="mobile">Mobile (480p H.264)</option><option value="internet720">Internet 720 (720p H.264)</option></select></div>
+            <div id="rm-bonus-row" style="margin-bottom:8px;display:flex;align-items:center;gap:8px"><label class="em-check"><input type="checkbox" id="rm-bonus" onchange="toggleRmBonusStar()"> Bonus Time (extend recording for sports)</label><span id="rm-bonus-star" class="sb-web" style="display:none">+<span id="rm-bonus-min"></span>m</span></div>
             <div id="rm-tuner" style="display:none;font-size:.74rem;color:#ffcc66;background:#2a1e00;border:1px solid #7a5500;border-radius:6px;padding:7px 10px;margin-bottom:10px">⚠ All tuners are currently in use. This show will be queued and recorded as soon as a tuner is free.</div>
             <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--b2)">
               <button onclick="cancelRecord()" style="font-size:.78rem;padding:6px 16px;border-radius:6px;border:1px solid #444;background:transparent;color:#aaa;cursor:pointer">Cancel</button>
@@ -1159,6 +1161,9 @@ final class WebServer {
           });
           document.getElementById('rm-days-row').style.display='none';
           document.getElementById('rm-transcode').value='none';
+          document.getElementById('rm-bonus').checked=false;
+          document.getElementById('rm-bonus-min').textContent=_bonusMins;
+          var rbstar=document.getElementById('rm-bonus-star');rbstar.style.display='none';rbstar.classList.remove('sb-anim');
           // Show tuner-full warning only when the show is live and that device has no free tuners
           var nowTs=Math.floor(Date.now()/1000);
           var isLive=(_s<=nowTs&&_e>nowTs);
@@ -1173,7 +1178,8 @@ final class WebServer {
           };
           document.getElementById('rec-modal').style.display='flex';
         }
-        function cancelRecord(){document.getElementById('rec-modal').style.display='none';}
+        function cancelRecord(){document.getElementById('rec-modal').style.display='none';var rbstar=document.getElementById('rm-bonus-star');rbstar.style.display='none';rbstar.classList.remove('sb-anim');}
+        function toggleRmBonusStar(){var chk=document.getElementById('rm-bonus');var star=document.getElementById('rm-bonus-star');if(chk.checked){star.style.display='inline-flex';triggerSb('rm-bonus-star');}else{star.style.display='none';star.classList.remove('sb-anim');}}
         function confirmRecord(){
           var checked=document.querySelector('input[name="rm-type"]:checked');
           var type=checked?checked.value:'single';
@@ -1183,7 +1189,7 @@ final class WebServer {
           var btn=document.getElementById('sum-btn');
           btn.disabled=true;btn.textContent='Scheduling…';
           fetch('/api/record',{method:'POST',headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({deviceId:_d,guideNumber:_n,startTime:_s,endTime:_e,showType:type,airDays:airDays,transcode:transcode})})
+            body:JSON.stringify({deviceId:_d,guideNumber:_n,startTime:_s,endTime:_e,showType:type,airDays:airDays,transcode:transcode,bonusTime:document.getElementById('rm-bonus').checked})})
           .then(function(r){
             if(r.ok){
               return r.json().then(function(j){
