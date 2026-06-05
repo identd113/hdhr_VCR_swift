@@ -11,7 +11,8 @@ The web server is scoped to **scheduling and management** — playback is not su
 ```swift
 func start(port: Int, appState: AppState, onState: @escaping (String?) -> Void)
 func stop()
-func updateTXTRecord()   // @MainActor — refreshes mDNS TXT record; called from idleLoop
+func updateTXTRecord()    // @MainActor — refreshes mDNS TXT record; called from idleLoop
+func broadcastEvent(_:)   // pushes a JSON event to all open SSE clients
 ```
 
 `onState` is called on `DispatchQueue.main`. `nil` = server is ready; non-nil = error string.
@@ -26,6 +27,7 @@ func updateTXTRecord()   // @MainActor — refreshes mDNS TXT record; called fro
 |---|---|---|
 | GET | `/` or `/index.html` | Full guide HTML page |
 | GET | `/api/ping` | `{"ok":true}` — health check; also used as self-ping after bind |
+| GET | `/api/events` | SSE stream — kept open; server pushes JSON events on state changes |
 | GET | `/api/now.json` | JSON array of on-air entries (see schema below) |
 | GET | `/api/shows-html` | HTML fragment for the schedule popover body |
 | GET | `/api/tuners.json` | JSON object `{deviceId: {t, a, surl}}` — per-device total/active tuner counts; polled by `refreshTuners()` every 30 s |
@@ -172,17 +174,52 @@ Promoting a show to a `seriesId` type (`seriesChannel`/`seriesAll`) when it prev
 
 Save Directory is **not** editable from the web UI — directory path changes require local app access.
 
-On **Save**: `confirmEdit()` POSTs `/api/edit` and closes modal on success. No in-place guide update is performed (the block's triangle and color already reflect its state; title/type changes take effect on the next guide refresh).
+On **Save**: `confirmEdit()` POSTs `/api/edit` and closes modal on success. An SSE event (`show_updated`) is pushed to all connected clients immediately after the server-side update, triggering `refreshGuide()` in place.
+
+---
+
+## Server-Sent Events — `/api/events`
+
+A persistent SSE endpoint. Browsers connect once on page load via `EventSource('/api/events')`; the connection stays open indefinitely.
+
+**Server infrastructure (`WebServer.swift`):**
+- `sseConns: [NWConnection]` — registry of all open SSE connections (protected by `NSLock`)
+- `broadcastEvent(_ event: [String: Any])` — serialises the dict to JSON and writes `data: {…}\n\n` to every registered connection; removes dead connections on send failure
+- `registerSSE(_ conn:)` — sends SSE response headers (`Content-Type: text/event-stream`, `Cache-Control: no-cache`, `Connection: keep-alive`), adds connection to registry, starts keepalive loop
+- `sseKeepalive(_ conn:)` — sends `": ping\n\n"` SSE comments every 25 s to keep the connection alive through proxies; recursively reschedules itself; stops when the connection is removed from the registry
+- SSE connections are intercepted in `accumulate()` before the normal `route()` path — they never call `send()` and are never cancelled after the response headers
+
+**Events pushed:**
+
+| Event `type` | Triggered by | Payload fields |
+|---|---|---|
+| `recording_started` | `AppState.startRecording` | `channel`, `device` |
+| `recording_stopped` | `AppState.stopRecording` | `channel`, `device` |
+| `show_added` | `AppState.addShowFromGuide` | `channel`, `device` |
+| `show_deleted` | `WebServer.handleDelete` | `channel`, `device` |
+| `show_updated` | `WebServer.handleEdit` | `channel`, `device` |
+
+**Client handling:**
+```javascript
+(function(){
+  if(!window.EventSource)return;
+  var es=new EventSource('/api/events');
+  es.onmessage=function(e){
+    try{var d=JSON.parse(e.data);if(d&&d.type)refreshGuide();}catch(x){}
+  };
+})();
+```
+Any event triggers `refreshGuide()` — the scroll-preserving partial DOM swap. `EventSource` auto-reconnects after 3 s on drop. `stop()` cancels all SSE connections and clears the registry.
 
 ---
 
 ## HTML page — visual layout
 
-Self-contained HTML with all CSS inlined. Auto-refreshes every **60 seconds** via `<meta http-equiv="refresh" content="60">` — full page reload; no `setInterval` polling. Tuner occupancy is fetched server-side on every page load (before HTML is served) via `refreshTunerOccupancy()`.
+Self-contained HTML with all CSS inlined. **No auto-reload** — the page never hard-refreshes. Updates arrive via SSE push events (see below) and targeted DOM swaps after user actions. Tuner occupancy is fetched server-side on every page load (before HTML is served) via `refreshTunerOccupancy()`.
 
-`refreshGuide()` is also called client-side after user actions (record, delete, edit) to update the guide grid without waiting for the full-page reload:
+`refreshGuide()` is called client-side after user actions (record, delete, edit) and on receipt of an SSE event. It updates the guide grid without a page reload:
 
-- **`refreshGuide()`** — `GET /` → DOMParser → swaps `.gi` (guide grid), `#sum-ph` (summary placeholder), `#sched-pop-body` (schedule popover)
+- **`refreshGuide()`** — saves `.gw` scroll position and the currently-selected `.g-prog` element (`data-start` + `data-num` + `data-device`); `GET /` → DOMParser → swaps `.gi` (guide grid), `#sum-ph` (summary placeholder), `#sched-pop-body` (schedule popover); restores scroll position; re-selects the previously-highlighted entry via `showInfo()`
 
 **Dark theme:** body `#141414` · channel column `#1a1a1a` · default program block `#2c2c2c / #484848 border`.
 
@@ -403,7 +440,8 @@ Content is embedded at page build time; `refreshShowsSection()` fetches `/api/sh
 |---|---|
 | `showInfo(el)` | `onclick` on program blocks; reads `el.dataset`, populates summary panel, sets globals |
 | `closeSummary()` | Hides summary, restores placeholder, clears `.g-sel` |
-| `doRecord()` | Opens record modal; pre-checks day-of-week button matching guide entry; resets transcode to `"none"`; shows tuner-full warning if applicable |
+| `refreshGuide()` | Partial DOM refresh: saves `.gw` scroll + selected entry; `GET /`; swaps `.gi`, `#sum-ph`, `#sched-pop-body`; restores scroll; re-selects prior entry |
+| `doRecord()` | Opens record modal; pre-checks day-of-week button matching guide entry; pre-checks Bonus Time for sports entries; resets transcode to `"none"`; shows tuner-full warning if applicable |
 | `cancelRecord()` | Hides modal |
 | `confirmRecord()` | Collects `airDays` from `#rm-days` and `transcode` from `#rm-transcode`; POSTs `/api/record`; on success: red flag + `.g-prog-rec` if `recStarted`, yellow flag + `.g-prog-sched` otherwise; updates tuner badge `#tun-{devId}` in place |
 | `updateDaysVisibility()` | Shows `#em-days-row` when `_editType === 'dateTime'`; hides for all other types |
@@ -424,7 +462,7 @@ Content is embedded at page build time; `refreshShowsSection()` fetches `/api/sh
 | `so(id, val)` | Shows element with textContent, or hides if falsy |
 | `hej(s)` | HTML-escapes a string for safe `innerHTML` concatenation (`&`, `<`, `>`) — used in the tuner popover where values come from server-side data |
 
-**Globals:** `_d` (deviceId), `_n` (guideNumber), `_s` (startTime), `_e` (endTime), `_ser` (SeriesID), `curDev` (active device filter) — set by `showInfo`, consumed by `doRecord`/`doDelete`/`confirmRecord`.
+**Globals:** `_d` (deviceId), `_n` (guideNumber), `_s` (startTime), `_e` (endTime), `_ser` (SeriesID), `_genre` (first genre string), `curDev` (active device filter) — set by `showInfo`, consumed by `doRecord`/`doDelete`/`confirmRecord`. `_genre` is used by `doRecord()` to pre-check Bonus Time for sports entries.
 
 **Embedded JS data:**
 - `var tuners` — `{deviceId: {t: total, a: active, surl: "http://ip/status.json"}, …}` — tuner counts from fresh `/status.json` fetch
@@ -537,9 +575,9 @@ Client-side `innerHTML` concatenation (tuner popover rows) uses the page-local `
 
 - **128 KB cap:** any request whose total buffered bytes exceed `maxRequestBytes` (128 KB), or whose `Content-Length` exceeds that limit, is rejected immediately with `413 Content Too Large`. The buffer is grown via `Data.append()` (in-place when only one reference exists) rather than `+` to avoid O(n²) copying.
 - The `\r\n\r\n` separator is a `private static let httpSep` constant so no allocation occurs per receive callback.
-- After assembly: method + path parsed from request line, body extracted, a `Task` hops to `@MainActor`, response built, `send()` called from network queue.
+- After assembly: method + path parsed from request line. If path is `/api/events`, `registerSSE(conn)` is called and the connection is kept alive indefinitely (see SSE section). Otherwise a `Task` hops to `@MainActor`, response built, `send()` called from network queue.
 - `send()` writes a single HTTP/1.1 response `Data` packet; `conn.cancel()` fires in the completion block.
-- One full request → one response → cancel. No persistent connections or pipelining.
+- Normal requests: one full request → one response → cancel. SSE connections: open until client disconnects or `stop()` is called.
 
 **`WebResponse` cases:**
 
@@ -574,6 +612,8 @@ func quit()             // calls webServer.stop()
 `onAirNow(for:at:)` is shared between `WatchNowView` and `WebServer.buildHTML`.
 
 `addShowFromGuide` and `deleteShow` called by the web handlers are the same functions used throughout the app — no web-specific recording logic.
+
+`broadcastEvent` is called from `AppState` (`startRecording`, `stopRecording`, `addShowFromGuide`) and from `WebServer` handlers (`handleDelete`, `handleEdit`) after state changes. Connected SSE clients receive the event and call `refreshGuide()` in place.
 
 ---
 

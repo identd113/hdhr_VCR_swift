@@ -47,7 +47,7 @@ Layout (HStack, 14pt horizontal padding, 10pt vertical padding):
   - Upcoming airings: `"Channel 5.1 Thu 8:00 PM · Channel 5.1 Fri 10:00 PM"` in `.caption2` at 85% opacity
   - Bottom row: 52×52 channel icon + `"Channel 5.1 · 8:00 PM – 9:00 PM"` caption + optional **Watch in VLC** / **Watch Now!** buttons + **Record** / **Edit Show** button
   - **Record** button: `WhiteOutlineButtonStyle(borderColor: .red)` custom style; **Edit Show** in `WhiteOutlineButtonStyle(borderColor: .blue)` when show is already managed
-  - Bonus Time: orange `StarburstBadge` overlaid top-right of the ZStack when a sports show is selected
+  - Bonus Time: orange `StarburstBadge` overlaid top-right of the ZStack when `defaultBonusTimeOn` is true (entry has a sports genre — sports defaults Bonus Time to enabled)
   - Overlap warning: small white caption at bottom, invisible (opacity 0) when no overlap
 
 **Empty summary** (nothing selected): `"Select a show from the grid"` centered in `.tertiary` color.
@@ -59,7 +59,7 @@ Fixed 560×540 window. White/system background. `ScrollView` containing a `VStac
 
 - Form fields using `ShowFormSection` (shared with `EditShowView`)
 - `LabeledContent` for channel (TextField, 80pt wide) and length (60pt wide number field)
-- Bottom-right: orange `StarburstBadge` (115pt size) floats via `.overlay(alignment: .bottomTrailing)`, springs in on appear if sports show + Bonus Time enabled
+- Bottom-right: orange `StarburstBadge` (115pt size) floats via `.overlay(alignment: .bottomTrailing)`, springs in on appear if `show_bonus_time == true` and `Sports_padding_enabled`. Sports entries have Bonus Time pre-checked; any show type can enable it.
 
 **Nav bar** (bottom): **Back** on left, **Save** (`.borderedProminent`) on right. A `Divider` above.
 
@@ -137,7 +137,7 @@ Form fields:
 - **Transcode** — `Picker`: None / Heavy / Mobile / Internet 720
 - **Folder** — display + Choose… button; writes to `UserDefaults["defaultSaveDirectory"]`
 
-**Bonus Time starburst**: when `show.show_genre.lowercased().contains("sports") && state.config.Sports_padding_enabled`, a `StarburstBadge` (from `StarburstBadge.swift`) overlays the top-right corner showing "🏈 +N min". It animates in with a `keyframeAnimator` pop-in sequence on appear and has a 5-tap easter egg that triggers a celebration spin. The same component is used in the guide step summary panel and `FloatingGuideView`.
+**Bonus Time starburst**: when `show.show_bonus_time == true && state.config.Sports_padding_enabled`, a `StarburstBadge` (from `StarburstBadge.swift`) floats at the bottom-right corner showing "+N min". It animates in with a `keyframeAnimator` pop-in sequence on appear and has a 5-tap easter egg that triggers a celebration spin. The same component is used in the guide step summary panel and `FloatingGuideView`.
 
 `canAdvance` for details step: `!show.show_title.isEmpty && recordFolder != nil`.
 

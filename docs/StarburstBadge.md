@@ -1,9 +1,9 @@
-# StarburstBadge.swift — Animated Sports Bonus Time Badge
+# StarburstBadge.swift — Animated Bonus Time Badge
 
 ## Visual Appearance
 
 ### At rest
-A solid **orange** 12-point starburst polygon, `size` × `size` (default 100pt, 90pt in EditShowView, 115pt in AddShowView details). The starburst has alternating outer and inner radii (`outerR` and `0.55 × outerR`), making it look like a sale/badge shape.
+A solid **orange** 12-point starburst polygon, `size` × `size` (default 100pt, 150pt in EditShowView, 115pt in AddShowView details). The starburst has alternating outer and inner radii (`outerR` and `0.55 × outerR`), making it look like a sale/badge shape.
 
 Centered inside the starburst: `"+N min"` in white `.caption` bold. At 100pt size this text is ~12pt, clearly legible. At the default orange color (SwiftUI `Color.orange`) the badge reads as warm and energetic.
 
@@ -26,14 +26,14 @@ After the 5th tap on the badge:
 Because `celebCount` is incremented on every 5th tap, repeated celebrations trigger cleanly (360° end = 0° visually, so the next keyframe sequence starts from the same neutral state).
 
 ### Transition
-When the sports show type is deselected (badge removed from the hierarchy): `.scale(scale: 0.05).combined(with: .opacity)` removal transition — shrinks to nearly nothing and fades out simultaneously.
+When Bonus Time is toggled off (badge removed from the hierarchy): `.scale(scale: 0.05).combined(with: .opacity)` removal transition — shrinks to nearly nothing and fades out simultaneously.
 
 ## Intent
 
-`StarburstBadge` is an orange 12-point starburst that indicates a sports show has Bonus Time enabled. It displays `"+N min"` where N is `state.config.Sports_padding_minutes`. It appears:
-- In `AddShowView` step 3 (Details), overlaid at the top-right corner of the form
-- In `AddShowView` and `FloatingGuideView` summary panels, overlaid at the top-right
-- In the `EditShowView` form via `ShowFormSection` (indirectly through the Bonus Time toggle label)
+`StarburstBadge` is an orange 12-point starburst that indicates Bonus Time is enabled on a show. It displays `"+N min"` where N is `state.config.Sports_padding_minutes`. Sports shows have Bonus Time enabled by default; any show type can use it. It appears:
+- In `AddShowView` step 3 (Details), overlaid at the **bottom-right** corner of the form (115pt)
+- In `AddShowView` and `FloatingGuideView` summary panels, overlaid at the **top-right** of the ZStack (100pt) — shown when the selected entry defaults to Bonus Time on (i.e., sports genre)
+- In `EditShowView`, overlaid at the **top-right** corner of the form (150pt)
 
 It has a pop-in animation on appear and a 5-tap celebration spin easter egg.
 

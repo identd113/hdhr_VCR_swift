@@ -39,7 +39,7 @@ One `Section`:
 - Min free disk: `Stepper` showing `"Min free disk: N GB"`, range 1–100
 - Pause after N failures: `Stepper`, range 1–10
 - Watch in VLC: `Toggle` (only visible when VLC is installed)
-- Bonus Time for sports: `Toggle`; when on, reveals a `Stepper` for bonus minutes (10–60, step 5)
+- Bonus Time: `Toggle`; when on, reveals a `Stepper` for bonus minutes (10–60, step 5)
 
 ### Category: Guide
 One `Section`:
@@ -135,7 +135,7 @@ Sidebar entries (with SF Symbol icons):
 - **Pause after N failures** — `Stepper` (1–10). After `Fail_count_setting` consecutive failures, `show_active = false` and the show moves to Paused. Each successful recording start decrements `show_fail_count` by 1.
 - **Watch in VLC** — `Toggle`, only shown when `/Applications/VLC.app` exists. Enables "Watch in VLC" buttons throughout the app. Stored in `draft.Watch_in_VLC`. **Auto-initialized**: on first launch (when `Watch_in_VLC_initialized == false`), the setting is auto-enabled if VLC is installed, then `Watch_in_VLC_initialized` is set to true so subsequent user toggles are never overridden.
 - **Min buffer rate** — `Picker` (90–100%, or `"100% (disabled)"`), only shown when VLC is installed. Sets the fill-phase floor for the in-app player's 8-second live buffer. Lower values fill the buffer faster; 100% disables buffering entirely. Stored in `draft.Player_buffer_min_rate`.
-- **Bonus Time for sports** — `Toggle` (on by default). Extends recording past the guide end for shows where `show_genre` contains "sports". Stored in `draft.Sports_padding_enabled`.
+- **Bonus Time** — `Toggle` (on by default). Extends any show's recording past guide end. Sports entries default to enabled via `applyGuideEntry()`; any show can override via the per-show toggle. Stored in `draft.Sports_padding_enabled`.
 - **Bonus Time duration** — `Stepper` (10–60 min, step 5, default 30). Only visible when Bonus Time toggle is on. Stored in `draft.Sports_padding_minutes`.
 
 ---
@@ -319,7 +319,7 @@ A `.json.bak` backup is written before each save. The config format is shared wi
 
 - **No per-show overrides** — all recording settings (transcode, Bonus Time, fail threshold) apply globally. A useful future feature would be per-show overrides: "this show always transcodes to Mobile" or "this show gets 60 minutes of Bonus Time."
 
-- **Bonus Time label clarity** — the stepper says "Bonus Time: 30 min". A note like "(adds 30 min after guide end for sports)" would clarify what it does without requiring the tooltip hover.
+- **Bonus Time label clarity** — the stepper says "Bonus Time: 30 min" with no inline context. The `.help()` tooltip explains it, but a visible note like "(past guide end)" in the label itself would clarify without requiring hover.
 
 - **No export/import of config** — power users who manage multiple machines have no UI for this. The config JSON is in `~/Documents/` and can be copied manually, but "Export config…" / "Import config…" buttons in Advanced would be user-friendly.
 

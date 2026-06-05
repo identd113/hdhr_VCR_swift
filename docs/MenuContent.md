@@ -154,7 +154,7 @@ Menu label: `🔴 [Title]` (or `🔴 [Title] · S02E05` when guide entry is foun
 Submenu contents — uses `showInfoHeader(show, entry:)` for the top block, then:
 1. **Type + channel** — `"SeriesID(All) · Channel 5.1"`, full `labelColor`
 2. **Start time + duration** — `"8:00 PM · 60 min"`, `secondaryLabelColor`
-3. **Bonus Time callout** — `"🏈 Bonus Time (+N min)"` when a sports show records past guide end
+3. **Bonus Time callout** — `"🏈 Bonus Time (+N min)"` when `show.show_bonus_time == true` and the recording is past the guide end time
 4. **Tuner ID** — `"tuner 105404BE"`, `secondaryLabelColor`
 5. **Signal** — shown when `state.tunerStatus[show.show_id]` is set: `"Signal: 78% · lock: qam256 · 12.4 Mbps"`, `secondaryLabelColor`
 6. Divider
