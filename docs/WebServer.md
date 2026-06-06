@@ -36,6 +36,7 @@ func broadcastEvent(_:)   // pushes a JSON event to all open SSE clients
 | POST | `/api/signal-scan` | Trigger a signal strength scan. Optional body `{"force":true}` rescans all channels regardless of freshness. Returns `{"status":"started","force":bool}`. |
 | POST | `/api/delete` | Remove a managed show and stop any active recording |
 | POST | `/api/edit` | Update a managed show's config fields |
+| POST | `/api/toggle-favorite` | Toggle the favorite flag for a channel |
 | anything else | | 404 plain text |
 
 ---
@@ -112,6 +113,24 @@ Match priority: recording show on exact device+channel first, then active show m
 
 **Success:** `{"ok": true, "title": "Show Title"}`  
 **Failure:** `{"ok": false, "error": "Show not found"}`
+
+---
+
+## POST /api/toggle-favorite
+
+Toggles the favorite status of a channel by calling `AppState.toggleFavorite(device:channel:)`. Optimistically mutates `lineups[deviceId][idx].Favorite` in-place, fires an async HDHR API call (`HDHRManager.setFavorite()` → `POST http://{ip}/lineup.post?favorite=+/-GuideNumber`), and reverts on failure. Broadcasts a `favorite_toggled` SSE event so all open guide pages refresh.
+
+**Request body (JSON):**
+
+```json
+{
+  "deviceId":    "XXXXXXXX",
+  "guideNumber": "5.1"
+}
+```
+
+**Success:** `{"ok": true, "isFavorite": true}`  
+**Failure:** `{"ok": false, "error": "Device or channel not found"}` or `400 Bad Request` for missing fields.
 
 ---
 
@@ -200,6 +219,7 @@ A persistent SSE endpoint. Browsers connect once on page load via `EventSource('
 | `show_added` | `AppState.addShowFromGuide` | `channel`, `device` |
 | `show_deleted` | `WebServer.handleDelete` | `channel`, `device` |
 | `show_updated` | `WebServer.handleEdit` | `channel`, `device` |
+| `favorite_toggled` | `WebServer.handleToggleFavorite` | `device`, `guideNumber` |
 | `deviceOffline` | `AppState.probeForNewDevices` (miss #3) | `deviceId` |
 | `deviceOnline` | `AppState.probeForNewDevices` (seen after unavailable, or new device) | `deviceId` |
 | `signal_update` | `AppState.startSignalScan` | `gname` (guideName.lowercased()), `bucket` (raw string: `"good"` / `"fair"` / `"poor"` / `"noData"`) |
@@ -289,7 +309,7 @@ Always rendered above the guide grid. Two states:
 **Placeholder** (`#sum-ph`): "Select a show from the guide" — on load and after close.
 
 **Selected** (`#sum-c`): appears when the user clicks a program block. Layout (left to right):
-- **Poster image** (120 px wide, `object-fit: cover`) — hidden if no `ImageURL`
+- **Poster image** — hidden if no `ImageURL`. Default: 72 px wide, `object-fit: contain`. Tablet (≤ 960 px): 56 px. Desktop (≥ 961 px): 260 px, `align-self: center`. On load failure, falls back to the channel logo; if that also fails, hides entirely. The `onerror` handler is set in JS each time `showInfo()` populates the panel (not as an inline HTML attribute) so the fallback chain re-arms on every selection.
 - **Info column** (flex: 1):
   - Title (bold, 0.92 rem, ellipsis)
   - Genre badge (uppercase pill) — hidden if absent or `"Series"`
@@ -366,13 +386,15 @@ A cable-TV-style horizontal time grid. Window width depends on the requesting cl
 
 **Rows:** one row per (device × channel). Cross-device deduplication is handled client-side by `setDev('')` on page load — it hides duplicate `GuideNumber` rows keeping the first-device occurrence, giving a clean "All" view.
 
-Each `.g-row` carries `data-dev`, `data-ch`, and `data-gname` (`GuideName.lowercased()`) — `data-gname` is the key used by `signal_update` SSE events to target in-place bar updates.
+Each `.g-row` carries `data-dev`, `data-ch`, `data-gname` (`GuideName.lowercased()`), and `data-fav` (`"1"` for favorite channels, absent otherwise). `data-gname` is the key used by `signal_update` SSE events; `data-fav` is used by `setDev` to show/hide `.g-fav-sep` headers.
+
+**Favorites section:** favorite channels are sorted to the top of each device's channel list server-side. A `.g-fav-sep` separator row (amber `★ FAVORITES` label, `display:flex`) is inserted above the first favorite row per device and hidden via `setDev` when no visible favorite rows remain (e.g. genre filter active). Favorite channel rows get a golden background tint via `color-mix(in srgb, var(--fav) 16%, var(--s1))` on `.g-ch` and a repeating gradient tint on `.g-tl`. A `☆`/`★` toggle button (`.g-fav-btn`) in each channel cell calls `toggleFav(evt, btn)` to POST `/api/toggle-favorite`.
 
 **Signal bars in channel column:** when `state.config.Signal_quality_enabled` and signal data exists for a channel, a 3-bar SVG (`class="g-sig"`, `viewBox="0 0 11 10"`, `width/height=10`) is baked into the `.g-ch` cell at page build time. Buckets map to fill levels: `good` → all 3 bars, `fair` → 2 bars, `poor` → 1 bar, `noData` → no SVG emitted. The `title` attribute carries `"Signal: {bucket}"` for hover. Bars are updated in-place on `signal_update` SSE events without a page reload.
 
 **`setDev()` and DOM caching**: `.g-row` NodeList is cached into `_rows` at page load and reused on every device switch — avoids repeated `querySelectorAll` calls. When `setDev(id)` is called with a **different** device ID than `curDev`, `_genreFilter` is reset to `''` and the `<select id="genre-sel">` is reset to the blank option — a stale genre filter from the previous device would otherwise leave the guide empty if the new device has no matching genre.
 
-**Time header:** 7 ticks at `winSec/6` intervals (e.g. 4 h apart for a 24 h desktop window, 2 h apart for a 12 h mobile window) + red "now" bar.
+**Time header:** one tick per clock hour, aligned to hour boundaries via `stride(from: firstHour, through: winEnd, by: 3600)` where `firstHour = ((winStart + 3599) / 3600) * 3600`. Label uses `DateFormatter` template `"j"` (locale-preferred hour, e.g. `"8 PM"` or `"20"`). + red "now" bar.
 
 **Vertical gridlines:** CSS `repeating-linear-gradient` at every **8.3333%** of the timeline element width. Since the timeline spans `winSec` seconds, each gridline represents `winSec × 0.08333 / 60` minutes — 60 min for the mobile 12 h window, 120 min for the desktop 24 h window.
 
@@ -478,7 +500,8 @@ Content is embedded at page build time; `refreshShowsSection()` fetches `/api/sh
 | `openEditShow(el)` | Populates and opens `#edit-modal` from `el.dataset`; handles both guide blocks and schedule popover rows |
 | `closeEditShow()` | Hides `#edit-modal` |
 | `confirmEdit()` | POSTs `/api/edit`; closes modal on success |
-| `setDev(id)` | Filters guide rows by `data-dev`; empty string = All (with JS dedup); uses cached `_rows` NodeList |
+| `setDev(id)` | Filters guide rows by `data-dev`; empty string = All (with JS dedup); uses cached `_rows` NodeList; shows/hides `.g-fav-sep` separators based on whether any visible favorite rows remain for each device |
+| `toggleFav(evt, btn)` | `onclick` on `.g-fav-btn` star buttons; reads `data-dev` / `data-ch` from parent `.g-row`; POSTs `/api/toggle-favorite`; calls `refreshGuide()` on success |
 | `openSchedPop(anchor)` | Opens `#sched-pop` anchored below the button; toggles closed on second click |
 | `closeSchedPop()` | Hides `#sched-pop`; resets `#status-btn` color and `aria-expanded` |
 | `devFull(devId)` | Returns true if `tuners[devId].a >= tuners[devId].t` |
