@@ -156,6 +156,7 @@ final class AppState: ObservableObject {
     private var idleTimer: Timer?
     private var lastGuideRefresh: Date    = .distantPast
     private var lastDeviceProbe: Date     = .distantPast
+    private var nextQuickProbe: Date?     = nil   // set when any device misses a probe; cleared when all are seen
     private var guideRefreshInFlight: Bool = false
     // Tracks in-flight lineup fetches so concurrent callers don't fire duplicate requests
     private var loadingLineupDevices: Set<String> = []
@@ -480,7 +481,6 @@ final class AppState: ObservableObject {
             } else {
                 devices[i].missedProbes += 1
                 let missed = devices[i].missedProbes
-                // Log transition into unavailable (exactly at threshold) and each subsequent miss.
                 if missed == 3 {
                     let affected = shows.filter { $0.show_active && $0.hdhr_record == devices[i].DeviceID }
                     glog("[DeviceProbe] \(devices[i].DeviceID) not seen for 3 probes — marking unavailable (\(affected.count) show(s) affected)", level: .warning)
@@ -489,6 +489,11 @@ final class AppState: ObservableObject {
                     glog("[DeviceProbe] \(devices[i].DeviceID) still missing (missed \(missed))", level: .warning)
                 }
             }
+        }
+
+        // Schedule a 60 s follow-up probe while any device is missed but not yet confirmed unavailable.
+        if devices.contains(where: { $0.missedProbes > 0 && $0.missedProbes < 3 }) {
+            nextQuickProbe = Date().addingTimeInterval(60)
         }
 
         let newDevices = found.filter { !existingIDs.contains($0.DeviceID) }
@@ -933,9 +938,15 @@ final class AppState: ObservableObject {
             glog("[\(show.show_title)] device \(show.hdhr_record) not found — show may miss its recording", level: .warning)
         }
 
-        // Probe for newly-connected tuners every 5 minutes (merge-only — safe during active recordings)
+        // Probe for newly-connected tuners every 5 minutes.
+        // If any device was missed on a probe, follow up every 60 s until confirmed gone (3 misses).
+        let quickProbeDue = nextQuickProbe.map { now >= $0 } ?? false
         if now.timeIntervalSince(lastDeviceProbe) > 300 {
             lastDeviceProbe = now
+            nextQuickProbe = nil
+            Task { await probeForNewDevices() }
+        } else if quickProbeDue {
+            nextQuickProbe = nil
             Task { await probeForNewDevices() }
         }
 
