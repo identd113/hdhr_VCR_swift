@@ -980,6 +980,9 @@ final class WebServer {
           #sum-poster{width:56px!important;min-width:56px!important}
           #sum-syn{display:none!important}
         }
+        @media(min-width:961px){
+          #sum-poster{width:150px!important;min-width:150px!important;object-fit:cover!important;align-self:stretch!important}
+        }
         /* ── Tuner popover ── */
         #t-pop-c{background:var(--s3)!important;border-color:var(--b5)!important}
         #t-pop-hdr{color:var(--t0)!important}
@@ -1007,10 +1010,10 @@ final class WebServer {
         .g-row{display:flex;border-bottom:1px solid var(--b0)}
         .g-row:last-child{border-bottom:none}
         .g-fav-sep{display:flex;border-bottom:1px solid var(--b0)}
-        .g-fav-sep .g-ch{min-height:0;padding:3px 8px;background:color-mix(in srgb,var(--fav) 9%,var(--s1));border-right:1px solid var(--b1);color:var(--fav);font-size:.63rem;font-weight:700;letter-spacing:.07em}
-        .g-fav-sep .g-tl{min-height:0;background:color-mix(in srgb,var(--fav) 7%,transparent)}
-        .g-row[data-fav="1"] .g-ch{background:color-mix(in srgb,var(--fav) 9%,var(--s1))}
-        .g-row[data-fav="1"] .g-tl{background:repeating-linear-gradient(90deg,color-mix(in srgb,var(--fav) 7%,transparent),color-mix(in srgb,var(--fav) 7%,transparent) calc(8.3333% - 1px),var(--b0) calc(8.3333% - 1px),var(--b0) 8.3333%)}
+        .g-fav-sep .g-ch{min-height:0;padding:3px 8px;background:color-mix(in srgb,var(--fav) 16%,var(--s1));border-right:1px solid var(--b1);color:var(--fav);font-size:.63rem;font-weight:700;letter-spacing:.07em}
+        .g-fav-sep .g-tl{min-height:0;background:color-mix(in srgb,var(--fav) 13%,transparent)}
+        .g-row[data-fav="1"] .g-ch{background:color-mix(in srgb,var(--fav) 16%,var(--s1))}
+        .g-row[data-fav="1"] .g-tl{background:repeating-linear-gradient(90deg,color-mix(in srgb,var(--fav) 13%,transparent),color-mix(in srgb,var(--fav) 13%,transparent) calc(8.3333% - 1px),var(--b0) calc(8.3333% - 1px),var(--b0) 8.3333%)}
         .g-fav-btn{background:none;border:none;padding:0 2px;cursor:pointer;font-size:.85rem;line-height:1;color:var(--t5);flex-shrink:0;opacity:.5;transition:opacity .15s}
         .g-fav-btn:hover{opacity:1}
         .g-fav-btn[data-fav="1"]{color:var(--fav);opacity:1}
@@ -1144,7 +1147,7 @@ final class WebServer {
         <div id="sum" style="border:1px solid #333;border-radius:8px;margin-bottom:16px;display:flex;align-items:stretch;overflow:hidden;min-height:44px">
           <div id="sum-ph" style="flex:1;display:flex;align-items:center;padding:12px 16px;background:#1a1a1a">\(sumPhHTML)</div>
           <div id="sum-c" style="display:none;flex:1;flex-direction:row;position:relative">
-            <img id="sum-poster" src="" alt="" style="width:72px;min-width:72px;object-fit:contain;display:none" onerror="this.style.display='none'">
+            <img id="sum-poster" src="" alt="" style="width:72px;min-width:72px;object-fit:contain;display:none">
             <div id="sum-grad" style="flex:1;padding:8px 10px;display:flex;flex-direction:column;gap:1px;overflow:hidden">
               <div id="sum-title" style="font-size:.92rem;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
               <div id="sum-genre" style="display:none;font-size:.6rem;font-weight:700;color:rgba(255,255,255,.85);background:rgba(255,255,255,.18);border-radius:3px;padding:2px 6px;align-self:flex-start;letter-spacing:.06em"></div>
@@ -1257,7 +1260,13 @@ final class WebServer {
           document.getElementById('sum-ph').style.display='none';
           var sc=document.getElementById('sum-c');sc.style.display='flex';sc.style.background=gc(d.genre);
           var pi=document.getElementById('sum-poster');
-          if(d.poster){pi.src=d.poster;pi.style.display='block';}else{pi.style.display='none';}
+          if(d.poster){
+            pi.onerror=function(){if(_logo){pi.src=_logo;pi.onerror=function(){pi.style.display='none';};}else{pi.style.display='none';}};
+            pi.src=d.poster;pi.style.display='block';
+          }else if(d.logo){
+            pi.onerror=function(){pi.style.display='none';};
+            pi.src=d.logo;pi.style.display='block';
+          }else{pi.style.display='none';}
           var li=document.getElementById('sum-logo');
           if(d.logo){li.src=d.logo;li.style.display='inline';}else{li.style.display='none';}
           document.getElementById('sum-title').textContent=d.title||'';
