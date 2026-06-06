@@ -64,11 +64,11 @@ actor ChannelSignalStore {
     }
 
     private func scheduleSave() {
-        savePending?.cancel()
+        guard savePending == nil else { return }  // already a save queued; let it fire
         savePending = Task {
             try? await Task.sleep(nanoseconds: 60_000_000_000)
-            guard !Task.isCancelled else { return }
             save()
+            savePending = nil
         }
     }
 
