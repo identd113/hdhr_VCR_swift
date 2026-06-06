@@ -1,6 +1,6 @@
 # ChannelSignalStore — Channel Signal Quality History
 
-`actor ChannelSignalStore` in `ChannelSignalStore.swift`. Singleton (`shared`). Stores per-channel signal quality samples and exposes a bucketed view for display.
+`@Observable @MainActor final class ChannelSignalStore` in `ChannelSignalStore.swift`. Singleton (`shared`). Stores per-channel signal quality samples and exposes a bucketed view for display.
 
 ---
 
@@ -9,7 +9,7 @@
 Persists historical SNQ (Signal Quality Percent) readings so the guide views can show signal strength bars without live tuner access. Data is collected two ways:
 
 - **Passive** — during any active recording, `AppState` reads `SignalQualityPercent` from `status.json` and calls `record(guideName:snq:)`.
-- **Active scan** — user triggers `AppState.startSignalScan()` (Settings → Advanced → Scan Channels), which tunes each channel briefly (2 s) and samples SNQ.
+- **Active scan** — user triggers `AppState.startSignalScan()` (Settings → Advanced → Signal Strength Scan), which tunes each channel briefly and takes 3 SNQ readings per channel.
 
 ---
 
@@ -18,7 +18,7 @@ Persists historical SNQ (Signal Quality Percent) readings so the guide views can
 File: `~/Library/Application Support/hdhrVCRplus/channel_signal_history.json`  
 Format: `{ "guidename": [{"ts": epoch, "snq": 0-100}, …] }`
 
-Up to **50 samples** are kept per channel (oldest dropped). Writes are debounced — a save is scheduled 60 s after the first unsaved `record()` call; further calls within that window coalesce.
+Up to **50 samples** are kept per channel (oldest dropped). Writes are debounced — a save is scheduled 60 s after the first unsaved `record()` call; further calls within that window coalesce. `flush()` bypasses the debounce for an immediate write.
 
 ---
 
@@ -27,9 +27,9 @@ Up to **50 samples** are kept per channel (oldest dropped). Writes are debounced
 | Method | Description |
 |---|---|
 | `load()` | Reads history from disk at startup. Called from `AppState.startup()`. |
-| `record(guideName:snq:)` | Appends a sample, caps at 50, schedules a save. |
-| `allBuckets() -> [String: SignalBucket]` | Returns a snapshot of every channel's bucket (rolling 20-sample average). Used to populate `AppState.channelSignalBuckets`. |
-| `needsSample(guideName:) -> Bool` | Adaptive re-sample gate: poor channels re-check after 1 day, fair after 3 days, good after 7 days. `true` when no data. |
+| `record(guideName:snq:)` | Appends a sample, caps at 50, updates `buckets[key]` immediately, schedules a debounced save. |
+| `flush()` | Cancels any pending debounced save and writes immediately via `Task.detached`. Called after each scan batch so partial progress survives a quit. |
+| `needsSample(guideName:) -> Bool` | Adaptive re-sample gate: poor → 1 day, fair → 3 days, good → 7 days. Returns `true` when no data. |
 
 ---
 
@@ -42,31 +42,41 @@ Up to **50 samples** are kept per channel (oldest dropped). Writes are debounced
 | < 0.33 | `.poor` |
 | 0.33 – 0.66 | `.fair` |
 | ≥ 0.66 | `.good` |
-| < 3 samples | `.noData` |
+| 0 samples | `.noData` |
 
-Requires ≥ 3 samples to avoid noise from brief lock-ons.
+A single sample is sufficient — the `noData` guard was lowered from ≥3 to ≥1 so bars appear immediately after the first scan.
+
+---
+
+## Observable State
+
+`private(set) var buckets: [String: SignalBucket]` — updated synchronously on every `record()` call. SwiftUI views observe it directly via `@Observable`; no snapshot relay or `@Published` wrapper needed. Any view that reads `ChannelSignalStore.shared.buckets[key]` re-renders automatically when that key changes.
 
 ---
 
 ## Key Lookup
 
-Both write side (`record`) and read side (`allBuckets`, `needsSample`) use `guideName.lowercased()` as the dictionary key. `GuideName` (from `LineupEntry`) is device-agnostic — the same call sign appears on every device tuned to that multiplex — so signal data collected on one device applies to matching channels on all devices.
+Both write side (`record`) and read side (`buckets`, `needsSample`) use `guideName.lowercased()` as the dictionary key. `GuideName` is device-agnostic — the same call sign appears on every device tuned to that multiplex — so signal data collected on one device applies to matching channels on all devices.
 
 ---
 
 ## AppState Integration
 
 ```swift
-@Published var channelSignalBuckets: [String: SignalBucket] = [:]
 @Published var signalScanProgress: String? = nil
 
-func startSignalScan()   // iterates all device lineups, tunes briefly, records snq
-func cancelSignalScan()  // cancels in-flight scan Task, clears progress
+func startSignalScan(force: Bool = false)  // iterates lineups, tunes each channel, records SNQ
+func cancelSignalScan()                    // cancels in-flight scan Task, clears progress
 ```
 
-`channelSignalBuckets` is refreshed from `ChannelSignalStore.shared.allBuckets()` at startup (when `Signal_quality_enabled`) and after each scan batch. Each batch also broadcasts one `signal_update` SSE event per channel so connected web clients update bars in-place.
+**Scan behaviour:**
+- Processes channels **one at a time** (`batchSize = 1`) — one tuner used per step, no cross-channel interference.
+- Takes **3 SNQ readings per channel** at 500 ms intervals (~1.5 s lock time per channel).
+- Calls `flush()` after each channel so progress is saved incrementally.
+- Skips channels where `needsSample()` returns `false` (already fresh) unless `force: true`.
+- At startup, if `Signal_quality_enabled` and the store already has data (a prior scan was started), any channels still needing samples are scanned automatically.
 
-**Batching**: `startSignalScan` processes channels in batches of `device.TunerCount` (min 1). Each batch opens that many streams concurrently, waits 2 s, then reads `status.json` **once** to collect all SNQ readings — so total status calls = number of batches, not number of channels. A 2-tuner device with 60 channels makes 30 status calls instead of 60 and completes in roughly half the time.
+Each scanned channel broadcasts one `signal_update` SSE event so connected web clients update bars in-place without a page reload.
 
 ---
 
@@ -92,10 +102,10 @@ struct SignalBarsView: View {
 ```
 
 - `.noData` → renders nothing (invisible, takes no space)
-- `.poor` → 1 bar (red, heights: 4pt filled, 7pt unfilled, 10pt unfilled)
+- `.poor` → 1 bar (red)
 - `.fair` → 2 bars (yellow)
 - `.good` → 3 bars (green)
 
-Bar widths: 3 pt each, 1 pt spacing, aligned to `.bottom`. Used in `CableGuideView`, `FloatingGuideView`, and `WatchNowView` channel columns when `Signal_quality_enabled`.
+Bar widths: 3 pt each, 1 pt spacing, aligned to `.bottom`. Used in `CableGuideView` (including AddShowView's guide step), `FloatingGuideView`, `WatchNowView`, and `MenuContent` when `Signal_quality_enabled`.
 
-Helper: `signalBucket(guideName:in:)` — looks up a pre-computed snapshot dict; falls back to `.noData`. Views capture the snapshot once per render rather than calling the actor directly.
+Helper: `signalBucket(guideName:)` — `@MainActor` free function that reads `ChannelSignalStore.shared.buckets[key]` directly. Returns `.noData` if no entry.

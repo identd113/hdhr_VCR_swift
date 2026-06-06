@@ -31,8 +31,9 @@ func broadcastEvent(_:)   // pushes a JSON event to all open SSE clients
 | GET | `/api/now.json` | JSON array of on-air entries (see schema below) |
 | GET | `/api/shows-html` | HTML fragment for the schedule popover body |
 | GET | `/api/tuners.json` | JSON object `{deviceId: {t, a, surl}}` — per-device total/active tuner counts; polled by `refreshTuners()` every 30 s |
-| GET | `/api/signal` | JSON object `{guideName: "good"|"fair"|"poor"|"noData"}` — snapshot of `state.channelSignalBuckets` keyed by `guideName.lowercased()` |
+| GET | `/api/signal` | JSON object `{guideName: "good"|"fair"|"poor"|"noData"}` — snapshot of `ChannelSignalStore.shared.buckets` keyed by `guideName.lowercased()` |
 | POST | `/api/record` | Schedule a recording |
+| POST | `/api/signal-scan` | Trigger a signal strength scan. Optional body `{"force":true}` rescans all channels regardless of freshness. Returns `{"status":"started","force":bool}`. |
 | POST | `/api/delete` | Remove a managed show and stop any active recording |
 | POST | `/api/edit` | Update a managed show's config fields |
 | anything else | | 404 plain text |
