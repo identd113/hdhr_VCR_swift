@@ -292,7 +292,11 @@ final class WebServer {
             if path == "/api/record"       { return handleRecord(state: state, body: body) }
             if path == "/api/delete"       { return handleDelete(state: state, body: body) }
             if path == "/api/edit"         { return handleEdit(state: state, body: body) }
-            if path == "/api/signal-scan"  { state.startSignalScan(); return jsonResponse(["status": "started"]) }
+            if path == "/api/signal-scan"  {
+                let force = (try? JSONSerialization.jsonObject(with: body ?? Data()) as? [String: Any])?["force"] as? Bool ?? false
+                state.startSignalScan(force: force)
+                return jsonResponse(["status": "started", "force": force])
+            }
             return .notFound("Not found: \(path)")
         }
 

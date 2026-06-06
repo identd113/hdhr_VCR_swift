@@ -1969,13 +1969,14 @@ final class AppState: ObservableObject {
 
     /// Full channel scan — tunes up to TunerCount channels concurrently per device,
     /// reading status.json once per batch so status-call count equals number of batches.
-    func startSignalScan() {
+    func startSignalScan(force: Bool = false) {
         signalScanTask?.cancel()
         signalScanTask = Task {
             // Only scan channels that don't already have fresh data — lets us resume a
-            // partial scan and skip work after a clean full scan.
+            // partial scan and skip work after a clean full scan. force=true bypasses this.
             let pendingByDevice: [(HDHRDevice, [LineupEntry])] = devices.compactMap { device in
-                let needed = (lineups[device.DeviceID] ?? []).filter {
+                let entries = lineups[device.DeviceID] ?? []
+                let needed = force ? entries : entries.filter {
                     ChannelSignalStore.shared.needsSample(guideName: $0.GuideName)
                 }
                 return needed.isEmpty ? nil : (device, needed)
