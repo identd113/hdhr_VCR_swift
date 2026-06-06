@@ -72,6 +72,20 @@ final class ChannelSignalStore {
         return SignalBucket(avg)
     }
 
+    // Immediate save — call after a user-triggered scan so data survives a quick quit.
+    func flush() {
+        savePending?.cancel()
+        savePending = nil
+        let snapshot = history
+        let path     = filePath
+        Task.detached(priority: .utility) {
+            let enc = JSONEncoder()
+            enc.dateEncodingStrategy = .secondsSince1970
+            guard let data = try? enc.encode(snapshot) else { return }
+            try? data.write(to: path, options: .atomic)
+        }
+    }
+
     private func scheduleSave() {
         guard savePending == nil else { return }
         savePending = Task {

@@ -2003,6 +2003,7 @@ final class AppState: ObservableObject {
                 }
             }
 
+            ChannelSignalStore.shared.flush()
             await MainActor.run { signalScanProgress = nil }
         }
     }

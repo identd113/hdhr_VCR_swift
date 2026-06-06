@@ -214,14 +214,7 @@ struct AddShowView: View {
                 }
                 .disabled(isLoadingGuide)
                 // Pop-out: open or focus the floating guide, then close the wizard
-                Button {
-                    if let existing = NSApp.windows.first(where: { $0.title == "Cable Guide" }) {
-                        existing.makeKeyAndOrderFront(nil)
-                    } else {
-                        openWindow(id: "cable-guide")
-                    }
-                    dismiss()
-                } label: {
+                Button { popOutToFloatingGuide() } label: {
                     Image(systemName: "arrow.up.left.and.arrow.down.right")
                         .accessibilityLabel("Open guide in floating window")
                 }
@@ -266,7 +259,8 @@ struct AddShowView: View {
                             onToggleFavorite: { lu in
                                 guard let device = selectedDevice else { return }
                                 state.toggleFavorite(device: device, channel: lu)
-                            }
+                            },
+                            showSignalBars:   state.config.Signal_quality_enabled
                         )
                     }
                 }
@@ -295,16 +289,7 @@ struct AddShowView: View {
             guard let id = selectedDevice?.DeviceID, !allChannels.isEmpty else { return }
             allChannels = sortedGuideChannels(allChannels, favorites: Set((state.lineups[id] ?? []).filter(\.isFavorite).map(\.GuideNumber)))
         }
-        .onChange(of: allChannels.count) { count in
-            guard count > 0, selectedEntry == nil else { return }
-            let now = Date()
-            guard let firstCh = allChannels.first,
-                  let entry = firstCh.Guide?.first(where: { $0.startDate <= now && $0.endDate > now })
-            else { return }
-            selectedEntry   = entry
-            selectedChannel = (state.lineups[selectedDevice?.DeviceID ?? ""] ?? [])
-                .first(where: { $0.GuideNumber == firstCh.GuideNumber })
-        }
+        .onChange(of: allChannels.count) { _ in autoSelectFirstEntry() }
         .onChange(of: state.pendingAddEntryGeneration) { _, _ in
             // Fired when the user taps "Record…" from the menu while the window is already open.
             if let pending = state.pendingAddEntry { applyPendingEntry(pending) }
@@ -676,6 +661,26 @@ struct AddShowView: View {
         let ch = state.guideStore.channels(deviceId: id)
         state.logGuide("[Wizard] fetch complete — \(ch.count) channels")
         allChannels = sortedGuideChannels(ch, favorites: favorites)
+    }
+
+    private func popOutToFloatingGuide() {
+        if let existing = NSApp.windows.first(where: { $0.title == "Cable Guide" }) {
+            existing.makeKeyAndOrderFront(nil)
+        } else {
+            openWindow(id: "cable-guide")
+        }
+        dismiss()
+    }
+
+    private func autoSelectFirstEntry() {
+        guard allChannels.count > 0, selectedEntry == nil else { return }
+        let now = Date()
+        guard let firstCh = allChannels.first,
+              let entry = firstCh.Guide?.first(where: { $0.startDate <= now && $0.endDate > now })
+        else { return }
+        selectedEntry   = entry
+        selectedChannel = (state.lineups[selectedDevice?.DeviceID ?? ""] ?? [])
+            .first(where: { $0.GuideNumber == firstCh.GuideNumber })
     }
 
     /// Called after lineup is confirmed loaded. Fixes selectedChannel when auto-select fired
