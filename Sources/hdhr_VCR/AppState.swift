@@ -238,6 +238,20 @@ final class AppState: ObservableObject {
         isStartingUp = false
         glog("[Startup] complete")
 
+        // Resume an incomplete signal scan: only if the store already has data (meaning a scan
+        // was started before) and at least one channel still needs a sample.
+        if config.Signal_quality_enabled, !ChannelSignalStore.shared.buckets.isEmpty {
+            let anyNeeded = devices.contains { device in
+                (lineups[device.DeviceID] ?? []).contains {
+                    ChannelSignalStore.shared.needsSample(guideName: $0.GuideName)
+                }
+            }
+            if anyNeeded {
+                glog("[Signal] resuming incomplete scan from startup")
+                startSignalScan()
+            }
+        }
+
         // Pre-warm SwiftUI's JIT compiler so the first menu click has no delay.
         // A minimal placeholder exercises the same view types (Text, Button, Menu, Divider)
         // without evaluating the live show/guide data — avoids the O(shows × entries) layout
@@ -1958,11 +1972,19 @@ final class AppState: ObservableObject {
     func startSignalScan() {
         signalScanTask?.cancel()
         signalScanTask = Task {
-            let total = devices.reduce(0) { $0 + (lineups[$1.DeviceID]?.count ?? 0) }
+            // Only scan channels that don't already have fresh data — lets us resume a
+            // partial scan and skip work after a clean full scan.
+            let pendingByDevice: [(HDHRDevice, [LineupEntry])] = devices.compactMap { device in
+                let needed = (lineups[device.DeviceID] ?? []).filter {
+                    ChannelSignalStore.shared.needsSample(guideName: $0.GuideName)
+                }
+                return needed.isEmpty ? nil : (device, needed)
+            }
+            let total = pendingByDevice.reduce(0) { $0 + $1.1.count }
+            guard total > 0 else { return }
             var scanned = 0
 
-            outer: for device in devices {
-                let entries   = lineups[device.DeviceID] ?? []
+            outer: for (device, entries) in pendingByDevice {
                 let batchSize = max(1, device.TunerCount ?? 1)
                 var j = 0
                 while j < entries.count {
@@ -1994,6 +2016,9 @@ final class AppState: ObservableObject {
                         group.cancelAll()  // release tuners; stream tasks observe cancellation and exit
                     }
 
+                    // Flush after each batch so partial progress survives a quit.
+                    ChannelSignalStore.shared.flush()
+
                     for entry in batch {
                         let key = entry.GuideName.lowercased()
                         webServer.broadcastEvent(["type": "signal_update",
@@ -2003,7 +2028,6 @@ final class AppState: ObservableObject {
                 }
             }
 
-            ChannelSignalStore.shared.flush()
             await MainActor.run { signalScanProgress = nil }
         }
     }
