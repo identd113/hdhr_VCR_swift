@@ -1656,8 +1656,15 @@ final class WebServer {
         var _winStart=\(winStart),_winSec=\(winSec);
         function nowPct(){return Math.max(0,Math.min(100,(Math.floor(Date.now()/1000)-_winStart)/_winSec*100));}
         function updateNowLine(){
-          var p=nowPct()+'%';
-          document.querySelectorAll('.g-now-bar,.g-now-tick').forEach(function(el){el.style.left=p;});
+          var p=nowPct();
+          document.querySelectorAll('.g-now-bar,.g-now-tick').forEach(function(el){el.style.left=p+'%';});
+          // If the now-line has drifted past 75% of the viewport, nudge back to 25%.
+          // If the user has scrolled ahead, the now-line is near the left edge (<75%) so we leave them alone.
+          var gw=document.querySelector('.gw'),gi=document.querySelector('.gi');
+          if(!gw||!gi)return;
+          var nowPx=gi.scrollWidth*(p/100);
+          if(nowPx>gw.scrollLeft+gw.clientWidth*0.75)
+            gw.scrollLeft=Math.max(0,nowPx-gw.clientWidth*0.25);
         }
         function scrollToNow(){var gw=document.querySelector('.gw');var gi=document.querySelector('.gi');if(!gw||!gi)return;var nowPx=gi.scrollWidth*(nowPct()/100);gw.scrollLeft=Math.max(0,nowPx-gw.clientWidth*0.25);}
         scrollToNow();
