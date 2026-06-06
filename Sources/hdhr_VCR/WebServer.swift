@@ -863,9 +863,6 @@ final class WebServer {
             if !favRows.isEmpty {
                 rowParts.append("<div class=\"g-fav-sep\" data-dev=\"\(devId)\"><div class=\"g-ch\">★ FAVORITES</div><div class=\"g-tl\"></div></div>")
                 rowParts.append(contentsOf: favRows)
-                if !otherRows.isEmpty {
-                    rowParts.append("<div class=\"g-fav-end\" data-dev=\"\(devId)\"></div>")
-                }
             }
             rowParts.append(contentsOf: otherRows)
         }
@@ -1009,10 +1006,11 @@ final class WebServer {
         .g-now-tick{position:absolute;top:0;bottom:0;width:2px;background:rgba(255,90,90,.65);pointer-events:none}
         .g-row{display:flex;border-bottom:1px solid var(--b0)}
         .g-row:last-child{border-bottom:none}
-        .g-fav-sep{display:flex;border-top:2px solid var(--fav);border-bottom:1px solid var(--b0)}
-        .g-fav-sep .g-ch{min-height:0;padding:3px 8px;background:var(--s1);border-right:1px solid var(--b1);color:var(--fav);font-size:.63rem;font-weight:700;letter-spacing:.07em}
-        .g-fav-sep .g-tl{min-height:0;background:none}
-        .g-fav-end{height:2px;background:var(--fav)}
+        .g-fav-sep{display:flex;border-bottom:1px solid var(--b0)}
+        .g-fav-sep .g-ch{min-height:0;padding:3px 8px;background:color-mix(in srgb,var(--fav) 9%,var(--s1));border-right:1px solid var(--b1);color:var(--fav);font-size:.63rem;font-weight:700;letter-spacing:.07em}
+        .g-fav-sep .g-tl{min-height:0;background:color-mix(in srgb,var(--fav) 7%,transparent)}
+        .g-row[data-fav="1"] .g-ch{background:color-mix(in srgb,var(--fav) 9%,var(--s1))}
+        .g-row[data-fav="1"] .g-tl{background:repeating-linear-gradient(90deg,color-mix(in srgb,var(--fav) 7%,transparent),color-mix(in srgb,var(--fav) 7%,transparent) calc(8.3333% - 1px),var(--b0) calc(8.3333% - 1px),var(--b0) 8.3333%)}
         .g-fav-btn{background:none;border:none;padding:0 2px;cursor:pointer;font-size:.85rem;line-height:1;color:var(--t5);flex-shrink:0;opacity:.5;transition:opacity .15s}
         .g-fav-btn:hover{opacity:1}
         .g-fav-btn[data-fav="1"]{color:var(--fav);opacity:1}
@@ -1680,7 +1678,7 @@ final class WebServer {
             else{var ch=r.dataset.ch;if(!seen[ch]&&ok){r.style.display='';seen[ch]=true;}else{r.style.display='none';}}
           });
           // Show/hide the favorites section header and footer for each device
-          document.querySelectorAll('.g-fav-sep,.g-fav-end').forEach(function(sep){
+          document.querySelectorAll('.g-fav-sep').forEach(function(sep){
             var dev=sep.dataset.dev;
             var hasFav=Array.from(_rows).some(function(r){
               return r.style.display!=='none'&&r.dataset.fav==='1'&&r.dataset.dev===dev;
