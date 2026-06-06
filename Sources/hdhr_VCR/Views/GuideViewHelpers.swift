@@ -4,7 +4,7 @@ import SwiftUI
 let watchNowBlue   = Color(red: 0.2, green: 0.6, blue: 1.0)
 let watchNowOrange = Color(red: 1.0, green: 0.482, blue: 0.0)
 
-// Shared DateFormatters used by AddShowView, FloatingGuideView, and CableGuideView.
+// Shared DateFormatters used by WebServer, WatchNowView, and VLCPlayerView.
 let origAirdateFormatter: DateFormatter = {
     let f = DateFormatter(); f.dateStyle = .medium; f.timeStyle = .none; return f
 }()
@@ -59,13 +59,23 @@ struct ManagedFlagView: View {
     }
 }
 
-func sortedGuideChannels(_ channels: [GuideChannel], favorites: Set<String>) -> [GuideChannel] {
-    channels.sorted { a, b in
-        let af = favorites.contains(a.GuideNumber)
-        let bf = favorites.contains(b.GuideNumber)
-        if af != bf { return af }
-        return a.GuideNumber.channelSortKey < b.GuideNumber.channelSortKey
-    }
+// MARK: - Guide entry color
+
+private let _genreColorMap: [String: Color] = [
+    "drama":    Color(hue: 0.60,  saturation: 0.65, brightness: 0.62),
+    "comedy":   Color(hue: 0.13,  saturation: 0.65, brightness: 0.62),
+    "news":     Color(hue: 0.95,  saturation: 0.60, brightness: 0.58),
+    "sports":   Color(hue: 0.33,  saturation: 0.65, brightness: 0.56),
+    "reality":  Color(hue: 0.07,  saturation: 0.65, brightness: 0.62),
+    "movie":    Color(hue: 0.75,  saturation: 0.80, brightness: 0.68),
+    "talk":     Color(hue: 0.48,  saturation: 0.60, brightness: 0.58),
+    "children": Color(hue: 0.875, saturation: 0.60, brightness: 0.62),
+    "kids":     Color(hue: 0.875, saturation: 0.60, brightness: 0.62),
+]
+
+func guideEntryColor(for entry: GuideEntry, onAir: Bool) -> Color {
+    let base = _genreColorMap[entry.firstGenre?.lowercased() ?? ""] ?? Color(white: 0.22)
+    return onAir ? base : base.opacity(0.75)
 }
 
 // MARK: - Signal quality UI helpers

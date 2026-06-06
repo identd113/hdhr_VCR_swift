@@ -85,7 +85,7 @@ private var pxPerMin: CGFloat {
 }
 ```
 
-`displayStart` is floored to the nearest 30-minute boundary, one slot before "now", so the current time is always visible just right of center on open.
+`displayStart` = `floor(now / 30min) * 30min - 1800` — floors to the nearest 30-minute boundary then subtracts one slot (30–60 min lookback), matching GuideStore's fetch window (`now - 3600`). `onAppear` scrolls via `ScrollViewReader` to the `"now-anchor"` (placed at `nowX - 160` px) so the now-line opens near the left of the viewport.
 
 `availableGridWidth` is captured via a `.background(GeometryReader { ... })` and updated whenever the window is resized — this drives pxPerMin recalculation and a `rebuildCaches()` call.
 

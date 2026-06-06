@@ -657,20 +657,6 @@ final class AppState: ObservableObject {
         guideStore.entries(deviceId: deviceId, channelNum: channelNum)
     }
 
-    func bonusOverlapWarning(for entry: GuideEntry, channel: LineupEntry, deviceId: String) -> String? {
-        let bonusMin = config.Sports_padding_minutes
-        let bonusMatcher   = ShowMatcher(shows.filter { $0.show_bonus_time })
-        let channelEntries = guideEntries(deviceId: deviceId, channelNum: channel.GuideNumber)
-        for other in channelEntries {
-            guard other.EndTime <= entry.StartTime else { continue }
-            guard bonusMatcher.matches(other) else { continue }
-            let bonusEndEpoch = other.EndTime + bonusMin * 60
-            guard bonusEndEpoch > entry.StartTime else { continue }
-            let overlapMin = max(1, (bonusEndEpoch - entry.StartTime) / 60)
-            return "⚠️ First \(overlapMin) min overlap with extended recording of \"\(other.Title)\""
-        }
-        return nil
-    }
 
     func rebuildMenuEntries() {
         let now = Date()

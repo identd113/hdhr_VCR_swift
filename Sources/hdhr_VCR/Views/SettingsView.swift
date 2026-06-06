@@ -572,14 +572,6 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Section("Guide") {
-                Toggle("Use Web Guide", isOn: $draft.Use_web_guide)
-                    .help("Open the web-based guide inside the app (WKWebView) instead of the native SwiftUI guide. The web server starts automatically when the guide opens.")
-                Text("When enabled, the floating guide window and the Add Show wizard guide step load the web guide. The native guide remains available when this is off.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
             if state.config.Web_server_enabled && state.webServerRunning {
                 let ip = availableNetworkInterfaces().first(where: { !$0.name.hasPrefix("utun") })?.ip ?? "localhost"
                 let urlStr = "http://\(ip):\(state.config.Web_server_port)"

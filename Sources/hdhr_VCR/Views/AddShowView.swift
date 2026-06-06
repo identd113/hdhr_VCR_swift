@@ -1,7 +1,7 @@
 import SwiftUI
 import WebKit
 
-// Multi-step wizard: Device → Channel → Guide entry → Details → Save
+// Multi-step wizard: (optional Device) → Web Guide → Details → Save
 struct AddShowView: View {
 
     @EnvironmentObject var state: AppState
@@ -15,25 +15,6 @@ struct AddShowView: View {
 
     // Step 1
     @State private var selectedDevice: HDHRDevice? = nil
-    // Step 2 — cable guide
-    @State private var allChannels:    [GuideChannel] = []
-    @State private var selectedChannel: LineupEntry?  = nil
-    @State private var selectedEntry: GuideEntry? = nil
-    @State private var isLoadingGuide = false
-    @State private var refreshToken = UUID()
-    @State private var snapToNow   = false
-    @State private var genreFilter: String? = nil
-
-    private var taskId: String { "\(selectedDevice?.DeviceID ?? ""):\(refreshToken)" }
-
-    // Genres extracted from loaded guide channels, sorted A-Z
-    private var availableGenres: [String] {
-        var seen = Set<String>()
-        return allChannels.flatMap { $0.Guide ?? [] }
-            .compactMap { $0.firstGenre }
-            .filter { seen.insert($0.lowercased()).inserted }
-            .sorted()
-    }
 
     // Step 3
     @State private var seriesType: ShowState = .single
@@ -45,10 +26,9 @@ struct AddShowView: View {
             .appendingPathComponent("Documents/hdhr_videos")
     }()
 
-
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Progress indicator
+            // Progress dots — device step intentionally omitted (device is chosen inside web guide)
             HStack(spacing: 4) {
                 ForEach([Step.guide, .details], id: \.self) { s in
                     Circle().fill(s == step ? Color.accentColor : .secondary.opacity(0.3))
@@ -67,7 +47,6 @@ struct AddShowView: View {
 
             Divider().padding(.top, 8)
 
-            // Step content
             Group {
                 switch step {
                 case .device:  deviceStep
@@ -93,12 +72,12 @@ struct AddShowView: View {
             }
         }
         .frame(
-            minWidth: step == .guide ? 1100 : 560,
-            idealWidth: step == .guide ? 1280 : 560,
-            maxWidth: step == .guide ? .infinity : 560,
-            minHeight: step == .guide ? 720 : 540,
-            idealHeight: step == .guide ? 820 : 540,
-            maxHeight: step == .guide ? .infinity : 540
+            minWidth:    step == .guide ? 1100 : 560,
+            idealWidth:  step == .guide ? 1280 : 560,
+            maxWidth:    step == .guide ? .infinity : 560,
+            minHeight:   step == .guide ? 720  : 540,
+            idealHeight: step == .guide ? 820  : 540,
+            maxHeight:   step == .guide ? .infinity : 540
         )
         .animation(.easeInOut(duration: 0.2), value: step)
         .onExitCommand { dismiss() }
@@ -171,18 +150,6 @@ struct AddShowView: View {
 
     private var guideStep: some View {
         Group {
-            if state.config.Use_web_guide {
-                webGuideStep
-            } else {
-                nativeGuideStep
-            }
-        }
-    }
-
-    // MARK: - Web guide step (WKWebView path)
-
-    @ViewBuilder private var webGuideStep: some View {
-        Group {
             if state.webServerRunning {
                 AddShowWebView(port: state.config.Web_server_port) { data in
                     guard
@@ -206,379 +173,8 @@ struct AddShowView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .onAppear { state.ensureWebServerRunning() }
+        .onAppear  { state.ensureWebServerRunning() }
         .onDisappear { state.releaseInternalWebServer() }
-    }
-
-    // MARK: - Native guide step (SwiftUI path)
-
-    @ViewBuilder private var nativeGuideStep: some View {
-        let managedMatcher = ManagedGuideMatcher(activeManagedShows: state.shows.filter { $0.show_active && !$0.show_paused })
-        let recordingMatcher = ShowMatcher(state.recordingShows)
-        let now30 = Date()
-        let nextUpMatcher = ShowMatcher(state.activeShows.filter {
-            guard let d = $0.show_next else { return false }
-            return d > now30 && d.timeIntervalSince(now30) <= 30 * 60
-        })
-        let bonusMatcher = ShowMatcher(state.shows.filter { $0.show_bonus_time })
-
-        VStack(spacing: 0) {
-            // ── Compact toolbar: tuner + genre filter + actions ───────────────
-            HStack(spacing: 10) {
-                if state.devices.count > 1 {
-                    Menu { ForEach(state.devices) { tunerMenuItem($0) } } label: { tunerMenuButton }
-                        .frame(maxWidth: 220)
-                }
-
-                if !availableGenres.isEmpty {
-                    Text("Genre:").foregroundStyle(.secondary).fixedSize()
-                    Picker("", selection: $genreFilter) {
-                        Text("All").tag(String?.none)
-                        ForEach(availableGenres, id: \.self) { g in
-                            Text(g).tag(Optional(g))
-                        }
-                    }
-                    .labelsHidden()
-                    .frame(maxWidth: 160)
-                }
-
-                Spacer()
-
-                if isLoadingGuide { ProgressView().scaleEffect(0.7) }
-                Button { snapToNow = true } label: {
-                    Label("Now", systemImage: "clock.arrow.circlepath")
-                }
-                Button {
-                    if let id = selectedDevice?.DeviceID {
-                        state.guideStore.invalidate(deviceId: id)
-                    }
-                    refreshToken = UUID()
-                } label: {
-                    Label("Refresh", systemImage: "arrow.clockwise")
-                }
-                .disabled(isLoadingGuide)
-                // Pop-out: open or focus the floating guide, then close the wizard
-                Button { popOutToFloatingGuide() } label: {
-                    Image(systemName: "arrow.up.left.and.arrow.down.right")
-                        .accessibilityLabel("Open guide in floating window")
-                }
-                .help("Open guide in floating window")
-                Text("[\(allChannels.count) ch]").font(.caption2).foregroundStyle(.orange)
-            }
-            .padding(.horizontal, 12).padding(.vertical, 8)
-
-            Divider()
-
-            // ── Summary (top 1/3) + Guide grid (bottom 2/3) ──────────────────
-            GeometryReader { proxy in
-                VStack(spacing: 0) {
-                    summaryPanel
-                        .frame(height: proxy.size.height / 3)
-                        .clipped()
-
-                    Divider()
-
-                    if allChannels.isEmpty && !isLoadingGuide {
-                        EmptyStateView(title: "No guide data", systemImage: "tv.slash",
-                                   description: "Guide data unavailable — tap Refresh to retry.")
-                    } else {
-                        CableGuideView(
-                            allChannels:        allChannels,
-                            lineup:             state.lineups[selectedDevice?.DeviceID ?? ""] ?? [],
-                            guideHours:         state.config.GuideHours,
-                            selectedEntry:      $selectedEntry,
-                            selectedChannel:    $selectedChannel,
-                            snapToNow:          $snapToNow,
-                            deviceId:                selectedDevice?.DeviceID ?? "",
-                            managedMatcher:   managedMatcher,
-                            recordingMatcher: recordingMatcher,
-                            nextUpMatcher:    nextUpMatcher,
-                            bonusMatcher:     bonusMatcher,
-                            bonusMinutes:     state.config.Sports_padding_minutes,
-                            genreFilter:        genreFilter,
-                            onConfirm: {
-                                applyGuideEntry()
-                                step = .details
-                            },
-                            onToggleFavorite: { lu in
-                                guard let device = selectedDevice else { return }
-                                state.toggleFavorite(device: device, channel: lu)
-                            },
-                            showSignalBars:   state.config.Signal_quality_enabled
-                        )
-                    }
-                }
-            }
-        }
-        .task(id: taskId) { await loadAllGuide() }
-        .onChange(of: selectedDevice) { newDevice in
-            // Force fresh guide data whenever the user switches tuners.
-            // Lineups are stable (loaded during discovery) — don't clear them or
-            // CableGuideView gets an empty lineup and the Record button stays disabled.
-            guard let id = newDevice?.DeviceID else { return }
-            state.guideStore.invalidate(deviceId: id)
-            allChannels = []
-            refreshToken = UUID()
-            genreFilter = nil   // new device has different genres — stale filter is misleading
-        }
-        .onChange(of: state.guideRevision) { _ in
-            guard let id = selectedDevice?.DeviceID, allChannels.isEmpty else { return }
-            let ch = state.guideStore.channels(deviceId: id)
-            guard !ch.isEmpty else { return }
-            state.logGuide("[Wizard] guideRevision fired — \(ch.count) channels pulled into view")
-            allChannels = ch
-            isLoadingGuide = false
-        }
-        .onChange(of: state.lineups[selectedDevice?.DeviceID ?? ""] ?? []) { _ in
-            guard let id = selectedDevice?.DeviceID, !allChannels.isEmpty else { return }
-            allChannels = sortedGuideChannels(allChannels, favorites: Set((state.lineups[id] ?? []).filter(\.isFavorite).map(\.GuideNumber)))
-        }
-        .onChange(of: allChannels.count) { _ in autoSelectFirstEntry() }
-        .onChange(of: state.pendingAddEntryGeneration) { _, _ in
-            // Fired when the user taps "Record…" from the menu while the window is already open.
-            if let pending = state.pendingAddEntry { applyPendingEntry(pending) }
-        }
-        .onChange(of: state.pendingAddChannelGeneration) { _, _ in
-            // Fired when the user taps a channel in the menu cascade while the window is already open.
-            if let pending = state.pendingAddChannel { applyPendingChannel(pending) }
-        }
-    }
-
-    // ── Summary panel ─────────────────────────────────────────────────────────
-
-    @ViewBuilder
-    private var summaryPanel: some View {
-        if let entry = selectedEntry {
-            let onAir  = entry.startDate <= Date() && entry.endDate > Date()
-            let bgColor = guideEntryColor(for: entry, onAir: onAir)
-            let channelIcon = allChannels.first(where: { $0.GuideNumber == selectedChannel?.GuideNumber })?.ImageURL
-            let isRecordingNow = state.recordingShows.contains { show in
-                show.show_channel == selectedChannel?.GuideNumber &&
-                (show.show_next ?? .distantFuture) <= Date() &&
-                (show.show_end  ?? .distantPast)   >  Date()
-            }
-            let defaultBonusTimeOn = entry.firstGenre?.lowercased().contains("sports") == true
-                                  && state.config.Sports_padding_enabled
-            let managedShow: Show? = {
-                if let sid = entry.SeriesID, !sid.isEmpty {
-                    return state.shows.first { $0.show_seriesid == sid }
-                }
-                return state.shows.first { $0.show_title == entry.Title }
-            }()
-            let isManaged = managedShow != nil
-
-            ZStack(alignment: .topTrailing) {
-            HStack(alignment: .top, spacing: 16) {
-                // Poster image — fixed width, fills panel height dynamically
-                if let urlStr = entry.ImageURL, !urlStr.isEmpty, let url = URL(string: urlStr) {
-                    AsyncImage(url: url) { img in
-                        img.resizable().aspectRatio(contentMode: .fill)
-                    } placeholder: {
-                        Color.white.opacity(0.2)
-                    }
-                    .accessibilityLabel("\(entry.Title) poster")
-                    .frame(width: 180)
-                    .frame(maxHeight: .infinity)
-                    .clipShape(RoundedRectangle(cornerRadius: 7))
-                    .overlay(alignment: .topTrailing) { if isManaged { ManagedFlagView() } }
-                } else {
-                    RoundedRectangle(cornerRadius: 7)
-                        .fill(Color.white.opacity(0.2))
-                        .frame(width: 180)
-                        .frame(maxHeight: .infinity)
-                        .overlay(alignment: .topTrailing) { if isManaged { ManagedFlagView() } }
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(entry.Title)
-                        .font(.title3).bold()
-                        .foregroundColor(.white)
-                        .lineLimit(1)
-                        .shadow(color: .black.opacity(0.4), radius: 1, x: 0, y: 1)
-                    if isRecordingNow {
-                        Label("Recording Now", systemImage: "record.circle.fill")
-                            .font(.caption).bold()
-                            .foregroundColor(.red)
-                    }
-
-                    // Genre badge — skip the generic "Series" tag since it adds nothing;
-                    // shown for meaningful genres like Sports, Drama, Comedy
-                    if let genre = entry.firstGenre, genre.lowercased() != "series" {
-                        Text(genre.uppercased())
-                            .font(.system(size: 9, weight: .bold))
-                            .padding(.horizontal, 5).padding(.vertical, 2)
-                            .background(Color.white.opacity(0.20))
-                            .cornerRadius(3)
-                            .foregroundColor(.white.opacity(0.90))
-                            .shadow(color: .black.opacity(0.35), radius: 1.5, x: 0, y: 1)
-                    }
-
-                    if let ep = entry.episodeInfoLabel {
-                        // Full white + shadow so episode info reads clearly on all genre colors
-                        Text(ep)
-                            .font(.subheadline)
-                            .foregroundColor(.white)
-                            .lineLimit(1)
-                            .shadow(color: .black.opacity(0.35), radius: 1.5, x: 0, y: 1)
-                    }
-
-                    // Original air date — present on most episodes; lets the user distinguish
-                    // first-runs from repeats without needing to know the episode number
-                    if let airdate = entry.OriginalAirdate {
-                        Text("Orig. \(origAirdateFormatter.string(from: Date(timeIntervalSince1970: TimeInterval(airdate))))")
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.80))
-                            .shadow(color: .black.opacity(0.35), radius: 1.5, x: 0, y: 1)
-                    }
-
-                    if let syn = entry.Synopsis, !syn.isEmpty {
-                        // Full white + shadow so synopsis is legible on both dark and light genre backgrounds
-                        Text(syn)
-                            .font(.callout)
-                            .foregroundColor(.white)
-                            .lineLimit(3)
-                            .shadow(color: .black.opacity(0.35), radius: 1.5, x: 0, y: 1)
-                    }
-                    // Upcoming airings for series shows
-                    if let sid = entry.SeriesID, !sid.isEmpty {
-                        let upcoming = state.upcomingGuideEpisodes(seriesID: sid)
-                        if !upcoming.isEmpty {
-                                let labels = upcoming.map { "Channel \($0.channel) \(upcomingFormatter.string(from: $0.entry.startDate))" }
-                            Text(labels.joined(separator: "  ·  "))
-                                .font(.caption2)
-                                .foregroundColor(.white.opacity(0.85))
-                                .lineLimit(2)
-                                .shadow(color: .black.opacity(0.35), radius: 1.5, x: 0, y: 1)
-                        }
-                    }
-                    Spacer(minLength: 0)
-                    HStack(spacing: 8) {
-                        ChannelIcon(urlString: channelIcon, size: 52)
-                        Text("Channel \(selectedChannel?.GuideNumber ?? "?")  ·  \(guideTimeRange(entry))")
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.85))
-                            .shadow(color: .black.opacity(0.35), radius: 1.5, x: 0, y: 1)
-                        Spacer()
-                        if onAir,
-                           state.config.Watch_in_VLC,
-                           FileManager.default.fileExists(atPath: "/Applications/VLC.app") {
-                            Button {
-                                state.watchInVLC(url: selectedChannel?.URL ?? "", deviceId: selectedDevice?.DeviceID)
-                            } label: {
-                                Label {
-                                    Text("Watch in VLC")
-                                } icon: {
-                                    Image(nsImage: NSWorkspace.shared.icon(forFile: "/Applications/VLC.app"))
-                                        .resizable().scaledToFit().frame(width: 16, height: 16)
-                                        .accessibilityHidden(true)
-                                }
-                            }
-                            .buttonStyle(WhiteOutlineButtonStyle(borderColor: Color(red: 1.0, green: 0.482, blue: 0.0)))
-                            .disabled(selectedChannel == nil)
-                        }
-                        if onAir, VLCBridge.shared.isAvailable {
-                            Button {
-                                state.watchInApp(url: selectedChannel?.URL ?? "",
-                                                 title: selectedEntry?.Title ?? "Live TV",
-                                                 deviceId: selectedDevice?.DeviceID)
-                            } label: {
-                                Label("Watch Now!", systemImage: "play.tv.fill")
-                            }
-                            .buttonStyle(WhiteOutlineButtonStyle(borderColor: .blue))
-                            .disabled(selectedChannel == nil)
-                        }
-                        Button {
-                            if let existing = managedShow {
-                                state.editingShowId = existing.show_id
-                                openWindow(id: "edit-show")
-                            } else {
-                                applyGuideEntry()
-                                step = .details
-                            }
-                        } label: {
-                            if isManaged {
-                                Label("Edit Show", systemImage: "pencil")
-                            } else {
-                                Label("Record", systemImage: "record.circle.fill")
-                            }
-                        }
-                        .buttonStyle(WhiteOutlineButtonStyle(borderColor: isManaged ? .blue : .red))
-                        .disabled(!isManaged && selectedChannel == nil)
-                        .frame(minWidth: 90)
-                    }
-                    // Overlap warning: shown when this show's start falls inside another show's bonus-time extension.
-                    // Always rendered (opacity 0 when absent) so the button row above stays at a fixed vertical position.
-                    let overlapWarning: String? = {
-                        guard let device = selectedDevice, let ch = selectedChannel else { return nil }
-                        return state.bonusOverlapWarning(for: entry, channel: ch, deviceId: device.DeviceID)
-                    }()
-                    Text(overlapWarning ?? " ")
-                        .font(.caption)
-                        .foregroundColor(.white.opacity(0.90))
-                        .padding(.horizontal, 4)
-                        .opacity(overlapWarning != nil ? 1 : 0)
-                }
-                // Dark gradient scrim behind the text column improves contrast on light genre
-                // backgrounds (amber comedy, green sports) without changing the background color
-                .background(
-                    LinearGradient(
-                        gradient: Gradient(colors: [Color.black.opacity(0.28), Color.black.opacity(0.04)]),
-                        startPoint: .leading, endPoint: .trailing
-                    )
-                    .cornerRadius(8)
-                    .blendMode(.multiply)
-                )
-                Spacer()
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(bgColor.opacity(0.90))
-            .cornerRadius(10)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-
-            if defaultBonusTimeOn {
-                StarburstBadge(minutes: state.config.Sports_padding_minutes, size: 100)
-                    .padding(.trailing, 18).padding(.top, 8)
-            }
-            } // ZStack
-        } else {
-            Text("Select a show from the grid")
-                .foregroundStyle(.tertiary)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-    }
-
-    // MARK: - Tuner menu helpers
-
-    @ViewBuilder
-    private func tunerMenuItem(_ device: HDHRDevice) -> some View {
-        let recCount = state.recordingShows.filter { $0.hdhr_record == device.DeviceID }.count
-        Button {
-            if selectedDevice?.DeviceID != device.DeviceID { selectedDevice = device }
-        } label: {
-            Label(tunerMenuItemLabel(device),
-                  systemImage: recCount > 0 ? "record.circle.fill" : "antenna.radiowaves.left.and.right")
-        }
-    }
-
-    private var tunerMenuButton: some View {
-        let recCount = selectedDevice.map { d in
-            state.recordingShows.filter { $0.hdhr_record == d.DeviceID }.count
-        } ?? 0
-        return Label(selectedDevice?.DeviceID ?? "No Tuner",
-                     systemImage: recCount > 0 ? "record.circle.fill" : "antenna.radiowaves.left.and.right")
-    }
-
-    private func tunerMenuItemLabel(_ device: HDHRDevice) -> String {
-        let recCount = state.recordingShows.filter { $0.hdhr_record == device.DeviceID }.count
-        let chCount  = state.lineups[device.DeviceID]?.count ?? 0
-        var parts    = [device.DeviceID, device.LocalIP]
-        if let tc = device.TunerCount { parts.append("\(tc) tuner\(tc == 1 ? "" : "s")") }
-        if chCount  > 0 { parts.append("\(chCount) ch") }
-        if recCount > 0 { parts.append("\(recCount) recording\(recCount == 1 ? "" : "s")") }
-        if let fw = device.FirmwareVersion { parts.append("fw \(fw)") }
-        return parts.joined(separator: "  ·  ")
     }
 
     private var detailsStep: some View {
@@ -637,26 +233,20 @@ struct AddShowView: View {
     private var canAdvance: Bool {
         switch step {
         case .device:  return selectedDevice != nil
-        case .guide:   return selectedEntry != nil && selectedChannel != nil
+        case .guide:   return false  // web guide advances via its own Record button
         case .details: return !show.show_title.isEmpty && recordFolder != nil && !show.show_url.isEmpty
         }
     }
 
     private func goForward() {
         switch step {
-        case .device:
-            step = .guide
-        case .guide:
-            applyGuideEntry()
-            step = .details
-        case .details:
-            save()
+        case .device:           step = .guide
+        case .guide, .details:  save()
         }
     }
 
     private func goBack() {
         switch step {
-        case .guide:   step = .device
         case .details: step = .guide
         default: break
         }
@@ -664,102 +254,32 @@ struct AddShowView: View {
 
     // MARK: - Logic
 
-    private func loadAllGuide() async {
-        guard let device = selectedDevice else {
-            state.logGuide("[Wizard] no device selected — loadAllGuide returning")
-            return
-        }
-        isLoadingGuide = true
-        // Guarantee lineup is present before loading guide — recovers from silent startup fetch failures
-        await state.ensureLineupLoaded(for: device)
-        // Repair: guideRevision may have triggered auto-select before lineup was ready,
-        // leaving selectedChannel nil. Now that lineup is confirmed available, fix it.
-        repairSelectedChannel(deviceId: device.DeviceID)
-        let id = device.DeviceID
-        let favorites = Set((state.lineups[id] ?? []).filter(\.isFavorite).map(\.GuideNumber))
-        state.logGuide("[Wizard] loadAllGuide deviceId=\(id) fresh=\(state.guideStore.isFresh(deviceId: id)) loading=\(state.guideStore.isLoading(deviceId: id))")
-        defer { isLoadingGuide = false }
-
-        // Already cached — read immediately
-        if state.guideStore.isFresh(deviceId: id) {
-            let ch = state.guideStore.channels(deviceId: id)
-            state.logGuide("[Wizard] cache hit — \(ch.count) channels, first guide counts: \(ch.prefix(3).map { "\($0.GuideNumber):\($0.Guide?.count ?? 0)" }.joined(separator: ", "))")
-            allChannels = sortedGuideChannels(ch, favorites: favorites)
-            return
-        }
-
-        // Startup is already loading this device — wait for it then read
-        if state.guideStore.isLoading(deviceId: id) {
-            state.logGuide("[Wizard] startup load in progress, waiting...")
-            let deadline = Date().addingTimeInterval(30)
-            while state.guideStore.isLoading(deviceId: id) && Date() < deadline {
-                try? await Task.sleep(nanoseconds: 200_000_000)
-            }
-            let ch = state.guideStore.channels(deviceId: id)
-            state.logGuide("[Wizard] startup finished — \(ch.count) channels")
-            if !ch.isEmpty {
-                state.guideByDevice = state.guideStore.channelsByDevice
-                allChannels = sortedGuideChannels(ch, favorites: favorites)
-                return
-            }
-            state.logGuide("[Wizard] startup gave 0 channels — falling through to fresh load")
-        }
-
-        // Fresh load
-        state.guideStore.verbose = state.config.Verbose_curl
-        state.logGuide("[Wizard] fetching fresh guide for \(id)...")
-        await state.guideStore.load(for: device, hours: state.config.GuideHours)
-        state.guideByDevice = state.guideStore.channelsByDevice
-        let ch = state.guideStore.channels(deviceId: id)
-        state.logGuide("[Wizard] fetch complete — \(ch.count) channels")
-        allChannels = sortedGuideChannels(ch, favorites: favorites)
-    }
-
-    private func popOutToFloatingGuide() {
-        if let existing = NSApp.windows.first(where: { $0.title == "Cable Guide" }) {
-            existing.makeKeyAndOrderFront(nil)
-        } else {
-            openWindow(id: "cable-guide")
-        }
-        dismiss()
-    }
-
-    private func autoSelectFirstEntry() {
-        guard allChannels.count > 0, selectedEntry == nil else { return }
-        let now = Date()
-        guard let firstCh = allChannels.first,
-              let entry = firstCh.Guide?.first(where: { $0.startDate <= now && $0.endDate > now })
-        else { return }
-        selectedEntry   = entry
-        selectedChannel = (state.lineups[selectedDevice?.DeviceID ?? ""] ?? [])
-            .first(where: { $0.GuideNumber == firstCh.GuideNumber })
-    }
-
-    /// Called after lineup is confirmed loaded. Fixes selectedChannel when auto-select fired
-    /// before the lineup arrived (guideRevision race) or when a tap captured a nil lineupEntry.
-    private func repairSelectedChannel(deviceId: String) {
-        guard let entry = selectedEntry, selectedChannel == nil else { return }
-        let lineupList = state.lineups[deviceId] ?? []
-        for ch in allChannels {
-            guard ch.Guide?.contains(where: { $0.id == entry.id }) == true else { continue }
-            selectedChannel = lineupList.first(where: { $0.GuideNumber == ch.GuideNumber })
-            return
-        }
-    }
-
     private func applyPendingChannel(_ pending: (device: HDHRDevice, channel: LineupEntry)) {
-        selectedDevice  = pending.device
-        selectedChannel = pending.channel
-        selectedEntry   = nil
+        selectedDevice = pending.device
         step = .guide
         state.pendingAddChannel = nil
     }
 
     private func applyPendingEntry(_ pending: (device: HDHRDevice, channel: LineupEntry, entry: GuideEntry)) {
-        selectedDevice  = pending.device
-        selectedChannel = pending.channel
-        selectedEntry   = pending.entry
-        applyGuideEntry()
+        let entry   = pending.entry
+        let channel = pending.channel
+        let device  = pending.device
+        selectedDevice           = device
+        show.show_title          = entry.Title
+        show.show_channel        = channel.GuideNumber
+        show.show_length         = entry.durationMinutes
+        show.show_next           = entry.startDate
+        show.show_end            = entry.endDate
+        show.show_seriesid       = entry.SeriesID ?? ""
+        show.show_logo_url       = entry.ImageURL ?? ""
+        show.show_genre          = entry.firstGenre ?? ""
+        show.show_bonus_time     = entry.firstGenre?.lowercased().contains("sports") == true && state.config.Sports_padding_enabled
+        show.hdhr_record         = device.DeviceID
+        show.show_url            = channel.URL ?? ""
+        let comps = Calendar.current.dateComponents([.hour, .minute, .weekday], from: entry.startDate)
+        show.show_time = Double(comps.hour ?? 20) + Double(comps.minute ?? 0) / 60.0
+        airDays    = [["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][(comps.weekday ?? 2) - 1]]
+        seriesType = .single
         step = .details
         state.pendingAddEntry = nil
     }
@@ -788,33 +308,7 @@ struct AddShowView: View {
         }
         let comps = Calendar.current.dateComponents([.hour, .minute, .weekday], from: startDate)
         show.show_time = Double(comps.hour ?? 20) + Double(comps.minute ?? 0) / 60.0
-        let dayName = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][(comps.weekday ?? 2) - 1]
-        airDays = [dayName]
-        seriesType = .single
-    }
-
-    private func applyGuideEntry() {
-        guard let entry = selectedEntry, let channel = selectedChannel, let device = selectedDevice else { return }
-        show.show_title    = entry.Title
-        show.show_channel  = channel.GuideNumber
-        show.show_length   = entry.durationMinutes
-        show.show_next     = entry.startDate
-        show.show_end      = entry.endDate
-        show.show_seriesid = entry.SeriesID ?? ""
-        show.show_logo_url = entry.ImageURL ?? ""
-        show.show_genre    = entry.firstGenre ?? ""
-        show.show_bonus_time = entry.firstGenre?.lowercased().contains("sports") == true && state.config.Sports_padding_enabled
-        show.hdhr_record   = device.DeviceID
-        show.show_url      = channel.URL ?? ""
-
-        // Local time components — matches what the user sees in the guide
-        let comps = Calendar.current.dateComponents([.hour, .minute, .weekday], from: entry.startDate)
-        show.show_time = Double(comps.hour ?? 20) + Double(comps.minute ?? 0) / 60.0
-
-        // Pre-populate airDays with the local weekday so it matches the guide display
-        let dayName = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][(comps.weekday ?? 2) - 1]
-        airDays = [dayName]
-
+        airDays    = [["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][(comps.weekday ?? 2) - 1]]
         seriesType = .single
     }
 
@@ -832,7 +326,6 @@ struct AddShowView: View {
 
     private func save() {
         guard let folder = recordFolder else { return }
-        // Apply series type flags
         show.show_is_series         = seriesType != .single
         show.show_use_seriesid      = seriesType.isSeries
         show.show_use_seriesid_all  = seriesType == .seriesAll
@@ -841,19 +334,18 @@ struct AddShowView: View {
             : Array(airDays)
         show.show_dir               = folder.path
         show.show_temp_dir          = folder.path
-        // For SeriesID shows, resolve to the current airing (or next) — same path as the menu flow
-        if show.show_use_seriesid, let device = selectedDevice, let channel = selectedChannel {
+        if show.show_use_seriesid, let device = selectedDevice,
+           let channel = state.lineups[device.DeviceID]?.first(where: { $0.GuideNumber == show.show_channel }) {
             state.resolveSeriesAir(show: &show, device: device, isAll: show.show_use_seriesid_all, channel: channel)
         }
         state.addShow(show)
         dismiss()
     }
-
 }
 
 // WKWebView wrapper for the web guide in the Add Show wizard.
 // Posts a WKScriptMessage on "record" when the user clicks Record in the web guide.
-// The onRecord callback receives the entry data and advances the wizard to step 3.
+// The onRecord callback receives the entry data and advances the wizard to the details step.
 private struct AddShowWebView: NSViewRepresentable {
     let port: Int
     let onRecord: ([String: Any]) -> Void
@@ -909,4 +401,3 @@ extension LineupEntry: Hashable, Equatable {
 extension HDHRDevice: Hashable {
     func hash(into hasher: inout Hasher) { hasher.combine(DeviceID) }
 }
-

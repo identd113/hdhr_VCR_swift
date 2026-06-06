@@ -343,7 +343,9 @@ A cable-TV-style horizontal time grid. Window width depends on the requesting cl
 | Desktop (Macintosh / Windows / Linux UA) | `GuideHours` hours | 24 h |
 | Mobile (iPhone / iPad / Android UA) | `GuideHours / 2` hours | 12 h |
 
-`isDesktopUA(_ ua: String)` (private helper) classifies the UA server-side. Modern iPads in desktop-browsing mode report `"Macintosh"` and receive the wider window. Window always starts at the previous 30-minute boundary (`winStart = (nowTs / 1800) * 1800`).
+`isDesktopUA(_ ua: String)` (private helper) classifies the UA server-side. Modern iPads in desktop-browsing mode report `"Macintosh"` and receive the wider window.
+
+**Window start:** `winStart = (nowTs / 1800) * 1800 - 1800` — floors to the nearest 30-minute boundary then subtracts one slot, giving a 30–60 minute lookback. `GuideStore.entries()` is called with `after: Date(winStart)` (not the default `after: Date()`) so shows that already ended but fall within the lookback are included. Gap periods with no guide data render as `.g-gap` divs (fully opaque `var(--bg)`) so the striped `.g-tl` background never shows through. On page load, a JS IIFE scrolls the guide so the now-line sits ~25% from the left of the visible viewport.
 
 `div.gi` `min-width` = `max(1200, winSec / 1800 * 100)` px — scales up for wider windows so program blocks never compress below a readable width.
 

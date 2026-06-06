@@ -252,7 +252,6 @@ struct AppConfig: Equatable {
     // Web server
     var Web_server_enabled: Bool = false
     var Web_server_port:    Int  = 1980
-    var Use_web_guide:      Bool = false
 
     // Signal quality
     var Signal_quality_enabled:      Bool = false  // show signal bars in guide + web UI
@@ -295,7 +294,6 @@ extension AppConfig: Codable {
         Discord_enabled         = (try? c.decode(Bool.self,   forKey: .Discord_enabled))         ?? !Discord_webhook_url.isEmpty
         Web_server_enabled      = (try? c.decode(Bool.self,   forKey: .Web_server_enabled))      ?? false
         Web_server_port         = (try? c.decode(Int.self,    forKey: .Web_server_port))         ?? 1980
-        Use_web_guide           = (try? c.decode(Bool.self,   forKey: .Use_web_guide))           ?? false
         Signal_quality_enabled      = (try? c.decode(Bool.self, forKey: .Signal_quality_enabled))      ?? false
         Signal_quality_alert_notify = (try? c.decode(Bool.self, forKey: .Signal_quality_alert_notify)) ?? false
     }
@@ -462,24 +460,6 @@ struct GuideEntry: Codable, Identifiable, Hashable {
         guard let f = Filter else { return nil }
         if f.contains("Movie") || f.contains("Movies") { return "Movie" }
         return f.first { $0.lowercased() != "series" }
-    }
-}
-
-// MARK: - ShowMatcher
-
-/// Matches a guide entry against a set of shows by SeriesID (preferred) or title (fallback).
-/// Used for recording/nextUp/bonus classification — three instances replace six parallel sets.
-struct ShowMatcher: Equatable {
-    let seriesIDs: Set<String>
-    let titles:    Set<String>
-
-    init(_ shows: [Show]) {
-        seriesIDs = Set(shows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
-        titles    = Set(shows.map { $0.show_title })
-    }
-
-    func matches(_ entry: GuideEntry) -> Bool {
-        entry.SeriesID.map { seriesIDs.contains($0) } ?? titles.contains(entry.Title)
     }
 }
 
