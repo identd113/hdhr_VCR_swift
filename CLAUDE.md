@@ -36,6 +36,7 @@ Models.swift               All data types + glog() logging function
 DiscordNotifier.swift      sendDiscordEmbed() — posts embeds to a Discord webhook URL
 AddShowMode.swift          Enum: .menu vs .wizard
 ChannelIconCache.swift     Actor: async disk-backed cache for channel logos
+ChannelSignalStore.swift   Actor: per-channel SNQ history, bucketing, adaptive re-sample logic
 Views/
   MenuContent.swift        Menu bar dropdown (entire UI)
   AddShowView.swift        3-step Add Show wizard
@@ -75,6 +76,7 @@ Views/
 - [Models](docs/Models.md) — 4-state show model, ManagedGuideMatcher, GuideEntry, HDHRDevice, glog
 - [Config](docs/Config.md) — file location/migration, all AppConfig fields with defaults
 - [WebServer](docs/WebServer.md) — routes, device switcher, JSON API, SSE push events, security
+- [ChannelSignalStore](docs/ChannelSignalStore.md) — SNQ history actor, bucketing, passive/active collection, SignalBarsView
 
 ---
 

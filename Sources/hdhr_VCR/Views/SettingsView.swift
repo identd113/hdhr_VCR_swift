@@ -524,8 +524,8 @@ struct SettingsView: View {
             }
 
             if draft.Signal_quality_enabled {
-                Section("Scan Channels") {
-                    Text("Tune each channel briefly to sample signal quality. Results are stored and displayed as bars in the guide.")
+                Section("Signal Strength Scan") {
+                    Text("Briefly tunes each channel to measure signal quality. Results are stored and shown as bars in the guide.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     if let progress = state.signalScanProgress {
@@ -535,7 +535,7 @@ struct SettingsView: View {
                             .foregroundStyle(.red)
                     } else {
                         ForEach(state.devices) { device in
-                            Button("Scan \(device.DeviceID)") { state.startSignalScan() }
+                            Button("Measure Signal: \(device.DeviceID)") { state.startSignalScan() }
                         }
                     }
                 }

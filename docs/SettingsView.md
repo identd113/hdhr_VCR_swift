@@ -58,11 +58,12 @@ One `Section`:
 **Notify when…** section (visible only when enabled + URL set): 11 toggles for individual event types.
 
 ### Category: Advanced
-Three sections:
+Five sections:
 - **Network**: `Picker` for discovery/recording interface (`"Auto"` default + available NICs with display names). Caption explaining VPN usage.
 - **Performance**: `Stepper` for idle check interval (5–60s, step 5)
 - **Logging**: `"Show App Log in Console"` button (opens Console.app for OSLog output) + selectable filter hint label (`subsystem == "com.hdhr.vcrplus"`). `Toggle("Verbose curl logging")`; when on: caption with curl log path (text-selectable) + `"Show curl log in Finder"` button
 - **Config File**: caption with config path (text-selectable) + `"Show config in Finder"` button
+- **Signal Quality**: two `Toggle`s (show bars, send dropout alerts) + conditional **Scan Channels** section with per-device scan buttons (visible only when Show signal bars is on)
 
 ### Category: Maintenance
 Sections: Shows, Guide & Devices, Tools (if Homebrew found), Developer (if macOS > 13).
@@ -114,7 +115,7 @@ Sidebar entries (with SF Symbol icons):
 | Recording | `record.circle` | Folder, transcode, disk, failures, VLC, Bonus Time |
 | Guide | `tv` | Guide hours, series scan retry |
 | Notifications | `bell.badge` | Up Next timing, Recording alert timing |
-| Advanced | `terminal` | Network interface, idle interval, verbose curl, config file path |
+| Advanced | `terminal` | Network interface, idle interval, logging, verbose curl, config file path, signal quality |
 | Web Server | `globe` | Enable/disable LAN web server, port, access URL |
 | Maintenance | `wrench.and.screwdriver` | Show maintenance, guide/device ops, brew tool installs, Developer (OS sim) |
 | About | `info.circle` | App logo, version, history, GitHub link |
@@ -184,9 +185,18 @@ Recording Complete embeds additionally include **Format** (file extension, e.g. 
   - URLSession HTTP requests rely on OS routing — correct for VPN since the VPN routes the remote subnet through the tunnel automatically
   - Leave on Auto for single-NIC setups.
 - **Idle check interval** — `Stepper` (5–60 sec, step 5). How often the idle loop fires. Minimum enforced at 5s (`max(5, config.Idle_timer_interval)`). Changing this calls `state.startTimer()` immediately via `applyAndSave()`.
-- **App log** — `"Show App Log in Console"` button. Opens Console.app; app logs now go to OSLog (subsystem `com.hdhr.vcrplus`) rather than a file. A selectable filter hint label appears below the button for copy-paste into Console or Terminal (`log stream --level debug --predicate 'subsystem == "com.hdhr.vcrplus"'`).
-- **Verbose curl logging** — `Toggle`. Adds `-v` to curl args and pipes curl stderr to `~/Library/Logs/hdhrVCRplus.log`. When enabled, shows the curl log path (selectable text) and a "Show curl log in Finder" button. Log path is `RecordingManager.curlLogPath` (static let). Rotated at 5 MB by `writeCurlLogHeader` before each new recording session.
+- **App log** — `"Show App Log in Console"` button. Opens Console.app; logs go to OSLog (subsystem `com.hdhr.vcrplus`) **and** `~/Library/Logs/hdhrVCRplus.log`. A selectable filter hint label appears below the button for copy-paste into Console or Terminal (`log stream --level debug --predicate 'subsystem == "com.hdhr.vcrplus"'`).
+- **Verbose curl logging** — `Toggle`. Adds `-v` to curl args and pipes curl stderr to `~/Library/Logs/hdhrVCRplus.log` (same file as the app log). When enabled, shows the curl log path (selectable text) and a "Show curl log in Finder" button. Log path is `RecordingManager.curlLogPath` (static let). Rotated at 5 MB by `writeCurlLogHeader` before each new recording session.
 - **Config file path** — read-only display (`state.configManager.configPath`) + "Show config in Finder" button using `NSWorkspace.shared.selectFile(_:inFileViewerRootedAtPath:)`.
+
+**Signal Quality section** (always visible in Advanced):
+- **Show signal bars in guide** — `Toggle` bound to `draft.Signal_quality_enabled`. When on, `SignalBarsView` appears in cable guide and Watch Now rows. Signal data is **always collected passively** during recordings regardless of this toggle — it only controls display.
+- **Send alerts on signal dropout** — `Toggle` bound to `draft.Signal_quality_alert_notify`. When on, sends a system notification and a Discord embed when a recording's SNQ drops below 30% for ~20 seconds and when it recovers. Logging via `glog` is always active.
+
+**Signal Strength Scan section** (only visible when Signal Quality toggle is on):
+- Brief description: *"Briefly tunes each channel to measure signal quality. Results are stored and shown as bars in the guide."*
+- While scanning: progress label (`"Scanning {GuideName} (N/total)…"`) + `Label` with `antenna.radiowaves.left.and.right` icon + red **Cancel Scan** button.
+- At rest: one **Measure Signal: {DeviceID}** button per discovered device. Calling `state.startSignalScan()` tunes each lineup channel for 2 seconds and reads `SignalQualityPercent` from `status.json`. Completed samples are immediately pushed to the web guide via SSE `signal_update`.
 
 ---
 

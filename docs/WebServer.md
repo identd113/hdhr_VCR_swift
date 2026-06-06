@@ -31,6 +31,7 @@ func broadcastEvent(_:)   // pushes a JSON event to all open SSE clients
 | GET | `/api/now.json` | JSON array of on-air entries (see schema below) |
 | GET | `/api/shows-html` | HTML fragment for the schedule popover body |
 | GET | `/api/tuners.json` | JSON object `{deviceId: {t, a, surl}}` — per-device total/active tuner counts; polled by `refreshTuners()` every 30 s |
+| GET | `/api/signal` | JSON object `{guideName: "good"|"fair"|"poor"|"noData"}` — snapshot of `state.channelSignalBuckets` keyed by `guideName.lowercased()` |
 | POST | `/api/record` | Schedule a recording |
 | POST | `/api/delete` | Remove a managed show and stop any active recording |
 | POST | `/api/edit` | Update a managed show's config fields |
@@ -198,6 +199,7 @@ A persistent SSE endpoint. Browsers connect once on page load via `EventSource('
 | `show_added` | `AppState.addShowFromGuide` | `channel`, `device` |
 | `show_deleted` | `WebServer.handleDelete` | `channel`, `device` |
 | `show_updated` | `WebServer.handleEdit` | `channel`, `device` |
+| `signal_update` | `AppState.startSignalScan` | `gname` (guideName.lowercased()), `bucket` (raw string: `"good"` / `"fair"` / `"poor"` / `"noData"`) |
 
 **Client handling:**
 ```javascript
@@ -205,11 +207,22 @@ A persistent SSE endpoint. Browsers connect once on page load via `EventSource('
   if(!window.EventSource)return;
   var es=new EventSource('/api/events');
   es.onmessage=function(e){
-    try{var d=JSON.parse(e.data);if(d&&d.type)refreshGuide();}catch(x){}
+    try{
+      var d=JSON.parse(e.data);
+      if(!d||!d.type)return;
+      if(d.type==='signal_update'&&d.gname&&d.bucket){
+        // inline DOM update — no full refresh needed
+        document.querySelectorAll('.g-row[data-gname="'+d.gname+'"]').forEach(function(row){
+          // update SVG bars in channel column
+        });
+      } else {
+        refreshGuide();
+      }
+    }catch(x){}
   };
 })();
 ```
-Any event triggers `refreshGuide()` — the scroll-preserving partial DOM swap. `EventSource` auto-reconnects after 3 s on drop. `stop()` cancels all SSE connections and clears the registry.
+`signal_update` events update the SVG bars on matching `.g-row[data-gname]` elements in-place without triggering a full `refreshGuide()`. All other events trigger `refreshGuide()` — the scroll-preserving partial DOM swap. `EventSource` auto-reconnects after 3 s on drop. `stop()` cancels all SSE connections and clears the registry.
 
 ---
 
@@ -342,7 +355,9 @@ A cable-TV-style horizontal time grid. Window width depends on the requesting cl
 
 **Rows:** one row per (device × channel). Cross-device deduplication is handled client-side by `setDev('')` on page load — it hides duplicate `GuideNumber` rows keeping the first-device occurrence, giving a clean "All" view.
 
-Each `.g-row` carries `data-dev` and `data-ch` for device filtering.
+Each `.g-row` carries `data-dev`, `data-ch`, and `data-gname` (`GuideName.lowercased()`) — `data-gname` is the key used by `signal_update` SSE events to target in-place bar updates.
+
+**Signal bars in channel column:** when `state.config.Signal_quality_enabled` and signal data exists for a channel, a 3-bar SVG (`class="g-sig"`, `viewBox="0 0 11 10"`, `width/height=10`) is baked into the `.g-ch` cell at page build time. Buckets map to fill levels: `good` → all 3 bars, `fair` → 2 bars, `poor` → 1 bar, `noData` → no SVG emitted. The `title` attribute carries `"Signal: {bucket}"` for hover. Bars are updated in-place on `signal_update` SSE events without a page reload.
 
 **`setDev()` and DOM caching**: `.g-row` NodeList is cached into `_rows` at page load and reused on every device switch — avoids repeated `querySelectorAll` calls.
 

@@ -156,6 +156,26 @@ A tuner is occupied when `VctNumber != nil`.
 
 ---
 
+## Signal Quality Types
+
+Defined in `Models.swift`, used by `ChannelSignalStore` and the guide views.
+
+```swift
+struct ChannelSignalSample: Codable {
+    var ts:  Date
+    var snq: Int   // 0–100, signal quality percent
+}
+
+enum SignalBucket: String, Codable, Equatable {
+    case noData, poor, fair, good
+    init(_ v: Double)  // v < 0.33 → poor, < 0.66 → fair, else good
+}
+```
+
+`SignalBucket` is the display-facing classification. `ChannelSignalSample` is the raw timestamped reading persisted by `ChannelSignalStore`.
+
+---
+
 ## Logging (`glog`)
 
 Global free function in `Models.swift`:
@@ -165,7 +185,9 @@ func glog(_ msg: String, level: LogLevel = .info)
 // LogLevel: .info ("INFO"), .warning ("WARN"), .error ("ERROR")
 ```
 
+Writes to **both** OSLog (subsystem `com.hdhr.vcrplus`, category `app`) and the app log file.
+
 Log file: `~/Library/Logs/hdhrVCRplus.log`  
 Format: `[2026-05-25T04:01:24Z] [INFO] message`
 
-File descriptor opened with `O_APPEND` on every call — atomic across actors/threads. All source files use `glog`; no `print()` calls anywhere.
+`logFilePath` is a module-level `let` constant. Writes are dispatched onto a serial `logQueue` (`DispatchQueue`, `.utility` QoS) — opens a `FileHandle`, seeks to end, appends, closes. Safe to call from any actor or thread. All source files use `glog`; no `print()` calls anywhere.
