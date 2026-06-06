@@ -1656,11 +1656,11 @@ final class WebServer {
         var _nowPct=\(nowPct);
         function scrollToNow(){var gw=document.querySelector('.gw');var gi=document.querySelector('.gi');if(!gw||!gi)return;var nowPx=gi.scrollWidth*(_nowPct/100);gw.scrollLeft=Math.max(0,nowPx-gw.clientWidth*0.25);}
         scrollToNow();
-        // Page-staleness: reload if the server version changes (redeploy) or page is older than 4 hours.
+        // Page-staleness: reload if the server version changes (redeploy) or the baked-in expiry has passed.
         (function(){
-          var _ver='\(appVersion)',_born=Date.now(),_maxAge=4*60*60*1000;
+          var _ver='\(appVersion)',_exp=\(Int(Date().addingTimeInterval(2*3600).timeIntervalSince1970)*1000);
           function checkFreshness(){
-            if(Date.now()-_born>_maxAge){location.reload();return;}
+            if(Date.now()>_exp){location.reload();return;}
             fetch('/api/ping').then(function(r){return r.json();}).then(function(j){
               if(j.version&&j.version!==_ver)location.reload();
             }).catch(function(){});
