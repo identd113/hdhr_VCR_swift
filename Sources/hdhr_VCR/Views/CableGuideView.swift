@@ -154,7 +154,6 @@ struct CableGuideView: View {
     let genreFilter:      String?             // nil = show all; non-nil = dim non-matching
     var onConfirm: (() -> Void)? = nil        // called on double-click to advance wizard
     var onToggleFavorite: ((LineupEntry) -> Void)? = nil  // called when star is tapped
-    var signalBuckets: [String: SignalBucket] = [:]
     var showSignalBars: Bool = false
 
     // ── Layout constants ───────────────────────────────────────────────────────
@@ -277,7 +276,7 @@ struct CableGuideView: View {
             Spacer(minLength: 0)
 
             if showSignalBars {
-                SignalBarsView(bucket: signalBucket(guideName: ch.GuideName, in: signalBuckets))
+                SignalBarsView(bucket: signalBucket(guideName: ch.GuideName))
                     .padding(.trailing, 2)
             }
 

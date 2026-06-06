@@ -314,7 +314,7 @@ final class WebServer {
 
         case "/api/signal":
             var out: [String: String] = [:]
-            for (key, bucket) in state.channelSignalBuckets { out[key] = bucket.rawValue }
+            for (key, bucket) in ChannelSignalStore.shared.buckets { out[key] = bucket.rawValue }
             let data = (try? JSONSerialization.data(withJSONObject: out)) ?? Data("{}".utf8)
             return .ok(contentType: "application/json", body: data)
 
@@ -779,7 +779,7 @@ final class WebServer {
                 }
 
                 let gnameAttr = ch.GuideName.lowercased()
-                let sigBucket = state.channelSignalBuckets[gnameAttr] ?? .noData
+                let sigBucket = ChannelSignalStore.shared.buckets[gnameAttr] ?? .noData
                 let sigHTML: String = {
                     guard sigBucket != .noData else { return "" }
                     let color = sigBucket == .poor ? "#e53935" : sigBucket == .fair ? "#fbc02d" : "#43a047"

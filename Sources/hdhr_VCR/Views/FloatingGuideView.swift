@@ -72,7 +72,6 @@ struct FloatingGuideView: View {
                                 guard let device = selectedDevice else { return }
                                 state.toggleFavorite(device: device, channel: lu)
                             },
-                            signalBuckets:    state.channelSignalBuckets,
                             showSignalBars:   state.config.Signal_quality_enabled
                         )
                     }

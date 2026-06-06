@@ -275,8 +275,7 @@ struct WatchNowRow: View {
                     .font(.caption.bold())
                     .foregroundStyle(.secondary)
                 if state.config.Signal_quality_enabled {
-                    SignalBarsView(bucket: signalBucket(guideName: channel.GuideName,
-                                                        in: state.channelSignalBuckets))
+                    SignalBarsView(bucket: signalBucket(guideName: channel.GuideName))
                 }
                 if managed?.show_recording == true {
                     Spacer(minLength: 6)

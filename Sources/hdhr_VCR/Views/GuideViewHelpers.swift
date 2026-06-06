@@ -70,9 +70,9 @@ func sortedGuideChannels(_ channels: [GuideChannel], favorites: Set<String>) -> 
 
 // MARK: - Signal quality UI helpers
 
-/// Resolve a SignalBucket from the pre-computed snapshot. Key is guideName.lowercased().
-func signalBucket(guideName: String, in buckets: [String: SignalBucket]) -> SignalBucket {
-    buckets[guideName.lowercased()] ?? .noData
+@MainActor
+func signalBucket(guideName: String) -> SignalBucket {
+    ChannelSignalStore.shared.buckets[guideName.lowercased()] ?? .noData
 }
 
 struct SignalBarsView: View {

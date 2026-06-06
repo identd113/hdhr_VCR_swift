@@ -60,7 +60,6 @@ final class AppState: ObservableObject {
     private var lastTunerAudit: [String: String] = [:]                      // deviceId → last logged audit string; suppresses unchanged lines
     @Published var vlcCurrentURL: String = ""               // raw URL (no transcode query) playing in VLCPlayerView
     @Published var channelIconImages: [String: NSImage] = [:]  // ImageURL → NSImage; populated during prefetch for sync menu use
-    @Published var channelSignalBuckets: [String: SignalBucket] = [:]  // "freq:guidename" → bucket; display snapshot
     @Published var signalScanProgress: String? = nil
 
     private var signalScanTask:     Task<Void, Never>? = nil
@@ -533,12 +532,6 @@ final class AppState: ObservableObject {
         statusMessage = "\(shows.count) show(s) — \(availableDeviceCount) tuner(s) ready"
         let allChannels = guideByDevice.values.flatMap { $0 }
         Task { await prefetchChannelIcons(allChannels) }
-        if config.Signal_quality_enabled {
-            Task {
-                let buckets = await ChannelSignalStore.shared.allBuckets()
-                channelSignalBuckets = buckets
-            }
-        }
     }
 
     /// Refresh lineup + guide for all devices (called periodically from idleLoop).
@@ -1923,7 +1916,7 @@ final class AppState: ObservableObject {
             // Key uses LineupEntry.Frequency (same source views use for lookup) not status.json Frequency.
             let statusSnq = match.SignalQualityPercent ?? 0
             if let entry = lineups[device.DeviceID]?.first(where: { $0.GuideNumber == show.show_channel }) {
-                Task { await ChannelSignalStore.shared.record(guideName: entry.GuideName, snq: statusSnq) }
+                ChannelSignalStore.shared.record(guideName: entry.GuideName, snq: statusSnq)
             }
             if statusSnq < 30 {
                 let ticks = (signalDropoutTicks[show.show_id] ?? 0) + 1
@@ -1995,19 +1988,17 @@ final class AppState: ObservableObject {
                             for entry in batch {
                                 guard let match = tunerInfos.first(where: { $0.VctNumber == entry.GuideNumber }),
                                       let snq = match.SignalQualityPercent else { continue }
-                                await ChannelSignalStore.shared.record(guideName: entry.GuideName, snq: snq)
+                                ChannelSignalStore.shared.record(guideName: entry.GuideName, snq: snq)
                             }
                         }
                         group.cancelAll()  // release tuners; stream tasks observe cancellation and exit
                     }
 
-                    let buckets = await ChannelSignalStore.shared.allBuckets()
-                    await MainActor.run { channelSignalBuckets = buckets }
                     for entry in batch {
                         let key = entry.GuideName.lowercased()
                         webServer.broadcastEvent(["type": "signal_update",
                                                   "gname": key,
-                                                  "bucket": buckets[key]?.rawValue ?? "noData"])
+                                                  "bucket": ChannelSignalStore.shared.buckets[key]?.rawValue ?? "noData"])
                     }
                 }
             }

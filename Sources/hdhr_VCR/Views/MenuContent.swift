@@ -262,8 +262,7 @@ struct MenuContent: View {
                         .foregroundColor(Color(NSColor.labelColor))
                     if state.config.Signal_quality_enabled,
                        let lu = state.lineups[show.hdhr_record]?.first(where: { $0.GuideNumber == show.show_channel }) {
-                        SignalBarsView(bucket: signalBucket(guideName: lu.GuideName,
-                                                            in: state.channelSignalBuckets))
+                        SignalBarsView(bucket: signalBucket(guideName: lu.GuideName))
                     }
                 }
             }
