@@ -232,13 +232,17 @@ struct MenuContent: View {
                     let deviceShows = unavailableShows.filter { $0.hdhr_record == device.DeviceID }
                     if !deviceShows.isEmpty {
                         Section("Unavailable Tuner · \(device.DeviceID)") {
-                            ForEach(deviceShows) { scheduledMenu($0) }
+                            ForEach(deviceShows) { show in
+                                if show.show_recording { recordingMenu(show) } else { scheduledMenu(show) }
+                            }
                         }
                     }
                 }
             } else {
                 Section("Unavailable Tuner") {
-                    ForEach(unavailableShows) { scheduledMenu($0) }
+                    ForEach(unavailableShows) { show in
+                        if show.show_recording { recordingMenu(show) } else { scheduledMenu(show) }
+                    }
                 }
             }
         }

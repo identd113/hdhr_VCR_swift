@@ -1114,6 +1114,11 @@ final class AppState: ObservableObject {
 
     func startRecording(index: Int) async {
         var show = shows[index]
+        // Skip if the assigned device is currently unavailable — avoids burning fail count on a dead tuner.
+        if let device = devices.first(where: { $0.DeviceID == show.hdhr_record }), !device.isAvailable {
+            glog("[\(show.show_title)] device \(show.hdhr_record) unavailable — skipping recording start", level: .warning)
+            return
+        }
         // Enforce tuner limit: skip if all slots on this device are already occupied
         if let device = devices.first(where: { $0.DeviceID == show.hdhr_record }),
            let tunerCount = device.TunerCount {
