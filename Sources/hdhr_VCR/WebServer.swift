@@ -594,12 +594,16 @@ final class WebServer {
         // Grid min-width: 100px per 30-min slot so text stays readable at any window size.
         let guideMinWidth = max(1200, winSec / 1800 * 100)
 
-        // ── Time tick labels: 7 marks evenly spaced across the window ────────
-        // Interval = winSec/6 → 1h steps for 6h window, 2h steps for 12h window, etc.
-        let ticksHTML: String = (0...6).map { i in
-            let ts  = winStart + i * (winSec / 6)
-            let lbl = he(timeRangeFormatter.string(from: Date(timeIntervalSince1970: TimeInterval(ts))))
-            return "<div class=\"g-tick\" style=\"left:\(pct(i * winSec / 6))%\">\(lbl)</div>"
+        // ── Time tick labels: one per clock hour across the window ──────────
+        let hourFmt: DateFormatter = {
+            let f = DateFormatter()
+            f.dateFormat = DateFormatter.dateFormat(fromTemplate: "j", options: 0, locale: .current)
+            return f
+        }()
+        let firstHour = ((winStart + 3599) / 3600) * 3600  // first hour boundary ≥ winStart
+        let ticksHTML: String = stride(from: firstHour, through: winEnd, by: 3600).map { ts in
+            let lbl = he(hourFmt.string(from: Date(timeIntervalSince1970: TimeInterval(ts))))
+            return "<div class=\"g-tick\" style=\"left:\(pct(ts - winStart))%\">\(lbl)</div>"
         }.joined() + "<div class=\"g-now-tick\" style=\"left:\(nowPct)%\"></div>"
 
         // ── Managed show lookup (device-agnostic for badge coloring) ─────────
