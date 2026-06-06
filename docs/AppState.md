@@ -81,6 +81,8 @@ Falls back to **SiliconDust cloud API** (`http://discover.hdhomerun.com/discover
 | `@Published webServerRunning: Bool` | `true` once NWListener reaches `.ready` state |
 | `@Published webServerError: String?` | Non-nil when the listener fails (port in use, OS error, etc.) |
 | `setupWebServer()` | Starts, restarts, or stops the server based on `config.Web_server_enabled` and `config.Web_server_port`. Called at step 4 of `startup()` and again whenever Settings saves a changed web server config. |
+| `ensureWebServerRunning()` | Increments `internalWebServerUseCount`; starts the server if not already running. Called from `FloatingGuideView.onAppear` and `AddShowView` guide step. |
+| `releaseInternalWebServer()` | Decrements `internalWebServerUseCount`; stops the server when count reaches 0 **and** `config.Web_server_enabled == false`. Called from `.onDisappear` of the guide WKWebView. Safe to call from multiple concurrent windows — the count prevents stopping the server while another guide window is open. |
 | `discordWebDelete(_ show: Show)` | `@MainActor`. Called by `WebServer.handleDelete` before clearing state. Edits the existing "Recording Started" Discord embed in-place (if `discord_start_msg_id` is non-empty) using `Discord_on_start` as the gate — the embed was created under that flag, so the update follows the same preference. No-op when `show_recording == false` or `discord_start_msg_id` is empty. |
 
 The web server is stopped explicitly in all three `quit()` exit branches before `NSApplication.terminate(nil)`.
@@ -96,7 +98,6 @@ The web server is stopped explicitly in all three `quit()` exit branches before 
 | `ensureGuideLoaded(for deviceId:)` | Loads a device if channels absent and not already loading; safe to call repeatedly |
 | `ensureLineupLoaded(for device:)` | Re-fetches lineup if nil/empty; called at guide-step open in AddShowView + FloatingGuideView |
 | `guideEntries(deviceId:channelNum:)` | Delegates to `guideStore.entries()` |
-| `bonusOverlapWarning(for:channel:deviceId:)` | Returns warning string when `entry` starts inside another show's bonus-time extension on the same channel; `nil` otherwise. Used by AddShowView and FloatingGuideView summary panels. |
 | `handleGuideLoadFailure(deviceId:)` | Private. Records backoff failure + sends notify/Discord embed on first failure per streak; subsequent retries are silent. Called from `refreshGuides` and `ensureGuideLoaded`. |
 | `nextGuideEpisode(for show:)` | Delegates to `guideStore.nextEpisode()`; respects channel/device filters |
 | `upcomingGuideEpisodes(seriesID:after:limit:)` | Up to `limit` upcoming `(channel, entry)` tuples across all devices |

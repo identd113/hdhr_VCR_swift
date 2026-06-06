@@ -84,13 +84,26 @@ struct AddShowView: View {
         .onAppear {
             show.show_transcode = state.config.Default_transcode
             if let pending = state.pendingAddEntry {
+                // Goes directly to details — no guide step, no web server needed.
                 applyPendingEntry(pending)
-            } else if let pending = state.pendingAddChannel {
-                applyPendingChannel(pending)
             } else {
-                if selectedDevice == nil { selectedDevice = state.devices.first }
-                step = .guide
+                // Guide step will show; start server now so it's ready before onRecord fires.
+                state.ensureWebServerRunning()
+                if let pending = state.pendingAddChannel {
+                    applyPendingChannel(pending)
+                } else {
+                    if selectedDevice == nil { selectedDevice = state.devices.first }
+                    step = .guide
+                }
             }
+        }
+        .onDisappear { state.releaseInternalWebServer() }
+        // Re-fire when the user opens the wizard again from WatchNow or the menu while it's already open.
+        .onChange(of: state.pendingAddEntryGeneration) { _, _ in
+            if let pending = state.pendingAddEntry { applyPendingEntry(pending) }
+        }
+        .onChange(of: state.pendingAddChannelGeneration) { _, _ in
+            if let pending = state.pendingAddChannel { applyPendingChannel(pending) }
         }
     }
 
@@ -173,8 +186,12 @@ struct AddShowView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .onAppear  { state.ensureWebServerRunning() }
-        .onDisappear { state.releaseInternalWebServer() }
+        // Ensure the lineup is present before the user can click Record in the web guide.
+        // Recovers from silent startup fetch failures so show_url is never empty on first click.
+        .task {
+            guard let device = selectedDevice ?? state.devices.first else { return }
+            await state.ensureLineupLoaded(for: device)
+        }
     }
 
     private var detailsStep: some View {
@@ -240,8 +257,9 @@ struct AddShowView: View {
 
     private func goForward() {
         switch step {
-        case .device:           step = .guide
-        case .guide, .details:  save()
+        case .device:  step = .guide
+        case .guide:   break   // web guide advances via its own Record button; nav bar hidden
+        case .details: save()
         }
     }
 

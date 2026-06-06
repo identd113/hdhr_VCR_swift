@@ -308,6 +308,8 @@ Always rendered above the guide grid. Two states:
 
 The **Edit** button (`#sum-edit`) is only shown for managed shows that are **not** currently recording — it is intentionally hidden when `data-recording="1"` to prevent changing show config mid-recording. Clicking Edit calls `doEditFromGuide()`, which reads show config from `data-show-*` attrs on the selected `.g-prog` block and opens the edit modal.
 
+**Watch buttons** (`#sum-watch-app`, `#sum-watch-vlc`) — shown **below** the record/managed/stop block when the selected show is currently on air (`_wLive`) **and** the page is loaded inside a `WKWebView` (`_wInApp` flag, set by checking `window.webkit?.messageHandlers?.watch` on page load). These buttons post to `window.webkit.messageHandlers.watch` and are never visible in a regular browser (the flag stays false). `doWatchInApp()` posts `{type:'app', ...}`; `doWatchInVLC()` posts `{type:'vlc', ...}`.
+
 **Actions are applied in-place** — no page reload on record or delete. On record success, the selected block gains `.g-prog-sched` + yellow triangle flag and the action row swaps to Scheduled+Remove. On delete success, the block loses its flag/color and the Record button reappears.
 
 ---
@@ -362,7 +364,7 @@ Each `.g-row` carries `data-dev`, `data-ch`, and `data-gname` (`GuideName.lowerc
 
 **Signal bars in channel column:** when `state.config.Signal_quality_enabled` and signal data exists for a channel, a 3-bar SVG (`class="g-sig"`, `viewBox="0 0 11 10"`, `width/height=10`) is baked into the `.g-ch` cell at page build time. Buckets map to fill levels: `good` → all 3 bars, `fair` → 2 bars, `poor` → 1 bar, `noData` → no SVG emitted. The `title` attribute carries `"Signal: {bucket}"` for hover. Bars are updated in-place on `signal_update` SSE events without a page reload.
 
-**`setDev()` and DOM caching**: `.g-row` NodeList is cached into `_rows` at page load and reused on every device switch — avoids repeated `querySelectorAll` calls.
+**`setDev()` and DOM caching**: `.g-row` NodeList is cached into `_rows` at page load and reused on every device switch — avoids repeated `querySelectorAll` calls. When `setDev(id)` is called with a **different** device ID than `curDev`, `_genreFilter` is reset to `''` and the `<select id="genre-sel">` is reset to the blank option — a stale genre filter from the previous device would otherwise leave the guide empty if the new device has no matching genre.
 
 **Time header:** 7 ticks at `winSec/6` intervals (e.g. 4 h apart for a 24 h desktop window, 2 h apart for a 12 h mobile window) + red "now" bar.
 

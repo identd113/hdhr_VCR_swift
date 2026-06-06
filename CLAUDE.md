@@ -56,10 +56,8 @@ Views/
 
 **Views:**
 - [MenuContent](docs/MenuContent.md) — dropdown structure, recording/scheduled/paused menus, dark mode color rules
-- [AddShowView](docs/AddShowView.md) — 3-step wizard, guide layout, summary panel, CRITICAL GeometryReader constraints
-- [CableGuideView](docs/CableGuideView.md) — cable grid layout, scroll sync, color system, performance
-- [CableGuideView Pitfalls](docs/CableGuideView_pitfalls.md) — 10 failed layouts; **read before touching guide/AddShowView outer structure**
-- [FloatingGuideView](docs/FloatingGuideView.md) — browse-only guide window, FloatingWindowLevelSetter
+- [AddShowView](docs/AddShowView.md) — 3-step wizard, web guide step, WKScriptMessageHandler record bridge
+- [FloatingGuideView](docs/FloatingGuideView.md) — browse-only guide window (WKWebView), FloatingWindowLevelSetter, Watch in App/VLC
 - [EditShowView](docs/EditShowView.md) — edit show window
 - [SettingsView](docs/SettingsView.md) — draft/save pattern, WindowCloseInterceptor, Maintenance
 - [StarburstBadge](docs/StarburstBadge.md) — keyframeAnimator sequences, 5-tap easter egg

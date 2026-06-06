@@ -136,7 +136,7 @@ Sidebar entries (with SF Symbol icons):
 - **Pause after N failures** — `Stepper` (1–10). After `Fail_count_setting` consecutive failures, `show_active = false` and the show moves to Paused. Each successful recording start decrements `show_fail_count` by 1.
 - **Watch in VLC** — `Toggle`, only shown when `/Applications/VLC.app` exists. Enables "Watch in VLC" buttons throughout the app. Stored in `draft.Watch_in_VLC`. **Auto-initialized**: on first launch (when `Watch_in_VLC_initialized == false`), the setting is auto-enabled if VLC is installed, then `Watch_in_VLC_initialized` is set to true so subsequent user toggles are never overridden.
 - **Min buffer rate** — `Picker` (90–100%, or `"100% (disabled)"`), only shown when VLC is installed. Sets the fill-phase floor for the in-app player's 8-second live buffer. Lower values fill the buffer faster; 100% disables buffering entirely. Stored in `draft.Player_buffer_min_rate`.
-- **Bonus Time** — `Toggle` (on by default). Extends any show's recording past guide end. Sports entries default to enabled via `applyGuideEntry()`; any show can override via the per-show toggle. Stored in `draft.Sports_padding_enabled`.
+- **Bonus Time** — `Toggle` (on by default). Extends any show's recording past guide end. Sports entries default to enabled via `applyWebGuideEntry()`; any show can override via the per-show toggle. Stored in `draft.Sports_padding_enabled`.
 - **Bonus Time duration** — `Stepper` (10–60 min, step 5, default 30). Only visible when Bonus Time toggle is on. Stored in `draft.Sports_padding_minutes`.
 
 ---
@@ -209,9 +209,6 @@ Recording Complete embeds additionally include **Format** (file extension, e.g. 
 
 Saving with changed `Web_server_enabled` or `Web_server_port` calls `state.setupWebServer()` immediately to start, restart, or stop the listener.
 
-**Guide section** (within Web Server category):
-- **Use Web Guide** — `Toggle` bound to `draft.Use_web_guide`. Off by default. When on, `FloatingGuideView` and the Add Show wizard guide step load `http://localhost:{port}/` in a `WKWebView` instead of rendering the native SwiftUI `CableGuideView`. The web server auto-starts on demand when the guide opens (even if `Web_server_enabled` is off); it stops again when the guide closes if it was not already user-enabled.
-
 See [WebServer.md](WebServer.md) for full route and feature documentation.
 
 ---
@@ -235,7 +232,7 @@ One-tap operations for recovering from stuck states. Each uses `maintenanceRow(_
 - **HDHomeRun CLI** — `brew install libhdhomerun`. Shown as installed when `hdhomerun_config` is on PATH. Brew output is streamed to a `brewStatus` string shown at the bottom of the section.
 
 **Developer section** (only shown when macOS major version > 13):
-- **Simulate macOS version** — `Picker` that sets `draftSimulatedOS`. When non-zero, `CableGuideView` and `FloatingGuideView` can use a simulated OS floor (e.g., force the macOS 14 layout path to test that `LazyVStack` blank-row failure). Shows a warning label: `"Simulating macOS N — reopen guide or wizard to see effect"`. This is a development aid; the simulated value is stored in `@AppStorage` (not in `AppConfig`).
+- **Simulate macOS version** — `Picker` that sets `draftSimulatedOS` (`@AppStorage`). A development aid; the simulated value is stored in `@AppStorage` (not in `AppConfig`). Note: `CableGuideView` (which consumed this value) has been removed; the setting currently has no effect on the guide.
 
 ---
 

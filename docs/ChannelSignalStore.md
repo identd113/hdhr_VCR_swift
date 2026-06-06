@@ -106,6 +106,6 @@ struct SignalBarsView: View {
 - `.fair` → 2 bars (yellow)
 - `.good` → 3 bars (green)
 
-Bar widths: 3 pt each, 1 pt spacing, aligned to `.bottom`. Used in `CableGuideView` (including AddShowView's guide step), `FloatingGuideView`, `WatchNowView`, and `MenuContent` when `Signal_quality_enabled`.
+Bar widths: 3 pt each, 1 pt spacing, aligned to `.bottom`. Used in `WatchNowView` and `MenuContent` when `Signal_quality_enabled`. Signal bars in the guide are rendered server-side as SVG in the web guide HTML (see WebServer.md).
 
 Helper: `signalBucket(guideName:)` — `@MainActor` free function that reads `ChannelSignalStore.shared.buckets[key]` directly. Returns `.noData` if no entry.
