@@ -502,6 +502,7 @@ final class AppState: ObservableObject {
             else  { guideApiBackoff[deviceId, default: APIBackoff()].recordFailure() }
         }
         guideByDevice = guideStore.channelsByDevice
+        webServer.broadcastEvent(["type": "deviceOnline", "deviceId": newDevices.map { $0.DeviceID }.joined(separator: ",")])
     }
 
     /// Fetch lineup for every device in parallel; stores results in `lineups[deviceID]`.
