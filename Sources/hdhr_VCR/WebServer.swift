@@ -307,7 +307,8 @@ final class WebServer {
             return .ok(contentType: "text/html; charset=utf-8", body: Data(html.utf8))
 
         case "/api/ping":
-            return .ok(contentType: "application/json", body: Data(#"{"ok":true}"#.utf8))
+            let pingBody = Data("{\"ok\":true,\"version\":\"\(appVersion)\"}".utf8)
+            return .ok(contentType: "application/json", body: pingBody)
 
         case "/api/now.json":
             let data = buildNowJSON(state: state)
@@ -1655,6 +1656,17 @@ final class WebServer {
         var _nowPct=\(nowPct);
         function scrollToNow(){var gw=document.querySelector('.gw');var gi=document.querySelector('.gi');if(!gw||!gi)return;var nowPx=gi.scrollWidth*(_nowPct/100);gw.scrollLeft=Math.max(0,nowPx-gw.clientWidth*0.25);}
         scrollToNow();
+        // Page-staleness: reload if the server version changes (redeploy) or page is older than 4 hours.
+        (function(){
+          var _ver='\(appVersion)',_born=Date.now(),_maxAge=4*60*60*1000;
+          function checkFreshness(){
+            if(Date.now()-_born>_maxAge){location.reload();return;}
+            fetch('/api/ping').then(function(r){return r.json();}).then(function(j){
+              if(j.version&&j.version!==_ver)location.reload();
+            }).catch(function(){});
+          }
+          setInterval(checkFreshness,60000);
+        })();
         // SSE: receive push events and refresh guide content in place (scroll + selection preserved)
         (function(){
           if(!window.EventSource)return;
