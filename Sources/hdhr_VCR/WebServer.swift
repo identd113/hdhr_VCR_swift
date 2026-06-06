@@ -502,8 +502,8 @@ final class WebServer {
                  + "</div>"
         }
 
-        let unavailableIDs    = Set(state.devices.filter { !$0.isAvailable }.map { $0.DeviceID })
-        let unavailableShows  = state.unavailableDeviceShows
+        let unavailableIDs   = state.unavailableDeviceIDs
+        let unavailableShows = state.unavailableDeviceShows
 
         var parts: [String] = []
 

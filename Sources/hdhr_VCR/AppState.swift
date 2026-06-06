@@ -82,11 +82,11 @@ final class AppState: ObservableObject {
                                       .sorted { ($0.show_next ?? .distantFuture) < ($1.show_next ?? .distantFuture) } }
     var pausedShows: [Show]    { shows.filter { $0.show_active && $0.show_paused } }
     var inactiveShows: [Show]  { shows.filter { !$0.show_active } }
+    var unavailableDeviceIDs: Set<String> { Set(devices.filter { !$0.isAvailable }.map { $0.DeviceID }) }
     /// Active shows (recording or scheduled) whose assigned device is currently unavailable.
     var unavailableDeviceShows: [Show] {
-        let unavailableIDs = Set(devices.filter { !$0.isAvailable }.map { $0.DeviceID })
-        guard !unavailableIDs.isEmpty else { return [] }
-        return shows.filter { $0.show_active && unavailableIDs.contains($0.hdhr_record) }
+        guard !unavailableDeviceIDs.isEmpty else { return [] }
+        return shows.filter { $0.show_active && unavailableDeviceIDs.contains($0.hdhr_record) }
     }
 
     // Returns one (channel, entry) pair per unique on-air channel for the given device,
@@ -463,11 +463,14 @@ final class AppState: ObservableObject {
     /// Merge-only discovery: adds newly-seen tuners and tracks missed-probe counts for existing ones.
     /// Never removes entries so active recordings are never disrupted; isAvailable goes false after 3 misses.
     private func probeForNewDevices() async {
-        guard let found = try? await hdhrManager.discoverDevices(knownHosts: knownHostsFromShows(), interface: config.Network_interface) else { return }
+        // Use a nil `found` to mean discovery itself failed (network error) — still counts as a miss
+        // so a device that's offline AND causing discovery failures still reaches the unavailable threshold.
+        let found = try? await hdhrManager.discoverDevices(knownHosts: knownHostsFromShows(), interface: config.Network_interface)
         let existingIDs = Set(devices.map { $0.DeviceID })
 
         // Merge-update DeviceAuth + LocalIP on seen devices; increment missedProbes on unseen ones.
-        let freshByID = Dictionary(uniqueKeysWithValues: found.map { ($0.DeviceID, $0) })
+        // freshByID is empty when discovery threw — all existing devices count as unseen this cycle.
+        let freshByID = Dictionary(uniqueKeysWithValues: (found ?? []).map { ($0.DeviceID, $0) })
         for i in devices.indices {
             if let fresh = freshByID[devices[i].DeviceID] {
                 let wasUnavailable = !devices[i].isAvailable
@@ -496,7 +499,7 @@ final class AppState: ObservableObject {
             nextQuickProbe = Date().addingTimeInterval(60)
         }
 
-        let newDevices = found.filter { !existingIDs.contains($0.DeviceID) }
+        let newDevices = (found ?? []).filter { !existingIDs.contains($0.DeviceID) }
         guard !newDevices.isEmpty else { return }
         glog("[DeviceProbe] \(newDevices.count) new tuner(s): \(newDevices.map { $0.DeviceID }.joined(separator: ", "))")
         devices.append(contentsOf: newDevices)
@@ -1114,8 +1117,12 @@ final class AppState: ObservableObject {
 
     func startRecording(index: Int) async {
         var show = shows[index]
-        // Skip if the assigned device is currently unavailable — avoids burning fail count on a dead tuner.
-        if let device = devices.first(where: { $0.DeviceID == show.hdhr_record }), !device.isAvailable {
+        // Skip if the assigned device is absent or unavailable — avoids burning fail count on a dead tuner.
+        guard let device = devices.first(where: { $0.DeviceID == show.hdhr_record }) else {
+            glog("[\(show.show_title)] device \(show.hdhr_record) not in device list — skipping recording start", level: .warning)
+            return
+        }
+        if !device.isAvailable {
             glog("[\(show.show_title)] device \(show.hdhr_record) unavailable — skipping recording start", level: .warning)
             return
         }

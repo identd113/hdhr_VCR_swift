@@ -61,11 +61,12 @@ struct MenuContent: View {
 
         // Compute derived show lists once — each is a filter/sort over shows[];
         // binding to let avoids re-running the filter for every reference below
-        let recordingShows        = state.recordingShows
-        let activeShows           = state.activeShows
-        let pausedShows           = state.pausedShows
-        let unavailableShows      = state.unavailableDeviceShows
-        let unavailableDeviceIDs  = Set(state.devices.filter { !$0.isAvailable }.map { $0.DeviceID })
+        let recordingShows       = state.recordingShows
+        let activeShows          = state.activeShows
+        let pausedShows          = state.pausedShows
+        let unavailableShows     = state.unavailableDeviceShows
+        let unavailableDeviceIDs = state.unavailableDeviceIDs
+        let availableDevices     = state.devices.filter { $0.isAvailable }
 
         // ── Header ────────────────────────────────────────────────────────
         ForEach(state.devices) { device in
@@ -121,7 +122,7 @@ struct MenuContent: View {
         let availableRecording = recordingShows.filter { !unavailableDeviceIDs.contains($0.hdhr_record) }
         if !availableRecording.isEmpty {
             if state.devices.count > 1 {
-                ForEach(state.devices.filter { $0.isAvailable }) { device in
+                ForEach(availableDevices) { device in
                     let recs = availableRecording.filter { $0.hdhr_record == device.DeviceID }
                     if !recs.isEmpty {
                         Section("Recording · \(device.DeviceID)") {
@@ -159,7 +160,7 @@ struct MenuContent: View {
 
         if !nextUpGroups.isEmpty {
             if state.devices.count > 1 {
-                ForEach(state.devices.filter { $0.isAvailable }) { device in
+                ForEach(availableDevices) { device in
                     let deviceGroups = nextUpGroups
                         .map { (time: $0.time, shows: $0.shows.filter { $0.hdhr_record == device.DeviceID }) }
                         .filter { !$0.shows.isEmpty }
@@ -192,7 +193,7 @@ struct MenuContent: View {
         } else {
             if !remainingActive.isEmpty {
                 if state.devices.count > 1 {
-                    ForEach(state.devices.filter { $0.isAvailable }) { device in
+                    ForEach(availableDevices) { device in
                         let deviceShows = remainingActive.filter { $0.hdhr_record == device.DeviceID }
                         if !deviceShows.isEmpty {
                             Section("Scheduled · \(device.DeviceID)") {
@@ -208,7 +209,7 @@ struct MenuContent: View {
             }
             if !availablePaused.isEmpty {
                 if state.devices.count > 1 {
-                    ForEach(state.devices.filter { $0.isAvailable }) { device in
+                    ForEach(availableDevices) { device in
                         let devicePaused = availablePaused.filter { $0.hdhr_record == device.DeviceID }
                         if !devicePaused.isEmpty {
                             Section("Paused · \(device.DeviceID)") {
@@ -227,8 +228,9 @@ struct MenuContent: View {
         // ── Unavailable Tuner ──────────────────────────────────────────────
         if !unavailableShows.isEmpty {
             Divider()
-            if state.devices.filter({ !$0.isAvailable }).count > 1 {
-                ForEach(state.devices.filter { !$0.isAvailable }) { device in
+            let unavailableDevices = state.devices.filter { !$0.isAvailable }
+            if unavailableDevices.count > 1 {
+                ForEach(unavailableDevices) { device in
                     let deviceShows = unavailableShows.filter { $0.hdhr_record == device.DeviceID }
                     if !deviceShows.isEmpty {
                         Section("Unavailable Tuner · \(device.DeviceID)") {
