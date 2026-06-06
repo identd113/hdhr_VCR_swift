@@ -1668,17 +1668,17 @@ final class WebServer {
         }
         function scrollToNow(){var gw=document.querySelector('.gw');var gi=document.querySelector('.gi');if(!gw||!gi)return;var nowPx=gi.scrollWidth*(nowPct()/100);gw.scrollLeft=Math.max(0,nowPx-gw.clientWidth*0.25);}
         scrollToNow();
-        // 5-minute tick: slide now-line + auto-scroll, then check for stale page/redeploy.
+        setInterval(updateNowLine,300000);
+        // Page-staleness: reload if the server version changes (redeploy) or the baked-in expiry has passed.
         (function(){
           var _ver='\(appVersion)',_exp=\(Int(Date().addingTimeInterval(2*3600).timeIntervalSince1970)*1000);
-          function tick(){
-            updateNowLine();
+          function checkFreshness(){
             if(Date.now()>_exp){location.reload();return;}
             fetch('/api/ping').then(function(r){return r.json();}).then(function(j){
               if(j.version&&j.version!==_ver)location.reload();
             }).catch(function(){});
           }
-          setInterval(tick,300000);
+          setInterval(checkFreshness,60000);
         })();
         // SSE: receive push events and refresh guide content in place (scroll + selection preserved)
         (function(){
