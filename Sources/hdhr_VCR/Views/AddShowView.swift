@@ -586,6 +586,14 @@ struct AddShowView: View {
             VStack(alignment: .leading, spacing: 16) {
                 Text("Recording Details").font(.title2)
 
+                if show.show_url.isEmpty {
+                    Label("Stream URL not found — lineup may not be loaded yet. Go back and reselect the channel.", systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.white)
+                        .padding(10)
+                        .background(Color.orange.cornerRadius(8))
+                        .font(.callout)
+                }
+
                 ShowFormSection(
                     show: $show,
                     seriesType: $seriesType,
@@ -630,7 +638,7 @@ struct AddShowView: View {
         switch step {
         case .device:  return selectedDevice != nil
         case .guide:   return selectedEntry != nil && selectedChannel != nil
-        case .details: return !show.show_title.isEmpty && recordFolder != nil
+        case .details: return !show.show_title.isEmpty && recordFolder != nil && !show.show_url.isEmpty
         }
     }
 
@@ -795,7 +803,7 @@ struct AddShowView: View {
         show.show_seriesid = entry.SeriesID ?? ""
         show.show_logo_url = entry.ImageURL ?? ""
         show.show_genre    = entry.firstGenre ?? ""
-        show.show_bonus_time = entry.firstGenre?.lowercased().contains("sports") == true
+        show.show_bonus_time = entry.firstGenre?.lowercased().contains("sports") == true && state.config.Sports_padding_enabled
         show.hdhr_record   = device.DeviceID
         show.show_url      = channel.URL ?? ""
 

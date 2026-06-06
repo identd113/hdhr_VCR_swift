@@ -1600,6 +1600,7 @@ final class WebServer {
           return Array.from(r.querySelectorAll('.g-prog')).some(function(p){return(p.dataset.genre||'').toLowerCase()===_genreFilter.toLowerCase();});
         }
         function setDev(id){
+          if(id!==curDev){_genreFilter='';var sel=document.getElementById('genre-sel');if(sel)sel.value='';}
           curDev=id;
           document.querySelectorAll('.d-btn').forEach(function(b){b.classList.toggle('d-sel',b.dataset.dev===id);});
           var seen={};

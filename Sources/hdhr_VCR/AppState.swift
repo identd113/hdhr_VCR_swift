@@ -123,7 +123,7 @@ final class AppState: ObservableObject {
     let webServer        = WebServer()
     @Published var webServerRunning: Bool    = false
     @Published var webServerError:   String? = nil
-    private var internalWebServerActive = false  // started on-demand when web guide opens
+    private var internalWebServerUseCount = 0  // ref count: each open WKWebView guide window increments
 
     // Sparkle auto-updater — created in startup() so tests (skipStartup=true) never touch it.
     private(set) var updaterController: SPUStandardUpdaterController?
@@ -280,10 +280,10 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Starts the web server if not already running. Called by the in-app WKWebView guide on appear.
+    /// Starts the web server if not already running. Called by each in-app WKWebView guide window on appear.
     func ensureWebServerRunning() {
+        internalWebServerUseCount += 1
         guard !webServerRunning else { return }
-        internalWebServerActive = true
         webServerError = nil
         webServer.start(port: config.Web_server_port, appState: self) { [weak self] (errorMsg: String?) in
             guard let self else { return }
@@ -293,10 +293,12 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Stops the web server if it was auto-started by the in-app guide (and the user hasn't enabled it in Settings).
+    /// Decrements the use count; stops the server only when the last WKWebView guide window closes
+    /// and the user hasn't permanently enabled it in Settings.
     func releaseInternalWebServer() {
-        guard internalWebServerActive, !config.Web_server_enabled else { return }
-        internalWebServerActive = false
+        guard internalWebServerUseCount > 0 else { return }
+        internalWebServerUseCount -= 1
+        guard internalWebServerUseCount == 0, !config.Web_server_enabled else { return }
         webServer.stop()
         webServerRunning = false
     }
