@@ -44,7 +44,14 @@ struct FloatingGuideView: View {
     @ViewBuilder private var webGuideBody: some View {
         Group {
             if state.webServerRunning {
-                GuideWebView(port: state.config.Web_server_port)
+                GuideWebView(port: state.config.Web_server_port) { [state] type, deviceId, guideNumber, title in
+                    guard let url = state.lineups[deviceId]?.first(where: { $0.GuideNumber == guideNumber })?.URL else { return }
+                    if type == "app" {
+                        state.watchInApp(url: url, title: title, deviceId: deviceId, guideNumber: guideNumber)
+                    } else {
+                        state.watchInVLC(url: url, deviceId: deviceId)
+                    }
+                }
             } else {
                 ProgressView("Starting guide…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -388,20 +395,44 @@ struct FloatingGuideView: View {
 
 // WKWebView wrapper loading the local web guide at http://localhost:{port}/.
 // Blocks navigation away from localhost; syncs dark/light theme after load.
+// onWatch receives (type, deviceId, guideNumber, title) when the user taps Watch in App or Watch in VLC.
 private struct GuideWebView: NSViewRepresentable {
     let port: Int
+    let onWatch: (String, String, String, String) -> Void  // type, deviceId, guideNumber, title
 
     func makeNSView(context: Context) -> WKWebView {
-        let wv = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
+        let config = WKWebViewConfiguration()
+        config.userContentController.add(context.coordinator, name: "watch")
+        let wv = WKWebView(frame: .zero, configuration: config)
         wv.navigationDelegate = context.coordinator
         wv.load(URLRequest(url: URL(string: "http://localhost:\(port)/")!))
         return wv
     }
 
     func updateNSView(_ nsView: WKWebView, context: Context) {}
-    func makeCoordinator() -> Coordinator { Coordinator() }
 
-    class Coordinator: NSObject, WKNavigationDelegate {
+    static func dismantleNSView(_ nsView: WKWebView, coordinator: Coordinator) {
+        nsView.configuration.userContentController.removeScriptMessageHandler(forName: "watch")
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(onWatch: onWatch) }
+
+    class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
+        let onWatch: (String, String, String, String) -> Void
+
+        init(onWatch: @escaping (String, String, String, String) -> Void) {
+            self.onWatch = onWatch
+        }
+
+        func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+            guard message.name == "watch", let body = message.body as? [String: Any] else { return }
+            let type     = body["type"]        as? String ?? ""
+            let deviceId = body["deviceId"]    as? String ?? ""
+            let guideNum = body["guideNumber"] as? String ?? ""
+            let title    = body["title"]       as? String ?? ""
+            DispatchQueue.main.async { self.onWatch(type, deviceId, guideNum, title) }
+        }
+
         func webView(_ wv: WKWebView, decidePolicyFor action: WKNavigationAction,
                      decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
             decisionHandler(action.request.url?.host == "localhost" ? .allow : .cancel)

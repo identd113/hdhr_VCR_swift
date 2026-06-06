@@ -1098,6 +1098,8 @@ final class WebServer {
                 <button id="sum-btn" onclick="doRecord()" style="display:none;font-size:.75rem;padding:4px 12px;border-radius:5px;border:none;cursor:pointer;font-weight:600;background:#c0392b;color:#fff">Record</button>
                 <button id="sum-edit" onclick="doEditFromGuide()" style="display:none;font-size:.75rem;padding:4px 12px;border-radius:5px;cursor:pointer;font-weight:600">Edit</button>
                 <button id="sum-del" onclick="doDelete()" style="display:none;font-size:.75rem;padding:4px 12px;border-radius:5px;cursor:pointer;font-weight:600">Delete</button>
+                <button id="sum-watch-app" onclick="doWatchInApp()" style="display:none;font-size:.75rem;padding:4px 12px;border-radius:5px;border:none;cursor:pointer;font-weight:600;background:#1a6abf;color:#fff">Watch in App</button>
+                <button id="sum-watch-vlc" onclick="doWatchInVLC()" style="display:none;font-size:.75rem;padding:4px 12px;border-radius:5px;border:none;cursor:pointer;font-weight:600;background:#b06200;color:#fff">Watch in VLC</button>
               </div>
               <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:3px">
                 <img id="sum-logo" src="" alt="" style="width:24px;height:24px;object-fit:contain;display:none" onerror="this.style.display='none'">
@@ -1214,6 +1216,7 @@ final class WebServer {
           // Reset all action elements first
           var edit=document.getElementById('sum-edit');
           btn.style.display='none';edit.style.display='none';del.style.display='none';note.style.display='none';
+          document.getElementById('sum-watch-app').style.display='none';document.getElementById('sum-watch-vlc').style.display='none';
           del.disabled=false;del.textContent='Delete';del.classList.remove('danger');del.style.background='';del.style.color='';
           var bstar=document.getElementById('sum-bonus-star');
           bstar.style.display='none';bstar.classList.remove('sb-anim');
@@ -1236,9 +1239,16 @@ final class WebServer {
             }
             btn.style.display='inline-block';btn.disabled=false;
           }
+          // Watch buttons: only in WKWebView (in-app guide), only for live shows
+          var _wNow=Math.floor(Date.now()/1000);var _wLive=(_s<=_wNow&&_e>_wNow);
+          var _wInApp=!!(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.watch);
+          document.getElementById('sum-watch-app').style.display=(_wLive&&_wInApp)?'inline-block':'none';
+          document.getElementById('sum-watch-vlc').style.display=(_wLive&&_wInApp)?'inline-block':'none';
           document.querySelectorAll('.g-prog.g-sel').forEach(function(b){b.classList.remove('g-sel');});
           el.classList.add('g-sel');
         }
+        function doWatchInApp(){if(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.watch)window.webkit.messageHandlers.watch.postMessage({type:'app',deviceId:_d,guideNumber:_n,title:_title});}
+        function doWatchInVLC(){if(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.watch)window.webkit.messageHandlers.watch.postMessage({type:'vlc',deviceId:_d,guideNumber:_n,title:_title});}
         function closeSummary(){
           document.getElementById('sum-c').style.display='none';
           document.getElementById('sum-ph').style.display='flex';
