@@ -1981,7 +1981,8 @@ final class AppState: ObservableObject {
                 return needed.isEmpty ? nil : (device, needed)
             }
             let total = pendingByDevice.reduce(0) { $0 + $1.1.count }
-            guard total > 0 else { return }
+            guard total > 0 else { glog("[Signal] scan: nothing to do (all channels fresh)"); return }
+            glog("[Signal] scan starting — \(total) channel(s) need samples")
             var scanned = 0
 
             outer: for (device, entries) in pendingByDevice {
@@ -2032,6 +2033,7 @@ final class AppState: ObservableObject {
                 }
             }
 
+            glog("[Signal] scan complete — \(scanned) channel(s) sampled")
             await MainActor.run { signalScanProgress = nil }
         }
     }

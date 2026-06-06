@@ -289,9 +289,10 @@ final class WebServer {
 
         // POST routes
         if method == "POST" {
-            if path == "/api/record" { return handleRecord(state: state, body: body) }
-            if path == "/api/delete" { return handleDelete(state: state, body: body) }
-            if path == "/api/edit"   { return handleEdit(state: state, body: body) }
+            if path == "/api/record"       { return handleRecord(state: state, body: body) }
+            if path == "/api/delete"       { return handleDelete(state: state, body: body) }
+            if path == "/api/edit"         { return handleEdit(state: state, body: body) }
+            if path == "/api/signal-scan"  { state.startSignalScan(); return jsonResponse(["status": "started"]) }
             return .notFound("Not found: \(path)")
         }
 
