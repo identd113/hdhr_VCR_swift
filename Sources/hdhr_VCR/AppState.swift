@@ -1986,7 +1986,7 @@ final class AppState: ObservableObject {
             var scanned = 0
 
             outer: for (device, entries) in pendingByDevice {
-                let batchSize = max(1, device.TunerCount ?? 1)
+                let batchSize = 1
                 var j = 0
                 while j < entries.count {
                     guard !Task.isCancelled else { break outer }
