@@ -82,6 +82,12 @@ final class AppState: ObservableObject {
                                       .sorted { ($0.show_next ?? .distantFuture) < ($1.show_next ?? .distantFuture) } }
     var pausedShows: [Show]    { shows.filter { $0.show_active && $0.show_paused } }
     var inactiveShows: [Show]  { shows.filter { !$0.show_active } }
+    /// Active shows (recording or scheduled) whose assigned device is currently unavailable.
+    var unavailableDeviceShows: [Show] {
+        let unavailableIDs = Set(devices.filter { !$0.isAvailable }.map { $0.DeviceID })
+        guard !unavailableIDs.isEmpty else { return [] }
+        return shows.filter { $0.show_active && unavailableIDs.contains($0.hdhr_record) }
+    }
 
     // Returns one (channel, entry) pair per unique on-air channel for the given device,
     // sorted favorites-first, then by channel number.
@@ -453,21 +459,39 @@ final class AppState: ObservableObject {
         statusMessage = "No tuners found — will keep trying"
     }
 
-    /// Merge-only discovery: finds tuners not already in the devices list and adds them.
-    /// Never removes existing entries so active recordings are never disrupted.
+    /// Merge-only discovery: adds newly-seen tuners and tracks missed-probe counts for existing ones.
+    /// Never removes entries so active recordings are never disrupted; isAvailable goes false after 3 misses.
     private func probeForNewDevices() async {
         guard let found = try? await hdhrManager.discoverDevices(knownHosts: knownHostsFromShows(), interface: config.Network_interface) else { return }
         let existingIDs = Set(devices.map { $0.DeviceID })
 
-        // Merge-update DeviceAuth + LocalIP on existing devices so cloud tokens stay fresh
+        // Merge-update DeviceAuth + LocalIP on seen devices; increment missedProbes on unseen ones.
         let freshByID = Dictionary(uniqueKeysWithValues: found.map { ($0.DeviceID, $0) })
         for i in devices.indices {
-            guard let fresh = freshByID[devices[i].DeviceID] else { continue }
-            if fresh.DeviceAuth != nil  { devices[i].DeviceAuth = fresh.DeviceAuth }
-            if !fresh.LocalIP.isEmpty   { devices[i].LocalIP    = fresh.LocalIP    }
+            if let fresh = freshByID[devices[i].DeviceID] {
+                let wasUnavailable = !devices[i].isAvailable
+                devices[i].missedProbes = 0
+                if fresh.DeviceAuth != nil { devices[i].DeviceAuth = fresh.DeviceAuth }
+                if !fresh.LocalIP.isEmpty  { devices[i].LocalIP    = fresh.LocalIP    }
+                if wasUnavailable {
+                    glog("[DeviceProbe] \(devices[i].DeviceID) is back online")
+                    webServer.broadcastEvent(["type": "deviceOnline", "deviceId": devices[i].DeviceID])
+                }
+            } else {
+                devices[i].missedProbes += 1
+                let missed = devices[i].missedProbes
+                // Log transition into unavailable (exactly at threshold) and each subsequent miss.
+                if missed == 3 {
+                    let affected = shows.filter { $0.show_active && $0.hdhr_record == devices[i].DeviceID }
+                    glog("[DeviceProbe] \(devices[i].DeviceID) not seen for 3 probes — marking unavailable (\(affected.count) show(s) affected)", level: .warning)
+                    webServer.broadcastEvent(["type": "deviceOffline", "deviceId": devices[i].DeviceID])
+                } else if missed > 3 {
+                    glog("[DeviceProbe] \(devices[i].DeviceID) still missing (missed \(missed))", level: .warning)
+                }
+            }
         }
 
-        let newDevices  = found.filter { !existingIDs.contains($0.DeviceID) }
+        let newDevices = found.filter { !existingIDs.contains($0.DeviceID) }
         guard !newDevices.isEmpty else { return }
         glog("[DeviceProbe] \(newDevices.count) new tuner(s): \(newDevices.map { $0.DeviceID }.joined(separator: ", "))")
         devices.append(contentsOf: newDevices)

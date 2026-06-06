@@ -501,17 +501,21 @@ final class WebServer {
                  + "</div>"
         }
 
+        let unavailableIDs    = Set(state.devices.filter { !$0.isAvailable }.map { $0.DeviceID })
+        let unavailableShows  = state.unavailableDeviceShows
+
         var parts: [String] = []
 
-        if !state.recordingShows.isEmpty {
-            let rows = state.recordingShows.map { showRow($0, recording: true, prefix: "<span class=\"sp-rec\">●</span> ") }.joined()
+        let availableRecording = state.recordingShows.filter { !unavailableIDs.contains($0.hdhr_record) }
+        if !availableRecording.isEmpty {
+            let rows = availableRecording.map { showRow($0, recording: true, prefix: "<span class=\"sp-rec\">●</span> ") }.joined()
             parts.append("<div class=\"sp-sec\"><div class=\"sp-hdr\">Recording</div>\(rows)</div>")
         }
 
         // Sort by next air time ascending; shows without a date sort to the end.
-        let sortedActive = state.activeShows.sorted {
-            ($0.show_next?.timeIntervalSince1970 ?? .infinity) < ($1.show_next?.timeIntervalSince1970 ?? .infinity)
-        }
+        let sortedActive = state.activeShows
+            .filter { !unavailableIDs.contains($0.hdhr_record) }
+            .sorted { ($0.show_next?.timeIntervalSince1970 ?? .infinity) < ($1.show_next?.timeIntervalSince1970 ?? .infinity) }
         let upNext     = sortedActive.first(where: { $0.show_next != nil })
         let restActive = sortedActive.filter { $0.show_id != upNext?.show_id }
 
@@ -530,10 +534,17 @@ final class WebServer {
             parts.append("<div class=\"sp-sec\"><div class=\"sp-hdr\">Scheduled</div>\(rows)</div>")
         }
 
-        if !state.pausedShows.isEmpty {
+        let availablePaused = state.pausedShows.filter { !unavailableIDs.contains($0.hdhr_record) }
+        if !availablePaused.isEmpty {
             if !parts.isEmpty { parts.append("<div class=\"sp-div\"></div>") }
-            let rows = state.pausedShows.map { showRow($0, prefix: "<span style=\"color:var(--t4)\">⏸</span> ") }.joined()
+            let rows = availablePaused.map { showRow($0, prefix: "<span style=\"color:var(--t4)\">⏸</span> ") }.joined()
             parts.append("<div class=\"sp-sec\"><div class=\"sp-hdr\">Paused</div>\(rows)</div>")
+        }
+
+        if !unavailableShows.isEmpty {
+            if !parts.isEmpty { parts.append("<div class=\"sp-div\"></div>") }
+            let rows = unavailableShows.map { showRow($0, prefix: "<span style=\"color:#e55\">⚠</span> ") }.joined()
+            parts.append("<div class=\"sp-sec\"><div class=\"sp-hdr\" style=\"color:#e55\">Unavailable Tuner</div>\(rows)</div>")
         }
 
         return parts.isEmpty ? "<div class=\"sp-empty\">No shows scheduled.</div>" : parts.joined()

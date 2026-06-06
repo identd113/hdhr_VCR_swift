@@ -328,6 +328,11 @@ struct HDHRDevice: Identifiable, Equatable {
     var DeviceAuth: String?   // used to call SiliconDust cloud guide API (EXTEND and similar)
     var LineupURL: String?    // from discover.json; stored but not used — lineupURL always uses LocalIP
 
+    // Runtime-only: incremented each probe cycle when the device is not seen; reset when seen.
+    // Not persisted — resets to 0 (available) on every launch.
+    var missedProbes: Int = 0
+    var isAvailable: Bool { missedProbes < 3 }
+
     var streamBase: String { "http://\(LocalIP):5004" }
     var guideURL:   String { "http://\(LocalIP)/guide.json" }
     var lineupURL:  String { "http://\(LocalIP)/lineup.json" }  // always IP — LineupURL from discover.json may contain mDNS hostname

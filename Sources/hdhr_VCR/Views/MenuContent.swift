@@ -61,27 +61,33 @@ struct MenuContent: View {
 
         // Compute derived show lists once — each is a filter/sort over shows[];
         // binding to let avoids re-running the filter for every reference below
-        let recordingShows = state.recordingShows
-        let activeShows    = state.activeShows
-        let pausedShows    = state.pausedShows
+        let recordingShows        = state.recordingShows
+        let activeShows           = state.activeShows
+        let pausedShows           = state.pausedShows
+        let unavailableShows      = state.unavailableDeviceShows
+        let unavailableDeviceIDs  = Set(state.devices.filter { !$0.isAvailable }.map { $0.DeviceID })
 
         // ── Header ────────────────────────────────────────────────────────
         ForEach(state.devices) { device in
-            let slots     = device.TunerCount ?? 1
-            let vlcUsing  = VLCPlayerWindowManager.shared.currentDeviceID == device.DeviceID ? 1 : 0
-            let appCount  = recordingShows.filter { $0.hdhr_record == device.DeviceID }.count + vlcUsing
-            let liveInfo  = state.deviceTunerOccupancy[device.DeviceID]
-            let liveCount = liveInfo?.filter { $0.VctNumber != nil }.count ?? appCount
-            let mismatch  = liveInfo != nil && liveCount != appCount
-            let noLineup  = !state.isStartingUp && (state.lineups[device.DeviceID]?.isEmpty ?? true)
-            let noGuide   = !state.isStartingUp && (state.guideByDevice[device.DeviceID]?.isEmpty ?? true)
-            let warnings  = [noLineup ? "no lineup" : nil, noGuide ? "no guide" : nil]
+            let slots       = device.TunerCount ?? 1
+            let vlcUsing    = VLCPlayerWindowManager.shared.currentDeviceID == device.DeviceID ? 1 : 0
+            let appCount    = recordingShows.filter { $0.hdhr_record == device.DeviceID }.count + vlcUsing
+            let liveInfo    = state.deviceTunerOccupancy[device.DeviceID]
+            let liveCount   = liveInfo?.filter { $0.VctNumber != nil }.count ?? appCount
+            let mismatch    = liveInfo != nil && liveCount != appCount
+            let offline     = !device.isAvailable
+            let noLineup    = !state.isStartingUp && !offline && (state.lineups[device.DeviceID]?.isEmpty ?? true)
+            let noGuide     = !state.isStartingUp && !offline && (state.guideByDevice[device.DeviceID]?.isEmpty ?? true)
+            let warnings    = [offline   ? "unavailable" : nil,
+                               noLineup  ? "no lineup"   : nil,
+                               noGuide   ? "no guide"    : nil]
                                 .compactMap { $0 }.joined(separator: ", ")
-            let hasWarn   = !warnings.isEmpty
-            Text("\(device.DeviceID)  \(liveCount)/\(slots)" +
+            let hasWarn     = !warnings.isEmpty
+            Text("\(device.DeviceID)  \(offline ? "—" : "\(liveCount)/\(slots)")" +
                  (mismatch ? "  ⚠ app expects \(appCount)" : "") +
                  (hasWarn  ? "  ⚠ \(warnings)" : ""))
-                .foregroundStyle(hasWarn    ? Color(NSColor.systemOrange) :
+                .foregroundStyle(offline  ? Color(NSColor.systemRed) :
+                                 hasWarn  ? Color(NSColor.systemOrange) :
                                  liveCount > 0 ? Color(NSColor.labelColor) :
                                                  Color(NSColor.secondaryLabelColor))
         }
@@ -112,10 +118,11 @@ struct MenuContent: View {
             }
         }
         // ── Recording now ─────────────────────────────────────────────────
-        if !recordingShows.isEmpty {
+        let availableRecording = recordingShows.filter { !unavailableDeviceIDs.contains($0.hdhr_record) }
+        if !availableRecording.isEmpty {
             if state.devices.count > 1 {
-                ForEach(state.devices) { device in
-                    let recs = recordingShows.filter { $0.hdhr_record == device.DeviceID }
+                ForEach(state.devices.filter { $0.isAvailable }) { device in
+                    let recs = availableRecording.filter { $0.hdhr_record == device.DeviceID }
                     if !recs.isEmpty {
                         Section("Recording · \(device.DeviceID)") {
                             ForEach(recs) { recordingMenu($0) }
@@ -124,7 +131,7 @@ struct MenuContent: View {
                 }
             } else {
                 Section("Recording Now") {
-                    ForEach(recordingShows) { recordingMenu($0) }
+                    ForEach(availableRecording) { recordingMenu($0) }
                 }
             }
             Divider()
@@ -133,11 +140,12 @@ struct MenuContent: View {
         // ── Next Up ────────────────────────────────────────────────────────
         // Shows starting within the next hour, grouped by start time (bucketed to minute).
         let now = Date()
+        let availableActive = activeShows.filter { !unavailableDeviceIDs.contains($0.hdhr_record) }
         let nextUpGroups: [(time: Date, shows: [Show])] = {
             let cutoff = now + 60 * 60
             let cal = Calendar.current
             var byMinute: [Date: [Show]] = [:]
-            for show in activeShows {
+            for show in availableActive {
                 guard let d = show.show_next, d > now, d <= cutoff else { continue }
                 var c = cal.dateComponents([.year, .month, .day, .hour, .minute], from: d)
                 c.second = 0
@@ -147,11 +155,11 @@ struct MenuContent: View {
             return byMinute.sorted { $0.key < $1.key }.map { (time: $0.key, shows: $0.value) }
         }()
         let nextUpIds       = Set(nextUpGroups.flatMap { $0.shows }.map { $0.show_id })
-        let remainingActive = activeShows.filter { !nextUpIds.contains($0.show_id) }
+        let remainingActive = availableActive.filter { !nextUpIds.contains($0.show_id) }
 
         if !nextUpGroups.isEmpty {
             if state.devices.count > 1 {
-                ForEach(state.devices) { device in
+                ForEach(state.devices.filter { $0.isAvailable }) { device in
                     let deviceGroups = nextUpGroups
                         .map { (time: $0.time, shows: $0.shows.filter { $0.hdhr_record == device.DeviceID }) }
                         .filter { !$0.shows.isEmpty }
@@ -178,12 +186,13 @@ struct MenuContent: View {
         }
 
         // ── Scheduled shows ───────────────────────────────────────────────
-        if activeShows.isEmpty && pausedShows.isEmpty {
+        let availablePaused = pausedShows.filter { !unavailableDeviceIDs.contains($0.hdhr_record) }
+        if availableActive.isEmpty && availablePaused.isEmpty && unavailableShows.isEmpty {
             Text("No shows scheduled").foregroundStyle(.secondary)
         } else {
             if !remainingActive.isEmpty {
                 if state.devices.count > 1 {
-                    ForEach(state.devices) { device in
+                    ForEach(state.devices.filter { $0.isAvailable }) { device in
                         let deviceShows = remainingActive.filter { $0.hdhr_record == device.DeviceID }
                         if !deviceShows.isEmpty {
                             Section("Scheduled · \(device.DeviceID)") {
@@ -197,10 +206,10 @@ struct MenuContent: View {
                     }
                 }
             }
-            if !pausedShows.isEmpty {
+            if !availablePaused.isEmpty {
                 if state.devices.count > 1 {
-                    ForEach(state.devices) { device in
-                        let devicePaused = pausedShows.filter { $0.hdhr_record == device.DeviceID }
+                    ForEach(state.devices.filter { $0.isAvailable }) { device in
+                        let devicePaused = availablePaused.filter { $0.hdhr_record == device.DeviceID }
                         if !devicePaused.isEmpty {
                             Section("Paused · \(device.DeviceID)") {
                                 ForEach(devicePaused) { pausedMenu($0) }
@@ -209,8 +218,27 @@ struct MenuContent: View {
                     }
                 } else {
                     Section("Paused") {
-                        ForEach(pausedShows) { pausedMenu($0) }
+                        ForEach(availablePaused) { pausedMenu($0) }
                     }
+                }
+            }
+        }
+
+        // ── Unavailable Tuner ──────────────────────────────────────────────
+        if !unavailableShows.isEmpty {
+            Divider()
+            if state.devices.filter({ !$0.isAvailable }).count > 1 {
+                ForEach(state.devices.filter { !$0.isAvailable }) { device in
+                    let deviceShows = unavailableShows.filter { $0.hdhr_record == device.DeviceID }
+                    if !deviceShows.isEmpty {
+                        Section("Unavailable Tuner · \(device.DeviceID)") {
+                            ForEach(deviceShows) { scheduledMenu($0) }
+                        }
+                    }
+                }
+            } else {
+                Section("Unavailable Tuner") {
+                    ForEach(unavailableShows) { scheduledMenu($0) }
                 }
             }
         }
