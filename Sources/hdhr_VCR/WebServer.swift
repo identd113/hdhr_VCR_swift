@@ -788,12 +788,12 @@ final class WebServer {
                 let sigHTML: String = {
                     guard sigBucket != .noData else { return "" }
                     let color = sigBucket == .poor ? "#e53935" : sigBucket == .fair ? "#fbc02d" : "#43a047"
-                    let b2Fill = sigBucket != .poor ? "fill:\(color)" : "fill:#555"
-                    let b3Fill = sigBucket == .good ? "fill:\(color)" : "fill:#555"
+                    let b2Color = sigBucket != .poor ? color : "#555"
+                    let b3Color = sigBucket == .good ? color : "#555"
                     return "<svg class=\"g-sig\" viewBox=\"0 0 11 10\" width=\"11\" height=\"10\" title=\"Signal: \(sigBucket.rawValue)\">"
                         + "<rect x=\"0\" y=\"6\" width=\"3\" height=\"4\" fill=\"\(color)\"/>"
-                        + "<rect x=\"4\" y=\"3\" width=\"3\" height=\"7\" \(b2Fill)/>"
-                        + "<rect x=\"8\" y=\"0\" width=\"3\" height=\"10\" \(b3Fill)/>"
+                        + "<rect x=\"4\" y=\"3\" width=\"3\" height=\"7\" fill=\"\(b2Color)\"/>"
+                        + "<rect x=\"8\" y=\"0\" width=\"3\" height=\"10\" fill=\"\(b3Color)\"/>"
                         + "</svg>"
                 }()
                 rowParts.append("<div class=\"g-row\" data-dev=\"\(he(device.DeviceID))\" data-ch=\"\(he(ch.GuideNumber))\" data-gname=\"\(he(gnameAttr))\"><div class=\"g-ch\">\(logoHTML)<div class=\"g-cl\"><span class=\"g-cn\">\(he(chLabel))</span><span class=\"g-cname\">\(he(ch.GuideName))</span></div>\(sigHTML)</div><div class=\"g-tl\">\(blockParts.joined())</div></div>")
