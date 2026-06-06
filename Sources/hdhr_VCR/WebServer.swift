@@ -981,7 +981,7 @@ final class WebServer {
           #sum-syn{display:none!important}
         }
         @media(min-width:961px){
-          #sum-poster{width:150px!important;min-width:150px!important;object-fit:cover!important;align-self:stretch!important}
+          #sum-poster{width:260px!important;min-width:260px!important;object-fit:contain!important;align-self:center!important}
         }
         /* ── Tuner popover ── */
         #t-pop-c{background:var(--s3)!important;border-color:var(--b5)!important}
