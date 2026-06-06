@@ -1652,10 +1652,16 @@ final class WebServer {
           var prog=Array.from(first.querySelectorAll('.g-prog')).find(function(el){return +el.dataset.start<=nowTs&&+el.dataset.end>nowTs;});
           if(prog)showInfo(prog);
         })();
-        // scrollToNow: scroll guide so the now-line sits ~25% from the left of the viewport
-        var _nowPct=\(nowPct);
-        function scrollToNow(){var gw=document.querySelector('.gw');var gi=document.querySelector('.gi');if(!gw||!gi)return;var nowPx=gi.scrollWidth*(_nowPct/100);gw.scrollLeft=Math.max(0,nowPx-gw.clientWidth*0.25);}
+        // scrollToNow + live now-line: recompute position from winStart/winSec every 30 s
+        var _winStart=\(winStart),_winSec=\(winSec);
+        function nowPct(){return Math.max(0,Math.min(100,(Math.floor(Date.now()/1000)-_winStart)/_winSec*100));}
+        function updateNowLine(){
+          var p=nowPct()+'%';
+          document.querySelectorAll('.g-now-bar,.g-now-tick').forEach(function(el){el.style.left=p;});
+        }
+        function scrollToNow(){var gw=document.querySelector('.gw');var gi=document.querySelector('.gi');if(!gw||!gi)return;var nowPx=gi.scrollWidth*(nowPct()/100);gw.scrollLeft=Math.max(0,nowPx-gw.clientWidth*0.25);}
         scrollToNow();
+        setInterval(updateNowLine,30000);
         // Page-staleness: reload if the server version changes (redeploy) or the baked-in expiry has passed.
         (function(){
           var _ver='\(appVersion)',_exp=\(Int(Date().addingTimeInterval(2*3600).timeIntervalSince1970)*1000);
