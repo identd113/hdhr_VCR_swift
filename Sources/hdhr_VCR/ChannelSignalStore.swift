@@ -64,9 +64,10 @@ final class ChannelSignalStore {
         history.reduce(into: [:]) { out, pair in out[pair.key] = bucketFor(pair.value) }
     }
 
-    // Rolling 20-sample average → bucket. Requires ≥3 samples to avoid noise from brief lock-ons.
+    // Rolling 20-sample average → bucket. Single sample is sufficient — the 3-sample guard
+    // was too conservative and prevented bars from appearing after a deliberate scan.
     private func bucketFor(_ samples: [ChannelSignalSample]) -> SignalBucket {
-        guard samples.count >= 3 else { return .noData }
+        guard !samples.isEmpty else { return .noData }
         let window = samples.suffix(20)
         let avg    = Double(window.map { $0.snq }.reduce(0, +)) / Double(window.count) / 100.0
         return SignalBucket(avg)
