@@ -1998,19 +1998,23 @@ final class AppState: ObservableObject {
                     }
 
                     // Open one stream per channel in the batch concurrently (locks each tuner),
-                    // then read status.json once to collect all SNQ readings.
+                    // then read status.json 3 times (500ms apart) to collect 3 SNQ samples per
+                    // channel — gives the rolling average enough data on the first scan.
+                    let statusURL = URL(string: device.statusURL)!
                     await withTaskGroup(of: Void.self) { group in
                         for entry in batch {
                             guard let url = URL(string: "\(device.streamBase)/auto/v\(entry.GuideNumber)") else { continue }
                             group.addTask { _ = try? await URLSession.shared.data(from: url) }
                         }
-                        try? await Task.sleep(nanoseconds: 2_000_000_000)
-                        if let (statusData, _) = try? await URLSession.shared.data(from: URL(string: device.statusURL)!),
-                           let tunerInfos = try? JSONDecoder().decode([DeviceTunerInfo].self, from: statusData) {
-                            for entry in batch {
-                                guard let match = tunerInfos.first(where: { $0.VctNumber == entry.GuideNumber }),
-                                      let snq = match.SignalQualityPercent else { continue }
-                                ChannelSignalStore.shared.record(guideName: entry.GuideName, snq: snq)
+                        for _ in 0..<3 {
+                            try? await Task.sleep(nanoseconds: 500_000_000)
+                            if let (statusData, _) = try? await URLSession.shared.data(from: statusURL),
+                               let tunerInfos = try? JSONDecoder().decode([DeviceTunerInfo].self, from: statusData) {
+                                for entry in batch {
+                                    guard let match = tunerInfos.first(where: { $0.VctNumber == entry.GuideNumber }),
+                                          let snq = match.SignalQualityPercent else { continue }
+                                    ChannelSignalStore.shared.record(guideName: entry.GuideName, snq: snq)
+                                }
                             }
                         }
                         group.cancelAll()  // release tuners; stream tasks observe cancellation and exit
