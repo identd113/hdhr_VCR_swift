@@ -1960,37 +1960,58 @@ final class AppState: ObservableObject {
 
     // MARK: - Signal quality helpers
 
-    /// Full channel scan — tunes each channel briefly and reads snq from status.json.
+    /// Full channel scan — tunes up to TunerCount channels concurrently per device,
+    /// reading status.json once per batch so status-call count equals number of batches.
     func startSignalScan() {
         signalScanTask?.cancel()
         signalScanTask = Task {
-            let targets: [(device: HDHRDevice, entry: LineupEntry)] = devices.flatMap { dev in
-                (lineups[dev.DeviceID] ?? []).map { (dev, $0) }
+            let total = devices.reduce(0) { $0 + (lineups[$1.DeviceID]?.count ?? 0) }
+            var scanned = 0
+
+            outer: for device in devices {
+                let entries   = lineups[device.DeviceID] ?? []
+                let batchSize = max(1, device.TunerCount ?? 1)
+                var j = 0
+                while j < entries.count {
+                    guard !Task.isCancelled else { break outer }
+                    let batch  = Array(entries[j ..< min(j + batchSize, entries.count)])
+                    j       += batchSize
+                    scanned += batch.count
+
+                    await MainActor.run {
+                        signalScanProgress = "Scanning \(batch[0].GuideName) (\(scanned)/\(total))…"
+                    }
+
+                    // Open one stream per channel in the batch concurrently (locks each tuner),
+                    // then read status.json once to collect all SNQ readings.
+                    await withTaskGroup(of: Void.self) { group in
+                        for entry in batch {
+                            guard let url = URL(string: "\(device.streamBase)/auto/v\(entry.GuideNumber)") else { continue }
+                            group.addTask { _ = try? await URLSession.shared.data(from: url) }
+                        }
+                        try? await Task.sleep(nanoseconds: 2_000_000_000)
+                        if let (statusData, _) = try? await URLSession.shared.data(from: URL(string: device.statusURL)!),
+                           let tunerInfos = try? JSONDecoder().decode([DeviceTunerInfo].self, from: statusData) {
+                            for entry in batch {
+                                guard let match = tunerInfos.first(where: { $0.VctNumber == entry.GuideNumber }),
+                                      let snq = match.SignalQualityPercent else { continue }
+                                await ChannelSignalStore.shared.record(guideName: entry.GuideName, snq: snq)
+                            }
+                        }
+                        group.cancelAll()  // release tuners; stream tasks observe cancellation and exit
+                    }
+
+                    let buckets = await ChannelSignalStore.shared.allBuckets()
+                    await MainActor.run { channelSignalBuckets = buckets }
+                    for entry in batch {
+                        let key = entry.GuideName.lowercased()
+                        webServer.broadcastEvent(["type": "signal_update",
+                                                  "gname": key,
+                                                  "bucket": buckets[key]?.rawValue ?? "noData"])
+                    }
+                }
             }
-            let total = targets.count
-            for (i, target) in targets.enumerated() {
-                guard !Task.isCancelled else { break }
-                let (device, entry) = (target.device, target.entry)
-                await MainActor.run { signalScanProgress = "Scanning \(entry.GuideName) (\(i+1)/\(total))…" }
-                // Open stream to lock the tuner
-                guard let streamURL = URL(string: "\(device.streamBase)/auto/v\(entry.GuideNumber)"),
-                      let (_, resp) = try? await URLSession.shared.data(from: streamURL),
-                      (resp as? HTTPURLResponse)?.statusCode == 200 else { continue }
-                // Wait for tuner to lock, then read snq from status.json
-                try? await Task.sleep(nanoseconds: 2_000_000_000)
-                guard let (statusData, _) = try? await URLSession.shared.data(from: URL(string: device.statusURL)!),
-                      let tunerInfos = try? JSONDecoder().decode([DeviceTunerInfo].self, from: statusData),
-                      let match = tunerInfos.first(where: { $0.VctNumber == entry.GuideNumber }),
-                      let snq = match.SignalQualityPercent
-                else { continue }
-                await ChannelSignalStore.shared.record(guideName: entry.GuideName, snq: snq)
-                let buckets = await ChannelSignalStore.shared.allBuckets()
-                let key = entry.GuideName.lowercased()
-                await MainActor.run { channelSignalBuckets = buckets }
-                webServer.broadcastEvent(["type": "signal_update",
-                                          "gname": key,
-                                          "bucket": buckets[key]?.rawValue ?? "noData"])
-            }
+
             await MainActor.run { signalScanProgress = nil }
         }
     }

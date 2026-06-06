@@ -64,7 +64,9 @@ func startSignalScan()   // iterates all device lineups, tunes briefly, records 
 func cancelSignalScan()  // cancels in-flight scan Task, clears progress
 ```
 
-`channelSignalBuckets` is refreshed from `ChannelSignalStore.shared.allBuckets()` at startup (when `Signal_quality_enabled`) and after each scan step. Each step also broadcasts a `signal_update` SSE event so connected web clients update bars in-place.
+`channelSignalBuckets` is refreshed from `ChannelSignalStore.shared.allBuckets()` at startup (when `Signal_quality_enabled`) and after each scan batch. Each batch also broadcasts one `signal_update` SSE event per channel so connected web clients update bars in-place.
+
+**Batching**: `startSignalScan` processes channels in batches of `device.TunerCount` (min 1). Each batch opens that many streams concurrently, waits 2 s, then reads `status.json` **once** to collect all SNQ readings — so total status calls = number of batches, not number of channels. A 2-tuner device with 60 channels makes 30 status calls instead of 60 and completes in roughly half the time.
 
 ---
 
