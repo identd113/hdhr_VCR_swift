@@ -1,4 +1,5 @@
 import SwiftUI
+import WebKit
 
 // Multi-step wizard: Device → Channel → Guide entry → Details → Save
 struct AddShowView: View {
@@ -169,6 +170,49 @@ struct AddShowView: View {
     }
 
     private var guideStep: some View {
+        Group {
+            if state.config.Use_web_guide {
+                webGuideStep
+            } else {
+                nativeGuideStep
+            }
+        }
+    }
+
+    // MARK: - Web guide step (WKWebView path)
+
+    @ViewBuilder private var webGuideStep: some View {
+        Group {
+            if state.webServerRunning {
+                AddShowWebView(port: state.config.Web_server_port) { data in
+                    guard
+                        let deviceId    = data["deviceId"]    as? String,
+                        let guideNumber = data["guideNumber"] as? String,
+                        let startTime   = data["startTime"]   as? Int,
+                        let endTime     = data["endTime"]     as? Int
+                    else { return }
+                    let title    = data["title"]    as? String ?? ""
+                    let seriesId = data["seriesId"] as? String ?? ""
+                    let genre    = data["genre"]    as? String ?? ""
+                    let imageURL = data["imageURL"] as? String ?? ""
+                    applyWebGuideEntry(deviceId: deviceId, guideNumber: guideNumber,
+                                       startTime: startTime, endTime: endTime,
+                                       title: title, seriesId: seriesId,
+                                       genre: genre, imageURL: imageURL)
+                    step = .details
+                }
+            } else {
+                ProgressView("Starting guide…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .onAppear { state.ensureWebServerRunning() }
+        .onDisappear { state.releaseInternalWebServer() }
+    }
+
+    // MARK: - Native guide step (SwiftUI path)
+
+    @ViewBuilder private var nativeGuideStep: some View {
         let managedMatcher = ManagedGuideMatcher(activeManagedShows: state.shows.filter { $0.show_active && !$0.show_paused })
         let recordingMatcher = ShowMatcher(state.recordingShows)
         let now30 = Date()
@@ -178,7 +222,7 @@ struct AddShowView: View {
         })
         let bonusMatcher = ShowMatcher(state.shows.filter { $0.show_bonus_time })
 
-        return VStack(spacing: 0) {
+        VStack(spacing: 0) {
             // ── Compact toolbar: tuner + genre filter + actions ───────────────
             HStack(spacing: 10) {
                 if state.devices.count > 1 {
@@ -712,6 +756,35 @@ struct AddShowView: View {
         state.pendingAddEntry = nil
     }
 
+    private func applyWebGuideEntry(deviceId: String, guideNumber: String,
+                                     startTime: Int, endTime: Int,
+                                     title: String, seriesId: String,
+                                     genre: String, imageURL: String) {
+        let startDate = Date(timeIntervalSince1970: TimeInterval(startTime))
+        let endDate   = Date(timeIntervalSince1970: TimeInterval(endTime))
+        show.show_title      = title
+        show.show_channel    = guideNumber
+        show.show_length     = (endTime - startTime) / 60
+        show.show_next       = startDate
+        show.show_end        = endDate
+        show.show_seriesid   = seriesId
+        show.show_logo_url   = imageURL
+        show.show_genre      = genre
+        show.show_bonus_time = genre.lowercased().contains("sports") && state.config.Sports_padding_enabled
+        show.hdhr_record     = deviceId
+        // Look up the stream URL from the lineup so the recording process has the HDHR URL
+        show.show_url = state.lineups[deviceId]?.first(where: { $0.GuideNumber == guideNumber })?.URL ?? ""
+        // selectedDevice needed for save() — set it if not already set to the matching device
+        if selectedDevice == nil || selectedDevice?.DeviceID != deviceId {
+            selectedDevice = state.devices.first(where: { $0.DeviceID == deviceId })
+        }
+        let comps = Calendar.current.dateComponents([.hour, .minute, .weekday], from: startDate)
+        show.show_time = Double(comps.hour ?? 20) + Double(comps.minute ?? 0) / 60.0
+        let dayName = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][(comps.weekday ?? 2) - 1]
+        airDays = [dayName]
+        seriesType = .single
+    }
+
     private func applyGuideEntry() {
         guard let entry = selectedEntry, let channel = selectedChannel, let device = selectedDevice else { return }
         show.show_title    = entry.Title
@@ -768,6 +841,54 @@ struct AddShowView: View {
         dismiss()
     }
 
+}
+
+// WKWebView wrapper for the web guide in the Add Show wizard.
+// Posts a WKScriptMessage on "record" when the user clicks Record in the web guide.
+// The onRecord callback receives the entry data and advances the wizard to step 3.
+private struct AddShowWebView: NSViewRepresentable {
+    let port: Int
+    let onRecord: ([String: Any]) -> Void
+
+    func makeNSView(context: Context) -> WKWebView {
+        let config = WKWebViewConfiguration()
+        config.userContentController.add(context.coordinator, name: "record")
+        let wv = WKWebView(frame: .zero, configuration: config)
+        wv.navigationDelegate = context.coordinator
+        wv.load(URLRequest(url: URL(string: "http://localhost:\(port)/")!))
+        return wv
+    }
+
+    func updateNSView(_ nsView: WKWebView, context: Context) {}
+
+    static func dismantleNSView(_ nsView: WKWebView, coordinator: Coordinator) {
+        nsView.configuration.userContentController.removeScriptMessageHandler(forName: "record")
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(onRecord: onRecord) }
+
+    class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
+        let onRecord: ([String: Any]) -> Void
+        init(onRecord: @escaping ([String: Any]) -> Void) { self.onRecord = onRecord }
+
+        func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+            guard message.name == "record", let body = message.body as? [String: Any] else { return }
+            DispatchQueue.main.async { self.onRecord(body) }
+        }
+
+        func webView(_ wv: WKWebView, decidePolicyFor action: WKNavigationAction,
+                     decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+            decisionHandler(action.request.url?.host == "localhost" ? .allow : .cancel)
+        }
+
+        func webView(_ wv: WKWebView, didFinish _: WKNavigation!) {
+            let isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            wv.evaluateJavaScript(
+                "localStorage.setItem('theme','\(isDark ? "dark" : "light")');if(typeof applyTheme==='function')applyTheme();",
+                completionHandler: nil
+            )
+        }
+    }
 }
 
 // Allow LineupEntry to be used with List selection

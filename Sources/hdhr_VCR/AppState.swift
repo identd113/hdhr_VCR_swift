@@ -123,6 +123,7 @@ final class AppState: ObservableObject {
     let webServer        = WebServer()
     @Published var webServerRunning: Bool    = false
     @Published var webServerError:   String? = nil
+    private var internalWebServerActive = false  // started on-demand when web guide opens
 
     // Sparkle auto-updater — created in startup() so tests (skipStartup=true) never touch it.
     private(set) var updaterController: SPUStandardUpdaterController?
@@ -277,6 +278,27 @@ final class AppState: ObservableObject {
             self.webServerError   = errorMsg
             if errorMsg == nil { self.webServer.updateTXTRecord() }
         }
+    }
+
+    /// Starts the web server if not already running. Called by the in-app WKWebView guide on appear.
+    func ensureWebServerRunning() {
+        guard !webServerRunning else { return }
+        internalWebServerActive = true
+        webServerError = nil
+        webServer.start(port: config.Web_server_port, appState: self) { [weak self] (errorMsg: String?) in
+            guard let self else { return }
+            self.webServerRunning = (errorMsg == nil)
+            self.webServerError   = errorMsg
+            if errorMsg == nil { self.webServer.updateTXTRecord() }
+        }
+    }
+
+    /// Stops the web server if it was auto-started by the in-app guide (and the user hasn't enabled it in Settings).
+    func releaseInternalWebServer() {
+        guard internalWebServerActive, !config.Web_server_enabled else { return }
+        internalWebServerActive = false
+        webServer.stop()
+        webServerRunning = false
     }
 
     func logGuide(_ msg: String, level: LogLevel = .info) { glog(msg, level: level) }

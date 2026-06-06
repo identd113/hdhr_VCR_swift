@@ -535,7 +535,8 @@ struct SettingsView: View {
                             .foregroundStyle(.red)
                     } else {
                         ForEach(state.devices) { device in
-                            Button("Measure Signal: \(device.DeviceID)") { state.startSignalScan() }
+                            // force=true: manual scan always re-measures, even channels with fresh data
+                            Button("Measure Signal: \(device.DeviceID)") { state.startSignalScan(force: true) }
                         }
                     }
                 }
@@ -555,7 +556,7 @@ struct SettingsView: View {
                 if draft.Web_server_enabled {
                     HStack {
                         Text("Port")
-                        TextField("1980", value: $draft.Web_server_port, format: .number)
+                        TextField("1980", value: $draft.Web_server_port, format: .number.grouping(.never))
                             .frame(width: 80)
                             .multilineTextAlignment(.trailing)
                     }
@@ -566,7 +567,15 @@ struct SettingsView: View {
                             .foregroundStyle(.orange)
                     }
                 }
-                Text("Local network access only. No authentication. Do not expose this port to the internet.")
+                Text("Local network access only. No authentication. Do not expose this port to the internet. Port changes and mDNS registration update immediately on Save — no app restart needed.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Guide") {
+                Toggle("Use Web Guide", isOn: $draft.Use_web_guide)
+                    .help("Open the web-based guide inside the app (WKWebView) instead of the native SwiftUI guide. The web server starts automatically when the guide opens.")
+                Text("When enabled, the floating guide window and the Add Show wizard guide step load the web guide. The native guide remains available when this is off.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

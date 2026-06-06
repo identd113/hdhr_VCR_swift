@@ -30,9 +30,12 @@ Identical to `CableGuideView` appearance described in `CableGuideView.md`. When 
 
 ## Intent
 
-`FloatingGuideView` is a browse-only cable guide window that can be opened independently of the Add Show wizard. It uses the same `CableGuideView` grid and summary panel as `AddShowView` step 2, but has no Record button, no wizard navigation, and no step-advance behavior. The user can browse what's on across all tuners, see Bonus Time overlaps, and optionally Watch in VLC for on-air shows.
+`FloatingGuideView` is a browse-only cable guide window that can be opened independently of the Add Show wizard. Window ID: `"cable-guide"`. Window minimum: **1100×720**, no maximum.
 
-It is opened from the Add Show wizard via a pop-out button (`openWindow(id: "cable-guide")`), or from any other trigger in the future. Window ID: `"cable-guide"`. Window minimum: **1100×720**, no maximum.
+The view has two rendering paths controlled by `state.config.Use_web_guide` (Settings → Web Server → Guide):
+
+- **Native path** (default, `Use_web_guide = false`): uses `CableGuideView` + summary panel — the same grid and summary as `AddShowView` step 2, but with no Record button, no wizard navigation, and no step-advance behavior. The user can browse what's on, see Bonus Time overlaps, and watch in VLC for on-air shows.
+- **Web path** (`Use_web_guide = true`): loads `http://localhost:{port}/` in a `WKWebView` (`GuideWebView`). The web server auto-starts if not already running and stops when the guide closes (unless `Web_server_enabled` is on). Dark/light theme is synced from `NSApp.effectiveAppearance` via JS injection after page load. External navigation is blocked (only `localhost` allowed).
 
 ---
 

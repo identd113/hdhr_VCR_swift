@@ -252,6 +252,7 @@ struct AppConfig: Equatable {
     // Web server
     var Web_server_enabled: Bool = false
     var Web_server_port:    Int  = 1980
+    var Use_web_guide:      Bool = false
 
     // Signal quality
     var Signal_quality_enabled:      Bool = false  // show signal bars in guide + web UI
@@ -294,6 +295,7 @@ extension AppConfig: Codable {
         Discord_enabled         = (try? c.decode(Bool.self,   forKey: .Discord_enabled))         ?? !Discord_webhook_url.isEmpty
         Web_server_enabled      = (try? c.decode(Bool.self,   forKey: .Web_server_enabled))      ?? false
         Web_server_port         = (try? c.decode(Int.self,    forKey: .Web_server_port))         ?? 1980
+        Use_web_guide           = (try? c.decode(Bool.self,   forKey: .Use_web_guide))           ?? false
         Signal_quality_enabled      = (try? c.decode(Bool.self, forKey: .Signal_quality_enabled))      ?? false
         Signal_quality_alert_notify = (try? c.decode(Bool.self, forKey: .Signal_quality_alert_notify)) ?? false
     }

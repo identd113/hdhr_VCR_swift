@@ -196,18 +196,21 @@ Recording Complete embeds additionally include **Format** (file extension, e.g. 
 **Signal Strength Scan section** (only visible when Signal Quality toggle is on):
 - Brief description: *"Briefly tunes each channel to measure signal quality. Results are stored and shown as bars in the guide."*
 - While scanning: progress label (`"Scanning {GuideName} (N/total)…"`) + `Label` with `antenna.radiowaves.left.and.right` icon + red **Cancel Scan** button.
-- At rest: one **Measure Signal: {DeviceID}** button per discovered device. Calling `state.startSignalScan()` tunes each lineup channel one at a time, takes 3 SNQ readings at 500 ms intervals (~1.5 s per channel), and skips channels that already have fresh data (`needsSample()` gate). `flush()` is called after each channel so progress survives a quit. Completed samples are immediately pushed to the web guide via SSE `signal_update`.
+- At rest: one **Measure Signal: {DeviceID}** button per discovered device. Calls `state.startSignalScan(force: true)` — `force:true` bypasses the `needsSample()` freshness gate so a manual tap always remeasures all channels. Takes 3 SNQ readings at 500 ms intervals (~1.5 s per channel). `flush()` is called after each channel so progress survives a quit. Completed samples are immediately pushed to the web guide via SSE `signal_update`.
 
 ---
 
 ### Web Server
 
 - **Enable Web Server** — `Toggle` bound to `draft.Web_server_enabled`. Off by default. Warning label: *"Local network access only. No authentication. Do not expose this port to the internet."*
-- **Port** — `TextField` (value binding, `.number` format), shown when enabled. Validated 1025–65534. Invalid values show an orange warning and block the Save button and `WindowCloseInterceptor`.
+- **Port** — `TextField` (value binding, `.number.grouping(.never)` format to suppress the thousands comma), shown when enabled. Validated 1025–65534. Invalid values show an orange warning and block the Save button and `WindowCloseInterceptor`. Saving restarts the `NWListener` and re-registers mDNS at the new port immediately — no app restart needed.
 - **Access row** — shown only when `state.config.Web_server_enabled && state.webServerRunning`. Displays `http://{ip}:{port}` as selectable monospaced text with an **Open** `Link`. IP is resolved by `availableNetworkInterfaces()` filtering out `utun*` VPN interfaces; falls back to `"localhost"`. The link uses the device's IP directly (not an mDNS `.local` hostname) to prevent browser HTTPS upgrades.
 - **Error banner** — shown when `state.webServerError` is non-nil (port in use, OS cancellation, etc.).
 
 Saving with changed `Web_server_enabled` or `Web_server_port` calls `state.setupWebServer()` immediately to start, restart, or stop the listener.
+
+**Guide section** (within Web Server category):
+- **Use Web Guide** — `Toggle` bound to `draft.Use_web_guide`. Off by default. When on, `FloatingGuideView` and the Add Show wizard guide step load `http://localhost:{port}/` in a `WKWebView` instead of rendering the native SwiftUI `CableGuideView`. The web server auto-starts on demand when the guide opens (even if `Web_server_enabled` is off); it stops again when the guide closes if it was not already user-enabled.
 
 See [WebServer.md](WebServer.md) for full route and feature documentation.
 

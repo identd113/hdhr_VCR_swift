@@ -1,4 +1,5 @@
 import SwiftUI
+import WebKit
 
 // Standalone cable guide browser — opened from the Add Show wizard via the pop-out button.
 // Browse-only: no Record button, no wizard navigation. Escape closes the window.
@@ -31,9 +32,37 @@ struct FloatingGuideView: View {
     }
 
     var body: some View {
+        if state.config.Use_web_guide {
+            webGuideBody
+        } else {
+            nativeGuideBody
+        }
+    }
+
+    // MARK: - Web guide (WKWebView path)
+
+    @ViewBuilder private var webGuideBody: some View {
+        Group {
+            if state.webServerRunning {
+                GuideWebView(port: state.config.Web_server_port)
+            } else {
+                ProgressView("Starting guide…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .onAppear { state.ensureWebServerRunning() }
+        .onDisappear { state.releaseInternalWebServer() }
+        .onExitCommand { dismiss() }
+        .background(FloatingWindowLevelSetter())
+        .frame(minWidth: 1100, minHeight: 720)
+    }
+
+    // MARK: - Native guide (SwiftUI path)
+
+    @ViewBuilder private var nativeGuideBody: some View {
         // Compute once per render — managedMatcher is used by both CableGuideView and summaryPanel.
         let mm = managedMatcher
-        return VStack(spacing: 0) {
+        VStack(spacing: 0) {
             toolbar
             Divider()
             GeometryReader { proxy in
@@ -354,6 +383,37 @@ struct FloatingGuideView: View {
         await state.guideStore.load(for: device, hours: state.config.GuideHours)
         state.guideByDevice = state.guideStore.channelsByDevice
         allChannels = sortedGuideChannels(state.guideStore.channels(deviceId: id), favorites: favorites)
+    }
+}
+
+// WKWebView wrapper loading the local web guide at http://localhost:{port}/.
+// Blocks navigation away from localhost; syncs dark/light theme after load.
+private struct GuideWebView: NSViewRepresentable {
+    let port: Int
+
+    func makeNSView(context: Context) -> WKWebView {
+        let wv = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
+        wv.navigationDelegate = context.coordinator
+        wv.load(URLRequest(url: URL(string: "http://localhost:\(port)/")!))
+        return wv
+    }
+
+    func updateNSView(_ nsView: WKWebView, context: Context) {}
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    class Coordinator: NSObject, WKNavigationDelegate {
+        func webView(_ wv: WKWebView, decidePolicyFor action: WKNavigationAction,
+                     decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+            decisionHandler(action.request.url?.host == "localhost" ? .allow : .cancel)
+        }
+
+        func webView(_ wv: WKWebView, didFinish _: WKNavigation!) {
+            let isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            wv.evaluateJavaScript(
+                "localStorage.setItem('theme','\(isDark ? "dark" : "light")');if(typeof applyTheme==='function')applyTheme();",
+                completionHandler: nil
+            )
+        }
     }
 }
 

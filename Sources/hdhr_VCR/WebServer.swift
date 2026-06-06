@@ -547,7 +547,8 @@ final class WebServer {
         let halfHour = 30 * 60
         let winSec   = isDesktop ? state.config.GuideHours * 3600
                                  : state.config.GuideHours * 3600 / 2
-        let winStart = (nowTs / halfHour) * halfHour
+        // One half-hour slot lookback — GuideStore fetches from now-3600 so this is always covered.
+        let winStart = (nowTs / halfHour) * halfHour - halfHour
         let winEnd   = winStart + winSec
         // Integer-only percentage formatter — avoids ~1500 String(format:) calls per full guide render.
         // Computes offset/winSec*100 to 4 decimal places using only integer arithmetic.
@@ -720,8 +721,11 @@ final class WebServer {
             var seenInDevice = Set<String>()   // dedup duplicate lineup entries within same device
             for ch in sorted {
                 guard seenInDevice.insert(ch.GuideNumber).inserted else { continue }
-                let entries = state.guideStore.entries(deviceId: device.DeviceID, channelNum: ch.GuideNumber)
-                    .filter { $0.EndTime > winStart && $0.StartTime < winEnd }
+                // Pass winStart as `after:` so shows that ended before now but within the lookback
+                // window aren't silently dropped by the default after:Date() filter.
+                let entries = state.guideStore.entries(deviceId: device.DeviceID, channelNum: ch.GuideNumber,
+                                                       after: Date(timeIntervalSince1970: TimeInterval(winStart)))
+                    .filter { $0.StartTime < winEnd }
                 guard !entries.isEmpty else { continue }
 
                 let logoURL  = state.channelImageURLs["\(device.DeviceID):\(ch.GuideNumber)"] ?? ""
@@ -733,6 +737,19 @@ final class WebServer {
                 let isRecCh  = recChannelsByDevice[device.DeviceID]?.contains(ch.GuideNumber) ?? false
 
                 var blockParts: [String] = ["<div class=\"g-now-bar\" style=\"left:\(nowPct)%\"></div>"]
+                // Fill gaps so the striped .g-tl background never shows through.
+                // cursor tracks the right edge of the last processed show, starting at winStart.
+                var cursor = winStart
+                for e in entries {
+                    let gapEnd = min(e.StartTime, winEnd)
+                    if gapEnd > cursor {
+                        blockParts.append("<div class=\"g-gap\" style=\"left:\(pct(cursor - winStart))%;width:\(pct(gapEnd - cursor))%\"></div>")
+                    }
+                    cursor = max(cursor, e.EndTime)
+                }
+                if cursor < winEnd {
+                    blockParts.append("<div class=\"g-gap\" style=\"left:\(pct(cursor - winStart))%;width:\(pct(winEnd - cursor))%\"></div>")
+                }
                 for e in entries {
                     let cs = max(e.StartTime, winStart) - winStart
                     let ce = min(e.EndTime,   winEnd)   - winStart
@@ -875,6 +892,12 @@ final class WebServer {
         html.lm .t-info-full{background:#fce8e8;border-color:#cc3030;color:#8b0000}
         html.lm .t-info-full:hover{border-color:#aa2020;color:#660000}
         /* ── Theme switcher (3-dot segmented control) ── */
+        .t-ctrl-btn{background:var(--s4);border:1px solid var(--b4);color:var(--t3);border-radius:5px;padding:5px 10px;font-size:.78rem;cursor:pointer;transition:border-color .15s,color .15s,background .15s;white-space:nowrap}
+        .t-ctrl-btn:hover{border-color:var(--b5);color:var(--t0);background:var(--s3)}
+        html.lm .t-ctrl-btn{background:#f0f0f0;border-color:#ccc;color:#444}
+        html.lm .t-ctrl-btn:hover{background:#e0e0e0;border-color:#aaa;color:#111}
+        .genre-sel{background:var(--s4);border:1px solid var(--b4);color:var(--t2);border-radius:5px;padding:4px 8px;font-size:.78rem;cursor:pointer}
+        html.lm .genre-sel{background:#f0f0f0;border-color:#ccc;color:#333}
         #theme-sw{display:flex;background:var(--s4);border:1px solid var(--b4);border-radius:6px;overflow:hidden;flex-shrink:0;margin-right:8px}
         #theme-sw button{background:none;border:none;border-right:1px solid var(--b4);padding:5px 9px;cursor:pointer;color:var(--t4);font-size:.8rem;line-height:1;transition:background .12s,color .12s}
         #theme-sw button:last-child{border-right:none}
@@ -943,6 +966,7 @@ final class WebServer {
         /* 30-min gridlines */
         .g-tl{flex:1;position:relative;min-height:54px;background:repeating-linear-gradient(90deg,transparent,transparent calc(8.3333% - 1px),var(--b0) calc(8.3333% - 1px),var(--b0) 8.3333%)}
         .g-now-bar{position:absolute;top:0;bottom:0;width:2px;background:rgba(255,90,90,.75);z-index:1;pointer-events:none}
+        .g-gap{position:absolute;top:0;bottom:0;background:var(--bg);pointer-events:none}
         .g-prog{position:absolute;top:4px;bottom:4px;border-radius:5px;overflow:hidden;background:var(--pg);border:1px solid var(--pgb);min-width:3px;cursor:pointer}
         .g-prog:hover{filter:brightness(1.1);border-color:var(--t5);z-index:3}
         .g-prog.g-sel{border-color:var(--t0)!important;box-shadow:0 0 0 1px rgba(128,128,128,.5);z-index:4}
@@ -1035,13 +1059,20 @@ final class WebServer {
         <body>
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
           <div>\(headerHTML)</div>
-          <div style="display:flex;align-items:center;gap:6px"><div id="theme-sw">
-            <button data-m="dark"  onclick="setTheme('dark')"  title="Dark">◗</button>
-            <button data-m="auto"  onclick="setTheme('auto')"  title="Auto (system)">◐</button>
-            <button data-m="light" onclick="setTheme('light')" title="Light">◖</button>
-          </div></div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <button class="t-ctrl-btn" onclick="scrollToNow()" title="Jump to current time">⊙ Now</button>
+            <button class="t-ctrl-btn" onclick="location.reload()" title="Refresh guide">↺ Refresh</button>
+            <div id="theme-sw">
+              <button data-m="dark"  onclick="setTheme('dark')"  title="Dark">◗</button>
+              <button data-m="auto"  onclick="setTheme('auto')"  title="Auto (system)">◐</button>
+              <button data-m="light" onclick="setTheme('light')" title="Light">◖</button>
+            </div>
+          </div>
         </div>
         \(deviceBarHTML)
+        <div id="genre-bar" style="display:none;margin-bottom:10px">
+          <select id="genre-sel" onchange="filterGenre(this.value)" class="genre-sel"><option value="">All genres</option></select>
+        </div>
         <div id="t-pop" onclick="if(event.target===this)closeTunerPop()" style="display:none;position:fixed;inset:0;z-index:200">
           <div id="t-pop-c" style="position:absolute;background:#1e1e1e;border:1px solid #484848;border-radius:10px;padding:14px 16px;min-width:240px;max-width:340px;box-shadow:0 8px 32px rgba(0,0,0,.75)">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
@@ -1140,7 +1171,7 @@ final class WebServer {
         <script>
         \(tunerJS)
         \(recsByDevJS)
-        var _d='',_n='',_s=0,_e=0,_ser='',_genre='';
+        var _d='',_n='',_s=0,_e=0,_ser='',_genre='',_title='',_poster='',_logo='',_chname='';
         function hej(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
         // Theme: .lm class on <html> = light mode active
         var _mq=window.matchMedia('(prefers-color-scheme:light)');
@@ -1162,7 +1193,7 @@ final class WebServer {
         function devFull(devId){var t=tuners[devId];return t&&t.t>0&&t.a>=t.t;}
         function showInfo(el){
           var d=el.dataset;
-          _d=d.device;_n=d.num;_s=+d.start;_e=+d.end;_ser=d.series||'';_genre=d.genre||'';
+          _d=d.device;_n=d.num;_s=+d.start;_e=+d.end;_ser=d.series||'';_genre=d.genre||'';_title=d.title||'';_poster=d.poster||'';_logo=d.logo||'';_chname=d.chname||'';
           document.getElementById('sum-ph').style.display='none';
           var sc=document.getElementById('sum-c');sc.style.display='flex';sc.style.background=gc(d.genre);
           var pi=document.getElementById('sum-poster');
@@ -1221,6 +1252,12 @@ final class WebServer {
           {v:'seriesAll',     l:'Series — any channel',  d:'Record new episodes on any channel',    s:true}
         ];
         function doRecord(){
+          // In-app WKWebView (AddShowView wizard): send entry data to Swift instead of showing the record modal.
+          // Swift intercepts this, calls applyWebGuideEntry(), and advances to the Details step.
+          if(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.record){
+            window.webkit.messageHandlers.record.postMessage({deviceId:_d,guideNumber:_n,startTime:_s,endTime:_e,title:_title,seriesId:_ser,genre:_genre,imageURL:_poster});
+            return;
+          }
           document.getElementById('rm-title').textContent=document.getElementById('sum-title').textContent||'';
           document.getElementById('rm-ch').textContent=document.getElementById('sum-ct').textContent||'';
           var opts=document.getElementById('rm-opts');opts.innerHTML='';var first=true;
@@ -1556,17 +1593,34 @@ final class WebServer {
           }).catch(function(){btn.disabled=false;btn.textContent=lbl;});
         }
         var curDev='';
+        var _genreFilter='';
         var _rows=document.querySelectorAll('.g-row');
+        function rowMatchesGenre(r){
+          if(!_genreFilter)return true;
+          return Array.from(r.querySelectorAll('.g-prog')).some(function(p){return(p.dataset.genre||'').toLowerCase()===_genreFilter.toLowerCase();});
+        }
         function setDev(id){
           curDev=id;
           document.querySelectorAll('.d-btn').forEach(function(b){b.classList.toggle('d-sel',b.dataset.dev===id);});
           var seen={};
           _rows.forEach(function(r){
-            if(id){r.style.display=r.dataset.dev===id?'':'none';}
-            else{var ch=r.dataset.ch;if(!seen[ch]){r.style.display='';seen[ch]=true;}else{r.style.display='none';}}
+            var ok=rowMatchesGenre(r);
+            if(id){r.style.display=(r.dataset.dev===id&&ok)?'':'none';}
+            else{var ch=r.dataset.ch;if(!seen[ch]&&ok){r.style.display='';seen[ch]=true;}else{r.style.display='none';}}
           });
         }
+        function filterGenre(g){_genreFilter=g;setDev(curDev);}
         setDev('');
+        // Build genre filter from unique genres in the guide
+        (function(){
+          var gs=new Set();
+          document.querySelectorAll('.g-prog[data-genre]').forEach(function(p){var g=p.dataset.genre;if(g)gs.add(g);});
+          if(gs.size<2)return;
+          var sel=document.getElementById('genre-sel');
+          if(!sel)return;
+          Array.from(gs).sort().forEach(function(g){var o=document.createElement('option');o.value=g;o.textContent=g;sel.appendChild(o);});
+          document.getElementById('genre-bar').style.display='';
+        })();
         // Auto-select the current-timeslot program on the first visible channel row
         (function(){
           var nowTs=Math.floor(Date.now()/1000);
@@ -1575,6 +1629,10 @@ final class WebServer {
           var prog=Array.from(first.querySelectorAll('.g-prog')).find(function(el){return +el.dataset.start<=nowTs&&+el.dataset.end>nowTs;});
           if(prog)showInfo(prog);
         })();
+        // scrollToNow: scroll guide so the now-line sits ~25% from the left of the viewport
+        var _nowPct=\(nowPct);
+        function scrollToNow(){var gw=document.querySelector('.gw');var gi=document.querySelector('.gi');if(!gw||!gi)return;var nowPx=gi.scrollWidth*(_nowPct/100);gw.scrollLeft=Math.max(0,nowPx-gw.clientWidth*0.25);}
+        scrollToNow();
         // SSE: receive push events and refresh guide content in place (scroll + selection preserved)
         (function(){
           if(!window.EventSource)return;
