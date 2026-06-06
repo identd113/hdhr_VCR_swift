@@ -289,9 +289,10 @@ final class WebServer {
 
         // POST routes
         if method == "POST" {
-            if path == "/api/record"       { return handleRecord(state: state, body: body) }
-            if path == "/api/delete"       { return handleDelete(state: state, body: body) }
-            if path == "/api/edit"         { return handleEdit(state: state, body: body) }
+            if path == "/api/record"           { return handleRecord(state: state, body: body) }
+            if path == "/api/delete"           { return handleDelete(state: state, body: body) }
+            if path == "/api/edit"             { return handleEdit(state: state, body: body) }
+            if path == "/api/toggle-favorite"  { return handleToggleFavorite(state: state, body: body) }
             if path == "/api/signal-scan"  {
                 let force = (try? JSONSerialization.jsonObject(with: body ?? Data()) as? [String: Any])?["force"] as? Bool ?? false
                 state.startSignalScan(force: force)
@@ -475,6 +476,25 @@ final class WebServer {
             Task { await state.rescheduleAllSeries() }
         }
         return json(["ok": true, "title": updated.show_title])
+    }
+
+    @MainActor
+    private func handleToggleFavorite(state: AppState, body: Data?) -> WebResponse {
+        let json = jsonResponse
+        guard let body,
+              let obj      = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+              let deviceId = obj["deviceId"]    as? String,
+              let guideNum = obj["guideNumber"] as? String
+        else { return .badRequest("Missing required fields: deviceId, guideNumber") }
+
+        guard let device = state.devices.first(where: { $0.DeviceID == deviceId }),
+              let ch     = state.lineups[deviceId]?.first(where: { $0.GuideNumber == guideNum })
+        else { return json(["ok": false, "error": "Device or channel not found"]) }
+
+        let newFav = !ch.isFavorite   // ch is a struct copy; capture before toggleFavorite mutates lineups
+        state.toggleFavorite(device: device, channel: ch)
+        broadcastEvent(["type": "favorite_toggled", "device": deviceId, "guideNumber": guideNum])
+        return json(["ok": true, "isFavorite": newFav])
     }
 
     private func showTypeStr(_ show: Show) -> String {
@@ -731,6 +751,8 @@ final class WebServer {
                     return $0.GuideNumber.channelSortKey < $1.GuideNumber.channelSortKey
                 }
             var seenInDevice = Set<String>()   // dedup duplicate lineup entries within same device
+            var favRows:   [String] = []
+            var otherRows: [String] = []
             for ch in sorted {
                 guard seenInDevice.insert(ch.GuideNumber).inserted else { continue }
                 // Pass winStart as `after:` so shows that ended before now but within the lookback
@@ -825,8 +847,23 @@ final class WebServer {
                         + "<rect x=\"8\" y=\"0\" width=\"3\" height=\"10\" fill=\"\(b3Color)\"/>"
                         + "</svg>"
                 }()
-                rowParts.append("<div class=\"g-row\" data-dev=\"\(he(device.DeviceID))\" data-ch=\"\(he(ch.GuideNumber))\" data-gname=\"\(he(gnameAttr))\"><div class=\"g-ch\">\(logoHTML)<div class=\"g-cl\"><span class=\"g-cn\">\(he(chLabel))</span><span class=\"g-cname\">\(he(ch.GuideName))</span></div>\(sigHTML)</div><div class=\"g-tl\">\(blockParts.joined())</div></div>")
+                let favAttr = ch.isFavorite ? " data-fav=\"1\"" : ""
+                let favBtn  = ch.isFavorite
+                    ? "<button class=\"g-fav-btn\" data-fav=\"1\" onclick=\"toggleFav(event,this)\" title=\"Remove from favorites\">★</button>"
+                    : "<button class=\"g-fav-btn\" onclick=\"toggleFav(event,this)\" title=\"Add to favorites\">☆</button>"
+                let rowHTML = "<div class=\"g-row\" data-dev=\"\(he(device.DeviceID))\" data-ch=\"\(he(ch.GuideNumber))\" data-gname=\"\(he(gnameAttr))\"\(favAttr)><div class=\"g-ch\">\(logoHTML)<div class=\"g-cl\"><span class=\"g-cn\">\(he(chLabel))</span><span class=\"g-cname\">\(he(ch.GuideName))</span></div>\(sigHTML)\(favBtn)</div><div class=\"g-tl\">\(blockParts.joined())</div></div>"
+                if ch.isFavorite { favRows.append(rowHTML) } else { otherRows.append(rowHTML) }
             }
+            // Assemble: favorites section (with header/footer) then non-favorites
+            let devId = he(device.DeviceID)
+            if !favRows.isEmpty {
+                rowParts.append("<div class=\"g-fav-sep\" data-dev=\"\(devId)\"><div class=\"g-ch\">★ FAVORITES</div><div class=\"g-tl\"></div></div>")
+                rowParts.append(contentsOf: favRows)
+                if !otherRows.isEmpty {
+                    rowParts.append("<div class=\"g-fav-end\" data-dev=\"\(devId)\"></div>")
+                }
+            }
+            rowParts.append(contentsOf: otherRows)
         }
         let rowsHTML = rowParts.isEmpty
             ? "<div style=\"padding:24px;color:#555;text-align:center;font-size:.85rem\">No guide data — loading…</div>"
@@ -873,13 +910,13 @@ final class WebServer {
           --bg:#141414;--s1:#1a1a1a;--s2:#1c1c1c;--s3:#1e1e1e;--s4:#222222;
           --b0:#252525;--b1:#333333;--b2:#383838;--b3:#3a3a3a;--b4:#444444;--b5:#484848;
           --t0:#f0f0f0;--t1:#e8e8e8;--t2:#d0d0d0;--t3:#aaaaaa;--t4:#888888;--t5:#777777;--t6:#666666;
-          --pg:#2c2c2c;--pgb:#484848;--ac:#5aacff;--acb:#0e1f35;
+          --pg:#2c2c2c;--pgb:#484848;--ac:#5aacff;--acb:#0e1f35;--fav:#e8a000;
         }
         html.lm{
           --bg:#f0f2f5;--s1:#f4f5f7;--s2:#f8f8fa;--s3:#ffffff;--s4:#eeeeee;
           --b0:#e4e4e4;--b1:#d8d8d8;--b2:#c8c8c8;--b3:#d0d0d0;--b4:#bbbbbb;--b5:#b8b8b8;
           --t0:#111111;--t1:#222222;--t2:#444444;--t3:#666666;--t4:#888888;--t5:#888888;--t6:#999999;
-          --pg:#e0e0e8;--pgb:#ababbb;--ac:#0069cc;--acb:#e0eeff;
+          --pg:#e0e0e8;--pgb:#ababbb;--ac:#0069cc;--acb:#e0eeff;--fav:#b06000;
         }
         body{background:var(--bg);color:var(--t0);font-family:-apple-system,sans-serif;padding:16px}
         h1{font-size:1.15rem;color:var(--t2);margin-bottom:0}
@@ -968,6 +1005,13 @@ final class WebServer {
         .g-now-tick{position:absolute;top:0;bottom:0;width:2px;background:rgba(255,90,90,.65);pointer-events:none}
         .g-row{display:flex;border-bottom:1px solid var(--b0)}
         .g-row:last-child{border-bottom:none}
+        .g-fav-sep{display:flex;border-top:2px solid var(--fav);border-bottom:1px solid var(--b0)}
+        .g-fav-sep .g-ch{min-height:0;padding:3px 8px;background:var(--s1);border-right:1px solid var(--b1);color:var(--fav);font-size:.63rem;font-weight:700;letter-spacing:.07em}
+        .g-fav-sep .g-tl{min-height:0;background:none}
+        .g-fav-end{height:2px;background:var(--fav)}
+        .g-fav-btn{background:none;border:none;padding:0 2px;cursor:pointer;font-size:.85rem;line-height:1;color:var(--t5);flex-shrink:0;opacity:.5;transition:opacity .15s}
+        .g-fav-btn:hover{opacity:1}
+        .g-fav-btn[data-fav="1"]{color:var(--fav);opacity:1}
         .g-ch{width:105px;min-width:105px;display:flex;align-items:center;gap:4px;padding:4px 6px;position:sticky;left:0;z-index:2;background:var(--s1);border-right:1px solid var(--b1)}
         .g-logo{width:24px;height:24px;object-fit:contain;flex-shrink:0}
         .g-logo-ph{width:24px;height:24px;border-radius:3px;background:var(--s4);display:flex;align-items:center;justify-content:center;font-size:.75rem;color:var(--t4);flex-shrink:0}
@@ -1631,8 +1675,26 @@ final class WebServer {
             if(id){r.style.display=(r.dataset.dev===id&&ok)?'':'none';}
             else{var ch=r.dataset.ch;if(!seen[ch]&&ok){r.style.display='';seen[ch]=true;}else{r.style.display='none';}}
           });
+          // Show/hide the favorites section header and footer for each device
+          document.querySelectorAll('.g-fav-sep,.g-fav-end').forEach(function(sep){
+            var dev=sep.dataset.dev;
+            var hasFav=Array.from(_rows).some(function(r){
+              return r.style.display!=='none'&&r.dataset.fav==='1'&&r.dataset.dev===dev;
+            });
+            sep.style.display=hasFav?'':'none';
+          });
         }
         function filterGenre(g){_genreFilter=g;setDev(curDev);}
+        function toggleFav(evt,btn){
+          evt.stopPropagation();
+          var row=btn.closest('.g-row');
+          if(!row)return;
+          fetch('/api/toggle-favorite',{method:'POST',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({deviceId:row.dataset.dev,guideNumber:row.dataset.ch})})
+          .then(function(r){return r.json();})
+          .then(function(j){if(j.ok)refreshGuide();})
+          .catch(function(){});
+        }
         setDev('');
         // Build genre filter from unique genres in the guide
         (function(){
