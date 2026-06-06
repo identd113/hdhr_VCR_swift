@@ -25,6 +25,7 @@ Runs every `config.Idle_timer_interval` seconds on MainActor:
 - If `devices` is empty → retries discovery immediately.
 - If guide channels missing for any device → calls `ensureGuideLoaded(for:)`.
 - Refreshes lineup + guide every `max(3600, GuideHours × 1800)` seconds (non-blocking `Task`).
+- **Device probe** — calls `probeForNewDevices()` every 5 minutes to detect new and departing tuners. When any device misses a probe (not seen in discovery response), a 60-second follow-up probe is scheduled (`nextQuickProbe`) so the 3-miss unavailability threshold is reached in ~2–7 minutes rather than 15. The normal 5-minute cycle is unaffected by quick probes.
 - Per active show:
   - Fires "Up Next" notification once at `Notify_upnext` minutes before; stamps `notify_upnext_time`.
   - Fires "Recording Soon" notification once at `Notify_recording` minutes before; stamps `notify_recording_time`.
@@ -65,6 +66,8 @@ Falls back to **SiliconDust cloud API** (`http://discover.hdhomerun.com/discover
 | `activeShows` | `show_active && !show_recording && !show_paused`, sorted by `show_next` |
 | `pausedShows` | `show_active && show_paused` |
 | `inactiveShows` | `!show_active` (completed singles; auto-removed at startup) |
+| `unavailableDeviceIDs` | `Set<String>` of DeviceIDs whose `isAvailable == false` (missedProbes ≥ 3) |
+| `unavailableDeviceShows` | Active shows (recording or scheduled) whose `hdhr_record` is in `unavailableDeviceIDs` |
 | `nextShowMinutes` | Minutes until nearest active show; drives orange `clock.badge` icon when ≤ 30 |
 | `availableDeviceCount` | Excludes devices with missing lineup or guide; used in status message |
 | `onAirNow(for:at:)` | Returns one `(channel: LineupEntry, entry: GuideEntry)` per unique on-air channel for a device at `date` (default `Date()`), sorted favorites-first then by channel number. Used by `WatchNowView` and `WebServer.buildNowJSON`. |
@@ -110,7 +113,7 @@ The web server is stopped explicitly in all three `quit()` exit branches before 
 
 | Method | Description |
 |---|---|
-| `startRecording(index:)` | Computes `endDate` (show_end ?? show_length fallback, then +bonus padding if active). Always writes `shows[index].show_end = endDate` before launching so the idle-loop natural-stop and notifications both use the final value. Notification and Discord "Ends" field use `endDate`, not the pre-padding `show.show_end`. When `Discord_on_start` is enabled, inserts the show ID into `pendingDiscordStart` — the embed is deferred until the first idle-loop tick confirms curl is alive (see Discord Embed Flow). |
+| `startRecording(index:)` | Guards: returns early (with a warning log) if the assigned device is not in `devices` at all, or if it is present but `!isAvailable`. This prevents burning the show's fail count against a dead tuner. Computes `endDate` (show_end ?? show_length fallback, then +bonus padding if active). Always writes `shows[index].show_end = endDate` before launching so the idle-loop natural-stop and notifications both use the final value. Notification and Discord "Ends" field use `endDate`, not the pre-padding `show.show_end`. When `Discord_on_start` is enabled, inserts the show ID into `pendingDiscordStart` — the embed is deferred until the first idle-loop tick confirms curl is alive (see Discord Embed Flow). |
 | `updateShow(_ show: Show)` | Replaces the matching show in `shows[]` and saves config. For any active, non-paused, non-recording show whose `state != .single`, fires `scheduleNextAir` immediately via an async Task so type changes (e.g. seriesChannel → seriesAll) and day/time edits take effect without waiting for the idle loop. |
 | `pauseShow(_:)` | Sets `show_paused = true`, `show_fail_reason = "Manually paused"`, saves config |
 | `resumeShow(_:)` | Clears `show_paused`, resets fail count + reason, saves config |

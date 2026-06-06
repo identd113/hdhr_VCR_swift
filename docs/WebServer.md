@@ -26,7 +26,7 @@ func broadcastEvent(_:)   // pushes a JSON event to all open SSE clients
 | Method | Path | Response |
 |---|---|---|
 | GET | `/` or `/index.html` | Full guide HTML page |
-| GET | `/api/ping` | `{"ok":true}` — health check; also used as self-ping after bind |
+| GET | `/api/ping` | `{"ok":true,"version":"260606-1155"}` — health check + build version; used as self-ping after bind and by the page staleness checker |
 | GET | `/api/events` | SSE stream — kept open; server pushes JSON events on state changes |
 | GET | `/api/now.json` | JSON array of on-air entries (see schema below) |
 | GET | `/api/shows-html` | HTML fragment for the schedule popover body |
@@ -200,6 +200,8 @@ A persistent SSE endpoint. Browsers connect once on page load via `EventSource('
 | `show_added` | `AppState.addShowFromGuide` | `channel`, `device` |
 | `show_deleted` | `WebServer.handleDelete` | `channel`, `device` |
 | `show_updated` | `WebServer.handleEdit` | `channel`, `device` |
+| `deviceOffline` | `AppState.probeForNewDevices` (miss #3) | `deviceId` |
+| `deviceOnline` | `AppState.probeForNewDevices` (seen after unavailable, or new device) | `deviceId` |
 | `signal_update` | `AppState.startSignalScan` | `gname` (guideName.lowercased()), `bucket` (raw string: `"good"` / `"fair"` / `"poor"` / `"noData"`) |
 
 **Client handling:**
@@ -229,7 +231,7 @@ A persistent SSE endpoint. Browsers connect once on page load via `EventSource('
 
 ## HTML page — visual layout
 
-Self-contained HTML with all CSS inlined. **No auto-reload** — the page never hard-refreshes. Updates arrive via SSE push events (see below) and targeted DOM swaps after user actions. Tuner occupancy is fetched server-side on every page load (before HTML is served) via `refreshTunerOccupancy()`.
+Self-contained HTML with all CSS inlined. Updates arrive via SSE push events (see below) and targeted DOM swaps after user actions. The page hard-reloads automatically if the server version changes (redeploy detected via 60-second `/api/ping` poll) or if the baked-in 2-hour expiry elapses. Tuner occupancy is fetched server-side on every page load (before HTML is served) via `refreshTunerOccupancy()`.
 
 `refreshGuide()` is called client-side after user actions (record, delete, edit) and on receipt of an SSE event. It updates the guide grid without a page reload:
 
@@ -349,6 +351,10 @@ A cable-TV-style horizontal time grid. Window width depends on the requesting cl
 
 **Window start:** `winStart = (nowTs / 1800) * 1800 - 1800` — floors to the nearest 30-minute boundary then subtracts one slot, giving a 30–60 minute lookback. `GuideStore.entries()` is called with `after: Date(winStart)` (not the default `after: Date()`) so shows that already ended but fall within the lookback are included. Gap periods with no guide data render as `.g-gap` divs (fully opaque `var(--bg)`) so the striped `.g-tl` background never shows through. On page load, a JS IIFE scrolls the guide so the now-line sits ~25% from the left of the visible viewport.
 
+**Live now-line:** `_winStart` and `_winSec` are baked into the page JS at render time. `nowPct()` recomputes the now-line position as `(Date.now()/1000 - _winStart) / _winSec * 100`, clamped to [0, 100]. `updateNowLine()` updates the `left` style on all `.g-now-bar` and `.g-now-tick` elements every **5 minutes** via `setInterval`. It also auto-scrolls the guide if the now-line has drifted past **75%** of the viewport width, nudging it back to the 25% position — without disturbing users who have manually scrolled ahead (their now-line is near the left edge, well below the threshold).
+
+**Page staleness:** two guards run every 60 seconds via `checkFreshness()`: (1) if `Date.now()` exceeds the baked-in `_exp` timestamp (render time + 2 hours), the page hard-reloads; (2) `/api/ping` is fetched and its `version` field compared to the baked-in `_ver` — mismatch means a redeploy has occurred, triggering `location.reload()`. The version check catches redeployments within 60 seconds; the `_exp` expiry handles long-open stale tabs.
+
 `div.gi` `min-width` = `max(1200, winSec / 1800 * 100)` px — scales up for wider windows so program blocks never compress below a readable width.
 
 **Layout:**
@@ -445,10 +451,11 @@ The four matching tiers (seriesID → title fallback → datetime `device:channe
 
 Fixed overlay opened by the `≡` button. Built server-side by `buildSchedPopHTML(state:)` and refreshed via `/api/shows-html` after record/delete actions.
 
-Three sections (`.sp-sec`) separated by `.sp-div` dividers — empty sections are omitted:
-- **Recording** — `state.recordingShows`; title in red `●` prefix (`.sp-rec`); channel cell appends **"· Ends 10:00 PM"** (`state.shortTime(show.show_end)`) so the expected stop time is visible at a glance.
-- **Up Next** — first `state.activeShows` entry sorted by `show_next` ascending; shows relative time in accent color
-- **Scheduled** — remaining `state.activeShows`
+Four sections (`.sp-sec`) separated by `.sp-div` dividers — empty sections are omitted. Shows on unavailable devices are excluded from the first three sections and appear only in the fourth:
+- **Recording** — `state.recordingShows` on available devices; title in red `●` prefix (`.sp-rec`); channel cell appends **"· Ends 10:00 PM"** (`state.shortTime(show.show_end)`) so the expected stop time is visible at a glance.
+- **Up Next** — first `state.activeShows` entry (available devices only) sorted by `show_next` ascending; shows relative time in accent color
+- **Scheduled** — remaining `state.activeShows` (available devices only)
+- **Unavailable Tuner** — all active shows whose assigned device is currently unavailable (`state.unavailableDeviceShows`); header in red; `⚠` prefix on each row
 
 Content is embedded at page build time; `refreshShowsSection()` fetches `/api/shows-html` on record/delete to update `#sched-pop-body` in place.
 

@@ -118,6 +118,17 @@ Paused shows are excluded from `activeManagedShows` by all callers — the yello
 - `lineupURL` — always `"http://{LocalIP}/lineup.json"`. **Never** uses `LineupURL` from discover.json (may contain `hdhomerun.local` which fails on unreliable networks).
 - `statusURL` — `"http://{LocalIP}/status.json"` — live tuner status endpoint.
 
+## HDHRDevice Availability Tracking
+
+```swift
+var missedProbes: Int = 0      // runtime-only; not persisted; resets to 0 on every launch
+var isAvailable: Bool { missedProbes < 3 }
+```
+
+`missedProbes` is incremented by `AppState.probeForNewDevices()` each probe cycle when the device is not seen in the discovery response (or when discovery throws entirely). Reset to 0 when the device is seen again. Not in `CodingKeys` — never serialised to config.
+
+A device is considered **unavailable** (`isAvailable == false`) after 3 consecutive missed probes. After the first miss, `probeForNewDevices` schedules a 60-second follow-up probe so the unavailability threshold can be reached in ~2 minutes rather than 15.
+
 ---
 
 ## DeviceTunerInfo
