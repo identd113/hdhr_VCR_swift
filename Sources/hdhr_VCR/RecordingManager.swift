@@ -57,6 +57,10 @@ final class RecordingManager {
     func stop(showId: String) {
         if let pid = pids[showId] {
             kill(pid, SIGKILL)
+            // Reap the zombie immediately — isRunning() is the only other waitpid site but it
+            // guards on pids[showId], which we clear below, so it would never reach waitpid.
+            // SIGKILL cannot be ignored; the wait should return almost instantly.
+            waitpid(pid, nil, 0)
             pids.removeValue(forKey: showId)
         }
         releaseAssertion(id: showId)

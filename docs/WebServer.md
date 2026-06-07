@@ -77,6 +77,8 @@ Schedules a recording by calling `state.addShowFromGuide(entry:type:device:chann
 | `"seriesChannel"` | `.seriesChannel` | Record new episodes via SeriesID on this channel |
 | `"seriesAll"` | `.seriesAll` | Record new episodes via SeriesID on any channel |
 
+**`tunerFull`** is determined by `AppState.tunersFull(for: deviceId)` — this counts both active recordings **and** the in-app VLC stream. Do not use raw `deviceTunerOccupancy` counts for this check, as VLC occupies a tuner that does not appear in `status.json`.
+
 **Success:** `{"ok": true, "title": "Show Title", "tunerFull": false, "recStarted": false, "tunerActive": 1, "tunerTotal": 2}`
 
 | Response field | Meaning |

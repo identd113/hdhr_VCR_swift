@@ -357,17 +357,12 @@ final class WebServer {
                 .first(where: { $0.StartTime == startTime })
         else { return json(["ok": false, "error": "Guide entry not found"]) }
 
-        let showType: ShowState = {
-            switch obj["showType"] as? String ?? "" {
-            case "dateTime":      return .dateTime
-            case "seriesChannel": return .seriesChannel
-            case "seriesAll":     return .seriesAll
-            default:              return .single
-            }
-        }()
+        let showType = showStateFromString(obj["showType"] as? String ?? "")
         let activeTuners = state.deviceTunerOccupancy[deviceId]?.filter({ $0.VctNumber != nil }).count ?? 0
         let total        = device.TunerCount ?? 0
-        let tunerFull    = total > 0 && activeTuners >= total
+        // tunersFull() counts both active recordings and the in-app VLC stream; raw
+        // deviceTunerOccupancy only reflects hardware status and misses VLC.
+        let tunerFull    = state.tunersFull(for: deviceId)
         let nowTs        = Int(Date().timeIntervalSince1970)
         let recStarted   = entry.StartTime <= nowTs && entry.EndTime > nowTs
         let newActive    = recStarted && !tunerFull ? activeTuners + 1 : activeTuners
@@ -436,19 +431,18 @@ final class WebServer {
         let allDays = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"]
 
         if let typeStr = obj["showType"] as? String {
-            switch typeStr {
-            case "single":
+            switch showStateFromString(typeStr) {
+            case .single:
                 updated.show_is_series = false; updated.show_use_seriesid = false; updated.show_use_seriesid_all = false
-            case "dateTime":
+            case .dateTime:
                 updated.show_is_series = true; updated.show_use_seriesid = false; updated.show_use_seriesid_all = false
                 if updated.show_air_date.isEmpty { updated.show_air_date = allDays }
-            case "seriesChannel":
+            case .seriesChannel:
                 updated.show_is_series = true; updated.show_use_seriesid = true; updated.show_use_seriesid_all = false
                 updated.show_air_date = allDays
-            case "seriesAll":
+            case .seriesAll:
                 updated.show_is_series = true; updated.show_use_seriesid = true; updated.show_use_seriesid_all = true
                 updated.show_air_date = allDays
-            default: break
             }
         }
 
@@ -506,19 +500,32 @@ final class WebServer {
         }
     }
 
+    private func showStateFromString(_ s: String) -> ShowState {
+        switch s {
+        case "dateTime":      return .dateTime
+        case "seriesChannel": return .seriesChannel
+        case "seriesAll":     return .seriesAll
+        default:              return .single
+        }
+    }
+
     // MARK: - HTML / JSON generation
 
     @MainActor
     private func buildSchedPopHTML(state: AppState) -> String {
         // Common row builder — embeds all data needed by openEditShow() JS.
-        func showRow(_ s: Show, recording: Bool = false, prefix: String = "") -> String {
+        // chDetail: optional suffix appended to the Ch line (e.g. a relative-time span).
+        func showRow(_ s: Show, recording: Bool = false, prefix: String = "", chDetail: String = "") -> String {
             let t = showTypeStr(s)
             let ad = s.show_air_date.joined(separator: ",")
             let da = "data-id=\"\(he(s.show_id))\" data-title=\"\(he(s.show_title))\" data-ch=\"\(he(s.show_channel))\" data-type=\"\(t)\" data-paused=\"\(s.show_paused ? 1 : 0)\" data-recording=\"\(recording ? 1 : 0)\" data-length=\"\(s.show_length)\" data-bonus=\"\(s.show_bonus_time ? 1 : 0)\" data-dir=\"\(he(s.show_dir))\" data-transcode=\"\(he(s.show_transcode))\" data-seriesid=\"\(he(s.show_seriesid))\" data-airdays=\"\(he(ad))\" data-failcount=\"\(s.show_fail_count)\" data-failreason=\"\(he(s.show_fail_reason))\""
             let endDetail = recording ? s.show_end.map { " · Ends \(state.shortTime($0))" } ?? "" : ""
+            let chLine = chDetail.isEmpty
+                ? "Ch \(he(s.show_channel))\(endDetail)"
+                : "Ch \(he(s.show_channel)) · \(chDetail)"
             return "<div class=\"sp-row\" \(da) onclick=\"openEditShow(this)\">"
                  + "<div class=\"sp-t\">\(prefix)\(he(s.show_title))</div>"
-                 + "<div class=\"sp-ch\">Ch \(he(s.show_channel))\(endDetail)</div>"
+                 + "<div class=\"sp-ch\">\(chLine)</div>"
                  + "</div>"
         }
 
@@ -543,10 +550,8 @@ final class WebServer {
         if let next = upNext {
             if !parts.isEmpty { parts.append("<div class=\"sp-div\"></div>") }
             let rel = txtRelativeTime(next.show_next!)
-            let t   = showTypeStr(next)
-            let nad = next.show_air_date.joined(separator: ",")
-            let da  = "data-id=\"\(he(next.show_id))\" data-title=\"\(he(next.show_title))\" data-ch=\"\(he(next.show_channel))\" data-type=\"\(t)\" data-paused=\"0\" data-recording=\"0\" data-length=\"\(next.show_length)\" data-bonus=\"\(next.show_bonus_time ? 1 : 0)\" data-dir=\"\(he(next.show_dir))\" data-transcode=\"\(he(next.show_transcode))\" data-seriesid=\"\(he(next.show_seriesid))\" data-airdays=\"\(he(nad))\" data-failcount=\"\(next.show_fail_count)\" data-failreason=\"\(he(next.show_fail_reason))\""
-            parts.append("<div class=\"sp-sec\"><div class=\"sp-hdr\">Up Next</div><div class=\"sp-row\" \(da) onclick=\"openEditShow(this)\"><div class=\"sp-t\">\(he(next.show_title))</div><div class=\"sp-ch\">Ch \(he(next.show_channel)) · <span style=\"color:var(--ac)\">\(he(rel))</span></div></div></div>")
+            let detail = "<span style=\"color:var(--ac)\">\(he(rel))</span>"
+            parts.append("<div class=\"sp-sec\"><div class=\"sp-hdr\">Up Next</div>\(showRow(next, chDetail: detail))</div>")
         }
 
         if !restActive.isEmpty {

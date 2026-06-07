@@ -18,7 +18,7 @@ Persists historical SNQ (Signal Quality Percent) readings so the guide views can
 File: `~/Library/Application Support/hdhrVCRplus/channel_signal_history.json`  
 Format: `{ "guidename": [{"ts": epoch, "snq": 0-100}, …] }`
 
-Up to **50 samples** are kept per channel (oldest dropped). Writes are debounced — a save is scheduled 60 s after the first unsaved `record()` call; further calls within that window coalesce. `flush()` bypasses the debounce for an immediate write.
+Up to **50 samples** are kept per channel (oldest dropped). Writes are debounced — a save is scheduled 60 s after the first unsaved `record()` call; further calls within that window coalesce. The 60 s wait is fully awaited before `savePending` is cleared, preventing a second write task from running concurrently with the first. `flush()` bypasses the debounce for an immediate write.
 
 ---
 

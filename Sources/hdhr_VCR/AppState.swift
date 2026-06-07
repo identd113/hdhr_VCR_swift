@@ -12,7 +12,9 @@ final class AppState: ObservableObject {
     @Published var guideByDevice: [String: [GuideChannel]] = [:] {  // mirror of guideStore.channelsByDevice
         // Rebuild caches on guide load (infrequent). The 403 feedback loop is broken by
         // ensureGuideLoaded's success-only guard on guideByDevice assignment.
-        didSet { rebuildMenuEntries() }
+        // menuIsOpen guard mirrors the idle-loop guard — prevents mid-display redraws when a
+        // background guide refresh assigns guideByDevice while the menu is open.
+        didSet { if !menuIsOpen { rebuildMenuEntries() } }
     }
     // Per-show guide entry for the scheduled menu label and info header — avoids O(series) scan per open.
     @Published var menuScheduledEntry: [String: GuideEntry] = [:]
@@ -488,8 +490,10 @@ final class AppState: ObservableObject {
             }
         }
 
-        // Schedule a 60 s follow-up probe while any device is missed but not yet confirmed unavailable.
-        if devices.contains(where: { $0.missedProbes > 0 && $0.missedProbes < 3 }) {
+        // Schedule a 60 s follow-up probe until the device is confirmed unavailable (3 misses).
+        // <= 3 (not < 3) so the tick that crosses the threshold also schedules a follow-up,
+        // enabling faster recovery detection rather than reverting to the 5-min idle interval.
+        if devices.contains(where: { $0.missedProbes > 0 && $0.missedProbes <= 3 }) {
             nextQuickProbe = Date().addingTimeInterval(60)
         }
 

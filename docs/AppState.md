@@ -25,7 +25,7 @@ Runs every `config.Idle_timer_interval` seconds on MainActor:
 - If `devices` is empty → retries discovery immediately.
 - If guide channels missing for any device → calls `ensureGuideLoaded(for:)`.
 - Refreshes lineup + guide every `max(3600, GuideHours × 1800)` seconds (non-blocking `Task`).
-- **Device probe** — calls `probeForNewDevices()` every 5 minutes to detect new and departing tuners. When any device misses a probe (not seen in discovery response), a 60-second follow-up probe is scheduled (`nextQuickProbe`) so the 3-miss unavailability threshold is reached in ~2–7 minutes rather than 15. The normal 5-minute cycle is unaffected by quick probes.
+- **Device probe** — calls `probeForNewDevices()` every 5 minutes to detect new and departing tuners. When any device misses a probe (not seen in discovery response), a 60-second follow-up probe is scheduled (`nextQuickProbe`) so the 3-miss unavailability threshold is reached in ~2–7 minutes rather than 15. The condition `missedProbes <= 3` (inclusive) ensures a follow-up is also scheduled on the tick that crosses the unavailability threshold, keeping recovery detection at 60 s cadence immediately after a device goes offline. The normal 5-minute cycle is unaffected by quick probes.
 - Per active show:
   - Fires "Up Next" notification once at `Notify_upnext` minutes before; stamps `notify_upnext_time`.
   - Fires "Recording Soon" notification once at `Notify_recording` minutes before; stamps `notify_recording_time`.

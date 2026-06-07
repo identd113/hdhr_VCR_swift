@@ -93,12 +93,15 @@ final class ChannelSignalStore {
             try? await Task.sleep(nanoseconds: 60_000_000_000)
             let snapshot = history
             let path     = filePath
-            Task.detached(priority: .utility) {
+            // Await the write so savePending = nil only clears after the file is flushed.
+            // Setting nil before completion allowed a second scheduleSave() to enqueue a
+            // concurrent write to the same file before the first one finished.
+            await Task.detached(priority: .utility) {
                 let enc = JSONEncoder()
                 enc.dateEncodingStrategy = .secondsSince1970
                 guard let data = try? enc.encode(snapshot) else { return }
                 try? data.write(to: path, options: .atomic)
-            }
+            }.value
             savePending = nil
         }
     }

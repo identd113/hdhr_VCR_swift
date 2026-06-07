@@ -35,7 +35,9 @@ Each recording produces **one ps line**: a direct `curl` process in its own POSI
 
 ## Stop
 
-`stop()` sends `SIGTERM` to the curl PID and releases its sleep assertion via `releaseAssertion(id: showId)`. Because curl is spawned directly (not via caffeinate), SIGTERM is delivered and curl terminates cleanly.
+`stop()` sends `SIGKILL` to the curl PID, immediately calls `waitpid(pid, nil, 0)` to reap the zombie, removes the PID from `pids`, then releases its sleep assertion. `waitpid` is called here rather than relying on `isRunning()` because `stop()` clears the `pids` entry first — without the inline reap, the zombie would persist for the lifetime of the app since `isRunning()` guards on `pids[showId] != nil`.
+
+`SIGKILL` is used (not `SIGTERM`) because curl processes spawned with `POSIX_SPAWN_SETSID` may have `SIGTERM` masked from a previous bad app state, and `SIGKILL` cannot be ignored or blocked.
 
 ---
 
