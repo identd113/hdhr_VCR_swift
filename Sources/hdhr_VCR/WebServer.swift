@@ -614,6 +614,17 @@ final class WebServer {
         let recChannelsByDevice: [String: Set<String>] = Dictionary(
             grouping: recording, by: { $0.hdhr_record }
         ).mapValues { Set($0.map { $0.show_channel }) }
+        // Active shows that are airing right now but whose idle-loop recording start hasn't fired yet.
+        // Treated as recording so the guide cell shows g-prog-rec immediately after a web Record tap.
+        let nowDate = Date()
+        let pendingRecChannelsByDevice: [String: Set<String>] = {
+            let pending = state.shows.filter {
+                $0.show_active && !$0.show_paused && !$0.show_recording &&
+                ($0.show_next ?? .distantFuture) <= nowDate && ($0.show_end ?? .distantPast) > nowDate
+            }
+            return Dictionary(grouping: pending, by: { $0.hdhr_record })
+                .mapValues { Set($0.map { $0.show_channel }) }
+        }()
         let activeMgd    = state.shows.filter { $0.show_active && !$0.show_paused }
         let guideMatcher = ManagedGuideMatcher(activeManagedShows: activeMgd)
         // Pre-built O(1) indexes for findManagedShow — avoids O(n) scans per guide block.
@@ -772,7 +783,8 @@ final class WebServer {
                 let logoHTML = logoURL.isEmpty
                     ? "<div class=\"g-logo-ph\">\(he(String(ch.GuideName.prefix(1))))</div>"
                     : "<img class=\"g-logo\" src=\"\(he(logoURL))\" onerror=\"this.style.display='none'\" alt=\"\">"
-                let isRecCh  = recChannelsByDevice[device.DeviceID]?.contains(ch.GuideNumber) ?? false
+                let isRecCh  = (recChannelsByDevice[device.DeviceID]?.contains(ch.GuideNumber) ?? false)
+                             || (pendingRecChannelsByDevice[device.DeviceID]?.contains(ch.GuideNumber) ?? false)
 
                 var blockParts: [String] = ["<div class=\"g-now-bar\" style=\"left:\(nowPct)%\"></div>"]
                 // Fill gaps so the striped .g-tl background never shows through.
@@ -1063,6 +1075,22 @@ final class WebServer {
         html.lm .g-prog-now.gg-movie    {background:hsl(270,68%,92%);border-color:hsl(270,58%,66%)}
         html.lm .g-prog-now.gg-talk     {background:hsl(173,57%,89%);border-color:hsl(173,52%,62%)}
         html.lm .g-prog-now.gg-children {background:hsl(315,62%,90%);border-color:hsl(315,57%,64%)}
+        .g-prog-sched.gg-drama    {background:hsl(216,52%,44%);border-color:hsl(216,57%,62%)}
+        .g-prog-sched.gg-comedy   {background:hsl(47,52%,44%);border-color:hsl(47,57%,62%)}
+        .g-prog-sched.gg-news     {background:hsl(342,47%,44%);border-color:hsl(342,52%,62%)}
+        .g-prog-sched.gg-sports   {background:hsl(119,52%,41%);border-color:hsl(119,57%,58%)}
+        .g-prog-sched.gg-reality  {background:hsl(25,52%,44%);border-color:hsl(25,57%,62%)}
+        .g-prog-sched.gg-movie    {background:hsl(270,62%,46%);border-color:hsl(270,68%,64%)}
+        .g-prog-sched.gg-talk     {background:hsl(173,47%,42%);border-color:hsl(173,52%,60%)}
+        .g-prog-sched.gg-children {background:hsl(315,47%,43%);border-color:hsl(315,52%,61%)}
+        html.lm .g-prog-sched.gg-drama    {background:hsl(216,57%,90%);border-color:hsl(216,52%,64%)}
+        html.lm .g-prog-sched.gg-comedy   {background:hsl(47,65%,90%);border-color:hsl(47,57%,64%)}
+        html.lm .g-prog-sched.gg-news     {background:hsl(342,57%,90%);border-color:hsl(342,52%,64%)}
+        html.lm .g-prog-sched.gg-sports   {background:hsl(119,62%,89%);border-color:hsl(119,57%,62%)}
+        html.lm .g-prog-sched.gg-reality  {background:hsl(25,67%,90%);border-color:hsl(25,57%,64%)}
+        html.lm .g-prog-sched.gg-movie    {background:hsl(270,68%,92%);border-color:hsl(270,58%,66%)}
+        html.lm .g-prog-sched.gg-talk     {background:hsl(173,57%,89%);border-color:hsl(173,52%,62%)}
+        html.lm .g-prog-sched.gg-children {background:hsl(315,62%,90%);border-color:hsl(315,57%,64%)}
         .g-prog-now  {background:#424242;border-color:#787878}
         .g-prog-rec  {background:#3c1818;border-color:#c03030}
         .g-prog-sched{background:#1a1a40;border-color:#4848c8}
@@ -1418,8 +1446,8 @@ final class WebServer {
                 note.textContent=j.recStarted?'● Recording now':j.tunerFull?'⚠ Queued — all tuners busy':'★ Scheduled';
                 note.style.color=j.recStarted?(isLM()?'#cc2020':'#ff8080'):j.tunerFull?(isLM()?'#c07000':'#ffcc66'):'var(--t2)';
                 note.style.display='inline';
-                del.textContent='Remove';del.style.background='';del.style.color='';del.style.display='inline-block';del.disabled=false;
-                refreshGuide();
+                if(j.recStarted){del.textContent='Stop & Delete';del.classList.add('danger');}else{del.textContent='Remove';del.style.background='';del.style.color='';}del.style.display='inline-block';del.disabled=false;
+                refreshGuide(j.recStarted?{recording:'1',managed:'1'}:{managed:'1'});
               });
             } else {
               return r.text().then(function(t){
@@ -1438,7 +1466,7 @@ final class WebServer {
             var note=document.getElementById('sum-note');note.textContent=msg;note.style.color=isLM()?'#cc2020':'#ff8080';note.style.display='inline';
           });
         }
-        function refreshGuide(){
+        function refreshGuide(selOverride){
           var gw=document.querySelector('.gw');
           var sl=gw?gw.scrollLeft:0,st=gw?gw.scrollTop:0;
           var prev=document.querySelector('.g-prog.g-sel');
@@ -1458,7 +1486,7 @@ final class WebServer {
               var match=Array.from(document.querySelectorAll('.g-prog')).find(function(el){
                 return el.dataset.start===prevStart&&el.dataset.num===prevNum&&el.dataset.device===prevDev;
               });
-              if(match)showInfo(match);
+              if(match){if(selOverride)Object.assign(match.dataset,selOverride);showInfo(match);}
             }
           }).catch(function(){});
         }
