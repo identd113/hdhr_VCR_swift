@@ -1940,6 +1940,7 @@ final class WebServer {
 
         var raw = "HTTP/1.1 \(status)\r\n"
         raw += "Connection: close\r\n"
+        raw += "Permissions-Policy: geolocation=(), camera=(), microphone=(), interest-cohort=()\r\n"
         for (k, v) in headers { raw += "\(k): \(v)\r\n" }
         raw += "\r\n"
 
