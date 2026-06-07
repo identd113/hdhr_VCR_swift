@@ -58,6 +58,8 @@ final class RecordingManager {
         if let pid = pids[showId] {
             kill(pid, SIGTERM)
             pids.removeValue(forKey: showId)
+            // Attempt immediate zombie reap; WNOHANG so we don't block if curl is still shutting down.
+            var st: Int32 = 0; waitpid(pid, &st, WNOHANG)
         }
         releaseAssertion(id: showId)
         clearHeaderFile(showId: showId)
