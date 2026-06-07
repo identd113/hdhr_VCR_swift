@@ -590,6 +590,9 @@ final class AppState: ObservableObject {
         guideStore.verbose = config.Verbose_curl
         let results = await guideStore.loadAll(devices: devices, hours: config.GuideHours)
         guideByDevice = guideStore.channelsByDevice
+        // didSet skips rebuildMenuEntries() when the menu is open (common at startup).
+        // Call it directly here so channelImageURLs is always populated after guide load.
+        rebuildMenuEntries()
         // Seed per-device backoff state from startup results (no notification — user may not have
         // granted permission yet; ensureGuideLoaded will notify when it retries and fails again).
         for (deviceId, ok) in results {
