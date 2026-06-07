@@ -1970,15 +1970,21 @@ final class AppState: ObservableObject {
               let tuners = try? JSONDecoder().decode([DeviceTunerInfo].self, from: data)
         else { return }
 
-        deviceTunerOccupancy[device.DeviceID] = tuners
+        // Skip @Published writes while the menu is open — same guard as rebuildMenuEntries().
+        // Writing to @Published triggers SwiftUI to re-evaluate the menu body, which dismisses
+        // any open submenu. Signal alerting still runs unconditionally because it posts Discord
+        // notifications and is not display-only. The next idle tick applies @Published updates.
+        if !menuIsOpen {
+            deviceTunerOccupancy[device.DeviceID] = tuners
 
-        let active   = tuners.filter { $0.VctNumber != nil }.count
-        let recCount = recordingShows.filter { $0.hdhr_record == device.DeviceID }.count
-        let vlcOpen  = VLCPlayerWindowManager.shared.currentDeviceID == device.DeviceID ? 1 : 0
-        let auditLine = "\(device.DeviceID): \(active)/\(device.TunerCount ?? 0) active  rec=\(recCount) vlc=\(vlcOpen)"
-        if lastTunerAudit[device.DeviceID] != auditLine {
-            lastTunerAudit[device.DeviceID] = auditLine
-            glog("[TunerAudit] \(auditLine)")
+            let active   = tuners.filter { $0.VctNumber != nil }.count
+            let recCount = recordingShows.filter { $0.hdhr_record == device.DeviceID }.count
+            let vlcOpen  = VLCPlayerWindowManager.shared.currentDeviceID == device.DeviceID ? 1 : 0
+            let auditLine = "\(device.DeviceID): \(active)/\(device.TunerCount ?? 0) active  rec=\(recCount) vlc=\(vlcOpen)"
+            if lastTunerAudit[device.DeviceID] != auditLine {
+                lastTunerAudit[device.DeviceID] = auditLine
+                glog("[TunerAudit] \(auditLine)")
+            }
         }
 
         for show in recordingShows where show.hdhr_record == device.DeviceID {
@@ -2012,6 +2018,8 @@ final class AppState: ObservableObject {
 
             // vstatus: additional detail (lock type, bitrate) for the menu signal display.
             // Optional — EXTEND returns 404 here; collection above already ran.
+            // tunerStatus is @Published — skip the fetch entirely while menu is open.
+            guard !menuIsOpen else { continue }
             guard let vsURL = URL(string: "http://\(device.LocalIP)/tuner\(idx)/vstatus"),
                   let (vsData, _) = try? await URLSession.shared.data(from: vsURL),
                   let text = String(data: vsData, encoding: .utf8)
