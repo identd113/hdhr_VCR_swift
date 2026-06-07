@@ -200,6 +200,8 @@ Submenu — uses `showInfoHeader(show, entry:)` for the top block, then:
 
 Shows in `activeShows` whose `show_next` falls within the **next 60 minutes** appear in the **"Up Next"** section above "Scheduled". Shows are bucketed by start time (rounded to the minute); each bucket renders as a nested `Section("8:00 PM")` containing its shows. Each show in Up Next has `showChannel: true` so the channel is visible in the row label. Shows in Up Next are excluded from the Scheduled section.
 
+**Series filter:** series shows without a confirmed `menuScheduledEntry` (no guide entry was matched within the look-ahead window) are excluded from Up Next and remain in Scheduled. These shows are in retry/scan mode — `show_next` falls within the window only because of a prior episode, not because a real upcoming episode has been confirmed — and surfacing them in Up Next would mislead the user into thinking a recording is imminent.
+
 ---
 
 ## Paused Shows — `pausedMenu(_:)`

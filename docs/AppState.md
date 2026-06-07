@@ -153,6 +153,8 @@ In a SwiftUI `.menu`-style `MenuBarExtra`, the menu body re-evaluates on every `
 
 `rebuildMenuEntries()` is called from `guideByDevice.didSet` (after every guide load) and from the idle loop (guarded by `menuIsOpen`). It rebuilds: `managedShowBySeriesID`/`managedShowByTitle` (O(1) show lookups for WatchNow + menus), `channelImageURLs` (logo URL map for WatchNow), `menuScheduledEntry`/`menuUpcomingSlots` (pre-computed guide matches for scheduled/paused menus), and `conflictingShowIDs` (one O(N²) conflict pass instead of one per open).
 
+`fetchDeviceStatus(for:)` applies the same guard: writes to `@Published` properties `deviceTunerOccupancy` and `tunerStatus` are skipped entirely while `menuIsOpen`. Signal alerting (Discord notifications, `signalDropoutTicks`, `ChannelSignalStore` recording) still runs unconditionally because it is not display-only. The next idle tick applies the deferred `@Published` updates. The `/tunerN/vstatus` fetch is also skipped while `menuIsOpen` since its only purpose is to update `tunerStatus`.
+
 **Conflict detection** uses `candidateShows = shows.filter { show_active && !show_paused }` — this includes currently-recording shows (`show_recording == true`), unlike `activeShows` which excludes them. A scheduled show that overlaps an already-recording show is therefore correctly flagged. `conflictNotifiedEpochs: [String: TimeInterval]` (keyed by `show_id`, value = `show_next` epoch) is cleared per show on each `scheduleNextAir`, fail-threshold pause, and manual stop — so stale entries don't accumulate across airings.
 
 ---

@@ -255,7 +255,7 @@ Self-contained HTML with all CSS inlined. Updates arrive via SSE push events (se
 
 `refreshGuide()` is called client-side after user actions (record, delete, edit) and on receipt of an SSE event. It updates the guide grid without a page reload:
 
-- **`refreshGuide()`** — saves `.gw` scroll position and the currently-selected `.g-prog` element (`data-start` + `data-num` + `data-device`); `GET /` → DOMParser → swaps `.gi` (guide grid), `#sum-ph` (summary placeholder), `#sched-pop-body` (schedule popover); restores scroll position; re-selects the previously-highlighted entry via `showInfo()`
+- **`refreshGuide(selOverride?)`** — saves `.gw` scroll position and the currently-selected `.g-prog` element (`data-start` + `data-num` + `data-device`); `GET /` → DOMParser → swaps `.gi` (guide grid), `#sum-ph` (summary placeholder), `#sched-pop-body` (schedule popover); restores scroll position; re-selects the previously-highlighted entry via `showInfo()`. If `selOverride` is passed (a JS object), its key-value pairs are merged into the re-selected block's `dataset` before `showInfo()` runs — used after a Record action to inject `{recording:'1', managed:'1'}` so the summary panel shows the correct state without requiring a manual re-select.
 
 **Dark theme:** body `#141414` · channel column `#1a1a1a` · default program block `#2c2c2c / #484848 border`.
 
@@ -353,6 +353,8 @@ Styled to match `#edit-modal`: same 400 px width, `max-height: calc(100vh - 40px
 On **Schedule**: `confirmRecord()` collects selected air days from `#rm-days .day-btn.sel` and the transcode value from `#rm-transcode`, then POSTs both to `/api/record`. The transcode value is applied to the new show (overriding the config default). On success:
 - Guide block gains `.g-prog-rec` + red triangle flag if `recStarted` is true (show currently airing); otherwise `.g-prog-sched` + yellow triangle flag.
 - Summary note shows "● Recording now", "⚠ Queued — all tuners busy", or "★ Scheduled — next idle loop pick-up".
+- The summary delete button becomes **"Stop & Delete"** (+ `danger` class) when `recStarted`; stays **"Remove"** otherwise.
+- `refreshGuide({recording:'1',managed:'1'})` or `refreshGuide({managed:'1'})` is called so the re-selected block's `dataset` reflects the new recording/managed state before `showInfo()` runs — the summary panel updates without requiring a manual re-click.
 - Tuner badge `#tun-{devId}` is updated in place with the new active/total count from `tunerActive`/`tunerTotal`.
 - Schedule popover body is refreshed via `/api/shows-html`.
 
@@ -415,7 +417,7 @@ Each `.g-row` carries `data-dev`, `data-ch`, `data-gname` (`GuideName.lowercased
 | `.gg-children` | Children / Kids | `hsl(315,43%,35%)` | — |
 | `.g-prog` (default) | No genre | `#2c2c2c` | `#484848` |
 
-State classes (rec / now / sched) take precedence over genre. `.g-prog-now.gg-*` two-class selectors override the grey fallback with genre-tinted now-playing colors (e.g. `.g-prog-now.gg-drama` → `hsl(216,52%,44%)`). `.g-prog.g-sel` adds white border + glow.
+State classes (rec / now / sched) take precedence over genre. `.g-prog-now.gg-*` two-class selectors override the grey fallback with genre-tinted now-playing colors (e.g. `.g-prog-now.gg-drama` → `hsl(216,52%,44%)`). `.g-prog-sched.gg-*` selectors apply the same genre hue families to scheduled-show blocks — slightly darker/more saturated in dark mode, lighter tints in light mode — so a scheduled Drama block is clearly distinct from both the default blue `.g-prog-sched` and an unscheduled current-program block. `.g-prog.g-sel` adds white border + glow.
 
 **Data attributes on every program block:**
 
@@ -448,6 +450,8 @@ Recording takes precedence; yellow shows only when managed but not recording. Th
 The four matching tiers (seriesID → title fallback → datetime `device:channel:HH:MM` → single `device:channel:epoch`) are documented in [Models.md — ManagedGuideMatcher](Models.md). `dateTime` shows are matched by local-time slot so every upcoming weekly airing is flagged, not just the one stored in `show_next`.
 
 **Recording flag scoping:** `isRecCh` is scoped to the current device (`recChannelsByDevice[device.DeviceID]`). A recording on device A does not flag the same channel number on device B.
+
+`pendingRecChannelsByDevice` supplements `recChannelsByDevice` with shows that have passed `show_next` but whose idle-loop recording start hasn't fired yet (condition: `show_active && !show_paused && !show_recording && show_next <= now && show_end > now`). This means a guide cell turns red (`.g-prog-rec`) immediately after a web Record tap on a live show — before the next idle loop tick marks `show_recording = true`. Scoped to device the same way as `recChannelsByDevice`.
 
 **Managed show data attributes:** when `isMgd` is true, `findManagedShow(e, ch)` is called to locate the `Show` record and embed its config on the block for use by the edit modal:
 
@@ -489,10 +493,10 @@ Content is embedded at page build time; `refreshShowsSection()` fetches `/api/sh
 |---|---|
 | `showInfo(el)` | `onclick` on program blocks; reads `el.dataset`, populates summary panel, sets globals |
 | `closeSummary()` | Hides summary, restores placeholder, clears `.g-sel` |
-| `refreshGuide()` | Partial DOM refresh: saves `.gw` scroll + selected entry; `GET /`; swaps `.gi`, `#sum-ph`, `#sched-pop-body`; restores scroll; re-selects prior entry |
+| `refreshGuide(selOverride?)` | Partial DOM refresh: saves `.gw` scroll + selected entry; `GET /`; swaps `.gi`, `#sum-ph`, `#sched-pop-body`; restores scroll; re-selects prior entry. Optional `selOverride` object patches `dataset` attrs on the re-selected block before `showInfo()` — used after Record to inject `{recording:'1',managed:'1'}` without a manual re-click. |
 | `doRecord()` | Opens record modal; pre-checks day-of-week button matching guide entry; pre-checks Bonus Time for sports entries; resets transcode to `"none"`; shows tuner-full warning if applicable |
 | `cancelRecord()` | Hides modal |
-| `confirmRecord()` | Collects `airDays` from `#rm-days` and `transcode` from `#rm-transcode`; POSTs `/api/record`; on success: red flag + `.g-prog-rec` if `recStarted`, yellow flag + `.g-prog-sched` otherwise; updates tuner badge `#tun-{devId}` in place |
+| `confirmRecord()` | Collects `airDays` from `#rm-days` and `transcode` from `#rm-transcode`; POSTs `/api/record`; on success: red flag + `.g-prog-rec` if `recStarted`, yellow flag + `.g-prog-sched` otherwise. Delete button becomes **"Stop & Delete"** (+ `danger` class) when `recStarted`, stays **"Remove"** otherwise. Calls `refreshGuide({recording:'1',managed:'1'})` or `refreshGuide({managed:'1'})` so the summary panel reflects the new state immediately. Updates tuner badge `#tun-{devId}` in place. |
 | `updateDaysVisibility()` | Shows `#em-days-row` when `_editType === 'dateTime'`; hides for all other types |
 | `toggleDay(btn)` | Toggles a day-button selection in the edit modal; prevents deselecting the last selected day |
 | `doDelete()` | POSTs `/api/delete`; removes triangle flag/color from block, restores Record button |
