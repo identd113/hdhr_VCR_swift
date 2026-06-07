@@ -326,6 +326,18 @@ final class WebServer {
             return .ok(contentType: "application/json", body: data)
 
         default:
+            if path.hasPrefix("/icon/") {
+                let filename = String(path.dropFirst("/icon/".count))
+                guard !filename.isEmpty, !filename.contains("/"), !filename.contains("..") else {
+                    return .notFound("invalid")
+                }
+                let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+                let file = base.appendingPathComponent("hdhr_VCR/channel_icons/\(filename)")
+                if let data = try? Data(contentsOf: file) {
+                    let ct = filename.hasSuffix(".png") ? "image/png" : "image/jpeg"
+                    return .ok(contentType: ct, body: data)
+                }
+            }
             return .notFound("Not found: \(path)")
         }
     }
@@ -783,7 +795,12 @@ final class WebServer {
                     .filter { $0.StartTime < winEnd }
                 guard !entries.isEmpty else { continue }
 
-                let logoURL  = state.channelImageURLs["\(device.DeviceID):\(ch.GuideNumber)"] ?? ""
+                let logoURL: String = {
+                    guard let raw = state.channelImageURLs["\(device.DeviceID):\(ch.GuideNumber)"],
+                          !raw.isEmpty,
+                          let fn = URL(string: raw)?.lastPathComponent, !fn.isEmpty else { return "" }
+                    return "/icon/\(fn)"
+                }()
                 let isHD     = (ch.HD ?? 0) != 0
                 let chLabel  = ch.GuideNumber + (isHD ? " HD" : "")
                 let logoHTML = logoURL.isEmpty
@@ -893,8 +910,9 @@ final class WebServer {
             ($0.show_next?.timeIntervalSince1970 ?? .infinity) < ($1.show_next?.timeIntervalSince1970 ?? .infinity)
         }
         func phLogo(_ deviceId: String, _ ch: String) -> String {
-            let url = state.channelImageURLs["\(deviceId):\(ch)"] ?? ""
-            guard !url.isEmpty else { return "" }
+            guard let raw = state.channelImageURLs["\(deviceId):\(ch)"], !raw.isEmpty,
+                  let fn = URL(string: raw)?.lastPathComponent, !fn.isEmpty else { return "" }
+            let url = "/icon/\(fn)"
             return "<img src=\"\(he(url))\" onerror=\"this.style.display='none'\" style=\"width:36px;height:36px;object-fit:contain;border-radius:4px;flex-shrink:0;margin-right:12px\">"
         }
         let sumPhHTML: String
