@@ -356,15 +356,10 @@ final class AppState: ObservableObject {
 
         let now    = Date()
 
-        // Two passes: caffeinate PIDs first (authoritative — sets show_recording), then curl PIDs.
-        // Both processes appear in ps with show_id: in their args; we collect both so stop() can
-        // kill each one directly — the process-group kill is unreliable because caffeinate moves
-        // itself into the curl child's process group on macOS, so PGID != caffeinate PID.
-        var curlLines: [(pid: Int32, showId: String)] = []
-
         for line in output.components(separatedBy: "\n") {
             guard line.contains("show_id:"),
-                  line.contains("hdhrVCRplus") else { continue }
+                  line.contains("hdhrVCRplus"),
+                  line.contains("/usr/bin/curl") else { continue }
 
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             let cols    = trimmed.components(separatedBy: .whitespaces)
@@ -375,20 +370,12 @@ final class AppState: ObservableObject {
             let showId = String(tail.prefix(while: { !$0.isWhitespace && $0 != "'" && $0 != "\"" }))
             guard !showId.isEmpty else { continue }
 
-            if line.contains("caffeinate") {
-                guard let i = shows.firstIndex(where: { $0.show_id == showId }),
-                      let endDate = shows[i].show_end, endDate > now else { continue }
-                shows[i].show_recording = true
-                shows[i].show_tuner_resource = ""   // will be re-captured by captureResourceHeaders()
-                recordingManager.reattach(showId: showId, pid: pid)
-                glog("[Startup] Reattached '\(shows[i].show_title)' pid=\(pid) ends \(endDate)")
-            } else if line.contains("/usr/bin/curl") {
-                curlLines.append((pid, showId))
-            }
-        }
-
-        for (pid, showId) in curlLines {
-            recordingManager.reattachCurlPid(showId: showId, pid: pid)
+            guard let i = shows.firstIndex(where: { $0.show_id == showId }),
+                  let endDate = shows[i].show_end, endDate > now else { continue }
+            shows[i].show_recording = true
+            shows[i].show_tuner_resource = ""   // will be re-captured by captureResourceHeaders()
+            recordingManager.reattach(showId: showId, pid: pid, title: shows[i].show_title, endDate: endDate)
+            glog("[Startup] Reattached '\(shows[i].show_title)' pid=\(pid) ends \(endDate)")
         }
 
         // Any show with a discord_start_msg_id that wasn't reattached as actively recording
@@ -1197,7 +1184,8 @@ final class AppState: ObservableObject {
         let remainingSecs = max(60, Int(endDate.timeIntervalSince(Date())))
         glog("[\(show.show_title)] START ch=\(show.show_channel) dur=\(remainingSecs)s transcode=\(show.show_transcode) → \(path)")
         do {
-            try recordingManager.start(showId: show.show_id, url: show.show_url,
+            try recordingManager.start(showId: show.show_id, title: show.show_title,
+                                       url: show.show_url,
                                        outputPath: path, durationSeconds: remainingSecs,
                                        transcode: show.show_transcode, showEnd: endDate,
                                        verbose: config.Verbose_curl,
@@ -1893,6 +1881,14 @@ final class AppState: ObservableObject {
                 }
             }
             glog("[Watch] '\(title)' on \(device.DeviceID)")
+            if let gn = guideNumber {
+                let now = Date()
+                if let entry = guideEntries(deviceId: device.DeviceID, channelNum: gn)
+                    .first(where: { $0.startDate <= now && $0.endDate > now }) {
+                    let duration = max(60, entry.endDate.timeIntervalSinceNow) + 300
+                    recordingManager.preventSleep(id: "vlc", reason: "Watching: \(title)", duration: duration)
+                }
+            }
             mgr.open(url: streamURL, title: title, device: device, appState: self, channelNumber: guideNumber)
             refreshTunerOccupancy()
         }
@@ -1937,7 +1933,21 @@ final class AppState: ObservableObject {
             try? await Task.sleep(nanoseconds: 1_500_000_000)   // 1.5s — let device register the change
             captureResourceHeaders()
             for device in devices { await fetchDeviceStatus(for: device) }
+            releaseAssertionsIfIdle()
         }
+    }
+
+    /// Releases all sleep assertions when every known tuner reports no active stream.
+    /// Guards against false-positives during the gap between show-start and tuner lock-in
+    /// by also requiring no recording shows and no VLC session are active.
+    private func releaseAssertionsIfIdle() {
+        let anyTunerActive = devices.compactMap { deviceTunerOccupancy[$0.DeviceID] }
+            .contains { $0.contains { $0.VctNumber != nil } }
+        guard !anyTunerActive,
+              recordingShows.isEmpty,
+              VLCPlayerWindowManager.shared.currentDeviceID == nil
+        else { return }
+        recordingManager.releaseAllAssertions()
     }
 
     /// Reads X-HDHomeRun-Resource from the header dump file for any recording show that doesn't

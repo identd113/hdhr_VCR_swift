@@ -1,16 +1,17 @@
 import Foundation
+import IOKit.pwr_mgt
 
 @MainActor
 final class RecordingManager {
-    private var pids:        [String: Int32]   = [:]   // caffeinate PID per show
-    private var curlPids:    [String: Int32]   = [:]   // curl child PID (for explicit kill on manual stop)
-    private var headerFiles: [String: String]  = [:]   // --dump-header file path per show
+    private var pids:         [String: Int32]            = [:]   // curl PID per show
+    private var headerFiles:  [String: String]           = [:]   // --dump-header file path per show
+    private var assertionIds: [String: IOPMAssertionID]  = [:]   // IOKit assertion per show (+ "vlc")
 
     static var curlLogPath: String { logFilePath }
 
     // MARK: - Start
 
-    func start(showId: String, url: String, outputPath: String,
+    func start(showId: String, title: String, url: String, outputPath: String,
                durationSeconds: Int, transcode: String, showEnd: Date,
                verbose: Bool = false, networkInterface: String = "") throws {
         guard pids[showId] == nil else { return }
@@ -28,7 +29,6 @@ final class RecordingManager {
         ]
         if !networkInterface.isEmpty { curlArgs += ["--interface", networkInterface] }
         if verbose { curlArgs += ["-v", "--no-progress-meter"] }
-        // Dump response headers to a temp file so we can read X-HDHomeRun-Error on failure.
         let hdrPath = "\(NSTemporaryDirectory())hdhrVCRplus-\(showId).headers"
         headerFiles[showId] = hdrPath
         curlArgs += ["--dump-header", hdrPath, streamURL, "-o", outputPath]
@@ -36,40 +36,30 @@ final class RecordingManager {
         let dir = (outputPath as NSString).deletingLastPathComponent
         try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
 
-        // Write the header to the log file before spawning so the child just appends.
         if verbose { writeCurlLogHeader(showId: showId, curlArgs: curlArgs, outputPath: outputPath) }
         let logPath: String? = verbose ? Self.curlLogPath : nil
 
-        // caffeinate -i prevents idle sleep and wraps curl; POSIX_SPAWN_SETSID puts the
-        // process in its own session so a force-quit of the app does not kill the recording.
-        let pid = try spawnDetached(executablePath: "/usr/bin/caffeinate",
-                                    arguments: ["-i", "/usr/bin/curl"] + curlArgs,
+        // Spawn curl directly in its own POSIX session — one PID per recording.
+        // Sleep prevention is handled by a fire-and-forget IOKit assertion below.
+        let pid = try spawnDetached(executablePath: "/usr/bin/curl",
+                                    arguments: curlArgs,
                                     stderrPath: logPath)
         pids[showId] = pid
-        // Find curl child off the main actor — pgrep blocks; curlPids is only used for stop() SIGTERM
-        let showIdCopy = showId
-        Task.detached(priority: .utility) { [weak self] in
-            if let curlPid = self?.findCurlChild(of: pid) {
-                await MainActor.run { [weak self] in self?.curlPids[showIdCopy] = curlPid }
-            }
-        }
+
+        // Prevent system sleep for the recording duration + 5-min buffer.
+        preventSleep(id: showId, reason: "Recording: \(title)", duration: TimeInterval(durationSeconds + 300))
+
         glog("[Rec] Started \(showId) pid=\(pid) verbose=\(verbose): \(streamURL) → \(outputPath)")
     }
 
     // MARK: - Stop
 
     func stop(showId: String) {
-        // Kill curl directly first — caffeinate may ignore SIGTERM but curl will stop writing
-        if let curlPid = curlPids[showId] {
-            kill(curlPid, SIGTERM)
-            curlPids.removeValue(forKey: showId)
-        }
         if let pid = pids[showId] {
-            // Kill caffeinate directly. Group kill (kill(-pid)) is unreliable because on macOS
-            // caffeinate joins the curl child's process group, so PGID != caffeinate PID.
             kill(pid, SIGTERM)
             pids.removeValue(forKey: showId)
         }
+        releaseAssertion(id: showId)
         clearHeaderFile(showId: showId)
         glog("[Rec] Stopped \(showId)")
     }
@@ -128,17 +118,12 @@ final class RecordingManager {
 
     // MARK: - Reattach (startup resume)
 
-    /// Register an already-running caffeinate PID without launching a new process.
-    func reattach(showId: String, pid: Int32) {
+    /// Register an already-running curl PID after an app restart and re-arm the sleep assertion
+    /// for the remaining show duration so the system doesn't sleep mid-recording.
+    func reattach(showId: String, pid: Int32, title: String, endDate: Date) {
         pids[showId] = pid
-        glog("[Rec] Reattached \(showId) caffeinate=\(pid)")
-    }
-
-    /// Register a curl PID found in ps during startup reattach. Called after reattach() so both
-    /// halves of the pair are killable independently — the group kill is unreliable on macOS
-    /// because caffeinate moves itself into the curl child's process group.
-    func reattachCurlPid(showId: String, pid: Int32) {
-        curlPids[showId] = pid
+        let remaining = max(60, endDate.timeIntervalSinceNow) + 300
+        preventSleep(id: showId, reason: "Recording: \(title)", duration: remaining)
         glog("[Rec] Reattached \(showId) curl=\(pid)")
     }
 
@@ -210,23 +195,36 @@ final class RecordingManager {
         return pid
     }
 
-    // MARK: - Curl child discovery
+    // MARK: - Sleep prevention
 
-    /// Uses pgrep to find curl's PID as a child of caffeinate.
-    nonisolated private func findCurlChild(of parentPid: Int32) -> Int32? {
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
-        p.arguments = ["-P", "\(parentPid)"]
-        let pipe = Pipe()
-        p.standardOutput = pipe
-        p.standardError  = FileHandle.nullDevice
-        do {
-            try p.run()
-            p.waitUntilExit()
-            let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(),
-                                encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            return Int32(output.components(separatedBy: "\n").first ?? "")
-        } catch { return nil }
+    /// Creates a tracked IOKit sleep assertion keyed by `id`. The OS auto-releases it after
+    /// `duration` seconds; we also release early via `releaseAssertion` / `releaseAllAssertions`.
+    func preventSleep(id: String, reason: String, duration: TimeInterval) {
+        releaseAssertion(id: id)   // drop any stale assertion for this key first
+        var assertionId: IOPMAssertionID = IOPMAssertionID(kIOPMNullAssertionID)
+        IOPMAssertionCreateWithDescription(
+            kIOPMAssertPreventUserIdleSystemSleep as CFString,
+            reason as CFString,
+            nil, nil, nil,
+            duration,
+            kIOPMAssertionTimeoutActionRelease as CFString,
+            &assertionId
+        )
+        assertionIds[id] = assertionId
+    }
+
+    func releaseAssertion(id: String) {
+        if let aid = assertionIds.removeValue(forKey: id) {
+            IOPMAssertionRelease(aid)
+        }
+    }
+
+    /// Releases all tracked sleep assertions. Called when the status check confirms no tuners
+    /// are streaming — clears any assertions that outlived their recording due to a crash or delete.
+    func releaseAllAssertions() {
+        for aid in assertionIds.values { IOPMAssertionRelease(aid) }
+        assertionIds.removeAll()
+        glog("[Rec] All sleep assertions released")
     }
 
     // MARK: - Verbose log

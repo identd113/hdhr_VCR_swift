@@ -8,7 +8,7 @@
 
 1. Sparkle `SPUStandardUpdaterController` initialized (`startingUpdater: true`) — begins background update checks immediately. Deferred to `startup()` (not a stored property) so tests that set `skipStartup = true` never trigger updater UI.
 2. `loadConfig()` — reads JSON, resets all `show_recording = false`; sets `guideStore.verbose`. Auto-removes inactive Single shows (already recorded; no further scheduling needed).
-3. `reattachRecordings()` — scans `ps -Axo pid,args` for `caffeinate` lines with `show_id:` + `hdhrVCRplus`. If the show's `show_end` is still future, sets `show_recording = true`, clears `show_tuner_resource` (will be re-captured by `captureResourceHeaders`), and registers the PID — recording continues uninterrupted. **Read pipe data before `waitUntilExit()`** to avoid deadlock when ps output exceeds the ~64 KB pipe buffer. After the PID scan, any show that has a non-empty `discord_start_msg_id` but was **not** reattached (i.e. its recording ended while the app was down) gets a recovery Discord embed: "✅ Recording Complete" if the output file has non-zero size, or "⚠️ Recording Interrupted" otherwise. The `discord_start_msg_id` is cleared to `""` in config **before** the network send — a crash during the PATCH won't re-trigger the recovery on the next launch.
+3. `reattachRecordings()` — scans `ps -Axo pid,args` for lines containing `show_id:` + `/usr/bin/curl` + `hdhrVCRplus`. If the matching show's `show_end` is still future, sets `show_recording = true`, clears `show_tuner_resource` (will be re-captured by `captureResourceHeaders`), and calls `recordingManager.reattach(showId:pid:title:endDate:)` — recording continues uninterrupted and the sleep assertion is re-armed for the remaining duration. **Read pipe data before `waitUntilExit()`** to avoid deadlock when ps output exceeds the ~64 KB pipe buffer. After the PID scan, any show that has a non-empty `discord_start_msg_id` but was **not** reattached (i.e. its recording ended while the app was down) gets a recovery Discord embed: "✅ Recording Complete" if the output file has non-zero size, or "⚠️ Recording Interrupted" otherwise. The `discord_start_msg_id` is cleared to `""` in config **before** the network send — a crash during the PATCH won't re-trigger the recovery on the next launch.
 4. `setupWebServer()` — binds the NWListener on `config.Web_server_port` immediately after config load, before device discovery. Port is available within ~1 s of launch; responses that require guide data are delayed by main-actor availability, not by the startup sequence itself.
 5. Notification permission (background `Task` — non-blocking).
 6. `discoverDevices(knownHosts:attempts:10)` — up to 10 retries with 1 s pauses; idle loop retries on each tick if devices remain empty.
@@ -31,7 +31,7 @@ Runs every `config.Idle_timer_interval` seconds on MainActor:
   - Fires "Recording Soon" notification once at `Notify_recording` minutes before; stamps `notify_recording_time`.
   - Starts recording if `show_next <= now + 10s` AND `show_end > now`.
   - Stops recording naturally if `show_end <= now`.
-  - Detects unexpected caffeinate exit → reads `X-HDHomeRun-Error` from the curl header dump via `RecordingManager.readAndClearHDHRError` (precise device error code, e.g. "Tuner In Use (804)"), falls back to `"curl exited unexpectedly"` if no header was written; clears `show_tuner_resource`; increments fail count, sends notification.
+  - Detects unexpected curl exit → reads `X-HDHomeRun-Error` from the curl header dump via `RecordingManager.readAndClearHDHRError` (precise device error code, e.g. "Tuner In Use (804)"), falls back to `"curl exited unexpectedly"` if no header was written; clears `show_tuner_resource`; increments fail count, sends notification.
   - Fires Discord progress update (PATCH) once per 5-minute boundary for active recordings when `Discord_on_progress` is enabled and `discord_start_msg_id` is set.
 - Conflict notifications: when a show can't start because all tuners are full, fires once per show+episode window (`conflictNotifiedEpochs: [String: TimeInterval]` — keyed by `show_id`, value is `show_next` epoch; clears on reschedule via `removeValue(forKey:)`).
 - Calls `captureResourceHeaders()` then `fetchDeviceStatus(for:)` once per device (via `refreshTunerOccupancy`). `captureResourceHeaders` reads `X-HDHomeRun-Resource` from the curl header dump for any recording show whose `show_tuner_resource` is still empty — stores e.g. `"tuner0"` directly on the show. `fetchDeviceStatus` uses this value first when targeting `/tunerN/vstatus`; falls back to VctNumber channel match, then any locked tuner. Logs a warning if no locked tuner is found at all.
@@ -118,8 +118,9 @@ The web server is stopped explicitly in all three `quit()` exit branches before 
 | `pauseShow(_:)` | Sets `show_paused = true`, `show_fail_reason = "Manually paused"`, saves config |
 | `resumeShow(_:)` | Clears `show_paused`, resets fail count + reason, saves config |
 | `watchInVLC(url:)` | Opens stream in `/Applications/VLC.app` via `NSWorkspace`; no-op if VLC absent or `Watch_in_VLC` false |
-| `watchInApp(url:title:deviceId:transcode:)` | Opens VLC in-app player; checks `/status.json` first, alerts if all tuners occupied; sets `vlcCurrentURL` |
-| `refreshTunerOccupancy()` | Fires a Task that sleeps 1.5 s, then calls `captureResourceHeaders()` + `fetchDeviceStatus` for every device. Called after recording start/stop, VLC open/close, and channel switch so the menu header count stays current. |
+| `watchInApp(url:title:deviceId:transcode:guideNumber:)` | Opens VLC in-app player; checks `/status.json` first, alerts if all tuners occupied. If `guideNumber` is supplied, looks up the current guide entry and fires a `"vlc"` sleep assertion via `recordingManager.preventSleep(id:reason:duration:)` sized to the entry's end time + 5-min buffer. |
+| `refreshTunerOccupancy()` | Fires a Task that sleeps 1.5 s, then calls `captureResourceHeaders()` + `fetchDeviceStatus` for every device, then `releaseAssertionsIfIdle()`. Called after recording start/stop, VLC open/close, and channel switch so the menu header count stays current. |
+| `releaseAssertionsIfIdle()` | Private. After all devices are checked: if every known tuner reports zero active streams **and** `recordingShows` is empty **and** no VLC session is open, calls `recordingManager.releaseAllAssertions()`. Guards against false-positives during the gap between recording start and tuner lock-in. |
 | `captureResourceHeaders()` | Private. For each recording show with empty `show_tuner_resource`, calls `RecordingManager.readHDHRResource` to read `X-HDHomeRun-Resource` from the curl header dump file. Stores result (e.g. `"tuner0"`) on the show for use by `fetchDeviceStatus`. |
 | `confirmAndDeleteShow(_:then:)` | Fetches poster async → NSAlert with image → stops recording + removes show |
 | `addShowFromGuide(entry:type:device:channel:airDays:transcode:)` | Schedules a show from a guide entry. `airDays: [String]?` — when supplied (web record modal), overrides the default day-of-week for `dateTime` shows. `transcode: String?` — when supplied (web record modal), overrides `config.Default_transcode`; `nil` uses the config default. Called by both the Mac guide wizard and `WebServer.handleRecord`. |
@@ -158,7 +159,7 @@ In a SwiftUI `.menu`-style `MenuBarExtra`, the menu body re-evaluates on every `
 
 ## Show Delete / Skip (`deleteShow`, `skipRecording`)
 
-Both functions call `recordingManager.stop(showId:)` first (kills caffeinate+curl PIDs), then `VLCPlayerWindowManager.shared.closeIfPlayingURL(show.show_url)` — if the in-app VLC player is currently streaming the deleted/skipped show's URL the player window is closed, freeing the tuner.
+Both functions call `recordingManager.stop(showId:)` first (sends SIGTERM to curl and releases the show's sleep assertion), then `VLCPlayerWindowManager.shared.closeIfPlayingURL(show.show_url)` — if the in-app VLC player is currently streaming the deleted/skipped show's URL the player window is closed, freeing the tuner.
 
 `deleteShow` removes the show from `shows` and saves config. `skipRecording` additionally marks `show_paused = true`, sets `show_fail_reason = "Skipped"`, and calls `scheduleNextAir` to advance to the next airing.
 
@@ -169,5 +170,5 @@ Both functions call `recordingManager.stop(showId:)` first (kills caffeinate+cur
 All three exit branches call `VLCBridge.shared.stop()` before terminating so the in-app player releases its HDHR tuner immediately:
 
 - **No recordings** — `VLCBridge.stop()` → `recordingManager.stopAll()` → `NSApplication.terminate(nil)`
-- **Keep Recording & Quit** — `VLCBridge.stop()` → `NSApplication.terminate(nil)` (curl+caffeinate orphaned; reattach on relaunch)
+- **Keep Recording & Quit** — `VLCBridge.stop()` → `NSApplication.terminate(nil)` (curl orphaned to launchd; reattach on relaunch via `reattachRecordings()`)
 - **Stop Recordings & Quit** — `VLCBridge.stop()` → `recordingManager.stopAll()` → `NSApplication.terminate(nil)`
