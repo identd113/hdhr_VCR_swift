@@ -379,7 +379,8 @@ final class AppState: ObservableObject {
             } else {
                 // No matching show in config (deleted while recording, config reset, etc.) or past end —
                 // kill the orphaned curl process so it doesn't hold a tuner indefinitely.
-                kill(pid, SIGTERM)
+                // Use SIGKILL: orphans may have inherited SIG_IGN for SIGTERM from the parent app.
+                kill(pid, SIGKILL)
                 glog("[Startup] Killed orphaned curl pid=\(pid) showId=\(showId)", level: .warning)
             }
         }

@@ -165,7 +165,13 @@ final class RecordingManager {
         defer { posix_spawnattr_destroy(&sa) }
 
         // New session: decouples from the app's process group and session.
-        posix_spawnattr_setflags(&sa, Int16(POSIX_SPAWN_SETSID))
+        // Reset SIGTERM to SIG_DFL in the child — the app sets SIG_IGN for its DispatchSource
+        // handler, and posix_spawn inherits that disposition, making kill(pid, SIGTERM) a no-op.
+        var sigdefaults = sigset_t()
+        sigemptyset(&sigdefaults)
+        sigaddset(&sigdefaults, SIGTERM)
+        posix_spawnattr_setsigdefault(&sa, &sigdefaults)
+        posix_spawnattr_setflags(&sa, Int16(POSIX_SPAWN_SETSID | POSIX_SPAWN_SETSIGDEF))
 
         "/dev/null".withCString { devNull in
             posix_spawn_file_actions_addopen(&fa, STDIN_FILENO,  devNull, O_RDONLY, 0)
