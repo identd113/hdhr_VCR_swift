@@ -244,9 +244,7 @@ final class WebServer {
     }
 
     private func refreshTunerOccupancy() async {
-        // Skip unavailable devices — their statusURL may resolve to a shared IP and return
-        // another device's tuner data, producing a false active-tuner count.
-        let devices = await MainActor.run { appState?.devices.filter { $0.isAvailable } ?? [] }
+        let devices = await MainActor.run { appState?.devices ?? [] }
         glog("[WebServer] refreshTunerOccupancy: \(devices.count) device(s)")
         await withTaskGroup(of: Void.self) { group in
             for device in devices {
