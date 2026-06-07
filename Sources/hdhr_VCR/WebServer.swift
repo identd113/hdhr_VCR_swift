@@ -620,6 +620,7 @@ final class WebServer {
         let pendingRecChannelsByDevice: [String: Set<String>] = {
             let pending = state.shows.filter {
                 $0.show_active && !$0.show_paused && !$0.show_recording &&
+                !$0.hdhr_record.isEmpty &&
                 ($0.show_next ?? .distantFuture) <= nowDate && ($0.show_end ?? .distantPast) > nowDate
             }
             return Dictionary(grouping: pending, by: { $0.hdhr_record })

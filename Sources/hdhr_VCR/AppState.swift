@@ -1015,10 +1015,11 @@ final class AppState: ObservableObject {
             }
 
             if show.show_recording, endDate > now, !recordingManager.isRunning(showId: show.show_id) {
-                shows[i].show_recording = false
-                shows[i].show_tuner_resource = ""
                 pendingDiscordStart.remove(show.show_id) // never confirmed; skip the start embed
+                // readAndClearHDHRError must run before teardownRecordingState — teardown calls
+                // stop() which clears the header file entry, losing the error before we can read it.
                 let hdhrReason = recordingManager.readAndClearHDHRError(showId: show.show_id)
+                teardownRecordingState(index: i) // kills pid (harmless), releases assertion, clears caches
                 let failReason = hdhrReason ?? "curl exited unexpectedly"
                 shows[i].recordFailure(reason: failReason)
                 glog("[\(show.show_title)] FAIL \(failReason) — fail_count=\(shows[i].show_fail_count)", level: .error)
@@ -1234,7 +1235,10 @@ final class AppState: ObservableObject {
         saveConfig()
     }
 
-    func stopRecording(index: Int, natural: Bool) async {
+    /// Shared teardown for both natural/manual stops and unexpected curl exits.
+    /// Kills the process (harmless if already dead), releases the sleep assertion,
+    /// clears per-show caches, and broadcasts the stopped event to web clients.
+    private func teardownRecordingState(index: Int) {
         let show = shows[index]
         recordingManager.stop(showId: show.show_id)
         tunerStatus.removeValue(forKey: show.show_id)
@@ -1242,6 +1246,11 @@ final class AppState: ObservableObject {
         shows[index].show_recording = false
         shows[index].show_tuner_resource = ""
         webServer.broadcastEvent(["type": "recording_stopped", "channel": show.show_channel, "device": show.hdhr_record])
+    }
+
+    func stopRecording(index: Int, natural: Bool) async {
+        teardownRecordingState(index: index)
+        let show = shows[index]
         refreshTunerOccupancy()
         shows[index].show_last = Date()
 

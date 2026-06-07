@@ -661,6 +661,9 @@ final class VLCPlayerWindowManager {
         VLCBridge.shared.releasePlayer() // full teardown — releases mediaPlayer and nils currentURL; Combine auto-clears vlcCurrentURL
         currentDeviceID = nil
         window = nil
+        // Release the VLC sleep assertion immediately rather than waiting for releaseAllAssertions()
+        // inside refreshTunerOccupancy — that path is blocked when a recording is simultaneously active.
+        appState?.recordingManager.releaseAssertion(id: "vlc")
         appState?.refreshTunerOccupancy()
     }
 }

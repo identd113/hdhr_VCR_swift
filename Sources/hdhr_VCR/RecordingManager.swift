@@ -202,7 +202,7 @@ final class RecordingManager {
     func preventSleep(id: String, reason: String, duration: TimeInterval) {
         releaseAssertion(id: id)   // drop any stale assertion for this key first
         var assertionId: IOPMAssertionID = IOPMAssertionID(kIOPMNullAssertionID)
-        IOPMAssertionCreateWithDescription(
+        let kret = IOPMAssertionCreateWithDescription(
             kIOPMAssertPreventUserIdleSystemSleep as CFString,
             reason as CFString,
             nil, nil, nil,
@@ -210,6 +210,10 @@ final class RecordingManager {
             kIOPMAssertionTimeoutActionRelease as CFString,
             &assertionId
         )
+        guard kret == kIOReturnSuccess else {
+            glog("[Rec] Sleep assertion failed (err=\(kret)) for \(id)", level: .warning)
+            return
+        }
         assertionIds[id] = assertionId
     }
 
