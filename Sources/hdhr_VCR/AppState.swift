@@ -370,12 +370,18 @@ final class AppState: ObservableObject {
             let showId = String(tail.prefix(while: { !$0.isWhitespace && $0 != "'" && $0 != "\"" }))
             guard !showId.isEmpty else { continue }
 
-            guard let i = shows.firstIndex(where: { $0.show_id == showId }),
-                  let endDate = shows[i].show_end, endDate > now else { continue }
-            shows[i].show_recording = true
-            shows[i].show_tuner_resource = ""   // will be re-captured by captureResourceHeaders()
-            recordingManager.reattach(showId: showId, pid: pid, title: shows[i].show_title, endDate: endDate)
-            glog("[Startup] Reattached '\(shows[i].show_title)' pid=\(pid) ends \(endDate)")
+            if let i = shows.firstIndex(where: { $0.show_id == showId }),
+               let endDate = shows[i].show_end, endDate > now {
+                shows[i].show_recording = true
+                shows[i].show_tuner_resource = ""   // will be re-captured by captureResourceHeaders()
+                recordingManager.reattach(showId: showId, pid: pid, title: shows[i].show_title, endDate: endDate)
+                glog("[Startup] Reattached '\(shows[i].show_title)' pid=\(pid) ends \(endDate)")
+            } else {
+                // No matching show in config (deleted while recording, config reset, etc.) or past end —
+                // kill the orphaned curl process so it doesn't hold a tuner indefinitely.
+                kill(pid, SIGTERM)
+                glog("[Startup] Killed orphaned curl pid=\(pid) showId=\(showId)", level: .warning)
+            }
         }
 
         // Any show with a discord_start_msg_id that wasn't reattached as actively recording
