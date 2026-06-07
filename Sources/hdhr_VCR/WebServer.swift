@@ -244,7 +244,9 @@ final class WebServer {
     }
 
     private func refreshTunerOccupancy() async {
-        let devices = await MainActor.run { appState?.devices ?? [] }
+        // Skip unavailable devices — their statusURL may resolve to a shared IP and return
+        // another device's tuner data, producing a false active-tuner count.
+        let devices = await MainActor.run { appState?.devices.filter { $0.isAvailable } ?? [] }
         glog("[WebServer] refreshTunerOccupancy: \(devices.count) device(s)")
         await withTaskGroup(of: Void.self) { group in
             for device in devices {
@@ -1017,11 +1019,12 @@ final class WebServer {
         .rm-opt-d{font-size:.7rem;color:var(--t4);margin-top:1px}
         html.lm #rm-tuner{color:#7a3c00;background:#fff8e8;border-color:#d09020}
         /* ── Guide grid ── */
-        .gw{overflow:auto;max-height:60vh;border:1px solid var(--b1);border-radius:8px;margin-bottom:20px;background:var(--bg)}
+        .gw-outer{border:1px solid var(--b1);border-radius:8px;overflow:clip;margin-bottom:20px}
+        .gw{overflow:auto;max-height:60vh;background:var(--bg)}
         .gi{min-width:\(guideMinWidth)px}
         #status-btn:hover{color:var(--t0)!important}
-        .g-hdr{display:flex;position:sticky;top:0;z-index:10;background:var(--s2);border-bottom:1px solid var(--b2)}
-        .g-hdr-ch{width:105px;min-width:105px;position:sticky;left:0;z-index:11;background:var(--s2);border-right:1px solid var(--b2);padding:6px 8px;font-size:.65rem;color:var(--t4);text-transform:uppercase;letter-spacing:.07em}
+        .g-hdr{display:flex;position:-webkit-sticky;position:sticky;top:0;z-index:10;background:var(--s2);border-bottom:1px solid var(--b2)}
+        .g-hdr-ch{width:105px;min-width:105px;position:-webkit-sticky;position:sticky;left:0;z-index:11;background:var(--s2);border-right:1px solid var(--b2);padding:6px 8px;font-size:.65rem;color:var(--t4);text-transform:uppercase;letter-spacing:.07em}
         .g-hdr-tl{flex:1;position:relative;height:32px}
         .g-tick{position:absolute;top:50%;transform:translate(-50%,-50%);font-size:.68rem;color:var(--t4);white-space:nowrap;pointer-events:none}
         .g-now-tick{position:absolute;top:0;bottom:0;width:2px;background:rgba(255,90,90,.65);pointer-events:none}
@@ -1035,7 +1038,7 @@ final class WebServer {
         .g-fav-btn{background:none;border:none;padding:0 2px;cursor:pointer;font-size:.85rem;line-height:1;color:var(--t5);flex-shrink:0;opacity:.5;transition:opacity .15s}
         .g-fav-btn:hover{opacity:1}
         .g-fav-btn[data-fav="1"]{color:var(--fav);opacity:1}
-        .g-ch{width:105px;min-width:105px;display:flex;align-items:center;gap:4px;padding:4px 6px;position:sticky;left:0;z-index:2;background:var(--s1);border-right:1px solid var(--b1)}
+        .g-ch{width:105px;min-width:105px;display:flex;align-items:center;gap:4px;padding:4px 6px;position:-webkit-sticky;position:sticky;left:0;z-index:2;background:var(--s1);border-right:1px solid var(--b1)}
         .g-logo{width:24px;height:24px;object-fit:contain;flex-shrink:0}
         .g-logo-ph{width:24px;height:24px;border-radius:3px;background:var(--s4);display:flex;align-items:center;justify-content:center;font-size:.75rem;color:var(--t4);flex-shrink:0}
         .g-cl{overflow:hidden;flex:1}
@@ -1261,10 +1264,10 @@ final class WebServer {
             <div id="sched-pop-body">\(schedPopHTML)</div>
           </div>
         </div>
-        <div class="gw"><div class="gi">
+        <div class="gw-outer"><div class="gw"><div class="gi">
         <div class="g-hdr"><div class="g-hdr-ch">Channel</div><div class="g-hdr-tl">\(ticksHTML)</div></div>
         \(rowsHTML)
-        </div></div>
+        </div></div></div>
         <script>
         \(tunerJS)
         \(recsByDevJS)
