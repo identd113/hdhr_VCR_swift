@@ -148,6 +148,10 @@ struct MenuContent: View {
             var byMinute: [Date: [Show]] = [:]
             for show in availableActive {
                 guard let d = show.show_next, d > now, d <= cutoff else { continue }
+                // Series shows without a confirmed guide entry are in retry/scan mode — keep
+                // them in Scheduled rather than Up Next so the section stays visible during the
+                // 60-min lead-up to the retry window (when no real episode is imminent).
+                if show.isSeries, state.menuScheduledEntry[show.show_id] == nil { continue }
                 var c = cal.dateComponents([.year, .month, .day, .hour, .minute], from: d)
                 c.second = 0
                 let bucket = cal.date(from: c) ?? d
