@@ -58,7 +58,6 @@ final class RecordingManager {
         if let pid = pids[showId] {
             kill(pid, SIGKILL)
             pids.removeValue(forKey: showId)
-            var st: Int32 = 0; waitpid(pid, &st, WNOHANG)
         }
         releaseAssertion(id: showId)
         clearHeaderFile(showId: showId)
