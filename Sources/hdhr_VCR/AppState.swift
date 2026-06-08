@@ -85,7 +85,6 @@ final class AppState: ObservableObject {
     var pausedShows: [Show]    { shows.filter { $0.show_active && $0.show_paused } }
     var inactiveShows: [Show]  { shows.filter { !$0.show_active } }
     var unavailableDeviceIDs: Set<String> { Set(devices.filter { !$0.isAvailable }.map { $0.DeviceID }) }
-    /// Active shows (recording or scheduled) whose assigned device is currently unavailable.
     var unavailableDeviceShows: [Show] {
         guard !unavailableDeviceIDs.isEmpty else { return [] }
         return shows.filter { $0.show_active && unavailableDeviceIDs.contains($0.hdhr_record) }
@@ -116,7 +115,6 @@ final class AppState: ObservableObject {
             .min()
     }
 
-    /// Devices that have both a non-empty lineup and guide data — the ones actually usable for recording.
     var availableDeviceCount: Int {
         devices.filter {
             !(lineups[$0.DeviceID]?.isEmpty ?? true) && !(guideByDevice[$0.DeviceID]?.isEmpty ?? true)
@@ -286,7 +284,8 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Starts the web server if not already running. Called by each in-app WKWebView guide window on appear.
+    // Called by each in-app WKWebView guide window on appear; reference-counted so the server
+    // stops when the last window closes (unless permanently enabled in Settings).
     func ensureWebServerRunning() {
         internalWebServerUseCount += 1
         guard !webServerRunning else { return }
@@ -302,8 +301,6 @@ final class AppState: ObservableObject {
         if errorMsg == nil { webServer.updateTXTRecord() }
     }
 
-    /// Decrements the use count; stops the server only when the last WKWebView guide window closes
-    /// and the user hasn't permanently enabled it in Settings.
     func releaseInternalWebServer() {
         guard internalWebServerUseCount > 0 else { return }
         internalWebServerUseCount -= 1
@@ -314,8 +311,7 @@ final class AppState: ObservableObject {
 
     func logGuide(_ msg: String, level: LogLevel = .info) { glog(msg, level: level) }
 
-    /// Extract unique device IPs from saved show stream URLs so discovery can try them directly.
-    /// .local hostnames are excluded — they require mDNS resolution and add nothing over mDNSDiscover().
+    // .local hostnames excluded — mDNS resolution happens in mDNSDiscover(), no benefit adding them here.
     private func knownHostsFromShows() -> [String] {
         var seen = Set<String>()
         return shows.compactMap { show -> String? in
@@ -339,7 +335,6 @@ final class AppState: ObservableObject {
         glog("[Startup] \(shows.count) show(s) loaded from config")
     }
 
-    /// Scan ps for caffeinate recordings that survived an app restart and reattach their PIDs.
     private func reattachRecordings() async {
         // Run the blocking ps call off the main actor so the UI stays responsive.
         let output = await Task.detached(priority: .utility) { () -> String in
@@ -456,8 +451,7 @@ final class AppState: ObservableObject {
         statusMessage = "No tuners found — will keep trying"
     }
 
-    /// Merge-only discovery: adds newly-seen tuners and tracks missed-probe counts for existing ones.
-    /// Never removes entries so active recordings are never disrupted; isAvailable goes false after 3 misses.
+    // Never removes entries — avoids disrupting active recordings; isAvailable goes false after 3 missed probes.
     private func probeForNewDevices() async {
         // Use a nil `found` to mean discovery itself failed (network error) — still counts as a miss
         // so a device that's offline AND causing discovery failures still reaches the unavailable threshold.
@@ -511,12 +505,8 @@ final class AppState: ObservableObject {
         webServer.broadcastEvent(["type": "deviceOnline", "deviceId": newDevices.map { $0.DeviceID }.joined(separator: ",")])
     }
 
-    /// Fetch lineup for every device in parallel; stores results in `lineups[deviceID]`.
-    /// After all lineups are fetched, checks whether any show's stored stream URL still uses
-    /// a stale device IP and updates it from the fresh lineup data.
-    /// Ensures lineup is available for `device`; re-fetches if missing or empty.
-    /// Guards against silent `try?` failures in fetchAllLineups that leave lineups[deviceID] nil.
-    /// Concurrent callers for the same device wait rather than firing duplicate network requests.
+    // Coalesces concurrent callers — only the first fetches; others wait. Guards against
+    // silent try? failures in fetchAllLineups leaving lineups[deviceID] nil.
     func ensureLineupLoaded(for device: HDHRDevice) async {
         let id = device.DeviceID
         guard lineups[id]?.isEmpty ?? true else { return }
@@ -557,10 +547,6 @@ final class AppState: ObservableObject {
         updateShowURLsFromLineups()
     }
 
-    /// Detects shows whose stored stream URL contains a stale device IP and replaces it
-    /// with the fresh URL from the current lineup.  Called after every lineup fetch so a
-    /// DHCP IP change is corrected automatically rather than waiting for the next recording.
-    /// The lineup URL is authoritative — the device embeds its own current IP in it.
     private func updateShowURLsFromLineups() {
         var dirty = false
         let deviceMap = Dictionary(uniqueKeysWithValues: devices.map { ($0.DeviceID, $0) })
@@ -583,7 +569,6 @@ final class AppState: ObservableObject {
 
     // MARK: - Guide cache
 
-    /// Fetch guide for all known devices at startup (in parallel).
     func fetchAllGuides() async {
         guard !devices.isEmpty else { return }
         statusMessage = "Loading guide…"
@@ -606,7 +591,6 @@ final class AppState: ObservableObject {
         Task { await prefetchChannelIcons(allChannels) }
     }
 
-    /// Refresh lineup + guide for all devices (called periodically from idleLoop).
     private func refreshGuides() async {
         guard !guideRefreshInFlight else { return }
         guideRefreshInFlight = true
@@ -636,7 +620,6 @@ final class AppState: ObservableObject {
         await rescheduleAllSeries()
     }
 
-    /// Trigger a guide load for a single device (idleLoop / menu fallback).
     func ensureGuideLoaded(for deviceId: String) {
         // Exponential backoff: 1m → 5m → 15m → 30m → 1h after repeated API failures.
         // Prevents hammering the SiliconDust cloud API (e.g. 403 from EXTEND devices).
@@ -661,7 +644,6 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Download missing channel icons and warm the mem cache from disk; populate channelIconImages for sync menu lookup.
     private func prefetchChannelIcons(_ channels: [GuideChannel]) async {
         let urls = Array(Set(channels.compactMap { $0.ImageURL }.filter { !$0.isEmpty }))
         guard !urls.isEmpty else { return }
@@ -686,7 +668,6 @@ final class AppState: ObservableObject {
         guideStore.isLoading(deviceId: deviceId)
     }
 
-    /// Guide entries for a device+channel still airing or upcoming within GuideHours.
     func guideEntries(deviceId: String, channelNum: String) -> [GuideEntry] {
         guideStore.entries(deviceId: deviceId, channelNum: channelNum)
     }
@@ -768,13 +749,11 @@ final class AppState: ObservableObject {
         conflictingShowIDs = newConflicts
     }
 
-    /// Up to `limit` upcoming episodes for a given SeriesID across all devices/channels.
     func upcomingGuideEpisodes(seriesID: String, after: Date = Date(), limit: Int = 4) -> [(channel: String, entry: GuideEntry)] {
         guideStore.nextEpisodes(seriesID: seriesID, after: after, limit: limit)
             .map { ($0.channelNum, $0.entry) }
     }
 
-    /// Next episode of a SeriesID show from the guide cache.
     func nextGuideEpisode(for show: Show) -> (channel: String, entry: GuideEntry)? {
         guard show.show_use_seriesid, !show.show_seriesid.isEmpty else { return nil }
         let channelFilter: String? = show.show_use_seriesid_all ? nil : show.show_channel
@@ -845,9 +824,7 @@ final class AppState: ObservableObject {
                     extra: [("Type", type.rawValue, true)])
     }
 
-    /// For SeriesID shows, find the earliest airing episode and update show_next/show_end/show_channel/show_url.
-    /// Checks currently-airing first (so show_next may be in the past — idle loop records the remaining portion),
-    /// then the next future episode. Falls back silently if neither is found (selected entry's times stay).
+    // Checks currently-airing first so show_next may be in the past — idle loop records the remaining portion.
     func resolveSeriesAir(show: inout Show, device: HDHRDevice, isAll: Bool, channel: LineupEntry) {
         let chFilter  = isAll ? nil : channel.GuideNumber
         let devFilter = isAll ? nil : device.DeviceID
@@ -883,8 +860,7 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// The default recording folder: UserDefaults override → config Hdhr_setup_folder → ~/Movies/hdhr_videos.
-    /// ~/Movies is TCC-free for non-sandboxed apps and visible in the Finder sidebar.
+    // ~/Movies is TCC-free for non-sandboxed apps and visible in the Finder sidebar.
     var defaultSaveDir: URL {
         let stored = UserDefaults.standard.string(forKey: "defaultSaveDirectory") ?? ""
         if !stored.isEmpty { return URL(fileURLWithPath: stored) }
@@ -895,8 +871,6 @@ final class AppState: ObservableObject {
         return dir
     }
 
-    /// Synchronous folder picker — opens NSOpenPanel after menu dismisses.
-    /// Pre-selects defaultSaveDir. Returns nil only if the user cancels.
     func pickFolder(message: String) -> URL? {
         NSApp.activate(ignoringOtherApps: true)
         let panel = NSOpenPanel()
@@ -1243,9 +1217,6 @@ final class AppState: ObservableObject {
         saveConfig()
     }
 
-    /// Shared teardown for both natural/manual stops and unexpected curl exits.
-    /// Kills the process (harmless if already dead), releases the sleep assertion,
-    /// clears per-show caches, and broadcasts the stopped event to web clients.
     private func teardownRecordingState(index: Int) {
         let show = shows[index]
         recordingManager.stop(showId: show.show_id)
@@ -1414,9 +1385,7 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// All DateTime show occurrences after `after`, up to `count`.
-    /// Pass `after: Date()` to include today's airing if it hasn't happened yet (menu display).
-    /// Pass `after: startOfTomorrow` to always skip today (rescheduling after a completed recording).
+    // Pass after: Date() to include today (menu display); after: startOfTomorrow to always skip today (rescheduling).
     func nextDateTimeOccurrences(for show: Show, after: Date = Date(), count: Int = 1) -> [Date] {
         let cal = Calendar.current
         let dayNames = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"]
@@ -1470,17 +1439,11 @@ final class AppState: ObservableObject {
 
     // MARK: - Favorites
 
-    /// True when the show's scheduled channel is marked favorite on its device.
     func isFavoriteChannel(_ show: Show) -> Bool {
         lineups[show.hdhr_record]?.first { $0.GuideNumber == show.show_channel }?.isFavorite ?? false
     }
 
-    /// Optimistically toggle favorite: mutates lineups in place immediately (instant UI update),
-    /// fires the POST in the background, and reverts on failure. Next natural lineup reload
-    /// reconciles against the device's actual state via reconcileFavorites.
-    /// Synchronous entry point — called directly from Button action on MainActor.
-    /// Mutates lineups immediately (SwiftUI sees the change this render frame),
-    /// then fires the POST in a background Task. Reverts only if POST fails.
+    // Optimistic: mutates lineups immediately for instant UI feedback, reverts if the POST fails.
     func toggleFavorite(device: HDHRDevice, channel: LineupEntry) {
         let newFav   = !channel.isFavorite
         let deviceId = device.DeviceID
@@ -1514,8 +1477,6 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Called by fetchAllLineups after a fresh lineup arrives. Logs any channel whose
-    /// actual Favorite value doesn't match what we optimistically set.
     private func reconcileFavorites(deviceId: String, freshLineup: [LineupEntry]) {
         guard let pending = pendingFavoriteToggles[deviceId], !pending.isEmpty else { return }
         for (chNum, expected) in pending {
@@ -1545,8 +1506,6 @@ final class AppState: ObservableObject {
         saveConfig()
     }
 
-    /// Shows a delete confirmation alert with the show's poster image (fetched async).
-    /// Calls `then()` after deletion — use for dismiss() in EditShowView.
     func confirmAndDeleteShow(_ show: Show, then completion: @escaping () -> Void = {}) {
         Task {
             let imageURL: String?
@@ -1578,28 +1537,23 @@ final class AppState: ObservableObject {
 
     // MARK: - Maintenance actions (Settings → Maintenance panel)
 
-    /// Re-run scheduleNextAir for every active SeriesID show using the current guide cache.
     func rescheduleAllSeries() async {
         let indices = shows.indices.filter { shows[$0].show_active && !shows[$0].show_paused && !shows[$0].show_recording && shows[$0].show_use_seriesid }
         for i in indices { await scheduleNextAir(index: i) }
         saveConfig()
     }
 
-    /// Force a full guide reload (invalidate + re-fetch all devices).
     func refreshGuide() async { await refreshGuides() }
 
-    /// Re-run device discovery seeded from known show URLs, same path as startup.
     func rediscoverDevices() async {
         await discoverDevices(knownHosts: knownHostsFromShows(), attempts: 5)
     }
 
-    /// Zero out fail counts on every show without changing active/inactive state.
     func resetAllFailCounts() {
         for i in shows.indices { shows[i].clearFailures() }
         saveConfig()
     }
 
-    /// Reactivate all paused/inactive shows and clear their fail counts.
     func reactivatePausedShows() {
         for i in shows.indices {
             if shows[i].show_paused { shows[i].show_paused = false }
@@ -1679,7 +1633,6 @@ final class AppState: ObservableObject {
         return entries.first { abs($0.StartTime - target) < 120 }
     }
 
-    /// Sends a minimal test embed and returns true if the webhook responds with HTTP 2xx.
     func checkWebhookURL(_ url: String) async -> Bool {
         guard !url.isEmpty,
               let parsed = URL(string: url),
@@ -1760,8 +1713,6 @@ final class AppState: ObservableObject {
                     editMessageId: show.discord_start_msg_id)
     }
 
-    /// Returns the URL to send a Discord message to, or nil when the gate conditions are not met.
-    /// Centralises the enabled + Discord_enabled master toggle + URL presence checks.
     private func discordEffectiveURL(enabled: Bool, webhookURL: String?) -> String? {
         let url = webhookURL ?? config.Discord_webhook_url
         guard enabled, !url.isEmpty else { return nil }
@@ -1946,8 +1897,7 @@ final class AppState: ObservableObject {
 
     // MARK: - Tuner signal status
 
-    /// Polls every device's /status.json immediately after any tuner-affecting event
-    /// (recording start/stop, VLC open/close/channel-switch) so the menu header stays current.
+    // 1.5s delay lets the device register the change before we poll.
     func refreshTunerOccupancy() {
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 1_500_000_000)   // 1.5s — let device register the change
@@ -1957,9 +1907,7 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Releases all sleep assertions when every known tuner reports no active stream.
-    /// Guards against false-positives during the gap between show-start and tuner lock-in
-    /// by also requiring no recording shows and no VLC session are active.
+    // Requires no recording shows and no VLC session to avoid releasing during the tuner lock-in gap.
     private func releaseAssertionsIfIdle() {
         let anyTunerActive = devices.compactMap { deviceTunerOccupancy[$0.DeviceID] }
             .contains { $0.contains { $0.VctNumber != nil } }
@@ -1970,8 +1918,6 @@ final class AppState: ObservableObject {
         recordingManager.releaseAllAssertions()
     }
 
-    /// Reads X-HDHomeRun-Resource from the header dump file for any recording show that doesn't
-    /// yet have a tuner identity. Called 1.5s after recording start — curl has the response headers by then.
     private func captureResourceHeaders() {
         for i in shows.indices where shows[i].show_recording && shows[i].show_tuner_resource.isEmpty {
             if let resource = recordingManager.readHDHRResource(showId: shows[i].show_id) {
@@ -1981,9 +1927,7 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Fetches /status.json once per device, updates occupancy for the menu header, then
-    /// fetches /tunerN/vstatus for each recording show on that device using the tuner index
-    /// from the status response — O(1) vstatus calls per show instead of O(tunerCount).
+    // Fetches /tunerN/vstatus via the tuner index from status.json — O(1) vstatus calls per show.
     private func fetchDeviceStatus(for device: HDHRDevice) async {
         guard let url = URL(string: device.statusURL),
               let (data, _) = try? await URLSession.shared.data(from: url),
@@ -2063,8 +2007,6 @@ final class AppState: ObservableObject {
 
     // MARK: - Signal quality helpers
 
-    /// Full channel scan — tunes up to TunerCount channels concurrently per device,
-    /// reading status.json once per batch so status-call count equals number of batches.
     func startSignalScan(force: Bool = false) {
         signalScanTask?.cancel()
         signalScanTask = Task {
@@ -2099,6 +2041,7 @@ final class AppState: ObservableObject {
                     // then read status.json 3 times (500ms apart) to collect 3 SNQ samples per
                     // channel — gives the rolling average enough data on the first scan.
                     let statusURL = URL(string: device.statusURL)!
+                    var gotSample = Set<String>()
                     await withTaskGroup(of: Void.self) { group in
                         for entry in batch {
                             guard let url = URL(string: "\(device.streamBase)/auto/v\(entry.GuideNumber)") else { continue }
@@ -2112,10 +2055,16 @@ final class AppState: ObservableObject {
                                     guard let match = tunerInfos.first(where: { $0.VctNumber == entry.GuideNumber }),
                                           let snq = match.SignalQualityPercent else { continue }
                                     ChannelSignalStore.shared.record(guideName: entry.GuideName, snq: snq)
+                                    gotSample.insert(entry.GuideName.lowercased())
                                 }
                             }
                         }
                         group.cancelAll()  // release tuners; stream tasks observe cancellation and exit
+                    }
+                    // Channels that never locked during the 3 polls get snq=0 so they render
+                    // as a red 1-bar indicator rather than staying invisible (noData).
+                    for entry in batch where !gotSample.contains(entry.GuideName.lowercased()) {
+                        ChannelSignalStore.shared.record(guideName: entry.GuideName, snq: 0)
                     }
 
                     // Flush after each batch so partial progress survives a quit.
@@ -2153,8 +2102,6 @@ final class AppState: ObservableObject {
 
     // MARK: - Conflict detection
 
-    /// True when every tuner on `deviceId` is already occupied (recordings + VLC).
-    /// Used by WatchNowView to block adding a currently-airing show that can't start.
     func tunersFull(for deviceId: String) -> Bool {
         guard let device = devices.first(where: { $0.DeviceID == deviceId }),
               let tunerCount = device.TunerCount, tunerCount > 0 else { return false }
@@ -2222,9 +2169,7 @@ final class AppState: ObservableObject {
 
 // MARK: - JIT Warmup Placeholder
 
-/// Minimal SwiftUI view used only at startup to pre-warm the JIT compiler for menu rendering.
-/// Uses the same primitive types as MenuContent (Text, Button, Menu, Divider) without accessing
-/// any live app state, so layout cost is O(1) rather than O(shows × guide entries).
+// Exercises the same SwiftUI primitives as MenuContent at O(1) cost — no live state access.
 private struct MenuJITPlaceholder: View {
     var body: some View {
         Text("").font(.headline)
