@@ -71,7 +71,7 @@ Falls back to **SiliconDust cloud API** (`http://discover.hdhomerun.com/discover
 | `nextShowMinutes` | Minutes until nearest active show; drives orange `clock.badge` icon when ≤ 30 |
 | `availableDeviceCount` | Excludes devices with missing lineup or guide; used in status message |
 | `onAirNow(for:at:)` | Returns one `(channel: LineupEntry, entry: GuideEntry)` per unique on-air channel for a device at `date` (default `Date()`), sorted favorites-first then by channel number. Used by `WatchNowView` and `WebServer.buildNowJSON`. |
-| `tunersFull(for: deviceId)` | Returns `true` when every tuner on the device is occupied. Counts **both** active recordings (`recordingShows`) and the in-app VLC stream (`VLCPlayerWindowManager.shared.currentDeviceID`). Use this — never count recordings alone — because watching and recording occupy tuners equally. Used by `startRecording` and `WatchNowView`. |
+| `tunersFull(for: deviceId)` | Returns `true` when every tuner on the device is occupied. Counts **both** active recordings (`recordingShows`) and the in-app VLC stream (`VLCPlayerWindowManager.shared.currentDeviceID`). Use this — never count recordings alone — because watching and recording occupy tuners equally. Used by `startRecording`, `WatchNowView`, and `WebServer.handleRecord`. |
 
 ---
 
@@ -85,6 +85,7 @@ Falls back to **SiliconDust cloud API** (`http://discover.hdhomerun.com/discover
 | `@Published webServerError: String?` | Non-nil when the listener fails (port in use, OS error, etc.) |
 | `setupWebServer()` | Starts, restarts, or stops the server based on `config.Web_server_enabled` and `config.Web_server_port`. Called at step 4 of `startup()` and again whenever Settings saves a changed web server config. |
 | `ensureWebServerRunning()` | Increments `internalWebServerUseCount`; starts the server if not already running. Called from `FloatingGuideView.onAppear` and `AddShowView` guide step. |
+| `applyWebServerState(_ errorMsg:)` | Private. Shared completion handler used by both `setupWebServer` and `ensureWebServerRunning`. Sets `webServerRunning`/`webServerError` and calls `updateTXTRecord` on success. |
 | `releaseInternalWebServer()` | Decrements `internalWebServerUseCount`; stops the server when count reaches 0 **and** `config.Web_server_enabled == false`. Called from `.onDisappear` of the guide WKWebView. Safe to call from multiple concurrent windows — the count prevents stopping the server while another guide window is open. |
 | `discordWebDelete(_ show: Show)` | `@MainActor`. Called by `WebServer.handleDelete` before clearing state. Edits the existing "Recording Started" Discord embed in-place (if `discord_start_msg_id` is non-empty) using `Discord_on_start` as the gate — the embed was created under that flag, so the update follows the same preference. No-op when `show_recording == false` or `discord_start_msg_id` is empty. |
 
@@ -113,7 +114,7 @@ The web server is stopped explicitly in all three `quit()` exit branches before 
 
 | Method | Description |
 |---|---|
-| `startRecording(index:)` | Guards: returns early (with a warning log) if the assigned device is not in `devices` at all, or if it is present but `!isAvailable`. This prevents burning the show's fail count against a dead tuner. Computes `endDate` (show_end ?? show_length fallback, then +bonus padding if active). Always writes `shows[index].show_end = endDate` before launching so the idle-loop natural-stop and notifications both use the final value. Notification and Discord "Ends" field use `endDate`, not the pre-padding `show.show_end`. When `Discord_on_start` is enabled, inserts the show ID into `pendingDiscordStart` — the embed is deferred until the first idle-loop tick confirms curl is alive (see Discord Embed Flow). |
+| `startRecording(index:)` | Guards: returns early (with a warning log) if the assigned device is not in `devices` at all, or if it is present but `!isAvailable`. Calls `tunersFull(for:)` to check if all tuner slots are occupied (recordings + VLC); fires a conflict notification once per show+episode window when blocked. Computes `endDate` (show_end ?? show_length fallback, then +bonus padding if active). Always writes `shows[index].show_end = endDate` before launching so the idle-loop natural-stop and notifications both use the final value. Notification and Discord "Ends" field use `endDate`, not the pre-padding `show.show_end`. When `Discord_on_start` is enabled, inserts the show ID into `pendingDiscordStart` — the embed is deferred until the first idle-loop tick confirms curl is alive (see Discord Embed Flow). |
 | `updateShow(_ show: Show)` | Replaces the matching show in `shows[]` and saves config. For any active, non-paused, non-recording show whose `state != .single`, fires `scheduleNextAir` immediately via an async Task so type changes (e.g. seriesChannel → seriesAll) and day/time edits take effect without waiting for the idle loop. |
 | `pauseShow(_:)` | Sets `show_paused = true`, `show_fail_reason = "Manually paused"`, saves config |
 | `resumeShow(_:)` | Clears `show_paused`, resets fail count + reason, saves config |
@@ -141,7 +142,7 @@ Recording lifecycle embeds edit the original "Recording Started" message in-plac
 
 5. **App restart recovery** — `reattachRecordings()` (step 2 of startup) scans for shows with a non-empty `discord_start_msg_id` that were not reattached as actively recording. For each, it sends a recovery embed: "✅ Recording Complete" if `show_recording_path` file has non-zero size, or "⚠️ Recording Interrupted" otherwise. The ID is cleared before the send so a crash during the PATCH doesn't re-trigger on the next launch.
 
-**Helper split**: `buildDiscordShowEmbed(event:show:color:extra:)` builds the `[String: Any]` embed dict (author, title, description, fields, thumbnail, footer). `discordShow` wraps it with guard checks and routes to either `sendDiscordEmbed` or `editDiscordEmbed` based on `editMessageId`. `sendDiscordEmbedCapturing` and `editDiscordEmbed` are free functions in `DiscordNotifier.swift`.
+**Helper split**: `discordEffectiveURL(enabled:webhookURL:)` is the shared gate — returns the URL to post to, or `nil` when `enabled` is false, the URL is empty, or `Discord_enabled` is false (for default-webhook calls). Both `discordShow` and `discordError` call this before doing any work. `buildDiscordShowEmbed(event:show:color:extra:)` builds the `[String: Any]` embed dict (author, title, description, fields, thumbnail, footer). `discordShow` routes to either `sendDiscordEmbed` or `editDiscordEmbed` based on `editMessageId`. `sendDiscordEmbedCapturing` and `editDiscordEmbed` are free functions in `DiscordNotifier.swift`.
 
 ---
 
@@ -169,8 +170,8 @@ Both functions call `recordingManager.stop(showId:)` first (sends SIGTERM to cur
 
 ## Quit (`quit()`)
 
-All three exit branches call `VLCBridge.shared.stop()` before terminating so the in-app player releases its HDHR tuner immediately:
+All three exit branches call `VLCBridge.shared.releasePlayer()` before terminating so the in-app player releases its HDHR tuner immediately:
 
-- **No recordings** — `VLCBridge.stop()` → `recordingManager.stopAll()` → `NSApplication.terminate(nil)`
-- **Keep Recording & Quit** — `VLCBridge.stop()` → `NSApplication.terminate(nil)` (curl orphaned to launchd; reattach on relaunch via `reattachRecordings()`)
-- **Stop Recordings & Quit** — `VLCBridge.stop()` → `recordingManager.stopAll()` → `NSApplication.terminate(nil)`
+- **No recordings** — `releasePlayer()` → `recordingManager.stopAll()` → `NSApplication.terminate(nil)`
+- **Keep Recording & Quit** — `releasePlayer()` → `NSApplication.terminate(nil)` (curl orphaned to launchd; reattach on relaunch via `reattachRecordings()`)
+- **Stop Recordings & Quit** — `releasePlayer()` → `recordingManager.stopAll()` → `NSApplication.terminate(nil)`

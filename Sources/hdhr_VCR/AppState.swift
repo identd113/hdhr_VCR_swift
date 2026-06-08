@@ -281,11 +281,8 @@ final class AppState: ObservableObject {
             return
         }
         webServerError = nil
-        webServer.start(port: config.Web_server_port, appState: self) { [weak self] (errorMsg: String?) in
-            guard let self else { return }
-            self.webServerRunning = (errorMsg == nil)
-            self.webServerError   = errorMsg
-            if errorMsg == nil { self.webServer.updateTXTRecord() }
+        webServer.start(port: config.Web_server_port, appState: self) { [weak self] errorMsg in
+            self?.applyWebServerState(errorMsg)
         }
     }
 
@@ -294,12 +291,15 @@ final class AppState: ObservableObject {
         internalWebServerUseCount += 1
         guard !webServerRunning else { return }
         webServerError = nil
-        webServer.start(port: config.Web_server_port, appState: self) { [weak self] (errorMsg: String?) in
-            guard let self else { return }
-            self.webServerRunning = (errorMsg == nil)
-            self.webServerError   = errorMsg
-            if errorMsg == nil { self.webServer.updateTXTRecord() }
+        webServer.start(port: config.Web_server_port, appState: self) { [weak self] errorMsg in
+            self?.applyWebServerState(errorMsg)
         }
+    }
+
+    private func applyWebServerState(_ errorMsg: String?) {
+        webServerRunning = (errorMsg == nil)
+        webServerError   = errorMsg
+        if errorMsg == nil { webServer.updateTXTRecord() }
     }
 
     /// Decrements the use count; stops the server only when the last WKWebView guide window closes
@@ -1129,26 +1129,20 @@ final class AppState: ObservableObject {
             return
         }
         // Enforce tuner limit: skip if all slots on this device are already occupied
-        if let device = devices.first(where: { $0.DeviceID == show.hdhr_record }),
-           let tunerCount = device.TunerCount {
-            let recActive = recordingShows.filter { $0.hdhr_record == show.hdhr_record }.count
-            // VLC counts as an occupied tuner on whichever device it's streaming from.
-            let vlcActive = VLCPlayerWindowManager.shared.currentDeviceID == show.hdhr_record ? 1 : 0
-            let active = recActive + vlcActive
-            if active >= tunerCount {
-                glog("[\(show.show_title)] TUNER FULL \(show.hdhr_record): \(active)/\(tunerCount) — skipping start", level: .warning)
-                // Fire conflict notification once per show+episode window to avoid per-tick spam.
-                let conflictEpoch = show.show_next?.timeIntervalSince1970 ?? 0
-                if conflictNotifiedEpochs[show.show_id] != conflictEpoch {
-                    conflictNotifiedEpochs[show.show_id] = conflictEpoch
-                    notify("Tuner Conflict", body: show.show_title,
-                           subtitle: "All tuners on \(show.hdhr_record) are busy")
-                    discordShow("⚠️ Tuner Conflict", show: show, color: 0xF1C40F,
-                                enabled: config.Discord_on_conflict,
-                                extra: [("Note", "All \(tunerCount) tuners on \(show.hdhr_record) are busy", false)])
-                }
-                return
+        if tunersFull(for: show.hdhr_record) {
+            let tunerCount = devices.first(where: { $0.DeviceID == show.hdhr_record })?.TunerCount ?? 0
+            glog("[\(show.show_title)] TUNER FULL \(show.hdhr_record) — skipping start", level: .warning)
+            // Fire conflict notification once per show+episode window to avoid per-tick spam.
+            let conflictEpoch = show.show_next?.timeIntervalSince1970 ?? 0
+            if conflictNotifiedEpochs[show.show_id] != conflictEpoch {
+                conflictNotifiedEpochs[show.show_id] = conflictEpoch
+                notify("Tuner Conflict", body: show.show_title,
+                       subtitle: "All tuners on \(show.hdhr_record) are busy")
+                discordShow("⚠️ Tuner Conflict", show: show, color: 0xF1C40F,
+                            enabled: config.Discord_on_conflict,
+                            extra: [("Note", "All \(tunerCount) tuners on \(show.hdhr_record) are busy", false)])
             }
+            return
         }
         if show.show_url.isEmpty {
             if let lu = lineups[show.hdhr_record],
@@ -1766,15 +1760,21 @@ final class AppState: ObservableObject {
                     editMessageId: show.discord_start_msg_id)
     }
 
+    /// Returns the URL to send a Discord message to, or nil when the gate conditions are not met.
+    /// Centralises the enabled + Discord_enabled master toggle + URL presence checks.
+    private func discordEffectiveURL(enabled: Bool, webhookURL: String?) -> String? {
+        let url = webhookURL ?? config.Discord_webhook_url
+        guard enabled, !url.isEmpty else { return nil }
+        if webhookURL == nil, !config.Discord_enabled { return nil }
+        return url
+    }
+
     private func discordShow(_ event: String, show: Show, color: Int, enabled: Bool,
                              extra: [(name: String, value: String, inline: Bool)] = [],
                              webhookURL: String? = nil,
                              editMessageId: String? = nil) {
-        let url = webhookURL ?? config.Discord_webhook_url
-        guard enabled, !url.isEmpty else { return }
-        if webhookURL == nil { guard config.Discord_enabled else { return } }
+        guard let url = discordEffectiveURL(enabled: enabled, webhookURL: webhookURL) else { return }
         glog("[Discord] \(event) — \(show.show_title)")
-
         let embed = buildDiscordShowEmbed(event: event, show: show, color: color, extra: extra)
         if let msgId = editMessageId, !msgId.isEmpty {
             editDiscordEmbed(webhookURL: url, messageId: msgId, embed: embed)
@@ -1795,9 +1795,7 @@ final class AppState: ObservableObject {
 
     private func discordError(_ event: String, detail: String, color: Int = 0x95A5A6, enabled: Bool,
                               webhookURL: String? = nil) {
-        let url = webhookURL ?? config.Discord_webhook_url
-        guard enabled, !url.isEmpty else { return }
-        if webhookURL == nil { guard config.Discord_enabled else { return } }
+        guard let url = discordEffectiveURL(enabled: enabled, webhookURL: webhookURL) else { return }
         glog("[Discord] \(event) — \(detail)")
         let embed: [String: Any] = [
             "title":       event,
@@ -1893,12 +1891,7 @@ final class AppState: ObservableObject {
                     let active = tuners.filter { $0.VctNumber != nil }.count
                     if active >= tunerCount {
                         glog("[Watch] BLOCKED — all \(tunerCount) tuner(s) on \(device.DeviceID) in use; '\(title)' not opened", level: .warning)
-                        let alert = NSAlert()
-                        alert.messageText = "No Tuner Available"
-                        alert.informativeText = "All \(tunerCount) tuner\(tunerCount == 1 ? "" : "s") on \(device.DeviceID) are in use. Stop a recording or close another stream to free up a tuner."
-                        alert.alertStyle = .warning
-                        alert.addButton(withTitle: "OK")
-                        alert.runModal()
+                        alertTunerFull(tunerCount: tunerCount, deviceId: device.DeviceID)
                         return
                     }
                 }
@@ -1933,18 +1926,22 @@ final class AppState: ObservableObject {
                 let tunerCount = device.TunerCount ?? 2
                 let active = tuners.filter { $0.VctNumber != nil }.count
                 if active >= tunerCount {
-                    let alert = NSAlert()
-                    alert.messageText = "No Tuner Available"
-                    alert.informativeText = "All \(tunerCount) tuner\(tunerCount == 1 ? "" : "s") on \(device.DeviceID) are in use. Stop a recording or close another stream to free up a tuner."
-                    alert.alertStyle = .warning
-                    alert.addButton(withTitle: "OK")
-                    alert.runModal()
+                    alertTunerFull(tunerCount: tunerCount, deviceId: device.DeviceID)
                     return
                 }
             }
             NSWorkspace.shared.open([streamURL], withApplicationAt: vlcApp,
                                     configuration: .init()) { _, _ in }
         }
+    }
+
+    private func alertTunerFull(tunerCount: Int, deviceId: String) {
+        let alert = NSAlert()
+        alert.messageText = "No Tuner Available"
+        alert.informativeText = "All \(tunerCount) tuner\(tunerCount == 1 ? "" : "s") on \(deviceId) are in use. Stop a recording or close another stream to free up a tuner."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 
     // MARK: - Tuner signal status

@@ -30,7 +30,6 @@ func broadcastEvent(_:)   // pushes a JSON event to all open SSE clients
 | GET | `/api/events` | SSE stream — kept open; server pushes JSON events on state changes |
 | GET | `/api/now.json` | JSON array of on-air entries (see schema below) |
 | GET | `/api/shows-html` | HTML fragment for the schedule popover body |
-| GET | `/api/tuners.json` | JSON object `{deviceId: {t, a, surl}}` — per-device total/active tuner counts; polled by `refreshTuners()` every 30 s |
 | GET | `/api/signal` | JSON object `{guideName: "good"|"fair"|"poor"|"noData"}` — snapshot of `ChannelSignalStore.shared.buckets` keyed by `guideName.lowercased()` |
 | POST | `/api/record` | Schedule a recording |
 | POST | `/api/signal-scan` | Trigger a signal strength scan. Optional body `{"force":true}` rescans all channels regardless of freshness. Returns `{"status":"started","force":bool}`. |
@@ -544,24 +543,6 @@ Content is embedded at page build time; `refreshShowsSection()` fetches `/api/sh
 - `var recsByDev` — `{deviceId: [{tuner, title, ch, chname, ip, idle, rec, endTime}, …], …}` — per-tuner occupancy detail for popover. `ip`: client IP for external streams not matched to our recordings; `idle`: `"1"` when tuner has no channel locked; `rec`: `"1"` when tuner is running one of our recordings; `endTime`: Unix timestamp of recording end (from `show_end`) when `rec==="1"`
 
 Both variables are serialised via `JSONSerialization` (not string interpolation) and passed through `jsEscapeForScript()` before embedding in the `<script>` block. This replaces `<`, `>`, and `&` with `\uXXXX` escapes so a show title or device ID containing `</script>` cannot terminate the script element. Device filter buttons use `onclick="setDev(this.dataset.dev)"` / `onclick="showTunerInfo(this.dataset.dev,this)"` — the DeviceID is read from the already-HTML-escaped `data-dev` attribute rather than interpolated into a JS string literal.
-
----
-
-## JSON schema — `/api/tuners.json`
-
-Object keyed by device ID. Used by `refreshTuners()` to update tuner badges without a page reload.
-
-```json
-{
-  "105404BE": { "t": 2, "a": 1, "surl": "http://192.168.1.x/status.json" }
-}
-```
-
-| Key | Type | Meaning |
-|---|---|---|
-| `t` | Int | Total tuner count (`TunerCount` from device) |
-| `a` | Int | Active (in-use) tuners — slots where `VctNumber != nil` in `deviceTunerOccupancy` |
-| `surl` | String | `http://{LocalIP}/status.json` for the device detail link in the tuner popover |
 
 ---
 
