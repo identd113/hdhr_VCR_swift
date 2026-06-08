@@ -26,6 +26,7 @@ echo "==> Building…"
 swift build
 
 echo "==> Deploying binary…"
+mkdir -p "$APP/Contents/MacOS"
 cp .build/debug/hdhr_VCR "$BINARY"
 # Add rpath so the binary finds Sparkle.framework in Contents/Frameworks at runtime.
 # SPM builds against @rpath/Sparkle.framework; @loader_path alone won't reach Contents/Frameworks.
