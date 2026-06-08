@@ -13,7 +13,6 @@ private let logQueue = DispatchQueue(label: "com.hdhr.vcrplus.log", qos: .utilit
 private let logDateFormatter = ISO8601DateFormatter()
 let logFilePath = NSHomeDirectory() + "/Library/Logs/hdhrVCRplus.log"
 
-/// Universal log function. Writes to OSLog and ~/Library/Logs/hdhrVCRplus.log. Safe to call from any actor or thread.
 func glog(_ msg: String, level: LogLevel = .info) {
     switch level {
     case .info:    appLog.info("\(msg, privacy: .public)")
@@ -86,8 +85,7 @@ struct Show: Identifiable, Equatable {
         return FileManager.default.fileExists(atPath: parent) ? primary : fallback
     }
 
-    /// Converts old HFS colon-separated paths (e.g. "Raid6:DVR Tests:") to POSIX
-    /// ("/Volumes/Raid6/DVR Tests"). Already-POSIX paths are returned unchanged.
+    // Converts legacy HFS colon-separated paths ("Raid6:DVR Tests:") to POSIX ("/Volumes/Raid6/DVR Tests").
     private static func toPosix(_ path: String) -> String {
         guard !path.hasPrefix("/"), path.contains(":") else { return path }
         let stripped = path.hasSuffix(":") ? String(path.dropLast()) : path
@@ -229,8 +227,6 @@ struct AppConfig: Equatable {
     var Sports_padding_minutes: Int  = 30   // user-settable 10–60 min, default 30
     var Config_version: String = "2"
 
-    /// Returns `baseURL` with a `?transcode=<profile>` query appended when the effective
-    /// profile is not empty or "none". `override` takes precedence over `Default_transcode`.
     func applyTranscode(_ baseURL: String, override: String? = nil) -> String {
         let profile = (override ?? Default_transcode).lowercased().trimmingCharacters(in: .whitespaces)
         return (profile.isEmpty || profile == "none") ? baseURL : "\(baseURL)?transcode=\(profile)"
@@ -402,7 +398,7 @@ struct GuideChannel: Codable {
 
 // MARK: - TunerStatus
 
-/// One entry from /status.json — only present when that tuner is actively streaming.
+// One entry from /status.json — only present when that tuner slot is actively streaming.
 struct DeviceTunerInfo: Decodable {
     let Resource:             String  // "tuner0", "tuner1", …
     let VctNumber:            String? // channel number if locked
@@ -472,10 +468,6 @@ struct GuideEntry: Codable, Identifiable, Hashable {
 
 // MARK: - ManagedGuideMatcher
 
-/// Encapsulates the four managed-show sets and the matching predicate used by both the
-/// SwiftUI cable guide and the web server to decide which guide blocks get a yellow/red flag.
-/// Construct once from the active managed shows, then call isManaged(entry:) per block.
-/// Reads entry.deviceId and entry.channelNum — both stamped at decode time.
 struct ManagedGuideMatcher: Equatable {
     let seriesIDs:        Set<String>   // SeriesID(Channel/All) shows
     let titles:           Set<String>   // title fallback for series shows without a SeriesID

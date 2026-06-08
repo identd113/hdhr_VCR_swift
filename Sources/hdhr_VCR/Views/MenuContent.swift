@@ -286,10 +286,9 @@ struct MenuContent: View {
         let isSportsBonus = state.config.Sports_padding_enabled && show.show_bonus_time
         let bonusPadding  = isSportsBonus ? TimeInterval(state.config.Sports_padding_minutes * 60) : 0
         Menu(menuTitle) {
-            let started      = show.show_next ?? recNow
-            let guideEnd     = show.show_end  ?? recNow
-            let ends         = guideEnd.addingTimeInterval(bonusPadding)
-            let inBonusTime  = isSportsBonus && recNow > guideEnd
+            let started     = show.show_next ?? recNow
+            let guideEnd    = show.show_end  ?? recNow
+            let inBonusTime = isSportsBonus && recNow > guideEnd
 
             showInfoHeader(show, entry: currentEntry)
             Divider()
@@ -350,9 +349,7 @@ struct MenuContent: View {
                     ?? "\(prefix)\(stateIcon(show)) \(show.show_title)\(chSuffix)"
 
         Menu(schLabel) {
-            let now  = Date()
             let next = show.show_next ?? .distantFuture
-            let ends = show.show_end  ?? .distantFuture
 
             showInfoHeader(show, entry: schEntry)
             Divider()

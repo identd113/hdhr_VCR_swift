@@ -23,7 +23,6 @@ private struct VLCStats {
 // ── Function pointer typedefs (all @convention(c)) ───────────────────────────
 
 private typealias vlc_new_fn             = @convention(c) (Int32, UnsafePointer<UnsafePointer<CChar>?>?) -> OpaquePointer?
-private typealias vlc_release_fn         = @convention(c) (OpaquePointer?) -> Void
 private typealias vlc_media_new_loc_fn   = @convention(c) (OpaquePointer?, UnsafePointer<CChar>?) -> OpaquePointer?
 private typealias vlc_media_release_fn   = @convention(c) (OpaquePointer?) -> Void
 private typealias vlc_mp_new_fn          = @convention(c) (OpaquePointer?) -> OpaquePointer?   // libvlc_media_player_new
@@ -112,7 +111,6 @@ final class VLCBridge: ObservableObject {
     private var tracksFetched:   Bool   = false
 
     private let _new:          vlc_new_fn?
-    private let _release:      vlc_release_fn?
     private let _mediaNL:      vlc_media_new_loc_fn?
     private let _mediaRelease: vlc_media_release_fn?
     private let _mpNew:        vlc_mp_new_fn?         // libvlc_media_player_new(instance)
@@ -150,7 +148,6 @@ final class VLCBridge: ObservableObject {
         }
 
         _new          = sym("libvlc_new")
-        _release      = sym("libvlc_release")
         _mediaNL      = sym("libvlc_media_new_location")
         _mediaRelease = sym("libvlc_media_release")
         _mpNew        = sym("libvlc_media_player_new")

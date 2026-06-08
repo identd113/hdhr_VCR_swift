@@ -53,7 +53,6 @@ final class ConfigManager {
 
     // MARK: - Private
 
-    /// Upgrades config to v2 on first load from a legacy format and saves immediately.
     private func maybeUpgrade(_ file: ConfigFile) -> ConfigFile {
         guard file.config.Config_version != "2" else { return file }
         // Warn about any Mac alias paths that will no longer auto-convert
@@ -71,7 +70,7 @@ final class ConfigManager {
         return upgraded
     }
 
-    /// Decoder that handles both ISO8601 (v2) and legacy string/numeric epoch (v1) date formats.
+    // Handles both ISO8601 (v2) and legacy string/numeric epoch (v1) date formats.
     private static func makeDecoder() -> JSONDecoder {
         let d = JSONDecoder()
         d.dateDecodingStrategy = .custom { decoder in

@@ -1,18 +1,14 @@
 import SwiftUI
 import Darwin
 
-/// Network interface entry for the interface picker.
 struct NetworkInterfaceInfo: Identifiable {
     var id: String { name }
     let name: String
     let ip: String
-    /// Display label shown in the picker — name plus IP so users can identify tunnels.
     var displayLabel: String { "\(name)  \(ip)" }
 }
 
-/// Returns true if `name` is a point-to-point (tunnel/VPN) interface by checking the
-/// IFF_POINTOPOINT flag via getifaddrs. Works for any interface type regardless of name
-/// (utun*, tun*, cscotun*, gpd*, zt*, ppp*, ipsec*, etc.).
+// IFF_POINTOPOINT catches all tunnel/VPN types (utun*, cscotun*, gpd*, zt*, etc.) regardless of name prefix.
 func isPointToPointInterface(_ name: String) -> Bool {
     var ptr: UnsafeMutablePointer<ifaddrs>? = nil
     guard getifaddrs(&ptr) == 0 else { return false }
@@ -26,19 +22,8 @@ func isPointToPointInterface(_ name: String) -> Bool {
     return false
 }
 
-/// Returns IPv4-bearing interfaces suitable for the discovery/recording interface picker.
-///
-/// Tunnel/VPN detection uses IFF_POINTOPOINT rather than name prefixes, so all VPN
-/// types are caught regardless of vendor naming (utun*, tun*, cscotun* for Cisco
-/// AnyConnect, gpd* for GlobalProtect, zt* for ZeroTier, ppp*, ipsec*, etc.).
-///
-/// Point-to-point interfaces are admitted only when IFF_UP + IFF_RUNNING are set and the
-/// assigned IP is routable (not link-local 169.254.x.x). System-created tunnel entries
-/// without a real IP are already filtered by the AF_INET check; the flags + link-local
-/// guard catches any edge cases where a non-VPN tunnel gets an IP.
-///
-/// Always excluded: loopback (lo*), AWDL/AirDrop (awdl*), low-latency WLAN (llw*),
-/// and IPv6 transition tunnels (gif*, stf*) which are not VPN interfaces.
+// Returns IPv4 interfaces for the discovery/recording NIC picker.
+// VPN/tunnel interfaces are admitted only if UP+RUNNING and non-link-local; loopback, AWDL, llw, gif, stf excluded.
 func availableNetworkInterfaces() -> [NetworkInterfaceInfo] {
     var results: [NetworkInterfaceInfo] = []
     var ptr: UnsafeMutablePointer<ifaddrs>? = nil
@@ -72,7 +57,6 @@ func availableNetworkInterfaces() -> [NetworkInterfaceInfo] {
 
 // MARK: - EmptyStateView
 
-/// Thin wrapper around ContentUnavailableView for call-site convenience.
 struct EmptyStateView: View {
     let title: String
     let systemImage: String
