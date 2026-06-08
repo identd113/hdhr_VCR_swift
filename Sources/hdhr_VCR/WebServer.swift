@@ -326,6 +326,26 @@ final class WebServer {
             return .ok(contentType: "application/json", body: data)
 
         default:
+            if path.hasPrefix("/api/now-airing/") {
+                // /api/now-airing/{devId}/{channelNum} — returns currently-airing guide entry as JSON
+                let tail  = path.dropFirst("/api/now-airing/".count)
+                let parts = tail.split(separator: "/", maxSplits: 1)
+                guard parts.count == 2 else { return .notFound("bad params") }
+                let devId = String(parts[0]).removingPercentEncoding ?? String(parts[0])
+                let ch    = String(parts[1]).removingPercentEncoding ?? String(parts[1])
+                let now   = Int(Date().timeIntervalSince1970)
+                let airing = state.guideStore.entries(deviceId: devId, channelNum: ch,
+                    after: Date(timeIntervalSince1970: TimeInterval(now - 7200)))
+                    .first { $0.StartTime <= now && $0.EndTime > now }
+                let result: [String: String] = [
+                    "title":   airing?.Title ?? "",
+                    "epTitle": airing?.EpisodeTitle ?? "",
+                    "poster":  airing?.ImageURL ?? "",
+                    "endTime": airing.map { String($0.EndTime) } ?? ""
+                ]
+                let body = (try? JSONSerialization.data(withJSONObject: result)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+                return .ok(contentType: "application/json", body: Data(body.utf8))
+            }
             if path.hasPrefix("/icon/") {
                 let filename = String(path.dropFirst("/icon/".count))
                 guard !filename.isEmpty, !filename.contains("/"), !filename.contains("..") else {
@@ -705,15 +725,24 @@ final class WebServer {
                 if let occupancy = state.deviceTunerOccupancy[d.DeviceID], !occupancy.isEmpty {
                     for info in occupancy {
                         let matchShow = recording.first {
-                            $0.hdhr_record == d.DeviceID && $0.show_tuner_resource == info.Resource
+                            guard $0.hdhr_record == d.DeviceID else { return false }
+                            // prefer resource match; fall back to channel match when resource not yet captured
+                            if !$0.show_tuner_resource.isEmpty {
+                                return $0.show_tuner_resource.lowercased() == info.Resource.lowercased()
+                            }
+                            return $0.show_channel == (info.VctNumber ?? "")
                         }
                         let title: String = {
                             if let t = matchShow?.show_title, !t.isEmpty { return t }
                             if let ch = info.VctNumber { return "Live stream ch \(ch)" }
                             return "Active stream"
                         }()
-                        let ch = matchShow?.show_channel ?? info.VctNumber ?? "?"
-                        entries.append(["tuner": info.Resource, "title": title, "ch": ch, "chname": chName(ch)])
+                        let ch   = matchShow?.show_channel ?? info.VctNumber ?? "?"
+                        let ip   = matchShow == nil ? (info.TargetIP ?? "") : ""
+                        let idle = matchShow == nil && info.VctNumber == nil ? "1" : ""
+                        let rec    = matchShow != nil ? "1" : ""
+                        let endTs  = matchShow?.show_end.map { String(Int($0.timeIntervalSince1970)) } ?? ""
+                        entries.append(["tuner": info.Resource, "title": title, "ch": ch, "chname": chName(ch), "ip": ip, "idle": idle, "rec": rec, "endTime": endTs])
                     }
                 } else {
                     for show in recording.filter({ $0.hdhr_record == d.DeviceID }) {
@@ -721,7 +750,9 @@ final class WebServer {
                             "tuner":   show.show_tuner_resource.isEmpty ? "—" : show.show_tuner_resource,
                             "title":   show.show_title,
                             "ch":      show.show_channel,
-                            "chname":  chName(show.show_channel)
+                            "chname":  chName(show.show_channel),
+                            "rec":     "1",
+                            "endTime": show.show_end.map { String(Int($0.timeIntervalSince1970)) } ?? ""
                         ])
                     }
                 }
@@ -1188,7 +1219,7 @@ final class WebServer {
           <select id="genre-sel" onchange="filterGenre(this.value)" class="genre-sel"><option value="">All genres</option></select>
         </div>
         <div id="t-pop" onclick="if(event.target===this)closeTunerPop()" style="display:none;position:fixed;inset:0;z-index:200">
-          <div id="t-pop-c" style="position:absolute;background:#1e1e1e;border:1px solid #484848;border-radius:10px;padding:14px 16px;min-width:240px;max-width:340px;box-shadow:0 8px 32px rgba(0,0,0,.75)">
+          <div id="t-pop-c" style="position:absolute;background:#1e1e1e;border:1px solid #484848;border-radius:10px;padding:16px 18px;min-width:280px;max-width:400px;box-shadow:0 8px 32px rgba(0,0,0,.75)">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
               <span id="t-pop-hdr" style="font-size:.82rem;font-weight:600;color:#e0e0e0"></span>
               <button onclick="closeTunerPop()" style="background:none;border:none;color:#666;font-size:.9rem;cursor:pointer;padding:0 0 0 12px;line-height:1">✕</button>
@@ -1574,26 +1605,96 @@ final class WebServer {
             list.innerHTML='<div style="color:var(--t4);font-size:.8rem;padding:4px 0">No active recordings</div>';
           } else {
             list.innerHTML=recs.map(function(r){
+              if(r.idle==='1'){
+                return '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--b0)">'
+                  +'<span style="font-size:.67rem;color:var(--t4);min-width:48px;flex-shrink:0">'+hej(r.tuner)+'</span>'
+                  +'<span style="font-size:.78rem;color:var(--t4)">Idle</span>'
+                  +'</div>';
+              }
               var chLabel=hej(r.ch)+(r.chname?' · '+hej(r.chname):'');
-              return '<div style="display:flex;flex-direction:column;gap:2px;padding:6px 0;border-bottom:1px solid var(--b0)">'
+              var ipHtml=r.ip?'<div style="font-size:.67rem;color:var(--t4);padding-left:56px">'+hej(r.ip)+'</div>':'';
+              var recDot=r.rec==='1'?'<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#e53935;margin-right:6px;flex-shrink:0;vertical-align:middle"></span>':'';
+              var etHtml='';
+              if(r.endTime&&r.rec==='1'){var et=new Date(parseInt(r.endTime,10)*1000);etHtml='<div style="font-size:.72rem;color:var(--t3);padding-left:56px">Ends '+et.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})+'</div>';}
+              var rid='tnr-'+hej(r.tuner).replace(/\\W/g,'');
+              return '<div id="'+rid+'" style="display:flex;flex-direction:column;gap:2px;padding:8px 0;border-bottom:1px solid var(--b0)">'
                 +'<div style="display:flex;align-items:center;gap:8px">'
                   +'<span style="font-size:.67rem;color:var(--t4);min-width:48px;flex-shrink:0">'+hej(r.tuner)+'</span>'
                   +'<span style="font-size:.78rem;font-weight:600;color:var(--ac);white-space:nowrap">'+chLabel+'</span>'
                 +'</div>'
-                +'<div style="font-size:.82rem;color:var(--t0);padding-left:56px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+hej(r.title)+'</div>'
+                +'<div style="font-size:.82rem;color:var(--t0);padding-left:56px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+recDot+hej(r.title)+'</div>'
+                +etHtml
+                +ipHtml
                 +'</div>';
             }).join('');
+            // Async guide enrichment for external streams — runs after innerHTML is set
+            recs.forEach(function(r){
+              if(r.idle==='1'||!r.ch||r.ch==='?')return;
+              if(!r.title||r.title.indexOf('Live stream')<0)return; // skip our own recordings
+              var rid='tnr-'+r.tuner.replace(/\\W/g,'');
+              fetch('/api/now-airing/'+encodeURIComponent(devId)+'/'+encodeURIComponent(r.ch))
+                .then(function(res){return res.json();})
+                .then(function(g){
+                  var row=document.getElementById(rid);
+                  if(!row||document.getElementById('t-pop').style.display==='none')return;
+                  if(g.title){
+                    var titleDiv=row.children[1];
+                    if(titleDiv){
+                      titleDiv.textContent=g.title;titleDiv.style.cursor='pointer';titleDiv.style.textDecoration='underline dotted';titleDiv.onclick=function(){goToShow(r.ch);};
+                      // Red dot if we're recording this channel on any device
+                      var allRecs=Object.values(recsByDev).reduce(function(a,b){return a.concat(b);},[]);
+                      if(allRecs.some(function(rec){return rec.rec==='1'&&rec.ch===r.ch;})){
+                        var dot=document.createElement('span');
+                        dot.style.cssText='display:inline-block;width:8px;height:8px;border-radius:50%;background:#e53935;margin-right:6px;flex-shrink:0;vertical-align:middle';
+                        titleDiv.insertBefore(dot,titleDiv.firstChild);
+                      }
+                    }
+                  }
+                  if(g.epTitle){
+                    var ep=document.createElement('div');
+                    ep.style.cssText='font-size:.75rem;color:var(--t2);font-style:italic;padding-left:56px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+                    ep.textContent=g.epTitle;
+                    var last=row.lastElementChild;
+                    row.insertBefore(ep,last&&last.style.fontSize==='.67rem'?last:null);
+                  }
+                  if(g.endTime){
+                    var et=new Date(parseInt(g.endTime,10)*1000);
+                    var etStr=et.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
+                    var etDiv=document.createElement('div');
+                    etDiv.style.cssText='font-size:.72rem;color:var(--t3);padding-left:56px';
+                    etDiv.textContent='Ends '+etStr;
+                    var last=row.lastElementChild;
+                    row.insertBefore(etDiv,last&&last.style.fontSize==='.67rem'?last:null);
+                  }
+                  if(g.poster){
+                    var chRow=row.children[0];
+                    if(chRow){var img=document.createElement('img');img.src=g.poster;img.style.cssText='width:40px;height:27px;border-radius:3px;object-fit:cover;flex-shrink:0;margin-right:4px';img.onerror=function(){this.style.display='none';};chRow.insertBefore(img,chRow.children[1]);}
+                  }
+                }).catch(function(){});
+            });
           }
           var statusLink=document.getElementById('t-pop-status');
           if(dt&&dt.surl){statusLink.href=dt.surl;statusLink.style.display='block';}else{statusLink.style.display='none';}
           var pop=document.getElementById('t-pop-c');
           var rect=anchor.getBoundingClientRect();
-          var left=Math.min(rect.left,window.innerWidth-360);
+          var left=Math.min(rect.left,window.innerWidth-410);
           pop.style.left=Math.max(8,left)+'px';
           pop.style.top=(rect.bottom+8)+'px';
           document.getElementById('t-pop').style.display='block';
         }
         function closeTunerPop(){document.getElementById('t-pop').style.display='none';}
+        function goToShow(ch){
+          closeTunerPop();
+          var now=Math.floor(Date.now()/1000);
+          var rows=document.querySelectorAll('.g-row[data-ch="'+ch+'"]');
+          for(var i=0;i<rows.length;i++){
+            var progs=rows[i].querySelectorAll('.g-prog');
+            for(var j=0;j<progs.length;j++){
+              var p=progs[j];
+              if(+p.dataset.start<=now&&+p.dataset.end>now){p.scrollIntoView({behavior:'smooth',block:'center',inline:'center'});showInfo(p);return;}
+            }
+          }
+        }
         function openSchedPop(anchor){
           var pop=document.getElementById('sched-pop');
           if(pop.style.display!=='none'){closeSchedPop();return;}
