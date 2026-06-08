@@ -23,6 +23,13 @@ final class WebServer {
     private var sseConns: [NWConnection] = []
     private let sseLock  = NSLock()
 
+    // Static so the DateFormatter is allocated once, not on every GET /.
+    private static let hourFmt: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = DateFormatter.dateFormat(fromTemplate: "j", options: 0, locale: .current)
+        return f
+    }()
+
     // MARK: - Lifecycle
 
     func start(port: Int, appState: AppState, onState: @escaping (String?) -> Void) {
@@ -245,7 +252,6 @@ final class WebServer {
 
     private func refreshTunerOccupancy() async {
         let devices = await MainActor.run { appState?.devices ?? [] }
-        glog("[WebServer] refreshTunerOccupancy: \(devices.count) device(s)")
         await withTaskGroup(of: Void.self) { group in
             for device in devices {
                 group.addTask { [weak self] in
@@ -266,21 +272,10 @@ final class WebServer {
                         glog("[WebServer] refreshTunerOccupancy: decode failed for \(device.DeviceID) HTTP \(http) body=\(raw)", level: .warning)
                         return
                     }
-                    let activeTuners = tuners.filter { $0.VctNumber != nil }
-                    glog("[WebServer] refreshTunerOccupancy: \(device.DeviceID) HTTP \(http) → \(tuners.count) slot(s) total, \(activeTuners.count) active: \(activeTuners.map { "\($0.Resource) ch\($0.VctNumber ?? "?")" }.joined(separator: ", "))")
                     await MainActor.run { self?.appState?.deviceTunerOccupancy[device.DeviceID] = tuners }
                 }
             }
         }
-        // Log final occupancy used for page render
-        let summary = await MainActor.run {
-            (appState?.devices ?? []).map { d in
-                let occ = appState?.deviceTunerOccupancy[d.DeviceID]
-                let total = d.TunerCount ?? 0
-                return "\(d.DeviceID): occ=\(occ.map { "\($0.count)" } ?? "nil")/\(total)"
-            }.joined(separator: ", ")
-        }
-        glog("[WebServer] tunerOccupancy after refresh: \(summary)")
     }
 
     @MainActor
@@ -632,14 +627,9 @@ final class WebServer {
         let guideMinWidth = max(1200, winSec / 1800 * 100)
 
         // ── Time tick labels: one per clock hour across the window ──────────
-        let hourFmt: DateFormatter = {
-            let f = DateFormatter()
-            f.dateFormat = DateFormatter.dateFormat(fromTemplate: "j", options: 0, locale: .current)
-            return f
-        }()
         let firstHour = ((winStart + 3599) / 3600) * 3600  // first hour boundary ≥ winStart
         let ticksHTML: String = stride(from: firstHour, through: winEnd, by: 3600).map { ts in
-            let lbl = he(hourFmt.string(from: Date(timeIntervalSince1970: TimeInterval(ts))))
+            let lbl = he(Self.hourFmt.string(from: Date(timeIntervalSince1970: TimeInterval(ts))))
             return "<div class=\"g-tick\" style=\"left:\(pct(ts - winStart))%\">\(lbl)</div>"
         }.joined() + "<div class=\"g-now-tick\" style=\"left:\(nowPct)%\"></div>"
 
@@ -921,7 +911,7 @@ final class WebServer {
                 let favBtn  = ch.isFavorite
                     ? "<button class=\"g-fav-btn\" data-fav=\"1\" onclick=\"toggleFav(event,this)\" title=\"Remove from favorites\">★</button>"
                     : "<button class=\"g-fav-btn\" onclick=\"toggleFav(event,this)\" title=\"Add to favorites\">☆</button>"
-                let rowHTML = "<div class=\"g-row\" data-dev=\"\(he(device.DeviceID))\" data-ch=\"\(he(ch.GuideNumber))\" data-gname=\"\(he(gnameAttr))\"\(favAttr)><div class=\"g-ch\">\(logoHTML)<div class=\"g-cl\"><span class=\"g-cn\">\(he(chLabel))</span><span class=\"g-cname\">\(he(ch.GuideName))</span></div>\(sigHTML)\(favBtn)</div><div class=\"g-tl\">\(blockParts.joined())</div></div>"
+                let rowHTML = "<div class=\"g-row\" data-dev=\"\(he(device.DeviceID))\" data-ch=\"\(he(ch.GuideNumber))\" data-gname=\"\(he(gnameAttr))\"\(favAttr)><div class=\"g-ch\">\(logoHTML)<div class=\"g-cl\"><span class=\"g-cn\">\(he(chLabel))\(sigHTML)</span><span class=\"g-cname\">\(he(ch.GuideName))</span></div>\(favBtn)</div><div class=\"g-tl\">\(blockParts.joined())</div></div>"
                 if ch.isFavorite { favRows.append(rowHTML) } else { otherRows.append(rowHTML) }
             }
             // Assemble: favorites section (with header/footer) then non-favorites
@@ -1091,7 +1081,7 @@ final class WebServer {
         .g-cl{flex:1;min-width:0}
         .g-cn{display:block;font-size:.68rem;color:var(--t3);white-space:nowrap;font-weight:500}
         .g-cname{display:block;font-size:.72rem;color:var(--t1);font-weight:600;white-space:nowrap}
-        .g-sig{flex-shrink:0;align-self:center}
+        .g-sig{vertical-align:middle;margin-left:2px}
         /* 30-min gridlines */
         .g-tl{flex:1;position:relative;min-height:54px;background:repeating-linear-gradient(90deg,transparent,transparent calc(8.3333% - 1px),var(--b0) calc(8.3333% - 1px),var(--b0) 8.3333%)}
         .g-now-bar{position:absolute;top:0;bottom:0;width:2px;background:rgba(255,90,90,.75);z-index:1;pointer-events:none}
@@ -1929,7 +1919,7 @@ final class WebServer {
                     +'</svg>';
                   var tmp=document.createElement('div');tmp.innerHTML=svgStr;
                   if(sig){sig.replaceWith(tmp.firstChild);}
-                  else{var cl=row.querySelector('.g-ch');if(cl)cl.appendChild(tmp.firstChild);}
+                  else{var cn=row.querySelector('.g-cn');if(cn)cn.appendChild(tmp.firstChild);}
                 });
               } else {
                 refreshGuide();
@@ -2037,30 +2027,19 @@ final class WebServer {
     // MARK: - Send
 
     private func send(_ response: WebResponse, on conn: NWConnection) {
+        func errorParts(_ statusLine: String, _ msg: String) -> (String, [(String, String)], Data) {
+            let b = Data(msg.utf8)
+            return (statusLine, [("Content-Type", "text/plain"), ("Content-Length", "\(b.count)")], b)
+        }
         let (status, headers, body): (String, [(String, String)], Data)
         switch response {
         case .ok(let ct, let b):
             status  = "200 OK"
             headers = [("Content-Type", ct), ("Content-Length", "\(b.count)")]
             body    = b
-
-        case .notFound(let msg):
-            let b = Data(msg.utf8)
-            status  = "404 Not Found"
-            headers = [("Content-Type", "text/plain"), ("Content-Length", "\(b.count)")]
-            body    = b
-
-        case .badRequest(let msg):
-            let b = Data(msg.utf8)
-            status  = "400 Bad Request"
-            headers = [("Content-Type", "text/plain"), ("Content-Length", "\(b.count)")]
-            body    = b
-
-        case .payloadTooLarge(let msg):
-            let b = Data(msg.utf8)
-            status  = "413 Content Too Large"
-            headers = [("Content-Type", "text/plain"), ("Content-Length", "\(b.count)")]
-            body    = b
+        case .notFound(let msg):      (status, headers, body) = errorParts("404 Not Found",         msg)
+        case .badRequest(let msg):    (status, headers, body) = errorParts("400 Bad Request",       msg)
+        case .payloadTooLarge(let msg):(status, headers, body) = errorParts("413 Content Too Large", msg)
         }
 
         var raw = "HTTP/1.1 \(status)\r\n"
