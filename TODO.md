@@ -111,6 +111,30 @@ Color the background of each guide entry row in the `.menu` mode add-show cascad
 
 ---
 
+## Web UI / SSE
+
+### Tuner button count real-time update
+
+The `#tun-{devId}` button ("1/2" / "2/2 — FULL") in the web guide header doesn't update when a recording starts or stops — it reflects the page-load state until the next `refreshGuide()`. Fix: push `tunerActive` and `tunerTotal` integers in `broadcastRecordingEvent`; JS updates button `textContent` and `className` inline.
+
+`tunerActive` = `state.recordingShows.filter { $0.hdhr_record == device }.count` (already correct at broadcast time). `tunerTotal` = `state.devices.first { $0.DeviceID == device }?.TunerCount ?? 0`.
+
+**Key file**: `Sources/hdhr_VCR/WebServer.swift` — `broadcastRecordingEvent`, SSE `onmessage` handler.
+
+---
+
+### Tuner popup `recsByDev` freshness
+
+The `recsByDev` JS variable (drives popup content when user clicks the tuner button) is baked at page load and never updated by SSE events. Two parts to fix:
+
+1. **Flip broadcast order** — `refreshTunerOccupancy()` must run BEFORE `broadcastRecordingEvent` so occupancy data is fresh. For `recording_started` (AppState ~line 1185): move `refreshTunerOccupancy()` above the broadcast. For `recording_stopped`: move the broadcast out of `teardownRecordingState` into `stopRecording` after `refreshTunerOccupancy()`.
+
+2. **Push `recsByDev` JSON** — Extract the `recsByDevJS` closure in `buildHTML` (~lines 716–760) into a private `@MainActor buildRecsByDevDict(state:) -> [String: [[String: String]]]` helper. Include it in `broadcastRecordingEvent` as `"recsByDev": buildRecsByDevDict(state: state)`. JS receives it, sets `recsByDev = d.recsByDev`, and calls `closeTunerPop()` so the user re-opens to fresh data.
+
+**Key files**: `Sources/hdhr_VCR/WebServer.swift` — new helper, `broadcastRecordingEvent`, SSE handler. `Sources/hdhr_VCR/AppState.swift` — call-order change in `startRecording` and `stopRecording`.
+
+---
+
 ## Code Quality
 
 ### Remove unused `_release` symbol from VLCBridge

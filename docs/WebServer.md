@@ -13,6 +13,7 @@ func start(port: Int, appState: AppState, onState: @escaping (String?) -> Void)
 func stop()
 func updateTXTRecord()    // @MainActor — refreshes mDNS TXT record; called from idleLoop
 func broadcastEvent(_:)   // pushes a JSON event to all open SSE clients
+func broadcastRecordingEvent(type:channel:device:state:)  // @MainActor — builds sumPh/schedPop fragments and calls broadcastEvent
 ```
 
 `onState` is called on `DispatchQueue.main`. `nil` = server is ready; non-nil = error string.
@@ -217,8 +218,9 @@ A persistent SSE endpoint. Browsers connect once on page load via `EventSource('
 
 | Event `type` | Triggered by | Payload fields |
 |---|---|---|
-| `recording_started` | `AppState.startRecording` | `channel`, `device` |
-| `recording_stopped` | `AppState.stopRecording` | `channel`, `device` |
+| `recording_started` | `AppState.startRecording` | `channel`, `device`, `sumPh` (HTML), `schedPop` (HTML) |
+| `recording_stopped` | `AppState.teardownRecordingState` | `channel`, `device`, `sumPh` (HTML), `schedPop` (HTML) |
+| `guide_refreshed` | `AppState.refreshGuides` (on success) | *(none beyond type)* |
 | `show_added` | `AppState.addShowFromGuide` | `channel`, `device` |
 | `show_deleted` | `WebServer.handleDelete` | `channel`, `device` |
 | `show_updated` | `WebServer.handleEdit` | `channel`, `device` |
@@ -227,28 +229,17 @@ A persistent SSE endpoint. Browsers connect once on page load via `EventSource('
 | `deviceOnline` | `AppState.probeForNewDevices` (seen after unavailable, or new device) | `deviceId` |
 | `signal_update` | `AppState.startSignalScan` | `gname` (guideName.lowercased()), `bucket` (raw string: `"good"` / `"fair"` / `"poor"` / `"noData"`) |
 
-**Client handling:**
-```javascript
-(function(){
-  if(!window.EventSource)return;
-  var es=new EventSource('/api/events');
-  es.onmessage=function(e){
-    try{
-      var d=JSON.parse(e.data);
-      if(!d||!d.type)return;
-      if(d.type==='signal_update'&&d.gname&&d.bucket){
-        // inline DOM update — no full refresh needed
-        document.querySelectorAll('.g-row[data-gname="'+d.gname+'"]').forEach(function(row){
-          // update SVG bars in channel column
-        });
-      } else {
-        refreshGuide();
-      }
-    }catch(x){}
-  };
-})();
-```
-`signal_update` events update the SVG bars on matching `.g-row[data-gname]` elements in-place without triggering a full `refreshGuide()`. All other events trigger `refreshGuide()` — the scroll-preserving partial DOM swap. `EventSource` auto-reconnects after 3 s on drop. `stop()` cancels all SSE connections and clears the registry.
+`recording_started` and `recording_stopped` carry pre-rendered `sumPh` and `schedPop` HTML fragments built by `broadcastRecordingEvent` → `buildSumPhHTML` + `buildSchedPopHTML`. The client applies these inline without a second HTTP request.
+
+**Client handling (three cases):**
+
+1. `signal_update` — updates SVG signal bars in-place on matching `.g-row[data-gname]` rows. No `refreshGuide()`.
+2. Events with `sumPh`/`schedPop` — applies HTML fragments to `#sum-ph` and `#sched-pop-body` directly. For recording events also toggles `.g-prog-rec` / `.g-prog-now` classes and the `.g-flag-rec` child on the currently-airing guide entry for the affected channel+device. No `refreshGuide()`.
+3. All other events — `refreshGuide()` (scroll-preserving partial DOM swap).
+
+`guide_refreshed` falls into case 3 — `refreshGuide()` fetches the full page and swaps the grid, bringing schedule flags and channel data up to date after a guide cycle.
+
+`EventSource` auto-reconnects after 3 s on drop. `stop()` cancels all SSE connections and clears the registry.
 
 ---
 
@@ -392,7 +383,7 @@ A cable-TV-style horizontal time grid. Window width depends on the requesting cl
 
 **Window start:** `winStart = (nowTs / 1800) * 1800 - 1800` — floors to the nearest 30-minute boundary then subtracts one slot, giving a 30–60 minute lookback. `GuideStore.entries()` is called with `after: Date(winStart)` (not the default `after: Date()`) so shows that already ended but fall within the lookback are included. Gap periods with no guide data render as `.g-gap` divs (fully opaque `var(--bg)`) so the striped `.g-tl` background never shows through. On page load, a JS IIFE scrolls the guide so the now-line sits ~25% from the left of the visible viewport.
 
-**Live now-line:** `_winStart` and `_winSec` are baked into the page JS at render time. `nowPct()` recomputes the now-line position as `(Date.now()/1000 - _winStart) / _winSec * 100`, clamped to [0, 100]. `updateNowLine()` updates the `left` style on all `.g-now-bar` and `.g-now-tick` elements every **5 minutes** via `setInterval`. It also auto-scrolls the guide if the now-line has drifted past **75%** of the viewport width, nudging it back to the 25% position — without disturbing users who have manually scrolled ahead (their now-line is near the left edge, well below the threshold).
+**Live now-line:** `_winStart` and `_winSec` are baked into the page JS at render time. `nowPct()` recomputes the now-line position as `(Date.now()/1000 - _winStart) / _winSec * 100`, clamped to [0, 100]. `updateNowLine()` updates the `left` style on all `.g-now-bar` and `.g-now-tick` elements every **1 minute** via `setInterval`. It also auto-scrolls the guide if the now-line has drifted past **75%** of the viewport width, nudging it back to the 25% position — without disturbing users who have manually scrolled ahead (their now-line is near the left edge, well below the threshold).
 
 **Page staleness:** two guards run every 60 seconds via `checkFreshness()`: (1) if `Date.now()` exceeds the baked-in `_exp` timestamp (render time + 2 hours), the page hard-reloads; (2) `/api/ping` is fetched and its `version` field compared to the baked-in `_ver` — mismatch means a redeploy has occurred, triggering `location.reload()`. The version check catches redeployments within 60 seconds; the `_exp` expiry handles long-open stale tabs.
 
@@ -669,7 +660,11 @@ func quit()             // calls webServer.stop()
 
 `addShowFromGuide` and `deleteShow` called by the web handlers are the same functions used throughout the app — no web-specific recording logic.
 
-`broadcastEvent` is called from `AppState` (`startRecording`, `stopRecording`, `addShowFromGuide`) and from `WebServer` handlers (`handleDelete`, `handleEdit`) after state changes. Connected SSE clients receive the event and call `refreshGuide()` in place.
+`broadcastEvent` is called from `AppState` (`addShowFromGuide`) and from `WebServer` handlers (`handleDelete`, `handleEdit`) after state changes.
+
+`broadcastRecordingEvent` is called from `AppState` for `recording_started` and `recording_stopped`. It builds fresh `#sum-ph` and `#sched-pop-body` HTML fragments via `buildSumPhHTML` and `buildSchedPopHTML` and embeds them in the event payload so clients can update those elements without a second HTTP request.
+
+`guide_refreshed` is broadcast from `AppState.refreshGuides()` when at least one device returned guide data; connected clients call `refreshGuide()` to swap the full grid.
 
 ---
 

@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import ServiceManagement
 
 private enum SettingsCategory: String, CaseIterable, Identifiable {
     var id: String { rawValue }
@@ -38,26 +39,8 @@ struct SettingsView: View {
     @State private var draftSimulatedOS:   Int         = 0
     @State private var loginItemError: String          = ""
 
-    private var launchAgentPlistURL: URL {
-        FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("LaunchAgents/com.hdhr.vcrplus.plist")
-    }
-
-    // LaunchAgent plist — works regardless of code signing, no BTM approval needed
     private var launchAtLoginRegistered: Bool {
-        FileManager.default.fileExists(atPath: launchAgentPlistURL.path)
-    }
-
-    private func writeLaunchAgent() throws {
-        let plist: [String: Any] = [
-            "Label": "com.hdhr.vcrplus",
-            "ProgramArguments": ["/usr/bin/open", "-a", Bundle.main.bundleURL.path],
-            "RunAtLoad": true
-        ]
-        let dir = launchAgentPlistURL.deletingLastPathComponent()
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let data = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
-        try data.write(to: launchAgentPlistURL)
+        SMAppService.mainApp.status == .enabled
     }
     @State private var logoTapCount  = 0
     @State private var changelogHeight: CGFloat = 0
@@ -208,8 +191,8 @@ struct SettingsView: View {
         loginItemError = ""
         if draftLaunchAtLogin != launchAtLoginRegistered {
             do {
-                if draftLaunchAtLogin { try writeLaunchAgent() }
-                else                  { try FileManager.default.removeItem(at: launchAgentPlistURL) }
+                if draftLaunchAtLogin { try SMAppService.mainApp.register() }
+                else                  { try SMAppService.mainApp.unregister() }
             } catch {
                 glog("[Settings] Login item: \(error)", level: .error)
                 draftLaunchAtLogin = launchAtLoginRegistered

@@ -17,7 +17,7 @@ let package = Package(
                 .product(name: "Sparkle", package: "Sparkle")
             ],
             path: "Sources/hdhr_VCR",
-            resources: [.copy("CHANGELOG.md")]
+            resources: [.copy("CHANGELOG.md"), .copy("PrivacyInfo.xcprivacy")]
         ),
         .testTarget(
             name: "hdhr_VCRTests",

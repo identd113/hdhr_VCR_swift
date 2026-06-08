@@ -121,6 +121,19 @@ final class WebServer {
         }
     }
 
+    // Push a recording state-change event with pre-built HTML fragments so connected clients
+    // can update #sum-ph, #sched-pop-body, and the guide row recording dot without a full page fetch.
+    @MainActor
+    func broadcastRecordingEvent(type: String, channel: String, device: String, state: AppState) {
+        broadcastEvent([
+            "type":     type,
+            "channel":  channel,
+            "device":   device,
+            "sumPh":    buildSumPhHTML(state: state),
+            "schedPop": buildSchedPopHTML(state: state)
+        ])
+    }
+
     private func removeSSE(_ conn: NWConnection) {
         sseLock.lock()
         sseConns.removeAll { $0 === conn }
@@ -319,6 +332,13 @@ final class WebServer {
             for (key, bucket) in ChannelSignalStore.shared.buckets { out[key] = bucket.rawValue }
             let data = (try? JSONSerialization.data(withJSONObject: out)) ?? Data("{}".utf8)
             return .ok(contentType: "application/json", body: data)
+
+        case "/favicon.ico":
+            if let url = Bundle.main.url(forResource: "favicon", withExtension: "ico"),
+               let data = try? Data(contentsOf: url) {
+                return .ok(contentType: "image/x-icon", body: data)
+            }
+            return .notFound("favicon not found")
 
         default:
             if path.hasPrefix("/api/now-airing/") {
@@ -576,8 +596,7 @@ final class WebServer {
 
         if let next = upNext {
             if !parts.isEmpty { parts.append("<div class=\"sp-div\"></div>") }
-            let rel = txtRelativeTime(next.show_next!)
-            let detail = "<span style=\"color:var(--ac)\">\(he(rel))</span>"
+            let detail = "<span style=\"color:var(--ac)\">at \(he(state.shortTime(next.show_next)))</span>"
             parts.append("<div class=\"sp-sec\"><div class=\"sp-hdr\">Up Next</div>\(showRow(next, chDetail: detail))</div>")
         }
 
@@ -601,6 +620,30 @@ final class WebServer {
         }
 
         return parts.isEmpty ? "<div class=\"sp-empty\">No shows scheduled.</div>" : parts.joined()
+    }
+
+    @MainActor
+    private func buildSumPhHTML(state: AppState) -> String {
+        let recording = state.recordingShows
+        let phSorted = state.activeShows.sorted {
+            ($0.show_next?.timeIntervalSince1970 ?? .infinity) < ($1.show_next?.timeIntervalSince1970 ?? .infinity)
+        }
+        func phLogo(_ deviceId: String, _ ch: String) -> String {
+            guard let raw = state.channelImageURLs["\(deviceId):\(ch)"], !raw.isEmpty,
+                  let fn = URL(string: raw)?.lastPathComponent, !fn.isEmpty else { return "" }
+            return "<img src=\"/icon/\(he(fn))\" onerror=\"this.style.display='none'\" style=\"width:36px;height:36px;object-fit:contain;border-radius:4px;flex-shrink:0;margin-right:12px\">"
+        }
+        if let rec = recording.first {
+            var sub = ""
+            if let next = phSorted.first(where: { $0.show_next != nil && $0.show_id != rec.show_id }) {
+                sub = "<div style=\"font-size:.7rem;color:var(--t4);margin-top:2px\"><span style=\"color:var(--ac)\">★</span> \(he(next.show_title)) · at \(he(state.shortTime(next.show_next)))</div>"
+            }
+            return "\(phLogo(rec.hdhr_record, rec.show_channel))<div><div style=\"font-size:.82rem;font-weight:600;color:var(--t0)\"><span style=\"color:#ff8080\">●</span> Recording: \(he(rec.show_title))</div>\(sub)</div>"
+        } else if let next = phSorted.first(where: { $0.show_next != nil }) {
+            return "\(phLogo(next.hdhr_record, next.show_channel))<div><div style=\"font-size:.82rem;font-weight:600;color:var(--t0)\"><span style=\"color:var(--ac)\">★</span> Up Next: \(he(next.show_title))</div><div style=\"font-size:.7rem;color:var(--t4);margin-top:2px\">at \(he(state.shortTime(next.show_next)))</div></div>"
+        } else {
+            return "<div style=\"font-size:.85rem;color:var(--t5)\">Select a show from the guide</div>"
+        }
     }
 
     @MainActor
@@ -927,27 +970,7 @@ final class WebServer {
             : rowParts.joined()
 
         // ── Summary placeholder: current recording or next scheduled show ────
-        let phSorted = state.activeShows.sorted {
-            ($0.show_next?.timeIntervalSince1970 ?? .infinity) < ($1.show_next?.timeIntervalSince1970 ?? .infinity)
-        }
-        func phLogo(_ deviceId: String, _ ch: String) -> String {
-            guard let raw = state.channelImageURLs["\(deviceId):\(ch)"], !raw.isEmpty,
-                  let fn = URL(string: raw)?.lastPathComponent, !fn.isEmpty else { return "" }
-            let url = "/icon/\(fn)"
-            return "<img src=\"\(he(url))\" onerror=\"this.style.display='none'\" style=\"width:36px;height:36px;object-fit:contain;border-radius:4px;flex-shrink:0;margin-right:12px\">"
-        }
-        let sumPhHTML: String
-        if let rec = recording.first {
-            var sub = ""
-            if let next = phSorted.first(where: { $0.show_next != nil && $0.show_id != rec.show_id }) {
-                sub = "<div style=\"font-size:.7rem;color:var(--t4);margin-top:2px\"><span style=\"color:var(--ac)\">★</span> \(he(next.show_title)) · \(he(txtRelativeTime(next.show_next!)))</div>"
-            }
-            sumPhHTML = "\(phLogo(rec.hdhr_record, rec.show_channel))<div><div style=\"font-size:.82rem;font-weight:600;color:var(--t0)\"><span style=\"color:#ff8080\">●</span> Recording: \(he(rec.show_title))</div>\(sub)</div>"
-        } else if let next = phSorted.first(where: { $0.show_next != nil }) {
-            sumPhHTML = "\(phLogo(next.hdhr_record, next.show_channel))<div><div style=\"font-size:.82rem;font-weight:600;color:var(--t0)\"><span style=\"color:var(--ac)\">★</span> Up Next: \(he(next.show_title))</div><div style=\"font-size:.7rem;color:var(--t4);margin-top:2px\">\(he(txtRelativeTime(next.show_next!)))</div></div>"
-        } else {
-            sumPhHTML = "<div style=\"font-size:.85rem;color:var(--t5)\">Select a show from the guide</div>"
-        }
+        let sumPhHTML = buildSumPhHTML(state: state)
 
         // ── Schedule popover content ──────────────────────────────────────────
         let schedPopHTML = buildSchedPopHTML(state: state)
@@ -960,6 +983,7 @@ final class WebServer {
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width,initial-scale=1">
         <title>hdhrVCR+</title>
+        <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico">
         <script>(function(){try{var m=localStorage.getItem('theme')||'dark';if(m==='light'||(m==='auto'&&window.matchMedia('(prefers-color-scheme:light)').matches))document.documentElement.classList.add('lm');}catch(e){}})();</script>
         <style>
         *{box-sizing:border-box;margin:0;padding:0}
@@ -1885,7 +1909,7 @@ final class WebServer {
         }
         function scrollToNow(){var gw=document.querySelector('.gw');var gi=document.querySelector('.gi');if(!gw||!gi)return;var nowPx=gi.scrollWidth*(nowPct()/100);gw.scrollLeft=Math.max(0,nowPx-gw.clientWidth*0.25);}
         scrollToNow();
-        setInterval(updateNowLine,300000);
+        setInterval(updateNowLine,60000);
         // Page-staleness: reload if the server version changes (redeploy) or the baked-in expiry has passed.
         (function(){
           var _ver='\(appVersion)',_exp=\(Int(Date().addingTimeInterval(2*3600).timeIntervalSince1970)*1000);
@@ -1921,6 +1945,27 @@ final class WebServer {
                   if(sig){sig.replaceWith(tmp.firstChild);}
                   else{var cn=row.querySelector('.g-cn');if(cn)cn.appendChild(tmp.firstChild);}
                 });
+              } else if(d.sumPh||d.schedPop){
+                // Fragment push — apply inline without a full page fetch
+                if(d.sumPh){var ph=document.getElementById('sum-ph');if(ph)ph.innerHTML=d.sumPh;}
+                if(d.schedPop){var sb=document.getElementById('sched-pop-body');if(sb)sb.innerHTML=d.schedPop;}
+                // For recording events: toggle recording state on the currently-airing guide entry
+                if((d.type==='recording_started'||d.type==='recording_stopped')&&d.channel&&d.device){
+                  var isRec=d.type==='recording_started';
+                  var nowTs=Math.floor(Date.now()/1000);
+                  document.querySelectorAll('.g-prog[data-num="'+d.channel+'"][data-device="'+d.device+'"]').forEach(function(el){
+                    var s=parseInt(el.dataset.start,10),en=parseInt(el.dataset.end,10);
+                    if(s<=nowTs&&en>nowTs){
+                      if(isRec){
+                        el.classList.add('g-prog-rec');el.classList.remove('g-prog-now');
+                        if(!el.querySelector('.g-flag-rec'))el.insertAdjacentHTML('beforeend','<div class="g-flag-rec"></div>');
+                      } else {
+                        el.classList.remove('g-prog-rec');el.classList.add('g-prog-now');
+                        var fr=el.querySelector('.g-flag-rec');if(fr)fr.remove();
+                      }
+                    }
+                  });
+                }
               } else {
                 refreshGuide();
               }

@@ -611,13 +611,16 @@ final class AppState: ObservableObject {
                 handleGuideLoadFailure(deviceId: deviceId)
             }
         }
-        if guideByDevice.values.contains(where: { !$0.isEmpty }) { guideRevision += 1 }
+        let anyLoaded = guideByDevice.values.contains(where: { !$0.isEmpty })
+        if anyLoaded { guideRevision += 1 }
         glog("[Guide] Refresh complete")
         let allChannels = guideByDevice.values.flatMap { $0 }
         Task { await prefetchChannelIcons(allChannels) }
         // Re-evaluate all series shows against fresh guide data so any that were bumped
         // past the guide window get scheduled as soon as a matching episode appears.
         await rescheduleAllSeries()
+        // Notify connected web clients that guide data has changed so they can refresh the grid.
+        if anyLoaded { webServer.broadcastEvent(["type": "guide_refreshed"]) }
     }
 
     func ensureGuideLoaded(for deviceId: String) {
@@ -1182,7 +1185,7 @@ final class AppState: ObservableObject {
             return
         }
         shows[index].show_recording = true; shows[index].show_recording_path = path
-        webServer.broadcastEvent(["type": "recording_started", "channel": shows[index].show_channel, "device": shows[index].hdhr_record])
+        webServer.broadcastRecordingEvent(type: "recording_started", channel: shows[index].show_channel, device: shows[index].hdhr_record, state: self)
         refreshTunerOccupancy()
         // Stamp notify_recording_time so the "Recording Soon" pre-notification won't re-fire
         shows[index].notify_recording_time = Date().addingTimeInterval(config.Notify_recording * 60)
@@ -1224,7 +1227,7 @@ final class AppState: ObservableObject {
         signalDropoutTicks.removeValue(forKey: show.show_id)
         shows[index].show_recording = false
         shows[index].show_tuner_resource = ""
-        webServer.broadcastEvent(["type": "recording_stopped", "channel": show.show_channel, "device": show.hdhr_record])
+        webServer.broadcastRecordingEvent(type: "recording_stopped", channel: show.show_channel, device: show.hdhr_record, state: self)
     }
 
     func stopRecording(index: Int, natural: Bool) async {

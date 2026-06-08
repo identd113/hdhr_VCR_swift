@@ -12,6 +12,10 @@
 		<data>
 		QBVmAwOsr0FGRrSXKRgMDWLSBMA=
 		</data>
+		<key>Resources/favicon.ico</key>
+		<data>
+		TsLVVbL3hbGvHT5/Ren+7UJomW0=
+		</data>
 	</dict>
 	<key>files2</key>
 	<dict>
@@ -36,6 +40,13 @@
 			<key>hash2</key>
 			<data>
 			Bz+iczaj14xfz4S+z3eIY0d+rz1B7gY4+0arTyFicwk=
+			</data>
+		</dict>
+		<key>Resources/favicon.ico</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			vNLrnPOMfIVsI3Ta/9z/sukprSh6VsrhmXI4pGVYKgw=
 			</data>
 		</dict>
 	</dict>
