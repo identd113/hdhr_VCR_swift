@@ -1,5 +1,12 @@
 # hdhrVCRplus Changelog
 
+## 2026-06-07 (260607-2020)
+
+- **Web guide — channel logos in guide grid** — Channel logo images are now shown in the left-hand channel column of the web guide. Icons are fetched from the HDHomeRun guide API on lineup load, cached to `~/Library/Caches/hdhr_VCR/channel_icons/`, and served locally via `GET /icon/{filename}`. The channel column width is 125 px; ellipsis truncation is suppressed. `rebuildMenuEntries()` is now called unconditionally in `fetchAllGuides()` so `channelImageURLs` is always populated even when the menu is open at startup.
+- **Web guide — tuner popup enrichment** — The tuner info popover now shows richer per-tuner rows: idle tuners display "Idle" instead of "? / Active stream"; our own recordings show a red ● dot, the show title, and "Ends H:MM AM/PM" from `show_end`; external live streams show the client IP, and after an async `GET /api/now-airing/{devId}/{ch}` fetch, display the guide title (clickable — scrolls guide to that show and opens its info panel), episode name, poster thumbnail, and end time. The popup is wider (max 400 px) with more padding.
+- **Web guide — recording match improvement** — `recsByDevJS` now falls back to channel-number matching when `show_tuner_resource` is empty (first ~1.5 s of a new recording before the `X-HDHomeRun-Resource` header is captured). The resource comparison is also case-insensitive.
+- **Web guide — `GET /api/now-airing/{devId}/{ch}`** — New endpoint; returns `{title, epTitle, poster, endTime}` for the currently-airing guide entry on the given device/channel. Used by the tuner popup for external stream enrichment.
+
 ## 2026-06-07 (260607-0011)
 
 - **Recording — caffeinate replaced with direct curl + IOKit** — Recordings now spawn `/usr/bin/curl` directly via `posix_spawn` with `POSIX_SPAWN_SETSID` (no caffeinate wrapper). Sleep prevention uses `IOPMAssertionCreateWithDescription` (`kIOPMAssertPreventUserIdleSystemSleep`) keyed per show ID with a timeout of recording duration + 5 min; the OS auto-releases the assertion if the app crashes. `releaseAssertion(id:)` and `releaseAllAssertions()` provide explicit teardown. Watch Now (VLC) also acquires a `"vlc"`-keyed assertion sized to the guide entry end + 5 min, released explicitly on player close.

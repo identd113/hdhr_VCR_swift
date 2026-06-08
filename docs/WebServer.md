@@ -297,10 +297,26 @@ Clicking a device button calls `setDev(devId)` which filters guide rows to that 
 
 Fixed overlay (z-index 200). Positioned below the clicked tuner badge. Shows:
 - **Header** — `active/total tuners` (+ `— FULL` when all occupied)
-- **Per-active-tuner rows** — tuner slot name · channel number + channel name · show title
+- **Per-active-tuner rows** — see below
 - **`status.json ↗`** link — opens `http://{LocalIP}/status.json` in a new tab
 
+**Per-tuner row content:**
+
+| Tuner state | Display |
+|---|---|
+| Idle (no channel locked) | Tuner label + "Idle" in dim text |
+| Our recording | Tuner label · channel · show title (with red ● dot) · "Ends H:MM AM/PM" |
+| External live stream | Tuner label · channel · guide title (clickable) · episode name · "Ends H:MM" · client IP |
+
+**Recording match** (`recsByDevJS` builder): prefers `show_tuner_resource` (case-insensitive); falls back to `show_channel == VctNumber` when the resource header hasn't been captured yet (first ~1.5 s of a new recording).
+
+**External stream guide enrichment**: for entries with a `"Live stream ch X"` title, `showTunerInfo` fires `fetch('/api/now-airing/{devId}/{ch}')` after rendering the basic row, then patches the DOM with the guide title, episode name, poster thumbnail, and end time. The clickable title calls `goToShow(ch)` which closes the popup, finds the currently-airing `.g-prog` for that channel, scrolls it into view, and calls `showInfo()`.
+
+**Red recording dot** appears on external streams when `recsByDev` contains a matching `rec=1` entry for the same channel on any device.
+
 Active tuner detection: `DeviceTunerInfo` entries where `VctNumber != nil`. Idle slots (returned by the device with only `"Resource"` present) are not counted. The occupancy is refreshed from `/status.json` on every `GET /` request (cache-bypassed with `cachePolicy: .reloadIgnoringLocalCacheData`).
+
+**`GET /api/now-airing/{devId}/{ch}`** — returns `{title, epTitle, poster, endTime}` for the currently-airing guide entry on that device/channel. `endTime` is a Unix timestamp string.
 
 ---
 
