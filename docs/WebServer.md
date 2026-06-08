@@ -37,6 +37,8 @@ func broadcastEvent(_:)   // pushes a JSON event to all open SSE clients
 | POST | `/api/delete` | Remove a managed show and stop any active recording |
 | POST | `/api/edit` | Update a managed show's config fields |
 | POST | `/api/toggle-favorite` | Toggle the favorite flag for a channel |
+| GET | `/api/now-airing/{devId}/{ch}` | JSON `{title, epTitle, poster, endTime}` for the currently-airing guide entry on the given device+channel; used by the tuner popover to enrich external stream rows asynchronously |
+| GET | `/icon/{filename}` | Serves a cached channel icon image from `~/Library/Application Support/hdhrVCRplus/icons/` |
 | anything else | | 404 plain text |
 
 ---
@@ -401,7 +403,7 @@ A cable-TV-style horizontal time grid. Window width depends on the requesting cl
 - `div.gw` — scroll container (`overflow: auto; max-height: 60vh`)
 - `div.gi` — inner, `min-width` scales with window (see above)
 - Sticky time-header (`top: 0; z-index: 10`)
-- Sticky channel column (`left: 0; z-index: 2`) — both data rows (`.g-ch`) and the header cell (`.g-hdr-ch`) are **105 px** wide. They must match so the `nowPct%` left offset maps to the same pixel position in both the time header and program rows.
+- Sticky channel column (`left: 0; z-index: 2`) — both data rows (`.g-ch`) and the header cell (`.g-hdr-ch`) are **125 px** wide. They must match so the `nowPct%` left offset maps to the same pixel position in both the time header and program rows.
 - Corner cell `z-index: 11`
 
 **Rows:** one row per (device × channel). Cross-device deduplication is handled client-side by `setDev('')` on page load — it hides duplicate `GuideNumber` rows keeping the first-device occurrence, giving a clean "All" view.
@@ -527,8 +529,9 @@ Content is embedded at page build time; `refreshShowsSection()` fetches `/api/sh
 | `openSchedPop(anchor)` | Opens `#sched-pop` anchored below the button; toggles closed on second click |
 | `closeSchedPop()` | Hides `#sched-pop`; resets `#status-btn` color and `aria-expanded` |
 | `devFull(devId)` | Returns true if `tuners[devId].a >= tuners[devId].t` |
-| `showTunerInfo(devId, anchor)` | Opens tuner popover anchored below the clicked badge |
+| `showTunerInfo(devId, anchor)` | Opens tuner popover anchored below the clicked badge; renders per-tuner rows immediately from `recsByDev`, then fires async `/api/now-airing` fetches to enrich external stream rows with guide title, episode, poster, and end time |
 | `closeTunerPop()` | Hides tuner popover |
+| `goToShow(ch)` | Closes tuner popover, finds the currently-airing `.g-prog` block for `ch`, scrolls it into view, and calls `showInfo()` to select it |
 | `gc(genre)` | Maps genre → HSL background for summary panel |
 | `ft(date)` | Formats Date as `"H:MM AM/PM"` |
 | `so(id, val)` | Shows element with textContent, or hides if falsy |
@@ -538,7 +541,7 @@ Content is embedded at page build time; `refreshShowsSection()` fetches `/api/sh
 
 **Embedded JS data:**
 - `var tuners` — `{deviceId: {t: total, a: active, surl: "http://ip/status.json"}, …}` — tuner counts from fresh `/status.json` fetch
-- `var recsByDev` — `{deviceId: [{tuner, title, ch, chname}, …], …}` — active recording detail for popover
+- `var recsByDev` — `{deviceId: [{tuner, title, ch, chname, ip, idle, rec, endTime}, …], …}` — per-tuner occupancy detail for popover. `ip`: client IP for external streams not matched to our recordings; `idle`: `"1"` when tuner has no channel locked; `rec`: `"1"` when tuner is running one of our recordings; `endTime`: Unix timestamp of recording end (from `show_end`) when `rec==="1"`
 
 Both variables are serialised via `JSONSerialization` (not string interpolation) and passed through `jsEscapeForScript()` before embedding in the `<script>` block. This replaces `<`, `>`, and `&` with `\uXXXX` escapes so a show title or device ID containing `</script>` cannot terminate the script element. Device filter buttons use `onclick="setDev(this.dataset.dev)"` / `onclick="showTunerInfo(this.dataset.dev,this)"` — the DeviceID is read from the already-HTML-escaped `data-dev` attribute rather than interpolated into a JS string literal.
 
