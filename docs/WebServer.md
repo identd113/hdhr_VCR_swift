@@ -251,7 +251,7 @@ Self-contained HTML with all CSS inlined. Updates arrive via SSE push events (se
 
 - **`refreshGuide(selOverride?)`** — saves `.gw` scroll position and the currently-selected `.g-prog` element (`data-start` + `data-num` + `data-device`); `GET /` → DOMParser → swaps `.gi` (guide grid), `#sum-ph` (summary placeholder), `#sched-pop-body` (schedule popover); restores scroll position; re-selects the previously-highlighted entry via `showInfo()`. If `selOverride` is passed (a JS object), its key-value pairs are merged into the re-selected block's `dataset` before `showInfo()` runs — used after a Record action to inject `{recording:'1', managed:'1'}` so the summary panel shows the correct state without requiring a manual re-select.
 
-**Dark theme:** body `#141414` · channel column `#1a1a1a` · default program block `#2c2c2c / #484848 border`.
+**Theme variables:** CSS custom properties defined on `:root` (dark default) and overridden on `html.lm` (light). Dark: body `--bg:#141414` · surfaces `--s1–s4` `#1a–#22` · borders `--b0–b5` `#25–#48` · text `--t0–t6` `#f0–#66`. Light: body `--bg:#e4e6ea` · surfaces `#ec–#ff` · borders `#78–#c4` (visible against light backgrounds) · text `--t0–t6` `#11–#7d` (all pass WCAG AA contrast on light surfaces). Theme is toggled by adding/removing the `lm` class on `<html>`; preference is stored in `localStorage('theme')` with `'auto'` following `prefers-color-scheme`.
 
 Page structure (top to bottom):
 
@@ -297,7 +297,7 @@ Fixed overlay (z-index 200). Positioned below the clicked tuner badge. Shows:
 | Tuner state | Display |
 |---|---|
 | Idle (no channel locked) | Tuner label + "Idle" in dim text |
-| Our recording | Tuner label · channel · show title (with red ● dot) · "Ends H:MM AM/PM" |
+| Our recording | Tuner label · channel · show title (clickable) · red ● dot · "Ends H:MM AM/PM" |
 | External live stream | Tuner label · channel · guide title (clickable) · episode name · "Ends H:MM" · client IP |
 
 **Recording match** (`recsByDevJS` builder): prefers `show_tuner_resource` (case-insensitive); falls back to `show_channel == VctNumber` when the resource header hasn't been captured yet (first ~1.5 s of a new recording).
@@ -412,6 +412,8 @@ Each `.g-row` carries `data-dev`, `data-ch`, `data-gname` (`GuideName.lowercased
 
 **Program block color coding:**
 
+Dark mode values (default). Light mode overrides follow below.
+
 | Class | Condition | Background | Border |
 |---|---|---|---|
 | `.g-prog-rec` | Currently recording | `#3c1818` | `#c03030` (red) |
@@ -427,7 +429,18 @@ Each `.g-row` carries `data-dev`, `data-ch`, `data-gname` (`GuideName.lowercased
 | `.gg-children` | Children / Kids | `hsl(315,43%,35%)` | — |
 | `.g-prog` (default) | No genre | `#2c2c2c` | `#484848` |
 
-State classes (rec / now / sched) take precedence over genre. `.g-prog-now.gg-*` two-class selectors override the grey fallback with genre-tinted now-playing colors (e.g. `.g-prog-now.gg-drama` → `hsl(216,52%,44%)`). `.g-prog-sched.gg-*` selectors apply the same genre hue families to scheduled-show blocks — slightly darker/more saturated in dark mode, lighter tints in light mode — so a scheduled Drama block is clearly distinct from both the default blue `.g-prog-sched` and an unscheduled current-program block. `.g-prog.g-sel` adds white border + glow.
+**Light mode overrides (`html.lm`):**
+
+| Class | Background | Border |
+|---|---|---|
+| `.g-prog-rec` | `#f8c0c0` | `#c02828` (red) |
+| `.g-prog-now` | `#bec2cc` | `#6870a0` (blue-grey) |
+| `.g-prog-sched` | `#c0c0f0` | `#4040c8` (blue) |
+| `.gg-*` genre | `hsl(hue, sat, 68–72%)` | `hsl(hue, sat, 46–50%)` |
+| `.g-prog-now.gg-*` / `.g-prog-sched.gg-*` | `hsl(hue, sat, 76–80%)` | `hsl(hue, sat, 46–50%)` |
+| `.g-prog` (default) | `#cbd0dc` | `#8590a8` |
+
+State classes (rec / now / sched) take precedence over genre. `.g-prog-now.gg-*` two-class selectors override the grey fallback with genre-tinted now-playing colors (e.g. dark mode `.g-prog-now.gg-drama` → `hsl(216,52%,44%)`; light mode → `hsl(216,57%,78%)`). `.g-prog-sched.gg-*` selectors apply the same genre hue families to scheduled-show blocks with matching lightness. `.g-prog.g-sel` adds white border + glow.
 
 **Data attributes on every program block:**
 
