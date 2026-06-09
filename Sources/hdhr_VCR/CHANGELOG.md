@@ -1,5 +1,14 @@
 # hdhrVCRplus Changelog
 
+## 2026-06-08 (260608-1707)
+
+- **Web guide — SSE fragment push for recording events** — `recording_started` and `recording_stopped` SSE events now carry pre-rendered `sumPh` and `schedPop` HTML fields. The JS handler applies them directly to `#sum-ph` and `#sched-pop-body` without a second `fetch('/')` round-trip. The currently-airing guide entry's `.g-prog-rec` class and red-dot flag are toggled inline via `data-num`/`data-device` selectors. A new `buildSumPhHTML(state:)` helper in `WebServer.swift` was extracted from `buildHTML` to make the fragment available at broadcast time.
+- **Web guide — `guide_refreshed` SSE event** — `refreshGuides()` now emits `{"type":"guide_refreshed"}` after a successful guide fetch. Connected clients call `refreshGuide()` automatically, replacing the previous manual-reload requirement after the guide data changes.
+- **Web guide — now-line timer tightened** — The `updateNowLine` interval changed from 5 minutes to 1 minute, keeping the progress indicator and time cursor accurate across all guide views.
+- **Web guide — absolute time strings** — Schedule popover and summary banner (`#sum-ph`) replaced relative time strings with `state.shortTime()` absolute times (e.g. "at 9:00 PM") so times stay correct without a page reload.
+- **MAS compliance prep** — Launch at Login converted from a LaunchAgent plist to `SMAppService`; `PrivacyInfo.xcprivacy` added and wired into `Package.swift` resources; `Info.plist` switched from `NSAllowsArbitraryLoads` to `NSAllowsLocalNetworking`.
+- **Favicon** — `GET /favicon.ico` route added to `WebServer.swift`; `deploy.sh` generates a minimal 16×16 ICO from the app icon PNG using Python `struct` packing on each deploy.
+
 ## 2026-06-07 (260607-2020)
 
 - **Web guide — channel logos in guide grid** — Channel logo images are now shown in the left-hand channel column of the web guide. Icons are fetched from the HDHomeRun guide API on lineup load, cached to `~/Library/Caches/hdhr_VCR/channel_icons/`, and served locally via `GET /icon/{filename}`. The channel column width is 125 px; ellipsis truncation is suppressed. `rebuildMenuEntries()` is now called unconditionally in `fetchAllGuides()` so `channelImageURLs` is always populated even when the menu is open at startup.

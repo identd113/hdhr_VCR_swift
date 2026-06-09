@@ -1,6 +1,6 @@
 # WebServer.swift — Built-in LAN Web Server
 
-Serves an interactive guide page and JSON API over HTTP so any browser on the local network can browse programming and schedule recordings. Enabled via **Settings → Web Server → Enable Web Server**. Default port: **1980**.
+Serves an interactive guide page and JSON API over HTTP. The page is consumed by two clients: **external browsers** on the local network, and the **in-app WKWebView** windows (`FloatingGuideView` browse window and `AddShowView` step 2). Both connect to the same SSE stream and see the same HTML. Enabled via **Settings → Web Server → Enable Web Server**. Default port: **1980**.
 
 The web server is scoped to **scheduling and management** — playback is not supported. There are no streaming routes or media links.
 
@@ -302,7 +302,7 @@ Fixed overlay (z-index 200). Positioned below the clicked tuner badge. Shows:
 
 **Recording match** (`recsByDevJS` builder): prefers `show_tuner_resource` (case-insensitive); falls back to `show_channel == VctNumber` when the resource header hasn't been captured yet (first ~1.5 s of a new recording).
 
-**External stream guide enrichment**: for entries with a `"Live stream ch X"` title, `showTunerInfo` fires `fetch('/api/now-airing/{devId}/{ch}')` after rendering the basic row, then patches the DOM with the guide title, episode name, poster thumbnail, and end time. The clickable title calls `goToShow(ch)` which closes the popup, finds the currently-airing `.g-prog` for that channel, scrolls it into view, and calls `showInfo()`.
+**Clickable titles — jump to guide:** all non-idle tuner rows have a clickable title (underline dotted, pointer cursor) that calls `goToShow(ch)` — closes the popup, finds the currently-airing `.g-prog` for that channel, scrolls it into view, and calls `showInfo()`. Our own recording rows get this treatment via a synchronous post-render loop. External stream rows (`"Live stream ch X"` title) additionally fire `fetch('/api/now-airing/{devId}/{ch}')` to patch the DOM with the real guide title, episode name, poster thumbnail, and end time.
 
 **Red recording dot** appears on external streams when `recsByDev` contains a matching `rec=1` entry for the same channel on any device.
 

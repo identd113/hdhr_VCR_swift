@@ -18,7 +18,7 @@ swift test           # Tests/hdhr_VCRTests/ (uses unsafeFlags for Swift Testing)
 
 **macOS 15.0 minimum** — use string literal `"15.0"` in `Package.swift` (enum form triggers false SourceKit diagnostic on macOS 26 Beta). `LazyVStack(pinnedViews:)` in a bidirectional ScrollView requires macOS 15+; do not lower target without reverting to plain VStack.
 
-**Info.plist**: `LSUIElement = true` (no Dock icon) · `NSAllowsArbitraryLoads = true` (HTTP image URLs from guide API).
+**Info.plist**: `LSUIElement = true` (no Dock icon) · `NSAllowsLocalNetworking = true` (permits HTTP to LAN addresses and localhost; required for WKWebView loading `localhost:1980`).
 
 ---
 
@@ -40,8 +40,7 @@ ChannelSignalStore.swift   Actor: per-channel SNQ history, bucketing, adaptive r
 Views/
   MenuContent.swift        Menu bar dropdown (entire UI)
   AddShowView.swift        3-step Add Show wizard
-  CableGuideView.swift     Cable TV-style guide grid (AddShowView step 2)
-  FloatingGuideView.swift  Browse-only guide window
+  FloatingGuideView.swift  Browse-only guide window (WKWebView — embeds localhost:1980)
   EditShowView.swift       Edit existing show
   SettingsView.swift       NavigationSplitView settings window
   StarburstBadge.swift     Animated starburst badge for Bonus Time
@@ -88,7 +87,7 @@ Views/
 
 **Bonus Time** — `show_bonus_time` extends any show past guide end. Sports entries default to `true` via `applyGuideEntry()`; all other genres default `false`. Duration = `AppConfig.Sports_padding_minutes`.
 
-**Web UI push** — call `webServer.broadcastEvent(["type": "...", ...])` after any state change the web UI should reflect (recording start/stop, show add/edit/delete). Triggers `refreshGuide()` DOM swap on all connected SSE clients; browser refreshes on any event.
+**Web UI push** — call `webServer.broadcastEvent(["type": "...", ...])` after any state change the web UI should reflect. For recording start/stop use `webServer.broadcastRecordingEvent(type:channel:device:state:)` — it embeds pre-rendered `sumPh`/`schedPop` HTML fragments so clients update `#sum-ph`, `#sched-pop-body`, and guide row dots inline (no page fetch). All other events trigger `refreshGuide()` on all connected clients. The guide page is consumed by both external LAN browsers and the in-app WKWebView windows (`FloatingGuideView`, `AddShowView` step 2) — all share the same SSE stream.
 
 **Issue tracking** — bugs found during work → `ISSUES.md` (note commit hash on resolve). Deferred features → `TODO.md`.
 

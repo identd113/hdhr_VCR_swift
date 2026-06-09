@@ -995,10 +995,10 @@ final class WebServer {
           --pg:#2c2c2c;--pgb:#484848;--ac:#5aacff;--acb:#0e1f35;--fav:#e8a000;
         }
         html.lm{
-          --bg:#f0f2f5;--s1:#f4f5f7;--s2:#f8f8fa;--s3:#ffffff;--s4:#eeeeee;
-          --b0:#e4e4e4;--b1:#d8d8d8;--b2:#c8c8c8;--b3:#d0d0d0;--b4:#bbbbbb;--b5:#b8b8b8;
-          --t0:#111111;--t1:#222222;--t2:#444444;--t3:#666666;--t4:#888888;--t5:#888888;--t6:#999999;
-          --pg:#e0e0e8;--pgb:#ababbb;--ac:#0069cc;--acb:#e0eeff;--fav:#b06000;
+          --bg:#e4e6ea;--s1:#eceef2;--s2:#f2f4f7;--s3:#ffffff;--s4:#dddfe4;
+          --b0:#c4c7ce;--b1:#b0b4bc;--b2:#9a9faa;--b3:#b0b4bc;--b4:#8a8f9a;--b5:#787e8a;
+          --t0:#111214;--t1:#1e2126;--t2:#363a42;--t3:#545860;--t4:#666b75;--t5:#72777f;--t6:#7d8289;
+          --pg:#cbd0dc;--pgb:#8590a8;--ac:#0062c0;--acb:#ddeeff;--fav:#a05800;
         }
         body{background:var(--bg);color:var(--t0);font-family:-apple-system,sans-serif;padding:16px}
         h1{font-size:1.15rem;color:var(--t2);margin-bottom:0}
@@ -1121,14 +1121,14 @@ final class WebServer {
         .gg-movie    {background:hsl(270,58%,38%)}
         .gg-talk     {background:hsl(173,43%,34%)}
         .gg-children {background:hsl(315,43%,35%)}
-        html.lm .gg-drama    {background:hsl(216,52%,82%)}
-        html.lm .gg-comedy   {background:hsl(47,58%,82%)}
-        html.lm .gg-news     {background:hsl(342,52%,82%)}
-        html.lm .gg-sports   {background:hsl(119,57%,80%)}
-        html.lm .gg-reality  {background:hsl(25,58%,82%)}
-        html.lm .gg-movie    {background:hsl(270,62%,84%)}
-        html.lm .gg-talk     {background:hsl(173,52%,80%)}
-        html.lm .gg-children {background:hsl(315,55%,85%)}
+        html.lm .gg-drama    {background:hsl(216,52%,70%);border-color:hsl(216,52%,48%)}
+        html.lm .gg-comedy   {background:hsl(47,58%,68%);border-color:hsl(47,58%,46%)}
+        html.lm .gg-news     {background:hsl(342,52%,70%);border-color:hsl(342,52%,48%)}
+        html.lm .gg-sports   {background:hsl(119,57%,68%);border-color:hsl(119,57%,46%)}
+        html.lm .gg-reality  {background:hsl(25,58%,70%);border-color:hsl(25,58%,48%)}
+        html.lm .gg-movie    {background:hsl(270,62%,72%);border-color:hsl(270,62%,50%)}
+        html.lm .gg-talk     {background:hsl(173,52%,68%);border-color:hsl(173,52%,46%)}
+        html.lm .gg-children {background:hsl(315,55%,72%);border-color:hsl(315,55%,50%)}
         .g-prog-now.gg-drama    {background:hsl(216,52%,44%);border-color:hsl(216,57%,62%)}
         .g-prog-now.gg-comedy   {background:hsl(47,52%,44%);border-color:hsl(47,57%,62%)}
         .g-prog-now.gg-news     {background:hsl(342,47%,44%);border-color:hsl(342,52%,62%)}
@@ -1137,14 +1137,14 @@ final class WebServer {
         .g-prog-now.gg-movie    {background:hsl(270,62%,46%);border-color:hsl(270,68%,64%)}
         .g-prog-now.gg-talk     {background:hsl(173,47%,42%);border-color:hsl(173,52%,60%)}
         .g-prog-now.gg-children {background:hsl(315,47%,43%);border-color:hsl(315,52%,61%)}
-        html.lm .g-prog-now.gg-drama    {background:hsl(216,57%,90%);border-color:hsl(216,52%,64%)}
-        html.lm .g-prog-now.gg-comedy   {background:hsl(47,65%,90%);border-color:hsl(47,57%,64%)}
-        html.lm .g-prog-now.gg-news     {background:hsl(342,57%,90%);border-color:hsl(342,52%,64%)}
-        html.lm .g-prog-now.gg-sports   {background:hsl(119,62%,89%);border-color:hsl(119,57%,62%)}
-        html.lm .g-prog-now.gg-reality  {background:hsl(25,67%,90%);border-color:hsl(25,57%,64%)}
-        html.lm .g-prog-now.gg-movie    {background:hsl(270,68%,92%);border-color:hsl(270,58%,66%)}
-        html.lm .g-prog-now.gg-talk     {background:hsl(173,57%,89%);border-color:hsl(173,52%,62%)}
-        html.lm .g-prog-now.gg-children {background:hsl(315,62%,90%);border-color:hsl(315,57%,64%)}
+        html.lm .g-prog-now.gg-drama    {background:hsl(216,57%,78%);border-color:hsl(216,52%,48%)}
+        html.lm .g-prog-now.gg-comedy   {background:hsl(47,65%,76%);border-color:hsl(47,57%,46%)}
+        html.lm .g-prog-now.gg-news     {background:hsl(342,57%,78%);border-color:hsl(342,52%,48%)}
+        html.lm .g-prog-now.gg-sports   {background:hsl(119,62%,76%);border-color:hsl(119,57%,46%)}
+        html.lm .g-prog-now.gg-reality  {background:hsl(25,67%,78%);border-color:hsl(25,57%,48%)}
+        html.lm .g-prog-now.gg-movie    {background:hsl(270,68%,80%);border-color:hsl(270,58%,50%)}
+        html.lm .g-prog-now.gg-talk     {background:hsl(173,57%,76%);border-color:hsl(173,52%,46%)}
+        html.lm .g-prog-now.gg-children {background:hsl(315,62%,78%);border-color:hsl(315,57%,48%)}
         .g-prog-sched.gg-drama    {background:hsl(216,52%,44%);border-color:hsl(216,57%,62%)}
         .g-prog-sched.gg-comedy   {background:hsl(47,52%,44%);border-color:hsl(47,57%,62%)}
         .g-prog-sched.gg-news     {background:hsl(342,47%,44%);border-color:hsl(342,52%,62%)}
@@ -1153,20 +1153,20 @@ final class WebServer {
         .g-prog-sched.gg-movie    {background:hsl(270,62%,46%);border-color:hsl(270,68%,64%)}
         .g-prog-sched.gg-talk     {background:hsl(173,47%,42%);border-color:hsl(173,52%,60%)}
         .g-prog-sched.gg-children {background:hsl(315,47%,43%);border-color:hsl(315,52%,61%)}
-        html.lm .g-prog-sched.gg-drama    {background:hsl(216,57%,90%);border-color:hsl(216,52%,64%)}
-        html.lm .g-prog-sched.gg-comedy   {background:hsl(47,65%,90%);border-color:hsl(47,57%,64%)}
-        html.lm .g-prog-sched.gg-news     {background:hsl(342,57%,90%);border-color:hsl(342,52%,64%)}
-        html.lm .g-prog-sched.gg-sports   {background:hsl(119,62%,89%);border-color:hsl(119,57%,62%)}
-        html.lm .g-prog-sched.gg-reality  {background:hsl(25,67%,90%);border-color:hsl(25,57%,64%)}
-        html.lm .g-prog-sched.gg-movie    {background:hsl(270,68%,92%);border-color:hsl(270,58%,66%)}
-        html.lm .g-prog-sched.gg-talk     {background:hsl(173,57%,89%);border-color:hsl(173,52%,62%)}
-        html.lm .g-prog-sched.gg-children {background:hsl(315,62%,90%);border-color:hsl(315,57%,64%)}
+        html.lm .g-prog-sched.gg-drama    {background:hsl(216,57%,78%);border-color:hsl(216,52%,48%)}
+        html.lm .g-prog-sched.gg-comedy   {background:hsl(47,65%,76%);border-color:hsl(47,57%,46%)}
+        html.lm .g-prog-sched.gg-news     {background:hsl(342,57%,78%);border-color:hsl(342,52%,48%)}
+        html.lm .g-prog-sched.gg-sports   {background:hsl(119,62%,76%);border-color:hsl(119,57%,46%)}
+        html.lm .g-prog-sched.gg-reality  {background:hsl(25,67%,78%);border-color:hsl(25,57%,48%)}
+        html.lm .g-prog-sched.gg-movie    {background:hsl(270,68%,80%);border-color:hsl(270,58%,50%)}
+        html.lm .g-prog-sched.gg-talk     {background:hsl(173,57%,76%);border-color:hsl(173,52%,46%)}
+        html.lm .g-prog-sched.gg-children {background:hsl(315,62%,78%);border-color:hsl(315,57%,48%)}
         .g-prog-now  {background:#424242;border-color:#787878}
         .g-prog-rec  {background:#3c1818;border-color:#c03030}
         .g-prog-sched{background:#1a1a40;border-color:#4848c8}
-        html.lm .g-prog-now  {background:#d8d8d8;border-color:#909090}
-        html.lm .g-prog-rec  {background:#fcd4d4;border-color:#cc3030}
-        html.lm .g-prog-sched{background:#d4d4f8;border-color:#5050cc}
+        html.lm .g-prog-now  {background:#bec2cc;border-color:#6870a0}
+        html.lm .g-prog-rec  {background:#f8c0c0;border-color:#c02828}
+        html.lm .g-prog-sched{background:#c0c0f0;border-color:#4040c8}
         .g-pi{padding:3px 6px;height:100%;display:flex;flex-direction:column;justify-content:center;gap:1px;overflow:hidden}
         .g-ti{font-size:.78rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--t0);line-height:1.25}
         .g-sub{font-size:.65rem;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25}
@@ -1641,6 +1641,14 @@ final class WebServer {
                 +ipHtml
                 +'</div>';
             }).join('');
+            // Make our own recording titles clickable — jumps guide to that channel
+            recs.forEach(function(r){
+              if(r.rec!=='1'||!r.ch||r.ch==='?')return;
+              var rid='tnr-'+r.tuner.replace(/\\W/g,'');
+              var row=document.getElementById(rid);if(!row)return;
+              var titleDiv=row.children[1];
+              if(titleDiv){titleDiv.style.cursor='pointer';titleDiv.style.textDecoration='underline dotted';(function(ch){titleDiv.onclick=function(){goToShow(ch);};})(r.ch);}
+            });
             // Async guide enrichment for external streams — runs after innerHTML is set
             recs.forEach(function(r){
               if(r.idle==='1'||!r.ch||r.ch==='?')return;
