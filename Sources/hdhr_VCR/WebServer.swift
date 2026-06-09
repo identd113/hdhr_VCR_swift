@@ -8,6 +8,7 @@ final class WebServer {
 
     private enum WebResponse {
         case ok(contentType: String, body: Data)
+        case cachedIcon(contentType: String, body: Data)
         case notFound(String)
         case badRequest(String)
         case payloadTooLarge(String)
@@ -370,7 +371,7 @@ final class WebServer {
                 let file = base.appendingPathComponent("hdhr_VCR/channel_icons/\(filename)")
                 if let data = try? Data(contentsOf: file) {
                     let ct = filename.hasSuffix(".png") ? "image/png" : "image/jpeg"
-                    return .ok(contentType: ct, body: data)
+                    return .cachedIcon(contentType: ct, body: data)
                 }
             }
             return .notFound("Not found: \(path)")
@@ -631,7 +632,7 @@ final class WebServer {
         func phLogo(_ deviceId: String, _ ch: String) -> String {
             guard let raw = state.channelImageURLs["\(deviceId):\(ch)"], !raw.isEmpty,
                   let fn = URL(string: raw)?.lastPathComponent, !fn.isEmpty else { return "" }
-            return "<img src=\"/icon/\(he(fn))\" onerror=\"this.style.display='none'\" style=\"width:36px;height:36px;object-fit:contain;border-radius:4px;flex-shrink:0;margin-right:12px\">"
+            return "<img src=\"/icon/\(he(fn))\" loading=\"lazy\" onerror=\"this.style.display='none'\" style=\"width:36px;height:36px;object-fit:contain;border-radius:4px;flex-shrink:0;margin-right:12px;background:#ccc\">"
         }
         if let rec = recording.first {
             var sub = ""
@@ -869,7 +870,7 @@ final class WebServer {
                 let chLabel  = ch.GuideNumber + (isHD ? " HD" : "")
                 let logoHTML = logoURL.isEmpty
                     ? ""
-                    : "<img class=\"g-logo\" src=\"\(he(logoURL))\" onerror=\"this.style.display='none'\" alt=\"\">"
+                    : "<img class=\"g-logo\" src=\"\(he(logoURL))\" loading=\"lazy\" onerror=\"this.style.display='none'\" alt=\"\" style=\"background:#ddd\">"
                 let isRecCh  = (recChannelsByDevice[device.DeviceID]?.contains(ch.GuideNumber) ?? false)
                              || (pendingRecChannelsByDevice[device.DeviceID]?.contains(ch.GuideNumber) ?? false)
 
@@ -1050,7 +1051,8 @@ final class WebServer {
         html.lm #sum-genre{color:rgba(0,0,0,.65)!important;background:rgba(0,0,0,.1)!important}
         #sum-grad{background:linear-gradient(to right,rgba(0,0,0,.35),rgba(0,0,0,.05));padding:8px 10px!important;gap:1px!important}
         html.lm #sum-grad{background:linear-gradient(to right,rgba(0,0,0,.04),transparent)}
-        #sum-poster{width:72px!important;min-width:72px!important;object-fit:contain!important;background:var(--bg)}
+        #sum-poster{width:72px!important;min-width:72px!important;object-fit:contain!important;background:#888}
+        html.lm #sum-poster{background:#ccc}
         #sum-actions{margin-top:3px!important}
         @media(max-width:600px){
           #sum-date{display:none!important}
@@ -1245,7 +1247,7 @@ final class WebServer {
         <div id="sum" style="border:1px solid #333;border-radius:8px;margin-bottom:16px;display:flex;align-items:stretch;overflow:hidden;min-height:44px">
           <div id="sum-ph" style="flex:1;display:flex;align-items:center;padding:12px 16px;background:#1a1a1a">\(sumPhHTML)</div>
           <div id="sum-c" style="display:none;flex:1;flex-direction:row;position:relative">
-            <img id="sum-poster" src="" alt="" style="width:72px;min-width:72px;object-fit:contain;display:none">
+            <img id="sum-poster" src="" alt="" loading="lazy" style="width:72px;min-width:72px;object-fit:contain;display:none;background:#888">
             <div id="sum-grad" style="flex:1;padding:8px 10px;display:flex;flex-direction:column;gap:1px;overflow:hidden">
               <div id="sum-title" style="font-size:.92rem;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
               <div id="sum-genre" style="display:none;font-size:.6rem;font-weight:700;color:rgba(255,255,255,.85);background:rgba(255,255,255,.18);border-radius:3px;padding:2px 6px;align-self:flex-start;letter-spacing:.06em"></div>
@@ -1261,7 +1263,7 @@ final class WebServer {
                 <button id="sum-watch-vlc" onclick="doWatchInVLC()" style="display:none;font-size:.75rem;padding:4px 12px;border-radius:5px;border:none;cursor:pointer;font-weight:600;background:#b06200;color:#fff">Watch in VLC</button>
               </div>
               <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:3px">
-                <img id="sum-logo" src="" alt="" style="width:24px;height:24px;object-fit:contain;display:none" onerror="this.style.display='none'">
+                <img id="sum-logo" src="" alt="" loading="lazy" style="width:24px;height:24px;object-fit:contain;display:none;background:#aaa" onerror="this.style.display='none'">
                 <span id="sum-ct" style="font-size:.68rem;color:rgba(255,255,255,.8)"></span>
               </div>
             </div>
@@ -1690,7 +1692,7 @@ final class WebServer {
                   }
                   if(g.poster){
                     var chRow=row.children[0];
-                    if(chRow){var img=document.createElement('img');img.src=g.poster;img.style.cssText='width:40px;height:27px;border-radius:3px;object-fit:cover;flex-shrink:0;margin-right:4px';img.onerror=function(){this.style.display='none';};chRow.insertBefore(img,chRow.children[1]);}
+                    if(chRow){var img=document.createElement('img');img.src=g.poster;img.loading='lazy';img.style.cssText='width:40px;height:27px;border-radius:3px;object-fit:cover;flex-shrink:0;margin-right:4px;background:#999';img.onerror=function(){this.style.display='none';};chRow.insertBefore(img,chRow.children[1]);}
                   }
                 }).catch(function(){});
             });
@@ -2089,6 +2091,10 @@ final class WebServer {
         case .ok(let ct, let b):
             status  = "200 OK"
             headers = [("Content-Type", ct), ("Content-Length", "\(b.count)")]
+            body    = b
+        case .cachedIcon(let ct, let b):
+            status  = "200 OK"
+            headers = [("Content-Type", ct), ("Content-Length", "\(b.count)"), ("Cache-Control", "public, max-age=2592000")]
             body    = b
         case .notFound(let msg):      (status, headers, body) = errorParts("404 Not Found",         msg)
         case .badRequest(let msg):    (status, headers, body) = errorParts("400 Bad Request",       msg)
