@@ -1014,10 +1014,14 @@ final class AppState: ObservableObject {
                 let failReason = hdhrReason ?? "curl exited unexpectedly"
                 shows[i].recordFailure(reason: failReason)
                 glog("[\(show.show_title)] FAIL \(failReason) — fail_count=\(shows[i].show_fail_count)", level: .error)
-                notify("Recording Failed", body: show.show_title, subtitle: failReason)
-                discordShow("❌ Recording Failed", show: show, color: 0xE74C3C, enabled: config.Discord_on_failed,
-                            extra: [("Reason", failReason, false), ("Fail Count", "\(shows[i].show_fail_count)", true)],
-                            editMessageId: show.discord_start_msg_id.isEmpty ? nil : show.discord_start_msg_id)
+                // Only notify on persistent failures (2+ in a row) to avoid spamming user during transient retries.
+                // Show will be paused and notified if fail_count reaches the threshold.
+                if shows[i].show_fail_count > 1 {
+                    notify("Recording Failed", body: show.show_title, subtitle: failReason)
+                    discordShow("❌ Recording Failed", show: show, color: 0xE74C3C, enabled: config.Discord_on_failed,
+                                extra: [("Reason", failReason, false), ("Fail Count", "\(shows[i].show_fail_count)", true)],
+                                editMessageId: show.discord_start_msg_id.isEmpty ? nil : show.discord_start_msg_id)
+                }
                 shows[i].discord_start_msg_id = ""
                 dirty = true
             }
