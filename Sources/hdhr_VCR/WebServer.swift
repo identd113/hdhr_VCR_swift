@@ -1852,6 +1852,23 @@ final class WebServer {
           if(!_genreFilter)return true;
           return Array.from(r.querySelectorAll('.g-prog')).some(function(p){return(p.dataset.genre||'').toLowerCase()===_genreFilter.toLowerCase();});
         }
+        function applyGenreFilter(r){
+          // Show/hide individual programs based on genre filter; hide row if no programs match
+          var progs=r.querySelectorAll('.g-prog');
+          var anyVisible=false;
+          progs.forEach(function(p){
+            if(!_genreFilter){
+              p.style.display='';
+              anyVisible=true;
+            } else {
+              var matches=(p.dataset.genre||'').toLowerCase()===_genreFilter.toLowerCase();
+              p.style.display=matches?'':'none';
+              if(matches)anyVisible=true;
+            }
+          });
+          // Hide row if no visible programs remain; only hide visible rows to avoid interfering with device filtering
+          if(r.style.display!=='none'&&!anyVisible)r.style.display='none';
+        }
         function setDev(id){
           if(id!==curDev){_genreFilter='';var sel=document.getElementById('genre-sel');if(sel)sel.value='';}
           curDev=id;
@@ -1861,6 +1878,8 @@ final class WebServer {
             var ok=rowMatchesGenre(r);
             if(id){r.style.display=(r.dataset.dev===id&&ok)?'':'none';}
             else{var ch=r.dataset.ch;if(!seen[ch]&&ok){r.style.display='';seen[ch]=true;}else{r.style.display='none';}}
+            // Apply genre filter to individual programs
+            applyGenreFilter(r);
           });
           // Show/hide the favorites section header and footer for each device
           document.querySelectorAll('.g-fav-sep').forEach(function(sep){
