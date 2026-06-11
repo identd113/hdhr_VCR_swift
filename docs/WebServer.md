@@ -646,6 +646,8 @@ Client-side `innerHTML` concatenation (tuner popover rows) uses the page-local `
 - `send()` writes a single HTTP/1.1 response `Data` packet; `conn.cancel()` fires in the completion block.
 - Normal requests: one full request → one response → cancel. SSE connections: open until client disconnects or `stop()` is called.
 
+**gzip compression:** `accumulate()` parses `Accept-Encoding`; when the client supports gzip and an `.ok` body is ≥ 1400 bytes, `send()` compresses it (`Content-Encoding: gzip` + `Vary: Accept-Encoding`). The guide page shrinks ~1.1 MB → ~160 KB — the dominant cost for LAN Wi-Fi clients. Implementation: libcompression `COMPRESSION_ZLIB` (raw DEFLATE) wrapped in a gzip container (10-byte header + CRC-32/ISIZE trailer, table-based CRC in `WebServer.crc32`). Falls back to uncompressed if compression fails or wouldn't shrink the payload. `.cachedIcon` responses (already-compressed image data) are never gzipped.
+
 **`WebResponse` cases:**
 
 | Case | HTTP status | Use |
@@ -659,7 +661,7 @@ Client-side `innerHTML` concatenation (tuner popover rows) uses the page-local `
 
 ## Tuner occupancy
 
-Before building the HTML page, `refreshTunerOccupancy()` fetches `/status.json` from each device concurrently using `URLRequest(cachePolicy: .reloadIgnoringLocalCacheData)` + `Cache-Control: no-cache`. Results are stored in `state.deviceTunerOccupancy`.
+Before building the HTML page, `refreshTunerOccupancy()` fetches `/status.json` from each **available** device concurrently (devices past the 3-missed-probes threshold are skipped — a dead IP would stall every page load) using `URLRequest(cachePolicy: .reloadIgnoringLocalCacheData)` + `Cache-Control: no-cache` and a 2 s timeout. Results are stored in `state.deviceTunerOccupancy`.
 
 Active tuner count = entries where `VctNumber != nil`. The device always returns all tuner slots in the JSON array; idle slots have only `"Resource"` with no other fields.
 

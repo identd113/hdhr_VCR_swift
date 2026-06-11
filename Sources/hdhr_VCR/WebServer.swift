@@ -1,5 +1,6 @@
 import Foundation
 import Network
+import Compression
 
 // NWListener-based LAN web server. Binds to all interfaces; the subnet guard
 // in handleConnection cancels any connection whose source IP is outside the
@@ -206,10 +207,11 @@ final class WebServer {
             let headerSection = data[..<sepRange.lowerBound]
             let bodyBytes     = data[sepRange.upperBound...]
 
-            // Parse Content-Length and User-Agent from headers
+            // Parse Content-Length, User-Agent, and Accept-Encoding from headers
             let headerText    = String(data: headerSection, encoding: .utf8) ?? ""
             var contentLength = 0
             var userAgent     = ""
+            var acceptsGzip   = false
             for line in headerText.components(separatedBy: "\r\n").dropFirst() {
                 let lower = line.lowercased()
                 if lower.hasPrefix("content-length:") {
@@ -218,8 +220,9 @@ final class WebServer {
                 } else if lower.hasPrefix("user-agent:") {
                     userAgent = String(line.dropFirst("user-agent:".count)
                                           .trimmingCharacters(in: .whitespaces))
+                } else if lower.hasPrefix("accept-encoding:"), lower.contains("gzip") {
+                    acceptsGzip = true
                 }
-                if contentLength > 0, !userAgent.isEmpty { break }
             }
 
             // Early rejection on an oversized Content-Length prevents waiting to accumulate
@@ -248,7 +251,7 @@ final class WebServer {
             }
             Task {
                 let response = await self.route(method: method, path: cleanPath, body: body, userAgent: userAgent)
-                self.send(response, on: conn)
+                self.send(response, on: conn, acceptsGzip: acceptsGzip)
             }
         }
     }
@@ -265,7 +268,9 @@ final class WebServer {
     }
 
     private func refreshTunerOccupancy() async {
-        let devices = await MainActor.run { appState?.devices ?? [] }
+        // Skip devices already marked unavailable by the probe loop — waiting on a dead IP
+        // would stall every page load for the full request timeout.
+        let devices = await MainActor.run { (appState?.devices ?? []).filter { $0.isAvailable } }
         await withTaskGroup(of: Void.self) { group in
             for device in devices {
                 group.addTask { [weak self] in
@@ -274,7 +279,9 @@ final class WebServer {
                         return
                     }
                     // Ignore the URL cache — status.json must always reflect current device state.
-                    var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 5)
+                    // 2 s timeout: a healthy LAN device answers in tens of ms; this only bounds
+                    // the page-load stall when a device drops between probe cycles.
+                    var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 2)
                     req.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
                     guard let (data, resp) = try? await URLSession.shared.data(for: req) else {
                         glog("[WebServer] refreshTunerOccupancy: fetch failed for \(device.DeviceID) \(url)", level: .warning)
@@ -2085,7 +2092,7 @@ final class WebServer {
 
     // MARK: - Send
 
-    private func send(_ response: WebResponse, on conn: NWConnection) {
+    private func send(_ response: WebResponse, on conn: NWConnection, acceptsGzip: Bool = false) {
         func errorParts(_ statusLine: String, _ msg: String) -> (String, [(String, String)], Data) {
             let b = Data(msg.utf8)
             return (statusLine, [("Content-Type", "text/plain"), ("Content-Length", "\(b.count)")], b)
@@ -2093,9 +2100,18 @@ final class WebServer {
         let (status, headers, body): (String, [(String, String)], Data)
         switch response {
         case .ok(let ct, let b):
-            status  = "200 OK"
-            headers = [("Content-Type", ct), ("Content-Length", "\(b.count)")]
-            body    = b
+            status = "200 OK"
+            // Compress text responses when the client supports it — the guide page is ~1.1 MB
+            // raw but ~160 KB gzipped, which dominates load time for LAN Wi-Fi clients.
+            // Icons (.cachedIcon) are already-compressed image data and are left as-is.
+            if acceptsGzip, b.count >= 1400, let gz = Self.gzip(b) {
+                headers = [("Content-Type", ct), ("Content-Encoding", "gzip"),
+                           ("Vary", "Accept-Encoding"), ("Content-Length", "\(gz.count)")]
+                body    = gz
+            } else {
+                headers = [("Content-Type", ct), ("Content-Length", "\(b.count)")]
+                body    = b
+            }
         case .cachedIcon(let ct, let b):
             status  = "200 OK"
             headers = [("Content-Type", ct), ("Content-Length", "\(b.count)"), ("Cache-Control", "public, max-age=2592000")]
@@ -2115,6 +2131,46 @@ final class WebServer {
         packet.append(body)
 
         conn.send(content: packet, completion: .contentProcessed { _ in conn.cancel() })
+    }
+
+    // MARK: - gzip
+
+    // CRC-32 lookup table (IEEE 802.3 polynomial) — needed for the gzip trailer.
+    private static let crcTable: [UInt32] = (0..<256).map { i in
+        var c = UInt32(i)
+        for _ in 0..<8 { c = (c & 1) == 1 ? 0xEDB8_8320 ^ (c >> 1) : c >> 1 }
+        return c
+    }
+
+    private static func crc32(_ data: Data) -> UInt32 {
+        var c: UInt32 = 0xFFFF_FFFF
+        data.withUnsafeBytes { (buf: UnsafeRawBufferPointer) in
+            for b in buf { c = crcTable[Int((c ^ UInt32(b)) & 0xFF)] ^ (c >> 8) }
+        }
+        return c ^ 0xFFFF_FFFF
+    }
+
+    // Wraps libcompression's raw DEFLATE output in a gzip container
+    // (10-byte header + CRC-32 + input-size trailer). Returns nil if
+    // compression fails or wouldn't shrink the payload.
+    private static func gzip(_ data: Data) -> Data? {
+        guard !data.isEmpty else { return nil }
+        let dstCapacity = data.count + data.count / 16 + 128
+        var dst = Data(count: dstCapacity)
+        let compressedSize = dst.withUnsafeMutableBytes { (dstBuf: UnsafeMutableRawBufferPointer) in
+            data.withUnsafeBytes { (srcBuf: UnsafeRawBufferPointer) in
+                compression_encode_buffer(
+                    dstBuf.bindMemory(to: UInt8.self).baseAddress!, dstCapacity,
+                    srcBuf.bindMemory(to: UInt8.self).baseAddress!, data.count,
+                    nil, COMPRESSION_ZLIB)   // COMPRESSION_ZLIB = raw DEFLATE, no zlib header
+            }
+        }
+        guard compressedSize > 0, compressedSize + 18 < data.count else { return nil }
+        var out = Data([0x1F, 0x8B, 0x08, 0, 0, 0, 0, 0, 0, 0x03])  // gzip header (OS = Unix)
+        out.append(dst.prefix(compressedSize))
+        withUnsafeBytes(of: crc32(data).littleEndian) { out.append(contentsOf: $0) }
+        withUnsafeBytes(of: UInt32(truncatingIfNeeded: data.count).littleEndian) { out.append(contentsOf: $0) }
+        return out
     }
 
     // MARK: - Helpers
