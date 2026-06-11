@@ -1024,13 +1024,9 @@ final class WebServer {
         html.lm .t-info-full{background:#fce8e8;border-color:#cc3030;color:#8b0000}
         html.lm .t-info-full:hover{border-color:#aa2020;color:#660000}
         /* ── Theme switcher (3-dot segmented control) ── */
-        .t-ctrl-btn{background:var(--s4);border:1px solid var(--b4);color:var(--t3);border-radius:5px;padding:5px 10px;font-size:.78rem;cursor:pointer;transition:border-color .15s,color .15s,background .15s;white-space:nowrap}
-        .t-ctrl-btn:hover{border-color:var(--b5);color:var(--t0);background:var(--s3)}
-        html.lm .t-ctrl-btn{background:#f0f0f0;border-color:#ccc;color:#444}
-        html.lm .t-ctrl-btn:hover{background:#e0e0e0;border-color:#aaa;color:#111}
         .genre-sel{background:var(--s4);border:1px solid var(--b4);color:var(--t2);border-radius:5px;padding:4px 8px;font-size:.78rem;cursor:pointer}
         html.lm .genre-sel{background:#f0f0f0;border-color:#ccc;color:#333}
-        #theme-sw{display:flex;background:var(--s4);border:1px solid var(--b4);border-radius:6px;overflow:hidden;flex-shrink:0;margin-right:8px}
+        #theme-sw{display:flex;background:var(--s4);border:1px solid var(--b4);border-radius:6px;overflow:hidden;flex-shrink:0}
         #theme-sw button{background:none;border:none;border-right:1px solid var(--b4);padding:5px 9px;cursor:pointer;color:var(--t4);font-size:.8rem;line-height:1;transition:background .12s,color .12s}
         #theme-sw button:last-child{border-right:none}
         #theme-sw button:hover{background:var(--s3);color:var(--t0)}
@@ -1087,7 +1083,13 @@ final class WebServer {
         .gi{min-width:\(guideMinWidth)px}
         #status-btn:hover{color:var(--t0)!important}
         .g-hdr{display:flex;position:-webkit-sticky;position:sticky;top:0;z-index:10;background:var(--s2);border-bottom:1px solid var(--b2)}
-        .g-hdr-ch{width:125px;min-width:125px;position:-webkit-sticky;position:sticky;left:0;z-index:11;background:var(--s2);border-right:1px solid var(--b2);padding:6px 8px;font-size:.65rem;color:var(--t4);text-transform:uppercase;letter-spacing:.07em}
+        .g-hdr-ch{width:125px;min-width:125px;position:-webkit-sticky;position:sticky;left:0;z-index:11;background:var(--s2);border-right:1px solid var(--b2);padding:4px 6px;display:flex;align-items:center;justify-content:space-between}
+        .g-hdr-ch-lbl{font-size:.65rem;color:var(--t4);text-transform:uppercase;letter-spacing:.07em}
+        .g-hdr-btns{display:flex;gap:3px}
+        .g-hdr-btn{background:none;border:1px solid var(--b3);color:var(--t4);border-radius:3px;padding:2px 5px;font-size:.8rem;cursor:pointer;line-height:1;transition:border-color .15s,color .15s,background .15s}
+        .g-hdr-btn:hover{border-color:var(--b5);color:var(--t0);background:var(--s3)}
+        html.lm .g-hdr-btn{border-color:#bbb;color:#555}
+        html.lm .g-hdr-btn:hover{border-color:#888;color:#111;background:#e8e8e8}
         .g-hdr-tl{flex:1;position:relative;height:32px}
         .g-tick{position:absolute;top:50%;transform:translate(-50%,-50%);font-size:.68rem;color:var(--t4);white-space:nowrap;pointer-events:none}
         .g-now-tick{position:absolute;top:0;bottom:0;width:2px;background:rgba(255,90,90,.65);pointer-events:none}
@@ -1220,14 +1222,10 @@ final class WebServer {
         <body>
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
           <div>\(headerHTML)</div>
-          <div style="display:flex;align-items:center;gap:6px">
-            <button class="t-ctrl-btn" onclick="scrollToNow()" title="Jump to current time">⊙ Now</button>
-            <button class="t-ctrl-btn" onclick="location.reload()" title="Refresh guide">↺ Refresh</button>
-            <div id="theme-sw">
-              <button data-m="dark"  onclick="setTheme('dark')"  title="Dark">◗</button>
-              <button data-m="auto"  onclick="setTheme('auto')"  title="Auto (system)">◐</button>
-              <button data-m="light" onclick="setTheme('light')" title="Light">◖</button>
-            </div>
+          <div id="theme-sw">
+            <button data-m="dark"  onclick="setTheme('dark')"  title="Dark">◗</button>
+            <button data-m="auto"  onclick="setTheme('auto')"  title="Auto (system)">◐</button>
+            <button data-m="light" onclick="setTheme('light')" title="Light">◖</button>
           </div>
         </div>
         \(deviceBarHTML)
@@ -1328,7 +1326,7 @@ final class WebServer {
           </div>
         </div>
         <div class="gw-outer"><div class="gw"><div class="gi">
-        <div class="g-hdr"><div class="g-hdr-ch">Channel</div><div class="g-hdr-tl">\(ticksHTML)</div></div>
+        <div class="g-hdr"><div class="g-hdr-ch"><span class="g-hdr-ch-lbl">Ch</span><div class="g-hdr-btns"><button class="g-hdr-btn" onclick="scrollToNow()" title="Jump to now">⊙</button><button class="g-hdr-btn" onclick="refreshGuide()" title="Refresh guide">↺</button></div></div><div class="g-hdr-tl">\(ticksHTML)</div></div>
         \(rowsHTML)
         </div></div></div>
         <script>
