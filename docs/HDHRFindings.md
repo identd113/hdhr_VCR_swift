@@ -182,6 +182,27 @@ So raising `GuideHours` past ~28 in Settings changes the URL but yields the **sa
 
 **The data beyond ~29h does exist** — it's paginated. Moving `Start` forward to +28h returned programming out to ~53h ahead. To genuinely support a longer window, `GuideStore.load()` would need a pagination loop: fetch, take the max `EndTime`, refetch from there, and merge per-channel `Guide` arrays by `GuideNumber` until `GuideHours` is covered. **Not currently implemented** — `load()` makes a single call, so it is structurally capped at ~29h regardless of the `GuideHours` setting.
 
+### Cloud API — `https://api.hdhomerun.com/api/episodes` — confirmed 2026-06-11
+
+```
+https://api.hdhomerun.com/api/episodes?DeviceAuth=<auth>&SeriesID=<id>
+```
+
+**Undocumented** (not in the official HTTP API docs — used by SiliconDust's own DVR apps; referenced in community docs). Returns the **full upcoming airing schedule for one series** across all channels carrying it. Verified twice on 2026-06-11 with fresh DeviceAuth and different SeriesIDs: 67 and 30/31 airings, reaching **~17 days ahead** — far beyond guide.php's ~29h cap. `SeriesID` is already present on every `GuideEntry`; `DeviceAuth` rotates, so fetch it fresh from `discover.json`.
+
+**Differences vs `guide.php` entries** (same airing compared field-by-field):
+
+| | `guide.php` | `/api/episodes` |
+|---|---|---|
+| Shape | Array of channels, each wrapping `Guide[]` | **Flat array** of airings |
+| Channel info | Channel level: `GuideNumber`, `GuideName`, `Affiliate`, `ImageURL` | Inlined per entry: `ChannelNumber`, `ChannelName`, `ChannelImageURL` (sometimes absent) |
+| `Filter` (genre tags) | ✅ present — drives **Bonus Time** sports detection and genre coloring | ❌ **absent** |
+| `ProgramID` | ❌ absent | ✅ present — per-episode identity; cleanly distinguishes new episodes from repeats (same `ProgramID` appears once per repeat airing) |
+| Time window | ~29h, **includes** currently-airing | ~17 days, but **today's already-started airing can be missing** (one test showed earliest entry = tomorrow despite the series airing at fetch time; another included a −0.5h entry — near-edge behavior is unreliable) |
+| Optional fields | per existing `GuideEntry` optionals | `EpisodeNumber`/`EpisodeTitle`/`Synopsis` absent on generic placeholder listings (3/30 in test) — decode nil-safe |
+
+**Usage guidance if ever adopted for series scheduling:** far-window only. Keep the guide scan authoritative for the next ~24h (reliable near edge + has `Filter` for Bonus Time); use episodes to pre-schedule beyond the guide horizon, then re-resolve against the real guide entry once the airing enters the ~29h window to pick up genre/Bonus Time. `ProgramID` would let Series shows skip repeat airings, which `SeriesID`+title matching cannot do. Being undocumented, guard with a fallback to the current guide-scan behavior if the endpoint 400s or changes shape.
+
 ---
 
 ## Known Open Source Implementations (for reference)
@@ -212,3 +233,4 @@ Primary documentation sources: `info.hdhomerun.com/info/http_api`, `info.hdhomer
 |---|---|
 | `/lineup_status.json` | Reports `ScanInProgress`, `ScanPossible`, `Source`. Would let the app distinguish "device is mid-rescan" from "guide/lineup fetch failed" — currently an empty lineup just logs a generic warning (`GuideStore.swift`). |
 | `guide.php` `Start` chaining | Pagination to fetch beyond the ~29h single-call cap (see Guide API section). Only needed if GuideHours > ~28 is ever required. |
+| `api.hdhomerun.com/api/episodes` | Full ~17-day airing schedule for one SeriesID — proper fix for series scheduling beyond the guide window, plus `ProgramID` for repeat-skipping (see Guide API section for field differences and caveats). |
