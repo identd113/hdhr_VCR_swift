@@ -1171,6 +1171,8 @@ final class WebServer {
         html.lm .g-prog-now  {background:#bec2cc;border-color:#6870a0}
         html.lm .g-prog-rec  {background:#f8c0c0;border-color:#c02828}
         html.lm .g-prog-sched{background:#c0c0f0;border-color:#4040c8}
+        .g-prog-dim{opacity:.35;cursor:default;pointer-events:none}
+        .g-prog-dim:hover{filter:none;border-color:var(--pgb);z-index:auto}
         .g-pi{padding:3px 6px;height:100%;display:flex;flex-direction:column;justify-content:center;gap:1px;overflow:hidden}
         .g-ti{font-size:.78rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--t0);line-height:1.25}
         .g-sub{font-size:.65rem;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25}
@@ -1853,21 +1855,16 @@ final class WebServer {
           return Array.from(r.querySelectorAll('.g-prog')).some(function(p){return(p.dataset.genre||'').toLowerCase()===_genreFilter.toLowerCase();});
         }
         function applyGenreFilter(r){
-          // Show/hide individual programs based on genre filter; hide row if no programs match
+          // Dim non-matching programs based on genre filter; make them unselectable
           var progs=r.querySelectorAll('.g-prog');
-          var anyVisible=false;
           progs.forEach(function(p){
             if(!_genreFilter){
-              p.style.display='';
-              anyVisible=true;
+              p.classList.remove('g-prog-dim');
             } else {
               var matches=(p.dataset.genre||'').toLowerCase()===_genreFilter.toLowerCase();
-              p.style.display=matches?'':'none';
-              if(matches)anyVisible=true;
+              p.classList.toggle('g-prog-dim',!matches);
             }
           });
-          // Hide row if no visible programs remain; only hide visible rows to avoid interfering with device filtering
-          if(r.style.display!=='none'&&!anyVisible)r.style.display='none';
         }
         function setDev(id){
           if(id!==curDev){_genreFilter='';var sel=document.getElementById('genre-sel');if(sel)sel.value='';}
@@ -1875,10 +1872,9 @@ final class WebServer {
           document.querySelectorAll('.d-btn').forEach(function(b){b.classList.toggle('d-sel',b.dataset.dev===id);});
           var seen={};
           _rows.forEach(function(r){
-            var ok=rowMatchesGenre(r);
-            if(id){r.style.display=(r.dataset.dev===id&&ok)?'':'none';}
-            else{var ch=r.dataset.ch;if(!seen[ch]&&ok){r.style.display='';seen[ch]=true;}else{r.style.display='none';}}
-            // Apply genre filter to individual programs
+            if(id){r.style.display=r.dataset.dev===id?'':'none';}
+            else{var ch=r.dataset.ch;if(!seen[ch]){r.style.display='';seen[ch]=true;}else{r.style.display='none';}}
+            // Apply genre filter to individual programs (dim non-matching)
             applyGenreFilter(r);
           });
           // Show/hide the favorites section header and footer for each device
