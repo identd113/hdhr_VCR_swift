@@ -25,6 +25,13 @@ final class ChannelSignalStore {
                                                   withIntermediateDirectories: true)
     }
 
+    /// Canonical store key. Every writer AND reader must derive keys through this —
+    /// a reader that only lowercases (without trimming) silently misses data recorded
+    /// for whitespace-padded GuideNames.
+    nonisolated static func key(for guideName: String) -> String {
+        guideName.trimmingCharacters(in: .whitespaces).lowercased()
+    }
+
     func load() async {
         let path = filePath
         guard let h = await Task.detached(priority: .utility) { () -> [String: [ChannelSignalSample]]? in
@@ -39,7 +46,7 @@ final class ChannelSignalStore {
 
     // Adaptive re-sample frequency: poor channels checked daily, good channels weekly.
     func needsSample(guideName: String) -> Bool {
-        let key = guideName.trimmingCharacters(in: .whitespaces).lowercased()
+        let key = Self.key(for: guideName)
         guard let samples = history[key], let last = samples.last else { return true }
         let age = Date().timeIntervalSince(last.ts)
         switch bucketFor(samples) {
@@ -51,7 +58,7 @@ final class ChannelSignalStore {
     }
 
     func record(guideName: String, snq: Int) {
-        let key = guideName.trimmingCharacters(in: .whitespaces).lowercased()
+        let key = Self.key(for: guideName)
         guard !key.isEmpty else { return }
         var samples = history[key, default: []]
         samples.append(ChannelSignalSample(ts: Date(), snq: min(100, max(0, snq))))
@@ -62,6 +69,32 @@ final class ChannelSignalStore {
 
     private func computeAllBuckets() -> [String: SignalBucket] {
         history.reduce(into: [:]) { out, pair in out[pair.key] = bucketFor(pair.value) }
+    }
+
+    // Stats for the tap-to-inspect popover. Computed over the same last-20 window the
+    // bucket uses, so the numbers shown match the bars. `lastSampled` surfaces freshness —
+    // the key signal of how current the "recordable?" assessment actually is.
+    struct SignalStats {
+        let bucket: SignalBucket
+        let last: Int          // most recent SNQ reading
+        let lastSampled: Date  // when that reading was taken — freshness
+        let avg: Int           // last-20 average (drives the bucket)
+        let min: Int
+        let max: Int
+        let windowCount: Int   // samples in the averaging window
+        let totalCount: Int    // samples retained on disk for this channel
+    }
+
+    func stats(guideName: String) -> SignalStats? {
+        let key = Self.key(for: guideName)
+        guard let all = history[key], let last = all.last else { return nil }
+        let window = Array(all.suffix(20))
+        let snqs   = window.map(\.snq)
+        return SignalStats(bucket: bucketFor(window),
+                           last: last.snq, lastSampled: last.ts,
+                           avg: snqs.reduce(0, +) / snqs.count,
+                           min: snqs.min() ?? 0, max: snqs.max() ?? 0,
+                           windowCount: window.count, totalCount: all.count)
     }
 
     // Rolling 20-sample average → bucket. Single sample is sufficient — the 3-sample guard

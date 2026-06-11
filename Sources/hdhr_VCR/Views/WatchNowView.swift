@@ -275,7 +275,9 @@ struct WatchNowRow: View {
                     .font(.caption.bold())
                     .foregroundStyle(.secondary)
                 if state.config.Signal_quality_enabled {
-                    SignalBarsView(bucket: signalBucket(guideName: channel.GuideName))
+                    // guideName makes the bars tappable for a signal-stats popover (window-only).
+                    SignalBarsView(bucket: signalBucket(guideName: channel.GuideName),
+                                   guideName: channel.GuideName)
                 }
                 if managed?.show_recording == true {
                     Spacer(minLength: 6)

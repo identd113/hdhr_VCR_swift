@@ -38,6 +38,7 @@ func broadcastRecordingEvent(type:channel:device:state:)  // @MainActor — buil
 | POST | `/api/edit` | Update a managed show's config fields |
 | POST | `/api/toggle-favorite` | Toggle the favorite flag for a channel |
 | GET | `/api/now-airing/{devId}/{ch}` | JSON `{title, epTitle, poster, endTime}` for the currently-airing guide entry on the given device+channel; used by the tuner popover to enrich external stream rows asynchronously |
+| GET | `/api/signal-stats/{guideName}` | JSON `{bucket, last, avg, min, max, checked, n, total}` — full signal stats for one channel from `ChannelSignalStore.stats()`; `checked` is the last-sampled epoch (client renders relative). Empty `{}` when no samples. Used by the tuner popover to show inline recordability per active tuner |
 | GET | `/icon/{filename}` | Serves a cached channel icon image from `~/Library/Application Support/hdhrVCRplus/icons/` |
 | anything else | | 404 plain text |
 
@@ -305,6 +306,10 @@ Fixed overlay (z-index 200). Positioned below the clicked tuner badge. Shows:
 **Clickable titles — jump to guide:** all non-idle tuner rows have a clickable title (underline dotted, pointer cursor) that calls `goToShow(ch)` — closes the popup, finds the currently-airing `.g-prog` for that channel, scrolls it into view, and calls `showInfo()`. Our own recording rows get this treatment via a synchronous post-render loop. External stream rows (`"Live stream ch X"` title) additionally fire `fetch('/api/now-airing/{devId}/{ch}')` to patch the DOM with the real guide title, episode name, poster thumbnail, and end time.
 
 **Red recording dot** appears on external streams when `recsByDev` contains a matching `rec=1` entry for the same channel on any device.
+
+**Inline signal quality:** every non-idle tuner row with a `chname` fires `fetch('/api/signal-stats/{chname}')` and appends a small line — colored dot + bucket label (`Poor`/`Fair`/`Good`) + `{avg}% avg · {last}% last · checked {relTime}`. Colors match the guide-row SVG bars and `bColors` SSE palette. Skipped when the channel has no samples (server returns `{}`). `relTime()` renders the `checked` epoch as `just now` / `Xm ago` / `Xh ago` / `Xd ago` so stale readings are obvious.
+
+**Generation token (`tPopGen`):** bumped on every `showTunerInfo` open and `closeTunerPop`. Each enrichment fetch (signal-stats and now-airing) captures `gen` at start and bails if `gen !== tPopGen` when its response arrives — prevents stale fetches from a closed/rebuilt popover appending duplicate or outdated DOM.
 
 Active tuner detection: `DeviceTunerInfo` entries where `VctNumber != nil`. Idle slots (returned by the device with only `"Resource"` present) are not counted. The occupancy is refreshed from `/status.json` on every `GET /` request (cache-bypassed with `cachePolicy: .reloadIgnoringLocalCacheData`).
 

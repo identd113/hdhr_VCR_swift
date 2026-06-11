@@ -30,6 +30,7 @@ Up to **50 samples** are kept per channel (oldest dropped). Writes are debounced
 | `record(guideName:snq:)` | Appends a sample, caps at 50, updates `buckets[key]` immediately, schedules a debounced save. |
 | `flush()` | Cancels any pending debounced save and writes immediately via `Task.detached`. Called after each scan batch so partial progress survives a quit. |
 | `needsSample(guideName:) -> Bool` | Adaptive re-sample gate: poor → 1 day, fair → 3 days, good → 7 days. Returns `true` when no data. |
+| `stats(guideName:) -> SignalStats?` | Read-only snapshot for the tap-to-inspect popover, computed over the same last-20 window as the bucket: `bucket`, `last` SNQ, `lastSampled` (freshness), `avg`/`min`/`max`, `windowCount`, `totalCount`. `nil` when no samples. |
 
 ---
 
@@ -56,7 +57,7 @@ A single sample is sufficient — the `noData` guard was lowered from ≥3 to �
 
 ## Key Lookup
 
-Both write side (`record`) and read side (`buckets`, `needsSample`) use `guideName.lowercased()` as the dictionary key. `GuideName` is device-agnostic — the same call sign appears on every device tuned to that multiplex — so signal data collected on one device applies to matching channels on all devices.
+All keys derive from `ChannelSignalStore.key(for:)` — `guideName.trimmingCharacters(in: .whitespaces).lowercased()`. Every writer (`record`) **and** reader (`buckets` lookups in `signalBucket`, WebServer `gnameAttr`, AppState SSE broadcast keys, `needsSample`, `stats`) must go through this helper; a reader that only lowercases silently misses data recorded for whitespace-padded GuideNames. `GuideName` is device-agnostic — the same call sign appears on every device tuned to that multiplex — so signal data collected on one device applies to matching channels on all devices.
 
 ---
 
@@ -98,6 +99,7 @@ Defined in `GuideViewHelpers.swift`. A 3-bar chart rendered inline in guide rows
 ```swift
 struct SignalBarsView: View {
     let bucket: SignalBucket
+    var guideName: String? = nil   // when set, bars are tappable → stats popover
 }
 ```
 
@@ -107,5 +109,7 @@ struct SignalBarsView: View {
 - `.good` → 3 bars (green)
 
 Bar widths: 3 pt each, 1 pt spacing, aligned to `.bottom`. Used in `WatchNowView` and `MenuContent` when `Signal_quality_enabled`. Signal bars in the guide are rendered server-side as SVG in the web guide HTML (see WebServer.md).
+
+**Tap-to-inspect popover** — when `guideName` is supplied, the bars become a `.plain` button (enlarged hit area via `contentShape`) that opens a `SignalStatsPopover` showing `stats(guideName:)` data, led by **Last checked** (freshness). Only wired in `WatchNowView`; the `MenuContent` copy omits `guideName` because the `.menu`-style `MenuBarExtra` is a native NSMenu and cannot host a SwiftUI popover.
 
 Helper: `signalBucket(guideName:)` — `@MainActor` free function that reads `ChannelSignalStore.shared.buckets[key]` directly. Returns `.noData` if no entry.

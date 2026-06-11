@@ -369,6 +369,24 @@ final class WebServer {
                 let body = (try? JSONSerialization.data(withJSONObject: result)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
                 return .ok(contentType: "application/json", body: Data(body.utf8))
             }
+            if path.hasPrefix("/api/signal-stats/") {
+                // /api/signal-stats/{guideName} — full signal stats for one channel, used by the
+                // tuner popover to show recordability inline per active tuner. Empty {} if no samples.
+                let name = String(path.dropFirst("/api/signal-stats/".count)).removingPercentEncoding ?? ""
+                guard let s = ChannelSignalStore.shared.stats(guideName: name) else {
+                    return .ok(contentType: "application/json", body: Data("{}".utf8))
+                }
+                return jsonResponse([
+                    "bucket":  s.bucket.rawValue,
+                    "last":    s.last,
+                    "avg":     s.avg,
+                    "min":     s.min,
+                    "max":     s.max,
+                    "checked": Int(s.lastSampled.timeIntervalSince1970),  // epoch — client renders relative
+                    "n":       s.windowCount,
+                    "total":   s.totalCount
+                ])
+            }
             if path.hasPrefix("/icon/") {
                 let filename = String(path.dropFirst("/icon/".count))
                 guard !filename.isEmpty, !filename.contains("/"), !filename.contains("..") else {
@@ -945,7 +963,7 @@ final class WebServer {
                     blockParts.append("<div class=\"\(cls)\" style=\"left:\(pct(cs))%;width:\(pct(ce - cs))%\" title=\"\(tip)\" \(da)\(showDA) onclick=\"showInfo(this)\"><div class=\"g-pi\"><span class=\"g-ti\">\(he(e.Title))</span>\(subH)</div>\(flagHTML)</div>")
                 }
 
-                let gnameAttr = ch.GuideName.lowercased()
+                let gnameAttr = ChannelSignalStore.key(for: ch.GuideName)
                 let sigBucket = ChannelSignalStore.shared.buckets[gnameAttr] ?? .noData
                 let sigHTML: String = {
                     guard sigBucket != .noData else { return "" }
@@ -1622,7 +1640,12 @@ final class WebServer {
             note.textContent='Error: '+(e.message||'network');note.style.color='#ff8080';note.style.fontStyle='normal';note.style.display='inline';
           });
         }
+        // Generation token: bumped on every popover open and close, so async enrichment
+        // fetches started for an earlier generation can't append stale DOM into a rebuilt
+        // (or closed) popover. All enrichment callbacks compare their captured gen.
+        var tPopGen=0;
         function showTunerInfo(devId,anchor){
+          tPopGen++;var gen=tPopGen;
           var recs=recsByDev[devId]||[];
           var dt=tuners[devId]||{t:0,a:0};
           var full=dt.t>0&&dt.a>=dt.t;
@@ -1662,6 +1685,30 @@ final class WebServer {
               var titleDiv=row.children[1];
               if(titleDiv){titleDiv.style.cursor='pointer';titleDiv.style.textDecoration='underline dotted';(function(ch){titleDiv.onclick=function(){goToShow(ch);};})(r.ch);}
             });
+            // Inline signal quality per active tuner — shows how recordable the channel
+            // currently on each tuner is, with freshness ("checked Xh ago"). Appended async.
+            recs.forEach(function(r){
+              if(r.idle==='1'||!r.chname)return;
+              var rid='tnr-'+r.tuner.replace(/\\W/g,'');
+              fetch('/api/signal-stats/'+encodeURIComponent(r.chname))
+                .then(function(res){return res.json();})
+                .then(function(s){
+                  if(gen!==tPopGen)return; // popover was closed or rebuilt since this fetch started
+                  if(!s||!s.bucket)return;
+                  var row=document.getElementById(rid);
+                  if(!row)return;
+                  // Same palette as the guide-row SVG bars and signal_update SSE handler (bColors).
+                  var col={poor:'#e53935',fair:'#fbc02d',good:'#43a047'}[s.bucket]||'#888';
+                  var lbl={poor:'Poor',fair:'Fair',good:'Good'}[s.bucket]||s.bucket;
+                  var sig=document.createElement('div');
+                  sig.className='sig-line';
+                  sig.style.cssText='font-size:.72rem;color:var(--t3);padding-left:56px;display:flex;align-items:center;gap:5px;flex-wrap:wrap';
+                  sig.innerHTML='<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:'+col+';flex-shrink:0"></span>'
+                    +'<span style="color:'+col+';font-weight:600">'+lbl+'</span>'
+                    +'<span>· '+s.avg+'% avg · '+s.last+'% last · checked '+relTime(s.checked)+'</span>';
+                  row.appendChild(sig);
+                }).catch(function(){});
+            });
             // Async guide enrichment for external streams — runs after innerHTML is set
             recs.forEach(function(r){
               if(r.idle==='1'||!r.ch||r.ch==='?')return;
@@ -1670,8 +1717,9 @@ final class WebServer {
               fetch('/api/now-airing/'+encodeURIComponent(devId)+'/'+encodeURIComponent(r.ch))
                 .then(function(res){return res.json();})
                 .then(function(g){
+                  if(gen!==tPopGen)return; // popover was closed or rebuilt since this fetch started
                   var row=document.getElementById(rid);
-                  if(!row||document.getElementById('t-pop').style.display==='none')return;
+                  if(!row)return;
                   if(g.title){
                     var titleDiv=row.children[1];
                     if(titleDiv){
@@ -1717,7 +1765,16 @@ final class WebServer {
           pop.style.top=(rect.bottom+8)+'px';
           document.getElementById('t-pop').style.display='block';
         }
-        function closeTunerPop(){document.getElementById('t-pop').style.display='none';}
+        function closeTunerPop(){tPopGen++;document.getElementById('t-pop').style.display='none';}
+        // Compact relative time for signal "last checked" freshness.
+        function relTime(epoch){
+          if(!epoch)return'never';
+          var d=Math.floor(Date.now()/1000)-epoch;
+          if(d<60)return'just now';
+          if(d<3600)return Math.floor(d/60)+'m ago';
+          if(d<86400)return Math.floor(d/3600)+'h ago';
+          return Math.floor(d/86400)+'d ago';
+        }
         function goToShow(ch){
           closeTunerPop();
           var now=Math.floor(Date.now()/1000);

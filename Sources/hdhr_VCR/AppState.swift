@@ -2061,7 +2061,7 @@ final class AppState: ObservableObject {
                                     guard let match = tunerInfos.first(where: { $0.VctNumber == entry.GuideNumber }),
                                           let snq = match.SignalQualityPercent else { continue }
                                     ChannelSignalStore.shared.record(guideName: entry.GuideName, snq: snq)
-                                    gotSample.insert(entry.GuideName.lowercased())
+                                    gotSample.insert(ChannelSignalStore.key(for: entry.GuideName))
                                 }
                             }
                         }
@@ -2069,7 +2069,7 @@ final class AppState: ObservableObject {
                     }
                     // Channels that never locked during the 3 polls get snq=0 so they render
                     // as a red 1-bar indicator rather than staying invisible (noData).
-                    for entry in batch where !gotSample.contains(entry.GuideName.lowercased()) {
+                    for entry in batch where !gotSample.contains(ChannelSignalStore.key(for: entry.GuideName)) {
                         ChannelSignalStore.shared.record(guideName: entry.GuideName, snq: 0)
                     }
 
@@ -2077,7 +2077,7 @@ final class AppState: ObservableObject {
                     ChannelSignalStore.shared.flush()
 
                     for entry in batch {
-                        let key = entry.GuideName.lowercased()
+                        let key = ChannelSignalStore.key(for: entry.GuideName)
                         webServer.broadcastEvent(["type": "signal_update",
                                                   "gname": key,
                                                   "bucket": ChannelSignalStore.shared.buckets[key]?.rawValue ?? "noData"])
