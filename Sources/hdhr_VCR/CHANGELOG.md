@@ -1,5 +1,13 @@
 # hdhrVCRplus Changelog
 
+## 2026-06-11 (260611-1048)
+
+- **Signal stats — tap to inspect** — The signal bars in Watch Now are now clickable: a popover shows bucket + average, last reading, min–max range, **last checked** (relative time — the freshness of the recordability assessment), and sample counts. Backed by a new `ChannelSignalStore.stats(guideName:)` computed over the same last-20 window that drives the bars, so the numbers always match the displayed bucket. Menu-bar bars are unchanged (NSMenu can't host a popover).
+- **Web guide — tuner popover signal line** — Each active tuner row in the tuner popup now shows an inline signal line: colored dot + Poor/Fair/Good + `{avg}% avg · {last}% last · checked {Xm/Xh/Xd ago}`, fetched per row from the new `/api/signal-stats/{guideName}` endpoint. Colors match the guide-row SVG bars and SSE palette.
+- **Web guide — tuner popover generation token** — `tPopGen` is bumped on every popover open/close; all async enrichment fetches (signal-stats and now-airing) capture their generation and discard stale responses. Fixes a pre-existing race where a quick close/reopen let an in-flight now-airing fetch append stale poster/episode/end-time nodes into the rebuilt popover.
+- **Signal store — canonical key helper** — All signal-history key derivations now go through `ChannelSignalStore.key(for:)` (trim + lowercase). Previously `signalBucket()`, the web guide's `data-gname` attribute, and the SSE broadcast keys only lowercased, so a whitespace-padded `GuideName` recorded data the readers could never find.
+- **Channel icons — incremental publishing** — On a cold cache, downloaded channel icons now appear in the UI in batches of 16 as downloads complete, instead of all at once after the last download. All downloads still run concurrently (total time ≈ slowest single download); the warm-cache path keeps its single bulk assignment.
+
 ## 2026-06-10 (260610-1952)
 
 - **Web guide — lazy row rendering for faster load** — Added `content-visibility:auto; contain-intrinsic-size:auto 55px` to every `.g-row`. A full guide is ~100 rows × ~1300 absolutely-positioned program blocks with per-row gradient backgrounds; the browser was spending ~23 s (in WKWebView/Safari) on style/layout/paint of the entire grid, including the ~90 rows scrolled off-screen. The engine now skips off-screen rows and renders them on scroll, so the initial paint costs only the ~12 visible rows. Pure CSS — no JS, no new endpoint, survives `refreshGuide()` DOM swaps, and leaves the `winStart`/gap-fill math untouched. The sticky channel column was verified intact (the implied `contain` can otherwise interfere with `position:sticky`). Older browsers without `content-visibility` degrade to rendering all rows up front.

@@ -652,20 +652,41 @@ final class AppState: ObservableObject {
         let urls = Array(Set(channels.compactMap { $0.ImageURL }.filter { !$0.isEmpty }))
         guard !urls.isEmpty else { return }
         let needed = await ChannelIconCache.shared.countMissing(in: urls)
-        if needed > 0 { statusMessage = "Caching \(needed) channel icon(s)…" }
-        // Always fetch all URLs — loads disk→mem even when nothing needs downloading
-        await withTaskGroup(of: Void.self) { group in
+
+        if needed == 0 {
+            // Warm cache: load disk→mem in one pass, single @Published assignment — no UI churn.
+            await withTaskGroup(of: Void.self) { group in
+                for url in urls {
+                    group.addTask { _ = await ChannelIconCache.shared.image(for: url) }
+                }
+            }
+            let fetched = await ChannelIconCache.shared.allCachedImages(for: urls)
+            channelIconImages = channelIconImages.merging(fetched) { _, new in new }
+            return
+        }
+
+        // Cold cache: all downloads run concurrently (total time ≈ slowest single download,
+        // not a sum of sequential waves); completed icons are published in batches of 16 so
+        // they appear in the UI as they arrive without per-icon @Published churn.
+        statusMessage = "Caching \(needed) channel icon(s)…"
+        await withTaskGroup(of: (String, NSImage?).self) { group in
             for url in urls {
-                group.addTask { _ = await ChannelIconCache.shared.image(for: url) }
+                group.addTask { (url, await ChannelIconCache.shared.image(for: url)) }
+            }
+            var batch: [String: NSImage] = [:]
+            for await (url, img) in group {
+                if let img { batch[url] = img }
+                if batch.count >= 16 {
+                    channelIconImages = channelIconImages.merging(batch) { _, new in new }
+                    batch.removeAll()
+                }
+            }
+            if !batch.isEmpty {
+                channelIconImages = channelIconImages.merging(batch) { _, new in new }
             }
         }
-        if needed > 0 {
-            glog("[Icons] downloaded \(needed) new icon(s) — \(urls.count) total cached")
-            statusMessage = "\(shows.count) show(s) — \(availableDeviceCount) tuner(s) ready"
-        }
-        // One actor hop to read the full mem dict; single @Published assignment regardless of icon count
-        let fetched = await ChannelIconCache.shared.allCachedImages(for: urls)
-        channelIconImages = channelIconImages.merging(fetched) { _, new in new }
+        glog("[Icons] downloaded \(needed) new icon(s) — \(urls.count) total cached")
+        statusMessage = "\(shows.count) show(s) — \(availableDeviceCount) tuner(s) ready"
     }
 
     func isGuideLoading(for deviceId: String) -> Bool {
