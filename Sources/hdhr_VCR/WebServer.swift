@@ -1100,7 +1100,12 @@ final class WebServer {
         .g-hdr-tl{flex:1;position:relative;height:32px}
         .g-tick{position:absolute;top:50%;transform:translate(-50%,-50%);font-size:.68rem;color:var(--t4);white-space:nowrap;pointer-events:none}
         .g-now-tick{position:absolute;top:0;bottom:0;width:2px;background:rgba(255,90,90,.65);pointer-events:none}
-        .g-row{display:flex;border-bottom:1px solid var(--b0)}
+        /* content-visibility:auto lets the browser skip layout/paint for rows scrolled out of
+           view — only on-screen rows (plus a small buffer) are rendered, so the initial paint
+           costs ~12 rows instead of all ~100. contain-intrinsic-size reserves each skipped row's
+           height (54px tl + 1px border) so the scrollbar geometry stays correct before render;
+           the `auto` keyword caches the real measured size after a row renders once. */
+        .g-row{display:flex;border-bottom:1px solid var(--b0);content-visibility:auto;contain-intrinsic-size:auto 55px}
         .g-row:last-child{border-bottom:none}
         .g-fav-sep{display:flex;border-bottom:1px solid var(--b0)}
         .g-fav-sep .g-ch{min-height:0;padding:3px 8px;background:color-mix(in srgb,var(--fav) 16%,var(--s1));border-right:1px solid var(--b1);color:var(--fav);font-size:.63rem;font-weight:700;letter-spacing:.07em}
