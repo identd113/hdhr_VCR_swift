@@ -154,7 +154,7 @@ final class AppState: ObservableObject {
     }
 
     private var idleTimer: Timer?
-    private var lastGuideRefresh: Date    = .distantPast
+    private var lastRefreshHour: Int?     = nil  // hour on which guide was last refreshed; triggers new refresh when hour changes
     private var lastDeviceProbe: Date     = .distantPast
     private var nextQuickProbe: Date?     = nil   // set when any device misses a probe; cleared when all are seen
     private var guideRefreshInFlight: Bool = false
@@ -585,7 +585,7 @@ final class AppState: ObservableObject {
             else  { guideApiBackoff[deviceId, default: APIBackoff()].recordFailure() }
         }
         let loadedCount = guideByDevice.values.reduce(0) { $0 + $1.count }
-        if loadedCount > 0 { lastGuideRefresh = Date(); guideRevision += 1 }
+        if loadedCount > 0 { guideRevision += 1 }
         statusMessage = "\(shows.count) show(s) — \(availableDeviceCount) tuner(s) ready"
         let allChannels = guideByDevice.values.flatMap { $0 }
         Task { await prefetchChannelIcons(allChannels) }
@@ -594,10 +594,9 @@ final class AppState: ObservableObject {
     private func refreshGuides() async {
         guard !guideRefreshInFlight else { return }
         guideRefreshInFlight = true
-        // Always stamp lastGuideRefresh — even on total failure. Without this, a complete
-        // API outage causes idleLoop to call refreshGuides() every 10s (retry storm).
         // Per-device retries are handled separately by ensureGuideLoaded with exponential backoff.
-        defer { guideRefreshInFlight = false; lastGuideRefresh = Date() }
+        // Hourly refresh boundary in idleLoop naturally prevents retry storms.
+        defer { guideRefreshInFlight = false }
         guideStore.invalidateAll()
         await fetchAllLineups(for: devices)
         guideStore.verbose = config.Verbose_curl
@@ -931,9 +930,10 @@ final class AppState: ObservableObject {
             Task { await probeForNewDevices() }
         }
 
-        // Refresh lineup + guide every GuideHours / 4 (default: every 6 h, min: 1 h)
-        let refreshInterval = max(3600.0, Double(config.GuideHours) * 900.0)
-        if now.timeIntervalSince(lastGuideRefresh) > refreshInterval {
+        // Refresh lineup + guide at each hour boundary (aligned with web UI's 30-min window slide)
+        let currentHour = Calendar.current.component(.hour, from: now)
+        if lastRefreshHour != currentHour {
+            lastRefreshHour = currentHour
             Task { await refreshGuides() }
         }
         // Pass 1: stop all completed recordings before any new ones start
@@ -1576,10 +1576,7 @@ final class AppState: ObservableObject {
         glog("[Guide] refreshAll() — triggering discovery + refreshGuides()")
         guideByDevice = [:]
         // Discovery first (updates device IPs), then refreshGuides() which invalidates and reloads.
-        // Previously this called fetchAllGuides() directly AND set lastGuideRefresh = .distantPast,
-        // causing the idle loop to ALSO call refreshGuides() concurrently — two loadAll calls,
-        // the faster "skipped" one would return with 0 channels, and lastGuideRefresh was stamped
-        // before the real data arrived, creating a persistent retry storm.
+        // The idle loop checks hour boundaries, so concurrent calls are naturally throttled.
         Task { await discoverDevices(); await refreshGuides() }
     }
 
