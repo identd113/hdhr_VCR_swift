@@ -585,7 +585,9 @@ final class AppState: ObservableObject {
             else  { guideApiBackoff[deviceId, default: APIBackoff()].recordFailure() }
         }
         let loadedCount = guideByDevice.values.reduce(0) { $0 + $1.count }
-        if loadedCount > 0 { guideRevision += 1 }
+        // Stamp the refresh hour so the first idle-loop tick doesn't immediately
+        // re-fetch the guide that startup just loaded.
+        if loadedCount > 0 { guideRevision += 1; lastRefreshHour = Calendar.current.component(.hour, from: Date()) }
         statusMessage = "\(shows.count) show(s) — \(availableDeviceCount) tuner(s) ready"
         let allChannels = guideByDevice.values.flatMap { $0 }
         Task { await prefetchChannelIcons(allChannels) }
