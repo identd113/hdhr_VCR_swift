@@ -24,7 +24,7 @@ Runs every `config.Idle_timer_interval` seconds on MainActor:
 
 - If `devices` is empty → retries discovery immediately.
 - If guide channels missing for any device → calls `ensureGuideLoaded(for:)`.
-- Refreshes lineup + guide every `max(3600, GuideHours × 1800)` seconds (non-blocking `Task`).
+- Refreshes lineup + guide at each clock-hour boundary (`lastRefreshHour` vs current hour; non-blocking `Task`) — aligned with the web UI's 30-minute window slide. On total API failure the next attempt is the next hour boundary; intra-hour retries are handled per-device by `ensureGuideLoaded` backoff.
 - **Device probe** — calls `probeForNewDevices()` every 5 minutes to detect new and departing tuners. When any device misses a probe (not seen in discovery response), a 60-second follow-up probe is scheduled (`nextQuickProbe`) so the 3-miss unavailability threshold is reached in ~2–7 minutes rather than 15. The condition `missedProbes <= 3` (inclusive) ensures a follow-up is also scheduled on the tick that crosses the unavailability threshold, keeping recovery detection at 60 s cadence immediately after a device goes offline. The normal 5-minute cycle is unaffected by quick probes.
 - Per active show:
   - Fires "Up Next" notification once at `Notify_upnext` minutes before; stamps `notify_upnext_time`.
@@ -97,8 +97,8 @@ The web server is stopped explicitly in all three `quit()` exit branches before 
 
 | Method | Description |
 |---|---|
-| `fetchAllGuides()` | Startup parallel load; sets `lastGuideRefresh` only when ≥1 channel loaded |
-| `refreshGuides()` | Private; invalidates then reloads all; called periodically from idle loop. After reload, calls `rescheduleAllSeries()` so series shows stranded past the guide window get rescheduled as soon as a matching episode appears. |
+| `fetchAllGuides()` | Startup parallel load; stamps `lastRefreshHour` + bumps `guideRevision` only when ≥1 channel loaded (prevents the first idle tick from re-fetching what startup just loaded) |
+| `refreshGuides()` | Private; invalidates then reloads all; called from the idle loop at each hour boundary. After reload, calls `rescheduleAllSeries()` so series shows stranded past the guide window get rescheduled as soon as a matching episode appears. |
 | `ensureGuideLoaded(for deviceId:)` | Loads a device if channels absent and not already loading; safe to call repeatedly |
 | `ensureLineupLoaded(for device:)` | Re-fetches lineup if nil/empty; called at guide-step open in AddShowView + FloatingGuideView |
 | `guideEntries(deviceId:channelNum:)` | Delegates to `guideStore.entries()` |

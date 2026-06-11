@@ -255,7 +255,7 @@ Self-contained HTML with all CSS inlined. Updates arrive via SSE push events (se
 
 Page structure (top to bottom):
 
-1. **Page header** — `h1` title + `≡` status toggle button + tuner badge / device link (single device) or device switcher bar (multiple devices)
+1. **Page header** — left: `h1` title + `≡` status toggle button + tuner badge / device link (single device) or device switcher bar (multiple devices); right: theme switcher (`#theme-sw`, dark/auto/light). Guide navigation (⊙ Now / ↺ Refresh) lives in the guide corner cell, not the header.
 2. **Tuner popover** (`#t-pop`) — fixed overlay; shown by clicking a tuner badge
 3. **Summary panel** (`#sum`) — always visible; selected show details + actions
 4. **Record type modal** (`#rec-modal`) — fixed overlay; appears on Record click
@@ -394,17 +394,19 @@ A cable-TV-style horizontal time grid. Window width depends on the requesting cl
 - `div.gi` — inner, `min-width` scales with window (see above)
 - Sticky time-header (`top: 0; z-index: 10`)
 - Sticky channel column (`left: 0; z-index: 2`) — both data rows (`.g-ch`) and the header cell (`.g-hdr-ch`) are **125 px** wide. They must match so the `nowPct%` left offset maps to the same pixel position in both the time header and program rows.
-- Corner cell `z-index: 11`
+- Corner cell (`z-index: 11`) — flex row: "Ch" label (`.g-hdr-ch-lbl`) left, two icon buttons (`.g-hdr-btn`) right: **⊙** calls `scrollToNow()` (now-line to ~25% of viewport), **↺** calls `refreshGuide()` (scroll-preserving DOM swap — not a page reload). Sticky top+left, so the controls stay visible while scrolling the grid in any direction.
 
 **Rows:** one row per (device × channel). Cross-device deduplication is handled client-side by `setDev('')` on page load — it hides duplicate `GuideNumber` rows keeping the first-device occurrence, giving a clean "All" view.
 
 Each `.g-row` carries `data-dev`, `data-ch`, `data-gname` (`GuideName.lowercased()`), and `data-fav` (`"1"` for favorite channels, absent otherwise). `data-gname` is the key used by `signal_update` SSE events; `data-fav` is used by `setDev` to show/hide `.g-fav-sep` headers.
 
-**Favorites section:** favorite channels are sorted to the top of each device's channel list server-side. A `.g-fav-sep` separator row (amber `★ FAVORITES` label, `display:flex`) is inserted above the first favorite row per device and hidden via `setDev` when no visible favorite rows remain (e.g. genre filter active). Favorite channel rows get a golden background tint via `color-mix(in srgb, var(--fav) 16%, var(--s1))` on `.g-ch` and a repeating gradient tint on `.g-tl`. A `☆`/`★` toggle button (`.g-fav-btn`) in each channel cell calls `toggleFav(evt, btn)` to POST `/api/toggle-favorite`.
+**Favorites section:** favorite channels are sorted to the top of each device's channel list server-side. A `.g-fav-sep` separator row (amber `★ FAVORITES` label, `display:flex`) is inserted above the first favorite row per device and hidden via `setDev` when no visible favorite rows remain (e.g. another device selected). Favorite channel rows get a golden background tint via `color-mix(in srgb, var(--fav) 16%, var(--s1))` on `.g-ch` and a repeating gradient tint on `.g-tl`. A `☆`/`★` toggle button (`.g-fav-btn`) in each channel cell calls `toggleFav(evt, btn)` to POST `/api/toggle-favorite`.
 
 **Signal bars in channel column:** when `state.config.Signal_quality_enabled` and signal data exists for a channel, a 3-bar SVG (`class="g-sig"`, `viewBox="0 0 11 10"`, `width/height=10`) is baked into the `.g-ch` cell at page build time. Buckets map to fill levels: `good` → all 3 bars, `fair` → 2 bars, `poor` → 1 bar, `noData` → no SVG emitted. The `title` attribute carries `"Signal: {bucket}"` for hover. Bars are updated in-place on `signal_update` SSE events without a page reload.
 
-**`setDev()` and DOM caching**: `.g-row` NodeList is cached into `_rows` at page load and reused on every device switch — avoids repeated `querySelectorAll` calls. When `setDev(id)` is called with a **different** device ID than `curDev`, `_genreFilter` is reset to `''` and the `<select id="genre-sel">` is reset to the blank option — a stale genre filter from the previous device would otherwise leave the guide empty if the new device has no matching genre.
+**`setDev()` and DOM caching**: `.g-row` NodeList is cached into `_rows` at page load and reused on every device switch — avoids repeated `querySelectorAll` calls. When `setDev(id)` is called with a **different** device ID than `curDev`, `_genreFilter` is reset to `''` and the `<select id="genre-sel">` is reset to the blank option, so each device starts with an unfiltered view.
+
+**Genre filter:** a `<select id="genre-sel">` (in `#genre-bar`, hidden unless the guide contains ≥2 distinct genres) is populated at page load from unique `data-genre` values. `filterGenre(g)` sets `_genreFilter` and calls `applyGenreDim()`, which adds `.g-prog-dim` (35% opacity, `pointer-events: none` — dimmed and unselectable) to every program whose genre doesn't match. Rows are never hidden by genre — only individual programs are dimmed. `setDev()` calls `applyGenreDim()` after row visibility changes so the dim state survives device switches and `refreshGuide()` DOM swaps.
 
 **Time header:** one tick per clock hour, aligned to hour boundaries via `stride(from: firstHour, through: winEnd, by: 3600)` where `firstHour = ((winStart + 3599) / 3600) * 3600`. Label uses `DateFormatter` template `"j"` (locale-preferred hour, e.g. `"8 PM"` or `"20"`). + red "now" bar.
 
@@ -439,6 +441,8 @@ Dark mode values (default). Light mode overrides follow below.
 | `.gg-*` genre | `hsl(hue, sat, 68–72%)` | `hsl(hue, sat, 46–50%)` |
 | `.g-prog-now.gg-*` / `.g-prog-sched.gg-*` | `hsl(hue, sat, 76–80%)` | `hsl(hue, sat, 46–50%)` |
 | `.g-prog` (default) | `#cbd0dc` | `#8590a8` |
+
+`.g-prog-dim` (genre filter active, non-matching program) overlays any of the above: `opacity: .35; pointer-events: none` — the block keeps its color but is dimmed and unselectable.
 
 State classes (rec / now / sched) take precedence over genre. `.g-prog-now.gg-*` two-class selectors override the grey fallback with genre-tinted now-playing colors (e.g. dark mode `.g-prog-now.gg-drama` → `hsl(216,52%,44%)`; light mode → `hsl(216,57%,78%)`). `.g-prog-sched.gg-*` selectors apply the same genre hue families to scheduled-show blocks with matching lightness. `.g-prog.g-sel` adds white border + glow.
 
@@ -527,7 +531,10 @@ Content is embedded at page build time; `refreshShowsSection()` fetches `/api/sh
 | `openEditShow(el)` | Populates and opens `#edit-modal` from `el.dataset`; handles both guide blocks and schedule popover rows |
 | `closeEditShow()` | Hides `#edit-modal` |
 | `confirmEdit()` | POSTs `/api/edit`; closes modal on success |
-| `setDev(id)` | Filters guide rows by `data-dev`; empty string = All (with JS dedup); uses cached `_rows` NodeList; shows/hides `.g-fav-sep` separators based on whether any visible favorite rows remain for each device |
+| `setDev(id)` | Filters guide rows by `data-dev`; empty string = All (with JS dedup); uses cached `_rows` NodeList; calls `applyGenreDim()` then shows/hides `.g-fav-sep` separators based on whether any visible favorite rows remain for each device |
+| `filterGenre(g)` | Sets `_genreFilter` and calls `applyGenreDim()` |
+| `applyGenreDim()` | Removes all `.g-prog-dim` classes, then (if a filter is active) adds the class to every program whose `data-genre` doesn't match — dimmed + unselectable, rows stay visible |
+| `scrollToNow()` | Scrolls `.gw` so the now-line sits ~25% from the left of the viewport; corner-cell ⊙ button and page load both call it |
 | `toggleFav(evt, btn)` | `onclick` on `.g-fav-btn` star buttons; reads `data-dev` / `data-ch` from parent `.g-row`; POSTs `/api/toggle-favorite`; calls `refreshGuide()` on success |
 | `openSchedPop(anchor)` | Opens `#sched-pop` anchored below the button; toggles closed on second click |
 | `closeSchedPop()` | Hides `#sched-pop`; resets `#status-btn` color and `aria-expanded` |
@@ -540,7 +547,7 @@ Content is embedded at page build time; `refreshShowsSection()` fetches `/api/sh
 | `so(id, val)` | Shows element with textContent, or hides if falsy |
 | `hej(s)` | HTML-escapes a string for safe `innerHTML` concatenation (`&`, `<`, `>`) — used in the tuner popover where values come from server-side data |
 
-**Globals:** `_d` (deviceId), `_n` (guideNumber), `_s` (startTime), `_e` (endTime), `_ser` (SeriesID), `_genre` (first genre string), `curDev` (active device filter) — set by `showInfo`, consumed by `doRecord`/`doDelete`/`confirmRecord`. `_genre` is used by `doRecord()` to pre-check Bonus Time for sports entries.
+**Globals:** `_d` (deviceId), `_n` (guideNumber), `_s` (startTime), `_e` (endTime), `_ser` (SeriesID), `_genre` (first genre string), `curDev` (active device filter), `_genreFilter` (active genre filter, `''` = none) — set by `showInfo` (except `_genreFilter`, set by `filterGenre`), consumed by `doRecord`/`doDelete`/`confirmRecord`/`applyGenreDim`. `_genre` is used by `doRecord()` to pre-check Bonus Time for sports entries.
 
 **Embedded JS data:**
 - `var tuners` — `{deviceId: {t: total, a: active, surl: "http://ip/status.json"}, …}` — tuner counts from fresh `/status.json` fetch
