@@ -76,11 +76,11 @@ Returns the specific tuner that was allocated:
 X-HDHomeRun-Resource: tuner1
 ```
 
-Confirmed present in live testing. More reliable than polling `/status.json` and matching by channel number, which is fragile when two recordings share a channel. Capturing this at stream start and storing it on `Show` would allow direct `/tunerN/vstatus` targeting.
+Confirmed present in live testing. More reliable than polling `/status.json` and matching by channel number, which is fragile when two recordings share a channel. **Implemented:** captured at stream start from the curl dump-header file (`RecordingManager.readHDHRResource`), stored on `Show.show_tuner_resource`, and used for direct `/tunerN/vstatus` targeting in `AppState` (preferred over channel-number matching).
 
 ### X-HDHomeRun-Error
 
-Returned when the stream request fails at the device level. Currently not parsed by hdhr_VCR — curl exits non-zero and the app logs "curl exited unexpectedly" with no further detail.
+Returned when the stream request fails at the device level. **Implemented:** parsed from the curl dump-header file (`RecordingManager.readAndClearHDHRError`) and mapped to a human-readable `show_fail_reason` via `hdhrErrorLabel` (codes 804–811 below). Earlier versions only logged a generic "curl exited unexpectedly".
 
 | Code | Meaning |
 |---|---|
@@ -169,6 +169,19 @@ https://api.hdhomerun.com/api/guide.php?DeviceAuth=<auth>&Duration=<hours>
 https://api.hdhomerun.com/api/guide.php?DeviceAuth=<auth>&Start=<epoch>&Duration=<hours>
 ```
 
+### Per-call window cap (~29h) — confirmed 2026-06-11
+
+The cloud API **ignores large `Duration` values** beyond a per-call cap of roughly ~28–30h from `Start`. Tested on device 105404BE:
+
+| Requested `Duration` | Latest data returned |
+|---|---|
+| `25` (GuideHours 24) | ~29h ahead |
+| `37` (GuideHours 36) | ~29h ahead — byte-identical response |
+
+So raising `GuideHours` past ~28 in Settings changes the URL but yields the **same** data; a single call cannot return more.
+
+**The data beyond ~29h does exist** — it's paginated. Moving `Start` forward to +28h returned programming out to ~53h ahead. To genuinely support a longer window, `GuideStore.load()` would need a pagination loop: fetch, take the max `EndTime`, refetch from there, and merge per-channel `Guide` arrays by `GuideNumber` until `GuideHours` is covered. **Not currently implemented** — `load()` makes a single call, so it is structurally capped at ~29h regardless of the `GuideHours` setting.
+
 ---
 
 ## Known Open Source Implementations (for reference)
@@ -191,4 +204,11 @@ Primary documentation sources: `info.hdhomerun.com/info/http_api`, `info.hdhomer
 | `/status.json` | Active tuner occupancy: Resource, VctNumber, TargetIP |
 | `/tunerN/vstatus` | Per-tuner signal: ss, snq, lock, bps (key-value text) |
 | `/lineup.post?favorite=±N` | Mark/unmark channel favorite |
-| `api.hdhomerun.com/api/guide.php` | Cloud guide data (DeviceAuth gated); optional `Start=<epoch>` shifts window start; `Duration` in hours from Start |
+| `api.hdhomerun.com/api/guide.php` | Cloud guide data (DeviceAuth gated); optional `Start=<epoch>` shifts window start; `Duration` in hours from Start (capped ~29h per call) |
+
+## Endpoints Not Yet Used (candidates)
+
+| Endpoint | Why it could help |
+|---|---|
+| `/lineup_status.json` | Reports `ScanInProgress`, `ScanPossible`, `Source`. Would let the app distinguish "device is mid-rescan" from "guide/lineup fetch failed" — currently an empty lineup just logs a generic warning (`GuideStore.swift`). |
+| `guide.php` `Start` chaining | Pagination to fetch beyond the ~29h single-call cap (see Guide API section). Only needed if GuideHours > ~28 is ever required. |
