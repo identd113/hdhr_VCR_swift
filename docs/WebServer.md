@@ -246,7 +246,7 @@ A persistent SSE endpoint. Browsers connect once on page load via `EventSource('
 
 ## HTML page — visual layout
 
-Self-contained HTML with all CSS inlined. Updates arrive via SSE push events (see below) and targeted DOM swaps after user actions. The page hard-reloads automatically if the server version changes (redeploy detected via 60-second `/api/ping` poll) or if the baked-in 2-hour expiry elapses. Tuner occupancy is fetched server-side on every page load (before HTML is served) via `refreshTunerOccupancy()`.
+Self-contained HTML with all CSS inlined. Updates arrive via SSE push events (see below) and targeted DOM swaps after user actions. The page hard-reloads automatically if the server version changes (redeploy detected via 60-second `/api/ping` poll) or if the baked-in 2-hour expiry elapses. Tuner occupancy is sourced from the `AppState.deviceTunerOccupancy` cache, which the idle loop refreshes every 10 seconds via `fetchDeviceStatus()`.
 
 `refreshGuide()` is called client-side after user actions (record, delete, edit) and on receipt of an SSE event. It updates the guide grid without a page reload:
 
@@ -668,7 +668,7 @@ Client-side `innerHTML` concatenation (tuner popover rows) uses the page-local `
 
 ## Tuner occupancy
 
-Before building the HTML page, `refreshTunerOccupancy()` fetches `/status.json` from each **available** device concurrently (devices past the 3-missed-probes threshold are skipped — a dead IP would stall every page load) using `URLRequest(cachePolicy: .reloadIgnoringLocalCacheData)` + `Cache-Control: no-cache` and a 2 s timeout. Results are stored in `state.deviceTunerOccupancy`.
+`buildHTML()` reads tuner counts from `state.deviceTunerOccupancy`, which `AppState.idleLoop()` keeps warm by calling `fetchDeviceStatus(for:)` concurrently for all available devices every idle tick (~10 s). The web server does not perform its own per-request device fetch — page loads are instant and tuner data is at most one idle tick stale.
 
 Active tuner count = entries where `VctNumber != nil`. The device always returns all tuner slots in the JSON array; idle slots have only `"Resource"` with no other fields.
 
@@ -871,4 +871,4 @@ log stream --level info --predicate 'subsystem == "com.hdhr.vcrplus"' | grep Web
   --predicate 'subsystem == "com.hdhr.vcrplus"' | grep -i webserver
 ```
 
-Key log prefixes: `[WebServer] Listening`, `[WebServer] mDNS registered`, `[WebServer] refreshTunerOccupancy`, `[WebServer] buildHTML tuners`, `[WebServer] Rejected non-LAN`.
+Key log prefixes: `[WebServer] Listening`, `[WebServer] mDNS registered`, `[WebServer] buildHTML tuners`, `[WebServer] Rejected non-LAN`.

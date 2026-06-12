@@ -46,7 +46,12 @@ final class WebServer {
             return
         }
 
-        guard let l = try? NWListener(using: .tcp, on: nwPort) else {
+        // noDelay=true disables Nagle's algorithm so response bytes are flushed immediately
+        // instead of being held waiting for more data to coalesce (important for large HTML pages).
+        let tcpOpts = NWProtocolTCP.Options()
+        tcpOpts.noDelay = true
+        let tcpParams = NWParameters(tls: nil, tcp: tcpOpts)
+        guard let l = try? NWListener(using: tcpParams, on: nwPort) else {
             glog("[WebServer] Failed to create listener on port \(clamped)", level: .error)
             DispatchQueue.main.async { onState("Port \(clamped) unavailable") }
             return
@@ -259,44 +264,7 @@ final class WebServer {
     // MARK: - Routing
 
     private func route(method: String, path: String, body: Data?, userAgent: String) async -> WebResponse {
-        // Refresh tuner occupancy from each device's status.json before serving the HTML page
-        // so the counts are always live rather than waiting for the next idle-loop tick.
-        if method == "GET", path == "/" || path == "/index.html" {
-            await refreshTunerOccupancy()
-        }
         return await MainActor.run { routeOnMain(method: method, path: path, body: body, userAgent: userAgent) }
-    }
-
-    private func refreshTunerOccupancy() async {
-        // Skip devices already marked unavailable by the probe loop — waiting on a dead IP
-        // would stall every page load for the full request timeout.
-        let devices = await MainActor.run { (appState?.devices ?? []).filter { $0.isAvailable } }
-        await withTaskGroup(of: Void.self) { group in
-            for device in devices {
-                group.addTask { [weak self] in
-                    guard let url = URL(string: device.statusURL) else {
-                        glog("[WebServer] refreshTunerOccupancy: bad statusURL for \(device.DeviceID)", level: .warning)
-                        return
-                    }
-                    // Ignore the URL cache — status.json must always reflect current device state.
-                    // 2 s timeout: a healthy LAN device answers in tens of ms; this only bounds
-                    // the page-load stall when a device drops between probe cycles.
-                    var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 2)
-                    req.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
-                    guard let (data, resp) = try? await URLSession.shared.data(for: req) else {
-                        glog("[WebServer] refreshTunerOccupancy: fetch failed for \(device.DeviceID) \(url)", level: .warning)
-                        return
-                    }
-                    let http = (resp as? HTTPURLResponse)?.statusCode ?? 0
-                    guard let tuners = try? JSONDecoder().decode([DeviceTunerInfo].self, from: data) else {
-                        let raw = String(data: data.prefix(200), encoding: .utf8) ?? "<binary>"
-                        glog("[WebServer] refreshTunerOccupancy: decode failed for \(device.DeviceID) HTTP \(http) body=\(raw)", level: .warning)
-                        return
-                    }
-                    await MainActor.run { self?.appState?.deviceTunerOccupancy[device.DeviceID] = tuners }
-                }
-            }
-        }
     }
 
     @MainActor
@@ -1389,7 +1357,17 @@ final class WebServer {
           document.getElementById('sum-ph').style.display='none';
           var sc=document.getElementById('sum-c');sc.style.display='flex';sc.style.background=gc(d.genre);
           var pi=document.getElementById('sum-poster');
-          if(d.poster){
+          if(d.poster&&d.logo){
+            // Show the local channel logo immediately, then swap in the real poster once it loads.
+            // Generation counter prevents a stale fetch from overwriting a later selection.
+            pi.onerror=function(){pi.style.display='none';};
+            pi.src=d.logo;pi.style.display='block';
+            var _pUrl=d.poster;
+            pi.dataset.pgen=(+pi.dataset.pgen||0)+1;var _gen=pi.dataset.pgen;
+            var _tmp=new Image();
+            _tmp.onload=function(){if(pi.dataset.pgen==_gen){pi.onerror=function(){};pi.src=_pUrl;}};
+            _tmp.src=_pUrl;
+          }else if(d.poster){
             pi.onerror=function(){if(_logo){pi.src=_logo;pi.onerror=function(){pi.style.display='none';};}else{pi.style.display='none';}};
             pi.src=d.poster;pi.style.display='block';
           }else if(d.logo){
@@ -1968,14 +1946,6 @@ final class WebServer {
           Array.from(gs).sort().forEach(function(g){var o=document.createElement('option');o.value=g;o.textContent=g;sel.appendChild(o);});
           document.getElementById('genre-bar').style.display='';
         })();
-        // Auto-select the current-timeslot program on the first visible channel row
-        (function(){
-          var nowTs=Math.floor(Date.now()/1000);
-          var first=Array.from(_rows).find(function(r){return r.style.display!=='none';});
-          if(!first)return;
-          var prog=Array.from(first.querySelectorAll('.g-prog')).find(function(el){return +el.dataset.start<=nowTs&&+el.dataset.end>nowTs;});
-          if(prog)showInfo(prog);
-        })();
         // scrollToNow + live now-line: recompute position from winStart/winSec every 30 s
         var _winStart=\(winStart),_winSec=\(winSec);
         function nowPct(){return Math.max(0,Math.min(100,(Math.floor(Date.now()/1000)-_winStart)/_winSec*100));}
@@ -1991,7 +1961,18 @@ final class WebServer {
             gw.scrollLeft=Math.max(0,nowPx-gw.clientWidth*0.25);
         }
         function scrollToNow(){var gw=document.querySelector('.gw');var gi=document.querySelector('.gi');if(!gw||!gi)return;var nowPx=gi.scrollWidth*(nowPct()/100);gw.scrollLeft=Math.max(0,nowPx-gw.clientWidth*0.25);}
-        scrollToNow();
+        // Defer auto-select and initial scroll to after first paint so the guide grid is
+        // the LCP element instead of the externally-fetched show poster image.
+        requestAnimationFrame(function(){
+          (function(){
+            var nowTs=Math.floor(Date.now()/1000);
+            var first=Array.from(_rows).find(function(r){return r.style.display!=='none';});
+            if(!first)return;
+            var prog=Array.from(first.querySelectorAll('.g-prog')).find(function(el){return +el.dataset.start<=nowTs&&+el.dataset.end>nowTs;});
+            if(prog)showInfo(prog);
+          })();
+          scrollToNow();
+        });
         setInterval(updateNowLine,60000);
         // Page-staleness: reload if the server version changes (redeploy) or the baked-in expiry has passed.
         (function(){
@@ -2192,7 +2173,7 @@ final class WebServer {
         var packet = Data(raw.utf8)
         packet.append(body)
 
-        conn.send(content: packet, completion: .contentProcessed { _ in conn.cancel() })
+        conn.send(content: packet, isComplete: true, completion: .contentProcessed { _ in conn.cancel() })
     }
 
     // MARK: - gzip
