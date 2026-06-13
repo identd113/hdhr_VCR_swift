@@ -309,6 +309,16 @@ final class WebServer {
             let html = buildSchedPopHTML(state: state)
             return .ok(contentType: "text/html; charset=utf-8", body: Data(html.utf8))
 
+        case "/api/tuner-counts":
+            var counts: [String: Any] = [:]
+            for d in state.devices {
+                let occ = state.deviceTunerOccupancy[d.DeviceID] ?? []
+                counts[d.DeviceID] = ["a": occ.filter { $0.VctNumber != nil }.count,
+                                      "t": d.TunerCount ?? 0]
+            }
+            let countData = (try? JSONSerialization.data(withJSONObject: counts)) ?? Data("{}".utf8)
+            return .ok(contentType: "application/json", body: countData)
+
         case "/api/signal":
             var out: [String: String] = [:]
             for (key, bucket) in ChannelSignalStore.shared.buckets { out[key] = bucket.rawValue }
@@ -1979,6 +1989,16 @@ final class WebServer {
           scrollToNow();
         });
         setInterval(updateNowLine,60000);
+        // Correct tuner badge counts immediately — deviceTunerOccupancy may have been empty
+        // when the HTML was built (cold-start window before the first idle-loop tick completes).
+        fetch('/api/tuner-counts').then(function(r){return r.json();}).then(function(j){
+          Object.keys(j).forEach(function(dev){
+            var a=j[dev].a,t=j[dev].t;
+            if(tuners[dev])tuners[dev].a=a;else tuners[dev]={t:t,a:a,surl:''};
+            var tb=document.getElementById('tun-'+dev);
+            if(tb&&t>0){var full=a>=t;tb.textContent=a+'/'+t+(full?' — FULL':'');if(full)tb.classList.add('t-info-full');else tb.classList.remove('t-info-full');}
+          });
+        }).catch(function(){});
         // Page-staleness: reload if the server version changes (redeploy) or the baked-in expiry has passed.
         (function(){
           var _ver='\(appVersion)',_exp=\(Int(Date().addingTimeInterval(2*3600).timeIntervalSince1970)*1000);
