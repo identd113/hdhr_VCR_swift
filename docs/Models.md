@@ -89,10 +89,12 @@ Two mutating methods on `Show` consolidate the repeated failure-state field grou
 
 ```swift
 struct ManagedGuideMatcher: Equatable {
-    let seriesIDs:        Set<String>   // SeriesID(Channel/All) shows
-    let titles:           Set<String>   // title fallback for series shows without a SeriesID
-    let singleSlotKeys:   Set<String>   // "device:channel:epoch" — single shows, exact slot
-    let datetimeSlotKeys: Set<String>   // "device:channel:Weekday:HH:MM" — dateTime shows, per allowed day
+    let seriesAllIDs:    Set<String>   // bare SeriesID — seriesAll shows (record on any device)
+    let seriesAllTitles: Set<String>   // bare title — seriesAll shows without a SeriesID
+    let seriesChKeys:    Set<String>   // "device:SeriesID" — seriesChannel shows (device-scoped)
+    let seriesChTitles:  Set<String>   // "device:title" — seriesChannel shows without a SeriesID
+    let singleSlotKeys:  Set<String>   // "device:channel:epoch" — single shows, exact slot
+    let datetimeSlotKeys: Set<String>  // "device:channel:Weekday:HH:MM" — dateTime shows, per allowed day
 
     init(activeManagedShows: [Show])
 
@@ -102,8 +104,8 @@ struct ManagedGuideMatcher: Equatable {
 ```
 
 Matching tiers (in order):
-1. `entry.SeriesID` present and in `seriesIDs` → managed
-2. `entry.Title` in `titles` → managed (series shows whose guide entry has no SeriesID)
+1. `entry.SeriesID` in `seriesAllIDs` (any device) OR `"device:SeriesID"` in `seriesChKeys` → managed
+2. `entry.Title` in `seriesAllTitles` OR `"device:title"` in `seriesChTitles` → managed
 3. `"device:channel:Weekday:HH:MM"` local-time key in `datetimeSlotKeys` → managed (dateTime shows: only on allowed weekdays)
 4. `"device:channel:epoch"` key in `singleSlotKeys` → managed (single shows: exact scheduled slot only)
 
