@@ -161,7 +161,25 @@ final class WebServer {
             self.sseConns.append(conn)
             self.sseLock.unlock()
             self.sseKeepalive(conn)
+            // Push fresh live tuner counts so the newly-connected client gets accurate
+            // occupancy immediately instead of waiting for the next recording event or idle tick.
+            Task { [weak self] in await self?.pushFreshTunerCounts() }
         }))
+    }
+
+    // Read tuner counts from recordingShows (same source as broadcastRecordingEvent) and
+    // push a tuner_update SSE event so newly-connected clients get accurate occupancy immediately.
+    private func pushFreshTunerCounts() async {
+        guard let state = appState else { return }
+        var counts: [String: Any] = [:]
+        await MainActor.run {
+            for device in state.devices {
+                let active = state.recordingShows.filter { $0.hdhr_record == device.DeviceID }.count
+                counts[device.DeviceID] = ["a": active, "t": device.TunerCount ?? 0]
+            }
+        }
+        guard !counts.isEmpty else { return }
+        broadcastEvent(["type": "tuner_update", "counts": counts])
     }
 
     private func sseKeepalive(_ conn: NWConnection) {
@@ -308,16 +326,6 @@ final class WebServer {
         case "/api/shows-html":
             let html = buildSchedPopHTML(state: state)
             return .ok(contentType: "text/html; charset=utf-8", body: Data(html.utf8))
-
-        case "/api/tuner-counts":
-            var counts: [String: Any] = [:]
-            for d in state.devices {
-                let occ = state.deviceTunerOccupancy[d.DeviceID] ?? []
-                counts[d.DeviceID] = ["a": occ.filter { $0.VctNumber != nil }.count,
-                                      "t": d.TunerCount ?? 0]
-            }
-            let countData = (try? JSONSerialization.data(withJSONObject: counts)) ?? Data("{}".utf8)
-            return .ok(contentType: "application/json", body: countData)
 
         case "/api/signal":
             var out: [String: String] = [:]
@@ -1989,16 +1997,6 @@ final class WebServer {
           scrollToNow();
         });
         setInterval(updateNowLine,60000);
-        // Correct tuner badge counts immediately — deviceTunerOccupancy may have been empty
-        // when the HTML was built (cold-start window before the first idle-loop tick completes).
-        fetch('/api/tuner-counts').then(function(r){return r.json();}).then(function(j){
-          Object.keys(j).forEach(function(dev){
-            var a=j[dev].a,t=j[dev].t;
-            if(tuners[dev])tuners[dev].a=a;else tuners[dev]={t:t,a:a,surl:''};
-            var tb=document.getElementById('tun-'+dev);
-            if(tb&&t>0){var full=a>=t;tb.textContent=a+'/'+t+(full?' — FULL':'');if(full)tb.classList.add('t-info-full');else tb.classList.remove('t-info-full');}
-          });
-        }).catch(function(){});
         // Page-staleness: reload if the server version changes (redeploy) or the baked-in expiry has passed.
         (function(){
           var _ver='\(appVersion)',_exp=\(Int(Date().addingTimeInterval(2*3600).timeIntervalSince1970)*1000);
@@ -2018,7 +2016,14 @@ final class WebServer {
             try{
               var d=JSON.parse(e.data);
               if(!d||!d.type)return;
-              if(d.type==='signal_update'&&d.gname&&d.bucket){
+              if(d.type==='tuner_update'&&d.counts){
+                Object.keys(d.counts).forEach(function(dev){
+                  var a=d.counts[dev].a,t=d.counts[dev].t;
+                  if(tuners[dev])tuners[dev].a=a;else tuners[dev]={t:t,a:a,surl:''};
+                  var tb=document.getElementById('tun-'+dev);
+                  if(tb&&t>0){var full=a>=t;tb.textContent=a+'/'+t+(full?' — FULL':'');if(full)tb.classList.add('t-info-full');else tb.classList.remove('t-info-full');}
+                });
+              } else if(d.type==='signal_update'&&d.gname&&d.bucket){
                 // Inline DOM update — no full reload needed
                 var bColors={poor:'#e53935',fair:'#fbc02d',good:'#43a047'};
                 var bc=bColors[d.bucket]||null;

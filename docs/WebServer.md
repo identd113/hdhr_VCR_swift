@@ -229,14 +229,16 @@ A persistent SSE endpoint. Browsers connect once on page load via `EventSource('
 | `deviceOffline` | `AppState.probeForNewDevices` (miss #3) | `deviceId` |
 | `deviceOnline` | `AppState.probeForNewDevices` (seen after unavailable, or new device) | `deviceId` |
 | `signal_update` | `AppState.startSignalScan` | `gname` (guideName.lowercased()), `bucket` (raw string: `"good"` / `"fair"` / `"poor"` / `"noData"`) |
+| `tuner_update` | `WebServer.pushFreshTunerCounts` (on SSE connect) | `counts`: `{deviceId: {a: active, t: total}, …}` — live occupancy from `recordingShows` |
 
 `recording_started` and `recording_stopped` carry pre-rendered `sumPh` and `schedPop` HTML fragments built by `broadcastRecordingEvent` → `buildSumPhHTML` + `buildSchedPopHTML`. The client applies these inline without a second HTTP request.
 
-**Client handling (three cases):**
+**Client handling (four cases):**
 
-1. `signal_update` — updates SVG signal bars in-place on matching `.g-row[data-gname]` rows. No `refreshGuide()`.
-2. Events with `sumPh`/`schedPop` — applies HTML fragments to `#sum-ph` and `#sched-pop-body` directly. For recording events also toggles `.g-prog-rec` / `.g-prog-now` classes and the `.g-flag-rec` child on the currently-airing guide entry for the affected channel+device. No `refreshGuide()`.
-3. All other events — `refreshGuide()` (scroll-preserving partial DOM swap).
+1. `tuner_update` — updates `tuners[dev].a` in-place and refreshes all `#tun-{dev}` badge elements. Fired on every new SSE connection so the badge is accurate immediately, not just after a recording event.
+2. `signal_update` — updates SVG signal bars in-place on matching `.g-row[data-gname]` rows. No `refreshGuide()`.
+3. Events with `sumPh`/`schedPop` — applies HTML fragments to `#sum-ph` and `#sched-pop-body` directly. For recording events also toggles `.g-prog-rec` / `.g-prog-now` classes and the `.g-flag-rec` child on the currently-airing guide entry for the affected channel+device. No `refreshGuide()`.
+4. All other events — `refreshGuide()` (scroll-preserving partial DOM swap).
 
 `guide_refreshed` falls into case 3 — `refreshGuide()` fetches the full page and swaps the grid, bringing schedule flags and channel data up to date after a guide cycle.
 
@@ -670,9 +672,11 @@ Client-side `innerHTML` concatenation (tuner popover rows) uses the page-local `
 
 ## Tuner occupancy
 
-`buildHTML()` reads tuner counts from `state.deviceTunerOccupancy`, which `AppState.idleLoop()` keeps warm by calling `fetchDeviceStatus(for:)` concurrently for all available devices every idle tick (~10 s). The web server does not perform its own per-request device fetch — page loads are instant and tuner data is at most one idle tick stale.
+`buildHTML()` bakes tuner counts from `state.recordingShows` (active recording count per device) and `device.TunerCount` (total slots). These are always current at render time.
 
-Active tuner count = entries where `VctNumber != nil`. The device always returns all tuner slots in the JSON array; idle slots have only `"Resource"` with no other fields.
+On SSE connect, `pushFreshTunerCounts()` fires immediately: it reads `state.recordingShows` on `@MainActor` and broadcasts a `tuner_update` event. This corrects the baked-in counts for any client that loads the page before a recording starts — the badge updates within milliseconds of SSE connection rather than waiting for the next recording event or idle tick.
+
+`deviceTunerOccupancy` (populated by `fetchDeviceStatus` in the idle loop) is used for the tuner popover detail rows — per-tuner channel and title — not for the badge count.
 
 ---
 
