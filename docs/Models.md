@@ -92,7 +92,7 @@ struct ManagedGuideMatcher: Equatable {
     let seriesIDs:        Set<String>   // SeriesID(Channel/All) shows
     let titles:           Set<String>   // title fallback for series shows without a SeriesID
     let singleSlotKeys:   Set<String>   // "device:channel:epoch" — single shows, exact slot
-    let datetimeSlotKeys: Set<String>   // "device:channel:HH:MM" — dateTime shows, all matching slots
+    let datetimeSlotKeys: Set<String>   // "device:channel:Weekday:HH:MM" — dateTime shows, per allowed day
 
     init(activeManagedShows: [Show])
 
@@ -104,10 +104,10 @@ struct ManagedGuideMatcher: Equatable {
 Matching tiers (in order):
 1. `entry.SeriesID` present and in `seriesIDs` → managed
 2. `entry.Title` in `titles` → managed (series shows whose guide entry has no SeriesID)
-3. `"device:channel:HH:MM"` local-time key in `datetimeSlotKeys` → managed (datetime shows: every weekly slot)
+3. `"device:channel:Weekday:HH:MM"` local-time key in `datetimeSlotKeys` → managed (dateTime shows: only on allowed weekdays)
 4. `"device:channel:epoch"` key in `singleSlotKeys` → managed (single shows: exact scheduled slot only)
 
-`dateTime` shows use local-time `HH:MM` so a M-F 7PM show flags every 7PM slot on that channel+device in the guide window, not just the one stored in `show_next`. `single` shows use the epoch so only the specific airing is flagged.
+`dateTime` shows emit one key per entry in `show_air_date` (e.g. a Wednesday-only show at 4:30 PM local emits only `"device:4.3:Wednesday:16:30"`). A Friday airing of that show at 4:30 PM looks for `"device:4.3:Friday:16:30"` and finds nothing — no yellow diamond. If `show_air_date` is empty, keys are emitted for all 7 days. `single` shows use the epoch so only the specific airing is flagged.
 
 Paused shows are excluded from `activeManagedShows` by all callers — the yellow/red flag only appears for active scheduled shows.
 
