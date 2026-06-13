@@ -229,6 +229,9 @@ final class AppState: ObservableObject {
         glog("[Startup] discovering — knownHosts=\(knownHosts)")
         await discoverDevices(knownHosts: knownHosts, attempts: 10)
         glog("[Startup] discovered \(devices.count) device(s)")
+        // Prime deviceTunerOccupancy immediately after discovery so the first web page load
+        // has accurate tuner counts instead of the empty dict it would otherwise start with.
+        for device in devices { Task { await fetchDeviceStatus(for: device) } }
         for d in devices {
             glog("[Startup]   \(d.DeviceID)  LocalIP='\(d.LocalIP)'  DeviceAuth=\(d.DeviceAuth ?? "nil")")
         }

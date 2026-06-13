@@ -1365,7 +1365,7 @@ final class WebServer {
             var _pUrl=d.poster;
             pi.dataset.pgen=(+pi.dataset.pgen||0)+1;var _gen=pi.dataset.pgen;
             var _tmp=new Image();
-            _tmp.onload=function(){if(pi.dataset.pgen==_gen){pi.onerror=function(){};pi.src=_pUrl;}};
+            _tmp.onload=function(){if(pi.dataset.pgen==_gen){pi.style.display='block';pi.onerror=function(){pi.style.display='none';};pi.src=_pUrl;}};
             _tmp.src=_pUrl;
           }else if(d.poster){
             pi.onerror=function(){if(_logo){pi.src=_logo;pi.onerror=function(){pi.style.display='none';};}else{pi.style.display='none';}};
@@ -1964,13 +1964,12 @@ final class WebServer {
         // Defer auto-select and initial scroll to after first paint so the guide grid is
         // the LCP element instead of the externally-fetched show poster image.
         requestAnimationFrame(function(){
-          (function(){
-            var nowTs=Math.floor(Date.now()/1000);
-            var first=Array.from(_rows).find(function(r){return r.style.display!=='none';});
-            if(!first)return;
+          var nowTs=Math.floor(Date.now()/1000);
+          var first=Array.from(_rows).find(function(r){return r.style.display!=='none';});
+          if(first){
             var prog=Array.from(first.querySelectorAll('.g-prog')).find(function(el){return +el.dataset.start<=nowTs&&+el.dataset.end>nowTs;});
             if(prog)showInfo(prog);
-          })();
+          }
           scrollToNow();
         });
         setInterval(updateNowLine,60000);
