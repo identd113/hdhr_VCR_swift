@@ -407,7 +407,7 @@ A cable-TV-style horizontal time grid. Window width depends on the requesting cl
 
 **Rows:** one row per (device × channel). Cross-device deduplication is handled client-side by `setDev('')` on page load — it hides duplicate `GuideNumber` rows keeping the first-device occurrence, giving a clean "All" view.
 
-Each `.g-row` carries `data-dev`, `data-ch`, `data-gname` (`GuideName.lowercased()`), and `data-fav` (`"1"` for favorite channels, absent otherwise). `data-gname` is the key used by `signal_update` SSE events; `data-fav` is used by `setDev` to show/hide `.g-fav-sep` headers.
+Each `.g-row` carries `data-dev`, `data-ch`, `data-gname` (`GuideName.lowercased()`), `data-fav` (`"1"` for favorite channels, absent otherwise), and `data-inf` (`"1"` for infomercial channels, absent otherwise). `data-gname` is the key used by `signal_update` SSE events; `data-fav` is used by `setDev` to show/hide `.g-fav-sep` headers; `data-inf` is used by `setDev` and `toggleInf` to hide paid-programming channels by default.
 
 **Favorites section:** favorite channels are sorted to the top of each device's channel list server-side. A `.g-fav-sep` separator row (amber `★ FAVORITES` label, `display:flex`) is inserted above the first favorite row per device and hidden via `setDev` when no visible favorite rows remain (e.g. another device selected). Favorite channel rows get a golden background tint via `color-mix(in srgb, var(--fav) 16%, var(--s1))` on `.g-ch` and a repeating gradient tint on `.g-tl`. A `☆`/`★` toggle button (`.g-fav-btn`) in each channel cell calls `toggleFav(evt, btn)` to POST `/api/toggle-favorite`.
 
@@ -415,7 +415,9 @@ Each `.g-row` carries `data-dev`, `data-ch`, `data-gname` (`GuideName.lowercased
 
 **`setDev()` and DOM caching**: `.g-row` NodeList is cached into `_rows` at page load and reused on every device switch — avoids repeated `querySelectorAll` calls. When `setDev(id)` is called with a **different** device ID than `curDev`, `_genreFilter` is reset to `''` and the `<select id="genre-sel">` is reset to the blank option, so each device starts with an unfiltered view.
 
-**Genre filter:** a `<select id="genre-sel">` (in `#genre-bar`, hidden unless the guide contains ≥2 distinct genres) is populated at page load from unique `data-genre` values. `filterGenre(g)` sets `_genreFilter` and calls `applyGenreDim()`, which adds `.g-prog-dim` (35% opacity, `pointer-events: none` — dimmed and unselectable) to every program whose genre doesn't match. Rows are never hidden by genre — only individual programs are dimmed. `setDev()` calls `applyGenreDim()` after row visibility changes so the dim state survives device switches and `refreshGuide()` DOM swaps.
+**Genre filter:** a `<select id="genre-sel">` (in `#genre-bar`, hidden unless the guide contains ≥2 distinct genres or infomercial rows) is populated at page load from unique `data-genre` values. `filterGenre(g)` sets `_genreFilter` and calls `applyGenreDim()`, which adds `.g-prog-dim` (35% opacity, `pointer-events: none` — dimmed and unselectable) to every program whose genre doesn't match. Rows are never hidden by genre — only individual programs are dimmed. `setDev()` calls `applyGenreDim()` after row visibility changes so the dim state survives device switches and `refreshGuide()` DOM swaps.
+
+**Infomercial filter:** channels whose guide entries contain any of the confirmed paid-programming SeriesIDs (`C11809220ENAPZK`, `C459763EN3L6D`) get `data-inf="1"` on their `.g-row`. These rows are hidden by default (`_showInf=false`). An **Infomercials** `<label>` checkbox appears in `#genre-bar` alongside the genre `<select>` whenever `data-inf` rows exist; checking it calls `toggleInf(true)` which sets `_showInf=true` and re-runs `setDev()` to show the rows. If no infomercial rows exist on the current guide, the label is hidden.
 
 **Time header:** one tick per clock hour, aligned to hour boundaries via `stride(from: firstHour, through: winEnd, by: 3600)` where `firstHour = ((winStart + 3599) / 3600) * 3600`. Label uses `DateFormatter` template `"j"` (locale-preferred hour, e.g. `"8 PM"` or `"20"`). + red "now" bar.
 
@@ -540,8 +542,9 @@ Content is embedded at page build time; `refreshShowsSection()` fetches `/api/sh
 | `openEditShow(el)` | Populates and opens `#edit-modal` from `el.dataset`; handles both guide blocks and schedule popover rows |
 | `closeEditShow()` | Hides `#edit-modal` |
 | `confirmEdit()` | POSTs `/api/edit`; closes modal on success |
-| `setDev(id)` | Filters guide rows by `data-dev`; empty string = All (with JS dedup); uses cached `_rows` NodeList; calls `applyGenreDim()` then shows/hides `.g-fav-sep` separators based on whether any visible favorite rows remain for each device |
+| `setDev(id)` | Filters guide rows by `data-dev`; empty string = All (with JS dedup); respects `_showInf` — infomercial rows (`data-inf="1"`) are hidden unless `_showInf` is true; uses cached `_rows` NodeList; calls `applyGenreDim()` then shows/hides `.g-fav-sep` separators based on whether any visible favorite rows remain for each device |
 | `filterGenre(g)` | Sets `_genreFilter` and calls `applyGenreDim()` |
+| `toggleInf(v)` | Sets `_showInf=v` and calls `setDev(curDev)` to show or hide infomercial rows |
 | `applyGenreDim()` | Removes all `.g-prog-dim` classes, then (if a filter is active) adds the class to every program whose `data-genre` doesn't match — dimmed + unselectable, rows stay visible |
 | `scrollToNow()` | Scrolls `.gw` so the now-line sits ~25% from the left of the viewport; corner-cell ⊙ button and page load both call it |
 | `toggleFav(evt, btn)` | `onclick` on `.g-fav-btn` star buttons; reads `data-dev` / `data-ch` from parent `.g-row`; POSTs `/api/toggle-favorite`; calls `refreshGuide()` on success |
