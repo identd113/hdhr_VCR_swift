@@ -1046,9 +1046,7 @@ final class WebServer {
         /* ── Theme switcher (3-dot segmented control) ── */
         .genre-sel{background:var(--s4);border:1px solid var(--b4);color:var(--t2);border-radius:5px;padding:4px 8px;font-size:.78rem;cursor:pointer}
         html.lm .genre-sel{background:#f0f0f0;border-color:#ccc;color:#333}
-        .inf-label{font-size:.78rem;color:var(--t2);cursor:pointer;margin-left:10px;user-select:none}
-        html.lm .inf-label{color:#333}
-        #theme-sw{display:flex;background:var(--s4);border:1px solid var(--b4);border-radius:6px;overflow:hidden;flex-shrink:0}
+#theme-sw{display:flex;background:var(--s4);border:1px solid var(--b4);border-radius:6px;overflow:hidden;flex-shrink:0}
         #theme-sw button{background:none;border:none;border-right:1px solid var(--b4);padding:5px 9px;cursor:pointer;color:var(--t4);font-size:.8rem;line-height:1;transition:background .12s,color .12s}
         #theme-sw button:last-child{border-right:none}
         #theme-sw button:hover{background:var(--s3);color:var(--t0)}
@@ -1259,7 +1257,6 @@ final class WebServer {
         \(deviceBarHTML)
         <div id="genre-bar" style="display:none;margin-bottom:10px">
           <select id="genre-sel" onchange="filterGenre(this.value)" class="genre-sel"><option value="">All genres</option></select>
-          <label id="inf-label" class="inf-label"><input type="checkbox" id="inf-chk" onchange="toggleInf(this.checked)"> Infomercials</label>
         </div>
         <div id="t-pop" onclick="if(event.target===this)closeTunerPop()" style="display:none;position:fixed;inset:0;z-index:200">
           <div id="t-pop-c" style="position:absolute;background:#1e1e1e;border:1px solid #484848;border-radius:10px;padding:16px 18px;min-width:280px;max-width:400px;box-shadow:0 8px 32px rgba(0,0,0,.75)">
@@ -1926,18 +1923,16 @@ final class WebServer {
         var curDev='';
         var _genreFilter='';
         var _rows=document.querySelectorAll('.g-row');
-        var _showInf=false;
         function applyGenreDim(){
-          // Dim programs that don't match the genre filter or are on infomercial rows (when not opted in)
+          // Dim programs that don't match the genre filter, or are on infomercial rows (always)
           document.querySelectorAll('.g-prog.g-prog-dim').forEach(function(p){p.classList.remove('g-prog-dim');});
           var f=_genreFilter.toLowerCase();
           document.querySelectorAll('.g-prog').forEach(function(p){
             var genreDim=f&&(p.dataset.genre||'').toLowerCase()!==f;
-            var infDim=!_showInf&&!!p.closest('[data-inf="1"]');
+            var infDim=!!p.closest('[data-inf="1"]');
             if(genreDim||infDim)p.classList.add('g-prog-dim');
           });
         }
-        function toggleInf(v){_showInf=v;applyGenreDim();}
         function setDev(id){
           if(id!==curDev){_genreFilter='';var sel=document.getElementById('genre-sel');if(sel)sel.value='';}
           curDev=id;
@@ -1969,18 +1964,15 @@ final class WebServer {
           .catch(function(){});
         }
         setDev('');
-        // Build genre filter from unique genres in the guide; also surface infomercial toggle if any inf rows exist
+        // Build genre filter from unique genres in the guide
         (function(){
           var gs=new Set();
           document.querySelectorAll('.g-prog[data-genre]').forEach(function(p){var g=p.dataset.genre;if(g)gs.add(g);});
-          var hasInf=document.querySelector('.g-row[data-inf="1"]')!==null;
-          if(gs.size<2&&!hasInf)return;
-          var bar=document.getElementById('genre-bar');
-          bar.style.display='';
-          if(!hasInf)document.getElementById('inf-label').style.display='none';
+          if(gs.size<2)return;
           var sel=document.getElementById('genre-sel');
           if(!sel)return;
           Array.from(gs).sort().forEach(function(g){var o=document.createElement('option');o.value=g;o.textContent=g;sel.appendChild(o);});
+          document.getElementById('genre-bar').style.display='';
         })();
         // scrollToNow + live now-line: recompute position from winStart/winSec every 30 s
         var _winStart=\(winStart),_winSec=\(winSec);
