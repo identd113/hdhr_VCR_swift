@@ -6,16 +6,25 @@ All data types used across the app: `Show`, `HDHRDevice`, `GuideEntry`, `AppConf
 
 ## The 4-State Show Model
 
-Shows have exactly one of four states, determined by boolean flags:
+Shows have exactly one of four states, determined by boolean flags evaluated in priority order:
 
-| State | `show_is_series` | `show_use_seriesid` | `show_use_seriesid_all` | Recording logic |
-|---|---|---|---|---|
-| **Single** | false | false | false | Records once, then deactivates |
-| **DateTime** | true | false | false | Repeats on specific days/time on one channel |
-| **SeriesID(Channel)** | true | true | false | Any episode of a series on one channel |
-| **SeriesID(All)** | true | true | true | Any episode of a series on any channel |
+```
+if !show_is_series       → .single
+if show_use_seriesid_all → .seriesAll
+if show_use_seriesid     → .seriesChannel
+else                     → .dateTime
+```
 
-`Show.state` computed property derives the enum from these flags.
+| State | Recording logic |
+|---|---|
+| **Single** | Records once at the scheduled slot, then deactivates |
+| **DateTime** | Repeats on specific days/time on one channel; advances via `nextDateTime` after each recording |
+| **SeriesID(Channel)** | Any episode of a series on one channel; matched by SeriesID then title; advances via guide scan |
+| **SeriesID(All)** | Any episode of a series on any channel or device; same guide-scan logic, but `hdhr_record` may change per airing |
+
+Note: `.seriesAll` is triggered solely by `show_use_seriesid_all == true` (regardless of `show_use_seriesid`). In practice both flags are set together, but the code does not require it.
+
+`Show.state` is computed at runtime from the flags — it is not stored in config.
 
 ---
 
@@ -41,6 +50,12 @@ Called after each recording completes and file verification passes:
 - **Single**: sets `show_active = false`.
 - **DateTime**: calculates next matching weekday/time in **local time** via `nextDateTime(for:)`. `show_time` = local decimal hours; `show_air_date` = local day names. If `show_air_date` is empty or invalid → pauses with `"No air days configured"`.
 - **SeriesID**: reloads guide if stale, checks `currentEpisode` first (handles marathons), then `nextEpisode`. Uses `match.deviceId` to update `show.hdhr_record` — SeriesID(All) may resolve to a different device. If no episode found: bumps `show_next` to `now + Series_scan_retry_hours` only if `show_next` is nil or already past — a future `show_next` (e.g. from a prior guide match) is left unchanged so `rescheduleAllSeries` can override it when a real episode appears.
+
+---
+
+## Bonus Time Default
+
+`show_bonus_time` defaults to `false` for all new shows. **One exception:** the `init(from:)` decoder uses `show_genre.lowercased().contains("sports")` as the fallback when the field is absent from JSON — so shows loaded from a pre-bonus-time config auto-enable it if their genre is Sports. New shows created through the UI or `addShowFromGuide` always receive an explicit value (never the genre-based fallback), so genre alone does not auto-enable bonus time for newly added shows.
 
 ---
 

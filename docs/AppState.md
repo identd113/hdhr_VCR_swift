@@ -31,6 +31,7 @@ Runs every `config.Idle_timer_interval` seconds on MainActor:
   - Fires "Recording Soon" notification once at `Notify_recording` minutes before; stamps `notify_recording_time`.
   - Starts recording if `show_next <= now + 10s` AND `show_end > now`.
   - Stops recording naturally if `show_end <= now`.
+  - **Stranded show advance**: if `!show_recording && show_end <= now && show_next < now`, calls `scheduleNextAir` immediately. Handles the case where the app restarted after curl exited normally but before the idle loop fired the natural-stop handler (which requires `show_recording == true`). Logs `"stranded show_next in past — advancing"`.
   - Detects unexpected curl exit → reads `X-HDHomeRun-Error` from the curl header dump via `RecordingManager.readAndClearHDHRError` (precise device error code, e.g. "Tuner In Use (804)"), falls back to `"curl exited unexpectedly"` if no header was written; clears `show_tuner_resource`; increments fail count, sends notification.
   - Fires Discord progress update (PATCH) once per 5-minute boundary for active recordings when `Discord_on_progress` is enabled and `discord_start_msg_id` is set.
 - Conflict notifications: when a show can't start because all tuners are full, fires once per show+episode window (`conflictNotifiedEpochs: [String: TimeInterval]` — keyed by `show_id`, value is `show_next` epoch; clears on reschedule via `removeValue(forKey:)`).
