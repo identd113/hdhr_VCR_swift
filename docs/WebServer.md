@@ -266,7 +266,7 @@ Page structure (top to bottom):
 
 **`≡` status button** (`#status-btn`): `background:none` button placed **to the left of the `<h1>` title** in the upper-left header area. Clicking calls `openSchedPop(this)` which toggles `#sched-pop` (positioned below the button). Calls `closeSchedPop()` on second click or backdrop click. Button color shifts from `var(--t4)` (muted) to `var(--ac)` (accent) when the popover is open.
 
-**Auto-select on load**: after `setDev('')` initializes the guide, an IIFE finds the first visible `.g-row` and selects the currently-airing `.g-prog` on that row, populating the summary panel immediately without requiring a click.
+**Auto-select on load**: deferred into a `requestAnimationFrame` callback so the guide grid paints first (LCP element). On the first animation frame, an IIFE finds the first visible `.g-row` and selects the currently-airing `.g-prog`, populating the summary panel. `scrollToNow()` runs in the same callback. Deferring both prevents the externally-fetched CDN poster image from becoming the LCP element.
 
 ---
 
@@ -311,7 +311,7 @@ Fixed overlay (z-index 200). Positioned below the clicked tuner badge. Shows:
 
 **Generation token (`tPopGen`):** bumped on every `showTunerInfo` open and `closeTunerPop`. Each enrichment fetch (signal-stats and now-airing) captures `gen` at start and bails if `gen !== tPopGen` when its response arrives — prevents stale fetches from a closed/rebuilt popover appending duplicate or outdated DOM.
 
-Active tuner detection: `DeviceTunerInfo` entries where `VctNumber != nil`. Idle slots (returned by the device with only `"Resource"` present) are not counted. The occupancy is refreshed from `/status.json` on every `GET /` request (cache-bypassed with `cachePolicy: .reloadIgnoringLocalCacheData`).
+Active tuner detection: `DeviceTunerInfo` entries where `VctNumber != nil`. Idle slots (returned by the device with only `"Resource"` present) are not counted. Occupancy data comes from `AppState.deviceTunerOccupancy`, kept warm by the idle loop (see Tuner occupancy section).
 
 **`GET /api/now-airing/{devId}/{ch}`** — returns `{title, epTitle, poster, endTime}` for the currently-airing guide entry on that device/channel. `endTime` is a Unix timestamp string.
 
@@ -324,7 +324,7 @@ Always rendered above the guide grid. Two states:
 **Placeholder** (`#sum-ph`): "Select a show from the guide" — on load and after close.
 
 **Selected** (`#sum-c`): appears when the user clicks a program block. Layout (left to right):
-- **Poster image** — hidden if no `ImageURL`. Default: 72 px wide, `object-fit: contain`. Tablet (≤ 960 px): 56 px. Desktop (≥ 961 px): 260 px, `align-self: center`. On load failure, falls back to the channel logo; if that also fails, hides entirely. The `onerror` handler is set in JS each time `showInfo()` populates the panel (not as an inline HTML attribute) so the fallback chain re-arms on every selection.
+- **Poster image** — hidden if no `ImageURL`. Default: 72 px wide, `object-fit: contain`. Tablet (≤ 960 px): 56 px. Desktop (≥ 961 px): 260 px, `align-self: center`. **Progressive loading:** when both a channel logo and a CDN poster URL are available, `showInfo()` sets the logo immediately (already cached locally), then fetches the CDN poster in a detached `Image()` object; on load it swaps in the real poster. A `data-pgen` generation counter on the `<img>` prevents a slow CDN fetch for an earlier selection from overwriting a later one. When only a poster URL is available (no logo), it loads directly with a channel-logo fallback on error; if that also fails, the image hides. The `onerror` handler is set in JS each time `showInfo()` runs (not inline) so the fallback chain re-arms on every selection.
 - **Info column** (flex: 1):
   - Title (bold, 0.92 rem, ellipsis)
   - Genre badge (uppercase pill) — hidden if absent or `"Series"`
@@ -650,8 +650,9 @@ Client-side `innerHTML` concatenation (tuner popover rows) uses the page-local `
 - **128 KB cap:** any request whose total buffered bytes exceed `maxRequestBytes` (128 KB), or whose `Content-Length` exceeds that limit, is rejected immediately with `413 Content Too Large`. The buffer is grown via `Data.append()` (in-place when only one reference exists) rather than `+` to avoid O(n²) copying.
 - The `\r\n\r\n` separator is a `private static let httpSep` constant so no allocation occurs per receive callback.
 - After assembly: method + path parsed from request line. If path is `/api/events`, `registerSSE(conn)` is called and the connection is kept alive indefinitely (see SSE section). Otherwise a `Task` hops to `@MainActor`, response built, `send()` called from network queue.
-- `send()` writes a single HTTP/1.1 response `Data` packet; `conn.cancel()` fires in the completion block.
+- `send()` writes a single HTTP/1.1 response `Data` packet with `isComplete: true` — this signals NWConnection to send a TCP FIN with the last byte, closing the write side immediately. **Without `isComplete: true`, NWConnection leaves the TCP connection half-open after the data is sent; browsers stall on "Content Download" waiting for a FIN that never arrives.** `conn.cancel()` fires in the send completion block to clean up the read side.
 - Normal requests: one full request → one response → cancel. SSE connections: open until client disconnects or `stop()` is called.
+- **TCP_NODELAY:** the NWListener is created with `NWProtocolTCP.Options().noDelay = true` to disable Nagle's algorithm, ensuring response bytes are flushed immediately rather than held for coalescing.
 
 **gzip compression:** `accumulate()` parses `Accept-Encoding`; when the client supports gzip and an `.ok` body is ≥ 1400 bytes, `send()` compresses it (`Content-Encoding: gzip` + `Vary: Accept-Encoding`). The guide page shrinks ~1.1 MB → ~160 KB — the dominant cost for LAN Wi-Fi clients. Implementation: libcompression `COMPRESSION_ZLIB` (raw DEFLATE) wrapped in a gzip container (10-byte header + CRC-32/ISIZE trailer, table-based CRC in `WebServer.crc32`). Falls back to uncompressed if compression fails or wouldn't shrink the payload. `.cachedIcon` responses (already-compressed image data) are never gzipped.
 
@@ -659,7 +660,8 @@ Client-side `innerHTML` concatenation (tuner popover rows) uses the page-local `
 
 | Case | HTTP status | Use |
 |---|---|---|
-| `.ok(contentType:body:)` | 200 OK | Successful GET or POST |
+| `.ok(contentType:body:)` | 200 OK | Successful GET or POST; gzip-compressed by `send()` when client supports it and body ≥ 1400 bytes |
+| `.cachedIcon(contentType:body:)` | 200 OK | Channel icon; skips gzip (already compressed image data); adds `Cache-Control: public, max-age=2592000` (30 days) |
 | `.notFound(String)` | 404 Not Found | Unknown path |
 | `.badRequest(String)` | 400 Bad Request | POST with missing required fields |
 | `.payloadTooLarge(String)` | 413 Content Too Large | Request body exceeds 128 KB |
