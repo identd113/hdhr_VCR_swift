@@ -26,6 +26,8 @@ final class AppState: ObservableObject {
     // Value = show_next epoch (TimeInterval) for which the notification was sent;
     // clears on reschedule so a new time slot can notify again.
     private var conflictNotifiedEpochs: [String: TimeInterval] = [:]
+    // "channelNum:startTime" keys for guide entries already logged as now-airing without a genre tag.
+    private var loggedNowAiring: Set<String> = []
     // Same pattern as conflictNotifiedEpochs, for MISSED START warnings.
     private var missedStartNotifiedEpochs: [String: TimeInterval] = [:]
     // Shows whose recording was interrupted by an app quit and will be relaunched this session.
@@ -1120,6 +1122,25 @@ final class AppState: ObservableObject {
         if !menuIsOpen { rebuildMenuEntries() }
 
         if webServerRunning { webServer.updateTXTRecord() }
+
+        // Log untagged (no genre) guide entries as they start airing, once per slot.
+        // Helps discover new infomercial SeriesIDs to add to the hidden-by-default filter.
+        let knownInfSIDs: Set<String> = ["C11809220ENAPZK", "C459763EN3L6D"]
+        for device in devices {
+            for ch in (lineups[device.DeviceID] ?? []) {
+                let entries = guideStore.entries(deviceId: device.DeviceID, channelNum: ch.GuideNumber)
+                for e in entries where e.StartTime <= Int(now.timeIntervalSince1970) && e.EndTime > Int(now.timeIntervalSince1970) {
+                    guard e.firstGenre == nil else { continue }
+                    let key = "\(ch.GuideNumber):\(e.StartTime)"
+                    guard !loggedNowAiring.contains(key) else { continue }
+                    loggedNowAiring.insert(key)
+                    let sid = e.SeriesID ?? "none"
+                    if !knownInfSIDs.contains(sid) {
+                        glog("[NowAiring] \(ch.GuideNumber) \(ch.GuideName) — \(e.Title) SeriesID=\(sid)")
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - Recording
