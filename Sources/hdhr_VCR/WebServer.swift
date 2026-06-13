@@ -827,16 +827,21 @@ final class WebServer {
         // ── Status toggle button — sits next to h1 in the header; reveals the status panel ──
         let statusBtn = "<button id=\"status-btn\" onclick=\"openSchedPop(this)\" title=\"Schedule &amp; recordings\" aria-expanded=\"false\" style=\"background:none;border:none;cursor:pointer;color:var(--t4);font-size:1.1rem;padding:2px 6px;line-height:1;border-radius:4px\">≡</button>"
 
-        // ── Device bar (shown when >1 device; links to local HDHR web UI) ──────
+        // ── Device bar (shown when >1 device or offline devices exist) ────────
+        // Offline devices: referenced by scheduled shows but not currently discovered.
+        let onlineIDs  = Set(state.devices.map { $0.DeviceID })
+        let offlineIDs = Set(state.shows.map { $0.hdhr_record }).subtracting(onlineIDs).filter { !$0.isEmpty }
+
         let headerHTML: String
         let deviceBarHTML: String
-        if state.devices.count == 1, let d = state.devices.first {
+        let needsBar = state.devices.count > 1 || !offlineIDs.isEmpty
+        if state.devices.count == 1 && offlineIDs.isEmpty, let d = state.devices.first {
             let uiURL = "http://\(d.LocalIP)/"
             let label = "HDHR-\(d.DeviceID.uppercased())"
             let dt    = devTuners[d.DeviceID]!
             headerHTML = "<div style=\"display:flex;align-items:flex-start;gap:10px\">\(statusBtn)<div><h1 style=\"margin:0\">hdhrVCR+ Guide</h1><div style=\"display:flex;align-items:center;gap:6px;margin-top:4px\">\(tunerInfoBtn(d.DeviceID, dt))<a href=\"\(he(uiURL))\" target=\"_blank\" style=\"font-size:.75rem;color:#666;text-decoration:none\" title=\"Open \(he(label)) device web UI\">\(he(label)) ↗</a></div></div></div>"
             deviceBarHTML = ""
-        } else if state.devices.count > 1 {
+        } else if needsBar {
             headerHTML = "<div style=\"display:flex;align-items:center;gap:8px\">\(statusBtn)<h1 style=\"margin:0\">hdhrVCR+ Guide</h1></div>"
             var bar = "<div id=\"dev-bar\" style=\"flex-direction:column;align-items:flex-start;gap:4px\">"
             for d in state.devices {
@@ -847,6 +852,13 @@ final class WebServer {
                 bar += "<button class=\"d-btn\" data-dev=\"\(he(d.DeviceID))\" onclick=\"setDev(this.dataset.dev)\">\(label)</button>"
                 bar += "<a href=\"\(he(uiURL))\" target=\"_blank\" class=\"d-ui\" title=\"Open \(label) web UI\">↗</a>"
                 bar += tunerInfoBtn(d.DeviceID, dt)
+                bar += "</div>"
+            }
+            for id in offlineIDs.sorted() {
+                let label = he("HDHR-\(id.uppercased())")
+                bar += "<div style=\"display:flex;align-items:center;gap:6px\">"
+                bar += "<button class=\"d-btn d-btn-off\" data-dev=\"\(he(id))\" onclick=\"setDev(this.dataset.dev)\" title=\"Device not detected\">\(label)</button>"
+                bar += "<span style=\"font-size:.72rem;color:#e57373\">not detected</span>"
                 bar += "</div>"
             }
             bar += "</div>"
@@ -1034,6 +1046,8 @@ final class WebServer {
         html.lm .d-btn.d-full{border-color:#cc3030;color:#8b0000;background:#fce8e8}
         html.lm .d-btn.d-full:hover{border-color:#aa2020;color:#660000}
         html.lm .d-btn.d-full.d-sel{border-color:#cc3030;color:#8b0000;background:#fcd4d4}
+        .d-btn-off{opacity:.55;border-style:dashed}
+        .d-btn-off.d-sel{border-style:dashed}
         .d-ui{color:var(--t6);font-size:.85rem;text-decoration:none;padding:0 2px;line-height:1}
         .d-ui:hover{color:var(--ac)}
         .t-info{background:var(--s4);border:1px solid var(--b4);color:var(--t3);border-radius:4px;padding:2px 8px;font-size:.72rem;cursor:pointer;transition:border-color .15s,color .15s}
@@ -1353,6 +1367,7 @@ final class WebServer {
         <div class="gw-outer"><div class="gw"><div class="gi">
         <div class="g-hdr"><div class="g-hdr-ch"><span class="g-hdr-ch-lbl">Ch</span><div class="g-hdr-btns"><button class="g-hdr-btn" onclick="scrollToNow()" title="Jump to now">⊙</button><button class="g-hdr-btn" onclick="refreshGuide()" title="Refresh guide">↺</button></div></div><div class="g-hdr-tl">\(ticksHTML)</div></div>
         \(rowsHTML)
+        <div id="offline-notice" style="display:none;padding:40px 24px;text-align:center;color:var(--t4);font-size:.88rem;border-top:1px solid var(--b3);margin-top:8px">Device not detected — no lineup data available</div>
         </div></div></div>
         <script>
         \(tunerJS)
@@ -1952,6 +1967,12 @@ final class WebServer {
             });
             sep.style.display=hasFav?'':'none';
           });
+          // Show offline notice when a specific device is selected but has no rows (not detected)
+          var notice=document.getElementById('offline-notice');
+          if(notice){
+            var hasRows=!id||Array.from(_rows).some(function(r){return r.dataset.dev===id;});
+            notice.style.display=hasRows?'none':'';
+          }
         }
         function filterGenre(g){_genreFilter=g;applyGenreDim();}
         function toggleFav(evt,btn){

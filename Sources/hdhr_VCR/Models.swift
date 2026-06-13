@@ -469,17 +469,27 @@ struct GuideEntry: Codable, Identifiable, Hashable {
 // MARK: - ManagedGuideMatcher
 
 struct ManagedGuideMatcher: Equatable {
-    let seriesIDs:        Set<String>   // SeriesID(Channel/All) shows
-    let titles:           Set<String>   // title fallback for series shows without a SeriesID
-    let singleSlotKeys:   Set<String>   // "device:channel:epoch" — single shows, exact slot
-    let datetimeSlotKeys: Set<String>   // "device:channel:HH:MM" — dateTime shows, all matching slots
+    // seriesAll shows record on any device — bare SeriesID/title keys, match regardless of device.
+    let seriesAllIDs:    Set<String>   // bare SeriesID
+    let seriesAllTitles: Set<String>   // bare title (no SeriesID)
+    // seriesChannel shows are assigned to a specific device — keys are "device:SeriesID" / "device:title".
+    let seriesChKeys:    Set<String>   // "device:SeriesID"
+    let seriesChTitles:  Set<String>   // "device:title" (no SeriesID)
+    let singleSlotKeys:  Set<String>   // "device:channel:epoch"
+    let datetimeSlotKeys: Set<String>  // "device:channel:Weekday:HH:MM"
 
     init(activeManagedShows: [Show]) {
         let cal = Calendar.current
         let dayNames = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"]
-        let seriesShows = activeManagedShows.filter { $0.isSeries }
-        seriesIDs = Set(seriesShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
-        titles    = Set(seriesShows.map { $0.show_title })
+        let allShows  = activeManagedShows.filter { $0.state == .seriesAll }
+        let chShows   = activeManagedShows.filter { $0.state == .seriesChannel }
+        seriesAllIDs    = Set(allShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
+        seriesAllTitles = Set(allShows.map { $0.show_title })
+        seriesChKeys    = Set(chShows.compactMap { s -> String? in
+            guard !s.show_seriesid.isEmpty else { return nil }
+            return "\(s.hdhr_record):\(s.show_seriesid)"
+        })
+        seriesChTitles  = Set(chShows.map { "\($0.hdhr_record):\($0.show_title)" })
         singleSlotKeys = Set(activeManagedShows.compactMap { s -> String? in
             guard s.state == .single, let next = s.show_next else { return nil }
             return "\(s.hdhr_record):\(s.show_channel):\(Int(next.timeIntervalSince1970))"
@@ -496,13 +506,16 @@ struct ManagedGuideMatcher: Equatable {
     }
 
     func isManaged(entry: GuideEntry) -> Bool {
-        if let sid = entry.SeriesID, !sid.isEmpty, seriesIDs.contains(sid) { return true }
-        if titles.contains(entry.Title) { return true }
+        let dev = entry.deviceId
+        if let sid = entry.SeriesID, !sid.isEmpty {
+            if seriesAllIDs.contains(sid) || seriesChKeys.contains("\(dev):\(sid)") { return true }
+        }
+        if seriesAllTitles.contains(entry.Title) || seriesChTitles.contains("\(dev):\(entry.Title)") { return true }
         let c = Calendar.current.dateComponents([.hour, .minute, .weekday],
                     from: Date(timeIntervalSince1970: TimeInterval(entry.StartTime)))
         let hhmm = String(format: "%02d:%02d", c.hour ?? 0, c.minute ?? 0)
         let dayName = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][(c.weekday ?? 1) - 1]
-        let dev = entry.deviceId, ch = entry.channelNum
+        let ch = entry.channelNum
         if datetimeSlotKeys.contains("\(dev):\(ch):\(dayName):\(hhmm)") { return true }
         return singleSlotKeys.contains("\(dev):\(ch):\(entry.StartTime)")
     }
