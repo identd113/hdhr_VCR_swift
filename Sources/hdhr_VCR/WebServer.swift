@@ -132,10 +132,16 @@ final class WebServer {
     // can update #sum-ph, #sched-pop-body, and the guide row recording dot without a full page fetch.
     @MainActor
     func broadcastRecordingEvent(type: String, channel: String, device: String, state: AppState) {
+        // recordingShows is in-memory accurate immediately when a recording starts/stops,
+        // unlike deviceTunerOccupancy which lags by up to one idle tick.
+        let active = state.recordingShows.filter { $0.hdhr_record == device }.count
+        let total  = state.devices.first(where: { $0.DeviceID == device })?.TunerCount ?? 0
         broadcastEvent([
             "type":     type,
             "channel":  channel,
             "device":   device,
+            "tunerA":   active,
+            "tunerT":   total,
             "sumPh":    buildSumPhHTML(state: state),
             "schedPop": buildSchedPopHTML(state: state)
         ])
@@ -2013,6 +2019,7 @@ final class WebServer {
                 if(d.sumPh){var ph=document.getElementById('sum-ph');if(ph)ph.innerHTML=d.sumPh;}
                 if(d.schedPop){var sb=document.getElementById('sched-pop-body');if(sb)sb.innerHTML=d.schedPop;}
                 // For recording events: toggle recording state on the currently-airing guide entry
+                // and push fresh tuner counts so the badge and popover stay accurate.
                 if((d.type==='recording_started'||d.type==='recording_stopped')&&d.channel&&d.device){
                   var isRec=d.type==='recording_started';
                   var nowTs=Math.floor(Date.now()/1000);
@@ -2028,6 +2035,12 @@ final class WebServer {
                       }
                     }
                   });
+                  if(d.tunerT>0){
+                    if(tuners[d.device])tuners[d.device].a=d.tunerA;
+                    else tuners[d.device]={t:d.tunerT,a:d.tunerA,surl:''};
+                    var tb=document.getElementById('tun-'+d.device);
+                    if(tb){var full=d.tunerA>=d.tunerT;tb.textContent=d.tunerA+'/'+d.tunerT+(full?' — FULL':'');if(full)tb.classList.add('t-info-full');else tb.classList.remove('t-info-full');}
+                  }
                 }
               } else {
                 refreshGuide();
