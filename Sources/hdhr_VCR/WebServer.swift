@@ -1926,29 +1926,26 @@ final class WebServer {
         var curDev='';
         var _genreFilter='';
         var _rows=document.querySelectorAll('.g-row');
+        var _showInf=false;
         function applyGenreDim(){
-          // Dim programs that don't match the genre filter; .g-prog-dim also makes them unselectable
+          // Dim programs that don't match the genre filter or are on infomercial rows (when not opted in)
           document.querySelectorAll('.g-prog.g-prog-dim').forEach(function(p){p.classList.remove('g-prog-dim');});
-          if(!_genreFilter)return;
           var f=_genreFilter.toLowerCase();
           document.querySelectorAll('.g-prog').forEach(function(p){
-            if((p.dataset.genre||'').toLowerCase()!==f)p.classList.add('g-prog-dim');
+            var genreDim=f&&(p.dataset.genre||'').toLowerCase()!==f;
+            var infDim=!_showInf&&!!p.closest('[data-inf="1"]');
+            if(genreDim||infDim)p.classList.add('g-prog-dim');
           });
         }
-        var _showInf=false;
-        function toggleInf(v){_showInf=v;setDev(curDev);}
+        function toggleInf(v){_showInf=v;applyGenreDim();}
         function setDev(id){
           if(id!==curDev){_genreFilter='';var sel=document.getElementById('genre-sel');if(sel)sel.value='';}
           curDev=id;
           document.querySelectorAll('.d-btn').forEach(function(b){b.classList.toggle('d-sel',b.dataset.dev===id);});
           var seen={};
           _rows.forEach(function(r){
-            var isInf=r.dataset.inf==='1';
-            if(id){r.style.display=(r.dataset.dev===id&&(_showInf||!isInf))?'':'none';}
-            else{
-              if(!_showInf&&isInf){r.style.display='none';return;}
-              var ch=r.dataset.ch;if(!seen[ch]){r.style.display='';seen[ch]=true;}else{r.style.display='none';}
-            }
+            if(id){r.style.display=r.dataset.dev===id?'':'none';}
+            else{var ch=r.dataset.ch;if(!seen[ch]){r.style.display='';seen[ch]=true;}else{r.style.display='none';}}
           });
           applyGenreDim();
           // Show/hide the favorites section header and footer for each device
