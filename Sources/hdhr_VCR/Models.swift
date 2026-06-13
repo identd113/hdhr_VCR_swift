@@ -478,7 +478,9 @@ struct ManagedGuideMatcher: Equatable {
         let cal = Calendar.current
         let seriesShows = activeManagedShows.filter { $0.isSeries }
         seriesIDs = Set(seriesShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
-        titles    = Set(seriesShows.map { $0.show_title })
+        // Include dateTime shows with show_is_series so their title appears on all guide airings,
+        // not just the scheduled HH:MM slot — user marked them as recurring series.
+        titles    = Set(activeManagedShows.filter { $0.isSeries || $0.show_is_series }.map { $0.show_title })
         singleSlotKeys = Set(activeManagedShows.compactMap { s -> String? in
             guard s.state == .single, let next = s.show_next else { return nil }
             return "\(s.hdhr_record):\(s.show_channel):\(Int(next.timeIntervalSince1970))"
