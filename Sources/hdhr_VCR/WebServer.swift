@@ -1924,13 +1924,15 @@ final class WebServer {
         var _genreFilter='';
         var _rows=document.querySelectorAll('.g-row');
         function applyGenreDim(){
-          // Dim programs that don't match the genre filter, or are on infomercial rows (always)
           document.querySelectorAll('.g-prog.g-prog-dim').forEach(function(p){p.classList.remove('g-prog-dim');});
           var f=_genreFilter.toLowerCase();
+          var infMode=f==='__inf';
           document.querySelectorAll('.g-prog').forEach(function(p){
-            var genreDim=f&&(p.dataset.genre||'').toLowerCase()!==f;
-            var infDim=!!p.closest('[data-inf="1"]');
-            if(genreDim||infDim)p.classList.add('g-prog-dim');
+            var isInf=!!p.closest('[data-inf="1"]');
+            var dim;
+            if(infMode){dim=!isInf;}
+            else{dim=(f&&(p.dataset.genre||'').toLowerCase()!==f)||isInf;}
+            if(dim)p.classList.add('g-prog-dim');
           });
         }
         function setDev(id){
@@ -1964,14 +1966,16 @@ final class WebServer {
           .catch(function(){});
         }
         setDev('');
-        // Build genre filter from unique genres in the guide
+        // Build genre filter; add Infomercials option if any inf rows exist
         (function(){
           var gs=new Set();
           document.querySelectorAll('.g-prog[data-genre]').forEach(function(p){var g=p.dataset.genre;if(g)gs.add(g);});
-          if(gs.size<2)return;
+          var hasInf=document.querySelector('.g-row[data-inf="1"]')!==null;
+          if(gs.size<2&&!hasInf)return;
           var sel=document.getElementById('genre-sel');
           if(!sel)return;
           Array.from(gs).sort().forEach(function(g){var o=document.createElement('option');o.value=g;o.textContent=g;sel.appendChild(o);});
+          if(hasInf){var o=document.createElement('option');o.value='__inf';o.textContent='Infomercials';sel.appendChild(o);}
           document.getElementById('genre-bar').style.display='';
         })();
         // scrollToNow + live now-line: recompute position from winStart/winSec every 30 s
