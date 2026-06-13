@@ -1046,7 +1046,7 @@ final class WebServer {
         /* ── Theme switcher (3-dot segmented control) ── */
         .genre-sel{background:var(--s4);border:1px solid var(--b4);color:var(--t2);border-radius:5px;padding:4px 8px;font-size:.78rem;cursor:pointer}
         html.lm .genre-sel{background:#f0f0f0;border-color:#ccc;color:#333}
-#theme-sw{display:flex;background:var(--s4);border:1px solid var(--b4);border-radius:6px;overflow:hidden;flex-shrink:0}
+        #theme-sw{display:flex;background:var(--s4);border:1px solid var(--b4);border-radius:6px;overflow:hidden;flex-shrink:0}
         #theme-sw button{background:none;border:none;border-right:1px solid var(--b4);padding:5px 9px;cursor:pointer;color:var(--t4);font-size:.8rem;line-height:1;transition:background .12s,color .12s}
         #theme-sw button:last-child{border-right:none}
         #theme-sw button:hover{background:var(--s3);color:var(--t0)}
