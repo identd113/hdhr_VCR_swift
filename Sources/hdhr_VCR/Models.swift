@@ -476,30 +476,34 @@ struct ManagedGuideMatcher: Equatable {
 
     init(activeManagedShows: [Show]) {
         let cal = Calendar.current
+        let dayNames = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"]
         let seriesShows = activeManagedShows.filter { $0.isSeries }
         seriesIDs = Set(seriesShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
-        // Include dateTime shows with show_is_series so their title appears on all guide airings,
-        // not just the scheduled HH:MM slot — user marked them as recurring series.
-        titles    = Set(activeManagedShows.filter { $0.isSeries || $0.show_is_series }.map { $0.show_title })
+        titles    = Set(seriesShows.map { $0.show_title })
         singleSlotKeys = Set(activeManagedShows.compactMap { s -> String? in
             guard s.state == .single, let next = s.show_next else { return nil }
             return "\(s.hdhr_record):\(s.show_channel):\(Int(next.timeIntervalSince1970))"
         })
-        datetimeSlotKeys = Set(activeManagedShows.compactMap { s -> String? in
-            guard s.state == .dateTime, let next = s.show_next else { return nil }
+        // Key = "device:channel:Weekday:HH:MM" — one key per allowed air day.
+        // Weekday comes from show_air_date; falls back to all 7 days if empty.
+        datetimeSlotKeys = Set(activeManagedShows.flatMap { s -> [String] in
+            guard s.state == .dateTime, let next = s.show_next else { return [] }
             let c = cal.dateComponents([.hour, .minute], from: next)
-            return String(format: "\(s.hdhr_record):\(s.show_channel):%02d:%02d", c.hour ?? 0, c.minute ?? 0)
+            let hhmm = String(format: "%02d:%02d", c.hour ?? 0, c.minute ?? 0)
+            let airDays = s.show_air_date.isEmpty ? dayNames : s.show_air_date.filter { dayNames.contains($0) }
+            return airDays.map { "\(s.hdhr_record):\(s.show_channel):\($0):\(hhmm)" }
         })
     }
 
     func isManaged(entry: GuideEntry) -> Bool {
         if let sid = entry.SeriesID, !sid.isEmpty, seriesIDs.contains(sid) { return true }
         if titles.contains(entry.Title) { return true }
-        let c = Calendar.current.dateComponents([.hour, .minute],
+        let c = Calendar.current.dateComponents([.hour, .minute, .weekday],
                     from: Date(timeIntervalSince1970: TimeInterval(entry.StartTime)))
         let hhmm = String(format: "%02d:%02d", c.hour ?? 0, c.minute ?? 0)
+        let dayName = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][(c.weekday ?? 1) - 1]
         let dev = entry.deviceId, ch = entry.channelNum
-        if datetimeSlotKeys.contains("\(dev):\(ch):\(hhmm)") { return true }
+        if datetimeSlotKeys.contains("\(dev):\(ch):\(dayName):\(hhmm)") { return true }
         return singleSlotKeys.contains("\(dev):\(ch):\(entry.StartTime)")
     }
 }
