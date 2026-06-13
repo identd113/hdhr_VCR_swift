@@ -892,6 +892,7 @@ final class WebServer {
                              || (pendingRecChannelsByDevice[device.DeviceID]?.contains(ch.GuideNumber) ?? false)
 
                 var blockParts: [String] = ["<div class=\"g-now-bar\" style=\"left:\(nowPct)%\"></div>"]
+                let infSIDs: Set<String> = ["C11809220ENAPZK", "C459763EN3L6D"]
                 // Fill gaps so the striped .g-tl background never shows through.
                 // cursor tracks the right edge of the last processed show, starting at winStart.
                 var cursor = winStart
@@ -952,7 +953,8 @@ final class WebServer {
                         let ad = s.show_air_date.joined(separator: ",")
                         return " data-show-id=\"\(he(s.show_id))\" data-show-type=\"\(showTypeStr(s))\" data-show-paused=\"\(s.show_paused ? 1 : 0)\" data-show-length=\"\(s.show_length)\" data-show-bonus=\"\(s.show_bonus_time ? 1 : 0)\" data-show-transcode=\"\(he(s.show_transcode))\" data-show-seriesid=\"\(he(s.show_seriesid))\" data-show-airdays=\"\(he(ad))\" data-show-failcount=\"\(s.show_fail_count)\" data-show-failreason=\"\(he(s.show_fail_reason))\" data-show-recording=\"\(s.show_recording ? 1 : 0)\""
                     }() : ""
-                    blockParts.append("<div class=\"\(cls)\" style=\"left:\(pct(cs))%;width:\(pct(ce - cs))%\" title=\"\(tip)\" \(da)\(showDA) onclick=\"showInfo(this)\"><div class=\"g-pi\"><span class=\"g-ti\">\(he(e.Title))</span>\(subH)</div>\(flagHTML)</div>")
+                    let infDA = infSIDs.contains(e.SeriesID ?? "") ? " data-inf=\"1\"" : ""
+                    blockParts.append("<div class=\"\(cls)\" style=\"left:\(pct(cs))%;width:\(pct(ce - cs))%\" title=\"\(tip)\" \(da)\(showDA)\(infDA) onclick=\"showInfo(this)\"><div class=\"g-pi\"><span class=\"g-ti\">\(he(e.Title))</span>\(subH)</div>\(flagHTML)</div>")
                 }
 
                 let gnameAttr = ChannelSignalStore.key(for: ch.GuideName)
@@ -972,10 +974,7 @@ final class WebServer {
                 let favBtn  = ch.isFavorite
                     ? "<button class=\"g-fav-btn\" data-fav=\"1\" onclick=\"toggleFav(event,this)\" title=\"Remove from favorites\">★</button>"
                     : "<button class=\"g-fav-btn\" onclick=\"toggleFav(event,this)\" title=\"Add to favorites\">☆</button>"
-                // Mark rows containing confirmed paid-programming SeriesIDs — hidden by default.
-                let infSIDs: Set<String> = ["C11809220ENAPZK", "C459763EN3L6D"]
-                let infAttr = entries.contains(where: { infSIDs.contains($0.SeriesID ?? "") }) ? " data-inf=\"1\"" : ""
-                let rowHTML = "<div class=\"g-row\" data-dev=\"\(he(device.DeviceID))\" data-ch=\"\(he(ch.GuideNumber))\" data-gname=\"\(he(gnameAttr))\"\(favAttr)\(infAttr)><div class=\"g-ch\">\(logoHTML)<div class=\"g-cl\"><span class=\"g-cn\">\(he(chLabel))\(sigHTML)</span><span class=\"g-cname\">\(he(ch.GuideName))</span></div>\(favBtn)</div><div class=\"g-tl\">\(blockParts.joined())</div></div>"
+                let rowHTML = "<div class=\"g-row\" data-dev=\"\(he(device.DeviceID))\" data-ch=\"\(he(ch.GuideNumber))\" data-gname=\"\(he(gnameAttr))\"\(favAttr)><div class=\"g-ch\">\(logoHTML)<div class=\"g-cl\"><span class=\"g-cn\">\(he(chLabel))\(sigHTML)</span><span class=\"g-cname\">\(he(ch.GuideName))</span></div>\(favBtn)</div><div class=\"g-tl\">\(blockParts.joined())</div></div>"
                 if ch.isFavorite { favRows.append(rowHTML) } else { otherRows.append(rowHTML) }
             }
             // Assemble: favorites section (with header/footer) then non-favorites
@@ -1928,7 +1927,7 @@ final class WebServer {
           var f=_genreFilter.toLowerCase();
           var infMode=f==='__inf';
           document.querySelectorAll('.g-prog').forEach(function(p){
-            var isInf=!!p.closest('[data-inf="1"]');
+            var isInf=p.dataset.inf==='1';
             var dim;
             if(infMode){dim=!isInf;}
             else{dim=(f&&(p.dataset.genre||'').toLowerCase()!==f)||isInf;}
@@ -1970,7 +1969,7 @@ final class WebServer {
         (function(){
           var gs=new Set();
           document.querySelectorAll('.g-prog[data-genre]').forEach(function(p){var g=p.dataset.genre;if(g)gs.add(g);});
-          var hasInf=document.querySelector('.g-row[data-inf="1"]')!==null;
+          var hasInf=document.querySelector('.g-prog[data-inf="1"]')!==null;
           if(gs.size<2&&!hasInf)return;
           var sel=document.getElementById('genre-sel');
           if(!sel)return;
