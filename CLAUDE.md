@@ -67,6 +67,12 @@ Systems: [AppState](docs/AppState.md) · [GuideStore](docs/GuideStore.md) · [Re
 
 **Tuner occupancy** — watching and recording both occupy a tuner. Always use `AppState.tunersFull(for:)` (counts `recordingShows` + in-app VLC stream). Never count recordings alone.
 
+**Web guide rows are never hidden** — guide filtering (genre, infomercial) dims individual `.g-prog` blocks via `.g-prog-dim`; `.g-row` elements stay visible at all times. Never add `display:none` to a row as a filter mechanism.
+
+**Web guide managed markers are tuner-scoped** — `seriesChannel` yellow diamonds use `"deviceId:SeriesID"` / `"deviceId:title"` keys in `ManagedGuideMatcher`; they only appear on the assigned tuner. `seriesAll` shows use bare keys and appear on all tuners. `dateTime` slot keys include weekday (`"device:channel:Weekday:HH:MM"`) so a Wednesday-only show doesn't flag Friday reruns.
+
+**Web guide offline devices** — devices referenced in `show.hdhr_record` but absent from `state.devices` get a dashed "not detected" button in the guide device bar. Never silently omit them.
+
 **New show field** — (1) add to `Show` in `Models.swift` (2) `CodingKeys` entry (3) `init(from:)` with fallback default (4) update `Show.blank()`.
 
 **Bonus Time** — `show_bonus_time` extends past guide end; sports genres default `true` via `applyGuideEntry()` (genre comes from guide `Filter` tags). Duration = `Sports_padding_minutes`.
