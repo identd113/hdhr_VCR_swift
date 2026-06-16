@@ -509,7 +509,12 @@ The four matching tiers (seriesID → title fallback → datetime `device:channe
 | `data-show-failreason` | `show.show_fail_reason` |
 | `data-show-recording` | `1` if recording, `0` otherwise |
 
-`findManagedShow` matches by SeriesID first, then series title, then exact title+channel.
+`findManagedShow` lookup strategy:
+- **Series shows** (`isSeries`): SeriesID only — `activeMgdBySeries[entry.SeriesID]`. No title fallback; avoids returning the wrong device's show when the same title is scheduled on multiple devices.
+- **dateTime shows**: `"device:channel:Weekday:HH:MM"` slot key — same format as `ManagedGuideMatcher.datetimeSlotKeys`, built from `show_next` time and `show_air_date` entries.
+- **Single shows**: `"device:channel:epoch"` slot key — exact scheduled-slot match.
+
+If no match is found (e.g. a series show whose guide entry has no SeriesID), the block still gets `data-managed="1"` and the triangle flag but no `data-show-*` edit attrs — the Edit button will not be pre-filled from the guide for that block.
 
 ---
 

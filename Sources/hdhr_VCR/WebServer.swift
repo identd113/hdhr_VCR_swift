@@ -716,19 +716,40 @@ final class WebServer {
         }()
         let activeMgd    = state.shows.filter { $0.show_active && !$0.show_paused }
         let guideMatcher = ManagedGuideMatcher(activeManagedShows: activeMgd)
-        // Pre-built O(1) indexes for findManagedShow — avoids O(n) scans per guide block.
+        // Pre-built O(1) indexes for findManagedShow.
+        // Series shows: SeriesID → Show.
         let activeMgdBySeries = Dictionary(
             activeMgd.filter { $0.isSeries && !$0.show_seriesid.isEmpty }.map { ($0.show_seriesid, $0) },
             uniquingKeysWith: { a, _ in a })
-        let activeMgdByTitle  = Dictionary(
-            activeMgd.filter { $0.isSeries }.map { ($0.show_title, $0) },
-            uniquingKeysWith: { a, _ in a })
+        // dateTime/single: slot key → Show.
+        // dateTime key: "device:channel:Weekday:HH:MM" (one per air day, same format as ManagedGuideMatcher).
+        // single key:   "device:channel:epoch".
+        let fmsDayNames = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"]
+        var activeMgdBySlot: [String: Show] = [:]
+        for s in activeMgd where !s.isSeries {
+            guard let next = s.show_next else { continue }
+            let c = Calendar.current.dateComponents([.hour, .minute], from: next)
+            let hhmm = String(format: "%02d:%02d", c.hour ?? 0, c.minute ?? 0)
+            if s.state == .dateTime {
+                let airDays = s.show_air_date.isEmpty ? fmsDayNames : s.show_air_date.filter { fmsDayNames.contains($0) }
+                for day in airDays { activeMgdBySlot["\(s.hdhr_record):\(s.show_channel):\(day):\(hhmm)"] = s }
+            } else {
+                activeMgdBySlot["\(s.hdhr_record):\(s.show_channel):\(Int(next.timeIntervalSince1970))"] = s
+            }
+        }
         // Returns the managed Show matching a guide entry — used to embed show data attrs on
         // managed blocks so the web edit modal can be opened directly from the guide.
+        // Series shows: SeriesID only (no title fallback — avoids wrong-device match).
+        // dateTime/single: device+channel+slot (same key format as ManagedGuideMatcher).
         let findManagedShow: (GuideEntry, LineupEntry) -> Show? = { e, ch in
             if let sid = e.SeriesID, !sid.isEmpty, let s = activeMgdBySeries[sid] { return s }
-            if let s = activeMgdByTitle[e.Title] { return s }
-            return activeMgd.first(where: { $0.show_title == e.Title && $0.show_channel == ch.GuideNumber })
+            let c = Calendar.current.dateComponents([.hour, .minute, .weekday],
+                from: Date(timeIntervalSince1970: TimeInterval(e.StartTime)))
+            let hhmm = String(format: "%02d:%02d", c.hour ?? 0, c.minute ?? 0)
+            let dayName = fmsDayNames[(c.weekday ?? 1) - 1]
+            let dev = e.deviceId; let chan = ch.GuideNumber
+            if let s = activeMgdBySlot["\(dev):\(chan):\(dayName):\(hhmm)"] { return s }
+            return activeMgdBySlot["\(dev):\(chan):\(Int(e.StartTime))"]
         }
 
         // ── Per-device tuner counts (total slots vs. currently occupied) ────────
