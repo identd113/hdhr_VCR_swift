@@ -583,7 +583,7 @@ final class WebServer {
         func showRow(_ s: Show, recording: Bool = false, prefix: String = "", chDetail: String = "") -> String {
             let t = showTypeStr(s)
             let ad = s.show_air_date.joined(separator: ",")
-            let da = "data-id=\"\(he(s.show_id))\" data-title=\"\(he(s.show_title))\" data-ch=\"\(he(s.show_channel))\" data-type=\"\(t)\" data-paused=\"\(s.show_paused ? 1 : 0)\" data-recording=\"\(recording ? 1 : 0)\" data-length=\"\(s.show_length)\" data-bonus=\"\(s.show_bonus_time ? 1 : 0)\" data-dir=\"\(he(s.show_dir))\" data-transcode=\"\(he(s.show_transcode))\" data-seriesid=\"\(he(s.show_seriesid))\" data-airdays=\"\(he(ad))\" data-failcount=\"\(s.show_fail_count)\" data-failreason=\"\(he(s.show_fail_reason))\""
+            let da = "data-dev=\"\(he(s.hdhr_record))\" data-id=\"\(he(s.show_id))\" data-title=\"\(he(s.show_title))\" data-ch=\"\(he(s.show_channel))\" data-type=\"\(t)\" data-paused=\"\(s.show_paused ? 1 : 0)\" data-recording=\"\(recording ? 1 : 0)\" data-length=\"\(s.show_length)\" data-bonus=\"\(s.show_bonus_time ? 1 : 0)\" data-dir=\"\(he(s.show_dir))\" data-transcode=\"\(he(s.show_transcode))\" data-seriesid=\"\(he(s.show_seriesid))\" data-airdays=\"\(he(ad))\" data-failcount=\"\(s.show_fail_count)\" data-failreason=\"\(he(s.show_fail_reason))\""
             let endDetail = recording ? s.show_end.map { " · Ends \(state.shortTime($0))" } ?? "" : ""
             let chLine = chDetail.isEmpty
                 ? "Ch \(he(s.show_channel))\(endDetail)"
@@ -857,7 +857,7 @@ final class WebServer {
             for id in offlineIDs.sorted() {
                 let label = he("HDHR-\(id.uppercased())")
                 bar += "<div style=\"display:flex;align-items:center;gap:6px\">"
-                bar += "<button class=\"d-btn d-btn-off\" data-dev=\"\(he(id))\" onclick=\"setDev(this.dataset.dev)\" title=\"Device not detected\">\(label)</button>"
+                bar += "<button class=\"d-btn d-btn-off\" data-dev=\"\(he(id))\" onclick=\"setDev(this.dataset.dev);openSchedPop(document.getElementById('status-btn'))\" title=\"Device not detected\">\(label)</button>"
                 bar += "<span style=\"font-size:.72rem;color:#e57373\">not detected</span>"
                 bar += "</div>"
             }
@@ -1367,7 +1367,6 @@ final class WebServer {
         <div class="gw-outer"><div class="gw"><div class="gi">
         <div class="g-hdr"><div class="g-hdr-ch"><span class="g-hdr-ch-lbl">Ch</span><div class="g-hdr-btns"><button class="g-hdr-btn" onclick="scrollToNow()" title="Jump to now">⊙</button><button class="g-hdr-btn" onclick="refreshGuide()" title="Refresh guide">↺</button></div></div><div class="g-hdr-tl">\(ticksHTML)</div></div>
         \(rowsHTML)
-        <div id="offline-notice" style="display:none;padding:40px 24px;text-align:center;color:var(--t4);font-size:.88rem;border-top:1px solid var(--b3);margin-top:8px">Device not detected — no lineup data available</div>
         </div></div></div>
         <script>
         \(tunerJS)
@@ -1806,15 +1805,33 @@ final class WebServer {
             }
           }
         }
+        function filterSchedPop(){
+          var isOff=curDev&&!!document.querySelector('.d-btn.d-btn-off.d-sel');
+          var body=document.getElementById('sched-pop-body');
+          if(!body)return;
+          body.querySelectorAll('.sp-row').forEach(function(r){
+            r.style.display=(!isOff||r.dataset.dev===curDev)?'':'none';
+          });
+          var lastVis=false;
+          Array.from(body.children).forEach(function(el){
+            if(el.classList.contains('sp-div')){el.style.display=lastVis?'block':'none';lastVis=false;}
+            else{
+              var vis=!isOff||Array.from(el.querySelectorAll('.sp-row')).some(function(r){return r.style.display!=='none';});
+              el.style.display=vis?'':'none';if(vis)lastVis=true;
+            }
+          });
+        }
         function openSchedPop(anchor){
           var pop=document.getElementById('sched-pop');
-          if(pop.style.display!=='none'){closeSchedPop();return;}
+          if(pop.style.display!=='none'&&anchor===document.getElementById('status-btn')){closeSchedPop();return;}
           var c=document.getElementById('sched-pop-c');
           var rect=anchor.getBoundingClientRect();
           c.style.left=Math.max(8,Math.min(rect.left,window.innerWidth-360))+'px';
           c.style.top=(rect.bottom+8)+'px';
           pop.style.display='block';
-          anchor.style.color='var(--ac)';anchor.setAttribute('aria-expanded','true');
+          var btn=document.getElementById('status-btn');
+          if(btn){btn.style.color='var(--ac)';btn.setAttribute('aria-expanded','true');}
+          filterSchedPop();
         }
         function closeSchedPop(){
           document.getElementById('sched-pop').style.display='none';
@@ -1967,12 +1984,8 @@ final class WebServer {
             });
             sep.style.display=hasFav?'':'none';
           });
-          // Show offline notice when a specific device is selected but has no rows (not detected)
-          var notice=document.getElementById('offline-notice');
-          if(notice){
-            var hasRows=!id||Array.from(_rows).some(function(r){return r.dataset.dev===id;});
-            notice.style.display=hasRows?'none':'';
-          }
+          // If the schedule popover is open, re-filter it for the new device selection.
+          if(document.getElementById('sched-pop').style.display!=='none')filterSchedPop();
         }
         function filterGenre(g){_genreFilter=g;applyGenreDim();}
         function toggleFav(evt,btn){

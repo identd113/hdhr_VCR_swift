@@ -282,7 +282,9 @@ Page structure (top to bottom):
 
 Each device group uses `display:inline-flex; flex-direction:column` so name and badge stack vertically. `#dev-bar` uses `align-items:flex-start` so groups of different heights don't stretch.
 
-Clicking a device button calls `setDev(devId)` which filters guide rows to that device via `data-dev` attributes.
+Clicking a live device button calls `setDev(devId)` which filters guide rows to that device via `data-dev` attributes.
+
+**Offline device buttons** (`.d-btn-off`, dashed border, dimmed) appear after online devices when any show's `hdhr_record` references an undetected device. Clicking calls `setDev()` (highlights the button, guide grid shows no rows for that device) **and** auto-opens the `≡` schedule popover, which `filterSchedPop()` immediately scopes to only that device's shows — so the user sees what was scheduled on the dead tuner without needing to open `≡` manually.
 
 **Tuner badges** (`.t-info` / `.t-info-full`): show `active/total` slots. Red styling when full. Clicking opens the tuner popover.
 
@@ -388,7 +390,7 @@ A cable-TV-style horizontal time grid. Window width depends on the requesting cl
 
 `isDesktopUA(_ ua: String)` (private helper) classifies the UA server-side. Modern iPads in desktop-browsing mode report `"Macintosh"` and receive the wider window.
 
-**Window start:** `winStart = (nowTs / 1800) * 1800 - 1800` — floors to the nearest 30-minute boundary then subtracts one slot, giving a 30–60 minute lookback. `GuideStore.entries()` is called with `after: Date(winStart)` (not the default `after: Date()`) so shows that already ended but fall within the lookback are included. Gap periods with no guide data render as `.g-gap` divs (fully opaque `var(--bg)`) so the striped `.g-tl` background never shows through. On page load, a JS IIFE scrolls the guide so the now-line sits ~25% from the left of the visible viewport.
+**Window start:** `winStart = (nowTs / 1800) * 1800 - 1800` — floors to the nearest 30-minute boundary then subtracts one slot, giving a 30–60 minute lookback. `GuideStore.entries()` is called with `after: Date(winStart)` (not the default `after: Date()`) so shows that already ended but fall within the lookback are included. Gap periods with no guide data render as `.g-gap` divs (fully opaque `var(--bg)`) so the striped `.g-tl` background never shows through. On page load, `scrollToNow()` is called inside the `requestAnimationFrame` callback (alongside the auto-select IIFE) so the now-line sits ~25% from the left of the visible viewport after the first paint.
 
 **Live now-line:** `_winStart` and `_winSec` are baked into the page JS at render time. `nowPct()` recomputes the now-line position as `(Date.now()/1000 - _winStart) / _winSec * 100`, clamped to [0, 100]. `updateNowLine()` updates the `left` style on all `.g-now-bar` and `.g-now-tick` elements every **1 minute** via `setInterval`. It also auto-scrolls the guide if the now-line has drifted past **75%** of the viewport width, nudging it back to the 25% position — without disturbing users who have manually scrolled ahead (their now-line is near the left edge, well below the threshold).
 
@@ -521,6 +523,8 @@ Four sections (`.sp-sec`) separated by `.sp-div` dividers — empty sections are
 - **Scheduled** — remaining `state.activeShows` (available devices only)
 - **Unavailable Tuner** — all active shows whose assigned device is currently unavailable (`state.unavailableDeviceShows`); header in red; `⚠` prefix on each row
 
+Every `.sp-row` carries `data-dev` (`show.hdhr_record`) so `filterSchedPop()` can scope the visible rows to a specific device. When an offline device is selected in the device bar, `filterSchedPop()` hides rows whose `data-dev` doesn't match `curDev` and collapses empty sections (with their adjacent dividers); when no device or a live device is selected, all rows are visible.
+
 Content is embedded at page build time; `refreshShowsSection()` fetches `/api/shows-html` on record/delete to update `#sched-pop-body` in place.
 
 ---
@@ -542,12 +546,13 @@ Content is embedded at page build time; `refreshShowsSection()` fetches `/api/sh
 | `openEditShow(el)` | Populates and opens `#edit-modal` from `el.dataset`; handles both guide blocks and schedule popover rows |
 | `closeEditShow()` | Hides `#edit-modal` |
 | `confirmEdit()` | POSTs `/api/edit`; closes modal on success |
-| `setDev(id)` | Filters guide rows by `data-dev`; empty string = All (with JS dedup); uses cached `_rows` NodeList; calls `applyGenreDim()` then shows/hides `.g-fav-sep` separators based on whether any visible favorite rows remain for each device |
+| `setDev(id)` | Filters guide rows by `data-dev`; empty string = All (with JS dedup); uses cached `_rows` NodeList; calls `applyGenreDim()` then shows/hides `.g-fav-sep` separators; if the schedule popover is open, calls `filterSchedPop()` to re-scope it |
 | `filterGenre(g)` | Sets `_genreFilter` and calls `applyGenreDim()` |
 | `applyGenreDim()` | Clears all `.g-prog-dim`. In normal mode: dims programs that fail the genre filter OR have `data-inf="1"`. In infomercial mode (`_genreFilter==='__inf'`): dims all non-inf programs, un-dims inf programs. Rows always remain visible. |
 | `scrollToNow()` | Scrolls `.gw` so the now-line sits ~25% from the left of the viewport; corner-cell ⊙ button and page load both call it |
 | `toggleFav(evt, btn)` | `onclick` on `.g-fav-btn` star buttons; reads `data-dev` / `data-ch` from parent `.g-row`; POSTs `/api/toggle-favorite`; calls `refreshGuide()` on success |
-| `openSchedPop(anchor)` | Opens `#sched-pop` anchored below the button; toggles closed on second click |
+| `filterSchedPop()` | Scopes `#sched-pop-body` rows to `curDev` when an offline device (`.d-btn-off.d-sel`) is selected — hides non-matching `.sp-row` elements and collapses empty `.sp-sec` sections with their dividers. No-ops (shows all rows) when no device or a live device is selected. Called by `openSchedPop()`, `setDev()`, and after SSE/refresh updates to `#sched-pop-body`. |
+| `openSchedPop(anchor)` | Opens `#sched-pop` anchored below `anchor`; calls `filterSchedPop()` immediately after showing; toggle-closes only when `anchor` is `#status-btn` (not when opened programmatically by offline device button) |
 | `closeSchedPop()` | Hides `#sched-pop`; resets `#status-btn` color and `aria-expanded` |
 | `devFull(devId)` | Returns true if `tuners[devId].a >= tuners[devId].t` |
 | `showTunerInfo(devId, anchor)` | Opens tuner popover anchored below the clicked badge; renders per-tuner rows immediately from `recsByDev`, then fires async `/api/now-airing` fetches to enrich external stream rows with guide title, episode, poster, and end time |
