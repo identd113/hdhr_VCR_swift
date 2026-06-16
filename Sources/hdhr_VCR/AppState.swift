@@ -1133,6 +1133,9 @@ final class AppState: ObservableObject {
                     guard e.firstGenre == nil else { continue }
                     let key = "\(ch.GuideNumber):\(e.StartTime)"
                     guard !loggedNowAiring.contains(key) else { continue }
+                    // Bound growth on a long-running session — keys use absolute StartTimes that
+                    // never recur, so reset once large (a rare re-log burst is fine for a diagnostic).
+                    if loggedNowAiring.count > 2000 { loggedNowAiring.removeAll(keepingCapacity: true) }
                     loggedNowAiring.insert(key)
                     let sid = e.SeriesID ?? "none"
                     if !knownInfSIDs.contains(sid) {
@@ -2159,6 +2162,17 @@ final class AppState: ObservableObject {
         let recActive = recordingShows.filter { $0.hdhr_record == deviceId }.count
         let vlcActive = VLCPlayerWindowManager.shared.currentDeviceID == deviceId ? 1 : 0
         return recActive + vlcActive >= tunerCount
+    }
+
+    // Live active-tuner count for a device, consistent with the guide's status.json-based badge.
+    // Takes the max of hardware occupancy (catches externally-used tuners) and this app's
+    // recordings + VLC stream (catches a just-started capture not yet reflected in status.json).
+    // Never count recordings alone — the in-app VLC stream also occupies a tuner.
+    func activeTunerCount(for deviceId: String) -> Int {
+        let hw  = deviceTunerOccupancy[deviceId]?.filter { $0.VctNumber != nil }.count ?? 0
+        let rec = recordingShows.filter { $0.hdhr_record == deviceId }.count
+        let vlc = VLCPlayerWindowManager.shared.currentDeviceID == deviceId ? 1 : 0
+        return max(hw, rec + vlc)
     }
 
     func hasConflict(for show: Show) -> Bool {

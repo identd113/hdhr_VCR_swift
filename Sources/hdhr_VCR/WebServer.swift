@@ -132,9 +132,9 @@ final class WebServer {
     // can update #sum-ph, #sched-pop-body, and the guide row recording dot without a full page fetch.
     @MainActor
     func broadcastRecordingEvent(type: String, channel: String, device: String, state: AppState) {
-        // recordingShows is in-memory accurate immediately when a recording starts/stops,
-        // unlike deviceTunerOccupancy which lags by up to one idle tick.
-        let active = state.recordingShows.filter { $0.hdhr_record == device }.count
+        // activeTunerCount folds in the in-app VLC stream + externally-used tuners (status.json),
+        // so the pushed badge matches the page render instead of undercounting to recordings alone.
+        let active = state.activeTunerCount(for: device)
         let total  = state.devices.first(where: { $0.DeviceID == device })?.TunerCount ?? 0
         broadcastEvent([
             "type":     type,
@@ -167,14 +167,15 @@ final class WebServer {
         }))
     }
 
-    // Read tuner counts from recordingShows (same source as broadcastRecordingEvent) and
-    // push a tuner_update SSE event so newly-connected clients get accurate occupancy immediately.
+    // Push a tuner_update SSE event so newly-connected clients get accurate occupancy immediately.
+    // Uses activeTunerCount (same source as broadcastRecordingEvent) so the count includes the
+    // in-app VLC stream + externally-used tuners, not recordings alone.
     private func pushFreshTunerCounts() async {
         guard let state = appState else { return }
         var counts: [String: Any] = [:]
         await MainActor.run {
             for device in state.devices {
-                let active = state.recordingShows.filter { $0.hdhr_record == device.DeviceID }.count
+                let active = state.activeTunerCount(for: device.DeviceID)
                 counts[device.DeviceID] = ["a": active, "t": device.TunerCount ?? 0]
             }
         }
@@ -878,7 +879,7 @@ final class WebServer {
             for id in offlineIDs.sorted() {
                 let label = he("HDHR-\(id.uppercased())")
                 bar += "<div style=\"display:flex;align-items:center;gap:6px\">"
-                bar += "<button class=\"d-btn d-btn-off\" data-dev=\"\(he(id))\" onclick=\"setDev(this.dataset.dev);openSchedPop(document.getElementById('status-btn'))\" title=\"Device not detected\">\(label)</button>"
+                bar += "<button class=\"d-btn d-btn-off\" data-dev=\"\(he(id))\" onclick=\"setDev(this.dataset.dev);openSchedPop(this)\" title=\"Device not detected\">\(label)</button>"
                 bar += "<span style=\"font-size:.72rem;color:#e57373\">not detected</span>"
                 bar += "</div>"
             }
@@ -1418,13 +1419,14 @@ final class WebServer {
           document.getElementById('sum-ph').style.display='none';
           var sc=document.getElementById('sum-c');sc.style.display='flex';sc.style.background=gc(d.genre);
           var pi=document.getElementById('sum-poster');
+          // Bump the generation counter on every selection so a pending poster swap from a
+          // prior selection (any branch) can't overwrite the image after the user moves on.
+          pi.dataset.pgen=(+pi.dataset.pgen||0)+1;var _gen=pi.dataset.pgen;
           if(d.poster&&d.logo){
             // Show the local channel logo immediately, then swap in the real poster once it loads.
-            // Generation counter prevents a stale fetch from overwriting a later selection.
             pi.onerror=function(){pi.style.display='none';};
             pi.src=d.logo;pi.style.display='block';
             var _pUrl=d.poster;
-            pi.dataset.pgen=(+pi.dataset.pgen||0)+1;var _gen=pi.dataset.pgen;
             var _tmp=new Image();
             _tmp.onload=function(){if(pi.dataset.pgen==_gen){pi.style.display='block';pi.onerror=function(){pi.style.display='none';};pi.src=_pUrl;}};
             _tmp.src=_pUrl;
