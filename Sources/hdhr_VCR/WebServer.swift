@@ -1387,7 +1387,7 @@ final class WebServer {
           </div>
         </div>
         <div class="gw-outer"><div class="gw"><div class="gi">
-        <div class="g-hdr"><div class="g-hdr-ch"><span class="g-hdr-ch-lbl">Ch</span><div class="g-hdr-btns"><button class="g-hdr-btn" onclick="scrollToNow()" title="Jump to now">⊙</button><button class="g-hdr-btn" onclick="refreshGuide()" title="Refresh guide">↺</button></div></div><div class="g-hdr-tl">\(ticksHTML)</div></div>
+        <div class="g-hdr" data-winstart="\(winStart)" data-winsec="\(winSec)"><div class="g-hdr-ch"><span class="g-hdr-ch-lbl">Ch</span><div class="g-hdr-btns"><button class="g-hdr-btn" onclick="scrollToNow()" title="Jump to now">⊙</button><button class="g-hdr-btn" onclick="refreshGuide()" title="Refresh guide">↺</button></div></div><div class="g-hdr-tl">\(ticksHTML)</div></div>
         \(rowsHTML)
         </div></div></div>
         <script>
@@ -1617,6 +1617,10 @@ final class WebServer {
             var doc=new DOMParser().parseFromString(html,'text/html');
             var newGi=doc.querySelector('.gi'),oldGi=document.querySelector('.gi');
             if(newGi&&oldGi)oldGi.innerHTML=newGi.innerHTML;
+            // The fetched grid is laid out against a fresh server winStart; sync the JS window
+            // vars so the live now-line plots against the new origin (else it drifts ahead).
+            var nh=document.querySelector('.g-hdr');
+            if(nh&&nh.dataset.winstart){_winStart=+nh.dataset.winstart;_winSec=+nh.dataset.winsec;}
             var newPh=doc.getElementById('sum-ph'),oldPh=document.getElementById('sum-ph');
             if(newPh&&oldPh)oldPh.innerHTML=newPh.innerHTML;
             var newSb=doc.getElementById('sched-pop-body'),oldSb=document.getElementById('sched-pop-body');
