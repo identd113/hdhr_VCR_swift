@@ -87,6 +87,8 @@ final class AppState: ObservableObject {
     var pausedShows: [Show]    { shows.filter { $0.show_active && $0.show_paused } }
     var inactiveShows: [Show]  { shows.filter { !$0.show_active } }
     var unavailableDeviceIDs: Set<String> { Set(devices.filter { !$0.isAvailable }.map { $0.DeviceID }) }
+    // Discovered AND reachable — the web guide treats these as "active" tuners.
+    var usableDeviceIDs: Set<String> { Set(devices.filter { $0.isAvailable }.map { $0.DeviceID }) }
     var unavailableDeviceShows: [Show] {
         guard !unavailableDeviceIDs.isEmpty else { return [] }
         return shows.filter { $0.show_active && unavailableDeviceIDs.contains($0.hdhr_record) }

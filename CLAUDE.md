@@ -73,6 +73,8 @@ Systems: [AppState](docs/AppState.md) · [GuideStore](docs/GuideStore.md) · [Re
 
 **Web guide offline devices** — devices referenced in `show.hdhr_record` but absent from `state.devices` get a dashed "not detected" button in the guide device bar. Never silently omit them.
 
+**Web guide is per-tuner** — no global schedule popover. Each tuner gets a box in `#dev-bar` (`tunerBox`): name (a `setDev` guide filter when active), live count badge (→ `#t-pop`), and a **▾** that toggles a per-tuner dropdown (`#tdrop-{devId}`) of that tuner's own Recording/Up Next/Scheduled/Paused, built by `buildTunerShowsHTML(state:, deviceId:)`. With >1 tuner there is no combined "All" view; the grid bootstraps to `defaultDev` (first device with lineup+guide data) via `setDev('<id>')`. Inactive tuners — not in `state.usableDeviceIDs` (offline/absent or unreachable) — render dimmed (`.tuner-off`) with a non-clickable name and an "offline" badge, but their ▾ still lists assigned shows. Dropdowns update via `refreshGuide` (swaps each `.tdrop` body) and the recording-event SSE (`tdrop`/`tdropDev` → swaps `#tdrop-{device}`).
+
 **Web guide now-line origin** — the live now-line plots `Date.now()` against JS `_winStart`/`_winSec`. `refreshGuide()` swaps in a grid the server rendered against a *fresh* `winStart` (advances each hour boundary), so it must re-read `data-winstart`/`data-winsec` from the new `.g-hdr` to resync those vars — else the now-line drifts ahead on the new grid. The hourly `guide_refreshed` SSE event is the background trigger.
 
 **New show field** — (1) add to `Show` in `Models.swift` (2) `CodingKeys` entry (3) `init(from:)` with fallback default (4) update `Show.blank()`.

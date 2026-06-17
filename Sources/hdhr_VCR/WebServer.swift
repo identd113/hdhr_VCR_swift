@@ -129,7 +129,8 @@ final class WebServer {
     }
 
     // Push a recording state-change event with pre-built HTML fragments so connected clients
-    // can update #sum-ph, #sched-pop-body, and the guide row recording dot without a full page fetch.
+    // can update #sum-ph, the affected tuner's ▾ dropdown (#tdrop-{device}), and the guide
+    // row recording dot without a full page fetch.
     @MainActor
     func broadcastRecordingEvent(type: String, channel: String, device: String, state: AppState) {
         // activeTunerCount folds in the in-app VLC stream + externally-used tuners (status.json),
@@ -143,7 +144,8 @@ final class WebServer {
             "tunerA":   active,
             "tunerT":   total,
             "sumPh":    buildSumPhHTML(state: state),
-            "schedPop": buildSchedPopHTML(state: state)
+            "tdropDev": device,
+            "tdrop":    buildTunerShowsHTML(state: state, deviceId: device)
         ])
     }
 
@@ -323,10 +325,6 @@ final class WebServer {
         case "/api/now.json":
             let data = buildNowJSON(state: state)
             return .ok(contentType: "application/json", body: data)
-
-        case "/api/shows-html":
-            let html = buildSchedPopHTML(state: state)
-            return .ok(contentType: "text/html; charset=utf-8", body: Data(html.utf8))
 
         case "/api/signal":
             var out: [String: String] = [:]
@@ -577,8 +575,10 @@ final class WebServer {
 
     // MARK: - HTML / JSON generation
 
+    // Per-tuner show list for one device's ▾ dropdown: that tuner's own
+    // Recording / Up Next / Scheduled / Paused shows. Empty → a friendly note.
     @MainActor
-    private func buildSchedPopHTML(state: AppState) -> String {
+    private func buildTunerShowsHTML(state: AppState, deviceId: String) -> String {
         // Common row builder — embeds all data needed by openEditShow() JS.
         // chDetail: optional suffix appended to the Ch line (e.g. a relative-time span).
         func showRow(_ s: Show, recording: Bool = false, prefix: String = "", chDetail: String = "") -> String {
@@ -595,20 +595,19 @@ final class WebServer {
                  + "</div>"
         }
 
-        let unavailableIDs   = state.unavailableDeviceIDs
-        let unavailableShows = state.unavailableDeviceShows
+        func mine(_ s: Show) -> Bool { s.hdhr_record == deviceId }
 
         var parts: [String] = []
 
-        let availableRecording = state.recordingShows.filter { !unavailableIDs.contains($0.hdhr_record) }
-        if !availableRecording.isEmpty {
-            let rows = availableRecording.map { showRow($0, recording: true, prefix: "<span class=\"sp-rec\">●</span> ") }.joined()
+        let recs = state.recordingShows.filter(mine)
+        if !recs.isEmpty {
+            let rows = recs.map { showRow($0, recording: true, prefix: "<span class=\"sp-rec\">●</span> ") }.joined()
             parts.append("<div class=\"sp-sec\"><div class=\"sp-hdr\">Recording</div>\(rows)</div>")
         }
 
         // Sort by next air time ascending; shows without a date sort to the end.
         let sortedActive = state.activeShows
-            .filter { !unavailableIDs.contains($0.hdhr_record) }
+            .filter(mine)
             .sorted { ($0.show_next?.timeIntervalSince1970 ?? .infinity) < ($1.show_next?.timeIntervalSince1970 ?? .infinity) }
         let upNext     = sortedActive.first(where: { $0.show_next != nil })
         let restActive = sortedActive.filter { $0.show_id != upNext?.show_id }
@@ -625,20 +624,14 @@ final class WebServer {
             parts.append("<div class=\"sp-sec\"><div class=\"sp-hdr\">Scheduled</div>\(rows)</div>")
         }
 
-        let availablePaused = state.pausedShows.filter { !unavailableIDs.contains($0.hdhr_record) }
-        if !availablePaused.isEmpty {
+        let paused = state.pausedShows.filter(mine)
+        if !paused.isEmpty {
             if !parts.isEmpty { parts.append("<div class=\"sp-div\"></div>") }
-            let rows = availablePaused.map { showRow($0, prefix: "<span style=\"color:var(--t4)\">⏸</span> ") }.joined()
+            let rows = paused.map { showRow($0, prefix: "<span style=\"color:var(--t4)\">⏸</span> ") }.joined()
             parts.append("<div class=\"sp-sec\"><div class=\"sp-hdr\">Paused</div>\(rows)</div>")
         }
 
-        if !unavailableShows.isEmpty {
-            if !parts.isEmpty { parts.append("<div class=\"sp-div\"></div>") }
-            let rows = unavailableShows.map { showRow($0, prefix: "<span style=\"color:#e55\">⚠</span> ") }.joined()
-            parts.append("<div class=\"sp-sec\"><div class=\"sp-hdr\" style=\"color:#e55\">Unavailable Tuner</div>\(rows)</div>")
-        }
-
-        return parts.isEmpty ? "<div class=\"sp-empty\">No shows scheduled.</div>" : parts.joined()
+        return parts.isEmpty ? "<div class=\"sp-empty\">No shows on this tuner.</div>" : parts.joined()
     }
 
     @MainActor
@@ -846,49 +839,50 @@ final class WebServer {
             return "<button id=\"tun-\(he(devId))\" class=\"\(cls)\" data-dev=\"\(he(devId))\" onclick=\"showTunerInfo(this.dataset.dev,this)\" title=\"Click to see active recordings\">\(label)</button>"
         }
 
-        // ── Schedule toggle button — toolbar button (labeled); reveals the status panel ──
-        let statusBtn = "<button id=\"status-btn\" onclick=\"openSchedPop(this)\" title=\"Schedule &amp; recordings\" aria-expanded=\"false\" style=\"display:inline-flex;align-items:center;gap:5px;background:var(--s4);border:1px solid var(--b4);cursor:pointer;color:var(--t2);font-size:.78rem;padding:5px 10px;line-height:1;border-radius:6px;white-space:nowrap\">☰ Schedule</button>"
-
-        // ── Device bar (shown when >1 device or offline devices exist) ────────
-        // Offline devices: referenced by scheduled shows but not currently discovered.
+        // ── Tuner boxes (one per discovered device + any offline/absent device) ──
+        // Offline devices: referenced by a scheduled show but not currently discovered.
         let onlineIDs  = Set(state.devices.map { $0.DeviceID })
         let offlineIDs = Set(state.shows.map { $0.hdhr_record }).subtracting(onlineIDs).filter { !$0.isEmpty }
+        let usableIDs  = state.usableDeviceIDs   // discovered AND reachable → "active"
 
-        let headerHTML: String
-        let deviceBarHTML: String
-        let needsBar = state.devices.count > 1 || !offlineIDs.isEmpty
-        if state.devices.count == 1 && offlineIDs.isEmpty, let d = state.devices.first {
-            let uiURL = "http://\(d.LocalIP)/"
-            let label = "HDHR-\(d.DeviceID.uppercased())"
-            let dt    = devTuners[d.DeviceID]!
-            headerHTML = "<div style=\"display:flex;align-items:center;gap:10px;flex-wrap:wrap\"><h1 style=\"margin:0\">hdhrVCR+ Guide</h1>\(statusBtn)<div style=\"display:flex;align-items:center;gap:6px\">\(tunerInfoBtn(d.DeviceID, dt))<a href=\"\(he(uiURL))\" target=\"_blank\" style=\"font-size:.75rem;color:#666;text-decoration:none\" title=\"Open \(he(label)) device web UI\">\(he(label)) ↗</a></div></div>"
-            deviceBarHTML = ""
-        } else if needsBar {
-            headerHTML = "<div style=\"display:flex;align-items:center;gap:10px\"><h1 style=\"margin:0\">hdhrVCR+ Guide</h1>\(statusBtn)</div>"
-            var bar = "<div id=\"dev-bar\">"
-            for d in state.devices {
-                let uiURL = "http://\(d.LocalIP)/"
-                let label = he("HDHR-\(d.DeviceID.uppercased())")
-                let dt    = devTuners[d.DeviceID]!
-                bar += "<div style=\"display:flex;align-items:center;gap:6px\">"
-                bar += "<button class=\"d-btn\" data-dev=\"\(he(d.DeviceID))\" onclick=\"setDev(this.dataset.dev)\">\(label)</button>"
-                bar += "<a href=\"\(he(uiURL))\" target=\"_blank\" class=\"d-ui\" title=\"Open \(label) web UI\">↗</a>"
-                bar += tunerInfoBtn(d.DeviceID, dt)
-                bar += "</div>"
+        // Default tuner for the initial guide view. With >1 tuner there is no combined view —
+        // open on the first tuner that has both a lineup and loaded guide data (fall back to
+        // first with a lineup, then ""). Single-device keeps "" (that one device's channels).
+        let defaultDev: String = state.devices.count > 1
+            ? (state.devices.first(where: { !(state.lineups[$0.DeviceID] ?? []).isEmpty && !state.guideStore.channels(deviceId: $0.DeviceID).isEmpty })?.DeviceID
+               ?? state.devices.first(where: { !(state.lineups[$0.DeviceID] ?? []).isEmpty })?.DeviceID
+               ?? "")
+            : ""
+
+        // One tuner box: name (a guide filter when active, plain dimmed label when not) +
+        // device web-UI link + live count badge (or "offline") + a ▾ that toggles a dropdown
+        // listing that tuner's own shows. Inactive tuners are dimmed and not selectable.
+        func tunerBox(_ devId: String, active: Bool, uiURL: String?) -> String {
+            let label = he("HDHR-\(devId.uppercased())")
+            var s = "<div class=\"tuner-box\(active ? "" : " tuner-off")\">"
+            s += "<div class=\"tuner-row\">"
+            if active {
+                s += "<button class=\"d-btn\" data-dev=\"\(he(devId))\" onclick=\"setDev(this.dataset.dev)\">\(label)</button>"
+            } else {
+                s += "<span class=\"d-btn d-btn-off\" title=\"Not detected — recordings assigned here will fail until it returns\">\(label)</span>"
             }
-            for id in offlineIDs.sorted() {
-                let label = he("HDHR-\(id.uppercased())")
-                bar += "<div style=\"display:flex;align-items:center;gap:6px\">"
-                bar += "<button class=\"d-btn d-btn-off\" data-dev=\"\(he(id))\" onclick=\"setDev(this.dataset.dev);openSchedPop(this)\" title=\"Device not detected\">\(label)</button>"
-                bar += "<span style=\"font-size:.72rem;color:#e57373\">not detected</span>"
-                bar += "</div>"
-            }
-            bar += "</div>"
-            deviceBarHTML = bar
-        } else {
-            headerHTML = "<div style=\"display:flex;align-items:center;gap:10px\"><h1 style=\"margin:0\">hdhrVCR+ Guide</h1>\(statusBtn)</div>"
-            deviceBarHTML = ""
+            if let uiURL { s += "<a href=\"\(he(uiURL))\" target=\"_blank\" class=\"d-ui\" title=\"Open \(label) web UI\">↗</a>" }
+            if active, let dt = devTuners[devId] { s += tunerInfoBtn(devId, dt) }
+            else { s += "<span class=\"t-info t-info-off\">offline</span>" }
+            s += "<button class=\"tdrop-btn\" data-dev=\"\(he(devId))\" onclick=\"toggleTunerDrop(this.dataset.dev)\" aria-label=\"Shows on this tuner\" title=\"Shows on this tuner\">▾</button>"
+            s += "</div>"
+            s += "<div class=\"tdrop\" id=\"tdrop-\(he(devId))\" style=\"display:none\">\(buildTunerShowsHTML(state: state, deviceId: devId))</div>"
+            s += "</div>"
+            return s
         }
+
+        // Header is just the title now; every tuner (incl. offline) gets a box in the dev-bar.
+        let headerHTML = "<h1 style=\"margin:0\">hdhrVCR+ Guide</h1>"
+        var bar = "<div id=\"dev-bar\">"
+        for d in state.devices { bar += tunerBox(d.DeviceID, active: usableIDs.contains(d.DeviceID), uiURL: "http://\(d.LocalIP)/") }
+        for id in offlineIDs.sorted() { bar += tunerBox(id, active: false, uiURL: nil) }
+        bar += "</div>"
+        let deviceBarHTML = bar
 
         // ── Guide grid rows — one row per (device × channel); JS deduplicates the "All" view ──
         var rowParts: [String] = []
@@ -1027,7 +1021,6 @@ final class WebServer {
         let sumPhHTML = buildSumPhHTML(state: state)
 
         // ── Schedule popover content ──────────────────────────────────────────
-        let schedPopHTML = buildSchedPopHTML(state: state)
 
         // ── Assemble ──────────────────────────────────────────────────────────
         return """
@@ -1058,7 +1051,15 @@ final class WebServer {
         h1{font-size:1.15rem;color:var(--t2);margin-bottom:0}
         a[target="_blank"]{color:var(--t6)!important;text-decoration:none}
         /* ── Device switcher bar ── */
-        #dev-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+        #dev-bar{display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap}
+        .tuner-box{position:relative}
+        .tuner-row{display:flex;align-items:center;gap:6px}
+        .tuner-box.tuner-off{opacity:.6}
+        .tuner-off .d-btn-off{opacity:1;cursor:default}
+        .tdrop-btn{background:var(--s4);border:1px solid var(--b4);color:var(--t3);border-radius:5px;padding:5px 8px;font-size:.7rem;line-height:1;cursor:pointer;transition:border-color .15s,color .15s,background .15s}
+        .tdrop-btn:hover{border-color:var(--b5);color:var(--t0);background:var(--s3)}
+        .tdrop{position:absolute;top:100%;left:0;margin-top:4px;min-width:240px;max-width:340px;max-height:70vh;overflow-y:auto;background:var(--s3);border:1px solid var(--b5);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.6);padding:6px 12px;z-index:150}
+        .t-info-off{cursor:default;color:var(--t5)}
         .d-btn{background:var(--s4);border:1px solid var(--b4);color:var(--t3);border-radius:5px;padding:5px 12px;font-size:.78rem;cursor:pointer;transition:border-color .15s,color .15s,background .15s}
         .d-btn:hover{border-color:var(--b5);color:var(--t0);background:var(--s3)}
         .d-btn.d-sel{border-color:var(--ac);color:var(--ac);background:var(--acb)}
@@ -1136,7 +1137,6 @@ final class WebServer {
         .gw-outer{border:1px solid var(--b1);border-radius:8px;overflow:clip;margin-bottom:20px}
         .gw{overflow:auto;max-height:60vh;background:var(--bg)}
         .gi{min-width:\(guideMinWidth)px}
-        #status-btn:hover{color:var(--t0)!important}
         .g-hdr{display:flex;position:-webkit-sticky;position:sticky;top:0;z-index:10;background:var(--s2);border-bottom:1px solid var(--b2)}
         .g-hdr-ch{width:125px;min-width:125px;position:-webkit-sticky;position:sticky;left:0;z-index:11;background:var(--s2);border-right:1px solid var(--b2);padding:4px 6px;display:flex;align-items:center;justify-content:space-between}
         .g-hdr-ch-lbl{font-size:.65rem;color:var(--t4);text-transform:uppercase;letter-spacing:.07em}
@@ -1245,7 +1245,6 @@ final class WebServer {
         .sb-web-lg{position:absolute;top:8px;right:10px;width:110px;height:110px;font-size:.72rem;pointer-events:none;z-index:2}
         .sb-anim{animation:sbPop .55s cubic-bezier(.22,1,.36,1) both,sbPulse 2.4s ease-in-out .6s infinite}
         /* ── Schedule popover ── */
-        #sched-pop-c{background:var(--s3)!important;border-color:var(--b5)!important}
         .sp-sec{padding:10px 14px}
         .sp-hdr{font-size:.68rem;font-weight:700;color:var(--t4);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px}
         .sp-row{padding:5px 0;border-bottom:1px solid var(--b0);cursor:pointer}
@@ -1375,15 +1374,6 @@ final class WebServer {
                 <button id="em-save" onclick="confirmEdit()" style="font-size:.78rem;padding:6px 16px;border-radius:6px;border:none;background:#1a5abf;color:#fff;font-weight:600;cursor:pointer">Save</button>
               </div>
             </div>
-          </div>
-        </div>
-        <div id="sched-pop" onclick="if(event.target===this)closeSchedPop()" style="display:none;position:fixed;inset:0;z-index:150">
-          <div id="sched-pop-c" style="position:absolute;min-width:260px;max-width:340px;max-height:70vh;overflow-y:auto;background:#1e1e1e;border:1px solid #484848;border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.75)">
-            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--b1);position:sticky;top:0;background:inherit">
-              <span style="font-size:.82rem;font-weight:600;color:var(--t0)">Schedule</span>
-              <button onclick="closeSchedPop()" style="background:none;border:none;color:var(--t5);font-size:.9rem;cursor:pointer;padding:0 0 0 12px;line-height:1">✕</button>
-            </div>
-            <div id="sched-pop-body">\(schedPopHTML)</div>
           </div>
         </div>
         <div class="gw-outer"><div class="gw"><div class="gi">
@@ -1623,8 +1613,11 @@ final class WebServer {
             if(nh&&nh.dataset.winstart){_winStart=+nh.dataset.winstart;_winSec=+nh.dataset.winsec;}
             var newPh=doc.getElementById('sum-ph'),oldPh=document.getElementById('sum-ph');
             if(newPh&&oldPh)oldPh.innerHTML=newPh.innerHTML;
-            var newSb=doc.getElementById('sched-pop-body'),oldSb=document.getElementById('sched-pop-body');
-            if(newSb&&oldSb)oldSb.innerHTML=newSb.innerHTML;
+            // Refresh each tuner's ▾ dropdown body in place (toggle buttons + open state survive).
+            document.querySelectorAll('.tdrop').forEach(function(old){
+              var fresh=doc.getElementById(old.id);
+              if(fresh)old.innerHTML=fresh.innerHTML;
+            });
             _rows=document.querySelectorAll('.g-row');
             setDev(curDev);
             if(gw){gw.scrollLeft=sl;gw.scrollTop=st;}
@@ -1832,39 +1825,18 @@ final class WebServer {
             }
           }
         }
-        function filterSchedPop(){
-          var isOff=curDev&&!!document.querySelector('.d-btn.d-btn-off.d-sel');
-          var body=document.getElementById('sched-pop-body');
-          if(!body)return;
-          body.querySelectorAll('.sp-row').forEach(function(r){
-            r.style.display=(!isOff||r.dataset.dev===curDev)?'':'none';
-          });
-          var lastVis=false;
-          Array.from(body.children).forEach(function(el){
-            if(el.classList.contains('sp-div')){el.style.display=lastVis?'block':'none';lastVis=false;}
-            else{
-              var vis=!isOff||Array.from(el.querySelectorAll('.sp-row')).some(function(r){return r.style.display!=='none';});
-              el.style.display=vis?'':'none';if(vis)lastVis=true;
-            }
-          });
+        // Per-tuner ▾ dropdown: toggle this tuner's show list; close any other open one.
+        function toggleTunerDrop(dev){
+          var d=document.getElementById('tdrop-'+dev);if(!d)return;
+          var willOpen=d.style.display==='none';
+          document.querySelectorAll('.tdrop').forEach(function(x){x.style.display='none';});
+          d.style.display=willOpen?'block':'none';
         }
-        function openSchedPop(anchor){
-          var pop=document.getElementById('sched-pop');
-          if(pop.style.display!=='none'&&anchor===document.getElementById('status-btn')){closeSchedPop();return;}
-          var c=document.getElementById('sched-pop-c');
-          var rect=anchor.getBoundingClientRect();
-          c.style.left=Math.max(8,Math.min(rect.left,window.innerWidth-360))+'px';
-          c.style.top=(rect.bottom+8)+'px';
-          pop.style.display='block';
-          var btn=document.getElementById('status-btn');
-          if(btn){btn.style.color='var(--ac)';btn.setAttribute('aria-expanded','true');}
-          filterSchedPop();
-        }
-        function closeSchedPop(){
-          document.getElementById('sched-pop').style.display='none';
-          var btn=document.getElementById('status-btn');
-          if(btn){btn.style.color='var(--t2)';btn.setAttribute('aria-expanded','false');}
-        }
+        // Click outside any tuner box closes open dropdowns.
+        document.addEventListener('click',function(e){
+          if(e.target.closest&&e.target.closest('.tuner-box'))return;
+          document.querySelectorAll('.tdrop').forEach(function(x){x.style.display='none';});
+        });
         // ── Edit show modal ──
         var _editId='',_editPaused=false,_editRec=false,_editType='single';
         var _dayNames=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -2011,8 +1983,6 @@ final class WebServer {
             });
             sep.style.display=hasFav?'':'none';
           });
-          // If the schedule popover is open, re-filter it for the new device selection.
-          if(document.getElementById('sched-pop').style.display!=='none')filterSchedPop();
         }
         function filterGenre(g){_genreFilter=g;applyGenreDim();}
         function toggleFav(evt,btn){
@@ -2025,7 +1995,7 @@ final class WebServer {
           .then(function(j){if(j.ok)refreshGuide();})
           .catch(function(){});
         }
-        setDev('');
+        setDev('\(defaultDev)');
         // Build genre filter; add Infomercials option if any inf rows exist
         (function(){
           var gs=new Set();
@@ -2107,10 +2077,11 @@ final class WebServer {
                   if(sig){sig.replaceWith(tmp.firstChild);}
                   else{var cn=row.querySelector('.g-cn');if(cn)cn.appendChild(tmp.firstChild);}
                 });
-              } else if(d.sumPh||d.schedPop){
+              } else if(d.sumPh||d.tdrop){
                 // Fragment push — apply inline without a full page fetch
                 if(d.sumPh){var ph=document.getElementById('sum-ph');if(ph)ph.innerHTML=d.sumPh;}
-                if(d.schedPop){var sb=document.getElementById('sched-pop-body');if(sb)sb.innerHTML=d.schedPop;}
+                // Update just the affected tuner's ▾ dropdown body.
+                if(d.tdrop&&d.tdropDev){var td=document.getElementById('tdrop-'+d.tdropDev);if(td)td.innerHTML=d.tdrop;}
                 // For recording events: toggle recording state on the currently-airing guide entry
                 // and push fresh tuner counts so the badge and popover stay accurate.
                 if((d.type==='recording_started'||d.type==='recording_stopped')&&d.channel&&d.device){

@@ -1,5 +1,14 @@
 # hdhrVCRplus Changelog
 
+## 2026-06-17 (260617-1144)
+
+- **Web guide — unified top toolbar** — The title, tuner list, genre filter, and theme switcher now sit together in a single top toolbar row.
+- **Web guide — per-tuner schedule dropdowns** — The global schedule popover is gone. Each tuner now has its own box with a ▾ that drops down that tuner's Recording / Up Next / Scheduled / Paused shows. Clicking a tuner's name filters the guide to its lineup; with more than one tuner the guide opens on the first tuner that has guide data (no combined view). Tuners that are referenced by a show but not currently detected are still listed, dimmed and marked "offline", with their assigned shows still viewable via the ▾.
+- **Web guide — now-line no longer drifts** — The red "now" line could creep ahead of the real time after the guide sat open through an hourly background refresh, because its live position was still measured against the original page-load window. `refreshGuide()` now resyncs the window origin (`winStart`/`winSec`) from the refreshed grid, so the line stays accurate no matter how long the page is left open.
+- **Windows — never open duplicates** — Add Show, Edit Show, Settings, Watch Now, and the floating guide are now single-instance windows; choosing one from the menu brings the existing window to the front instead of opening a second copy. Edit Show also reloads correctly when opened for a different show while already open.
+- **Web guide — accurate live tuner counts** — The tuner badge updates pushed on recording start/stop (and on reconnect) now include the in-app VLC stream and tuners in use by other apps, instead of counting only this app's recordings — so the `active/total` count and "FULL" label no longer under-report.
+- **Web guide — correct poster on quick selection** — Rapidly clicking between shows could leave a previous show's poster showing; each selection now invalidates any in-flight poster swap.
+
 ## 2026-06-11 (260611-1048)
 
 - **Signal stats — tap to inspect** — The signal bars in Watch Now are now clickable: a popover shows bucket + average, last reading, min–max range, **last checked** (relative time — the freshness of the recordability assessment), and sample counts. Backed by a new `ChannelSignalStore.stats(guideName:)` computed over the same last-20 window that drives the bars, so the numbers always match the displayed bucket. Menu-bar bars are unchanged (NSMenu can't host a popover).

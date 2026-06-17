@@ -13,7 +13,7 @@ func start(port: Int, appState: AppState, onState: @escaping (String?) -> Void)
 func stop()
 func updateTXTRecord()    // @MainActor — refreshes mDNS TXT record; called from idleLoop
 func broadcastEvent(_:)   // pushes a JSON event to all open SSE clients
-func broadcastRecordingEvent(type:channel:device:state:)  // @MainActor — builds sumPh/schedPop fragments and calls broadcastEvent
+func broadcastRecordingEvent(type:channel:device:state:)  // @MainActor — builds sumPh + the device's tdrop fragment and calls broadcastEvent
 ```
 
 `onState` is called on `DispatchQueue.main`. `nil` = server is ready; non-nil = error string.
@@ -30,7 +30,6 @@ func broadcastRecordingEvent(type:channel:device:state:)  // @MainActor — buil
 | GET | `/api/ping` | `{"ok":true,"version":"260606-1155"}` — health check + build version; used as self-ping after bind and by the page staleness checker |
 | GET | `/api/events` | SSE stream — kept open; server pushes JSON events on state changes |
 | GET | `/api/now.json` | JSON array of on-air entries (see schema below) |
-| GET | `/api/shows-html` | HTML fragment for the schedule popover body |
 | GET | `/api/signal` | JSON object `{guideName: "good"|"fair"|"poor"|"noData"}` — snapshot of `ChannelSignalStore.shared.buckets` keyed by `guideName.lowercased()` |
 | POST | `/api/record` | Schedule a recording |
 | POST | `/api/signal-scan` | Trigger a signal strength scan. Optional body `{"force":true}` rescans all channels regardless of freshness. Returns `{"status":"started","force":bool}`. |
@@ -183,7 +182,7 @@ Promoting a show to a `seriesId` type (`seriesChannel`/`seriesAll`) when it prev
 ## Edit modal (`#edit-modal`)
 
 `position: fixed` overlay (z-index 201). Opened from two paths:
-- **Schedule popover rows** — each `.sp-row` has an `onclick="openEditShow(this)"` handler; `data-*` attrs are embedded by `buildSchedPopHTML`
+- **Per-tuner dropdown rows** — each `.sp-row` has an `onclick="openEditShow(this)"` handler; `data-*` attrs are embedded by `buildTunerShowsHTML`
 - **Guide grid** — Edit button in the summary panel calls `doEditFromGuide()`, which re-packages `data-show-*` attrs from the selected `.g-prog` block into the same shape `openEditShow()` expects
 
 **Contents:**
@@ -219,8 +218,8 @@ A persistent SSE endpoint. Browsers connect once on page load via `EventSource('
 
 | Event `type` | Triggered by | Payload fields |
 |---|---|---|
-| `recording_started` | `AppState.startRecording` | `channel`, `device`, `sumPh` (HTML), `schedPop` (HTML) |
-| `recording_stopped` | `AppState.teardownRecordingState` | `channel`, `device`, `sumPh` (HTML), `schedPop` (HTML) |
+| `recording_started` | `AppState.startRecording` | `channel`, `device`, `sumPh` (HTML), `tdrop` (HTML), `tdropDev` |
+| `recording_stopped` | `AppState.teardownRecordingState` | `channel`, `device`, `sumPh` (HTML), `tdrop` (HTML), `tdropDev` |
 | `guide_refreshed` | `AppState.refreshGuides` (on success) | *(none beyond type)* |
 | `show_added` | `AppState.addShowFromGuide` | `channel`, `device` |
 | `show_deleted` | `WebServer.handleDelete` | `channel`, `device` |
@@ -231,13 +230,13 @@ A persistent SSE endpoint. Browsers connect once on page load via `EventSource('
 | `signal_update` | `AppState.startSignalScan` | `gname` (guideName.lowercased()), `bucket` (raw string: `"good"` / `"fair"` / `"poor"` / `"noData"`) |
 | `tuner_update` | `WebServer.pushFreshTunerCounts` (on SSE connect) | `counts`: `{deviceId: {a: active, t: total}, …}` — live occupancy from `recordingShows` |
 
-`recording_started` and `recording_stopped` carry pre-rendered `sumPh` and `schedPop` HTML fragments built by `broadcastRecordingEvent` → `buildSumPhHTML` + `buildSchedPopHTML`. The client applies these inline without a second HTTP request.
+`recording_started` and `recording_stopped` carry pre-rendered `sumPh` and `tdrop` HTML fragments built by `broadcastRecordingEvent` → `buildSumPhHTML` + `buildTunerShowsHTML(state, device)`. The client applies `sumPh` to `#sum-ph` and `tdrop` to `#tdrop-{tdropDev}` inline without a second HTTP request.
 
 **Client handling (four cases):**
 
 1. `tuner_update` — updates `tuners[dev].a` in-place and refreshes all `#tun-{dev}` badge elements. Fired on every new SSE connection so the badge is accurate immediately, not just after a recording event.
 2. `signal_update` — updates SVG signal bars in-place on matching `.g-row[data-gname]` rows. No `refreshGuide()`.
-3. Events with `sumPh`/`schedPop` — applies HTML fragments to `#sum-ph` and `#sched-pop-body` directly. For recording events also toggles `.g-prog-rec` / `.g-prog-now` classes and the `.g-flag-rec` child on the currently-airing guide entry for the affected channel+device. No `refreshGuide()`.
+3. Events with `sumPh`/`tdrop` — applies `#sum-ph` and the affected tuner's `#tdrop-{tdropDev}` directly. For recording events also toggles `.g-prog-rec` / `.g-prog-now` classes and the `.g-flag-rec` child on the currently-airing guide entry for the affected channel+device. No `refreshGuide()`.
 4. All other events — `refreshGuide()` (scroll-preserving partial DOM swap).
 
 `guide_refreshed` falls into case 4 — `refreshGuide()` fetches the full page and swaps the grid, bringing schedule flags and channel data up to date after a guide cycle. It is broadcast roughly **once per clock-hour boundary** (the `lastRefreshHour` gate in `AppState.idleLoop` → `refreshGuides()`), so an idle guide window does a background refresh about hourly even with no user activity.
@@ -252,37 +251,47 @@ Self-contained HTML with all CSS inlined. Updates arrive via SSE push events (se
 
 `refreshGuide()` is called client-side after user actions (record, delete, edit) and on receipt of an SSE event. It updates the guide grid without a page reload:
 
-- **`refreshGuide(selOverride?)`** — saves `.gw` scroll position and the currently-selected `.g-prog` element (`data-start` + `data-num` + `data-device`); `GET /` → DOMParser → swaps `.gi` (guide grid), `#sum-ph` (summary placeholder), `#sched-pop-body` (schedule popover); re-reads `data-winstart`/`data-winsec` from the new `.g-hdr` into `_winStart`/`_winSec` (keeps the live now-line aligned to the refreshed grid); restores scroll position; re-selects the previously-highlighted entry via `showInfo()`. If `selOverride` is passed (a JS object), its key-value pairs are merged into the re-selected block's `dataset` before `showInfo()` runs — used after a Record action to inject `{recording:'1', managed:'1'}` so the summary panel shows the correct state without requiring a manual re-select.
+- **`refreshGuide(selOverride?)`** — saves `.gw` scroll position and the currently-selected `.g-prog` element (`data-start` + `data-num` + `data-device`); `GET /` → DOMParser → swaps `.gi` (guide grid), `#sum-ph` (summary placeholder), and each `.tdrop` body (`#tdrop-{devId}`); re-reads `data-winstart`/`data-winsec` from the new `.g-hdr` into `_winStart`/`_winSec` (keeps the live now-line aligned to the refreshed grid); restores scroll position; re-selects the previously-highlighted entry via `showInfo()`. If `selOverride` is passed (a JS object), its key-value pairs are merged into the re-selected block's `dataset` before `showInfo()` runs — used after a Record action to inject `{recording:'1', managed:'1'}` so the summary panel shows the correct state without requiring a manual re-select.
 
 **Theme variables:** CSS custom properties defined on `:root` (dark default) and overridden on `html.lm` (light). Dark: body `--bg:#141414` · surfaces `--s1–s4` `#1a–#22` · borders `--b0–b5` `#25–#48` · text `--t0–t6` `#f0–#66`. Light: body `--bg:#e4e6ea` · surfaces `#ec–#ff` · borders `#78–#c4` (visible against light backgrounds) · text `--t0–t6` `#11–#7d` (all pass WCAG AA contrast on light surfaces). Theme is toggled by adding/removing the `lm` class on `<html>`; preference is stored in `localStorage('theme')` with `'auto'` following `prefers-color-scheme`.
 
 Page structure (top to bottom):
 
-1. **Top toolbar** (`#toolbar`) — a single horizontal, wrapping row holding (left→right): `h1` title, **☰ Schedule** button (`#status-btn`), the tuner list (single-device tuner badge + device link, or the multi-device `#dev-bar` switcher), the genre filter (`#genre-bar`, shown when applicable), and — pushed to the far right via `margin-left:auto` — the theme switcher (`#theme-sw`, dark/auto/light). Guide navigation (⊙ Now / ↺ Refresh) lives in the guide corner cell, not the toolbar.
+1. **Top toolbar** (`#toolbar`) — a single horizontal, wrapping row holding (left→right): `h1` title, the per-tuner box list (`#dev-bar`, one `tunerBox` per discovered + offline device), the genre filter (`#genre-bar`, shown when applicable), and — pushed to the far right via `margin-left:auto` — the theme switcher (`#theme-sw`, dark/auto/light). Guide navigation (⊙ Now / ↺ Refresh) lives in the guide corner cell, not the toolbar. There is no global schedule popover — each tuner box has its own ▾ dropdown.
 2. **Tuner popover** (`#t-pop`) — fixed overlay; shown by clicking a tuner badge
 3. **Summary panel** (`#sum`) — always visible; selected show details + actions
 4. **Record type modal** (`#rec-modal`) — fixed overlay; appears on Record click
 5. **Edit modal** (`#edit-modal`) — fixed overlay (z-index 201); appears on Edit click or schedule-popover row click
-6. **Schedule popover** (`#sched-pop`) — fixed overlay; opened by clicking the **☰ Schedule** button in the toolbar. Contains: Recording / Up Next / Scheduled sections (`.sp-*` classes).
+6. **Per-tuner dropdowns** (`.tdrop`, one `#tdrop-{devId}` per tuner) — absolute-positioned panels under each tuner box, toggled by the box's ▾ (`toggleTunerDrop`). Each lists that tuner's own Recording / Up Next / Scheduled / Paused (`.sp-*` classes) from `buildTunerShowsHTML(state:, deviceId:)`.
 7. **Guide grid** — scrollable cable-guide grid (width/time-window depends on UA; see below)
 
-**☰ Schedule button** (`#status-btn`): a labeled toolbar button (surface background `var(--s4)`, `var(--b4)` border, text `var(--t2)`) placed **immediately to the right of the `<h1>` title** in the toolbar. Clicking calls `openSchedPop(this)` which toggles `#sched-pop` (positioned below the button). Calls `closeSchedPop()` on second click or backdrop click. Text color shifts from `var(--t2)` (resting) to `var(--ac)` (accent) when the popover is open.
+**Per-tuner ▾ dropdown** (`.tdrop-btn` → `toggleTunerDrop(devId)`): each tuner box has a ▾ button that toggles its `#tdrop-{devId}` panel (absolute, below the box). Opening one closes any other; a document-level click handler closes open dropdowns when the click is outside any `.tuner-box`.
 
 **Auto-select on load**: deferred into a `requestAnimationFrame` callback so the guide grid paints first (LCP element). On the first animation frame, an IIFE finds the first visible `.g-row` and selects the currently-airing `.g-prog`, populating the summary panel. `scrollToNow()` runs in the same callback. Deferring both prevents the externally-fetched CDN poster image from becoming the LCP element.
 
 ---
 
-### Device switcher / tuner list (in the toolbar)
+### Tuner boxes (`#dev-bar` in the toolbar)
 
-All of this lives inline in `#toolbar`, after the title + **☰ Schedule** button.
+`#dev-bar` is a wrapping flex row with one `tunerBox` per discovered device **plus** one per
+offline/absent device (any `show.hdhr_record` not in `state.devices`). Rendered for every
+configuration including a single device. Each box (`.tuner-box`) has a `.tuner-row`:
+**HDHR-XXXXXXXX** name + **↗** device web-UI link + live count badge (`.t-info` → `showTunerInfo`)
++ **▾** (`.tdrop-btn` → `toggleTunerDrop`), followed by a hidden `#tdrop-{devId}` panel.
 
-**Single device:** tuner badge (`.t-info`) + device web UI link (`http://{LocalIP}/`), inline.
+**Active vs inactive.** A tuner is *active* when it's in `state.usableDeviceIDs` (discovered AND
+reachable). Active: name is a `.d-btn` `setDev` filter, badge shows live `n/m`. Inactive
+(unreachable or absent): the whole box gets `.tuner-off` (dimmed), the name is a non-clickable
+`.d-btn-off` label, and the badge reads **offline** (`.t-info-off`). The ▾ dropdown works either
+way and lists that tuner's assigned shows.
 
-**Multiple devices (or any offline device):** `#dev-bar` — a horizontal, wrapping flex row with one inline group per device, each group laid out left→right: **HDHR-XXXXXXXX** filter button (`.d-btn`) + **↗** device web UI link + tuner badge (`.t-info`).
+Clicking an active name calls `setDev(devId)`, filtering guide rows to that device via `data-dev`.
 
-Clicking a live device button calls `setDev(devId)` which filters guide rows to that device via `data-dev` attributes.
-
-**Offline device buttons** (`.d-btn-off`, dashed border, dimmed) appear after online devices when any show's `hdhr_record` references an undetected device. Clicking calls `setDev()` (highlights the button, guide grid shows no rows for that device) **and** auto-opens the **☰ Schedule** popover (via `openSchedPop(this)`), which `filterSchedPop()` immediately scopes to only that device's shows — so the user sees what was scheduled on the dead tuner without needing to open it manually.
+**Default tuner (no combined view).** With more than one tuner there is no "All" view — the grid
+opens on a single tuner. `buildHTML` computes `defaultDev` = the first device with both a
+non-empty lineup and loaded guide data (fallback: first with a lineup, else `""`), and the
+bootstrap call is `setDev('<defaultDev>')`. Single-device keeps `setDev('')`. Users switch
+tuners via the active device names.
 
 **Tuner badges** (`.t-info` / `.t-info-full`): show `active/total` slots. Red styling when full. Clicking opens the tuner popover.
 
@@ -373,7 +382,7 @@ On **Schedule**: `confirmRecord()` collects selected air days from `#rm-days .da
 - The summary delete button becomes **"Stop & Delete"** (+ `danger` class) when `recStarted`; stays **"Remove"** otherwise.
 - `refreshGuide({recording:'1',managed:'1'})` or `refreshGuide({managed:'1'})` is called so the re-selected block's `dataset` reflects the new recording/managed state before `showInfo()` runs — the summary panel updates without requiring a manual re-click.
 - Tuner badge `#tun-{devId}` is updated in place with the new active/total count from `tunerActive`/`tunerTotal`.
-- Schedule popover body is refreshed via `/api/shows-html`.
+- Per-tuner dropdown bodies are refreshed in place by `refreshGuide()` (and recording events).
 
 ---
 
@@ -518,19 +527,24 @@ If no match is found (e.g. a series show whose guide entry has no SeriesID), the
 
 ---
 
-### Schedule popover (`#sched-pop`)
+### Per-tuner dropdown (`#tdrop-{devId}`)
 
-Fixed overlay opened by the **☰ Schedule** button. Built server-side by `buildSchedPopHTML(state:)` and refreshed via `/api/shows-html` after record/delete actions.
+Each tuner box's ▾ toggles an absolute-positioned panel listing **that tuner's own** shows,
+built by `buildTunerShowsHTML(state:, deviceId:)` (filters every section to
+`show.hdhr_record == deviceId`). Sections (`.sp-sec`) separated by `.sp-div` dividers — empty
+sections are omitted:
+- **Recording** — that tuner's `recordingShows`; red `●` prefix (`.sp-rec`); channel cell appends **"· Ends 10:00 PM"** (`state.shortTime(show.show_end)`).
+- **Up Next** — that tuner's first `activeShows` entry by `show_next` ascending; relative time in accent color.
+- **Scheduled** — that tuner's remaining `activeShows`.
+- **Paused** — that tuner's `pausedShows`; `⏸` prefix.
 
-Four sections (`.sp-sec`) separated by `.sp-div` dividers — empty sections are omitted. Shows on unavailable devices are excluded from the first three sections and appear only in the fourth:
-- **Recording** — `state.recordingShows` on available devices; title in red `●` prefix (`.sp-rec`); channel cell appends **"· Ends 10:00 PM"** (`state.shortTime(show.show_end)`) so the expected stop time is visible at a glance.
-- **Up Next** — first `state.activeShows` entry (available devices only) sorted by `show_next` ascending; shows relative time in accent color
-- **Scheduled** — remaining `state.activeShows` (available devices only)
-- **Unavailable Tuner** — all active shows whose assigned device is currently unavailable (`state.unavailableDeviceShows`); header in red; `⚠` prefix on each row
+Empty → `<div class="sp-empty">No shows on this tuner.</div>`. Each `.sp-row` carries `data-dev`
++ the show's `data-*` and an `onclick="openEditShow(this)"`. Offline/absent tuners use the same
+builder, so their assigned shows still appear in their dropdown even though they can't record.
 
-Every `.sp-row` carries `data-dev` (`show.hdhr_record`) so `filterSchedPop()` can scope the visible rows to a specific device. When an offline device is selected in the device bar, `filterSchedPop()` hides rows whose `data-dev` doesn't match `curDev` and collapses empty sections (with their adjacent dividers); when no device or a live device is selected, all rows are visible.
-
-Content is embedded at page build time; `refreshShowsSection()` fetches `/api/shows-html` on record/delete to update `#sched-pop-body` in place.
+Update paths: `refreshGuide()` swaps each `.tdrop` body in place from a fresh `GET /` (covers
+add/remove/edit, which arrive as `show_*` SSE → `refreshGuide`); a recording start/stop pushes
+`tdrop`/`tdropDev` in its SSE event and the client swaps just `#tdrop-{tdropDev}`.
 
 ---
 
@@ -540,7 +554,7 @@ Content is embedded at page build time; `refreshShowsSection()` fetches `/api/sh
 |---|---|
 | `showInfo(el)` | `onclick` on program blocks; reads `el.dataset`, populates summary panel, sets globals |
 | `closeSummary()` | Hides summary, restores placeholder, clears `.g-sel` |
-| `refreshGuide(selOverride?)` | Partial DOM refresh: saves `.gw` scroll + selected entry; `GET /`; swaps `.gi`, `#sum-ph`, `#sched-pop-body`; resyncs `_winStart`/`_winSec` from the new `.g-hdr` (so the now-line doesn't drift); restores scroll; re-selects prior entry. Optional `selOverride` object patches `dataset` attrs on the re-selected block before `showInfo()` — used after Record to inject `{recording:'1',managed:'1'}` without a manual re-click. |
+| `refreshGuide(selOverride?)` | Partial DOM refresh: saves `.gw` scroll + selected entry; `GET /`; swaps `.gi`, `#sum-ph`, and each `.tdrop` body (`#tdrop-{devId}`); resyncs `_winStart`/`_winSec` from the new `.g-hdr` (so the now-line doesn't drift); restores scroll; re-selects prior entry. Optional `selOverride` object patches `dataset` attrs on the re-selected block before `showInfo()` — used after Record to inject `{recording:'1',managed:'1'}` without a manual re-click. |
 | `doRecord()` | Opens record modal; pre-checks day-of-week button matching guide entry; pre-checks Bonus Time for sports entries; resets transcode to `"none"`; shows tuner-full warning if applicable |
 | `cancelRecord()` | Hides modal |
 | `confirmRecord()` | Collects `airDays` from `#rm-days` and `transcode` from `#rm-transcode`; POSTs `/api/record`; on success: red flag + `.g-prog-rec` if `recStarted`, yellow flag + `.g-prog-sched` otherwise. Delete button becomes **"Stop & Delete"** (+ `danger` class) when `recStarted`, stays **"Remove"** otherwise. Calls `refreshGuide({recording:'1',managed:'1'})` or `refreshGuide({managed:'1'})` so the summary panel reflects the new state immediately. Updates tuner badge `#tun-{devId}` in place. |
@@ -551,14 +565,12 @@ Content is embedded at page build time; `refreshShowsSection()` fetches `/api/sh
 | `openEditShow(el)` | Populates and opens `#edit-modal` from `el.dataset`; handles both guide blocks and schedule popover rows |
 | `closeEditShow()` | Hides `#edit-modal` |
 | `confirmEdit()` | POSTs `/api/edit`; closes modal on success |
-| `setDev(id)` | Filters guide rows by `data-dev`; empty string = All (with JS dedup); uses cached `_rows` NodeList; calls `applyGenreDim()` then shows/hides `.g-fav-sep` separators; if the schedule popover is open, calls `filterSchedPop()` to re-scope it |
+| `setDev(id)` | Filters guide rows by `data-dev`; empty string = deduped single-device fallback (multi-tuner bootstraps to a real `defaultDev`, not `''`); uses cached `_rows` NodeList; calls `applyGenreDim()` then shows/hides `.g-fav-sep` separators |
 | `filterGenre(g)` | Sets `_genreFilter` and calls `applyGenreDim()` |
 | `applyGenreDim()` | Clears all `.g-prog-dim`. In normal mode: dims programs that fail the genre filter OR have `data-inf="1"`. In infomercial mode (`_genreFilter==='__inf'`): dims all non-inf programs, un-dims inf programs. Rows always remain visible. |
 | `scrollToNow()` | Scrolls `.gw` so the now-line sits ~25% from the left of the viewport; corner-cell ⊙ button and page load both call it |
 | `toggleFav(evt, btn)` | `onclick` on `.g-fav-btn` star buttons; reads `data-dev` / `data-ch` from parent `.g-row`; POSTs `/api/toggle-favorite`; calls `refreshGuide()` on success |
-| `filterSchedPop()` | Scopes `#sched-pop-body` rows to `curDev` when an offline device (`.d-btn-off.d-sel`) is selected — hides non-matching `.sp-row` elements and collapses empty `.sp-sec` sections with their dividers. No-ops (shows all rows) when no device or a live device is selected. Called by `openSchedPop()`, `setDev()`, and after SSE/refresh updates to `#sched-pop-body`. |
-| `openSchedPop(anchor)` | Opens `#sched-pop` anchored below `anchor`; calls `filterSchedPop()` immediately after showing; toggle-closes only when `anchor` is `#status-btn` (not when opened programmatically by offline device button) |
-| `closeSchedPop()` | Hides `#sched-pop`; resets `#status-btn` color and `aria-expanded` |
+| `toggleTunerDrop(devId)` | Toggles that tuner's `#tdrop-{devId}` dropdown; closes any other open `.tdrop` first. A document-level click handler closes open dropdowns on any click outside a `.tuner-box`. |
 | `devFull(devId)` | Returns true if `tuners[devId].a >= tuners[devId].t` |
 | `showTunerInfo(devId, anchor)` | Opens tuner popover anchored below the clicked badge; renders per-tuner rows immediately from `recsByDev`, then fires async `/api/now-airing` fetches to enrich external stream rows with guide title, episode, poster, and end time |
 | `closeTunerPop()` | Hides tuner popover |
@@ -709,7 +721,7 @@ func quit()             // calls webServer.stop()
 
 `broadcastEvent` is called from `AppState` (`addShowFromGuide`) and from `WebServer` handlers (`handleDelete`, `handleEdit`) after state changes.
 
-`broadcastRecordingEvent` is called from `AppState` for `recording_started` and `recording_stopped`. It builds fresh `#sum-ph` and `#sched-pop-body` HTML fragments via `buildSumPhHTML` and `buildSchedPopHTML` and embeds them in the event payload so clients can update those elements without a second HTTP request.
+`broadcastRecordingEvent` is called from `AppState` for `recording_started` and `recording_stopped`. It builds a fresh `#sum-ph` fragment (`buildSumPhHTML`) and the affected device's `#tdrop-{device}` dropdown body (`buildTunerShowsHTML`), embedding them as `sumPh` + `tdrop`/`tdropDev` so clients update those elements without a second HTTP request.
 
 `guide_refreshed` is broadcast from `AppState.refreshGuides()` when at least one device returned guide data; connected clients call `refreshGuide()` to swap the full grid.
 
