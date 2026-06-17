@@ -12,7 +12,7 @@ The full window is a `WKWebView` loading `http://localhost:{port}/` — the same
 
 ## Intent
 
-`FloatingGuideView` is a browse-only cable guide window that can be opened independently of the Add Show wizard. Window ID: `"cable-guide"`. The guide is always the web-based guide (`GuideWebView`). The web server auto-starts on demand when the guide opens and stops when it closes (reference-counted — safe to open multiple guide windows simultaneously).
+`FloatingGuideView` is a browse-only cable guide window that can be opened independently of the Add Show wizard. Window ID: `"cable-guide"`. The guide is always the web-based guide (`GuideWebView`). It is a single-instance `Window` scene, so only one floating guide can exist at a time (no duplicate windows — see [[feedback-no-duplicate-windows]]). The web server auto-starts on demand when the guide opens and stops when it closes; the lifecycle is reference-counted so the floating guide and the Add Show wizard's embedded guide view can be open at the same time without the server being torn down while one is still using it.
 
 Window minimum: **1100×720**, no maximum. `FloatingWindowLevelSetter` raises the window to `.floating` level so it stays above other apps while browsing.
 

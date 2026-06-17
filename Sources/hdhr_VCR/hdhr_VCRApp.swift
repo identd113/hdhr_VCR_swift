@@ -33,16 +33,18 @@ struct hdhr_VCRApp: App {
         }
         .menuBarExtraStyle(.menu)
 
-        // Add Show window — resizable when in guide step (the view controls its own frame)
-        WindowGroup("Add Show", id: "add-show") {
+        // Single-instance Window (not WindowGroup) so openWindow(id:) always targets the one
+        // instance and can never spawn a duplicate. The view reacts to pendingAddEntryGeneration
+        // to refresh on reopen. Resizable when in guide step (the view controls its own frame).
+        Window("Add Show", id: "add-show") {
             AddShowView()
                 .environmentObject(appState)
         }
         .windowStyle(.titleBar)
         .windowResizability(.contentSize)
 
-        // Edit Show window
-        WindowGroup("Edit Show", id: "edit-show") {
+        // Edit Show window — single instance; reloads via onChange(editingShowId) on reopen
+        Window("Edit Show", id: "edit-show") {
             EditShowView()
                 .environmentObject(appState)
         }
@@ -50,8 +52,8 @@ struct hdhr_VCRApp: App {
         .windowResizability(.contentSize)
         .defaultSize(width: 480, height: 520)
 
-        // Settings window
-        WindowGroup("Settings", id: "settings") {
+        // Settings window — single instance
+        Window("Settings", id: "settings") {
             SettingsView()
                 .environmentObject(appState)
         }
@@ -59,8 +61,8 @@ struct hdhr_VCRApp: App {
         .windowResizability(.contentSize)
         .defaultSize(width: 560, height: 440)
 
-        // Watch Now window — shows currently-airing shows as poster cards
-        WindowGroup("Watch Now", id: "watch-now") {
+        // Watch Now window — single instance; shows currently-airing shows as poster cards
+        Window("Watch Now", id: "watch-now") {
             WatchNowView()
                 .environmentObject(appState)
         }
@@ -68,8 +70,8 @@ struct hdhr_VCRApp: App {
         .windowResizability(.contentMinSize)
         .defaultSize(width: 420, height: 620)
 
-        // Floating cable guide — opened from the Add Show guide step pop-out button
-        WindowGroup("Cable Guide", id: "cable-guide") {
+        // Floating cable guide — single instance; opened from the Add Show guide step pop-out button
+        Window("Cable Guide", id: "cable-guide") {
             FloatingGuideView()
                 .environmentObject(appState)
         }

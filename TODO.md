@@ -137,6 +137,14 @@ The `recsByDev` JS variable (drives popup content when user clicks the tuner but
 
 ## Code Quality
 
+### Swift 6-mode warning: `counts` mutated in `pushFreshTunerCounts`
+
+`WebServer.swift` → `pushFreshTunerCounts()` mutates the captured `var counts` dict inside the `await MainActor.run { … }` closure, which triggers a `mutation of captured var in concurrently-executing code` warning (an error under the Swift 6 language mode; currently just a warning). Fix by building and returning the dict from the closure instead of mutating a captured var, e.g. `let counts = await MainActor.run { … return dict }`.
+
+**Key file**: `WebServer.swift` → `pushFreshTunerCounts()`.
+
+---
+
 ### Remove unused `_release` symbol from VLCBridge
 
 `_release` (`libvlc_release`) is loaded via `dlsym` in `VLCBridge.init()` but never called. The VLC instance lives for the app's entire lifetime so releasing it is never needed. Remove the stored property, typedef, and `sym()` lookup.

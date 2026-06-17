@@ -62,7 +62,7 @@ Escape key: `.onExitCommand` on root Group — shows dirty-check `NSAlert` (Save
 
 ### `loadShow()`
 
-Called from `.onAppear`. Reads `state.editingShowId`, finds the matching show in `state.shows`, and seeds the view's `@State` vars:
+Called from `.onAppear` **and** from `.onChange(of: state.editingShowId)`. The Edit window is a single-instance `Window` (not `WindowGroup`), so the view persists between opens — when it's re-focused for a different show, `onAppear` does not fire again, and the `onChange` is what reloads it. Reads `state.editingShowId`, finds the matching show in `state.shows`, and seeds the view's `@State` vars:
 - `show` — the full `Show` copy (edits happen on this local copy, not on `state` directly)
 - `seriesType` — derived from `show.state`
 - `airDays` — `Set(show.show_air_date)`

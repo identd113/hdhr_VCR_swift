@@ -18,9 +18,10 @@ struct MenuContent: View {
         let f = DateFormatter(); f.dateFormat = "EEE"; return f
     }()
 
-    /// Open a WindowGroup scene reliably from a .menu-style MenuBarExtra.
+    /// Open a single-instance Window scene reliably from a .menu-style MenuBarExtra.
     /// The menu dismisses synchronously; deferring to the next run loop tick
     /// ensures the window request fires after the menu is fully gone.
+    /// The title lookup is redundant reinforcement — Window scenes can't duplicate.
     private func open(_ id: String) {
         DispatchQueue.main.async {
             NSApp.activate(ignoringOtherApps: true)

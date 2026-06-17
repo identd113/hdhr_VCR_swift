@@ -57,6 +57,9 @@ struct EditShowView: View {
         }
         .background(WindowCloseInterceptor(isDirty: isDirty, canSave: true, onSave: saveWithoutDismiss))
         .onAppear { loadShow() }
+        // The window is a single reusable instance, so onAppear won't fire when it's merely
+        // re-focused for a different show — reload whenever the target show id changes.
+        .onChange(of: state.editingShowId) { _, _ in loadShow() }
     }
 
     // MARK: - Form

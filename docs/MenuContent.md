@@ -88,7 +88,7 @@ The `DispatchQueue.main.async` is essential: `.menu`-style `MenuBarExtra` dismis
 
 Window IDs → titles: `"add-show"` → "Add Show", `"edit-show"` → "Edit Show", `"settings"` → "Settings", `"watch-now"` → "Watch Now", `"cable-guide"` → "Cable Guide"
 
-Note: `"cable-guide"` is opened directly via `openWindow(id: "cable-guide")` from the guide pop-out button, **not** through the `open()` helper. The `open()` helper matches windows by title; `"cable-guide"` (lowercase id) would not match `"Cable Guide"` (the WindowGroup title), so it falls through without deduplication. Since the floating guide is always launched from a single button, the direct call is correct.
+**No duplicate windows is enforced structurally**, not by the title match. All scenes are single-instance `Window` scenes (not `WindowGroup`) in `hdhr_VCRApp.swift`, so `openWindow(id:)` always targets the one instance and can never spawn a duplicate. The `NSApp.windows.first(where: { $0.title == ... })` lookup in `open()` is now redundant reinforcement (it raises an already-open window a hair sooner); even when it misses — e.g. `"cable-guide"`, whose lowercase id doesn't match the `"Cable Guide"` title — the fall-through `openWindow(id:)` still cannot duplicate. See [[feedback-no-duplicate-windows]].
 
 ---
 
@@ -234,13 +234,13 @@ Label format: `"Ch 5.1  NBC · Show Title"` where the channel comes from matchin
 
 ## Watch Now — `watchNowMenu`
 
-A `Button` with `Label("Watch Now", systemImage: "play.tv.fill")` in a blue tint (`watchNowBlue = Color(red: 0.2, green: 0.6, blue: 1.0)`). Shown when `state.devices` is non-empty. Opens the `"watch-now"` `WindowGroup` (`WatchNowView`) — a 420×620 poster-card grid of currently-airing shows. If the window is already open, brings it to front instead of opening a duplicate.
+A `Button` with `Label("Watch Now", systemImage: "play.tv.fill")` in a blue tint (`watchNowBlue = Color(red: 0.2, green: 0.6, blue: 1.0)`). Shown when `state.devices` is non-empty. Opens the `"watch-now"` `Window` (`WatchNowView`) — a 420×620 poster-card grid of currently-airing shows. Single-instance, so reopening brings the existing window to front rather than duplicating.
 
 ---
 
 ## Add Show — `Button`
 
-A plain `Button` with `Label("Add Show…", systemImage: "plus")`. Opens the `"add-show"` `WindowGroup` (`AddShowView`) — a 3-step wizard. The old cascading menu (device → channel → guide entries) was removed; that browsing path is now covered by **Watch Now**.
+A plain `Button` with `Label("Add Show…", systemImage: "plus")`. Opens the `"add-show"` `Window` (`AddShowView`) — a 3-step wizard. The old cascading menu (device → channel → guide entries) was removed; that browsing path is now covered by **Watch Now**.
 
 ---
 
