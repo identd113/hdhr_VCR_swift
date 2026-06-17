@@ -73,6 +73,8 @@ Systems: [AppState](docs/AppState.md) · [GuideStore](docs/GuideStore.md) · [Re
 
 **Web guide offline devices** — devices referenced in `show.hdhr_record` but absent from `state.devices` get a dashed "not detected" button in the guide device bar. Never silently omit them.
 
+**Web guide now-line origin** — the live now-line plots `Date.now()` against JS `_winStart`/`_winSec`. `refreshGuide()` swaps in a grid the server rendered against a *fresh* `winStart` (advances each hour boundary), so it must re-read `data-winstart`/`data-winsec` from the new `.g-hdr` to resync those vars — else the now-line drifts ahead on the new grid. The hourly `guide_refreshed` SSE event is the background trigger.
+
 **New show field** — (1) add to `Show` in `Models.swift` (2) `CodingKeys` entry (3) `init(from:)` with fallback default (4) update `Show.blank()`.
 
 **Bonus Time** — `show_bonus_time` extends past guide end; sports genres default `true` via `applyGuideEntry()` (genre comes from guide `Filter` tags). Duration = `Sports_padding_minutes`.
