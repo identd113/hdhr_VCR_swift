@@ -1048,11 +1048,16 @@ final class AppState: ObservableObject {
                 // Show will be paused and notified if fail_count reaches the threshold.
                 if shows[i].show_fail_count > 1 {
                     notify("Recording Failed", body: show.show_title, subtitle: failReason)
-                    discordShow("❌ Recording Failed", show: show, color: 0xE74C3C, enabled: config.Discord_on_failed,
-                                extra: [("Reason", failReason, false), ("Fail Count", "\(shows[i].show_fail_count)", true)],
-                                editMessageId: show.discord_start_msg_id.isEmpty ? nil : show.discord_start_msg_id)
+                    // Reuse this recording's card (created by the start or a prior failure) so the
+                    // eventual start/complete stays on the same card. Don't clear the id on failure.
+                    let sid = show.show_id, fc = shows[i].show_fail_count
+                    Task { @MainActor in
+                        await discordRecordingCard(showId: sid, event: "❌ Recording Failed", color: 0xE74C3C,
+                                                   enabled: config.Discord_on_failed,
+                                                   extra: [("Reason", failReason, false), ("Fail Count", "\(fc)", true)])
+                        saveConfig()
+                    }
                 }
-                shows[i].discord_start_msg_id = ""
                 dirty = true
             }
 
@@ -1060,16 +1065,12 @@ final class AppState: ObservableObject {
             if show.show_recording, pendingDiscordStart.contains(show.show_id),
                recordingManager.isRunning(showId: show.show_id) {
                 pendingDiscordStart.remove(show.show_id)
-                let embed  = buildDiscordShowEmbed(event: "🔴 Recording Started", show: shows[i],
-                                                   color: 0x2ECC71, extra: [("Ends", shortTime(shows[i].show_end ?? Date()), true)])
-                let url    = config.Discord_webhook_url
                 let showId = show.show_id
+                let endsStr = shortTime(shows[i].show_end ?? Date())
                 Task { @MainActor in
-                    let msgId = await sendDiscordEmbedCapturing(to: url, embed: embed)
-                    if let j = shows.firstIndex(where: { $0.show_id == showId }) {
-                        shows[j].discord_start_msg_id = msgId ?? ""
-                        saveConfig()
-                    }
+                    await discordRecordingCard(showId: showId, event: "🔴 Recording Started", color: 0x2ECC71,
+                                               enabled: true, extra: [("Ends", endsStr, true)])
+                    saveConfig()
                 }
             }
 
@@ -1197,8 +1198,12 @@ final class AppState: ObservableObject {
                 shows[index].show_paused = true   // recoverable; auto-resumes after window expires
             }
             notify("Recording Paused", body: show.show_title, subtitle: "Failed \(failThreshold)× — will retry next airing")
+            // Terminal for this lifecycle: update the failure card to "Paused", then clear the id
+            // so the next airing's attempt starts a fresh card.
             discordShow("⏸ Recording Paused", show: show, color: 0xE67E22, enabled: config.Discord_on_paused,
-                        extra: [("Reason", "Failed \(failThreshold)× — will retry next airing", false)])
+                        extra: [("Reason", "Failed \(failThreshold)× — will retry next airing", false)],
+                        editMessageId: show.discord_start_msg_id.isEmpty ? nil : show.discord_start_msg_id)
+            shows[index].discord_start_msg_id = ""
             conflictNotifiedEpochs.removeValue(forKey: show.show_id)
             missedStartNotifiedEpochs.removeValue(forKey: show.show_id)
             return
@@ -1236,8 +1241,12 @@ final class AppState: ObservableObject {
             glog("[\(show.show_title)] LAUNCH ERROR: \(error)", level: .error)
             shows[index].recordFailure(reason: "Launch failed: \(error.localizedDescription)")
             notify("Recording Failed", body: show.show_title, subtitle: "Could not launch — \(error.localizedDescription)")
-            discordShow("❌ Recording Failed", show: show, color: 0xE74C3C, enabled: config.Discord_on_failed,
-                        extra: [("Reason", "Launch failed: \(error.localizedDescription)", false)])
+            let sid = show.show_id, reason = "Launch failed: \(error.localizedDescription)"
+            Task { @MainActor in
+                await discordRecordingCard(showId: sid, event: "❌ Recording Failed", color: 0xE74C3C,
+                                           enabled: config.Discord_on_failed, extra: [("Reason", reason, false)])
+                saveConfig()
+            }
             return
         }
         shows[index].show_recording = true; shows[index].show_recording_path = path
@@ -1774,6 +1783,27 @@ final class AppState: ObservableObject {
         guard enabled, !url.isEmpty else { return nil }
         if webhookURL == nil, !config.Discord_enabled { return nil }
         return url
+    }
+
+    // One Discord card per recording-attempt lifecycle. The first event (a failure or the
+    // start) creates a captured message and stores its id in show.discord_start_msg_id;
+    // subsequent events (a start after a failure, paused, complete) edit that same card.
+    // The id is cleared only at terminal events (complete / paused) so the next airing begins
+    // a fresh card — so a failure → start → end shows as a single, updated card.
+    @MainActor
+    private func discordRecordingCard(showId: String, event: String, color: Int, enabled: Bool,
+                                      extra: [(name: String, value: String, inline: Bool)] = []) async {
+        guard let url = discordEffectiveURL(enabled: enabled, webhookURL: nil),
+              let i = shows.firstIndex(where: { $0.show_id == showId }) else { return }
+        glog("[Discord] \(event) — \(shows[i].show_title)")
+        let embed = buildDiscordShowEmbed(event: event, show: shows[i], color: color, extra: extra)
+        let existing = shows[i].discord_start_msg_id
+        if !existing.isEmpty {
+            editDiscordEmbed(webhookURL: url, messageId: existing, embed: embed)
+        } else if let msgId = await sendDiscordEmbedCapturing(to: url, embed: embed),
+                  let j = shows.firstIndex(where: { $0.show_id == showId }) {
+            shows[j].discord_start_msg_id = msgId
+        }
     }
 
     private func discordShow(_ event: String, show: Show, color: Int, enabled: Bool,

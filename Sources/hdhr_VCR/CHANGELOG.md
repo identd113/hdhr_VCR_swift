@@ -8,6 +8,7 @@
 - **Windows — never open duplicates** — Add Show, Edit Show, Settings, Watch Now, and the floating guide are now single-instance windows; choosing one from the menu brings the existing window to the front instead of opening a second copy. Edit Show also reloads correctly when opened for a different show while already open.
 - **Web guide — accurate live tuner counts** — The tuner badge updates pushed on recording start/stop (and on reconnect) now include the in-app VLC stream and tuners in use by other apps, instead of counting only this app's recordings — so the `active/total` count and "FULL" label no longer under-report.
 - **Web guide — correct poster on quick selection** — Rapidly clicking between shows could leave a previous show's poster showing; each selection now invalidates any in-flight poster swap.
+- **Discord — one card per recording** — A recording that fails and then succeeds on retry now updates a single Discord card (❌ Failed → 🔴 Started → ✅ Complete) instead of posting a separate failure card followed by a start/complete card. The card id is kept across retries and cleared only when the recording completes or the show is paused.
 
 ## 2026-06-11 (260611-1048)
 
