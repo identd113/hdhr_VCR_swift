@@ -846,8 +846,8 @@ final class WebServer {
             return "<button id=\"tun-\(he(devId))\" class=\"\(cls)\" data-dev=\"\(he(devId))\" onclick=\"showTunerInfo(this.dataset.dev,this)\" title=\"Click to see active recordings\">\(label)</button>"
         }
 
-        // ── Status toggle button — sits next to h1 in the header; reveals the status panel ──
-        let statusBtn = "<button id=\"status-btn\" onclick=\"openSchedPop(this)\" title=\"Schedule &amp; recordings\" aria-expanded=\"false\" style=\"background:none;border:none;cursor:pointer;color:var(--t4);font-size:1.1rem;padding:2px 6px;line-height:1;border-radius:4px\">≡</button>"
+        // ── Schedule toggle button — toolbar button (labeled); reveals the status panel ──
+        let statusBtn = "<button id=\"status-btn\" onclick=\"openSchedPop(this)\" title=\"Schedule &amp; recordings\" aria-expanded=\"false\" style=\"display:inline-flex;align-items:center;gap:5px;background:var(--s4);border:1px solid var(--b4);cursor:pointer;color:var(--t2);font-size:.78rem;padding:5px 10px;line-height:1;border-radius:6px;white-space:nowrap\">☰ Schedule</button>"
 
         // ── Device bar (shown when >1 device or offline devices exist) ────────
         // Offline devices: referenced by scheduled shows but not currently discovered.
@@ -861,11 +861,11 @@ final class WebServer {
             let uiURL = "http://\(d.LocalIP)/"
             let label = "HDHR-\(d.DeviceID.uppercased())"
             let dt    = devTuners[d.DeviceID]!
-            headerHTML = "<div style=\"display:flex;align-items:flex-start;gap:10px\">\(statusBtn)<div><h1 style=\"margin:0\">hdhrVCR+ Guide</h1><div style=\"display:flex;align-items:center;gap:6px;margin-top:4px\">\(tunerInfoBtn(d.DeviceID, dt))<a href=\"\(he(uiURL))\" target=\"_blank\" style=\"font-size:.75rem;color:#666;text-decoration:none\" title=\"Open \(he(label)) device web UI\">\(he(label)) ↗</a></div></div></div>"
+            headerHTML = "<div style=\"display:flex;align-items:center;gap:10px;flex-wrap:wrap\"><h1 style=\"margin:0\">hdhrVCR+ Guide</h1>\(statusBtn)<div style=\"display:flex;align-items:center;gap:6px\">\(tunerInfoBtn(d.DeviceID, dt))<a href=\"\(he(uiURL))\" target=\"_blank\" style=\"font-size:.75rem;color:#666;text-decoration:none\" title=\"Open \(he(label)) device web UI\">\(he(label)) ↗</a></div></div>"
             deviceBarHTML = ""
         } else if needsBar {
-            headerHTML = "<div style=\"display:flex;align-items:center;gap:8px\">\(statusBtn)<h1 style=\"margin:0\">hdhrVCR+ Guide</h1></div>"
-            var bar = "<div id=\"dev-bar\" style=\"flex-direction:column;align-items:flex-start;gap:4px\">"
+            headerHTML = "<div style=\"display:flex;align-items:center;gap:10px\"><h1 style=\"margin:0\">hdhrVCR+ Guide</h1>\(statusBtn)</div>"
+            var bar = "<div id=\"dev-bar\">"
             for d in state.devices {
                 let uiURL = "http://\(d.LocalIP)/"
                 let label = he("HDHR-\(d.DeviceID.uppercased())")
@@ -886,7 +886,7 @@ final class WebServer {
             bar += "</div>"
             deviceBarHTML = bar
         } else {
-            headerHTML = "<div style=\"display:flex;align-items:center;gap:8px\">\(statusBtn)<h1 style=\"margin:0\">hdhrVCR+ Guide</h1></div>"
+            headerHTML = "<div style=\"display:flex;align-items:center;gap:10px\"><h1 style=\"margin:0\">hdhrVCR+ Guide</h1>\(statusBtn)</div>"
             deviceBarHTML = ""
         }
 
@@ -1058,7 +1058,7 @@ final class WebServer {
         h1{font-size:1.15rem;color:var(--t2);margin-bottom:0}
         a[target="_blank"]{color:var(--t6)!important;text-decoration:none}
         /* ── Device switcher bar ── */
-        #dev-bar{display:flex;gap:6px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
+        #dev-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
         .d-btn{background:var(--s4);border:1px solid var(--b4);color:var(--t3);border-radius:5px;padding:5px 12px;font-size:.78rem;cursor:pointer;transition:border-color .15s,color .15s,background .15s}
         .d-btn:hover{border-color:var(--b5);color:var(--t0);background:var(--s3)}
         .d-btn.d-sel{border-color:var(--ac);color:var(--ac);background:var(--acb)}
@@ -1281,17 +1281,17 @@ final class WebServer {
         </style>
         </head>
         <body>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-          <div>\(headerHTML)</div>
-          <div id="theme-sw">
+        <div id="toolbar" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+          \(headerHTML)
+          \(deviceBarHTML)
+          <div id="genre-bar" style="display:none">
+            <select id="genre-sel" onchange="filterGenre(this.value)" class="genre-sel"><option value="">All genres</option></select>
+          </div>
+          <div id="theme-sw" style="margin-left:auto">
             <button data-m="dark"  onclick="setTheme('dark')"  title="Dark">◗</button>
             <button data-m="auto"  onclick="setTheme('auto')"  title="Auto (system)">◐</button>
             <button data-m="light" onclick="setTheme('light')" title="Light">◖</button>
           </div>
-        </div>
-        \(deviceBarHTML)
-        <div id="genre-bar" style="display:none;margin-bottom:10px">
-          <select id="genre-sel" onchange="filterGenre(this.value)" class="genre-sel"><option value="">All genres</option></select>
         </div>
         <div id="t-pop" onclick="if(event.target===this)closeTunerPop()" style="display:none;position:fixed;inset:0;z-index:200">
           <div id="t-pop-c" style="position:absolute;background:#1e1e1e;border:1px solid #484848;border-radius:10px;padding:16px 18px;min-width:280px;max-width:400px;box-shadow:0 8px 32px rgba(0,0,0,.75)">
@@ -1859,7 +1859,7 @@ final class WebServer {
         function closeSchedPop(){
           document.getElementById('sched-pop').style.display='none';
           var btn=document.getElementById('status-btn');
-          if(btn){btn.style.color='var(--t4)';btn.setAttribute('aria-expanded','false');}
+          if(btn){btn.style.color='var(--t2)';btn.setAttribute('aria-expanded','false');}
         }
         // ── Edit show modal ──
         var _editId='',_editPaused=false,_editRec=false,_editType='single';

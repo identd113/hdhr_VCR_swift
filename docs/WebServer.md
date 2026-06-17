@@ -258,33 +258,31 @@ Self-contained HTML with all CSS inlined. Updates arrive via SSE push events (se
 
 Page structure (top to bottom):
 
-1. **Page header** — left: `h1` title + `≡` status toggle button + tuner badge / device link (single device) or device switcher bar (multiple devices); right: theme switcher (`#theme-sw`, dark/auto/light). Guide navigation (⊙ Now / ↺ Refresh) lives in the guide corner cell, not the header.
+1. **Top toolbar** (`#toolbar`) — a single horizontal, wrapping row holding (left→right): `h1` title, **☰ Schedule** button (`#status-btn`), the tuner list (single-device tuner badge + device link, or the multi-device `#dev-bar` switcher), the genre filter (`#genre-bar`, shown when applicable), and — pushed to the far right via `margin-left:auto` — the theme switcher (`#theme-sw`, dark/auto/light). Guide navigation (⊙ Now / ↺ Refresh) lives in the guide corner cell, not the toolbar.
 2. **Tuner popover** (`#t-pop`) — fixed overlay; shown by clicking a tuner badge
 3. **Summary panel** (`#sum`) — always visible; selected show details + actions
 4. **Record type modal** (`#rec-modal`) — fixed overlay; appears on Record click
 5. **Edit modal** (`#edit-modal`) — fixed overlay (z-index 201); appears on Edit click or schedule-popover row click
-6. **Schedule popover** (`#sched-pop`) — fixed overlay; opened by clicking the `≡` button in the header. Contains: Recording / Up Next / Scheduled sections (`.sp-*` classes).
+6. **Schedule popover** (`#sched-pop`) — fixed overlay; opened by clicking the **☰ Schedule** button in the toolbar. Contains: Recording / Up Next / Scheduled sections (`.sp-*` classes).
 7. **Guide grid** — scrollable cable-guide grid (width/time-window depends on UA; see below)
 
-**`≡` status button** (`#status-btn`): `background:none` button placed **to the left of the `<h1>` title** in the upper-left header area. Clicking calls `openSchedPop(this)` which toggles `#sched-pop` (positioned below the button). Calls `closeSchedPop()` on second click or backdrop click. Button color shifts from `var(--t4)` (muted) to `var(--ac)` (accent) when the popover is open.
+**☰ Schedule button** (`#status-btn`): a labeled toolbar button (surface background `var(--s4)`, `var(--b4)` border, text `var(--t2)`) placed **immediately to the right of the `<h1>` title** in the toolbar. Clicking calls `openSchedPop(this)` which toggles `#sched-pop` (positioned below the button). Calls `closeSchedPop()` on second click or backdrop click. Text color shifts from `var(--t2)` (resting) to `var(--ac)` (accent) when the popover is open.
 
 **Auto-select on load**: deferred into a `requestAnimationFrame` callback so the guide grid paints first (LCP element). On the first animation frame, an IIFE finds the first visible `.g-row` and selects the currently-airing `.g-prog`, populating the summary panel. `scrollToNow()` runs in the same callback. Deferring both prevents the externally-fetched CDN poster image from becoming the LCP element.
 
 ---
 
-### Device switcher bar / header
+### Device switcher / tuner list (in the toolbar)
 
-**Single device:** `≡` button + column containing `h1` title on the first line, then tuner badge + device web UI link (`http://{LocalIP}/`) on a second line below the title.
+All of this lives inline in `#toolbar`, after the title + **☰ Schedule** button.
 
-**Multiple devices:** `h1` on its own line, then `#dev-bar` with one column group per device:
-- **Row 1** of each group: **HDHR-XXXXXXXX** filter button (`.d-btn`) + **↗** link to device web UI
-- **Row 2** of each group: tuner badge (`.t-info`) below the device name
+**Single device:** tuner badge (`.t-info`) + device web UI link (`http://{LocalIP}/`), inline.
 
-Each device group uses `display:inline-flex; flex-direction:column` so name and badge stack vertically. `#dev-bar` uses `align-items:flex-start` so groups of different heights don't stretch.
+**Multiple devices (or any offline device):** `#dev-bar` — a horizontal, wrapping flex row with one inline group per device, each group laid out left→right: **HDHR-XXXXXXXX** filter button (`.d-btn`) + **↗** device web UI link + tuner badge (`.t-info`).
 
 Clicking a live device button calls `setDev(devId)` which filters guide rows to that device via `data-dev` attributes.
 
-**Offline device buttons** (`.d-btn-off`, dashed border, dimmed) appear after online devices when any show's `hdhr_record` references an undetected device. Clicking calls `setDev()` (highlights the button, guide grid shows no rows for that device) **and** auto-opens the `≡` schedule popover, which `filterSchedPop()` immediately scopes to only that device's shows — so the user sees what was scheduled on the dead tuner without needing to open `≡` manually.
+**Offline device buttons** (`.d-btn-off`, dashed border, dimmed) appear after online devices when any show's `hdhr_record` references an undetected device. Clicking calls `setDev()` (highlights the button, guide grid shows no rows for that device) **and** auto-opens the **☰ Schedule** popover (via `openSchedPop(this)`), which `filterSchedPop()` immediately scopes to only that device's shows — so the user sees what was scheduled on the dead tuner without needing to open it manually.
 
 **Tuner badges** (`.t-info` / `.t-info-full`): show `active/total` slots. Red styling when full. Clicking opens the tuner popover.
 
@@ -520,7 +518,7 @@ If no match is found (e.g. a series show whose guide entry has no SeriesID), the
 
 ### Schedule popover (`#sched-pop`)
 
-Fixed overlay opened by the `≡` button. Built server-side by `buildSchedPopHTML(state:)` and refreshed via `/api/shows-html` after record/delete actions.
+Fixed overlay opened by the **☰ Schedule** button. Built server-side by `buildSchedPopHTML(state:)` and refreshed via `/api/shows-html` after record/delete actions.
 
 Four sections (`.sp-sec`) separated by `.sp-div` dividers — empty sections are omitted. Shows on unavailable devices are excluded from the first three sections and appear only in the fourth:
 - **Recording** — `state.recordingShows` on available devices; title in red `●` prefix (`.sp-rec`); channel cell appends **"· Ends 10:00 PM"** (`state.shortTime(show.show_end)`) so the expected stop time is visible at a glance.
