@@ -42,10 +42,15 @@ One `Section`:
 - Bonus Time: `Toggle`; when on, reveals a `Stepper` for bonus minutes (10–60, step 5)
 
 ### Category: Guide
-One `Section`:
+Two `Section`s:
+
+**Fetch** section:
 - Guide hours: `Stepper` `"Show next N hours"`, range 1–48
 - Series scan retry: `Stepper` `"Series scan retry: N hr"`, range 1–24
 - `"Update Guides Now"` `.borderedProminent` button
+
+**Format** section:
+- `Toggle("Use XMLTV guide format")` — bound to `draft.Guide_use_xml` (default `false`). No inline warning; toggling and saving triggers an immediate guide refresh via the XMLTV endpoint.
 
 ### Category: Notifications
 **Notifications** section: Up Next minutes `Stepper` (5–120, step 5); Recording alert minutes `Stepper` (1–60). Orange `Label` warning when recording alert fires at or after Up Next.
@@ -58,11 +63,9 @@ One `Section`:
 **Notify when…** section (visible only when enabled + URL set): 11 toggles for individual event types.
 
 ### Category: Advanced
-Five sections:
-- **Network**: `Picker` for discovery/recording interface (`"Auto"` default + available NICs with display names). Caption explaining VPN usage.
-- **Performance**: `Stepper` for idle check interval (5–60s, step 5)
-- **Logging**: `"Show App Log in Console"` button (opens Console.app for OSLog output) + selectable filter hint label (`subsystem == "com.hdhr.vcrplus"`). `Toggle("Verbose curl logging")`; when on: caption with curl log path (text-selectable) + `"Show curl log in Finder"` button
-- **Config File**: caption with config path (text-selectable) + `"Show config in Finder"` button
+Four sections:
+- **Network**: `Picker` for discovery/recording interface (`"Auto"` default + available NICs with display names). Caption explaining VPN usage. `Stepper` for idle check interval (5–60s, step 5) — moved here from the former standalone Performance section.
+- **Logging**: `"Show App Log in Console"` button (opens Console.app for OSLog output) + selectable filter hint label (`subsystem == "com.hdhr.vcrplus"`). `Toggle("Verbose curl logging")`; when on: caption with curl log path (text-selectable) + `"Show curl log in Finder"` button. Config path (text-selectable) + `"Show config in Finder"` button — merged here from the former standalone Config File section.
 - **Signal Quality**: two `Toggle`s (show bars, send dropout alerts) + conditional **Scan Channels** section with per-device scan buttons (visible only when Show signal bars is on)
 
 ### Category: Maintenance
@@ -113,9 +116,9 @@ Sidebar entries (with SF Symbol icons):
 |---|---|---|
 | General | `gear` | Launch at Login |
 | Recording | `record.circle` | Folder, transcode, disk, failures, VLC, Bonus Time |
-| Guide | `tv` | Guide hours, series scan retry |
+| Guide | `tv` | Guide hours, series scan retry, JSON/XMLTV format toggle |
 | Notifications | `bell.badge` | Up Next timing, Recording alert timing |
-| Advanced | `terminal` | Network interface, idle interval, logging, verbose curl, config file path, signal quality |
+| Advanced | `terminal` | Network interface + idle interval, logging + verbose curl + config file path, signal quality |
 | Web Server | `globe` | Enable/disable LAN web server, port, access URL |
 | Maintenance | `wrench.and.screwdriver` | Show maintenance, guide/device ops, brew tool installs, Developer (OS sim) |
 | About | `info.circle` | App logo, version, history, GitHub link |
@@ -143,9 +146,13 @@ Sidebar entries (with SF Symbol icons):
 
 ### Guide
 
+**Fetch section:**
 - **Show next N hours** — `Stepper` (1–48). Controls how far ahead the guide fetches and how long until the guide auto-refreshes (`max(3600, GuideHours × 1800)` seconds).
 - **Series scan retry** — `Stepper` (1–24 hr). How long to wait before re-scanning the guide for a SeriesID show's next episode when no match was found.
 - **Update Guides Now** — `Button` (always visible). Calls `state.refreshAll()` immediately, invalidating and reloading guide data for all devices. Useful any time fresh data is needed without restarting the app.
+
+**Format section:**
+- **Use XMLTV guide format** — `Toggle` bound to `draft.Guide_use_xml` (default `false` = JSON). When enabled, guide data is fetched from the XMLTV cloud endpoint (`api/xmltv`) instead of `guide.php`. Flipping and saving triggers an immediate `invalidateAll()` + `refreshGuide()`. Devices without `DeviceAuth` fall back to JSON regardless. The `GuideHours` setting is ignored in XMLTV mode (server controls the window, ~2 days on free tier).
 
 ---
 
@@ -179,15 +186,15 @@ Recording Complete embeds additionally include **Format** (file extension, e.g. 
 
 ### Advanced
 
+- **Idle check interval** — `Stepper` (5–60 sec, step 5). Merged into the Network section. How often the idle loop fires. Minimum enforced at 5s (`max(5, config.Idle_timer_interval)`). Changing this calls `state.startTimer()` immediately via `applyAndSave()`.
 - **Discovery & recording interface** — `Picker`: "Auto" (empty string) plus all IPv4-bearing interfaces, each shown as `name  ip` (e.g. `en0  192.168.1.5`, `utun0  10.8.0.2`). Populated by `availableNetworkInterfaces()` via `getifaddrs`; uses `IFF_POINTOPOINT` to detect all VPN/tunnel types (utun*, tun*, cscotun*, gpd*, zt*, ppp*, ipsec*, etc.) regardless of vendor naming. Stored in `draft.Network_interface`. On Settings open, if the saved value names an interface that is no longer available (VPN disconnected), `draft.Network_interface` is silently reset to `""` so a Save can't persist a broken value. **On Save**, if the interface changed, `applyAndSave()` invalidates the guide cache and triggers `rediscoverDevices()` + `refreshGuide()` in a background Task — the new NIC is active immediately. When non-empty:
   - UDP discovery (`HDHRManager.udpDiscoverSync`) binds via `IP_BOUND_IF`+`if_nametoindex`; **automatically skipped for tunnel/point-to-point interfaces** (`isPointToPointInterface()` check) since tunnels don't support broadcast — known-hosts (saved device IPs) handles remote device lookup
   - curl recordings get `--interface <name>` appended to args
   - URLSession HTTP requests rely on OS routing — correct for VPN since the VPN routes the remote subnet through the tunnel automatically
   - Leave on Auto for single-NIC setups.
-- **Idle check interval** — `Stepper` (5–60 sec, step 5). How often the idle loop fires. Minimum enforced at 5s (`max(5, config.Idle_timer_interval)`). Changing this calls `state.startTimer()` immediately via `applyAndSave()`.
 - **App log** — `"Show App Log in Console"` button. Opens Console.app; logs go to OSLog (subsystem `com.hdhr.vcrplus`) **and** `~/Library/Logs/hdhrVCRplus.log`. A selectable filter hint label appears below the button for copy-paste into Console or Terminal (`log stream --level debug --predicate 'subsystem == "com.hdhr.vcrplus"'`).
 - **Verbose curl logging** — `Toggle`. Adds `-v` to curl args and pipes curl stderr to `~/Library/Logs/hdhrVCRplus.log` (same file as the app log). When enabled, shows the curl log path (selectable text) and a "Show curl log in Finder" button. Log path is `RecordingManager.curlLogPath` (static let). Rotated at 5 MB by `writeCurlLogHeader` before each new recording session.
-- **Config file path** — read-only display (`state.configManager.configPath`) + "Show config in Finder" button using `NSWorkspace.shared.selectFile(_:inFileViewerRootedAtPath:)`.
+- **Config file path** — read-only display (`state.configManager.configPath`) + "Show config in Finder" button using `NSWorkspace.shared.selectFile(_:inFileViewerRootedAtPath:)`. Merged into the Logging section (was a standalone Config File section).
 
 **Signal Quality section** (always visible in Advanced):
 - **Show signal bars in guide** — `Toggle` bound to `draft.Signal_quality_enabled`. When on, `SignalBarsView` appears in cable guide and Watch Now rows. Signal data is **always collected passively** during recordings regardless of this toggle — it only controls display.

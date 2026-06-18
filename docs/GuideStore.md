@@ -16,6 +16,8 @@ All methods run on `@MainActor`. Network calls yield the actor during I/O; state
 
 Returns `nil` if neither DeviceAuth nor LocalIP is available (logs a diagnostic).
 
+`xmltvURL(for:)` — XMLTV cloud endpoint, no Start/Duration parameters (server controls the window). Returns `nil` if the device has no `DeviceAuth` (XMLTV is cloud-only; local devices use JSON regardless of the format flag).
+
 ---
 
 ## Internal Indexes
@@ -32,8 +34,8 @@ Returns `nil` if neither DeviceAuth nor LocalIP is available (logs a diagnostic)
 ## Key Methods
 
 ```swift
-func load(for device: HDHRDevice, hours: Int)           // fetch + index one device; no-op if already loading
-func loadAll(devices: [HDHRDevice], hours: Int)         // parallel load for all devices
+func load(for device: HDHRDevice, hours: Int, useXML: Bool = false)    // fetch + index one device; useXML routes to XMLTV endpoint if DeviceAuth present
+func loadAll(devices: [HDHRDevice], hours: Int, useXML: Bool = false)  // parallel load for all devices
 func channels(deviceId: String) -> [GuideChannel]
 func entries(deviceId: String, channelNum: String, after: Date) -> [GuideEntry]
 func nextEpisode(seriesID: String, channelNum: String?, deviceId: String?, after: Date) -> SeriesMatch?

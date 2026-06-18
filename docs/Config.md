@@ -25,6 +25,7 @@
 Notify_upnext           Double  35.0    minutes before show to send "Up Next" notification
 Notify_recording        Double  15.5    minutes before recording to send "Recording Soon" notification
 GuideHours              Int     24      hours of guide to fetch; also controls refresh interval
+Guide_use_xml           Bool    false   use XMLTV endpoint instead of JSON; triggers guide refresh on toggle; devices without DeviceAuth fall back to JSON
 Default_transcode       String  "none"  none | heavy | mobile | internet720
 Fail_count_setting      Int     3       pause show after N consecutive failures
 Min_disk_free_gb        Double  10.0    refuse to record below this free space (GB)

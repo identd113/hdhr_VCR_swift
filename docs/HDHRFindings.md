@@ -234,6 +234,54 @@ The numeric ID length varies (6–8 digits in practice). The full `SeriesID` str
 
 **Product-specific infomercials** (named shows that are actually paid content — e.g. "Under Eye Bags? SOLUTION!") have unique SeriesIDs and unique titles. They are invisible to both layers above and can only be caught by expanding the blocklist. The `[NowAiring]` log (idle loop, no-genre entries) is the right feed: check it after an overnight run to find new SeriesIDs. Known-infomercial entries are suppressed from that log to reduce noise.
 
+### XMLTV Cloud Endpoint — `https://api.hdhomerun.com/api/xmltv` — verified 2026-06-18
+
+```
+GET https://api.hdhomerun.com/api/xmltv?DeviceAuth=<auth>
+```
+
+- No `Start` or `Duration` parameters — server controls the window (~2.5 days on free tier)
+- gzip encoding handled automatically by URLSession
+- Response: standard XMLTV XML; free tier tested at 106 channels, 4,887 programmes, 3.7 MB
+
+**Field mapping to `GuideChannel` / `GuideEntry`:**
+
+| Our field | XMLTV source | Notes |
+|---|---|---|
+| `GuideNumber` | `<lcn>` text | Reliable; e.g. "11.1" |
+| `GuideName` | Display-name starting with `lcn + " "`, suffix stripped | e.g. "11.1 KARE-HD" → "KARE-HD"; falls back to first display-name |
+| `GuideChannel.Affiliate` | Last `<display-name>` | Network name e.g. "NBC" — present in XMLTV but absent in JSON |
+| `GuideChannel.ImageURL` | `<icon src>` inside `<channel>` | |
+| `StartTime` | `<programme start>` attr | Parse `"yyyyMMddHHmmss Z"` → epoch |
+| `EndTime` | `<programme stop>` attr | Same format |
+| `Title` | `<title>` text | |
+| `EpisodeTitle` | `<sub-title>` text | |
+| `Synopsis` | `<desc>` text | |
+| `Filter` | All `<category>` texts | May include `"Shop"` / `"Shopping"` for paid programming (explicit; JSON uses SeriesID blocklist) |
+| `SeriesID` | `<series-id system="cseries">` text | Full `C…EN…` format; 100% coverage |
+| `EpisodeNumber` | `<episode-num system="onscreen">` text | e.g. "S01E13" |
+| `ImageURL` | `<icon src>` inside `<programme>` | |
+| `OriginalAirdate` | `<date>` text | Parse `"yyyyMMdd"` → epoch |
+
+Not mapped: `<previously-shown/>`, `<language>`, `<episode-num system="xmltv_ns">`, `<episode-num system="dd_progid">`.
+
+**Channel linking:** `<programme channel="US100654.hdhomerun.com">` matches `<channel id="US100654.hdhomerun.com">` exactly.
+
+**Datetime format:** `"20260618060000 +0000"` — space before timezone offset. Parse with `DateFormatter("yyyyMMddHHmmss Z", locale: en_US_POSIX)`.
+
+**Data differences vs `guide.php`:**
+
+| | JSON `guide.php` | XMLTV `api/xmltv` |
+|---|---|---|
+| Window control | ✅ `Start` + `Duration` params | ❌ server-fixed (~2 days free / 14 days paid) |
+| `GuideHours` setting | ✅ honoured | ❌ ignored |
+| Local device fallback | ✅ `/guide.json` when no DeviceAuth | ❌ cloud-only; per-device JSON fallback |
+| Paid programming | ❌ `Filter:[]` ambiguous | ✅ `<category>Shop</category>` explicit |
+| `SeriesID` | ✅ full `C{n}EN{s}` format | ✅ `<series-id system="cseries">` — identical, 100% coverage |
+| `Affiliate` | ✅ present | ✅ last `<display-name>` |
+
+**Implementation:** `XmltvParser.swift` (Foundation `XMLParser`, no extra dependencies); routed from `GuideStore.loadXMLTV(for:)` when `Guide_use_xml = true`. Devices without `DeviceAuth` always fall back to JSON even when the flag is on.
+
 ---
 
 ## Known Open Source Implementations (for reference)
@@ -257,6 +305,7 @@ Primary documentation sources: `info.hdhomerun.com/info/http_api`, `info.hdhomer
 | `/tunerN/vstatus` | Per-tuner signal: ss, snq, lock, bps (key-value text) |
 | `/lineup.post?favorite=±N` | Mark/unmark channel favorite |
 | `api.hdhomerun.com/api/guide.php` | Cloud guide data (DeviceAuth gated); optional `Start=<epoch>` shifts window start; `Duration` in hours from Start (capped ~29h per call) |
+| `api.hdhomerun.com/api/xmltv` | Cloud guide as XMLTV XML (DeviceAuth gated); no Start/Duration — server controls the window; enabled by `Guide_use_xml = true` |
 
 ## Endpoints Not Yet Used (candidates)
 

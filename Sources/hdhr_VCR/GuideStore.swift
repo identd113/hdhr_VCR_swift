@@ -56,12 +56,24 @@ final class GuideStore {
         return URL(string: "http://\(device.LocalIP)/guide.json?Start=\(start)&Duration=\(hours + 1)")
     }
 
+    /// XMLTV cloud guide URL — no Start/Duration params; server determines the window.
+    /// Returns nil if the device has no DeviceAuth (XMLTV is cloud-only).
+    nonisolated static func xmltvURL(for device: HDHRDevice) -> URL? {
+        guard let auth = device.DeviceAuth else { return nil }
+        return URL(string: "https://api.hdhomerun.com/api/xmltv?DeviceAuth=\(auth)")
+    }
+
     // MARK: - Loading
 
     /// Fetch and index guide for one device. No-op if already loading.
+    /// Pass useXML: true to use the XMLTV endpoint; devices without DeviceAuth fall back to JSON.
     /// Returns true if channels were successfully loaded, false on any error.
     @discardableResult
-    func load(for device: HDHRDevice, hours: Int = 12) async -> Bool {
+    func load(for device: HDHRDevice, hours: Int = 12, useXML: Bool = false) async -> Bool {
+        // XMLTV is cloud-only; devices without DeviceAuth fall through to JSON path
+        if useXML, device.DeviceAuth != nil {
+            return await loadXMLTV(for: device)
+        }
         let id = device.DeviceID
         glog("[\(id)] load() called — DeviceAuth:\(device.DeviceAuth ?? "nil")  LocalIP:'\(device.LocalIP)'  hours:\(hours)")
 
@@ -141,9 +153,65 @@ final class GuideStore {
         }
     }
 
+    /// Fetch XMLTV guide for one device. No-op if already loading.
+    /// Returns true if channels were successfully loaded, false on any error.
+    @discardableResult
+    private func loadXMLTV(for device: HDHRDevice) async -> Bool {
+        let id = device.DeviceID
+        glog("[\(id)] loadXMLTV() called — DeviceAuth:\(device.DeviceAuth ?? "nil")")
+
+        guard !loadingDevices.contains(id) else {
+            glog("[\(id)] already loading — skipped")
+            return false
+        }
+        guard let url = Self.xmltvURL(for: device) else {
+            glog("[\(id)] ERROR: could not build XMLTV URL — DeviceAuth missing", level: .error)
+            return false
+        }
+
+        loadingDevices.insert(id)
+        defer { loadingDevices.remove(id) }
+
+        glog("[\(id)] GET \(url.absoluteString)")
+        let t0 = Date()
+        do {
+            let (data, response) = try await session.data(from: url)
+            let ms = Int(Date().timeIntervalSince(t0) * 1000)
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            let levelHttp: LogLevel = status == 200 ? .info : .warning
+            glog("[\(id)] HTTP \(status)  \(data.count) bytes  \(ms)ms", level: levelHttp)
+
+            guard status == 200 else {
+                glog("[\(id)] ERROR: non-200 status, aborting parse", level: .error)
+                return false
+            }
+            guard !data.isEmpty else {
+                glog("[\(id)] ERROR: empty response body", level: .error)
+                return false
+            }
+
+            let channels = XmltvParser().parse(data)
+            let entryCount = channels.reduce(0) { $0 + ($1.Guide?.count ?? 0) }
+            glog("[\(id)] XMLTV parsed \(channels.count) channels, \(entryCount) total guide entries")
+
+            if entryCount == 0 {
+                glog("[\(id)] WARNING: channels loaded but ALL have 0 guide entries", level: .warning)
+            }
+
+            buildIndex(deviceId: id, channels: channels)
+            loadTimestamps[id] = Date()
+            glog("[\(id)] index built and timestamp set — guide ready")
+            return true
+
+        } catch {
+            glog("[\(id)] NETWORK ERROR: \(error)", level: .error)
+            return false
+        }
+    }
+
     /// Fetch guide for all devices in parallel. Returns per-device success map.
     @discardableResult
-    func loadAll(devices: [HDHRDevice], hours: Int = 12) async -> [String: Bool] {
+    func loadAll(devices: [HDHRDevice], hours: Int = 12, useXML: Bool = false) async -> [String: Bool] {
         guard !devices.isEmpty else {
             glog("loadAll called with 0 devices — nothing to do")
             return [:]
@@ -152,7 +220,7 @@ final class GuideStore {
         var results: [String: Bool] = [:]
         await withTaskGroup(of: (String, Bool).self) { group in
             for device in devices {
-                group.addTask { (device.DeviceID, await self.load(for: device, hours: hours)) }
+                group.addTask { (device.DeviceID, await self.load(for: device, hours: hours, useXML: useXML)) }
             }
             for await (id, ok) in group { results[id] = ok }
         }

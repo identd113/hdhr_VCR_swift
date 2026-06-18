@@ -503,7 +503,7 @@ final class AppState: ObservableObject {
         glog("[DeviceProbe] \(newDevices.count) new tuner(s): \(newDevices.map { $0.DeviceID }.joined(separator: ", "))")
         devices.append(contentsOf: newDevices)
         await fetchAllLineups(for: newDevices)
-        let results = await guideStore.loadAll(devices: newDevices, hours: config.GuideHours)
+        let results = await guideStore.loadAll(devices: newDevices, hours: config.GuideHours, useXML: config.Guide_use_xml)
         for (deviceId, ok) in results {
             if ok { guideApiBackoff.removeValue(forKey: deviceId) }
             else  { guideApiBackoff[deviceId, default: APIBackoff()].recordFailure() }
@@ -580,7 +580,7 @@ final class AppState: ObservableObject {
         guard !devices.isEmpty else { return }
         statusMessage = "Loading guide…"
         guideStore.verbose = config.Verbose_curl
-        let results = await guideStore.loadAll(devices: devices, hours: config.GuideHours)
+        let results = await guideStore.loadAll(devices: devices, hours: config.GuideHours, useXML: config.Guide_use_xml)
         guideByDevice = guideStore.channelsByDevice
         // didSet skips rebuildMenuEntries() when the menu is open (common at startup).
         // Call it directly here so channelImageURLs is always populated after guide load.
@@ -609,7 +609,7 @@ final class AppState: ObservableObject {
         guideStore.invalidateAll()
         await fetchAllLineups(for: devices)
         guideStore.verbose = config.Verbose_curl
-        let results = await guideStore.loadAll(devices: devices, hours: config.GuideHours)
+        let results = await guideStore.loadAll(devices: devices, hours: config.GuideHours, useXML: config.Guide_use_xml)
         guideByDevice = guideStore.channelsByDevice
         // Update per-device backoff; notify once per failure streak
         for (deviceId, ok) in results {
@@ -640,7 +640,7 @@ final class AppState: ObservableObject {
               let device = devices.first(where: { $0.DeviceID == deviceId }) else { return }
         Task {
             guideStore.verbose = config.Verbose_curl
-            let ok = await guideStore.load(for: device, hours: config.GuideHours)
+            let ok = await guideStore.load(for: device, hours: config.GuideHours, useXML: config.Guide_use_xml)
             // Only update guideByDevice if channels actually loaded — a 403/network failure
             // leaves channels empty. Assigning guideByDevice unconditionally fires didSet →
             // rebuildMenuEntries → SwiftUI re-eval → ensureGuideLoaded again → 403 → loop.
@@ -1404,7 +1404,7 @@ final class AppState: ObservableObject {
                 // If guide is stale or absent, reload before searching
                 if !guideStore.isFresh(deviceId: device.DeviceID) {
                     guideStore.verbose = config.Verbose_curl
-                    await guideStore.load(for: device, hours: config.GuideHours)
+                    await guideStore.load(for: device, hours: config.GuideHours, useXML: config.Guide_use_xml)
                     guideByDevice = guideStore.channelsByDevice
                 }
                 // Check for a currently-airing episode first (e.g. marathon, back-to-back airings).

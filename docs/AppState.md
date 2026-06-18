@@ -54,6 +54,7 @@ Falls back to **SiliconDust cloud API** (`http://discover.hdhomerun.com/discover
 ### EXTEND device (HDTC-2US)
 - Has no local `/guide.json` — uses cloud guide API instead.
 - `GuideStore.guideURL(for:hours:)` routes to `https://api.hdhomerun.com/api/guide.php?DeviceAuth=...&Duration=N` (hours) when `DeviceAuth != nil`; otherwise `http://{LocalIP}/guide.json?Duration=N`.
+- When `Guide_use_xml = true`, `GuideStore.load(for:useXML:)` routes to `GuideStore.xmltvURL(for:)` → `https://api.hdhomerun.com/api/xmltv?DeviceAuth=...` instead. Local-only devices (no `DeviceAuth`) always use JSON even when the flag is on.
 - mDNS response omits `LocalIP`; extracted from `BaseURL` host in `HDHRDevice.init(from:)`.
 - Local `/discover.json` may omit `DeviceAuth` on some firmware; startup retry + mDNS/cloud discovery recovers.
 

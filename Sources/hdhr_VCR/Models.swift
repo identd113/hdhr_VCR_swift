@@ -204,6 +204,7 @@ struct AppConfig: Equatable {
 
     // Guide
     var GuideHours: Int          = 24       // hours ahead to fetch
+    var Guide_use_xml: Bool      = false    // use XMLTV endpoint instead of JSON; triggers guide refresh on toggle
 
     // Recording
     var Default_transcode: String   = "none"  // none | heavy | mobile | internet720
@@ -262,6 +263,7 @@ extension AppConfig: Codable {
         Notify_recording      = (try? c.decode(Double.self,  forKey: .Notify_recording))      ?? 15.5
         Notify_upnext         = (try? c.decode(Double.self,  forKey: .Notify_upnext))         ?? 35.0
         GuideHours            = (try? c.decode(Int.self,     forKey: .GuideHours))            ?? 24
+        Guide_use_xml         = (try? c.decode(Bool.self,   forKey: .Guide_use_xml))         ?? false
         Default_transcode     = (try? c.decode(String.self,  forKey: .Default_transcode))     ?? "none"
         Fail_count_setting    = (try? c.decode(Int.self,     forKey: .Fail_count_setting))    ?? 3
         Min_disk_free_gb      = (try? c.decode(Double.self,  forKey: .Min_disk_free_gb))      ?? 10.0

@@ -178,10 +178,12 @@ struct SettingsView: View {
         if draft.Hdhr_setup_folder   != old.Hdhr_setup_folder   { glog("[Settings] SaveFolder: '\(old.Hdhr_setup_folder)' → '\(draft.Hdhr_setup_folder)'") }
         if draft.GuideHours          != old.GuideHours          { glog("[Settings] GuideHours: \(old.GuideHours) → \(draft.GuideHours)") }
         if draft.Default_transcode   != old.Default_transcode   { glog("[Settings] DefaultTranscode: '\(old.Default_transcode)' → '\(draft.Default_transcode)'") }
+        if draft.Guide_use_xml       != old.Guide_use_xml       { glog("[Settings] GuideUseXml: \(old.Guide_use_xml) → \(draft.Guide_use_xml)") }
         let intervalChanged   = draft.Idle_timer_interval != old.Idle_timer_interval
         let interfaceChanged  = draft.Network_interface   != old.Network_interface
         let webServerChanged  = draft.Web_server_enabled  != old.Web_server_enabled
                              || draft.Web_server_port     != old.Web_server_port
+        let formatChanged     = draft.Guide_use_xml       != old.Guide_use_xml
         state.config = draft
         state.saveConfig()
         if intervalChanged { state.startTimer() }
@@ -210,6 +212,11 @@ struct SettingsView: View {
             }
         }
         if webServerChanged { state.setupWebServer() }
+        if formatChanged {
+            state.guideStore.invalidateAll()
+            state.guideByDevice = [:]
+            Task { @MainActor in await state.refreshGuide() }
+        }
     }
 
     @ViewBuilder
@@ -311,7 +318,7 @@ struct SettingsView: View {
 
     private var guideView: some View {
         Form {
-            Section("Guide") {
+            Section("Fetch") {
                 Stepper(
                     "Show next \(draft.GuideHours) hours",
                     value: $draft.GuideHours,
@@ -328,6 +335,11 @@ struct SettingsView: View {
                     state.refreshAll()
                 }
                 .buttonStyle(.borderedProminent)
+            }
+
+            Section("Format") {
+                Toggle("Use XMLTV guide format", isOn: $draft.Guide_use_xml)
+                    .help("Fetch guide data as XMLTV (XML) instead of the default JSON format. XMLTV includes richer category tags and explicit paid-programming detection. The server determines the window (~2 days); the GuideHours setting is ignored in XMLTV mode. Devices without DeviceAuth fall back to JSON.")
             }
         }
         .formStyle(.grouped)
@@ -446,9 +458,6 @@ struct SettingsView: View {
                 }
                 Text("Binds UDP discovery and curl recordings to a specific interface. VPN tunnels are listed (utun*, tun*, cscotun*, gpd*, etc.) — use one if your HDHomeRun is on a remote network reachable via VPN.")
                     .font(.caption).foregroundStyle(.secondary)
-            }
-
-            Section("Performance") {
                 Stepper(
                     "Idle check: every \(draft.Idle_timer_interval) sec",
                     value: $draft.Idle_timer_interval,
@@ -488,9 +497,6 @@ struct SettingsView: View {
                         }
                     }
                 }
-            }
-
-            Section("Config File") {
                 Text(state.configManager.configPath)
                     .font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
                 Button("Show config in Finder") {
