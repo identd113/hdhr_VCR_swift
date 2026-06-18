@@ -203,6 +203,25 @@ https://api.hdhomerun.com/api/episodes?DeviceAuth=<auth>&SeriesID=<id>
 
 **Usage guidance if ever adopted for series scheduling:** far-window only. Keep the guide scan authoritative for the next ~24h (reliable near edge + has `Filter` for Bonus Time); use episodes to pre-schedule beyond the guide horizon, then re-resolve against the real guide entry once the airing enters the ~29h window to pick up genre/Bonus Time. `ProgramID` would let Series shows skip repeat airings, which `SeriesID`+title matching cannot do. Being undocumented, guard with a fallback to the current guide-scan behavior if the endpoint 400s or changes shape.
 
+### SeriesID format
+
+Every `GuideEntry` carries a `SeriesID` string that uniquely identifies the series. Format:
+
+```
+C<numeric-id>EN<4-char-suffix>
+```
+
+| Segment | Example | Meaning |
+|---|---|---|
+| `C` | `C` | Content prefix — all series entries use this |
+| numeric ID | `30042336` | Gracenote / Tribune Media Services series identifier. Prepend `SH0` for the Gracenote tmsId format: `30042336` → `SH030042336` |
+| `EN` | `EN` | Language code (English) |
+| 4-char suffix | `VAEE` | Variant/version code in SiliconDust's system (not a hash of anything external; appears to be a base-36-style sequence) |
+
+The numeric ID length varies (6–8 digits in practice). The full `SeriesID` string doubles as the **image filename** on SiliconDust's CDN — `https://img.hdhomerun.com/titles/<SeriesID>.jpg` — so the same value is the series key, the poster key, and the episodes-endpoint parameter with no transformation needed.
+
+**Cross-referencing external databases:** the numeric portion maps to a Gracenote series ID, but translating to TVDB/TMDB IDs requires Gracenote API access. Within hdhr_VCR and the HDHomeRun API ecosystem the ID is self-contained — guide, episodes endpoint, and image CDN all use it natively.
+
 ---
 
 ## Known Open Source Implementations (for reference)
