@@ -584,14 +584,18 @@ final class WebServer {
         func showRow(_ s: Show, recording: Bool = false, prefix: String = "", chDetail: String = "") -> String {
             let t = showTypeStr(s)
             let ad = s.show_air_date.joined(separator: ",")
-            let da = "data-dev=\"\(he(s.hdhr_record))\" data-id=\"\(he(s.show_id))\" data-title=\"\(he(s.show_title))\" data-ch=\"\(he(s.show_channel))\" data-type=\"\(t)\" data-paused=\"\(s.show_paused ? 1 : 0)\" data-recording=\"\(recording ? 1 : 0)\" data-length=\"\(s.show_length)\" data-bonus=\"\(s.show_bonus_time ? 1 : 0)\" data-dir=\"\(he(s.show_dir))\" data-transcode=\"\(he(s.show_transcode))\" data-seriesid=\"\(he(s.show_seriesid))\" data-airdays=\"\(he(ad))\" data-failcount=\"\(s.show_fail_count)\" data-failreason=\"\(he(s.show_fail_reason))\""
+            let nextEpoch = s.show_next.map { Int($0.timeIntervalSince1970) } ?? 0
+            let da = "data-dev=\"\(he(s.hdhr_record))\" data-id=\"\(he(s.show_id))\" data-title=\"\(he(s.show_title))\" data-ch=\"\(he(s.show_channel))\" data-type=\"\(t)\" data-paused=\"\(s.show_paused ? 1 : 0)\" data-recording=\"\(recording ? 1 : 0)\" data-next=\"\(nextEpoch)\" data-length=\"\(s.show_length)\" data-bonus=\"\(s.show_bonus_time ? 1 : 0)\" data-dir=\"\(he(s.show_dir))\" data-transcode=\"\(he(s.show_transcode))\" data-seriesid=\"\(he(s.show_seriesid))\" data-airdays=\"\(he(ad))\" data-failcount=\"\(s.show_fail_count)\" data-failreason=\"\(he(s.show_fail_reason))\""
             let endDetail = recording ? s.show_end.map { " · Ends \(state.shortTime($0))" } ?? "" : ""
             let chLine = chDetail.isEmpty
                 ? "Ch \(he(s.show_channel))\(endDetail)"
                 : "Ch \(he(s.show_channel)) · \(chDetail)"
             return "<div class=\"sp-row\" \(da) onclick=\"openEditShow(this)\">"
+                 + "<div class=\"sp-info\">"
                  + "<div class=\"sp-t\">\(prefix)\(he(s.show_title))</div>"
                  + "<div class=\"sp-ch\">\(chLine)</div>"
+                 + "</div>"
+                 + "<button class=\"sp-jump\" onclick=\"event.stopPropagation();jumpToGuide(this.closest('.sp-row'))\" title=\"Jump to guide\">→</button>"
                  + "</div>"
         }
 
@@ -1255,11 +1259,14 @@ final class WebServer {
         /* ── Schedule popover ── */
         .sp-sec{padding:10px 14px}
         .sp-hdr{font-size:.68rem;font-weight:700;color:var(--t4);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px}
-        .sp-row{padding:5px 0;border-bottom:1px solid var(--b0);cursor:pointer}
+        .sp-row{display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid var(--b0);cursor:pointer}
         .sp-row:last-child{border-bottom:none}
         .sp-row:hover .sp-t{color:var(--ac)}
+        .sp-info{flex:1;min-width:0}
         .sp-t{font-size:.82rem;color:var(--t0);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color .12s}
         .sp-ch{font-size:.7rem;color:var(--t4);margin-top:1px}
+        .sp-jump{flex-shrink:0;background:none;border:1px solid var(--b3);border-radius:4px;color:var(--t4);font-size:.72rem;padding:2px 6px;cursor:pointer;line-height:1.4;transition:border-color .12s,color .12s}
+        .sp-jump:hover{border-color:var(--ac);color:var(--ac)}
         .sp-rec{color:#ff8080}
         html.lm .sp-rec{color:#cc2020}
         .sp-div{height:1px;background:var(--b1);margin:2px 0}
@@ -1832,6 +1839,26 @@ final class WebServer {
               if(+p.dataset.start<=now&&+p.dataset.end>now){p.scrollIntoView({behavior:'smooth',block:'center',inline:'center'});showInfo(p);return;}
             }
           }
+        }
+        // Jump from a dropdown show row to its guide block. Closes the dropdown, switches
+        // the guide to the show's device, then scrolls to and selects the program block.
+        // Tries exact data-start epoch match first; falls back to currently-airing search.
+        function jumpToGuide(rowEl){
+          var ch=rowEl.dataset.ch,dev=rowEl.dataset.dev,epoch=rowEl.dataset.next;
+          document.querySelectorAll('.tdrop').forEach(function(x){x.style.display='none';});
+          setDev(dev);
+          var p=null;
+          if(epoch&&+epoch>0)p=document.querySelector('.g-prog[data-num="'+ch+'"][data-device="'+dev+'"][data-start="'+epoch+'"]');
+          if(!p){
+            var now=Math.floor(Date.now()/1000);
+            document.querySelectorAll('.g-row[data-ch="'+ch+'"]').forEach(function(row){
+              if(p)return;
+              row.querySelectorAll('.g-prog').forEach(function(prog){
+                if(!p&&prog.dataset.device===dev&&+prog.dataset.start<=now&&+prog.dataset.end>now)p=prog;
+              });
+            });
+          }
+          if(p){p.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});showInfo(p);}
         }
         // Per-tuner ▾ dropdown: toggle this tuner's show list; close any other open one.
         function toggleTunerDrop(dev){
