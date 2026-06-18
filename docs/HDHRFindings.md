@@ -222,6 +222,18 @@ The numeric ID length varies (6–8 digits in practice). The full `SeriesID` str
 
 **Cross-referencing external databases:** the numeric portion maps to a Gracenote series ID, but translating to TVDB/TMDB IDs requires Gracenote API access. Within hdhr_VCR and the HDHomeRun API ecosystem the ID is self-contained — guide, episodes endpoint, and image CDN all use it natively.
 
+### Infomercial / paid programming detection
+
+**`Filter: []` is not usable** — infomercials carry an empty Filter array in `guide.php` JSON, identical to many legitimate no-genre entries (PBS documentaries, etc.). The XMLTV API uses a different field; the JSON API does not.
+
+**Detection strategy (two layers):**
+
+1. **SeriesID blocklist** — `C459763EN3L6D` covers all generic "Paid Programming" slots (title + SeriesID are both `"Paid Programming"`). `C11809220ENAPZK` covers a second recurring generic slot. Both are hardcoded in `WebServer.swift` (`infSIDs`) and `AppState.swift` (`knownInfSIDs`).
+
+2. **Title == "Paid Programming" fallback** — catches any generic paid-programming slot that appears with a new or unknown SeriesID. Added alongside the blocklist check in both detection sites.
+
+**Product-specific infomercials** (named shows that are actually paid content — e.g. "Under Eye Bags? SOLUTION!") have unique SeriesIDs and unique titles. They are invisible to both layers above and can only be caught by expanding the blocklist. The `[NowAiring]` log (idle loop, no-genre entries) is the right feed: check it after an overnight run to find new SeriesIDs. Known-infomercial entries are suppressed from that log to reduce noise.
+
 ---
 
 ## Known Open Source Implementations (for reference)

@@ -931,6 +931,8 @@ final class WebServer {
                              || (pendingRecChannelsByDevice[device.DeviceID]?.contains(ch.GuideNumber) ?? false)
 
                 var blockParts: [String] = ["<div class=\"g-now-bar\" style=\"left:\(nowPct)%\"></div>"]
+                // Infomercial detection: known SeriesIDs + title fallback for new generic slots.
+                // Filter[] is empty for infomercials in the JSON API — cannot be used.
                 let infSIDs: Set<String> = ["C11809220ENAPZK", "C459763EN3L6D"]
                 // Fill gaps so the striped .g-tl background never shows through.
                 // cursor tracks the right edge of the last processed show, starting at winStart.
@@ -992,7 +994,7 @@ final class WebServer {
                         let ad = s.show_air_date.joined(separator: ",")
                         return " data-show-id=\"\(he(s.show_id))\" data-show-type=\"\(showTypeStr(s))\" data-show-paused=\"\(s.show_paused ? 1 : 0)\" data-show-length=\"\(s.show_length)\" data-show-bonus=\"\(s.show_bonus_time ? 1 : 0)\" data-show-transcode=\"\(he(s.show_transcode))\" data-show-seriesid=\"\(he(s.show_seriesid))\" data-show-airdays=\"\(he(ad))\" data-show-failcount=\"\(s.show_fail_count)\" data-show-failreason=\"\(he(s.show_fail_reason))\" data-show-recording=\"\(s.show_recording ? 1 : 0)\""
                     }() : ""
-                    let infDA = infSIDs.contains(e.SeriesID ?? "") ? " data-inf=\"1\"" : ""
+                    let infDA = (infSIDs.contains(e.SeriesID ?? "") || e.Title == "Paid Programming") ? " data-inf=\"1\"" : ""
                     blockParts.append("<div class=\"\(cls)\" style=\"left:\(pct(cs))%;width:\(pct(ce - cs))%\" title=\"\(tip)\" \(da)\(showDA)\(infDA) onclick=\"showInfo(this)\"><div class=\"g-pi\"><span class=\"g-ti\">\(he(e.Title))</span>\(subH)</div>\(flagHTML)</div>")
                 }
 

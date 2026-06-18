@@ -1141,7 +1141,7 @@ final class AppState: ObservableObject {
                     if loggedNowAiring.count > 2000 { loggedNowAiring.removeAll(keepingCapacity: true) }
                     loggedNowAiring.insert(key)
                     let sid = e.SeriesID ?? "none"
-                    if !knownInfSIDs.contains(sid) {
+                    if !knownInfSIDs.contains(sid) && e.Title != "Paid Programming" {
                         glog("[NowAiring] \(ch.GuideNumber) \(ch.GuideName) — \(e.Title) SeriesID=\(sid)")
                     }
                 }
