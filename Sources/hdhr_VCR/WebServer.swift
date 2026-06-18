@@ -855,8 +855,9 @@ final class WebServer {
             : ""
 
         // One tuner box: name (a guide filter when active, plain dimmed label when not) +
-        // device web-UI link + live count badge (or "offline") + a ▾ that toggles a dropdown
-        // listing that tuner's own shows. Inactive tuners are dimmed and not selectable.
+        // a ▾ that opens a dropdown. The dropdown header holds the tuner count badge and
+        // device web-UI link; below it is the refreshable show list. Inactive tuners are
+        // dimmed and their name is not selectable, but the ▾ still lists their shows.
         func tunerBox(_ devId: String, active: Bool, uiURL: String?) -> String {
             let label = he("HDHR-\(devId.uppercased())")
             var s = "<div class=\"tuner-box\(active ? "" : " tuner-off")\">"
@@ -866,12 +867,18 @@ final class WebServer {
             } else {
                 s += "<span class=\"d-btn d-btn-off\" title=\"Not detected — recordings assigned here will fail until it returns\">\(label)</span>"
             }
-            if let uiURL { s += "<a href=\"\(he(uiURL))\" target=\"_blank\" class=\"d-ui\" title=\"Open \(label) web UI\">↗</a>" }
-            if active, let dt = devTuners[devId] { s += tunerInfoBtn(devId, dt) }
-            else { s += "<span class=\"t-info t-info-off\">offline</span>" }
             s += "<button class=\"tdrop-btn\" data-dev=\"\(he(devId))\" onclick=\"toggleTunerDrop(this.dataset.dev)\" aria-label=\"Shows on this tuner\" title=\"Shows on this tuner\">▾</button>"
             s += "</div>"
-            s += "<div class=\"tdrop\" id=\"tdrop-\(he(devId))\" style=\"display:none\">\(buildTunerShowsHTML(state: state, deviceId: devId))</div>"
+            // Dropdown: static header (count badge + device link) + refreshable body (shows).
+            // refreshGuide() swaps the full .tdrop innerHTML; SSE events target .tdrop-body.
+            s += "<div class=\"tdrop\" id=\"tdrop-\(he(devId))\" style=\"display:none\">"
+            s += "<div class=\"tdrop-hdr\">"
+            if active, let dt = devTuners[devId] { s += tunerInfoBtn(devId, dt) }
+            else { s += "<span id=\"tun-\(he(devId))\" class=\"t-info t-info-off\">offline</span>" }
+            if let uiURL { s += "<a href=\"\(he(uiURL))\" target=\"_blank\" class=\"d-ui tdrop-ui\" title=\"Open \(label) web UI\">↗ Device web UI</a>" }
+            s += "</div>"
+            s += "<div class=\"tdrop-body\" id=\"tdrop-body-\(he(devId))\">\(buildTunerShowsHTML(state: state, deviceId: devId))</div>"
+            s += "</div>"
             s += "</div>"
             return s
         }
@@ -1059,6 +1066,8 @@ final class WebServer {
         .tdrop-btn{background:var(--s4);border:1px solid var(--b4);color:var(--t3);border-radius:5px;padding:5px 8px;font-size:.7rem;line-height:1;cursor:pointer;transition:border-color .15s,color .15s,background .15s}
         .tdrop-btn:hover{border-color:var(--b5);color:var(--t0);background:var(--s3)}
         .tdrop{position:absolute;top:100%;left:0;margin-top:4px;min-width:240px;max-width:340px;max-height:70vh;overflow-y:auto;background:var(--s3);border:1px solid var(--b5);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.6);padding:6px 12px;z-index:150}
+        .tdrop-hdr{display:flex;align-items:center;gap:8px;padding-bottom:8px;margin-bottom:4px;border-bottom:1px solid var(--b3)}
+        .tdrop-ui{font-size:.78rem}
         .t-info-off{cursor:default;color:var(--t5)}
         .d-btn{background:var(--s4);border:1px solid var(--b4);color:var(--t3);border-radius:5px;padding:5px 12px;font-size:.78rem;cursor:pointer;transition:border-color .15s,color .15s,background .15s}
         .d-btn:hover{border-color:var(--b5);color:var(--t0);background:var(--s3)}
@@ -2080,8 +2089,8 @@ final class WebServer {
               } else if(d.sumPh||d.tdrop){
                 // Fragment push — apply inline without a full page fetch
                 if(d.sumPh){var ph=document.getElementById('sum-ph');if(ph)ph.innerHTML=d.sumPh;}
-                // Update just the affected tuner's ▾ dropdown body.
-                if(d.tdrop&&d.tdropDev){var td=document.getElementById('tdrop-'+d.tdropDev);if(td)td.innerHTML=d.tdrop;}
+                // Update just the affected tuner's shows (tdrop-body, not the full tdrop with its header).
+                if(d.tdrop&&d.tdropDev){var td=document.getElementById('tdrop-body-'+d.tdropDev);if(td)td.innerHTML=d.tdrop;}
                 // For recording events: toggle recording state on the currently-airing guide entry
                 // and push fresh tuner counts so the badge and popover stay accurate.
                 if((d.type==='recording_started'||d.type==='recording_stopped')&&d.channel&&d.device){
