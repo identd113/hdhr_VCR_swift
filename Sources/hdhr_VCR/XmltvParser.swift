@@ -137,21 +137,31 @@ final class XmltvParser: NSObject, XMLParserDelegate {
 
     // MARK: - Static helpers
 
-    // "20260618060000 +0000" — space before timezone offset is part of the format
+    // Allocated once — DateFormatter is expensive; ~10k calls per XMLTV parse (start+stop per programme).
+    // dateTimeParser: timezone comes from the string (+0000), so no explicit timeZone needed.
+    private static let dateTimeParser: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyyMMddHHmmss Z"
+        return f
+    }()
+
+    private static let dateParser: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(secondsFromGMT: 0)
+        f.dateFormat = "yyyyMMdd"
+        return f
+    }()
+
+    // "20260618060000 +0000" — timezone offset is embedded in the string
     static func parseDateTime(_ s: String) -> Int? {
-        let fmt = DateFormatter()
-        fmt.locale = Locale(identifier: "en_US_POSIX")
-        fmt.dateFormat = "yyyyMMddHHmmss Z"
-        return fmt.date(from: s).map { Int($0.timeIntervalSince1970) }
+        dateTimeParser.date(from: s).map { Int($0.timeIntervalSince1970) }
     }
 
     // "19940202" (YYYYMMDD) → Unix epoch at midnight UTC
     static func parseDate(_ s: String) -> Int? {
-        let fmt = DateFormatter()
-        fmt.locale = Locale(identifier: "en_US_POSIX")
-        fmt.timeZone = TimeZone(secondsFromGMT: 0)
-        fmt.dateFormat = "yyyyMMdd"
-        return fmt.date(from: s).map { Int($0.timeIntervalSince1970) }
+        dateParser.date(from: s).map { Int($0.timeIntervalSince1970) }
     }
 
     // Strips the last display-name (affiliate/network), then finds the one that begins
