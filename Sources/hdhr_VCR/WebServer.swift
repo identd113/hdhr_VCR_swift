@@ -670,8 +670,8 @@ final class WebServer {
         let halfHour = 30 * 60
         let winSec   = isDesktop ? state.config.GuideHours * 3600
                                  : state.config.GuideHours * 3600 / 2
-        // One half-hour slot lookback — GuideStore fetches from now-3600 so this is always covered.
-        let winStart = (nowTs / halfHour) * halfHour - halfHour
+        // One-hour lookback — GuideStore fetches from now-3600 so this is always covered.
+        let winStart = (nowTs / halfHour) * halfHour - 3600
         let winEnd   = winStart + winSec
         // Integer-only percentage formatter — avoids ~1500 String(format:) calls per full guide render.
         // Computes offset/winSec*100 to 4 decimal places using only integer arithmetic.
@@ -959,17 +959,31 @@ final class WebServer {
                     if isEntryRec      { cls += " g-prog-rec"   }
                     else if isNow      { cls += " g-prog-now"   }
                     else if isMgd      { cls += " g-prog-sched" }
-                    // Genre applied to all blocks; .g-prog-now.gg-* compounds handle the lighter airing variant
-                    switch (e.firstGenre ?? "").lowercased() {
-                    case "drama":    cls += " gg-drama"
-                    case "comedy":   cls += " gg-comedy"
-                    case "news":     cls += " gg-news"
-                    case "sports":   cls += " gg-sports"
-                    case "reality":  cls += " gg-reality"
-                    case "movie":    cls += " gg-movie"
-                    case "talk":     cls += " gg-talk"
-                    case "children", "kids": cls += " gg-children"
-                    default: break
+                    // Extract up to 2 genre tags; dual-genre gets a CSS gradient via inline style
+                    let ggSkip: Set<String>  = ["series","miniseries","mini-series","mini series","special"]
+                    let ggAlias: [String: String] = [
+                        "sitcom":"comedy","movies":"movie","kids":"children","sport":"sports",
+                        "documentary":"doc","game show":"gameshow","animation":"children","animated":"children"
+                    ]
+                    let ggKnown: Set<String> = [
+                        "drama","comedy","news","sports","reality","movie","talk","children",
+                        "crime","romance","thriller","action","mystery","doc","science","nature",
+                        "history","music","food","travel","gameshow","home","health","faith"
+                    ]
+                    var gg: [String] = []
+                    for f in (e.Filter ?? []) {
+                        let lo = f.lowercased()
+                        if ggSkip.contains(lo) { continue }
+                        let g = ggAlias[lo] ?? lo
+                        if ggKnown.contains(g) && !gg.contains(g) { gg.append(g); if gg.count == 2 { break } }
+                    }
+                    var extraStyle = ""
+                    if gg.count == 2 && !isEntryRec {
+                        let sfx = (isNow || isMgd) ? "-now" : ""
+                        extraStyle = ";background:linear-gradient(to right,var(--gg-\(gg[0])\(sfx)),var(--gg-\(gg[1])\(sfx)))"
+                        cls += " gg-\(gg[0])"
+                    } else if let g = gg.first {
+                        cls += " gg-\(g)"
                     }
 
                     let sub   = e.EpisodeTitle.flatMap { $0.isEmpty ? nil : $0 } ?? ""
@@ -995,7 +1009,7 @@ final class WebServer {
                         return " data-show-id=\"\(he(s.show_id))\" data-show-type=\"\(showTypeStr(s))\" data-show-paused=\"\(s.show_paused ? 1 : 0)\" data-show-length=\"\(s.show_length)\" data-show-bonus=\"\(s.show_bonus_time ? 1 : 0)\" data-show-transcode=\"\(he(s.show_transcode))\" data-show-seriesid=\"\(he(s.show_seriesid))\" data-show-airdays=\"\(he(ad))\" data-show-failcount=\"\(s.show_fail_count)\" data-show-failreason=\"\(he(s.show_fail_reason))\" data-show-recording=\"\(s.show_recording ? 1 : 0)\""
                     }() : ""
                     let infDA = (infSIDs.contains(e.SeriesID ?? "") || e.Title == "Paid Programming") ? " data-inf=\"1\"" : ""
-                    blockParts.append("<div class=\"\(cls)\" style=\"left:\(pct(cs))%;width:\(pct(ce - cs))%\" title=\"\(tip)\" \(da)\(showDA)\(infDA) onclick=\"showInfo(this)\"><div class=\"g-pi\"><span class=\"g-ti\">\(he(e.Title))</span>\(subH)</div>\(flagHTML)</div>")
+                    blockParts.append("<div class=\"\(cls)\" style=\"left:\(pct(cs))%;width:\(pct(ce - cs))%\(extraStyle)\" title=\"\(tip)\" \(da)\(showDA)\(infDA) onclick=\"showInfo(this)\"><div class=\"g-pi\"><span class=\"g-ti\">\(he(e.Title))</span>\(subH)</div>\(flagHTML)</div>")
                 }
 
                 let gnameAttr = ChannelSignalStore.key(for: ch.GuideName)
@@ -1191,6 +1205,8 @@ final class WebServer {
         .g-prog{position:absolute;top:4px;bottom:4px;border-radius:5px;overflow:hidden;background:var(--pg);border:1px solid var(--pgb);min-width:3px;cursor:pointer}
         .g-prog:hover{filter:brightness(1.1);border-color:var(--t5);z-index:3}
         .g-prog.g-sel{border-color:var(--t0)!important;box-shadow:0 0 0 1px rgba(128,128,128,.5);z-index:4}
+        :root{--gg-drama:hsl(216,48%,36%);--gg-drama-now:hsl(216,52%,44%);--gg-comedy:hsl(47,48%,36%);--gg-comedy-now:hsl(47,52%,44%);--gg-news:hsl(342,43%,36%);--gg-news-now:hsl(342,47%,44%);--gg-sports:hsl(119,48%,33%);--gg-sports-now:hsl(119,52%,41%);--gg-reality:hsl(25,48%,36%);--gg-reality-now:hsl(25,52%,44%);--gg-movie:hsl(270,58%,38%);--gg-movie-now:hsl(270,62%,46%);--gg-talk:hsl(173,43%,34%);--gg-talk-now:hsl(173,47%,42%);--gg-children:hsl(315,43%,35%);--gg-children-now:hsl(315,47%,43%);--gg-crime:hsl(0,55%,33%);--gg-crime-now:hsl(0,60%,41%);--gg-romance:hsl(333,50%,37%);--gg-romance-now:hsl(333,54%,45%);--gg-thriller:hsl(238,48%,38%);--gg-thriller-now:hsl(238,52%,46%);--gg-action:hsl(12,52%,35%);--gg-action-now:hsl(12,56%,43%);--gg-mystery:hsl(255,52%,38%);--gg-mystery-now:hsl(255,56%,46%);--gg-doc:hsl(202,48%,35%);--gg-doc-now:hsl(202,52%,43%);--gg-science:hsl(188,52%,33%);--gg-science-now:hsl(188,56%,41%);--gg-nature:hsl(82,50%,33%);--gg-nature-now:hsl(82,54%,41%);--gg-history:hsl(28,50%,34%);--gg-history-now:hsl(28,54%,42%);--gg-music:hsl(287,52%,37%);--gg-music-now:hsl(287,56%,45%);--gg-food:hsl(52,52%,34%);--gg-food-now:hsl(52,56%,42%);--gg-travel:hsl(182,48%,33%);--gg-travel-now:hsl(182,52%,41%);--gg-gameshow:hsl(58,55%,34%);--gg-gameshow-now:hsl(58,60%,42%);--gg-home:hsl(35,46%,33%);--gg-home-now:hsl(35,50%,41%);--gg-health:hsl(148,50%,32%);--gg-health-now:hsl(148,54%,40%);--gg-faith:hsl(65,48%,32%);--gg-faith-now:hsl(65,52%,40%)}
+        html.lm{--gg-drama:hsl(216,52%,70%);--gg-drama-now:hsl(216,57%,78%);--gg-comedy:hsl(47,58%,68%);--gg-comedy-now:hsl(47,65%,76%);--gg-news:hsl(342,52%,70%);--gg-news-now:hsl(342,57%,78%);--gg-sports:hsl(119,57%,68%);--gg-sports-now:hsl(119,62%,76%);--gg-reality:hsl(25,58%,70%);--gg-reality-now:hsl(25,67%,78%);--gg-movie:hsl(270,62%,72%);--gg-movie-now:hsl(270,68%,80%);--gg-talk:hsl(173,52%,68%);--gg-talk-now:hsl(173,57%,76%);--gg-children:hsl(315,55%,72%);--gg-children-now:hsl(315,62%,78%);--gg-crime:hsl(0,60%,68%);--gg-crime-now:hsl(0,65%,76%);--gg-romance:hsl(333,55%,70%);--gg-romance-now:hsl(333,62%,78%);--gg-thriller:hsl(238,52%,70%);--gg-thriller-now:hsl(238,58%,78%);--gg-action:hsl(12,57%,68%);--gg-action-now:hsl(12,65%,76%);--gg-mystery:hsl(255,57%,70%);--gg-mystery-now:hsl(255,65%,78%);--gg-doc:hsl(202,52%,68%);--gg-doc-now:hsl(202,58%,76%);--gg-science:hsl(188,57%,66%);--gg-science-now:hsl(188,65%,74%);--gg-nature:hsl(82,55%,66%);--gg-nature-now:hsl(82,62%,74%);--gg-history:hsl(28,55%,68%);--gg-history-now:hsl(28,62%,76%);--gg-music:hsl(287,57%,70%);--gg-music-now:hsl(287,65%,78%);--gg-food:hsl(52,58%,68%);--gg-food-now:hsl(52,65%,76%);--gg-travel:hsl(182,52%,66%);--gg-travel-now:hsl(182,58%,74%);--gg-gameshow:hsl(58,62%,68%);--gg-gameshow-now:hsl(58,68%,76%);--gg-home:hsl(35,50%,68%);--gg-home-now:hsl(35,56%,76%);--gg-health:hsl(148,55%,66%);--gg-health-now:hsl(148,62%,74%);--gg-faith:hsl(65,53%,66%);--gg-faith-now:hsl(65,60%,74%)}
         .gg-drama    {background:hsl(216,48%,36%)}
         .gg-comedy   {background:hsl(47,48%,36%)}
         .gg-news     {background:hsl(342,43%,36%)}
@@ -1199,6 +1215,22 @@ final class WebServer {
         .gg-movie    {background:hsl(270,58%,38%)}
         .gg-talk     {background:hsl(173,43%,34%)}
         .gg-children {background:hsl(315,43%,35%)}
+        .gg-crime    {background:hsl(0,55%,33%)}
+        .gg-romance  {background:hsl(333,50%,37%)}
+        .gg-thriller {background:hsl(238,48%,38%)}
+        .gg-action   {background:hsl(12,52%,35%)}
+        .gg-mystery  {background:hsl(255,52%,38%)}
+        .gg-doc      {background:hsl(202,48%,35%)}
+        .gg-science  {background:hsl(188,52%,33%)}
+        .gg-nature   {background:hsl(82,50%,33%)}
+        .gg-history  {background:hsl(28,50%,34%)}
+        .gg-music    {background:hsl(287,52%,37%)}
+        .gg-food     {background:hsl(52,52%,34%)}
+        .gg-travel   {background:hsl(182,48%,33%)}
+        .gg-gameshow {background:hsl(58,55%,34%)}
+        .gg-home     {background:hsl(35,46%,33%)}
+        .gg-health   {background:hsl(148,50%,32%)}
+        .gg-faith    {background:hsl(65,48%,32%)}
         html.lm .gg-drama    {background:hsl(216,52%,70%);border-color:hsl(216,52%,48%)}
         html.lm .gg-comedy   {background:hsl(47,58%,68%);border-color:hsl(47,58%,46%)}
         html.lm .gg-news     {background:hsl(342,52%,70%);border-color:hsl(342,52%,48%)}
@@ -1207,6 +1239,22 @@ final class WebServer {
         html.lm .gg-movie    {background:hsl(270,62%,72%);border-color:hsl(270,62%,50%)}
         html.lm .gg-talk     {background:hsl(173,52%,68%);border-color:hsl(173,52%,46%)}
         html.lm .gg-children {background:hsl(315,55%,72%);border-color:hsl(315,55%,50%)}
+        html.lm .gg-crime    {background:hsl(0,60%,68%);border-color:hsl(0,60%,46%)}
+        html.lm .gg-romance  {background:hsl(333,55%,70%);border-color:hsl(333,55%,48%)}
+        html.lm .gg-thriller {background:hsl(238,52%,70%);border-color:hsl(238,52%,48%)}
+        html.lm .gg-action   {background:hsl(12,57%,68%);border-color:hsl(12,57%,46%)}
+        html.lm .gg-mystery  {background:hsl(255,57%,70%);border-color:hsl(255,57%,48%)}
+        html.lm .gg-doc      {background:hsl(202,52%,68%);border-color:hsl(202,52%,46%)}
+        html.lm .gg-science  {background:hsl(188,57%,66%);border-color:hsl(188,57%,44%)}
+        html.lm .gg-nature   {background:hsl(82,55%,66%);border-color:hsl(82,55%,44%)}
+        html.lm .gg-history  {background:hsl(28,55%,68%);border-color:hsl(28,55%,46%)}
+        html.lm .gg-music    {background:hsl(287,57%,70%);border-color:hsl(287,57%,48%)}
+        html.lm .gg-food     {background:hsl(52,58%,68%);border-color:hsl(52,58%,46%)}
+        html.lm .gg-travel   {background:hsl(182,52%,66%);border-color:hsl(182,52%,44%)}
+        html.lm .gg-gameshow {background:hsl(58,62%,68%);border-color:hsl(58,62%,46%)}
+        html.lm .gg-home     {background:hsl(35,50%,68%);border-color:hsl(35,50%,46%)}
+        html.lm .gg-health   {background:hsl(148,55%,66%);border-color:hsl(148,55%,44%)}
+        html.lm .gg-faith    {background:hsl(65,53%,66%);border-color:hsl(65,53%,44%)}
         .g-prog-now.gg-drama    {background:hsl(216,52%,44%);border-color:hsl(216,57%,62%)}
         .g-prog-now.gg-comedy   {background:hsl(47,52%,44%);border-color:hsl(47,57%,62%)}
         .g-prog-now.gg-news     {background:hsl(342,47%,44%);border-color:hsl(342,52%,62%)}
@@ -1215,6 +1263,22 @@ final class WebServer {
         .g-prog-now.gg-movie    {background:hsl(270,62%,46%);border-color:hsl(270,68%,64%)}
         .g-prog-now.gg-talk     {background:hsl(173,47%,42%);border-color:hsl(173,52%,60%)}
         .g-prog-now.gg-children {background:hsl(315,47%,43%);border-color:hsl(315,52%,61%)}
+        .g-prog-now.gg-crime    {background:hsl(0,60%,41%);border-color:hsl(0,65%,58%)}
+        .g-prog-now.gg-romance  {background:hsl(333,54%,45%);border-color:hsl(333,60%,62%)}
+        .g-prog-now.gg-thriller {background:hsl(238,52%,46%);border-color:hsl(238,58%,63%)}
+        .g-prog-now.gg-action   {background:hsl(12,56%,43%);border-color:hsl(12,62%,60%)}
+        .g-prog-now.gg-mystery  {background:hsl(255,56%,46%);border-color:hsl(255,62%,63%)}
+        .g-prog-now.gg-doc      {background:hsl(202,52%,43%);border-color:hsl(202,57%,60%)}
+        .g-prog-now.gg-science  {background:hsl(188,56%,41%);border-color:hsl(188,62%,58%)}
+        .g-prog-now.gg-nature   {background:hsl(82,54%,41%);border-color:hsl(82,60%,58%)}
+        .g-prog-now.gg-history  {background:hsl(28,54%,42%);border-color:hsl(28,60%,59%)}
+        .g-prog-now.gg-music    {background:hsl(287,56%,45%);border-color:hsl(287,62%,62%)}
+        .g-prog-now.gg-food     {background:hsl(52,56%,42%);border-color:hsl(52,62%,59%)}
+        .g-prog-now.gg-travel   {background:hsl(182,52%,41%);border-color:hsl(182,58%,58%)}
+        .g-prog-now.gg-gameshow {background:hsl(58,60%,42%);border-color:hsl(58,66%,59%)}
+        .g-prog-now.gg-home     {background:hsl(35,50%,41%);border-color:hsl(35,56%,58%)}
+        .g-prog-now.gg-health   {background:hsl(148,54%,40%);border-color:hsl(148,60%,57%)}
+        .g-prog-now.gg-faith    {background:hsl(65,52%,40%);border-color:hsl(65,58%,57%)}
         html.lm .g-prog-now.gg-drama    {background:hsl(216,57%,78%);border-color:hsl(216,52%,48%)}
         html.lm .g-prog-now.gg-comedy   {background:hsl(47,65%,76%);border-color:hsl(47,57%,46%)}
         html.lm .g-prog-now.gg-news     {background:hsl(342,57%,78%);border-color:hsl(342,52%,48%)}
@@ -1223,6 +1287,22 @@ final class WebServer {
         html.lm .g-prog-now.gg-movie    {background:hsl(270,68%,80%);border-color:hsl(270,58%,50%)}
         html.lm .g-prog-now.gg-talk     {background:hsl(173,57%,76%);border-color:hsl(173,52%,46%)}
         html.lm .g-prog-now.gg-children {background:hsl(315,62%,78%);border-color:hsl(315,57%,48%)}
+        html.lm .g-prog-now.gg-crime    {background:hsl(0,65%,76%);border-color:hsl(0,60%,46%)}
+        html.lm .g-prog-now.gg-romance  {background:hsl(333,62%,78%);border-color:hsl(333,55%,48%)}
+        html.lm .g-prog-now.gg-thriller {background:hsl(238,58%,78%);border-color:hsl(238,52%,48%)}
+        html.lm .g-prog-now.gg-action   {background:hsl(12,65%,76%);border-color:hsl(12,57%,46%)}
+        html.lm .g-prog-now.gg-mystery  {background:hsl(255,65%,78%);border-color:hsl(255,57%,48%)}
+        html.lm .g-prog-now.gg-doc      {background:hsl(202,58%,76%);border-color:hsl(202,52%,46%)}
+        html.lm .g-prog-now.gg-science  {background:hsl(188,65%,74%);border-color:hsl(188,57%,44%)}
+        html.lm .g-prog-now.gg-nature   {background:hsl(82,62%,74%);border-color:hsl(82,55%,44%)}
+        html.lm .g-prog-now.gg-history  {background:hsl(28,62%,76%);border-color:hsl(28,55%,46%)}
+        html.lm .g-prog-now.gg-music    {background:hsl(287,65%,78%);border-color:hsl(287,57%,48%)}
+        html.lm .g-prog-now.gg-food     {background:hsl(52,65%,76%);border-color:hsl(52,58%,46%)}
+        html.lm .g-prog-now.gg-travel   {background:hsl(182,58%,74%);border-color:hsl(182,52%,44%)}
+        html.lm .g-prog-now.gg-gameshow {background:hsl(58,68%,76%);border-color:hsl(58,62%,46%)}
+        html.lm .g-prog-now.gg-home     {background:hsl(35,56%,76%);border-color:hsl(35,50%,46%)}
+        html.lm .g-prog-now.gg-health   {background:hsl(148,62%,74%);border-color:hsl(148,55%,44%)}
+        html.lm .g-prog-now.gg-faith    {background:hsl(65,60%,74%);border-color:hsl(65,53%,44%)}
         .g-prog-sched.gg-drama    {background:hsl(216,52%,44%);border-color:hsl(216,57%,62%)}
         .g-prog-sched.gg-comedy   {background:hsl(47,52%,44%);border-color:hsl(47,57%,62%)}
         .g-prog-sched.gg-news     {background:hsl(342,47%,44%);border-color:hsl(342,52%,62%)}
@@ -1231,6 +1311,22 @@ final class WebServer {
         .g-prog-sched.gg-movie    {background:hsl(270,62%,46%);border-color:hsl(270,68%,64%)}
         .g-prog-sched.gg-talk     {background:hsl(173,47%,42%);border-color:hsl(173,52%,60%)}
         .g-prog-sched.gg-children {background:hsl(315,47%,43%);border-color:hsl(315,52%,61%)}
+        .g-prog-sched.gg-crime    {background:hsl(0,60%,41%);border-color:hsl(0,65%,58%)}
+        .g-prog-sched.gg-romance  {background:hsl(333,54%,45%);border-color:hsl(333,60%,62%)}
+        .g-prog-sched.gg-thriller {background:hsl(238,52%,46%);border-color:hsl(238,58%,63%)}
+        .g-prog-sched.gg-action   {background:hsl(12,56%,43%);border-color:hsl(12,62%,60%)}
+        .g-prog-sched.gg-mystery  {background:hsl(255,56%,46%);border-color:hsl(255,62%,63%)}
+        .g-prog-sched.gg-doc      {background:hsl(202,52%,43%);border-color:hsl(202,57%,60%)}
+        .g-prog-sched.gg-science  {background:hsl(188,56%,41%);border-color:hsl(188,62%,58%)}
+        .g-prog-sched.gg-nature   {background:hsl(82,54%,41%);border-color:hsl(82,60%,58%)}
+        .g-prog-sched.gg-history  {background:hsl(28,54%,42%);border-color:hsl(28,60%,59%)}
+        .g-prog-sched.gg-music    {background:hsl(287,56%,45%);border-color:hsl(287,62%,62%)}
+        .g-prog-sched.gg-food     {background:hsl(52,56%,42%);border-color:hsl(52,62%,59%)}
+        .g-prog-sched.gg-travel   {background:hsl(182,52%,41%);border-color:hsl(182,58%,58%)}
+        .g-prog-sched.gg-gameshow {background:hsl(58,60%,42%);border-color:hsl(58,66%,59%)}
+        .g-prog-sched.gg-home     {background:hsl(35,50%,41%);border-color:hsl(35,56%,58%)}
+        .g-prog-sched.gg-health   {background:hsl(148,54%,40%);border-color:hsl(148,60%,57%)}
+        .g-prog-sched.gg-faith    {background:hsl(65,52%,40%);border-color:hsl(65,58%,57%)}
         html.lm .g-prog-sched.gg-drama    {background:hsl(216,57%,78%);border-color:hsl(216,52%,48%)}
         html.lm .g-prog-sched.gg-comedy   {background:hsl(47,65%,76%);border-color:hsl(47,57%,46%)}
         html.lm .g-prog-sched.gg-news     {background:hsl(342,57%,78%);border-color:hsl(342,52%,48%)}
@@ -1239,6 +1335,22 @@ final class WebServer {
         html.lm .g-prog-sched.gg-movie    {background:hsl(270,68%,80%);border-color:hsl(270,58%,50%)}
         html.lm .g-prog-sched.gg-talk     {background:hsl(173,57%,76%);border-color:hsl(173,52%,46%)}
         html.lm .g-prog-sched.gg-children {background:hsl(315,62%,78%);border-color:hsl(315,57%,48%)}
+        html.lm .g-prog-sched.gg-crime    {background:hsl(0,65%,76%);border-color:hsl(0,60%,46%)}
+        html.lm .g-prog-sched.gg-romance  {background:hsl(333,62%,78%);border-color:hsl(333,55%,48%)}
+        html.lm .g-prog-sched.gg-thriller {background:hsl(238,58%,78%);border-color:hsl(238,52%,48%)}
+        html.lm .g-prog-sched.gg-action   {background:hsl(12,65%,76%);border-color:hsl(12,57%,46%)}
+        html.lm .g-prog-sched.gg-mystery  {background:hsl(255,65%,78%);border-color:hsl(255,57%,48%)}
+        html.lm .g-prog-sched.gg-doc      {background:hsl(202,58%,76%);border-color:hsl(202,52%,46%)}
+        html.lm .g-prog-sched.gg-science  {background:hsl(188,65%,74%);border-color:hsl(188,57%,44%)}
+        html.lm .g-prog-sched.gg-nature   {background:hsl(82,62%,74%);border-color:hsl(82,55%,44%)}
+        html.lm .g-prog-sched.gg-history  {background:hsl(28,62%,76%);border-color:hsl(28,55%,46%)}
+        html.lm .g-prog-sched.gg-music    {background:hsl(287,65%,78%);border-color:hsl(287,57%,48%)}
+        html.lm .g-prog-sched.gg-food     {background:hsl(52,65%,76%);border-color:hsl(52,58%,46%)}
+        html.lm .g-prog-sched.gg-travel   {background:hsl(182,58%,74%);border-color:hsl(182,52%,44%)}
+        html.lm .g-prog-sched.gg-gameshow {background:hsl(58,68%,76%);border-color:hsl(58,62%,46%)}
+        html.lm .g-prog-sched.gg-home     {background:hsl(35,56%,76%);border-color:hsl(35,50%,46%)}
+        html.lm .g-prog-sched.gg-health   {background:hsl(148,62%,74%);border-color:hsl(148,55%,44%)}
+        html.lm .g-prog-sched.gg-faith    {background:hsl(65,60%,74%);border-color:hsl(65,53%,44%)}
         .g-prog-now  {background:#424242;border-color:#787878}
         .g-prog-rec  {background:#3c1818;border-color:#c03030}
         .g-prog-sched{background:#1a1a40;border-color:#4848c8}
