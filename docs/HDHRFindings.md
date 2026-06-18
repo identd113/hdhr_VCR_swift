@@ -240,9 +240,10 @@ The numeric ID length varies (6–8 digits in practice). The full `SeriesID` str
 GET https://api.hdhomerun.com/api/xmltv?DeviceAuth=<auth>
 ```
 
-- No `Start` or `Duration` parameters — server controls the window (~2.5 days on free tier)
+- `Start` and `Duration` parameters are **silently ignored** — confirmed by `tools/test_xmltv_start.py`: byte-identical 3.9 MB responses with and without `Start=now-3600`
+- Server controls the window entirely; on free tier the window starts ~6–7 hours before now (not at now), giving ample lookback coverage for the web guide's 1-hour `winStart`
 - gzip encoding handled automatically by URLSession
-- Response: standard XMLTV XML; free tier tested at 106 channels, 4,887 programmes, 3.7 MB
+- Response: standard XMLTV XML; free tier tested at 106 channels, 4,929 programmes, 3.7–3.9 MB
 
 **Field mapping to `GuideChannel` / `GuideEntry`:**
 
