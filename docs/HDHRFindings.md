@@ -169,6 +169,10 @@ https://api.hdhomerun.com/api/guide.php?DeviceAuth=<auth>&Duration=<hours>
 https://api.hdhomerun.com/api/guide.php?DeviceAuth=<auth>&Start=<epoch>&Duration=<hours>
 ```
 
+### Backward Start limit (~48–55h) — confirmed 2026-06-18
+
+`Start` values older than ~55 hours return **400 Bad Request**. Tested: `now-48h` succeeds, `now-60h` fails. The official wiki claims "2 weeks backward" — this is wrong; the real limit is under 2.5 days. The JSON guide's lookback is therefore bounded, not open-ended.
+
 ### Per-call window cap (~29h) — confirmed 2026-06-11
 
 The cloud API **ignores large `Duration` values** beyond a per-call cap of roughly ~28–30h from `Start`. Tested on device 105404BE:
@@ -240,7 +244,7 @@ The numeric ID length varies (6–8 digits in practice). The full `SeriesID` str
 GET https://api.hdhomerun.com/api/xmltv?DeviceAuth=<auth>
 ```
 
-- **All query parameters are silently ignored** — exhaustively tested 2026-06-18: `Start`, `start`, `Duration`, `Days`, `days`, `Hours`, `Offset`, `Channel`, `SynopsisLength` all return byte-identical 3.9 MB responses. Server controls the window entirely; no backdating is possible via this endpoint.
+- **All query parameters are silently ignored** — exhaustively tested 2026-06-18: `Start`, `start`, `Duration`, `Days`, `days`, `Hours`, `Offset`, `Channel`, `SynopsisLength`, `V=2`, `Count`, `Category` all return byte-identical 3.9 MB responses. Server controls the window entirely; no backdating is possible via this endpoint.
 - **Lookback coverage is channel-dependent**, not a uniform window. 24/7 loop channels (e.g. local weather) may go back 6+ hours; typical programming channels often start within minutes of now. Do not assume the XMLTV window covers the guide's 1-hour `winStart` for all channels.
 - **Alternative auth** (`Email=` + `DeviceIDs=`) not tested for time-window differences; unlikely to change server behavior.
 - gzip encoding handled automatically by URLSession
@@ -316,3 +320,7 @@ Primary documentation sources: `info.hdhomerun.com/info/http_api`, `info.hdhomer
 | `/lineup_status.json` | Reports `ScanInProgress`, `ScanPossible`, `Source`. Would let the app distinguish "device is mid-rescan" from "guide/lineup fetch failed" — currently an empty lineup just logs a generic warning (`GuideStore.swift`). |
 | `guide.php` `Start` chaining | Pagination to fetch beyond the ~29h single-call cap (see Guide API section). Only needed if GuideHours > ~28 is ever required. |
 | `api.hdhomerun.com/api/episodes` | Full ~17-day airing schedule for one SeriesID — proper fix for series scheduling beyond the guide window, plus `ProgramID` for repeat-skipping (see Guide API section for field differences and caveats). |
+| `api.hdhomerun.com/api/episodes?V=2` | V=2 changes response shape: top-level object with `Series`, `RecordingRules`, `Channels`, `Teams`, `Episodes`. Adds `ProgramID`, `First` flag (new episode vs repeat), and team names for sports. `First` flag enables repeat-skipping without comparing titles. |
+| `api.hdhomerun.com/api/search?Search=<words>` | Full-text search across title/episode/synopsis. First numeric word filters to that channel. Max 100 results. Returns SeriesID, Title, ImageURL, PosterURL, RecordingRule. Could power Add Show wizard search. |
+| `api.hdhomerun.com/api/suggest?Category=<series\|movie\|sport\|news>` | Pre-sorted recommendations by category. Returns SeriesID, Title, ImageURL, PosterURL, RecordingRule. Display order — do not re-sort. |
+| `api.hdhomerun.com/api/up_next?V=2&Start=&Count=` | Airings grouped into 30-min timeslots (keys = epoch of each slot). `Count` = number of slots (default 8, max 48). Forward-only — `Start` in the past returns 500. `V=2` returns slot keys as epoch strings. Suitable for "what's on now/next" view. |
