@@ -51,6 +51,10 @@ LINEUP_PATHS = {"/lineup.json", "/lineup_status.json"}
 GUIDE_PATHS  = {"/guide.json"}
 
 
+def log(msg: str):
+    print(f"{time.strftime('%m-%d %H:%M:%S')} {msg}")
+
+
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
     daemon_threads = True
 
@@ -94,7 +98,7 @@ def discover_real_device_ip() -> str | None:
             except socket.timeout:
                 break
     except Exception as e:
-        print(f"[Discovery] UDP error: {e}")
+        log(f"[Discovery] UDP error: {e}")
     finally:
         sock.close()
 
@@ -102,7 +106,7 @@ def discover_real_device_ip() -> str | None:
         try:
             ip = socket.gethostbyname(hostname)
             if not ip.startswith("127."):
-                print(f"[Discovery] Resolved {hostname} → {ip}")
+                log(f"[Discovery] Resolved {hostname} → {ip}")
                 return ip
         except socket.gaierror:
             pass
@@ -127,21 +131,21 @@ def udp_thread():
     try:
         sock.bind(("", DISCOVER_PORT))
     except OSError as e:
-        print(f"[UDP] Cannot bind :{DISCOVER_PORT}: {e} — UDP discovery disabled")
+        log(f"[UDP] Cannot bind :{DISCOVER_PORT}: {e} — UDP discovery disabled")
         return
 
-    print(f"[UDP] Listening on :{DISCOVER_PORT}, responding as {MOCK_DEVICE_ID}")
+    log(f"[UDP] Listening on :{DISCOVER_PORT}, responding as {MOCK_DEVICE_ID}")
     while True:
         try:
             data, addr = sock.recvfrom(1024)
             if len(data) >= 4 and data[0] == 0x00 and data[1] == 0x02:
-                print(f"[UDP] Discovery request from {addr[0]}")
+                log(f"[UDP] Discovery request from {addr[0]}")
                 reply_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 reply_sock.bind((MOCK_IP, 0))
                 reply_sock.sendto(reply_pkt, addr)
                 reply_sock.close()
         except Exception as e:
-            print(f"[UDP] Error: {e}")
+            log(f"[UDP] Error: {e}")
 
 
 # ── DeviceAuth background refresh ────────────────────────────────────────────
@@ -151,7 +155,7 @@ def auth_refresh_loop(interval: int):
 
     Keeps the fallback cache in ControlHandler.real_info current so a temporary
     real-device outage doesn't cause the mock to serve an expired token."""
-    print(f"[DeviceAuth] Background refresh every {interval}s")
+    log(f"[DeviceAuth] Background refresh every {interval}s")
     while True:
         time.sleep(interval)
         ControlHandler.refresh_real_info()
@@ -171,14 +175,14 @@ def register_mdns(device_id: str, friendly_name: str, ip: str) -> subprocess.Pop
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    print(f"[mDNS] Registered {hostname} → {ip}")
+    log(f"[mDNS] Registered {hostname} → {ip}")
     return proc
 
 
 def unregister_mdns(proc: subprocess.Popen):
     proc.terminate()
     proc.wait()
-    print(f"[mDNS] Unregistered {mdns_hostname(MOCK_DEVICE_ID)}")
+    log(f"[mDNS] Unregistered {mdns_hostname(MOCK_DEVICE_ID)}")
 
 
 # ── Loopback alias ────────────────────────────────────────────────────────────
@@ -186,14 +190,14 @@ def unregister_mdns(proc: subprocess.Popen):
 def add_loopback_alias():
     r = subprocess.run(["ifconfig", "lo0", "alias", MOCK_IP], capture_output=True)
     if r.returncode == 0:
-        print(f"[Setup] Added loopback alias {MOCK_IP}")
+        log(f"[Setup] Added loopback alias {MOCK_IP}")
     else:
-        print(f"[Setup] {r.stderr.decode().strip() or f'{MOCK_IP} already configured'}")
+        log(f"[Setup] {r.stderr.decode().strip() or f'{MOCK_IP} already configured'}")
 
 
 def remove_loopback_alias():
     subprocess.run(["ifconfig", "lo0", "-alias", MOCK_IP], capture_output=True)
-    print(f"[Teardown] Removed loopback alias {MOCK_IP}")
+    log(f"[Teardown] Removed loopback alias {MOCK_IP}")
 
 
 # ── HTTP control server ───────────────────────────────────────────────────────
@@ -220,15 +224,15 @@ class ControlHandler(BaseHTTPRequestHandler):
                 cls.real_info = fresh
             if new_auth != old_auth:
                 status = "changed" if old_auth else "acquired"
-                print(f"[DeviceAuth] Refreshed from {cls.real_ip} — token {status}")
+                log(f"[DeviceAuth] Refreshed from {cls.real_ip} — token {status}")
                 return True
             return False
         except Exception as e:
-            print(f"[DeviceAuth] Background refresh failed: {e}")
+            log(f"[DeviceAuth] Background refresh failed: {e}")
             return False
 
     def log_message(self, fmt, *args):
-        print(f"[HTTP] {fmt % args}")
+        log(f"[HTTP] {fmt % args}")
 
     def do_GET(self):
         path = self.path.split("?")[0]
@@ -288,11 +292,11 @@ class ControlHandler(BaseHTTPRequestHandler):
             if query:
                 cloud_q += f"&{query}"
             url = f"https://api.hdhomerun.com/api/guide.php?{cloud_q}"
-            print(f"[Proxy] → GET /guide.json (cloud) DeviceAuth={device_auth[:6]}…")
+            log(f"[Proxy] → GET /guide.json (cloud) DeviceAuth={device_auth[:6]}…")
         else:
             # Local-guide device — proxy directly to the real device
             url = f"http://{self.real_ip}{self.path}"
-            print(f"[Proxy] → GET /guide.json (local) → {url}")
+            log(f"[Proxy] → GET /guide.json (local) → {url}")
 
         try:
             req = urllib.request.Request(url)
@@ -307,14 +311,14 @@ class ControlHandler(BaseHTTPRequestHandler):
         except BrokenPipeError:
             pass  # client disconnected mid-transfer; nothing to send back
         except urllib.error.HTTPError as e:
-            print(f"[Proxy] ✗ guide → HTTP {e.code}")
+            log(f"[Proxy] ✗ guide → HTTP {e.code}")
             try:
                 self.send_response(e.code)
                 self.end_headers()
             except BrokenPipeError:
                 pass
         except Exception as e:
-            print(f"[Proxy] ✗ guide: {e}")
+            log(f"[Proxy] ✗ guide: {e}")
             try:
                 self.send_response(502)
                 self.end_headers()
@@ -326,7 +330,7 @@ class ControlHandler(BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
         # Log forwarding of important device API paths so it's visible in the terminal.
         if path in LINEUP_PATHS | GUIDE_PATHS | {"/status.json", "/lineup_status.json"}:
-            print(f"[Proxy] → {method} {self.path}")
+            log(f"[Proxy] → {method} {self.path}")
         try:
             body = None
             if method == "POST":
@@ -347,14 +351,14 @@ class ControlHandler(BaseHTTPRequestHandler):
         except BrokenPipeError:
             pass  # client disconnected mid-transfer
         except urllib.error.HTTPError as e:
-            print(f"[Proxy] ✗ {method} {url} → HTTP {e.code}")
+            log(f"[Proxy] ✗ {method} {url} → HTTP {e.code}")
             try:
                 self.send_response(e.code)
                 self.end_headers()
             except BrokenPipeError:
                 pass
         except Exception as e:
-            print(f"[Proxy] ✗ {method} {url}: {e}")
+            log(f"[Proxy] ✗ {method} {url}: {e}")
             try:
                 self.send_response(502)
                 self.end_headers()
@@ -430,7 +434,7 @@ def main():
         if not real_ip:
             print("Error: no HDHomeRun device found. Connect the device or pass --real-ip.")
             sys.exit(1)
-        print(f"[Discovery] Found device at {real_ip}")
+        log(f"[Discovery] Found device at {real_ip}")
 
     try:
         url = f"http://{real_ip}/discover.json"
