@@ -29,7 +29,7 @@ swift test           # Tests/hdhr_VCRTests/ (uses unsafeFlags for Swift Testing)
 ## Architecture
 
 ```
-hdhr_VCRApp.swift          Entry point — MenuBarExtra (.menu style — native NSMenu) + WindowGroups
+hdhr_VCRApp.swift          Entry point — MenuBarExtra (.menu style — native NSMenu) + Windows (single-instance)
 AppState.swift             @MainActor ObservableObject — all app logic, idle loop, state
 HDHRManager.swift          Device discovery (concurrent known-hosts + mDNS + UDP) and lineup fetch
 GuideStore.swift           Guide cache: fetch, index, query

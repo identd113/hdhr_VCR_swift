@@ -70,10 +70,12 @@ Falls back to **SiliconDust cloud API** (`http://discover.hdhomerun.com/discover
 | `inactiveShows` | `!show_active` (completed singles; auto-removed at startup) |
 | `unavailableDeviceIDs` | `Set<String>` of DeviceIDs whose `isAvailable == false` (missedProbes ≥ 3) |
 | `unavailableDeviceShows` | Active shows (recording or scheduled) whose `hdhr_record` is in `unavailableDeviceIDs` |
+| `usableDeviceIDs` | `Set<String>` of DeviceIDs that are discovered AND reachable (`isAvailable == true`). Used by the web guide to determine active vs. inactive tuner boxes. Inactive tuners are dimmed and non-selectable but still listed with their assigned shows. |
 | `nextShowMinutes` | Minutes until nearest active show; drives orange `clock.badge` icon when ≤ 30 |
 | `availableDeviceCount` | Excludes devices with missing lineup or guide; used in status message |
 | `onAirNow(for:at:)` | Returns one `(channel: LineupEntry, entry: GuideEntry)` per unique on-air channel for a device at `date` (default `Date()`), sorted favorites-first then by channel number. Used by `WatchNowView` and `WebServer.buildNowJSON`. |
 | `tunersFull(for: deviceId)` | Returns `true` when every tuner on the device is occupied. Counts **both** active recordings (`recordingShows`) and the in-app VLC stream (`VLCPlayerWindowManager.shared.currentDeviceID`). Use this — never count recordings alone — because watching and recording occupy tuners equally. Used by `startRecording`, `WatchNowView`, and `WebServer.handleRecord`. |
+| `activeTunerCount(for: deviceId)` | Returns the current active-tuner count for a device as `max(status.json hw count, recordings + VLC)`. Used by `broadcastRecordingEvent` and `pushFreshTunerCounts` to push accurate badge counts to the web guide via SSE. |
 
 ---
 
@@ -135,16 +137,17 @@ The web server is stopped explicitly in all three `quit()` exit branches before 
 
 ## Discord Embed Flow
 
-Recording lifecycle embeds edit the original "Recording Started" message in-place rather than posting new messages:
+All recording lifecycle events (failure, start, progress, end) edit the **same Discord message** rather than posting new ones. The shared message ID (`show.discord_start_msg_id`) is the key:
 
 1. **Recording starts** — `startRecording` inserts the show ID into `pendingDiscordStart: Set<String>`. The embed is **not sent immediately** — it is deferred to prevent a ping for recordings that fail in the first few seconds.
-2. **First idle-loop confirmation** — on the first tick where `show_recording == true` and `recordingManager.isRunning()` confirms curl is alive, the show ID is removed from `pendingDiscordStart` and `sendDiscordEmbedCapturing` (async `Task`) fires the "🔴 Recording Started" embed. Discord echoes the created message (`?wait=true`); the message ID is stored in `show.discord_start_msg_id`. If curl has already exited before this tick, the start embed is suppressed and only the failure embed is sent.
-3. **Progress update** — the idle loop checks once per 5-minute boundary: if `show_recording && !discord_start_msg_id.isEmpty && Discord_on_progress`, it calls `editDiscordEmbed` with an "⏺ Recording In Progress" embed containing `"Xm elapsed · Ym remaining"`.
-4. **Recording ends** — `stopRecording` / file-verify path passes `editMessageId: show.discord_start_msg_id` to `discordShow`, which calls `editDiscordEmbed` (PATCH) instead of `sendDiscordEmbed` (POST). `discord_start_msg_id` is cleared to `""` after.
+2. **First idle-loop confirmation** — on the first tick where `show_recording == true` and `recordingManager.isRunning()` confirms curl is alive, the show ID is removed from `pendingDiscordStart` and `discordRecordingCard` fires "🔴 Recording Started". If a failure card was posted earlier (e.g. a failed prior attempt for the same show), it edits that card; otherwise it creates a new one via `sendDiscordEmbedCapturing` (`?wait=true`), capturing the message ID into `show.discord_start_msg_id`. If curl has already exited before this tick, the start embed is suppressed and only the failure embed is sent.
+3. **Failure (curl exits unexpectedly)** — `discordRecordingCard` fires "⚠️ Recording Failed". If `discord_start_msg_id` is already set (prior attempt card), it edits that card; otherwise it creates a new one and captures the ID. The ID is **not** cleared — a subsequent retry start will edit this failure card, keeping the entire lifecycle in one Discord message.
+4. **Progress update** — the idle loop checks once per 5-minute boundary: if `show_recording && !discord_start_msg_id.isEmpty && Discord_on_progress`, it calls `editDiscordEmbed` with an "⏺ Recording In Progress" embed containing `"Xm elapsed · Ym remaining"`.
+5. **Recording ends** — `stopRecording` / file-verify path passes `editMessageId: show.discord_start_msg_id` to `discordShow`, which calls `editDiscordEmbed` (PATCH) instead of `sendDiscordEmbed` (POST). `discord_start_msg_id` is cleared to `""` after the terminal event (complete or paused).
 
-5. **App restart recovery** — `reattachRecordings()` (step 2 of startup) scans for shows with a non-empty `discord_start_msg_id` that were not reattached as actively recording. For each, it sends a recovery embed: "✅ Recording Complete" if `show_recording_path` file has non-zero size, or "⚠️ Recording Interrupted" otherwise. The ID is cleared before the send so a crash during the PATCH doesn't re-trigger on the next launch.
+6. **App restart recovery** — `reattachRecordings()` (step 2 of startup) scans for shows with a non-empty `discord_start_msg_id` that were not reattached as actively recording. For each, it sends a recovery embed: "✅ Recording Complete" if `show_recording_path` file has non-zero size, or "⚠️ Recording Interrupted" otherwise. The ID is cleared before the send so a crash during the PATCH doesn't re-trigger on the next launch.
 
-**Helper split**: `discordEffectiveURL(enabled:webhookURL:)` is the shared gate — returns the URL to post to, or `nil` when `enabled` is false, the URL is empty, or `Discord_enabled` is false (for default-webhook calls). Both `discordShow` and `discordError` call this before doing any work. `buildDiscordShowEmbed(event:show:color:extra:)` builds the `[String: Any]` embed dict (author, title, description, fields, thumbnail, footer). `discordShow` routes to either `sendDiscordEmbed` or `editDiscordEmbed` based on `editMessageId`. `sendDiscordEmbedCapturing` and `editDiscordEmbed` are free functions in `DiscordNotifier.swift`.
+**Helper split**: `discordEffectiveURL(enabled:webhookURL:)` is the shared gate — returns the URL to post to, or `nil` when `enabled` is false, the URL is empty, or `Discord_enabled` is false (for default-webhook calls). `buildDiscordShowEmbed(event:show:color:extra:)` builds the `[String: Any]` embed dict. `discordRecordingCard(showId:event:color:enabled:extra:)` is the central `@MainActor async` helper used by all lifecycle paths — it checks `discord_start_msg_id`: if set, calls `editDiscordEmbed`; otherwise calls `sendDiscordEmbedCapturing` and stores the returned message ID. `discordShow` routes to either `sendDiscordEmbed` or `editDiscordEmbed` based on `editMessageId` and is used by terminal events (stop, web-delete) that also clear the ID. `sendDiscordEmbedCapturing` and `editDiscordEmbed` are free functions in `DiscordNotifier.swift`.
 
 ---
 
