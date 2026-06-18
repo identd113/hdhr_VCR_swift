@@ -1,5 +1,13 @@
 # hdhrVCRplus Changelog
 
+## 2026-06-18 (260618-0008)
+
+- **Web guide — tuner count + device link moved into ▾ dropdown** — Each tuner box in the toolbar is now just the tuner name and a ▾ button. The `active/total` badge and ↗ device web UI link moved into the top of the per-tuner dropdown, reducing toolbar clutter. The badge still updates live and still opens the tuner popover.
+- **Web guide — one dropdown at a time** — Opening one tuner's ▾ now closes any other open dropdown. Clicking anywhere in a different tuner box (name, ▾, or inside it) also closes the current dropdown; previously the outside-click guard exempted the entire toolbar from closing dropdowns.
+- **Web guide — jump-to-guide from dropdown rows** — Each show row in a ▾ dropdown now has a → button that closes the dropdown, switches the guide to that tuner's device, scrolls to the show's guide block, and selects it. Clicking the row itself still opens the edit modal.
+- **Web guide — original air date on mobile** — The original air date in the summary panel was hidden on screens ≤600 px wide (mobile). Removed that rule; it now shows whenever the guide entry has one.
+- **Infomercial detection — title fallback** — `"Paid Programming"` title is now treated as an infomercial marker alongside the existing SeriesID blocklist (`C459763EN3L6D`, `C11809220ENAPZK`). Catches generic paid-programming slots that appear with an unknown SeriesID without requiring a blocklist update.
+
 ## 2026-06-17 (260617-1144)
 
 - **Web guide — unified top toolbar** — The title, tuner list, genre filter, and theme switcher now sit together in a single top toolbar row.
