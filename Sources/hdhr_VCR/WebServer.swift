@@ -877,8 +877,6 @@ final class WebServer {
             else { s += "<span id=\"tun-\(he(devId))\" class=\"t-info t-info-off\">offline</span>" }
             if let uiURL { s += "<a href=\"\(he(uiURL))\" target=\"_blank\" class=\"d-ui tdrop-ui\" title=\"Open \(label) web UI\">↗ Device web UI</a>" }
             s += "</div>"
-            // Tuner slot breakdown — populated by renderTunerSlots() when dropdown opens
-            s += "<div class=\"tdrop-slots\" id=\"tdrop-slots-\(he(devId))\"></div>"
             s += "<div class=\"tdrop-body\" id=\"tdrop-body-\(he(devId))\">\(buildTunerShowsHTML(state: state, deviceId: devId))</div>"
             s += "</div>"
             s += "</div>"
@@ -1070,14 +1068,6 @@ final class WebServer {
         .tdrop{position:absolute;top:100%;left:0;margin-top:4px;min-width:240px;max-width:340px;max-height:70vh;overflow-y:auto;background:var(--s3);border:1px solid var(--b5);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.6);padding:6px 12px;z-index:150}
         .tdrop-hdr{display:flex;align-items:center;gap:8px;padding-bottom:8px;margin-bottom:4px;border-bottom:1px solid var(--b3)}
         .tdrop-ui{font-size:.78rem}
-        .tdrop-slots{margin:6px 0 4px;display:flex;flex-direction:column;gap:0}
-        .tdrop-slot{display:flex;align-items:baseline;gap:6px;padding:4px 0;border-bottom:1px solid var(--b1);font-size:.78rem}
-        .tdrop-slot:last-child{border-bottom:none}
-        .tdrop-slot-lbl{color:var(--t5);font-size:.67rem;min-width:44px;flex-shrink:0}
-        .tdrop-slot-idle{color:var(--t4)}
-        .tdrop-slot-rec{color:var(--t0);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-        .tdrop-slot-rec .rec-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#e53935;margin-right:5px;flex-shrink:0;vertical-align:middle}
-        .tdrop-slot-time{color:var(--t4);font-size:.72rem;flex-shrink:0;white-space:nowrap}
         .t-info-off{cursor:default;color:var(--t5)}
         .d-btn{background:var(--s4);border:1px solid var(--b4);color:var(--t3);border-radius:5px;padding:5px 12px;font-size:.78rem;cursor:pointer;transition:border-color .15s,color .15s,background .15s}
         .d-btn:hover{border-color:var(--b5);color:var(--t0);background:var(--s3)}
@@ -1844,36 +1834,11 @@ final class WebServer {
           }
         }
         // Per-tuner ▾ dropdown: toggle this tuner's show list; close any other open one.
-        function renderTunerSlots(devId){
-          var el=document.getElementById('tdrop-slots-'+devId);if(!el)return;
-          var recs=recsByDev[devId]||[];
-          if(recs.length===0){el.innerHTML='';return;}
-          el.innerHTML=recs.map(function(r){
-            var lbl='<span class="tdrop-slot-lbl">'+hej(r.tuner)+'</span>';
-            if(r.idle==='1'){
-              return '<div class="tdrop-slot">'+lbl+'<span class="tdrop-slot-idle">Idle</span></div>';
-            }
-            var ch=r.ch&&r.ch!=='?'?'· Ch '+hej(r.ch)+' ':'';
-            var etStr='';
-            if(r.endTime&&r.rec==='1'){var et=new Date(parseInt(r.endTime,10)*1000);etStr='<span class="tdrop-slot-time">Ends '+et.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})+'</span>';}
-            var dot=r.rec==='1'?'<span class="rec-dot"></span>':'';
-            var rid='tdrs-'+devId+'-'+hej(r.tuner).replace(/\\W/g,'');
-            return '<div class="tdrop-slot" id="'+rid+'">'+lbl+'<span class="tdrop-slot-rec">'+dot+hej(r.title||'Live stream')+' <span style="color:var(--t4);font-size:.72rem">'+ch+'</span></span>'+etStr+'</div>';
-          }).join('');
-          // Make our recording titles clickable — scrolls guide to that channel
-          recs.forEach(function(r){
-            if(r.rec!=='1'||!r.ch||r.ch==='?')return;
-            var rid='tdrs-'+devId+'-'+r.tuner.replace(/\\W/g,'');
-            var row=document.getElementById(rid);if(!row)return;
-            var span=row.querySelector('.tdrop-slot-rec');
-            if(span){span.style.cursor='pointer';span.style.textDecorationLine='underline';span.style.textDecorationStyle='dotted';(function(ch){span.onclick=function(e){e.stopPropagation();document.querySelectorAll('.tdrop').forEach(function(x){x.style.display='none';});goToShow(ch);};})(r.ch);}
-          });
-        }
         function toggleTunerDrop(dev){
           var d=document.getElementById('tdrop-'+dev);if(!d)return;
           var willOpen=d.style.display==='none';
           document.querySelectorAll('.tdrop').forEach(function(x){x.style.display='none';});
-          if(willOpen){d.style.display='block';renderTunerSlots(dev);}
+          if(willOpen)d.style.display='block';
         }
         // Clicking inside a different tuner box closes any open dropdown belonging to another box.
         // Clicking completely outside any tuner box also closes open dropdowns.
