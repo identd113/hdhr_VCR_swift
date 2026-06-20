@@ -80,7 +80,7 @@ private struct GuideWebView: NSViewRepresentable {
         func webView(_ wv: WKWebView, didFinish _: WKNavigation!) {
             let isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             wv.evaluateJavaScript(
-                "localStorage.setItem('theme','\(isDark ? "dark" : "light")');if(typeof applyTheme==='function')applyTheme();",
+                "if(typeof setTheme==='function')setTheme('\(isDark ? "dark" : "light")');",
                 completionHandler: nil
             )
         }

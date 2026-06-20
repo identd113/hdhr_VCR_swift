@@ -1074,7 +1074,7 @@ final class WebServer {
           --t0:#111214;--t1:#1e2126;--t2:#363a42;--t3:#545860;--t4:#666b75;--t5:#72777f;--t6:#7d8289;
           --pg:#cbd0dc;--pgb:#8590a8;--ac:#0062c0;--acb:#ddeeff;--fav:#a05800;
         }
-        body{background:var(--bg);color:var(--t0);font-family:-apple-system,sans-serif;padding:16px}
+        body{background:var(--bg);color:var(--t0);font-family:-apple-system,sans-serif;padding:16px;height:100vh;box-sizing:border-box;display:flex;flex-direction:column;overflow:hidden}
         h1{font-size:1.15rem;color:var(--t2);margin-bottom:0}
         a[target="_blank"]{color:var(--t6)!important;text-decoration:none}
         /* ── Device switcher bar ── */
@@ -1162,8 +1162,8 @@ final class WebServer {
         .rm-opt-d{font-size:.7rem;color:var(--t4);margin-top:1px}
         html.lm #rm-tuner{color:#7a3c00;background:#fff8e8;border-color:#d09020}
         /* ── Guide grid ── */
-        .gw-outer{border:1px solid var(--b1);border-radius:8px;overflow:clip;margin-bottom:20px}
-        .gw{overflow:auto;max-height:60vh;background:var(--bg)}
+        .gw-outer{border:1px solid var(--b1);border-radius:8px;overflow:clip;flex:1;min-height:0;display:flex;flex-direction:column}
+        .gw{overflow:auto;flex:1;background:var(--bg)}
         .gi{min-width:\(guideMinWidth)px}
         .g-hdr{display:flex;position:-webkit-sticky;position:sticky;top:0;z-index:10;background:var(--s2);border-bottom:1px solid var(--b2)}
         .g-hdr-ch{width:125px;min-width:125px;position:-webkit-sticky;position:sticky;left:0;z-index:11;background:var(--s2);border-right:1px solid var(--b2);padding:4px 6px;display:flex;align-items:center;justify-content:space-between}
@@ -1409,7 +1409,7 @@ final class WebServer {
         </style>
         </head>
         <body>
-        <div id="toolbar" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+        <div id="toolbar" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px;flex-shrink:0">
           \(headerHTML)
           \(deviceBarHTML)
           <div id="genre-bar" style="display:none">
@@ -1431,7 +1431,7 @@ final class WebServer {
             <a id="t-pop-status" href="#" target="_blank" style="display:none;margin-top:10px;font-size:.72rem;color:#5aacff;text-decoration:none;border-top:1px solid #2e2e2e;padding-top:8px">status.json ↗</a>
           </div>
         </div>
-        <div id="sum" style="border:1px solid #333;border-radius:8px;margin-bottom:16px;display:flex;align-items:stretch;overflow:hidden;min-height:44px">
+        <div id="sum" style="border:1px solid #333;border-radius:8px;margin-bottom:16px;display:flex;align-items:stretch;overflow:hidden;min-height:44px;flex-shrink:0">
           <div id="sum-ph" style="flex:1;display:flex;align-items:center;padding:12px 16px;background:#1a1a1a">\(sumPhHTML)</div>
           <div id="sum-c" style="display:none;flex:1;flex-direction:row;position:relative">
             <img id="sum-poster" src="" alt="" loading="lazy" style="width:72px;min-width:72px;object-fit:contain;display:none;background:#888">
