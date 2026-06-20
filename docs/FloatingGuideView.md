@@ -8,6 +8,8 @@ Minimum **1100×720**, no maximum. Resizable. Floating above other windows (via 
 ### Content area
 The full window is a `WKWebView` loading `http://localhost:{port}/` — the same web guide served to LAN browsers. Dark/light theme is synced from `NSApp.effectiveAppearance` via JS injection after page load.
 
+The page uses a full-viewport flex column layout (`body{height:100vh;display:flex;flex-direction:column}`). The guide grid (`.gw`) fills all remaining height below the toolbar and summary card, so the guide extends to the bottom edge of the window with no dead space regardless of window size.
+
 **Watch in App / Watch in VLC buttons** appear in the summary panel for currently-airing shows, injected by the web server when it detects the `window.webkit.messageHandlers.watch` bridge. They are hidden for past or future shows.
 
 ## Intent
@@ -56,8 +58,9 @@ var body: some View {
 
 **Navigation policy** — `WKNavigationDelegate` blocks all non-`localhost` navigation. Dark/light theme is injected via `evaluateJavaScript` in `webView(_:didFinish:)`:
 ```javascript
-localStorage.setItem('theme','dark');applyTheme();
+if(typeof setTheme==='function')setTheme('dark'); // or 'light'
 ```
+`setTheme()` handles both `localStorage` persistence and live CSS class application (`applyLM`). The system appearance (`NSApp.effectiveAppearance`) is sampled in Swift and the appropriate string passed.
 
 ```swift
 static func dismantleNSView(_ nsView: WKWebView, coordinator: Coordinator) {

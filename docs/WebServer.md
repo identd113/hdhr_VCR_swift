@@ -341,7 +341,7 @@ Always rendered above the guide grid. Two states:
   - Genre badge (uppercase pill) — hidden if absent or `"Series"`
   - Episode info — hidden if absent
   - Original airdate — hidden if absent
-  - Synopsis (2-line `-webkit-line-clamp`) — hidden if absent
+  - Synopsis (1-line `-webkit-line-clamp`) — hidden if absent
   - **Actions row** (`#sum-actions`) — directly below synopsis (see below)
   - Channel logo · `"Ch N · Name · HH:MM – HH:MM"`
 - **Close button** (✕) — top-right
@@ -408,7 +408,8 @@ A cable-TV-style horizontal time grid. Window width depends on the requesting cl
 `div.gi` `min-width` = `max(1200, winSec / 1800 * 100)` px — scales up for wider windows so program blocks never compress below a readable width.
 
 **Layout:**
-- `div.gw` — scroll container (`overflow: auto; max-height: 60vh`)
+- `div.gw-outer` — flex child of body (`flex: 1; min-height: 0; display: flex; flex-direction: column`); grows to fill all remaining viewport height below the toolbar and summary card; `overflow: clip` clips the rounded border
+- `div.gw` — scroll container (`overflow: auto; flex: 1`); fills `.gw-outer` vertically so the guide always extends to the bottom of the window with no dead space
 - `div.gi` — inner, `min-width` scales with window (see above)
 - Sticky time-header (`top: 0; z-index: 10`)
 - Sticky channel column (`left: 0; z-index: 2`) — both data rows (`.g-ch`) and the header cell (`.g-hdr-ch`) are **125 px** wide. They must match so the `nowPct%` left offset maps to the same pixel position in both the time header and program rows.
