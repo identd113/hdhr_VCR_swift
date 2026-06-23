@@ -1709,8 +1709,10 @@ final class AppState: ObservableObject {
 
     // Finds the guide entry matching show_next for a given show, used to enrich Discord embeds.
     private func seasonNumber(from epString: String) -> Int? {
-        // Match S##E## or bare S## (season-only, no episode designator).
-        guard let range = epString.range(of: #"(?i)S(\d+)"#, options: .regularExpression) else { return nil }
+        // Prefer full S##E## match; fall back to bare S## anchored at string start.
+        // Anchoring prevents false matches on freeform text containing e.g. "S1" mid-string.
+        let pattern = epString.contains("E") ? #"^S(\d+)E\d+"# : #"^S(\d+)$"#
+        guard let range = epString.range(of: pattern, options: [.regularExpression, .caseInsensitive]) else { return nil }
         let sub = epString[range].dropFirst()   // drop leading "S"
         return Int(sub.prefix(while: { $0.isNumber }))
     }

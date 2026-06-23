@@ -40,6 +40,8 @@ One `Section`:
 - Pause after N failures: `Stepper`, range 1–10
 - Watch in VLC: `Toggle` (only visible when VLC is installed)
 - Bonus Time: `Toggle`; when on, reveals a `Stepper` for bonus minutes (10–60, step 5)
+- `Divider`
+- Series subfolders: `Toggle`; when on, SeriesID recordings are organized into `Title/Season XX/` subfolders; episode tag (e.g. `S02E04`) is embedded in the filename
 
 ### Category: Guide
 Two `Section`s:
@@ -115,7 +117,7 @@ Sidebar entries (with SF Symbol icons):
 | Category | Icon | Contents |
 |---|---|---|
 | General | `gear` | Launch at Login |
-| Recording | `record.circle` | Folder, transcode, disk, failures, VLC, Bonus Time |
+| Recording | `record.circle` | Folder, transcode, disk, failures, VLC, Bonus Time, Series subfolders |
 | Guide | `tv` | Guide hours, series scan retry, JSON/XMLTV format toggle |
 | Notifications | `bell.badge` | Up Next timing, Recording alert timing |
 | Advanced | `terminal` | Network interface + idle interval, logging + verbose curl + config file path, signal quality |
@@ -141,6 +143,7 @@ Sidebar entries (with SF Symbol icons):
 - **Min buffer rate** — `Picker` (90–100%, or `"100% (disabled)"`), only shown when VLC is installed. Sets the fill-phase floor for the in-app player's 8-second live buffer. Lower values fill the buffer faster; 100% disables buffering entirely. Stored in `draft.Player_buffer_min_rate`.
 - **Bonus Time** — `Toggle` (on by default). Extends any show's recording past guide end. Sports entries default to enabled via `applyWebGuideEntry()`; any show can override via the per-show toggle. Stored in `draft.Sports_padding_enabled`.
 - **Bonus Time duration** — `Stepper` (10–60 min, step 5, default 30). Only visible when Bonus Time toggle is on. Stored in `draft.Sports_padding_minutes`.
+- **Series subfolders** — `Toggle` (off by default). When enabled, SeriesID recordings (`seriesChannel`/`seriesAll`) are saved into `Title/Season XX/` subfolders inside the recording folder, and the episode tag (e.g. `S02E04`) is embedded in the filename before the channel. Falls back to `Title/` when no season is parseable from the guide's `EpisodeNumber`. Flat path used when disabled or for non-SeriesID shows. Stored in `draft.Series_subfolder_enabled`.
 
 ---
 
