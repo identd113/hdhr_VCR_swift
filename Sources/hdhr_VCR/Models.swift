@@ -100,11 +100,14 @@ struct Show: Identifiable, Equatable {
         return f
     }()
 
-    func outputPath(date: Date = Date()) -> String {
+    func outputPath(date: Date = Date(), subfolder: String? = nil, episodeTag: String? = nil) -> String {
         let dateStr = Self.outputDateFormatter.string(from: date)
         let safe = show_title.replacingOccurrences(of: "/", with: "-")
         let ext = (show_transcode.lowercased() == "none" || show_transcode.isEmpty) ? ".m2ts" : ".mkv"
-        return (posixRecordDir as NSString).appendingPathComponent("\(safe)_\(show_channel)_\(dateStr)\(ext)")
+        var dir = posixRecordDir
+        if let sub = subfolder { dir = (dir as NSString).appendingPathComponent(sub) }
+        let epPart = episodeTag.map { "_\($0)" } ?? ""
+        return (dir as NSString).appendingPathComponent("\(safe)\(epPart)_\(show_channel)_\(dateStr)\(ext)")
     }
 
     static func blank(channel: String = "", device: String = "") -> Show {
@@ -211,6 +214,7 @@ struct AppConfig: Equatable {
     var Fail_count_setting: Int     = 3       // deactivate show after N failures
     var Min_disk_free_gb: Double    = 10.0    // refuse to record below this free space
     var Idle_timer_interval: Int    = 10      // seconds between idle checks
+    var Series_subfolder_enabled: Bool = false  // organize SeriesID recordings into Title/Season XX/ subfolders
 
     // Series
     var Series_scan_retry_hours: Int = 4     // hours to wait before retrying guide scan
@@ -296,6 +300,7 @@ extension AppConfig: Codable {
         Web_server_port         = (try? c.decode(Int.self,    forKey: .Web_server_port))         ?? 1980
         Signal_quality_enabled      = (try? c.decode(Bool.self, forKey: .Signal_quality_enabled))      ?? false
         Signal_quality_alert_notify = (try? c.decode(Bool.self, forKey: .Signal_quality_alert_notify)) ?? false
+        Series_subfolder_enabled    = (try? c.decode(Bool.self, forKey: .Series_subfolder_enabled))    ?? false
     }
 }
 

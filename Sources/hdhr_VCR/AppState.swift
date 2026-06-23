@@ -1216,7 +1216,25 @@ final class AppState: ObservableObject {
                         extra: [("Reason", "Disk over \(Int(maxDiskPct))% — free up space", false)])
             return
         }
-        let path = show.outputPath(date: show.show_next ?? Date())
+        // When series subfolders are enabled, resolve Title/Season XX/ and embed the episode tag in the filename.
+        // Falls back to just Title/ when no parseable season; always embeds episode tag when available.
+        var seriesSubfolder: String? = nil
+        var episodeTag: String? = nil
+        if config.Series_subfolder_enabled && show.isSeries {
+            let safeTitle = show.show_title.replacingOccurrences(of: "/", with: "-")
+            let epNum = guideEntryForShow(show)?.EpisodeNumber
+            episodeTag = epNum
+            if let epNum, let season = seasonNumber(from: epNum) {
+                seriesSubfolder = "\(safeTitle)/Season \(String(format: "%02d", season))"
+            } else {
+                seriesSubfolder = safeTitle
+            }
+        }
+        let path = show.outputPath(date: show.show_next ?? Date(), subfolder: seriesSubfolder, episodeTag: episodeTag)
+        // Create the destination directory (including any new subfolder) before curl writes to it.
+        try? FileManager.default.createDirectory(
+            atPath: URL(fileURLWithPath: path).deletingLastPathComponent().path,
+            withIntermediateDirectories: true, attributes: nil)
         if !show.show_dir.isEmpty, show.posixRecordDir != show.show_dir {
             glog("[\(show.show_title)] Primary folder unavailable — recording to fallback: \(show.posixRecordDir)", level: .warning)
         }
@@ -1690,6 +1708,13 @@ final class AppState: ObservableObject {
     }()
 
     // Finds the guide entry matching show_next for a given show, used to enrich Discord embeds.
+    private func seasonNumber(from epString: String) -> Int? {
+        // Match S##E## or bare S## (season-only, no episode designator).
+        guard let range = epString.range(of: #"(?i)S(\d+)"#, options: .regularExpression) else { return nil }
+        let sub = epString[range].dropFirst()   // drop leading "S"
+        return Int(sub.prefix(while: { $0.isNumber }))
+    }
+
     private func guideEntryForShow(_ show: Show) -> GuideEntry? {
         guard let startDate = show.show_next else { return nil }
         let target = Int(startDate.timeIntervalSince1970)

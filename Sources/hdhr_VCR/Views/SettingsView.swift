@@ -308,6 +308,11 @@ struct SettingsView: View {
                     Stepper("Bonus Time: \(draft.Sports_padding_minutes) min",
                             value: $draft.Sports_padding_minutes, in: 10...60, step: 5)
                 }
+
+                Divider()
+
+                Toggle("Series subfolders", isOn: $draft.Series_subfolder_enabled)
+                    .help("When enabled, SeriesID recordings are organized into Title/Season XX/ subfolders inside the recording folder.")
             }
         }
         .formStyle(.grouped)

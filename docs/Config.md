@@ -30,6 +30,7 @@ Default_transcode       String  "none"  none | heavy | mobile | internet720
 Fail_count_setting      Int     3       pause show after N consecutive failures
 Min_disk_free_gb        Double  10.0    refuse to record below this free space (GB)
 Idle_timer_interval     Int     10      seconds between idle loop checks (min enforced: 5)
+Series_subfolder_enabled Bool   false   when true, SeriesID recordings are saved to Title/Season XX/ subfolders inside the recording folder; falls back to flat path if no parseable season in guide EpisodeNumber
 Series_scan_retry_hours Int     4       hours before re-scanning guide when no episode found
 Network_interface       String  ""      bind UDP discovery + curl to NIC; empty = Auto; utun* = VPN
 Verbose_curl            Bool    false   add -v to curl; stderr appended to hdhrVCRplus.log
