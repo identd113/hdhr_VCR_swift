@@ -30,8 +30,6 @@ final class GuideStore {
     private var loadingDevices: Set<String> = []
     private var loadTimestamps: [String: Date] = [:]
 
-    var verbose: Bool = false
-
     // Injected at init so tests can supply a mock session
     private let session: URLSession
 
@@ -98,13 +96,6 @@ final class GuideStore {
             let levelHttp: LogLevel = status == 200 ? .info : .warning
             glog("[\(id)] HTTP \(status)  \(data.count) bytes  \(ms)ms", level: levelHttp)
 
-            // Log first 500 chars of raw response to help diagnose unexpected formats
-            if let preview = String(data: data.prefix(500), encoding: .utf8) {
-                glog("[\(id)] response preview: \(preview)")
-            } else {
-                glog("[\(id)] response is not UTF-8 — binary or empty", level: .warning)
-            }
-
             guard status == 200 else {
                 glog("[\(id)] ERROR: non-200 status, aborting parse", level: .error)
                 return false
@@ -129,14 +120,6 @@ final class GuideStore {
 
             let entryCount = channels.reduce(0) { $0 + ($1.Guide?.count ?? 0) }
             glog("[\(id)] parsed \(channels.count) channels, \(entryCount) total guide entries")
-
-            // Log per-channel summary
-            for ch in channels.prefix(5) {
-                glog("[\(id)]   ch \(ch.GuideNumber) \(ch.GuideName): \(ch.Guide?.count ?? 0) entries")
-            }
-            if channels.count > 5 {
-                glog("[\(id)]   ... and \(channels.count - 5) more channels")
-            }
 
             if entryCount == 0 {
                 glog("[\(id)] WARNING: channels loaded but ALL have 0 guide entries — check GuideHours setting or API response", level: .warning)
@@ -238,9 +221,7 @@ final class GuideStore {
         }
         seriesIndex = seriesIndex.filter { !$1.isEmpty }
 
-        let nilCount   = channels.filter { $0.Guide == nil }.count
-        let emptyCount = channels.filter { $0.Guide?.isEmpty == true }.count
-        glog("[\(deviceId)] buildIndex: \(channels.count) channels — \(nilCount) Guide=nil, \(emptyCount) Guide=[]")
+        glog("[\(deviceId)] buildIndex: \(channels.count) channels")
 
         // Sort each channel's Guide in-place so CableGuideView reads pre-sorted data.
         var sortedChannels = channels

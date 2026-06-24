@@ -45,6 +45,8 @@ func invalidate(deviceId: String)
 func invalidateAll()
 ```
 
+`load()` logs: URL fetched, HTTP status + byte count + ms, channel count + total entry count, and a warning if all channels have zero entries. On parse failure the full raw response (up to 2000 chars) is logged at `.error`. No verbose/debug mode — there is no `verbose` flag.
+
 ---
 
 ## Lazy Series Sort

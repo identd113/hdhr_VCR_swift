@@ -55,16 +55,4 @@ func availableNetworkInterfaces() -> [NetworkInterfaceInfo] {
     return results.sorted { $0.name < $1.name }
 }
 
-// MARK: - EmptyStateView
-
-struct EmptyStateView: View {
-    let title: String
-    let systemImage: String
-    let description: String
-
-    var body: some View {
-        ContentUnavailableView(title, systemImage: systemImage,
-                               description: Text(description))
-    }
-}
 

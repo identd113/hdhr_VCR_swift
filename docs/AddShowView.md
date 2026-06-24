@@ -10,7 +10,7 @@ Fixed **560×540** for steps 1 and 3; expands to resizable **min 1100×720** for
 ### Step 1 — Device selection (usually auto-skipped)
 White background. Title `"Select Tuner"` in `.title2` left-padded, with a `"Refresh"` labeled button (↺ icon) at the right.
 
-If no devices: centered `EmptyStateView` — `wifi.slash` SF Symbol, `"No tuners found"` title, description text.
+If no devices: centered `ContentUnavailableView` — `wifi.slash` SF Symbol, `"No tuners found"` title, description text.
 
 If devices present: macOS `List` with rows, each row:
 - `antenna.radiowaves.left.and.right` SF Symbol icon (decorative, hidden from VoiceOver)

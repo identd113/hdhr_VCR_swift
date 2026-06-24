@@ -120,8 +120,8 @@ struct AddShowView: View {
             }
             .padding()
             if state.devices.isEmpty {
-                EmptyStateView(title: "No tuners found", systemImage: "wifi.slash",
-                               description: "Make sure your HDHomeRun is on the network.")
+                ContentUnavailableView("No tuners found", systemImage: "wifi.slash",
+                                      description: Text("Make sure your HDHomeRun is on the network."))
             } else {
                 List(state.devices, selection: $selectedDevice) { device in
                     let activeRecordings = state.recordingShows.filter { $0.hdhr_record == device.DeviceID }.count

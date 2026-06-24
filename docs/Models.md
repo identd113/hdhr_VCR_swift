@@ -138,7 +138,7 @@ Paused shows are excluded from `activeManagedShows` by all callers — the yello
 
 ## HDHRDevice Computed Properties
 
-- `lineupURL` — always `"http://{LocalIP}/lineup.json"`. **Never** uses `LineupURL` from discover.json (may contain `hdhomerun.local` which fails on unreliable networks).
+- `lineupURL` — always `"http://{LocalIP}/lineup.json"`. The `LineupURL` field from discover.json is not stored (may contain `hdhomerun.local` which fails on unreliable networks).
 - `statusURL` — `"http://{LocalIP}/status.json"` — live tuner status endpoint.
 
 ## HDHRDevice Availability Tracking
@@ -204,4 +204,4 @@ Writes to **both** OSLog (subsystem `com.hdhr.vcrplus`, category `app`) and the 
 Log file: `~/Library/Logs/hdhrVCRplus.log`  
 Format: `[2026-05-25T04:01:24Z] [INFO] message`
 
-`logFilePath` is a module-level `let` constant. Writes are dispatched onto a serial `logQueue` (`DispatchQueue`, `.utility` QoS) — opens a `FileHandle`, seeks to end, appends, closes. Safe to call from any actor or thread. All source files use `glog`; no `print()` calls anywhere.
+`logFilePath` is a module-level `let` constant. Writes are dispatched onto a serial `logQueue` (`DispatchQueue`, `.utility` QoS). A single `FileHandle` is opened on first write and kept open for the app's lifetime — no open/close overhead per call. Safe to call from any actor or thread. All source files use `glog`; no `print()` calls anywhere.
