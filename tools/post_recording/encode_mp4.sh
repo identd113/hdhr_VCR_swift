@@ -29,25 +29,31 @@ log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG"; }
 log "encode_mp4 starting: $FILE"
 log "  title=$HDHR_TITLE  episode=${HDHR_EPISODE:-—}  transcode=$HDHR_TRANSCODE  size=${HDHR_FILESIZE}B"
 
-if ! command -v ffmpeg &>/dev/null; then
-    log "ERROR: ffmpeg not found — run: brew install ffmpeg"
-    exit 1
-fi
+for cmd in ffmpeg ffprobe; do
+    command -v "$cmd" &>/dev/null || { log "ERROR: $cmd not found — run: brew install ffmpeg"; exit 1; }
+done
 
-if [ "$TRANSCODE" = "none" ] || [ -z "${HDHR_TRANSCODE:-}" ]; then
-    # MPEG-2 stream — re-encode to H.264
-    log "MPEG-2 source → re-encoding to H.264 CRF 23"
+# Probe actual video codec — never re-encode if already H.264
+VIDEO_CODEC=$(ffprobe -v error -select_streams v:0 \
+    -show_entries stream=codec_name -of default=noprint_wrappers=1:nokey=1 \
+    "$FILE" 2>/dev/null || echo "unknown")
+
+log "Video codec: $VIDEO_CODEC"
+
+if [ "$VIDEO_CODEC" = "h264" ]; then
+    # Already H.264 — just remux to MP4 container (fast, lossless)
+    log "H.264 source → remuxing to MP4 (no re-encode)"
     ffmpeg -i "$FILE" \
-           -c:v libx264 -preset medium -crf 23 \
-           -c:a aac -b:a 192k \
+           -c copy \
            -movflags +faststart \
            -y "$OUT" \
         >> "$LOG" 2>&1
 else
-    # Already H.264/AAC — remux to MP4 container (fast, lossless)
-    log "Pre-transcoded source → remuxing to MP4 (no re-encode)"
+    # MPEG-2 (or other) — encode to H.264
+    log "MPEG-2 source ($VIDEO_CODEC) → encoding to H.264 CRF 23"
     ffmpeg -i "$FILE" \
-           -c copy \
+           -c:v libx264 -preset medium -crf 23 \
+           -c:a aac -b:a 192k \
            -movflags +faststart \
            -y "$OUT" \
         >> "$LOG" 2>&1

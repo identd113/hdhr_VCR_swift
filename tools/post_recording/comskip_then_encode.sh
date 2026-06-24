@@ -35,13 +35,19 @@ log "=== comskip_then_encode starting ==="
 log "  file=$FILE"
 log "  title=$HDHR_TITLE  episode=${HDHR_EPISODE:-—}  transcode=$HDHR_TRANSCODE"
 
-for cmd in ffmpeg; do
+for cmd in ffmpeg ffprobe; do
     command -v "$cmd" &>/dev/null || { log "ERROR: $cmd not found — brew install $cmd"; exit 1; }
 done
 
 # ── Step 1: comskip (MPEG-2 only) ───────────────────────────────────────────
 
-if [ "$HDHR_TRANSCODE" = "none" ] || [ -z "${HDHR_TRANSCODE:-}" ]; then
+# Probe actual video codec — never re-encode if already H.264
+VIDEO_CODEC=$(ffprobe -v error -select_streams v:0 \
+    -show_entries stream=codec_name -of default=noprint_wrappers=1:nokey=1 \
+    "$FILE" 2>/dev/null || echo "unknown")
+log "Video codec: $VIDEO_CODEC"
+
+if [ "$VIDEO_CODEC" != "h264" ]; then
     if command -v comskip &>/dev/null; then
         log "Running comskip…"
         INI="${COMSKIP_INI:-$HOME/.comskip.ini}"
@@ -101,8 +107,8 @@ PYEOF
            -y "$OUT" >> "$LOG" 2>&1
 
 else
-    # Pre-transcoded .mkv — just remux to MP4
-    log "Pre-transcoded source → remuxing to MP4 (no re-encode)…"
+    # Already H.264 — just remux to MP4 (fast, lossless)
+    log "H.264 source → remuxing to MP4 (no re-encode)…"
     ffmpeg -i "$FILE" -c copy -movflags +faststart -y "$OUT" >> "$LOG" 2>&1
 fi
 
