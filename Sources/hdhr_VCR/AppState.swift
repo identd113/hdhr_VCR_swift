@@ -203,7 +203,6 @@ final class AppState: ObservableObject {
 
         // 1. Config first — shows visible in menu immediately
         loadConfig()
-        guideStore.verbose = config.Verbose_curl
         glog("[Startup] config loaded — \(shows.count) shows, GuideHours=\(config.GuideHours)")
 
         // Auto-enable Watch in VLC on first launch if VLC is installed
@@ -579,7 +578,6 @@ final class AppState: ObservableObject {
     func fetchAllGuides() async {
         guard !devices.isEmpty else { return }
         statusMessage = "Loading guide…"
-        guideStore.verbose = config.Verbose_curl
         let results = await guideStore.loadAll(devices: devices, hours: config.GuideHours, useXML: config.Guide_use_xml)
         guideByDevice = guideStore.channelsByDevice
         // didSet skips rebuildMenuEntries() when the menu is open (common at startup).
@@ -608,7 +606,6 @@ final class AppState: ObservableObject {
         defer { guideRefreshInFlight = false }
         guideStore.invalidateAll()
         await fetchAllLineups(for: devices)
-        guideStore.verbose = config.Verbose_curl
         let results = await guideStore.loadAll(devices: devices, hours: config.GuideHours, useXML: config.Guide_use_xml)
         guideByDevice = guideStore.channelsByDevice
         // Update per-device backoff; notify once per failure streak
@@ -639,7 +636,6 @@ final class AppState: ObservableObject {
               guideStore.channels(deviceId: deviceId).isEmpty,
               let device = devices.first(where: { $0.DeviceID == deviceId }) else { return }
         Task {
-            guideStore.verbose = config.Verbose_curl
             let ok = await guideStore.load(for: device, hours: config.GuideHours, useXML: config.Guide_use_xml)
             // Only update guideByDevice if channels actually loaded — a 403/network failure
             // leaves channels empty. Assigning guideByDevice unconditionally fires didSet →
@@ -805,7 +801,13 @@ final class AppState: ObservableObject {
         var show = Show.blank(channel: channel.GuideNumber, device: device.DeviceID)
         show.show_transcode  = transcode ?? config.Default_transcode
         show.show_bonus_time = bonusTime
-        show.show_title     = entry.Title
+        // For SeriesID types, strip any episode-specific suffix (e.g. " S24E116 Trey Parker…")
+        // so the show is named after the series, not a single airing.
+        let rawTitle = entry.Title
+        show.show_title = (type == .seriesChannel || type == .seriesAll)
+            ? (rawTitle.range(of: #"\s+S\d+E\d+.*$"#, options: [.regularExpression, .caseInsensitive])
+               .map { String(rawTitle[..<$0.lowerBound]) } ?? rawTitle)
+            : rawTitle
         show.show_length    = entry.durationMinutes
         show.show_next      = entry.startDate
         show.show_end       = entry.endDate
@@ -1216,8 +1218,6 @@ final class AppState: ObservableObject {
                         extra: [("Reason", "Disk over \(Int(maxDiskPct))% — free up space", false)])
             return
         }
-        // When series subfolders are enabled, resolve Title/Season XX/ and embed the episode tag in the filename.
-        // Falls back to just Title/ when no parseable season; always embeds episode tag when available.
         var seriesSubfolder: String? = nil
         var episodeTag: String? = nil
         if config.Series_subfolder_enabled && show.isSeries {
@@ -1231,10 +1231,12 @@ final class AppState: ObservableObject {
             }
         }
         let path = show.outputPath(date: show.show_next ?? Date(), subfolder: seriesSubfolder, episodeTag: episodeTag)
-        // Create the destination directory (including any new subfolder) before curl writes to it.
-        try? FileManager.default.createDirectory(
-            atPath: URL(fileURLWithPath: path).deletingLastPathComponent().path,
-            withIntermediateDirectories: true, attributes: nil)
+        let recordDir = (path as NSString).deletingLastPathComponent
+        do {
+            try FileManager.default.createDirectory(atPath: recordDir, withIntermediateDirectories: true, attributes: nil)
+        } catch {
+            glog("[\(show.show_title)] createDirectory failed for \(recordDir): \(error)", level: .error)
+        }
         if !show.show_dir.isEmpty, show.posixRecordDir != show.show_dir {
             glog("[\(show.show_title)] Primary folder unavailable — recording to fallback: \(show.posixRecordDir)", level: .warning)
         }
@@ -1351,7 +1353,10 @@ final class AppState: ObservableObject {
             // Only credit a success once data is confirmed on disk — decrement here rather than
             // on launch so a show that starts but immediately fails (bad path, stream error) can't
             // cancel out its own failure and prevent the threshold from being reached.
-            if fileSize > 0 { shows[index].show_fail_count = max(0, shows[index].show_fail_count - 1) }
+            if fileSize > 0 {
+                shows[index].show_fail_count = max(0, shows[index].show_fail_count - 1)
+                runPostRecordingScript(path: path, show: show, fileSize: fileSize)
+            }
         }
 
         // File info fields appended to every Recording Complete embed
@@ -1388,6 +1393,50 @@ final class AppState: ObservableObject {
         Task { await stopRecording(index: i, natural: false) }
     }
 
+    // Launches the user-configured post-recording script via /bin/sh (no executable bit or shebang required).
+    // scriptPath becomes $0, recording path becomes $1; all metadata also in HDHR_* env vars.
+    private func runPostRecordingScript(path: String, show: Show, fileSize: Int) {
+        let scriptPath = config.Post_recording_script
+        guard !scriptPath.isEmpty else { return }
+        guard FileManager.default.fileExists(atPath: scriptPath) else {
+            glog("[PostScript] '\(scriptPath)' not found", level: .warning)
+            return
+        }
+        // Extract SxxExx tag embedded in the filename by outputPath(), e.g. "_S03E18_"
+        let fname = URL(fileURLWithPath: path).lastPathComponent
+        var epTag = ""
+        if let r = fname.range(of: #"_(S\d+(?:E\d+)?)_"#, options: [.regularExpression, .caseInsensitive]) {
+            epTag = String(fname[r]).trimmingCharacters(in: CharacterSet(charactersIn: "_"))
+        }
+        let process = Process()
+        // Run via /bin/sh so the script needs no executable bit or shebang.
+        // scriptPath → $0, path → $1; all metadata available as HDHR_* env vars.
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = [scriptPath, path]
+        var env = ProcessInfo.processInfo.environment
+        // Prepend Homebrew paths so tools like comskip are found without full path.
+        env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:"
+                    + (env["PATH"] ?? "/usr/bin:/bin")
+        env["HDHR_PATH"]      = path
+        env["HDHR_TITLE"]     = show.show_title
+        env["HDHR_CHANNEL"]   = show.show_channel
+        env["HDHR_TRANSCODE"] = show.show_transcode.isEmpty ? "none" : show.show_transcode
+        env["HDHR_EPISODE"]   = epTag
+        env["HDHR_DEVICE"]    = show.hdhr_record
+        env["HDHR_SERIES"]    = show.isSeries ? "1" : "0"
+        env["HDHR_FILESIZE"]  = String(fileSize)
+        process.environment = env
+        process.terminationHandler = { p in
+            glog("[PostScript] '\((scriptPath as NSString).lastPathComponent)' exited \(p.terminationStatus) for '\(show.show_title)'")
+        }
+        do {
+            try process.run()
+            glog("[PostScript] pid=\(process.processIdentifier) '\((scriptPath as NSString).lastPathComponent)' → '\(show.show_title)' \(path)")
+        } catch {
+            glog("[PostScript] launch failed '\(scriptPath)': \(error.localizedDescription)", level: .error)
+        }
+    }
+
     // MARK: - Next-air scheduling
 
     func scheduleNextAir(index: Int) async {
@@ -1421,7 +1470,6 @@ final class AppState: ObservableObject {
                 let devFilter = show.state == .seriesAll ? nil : device.DeviceID
                 // If guide is stale or absent, reload before searching
                 if !guideStore.isFresh(deviceId: device.DeviceID) {
-                    guideStore.verbose = config.Verbose_curl
                     await guideStore.load(for: device, hours: config.GuideHours, useXML: config.Guide_use_xml)
                     guideByDevice = guideStore.channelsByDevice
                 }
@@ -1649,6 +1697,86 @@ final class AppState: ObservableObject {
         saveConfig()
     }
 
+    func organizeSeriesRecordings() -> String {
+        // Paths currently being written to — never touch these.
+        let activePaths = Set(shows.filter { $0.show_recording }
+                                   .map { $0.show_recording_path }
+                                   .filter { !$0.isEmpty })
+        var movedCount = 0
+        var errorCount = 0
+        var pathUpdates: [String: String] = [:]
+        var scanned = Set<String>()   // baseDir|safeTitle — skip duplicate show entries
+
+        for show in shows where show.isSeries {
+            let baseDir   = show.posixRecordDir
+            let rawTitle  = show.show_title
+            let safeTitle = rawTitle.replacingOccurrences(of: "/", with: "-")
+            // Strip any episode-specific suffix for folder naming (handles shows saved before this fix).
+            let strippedTitle = rawTitle
+                .range(of: #"\s+S\d+E\d+.*$"#, options: [.regularExpression, .caseInsensitive])
+                .map { String(rawTitle[..<$0.lowerBound]) } ?? rawTitle
+            let safeFolderTitle = strippedTitle.replacingOccurrences(of: "/", with: "-")
+            let key = "\(baseDir)|\(safeTitle)"
+            guard scanned.insert(key).inserted else { continue }
+
+            // Scan the flat root for files belonging to this show.
+            // Match both new format (title_channel_date) and old format (title SxxExx guests_channel_date).
+            guard let files = try? FileManager.default.contentsOfDirectory(atPath: baseDir) else { continue }
+            for filename in files where (filename.hasPrefix("\(safeFolderTitle)_") || filename.hasPrefix("\(safeFolderTitle) "))
+                                    && (filename.hasSuffix(".m2ts") || filename.hasSuffix(".mkv")) {
+                let src = (baseDir as NSString).appendingPathComponent(filename)
+                guard !activePaths.contains(src) else { continue }
+
+                // Extract episode tag from either separator style: "_S02E04_" or " S22E125 ".
+                let subfolder: String
+                if let tagRange = filename.range(of: #"[_ ](S\d+(?:E\d+)?)"#,
+                                                 options: [.regularExpression, .caseInsensitive]) {
+                    let tag = String(filename[tagRange].dropFirst()) // drop leading "_" or " "
+                    if let season = seasonNumber(from: tag) {
+                        subfolder = "\(safeFolderTitle)/Season \(String(format: "%02d", season))"
+                    } else {
+                        subfolder = safeFolderTitle
+                    }
+                } else {
+                    subfolder = safeFolderTitle
+                }
+
+                let destDir  = (baseDir as NSString).appendingPathComponent(subfolder)
+                let destPath = (destDir as NSString).appendingPathComponent(filename)
+                guard src != destPath else { continue }
+
+                do {
+                    try FileManager.default.createDirectory(atPath: destDir,
+                                                            withIntermediateDirectories: true,
+                                                            attributes: nil)
+                    try FileManager.default.moveItem(atPath: src, toPath: destPath)
+                    pathUpdates[src] = destPath
+                    movedCount += 1
+                    glog("[Maintenance] Moved \(filename) → \(subfolder)/")
+                } catch {
+                    glog("[Maintenance] organizeSeriesRecordings: failed to move \(filename): \(error)",
+                         level: .error)
+                    errorCount += 1
+                }
+            }
+        }
+
+        // Keep show_recording_path in sync for any file that moved.
+        if !pathUpdates.isEmpty {
+            for i in shows.indices {
+                if let updated = pathUpdates[shows[i].show_recording_path] {
+                    shows[i].show_recording_path = updated
+                }
+            }
+            saveConfig()
+        }
+
+        if movedCount == 0 && errorCount == 0 { return "No files to organize" }
+        var result = "Moved \(movedCount) file(s) into subfolders"
+        if errorCount > 0 { result += " (\(errorCount) error(s) — see log)" }
+        return result
+    }
+
     // MARK: - Utilities
 
     func refreshAll() {
@@ -1709,10 +1837,8 @@ final class AppState: ObservableObject {
 
     // Finds the guide entry matching show_next for a given show, used to enrich Discord embeds.
     private func seasonNumber(from epString: String) -> Int? {
-        // Prefer full S##E## match; fall back to bare S## anchored at string start.
-        // Anchoring prevents false matches on freeform text containing e.g. "S1" mid-string.
-        let pattern = epString.contains("E") ? #"^S(\d+)E\d+"# : #"^S(\d+)$"#
-        guard let range = epString.range(of: pattern, options: [.regularExpression, .caseInsensitive]) else { return nil }
+        // Single case-insensitive pattern handles both S01E05 and bare S01; anchored to prevent mid-string false matches.
+        guard let range = epString.range(of: #"^S(\d+)(?:E\d+)?$"#, options: [.regularExpression, .caseInsensitive]) else { return nil }
         let sub = epString[range].dropFirst()   // drop leading "S"
         return Int(sub.prefix(while: { $0.isNumber }))
     }

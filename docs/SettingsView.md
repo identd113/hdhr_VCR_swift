@@ -117,7 +117,7 @@ Sidebar entries (with SF Symbol icons):
 | Category | Icon | Contents |
 |---|---|---|
 | General | `gear` | Launch at Login |
-| Recording | `record.circle` | Folder, transcode, disk, failures, VLC, Bonus Time, Series subfolders |
+| Recording | `record.circle` | Folder, transcode, disk, failures, VLC, Bonus Time, Series subfolders, Post-recording script |
 | Guide | `tv` | Guide hours, series scan retry, JSON/XMLTV format toggle |
 | Notifications | `bell.badge` | Up Next timing, Recording alert timing |
 | Advanced | `terminal` | Network interface + idle interval, logging + verbose curl + config file path, signal quality |
@@ -144,6 +144,7 @@ Sidebar entries (with SF Symbol icons):
 - **Bonus Time** — `Toggle` (on by default). Extends any show's recording past guide end. Sports entries default to enabled via `applyWebGuideEntry()`; any show can override via the per-show toggle. Stored in `draft.Sports_padding_enabled`.
 - **Bonus Time duration** — `Stepper` (10–60 min, step 5, default 30). Only visible when Bonus Time toggle is on. Stored in `draft.Sports_padding_minutes`.
 - **Series subfolders** — `Toggle` (off by default). When enabled, SeriesID recordings (`seriesChannel`/`seriesAll`) are saved into `Title/Season XX/` subfolders inside the recording folder, and the episode tag (e.g. `S02E04`) is embedded in the filename before the channel. Falls back to `Title/` when no season is parseable from the guide's `EpisodeNumber`. Flat path used when disabled or for non-SeriesID shows. Stored in `draft.Series_subfolder_enabled`.
+- **Post-recording script** — `LabeledContent` with Choose / Clear buttons (Choose opens an `NSOpenPanel` for files). When set, the selected shell script is run via `/bin/sh scriptPath filePath` after each successful recording (non-zero file size confirmed). The script receives the recording's POSIX file path as `$1` and the following env vars: `HDHR_PATH` (same as `$1`), `HDHR_TITLE`, `HDHR_CHANNEL`, `HDHR_TRANSCODE` (`"none"` if not set), `HDHR_EPISODE` (e.g. `"S02E04"` or `"S03"`; empty if not embedded), `HDHR_DEVICE`, `HDHR_SERIES` (`"1"` for SeriesID shows, `"0"` for dateTime), `HDHR_FILESIZE` (bytes). Homebrew paths (`/opt/homebrew/bin:/usr/local/bin`) are prepended to `PATH` so tools like `comskip` can be referenced by name. Script exits are logged; non-zero exit is logged as a warning. Stored in `draft.Post_recording_script`.
 
 ---
 
@@ -231,6 +232,7 @@ One-tap operations for recovering from stuck states. Each uses `maintenanceRow(_
 - **Rescan Series** — calls `state.rescheduleAllSeries()`, which iterates all active, non-paused, non-recording SeriesID shows, reloads each device's guide if stale, and resets `show_next` to the next matching episode. The count shown in the result excludes currently-recording shows. Result: `"N series show(s) rescheduled"`.
 - **Reset Fail Counts** — calls `state.resetAllFailCounts()`, zeroing `show_fail_count` and clearing `show_fail_reason` on every show without touching `show_active`. Useful when shows get stuck in Paused after transient network failures.
 - **Reactivate Paused Shows** — calls `state.reactivatePausedShows()`, setting `show_active = true` on all inactive shows and resetting their fail counts. Result: count of shows reactivated.
+- **Organize Series Recordings** — calls `state.organizeSeriesRecordings()`. Scans the flat root of each SeriesID show's recording directory for matching files and moves them into `Title/Season XX/` subfolders (or `Title/` when no season is parseable). Skips files currently being recorded. Updates `show_recording_path` on any show whose file was moved and saves config. Result: `"Moved N file(s) into subfolders"` or `"No files to organize"`.
 
 **Guide & Devices section:**
 - **Refresh Guide** — calls `state.refreshGuide()` (invalidate + reload all devices). Reports channel count on completion.

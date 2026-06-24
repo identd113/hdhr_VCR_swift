@@ -1,5 +1,16 @@
 # hdhrVCRplus Changelog
 
+## 2026-06-24 (260624-0000)
+
+- **Series subfolders** — New toggle in Settings → Recording. When enabled, SeriesID recordings (`seriesChannel`/`seriesAll`) are saved into `Title/Season XX/` subfolders inside the recording folder. The episode tag (e.g. `S02E04`) is also embedded in the filename before the channel number. Falls back to `Title/` when no season is parseable from the guide's `EpisodeNumber`. dateTime shows are always saved flat. The episode number regex (`^S(\d+)(?:E\d+)?$`) handles bare season-only strings (`S03`) and is case-insensitive. The **Organize** maintenance action (Settings → Maintenance) scans existing flat-root files and moves them into the correct subfolders.
+- **Post-recording script hook** — New field in Settings → Recording. Set a shell script path; after each successful recording (non-zero file size confirmed), the script is launched via `/bin/sh` with the recording path as `$1`. Env vars passed: `HDHR_PATH`, `HDHR_TITLE`, `HDHR_CHANNEL`, `HDHR_TRANSCODE`, `HDHR_EPISODE`, `HDHR_DEVICE`, `HDHR_SERIES`, `HDHR_FILESIZE`. Homebrew paths prepended to `PATH` so tools like `comskip` work by name. The script runs detached and does not block the app; exits are logged.
+- **Settings — Maintenance section reorder** — Most-used actions moved to the top of each group (Shows: Reactivate Paused → Rescan Series → Reset Fail Counts → Organize; Guide & Devices: Rediscover → Refresh → Clear Cache). All descriptions rewritten to explain why you'd run each action.
+- **Fix — series subfolder directory creation now logs errors** — `createDirectory` for a new `Title/Season XX/` subfolder previously used `try?`, silently swallowing filesystem errors (read-only volume, bad permissions). It now logs the error at `.error` level so the root cause of a failed recording is diagnosable.
+- **Fix — season-only episode tags in post-recording script** — `HDHR_EPISODE` was empty when the recording file contained a bare season tag like `_S03_` (no episode number). The extraction regex is now `_(S\d+(?:E\d+)?)_`, matching both `_S02E04_` and `_S03_`.
+- **Fix — season regex unified and case-insensitive** — `seasonNumber()` previously selected the regex branch with a case-sensitive `contains("E")` check, silently returning nil for any lowercase `EpisodeNumber`. Replaced with a single case-insensitive pattern `^S(\d+)(?:E\d+)?$` that handles both full and bare-season forms.
+- **Web guide — full-viewport layout** — The guide grid now fills the entire window height with `flex:1;min-height:0` instead of `max-height:60vh`, so the guide extends to the bottom edge of the window regardless of window size.
+- **FloatingGuideView — theme injection** — System appearance is now applied via `setTheme('dark'|'light')` instead of setting `localStorage` directly + calling the removed `applyTheme()`.
+
 ## 2026-06-18 (260618-0008)
 
 - **Web guide — tuner count + device link moved into ▾ dropdown** — Each tuner box in the toolbar is now just the tuner name and a ▾ button. The `active/total` badge and ↗ device web UI link moved into the top of the per-tuner dropdown, reducing toolbar clutter. The badge still updates live and still opens the tuner popover.

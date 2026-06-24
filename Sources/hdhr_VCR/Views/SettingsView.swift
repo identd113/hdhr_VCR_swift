@@ -313,6 +313,29 @@ struct SettingsView: View {
 
                 Toggle("Series subfolders", isOn: $draft.Series_subfolder_enabled)
                     .help("When enabled, SeriesID recordings are organized into Title/Season XX/ subfolders inside the recording folder.")
+
+                Divider()
+
+                LabeledContent("Post-recording script") {
+                    HStack {
+                        Text(draft.Post_recording_script.isEmpty
+                             ? "None"
+                             : (draft.Post_recording_script as NSString).lastPathComponent)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Button("Choose…") { chooseScript() }
+                        if !draft.Post_recording_script.isEmpty {
+                            Button("Clear") { draft.Post_recording_script = "" }
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .help("Script or executable run after each successful recording. Receives the file path as $1. Leave empty to disable.")
+                if !draft.Post_recording_script.isEmpty {
+                    Text("$1 = file path · HDHR_PATH · HDHR_TITLE · HDHR_CHANNEL · HDHR_TRANSCODE · HDHR_EPISODE · HDHR_DEVICE · HDHR_SERIES · HDHR_FILESIZE")
+                        .font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                }
             }
         }
         .formStyle(.grouped)
@@ -599,42 +622,46 @@ struct SettingsView: View {
     private var maintenanceView: some View {
         Form {
             Section("Shows") {
+                maintenanceRow("Reactivate Paused Shows",
+                               "Run after fixing what caused failures — restores all shows paused by repeated errors") {
+                    let count = state.inactiveShows.count
+                    state.reactivatePausedShows()
+                    return count > 0 ? "\(count) show(s) reactivated" : "No paused shows"
+                }
                 maintenanceRow("Rescan Series",
-                               "Re-check the guide for updated next-air times on all active SeriesID shows") {
+                               "Run if a series show isn't scheduling — re-checks the guide for its next air time") {
                     let count = state.shows.filter { $0.show_active && !$0.show_paused && !$0.show_recording && $0.show_use_seriesid }.count
                     await state.rescheduleAllSeries()
                     return "\(count) series show(s) rescheduled"
                 }
                 maintenanceRow("Reset Fail Counts",
-                               "Zero out failure counters on every show without changing active/paused state") {
+                               "Run to clear error counters after fixing an issue, without unpausing shows") {
                     let total = state.shows.count
                     state.resetAllFailCounts()
                     return "Cleared fail counts on \(total) show(s)"
                 }
-                maintenanceRow("Reactivate Paused Shows",
-                               "Reactivate all shows that were paused due to failures and reset their counts") {
-                    let count = state.inactiveShows.count
-                    state.reactivatePausedShows()
-                    return count > 0 ? "\(count) show(s) reactivated" : "No paused shows"
+                maintenanceRow("Organize Series Recordings",
+                               "Run after enabling Series Subfolders to sort existing flat recordings into Title/Season XX/ folders") {
+                    state.organizeSeriesRecordings()
                 }
             }
             Section("Guide & Devices") {
+                maintenanceRow("Rediscover Devices",
+                               "Run if a tuner is missing from the device bar, or after a network or router change") {
+                    await state.rediscoverDevices()
+                    return "\(state.devices.count) device(s) found"
+                }
                 maintenanceRow("Refresh Guide",
-                               "Force-reload guide data from all tuners (full network re-fetch)") {
+                               "Run if guide data looks stale or wrong — forces a full re-fetch from all tuners") {
                     await state.refreshGuide()
                     let ch = state.guideByDevice.values.flatMap { $0 }.count
                     return "Guide refreshed — \(ch) channel(s) loaded"
                 }
                 maintenanceRow("Clear Guide Cache",
-                               "Discard all cached guide data — the next guide step will fetch fresh") {
+                               "Run if Refresh Guide doesn't fix stale data, or after switching between JSON and XMLTV") {
                     state.guideStore.invalidateAll()
                     state.guideByDevice = [:]
                     return "Guide cache cleared"
-                }
-                maintenanceRow("Rediscover Devices",
-                               "Scan the network for HDHomeRun tuners (mDNS + UDP + known hosts)") {
-                    await state.rediscoverDevices()
-                    return "\(state.devices.count) device(s) found"
                 }
             }
             if let brew = brewPath {
@@ -920,6 +947,16 @@ struct SettingsView: View {
         panel.allowsMultipleSelection = false
         panel.directoryURL = state.defaultSaveDir
         if panel.runModal() == .OK, let url = panel.url { draftSaveDirectory = url.path }
+    }
+
+    private func chooseScript() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.message = "Choose a script or executable to run after each recording completes"
+        panel.prompt = "Select"
+        if panel.runModal() == .OK, let url = panel.url { draft.Post_recording_script = url.path }
     }
 }
 

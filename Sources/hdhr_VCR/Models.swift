@@ -9,8 +9,9 @@ enum LogLevel {
 
 private let appLog = Logger(subsystem: "com.hdhr.vcrplus", category: "app")
 private let logQueue = DispatchQueue(label: "com.hdhr.vcrplus.log", qos: .utility)
-// Shared formatter — accessed only from the serial logQueue so no concurrent access.
+// Shared formatter and handle — accessed only from the serial logQueue so no concurrent access.
 private let logDateFormatter = ISO8601DateFormatter()
+private var logHandle: FileHandle? = nil
 let logFilePath = NSHomeDirectory() + "/Library/Logs/hdhrVCRplus.log"
 
 func glog(_ msg: String, level: LogLevel = .info) {
@@ -22,13 +23,16 @@ func glog(_ msg: String, level: LogLevel = .info) {
     let tag = level == .info ? "INFO" : level == .warning ? "WARN" : "ERROR"
     let ts = Date()
     logQueue.async {
-        let line = "[\(logDateFormatter.string(from: ts))] [\(tag)] \(msg)\n"
-        let fm = FileManager.default
-        if !fm.fileExists(atPath: logFilePath) { fm.createFile(atPath: logFilePath, contents: nil) }
-        guard let fh = FileHandle(forWritingAtPath: logFilePath) else { return }
-        fh.seekToEndOfFile()
-        fh.write(line.data(using: .utf8) ?? Data())
-        try? fh.close()
+        if logHandle == nil {
+            let fm = FileManager.default
+            if !fm.fileExists(atPath: logFilePath) { fm.createFile(atPath: logFilePath, contents: nil) }
+            if let fh = FileHandle(forWritingAtPath: logFilePath) {
+                try? fh.seekToEnd()
+                logHandle = fh
+            }
+        }
+        guard let data = "[\(logDateFormatter.string(from: ts))] [\(tag)] \(msg)\n".data(using: .utf8) else { return }
+        logHandle?.write(data)
     }
 }
 
@@ -215,6 +219,7 @@ struct AppConfig: Equatable {
     var Min_disk_free_gb: Double    = 10.0    // refuse to record below this free space
     var Idle_timer_interval: Int    = 10      // seconds between idle checks
     var Series_subfolder_enabled: Bool = false  // organize SeriesID recordings into Title/Season XX/ subfolders
+    var Post_recording_script: String = ""      // POSIX path to script run after each successful recording
 
     // Series
     var Series_scan_retry_hours: Int = 4     // hours to wait before retrying guide scan
@@ -300,7 +305,8 @@ extension AppConfig: Codable {
         Web_server_port         = (try? c.decode(Int.self,    forKey: .Web_server_port))         ?? 1980
         Signal_quality_enabled      = (try? c.decode(Bool.self, forKey: .Signal_quality_enabled))      ?? false
         Signal_quality_alert_notify = (try? c.decode(Bool.self, forKey: .Signal_quality_alert_notify)) ?? false
-        Series_subfolder_enabled    = (try? c.decode(Bool.self, forKey: .Series_subfolder_enabled))    ?? false
+        Series_subfolder_enabled    = (try? c.decode(Bool.self,   forKey: .Series_subfolder_enabled))    ?? false
+        Post_recording_script       = (try? c.decode(String.self, forKey: .Post_recording_script))       ?? ""
     }
 }
 
@@ -331,7 +337,6 @@ struct HDHRDevice: Identifiable, Equatable {
     var TunerCount: Int?
     var FirmwareVersion: String?
     var DeviceAuth: String?   // used to call SiliconDust cloud guide API (EXTEND and similar)
-    var LineupURL: String?    // from discover.json; stored but not used — lineupURL always uses LocalIP
 
     // Runtime-only: incremented each probe cycle when the device is not seen; reset when seen.
     // Not persisted — resets to 0 (available) on every launch.
@@ -346,7 +351,7 @@ struct HDHRDevice: Identifiable, Equatable {
 
 extension HDHRDevice: Codable {
     enum CodingKeys: String, CodingKey {
-        case DeviceID, LocalIP, BaseURL, TunerCount, FirmwareVersion, DeviceAuth, LineupURL
+        case DeviceID, LocalIP, BaseURL, TunerCount, FirmwareVersion, DeviceAuth
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -355,7 +360,6 @@ extension HDHRDevice: Codable {
         TunerCount      = try? c.decode(Int.self,    forKey: .TunerCount)
         FirmwareVersion = try? c.decode(String.self, forKey: .FirmwareVersion)
         DeviceAuth      = try? c.decode(String.self, forKey: .DeviceAuth)
-        LineupURL       = try? c.decode(String.self, forKey: .LineupURL)
         // Cloud response includes LocalIP directly; mDNS/device response omits it — extract host from BaseURL
         if let ip = try? c.decode(String.self, forKey: .LocalIP) {
             LocalIP = ip
