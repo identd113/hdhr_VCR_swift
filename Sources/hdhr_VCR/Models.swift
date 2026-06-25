@@ -16,7 +16,7 @@ let logFilePath = NSHomeDirectory() + "/Library/Logs/hdhrVCRplus.log"
 
 func glog(_ msg: String, level: LogLevel = .info) {
     switch level {
-    case .info:    appLog.info("\(msg, privacy: .public)")
+    case .info:    appLog.notice("\(msg, privacy: .public)")
     case .warning: appLog.warning("\(msg, privacy: .public)")
     case .error:   appLog.error("\(msg, privacy: .public)")
     }

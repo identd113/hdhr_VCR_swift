@@ -512,15 +512,11 @@ struct SettingsView: View {
 
             Section("Logging") {
                 Button("Show App Log in Console") {
-                    // Opens Console.app and pre-fills the search field with the subsystem.
-                    // macOS 12+ supports the x-apple.systempreferences: URL for Console;
-                    // falling back to direct launch keeps it working on older builds.
-                    let subsystem = "com.hdhr.vcrplus"
-                    if let url = URL(string: "x-apple.systempreferences:com.apple.Console?subsystem=\(subsystem)") {
-                        NSWorkspace.shared.open(url)
-                    } else {
-                        NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Utilities/Console.app"))
-                    }
+                    // Pass --predicate so Console opens pre-filtered to this app's subsystem
+                    let proc = Process()
+                    proc.executableURL = URL(fileURLWithPath: "/System/Applications/Utilities/Console.app/Contents/MacOS/Console")
+                    proc.arguments = ["--predicate", "subsystem == \"com.hdhr.vcrplus\""]
+                    try? proc.run()
                 }
                 Text("Filter: subsystem == \"\(Bundle.main.bundleIdentifier ?? "com.hdhr.vcrplus")\"")
                     .font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
@@ -611,7 +607,18 @@ struct SettingsView: View {
             }
 
             if state.config.Web_server_enabled && state.webServerRunning {
-                let ip = availableNetworkInterfaces().first(where: { !$0.name.hasPrefix("utun") })?.ip ?? "localhost"
+                let ip: String = {
+                    let ifaces = availableNetworkInterfaces()
+                    // Explicit interface selected — use its IP
+                    if !state.config.Network_interface.isEmpty,
+                       let match = ifaces.first(where: { $0.name == state.config.Network_interface }) {
+                        return match.ip
+                    }
+                    // Auto — prefer physical Ethernet/Wi-Fi (en*, wlan*), then any non-VPN
+                    return ifaces.first(where: { $0.name.hasPrefix("en") || $0.name.hasPrefix("wlan") })?.ip
+                        ?? ifaces.first(where: { !isPointToPointInterface($0.name) })?.ip
+                        ?? "localhost"
+                }()
                 let urlStr = "http://\(ip):\(state.config.Web_server_port)"
                 Section("Access") {
                     HStack {
