@@ -959,7 +959,8 @@ final class WebServer {
                     if isEntryRec      { cls += " g-prog-rec"   }
                     else if isNow      { cls += " g-prog-now"   }
                     else if isMgd      { cls += " g-prog-sched" }
-                    // Extract up to 2 genre tags; dual-genre gets a CSS gradient via inline style
+                    // Extract up to 2 genre tags; dual-genre gets a CSS gradient via inline style.
+                    // Gradient requires >1 raw Filter entry — single-tag shows always get a solid color.
                     let ggSkip: Set<String>  = ["series","miniseries","mini-series","mini series","special"]
                     let ggAlias: [String: String] = [
                         "sitcom":"comedy","movies":"movie","kids":"children","sport":"sports",
@@ -978,7 +979,7 @@ final class WebServer {
                         if ggKnown.contains(g) && !gg.contains(g) { gg.append(g); if gg.count == 2 { break } }
                     }
                     var extraStyle = ""
-                    if gg.count == 2 && !isEntryRec {
+                    if (e.Filter?.count ?? 0) > 1 && gg.count == 2 && !isEntryRec {
                         let sfx = (isNow || isMgd) ? "-now" : ""
                         extraStyle = ";background:linear-gradient(to right,var(--gg-\(gg[0])\(sfx)),var(--gg-\(gg[1])\(sfx)))"
                         cls += " gg-\(gg[0])"

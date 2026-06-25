@@ -239,13 +239,14 @@ struct SettingsView: View {
         Form {
             Section("System") {
                 Toggle("Launch at Login", isOn: $draftLaunchAtLogin)
+                Text("Start hdhr_VCR automatically when you log in, so scheduled recordings are never missed while the app is closed.")
+                    .font(.caption).foregroundStyle(.secondary)
                 if !loginItemError.isEmpty {
                     Label(loginItemError, systemImage: "xmark.circle.fill")
                         .font(.caption).foregroundStyle(.red)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-
         }
         .formStyle(.grouped)
         .navigationTitle("General")
@@ -265,6 +266,8 @@ struct SettingsView: View {
                         }
                     }
                 }
+                Text("Where recordings are saved. Falls back to ~/Movies/hdhr_videos when not set.")
+                    .font(.caption).foregroundStyle(.secondary)
 
                 Picker("Default transcode", selection: $draft.Default_transcode) {
                     Text("None").tag("none")
@@ -272,49 +275,52 @@ struct SettingsView: View {
                     Text("Mobile").tag("mobile")
                     Text("Internet 720").tag("internet720")
                 }
-                .help("Applied to all new shows unless overridden per show. None keeps the raw MPEG stream (recommended).")
+                Text("Applied to all new shows. None records the raw MPEG-2 stream — best quality, no re-encoding overhead.")
+                    .font(.caption).foregroundStyle(.secondary)
 
                 Stepper(
                     "Min free disk: \(draft.Min_disk_free_gb, specifier: "%.0f") GB",
                     value: $draft.Min_disk_free_gb,
                     in: 1...100, step: 1
                 )
-                .help("Recordings are skipped when the save drive has less free space than this threshold.")
+                Text("Recordings are skipped when free space on the save drive drops below this threshold.")
+                    .font(.caption).foregroundStyle(.secondary)
 
                 Stepper(
                     "Pause after \(draft.Fail_count_setting) failure(s)",
                     value: $draft.Fail_count_setting,
                     in: 1...10
                 )
-                .help("A show is automatically paused after this many consecutive recording failures. Reset using Maintenance → Reactivate Paused Shows, or Edit Show → Reset.")
+                Text("A show is automatically paused after this many consecutive failures. Restore it via Maintenance → Reactivate Paused Shows.")
+                    .font(.caption).foregroundStyle(.secondary)
 
                 if FileManager.default.fileExists(atPath: "/Applications/VLC.app") {
                     Toggle("Watch in VLC", isOn: $draft.Watch_in_VLC)
-                        .help("Show a 'Watch in VLC' option for live and recording streams")
+                    Text("Adds Watch in VLC buttons for live and recorded streams throughout the app.")
+                        .font(.caption).foregroundStyle(.secondary)
 
                     Picker("Min buffer rate", selection: $draft.Player_buffer_min_rate) {
                         ForEach(Array(stride(from: 90, through: 100, by: 1)), id: \.self) { pct in
                             Text(pct == 100 ? "100% (disabled)" : "\(pct)%").tag(pct)
                         }
                     }
-                    .help("Floor playback speed for the in-app player. Lower fills the 8-second live buffer faster; 100% disables buffering.")
+                    Text("Minimum playback speed while filling the in-app player's 8-second live buffer. Lower fills faster; 100% disables adaptive buffering.")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
 
-                // Bonus Time: add extra recording past the guide end (sports shows default to enabled)
                 Toggle("Bonus Time", isOn: $draft.Sports_padding_enabled)
-                    .help("Records extra time after the guide end. Sports shows have this enabled by default; any show can use it.")
                 if draft.Sports_padding_enabled {
-                    // Stepper visible only when Bonus Time is on; step by 5 min for convenience
                     Stepper("Bonus Time: \(draft.Sports_padding_minutes) min",
                             value: $draft.Sports_padding_minutes, in: 10...60, step: 5)
                 }
+                Text("Records extra time past the guide end. Sports shows default to on — covers live events that run over.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
 
-                Divider()
-
+            Section("Post-Processing") {
                 Toggle("Series subfolders", isOn: $draft.Series_subfolder_enabled)
-                    .help("When enabled, SeriesID recordings are organized into Title/Season XX/ subfolders inside the recording folder.")
-
-                Divider()
+                Text("Save SeriesID recordings into Title/Season XX/ subfolders. Requires season data from the guide (e.g. S02E04). Date-scheduled shows always use a flat path.")
+                    .font(.caption).foregroundStyle(.secondary)
 
                 LabeledContent("Post-recording script") {
                     HStack {
@@ -331,9 +337,10 @@ struct SettingsView: View {
                         }
                     }
                 }
-                .help("Script or executable run after each successful recording. Receives the file path as $1. Leave empty to disable.")
+                Text("Shell script or executable run after each successful recording. File path is passed as $1 along with HDHR_* env vars (title, channel, transcode, episode, device, series, filesize). Example scripts are in tools/post_recording/.")
+                    .font(.caption).foregroundStyle(.secondary)
                 if !draft.Post_recording_script.isEmpty {
-                    Text("$1 = file path · HDHR_PATH · HDHR_TITLE · HDHR_CHANNEL · HDHR_TRANSCODE · HDHR_EPISODE · HDHR_DEVICE · HDHR_SERIES · HDHR_FILESIZE")
+                    Text("$1 · HDHR_PATH · HDHR_TITLE · HDHR_CHANNEL · HDHR_TRANSCODE · HDHR_EPISODE · HDHR_DEVICE · HDHR_SERIES · HDHR_FILESIZE")
                         .font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
                 }
             }
@@ -352,22 +359,27 @@ struct SettingsView: View {
                     value: $draft.GuideHours,
                     in: 1...48
                 )
-                .help("How many hours of future programming the guide fetches and displays. Longer windows let you schedule further out but take more time to download.")
+                Text("How far ahead guide data is fetched and how long before it auto-refreshes. Longer windows let you schedule further out.")
+                    .font(.caption).foregroundStyle(.secondary)
                 Stepper(
                     "Series scan retry: \(draft.Series_scan_retry_hours) hr",
                     value: $draft.Series_scan_retry_hours,
                     in: 1...24
                 )
-                .help("How often hdhr_VCR re-checks the guide to find an upcoming episode for series shows that have no scheduled air time.")
+                Text("How long to wait before re-checking the guide when a series show has no matching air time yet.")
+                    .font(.caption).foregroundStyle(.secondary)
                 Button("Update Guides Now") {
                     state.refreshAll()
                 }
                 .buttonStyle(.borderedProminent)
+                Text("Force-refreshes guide data for all tuners immediately, without waiting for the auto-refresh window.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
 
             Section("Format") {
                 Toggle("Use XMLTV guide format", isOn: $draft.Guide_use_xml)
-                    .help("Fetch guide data as XMLTV (XML) instead of the default JSON format. XMLTV includes richer category tags and explicit paid-programming detection. The server determines the window (~2 days); the GuideHours setting is ignored in XMLTV mode. Devices without DeviceAuth fall back to JSON.")
+                Text("XMLTV provides richer genre tags and explicit paid-programming detection. The server controls the window (~2 days); Guide Hours is ignored. Devices without DeviceAuth always use JSON.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
@@ -387,7 +399,8 @@ struct SettingsView: View {
                     ),
                     in: 5...120, step: 5
                 )
-                .help("A macOS notification is sent this many minutes before a show's scheduled start — an early heads-up that a recording is coming.")
+                Text("Early heads-up notification sent this many minutes before a show's scheduled start time.")
+                    .font(.caption).foregroundStyle(.secondary)
                 Stepper(
                     "Recording alert: \(Int(draft.Notify_recording)) min before",
                     value: Binding(
@@ -396,7 +409,8 @@ struct SettingsView: View {
                     ),
                     in: 1...60
                 )
-                .help("A second macOS notification fires this many minutes before recording begins — a last-minute reminder, firing closer to start than Up Next.")
+                Text("A second, closer notification just before recording begins — set lower than Up Next so both fire in order.")
+                    .font(.caption).foregroundStyle(.secondary)
                 if draft.Notify_recording >= draft.Notify_upnext {
                     Label("Recording alert fires at or after Up Next — the Up Next notification won't appear first.", systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)
@@ -406,7 +420,8 @@ struct SettingsView: View {
 
             Section("Discord") {
                 Toggle("Enable Discord notifications", isOn: $draft.Discord_enabled)
-                    .help("Post recording status updates to a Discord channel via webhook URL.")
+                Text("Post recording status updates to a Discord channel via webhook. Requires a webhook URL from your server's channel settings.")
+                    .font(.caption).foregroundStyle(.secondary)
 
                 if draft.Discord_enabled {
                     HStack(spacing: 8) {
@@ -491,7 +506,8 @@ struct SettingsView: View {
                     value: $draft.Idle_timer_interval,
                     in: 5...60, step: 5
                 )
-                .help("How often the app checks for recordings due to start or end. Lower values give more precise timing at the cost of slightly more CPU.")
+                Text("How often the app checks for recordings due to start or stop. Lower = more precise timing, slightly more CPU.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
 
             Section("Logging") {
@@ -510,6 +526,8 @@ struct SettingsView: View {
                     .font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
 
                 Toggle("Verbose curl logging", isOn: $draft.Verbose_curl)
+                Text("Log full curl request/response headers for each recording. Use when diagnosing why a recording fails to start.")
+                    .font(.caption).foregroundStyle(.secondary)
                 if draft.Verbose_curl {
                     Text("curl stderr → \(RecordingManager.curlLogPath)")
                         .font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
@@ -535,9 +553,11 @@ struct SettingsView: View {
 
             Section("Signal Quality") {
                 Toggle("Show signal bars in guide", isOn: $draft.Signal_quality_enabled)
-                    .help("Display signal quality bars in the cable guide and Watch Now view. Signal data is always collected in the background.")
+                Text("Display signal strength bars in the guide grid and Watch Now view. Signal data is always collected during recordings regardless of this toggle.")
+                    .font(.caption).foregroundStyle(.secondary)
                 Toggle("Send alerts on signal dropout", isOn: $draft.Signal_quality_alert_notify)
-                    .help("Send a system notification and Discord message when a recording's signal drops below 30% for ~20 seconds. Logging is always on regardless of this setting.")
+                Text("Send a notification and Discord message when a recording's signal drops below 30% for ~20 seconds. Logging is always active.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
 
             if draft.Signal_quality_enabled {
@@ -569,7 +589,8 @@ struct SettingsView: View {
         Form {
             Section("Web Server") {
                 Toggle("Enable Web Server", isOn: $draft.Web_server_enabled)
-                    .help("Serve a Watch Now web page on your local network. No authentication — trusted LAN use only.")
+                Text("Serve the cable guide and recording controls as a web page on your local network — accessible from any browser on any device.")
+                    .font(.caption).foregroundStyle(.secondary)
                 if draft.Web_server_enabled {
                     HStack {
                         Text("Port")
@@ -956,6 +977,13 @@ struct SettingsView: View {
         panel.allowsMultipleSelection = false
         panel.message = "Choose a script or executable to run after each recording completes"
         panel.prompt = "Select"
+        // Default to the example scripts folder next to the app bundle (repo layout)
+        let examplesDir = Bundle.main.bundleURL
+            .deletingLastPathComponent()
+            .appendingPathComponent("tools/post_recording")
+        if FileManager.default.fileExists(atPath: examplesDir.path) {
+            panel.directoryURL = examplesDir
+        }
         if panel.runModal() == .OK, let url = panel.url { draft.Post_recording_script = url.path }
     }
 }
