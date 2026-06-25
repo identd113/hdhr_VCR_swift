@@ -322,6 +322,20 @@ final class WebServer {
             let pingBody = Data("{\"ok\":true,\"version\":\"\(appVersion)\"}".utf8)
             return .ok(contentType: "application/json", body: pingBody)
 
+        case "/api/guide-refresh":
+            let grid  = buildGuideGridHTML(state: state, isDesktop: isDesktopUA(userAgent))
+            let sumph = buildSumPhHTML(state: state)
+            var tdropBodies: [String: String] = [:]
+            for dev in state.usableDeviceIDs {
+                tdropBodies[dev] = buildTunerShowsHTML(state: state, deviceId: dev)
+            }
+            let payload: [String: Any] = ["grid": grid, "sumph": sumph, "tdrop": tdropBodies]
+            guard let data = try? JSONSerialization.data(withJSONObject: payload),
+                  let json = String(data: data, encoding: .utf8) else {
+                return .badRequest("serialization failed")
+            }
+            return .ok(contentType: "application/json", body: Data(json.utf8))
+
         case "/api/now.json":
             let data = buildNowJSON(state: state)
             return .ok(contentType: "application/json", body: data)
@@ -662,46 +676,36 @@ final class WebServer {
         }
     }
 
+    // Builds the .gi innerHTML (g-hdr + per-channel rows) used by both buildHTML() and /api/guide-refresh.
+    // Self-contained: all dependencies come from `state` or module-level globals (he, hourFmt, etc.).
     @MainActor
-    private func buildHTML(state: AppState, isDesktop: Bool) -> String {
+    private func buildGuideGridHTML(state: AppState, isDesktop: Bool) -> String {
 
-        // ── Time window: full GuideHours for desktop, 1/2 for mobile ──────
+        // ── Time window ────────────────────────────────────────────────────────
         let nowTs    = Int(Date().timeIntervalSince1970)
         let halfHour = 30 * 60
         let winSec   = isDesktop ? state.config.GuideHours * 3600
                                  : state.config.GuideHours * 3600 / 2
-        // One-hour lookback — GuideStore fetches from now-3600 so this is always covered.
         let winStart = (nowTs / halfHour) * halfHour - 3600
         let winEnd   = winStart + winSec
-        // Integer-only percentage formatter — avoids ~1500 String(format:) calls per full guide render.
-        // Computes offset/winSec*100 to 4 decimal places using only integer arithmetic.
         func pct(_ offset: Int) -> String {
             let n     = offset * 1_000_000 / winSec
             let whole = n / 10000
             let frac  = n % 10000
             return "\(whole).\(frac / 1000)\((frac / 100) % 10)\((frac / 10) % 10)\(frac % 10)"
         }
-        let nowPct = pct(nowTs - winStart)
-        // Grid min-width: 100px per 30-min slot so text stays readable at any window size.
-        let guideMinWidth = max(1200, winSec / 1800 * 100)
-
-        // ── Time tick labels: one per clock hour across the window ──────────
-        let firstHour = ((winStart + 3599) / 3600) * 3600  // first hour boundary ≥ winStart
+        let nowPct    = pct(nowTs - winStart)
+        let firstHour = ((winStart + 3599) / 3600) * 3600
         let ticksHTML: String = stride(from: firstHour, through: winEnd, by: 3600).map { ts in
             let lbl = he(Self.hourFmt.string(from: Date(timeIntervalSince1970: TimeInterval(ts))))
             return "<div class=\"g-tick\" style=\"left:\(pct(ts - winStart))%\">\(lbl)</div>"
         }.joined() + "<div class=\"g-now-tick\" style=\"left:\(nowPct)%\"></div>"
 
-        // ── Managed show lookup (device-agnostic for badge coloring) ─────────
-        // Capture computed property once — each access re-filters the full shows array.
+        // ── Managed show lookups ───────────────────────────────────────────────
         let recording = state.recordingShows
-        // Per-device recording channel sets — device-scoped so a recording on device A doesn't
-        // falsely badge the same channel on device B as Recording in a multi-device guide view.
         let recChannelsByDevice: [String: Set<String>] = Dictionary(
             grouping: recording, by: { $0.hdhr_record }
         ).mapValues { Set($0.map { $0.show_channel }) }
-        // Active shows that are airing right now but whose idle-loop recording start hasn't fired yet.
-        // Treated as recording so the guide cell shows g-prog-rec immediately after a web Record tap.
         let nowDate = Date()
         let pendingRecChannelsByDevice: [String: Set<String>] = {
             let pending = state.shows.filter {
@@ -714,14 +718,9 @@ final class WebServer {
         }()
         let activeMgd    = state.shows.filter { $0.show_active && !$0.show_paused }
         let guideMatcher = ManagedGuideMatcher(activeManagedShows: activeMgd)
-        // Pre-built O(1) indexes for findManagedShow.
-        // Series shows: SeriesID → Show.
         let activeMgdBySeries = Dictionary(
             activeMgd.filter { $0.isSeries && !$0.show_seriesid.isEmpty }.map { ($0.show_seriesid, $0) },
             uniquingKeysWith: { a, _ in a })
-        // dateTime/single: slot key → Show.
-        // dateTime key: "device:channel:Weekday:HH:MM" (one per air day, same format as ManagedGuideMatcher).
-        // single key:   "device:channel:epoch".
         let fmsDayNames = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"]
         var activeMgdBySlot: [String: Show] = [:]
         for s in activeMgd where !s.isSeries {
@@ -735,10 +734,6 @@ final class WebServer {
                 activeMgdBySlot["\(s.hdhr_record):\(s.show_channel):\(Int(next.timeIntervalSince1970))"] = s
             }
         }
-        // Returns the managed Show matching a guide entry — used to embed show data attrs on
-        // managed blocks so the web edit modal can be opened directly from the guide.
-        // Series shows: SeriesID only (no title fallback — avoids wrong-device match).
-        // dateTime/single: device+channel+slot (same key format as ManagedGuideMatcher).
         let findManagedShow: (GuideEntry, LineupEntry) -> Show? = { e, ch in
             if let sid = e.SeriesID, !sid.isEmpty, let s = activeMgdBySeries[sid] { return s }
             let c = Calendar.current.dateComponents([.hour, .minute, .weekday],
@@ -749,6 +744,157 @@ final class WebServer {
             if let s = activeMgdBySlot["\(dev):\(chan):\(dayName):\(hhmm)"] { return s }
             return activeMgdBySlot["\(dev):\(chan):\(Int(e.StartTime))"]
         }
+
+        // ── Guide grid rows ────────────────────────────────────────────────────
+        var rowParts: [String] = []
+
+        for device in state.devices {
+            let sorted = (state.lineups[device.DeviceID] ?? [])
+                .sorted {
+                    if $0.isFavorite != $1.isFavorite { return $0.isFavorite }
+                    return $0.GuideNumber.channelSortKey < $1.GuideNumber.channelSortKey
+                }
+            var seenInDevice = Set<String>()
+            var favRows:   [String] = []
+            var otherRows: [String] = []
+            for ch in sorted {
+                guard seenInDevice.insert(ch.GuideNumber).inserted else { continue }
+                let entries = state.guideStore.entries(deviceId: device.DeviceID, channelNum: ch.GuideNumber,
+                                                       after: Date(timeIntervalSince1970: TimeInterval(winStart)))
+                    .filter { $0.StartTime < winEnd }
+                guard !entries.isEmpty else { continue }
+
+                // Use the external CDN URL directly — browser fetches and caches without a local proxy hop.
+                let logoURL: String = state.channelImageURLs["\(device.DeviceID):\(ch.GuideNumber)"] ?? ""
+                let isHD     = (ch.HD ?? 0) != 0
+                let chLabel  = ch.GuideNumber + (isHD ? " HD" : "")
+                let logoHTML = logoURL.isEmpty
+                    ? ""
+                    : "<img class=\"g-logo\" src=\"\(he(logoURL))\" loading=\"lazy\" onerror=\"this.style.display='none'\" alt=\"\" style=\"background:#ddd\">"
+                let isRecCh  = (recChannelsByDevice[device.DeviceID]?.contains(ch.GuideNumber) ?? false)
+                             || (pendingRecChannelsByDevice[device.DeviceID]?.contains(ch.GuideNumber) ?? false)
+
+                var blockParts: [String] = ["<div class=\"g-now-bar\" style=\"left:\(nowPct)%\"></div>"]
+                let infSIDs: Set<String> = ["C11809220ENAPZK", "C459763EN3L6D"]
+                var cursor = winStart
+                for e in entries {
+                    let gapEnd = min(e.StartTime, winEnd)
+                    if gapEnd > cursor {
+                        blockParts.append("<div class=\"g-gap\" style=\"left:\(pct(cursor - winStart))%;width:\(pct(gapEnd - cursor))%\"></div>")
+                    }
+                    cursor = max(cursor, e.EndTime)
+                }
+                if cursor < winEnd {
+                    blockParts.append("<div class=\"g-gap\" style=\"left:\(pct(cursor - winStart))%;width:\(pct(winEnd - cursor))%\"></div>")
+                }
+                for e in entries {
+                    let cs = max(e.StartTime, winStart) - winStart
+                    let ce = min(e.EndTime,   winEnd)   - winStart
+                    guard ce > cs else { continue }
+
+                    let isNow      = e.StartTime <= nowTs && e.EndTime > nowTs
+                    let isEntryRec = isRecCh && isNow
+                    let isMgd      = guideMatcher.isManaged(entry: e)
+                    var cls = "g-prog"
+                    if isEntryRec      { cls += " g-prog-rec"   }
+                    else if isNow      { cls += " g-prog-now"   }
+                    else if isMgd      { cls += " g-prog-sched" }
+                    let ggSkip: Set<String>  = ["series","miniseries","mini-series","mini series","special"]
+                    let ggAlias: [String: String] = [
+                        "sitcom":"comedy","movies":"movie","kids":"children","sport":"sports",
+                        "documentary":"doc","game show":"gameshow","animation":"children","animated":"children"
+                    ]
+                    let ggKnown: Set<String> = [
+                        "drama","comedy","news","sports","reality","movie","talk","children",
+                        "crime","romance","thriller","action","mystery","doc","science","nature",
+                        "history","music","food","travel","gameshow","home","health","faith"
+                    ]
+                    var gg: [String] = []
+                    for f in (e.Filter ?? []) {
+                        let lo = f.lowercased()
+                        if ggSkip.contains(lo) { continue }
+                        let g = ggAlias[lo] ?? lo
+                        if ggKnown.contains(g) && !gg.contains(g) { gg.append(g); if gg.count == 2 { break } }
+                    }
+                    var extraStyle = ""
+                    if (e.Filter?.count ?? 0) > 1 && gg.count == 2 && !isEntryRec {
+                        let sfx = (isNow || isMgd) ? "-now" : ""
+                        extraStyle = ";background:linear-gradient(to right,var(--gg-\(gg[0])\(sfx)),var(--gg-\(gg[1])\(sfx)))"
+                        cls += " gg-\(gg[0])"
+                    } else if let g = gg.first {
+                        cls += " gg-\(g)"
+                    }
+
+                    let sub   = e.EpisodeTitle.flatMap { $0.isEmpty ? nil : $0 } ?? ""
+                    let tip   = sub.isEmpty
+                        ? "\(he(e.Title))  (\(he(guideTimeRange(e))))"
+                        : "\(he(e.Title)) · \(he(sub))  (\(he(guideTimeRange(e))))"
+                    let subH  = sub.isEmpty ? "" : "<span class=\"g-sub\">\(he(sub))</span>"
+
+                    let synAttr     = String((e.Synopsis ?? "")
+                        .replacingOccurrences(of: "\n", with: " ").prefix(220))
+                    let dateAttr    = e.OriginalAirdate.map {
+                        origAirdateFormatter.string(from: Date(timeIntervalSince1970: TimeInterval($0)))
+                    } ?? ""
+                    let filtersAttr = (e.Filter ?? []).joined(separator: ",")
+                    let da = "data-title=\"\(he(e.Title))\" data-syn=\"\(he(synAttr))\" data-poster=\"\(he(e.ImageURL ?? ""))\" data-ep=\"\(he(e.episodeInfoLabel ?? ""))\" data-date=\"\(he(dateAttr))\" data-genre=\"\(he(e.firstGenre ?? ""))\" data-filters=\"\(he(filtersAttr))\" data-start=\"\(e.StartTime)\" data-end=\"\(e.EndTime)\" data-device=\"\(he(device.DeviceID))\" data-num=\"\(he(ch.GuideNumber))\" data-chname=\"\(he(ch.GuideName))\" data-logo=\"\(he(logoURL))\" data-series=\"\(he(e.SeriesID ?? ""))\" data-managed=\"\(isMgd ? 1 : 0)\" data-recording=\"\(isEntryRec ? 1 : 0)\""
+
+                    let flagHTML = isEntryRec ? "<div class=\"g-flag-rec\"></div>"
+                                 : isMgd      ? "<div class=\"g-flag\"></div>" : ""
+                    let showDA: String = isMgd ? {
+                        let s = findManagedShow(e, ch)
+                        guard let s else { return "" }
+                        let ad = s.show_air_date.joined(separator: ",")
+                        return " data-show-id=\"\(he(s.show_id))\" data-show-type=\"\(showTypeStr(s))\" data-show-paused=\"\(s.show_paused ? 1 : 0)\" data-show-length=\"\(s.show_length)\" data-show-bonus=\"\(s.show_bonus_time ? 1 : 0)\" data-show-transcode=\"\(he(s.show_transcode))\" data-show-seriesid=\"\(he(s.show_seriesid))\" data-show-airdays=\"\(he(ad))\" data-show-failcount=\"\(s.show_fail_count)\" data-show-failreason=\"\(he(s.show_fail_reason))\" data-show-recording=\"\(s.show_recording ? 1 : 0)\""
+                    }() : ""
+                    let infDA = (infSIDs.contains(e.SeriesID ?? "") || e.Title == "Paid Programming") ? " data-inf=\"1\"" : ""
+                    blockParts.append("<div class=\"\(cls)\" style=\"left:\(pct(cs))%;width:\(pct(ce - cs))%\(extraStyle)\" title=\"\(tip)\" \(da)\(showDA)\(infDA) onclick=\"showInfo(this)\"><div class=\"g-pi\"><span class=\"g-ti\">\(he(e.Title))</span>\(subH)</div>\(flagHTML)</div>")
+                }
+
+                let gnameAttr = ChannelSignalStore.key(for: ch.GuideName)
+                let sigBucket = ChannelSignalStore.shared.buckets[gnameAttr] ?? .noData
+                let sigHTML: String = {
+                    guard sigBucket != .noData else { return "" }
+                    let color = sigBucket == .poor ? "#e53935" : sigBucket == .fair ? "#fbc02d" : "#43a047"
+                    let b2Color = sigBucket != .poor ? color : "#555"
+                    let b3Color = sigBucket == .good ? color : "#555"
+                    return "<svg class=\"g-sig\" viewBox=\"0 0 11 10\" width=\"11\" height=\"10\" title=\"Signal: \(sigBucket.rawValue)\">"
+                        + "<rect x=\"0\" y=\"6\" width=\"3\" height=\"4\" fill=\"\(color)\"/>"
+                        + "<rect x=\"4\" y=\"3\" width=\"3\" height=\"7\" fill=\"\(b2Color)\"/>"
+                        + "<rect x=\"8\" y=\"0\" width=\"3\" height=\"10\" fill=\"\(b3Color)\"/>"
+                        + "</svg>"
+                }()
+                let favAttr = ch.isFavorite ? " data-fav=\"1\"" : ""
+                let favBtn  = ch.isFavorite
+                    ? "<button class=\"g-fav-btn\" data-fav=\"1\" onclick=\"toggleFav(event,this)\" title=\"Remove from favorites\">★</button>"
+                    : "<button class=\"g-fav-btn\" onclick=\"toggleFav(event,this)\" title=\"Add to favorites\">☆</button>"
+                let rowHTML = "<div class=\"g-row\" data-dev=\"\(he(device.DeviceID))\" data-ch=\"\(he(ch.GuideNumber))\" data-gname=\"\(he(gnameAttr))\"\(favAttr)><div class=\"g-ch\">\(logoHTML)<div class=\"g-cl\"><span class=\"g-cn\">\(he(chLabel))\(sigHTML)</span><span class=\"g-cname\">\(he(ch.GuideName))</span></div>\(favBtn)</div><div class=\"g-tl\">\(blockParts.joined())</div></div>"
+                if ch.isFavorite { favRows.append(rowHTML) } else { otherRows.append(rowHTML) }
+            }
+            let devId = he(device.DeviceID)
+            if !favRows.isEmpty {
+                rowParts.append("<div class=\"g-fav-sep\" data-dev=\"\(devId)\"><div class=\"g-ch\">★ FAVORITES</div><div class=\"g-tl\"></div></div>")
+                rowParts.append(contentsOf: favRows)
+            }
+            rowParts.append(contentsOf: otherRows)
+        }
+        let rowsHTML = rowParts.isEmpty
+            ? "<div style=\"padding:24px;color:#555;text-align:center;font-size:.85rem\">No guide data — loading…</div>"
+            : rowParts.joined()
+
+        let hdr = "<div class=\"g-hdr\" data-winstart=\"\(winStart)\" data-winsec=\"\(winSec)\"><div class=\"g-hdr-ch\"><span class=\"g-hdr-ch-lbl\">Ch</span><div class=\"g-hdr-btns\"><button class=\"g-hdr-btn\" onclick=\"scrollToNow()\" title=\"Jump to now\">⊙</button><button class=\"g-hdr-btn\" onclick=\"refreshGuide()\" title=\"Refresh guide\">↺</button></div></div><div class=\"g-hdr-tl\">\(ticksHTML)</div></div>"
+        return hdr + "\n        " + rowsHTML
+    }
+
+    @MainActor
+    private func buildHTML(state: AppState, isDesktop: Bool) -> String {
+        let nowTs       = Int(Date().timeIntervalSince1970)
+        let winSec      = isDesktop ? state.config.GuideHours * 3600 : state.config.GuideHours * 3600 / 2
+        let winStart    = (nowTs / (30 * 60)) * (30 * 60) - 3600   // needed for _winStart JS literal
+        let guideMinWidth = max(1200, winSec / 1800 * 100)
+        let gridInner   = buildGuideGridHTML(state: state, isDesktop: isDesktop)
+        // Capture recording shows once — used by recsByDevJS and devTuners below.
+        let recording   = state.recordingShows
 
         // ── Per-device tuner counts (total slots vs. currently occupied) ────────
         // active = live status.json snapshot; falls back to scheduled recording count.
@@ -895,156 +1041,6 @@ final class WebServer {
         bar += "</div>"
         let deviceBarHTML = bar
 
-        // ── Guide grid rows — one row per (device × channel); JS deduplicates the "All" view ──
-        var rowParts: [String] = []
-
-        for device in state.devices {
-            let sorted = (state.lineups[device.DeviceID] ?? [])
-                .sorted {
-                    if $0.isFavorite != $1.isFavorite { return $0.isFavorite }
-                    return $0.GuideNumber.channelSortKey < $1.GuideNumber.channelSortKey
-                }
-            var seenInDevice = Set<String>()   // dedup duplicate lineup entries within same device
-            var favRows:   [String] = []
-            var otherRows: [String] = []
-            for ch in sorted {
-                guard seenInDevice.insert(ch.GuideNumber).inserted else { continue }
-                // Pass winStart as `after:` so shows that ended before now but within the lookback
-                // window aren't silently dropped by the default after:Date() filter.
-                let entries = state.guideStore.entries(deviceId: device.DeviceID, channelNum: ch.GuideNumber,
-                                                       after: Date(timeIntervalSince1970: TimeInterval(winStart)))
-                    .filter { $0.StartTime < winEnd }
-                guard !entries.isEmpty else { continue }
-
-                let logoURL: String = {
-                    guard let raw = state.channelImageURLs["\(device.DeviceID):\(ch.GuideNumber)"],
-                          !raw.isEmpty,
-                          let fn = URL(string: raw)?.lastPathComponent, !fn.isEmpty else { return "" }
-                    return "/icon/\(fn)"
-                }()
-                let isHD     = (ch.HD ?? 0) != 0
-                let chLabel  = ch.GuideNumber + (isHD ? " HD" : "")
-                let logoHTML = logoURL.isEmpty
-                    ? ""
-                    : "<img class=\"g-logo\" src=\"\(he(logoURL))\" loading=\"lazy\" onerror=\"this.style.display='none'\" alt=\"\" style=\"background:#ddd\">"
-                let isRecCh  = (recChannelsByDevice[device.DeviceID]?.contains(ch.GuideNumber) ?? false)
-                             || (pendingRecChannelsByDevice[device.DeviceID]?.contains(ch.GuideNumber) ?? false)
-
-                var blockParts: [String] = ["<div class=\"g-now-bar\" style=\"left:\(nowPct)%\"></div>"]
-                // Infomercial detection: known SeriesIDs + title fallback for new generic slots.
-                // Filter[] is empty for infomercials in the JSON API — cannot be used.
-                let infSIDs: Set<String> = ["C11809220ENAPZK", "C459763EN3L6D"]
-                // Fill gaps so the striped .g-tl background never shows through.
-                // cursor tracks the right edge of the last processed show, starting at winStart.
-                var cursor = winStart
-                for e in entries {
-                    let gapEnd = min(e.StartTime, winEnd)
-                    if gapEnd > cursor {
-                        blockParts.append("<div class=\"g-gap\" style=\"left:\(pct(cursor - winStart))%;width:\(pct(gapEnd - cursor))%\"></div>")
-                    }
-                    cursor = max(cursor, e.EndTime)
-                }
-                if cursor < winEnd {
-                    blockParts.append("<div class=\"g-gap\" style=\"left:\(pct(cursor - winStart))%;width:\(pct(winEnd - cursor))%\"></div>")
-                }
-                for e in entries {
-                    let cs = max(e.StartTime, winStart) - winStart
-                    let ce = min(e.EndTime,   winEnd)   - winStart
-                    guard ce > cs else { continue }
-
-                    let isNow      = e.StartTime <= nowTs && e.EndTime > nowTs
-                    let isEntryRec = isRecCh && isNow
-                    let isMgd      = guideMatcher.isManaged(entry: e)
-                    var cls = "g-prog"
-                    if isEntryRec      { cls += " g-prog-rec"   }
-                    else if isNow      { cls += " g-prog-now"   }
-                    else if isMgd      { cls += " g-prog-sched" }
-                    // Extract up to 2 genre tags; dual-genre gets a CSS gradient via inline style.
-                    // Gradient requires >1 raw Filter entry — single-tag shows always get a solid color.
-                    let ggSkip: Set<String>  = ["series","miniseries","mini-series","mini series","special"]
-                    let ggAlias: [String: String] = [
-                        "sitcom":"comedy","movies":"movie","kids":"children","sport":"sports",
-                        "documentary":"doc","game show":"gameshow","animation":"children","animated":"children"
-                    ]
-                    let ggKnown: Set<String> = [
-                        "drama","comedy","news","sports","reality","movie","talk","children",
-                        "crime","romance","thriller","action","mystery","doc","science","nature",
-                        "history","music","food","travel","gameshow","home","health","faith"
-                    ]
-                    var gg: [String] = []
-                    for f in (e.Filter ?? []) {
-                        let lo = f.lowercased()
-                        if ggSkip.contains(lo) { continue }
-                        let g = ggAlias[lo] ?? lo
-                        if ggKnown.contains(g) && !gg.contains(g) { gg.append(g); if gg.count == 2 { break } }
-                    }
-                    var extraStyle = ""
-                    if (e.Filter?.count ?? 0) > 1 && gg.count == 2 && !isEntryRec {
-                        let sfx = (isNow || isMgd) ? "-now" : ""
-                        extraStyle = ";background:linear-gradient(to right,var(--gg-\(gg[0])\(sfx)),var(--gg-\(gg[1])\(sfx)))"
-                        cls += " gg-\(gg[0])"
-                    } else if let g = gg.first {
-                        cls += " gg-\(g)"
-                    }
-
-                    let sub   = e.EpisodeTitle.flatMap { $0.isEmpty ? nil : $0 } ?? ""
-                    let tip   = sub.isEmpty
-                        ? "\(he(e.Title))  (\(he(guideTimeRange(e))))"
-                        : "\(he(e.Title)) · \(he(sub))  (\(he(guideTimeRange(e))))"
-                    let subH  = sub.isEmpty ? "" : "<span class=\"g-sub\">\(he(sub))</span>"
-
-                    // Data attributes for the JS summary panel; synopsis capped to keep HTML size sane
-                    let synAttr  = String((e.Synopsis ?? "")
-                        .replacingOccurrences(of: "\n", with: " ").prefix(220))
-                    let dateAttr = e.OriginalAirdate.map {
-                        origAirdateFormatter.string(from: Date(timeIntervalSince1970: TimeInterval($0)))
-                    } ?? ""
-                    let da = "data-title=\"\(he(e.Title))\" data-syn=\"\(he(synAttr))\" data-poster=\"\(he(e.ImageURL ?? ""))\" data-ep=\"\(he(e.episodeInfoLabel ?? ""))\" data-date=\"\(he(dateAttr))\" data-genre=\"\(he(e.firstGenre ?? ""))\" data-start=\"\(e.StartTime)\" data-end=\"\(e.EndTime)\" data-device=\"\(he(device.DeviceID))\" data-num=\"\(he(ch.GuideNumber))\" data-chname=\"\(he(ch.GuideName))\" data-logo=\"\(he(logoURL))\" data-series=\"\(he(e.SeriesID ?? ""))\" data-managed=\"\(isMgd ? 1 : 0)\" data-recording=\"\(isEntryRec ? 1 : 0)\""
-
-                    let flagHTML = isEntryRec ? "<div class=\"g-flag-rec\"></div>"
-                                 : isMgd      ? "<div class=\"g-flag\"></div>" : ""
-                    let showDA: String = isMgd ? {
-                        let s = findManagedShow(e, ch)
-                        guard let s else { return "" }
-                        let ad = s.show_air_date.joined(separator: ",")
-                        return " data-show-id=\"\(he(s.show_id))\" data-show-type=\"\(showTypeStr(s))\" data-show-paused=\"\(s.show_paused ? 1 : 0)\" data-show-length=\"\(s.show_length)\" data-show-bonus=\"\(s.show_bonus_time ? 1 : 0)\" data-show-transcode=\"\(he(s.show_transcode))\" data-show-seriesid=\"\(he(s.show_seriesid))\" data-show-airdays=\"\(he(ad))\" data-show-failcount=\"\(s.show_fail_count)\" data-show-failreason=\"\(he(s.show_fail_reason))\" data-show-recording=\"\(s.show_recording ? 1 : 0)\""
-                    }() : ""
-                    let infDA = (infSIDs.contains(e.SeriesID ?? "") || e.Title == "Paid Programming") ? " data-inf=\"1\"" : ""
-                    blockParts.append("<div class=\"\(cls)\" style=\"left:\(pct(cs))%;width:\(pct(ce - cs))%\(extraStyle)\" title=\"\(tip)\" \(da)\(showDA)\(infDA) onclick=\"showInfo(this)\"><div class=\"g-pi\"><span class=\"g-ti\">\(he(e.Title))</span>\(subH)</div>\(flagHTML)</div>")
-                }
-
-                let gnameAttr = ChannelSignalStore.key(for: ch.GuideName)
-                let sigBucket = ChannelSignalStore.shared.buckets[gnameAttr] ?? .noData
-                let sigHTML: String = {
-                    guard sigBucket != .noData else { return "" }
-                    let color = sigBucket == .poor ? "#e53935" : sigBucket == .fair ? "#fbc02d" : "#43a047"
-                    let b2Color = sigBucket != .poor ? color : "#555"
-                    let b3Color = sigBucket == .good ? color : "#555"
-                    return "<svg class=\"g-sig\" viewBox=\"0 0 11 10\" width=\"11\" height=\"10\" title=\"Signal: \(sigBucket.rawValue)\">"
-                        + "<rect x=\"0\" y=\"6\" width=\"3\" height=\"4\" fill=\"\(color)\"/>"
-                        + "<rect x=\"4\" y=\"3\" width=\"3\" height=\"7\" fill=\"\(b2Color)\"/>"
-                        + "<rect x=\"8\" y=\"0\" width=\"3\" height=\"10\" fill=\"\(b3Color)\"/>"
-                        + "</svg>"
-                }()
-                let favAttr = ch.isFavorite ? " data-fav=\"1\"" : ""
-                let favBtn  = ch.isFavorite
-                    ? "<button class=\"g-fav-btn\" data-fav=\"1\" onclick=\"toggleFav(event,this)\" title=\"Remove from favorites\">★</button>"
-                    : "<button class=\"g-fav-btn\" onclick=\"toggleFav(event,this)\" title=\"Add to favorites\">☆</button>"
-                let rowHTML = "<div class=\"g-row\" data-dev=\"\(he(device.DeviceID))\" data-ch=\"\(he(ch.GuideNumber))\" data-gname=\"\(he(gnameAttr))\"\(favAttr)><div class=\"g-ch\">\(logoHTML)<div class=\"g-cl\"><span class=\"g-cn\">\(he(chLabel))\(sigHTML)</span><span class=\"g-cname\">\(he(ch.GuideName))</span></div>\(favBtn)</div><div class=\"g-tl\">\(blockParts.joined())</div></div>"
-                if ch.isFavorite { favRows.append(rowHTML) } else { otherRows.append(rowHTML) }
-            }
-            // Assemble: favorites section (with header/footer) then non-favorites
-            let devId = he(device.DeviceID)
-            if !favRows.isEmpty {
-                rowParts.append("<div class=\"g-fav-sep\" data-dev=\"\(devId)\"><div class=\"g-ch\">★ FAVORITES</div><div class=\"g-tl\"></div></div>")
-                rowParts.append(contentsOf: favRows)
-            }
-            rowParts.append(contentsOf: otherRows)
-        }
-        let rowsHTML = rowParts.isEmpty
-            ? "<div style=\"padding:24px;color:#555;text-align:center;font-size:.85rem\">No guide data — loading…</div>"
-            : rowParts.joined()
-
         // ── Summary placeholder: current recording or next scheduled show ────
         let sumPhHTML = buildSumPhHTML(state: state)
 
@@ -1130,7 +1126,8 @@ final class WebServer {
         #sum-del.danger{background:#6a1010!important;color:#ffaaaa!important;border-color:#883030!important}
         html.lm #sum-del.danger{background:#fcd4d4!important;color:#8b0000!important;border-color:#cc3030!important}
         #sum button:not(#sum-btn):not(#sum-del){color:var(--t6)!important}
-        html.lm #sum-genre{color:rgba(0,0,0,.65)!important;background:rgba(0,0,0,.1)!important}
+        .sum-tag{border-radius:999px;padding:2px 8px;font-size:.58rem;font-weight:700;letter-spacing:.06em;color:rgba(255,255,255,.92);background:rgba(255,255,255,.18)}
+        html.lm .sum-tag{color:rgba(0,0,0,.7)}
         #sum-grad{background:linear-gradient(to right,rgba(0,0,0,.35),rgba(0,0,0,.05));padding:8px 10px!important;gap:1px!important}
         html.lm #sum-grad{background:linear-gradient(to right,rgba(0,0,0,.04),transparent)}
         #sum-poster{width:72px!important;min-width:72px!important;object-fit:contain!important;background:#888}
@@ -1438,7 +1435,7 @@ final class WebServer {
             <img id="sum-poster" src="" alt="" loading="lazy" style="width:72px;min-width:72px;object-fit:contain;display:none;background:#888">
             <div id="sum-grad" style="flex:1;padding:8px 10px;display:flex;flex-direction:column;gap:1px;overflow:hidden">
               <div id="sum-title" style="font-size:.92rem;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
-              <div id="sum-genre" style="display:none;font-size:.6rem;font-weight:700;color:rgba(255,255,255,.85);background:rgba(255,255,255,.18);border-radius:3px;padding:2px 6px;align-self:flex-start;letter-spacing:.06em"></div>
+              <div id="sum-genre" style="display:none;align-self:flex-start;flex-wrap:wrap;gap:3px"></div>
               <div id="sum-ep"   style="display:none;font-size:.78rem;color:#ddd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
               <div id="sum-date" style="display:none;font-size:.68rem;color:rgba(255,255,255,.7)"></div>
               <div id="sum-syn"  class="s-syn" style="display:none;font-size:.76rem;color:#e0e0e0;line-height:1.35"></div>
@@ -1507,8 +1504,7 @@ final class WebServer {
           </div>
         </div>
         <div class="gw-outer"><div class="gw"><div class="gi">
-        <div class="g-hdr" data-winstart="\(winStart)" data-winsec="\(winSec)"><div class="g-hdr-ch"><span class="g-hdr-ch-lbl">Ch</span><div class="g-hdr-btns"><button class="g-hdr-btn" onclick="scrollToNow()" title="Jump to now">⊙</button><button class="g-hdr-btn" onclick="refreshGuide()" title="Refresh guide">↺</button></div></div><div class="g-hdr-tl">\(ticksHTML)</div></div>
-        \(rowsHTML)
+        \(gridInner)
         </div></div></div>
         <script>
         \(tunerJS)
@@ -1527,6 +1523,9 @@ final class WebServer {
         var _gcDk={drama:'hsl(216,48%,35%)',comedy:'hsl(47,48%,35%)',news:'hsl(342,43%,35%)',sports:'hsl(119,48%,31%)',reality:'hsl(25,48%,35%)',movie:'hsl(270,58%,38%)',talk:'hsl(173,43%,34%)',children:'hsl(315,43%,35%)'};
         var _gcLk={drama:'hsl(216,55%,88%)',comedy:'hsl(47,65%,88%)',news:'hsl(342,55%,88%)',sports:'hsl(119,60%,87%)',reality:'hsl(25,65%,88%)',movie:'hsl(270,62%,90%)',talk:'hsl(173,55%,87%)',children:'hsl(315,60%,88%)'};
         function gc(g){var m=isLM()?_gcLk:_gcDk;return m[(g||'').toLowerCase()]||(isLM()?'#d8d8d8':'#424242');}
+        var _ggAlias={'sitcom':'comedy','movies':'movie','kids':'children','sport':'sports','documentary':'doc','game show':'gameshow','animation':'children','animated':'children'};
+        var _ggKnown=['drama','comedy','news','sports','reality','movie','talk','children','crime','romance','thriller','action','mystery','doc','science','nature','history','music','food','travel','gameshow','home','health','faith'];
+        function tagBg(f){var lo=f.toLowerCase();var g=_ggAlias[lo]||lo;return _ggKnown.indexOf(g)>=0?'var(--gg-'+g+')':null;}
         var _bonusMins=\(state.config.Sports_padding_minutes);
         function triggerSb(id){var el=document.getElementById(id);if(!el)return;el.classList.remove('sb-anim');void el.offsetWidth;el.classList.add('sb-anim');}
         function toggleBonusStar(){var chk=document.getElementById('em-bonus');var star=document.getElementById('em-bonus-star');if(chk.checked){star.textContent='+'+_bonusMins+'m';star.style.display='inline-flex';triggerSb('em-bonus-star');}else{star.style.display='none';star.classList.remove('sb-anim');}}
@@ -1537,7 +1536,7 @@ final class WebServer {
           var d=el.dataset;
           _d=d.device;_n=d.num;_s=+d.start;_e=+d.end;_ser=d.series||'';_genre=d.genre||'';_title=d.title||'';_poster=d.poster||'';_logo=d.logo||'';_chname=d.chname||'';
           document.getElementById('sum-ph').style.display='none';
-          var sc=document.getElementById('sum-c');sc.style.display='flex';sc.style.background=gc(d.genre);
+          var sc=document.getElementById('sum-c');sc.style.display='flex';sc.style.background=el.style.background||gc(d.genre);
           var pi=document.getElementById('sum-poster');
           // Bump the generation counter on every selection so a pending poster swap from a
           // prior selection (any branch) can't overwrite the image after the user moves on.
@@ -1560,8 +1559,9 @@ final class WebServer {
           var li=document.getElementById('sum-logo');
           if(d.logo){li.src=d.logo;li.style.display='inline';}else{li.style.display='none';}
           document.getElementById('sum-title').textContent=d.title||'';
-          var gi=document.getElementById('sum-genre'),g=d.genre||'';
-          if(g&&g.toLowerCase()!=='series'){gi.textContent=g.toUpperCase();gi.style.display='inline-block';}else{gi.style.display='none';}
+          var gi=document.getElementById('sum-genre');
+          var _allTags=(d.filters||d.genre||'').split(',').filter(function(f){return f&&f.toLowerCase()!=='series';});
+          if(_allTags.length){gi.innerHTML=_allTags.map(function(f){var c=tagBg(f);return '<span class="sum-tag"'+(c?' style="background:'+c+'"':'')+'>'+f.toUpperCase()+'</span>';}).join('');gi.style.display='flex';}else{gi.style.display='none';}
           so('sum-ep',d.ep||'');
           so('sum-date',d.date?'Orig. '+d.date:'');
           var sy=document.getElementById('sum-syn');
@@ -1733,20 +1733,18 @@ final class WebServer {
           var sl=gw?gw.scrollLeft:0,st=gw?gw.scrollTop:0;
           var prev=document.querySelector('.g-prog.g-sel');
           var prevStart=prev?prev.dataset.start:null,prevNum=prev?prev.dataset.num:null,prevDev=prev?prev.dataset.device:null;
-          fetch('/').then(function(r){return r.text();}).then(function(html){
-            var doc=new DOMParser().parseFromString(html,'text/html');
-            var newGi=doc.querySelector('.gi'),oldGi=document.querySelector('.gi');
-            if(newGi&&oldGi)oldGi.innerHTML=newGi.innerHTML;
-            // The fetched grid is laid out against a fresh server winStart; sync the JS window
-            // vars so the live now-line plots against the new origin (else it drifts ahead).
+          fetch('/api/guide-refresh').then(function(r){return r.json();}).then(function(d){
+            var oldGi=document.querySelector('.gi');
+            if(oldGi)oldGi.innerHTML=d.grid;
+            // Sync time window vars from the new g-hdr so the now-line plots against the fresh origin.
             var nh=document.querySelector('.g-hdr');
             if(nh&&nh.dataset.winstart){_winStart=+nh.dataset.winstart;_winSec=+nh.dataset.winsec;}
-            var newPh=doc.getElementById('sum-ph'),oldPh=document.getElementById('sum-ph');
-            if(newPh&&oldPh)oldPh.innerHTML=newPh.innerHTML;
-            // Refresh each tuner's ▾ dropdown body in place (toggle buttons + open state survive).
-            document.querySelectorAll('.tdrop').forEach(function(old){
-              var fresh=doc.getElementById(old.id);
-              if(fresh)old.innerHTML=fresh.innerHTML;
+            var oldPh=document.getElementById('sum-ph');
+            if(oldPh)oldPh.innerHTML=d.sumph;
+            // Update each tuner's show list; header/toggle-open state is preserved.
+            Object.keys(d.tdrop).forEach(function(dev){
+              var el=document.getElementById('tdrop-body-'+dev);
+              if(el)el.innerHTML=d.tdrop[dev];
             });
             _rows=document.querySelectorAll('.g-row');
             setDev(curDev);
