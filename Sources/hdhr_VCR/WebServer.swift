@@ -9,7 +9,6 @@ final class WebServer {
 
     private enum WebResponse {
         case ok(contentType: String, body: Data)
-        case cachedIcon(contentType: String, body: Data)
         case notFound(String)
         case badRequest(String)
         case payloadTooLarge(String)
@@ -392,18 +391,6 @@ final class WebServer {
                     "total":   s.totalCount
                 ])
             }
-            if path.hasPrefix("/icon/") {
-                let filename = String(path.dropFirst("/icon/".count))
-                guard !filename.isEmpty, !filename.contains("/"), !filename.contains("..") else {
-                    return .notFound("invalid")
-                }
-                let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-                let file = base.appendingPathComponent("hdhr_VCR/channel_icons/\(filename)")
-                if let data = try? Data(contentsOf: file) {
-                    let ct = filename.hasSuffix(".png") ? "image/png" : "image/jpeg"
-                    return .cachedIcon(contentType: ct, body: data)
-                }
-            }
             return .notFound("Not found: \(path)")
         }
     }
@@ -659,9 +646,8 @@ final class WebServer {
             ($0.show_next?.timeIntervalSince1970 ?? .infinity) < ($1.show_next?.timeIntervalSince1970 ?? .infinity)
         }
         func phLogo(_ deviceId: String, _ ch: String) -> String {
-            guard let raw = state.channelImageURLs["\(deviceId):\(ch)"], !raw.isEmpty,
-                  let fn = URL(string: raw)?.lastPathComponent, !fn.isEmpty else { return "" }
-            return "<img src=\"/icon/\(he(fn))\" loading=\"lazy\" onerror=\"this.style.display='none'\" style=\"width:36px;height:36px;object-fit:contain;border-radius:4px;flex-shrink:0;margin-right:12px;background:#ccc\">"
+            guard let raw = state.channelImageURLs["\(deviceId):\(ch)"], !raw.isEmpty else { return "" }
+            return "<img src=\"\(he(raw))\" loading=\"lazy\" onerror=\"this.style.display='none'\" style=\"width:36px;height:36px;object-fit:contain;border-radius:4px;flex-shrink:0;margin-right:12px;background:#ccc\">"
         }
         if let rec = recording.first {
             var sub = ""
@@ -2373,9 +2359,7 @@ final class WebServer {
         switch response {
         case .ok(let ct, let b):
             status = "200 OK"
-            // Compress text responses when the client supports it — the guide page is ~1.1 MB
-            // raw but ~160 KB gzipped, which dominates load time for LAN Wi-Fi clients.
-            // Icons (.cachedIcon) are already-compressed image data and are left as-is.
+            // Compress text responses when the client supports it.
             if acceptsGzip, b.count >= 1400, let gz = Self.gzip(b) {
                 headers = [("Content-Type", ct), ("Content-Encoding", "gzip"),
                            ("Vary", "Accept-Encoding"), ("Content-Length", "\(gz.count)")]
@@ -2384,10 +2368,6 @@ final class WebServer {
                 headers = [("Content-Type", ct), ("Content-Length", "\(b.count)")]
                 body    = b
             }
-        case .cachedIcon(let ct, let b):
-            status  = "200 OK"
-            headers = [("Content-Type", ct), ("Content-Length", "\(b.count)"), ("Cache-Control", "public, max-age=2592000")]
-            body    = b
         case .notFound(let msg):      (status, headers, body) = errorParts("404 Not Found",         msg)
         case .badRequest(let msg):    (status, headers, body) = errorParts("400 Bad Request",       msg)
         case .payloadTooLarge(let msg):(status, headers, body) = errorParts("413 Content Too Large", msg)
