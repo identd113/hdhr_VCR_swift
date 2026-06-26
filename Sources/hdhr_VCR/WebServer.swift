@@ -1528,13 +1528,19 @@ final class WebServer {
           // prior selection (any branch) can't overwrite the image after the user moves on.
           pi.dataset.pgen=(+pi.dataset.pgen||0)+1;var _gen=pi.dataset.pgen;
           if(d.poster&&d.logo){
-            // Show the local channel logo immediately, then swap in the real poster once it loads.
-            pi.onerror=function(){pi.style.display='none';};
-            pi.src=d.logo;pi.style.display='block';
             var _pUrl=d.poster;
             var _tmp=new Image();
-            _tmp.onload=function(){if(pi.dataset.pgen==_gen){pi.style.display='block';pi.onerror=function(){pi.style.display='none';};pi.src=_pUrl;}};
             _tmp.src=_pUrl;
+            if(_tmp.complete&&_tmp.naturalWidth>0){
+              // Poster already in browser cache — show it directly, no logo flash.
+              pi.onerror=function(){pi.style.display='none';};
+              pi.src=_pUrl;pi.style.display='block';
+            }else{
+              // Show channel logo immediately (pre-warmed at page load); swap to poster once loaded.
+              pi.onerror=function(){pi.style.display='none';};
+              pi.src=d.logo;pi.style.display='block';
+              _tmp.onload=function(){if(pi.dataset.pgen==_gen){pi.onerror=function(){pi.style.display='none';};pi.src=_pUrl;}};
+            }
           }else if(d.poster){
             pi.onerror=function(){if(_logo){pi.src=_logo;pi.onerror=function(){pi.style.display='none';};}else{pi.style.display='none';}};
             pi.src=d.poster;pi.style.display='block';
@@ -2174,6 +2180,8 @@ final class WebServer {
           scrollToNow();
         });
         setInterval(updateNowLine,60000);
+        // Pre-warm browser cache for all channel logos so showInfo() can display them instantly.
+        (function(){var seen={};document.querySelectorAll('[data-logo]').forEach(function(el){var u=el.dataset.logo;if(u&&!seen[u]){seen[u]=1;new Image().src=u;}});})();
         // Page-staleness: reload if the server version changes (redeploy) or the baked-in expiry has passed.
         (function(){
           var _ver='\(appVersion)',_exp=\(Int(Date().addingTimeInterval(2*3600).timeIntervalSince1970)*1000);
