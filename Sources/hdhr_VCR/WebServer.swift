@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Network
 import Compression
@@ -23,6 +24,25 @@ final class WebServer {
     // SSE: open connections waiting for push events
     private var sseConns: [NWConnection] = []
     private let sseLock  = NSLock()
+
+    // Pre-built page HTML cache — rebuilt after guide refresh, served instantly on GET /.
+    private var cachedHTMLDesktop: Data? = nil
+    private var cachedHTMLMobile:  Data? = nil
+
+    @MainActor
+    func prebuildPageHTML(state: AppState) {
+        let desktop = Data(buildHTML(state: state, isDesktop: true).utf8)
+        let mobile  = Data(buildHTML(state: state, isDesktop: false).utf8)
+        cachedHTMLDesktop = desktop
+        cachedHTMLMobile  = mobile
+        glog("[WebServer] page HTML cached (\(desktop.count / 1024)KB desktop, \(mobile.count / 1024)KB mobile)")
+    }
+
+    @MainActor
+    func invalidateHTMLCache() {
+        cachedHTMLDesktop = nil
+        cachedHTMLMobile  = nil
+    }
 
     // Static so the DateFormatter is allocated once, not on every GET /.
     private static let hourFmt: DateFormatter = {
@@ -314,8 +334,10 @@ final class WebServer {
         // GET routes
         switch path {
         case "/", "/index.html":
-            let html = buildHTML(state: state, isDesktop: isDesktopUA(userAgent))
-            return .ok(contentType: "text/html; charset=utf-8", body: Data(html.utf8))
+            let isDesktop = isDesktopUA(userAgent)
+            let body = (isDesktop ? cachedHTMLDesktop : cachedHTMLMobile)
+                ?? Data(buildHTML(state: state, isDesktop: isDesktop).utf8)
+            return .ok(contentType: "text/html; charset=utf-8", body: body)
 
         case "/api/ping":
             let pingBody = Data("{\"ok\":true,\"version\":\"\(appVersion)\"}".utf8)
@@ -351,6 +373,20 @@ final class WebServer {
                 return .ok(contentType: "image/x-icon", body: data)
             }
             return .notFound("favicon not found")
+
+        case "/api/icon":
+            if let url = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
+               let img = NSImage(contentsOf: url) {
+                let out = NSImage(size: NSSize(width: 72, height: 72), flipped: false) { r in
+                    img.draw(in: r); return true
+                }
+                if let tiff = out.tiffRepresentation,
+                   let bmp  = NSBitmapImageRep(data: tiff),
+                   let png  = bmp.representation(using: .png, properties: [:]) {
+                    return .ok(contentType: "image/png", body: png)
+                }
+            }
+            return .notFound("icon not found")
 
         default:
             if path.hasPrefix("/api/now-airing/") {
@@ -1390,9 +1426,16 @@ final class WebServer {
         .em-check{display:flex;align-items:center;gap:7px;font-size:.82rem;color:var(--t1);cursor:pointer;margin-bottom:8px}
         .em-check input{accent-color:var(--ac)}
         .em-sid{font-size:.72rem;color:var(--t4);font-family:monospace;word-break:break-all;margin-top:2px}
+        #splash{opacity:0;animation:splash-show .2s ease .3s forwards}
+        @keyframes splash-show{to{opacity:1}}
         </style>
         </head>
         <body>
+        <div id="splash" style="position:fixed;inset:0;z-index:9999;background:rgba(17,17,17,.97);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;pointer-events:none">
+          <img src="/api/icon" width="72" height="72" style="border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,.6)" onerror="this.style.display='none'">
+          <div style="color:#fff;font-size:1.1rem;font-weight:700;letter-spacing:.01em">hdhrVCR+</div>
+          <div style="color:#555;font-size:.72rem">\(appVersion)</div>
+        </div>
         <div id="toolbar" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px;flex-shrink:0">
           \(headerHTML)
           \(deviceBarHTML)
@@ -1528,19 +1571,8 @@ final class WebServer {
           // prior selection (any branch) can't overwrite the image after the user moves on.
           pi.dataset.pgen=(+pi.dataset.pgen||0)+1;var _gen=pi.dataset.pgen;
           if(d.poster&&d.logo){
-            var _pUrl=d.poster;
-            var _tmp=new Image();
-            _tmp.src=_pUrl;
-            if(_tmp.complete&&_tmp.naturalWidth>0){
-              // Poster already in browser cache — show it directly, no logo flash.
-              pi.onerror=function(){pi.style.display='none';};
-              pi.src=_pUrl;pi.style.display='block';
-            }else{
-              // Show channel logo immediately (pre-warmed at page load); swap to poster once loaded.
-              pi.onerror=function(){pi.style.display='none';};
-              pi.src=d.logo;pi.style.display='block';
-              _tmp.onload=function(){if(pi.dataset.pgen==_gen){pi.onerror=function(){pi.style.display='none';};pi.src=_pUrl;}};
-            }
+            pi.onerror=function(){pi.src=d.logo;pi.onerror=function(){pi.style.display='none';};};
+            pi.src=d.poster;pi.style.display='block';
           }else if(d.poster){
             pi.onerror=function(){if(_logo){pi.src=_logo;pi.onerror=function(){pi.style.display='none';};}else{pi.style.display='none';}};
             pi.src=d.poster;pi.style.display='block';
@@ -2178,10 +2210,17 @@ final class WebServer {
             if(prog)showInfo(prog);
           }
           scrollToNow();
+          // Remove splash after first paint. If it loaded fast it's still invisible (delayed CSS animation);
+          // if it's already visible, fade it out first.
+          requestAnimationFrame(function(){
+            var sp=document.getElementById('splash');
+            if(!sp)return;
+            var vis=parseFloat(getComputedStyle(sp).opacity)>0.05;
+            if(vis){sp.style.animation='none';sp.style.transition='opacity .3s ease';sp.style.opacity='0';setTimeout(function(){if(sp.parentNode)sp.parentNode.removeChild(sp);},320);}
+            else{sp.parentNode.removeChild(sp);}
+          });
         });
         setInterval(updateNowLine,60000);
-        // Pre-warm browser cache for all channel logos so showInfo() can display them instantly.
-        (function(){var seen={};document.querySelectorAll('[data-logo]').forEach(function(el){var u=el.dataset.logo;if(u&&!seen[u]){seen[u]=1;new Image().src=u;}});})();
         // Page-staleness: reload if the server version changes (redeploy) or the baked-in expiry has passed.
         (function(){
           var _ver='\(appVersion)',_exp=\(Int(Date().addingTimeInterval(2*3600).timeIntervalSince1970)*1000);

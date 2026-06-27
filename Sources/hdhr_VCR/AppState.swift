@@ -596,6 +596,7 @@ final class AppState: ObservableObject {
         statusMessage = "\(shows.count) show(s) — \(availableDeviceCount) tuner(s) ready"
         let allChannels = guideByDevice.values.flatMap { $0 }
         Task { await prefetchChannelIcons(allChannels) }
+        if loadedCount > 0 { webServer.prebuildPageHTML(state: self) }
     }
 
     private func refreshGuides() async {
@@ -625,7 +626,10 @@ final class AppState: ObservableObject {
         // past the guide window get scheduled as soon as a matching episode appears.
         await rescheduleAllSeries()
         // Notify connected web clients that guide data has changed so they can refresh the grid.
-        if anyLoaded { webServer.broadcastEvent(["type": "guide_refreshed"]) }
+        if anyLoaded {
+            webServer.prebuildPageHTML(state: self)
+            webServer.broadcastEvent(["type": "guide_refreshed"])
+        }
     }
 
     func ensureGuideLoaded(for deviceId: String) {
