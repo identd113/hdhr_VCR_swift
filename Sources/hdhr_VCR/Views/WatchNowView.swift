@@ -290,10 +290,22 @@ struct WatchNowRow: View {
                         .foregroundStyle(.red)
                 }
             }
-            Text(entry.Title)
-                .font(.subheadline.bold())
-                .lineLimit(1)
-                .accessibilityLabel(isScheduled ? "\(entry.Title), scheduled" : entry.Title)
+            HStack(spacing: 4) {
+                Text(entry.Title)
+                    .font(.subheadline.bold())
+                    .lineLimit(1)
+                    .accessibilityLabel(isScheduled ? "\(entry.Title), scheduled" : entry.Title)
+                if isLiveAiring(entry) {
+                    Text("LIVE")
+                        .font(.system(size: 8, weight: .heavy))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 3)
+                        .padding(.vertical, 1)
+                        .background(Color(red: 0.753, green: 0.224, blue: 0.169))
+                        .clipShape(RoundedRectangle(cornerRadius: 2))
+                        .accessibilityLabel("Live")
+                }
+            }
             if let sub = entry.episodeInfoLabel {
                 Text(sub)
                     .font(.caption)

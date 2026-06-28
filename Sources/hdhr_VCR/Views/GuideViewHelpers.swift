@@ -6,7 +6,10 @@ let watchNowOrange = Color(red: 1.0, green: 0.482, blue: 0.0)
 
 // Shared DateFormatters used by WebServer, WatchNowView, and VLCPlayerView.
 let origAirdateFormatter: DateFormatter = {
-    let f = DateFormatter(); f.dateStyle = .medium; f.timeStyle = .none; return f
+    // OriginalAirdate from the guide API is midnight UTC for the air date — force UTC so US
+    // timezones don't roll it back to the previous day's evening.
+    let f = DateFormatter(); f.dateStyle = .medium; f.timeStyle = .none
+    f.timeZone = TimeZone(identifier: "UTC"); return f
 }()
 let upcomingFormatter: DateFormatter = {
     let f = DateFormatter()
@@ -34,6 +37,29 @@ func timeRemaining(until endDate: Date) -> String {
     if mins < 60 { return "\(mins)m left" }
     let h = mins / 60; let m = mins % 60
     return m == 0 ? "\(h)h left" : "\(h)h \(m)m left"
+}
+
+// Returns true when OriginalAirdate (midnight UTC for the broadcast calendar date) matches
+// today or tonight in the server's local timezone — a proxy for "live/first-run today."
+func isLiveAiring(_ entry: GuideEntry) -> Bool {
+    guard let oad = entry.OriginalAirdate else { return false }
+    var utcCal = Calendar(identifier: .gregorian)
+    utcCal.timeZone = TimeZone(identifier: "UTC")!
+    let localCal   = Calendar.current
+    let nowDate    = Date()
+    let oadComps   = utcCal.dateComponents([.year, .month, .day],
+                         from: Date(timeIntervalSince1970: TimeInterval(oad)))
+    let todayComps = localCal.dateComponents([.year, .month, .day], from: nowDate)
+    if oadComps == todayComps { return true }
+    // Late-night shows after midnight whose broadcast date is "tomorrow" locally.
+    let tomorrowStart = localCal.startOfDay(for: localCal.date(byAdding: .day, value: 1, to: nowDate)!)
+    let tomorrowComps = localCal.dateComponents([.year, .month, .day], from: tomorrowStart)
+    if oadComps == tomorrowComps {
+        let tomorrowMidnightUTC = Int(tomorrowStart.timeIntervalSince1970)
+        let tomorrowLateNightEnd = Int(tomorrowStart.addingTimeInterval(5 * 3600).timeIntervalSince1970)
+        if entry.StartTime >= tomorrowMidnightUTC && entry.StartTime < tomorrowLateNightEnd { return true }
+    }
+    return false
 }
 
 func he(_ s: String) -> String {

@@ -724,11 +724,11 @@ final class WebServer {
         }.joined() + "<div class=\"g-now-tick\" style=\"left:\(nowPct)%\"></div>"
 
         // ── Managed show lookups ───────────────────────────────────────────────
+        let nowDate = Date()
         let recording = state.recordingShows
         let recChannelsByDevice: [String: Set<String>] = Dictionary(
             grouping: recording, by: { $0.hdhr_record }
         ).mapValues { Set($0.map { $0.show_channel }) }
-        let nowDate = Date()
         let pendingRecChannelsByDevice: [String: Set<String>] = {
             let pending = state.shows.filter {
                 $0.show_active && !$0.show_paused && !$0.show_recording &&
@@ -859,6 +859,11 @@ final class WebServer {
                         origAirdateFormatter.string(from: Date(timeIntervalSince1970: TimeInterval($0)))
                     } ?? ""
                     let filtersAttr = (e.Filter ?? []).joined(separator: ",")
+                    let isLive = isLiveAiring(e)
+                    let liveAttr    = isLive ? " data-live=\"1\"" : ""
+                    let titleHTML   = isLive
+                        ? "<div class=\"g-ti-row\"><span class=\"g-ti\">\(he(e.Title))</span><span class=\"g-live-tag\">LIVE</span></div>"
+                        : "<span class=\"g-ti\">\(he(e.Title))</span>"
                     let da = "data-title=\"\(he(e.Title))\" data-syn=\"\(he(synAttr))\" data-poster=\"\(he(e.ImageURL ?? ""))\" data-ep=\"\(he(e.episodeInfoLabel ?? ""))\" data-date=\"\(he(dateAttr))\" data-genre=\"\(he(e.firstGenre ?? ""))\" data-filters=\"\(he(filtersAttr))\" data-start=\"\(e.StartTime)\" data-end=\"\(e.EndTime)\" data-device=\"\(he(device.DeviceID))\" data-num=\"\(he(ch.GuideNumber))\" data-chname=\"\(he(ch.GuideName))\" data-logo=\"\(he(logoURL))\" data-series=\"\(he(e.SeriesID ?? ""))\" data-managed=\"\(isMgd ? 1 : 0)\" data-recording=\"\(isEntryRec ? 1 : 0)\""
 
                     let flagHTML = isEntryRec ? "<div class=\"g-flag-rec\"></div>"
@@ -870,7 +875,7 @@ final class WebServer {
                         return " data-show-id=\"\(he(s.show_id))\" data-show-type=\"\(showTypeStr(s))\" data-show-paused=\"\(s.show_paused ? 1 : 0)\" data-show-length=\"\(s.show_length)\" data-show-bonus=\"\(s.show_bonus_time ? 1 : 0)\" data-show-transcode=\"\(he(s.show_transcode))\" data-show-seriesid=\"\(he(s.show_seriesid))\" data-show-airdays=\"\(he(ad))\" data-show-failcount=\"\(s.show_fail_count)\" data-show-failreason=\"\(he(s.show_fail_reason))\" data-show-recording=\"\(s.show_recording ? 1 : 0)\""
                     }() : ""
                     let infDA = (infSIDs.contains(e.SeriesID ?? "") || e.Title == "Paid Programming") ? " data-inf=\"1\"" : ""
-                    blockParts.append("<div class=\"\(cls)\" style=\"left:\(pct(cs))%;width:\(pct(ce - cs))%\(extraStyle)\" title=\"\(tip)\" \(da)\(showDA)\(infDA) onclick=\"showInfo(this)\"><div class=\"g-pi\"><span class=\"g-ti\">\(he(e.Title))</span>\(subH)</div>\(flagHTML)</div>")
+                    blockParts.append("<div class=\"\(cls)\" style=\"left:\(pct(cs))%;width:\(pct(ce - cs))%\(extraStyle)\" title=\"\(tip)\" \(da)\(showDA)\(infDA)\(liveAttr) onclick=\"showInfo(this)\"><div class=\"g-pi\">\(titleHTML)\(subH)</div>\(flagHTML)</div>")
                 }
 
                 let gnameAttr = ChannelSignalStore.key(for: ch.GuideName)
@@ -1381,6 +1386,9 @@ final class WebServer {
         .g-pi{padding:3px 6px;height:100%;display:flex;flex-direction:column;justify-content:center;gap:1px;overflow:hidden}
         .g-ti{font-size:.78rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--t0);line-height:1.25}
         .g-sub{font-size:.65rem;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25}
+        .g-ti-row{display:flex;align-items:center;gap:4px;min-width:0;overflow:hidden}
+        .g-ti-row .g-ti{flex:0 1 auto;min-width:0}
+        .g-live-tag{display:inline-block;font-size:.5rem;font-weight:800;background:#c0392b;color:#fff;border-radius:2px;padding:1px 3px;letter-spacing:.07em;flex-shrink:0;line-height:1.5}
         .g-flag,.g-flag-rec{position:absolute;top:0;right:0;width:0;height:0;border-style:solid;border-width:0 18px 18px 0;pointer-events:none}
         .g-flag{border-color:transparent #ffd700 transparent transparent}
         .g-flag-rec{border-color:transparent #ff6060 transparent transparent}
@@ -1585,9 +1593,10 @@ final class WebServer {
           document.getElementById('sum-title').textContent=d.title||'';
           var gi=document.getElementById('sum-genre');
           var _allTags=(d.filters||d.genre||'').split(',').filter(function(f){return f&&f.toLowerCase()!=='series';});
-          if(_allTags.length){gi.innerHTML=_allTags.map(function(f){var c=tagBg(f);return '<span class="sum-tag"'+(c?' style="background:'+c+'"':'')+'>'+f.toUpperCase()+'</span>';}).join('');gi.style.display='flex';}else{gi.style.display='none';}
+          if(d.live==='1')_allTags.unshift('__live__');
+          if(_allTags.length){gi.innerHTML=_allTags.map(function(f){if(f==='__live__')return '<span class="sum-tag" style="background:#c0392b;color:#fff;font-weight:800;letter-spacing:.07em">LIVE</span>';var c=tagBg(f);return '<span class="sum-tag"'+(c?' style="background:'+c+'"':'')+'>'+f.toUpperCase()+'</span>';}).join('');gi.style.display='flex';}else{gi.style.display='none';}
           so('sum-ep',d.ep||'');
-          so('sum-date',d.date?'Orig. '+d.date:'');
+          so('sum-date',d.live==='1'?'':(d.date?'Orig. '+d.date:''));
           var sy=document.getElementById('sum-syn');
           if(d.syn){sy.textContent=d.syn;sy.style.display='block';}else{sy.style.display='none';}
           document.getElementById('sum-ct').textContent='Ch '+d.num+' · '+d.chname+' · '+ft(new Date(+d.start*1000))+' – '+ft(new Date(+d.end*1000));
@@ -2134,10 +2143,13 @@ final class WebServer {
           document.querySelectorAll('.g-prog.g-prog-dim').forEach(function(p){p.classList.remove('g-prog-dim');});
           var f=_genreFilter.toLowerCase();
           var infMode=f==='__inf';
+          var liveMode=f==='__live';
           document.querySelectorAll('.g-prog').forEach(function(p){
             var isInf=p.dataset.inf==='1';
+            var isLive=p.dataset.live==='1';
             var dim;
-            if(infMode){dim=!isInf;}
+            if(liveMode){dim=!isLive;}
+            else if(infMode){dim=!isInf;}
             else{dim=(f&&(p.dataset.genre||'').toLowerCase()!==f)||isInf;}
             if(dim)p.classList.add('g-prog-dim');
           });
@@ -2182,6 +2194,8 @@ final class WebServer {
           var sel=document.getElementById('genre-sel');
           if(!sel)return;
           Array.from(gs).sort().forEach(function(g){var o=document.createElement('option');o.value=g;o.textContent=g;sel.appendChild(o);});
+          var hasLive=document.querySelector('.g-prog[data-live="1"]')!==null;
+          if(hasLive){var o=document.createElement('option');o.value='__live';o.textContent='Live';sel.appendChild(o);}
           if(hasInf){var o=document.createElement('option');o.value='__inf';o.textContent='Infomercials';sel.appendChild(o);}
           document.getElementById('genre-bar').style.display='';
         })();
