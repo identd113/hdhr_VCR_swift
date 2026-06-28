@@ -2,6 +2,27 @@ import SwiftUI
 import AppKit
 import ServiceManagement
 
+private struct InfoButton: View {
+    let text: String
+    @State private var isPresented = false
+    init(_ text: String) { self.text = text }
+    var body: some View {
+        Button { isPresented.toggle() } label: {
+            Image(systemName: "info.circle")
+                .font(.callout)
+                .foregroundStyle(.tertiary)
+        }
+        .buttonStyle(.plain)
+        .popover(isPresented: $isPresented, arrowEdge: .bottom) {
+            Text(text)
+                .font(.callout)
+                .padding(12)
+                .frame(maxWidth: 280)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
 private enum SettingsCategory: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     case general       = "General"
@@ -238,9 +259,9 @@ struct SettingsView: View {
     private var generalView: some View {
         Form {
             Section("System") {
-                Toggle("Launch at Login", isOn: $draftLaunchAtLogin)
-                Text("Start hdhr_VCR automatically when you log in, so scheduled recordings are never missed while the app is closed.")
-                    .font(.caption).foregroundStyle(.secondary)
+                Toggle(isOn: $draftLaunchAtLogin) {
+                    HStack { Text("Launch at Login"); InfoButton("Start hdhr_VCR automatically when you log in, so scheduled recordings are never missed while the app is closed.") }
+                }
                 if !loginItemError.isEmpty {
                     Label(loginItemError, systemImage: "xmark.circle.fill")
                         .font(.caption).foregroundStyle(.red)
@@ -257,7 +278,7 @@ struct SettingsView: View {
     private var recordingView: some View {
         Form {
             Section("Recording") {
-                LabeledContent("Default folder") {
+                LabeledContent {
                     HStack {
                         Text(saveDirLabel).foregroundStyle(.secondary)
                         Button("Choose…") { chooseFolder() }
@@ -265,64 +286,56 @@ struct SettingsView: View {
                             Button("Reset") { draftSaveDirectory = "" }.foregroundStyle(.secondary)
                         }
                     }
+                } label: {
+                    HStack { Text("Default folder"); InfoButton("Where recordings are saved. Falls back to ~/Movies/hdhr_videos when not set.") }
                 }
-                Text("Where recordings are saved. Falls back to ~/Movies/hdhr_videos when not set.")
-                    .font(.caption).foregroundStyle(.secondary)
 
-                Picker("Default transcode", selection: $draft.Default_transcode) {
+                Picker(selection: $draft.Default_transcode) {
                     Text("None").tag("none")
                     Text("Heavy").tag("heavy")
                     Text("Mobile").tag("mobile")
                     Text("Internet 720").tag("internet720")
+                } label: {
+                    HStack { Text("Default transcode"); InfoButton("Applied to all new shows. None records the raw MPEG-2 stream — best quality, no re-encoding overhead.") }
                 }
-                Text("Applied to all new shows. None records the raw MPEG-2 stream — best quality, no re-encoding overhead.")
-                    .font(.caption).foregroundStyle(.secondary)
 
-                Stepper(
-                    "Min free disk: \(draft.Min_disk_free_gb, specifier: "%.0f") GB",
-                    value: $draft.Min_disk_free_gb,
-                    in: 1...100, step: 1
-                )
-                Text("Recordings are skipped when free space on the save drive drops below this threshold.")
-                    .font(.caption).foregroundStyle(.secondary)
+                Stepper(value: $draft.Min_disk_free_gb, in: 1...100, step: 1) {
+                    HStack { Text("Min free disk: \(draft.Min_disk_free_gb, specifier: "%.0f") GB"); InfoButton("Recordings are skipped when free space on the save drive drops below this threshold.") }
+                }
 
-                Stepper(
-                    "Pause after \(draft.Fail_count_setting) failure(s)",
-                    value: $draft.Fail_count_setting,
-                    in: 1...10
-                )
-                Text("A show is automatically paused after this many consecutive failures. Restore it via Maintenance → Reactivate Paused Shows.")
-                    .font(.caption).foregroundStyle(.secondary)
+                Stepper(value: $draft.Fail_count_setting, in: 1...10) {
+                    HStack { Text("Pause after \(draft.Fail_count_setting) failure(s)"); InfoButton("A show is automatically paused after this many consecutive failures. Restore it via Maintenance → Reactivate Paused Shows.") }
+                }
 
                 if FileManager.default.fileExists(atPath: "/Applications/VLC.app") {
-                    Toggle("Watch in VLC", isOn: $draft.Watch_in_VLC)
-                    Text("Adds Watch in VLC buttons for live and recorded streams throughout the app.")
-                        .font(.caption).foregroundStyle(.secondary)
+                    Toggle(isOn: $draft.Watch_in_VLC) {
+                        HStack { Text("Watch in VLC"); InfoButton("Adds Watch in VLC buttons for live and recorded streams throughout the app.") }
+                    }
 
-                    Picker("Min buffer rate", selection: $draft.Player_buffer_min_rate) {
+                    Picker(selection: $draft.Player_buffer_min_rate) {
                         ForEach(Array(stride(from: 90, through: 100, by: 1)), id: \.self) { pct in
                             Text(pct == 100 ? "100% (disabled)" : "\(pct)%").tag(pct)
                         }
+                    } label: {
+                        HStack { Text("Min buffer rate"); InfoButton("Minimum playback speed while filling the in-app player's 8-second live buffer. Lower fills faster; 100% disables adaptive buffering.") }
                     }
-                    Text("Minimum playback speed while filling the in-app player's 8-second live buffer. Lower fills faster; 100% disables adaptive buffering.")
-                        .font(.caption).foregroundStyle(.secondary)
                 }
 
-                Toggle("Bonus Time", isOn: $draft.Sports_padding_enabled)
+                Toggle(isOn: $draft.Sports_padding_enabled) {
+                    HStack { Text("Bonus Time"); InfoButton("Records extra time past the guide end. Sports shows default to on — covers live events that run over.") }
+                }
                 if draft.Sports_padding_enabled {
                     Stepper("Bonus Time: \(draft.Sports_padding_minutes) min",
                             value: $draft.Sports_padding_minutes, in: 10...60, step: 5)
                 }
-                Text("Records extra time past the guide end. Sports shows default to on — covers live events that run over.")
-                    .font(.caption).foregroundStyle(.secondary)
             }
 
             Section("Post-Processing") {
-                Toggle("Series subfolders", isOn: $draft.Series_subfolder_enabled)
-                Text("Save SeriesID recordings into Title/Season XX/ subfolders. Requires season data from the guide (e.g. S02E04). Date-scheduled shows always use a flat path.")
-                    .font(.caption).foregroundStyle(.secondary)
+                Toggle(isOn: $draft.Series_subfolder_enabled) {
+                    HStack { Text("Series subfolders"); InfoButton("Save SeriesID recordings into Title/Season XX/ subfolders. Requires season data from the guide (e.g. S02E04). Date-scheduled shows always use a flat path.") }
+                }
 
-                LabeledContent("Post-recording script") {
+                LabeledContent {
                     HStack {
                         Text(draft.Post_recording_script.isEmpty
                              ? "None"
@@ -336,9 +349,9 @@ struct SettingsView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
+                } label: {
+                    HStack { Text("Post-recording script"); InfoButton("Shell script run after each successful recording. File path is $1; env vars: HDHR_PATH, HDHR_TITLE, HDHR_CHANNEL, HDHR_TRANSCODE, HDHR_EPISODE, HDHR_DEVICE, HDHR_SERIES, HDHR_FILESIZE. Example scripts are in tools/post_recording/.") }
                 }
-                Text("Shell script or executable run after each successful recording. File path is passed as $1 along with HDHR_* env vars (title, channel, transcode, episode, device, series, filesize). Example scripts are in tools/post_recording/.")
-                    .font(.caption).foregroundStyle(.secondary)
                 if !draft.Post_recording_script.isEmpty {
                     Text("$1 · HDHR_PATH · HDHR_TITLE · HDHR_CHANNEL · HDHR_TRANSCODE · HDHR_EPISODE · HDHR_DEVICE · HDHR_SERIES · HDHR_FILESIZE")
                         .font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
@@ -354,32 +367,23 @@ struct SettingsView: View {
     private var guideView: some View {
         Form {
             Section("Fetch") {
-                Stepper(
-                    "Show next \(draft.GuideHours) hours",
-                    value: $draft.GuideHours,
-                    in: 1...48
-                )
-                Text("How far ahead guide data is fetched and how long before it auto-refreshes. Longer windows let you schedule further out.")
-                    .font(.caption).foregroundStyle(.secondary)
-                Stepper(
-                    "Series scan retry: \(draft.Series_scan_retry_hours) hr",
-                    value: $draft.Series_scan_retry_hours,
-                    in: 1...24
-                )
-                Text("How long to wait before re-checking the guide when a series show has no matching air time yet.")
-                    .font(.caption).foregroundStyle(.secondary)
-                Button("Update Guides Now") {
-                    state.refreshAll()
+                Stepper(value: $draft.GuideHours, in: 1...48) {
+                    HStack { Text("Show next \(draft.GuideHours) hours"); InfoButton("How far ahead guide data is fetched and how long before it auto-refreshes. Longer windows let you schedule further out.") }
                 }
-                .buttonStyle(.borderedProminent)
-                Text("Force-refreshes guide data for all tuners immediately, without waiting for the auto-refresh window.")
-                    .font(.caption).foregroundStyle(.secondary)
+                Stepper(value: $draft.Series_scan_retry_hours, in: 1...24) {
+                    HStack { Text("Series scan retry: \(draft.Series_scan_retry_hours) hr"); InfoButton("How long to wait before re-checking the guide when a series show has no matching air time yet.") }
+                }
+                HStack {
+                    Button("Update Guides Now") { state.refreshAll() }
+                        .buttonStyle(.borderedProminent)
+                    InfoButton("Force-refreshes guide data for all tuners immediately, without waiting for the auto-refresh window.")
+                }
             }
 
             Section("Format") {
-                Toggle("Use XMLTV guide format", isOn: $draft.Guide_use_xml)
-                Text("XMLTV provides richer genre tags and explicit paid-programming detection. The server controls the window (~2 days); Guide Hours is ignored. Devices without DeviceAuth always use JSON.")
-                    .font(.caption).foregroundStyle(.secondary)
+                Toggle(isOn: $draft.Guide_use_xml) {
+                    HStack { Text("Use XMLTV guide format"); InfoButton("XMLTV provides richer genre tags and explicit paid-programming detection. The server controls the window (~2 days); Guide Hours is ignored. Devices without DeviceAuth always use JSON.") }
+                }
             }
         }
         .formStyle(.grouped)
@@ -391,26 +395,12 @@ struct SettingsView: View {
     private var notificationsView: some View {
         Form {
             Section("Notifications") {
-                Stepper(
-                    "Up Next: \(Int(draft.Notify_upnext)) min before",
-                    value: Binding(
-                        get: { Int(draft.Notify_upnext) },
-                        set: { draft.Notify_upnext = Double($0) }
-                    ),
-                    in: 5...120, step: 5
-                )
-                Text("Early heads-up notification sent this many minutes before a show's scheduled start time.")
-                    .font(.caption).foregroundStyle(.secondary)
-                Stepper(
-                    "Recording alert: \(Int(draft.Notify_recording)) min before",
-                    value: Binding(
-                        get: { Int(draft.Notify_recording) },
-                        set: { draft.Notify_recording = Double($0) }
-                    ),
-                    in: 1...60
-                )
-                Text("A second, closer notification just before recording begins — set lower than Up Next so both fire in order.")
-                    .font(.caption).foregroundStyle(.secondary)
+                Stepper(value: Binding(get: { Int(draft.Notify_upnext) }, set: { draft.Notify_upnext = Double($0) }), in: 5...120, step: 5) {
+                    HStack { Text("Up Next: \(Int(draft.Notify_upnext)) min before"); InfoButton("Early heads-up notification sent this many minutes before a show's scheduled start time.") }
+                }
+                Stepper(value: Binding(get: { Int(draft.Notify_recording) }, set: { draft.Notify_recording = Double($0) }), in: 1...60) {
+                    HStack { Text("Recording alert: \(Int(draft.Notify_recording)) min before"); InfoButton("A second, closer notification just before recording begins — set lower than Up Next so both fire in order.") }
+                }
                 if draft.Notify_recording >= draft.Notify_upnext {
                     Label("Recording alert fires at or after Up Next — the Up Next notification won't appear first.", systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)
@@ -419,9 +409,9 @@ struct SettingsView: View {
             }
 
             Section("Discord") {
-                Toggle("Enable Discord notifications", isOn: $draft.Discord_enabled)
-                Text("Post recording status updates to a Discord channel via webhook. Requires a webhook URL from your server's channel settings.")
-                    .font(.caption).foregroundStyle(.secondary)
+                Toggle(isOn: $draft.Discord_enabled) {
+                    HStack { Text("Enable Discord notifications"); InfoButton("Post recording status updates to a Discord channel via webhook. Requires a webhook URL from your server's channel settings.") }
+                }
 
                 if draft.Discord_enabled {
                     HStack(spacing: 8) {
@@ -493,21 +483,17 @@ struct SettingsView: View {
     private var advancedView: some View {
         Form {
             Section("Network") {
-                Picker("Discovery & recording interface", selection: $draft.Network_interface) {
+                Picker(selection: $draft.Network_interface) {
                     Text("Auto").tag("")
                     ForEach(availableNetworkInterfaces()) { iface in
                         Text(iface.displayLabel).tag(iface.name)
                     }
+                } label: {
+                    HStack { Text("Discovery & recording interface"); InfoButton("Binds UDP discovery and curl recordings to a specific interface. VPN tunnels are listed (utun*, tun*, cscotun*, gpd*, etc.) — use one if your HDHomeRun is on a remote network reachable via VPN.") }
                 }
-                Text("Binds UDP discovery and curl recordings to a specific interface. VPN tunnels are listed (utun*, tun*, cscotun*, gpd*, etc.) — use one if your HDHomeRun is on a remote network reachable via VPN.")
-                    .font(.caption).foregroundStyle(.secondary)
-                Stepper(
-                    "Idle check: every \(draft.Idle_timer_interval) sec",
-                    value: $draft.Idle_timer_interval,
-                    in: 5...60, step: 5
-                )
-                Text("How often the app checks for recordings due to start or stop. Lower = more precise timing, slightly more CPU.")
-                    .font(.caption).foregroundStyle(.secondary)
+                Stepper(value: $draft.Idle_timer_interval, in: 5...60, step: 5) {
+                    HStack { Text("Idle check: every \(draft.Idle_timer_interval) sec"); InfoButton("How often the app checks for recordings due to start or stop. Lower = more precise timing, slightly more CPU.") }
+                }
             }
 
             Section("Logging") {
@@ -521,9 +507,9 @@ struct SettingsView: View {
                 Text("Filter: subsystem == \"\(Bundle.main.bundleIdentifier ?? "com.hdhr.vcrplus")\"")
                     .font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
 
-                Toggle("Verbose curl logging", isOn: $draft.Verbose_curl)
-                Text("Log full curl request/response headers for each recording. Use when diagnosing why a recording fails to start.")
-                    .font(.caption).foregroundStyle(.secondary)
+                Toggle(isOn: $draft.Verbose_curl) {
+                    HStack { Text("Verbose curl logging"); InfoButton("Log full curl request/response headers for each recording. Use when diagnosing why a recording fails to start.") }
+                }
                 if draft.Verbose_curl {
                     Text("curl stderr → \(RecordingManager.curlLogPath)")
                         .font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
@@ -548,12 +534,12 @@ struct SettingsView: View {
             }
 
             Section("Signal Quality") {
-                Toggle("Show signal bars in guide", isOn: $draft.Signal_quality_enabled)
-                Text("Display signal strength bars in the guide grid and Watch Now view. Signal data is always collected during recordings regardless of this toggle.")
-                    .font(.caption).foregroundStyle(.secondary)
-                Toggle("Send alerts on signal dropout", isOn: $draft.Signal_quality_alert_notify)
-                Text("Send a notification and Discord message when a recording's signal drops below 30% for ~20 seconds. Logging is always active.")
-                    .font(.caption).foregroundStyle(.secondary)
+                Toggle(isOn: $draft.Signal_quality_enabled) {
+                    HStack { Text("Show signal bars in guide"); InfoButton("Display signal strength bars in the guide grid and Watch Now view. Signal data is always collected during recordings regardless of this toggle.") }
+                }
+                Toggle(isOn: $draft.Signal_quality_alert_notify) {
+                    HStack { Text("Send alerts on signal dropout"); InfoButton("Send a notification and Discord message when a recording's signal drops below 30% for ~20 seconds. Logging is always active.") }
+                }
             }
 
             if draft.Signal_quality_enabled {
@@ -584,26 +570,23 @@ struct SettingsView: View {
     private var webServerView: some View {
         Form {
             Section("Web Server") {
-                Toggle("Enable Web Server", isOn: $draft.Web_server_enabled)
-                Text("Serve the cable guide and recording controls as a web page on your local network — accessible from any browser on any device.")
-                    .font(.caption).foregroundStyle(.secondary)
+                Toggle(isOn: $draft.Web_server_enabled) {
+                    HStack { Text("Enable Web Server"); InfoButton("Serve the cable guide and recording controls as a web page on your local network — accessible from any browser on any device. Local network only; no authentication. Do not expose this port to the internet.") }
+                }
                 if draft.Web_server_enabled {
-                    HStack {
-                        Text("Port")
+                    LabeledContent {
                         TextField("1980", value: $draft.Web_server_port, format: .number.grouping(.never))
                             .frame(width: 80)
                             .multilineTextAlignment(.trailing)
+                    } label: {
+                        HStack { Text("Port"); InfoButton("Port number (1025–65534). macOS requires root for ports below 1024. Default: 1980. Changes and mDNS registration update immediately on Save.") }
                     }
-                    .help("Port number (1025–65534). macOS requires root for ports below 1024. Default: 1980.")
                     if draft.Web_server_port < 1025 || draft.Web_server_port > 65534 {
                         Label("Port must be between 1025 and 65534", systemImage: "exclamationmark.triangle.fill")
                             .font(.caption)
                             .foregroundStyle(.orange)
                     }
                 }
-                Text("Local network access only. No authentication. Do not expose this port to the internet. Port changes and mDNS registration update immediately on Save — no app restart needed.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
 
             if state.config.Web_server_enabled && state.webServerRunning {
@@ -628,9 +611,6 @@ struct SettingsView: View {
                         Spacer()
                         Link("Open", destination: URL(string: urlStr)!)
                     }
-                    Text("Open in a browser on any device on your local network.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
             }
 
@@ -745,9 +725,9 @@ struct SettingsView: View {
     private func maintenanceRow(_ title: String, _ description: String,
                                  action: @escaping () async throws -> String) -> some View {
         HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
                 Text(title).fontWeight(.medium)
-                Text(description).font(.caption).foregroundStyle(.secondary)
+                InfoButton(description)
             }
             Spacer()
             if maintenanceBusy {
@@ -792,9 +772,9 @@ struct SettingsView: View {
     private func brewInstallRow(name: String, description: String, installed: Bool,
                                 brew: String, args: [String]) -> some View {
         HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
                 Text(name).fontWeight(.medium)
-                Text(description).font(.caption).foregroundStyle(.secondary)
+                InfoButton(description)
             }
             Spacer()
             if installed {
