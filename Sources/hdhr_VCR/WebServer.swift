@@ -931,7 +931,7 @@ final class WebServer {
             ? "<div style=\"padding:24px;color:#555;text-align:center;font-size:.85rem\">No guide data — loading…</div>"
             : rowParts.joined()
 
-        let hdr = "<div class=\"g-hdr\" data-winstart=\"\(winStart)\" data-winsec=\"\(winSec)\"><div class=\"g-hdr-ch\"><span class=\"g-hdr-ch-lbl\">Ch</span><div class=\"g-hdr-btns\"><button class=\"g-hdr-btn\" onclick=\"scrollToNow()\" title=\"Jump to now\">⊙</button><button class=\"g-hdr-btn\" onclick=\"refreshGuide()\" title=\"Refresh guide\">↺</button></div></div><div class=\"g-hdr-tl\">\(ticksHTML)</div></div>"
+        let hdr = "<div class=\"g-hdr\" data-winstart=\"\(winStart)\" data-winsec=\"\(winSec)\"><div class=\"g-hdr-ch\"><span class=\"g-hdr-ch-lbl\">Ch</span><div class=\"g-hdr-btns\"><button id=\"g-now-btn\" class=\"g-hdr-btn g-hdr-btn-now\" onclick=\"scrollToNow()\" title=\"Jump to now\">▶ Now</button><button class=\"g-hdr-btn\" onclick=\"refreshGuide()\" title=\"Refresh guide\">↺</button></div></div><div class=\"g-hdr-tl\">\(ticksHTML)</div></div>"
         return hdr + "\n        " + rowsHTML
     }
 
@@ -1209,7 +1209,14 @@ final class WebServer {
         .rm-opt-d{font-size:.7rem;color:var(--t4);margin-top:1px}
         html.lm #rm-tuner{color:#7a3c00;background:#fff8e8;border-color:#d09020}
         /* ── Guide grid ── */
-        .gw-outer{border:1px solid var(--b1);border-radius:8px;overflow:clip;flex:1;min-height:0;display:flex;flex-direction:column}
+        .gw-outer{border:1px solid var(--b1);border-radius:8px;overflow:clip;flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
+        .gw::-webkit-scrollbar:horizontal{height:0}
+        #g-hscroll{position:absolute;bottom:0;left:125px;right:0;height:10px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:5}
+        .gw-outer:hover #g-hscroll{opacity:1;pointer-events:auto}
+        #g-hscroll-thumb{position:absolute;top:2px;height:6px;min-width:40px;background:rgba(255,255,255,.22);border-radius:3px;cursor:grab;transition:background .15s}
+        #g-hscroll-thumb:hover,#g-hscroll-thumb.g-dragging{background:rgba(255,255,255,.45);cursor:grabbing}
+        html.lm #g-hscroll-thumb{background:rgba(0,0,0,.18)}
+        html.lm #g-hscroll-thumb:hover,html.lm #g-hscroll-thumb.g-dragging{background:rgba(0,0,0,.38)}
         .gw{overflow:auto;flex:1;background:var(--bg)}
         .gi{min-width:\(guideMinWidth)px}
         .g-hdr{display:flex;position:-webkit-sticky;position:sticky;top:0;z-index:10;background:var(--s2);border-bottom:1px solid var(--b2)}
@@ -1220,6 +1227,12 @@ final class WebServer {
         .g-hdr-btn:hover{border-color:var(--b5);color:var(--t0);background:var(--s3)}
         html.lm .g-hdr-btn{border-color:#bbb;color:#555}
         html.lm .g-hdr-btn:hover{border-color:#888;color:#111;background:#e8e8e8}
+        #g-now-btn{opacity:0;pointer-events:none;transition:opacity .35s}
+        #g-now-btn.g-now-vis{opacity:1;pointer-events:auto}
+        .g-hdr-btn-now{border-color:rgba(255,90,90,.45);color:rgba(255,110,110,.9);font-weight:600}
+        .g-hdr-btn-now:hover{border-color:rgba(255,90,90,.8)!important;color:#fff!important;background:rgba(192,57,43,.7)!important}
+        html.lm .g-hdr-btn-now{border-color:rgba(180,40,40,.5);color:#b02020}
+        html.lm .g-hdr-btn-now:hover{border-color:#c03030!important;color:#fff!important;background:#c03030!important}
         .g-hdr-tl{flex:1;position:relative;height:32px}
         .g-tick{position:absolute;top:50%;transform:translate(-50%,-50%);font-size:.68rem;color:var(--t4);white-space:nowrap;pointer-events:none}
         .g-now-tick{position:absolute;top:0;bottom:0;width:2px;background:rgba(255,90,90,.65);pointer-events:none}
@@ -1564,7 +1577,7 @@ final class WebServer {
         </div>
         <div class="gw-outer"><div class="gw"><div class="gi">
         \(gridInner)
-        </div></div></div>
+        </div></div><div id="g-hscroll"><div id="g-hscroll-thumb"></div></div></div>
         <script>
         \(tunerJS)
         \(recsByDevJS)
@@ -2333,6 +2346,66 @@ final class WebServer {
               }
             }catch(x){}
           };
+        })();
+        // ── Now button visibility: hidden at scroll origin, appears after ~1 hour ──
+        (function(){
+          var gw=document.querySelector('.gw');
+          var gi=document.querySelector('.gi');
+          var btn=document.getElementById('g-now-btn');
+          if(!gw||!gi||!btn)return;
+          function check(){
+            var hrPx=gi.scrollWidth*(3600/_winSec);
+            btn.classList.toggle('g-now-vis',gw.scrollLeft>=hrPx);
+          }
+          gw.addEventListener('scroll',check,{passive:true});
+          check();
+        })();
+        // ── Custom horizontal scrollbar ───────────────────────────────────────
+        (function(){
+          var gw=document.querySelector('.gw');
+          var gi=document.querySelector('.gi');
+          var track=document.getElementById('g-hscroll');
+          var thumb=document.getElementById('g-hscroll-thumb');
+          if(!gw||!gi||!track||!thumb)return;
+          function syncThumb(){
+            var trackW=track.clientWidth;
+            var maxScroll=gi.scrollWidth-gw.clientWidth;
+            if(maxScroll<=0){track.style.display='none';return;}
+            track.style.display='';
+            var thumbW=Math.max(40,trackW*(gw.clientWidth/gi.scrollWidth));
+            var thumbLeft=maxScroll>0?(gw.scrollLeft/maxScroll)*(trackW-thumbW):0;
+            thumb.style.width=thumbW+'px';
+            thumb.style.left=thumbLeft+'px';
+          }
+          gw.addEventListener('scroll',syncThumb,{passive:true});
+          window.addEventListener('resize',syncThumb);
+          syncThumb();
+          var _dragX,_dragSL;
+          thumb.addEventListener('mousedown',function(e){
+            _dragX=e.clientX;_dragSL=gw.scrollLeft;
+            thumb.classList.add('g-dragging');e.preventDefault();
+            function onMove(e){
+              var maxScroll=gi.scrollWidth-gw.clientWidth;
+              var delta=(e.clientX-_dragX)/(track.clientWidth-thumb.clientWidth)*maxScroll;
+              gw.scrollLeft=Math.max(0,Math.min(maxScroll,_dragSL+delta));
+            }
+            function onUp(){thumb.classList.remove('g-dragging');document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);}
+            document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp);
+          });
+          track.addEventListener('click',function(e){
+            if(e.target===thumb)return;
+            var rect=track.getBoundingClientRect();
+            var thumbW=thumb.clientWidth;
+            var frac=(e.clientX-rect.left-thumbW/2)/(track.clientWidth-thumbW);
+            var maxScroll=gi.scrollWidth-gw.clientWidth;
+            gw.scrollLeft=Math.max(0,Math.min(maxScroll,frac*maxScroll));
+          });
+          // Shift+scroll → horizontal scroll (standard convention for timeline navigation)
+          gw.addEventListener('wheel',function(e){
+            if(!e.shiftKey)return;
+            e.preventDefault();
+            gw.scrollLeft+=e.deltaY*1.5;
+          },{passive:false});
         })();
         </script>
         </body>
