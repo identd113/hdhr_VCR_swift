@@ -14,6 +14,8 @@ func stop()
 func updateTXTRecord()    // @MainActor — refreshes mDNS TXT record; called from idleLoop
 func broadcastEvent(_:)   // pushes a JSON event to all open SSE clients
 func broadcastRecordingEvent(type:channel:device:state:)  // @MainActor — builds sumPh + the device's tdrop fragment and calls broadcastEvent
+func prebuildPageHTML(state: AppState)   // @MainActor — pre-renders and caches desktop + mobile HTML; called after fetchAllGuides / refreshGuides
+func invalidateHTMLCache()               // clears cachedHTMLDesktop / cachedHTMLMobile so the next GET / rebuilds
 ```
 
 `onState` is called on `DispatchQueue.main`. `nil` = server is ready; non-nil = error string.
@@ -38,7 +40,7 @@ func broadcastRecordingEvent(type:channel:device:state:)  // @MainActor — buil
 | POST | `/api/toggle-favorite` | Toggle the favorite flag for a channel |
 | GET | `/api/now-airing/{devId}/{ch}` | JSON `{title, epTitle, poster, endTime}` for the currently-airing guide entry on the given device+channel; used by the tuner popover to enrich external stream rows asynchronously |
 | GET | `/api/signal-stats/{guideName}` | JSON `{bucket, last, avg, min, max, checked, n, total}` — full signal stats for one channel from `ChannelSignalStore.stats()`; `checked` is the last-sampled epoch (client renders relative). Empty `{}` when no samples. Used by the tuner popover to show inline recordability per active tuner |
-| GET | `/icon/{filename}` | Serves a cached channel icon image from `~/Library/Application Support/hdhrVCRplus/icons/` |
+| GET | `/api/icon` | Serves the app icon as a 72×72 PNG (for the splash overlay) |
 | anything else | | 404 plain text |
 
 ---
@@ -249,6 +251,10 @@ A persistent SSE endpoint. Browsers connect once on page load via `EventSource('
 
 Self-contained HTML with all CSS inlined. Updates arrive via SSE push events (see below) and targeted DOM swaps after user actions. The page hard-reloads automatically if the server version changes (redeploy detected via 60-second `/api/ping` poll) or if the baked-in 2-hour expiry elapses. Tuner occupancy is sourced from the `AppState.deviceTunerOccupancy` cache, which the idle loop refreshes every 10 seconds via `fetchDeviceStatus()`.
 
+**HTML cache:** `prebuildPageHTML(state:)` pre-renders both desktop and mobile HTML after every guide load (`fetchAllGuides`, `refreshGuides`) and stores them in `cachedHTMLDesktop` / `cachedHTMLMobile`. `GET /` serves the cached copy instantly; the cache is `nil` only before the first guide load, in which case the page falls back to a live synchronous build. This eliminates the 2–4 second `@MainActor` blocking time on first load for remote clients.
+
+**Splash overlay:** a fixed `#splash` div (z-index 9999) covers the page on load, showing the app icon (from `/api/icon`), name, and build version. A 300 ms CSS animation delay means the splash is never visible on fast local loads (the page's `requestAnimationFrame` fires and removes it before the animation starts). On slow remote loads it fades in after 300 ms and is removed once the first `rAF` fires. `/api/icon` serves the `AppIcon.icns` scaled to 72×72 as PNG via `NSImage` + `NSBitmapImageRep`.
+
 `refreshGuide()` is called client-side after user actions (record, delete, edit) and on receipt of an SSE event. It updates the guide grid without a page reload:
 
 - **`refreshGuide(selOverride?)`** — saves `.gw` scroll position and the currently-selected `.g-prog` element (`data-start` + `data-num` + `data-device`); `GET /` → DOMParser → swaps `.gi` (guide grid), `#sum-ph` (summary placeholder), and each `.tdrop` body (`#tdrop-{devId}`); re-reads `data-winstart`/`data-winsec` from the new `.g-hdr` into `_winStart`/`_winSec` (keeps the live now-line aligned to the refreshed grid); restores scroll position; re-selects the previously-highlighted entry via `showInfo()`. If `selOverride` is passed (a JS object), its key-value pairs are merged into the re-selected block's `dataset` before `showInfo()` runs — used after a Record action to inject `{recording:'1', managed:'1'}` so the summary panel shows the correct state without requiring a manual re-select.
@@ -335,7 +341,7 @@ Always rendered above the guide grid. Two states:
 **Placeholder** (`#sum-ph`): "Select a show from the guide" — on load and after close.
 
 **Selected** (`#sum-c`): appears when the user clicks a program block. Layout (left to right):
-- **Poster image** — hidden if no `ImageURL`. Default: 72 px wide, `object-fit: contain`. Tablet (≤ 960 px): 56 px. Desktop (≥ 961 px): 260 px, `align-self: center`. **Progressive loading:** when both a channel logo and a CDN poster URL are available, `showInfo()` sets the logo immediately (already cached locally), then fetches the CDN poster in a detached `Image()` object; on load it swaps in the real poster. A `data-pgen` generation counter on the `<img>` prevents a slow CDN fetch for an earlier selection from overwriting a later one. When only a poster URL is available (no logo), it loads directly with a channel-logo fallback on error; if that also fails, the image hides. The `onerror` handler is set in JS each time `showInfo()` runs (not inline) so the fallback chain re-arms on every selection.
+- **Poster image** — hidden if no `ImageURL`. Default: 72 px wide, `object-fit: contain`. Tablet (≤ 960 px): 56 px. Desktop (≥ 961 px): 260 px, `align-self: center`. **Progressive loading:** `showInfo()` sets the `<img src>` to the CDN poster URL directly. If the poster fails to load, an `onerror` handler (set in JS each time `showInfo()` runs, not inline) falls back to the channel logo URL; if that also fails, the image is hidden. A `data-pgen` generation counter prevents a slow CDN fetch for an earlier selection from overwriting a later selection's image.
 - **Info column** (flex: 1):
   - Title (bold, 0.92 rem, ellipsis)
   - Genre badge (uppercase pill) — hidden if absent or `"Series"`
@@ -427,7 +433,7 @@ Each `.g-row` carries `data-dev`, `data-ch`, `data-gname` (`GuideName.lowercased
 
 **`setDev()` and DOM caching**: `.g-row` NodeList is cached into `_rows` at page load and reused on every device switch — avoids repeated `querySelectorAll` calls. When `setDev(id)` is called with a **different** device ID than `curDev`, `_genreFilter` is reset to `''` and the `<select id="genre-sel">` is reset to the blank option, so each device starts with an unfiltered view.
 
-**Genre filter:** a `<select id="genre-sel">` (in `#genre-bar`, hidden unless the guide contains ≥2 distinct genres or infomercial programs) is populated at page load from unique `data-genre` values, with an **Infomercials** option (value `__inf`) appended if any `data-inf="1"` programs exist. `filterGenre(g)` sets `_genreFilter` and calls `applyGenreDim()`, which adds `.g-prog-dim` (35% opacity, `pointer-events: none` — dimmed and unselectable) to every program whose genre doesn't match. Rows are never hidden by genre — only individual programs are dimmed. `setDev()` calls `applyGenreDim()` after row visibility changes so the dim state survives device switches and `refreshGuide()` DOM swaps.
+**Genre filter:** a `<select id="genre-sel">` (in `#genre-bar`, hidden unless the guide contains ≥2 distinct genres, live programs, or infomercial programs) is populated at page load from unique `data-genre` values, with a **Live** option (value `__live`) appended if any `data-live="1"` programs exist, and an **Infomercials** option (value `__inf`) appended if any `data-inf="1"` programs exist. `filterGenre(g)` sets `_genreFilter` and calls `applyGenreDim()`, which adds `.g-prog-dim` (35% opacity, `pointer-events: none` — dimmed and unselectable) to every program that doesn't match. In live mode (`__live`), non-live programs dim. In infomercial mode (`__inf`), non-inf programs dim. In normal mode, non-genre-matching programs dim and infomercials are always dimmed. Rows are never hidden — only individual programs are dimmed. `setDev()` calls `applyGenreDim()` after row visibility changes so the dim state survives device switches and `refreshGuide()` DOM swaps.
 
 **Infomercial dimming:** individual `.g-prog` blocks whose guide entry `SeriesID` matches a confirmed paid-programming ID (`C11809220ENAPZK`, `C459763EN3L6D`) get `data-inf="1"` on the program element itself — not the row. A channel that airs one overnight infomercial slot is unaffected on its other blocks. By default these programs are dimmed and unclickable. Selecting **Infomercials** in the genre filter (`_genreFilter === '__inf'`) inverts this: inf programs become selectable and recordable, all non-inf programs dim instead.
 
@@ -488,6 +494,9 @@ State classes (rec / now / sched) take precedence over genre. `.g-prog-now.gg-*`
 | `data-series` | `entry.SeriesID` or `""` |
 | `data-managed` | `1` if managed, else `0` |
 | `data-recording` | `1` if currently recording, else `0` |
+| `data-live` | `1` when `isLiveAiring()` is true (first-run today or late-night after midnight), else absent |
+
+**LIVE pill:** when `isLiveAiring(entry)` is true (OriginalAirdate, decoded as UTC year/month/day, matches today's local calendar date — or tomorrow's local date for 00:00–05:00 start times), a red `LIVE` badge appears inline with the title inside a `.g-ti-row` flex row. The title (`flex: 0 1 auto`) shrinks to fit; the pill (`flex-shrink: 0`) stays compact immediately after the title text. `data-live="1"` is also set on the block for the genre filter.
 
 **Corner triangle flags:** a right-triangle CSS flag (`position:absolute; top:0; right:0`) is rendered as a `<div>` child of the program block using the CSS border trick (`border-width: 0 18px 18px 0`):
 - `.g-flag` (yellow `#ffd700`) — managed/scheduled show
@@ -568,7 +577,7 @@ add/remove/edit, which arrive as `show_*` SSE → `refreshGuide`); a recording s
 | `confirmEdit()` | POSTs `/api/edit`; closes modal on success |
 | `setDev(id)` | Filters guide rows by `data-dev`; empty string = deduped single-device fallback (multi-tuner bootstraps to a real `defaultDev`, not `''`); uses cached `_rows` NodeList; calls `applyGenreDim()` then shows/hides `.g-fav-sep` separators |
 | `filterGenre(g)` | Sets `_genreFilter` and calls `applyGenreDim()` |
-| `applyGenreDim()` | Clears all `.g-prog-dim`. In normal mode: dims programs that fail the genre filter OR have `data-inf="1"`. In infomercial mode (`_genreFilter==='__inf'`): dims all non-inf programs, un-dims inf programs. Rows always remain visible. |
+| `applyGenreDim()` | Clears all `.g-prog-dim`. In live mode (`__live`): dims non-live programs. In infomercial mode (`__inf`): dims all non-inf programs. In normal mode: dims programs that fail the genre filter OR have `data-inf="1"`. Rows always remain visible. |
 | `scrollToNow()` | Scrolls `.gw` so the now-line sits ~25% from the left of the viewport; corner-cell ⊙ button and page load both call it |
 | `toggleFav(evt, btn)` | `onclick` on `.g-fav-btn` star buttons; reads `data-dev` / `data-ch` from parent `.g-row`; POSTs `/api/toggle-favorite`; calls `refreshGuide()` on success |
 | `toggleTunerDrop(devId)` | Toggles that tuner's `#tdrop-{devId}` dropdown; closes any other open `.tdrop` first. A document-level click handler closes open dropdowns on any click outside a `.tuner-box`. |
@@ -681,14 +690,13 @@ Client-side `innerHTML` concatenation (tuner popover rows) uses the page-local `
 - Normal requests: one full request → one response → cancel. SSE connections: open until client disconnects or `stop()` is called.
 - **TCP_NODELAY:** the NWListener is created with `NWProtocolTCP.Options().noDelay = true` to disable Nagle's algorithm, ensuring response bytes are flushed immediately rather than held for coalescing.
 
-**gzip compression:** `accumulate()` parses `Accept-Encoding`; when the client supports gzip and an `.ok` body is ≥ 1400 bytes, `send()` compresses it (`Content-Encoding: gzip` + `Vary: Accept-Encoding`). The guide page shrinks ~1.1 MB → ~160 KB — the dominant cost for LAN Wi-Fi clients. Implementation: libcompression `COMPRESSION_ZLIB` (raw DEFLATE) wrapped in a gzip container (10-byte header + CRC-32/ISIZE trailer, table-based CRC in `WebServer.crc32`). Falls back to uncompressed if compression fails or wouldn't shrink the payload. `.cachedIcon` responses (already-compressed image data) are never gzipped.
+**gzip compression:** `accumulate()` parses `Accept-Encoding`; when the client supports gzip and an `.ok` body is ≥ 1400 bytes, `send()` compresses it (`Content-Encoding: gzip` + `Vary: Accept-Encoding`). The guide page shrinks ~1.1 MB → ~160 KB — the dominant cost for LAN Wi-Fi clients. Implementation: libcompression `COMPRESSION_ZLIB` (raw DEFLATE) wrapped in a gzip container (10-byte header + CRC-32/ISIZE trailer, table-based CRC in `WebServer.crc32`). Falls back to uncompressed if compression fails or wouldn't shrink the payload. Already-compressed image responses (channel icons, app icon PNG) are never gzipped.
 
 **`WebResponse` cases:**
 
 | Case | HTTP status | Use |
 |---|---|---|
 | `.ok(contentType:body:)` | 200 OK | Successful GET or POST; gzip-compressed by `send()` when client supports it and body ≥ 1400 bytes |
-| `.cachedIcon(contentType:body:)` | 200 OK | Channel icon; skips gzip (already compressed image data); adds `Cache-Control: public, max-age=2592000` (30 days) |
 | `.notFound(String)` | 404 Not Found | Unknown path |
 | `.badRequest(String)` | 400 Bad Request | POST with missing required fields |
 | `.payloadTooLarge(String)` | 413 Content Too Large | Request body exceeds 128 KB |

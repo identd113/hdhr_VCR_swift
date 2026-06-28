@@ -29,6 +29,18 @@ final class WebServer {
     private var cachedHTMLDesktop: Data? = nil
     private var cachedHTMLMobile:  Data? = nil
 
+    // App icon rendered once as 72×72 PNG; reused on every /api/icon request.
+    private lazy var cachedIconPNG: Data? = {
+        guard let url = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
+              let img = NSImage(contentsOf: url) else { return nil }
+        let out = NSImage(size: NSSize(width: 72, height: 72), flipped: false) { r in
+            img.draw(in: r); return true
+        }
+        guard let tiff = out.tiffRepresentation,
+              let bmp  = NSBitmapImageRep(data: tiff) else { return nil }
+        return bmp.representation(using: .png, properties: [:])
+    }()
+
     @MainActor
     func prebuildPageHTML(state: AppState) {
         let desktop = Data(buildHTML(state: state, isDesktop: true).utf8)
@@ -375,16 +387,8 @@ final class WebServer {
             return .notFound("favicon not found")
 
         case "/api/icon":
-            if let url = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
-               let img = NSImage(contentsOf: url) {
-                let out = NSImage(size: NSSize(width: 72, height: 72), flipped: false) { r in
-                    img.draw(in: r); return true
-                }
-                if let tiff = out.tiffRepresentation,
-                   let bmp  = NSBitmapImageRep(data: tiff),
-                   let png  = bmp.representation(using: .png, properties: [:]) {
-                    return .ok(contentType: "image/png", body: png)
-                }
+            if let png = cachedIconPNG {
+                return .ok(contentType: "image/png", body: png)
             }
             return .notFound("icon not found")
 
@@ -723,8 +727,18 @@ final class WebServer {
             return "<div class=\"g-tick\" style=\"left:\(pct(ts - winStart))%\">\(lbl)</div>"
         }.joined() + "<div class=\"g-now-tick\" style=\"left:\(nowPct)%\"></div>"
 
-        // ── Managed show lookups ───────────────────────────────────────────────
+        // ── Live-detection anchors (computed once, reused per entry in the grid loop) ──
         let nowDate = Date()
+        var _liveUTCCal = Calendar(identifier: .gregorian)
+        _liveUTCCal.timeZone = TimeZone(identifier: "UTC")!
+        let _liveLocalCal       = Calendar.current
+        let _liveTodayComps     = _liveLocalCal.dateComponents([.year, .month, .day], from: nowDate)
+        let _liveTomorrowStart  = _liveLocalCal.startOfDay(for: _liveLocalCal.date(byAdding: .day, value: 1, to: nowDate)!)
+        let _liveTomorrowComps  = _liveLocalCal.dateComponents([.year, .month, .day], from: _liveTomorrowStart)
+        let _liveTomorrowMidUTC = Int(_liveTomorrowStart.timeIntervalSince1970)
+        let _liveTomorrowEnd    = Int(_liveTomorrowStart.addingTimeInterval(5 * 3600).timeIntervalSince1970)
+
+        // ── Managed show lookups ───────────────────────────────────────────────
         let recording = state.recordingShows
         let recChannelsByDevice: [String: Set<String>] = Dictionary(
             grouping: recording, by: { $0.hdhr_record }
@@ -859,7 +873,15 @@ final class WebServer {
                         origAirdateFormatter.string(from: Date(timeIntervalSince1970: TimeInterval($0)))
                     } ?? ""
                     let filtersAttr = (e.Filter ?? []).joined(separator: ",")
-                    let isLive = isLiveAiring(e)
+                    let isLive: Bool = {
+                        guard let oad = e.OriginalAirdate else { return false }
+                        let oadC = _liveUTCCal.dateComponents([.year, .month, .day],
+                                       from: Date(timeIntervalSince1970: TimeInterval(oad)))
+                        if oadC == _liveTodayComps { return true }
+                        if oadC == _liveTomorrowComps &&
+                           e.StartTime >= _liveTomorrowMidUTC && e.StartTime < _liveTomorrowEnd { return true }
+                        return false
+                    }()
                     let liveAttr    = isLive ? " data-live=\"1\"" : ""
                     let titleHTML   = isLive
                         ? "<div class=\"g-ti-row\"><span class=\"g-ti\">\(he(e.Title))</span><span class=\"g-live-tag\">LIVE</span></div>"

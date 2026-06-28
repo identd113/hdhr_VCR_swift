@@ -73,7 +73,7 @@ Four sections:
 ### Category: Maintenance
 Sections: Shows, Guide & Devices, Tools (if Homebrew found), Developer (if macOS > 13).
 
-Each action row: title in medium weight + description in caption secondary + `"Run"` `.bordered` button on the right (or `ProgressView(.small)` while running).
+Each action row: title in medium weight + a small `ⓘ` `InfoButton` (tapping shows the description in a popover) + `"Run"` `.bordered` button on the right (or `ProgressView(.small)` while running).
 
 When a task finishes: green `checkmark.circle.fill` + result message in a separate `Section`.
 
@@ -83,6 +83,27 @@ When a task finishes: green `checkmark.circle.fill` + result message in a separa
 
 ### Category: About
 See the About section description below — app image with signal-pulse tap effect, version, native markdown changelog, GitHub link.
+
+## InfoButton pattern
+
+All controls use a label-closure `Form` syntax that embeds a small `ⓘ` **InfoButton** next to the control label. Tapping the button shows a popover (arrow edge `.bottom`, max width 280 pt) with the description string. There are no always-visible caption lines — descriptions are hidden until requested. Applies to all sections including `maintenanceRow` and `brewInstallRow` helpers.
+
+```swift
+private struct InfoButton: View {
+    let text: String
+    @State private var isPresented = false
+    var body: some View {
+        Button { isPresented.toggle() } label: {
+            Image(systemName: "info.circle").font(.callout).foregroundStyle(.tertiary)
+        }
+        .buttonStyle(.plain)
+        .popover(isPresented: $isPresented, arrowEdge: .bottom) {
+            Text(text).font(.callout).padding(12).frame(maxWidth: 280)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+```
 
 ## Intent
 

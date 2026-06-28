@@ -1,5 +1,16 @@
 # hdhrVCRplus Changelog
 
+## 2026-06-27 (260627-1933)
+
+- **Web guide — instant page load** — The guide HTML is now pre-built and cached after every guide fetch (`prebuildPageHTML`). `GET /` serves the cached copy immediately instead of blocking the `@MainActor` thread for 2–4 seconds to build ~1.1 MB of HTML on every request. Desktop and mobile variants are cached separately; the cache is invalidated and rebuilt on each hourly guide refresh.
+- **Web guide — loading splash** — A fixed overlay shows the app icon, name, and build version while the page is loading. A 300 ms CSS animation delay makes it invisible on fast local loads; on slow remote loads it fades in and disappears once the first frame paints. The app icon is served from the new `GET /api/icon` endpoint (72×72 PNG, cached after first render).
+- **Web guide — LIVE pill** — Program blocks for first-run shows airing today display an inline red **LIVE** badge next to the title. Detection: `OriginalAirdate` (stored as midnight UTC for the local broadcast calendar date) is decoded in UTC and compared against the server's local calendar date. Late-night shows with a 00:00–05:00 local start time whose UTC date rolls to "tomorrow" also count. The pill sits immediately after the title text rather than pushed to the edge.
+- **Web guide — Live genre filter** — "Live" option added to the genre filter dropdown. Selecting it dims all non-live program blocks (same pattern as Infomercials). Only appears when live shows are in the current guide window.
+- **Watch Now — LIVE pill** — The same `isLiveAiring()` helper (shared in `GuideViewHelpers.swift`) adds a LIVE badge next to the show title in each Watch Now row.
+- **Fix — original air date timezone** — `origAirdateFormatter` now forces UTC so US timezones no longer roll the displayed date back to the previous day's evening.
+- **Settings — InfoButton descriptions** — Every setting's description is now behind a small `ⓘ` button (tapping shows a popover) instead of an always-visible caption line. Applies to all sections including Maintenance and Homebrew install rows.
+- **Web guide — logo placeholder removed** — The summary panel poster now loads directly from the CDN URL; the channel logo is only used as an `onerror` fallback (no longer shown as a fill-in while the poster loads).
+
 ## 2026-06-24 (260624-0000)
 
 - **Series subfolders** — New toggle in Settings → Recording. When enabled, SeriesID recordings (`seriesChannel`/`seriesAll`) are saved into `Title/Season XX/` subfolders inside the recording folder. The episode tag (e.g. `S02E04`) is also embedded in the filename before the channel number. Falls back to `Title/` when no season is parseable from the guide's `EpisodeNumber`. dateTime shows are always saved flat. The episode number regex (`^S(\d+)(?:E\d+)?$`) handles bare season-only strings (`S03`) and is case-insensitive. The **Organize** maintenance action (Settings → Maintenance) scans existing flat-root files and moves them into the correct subfolders.
