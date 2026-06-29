@@ -48,7 +48,7 @@ Width = 34% of scroll-container width, capped at 220pt (`.containerRelativeFrame
 ### Info column (right)
 `VStack(alignment: .leading, spacing: 3)`:
 - Channel logo (16×16, `.accessibilityHidden(true)`) + `"ch 5.1  NBC HD"` caption.bold secondary + `"🔴 Recording"` red badge (icon `.accessibilityHidden(true)`) when `managedShow?.show_recording == true`
-- Show title row — `HStack(spacing: 4)`: title (`.subheadline.bold`, 1 line; `.accessibilityLabel` appends `", scheduled"` when `isScheduled`) + a red **LIVE** badge when `isLiveAiring(entry)` returns true (`.accessibilityLabel("Live")`). The badge uses `system(size: 8, weight: .heavy)` white text on a dark-red rounded rect.
+- Show title row — `HStack(spacing: 4)`: title (`.subheadline.bold`, 1 line; `.accessibilityLabel` appends `", scheduled"` when `isScheduled`) + a green **NEW** badge when `isNewEpisode(entry)` returns true (`.accessibilityLabel("New episode")`). The badge uses `system(size: 8, weight: .heavy)` white text on a green (`Color(red: 0.18, green: 0.65, blue: 0.35)`) rounded rect. Detection: `OriginalAirdate` matches today's local date (or tonight for 00:00–05:00 start times).
 - Episode subtitle — `entry.episodeInfoLabel` (`.caption` secondary, 1 line); format: `"S01E05 · Episode Title"`, or just the non-nil part if only one is present; omitted when both are absent
 - Time range + remaining — `.caption2` tertiary, e.g. `"8:00 PM – 9:00 PM  ·  42m left"`
 - **Action row** (`.controlSize(.small)`); each button has an `.accessibilityLabel` that includes the show title so VoiceOver can distinguish rows:

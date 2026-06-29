@@ -302,14 +302,15 @@ final class VLCBridge: ObservableObject {
     /// Does NOT release the media player itself — call releasePlayer() for full teardown.
     private func stopAndClearState() {
         stopStatsTimer()
-        hasError      = false
-        isPlaying     = false
-        currentURL    = nil
-        pendingURL    = nil
-        drawableView  = nil
-        audioTracks   = []
-        spuTracks     = []
-        tracksFetched = false
+        hasError       = false
+        isPlaying      = false
+        currentURL     = nil
+        pendingURL     = nil
+        drawableView   = nil
+        audioTracks    = []
+        spuTracks      = []
+        tracksFetched  = false
+        videoPixelSize = nil
         guard let mp = mediaPlayer else { return }
         _mpStop?(mp)
         if let old = currentMedia { _mediaRelease?(old); currentMedia = nil }
@@ -417,7 +418,8 @@ final class VLCBridge: ObservableObject {
         bufferInfo = VLCBufferInfo(lagSec: estimatedLagSec, rate: currentRate,
                                    demuxBitrate: newBitrate, corrupted: newCorrupted,
                                    enabled: minRate < 1.0)
-        videoPixelSize = videoNativeSize()
+        let newPixelSize = videoNativeSize()
+        if newPixelSize != videoPixelSize { videoPixelSize = newPixelSize }
         // i_lost_pictures is a rendering metric — it spikes when the window is backgrounded
         // (macOS stops compositing the surface). Only use i_demux_corrupted (stream-level) to
         // avoid false catch-up loops when the window isn't visible.

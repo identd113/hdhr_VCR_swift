@@ -111,16 +111,19 @@ struct WatchNowView: View {
         }
     }
 
-    // Fires now at :00 and :30; pre-fetches upcoming posters 60 s early to avoid placeholder flash.
+    // Runs until the view disappears. Keeps now fresh every 30s (so mid-half-hour show endings
+    // clear promptly), pre-fetches upcoming posters before each boundary to avoid placeholder flash.
     private func boundaryRefreshLoop() async {
         while !Task.isCancelled {
             let boundary = Self.nextBoundary()
-            let totalDelay = boundary.timeIntervalSinceNow
-            if totalDelay > 61 {
-                try? await Task.sleep(for: .seconds(totalDelay - 60))
+            // Sleep in 30s chunks to keep now within 30s of real time.
+            while boundary.timeIntervalSinceNow > 60 {
+                try? await Task.sleep(for: .seconds(30))
                 if Task.isCancelled { return }
-                await prefetchPostersForDate(boundary)
+                now = Date()
             }
+            // Pre-fetch posters for shows turning over at this boundary.
+            await prefetchPostersForDate(boundary)
             let remaining = boundary.timeIntervalSinceNow
             if remaining > 0 { try? await Task.sleep(for: .seconds(remaining)) }
             if Task.isCancelled { return }

@@ -301,7 +301,8 @@ struct VLCPlayerView: View {
     // MARK: - Toolbar
 
     private var toolbar: some View {
-        HStack(spacing: 10) {
+        let canResize = canResizeToNative
+        return HStack(spacing: 10) {
             // Channel picker — sorted by guide number
             Picker("Channel", selection: $selectedChannel) {
                 ForEach(lineup, id: \.GuideNumber) { ch in
@@ -345,10 +346,10 @@ struct VLCPlayerView: View {
                 VLCPlayerWindowManager.shared.sizeToNativeVideo()
             } label: {
                 Image(systemName: "aspectratio")
-                    .foregroundStyle(canResizeToNative ? .secondary : .tertiary)
+                    .foregroundStyle(canResize ? .secondary : .tertiary)
             }
             .buttonStyle(.plain)
-            .disabled(!canResizeToNative)
+            .disabled(!canResize)
             .onHover { if $0 { nativeResHovered = true } }
             .popover(isPresented: $nativeResHovered, arrowEdge: .bottom) { nativeResPopover }
 
@@ -449,6 +450,12 @@ struct VLCPlayerView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(Color(NSColor.windowBackgroundColor))
+        .onChange(of: bridge.bufferInfo.enabled) { _, enabled in
+            if !enabled { bufferInfoHovered = false }
+        }
+        .onChange(of: bridge.isPlaying) { _, playing in
+            if !playing { nativeResHovered = false }
+        }
     }
 
     // MARK: - Buffer monitor
@@ -703,15 +710,12 @@ final class VLCPlayerWindowManager {
         window?.screen?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
     }
 
-    /// True when the stream's native resolution fits within the current display's visible frame,
-    /// or when it exactly matches the display's native resolution (1:1 pixels is always valid).
+    /// True when the stream's native resolution fits within the current display's visible frame
+    /// (accounting for the 44pt toolbar added by sizeToNativeVideo).
     func nativeVideoFitsCurrentScreen() -> Bool {
         guard let px = VLCBridge.shared.videoPixelSize,
               let screen = window?.screen ?? NSScreen.main else { return true }
         let scale = screen.backingScaleFactor
-        if px.width == screen.frame.width * scale && px.height == screen.frame.height * scale {
-            return true
-        }
         return px.width  / scale <= screen.visibleFrame.width &&
                px.height / scale + 44 <= screen.visibleFrame.height
     }

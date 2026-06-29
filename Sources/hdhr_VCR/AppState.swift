@@ -1159,6 +1159,7 @@ final class AppState: ObservableObject {
 
     func startRecording(index: Int) async {
         var show = shows[index]
+        guard !show.show_recording else { return }
         // Skip if the assigned device is absent or unavailable — avoids burning fail count on a dead tuner.
         guard let device = devices.first(where: { $0.DeviceID == show.hdhr_record }) else {
             glog("[\(show.show_title)] device \(show.hdhr_record) not in device list — skipping recording start", level: .warning)
@@ -1560,10 +1561,15 @@ final class AppState: ObservableObject {
         glog("[Show] Added '\(show.show_title)' ch=\(show.show_channel) \(show.show_is_series ? "series" : "single")")
         shows.append(show); saveConfig()
         // If the show is currently airing, don't wait for the idle loop — start immediately.
+        // Capture show_id (not index) so the Task re-derives position after any interleaved mutation.
         let now = Date()
-        if let next = show.show_next, let end = show.show_end, next <= now + 10, end > now,
-           let i = shows.firstIndex(where: { $0.show_id == show.show_id }) {
-            Task { await startRecording(index: i) }
+        if let next = show.show_next, let end = show.show_end, next <= now + 10, end > now {
+            let id = show.show_id
+            Task {
+                if let j = shows.firstIndex(where: { $0.show_id == id }) {
+                    await startRecording(index: j)
+                }
+            }
         }
     }
     func updateShow(_ show: Show) {

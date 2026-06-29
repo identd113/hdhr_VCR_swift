@@ -2244,11 +2244,11 @@ final class WebServer {
           // If the user has scrolled ahead, the now-line is near the left edge (<75%) so we leave them alone.
           var gw=document.querySelector('.gw'),gi=document.querySelector('.gi');
           if(!gw||!gi)return;
-          var nowPx=gi.scrollWidth*(p/100);
+          var nowPx=125+(gi.scrollWidth-125)*(p/100);
           if(nowPx>gw.scrollLeft+gw.clientWidth*0.75)
             gw.scrollLeft=Math.max(0,nowPx-gw.clientWidth*0.25);
         }
-        function scrollToNow(){var gw=document.querySelector('.gw');var gi=document.querySelector('.gi');if(!gw||!gi)return;var nowPx=gi.scrollWidth*(nowPct()/100);gw.scrollLeft=Math.max(0,nowPx-gw.clientWidth*0.25);}
+        function scrollToNow(){var gw=document.querySelector('.gw');var gi=document.querySelector('.gi');if(!gw||!gi)return;var nowPx=125+(gi.scrollWidth-125)*(nowPct()/100);gw.scrollLeft=Math.max(0,nowPx-gw.clientWidth*0.25);}
         // Defer auto-select and initial scroll to after first paint so the guide grid is
         // the LCP element instead of the externally-fetched show poster image.
         requestAnimationFrame(function(){
@@ -2347,17 +2347,18 @@ final class WebServer {
             }catch(x){}
           };
         })();
-        // ── Now button visibility: hidden at scroll origin, appears after ~1 hour ──
+        // ── Now button visibility: show only when the red now-line is left of the visible scroll area ──
         (function(){
           var gw=document.querySelector('.gw');
           var gi=document.querySelector('.gi');
           var btn=document.getElementById('g-now-btn');
           if(!gw||!gi||!btn)return;
           function check(){
-            var hrPx=gi.scrollWidth*(3600/_winSec);
-            btn.classList.toggle('g-now-vis',gw.scrollLeft>=hrPx);
+            var nowPx=125+(gi.scrollWidth-125)*(nowPct()/100);
+            btn.classList.toggle('g-now-vis',nowPx<gw.scrollLeft);
           }
           gw.addEventListener('scroll',check,{passive:true});
+          setInterval(check,5000);
           check();
         })();
         // ── Custom horizontal scrollbar ───────────────────────────────────────
