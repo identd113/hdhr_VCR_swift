@@ -103,6 +103,7 @@ final class VLCBridge: ObservableObject {
     @Published var audioTracks: [(id: Int32, name: String)] = []  // stream audio tracks; empty = single/unknown
     @Published var spuTracks:   [(id: Int32, name: String)] = []  // CC/subtitle tracks; empty = none detected
     @Published private(set) var currentURL: String?
+    @Published private(set) var videoPixelSize: CGSize? = nil  // physical pixels; nil until first decoded frame
     private var statsTimer:      Timer?
     private var currentRate:     Float  = 1.0
     private var estimatedLagSec: Double = 0.0
@@ -416,6 +417,7 @@ final class VLCBridge: ObservableObject {
         bufferInfo = VLCBufferInfo(lagSec: estimatedLagSec, rate: currentRate,
                                    demuxBitrate: newBitrate, corrupted: newCorrupted,
                                    enabled: minRate < 1.0)
+        videoPixelSize = videoNativeSize()
         // i_lost_pictures is a rendering metric — it spikes when the window is backgrounded
         // (macOS stops compositing the surface). Only use i_demux_corrupted (stream-level) to
         // avoid false catch-up loops when the window isn't visible.

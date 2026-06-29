@@ -48,7 +48,8 @@ struct VLCPlayerView: View {
     @State private var posterHidden: Bool = false
     @State private var posterNSImage: NSImage? = nil
     @ObservedObject private var bridge = VLCBridge.shared
-    @State private var bufferInfoHovered = false
+    @State private var bufferInfoHovered  = false
+    @State private var nativeResHovered   = false
 
     private var currentGuideEntry: GuideEntry? {
         guard let ch = selectedChannel else { return nil }
@@ -61,6 +62,16 @@ struct VLCPlayerView: View {
         (state.lineups[device.DeviceID] ?? []).sorted {
             $0.GuideNumber.localizedStandardCompare($1.GuideNumber) == .orderedAscending
         }
+    }
+
+    // HDHomeRun raw streams are always MPEG-2/AC-3; any transcode= param means H.264/AAC.
+    private var inferredCodecs: (video: String, audio: String) {
+        let url = bridge.currentURL ?? ""
+        return url.contains("transcode=") ? ("H.264", "AAC") : ("MPEG-2", "AC-3")
+    }
+
+    private var canResizeToNative: Bool {
+        bridge.videoPixelSize != nil && VLCPlayerWindowManager.shared.nativeVideoFitsCurrentScreen()
     }
 
     var body: some View {
@@ -311,27 +322,35 @@ struct VLCPlayerView: View {
 
             Spacer()
 
-            if bridge.bufferInfo.enabled { bufferMonitor }
+            // Buffer monitor + catch-up: grouped into a single control unit when buffering is active.
+            // Both relate to live-stream temporal state, so they share a pill background with a
+            // hairline divider between them. Catch-up stands alone when buffering is disabled.
+            if bridge.bufferInfo.enabled {
+                HStack(spacing: 0) {
+                    bufferMonitor
+                        .padding(.trailing, 5)
+                    Divider().frame(height: 14)
+                    catchUpButton
+                        .padding(.leading, 5)
+                }
+                .padding(.horizontal, 7)
+                .padding(.vertical, 4)
+                .background(.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
+            } else {
+                catchUpButton
+            }
 
             // Native resolution: resize window to 1:1 physical pixels
             Button {
                 VLCPlayerWindowManager.shared.sizeToNativeVideo()
             } label: {
                 Image(systemName: "aspectratio")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(canResizeToNative ? .secondary : .tertiary)
             }
             .buttonStyle(.plain)
-            .help("Native resolution — resize window to 1:1 pixels")
-
-            // Speed up to live: discard buffer and reconnect at live edge
-            Button {
-                VLCBridge.shared.catchUpToLive()
-            } label: {
-                Image(systemName: "forward.end.circle")
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
-            .help("Speed up to live — discard buffer and jump to live edge")
+            .disabled(!canResizeToNative)
+            .onHover { if $0 { nativeResHovered = true } }
+            .popover(isPresented: $nativeResHovered, arrowEdge: .bottom) { nativeResPopover }
 
             // Live wall-clock time — meaningful for live TV; no elapsed/scrubbing concept
             TimelineView(.periodic(from: .now, by: 1.0)) { ctx in
@@ -434,6 +453,15 @@ struct VLCPlayerView: View {
 
     // MARK: - Buffer monitor
 
+    private var catchUpButton: some View {
+        Button { VLCBridge.shared.catchUpToLive() } label: {
+            Image(systemName: "forward.end.circle")
+                .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain)
+        .help("Speed up to live — discard buffer and jump to live edge")
+    }
+
     private var bufferMonitor: some View {
         let info = bridge.bufferInfo
         let fill = min(1.0, info.lagSec / 8.0)
@@ -453,7 +481,7 @@ struct VLCPlayerView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Live buffer")
         .accessibilityValue("\(min(8, Int(info.lagSec.rounded()))) of 8 seconds")
-        .onHover { bufferInfoHovered = $0 }
+        .onHover { if $0 { bufferInfoHovered = true } }
         .popover(isPresented: $bufferInfoHovered, arrowEdge: .bottom) { bufferPopover }
     }
 
@@ -472,6 +500,35 @@ struct VLCPlayerView: View {
         }
         .padding(12)
         .frame(minWidth: 210)
+        .font(.caption)
+    }
+
+    private var nativeResPopover: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text("Native Resolution").font(.subheadline.bold())
+            Divider()
+            if let px = bridge.videoPixelSize {
+                let scale = VLCPlayerWindowManager.shared.currentScreenScale
+                let logW  = Int(px.width  / scale)
+                let logH  = Int(px.height / scale)
+                let (vid, aud) = inferredCodecs
+                row("Resolution", "\(Int(px.width))×\(Int(px.height)) px")
+                row("Display",    "\(logW)×\(logH) pt @ \(String(format: "%.0f", scale))×")
+                row("Video",      vid)
+                row("Audio",      aud)
+                if !VLCPlayerWindowManager.shared.nativeVideoFitsCurrentScreen() {
+                    Divider()
+                    Label("Too large for current display", systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.orange)
+                        .font(.caption)
+                }
+            } else {
+                Text("No video decoded yet")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(12)
+        .frame(minWidth: 200)
         .font(.caption)
     }
 
@@ -639,6 +696,24 @@ final class VLCPlayerWindowManager {
         win.setFrameOrigin(NSPoint(x: x, y: y))
         win.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// Backing scale of the screen the player window is on (falls back to main screen).
+    var currentScreenScale: CGFloat {
+        window?.screen?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
+    }
+
+    /// True when the stream's native resolution fits within the current display's visible frame,
+    /// or when it exactly matches the display's native resolution (1:1 pixels is always valid).
+    func nativeVideoFitsCurrentScreen() -> Bool {
+        guard let px = VLCBridge.shared.videoPixelSize,
+              let screen = window?.screen ?? NSScreen.main else { return true }
+        let scale = screen.backingScaleFactor
+        if px.width == screen.frame.width * scale && px.height == screen.frame.height * scale {
+            return true
+        }
+        return px.width  / scale <= screen.visibleFrame.width &&
+               px.height / scale + 44 <= screen.visibleFrame.height
     }
 
     /// Resize the window so the video surface is displayed at 1:1 physical pixels.

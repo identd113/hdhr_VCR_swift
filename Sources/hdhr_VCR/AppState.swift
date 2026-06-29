@@ -1559,6 +1559,12 @@ final class AppState: ObservableObject {
         guard !shows.contains(where: { $0.show_id == show.show_id }) else { return }
         glog("[Show] Added '\(show.show_title)' ch=\(show.show_channel) \(show.show_is_series ? "series" : "single")")
         shows.append(show); saveConfig()
+        // If the show is currently airing, don't wait for the idle loop — start immediately.
+        let now = Date()
+        if let next = show.show_next, let end = show.show_end, next <= now + 10, end > now,
+           let i = shows.firstIndex(where: { $0.show_id == show.show_id }) {
+            Task { await startRecording(index: i) }
+        }
     }
     func updateShow(_ show: Show) {
         guard let i = shows.firstIndex(where: { $0.show_id == show.show_id }) else { return }

@@ -10,7 +10,15 @@ struct WatchNowView: View {
     // Poster images keyed by ImageURL — persists across refreshes so rows don't flash
     @State private var posterCache: [String: NSImage] = [:]
 
-    private let refreshTimer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
+    // Seconds until the next :00 or :30 boundary from the given date.
+    private static func nextBoundary(from date: Date = Date()) -> Date {
+        let cal = Calendar.current
+        let minute = cal.component(.minute, from: date)
+        let second = cal.component(.second, from: date)
+        let elapsed = minute * 60 + second
+        let secsToNext = minute < 30 ? (30 * 60 - elapsed) : (60 * 60 - elapsed)
+        return date.addingTimeInterval(TimeInterval(max(1, secsToNext)))
+    }
 
     private var selectedDevice: HDHRDevice? {
         state.devices.first { $0.DeviceID == selectedDeviceId } ?? state.devices.first
@@ -36,8 +44,8 @@ struct WatchNowView: View {
         .onChange(of: state.watchNowDeviceId) { _, newId in
             if let id = newId { selectedDeviceId = id }
         }
-        .onReceive(refreshTimer) { t in now = t }
         .task(id: selectedDeviceId) { await prefetchPosters() }
+        .task { await boundaryRefreshLoop() }
     }
 
     private static let favAmber = Color(hue: 0.13, saturation: 0.85, brightness: 0.80)
@@ -100,6 +108,40 @@ struct WatchNowView: View {
             for await result in group {
                 if let (url, img) = result { posterCache[url] = img }
             }
+        }
+    }
+
+    // Fires now at :00 and :30; pre-fetches upcoming posters 60 s early to avoid placeholder flash.
+    private func boundaryRefreshLoop() async {
+        while !Task.isCancelled {
+            let boundary = Self.nextBoundary()
+            let totalDelay = boundary.timeIntervalSinceNow
+            if totalDelay > 61 {
+                try? await Task.sleep(for: .seconds(totalDelay - 60))
+                if Task.isCancelled { return }
+                await prefetchPostersForDate(boundary)
+            }
+            let remaining = boundary.timeIntervalSinceNow
+            if remaining > 0 { try? await Task.sleep(for: .seconds(remaining)) }
+            if Task.isCancelled { return }
+            now = Date()
+        }
+    }
+
+    // Pre-fetches poster images for shows airing at a future date so the cache is warm
+    // before the list turns over, preventing the placeholder flash at each half-hour boundary.
+    private func prefetchPostersForDate(_ date: Date) async {
+        guard let device = selectedDevice else { return }
+        let urls = state.onAirNow(for: device, at: date).compactMap { $0.entry.ImageURL }
+        let missing = urls.filter { posterCache[$0] == nil }
+        await withTaskGroup(of: (String, NSImage)?.self) { group in
+            for url in missing {
+                group.addTask {
+                    guard let img = await ChannelIconCache.shared.image(for: url) else { return nil }
+                    return (url, img)
+                }
+            }
+            for await result in group { if let (url, img) = result { posterCache[url] = img } }
         }
     }
 
@@ -295,15 +337,15 @@ struct WatchNowRow: View {
                     .font(.subheadline.bold())
                     .lineLimit(1)
                     .accessibilityLabel(isScheduled ? "\(entry.Title), scheduled" : entry.Title)
-                if isLiveAiring(entry) {
-                    Text("LIVE")
+                if isNewEpisode(entry) {
+                    Text("NEW")
                         .font(.system(size: 8, weight: .heavy))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 3)
                         .padding(.vertical, 1)
-                        .background(Color(red: 0.753, green: 0.224, blue: 0.169))
+                        .background(Color(red: 0.18, green: 0.65, blue: 0.35))
                         .clipShape(RoundedRectangle(cornerRadius: 2))
-                        .accessibilityLabel("Live")
+                        .accessibilityLabel("New episode")
                 }
             }
             if let sub = entry.episodeInfoLabel {

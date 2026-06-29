@@ -40,8 +40,8 @@ func timeRemaining(until endDate: Date) -> String {
 }
 
 // Returns true when OriginalAirdate (midnight UTC for the broadcast calendar date) matches
-// today or tonight in the server's local timezone — a proxy for "live/first-run today."
-func isLiveAiring(_ entry: GuideEntry) -> Bool {
+// today or tonight in the server's local timezone — a proxy for "new/first-run today."
+func isNewEpisode(_ entry: GuideEntry) -> Bool {
     guard let oad = entry.OriginalAirdate else { return false }
     var utcCal = Calendar(identifier: .gregorian)
     utcCal.timeZone = TimeZone(identifier: "UTC")!
