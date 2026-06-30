@@ -302,6 +302,8 @@ struct VLCPlayerView: View {
 
     private var toolbar: some View {
         let canResize = canResizeToNative
+        // Glow when native is achievable but the window isn't already sized to it.
+        let notAtNative = canResize && !VLCPlayerWindowManager.shared.isAtNativeResolution()
         return HStack(spacing: 10) {
             // Channel picker — sorted by guide number
             Picker("Channel", selection: $selectedChannel) {
@@ -341,12 +343,14 @@ struct VLCPlayerView: View {
                 catchUpButton
             }
 
-            // Native resolution: resize window to 1:1 physical pixels
+            // Native resolution: resize window to 1:1 physical pixels.
+            // Glows blue when native is achievable but the window isn't already there.
             Button {
                 VLCPlayerWindowManager.shared.sizeToNativeVideo()
             } label: {
                 Image(systemName: "aspectratio")
-                    .foregroundStyle(canResize ? .secondary : .tertiary)
+                    .foregroundStyle(notAtNative ? AnyShapeStyle(Color.accentColor) : canResize ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tertiary))
+                    .shadow(color: notAtNative ? Color.accentColor.opacity(0.6) : .clear, radius: 5)
             }
             .buttonStyle(.plain)
             .disabled(!canResize)
@@ -708,6 +712,16 @@ final class VLCPlayerWindowManager {
     /// Backing scale of the screen the player window is on (falls back to main screen).
     var currentScreenScale: CGFloat {
         window?.screen?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
+    }
+
+    /// True when the window's content area already matches the stream's 1:1 pixel size.
+    func isAtNativeResolution() -> Bool {
+        guard let px = VLCBridge.shared.videoPixelSize,
+              let win = window,
+              let content = win.contentView?.frame.size else { return false }
+        let scale = win.screen?.backingScaleFactor ?? currentScreenScale
+        return abs(content.width  - px.width  / scale)      < 1 &&
+               abs(content.height - px.height / scale - 44) < 1
     }
 
     /// True when the stream's native resolution fits within the current display's visible frame
