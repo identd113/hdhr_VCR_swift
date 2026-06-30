@@ -283,9 +283,7 @@ struct MenuContent: View {
         let currentEntry = recEntries.first { $0.startDate <= recNow && $0.endDate > recNow }
         let recEp        = currentEntry.flatMap { $0.episodeInfoLabel }
         let menuTitle    = recEp.map { "🔴 \(show.show_title) · \($0)" } ?? "🔴 \(show.show_title)"
-        // Bonus Time: sports shows record past the guide end — adjust the displayed end time
         let isSportsBonus = state.config.Sports_padding_enabled && show.show_bonus_time
-        let bonusPadding  = isSportsBonus ? TimeInterval(state.config.Sports_padding_minutes * 60) : 0
         Menu(menuTitle) {
             let started     = show.show_next ?? recNow
             let guideEnd    = show.show_end  ?? recNow

@@ -6,7 +6,7 @@ import Compression
 // NWListener-based LAN web server. Binds to all interfaces; the subnet guard
 // in handleConnection cancels any connection whose source IP is outside the
 // local interface subnets — no data is read or sent to non-LAN callers.
-final class WebServer {
+final class WebServer: @unchecked Sendable {
 
     private enum WebResponse {
         case ok(contentType: String, body: Data)
@@ -98,7 +98,7 @@ final class WebServer {
                     guard let self else { return }
                     let ok = await self.selfPing(port: clamped)
                     if !ok { glog("[WebServer] Self-ping failed — port bound but not responding", level: .warning) }
-                    DispatchQueue.main.async { self.stateCallback?(ok ? nil : "Server started but did not respond to /api/ping") }
+                    DispatchQueue.main.async { [weak self] in self?.stateCallback?(ok ? nil : "Server started but did not respond to /api/ping") }
                 }
             case .failed(let err):
                 glog("[WebServer] Failed: \(err)", level: .error)
@@ -125,6 +125,7 @@ final class WebServer {
             switch change {
             case .add(let ep):    glog("[WebServer] mDNS registered: \(ep)")
             case .remove(let ep): glog("[WebServer] mDNS withdrawn: \(ep)")
+            @unknown default:     break
             }
         }
 
@@ -203,14 +204,13 @@ final class WebServer {
     // Push a tuner_update SSE event so newly-connected clients get accurate occupancy immediately.
     // Uses activeTunerCount (same source as broadcastRecordingEvent) so the count includes the
     // in-app VLC stream + externally-used tuners, not recordings alone.
+    @MainActor
     private func pushFreshTunerCounts() async {
         guard let state = appState else { return }
         var counts: [String: Any] = [:]
-        await MainActor.run {
-            for device in state.devices {
-                let active = state.activeTunerCount(for: device.DeviceID)
-                counts[device.DeviceID] = ["a": active, "t": device.TunerCount ?? 0]
-            }
+        for device in state.devices {
+            let active = state.activeTunerCount(for: device.DeviceID)
+            counts[device.DeviceID] = ["a": active, "t": device.TunerCount ?? 0]
         }
         guard !counts.isEmpty else { return }
         broadcastEvent(["type": "tuner_update", "counts": counts])
