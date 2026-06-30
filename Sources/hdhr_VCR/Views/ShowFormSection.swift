@@ -42,7 +42,7 @@ struct ShowFormSection: View {
                     ForEach(ShowState.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }
                 .pickerStyle(.segmented)
-                .onChange(of: seriesType) { _ in onSeriesTypeChange() }
+                .onChange(of: seriesType) { onSeriesTypeChange() }
                 .help("Single: one recording on a specific date and time. DateTime: repeats weekly on selected days. Series Channel: records new episodes on this channel via SeriesID matching. Series All: records new episodes on any channel.")
             }
 
