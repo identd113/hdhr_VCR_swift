@@ -102,12 +102,12 @@ final class WebServer: @unchecked Sendable {
                 }
             case .failed(let err):
                 glog("[WebServer] Failed: \(err)", level: .error)
-                DispatchQueue.main.async { self.stateCallback?(err.localizedDescription) }
+                DispatchQueue.main.async { [weak self] in self?.stateCallback?(err.localizedDescription) }
             case .cancelled:
                 // Fires for both intentional stop() and OS-level teardown.
                 // stop() nils stateCallback first, so intentional stops are silent here.
                 glog("[WebServer] Listener cancelled")
-                DispatchQueue.main.async { self.stateCallback?("Listener stopped unexpectedly") }
+                DispatchQueue.main.async { [weak self] in self?.stateCallback?("Listener stopped unexpectedly") }
             default:
                 break
             }
@@ -2225,11 +2225,11 @@ final class WebServer: @unchecked Sendable {
           var gs=new Set();
           document.querySelectorAll('.g-prog[data-genre]').forEach(function(p){var g=p.dataset.genre;if(g)gs.add(g);});
           var hasInf=document.querySelector('.g-prog[data-inf="1"]')!==null;
-          if(gs.size<2&&!hasInf)return;
+          var hasNew=document.querySelector('.g-prog[data-new="1"]')!==null;
+          if(gs.size<2&&!hasInf&&!hasNew)return;
           var sel=document.getElementById('genre-sel');
           if(!sel)return;
           Array.from(gs).sort().forEach(function(g){var o=document.createElement('option');o.value=g;o.textContent=g;sel.appendChild(o);});
-          var hasNew=document.querySelector('.g-prog[data-new="1"]')!==null;
           if(hasNew){var o=document.createElement('option');o.value='__new';o.textContent='New';sel.appendChild(o);}
           if(hasInf){var o=document.createElement('option');o.value='__inf';o.textContent='Infomercials';sel.appendChild(o);}
           document.getElementById('genre-bar').style.display='';
@@ -2351,9 +2351,11 @@ final class WebServer: @unchecked Sendable {
         (function(){
           var gw=document.querySelector('.gw');
           var gi=document.querySelector('.gi');
-          var btn=document.getElementById('g-now-btn');
-          if(!gw||!gi||!btn)return;
+          if(!gw||!gi)return;
           function check(){
+            // Re-query each call: refreshGuide() replaces .gi innerHTML, detaching any cached ref.
+            var btn=document.getElementById('g-now-btn');
+            if(!btn)return;
             var nowPx=125+(gi.scrollWidth-125)*(nowPct()/100);
             btn.classList.toggle('g-now-vis',nowPx<gw.scrollLeft);
           }
