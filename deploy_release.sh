@@ -60,15 +60,6 @@ swift build -c release
 
 echo "==> Deploying binary…"
 cp .build/release/hdhr_VCR "$BINARY"
-# Add rpath so the binary finds Sparkle.framework in Contents/Frameworks at runtime.
-install_name_tool -add_rpath @executable_path/../Frameworks "$BINARY" 2>/dev/null || true
-
-echo "==> Bundling Sparkle framework…"
-_FW_DEST="$APP/Contents/Frameworks"
-rm -rf "$_FW_DEST/Sparkle.framework"
-mkdir -p "$_FW_DEST"
-cp -R .build/release/Sparkle.framework "$_FW_DEST/"
-xattr -cr "$_FW_DEST/Sparkle.framework"
 
 echo "==> Deploying resources…"
 mkdir -p "$APP/Contents/Resources"
@@ -94,13 +85,6 @@ echo "==> Signing with Hardened Runtime…"
 find "$APP" -name "._*" -delete
 find "$APP" -name ".DS_Store" -delete
 xattr -cr "$APP"
-# Sign Sparkle internals inside-out before signing the framework and then the main app.
-_SPKL="$APP/Contents/Frameworks/Sparkle.framework/Versions/B"
-codesign --force --options runtime --sign "$SIGN_IDENTITY" "$_SPKL/XPCServices/Downloader.xpc"
-codesign --force --options runtime --sign "$SIGN_IDENTITY" "$_SPKL/XPCServices/Installer.xpc"
-codesign --force --options runtime --sign "$SIGN_IDENTITY" "$_SPKL/Updater.app"
-codesign --force --options runtime --sign "$SIGN_IDENTITY" "$_SPKL/Autoupdate"
-codesign --force --options runtime --sign "$SIGN_IDENTITY" "$APP/Contents/Frameworks/Sparkle.framework"
 _signed=0
 for _attempt in 1 2 3; do
     find "$APP" -name "._*" -delete 2>/dev/null || true
@@ -130,41 +114,9 @@ if [ "$SKIP_NOTARIZE" -eq 1 ]; then
     exit 0
 fi
 
-echo "==> Zipping for notarization and Sparkle distribution…"
+echo "==> Zipping for notarization…"
 ZIP_PATH="/tmp/${BUNDLE_ID}-notarize.zip"
 ditto -c -k --keepParent "$APP" "$ZIP_PATH"
-
-echo "==> Signing zip for Sparkle…"
-# Find sign_update from the SPM Sparkle artifact bundle.
-SIGN_UPDATE=$(find .build/artifacts -name "sign_update" -type f 2>/dev/null | head -1)
-if [ -z "$SIGN_UPDATE" ]; then
-    echo "    WARNING: sign_update not found in .build/artifacts — run 'swift package resolve' first."
-    echo "    Skipping Sparkle signature. The update will fail verification if published."
-else
-    SPARKLE_SIG=$("$SIGN_UPDATE" "$ZIP_PATH" 2>/dev/null)
-    ZIP_SIZE=$(stat -f%z "$ZIP_PATH")
-    echo "    Signature: $SPARKLE_SIG"
-    echo "    Size:      $ZIP_SIZE bytes"
-    echo
-    echo "    Add this <item> block to appcast.xml (or run tools/publish_release.sh):"
-    echo "    ─────────────────────────────────────────────────────────────────────"
-    printf '    <item>\n'
-    printf '        <title>Version %s</title>\n' "$RELEASE_VERSION"
-    printf '        <pubDate>%s</pubDate>\n' "$(date -u '+%a, %d %b %Y %H:%M:%S +0000')"
-    printf '        <sparkle:version>%s</sparkle:version>\n' "$_BUILD_NUM"
-    printf '        <sparkle:shortVersionString>%s</sparkle:shortVersionString>\n' "$RELEASE_VERSION"
-    printf '        <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>\n'
-    printf '        <description><![CDATA[<ul><li>See Settings → About for changelog</li></ul>]]></description>\n'
-    printf '        <enclosure\n'
-    printf '            url="https://github.com/identd113/hdhr_VCR_swift/releases/download/v%s/hdhrVCRplus.zip"\n' "$RELEASE_VERSION"
-    printf '            length="%s"\n' "$ZIP_SIZE"
-    printf '            type="application/octet-stream"\n'
-    printf '            sparkle:edSignature="%s"\n' "$SPARKLE_SIG"
-    printf '        />\n'
-    printf '    </item>\n'
-    echo "    ─────────────────────────────────────────────────────────────────────"
-fi
-echo
 
 echo "==> Submitting to Apple notary service…"
 xcrun notarytool submit "$ZIP_PATH" \

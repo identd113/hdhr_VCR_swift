@@ -882,12 +882,10 @@ struct SettingsView: View {
                 Divider()
 
                 HStack {
-                    Button("Check for Updates") { state.checkForUpdates() }
-                        .buttonStyle(.bordered)
-                    Spacer()
                     Link("View on GitHub",
                          destination: URL(string: "https://github.com/identd113/hdhr_VCR_swift")!)
                         .buttonStyle(.bordered)
+                    Spacer()
                 }
 
                 Text("Changelog")

@@ -28,18 +28,6 @@ swift build
 echo "==> Deploying binary…"
 mkdir -p "$APP/Contents/MacOS"
 cp .build/debug/hdhr_VCR "$BINARY"
-# Add rpath so the binary finds Sparkle.framework in Contents/Frameworks at runtime.
-# SPM builds against @rpath/Sparkle.framework; @loader_path alone won't reach Contents/Frameworks.
-install_name_tool -add_rpath @executable_path/../Frameworks "$BINARY" 2>/dev/null || true
-
-echo "==> Bundling Sparkle framework…"
-_FW_DEST="$APP/Contents/Frameworks"
-rm -rf "$_FW_DEST/Sparkle.framework"
-mkdir -p "$_FW_DEST"
-cp -R .build/debug/Sparkle.framework "$_FW_DEST/"
-# Strip xattrs that SPM (or iCloud) attached to the source tree — cp -R copies them verbatim
-# and codesign --options runtime rejects com.apple.FinderInfo as "detritus".
-xattr -cr "$_FW_DEST/Sparkle.framework"
 
 echo "==> Deploying resources…"
 mkdir -p "$APP/Contents/Resources"
@@ -78,7 +66,7 @@ cp Resources/favicon.ico "$APP/Contents/Resources/favicon.ico"
 echo "==> Signing…"
 # Sign in /tmp to avoid iCloud Drive re-attaching com.apple.FinderInfo during codesign.
 # codesign --options runtime rejects FinderInfo as "detritus"; iCloud races faster than
-# a single xattr -cr call between the Sparkle component signs and the bundle sign.
+# a single xattr -cr call on the live bundle.
 _TMP_DIR=$(mktemp -d)
 [ -d "$_TMP_DIR" ] || { echo "==> ERROR: mktemp failed"; exit 1; }
 _TMP_APP="$_TMP_DIR/hdhrVCRplus.app"
@@ -87,15 +75,6 @@ find "$_TMP_APP" -name "._*" -delete
 find "$_TMP_APP" -name ".DS_Store" -delete
 xattr -cr "$_TMP_APP"
 
-# Sign Sparkle internals inside-out: XPC services → Updater.app → Autoupdate → framework.
-_SPKL="$_TMP_APP/Contents/Frameworks/Sparkle.framework/Versions/B"
-codesign --force --options runtime --sign - "$_SPKL/XPCServices/Downloader.xpc"
-codesign --force --options runtime --sign - "$_SPKL/XPCServices/Installer.xpc"
-codesign --force --options runtime --sign - "$_SPKL/Updater.app"
-codesign --force --options runtime --sign - "$_SPKL/Autoupdate"
-codesign --force --options runtime --sign - "$_TMP_APP/Contents/Frameworks/Sparkle.framework"
-
-# Sign the main bundle — /tmp is not iCloud-synced so FinderInfo won't be re-attached.
 # Ad-hoc identity (-) for local dev; --options runtime enables Hardened Runtime so the
 # binary behaves identically to a notarized release build.  Entitlements grant
 # disable-library-validation so dlopen of VLC.app's libvlc.dylib is allowed under HR.

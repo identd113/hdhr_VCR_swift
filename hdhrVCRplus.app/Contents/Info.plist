@@ -29,9 +29,5 @@
 	<string>hdhrVCR+ serves a Watch Now page on your local network.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
-	<key>SUFeedURL</key>
-	<string>https://raw.githubusercontent.com/identd113/hdhr_VCR_swift/main/appcast.xml</string>
-	<key>SUPublicEDKey</key>
-	<string>BaNxyGsmR3wZu+mfHEfxm+Yy9O0WmfNXkGl+VbkI5OQ=</string>
 </dict>
 </plist>

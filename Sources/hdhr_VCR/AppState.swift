@@ -2,8 +2,6 @@ import Foundation
 import UserNotifications
 import AppKit
 import SwiftUI
-import Sparkle
-
 @MainActor
 final class AppState: ObservableObject {
     @Published var shows: [Show] = []
@@ -135,11 +133,6 @@ final class AppState: ObservableObject {
     @Published var webServerError:   String? = nil
     private var internalWebServerUseCount = 0  // ref count: each open WKWebView guide window increments
 
-    // Sparkle auto-updater — created in startup() so tests (skipStartup=true) never touch it.
-    private(set) var updaterController: SPUStandardUpdaterController?
-
-    func checkForUpdates() { updaterController?.checkForUpdates(nil) }
-
     // Exponential backoff for repeated guide API failures per device.
     // Delays: 1 min → 5 min → 15 min → 30 min → 1 hour (capped).
     // notifiedUser tracks whether we've sent a notification for the current failure streak.
@@ -186,9 +179,6 @@ final class AppState: ObservableObject {
 
     func startup() async {
         guard !skipStartup else { return }
-        // Sparkle: startingUpdater:true begins background checks immediately.
-        updaterController = SPUStandardUpdaterController(
-            startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
         // Intercept SIGTERM (pkill, launchd stop) to flush config before the process dies.
         // Re-raises SIGTERM with the default handler so the process exits normally without
         // triggering the quit dialog — recordings survive as orphans via POSIX_SPAWN_SETSID.
