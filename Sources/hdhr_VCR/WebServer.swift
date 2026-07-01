@@ -241,6 +241,15 @@ final class WebServer: @unchecked Sendable {
     }
 
     // MARK: - Connection handling
+    //
+    // HTTP/1.1 keep-alive: a connection stays open across multiple requests unless the client
+    // sends "Connection: close". This matters far more on a real LAN client than it looks like on
+    // localhost — every request without keep-alive pays a full TCP handshake (SYN/SYN-ACK/ACK)
+    // before any HTTP bytes can move, and the guide page's initial load fires ~20 lazy /api/guide-
+    // detail requests (see WebServer.md's Lazy heavy-data loading section) that would otherwise
+    // each open a brand-new connection. idleCloseSeconds bounds how long a kept-alive connection
+    // lingers with no further requests, so an abandoned tab/client doesn't leak a socket forever.
+    private static let idleCloseSeconds: Double = 10
 
     private func handleConnection(_ conn: NWConnection) {
         guard isLocalAddress(conn.endpoint) else {
@@ -249,15 +258,20 @@ final class WebServer: @unchecked Sendable {
             return
         }
         conn.start(queue: queue)
-        accumulate(conn: conn, buffer: Data())
+        accumulate(conn: conn, buffer: Data(), idleTimer: nil)
     }
 
     // Read until we have the full HTTP request (headers + Content-Length body bytes).
     private static let maxRequestBytes = 1 << 17  // 128 KB — enough for any guide/record JSON; caps memory growth from slow/malicious LAN clients
     private static let httpSep = Data([0x0d, 0x0a, 0x0d, 0x0a])  // \r\n\r\n as a static constant so accumulate() doesn't allocate it on every callback
-    private func accumulate(conn: NWConnection, buffer: Data) {
+    private func accumulate(conn: NWConnection, buffer: Data, idleTimer: DispatchWorkItem?) {
         conn.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] chunk, _, _, _ in
             guard let self, let chunk else { conn.cancel(); return }
+            // Actual bytes arrived — the connection isn't idle, so cancel the pending idle-close.
+            // Must happen here (once real data shows up), not when accumulate() is merely entered
+            // to arm the next receive — cancelling at entry would fire immediately after send()
+            // schedules the timer and hands it right back in, defeating it before it can ever run.
+            idleTimer?.cancel()
             // append() reuses existing buffer capacity; `buffer + chunk` would allocate a full copy
             var data = buffer
             data.append(chunk)
@@ -272,18 +286,19 @@ final class WebServer: @unchecked Sendable {
             // Locate the header/body separator
             guard let sepRange = data.range(of: Self.httpSep) else {
                 // Headers not complete yet — keep reading
-                self.accumulate(conn: conn, buffer: data)
+                self.accumulate(conn: conn, buffer: data, idleTimer: nil)
                 return
             }
 
             let headerSection = data[..<sepRange.lowerBound]
             let bodyBytes     = data[sepRange.upperBound...]
 
-            // Parse Content-Length, User-Agent, and Accept-Encoding from headers
+            // Parse Content-Length, User-Agent, Accept-Encoding, and Connection from headers
             let headerText    = String(data: headerSection, encoding: .utf8) ?? ""
             var contentLength = 0
             var userAgent     = ""
             var acceptsGzip   = false
+            var explicitClose = false
             for line in headerText.components(separatedBy: "\r\n").dropFirst() {
                 let lower = line.lowercased()
                 if lower.hasPrefix("content-length:") {
@@ -294,6 +309,8 @@ final class WebServer: @unchecked Sendable {
                                           .trimmingCharacters(in: .whitespaces))
                 } else if lower.hasPrefix("accept-encoding:"), lower.contains("gzip") {
                     acceptsGzip = true
+                } else if lower.hasPrefix("connection:"), lower.contains("close") {
+                    explicitClose = true
                 }
             }
 
@@ -306,7 +323,7 @@ final class WebServer: @unchecked Sendable {
 
             if bodyBytes.count < contentLength {
                 // Body not fully received yet — keep reading
-                self.accumulate(conn: conn, buffer: data)
+                self.accumulate(conn: conn, buffer: data, idleTimer: nil)
                 return
             }
 
@@ -318,12 +335,18 @@ final class WebServer: @unchecked Sendable {
             let cleanPath   = path.components(separatedBy: "?").first ?? path
             let body: Data? = contentLength > 0 ? Data(bodyBytes.prefix(contentLength)) : nil
 
+            // Bytes after this request's body (if the client sent more than one request in a
+            // single TCP write) become the starting buffer for the next request on this
+            // connection — dropping them would corrupt whatever request they belong to.
+            let nextBuffer = Data(bodyBytes.dropFirst(contentLength))
+
             if cleanPath == "/api/events" && method == "GET" {
                 self.registerSSE(conn); return
             }
             Task {
                 let response = await self.route(method: method, path: cleanPath, body: body, userAgent: userAgent)
-                self.send(response, on: conn, acceptsGzip: acceptsGzip)
+                self.send(response, on: conn, acceptsGzip: acceptsGzip,
+                          keepAlive: !explicitClose, nextBuffer: nextBuffer)
             }
         }
     }
@@ -2407,6 +2430,11 @@ final class WebServer: @unchecked Sendable {
             else{sp.parentNode.removeChild(sp);}
           });
         });
+        // Snap the red line to the true current time immediately — setInterval's first tick
+        // doesn't fire for 60s, and the position server-rendered into the cached GET / page
+        // reflects whenever prebuildPageHTML() last ran (up to ~1h stale on an hourly guide
+        // refresh cycle), not the moment this specific browser actually loaded it.
+        updateNowLine();
         setInterval(updateNowLine,60000);
         // Page-staleness: reload if the server version changes (redeploy) or the baked-in expiry has passed.
         (function(){
@@ -2647,7 +2675,8 @@ final class WebServer: @unchecked Sendable {
 
     // MARK: - Send
 
-    private func send(_ response: WebResponse, on conn: NWConnection, acceptsGzip: Bool = false) {
+    private func send(_ response: WebResponse, on conn: NWConnection, acceptsGzip: Bool = false,
+                       keepAlive: Bool = false, nextBuffer: Data = Data()) {
         func errorParts(_ statusLine: String, _ msg: String) -> (String, [(String, String)], Data) {
             let b = Data(msg.utf8)
             return (statusLine, [("Content-Type", "text/plain"), ("Content-Length", "\(b.count)")], b)
@@ -2681,7 +2710,12 @@ final class WebServer: @unchecked Sendable {
         }
 
         var raw = "HTTP/1.1 \(status)\r\n"
-        raw += "Connection: close\r\n"
+        if keepAlive {
+            raw += "Connection: keep-alive\r\n"
+            raw += "Keep-Alive: timeout=\(Int(Self.idleCloseSeconds))\r\n"
+        } else {
+            raw += "Connection: close\r\n"
+        }
         raw += "Permissions-Policy: geolocation=(), camera=(), microphone=(), interest-cohort=()\r\n"
         for (k, v) in headers { raw += "\(k): \(v)\r\n" }
         raw += "\r\n"
@@ -2689,7 +2723,15 @@ final class WebServer: @unchecked Sendable {
         var packet = Data(raw.utf8)
         packet.append(body)
 
-        conn.send(content: packet, isComplete: true, completion: .contentProcessed { _ in conn.cancel() })
+        conn.send(content: packet, isComplete: true, completion: .contentProcessed { [weak self] err in
+            guard let self, keepAlive, err == nil else { conn.cancel(); return }
+            // Arm the idle-close timer before going back to read — accumulate() cancels it the
+            // instant any byte of a new request arrives; if none arrives within idleCloseSeconds,
+            // this fires and closes the connection instead of holding the socket open forever.
+            let timer = DispatchWorkItem { conn.cancel() }
+            self.queue.asyncAfter(deadline: .now() + Self.idleCloseSeconds, execute: timer)
+            self.accumulate(conn: conn, buffer: nextBuffer, idleTimer: timer)
+        })
     }
 
     // MARK: - gzip

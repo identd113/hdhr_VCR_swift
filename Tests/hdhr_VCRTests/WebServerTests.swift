@@ -214,13 +214,29 @@ struct WebServerSmokeTests {
         #expect(d1.count == d2.count)
     }
 
-    @Test func connectionClosedAfterResponse() async throws {
+    @Test func connectionDefaultsToKeepAlive() async throws {
         guard await serverAvailable() else { return }
-        // Verify server sends Connection: close so connections don't hang
+        // HTTP/1.1 keep-alive by default (unless the client sends "Connection: close") — avoids
+        // paying a fresh TCP handshake for every one of the guide's ~20 lazy-load requests on a
+        // real LAN client. See the connection-handling comment in WebServer.swift.
         let url = URL(string: "http://127.0.0.1:1980/api/now.json")!
         let (_, resp) = try await URLSession.shared.data(from: url)
         let conn = (resp as? HTTPURLResponse)?.value(forHTTPHeaderField: "Connection") ?? ""
-        #expect(conn.lowercased() == "close")
+        #expect(conn.lowercased() == "keep-alive")
+    }
+
+    @Test func connectionReusedAcrossRequests() async throws {
+        guard await serverAvailable() else { return }
+        // A single URLSession naturally reuses a kept-alive connection for same-host requests;
+        // this isn't directly observable via the public API, so assert the behavioral proxy that
+        // matters: several sequential requests on one session all succeed without the connection
+        // getting cut mid-sequence (the old Connection: close behavior still would have passed
+        // this, since each request opened its own connection — this is a smoke test, not a
+        // reuse-proof, but paired with connectionDefaultsToKeepAlive above it covers the contract).
+        for _ in 0..<5 {
+            let (status, _) = try await get("/api/ping")
+            #expect(status == 200)
+        }
     }
 
     @Test func postToRecordWithoutBodyReturns400() async throws {
