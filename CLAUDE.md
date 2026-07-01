@@ -9,7 +9,7 @@ macOS menu bar app (`LSUIElement`, no Dock icon) recording TV from HDHomeRun tun
 ## Build & Deploy
 
 ```bash
-./deploy.sh          # stop → swift build → copy binary → ad-hoc sign → launch
+./deploy.sh          # stop → swift build → copy binary → ad-hoc sign → launch → WebServerPerfTests
 swift build          # build only
 swift test           # Tests/hdhr_VCRTests/ (uses unsafeFlags for Swift Testing)
 ```

@@ -91,4 +91,32 @@ touch "$APP"   # update bundle mtime so Finder shows today's date
 echo "==> Launching $APP…"
 open "$APP"
 
+echo "==> Waiting for web server…"
+_WS_READY=0
+for _i in $(seq 1 10); do
+    if curl -sf -o /dev/null -m 1 http://localhost:1980/api/ping 2>/dev/null; then
+        _WS_READY=1
+        break
+    fi
+    sleep 0.5
+done
+
+if [ "$_WS_READY" = "1" ]; then
+    echo "==> Running performance regression tests…"
+    # Post-deploy only — WebServerPerfTests.swift skips itself if the web server isn't up,
+    # but there's no point invoking swift test at all if we already know it's down. Failures
+    # here are reported, not fatal: the app already deployed and is running successfully by
+    # this point, a latency regression shouldn't make deploy.sh itself exit non-zero.
+    if xcrun --find xctest &>/dev/null; then
+        swift test --filter WebServerPerfTests || echo "    ⚠ perf tests failed or reported a regression — see output above"
+    else
+        # CommandLineTools-only toolchain (no full Xcode): swift test compiles the suite but
+        # has no host to actually execute it in — see Tests/hdhr_VCRTests/WebServerPerfTests.swift.
+        swift test --filter WebServerPerfTests || true
+        echo "    (xctest unavailable in this toolchain — build verified but tests did not execute; install full Xcode for real pass/fail output)"
+    fi
+else
+    echo "==> Web server not reachable on :1980 after 5s — skipping performance tests (enabled in Settings → Web Server?)"
+fi
+
 echo "==> Done."
