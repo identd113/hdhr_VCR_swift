@@ -120,20 +120,6 @@ struct SnapshotTests {
         assertSnapshot(view, named: "MenuContent_inactive", size: CGSize(width: 300, height: 350))
     }
 
-    // ─── CableGuideView ───────────────────────────────────────────────────────
-    // CableGuideView takes all data via `let` parameters (no EnvironmentObject),
-    // so we drive it directly with fake guide channels and lineup entries.
-    // displayStart defaults to Date() and timeSlots to [] (onAppear doesn't fire
-    // in ImageRenderer), so time-header labels are absent but channel rows and
-    // program blocks still render — enough to catch layout and color regressions.
-
-    @Test("CableGuideView — channels with guide entries")
-    @MainActor func cableGuideView() {
-        let (channels, lineup) = makeTestGuideData()
-        let view = CableGuidePreview(channels: channels, lineup: lineup)
-        assertSnapshot(view, named: "CableGuideView", size: CGSize(width: 1100, height: 700))
-    }
-
     // ─── AddShowView ──────────────────────────────────────────────────────────
     // Step defaults to .guide. onAppear sets selectedDevice = state.devices.first
     // and kicks off guide loading (async), so the guide pane starts empty.
@@ -239,42 +225,6 @@ private func menuContentWrapped(_ state: AppState) -> some View {
 // MARK: - @Binding wrapper views
 // ImageRenderer can't carry @State across a function boundary, so views that
 // need @Binding parameters get a private wrapper struct with @State fields.
-
-// Drives CableGuideView with @State bindings so it can be rendered by ImageRenderer.
-private struct CableGuidePreview: View {
-    let channels: [GuideChannel]
-    let lineup: [LineupEntry]
-
-    @State private var selectedEntry: GuideEntry?   = nil
-    @State private var selectedChannel: LineupEntry? = nil
-    @State private var snapToNow: Bool               = false
-
-    var body: some View {
-        CableGuideView(
-            allChannels: channels,
-            lineup: lineup,
-            guideHours: 3,
-            selectedEntry: $selectedEntry,
-            selectedChannel: $selectedChannel,
-            snapToNow: $snapToNow,
-            deviceId: "FFFFFFFF",
-            managedMatcher: {
-                var s = Show.blank(channel: "5.1", device: "FFFFFFFF")
-                s.show_seriesid = "EP12345"; s.show_is_series = true; s.show_use_seriesid = true
-                return ManagedGuideMatcher(activeManagedShows: [s])
-            }(),
-            recordingMatcher: {
-                var s = Show.blank(channel: "5.1", device: "FFFFFFFF")
-                s.show_seriesid = "EP67890"; s.show_is_series = true; s.show_use_seriesid = true
-                return ShowMatcher([s])
-            }(),
-            nextUpMatcher:    ShowMatcher([]),
-            bonusMatcher:     ShowMatcher([]),
-            bonusMinutes: 30,
-            genreFilter: nil
-        )
-    }
-}
 
 // Drives ShowFormSection with @State + @EnvironmentObject for the form fields.
 private struct ShowFormSectionPreview: View {

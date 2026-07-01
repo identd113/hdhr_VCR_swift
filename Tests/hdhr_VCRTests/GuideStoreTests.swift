@@ -38,12 +38,12 @@ private func makeSession() -> URLSession {
 
 private func makeLocalDevice(ip: String = "192.168.1.100", id: String = "AABBCCDD") -> HDHRDevice {
     HDHRDevice(DeviceID: id, LocalIP: ip, BaseURL: "http://\(ip)", TunerCount: 2,
-               FirmwareVersion: nil, DeviceAuth: nil, LineupURL: nil)
+               FirmwareVersion: nil, DeviceAuth: nil)
 }
 
 private func makeCloudDevice(auth: String = "auth123", id: String = "11223344") -> HDHRDevice {
     HDHRDevice(DeviceID: id, LocalIP: "10.0.0.2", BaseURL: "http://10.0.0.2", TunerCount: 2,
-               FirmwareVersion: nil, DeviceAuth: auth, LineupURL: nil)
+               FirmwareVersion: nil, DeviceAuth: auth)
 }
 
 private func okResponse(for url: URL) -> HTTPURLResponse {
