@@ -15,7 +15,7 @@ func updateTXTRecord()    // @MainActor — refreshes mDNS TXT record; called fr
 func broadcastEvent(_:)   // pushes a JSON event to all open SSE clients
 func broadcastRecordingEvent(type:channel:device:state:)  // @MainActor — builds sumPh + the device's tdrop fragment and calls broadcastEvent
 func prebuildPageHTML(state: AppState)   // @MainActor — pre-renders and caches desktop + mobile HTML; called after fetchAllGuides / refreshGuides
-func invalidateHTMLCache()               // clears cachedHTMLDesktop / cachedHTMLMobile so the next GET / rebuilds
+func invalidateHTMLCache()               // clears cachedHTML so the next GET / rebuilds
 ```
 
 `onState` is called on `DispatchQueue.main`. `nil` = server is ready; non-nil = error string.
@@ -39,6 +39,7 @@ func invalidateHTMLCache()               // clears cachedHTMLDesktop / cachedHTM
 | POST | `/api/edit` | Update a managed show's config fields |
 | POST | `/api/toggle-favorite` | Toggle the favorite flag for a channel |
 | GET | `/api/now-airing/{devId}/{ch}` | JSON `{title, epTitle, poster, endTime}` for the currently-airing guide entry on the given device+channel; used by the tuner popover to enrich external stream rows asynchronously |
+| GET | `/api/guide-detail/{devId}/{ch}/{winStart}/{winSec}` | JSON `{entries: [{start, syn, poster, ep, date}]}` — heavy fields (Synopsis/poster/episode/air date) for every entry currently in that channel's guide window, keyed by `start` epoch. `winStart`/`winSec` are the client's own `_winStart`/`_winSec` (the window its DOM was actually rendered against), so the response matches what the client has rather than silently drifting with server "now" time; falls back to the server's current window if those segments are missing/malformed. Lazily fetched by the client's per-row `IntersectionObserver` once a row scrolls into view; these fields are omitted from the initial grid HTML (see "Lazy heavy-data loading" below) |
 | GET | `/api/signal-stats/{guideName}` | JSON `{bucket, last, avg, min, max, checked, n, total}` — full signal stats for one channel from `ChannelSignalStore.stats()`; `checked` is the last-sampled epoch (client renders relative). Empty `{}` when no samples. Used by the tuner popover to show inline recordability per active tuner |
 | GET | `/api/icon` | Serves the app icon as a 72×72 PNG (for the splash overlay) |
 | anything else | | 404 plain text |
@@ -251,7 +252,7 @@ A persistent SSE endpoint. Browsers connect once on page load via `EventSource('
 
 Self-contained HTML with all CSS inlined. Updates arrive via SSE push events (see below) and targeted DOM swaps after user actions. The page hard-reloads automatically if the server version changes (redeploy detected via 60-second `/api/ping` poll) or if the baked-in 2-hour expiry elapses. Tuner occupancy is sourced from the `AppState.deviceTunerOccupancy` cache, which the idle loop refreshes every 10 seconds via `fetchDeviceStatus()`.
 
-**HTML cache:** `prebuildPageHTML(state:)` pre-renders both desktop and mobile HTML after every guide load (`fetchAllGuides`, `refreshGuides`) and stores them in `cachedHTMLDesktop` / `cachedHTMLMobile`. `GET /` serves the cached copy instantly; the cache is `nil` only before the first guide load, in which case the page falls back to a live synchronous build. This eliminates the 2–4 second `@MainActor` blocking time on first load for remote clients.
+**HTML cache:** `prebuildPageHTML(state:)` pre-renders the page HTML after every guide load (`fetchAllGuides`, `refreshGuides`) and stores it in `cachedHTML` — one shared copy for all UAs, since desktop and mobile now render the same guide window (see below). It also gzips that HTML once at the same time and stores the result in `cachedHTMLGzip`; `GET /` returns `.okPrecompressed(...)`, which picks whichever of the two `send()` already has on hand based on the request's `Accept-Encoding` instead of re-running DEFLATE on every request (the page is ~1.5 MB raw — compressing it costs ~30–60 ms, dwarfing everything else in a LAN page load, so paying that cost once per guide refresh instead of once per `GET /` was a meaningful win). Both caches are `nil` only before the first guide load, in which case the page falls back to a live synchronous build (via the generic `.ok(...)` case, gzipped on the fly by `send()` same as any other response). This eliminates the 2–4 second `@MainActor` blocking time on first load for remote clients.
 
 **Splash overlay:** a fixed `#splash` div (z-index 9999) covers the page on load, showing the app icon (from `/api/icon`), name, and build version. A 300 ms CSS animation delay means the splash is never visible on fast local loads (the page's `requestAnimationFrame` fires and removes it before the animation starts). On slow remote loads it fades in after 300 ms and is removed once the first `rAF` fires. `/api/icon` serves the `AppIcon.icns` scaled to 72×72 as PNG via `NSImage` + `NSBitmapImageRep`.
 
@@ -394,14 +395,7 @@ On **Schedule**: `confirmRecord()` collects selected air days from `#rm-days .da
 
 ### Guide grid
 
-A cable-TV-style horizontal time grid. Window width depends on the requesting client's User-Agent:
-
-| Client | Window | Default (GuideHours = 24) |
-|---|---|---|
-| Desktop (Macintosh / Windows / Linux UA) | `GuideHours` hours | 24 h |
-| Mobile (iPhone / iPad / Android UA) | `GuideHours / 2` hours | 12 h |
-
-`isDesktopUA(_ ua: String)` (private helper) classifies the UA server-side. Modern iPads in desktop-browsing mode report `"Macintosh"` and receive the wider window.
+A cable-TV-style horizontal time grid. Desktop and mobile clients both get the full `GuideHours` window (default 24 h) — `winSec = GuideHours * 3600` regardless of UA. `isDesktopUA(_ ua: String)` (private helper) still classifies the UA server-side for `/api/guide-refresh`'s grid rebuild, but no longer affects window size or which cached page HTML is served (see "HTML cache" above — one shared `cachedHTML` now covers all UAs).
 
 **Window start:** `winStart = (nowTs / 1800) * 1800 - 1800` — floors to the nearest 30-minute boundary then subtracts one slot, giving a 30–60 minute lookback. `GuideStore.entries()` is called with `after: Date(winStart)` (not the default `after: Date()`) so shows that already ended but fall within the lookback are included. Gap periods with no guide data render as `.g-gap` divs (fully opaque `var(--bg)`) so the striped `.g-tl` background never shows through. On page load, `scrollToNow()` is called inside the `requestAnimationFrame` callback (alongside the auto-select IIFE) so the now-line sits ~25% from the left of the visible viewport after the first paint.
 
@@ -423,6 +417,8 @@ A cable-TV-style horizontal time grid. Window width depends on the requesting cl
 
 **Lazy row rendering:** each `.g-row` carries `content-visibility: auto; contain-intrinsic-size: auto 55px`. The browser skips style/layout/paint for rows scrolled out of view and renders them on demand as they approach the viewport, so the initial paint costs only the ~12 on-screen rows instead of all ~100 — the dominant cost on a full guide (1300+ program blocks, per-row repeating-gradient backgrounds). `contain-intrinsic-size` reserves each skipped row's height so scrollbar geometry is correct before render; the `auto` keyword caches the real measured size after a row renders once. This applies to data rows only, not `.g-fav-sep` separators, and survives `refreshGuide()` DOM swaps since it is pure CSS. Requires a `content-visibility`-capable engine (Safari 18+/WKWebView on macOS 15+, Chrome 85+); older browsers degrade to rendering all rows up front (prior behavior).
 
+**Lazy heavy-data loading:** `.g-prog` blocks ship only light attrs (`data-title`, `data-start`/`data-end`, `data-device`/`data-num`/`data-chname`, `data-genre`, `data-filters`, `data-logo`, `data-series`, `data-managed`, `data-recording`) in the initial grid HTML. Heavy fields (Synopsis, poster `ImageURL`, episode title/number, original air date — `data-syn`/`data-poster`/`data-ep`/`data-date`) are fetched on demand via `/api/guide-detail/{devId}/{ch}/{winStart}/{winSec}`, one batched request per channel row. A page-level `IntersectionObserver` (`initRowObserver()`, root = `.gw`, `rootMargin: 400px`) watches every `.g-row`; when a row nears the viewport it fetches that channel's heavy data once, patches every matching `.g-prog`'s `dataset` in place, and `unobserve`s the row (heavy data for a given row never changes except across a `refreshGuide()` swap). Results are cached client-side in `_heavyCache`, keyed by `"device:channel:start"` — cache hits on a `refreshGuide()`-swapped row apply synchronously with no network round-trip. `fetchRowHeavy()` de-dupes concurrent requests for the same row via `_heavyRowsInFlight` (a `Map` of `"device:channel"` → the in-flight promise, not just a presence flag) so a second caller racing the first (e.g. the observer firing while a click's JIT fetch is also pending) chains onto the real fetch's result instead of resolving early with blank data. `showInfo()`'s poster/episode/date/synopsis rendering goes through `renderHeavyFields(el)` → `paintHeavyFields(el)`, which paints from cache/dataset immediately and falls back to a just-in-time single-row fetch (guarded by a per-element generation token, mirroring the existing `pi.dataset.pgen` idiom) for the case where a block is clicked before its row's observer has fired — e.g. a fast scroll-and-click, or the initial auto-selected "now" block, which runs inside `requestAnimationFrame` and may execute before `initRowObserver()`'s callback. `showInfo()` marks `.g-sel` on the clicked element *before* calling `renderHeavyFields()` so `paintHeavyFields()`'s selection check is accurate on the very first (synchronous) paint. `initRowObserver()` is re-run after every `refreshGuide()` DOM swap (new `.g-row` elements need fresh observation).
+
 **Rows:** one row per (device × channel). Cross-device deduplication is handled client-side by `setDev('')` on page load — it hides duplicate `GuideNumber` rows keeping the first-device occurrence, giving a clean "All" view.
 
 Each `.g-row` carries `data-dev`, `data-ch`, `data-gname` (`GuideName.lowercased()`), and `data-fav` (`"1"` for favorite channels, absent otherwise). `data-gname` is the key used by `signal_update` SSE events; `data-fav` is used by `setDev` to show/hide `.g-fav-sep` headers. Individual `.g-prog` blocks carry `data-inf="1"` when their guide entry's `SeriesID` matches a confirmed paid-programming ID — see Infomercial dimming below.
@@ -439,7 +435,7 @@ Each `.g-row` carries `data-dev`, `data-ch`, `data-gname` (`GuideName.lowercased
 
 **Time header:** one tick per clock hour, aligned to hour boundaries via `stride(from: firstHour, through: winEnd, by: 3600)` where `firstHour = ((winStart + 3599) / 3600) * 3600`. Label uses `DateFormatter` template `"j"` (locale-preferred hour, e.g. `"8 PM"` or `"20"`). + red "now" bar.
 
-**Vertical gridlines:** CSS `repeating-linear-gradient` at every **8.3333%** of the timeline element width. Since the timeline spans `winSec` seconds, each gridline represents `winSec × 0.08333 / 60` minutes — 60 min for the mobile 12 h window, 120 min for the desktop 24 h window.
+**Vertical gridlines:** CSS `repeating-linear-gradient` at every **8.3333%** of the timeline element width. Since the timeline spans `winSec` seconds, each gridline represents `winSec × 0.08333 / 60` minutes — 120 min for the default 24 h window (desktop and mobile alike).
 
 **Program block color coding:**
 
@@ -690,13 +686,14 @@ Client-side `innerHTML` concatenation (tuner popover rows) uses the page-local `
 - Normal requests: one full request → one response → cancel. SSE connections: open until client disconnects or `stop()` is called.
 - **TCP_NODELAY:** the NWListener is created with `NWProtocolTCP.Options().noDelay = true` to disable Nagle's algorithm, ensuring response bytes are flushed immediately rather than held for coalescing.
 
-**gzip compression:** `accumulate()` parses `Accept-Encoding`; when the client supports gzip and an `.ok` body is ≥ 1400 bytes, `send()` compresses it (`Content-Encoding: gzip` + `Vary: Accept-Encoding`). The guide page shrinks ~1.1 MB → ~160 KB — the dominant cost for LAN Wi-Fi clients. Implementation: libcompression `COMPRESSION_ZLIB` (raw DEFLATE) wrapped in a gzip container (10-byte header + CRC-32/ISIZE trailer, table-based CRC in `WebServer.crc32`). Falls back to uncompressed if compression fails or wouldn't shrink the payload. Already-compressed image responses (channel icons, app icon PNG) are never gzipped.
+**gzip compression:** `accumulate()` parses `Accept-Encoding`; when the client supports gzip and an `.ok` body is ≥ 1400 bytes, `send()` compresses it (`Content-Encoding: gzip` + `Vary: Accept-Encoding`). The guide page shrinks ~1.1 MB → ~160 KB — the dominant cost for LAN Wi-Fi clients. Implementation: libcompression `COMPRESSION_ZLIB` (raw DEFLATE) wrapped in a gzip container (10-byte header + CRC-32/ISIZE trailer, table-based CRC in `WebServer.crc32`). Falls back to uncompressed if compression fails or wouldn't shrink the payload. Already-compressed image responses (channel icons, app icon PNG) are never gzipped. `GET /`'s response is the one exception to "compressed on every request" — see `.okPrecompressed` below.
 
 **`WebResponse` cases:**
 
 | Case | HTTP status | Use |
 |---|---|---|
 | `.ok(contentType:body:)` | 200 OK | Successful GET or POST; gzip-compressed by `send()` when client supports it and body ≥ 1400 bytes |
+| `.okPrecompressed(contentType:raw:gzip:)` | 200 OK | `GET /` only — both the raw and already-gzipped bodies were computed once in `prebuildPageHTML(state:)` (`cachedHTML`/`cachedHTMLGzip`); `send()` just picks one based on `Accept-Encoding` instead of re-running DEFLATE per request |
 | `.notFound(String)` | 404 Not Found | Unknown path |
 | `.badRequest(String)` | 400 Bad Request | POST with missing required fields |
 | `.payloadTooLarge(String)` | 413 Content Too Large | Request body exceeds 128 KB |

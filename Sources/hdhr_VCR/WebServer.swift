@@ -10,6 +10,10 @@ final class WebServer: @unchecked Sendable {
 
     private enum WebResponse {
         case ok(contentType: String, body: Data)
+        // Like .ok, but the gzip encoding was already computed ahead of time (e.g. cachedHTMLGzip,
+        // refreshed only when the guide reloads) — avoids paying the DEFLATE cost on every request
+        // for a body that rarely changes.
+        case okPrecompressed(contentType: String, raw: Data, gzip: Data)
         case notFound(String)
         case badRequest(String)
         case payloadTooLarge(String)
@@ -26,8 +30,13 @@ final class WebServer: @unchecked Sendable {
     private let sseLock  = NSLock()
 
     // Pre-built page HTML cache — rebuilt after guide refresh, served instantly on GET /.
-    private var cachedHTMLDesktop: Data? = nil
-    private var cachedHTMLMobile:  Data? = nil
+    // Desktop and mobile now share the same guide window size (see guideWindow(state:)), so
+    // isDesktop no longer affects buildHTML's output — one cached copy serves every UA.
+    private var cachedHTML: Data? = nil
+    // gzip of cachedHTML, computed once alongside it instead of on every request — the page is
+    // ~1.5MB raw, and libcompression's DEFLATE pass over that costs ~30-60ms; recomputing it per
+    // GET / (this page is fetched far more often than the guide actually changes) is pure waste.
+    private var cachedHTMLGzip: Data? = nil
 
     // App icon rendered once as 72×72 PNG; reused on every /api/icon request.
     private lazy var cachedIconPNG: Data? = {
@@ -43,17 +52,17 @@ final class WebServer: @unchecked Sendable {
 
     @MainActor
     func prebuildPageHTML(state: AppState) {
-        let desktop = Data(buildHTML(state: state, isDesktop: true).utf8)
-        let mobile  = Data(buildHTML(state: state, isDesktop: false).utf8)
-        cachedHTMLDesktop = desktop
-        cachedHTMLMobile  = mobile
-        glog("[WebServer] page HTML cached (\(desktop.count / 1024)KB desktop, \(mobile.count / 1024)KB mobile)")
+        let html = Data(buildHTML(state: state, isDesktop: true).utf8)
+        cachedHTML     = html
+        cachedHTMLGzip = Self.gzip(html)
+        let gzKB = (cachedHTMLGzip?.count ?? 0) / 1024
+        glog("[WebServer] page HTML cached (\(html.count / 1024)KB, \(gzKB)KB gzip'd)")
     }
 
     @MainActor
     func invalidateHTMLCache() {
-        cachedHTMLDesktop = nil
-        cachedHTMLMobile  = nil
+        cachedHTML     = nil
+        cachedHTMLGzip = nil
     }
 
     // Static so the DateFormatter is allocated once, not on every GET /.
@@ -346,9 +355,12 @@ final class WebServer: @unchecked Sendable {
         // GET routes
         switch path {
         case "/", "/index.html":
-            let isDesktop = isDesktopUA(userAgent)
-            let body = (isDesktop ? cachedHTMLDesktop : cachedHTMLMobile)
-                ?? Data(buildHTML(state: state, isDesktop: isDesktop).utf8)
+            if let html = cachedHTML, let gz = cachedHTMLGzip {
+                return .okPrecompressed(contentType: "text/html; charset=utf-8", raw: html, gzip: gz)
+            }
+            // Cache not warm yet (before the first guide load) — fall back to a live build; send()
+            // gzips this one on the fly same as before.
+            let body = Data(buildHTML(state: state, isDesktop: true).utf8)
             return .ok(contentType: "text/html; charset=utf-8", body: body)
 
         case "/api/ping":
@@ -412,6 +424,43 @@ final class WebServer: @unchecked Sendable {
                 ]
                 let body = (try? JSONSerialization.data(withJSONObject: result)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
                 return .ok(contentType: "application/json", body: Data(body.utf8))
+            }
+            if path.hasPrefix("/api/guide-detail/") {
+                // /api/guide-detail/{devId}/{channelNum}/{winStart}/{winSec} — heavy fields
+                // (Synopsis/poster/episode/air date) for every entry currently in that channel's
+                // guide window, batched per row. Lazily fetched by the client's IntersectionObserver
+                // once a row scrolls into view — these fields are deliberately omitted from the
+                // initial grid HTML (see buildGuideGridHTML). The trailing winStart/winSec segments
+                // are the client's own _winStart/_winSec (the window its DOM was actually rendered
+                // against) so a fetch long after page load answers for that window instead of
+                // silently drifting with "now" and omitting entries that have since aged out —
+                // falls back to the server's current window if those segments are missing/malformed.
+                let tail  = path.dropFirst("/api/guide-detail/".count)
+                let parts = tail.split(separator: "/")
+                guard parts.count >= 2 else { return .notFound("bad params") }
+                let devId = String(parts[0]).removingPercentEncoding ?? String(parts[0])
+                let ch    = String(parts[1]).removingPercentEncoding ?? String(parts[1])
+                let winStart: Int
+                let winSec: Int
+                if parts.count >= 4, let clientStart = Int(parts[2]), let clientSec = Int(parts[3]) {
+                    (winStart, winSec) = (clientStart, clientSec)
+                } else {
+                    (winStart, winSec) = guideWindow(state: state)
+                }
+                let winEnd = winStart + winSec
+                let entries = entriesInWindow(state: state, deviceId: devId, channelNum: ch,
+                                               winStart: winStart, winEnd: winEnd)
+                let items: [[String: Any]] = entries.map { e in
+                    let synAttr  = String((e.Synopsis ?? "").replacingOccurrences(of: "\n", with: " ").prefix(220))
+                    let dateAttr = e.OriginalAirdate.map {
+                        origAirdateFormatter.string(from: Date(timeIntervalSince1970: TimeInterval($0)))
+                    } ?? ""
+                    return ["start": e.StartTime, "syn": synAttr, "poster": e.ImageURL ?? "",
+                            "ep": e.episodeInfoLabel ?? "", "date": dateAttr]
+                }
+                let json = (try? JSONSerialization.data(withJSONObject: ["entries": items]))
+                    .flatMap { String(data: $0, encoding: .utf8) } ?? "{\"entries\":[]}"
+                return .ok(contentType: "application/json", body: Data(json.utf8))
             }
             if path.hasPrefix("/api/signal-stats/") {
                 // /api/signal-stats/{guideName} — full signal stats for one channel, used by the
@@ -702,18 +751,36 @@ final class WebServer: @unchecked Sendable {
         }
     }
 
+    // Shared time-window formula for the guide grid, the page shell (_winStart JS literal /
+    // guideMinWidth), and /api/guide-detail — keeps all three mathematically in agreement about
+    // which entries are "in the visible window" at any given moment.
+    @MainActor
+    private func guideWindow(state: AppState) -> (start: Int, sec: Int) {
+        let nowTs    = Int(Date().timeIntervalSince1970)
+        let halfHour = 30 * 60
+        let winSec   = state.config.GuideHours * 3600
+        let winStart = (nowTs / halfHour) * halfHour - 3600
+        return (winStart, winSec)
+    }
+
+    // Shared "entries visible in [winStart, winEnd)" lookup — used by both buildGuideGridHTML and
+    // /api/guide-detail so the windowing/clamping semantics can't drift apart between the two.
+    @MainActor
+    private func entriesInWindow(state: AppState, deviceId: String, channelNum: String, winStart: Int, winEnd: Int) -> [GuideEntry] {
+        state.guideStore.entries(deviceId: deviceId, channelNum: channelNum,
+            after: Date(timeIntervalSince1970: TimeInterval(winStart)))
+            .filter { $0.StartTime < winEnd }
+    }
+
     // Builds the .gi innerHTML (g-hdr + per-channel rows) used by both buildHTML() and /api/guide-refresh.
     // Self-contained: all dependencies come from `state` or module-level globals (he, hourFmt, etc.).
     @MainActor
     private func buildGuideGridHTML(state: AppState, isDesktop: Bool) -> String {
 
         // ── Time window ────────────────────────────────────────────────────────
-        let nowTs    = Int(Date().timeIntervalSince1970)
-        let halfHour = 30 * 60
-        let winSec   = isDesktop ? state.config.GuideHours * 3600
-                                 : state.config.GuideHours * 3600 / 2
-        let winStart = (nowTs / halfHour) * halfHour - 3600
-        let winEnd   = winStart + winSec
+        let nowTs = Int(Date().timeIntervalSince1970)
+        let (winStart, winSec) = guideWindow(state: state)
+        let winEnd = winStart + winSec
         func pct(_ offset: Int) -> String {
             let n     = offset * 1_000_000 / winSec
             let whole = n / 10000
@@ -795,9 +862,8 @@ final class WebServer: @unchecked Sendable {
             var otherRows: [String] = []
             for ch in sorted {
                 guard seenInDevice.insert(ch.GuideNumber).inserted else { continue }
-                let entries = state.guideStore.entries(deviceId: device.DeviceID, channelNum: ch.GuideNumber,
-                                                       after: Date(timeIntervalSince1970: TimeInterval(winStart)))
-                    .filter { $0.StartTime < winEnd }
+                let entries = entriesInWindow(state: state, deviceId: device.DeviceID, channelNum: ch.GuideNumber,
+                                               winStart: winStart, winEnd: winEnd)
                 guard !entries.isEmpty else { continue }
 
                 // Use the external CDN URL directly — browser fetches and caches without a local proxy hop.
@@ -867,11 +933,6 @@ final class WebServer: @unchecked Sendable {
                         : "\(he(e.Title)) · \(he(sub))  (\(he(guideTimeRange(e))))"
                     let subH  = sub.isEmpty ? "" : "<span class=\"g-sub\">\(he(sub))</span>"
 
-                    let synAttr     = String((e.Synopsis ?? "")
-                        .replacingOccurrences(of: "\n", with: " ").prefix(220))
-                    let dateAttr    = e.OriginalAirdate.map {
-                        origAirdateFormatter.string(from: Date(timeIntervalSince1970: TimeInterval($0)))
-                    } ?? ""
                     let filtersAttr = (e.Filter ?? []).joined(separator: ",")
                     let isNew: Bool = {
                         guard let oad = e.OriginalAirdate else { return false }
@@ -886,7 +947,10 @@ final class WebServer: @unchecked Sendable {
                     let titleHTML   = isNew
                         ? "<div class=\"g-ti-row\"><span class=\"g-ti\">\(he(e.Title))</span><span class=\"g-new-tag\">NEW</span></div>"
                         : "<span class=\"g-ti\">\(he(e.Title))</span>"
-                    let da = "data-title=\"\(he(e.Title))\" data-syn=\"\(he(synAttr))\" data-poster=\"\(he(e.ImageURL ?? ""))\" data-ep=\"\(he(e.episodeInfoLabel ?? ""))\" data-date=\"\(he(dateAttr))\" data-genre=\"\(he(e.firstGenre ?? ""))\" data-filters=\"\(he(filtersAttr))\" data-start=\"\(e.StartTime)\" data-end=\"\(e.EndTime)\" data-device=\"\(he(device.DeviceID))\" data-num=\"\(he(ch.GuideNumber))\" data-chname=\"\(he(ch.GuideName))\" data-logo=\"\(he(logoURL))\" data-series=\"\(he(e.SeriesID ?? ""))\" data-managed=\"\(isMgd ? 1 : 0)\" data-recording=\"\(isEntryRec ? 1 : 0)\""
+                    // Heavy fields (Synopsis, poster, episode, air date) are deliberately omitted here —
+                    // fetched lazily per-row via /api/guide-detail once the row scrolls into view (see
+                    // the client-side IntersectionObserver in buildHTML's <script>).
+                    let da = "data-title=\"\(he(e.Title))\" data-genre=\"\(he(e.firstGenre ?? ""))\" data-filters=\"\(he(filtersAttr))\" data-start=\"\(e.StartTime)\" data-end=\"\(e.EndTime)\" data-device=\"\(he(device.DeviceID))\" data-num=\"\(he(ch.GuideNumber))\" data-chname=\"\(he(ch.GuideName))\" data-logo=\"\(he(logoURL))\" data-series=\"\(he(e.SeriesID ?? ""))\" data-managed=\"\(isMgd ? 1 : 0)\" data-recording=\"\(isEntryRec ? 1 : 0)\""
 
                     let flagHTML = isEntryRec ? "<div class=\"g-flag-rec\"></div>"
                                  : isMgd      ? "<div class=\"g-flag\"></div>" : ""
@@ -937,9 +1001,7 @@ final class WebServer: @unchecked Sendable {
 
     @MainActor
     private func buildHTML(state: AppState, isDesktop: Bool) -> String {
-        let nowTs       = Int(Date().timeIntervalSince1970)
-        let winSec      = isDesktop ? state.config.GuideHours * 3600 : state.config.GuideHours * 3600 / 2
-        let winStart    = (nowTs / (30 * 60)) * (30 * 60) - 3600   // needed for _winStart JS literal
+        let (winStart, winSec) = guideWindow(state: state)   // winStart needed for _winStart JS literal
         let guideMinWidth = max(1200, winSec / 1800 * 100)
         let gridInner   = buildGuideGridHTML(state: state, isDesktop: isDesktop)
         // Capture recording shows once — used by recsByDevJS and devTuners below.
@@ -1606,23 +1668,14 @@ final class WebServer: @unchecked Sendable {
         function devFull(devId){var t=tuners[devId];return t&&t.t>0&&t.a>=t.t;}
         function showInfo(el){
           var d=el.dataset;
+          // Mark the selection before renderHeavyFields() runs — paintHeavyFields() gates its
+          // _poster update on '.g-sel' being present on el, and the synchronous cache-hit path
+          // runs before this function would otherwise reach the old end-of-function assignment.
+          document.querySelectorAll('.g-prog.g-sel').forEach(function(b){b.classList.remove('g-sel');});
+          el.classList.add('g-sel');
           _d=d.device;_n=d.num;_s=+d.start;_e=+d.end;_ser=d.series||'';_genre=d.genre||'';_title=d.title||'';_poster=d.poster||'';_logo=d.logo||'';_chname=d.chname||'';
           document.getElementById('sum-ph').style.display='none';
           var sc=document.getElementById('sum-c');sc.style.display='flex';sc.style.background=el.style.background||gc(d.genre);
-          var pi=document.getElementById('sum-poster');
-          // Bump the generation counter on every selection so a pending poster swap from a
-          // prior selection (any branch) can't overwrite the image after the user moves on.
-          pi.dataset.pgen=(+pi.dataset.pgen||0)+1;var _gen=pi.dataset.pgen;
-          if(d.poster&&d.logo){
-            pi.onerror=function(){pi.src=d.logo;pi.onerror=function(){pi.style.display='none';};};
-            pi.src=d.poster;pi.style.display='block';
-          }else if(d.poster){
-            pi.onerror=function(){if(_logo){pi.src=_logo;pi.onerror=function(){pi.style.display='none';};}else{pi.style.display='none';}};
-            pi.src=d.poster;pi.style.display='block';
-          }else if(d.logo){
-            pi.onerror=function(){pi.style.display='none';};
-            pi.src=d.logo;pi.style.display='block';
-          }else{pi.style.display='none';}
           var li=document.getElementById('sum-logo');
           if(d.logo){li.src=d.logo;li.style.display='inline';}else{li.style.display='none';}
           document.getElementById('sum-title').textContent=d.title||'';
@@ -1630,10 +1683,7 @@ final class WebServer: @unchecked Sendable {
           var _allTags=(d.filters||d.genre||'').split(',').filter(function(f){return f&&f.toLowerCase()!=='series';});
           if(d.new==='1')_allTags.unshift('__new__');
           if(_allTags.length){gi.innerHTML=_allTags.map(function(f){if(f==='__new__')return '<span class="sum-tag" style="background:#27ae60;color:#fff;font-weight:800;letter-spacing:.07em">NEW</span>';var c=tagBg(f);return '<span class="sum-tag"'+(c?' style="background:'+c+'"':'')+'>'+f.toUpperCase()+'</span>';}).join('');gi.style.display='flex';}else{gi.style.display='none';}
-          so('sum-ep',d.ep||'');
-          so('sum-date',d.new==='1'?'':(d.date?'Orig. '+d.date:''));
-          var sy=document.getElementById('sum-syn');
-          if(d.syn){sy.textContent=d.syn;sy.style.display='block';}else{sy.style.display='none';}
+          renderHeavyFields(el);
           document.getElementById('sum-ct').textContent='Ch '+d.num+' · '+d.chname+' · '+ft(new Date(+d.start*1000))+' – '+ft(new Date(+d.end*1000));
           var btn=document.getElementById('sum-btn');
           var del=document.getElementById('sum-del');
@@ -1669,8 +1719,41 @@ final class WebServer: @unchecked Sendable {
           var _wInApp=!!(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.watch);
           document.getElementById('sum-watch-app').style.display=(_wLive&&_wInApp)?'inline-block':'none';
           document.getElementById('sum-watch-vlc').style.display=(_wLive&&_wInApp)?'inline-block':'none';
-          document.querySelectorAll('.g-prog.g-sel').forEach(function(b){b.classList.remove('g-sel');});
-          el.classList.add('g-sel');
+        }
+        // Heavy fields (Synopsis/poster/episode/air date) aren't baked into the initial grid HTML —
+        // they're fetched lazily per-row (see fetchRowHeavy/initRowObserver below). renderHeavyFields
+        // paints whatever's cached/present immediately (avoids a stale-data flash), then — if the row's
+        // IntersectionObserver hasn't already fetched it — does a just-in-time fetch for a fast click on
+        // a not-yet-observed row, guarded so a slow/superseded fetch can't clobber a later selection.
+        function paintHeavyFields(el){
+          var d=el.dataset;
+          if(document.querySelector('.g-prog.g-sel')===el)_poster=d.poster||'';
+          var pi=document.getElementById('sum-poster');
+          pi.dataset.pgen=(+pi.dataset.pgen||0)+1;
+          if(d.poster&&d.logo){
+            pi.onerror=function(){pi.src=d.logo;pi.onerror=function(){pi.style.display='none';};};
+            pi.src=d.poster;pi.style.display='block';
+          }else if(d.poster){
+            pi.onerror=function(){if(_logo){pi.src=_logo;pi.onerror=function(){pi.style.display='none';};}else{pi.style.display='none';}};
+            pi.src=d.poster;pi.style.display='block';
+          }else if(d.logo){
+            pi.onerror=function(){pi.style.display='none';};
+            pi.src=d.logo;pi.style.display='block';
+          }else{pi.style.display='none';}
+          so('sum-ep',d.ep||'');
+          so('sum-date',d.new==='1'?'':(d.date?'Orig. '+d.date:''));
+          var sy=document.getElementById('sum-syn');
+          if(d.syn){sy.textContent=d.syn;sy.style.display='block';}else{sy.style.display='none';}
+        }
+        function renderHeavyFields(el){
+          if(applyHeavyFromCache(el)){paintHeavyFields(el);return;}
+          paintHeavyFields(el);
+          var gen=(el.dataset._hgen=(+el.dataset._hgen||0)+1);
+          fetchRowHeavy(el.closest('.g-row')).then(function(){
+            if(+el.dataset._hgen!==gen)return;
+            if(document.querySelector('.g-prog.g-sel')!==el)return;
+            paintHeavyFields(el);
+          });
         }
         function doWatchInApp(){if(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.watch)window.webkit.messageHandlers.watch.postMessage({type:'app',deviceId:_d,guideNumber:_n,title:_title});}
         function doWatchInVLC(){if(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.watch)window.webkit.messageHandlers.watch.postMessage({type:'vlc',deviceId:_d,guideNumber:_n,title:_title});}
@@ -1815,6 +1898,7 @@ final class WebServer: @unchecked Sendable {
               if(el)el.innerHTML=d.tdrop[dev];
             });
             _rows=document.querySelectorAll('.g-row');
+            initRowObserver();
             setDev(curDev);
             if(gw){gw.scrollLeft=sl;gw.scrollTop=st;}
             if(prevStart){
@@ -2174,6 +2258,60 @@ final class WebServer: @unchecked Sendable {
         var curDev='';
         var _genreFilter='';
         var _rows=document.querySelectorAll('.g-row');
+        // Heavy per-program data (synopsis/poster/date/episode), lazy-loaded per row on scroll-into-view
+        // via /api/guide-detail. Cached by "device:channel:start" so it survives refreshGuide() DOM swaps
+        // (new elements, same keys) without ever being re-fetched once known.
+        var _heavyCache=new Map();
+        // Maps "device:channel" -> the in-flight fetchRowHeavy() promise for that row, so a second
+        // concurrent caller (e.g. the IntersectionObserver firing while a click's JIT fetch is also
+        // in flight for the same row) chains onto the real fetch instead of getting a fake
+        // already-resolved promise that would repaint blank data and never be retried.
+        var _heavyRowsInFlight=new Map();
+        function heavyKey(dev,num,start){return dev+':'+num+':'+start;}
+        function applyHeavyFromCache(el){
+          var d=el.dataset;
+          var hit=_heavyCache.get(heavyKey(d.device,d.num,d.start));
+          if(hit)Object.assign(d,hit);
+          return !!hit;
+        }
+        function fetchRowHeavy(rowEl){
+          if(!rowEl)return Promise.resolve();
+          var dev=rowEl.dataset.dev,num=rowEl.dataset.ch;
+          if(!dev||!num)return Promise.resolve();
+          var rk=dev+':'+num;
+          var inFlight=_heavyRowsInFlight.get(rk);
+          if(inFlight)return inFlight;
+          // Tell the server which window this row's DOM was actually rendered against (instead of
+          // letting it recompute "now" server-side) so a lazy fetch long after page load doesn't
+          // silently miss entries that have since aged out of the server's current window.
+          var p=fetch('/api/guide-detail/'+encodeURIComponent(dev)+'/'+encodeURIComponent(num)+'/'+_winStart+'/'+_winSec)
+            .then(function(r){return r.json();})
+            .then(function(d){
+              (d.entries||[]).forEach(function(entry){_heavyCache.set(heavyKey(dev,num,entry.start),entry);});
+              rowEl.querySelectorAll('.g-prog').forEach(applyHeavyFromCache);
+            })
+            .catch(function(){})
+            .finally(function(){_heavyRowsInFlight.delete(rk);});
+          _heavyRowsInFlight.set(rk,p);
+          return p;
+        }
+        var _rowObserver=null;
+        function initRowObserver(){
+          if(_rowObserver)_rowObserver.disconnect();
+          var root=document.querySelector('.gw');
+          _rowObserver=new IntersectionObserver(function(ents){
+            ents.forEach(function(ent){
+              if(!ent.isIntersecting)return;
+              var row=ent.target;
+              var allCached=true;
+              row.querySelectorAll('.g-prog').forEach(function(el){if(!applyHeavyFromCache(el))allCached=false;});
+              if(!allCached)fetchRowHeavy(row);
+              _rowObserver.unobserve(row);
+            });
+          },{root:root,rootMargin:'400px 0px 400px 0px',threshold:0});
+          _rows.forEach(function(r){if(r.dataset.dev)_rowObserver.observe(r);});
+        }
+        initRowObserver();
         function applyGenreDim(){
           document.querySelectorAll('.g-prog.g-prog-dim').forEach(function(p){p.classList.remove('g-prog-dim');});
           var f=_genreFilter.toLowerCase();
@@ -2526,6 +2664,16 @@ final class WebServer: @unchecked Sendable {
             } else {
                 headers = [("Content-Type", ct), ("Content-Length", "\(b.count)")]
                 body    = b
+            }
+        case .okPrecompressed(let ct, let raw, let gz):
+            status = "200 OK"
+            if acceptsGzip {
+                headers = [("Content-Type", ct), ("Content-Encoding", "gzip"),
+                           ("Vary", "Accept-Encoding"), ("Content-Length", "\(gz.count)")]
+                body    = gz
+            } else {
+                headers = [("Content-Type", ct), ("Content-Length", "\(raw.count)")]
+                body    = raw
             }
         case .notFound(let msg):      (status, headers, body) = errorParts("404 Not Found",         msg)
         case .badRequest(let msg):    (status, headers, body) = errorParts("400 Bad Request",       msg)
