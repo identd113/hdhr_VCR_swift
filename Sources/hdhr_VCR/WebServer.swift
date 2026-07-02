@@ -29,6 +29,12 @@ final class WebServer: @unchecked Sendable {
     private var sseConns: [NWConnection] = []
     private let sseLock  = NSLock()
 
+    // All accepted connections (SSE and normal alike) so stop() can close kept-alive connections
+    // that would otherwise keep being served after the server is disabled. Each conn removes
+    // itself here via its stateUpdateHandler when it reaches .cancelled/.failed.
+    private var liveConns: [NWConnection] = []
+    private let connLock  = NSLock()
+
     // Pre-built page HTML cache — rebuilt after guide refresh, served instantly on GET /.
     // Desktop and mobile now share the same guide window size (see guideWindow(state:)), so
     // isDesktop no longer affects buildHTML's output — one cached copy serves every UA.
@@ -146,8 +152,15 @@ final class WebServer: @unchecked Sendable {
         guard listener != nil else { return }
         stateCallback = nil   // prevent the .cancelled callback from surfacing as an error
         sseLock.lock()
-        let dying = sseConns; sseConns.removeAll()
+        let dyingSSE = sseConns; sseConns.removeAll()
         sseLock.unlock()
+        for c in dyingSSE { c.cancel() }
+        // Close every live connection too — kept-alive connections outlive their response, so
+        // without this a warm client keeps being served (including state-mutating POSTs) after
+        // the server is "stopped". cancel() is idempotent, so double-cancelling an SSE conn is fine.
+        connLock.lock()
+        let dying = liveConns; liveConns.removeAll()
+        connLock.unlock()
         for c in dying { c.cancel() }
         listener?.cancel()
         listener = nil
@@ -247,9 +260,10 @@ final class WebServer: @unchecked Sendable {
     // localhost — every request without keep-alive pays a full TCP handshake (SYN/SYN-ACK/ACK)
     // before any HTTP bytes can move, and the guide page's initial load fires ~20 lazy /api/guide-
     // detail requests (see WebServer.md's Lazy heavy-data loading section) that would otherwise
-    // each open a brand-new connection. idleCloseSeconds bounds how long a kept-alive connection
-    // lingers with no further requests, so an abandoned tab/client doesn't leak a socket forever.
-    private static let idleCloseSeconds: Double = 10
+    // each open a brand-new connection. idleCloseSeconds bounds every state where the server is
+    // waiting on the client (initial connect, mid-request, and between kept-alive requests), so a
+    // slow/silent/abandoned client can't pin a socket open forever.
+    private static let idleCloseSeconds: Double = 30
 
     private func handleConnection(_ conn: NWConnection) {
         guard isLocalAddress(conn.endpoint) else {
@@ -257,21 +271,33 @@ final class WebServer: @unchecked Sendable {
             glog("[WebServer] Rejected non-LAN connection from \(conn.endpoint)")
             return
         }
+        connLock.lock(); liveConns.append(conn); connLock.unlock()
+        // Deregister from liveConns exactly once, from whichever path cancels the connection
+        // (idle timer, client disconnect, send-with-close, or stop()).
+        conn.stateUpdateHandler = { [weak self] st in
+            switch st {
+            case .cancelled, .failed:
+                self?.connLock.lock(); self?.liveConns.removeAll { $0 === conn }; self?.connLock.unlock()
+            default: break
+            }
+        }
         conn.start(queue: queue)
-        accumulate(conn: conn, buffer: Data(), idleTimer: nil)
+        accumulate(conn: conn, buffer: Data())
     }
 
     // Read until we have the full HTTP request (headers + Content-Length body bytes).
     private static let maxRequestBytes = 1 << 17  // 128 KB — enough for any guide/record JSON; caps memory growth from slow/malicious LAN clients
     private static let httpSep = Data([0x0d, 0x0a, 0x0d, 0x0a])  // \r\n\r\n as a static constant so accumulate() doesn't allocate it on every callback
-    private func accumulate(conn: NWConnection, buffer: Data, idleTimer: DispatchWorkItem?) {
+    private func accumulate(conn: NWConnection, buffer: Data) {
+        // Arm an idle-close for THIS wait: if the client sends nothing more within
+        // idleCloseSeconds, cancel the connection. Cancelled the instant real bytes arrive below,
+        // then a fresh one is armed by the next accumulate() call — so every wait state (initial
+        // connect, partial request, between kept-alive requests) is uniformly bounded.
+        let idle = DispatchWorkItem { conn.cancel() }
+        queue.asyncAfter(deadline: .now() + Self.idleCloseSeconds, execute: idle)
         conn.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] chunk, _, _, _ in
+            idle.cancel()
             guard let self, let chunk else { conn.cancel(); return }
-            // Actual bytes arrived — the connection isn't idle, so cancel the pending idle-close.
-            // Must happen here (once real data shows up), not when accumulate() is merely entered
-            // to arm the next receive — cancelling at entry would fire immediately after send()
-            // schedules the timer and hands it right back in, defeating it before it can ever run.
-            idleTimer?.cancel()
             // append() reuses existing buffer capacity; `buffer + chunk` would allocate a full copy
             var data = buffer
             data.append(chunk)
@@ -286,7 +312,7 @@ final class WebServer: @unchecked Sendable {
             // Locate the header/body separator
             guard let sepRange = data.range(of: Self.httpSep) else {
                 // Headers not complete yet — keep reading
-                self.accumulate(conn: conn, buffer: data, idleTimer: nil)
+                self.accumulate(conn: conn, buffer: data)
                 return
             }
 
@@ -320,10 +346,17 @@ final class WebServer: @unchecked Sendable {
                 self.send(.payloadTooLarge("Request body too large"), on: conn)
                 return
             }
+            // A negative Content-Length (client sent "-1", or a malformed value) would make the
+            // dropFirst(contentLength) below trap and crash the app — reject it, and close (the
+            // request framing is untrustworthy so the connection can't be safely reused).
+            if contentLength < 0 {
+                self.send(.badRequest("Invalid Content-Length"), on: conn)
+                return
+            }
 
             if bodyBytes.count < contentLength {
                 // Body not fully received yet — keep reading
-                self.accumulate(conn: conn, buffer: data, idleTimer: nil)
+                self.accumulate(conn: conn, buffer: data)
                 return
             }
 
@@ -332,21 +365,32 @@ final class WebServer: @unchecked Sendable {
             let parts       = requestLine.components(separatedBy: " ")
             let method      = parts.count >= 1 ? parts[0] : "GET"
             let path        = parts.count >= 2 ? parts[1] : "/"
+            let httpVersion = parts.count >= 3 ? parts[2] : "HTTP/1.0"
             let cleanPath   = path.components(separatedBy: "?").first ?? path
             let body: Data? = contentLength > 0 ? Data(bodyBytes.prefix(contentLength)) : nil
 
-            // Bytes after this request's body (if the client sent more than one request in a
-            // single TCP write) become the starting buffer for the next request on this
-            // connection — dropping them would corrupt whatever request they belong to.
-            let nextBuffer = Data(bodyBytes.dropFirst(contentLength))
+            // Leftover bytes past this request's body (contentLength is guaranteed 0…bodyBytes.count
+            // by the checks above, so dropFirst can't trap). Their presence means the client sent
+            // more than one request in a single write, or a body we didn't frame (chunked, bad
+            // Content-Length) — either way we don't safely reuse the connection below.
+            let leftover = bodyBytes.dropFirst(contentLength)
 
             if cleanPath == "/api/events" && method == "GET" {
                 self.registerSSE(conn); return
             }
+            // Reuse the connection only when we fully understand the request's framing and the
+            // response is safe to follow with another: HTTP/1.1, a method whose response body the
+            // client expects (GET/POST — not HEAD), no unparsed leftover/pipelined bytes, and the
+            // client didn't opt out. Anything else falls back to the pre-keep-alive default of
+            // closing after the response — which is what makes HEAD, HTTP/1.0 EOF-framed clients,
+            // pipelined requests, and mis-framed bodies safe instead of desyncing the socket.
+            let keepAlive = !explicitClose
+                && httpVersion == "HTTP/1.1"
+                && (method == "GET" || method == "POST")
+                && leftover.isEmpty
             Task {
                 let response = await self.route(method: method, path: cleanPath, body: body, userAgent: userAgent)
-                self.send(response, on: conn, acceptsGzip: acceptsGzip,
-                          keepAlive: !explicitClose, nextBuffer: nextBuffer)
+                self.send(response, on: conn, acceptsGzip: acceptsGzip, keepAlive: keepAlive)
             }
         }
     }
@@ -2676,11 +2720,15 @@ final class WebServer: @unchecked Sendable {
     // MARK: - Send
 
     private func send(_ response: WebResponse, on conn: NWConnection, acceptsGzip: Bool = false,
-                       keepAlive: Bool = false, nextBuffer: Data = Data()) {
+                       keepAlive: Bool = false) {
         func errorParts(_ statusLine: String, _ msg: String) -> (String, [(String, String)], Data) {
             let b = Data(msg.utf8)
             return (statusLine, [("Content-Type", "text/plain"), ("Content-Length", "\(b.count)")], b)
         }
+        // Error responses always close: they're returned from framing failures (bad/oversized
+        // Content-Length) where the receive buffer may hold unread bytes that would misparse the
+        // next request, so reusing the connection is never safe regardless of the caller's flag.
+        var keepAlive = keepAlive
         let (status, headers, body): (String, [(String, String)], Data)
         switch response {
         case .ok(let ct, let b):
@@ -2704,9 +2752,9 @@ final class WebServer: @unchecked Sendable {
                 headers = [("Content-Type", ct), ("Content-Length", "\(raw.count)")]
                 body    = raw
             }
-        case .notFound(let msg):      (status, headers, body) = errorParts("404 Not Found",         msg)
-        case .badRequest(let msg):    (status, headers, body) = errorParts("400 Bad Request",       msg)
-        case .payloadTooLarge(let msg):(status, headers, body) = errorParts("413 Content Too Large", msg)
+        case .notFound(let msg):      (status, headers, body) = errorParts("404 Not Found",         msg); keepAlive = false
+        case .badRequest(let msg):    (status, headers, body) = errorParts("400 Bad Request",       msg); keepAlive = false
+        case .payloadTooLarge(let msg):(status, headers, body) = errorParts("413 Content Too Large", msg); keepAlive = false
         }
 
         var raw = "HTTP/1.1 \(status)\r\n"
@@ -2725,12 +2773,11 @@ final class WebServer: @unchecked Sendable {
 
         conn.send(content: packet, isComplete: true, completion: .contentProcessed { [weak self] err in
             guard let self, keepAlive, err == nil else { conn.cancel(); return }
-            // Arm the idle-close timer before going back to read — accumulate() cancels it the
-            // instant any byte of a new request arrives; if none arrives within idleCloseSeconds,
-            // this fires and closes the connection instead of holding the socket open forever.
-            let timer = DispatchWorkItem { conn.cancel() }
-            self.queue.asyncAfter(deadline: .now() + Self.idleCloseSeconds, execute: timer)
-            self.accumulate(conn: conn, buffer: nextBuffer, idleTimer: timer)
+            // Go back to read the next request on this connection. accumulate() arms its own
+            // idle-close timer for the wait, so a client that goes quiet after this response is
+            // cleaned up within idleCloseSeconds. keepAlive is only ever true for a fully-framed
+            // request with no leftover bytes, so starting from an empty buffer is correct.
+            self.accumulate(conn: conn, buffer: Data())
         })
     }
 

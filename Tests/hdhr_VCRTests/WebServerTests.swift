@@ -156,6 +156,29 @@ private func get(_ path: String, port: Int = 1980, timeout: Double = 5) async th
     return (status, data)
 }
 
+// Sends a raw HTTP request over a fresh TCP socket and returns the response text (up to 64 KB).
+// Needed for malformed / non-standard requests URLSession refuses to send (negative Content-Length,
+// HEAD, HTTP/1.0) — exercising the keep-alive reuse gate and the crash guard directly.
+private func rawRequest(_ request: String, port: UInt16 = 1980, timeout: Double = 3) -> String? {
+    let fd = socket(AF_INET, SOCK_STREAM, 0)
+    guard fd >= 0 else { return nil }
+    defer { close(fd) }
+    var addr = sockaddr_in()
+    addr.sin_family = sa_family_t(AF_INET)
+    addr.sin_port = port.bigEndian
+    inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr)
+    var tv = timeval(tv_sec: Int(timeout), tv_usec: 0)
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
+    let connected = withUnsafePointer(to: &addr) { p in
+        p.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) }
+    }
+    guard connected == 0 else { return nil }
+    _ = Array(request.utf8).withUnsafeBytes { send(fd, $0.baseAddress, $0.count, 0) }
+    var buf = [UInt8](repeating: 0, count: 65536)
+    let n = recv(fd, &buf, buf.count, 0)
+    return n > 0 ? String(decoding: buf[0..<n], as: UTF8.self) : ""
+}
+
 @Suite("Post-deploy: web server smoke tests (requires running app on :1980)")
 struct WebServerSmokeTests {
 
@@ -250,5 +273,31 @@ struct WebServerSmokeTests {
         let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
         // Missing required fields → 400
         #expect(status == 400)
+    }
+
+    @Test func negativeContentLengthDoesNotCrash() async throws {
+        guard await serverAvailable() else { return }
+        // A negative Content-Length used to make dropFirst(-1) trap and crash the whole app.
+        // The server must reject it (400), and — the real assertion — still be alive afterward.
+        let resp = rawRequest("POST /api/ping HTTP/1.1\r\nHost: x\r\nContent-Length: -1\r\n\r\n")
+        #expect(resp?.contains("400") == true)
+        let (status, _) = try await get("/api/ping")
+        #expect(status == 200, "server crashed on a negative Content-Length")
+    }
+
+    @Test func headRequestClosesConnection() async throws {
+        guard await serverAvailable() else { return }
+        // HEAD isn't safe to keep-alive (the server would send a body the client doesn't read,
+        // desyncing a reused socket), so the reuse gate must force Connection: close.
+        let resp = rawRequest("HEAD /api/ping HTTP/1.1\r\nHost: x\r\n\r\n") ?? ""
+        #expect(resp.lowercased().contains("connection: close"))
+    }
+
+    @Test func http10RequestClosesConnection() async throws {
+        guard await serverAvailable() else { return }
+        // HTTP/1.0 defaults to close; keeping it alive would hang EOF-framed 1.0 clients until the
+        // idle timer fires. The reuse gate only opts in HTTP/1.1.
+        let resp = rawRequest("GET /api/ping HTTP/1.0\r\nHost: x\r\n\r\n") ?? ""
+        #expect(resp.lowercased().contains("connection: close"))
     }
 }
