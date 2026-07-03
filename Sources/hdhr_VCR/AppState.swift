@@ -132,6 +132,7 @@ final class AppState: ObservableObject {
     @Published var webServerRunning: Bool    = false
     @Published var webServerError:   String? = nil
     private var internalWebServerUseCount = 0  // ref count: each open WKWebView guide window increments
+    private var recordingRelayActive = false   // true while watchRecordingInApp holds an internal-web-server claim
 
     // Exponential backoff for repeated guide API failures per device.
     // Delays: 1 min → 5 min → 15 min → 30 min → 1 hour (capped).
@@ -2129,6 +2130,66 @@ final class AppState: ObservableObject {
             NSWorkspace.shared.open([streamURL], withApplicationAt: vlcApp,
                                     configuration: .init()) { _, _ in }
         }
+    }
+
+    // A currently-recording show is already occupying a tuner; re-requesting the same channel
+    // for "Watch Now" would open a second TCP connection and consume a second tuner — HDHomeRun's
+    // port 5004 allocates one tuner per connection with no client-multiplexing (docs/HDHRFindings.md).
+    // Play the file being written to disk instead, so watching a recording never costs a tuner.
+    //
+    // Not plain file:// playback — VLC's local-file access module snapshots the file's length at
+    // open time and won't read past it even though curl keeps appending, so a direct file:// URL
+    // stalls/ends once playback catches up to where it started. Routed instead through the
+    // WebServer's `/api/watch-recording` relay (WebServer.swift), which serves the file as an
+    // open-ended HTTP stream — same shape as the real tuner stream, which VLC already handles.
+    // Uses ensureWebServerRunning()/releaseInternalWebServer() (the same refcounted internal-use
+    // path FloatingGuideView uses) so this works even when the user has the LAN web UI disabled in
+    // Settings; releaseRecordingRelayIfNeeded() balances the count when the player window closes.
+    func watchRecordingInApp(_ show: Show) {
+        guard VLCBridge.shared.isAvailable else { return }
+        guard !show.show_recording_path.isEmpty,
+              FileManager.default.fileExists(atPath: show.show_recording_path) else {
+            watchInApp(url: show.show_url, title: show.show_title, deviceId: show.hdhr_record, transcode: show.show_transcode)
+            return
+        }
+        let device = devices.first { $0.DeviceID == show.hdhr_record } ?? devices.first
+        guard let device else { return }
+        if !recordingRelayActive {
+            recordingRelayActive = true
+            ensureWebServerRunning()
+        }
+        let relayURL = "http://127.0.0.1:\(config.Web_server_port)/api/watch-recording?show=\(show.show_id)"
+        let mgr = VLCPlayerWindowManager.shared
+
+        let alreadyPlaying = mgr.currentDeviceID == device.DeviceID && VLCBridge.shared.currentURL == relayURL
+        if alreadyPlaying { mgr.focus(); return }
+
+        glog("[Watch] '\(show.show_title)' from disk via local relay (recording in progress): \(show.show_recording_path)")
+        mgr.open(url: relayURL, title: show.show_title, device: device, appState: self)
+    }
+
+    /// Balances the ensureWebServerRunning() call in watchRecordingInApp(_:) — called from
+    /// VLCPlayerWindowManager.playerWindowDidClose() on every player window close, a no-op unless
+    /// this session actually used the recording relay.
+    func releaseRecordingRelayIfNeeded() {
+        guard recordingRelayActive else { return }
+        recordingRelayActive = false
+        releaseInternalWebServer()
+    }
+
+    func watchRecordingInVLC(_ show: Show) {
+        guard !show.show_recording_path.isEmpty,
+              FileManager.default.fileExists(atPath: show.show_recording_path) else {
+            watchInVLC(url: show.show_url, transcode: show.show_transcode, deviceId: show.hdhr_record)
+            return
+        }
+        guard config.Watch_in_VLC else { return }
+        let vlcPath = "/Applications/VLC.app"
+        guard FileManager.default.fileExists(atPath: vlcPath) else { return }
+        let vlcApp = URL(fileURLWithPath: vlcPath)
+        let fileURL = URL(fileURLWithPath: show.show_recording_path)
+        glog("[Watch] '\(show.show_title)' from disk in external VLC: \(show.show_recording_path)")
+        NSWorkspace.shared.open([fileURL], withApplicationAt: vlcApp, configuration: .init()) { _, _ in }
     }
 
     private func alertTunerFull(tunerCount: Int, deviceId: String) {

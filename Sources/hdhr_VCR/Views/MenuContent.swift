@@ -320,13 +320,13 @@ struct MenuContent: View {
                 }
             }
             if state.config.Watch_in_VLC {
-                Button(action: { state.watchInVLC(url: show.show_url, transcode: show.show_transcode, deviceId: show.hdhr_record) }) {
+                Button(action: { state.watchRecordingInVLC(show) }) {
                     Label { Text("Watch in VLC").foregroundColor(watchNowOrange) }
                           icon: { Image(systemName: "arrow.up.forward.app").foregroundColor(watchNowOrange) }
                 }
             }
             if VLCBridge.shared.isAvailable {
-                Button(action: { state.watchInApp(url: show.show_url, title: show.show_title, deviceId: show.hdhr_record, transcode: show.show_transcode) }) {
+                Button(action: { state.watchRecordingInApp(show) }) {
                     Label { Text("Watch Now!").foregroundColor(watchNowBlue) }
                           icon: { Image(systemName: "play.tv.fill").foregroundColor(watchNowBlue) }
                 }

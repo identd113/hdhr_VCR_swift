@@ -253,6 +253,100 @@ final class WebServer: @unchecked Sendable {
         }
     }
 
+    // MARK: - Watch Now (recording playback relay)
+    //
+    // VLC's plain file:// access module snapshots a file's length when the media is opened and
+    // won't read past that offset even though curl keeps appending to it — so pointing VLC directly
+    // at an in-progress recording stalls/ends early once playback catches up to where it started.
+    // Framing the recording as an open-ended HTTP response instead (no Content-Length, connection
+    // held open, bytes drip-fed as they land on disk) mirrors exactly how the real HDHomeRun tuner
+    // stream already works, which VLC already handles fine. show_recording_path never moves once
+    // recording starts (AppState writes directly to the final output path — see docs/AppState.md).
+    private func handleWatchRecording(showId: String, conn: NWConnection) {
+        guard !showId.isEmpty, let state = appState else {
+            send(.badRequest("missing show id"), on: conn); return
+        }
+        Task { @MainActor in
+            guard let show = state.shows.first(where: { $0.show_id == showId }),
+                  !show.show_recording_path.isEmpty,
+                  FileManager.default.fileExists(atPath: show.show_recording_path) else {
+                self.send(.notFound("recording not found"), on: conn)
+                return
+            }
+            self.streamGrowingFile(path: show.show_recording_path, showId: showId, conn: conn)
+        }
+    }
+
+    private func streamGrowingFile(path: String, showId: String, conn: NWConnection) {
+        guard let handle = FileHandle(forReadingAtPath: path) else {
+            send(.notFound("could not open recording file"), on: conn)
+            return
+        }
+        let header = "HTTP/1.1 200 OK\r\nContent-Type: video/mp2t\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\n\r\n"
+        glog("[WebServer] watch-recording OPEN show=\(showId) path=\(path)")
+        conn.send(content: Data(header.utf8), completion: .contentProcessed({ [weak self] err in
+            guard let self, err == nil else {
+                handle.closeFile()
+                glog("[WebServer] watch-recording header send failed show=\(showId): \(String(describing: err))", level: .warning)
+                return
+            }
+            self.pumpGrowingFile(handle: handle, showId: showId, conn: conn,
+                                  bytesSent: 0, waitStreak: 0, waitStartedAt: nil)
+        }))
+    }
+
+    // 200 MPEG-TS packets (188 bytes each) per read — keeps TS packet alignment without
+    // materially affecting latency.
+    private static let watchRecordingChunkSize = 188 * 200
+
+    // Recurses via queue.async / queue.asyncAfter rather than looping in place, so each step
+    // yields back to the network queue between file reads and socket sends.
+    private func pumpGrowingFile(handle: FileHandle, showId: String, conn: NWConnection,
+                                  bytesSent: Int, waitStreak: Int, waitStartedAt: Date?) {
+        let chunk = handle.readData(ofLength: Self.watchRecordingChunkSize)
+        guard !chunk.isEmpty else {
+            // Caught up to what curl has written so far — poll until either more data lands or
+            // the recording finishes, instead of ending the stream the moment we hit today's EOF.
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let stillRecording = self.appState?.shows.first(where: { $0.show_id == showId })?.show_recording ?? false
+                if stillRecording {
+                    let startedAt = waitStartedAt ?? Date()
+                    if waitStreak == 0 {
+                        glog("[WebServer] watch-recording show=\(showId) caught up to live edge at \(bytesSent) bytes — waiting for more data")
+                    }
+                    self.queue.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                        self?.pumpGrowingFile(handle: handle, showId: showId, conn: conn,
+                                               bytesSent: bytesSent, waitStreak: waitStreak + 1, waitStartedAt: startedAt)
+                    }
+                } else {
+                    glog("[WebServer] watch-recording show=\(showId) recording finished, drained \(bytesSent) bytes — closing stream")
+                    handle.closeFile()
+                    conn.cancel()
+                }
+            }
+            return
+        }
+        if waitStreak > 0, let waitStartedAt {
+            glog("[WebServer] watch-recording show=\(showId) resumed after \(String(format: "%.1f", Date().timeIntervalSince(waitStartedAt)))s wait (\(waitStreak) polls)")
+        }
+        let newTotal = bytesSent + chunk.count
+        if newTotal / (5 * 1_048_576) > bytesSent / (5 * 1_048_576) {
+            glog("[WebServer] watch-recording show=\(showId) sent \(newTotal / 1_048_576) MB so far")
+        }
+        conn.send(content: chunk, completion: .contentProcessed({ [weak self] err in
+            guard let self, err == nil else {
+                handle.closeFile()
+                glog("[WebServer] watch-recording show=\(showId) client disconnected after \(newTotal) bytes: \(String(describing: err))")
+                return
+            }
+            self.queue.async {
+                self.pumpGrowingFile(handle: handle, showId: showId, conn: conn,
+                                      bytesSent: newTotal, waitStreak: 0, waitStartedAt: nil)
+            }
+        }))
+    }
+
     // MARK: - Connection handling
     //
     // HTTP/1.1 keep-alive: a connection stays open across multiple requests unless the client
@@ -377,6 +471,10 @@ final class WebServer: @unchecked Sendable {
 
             if cleanPath == "/api/events" && method == "GET" {
                 self.registerSSE(conn); return
+            }
+            if cleanPath == "/api/watch-recording" && method == "GET" {
+                let showId = URLComponents(string: path)?.queryItems?.first(where: { $0.name == "show" })?.value ?? ""
+                self.handleWatchRecording(showId: showId, conn: conn); return
             }
             // Reuse the connection only when we fully understand the request's framing and the
             // response is safe to follow with another: HTTP/1.1, a method whose response body the

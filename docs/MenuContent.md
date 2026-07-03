@@ -161,7 +161,7 @@ Submenu contents — uses `showInfoHeader(show, entry:)` for the top block, then
 7. **Skip** (destructive) — `state.skipRecording(showId:)`: stops recording, advances schedule to next airing, no fail-count increment
 8. **Delete…** (destructive) — `state.confirmAndDeleteShow(show)`: stops recording + shows confirmation alert with poster image, then removes the show entirely
 9. **Show Recording in Finder** — shown when `show_recording_path` is non-empty
-10. **Watch in VLC** — shown when `state.config.Watch_in_VLC == true` (user toggle in Settings → Advanced); **Watch Now!** — shown when `VLCBridge.shared.isAvailable` (VLC app installed and dylib loaded). These are independent conditions.
+10. **Watch in VLC** — shown when `state.config.Watch_in_VLC == true` (user toggle in Settings → Advanced); **Watch Now!** — shown when `VLCBridge.shared.isAvailable` (VLC app installed and dylib loaded). These are independent conditions. Both call `state.watchRecordingInVLC(show)` / `state.watchRecordingInApp(show)` (not the generic `watchInVLC`/`watchInApp`) instead of opening a second tuner stream, since HDHomeRun allocates one tuner per TCP connection with no way to share a stream between the recording and a watch session (see `docs/HDHRFindings.md`). **Watch Now!** plays it via the WebServer's `/api/watch-recording` relay (open-ended HTTP stream — see `docs/WebServer.md`); **Watch in VLC** plays `show.show_recording_path` directly as a `file://` URL (external app, no reliable close hook to manage the relay). Both fall back to opening a live stream only if the recording file is missing.
 11. **Edit…**
 
 ---

@@ -42,6 +42,7 @@ func invalidateHTMLCache()               // clears cachedHTML so the next GET / 
 | GET | `/api/guide-detail/{devId}/{ch}/{winStart}/{winSec}` | JSON `{entries: [{start, syn, poster, ep, date}]}` — heavy fields (Synopsis/poster/episode/air date) for every entry currently in that channel's guide window, keyed by `start` epoch. `winStart`/`winSec` are the client's own `_winStart`/`_winSec` (the window its DOM was actually rendered against), so the response matches what the client has rather than silently drifting with server "now" time; falls back to the server's current window if those segments are missing/malformed. Lazily fetched by the client's per-row `IntersectionObserver` once a row scrolls into view; these fields are omitted from the initial grid HTML (see "Lazy heavy-data loading" below) |
 | GET | `/api/signal-stats/{guideName}` | JSON `{bucket, last, avg, min, max, checked, n, total}` — full signal stats for one channel from `ChannelSignalStore.stats()`; `checked` is the last-sampled epoch (client renders relative). Empty `{}` when no samples. Used by the tuner popover to show inline recordability per active tuner |
 | GET | `/api/icon` | Serves the app icon as a 72×72 PNG (for the splash overlay) |
+| GET | `/api/watch-recording?show={id}` | Relays a currently-recording show's on-disk file as an open-ended HTTP stream (see below) |
 | anything else | | 404 plain text |
 
 ---
@@ -203,6 +204,21 @@ Promoting a show to a `seriesId` type (`seriesChannel`/`seriesAll`) when it prev
 Save Directory is **not** editable from the web UI — directory path changes require local app access.
 
 On **Save**: `confirmEdit()` POSTs `/api/edit` and closes modal on success. An SSE event (`show_updated`) is pushed to all connected clients immediately after the server-side update, triggering `refreshGuide()` in place.
+
+---
+
+## Recording playback relay — `/api/watch-recording?show={id}`
+
+Lets `AppState.watchRecordingInApp(_:)` (`MenuContent`'s "Watch Now!" on an actively-recording show) play the in-progress recording without opening a second tuner. VLC's plain `file://` access module snapshots a file's length at open time and won't read past it even though curl keeps appending — so a direct `file://` URL onto a growing recording stalls/ends once playback catches up. This endpoint reframes the file as an open-ended HTTP response instead: no `Content-Length`, connection held open, bytes drip-fed as they land on disk — the same shape as the real HDHomeRun tuner stream, which VLC already handles.
+
+**Server infrastructure (`WebServer.swift`):**
+- `handleWatchRecording(showId:conn:)` — looks up the show on `@MainActor`, 404s if `show_recording_path` is empty or the file doesn't exist yet
+- `streamGrowingFile(path:showId:conn:)` — sends `200 OK` with `Content-Type: video/mp2t`, `Connection: keep-alive`, no `Content-Length`, then hands off to the pump loop
+- `pumpGrowingFile(...)` — reads 200 TS-packet chunks (~37 KB) and `conn.send()`s them; on an empty read, polls every 0.5 s while `show.show_recording == true`, then drains and closes once the show stops recording; on a `conn.send` failure (client disconnected), closes the file handle and stops recursing
+- Intercepted in `accumulate()` before the normal `route()` path, same as `/api/events` — never falls through to the keep-alive/Content-Length response path
+- Logs to `~/Library/Logs/hdhrVCRplus.log`: stream open/close, each time it catches up to the live edge and resumes (with wait duration), and a running total every 5 MB sent — enough to tell from the log alone whether a session stalled waiting for data or was cut short
+
+**AppState side:** `watchRecordingInApp(_:)` builds `http://127.0.0.1:{Web_server_port}/api/watch-recording?show={show_id}` and calls `ensureWebServerRunning()` (the same refcounted internal-use path `FloatingGuideView` uses, so this works even with the LAN web UI disabled in Settings) guarded by a `recordingRelayActive` flag; `VLCPlayerWindowManager.playerWindowDidClose()` calls `AppState.releaseRecordingRelayIfNeeded()` to balance it. The external-VLC path (`watchRecordingInVLC(_:)`, `Watch_in_VLC` setting) still uses a plain `file://` URL — there's no reliable close hook for an app launched via `NSWorkspace`, so it can't safely balance the relay's refcount, and is subject to the same-open-time-snapshot caveat this endpoint exists to avoid.
 
 ---
 

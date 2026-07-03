@@ -757,6 +757,7 @@ final class VLCPlayerWindowManager {
         // Release the VLC sleep assertion immediately rather than waiting for releaseAllAssertions()
         // inside refreshTunerOccupancy — that path is blocked when a recording is simultaneously active.
         appState?.recordingManager.releaseAssertion(id: "vlc")
+        appState?.releaseRecordingRelayIfNeeded()
         appState?.refreshTunerOccupancy()
     }
 }
