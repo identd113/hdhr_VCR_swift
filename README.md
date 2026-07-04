@@ -133,6 +133,14 @@ cd hdhr_VCR_swift
 
 `deploy.sh` builds, bundles, signs, and launches in one shot. No Xcode.app required.
 
+Other useful commands:
+
+```bash
+swift build          # build only, no bundling/launch
+swift test           # run tests
+./deploy_release.sh  # release build + Developer ID sign + notarize
+```
+
 ### Gatekeeper (first launch only) {#gatekeeper}
 
 macOS will block the downloaded app the first time. Do **one** of:
@@ -222,17 +230,6 @@ Settings use a **draft/save** pattern — click **Save** (⌘S) to apply. Closin
 Default save location: `~/Documents/hdhr_videos` (created automatically). Configurable globally in Settings or per-show via **Edit…** in the menu.
 
 File naming: `ShowTitle_Channel_YYYYMMDD_HHmm.m2ts` (or `.mkv` for transcoded recordings).
-
----
-
-## Building from Source
-
-```bash
-swift build          # build only
-swift test           # run tests
-./deploy.sh          # build + bundle + sign + launch (debug)
-./deploy_release.sh  # release build + Developer ID sign + notarize
-```
 
 ---
 
