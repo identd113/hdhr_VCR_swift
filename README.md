@@ -5,7 +5,7 @@
 No subscription. No media server. No cloud account. Just your tuner, your Mac, and your shows.
 
 [![macOS 15+](https://img.shields.io/badge/macOS-15%2B-blue?logo=apple\&logoColor=white)](https://github.com/identd113/hdhr_VCR_swift/releases)
-[![Swift 6](https://img.shields.io/badge/Swift-6-FA7343?logo=swift\&logoColor=white)](Package.swift)
+[![Swift 5.9](https://img.shields.io/badge/Swift-5.9-FA7343?logo=swift\&logoColor=white)](Package.swift)
 [![Latest Release](https://img.shields.io/github/v/release/identd113/hdhr_VCR_swift?label=latest\&color=green)](https://github.com/identd113/hdhr_VCR_swift/releases)
 [![Proven since 2016](https://img.shields.io/badge/proven%20since-2016-lightgrey)](https://github.com/identd113/hdhr_VCR-AS)
 
