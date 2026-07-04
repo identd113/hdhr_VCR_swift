@@ -65,7 +65,7 @@ Systems: [AppState](docs/AppState.md) · [GuideStore](docs/GuideStore.md) · [Re
 
 ## Invariants & Gotchas
 
-**Tuner occupancy** — watching and recording both occupy a tuner. Always use `AppState.tunersFull(for:)` (counts `recordingShows` + in-app VLC stream). Never count recordings alone.
+**Tuner occupancy** — watching and recording both occupy a tuner, *except* watching a currently-recording show via Watch Now! (`AppState.watchRecordingInApp`), which plays it back from disk through the local relay (`docs/WebServer.md`'s `/api/watch-recording`) and consumes none. Always use `AppState.tunersFull(for:)` (counts `recordingShows` + in-app VLC stream, via the private `vlcOccupiesTuner(for:)` helper that excludes a relay session — checks `VLCBridge.shared.recordingShowId == nil`). Never count recordings alone, and never count the VLC stream unconditionally — check whether it's the relay first.
 
 **Web guide rows are never hidden** — guide filtering (genre, infomercial) dims individual `.g-prog` blocks via `.g-prog-dim`; `.g-row` elements stay visible at all times. Never add `display:none` to a row as a filter mechanism.
 

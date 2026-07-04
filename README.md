@@ -79,6 +79,7 @@ You already paid for an HDHomeRun tuner and a cable/antenna subscription. You sh
 ### Watching
 
 - **Watch Now! (in-app player)** — stream live TV in a built-in VLC-powered window with a channel picker, volume, and audio output controls. Checks tuner availability before opening so you're never silently blocked.
+- **Watch a recording in progress — for free** — click "Watch Now!" on a show that's currently recording and it plays straight from disk instead of opening a second tuner. Hover over the video for a scrub bar to jump anywhere already recorded, and switch between simultaneous recordings right from the channel picker.
 - **Live tuner status** — the menu header shows exactly how many tuners are in use and by what, at a glance
 
 ### Notifications
@@ -100,6 +101,8 @@ You already paid for an HDHomeRun tuner and a cable/antenna subscription. You sh
 ---
 
 ## What's New
+
+**Watch a recording without a second tuner** — "Watch Now!" on a currently-recording show now plays it straight from disk instead of tuning the channel again, with a scrub bar to jump around what's already recorded and a channel-picker shortcut to switch between simultaneous recordings.
 
 **Sparkle auto-updater** — Check for Updates button in Settings → About. Updates are signed and verified automatically.
 

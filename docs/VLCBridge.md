@@ -74,7 +74,9 @@ newRate   = minRate + (1.0 - minRate) * fillRatio
 
 `catchUpToLive()` calls `play(url: currentURL)`, which stops the stream, resets `estimatedLagSec` to 0, and restarts the fill phase from scratch.
 
-When `minRate == 1.0` (buffering disabled in Settings), rate control is skipped entirely; the stats timer still runs for corruption detection only.
+When `minRate == 1.0` (buffering disabled in Settings, or forced — see below), rate control is skipped entirely; the stats timer still runs for corruption detection only.
+
+**`minRate` vs `liveMinRate`**: `liveMinRate` is the externally-configured floor (`AppConfig.Player_buffer_min_rate`, set by `VLCPlayerView`); `minRate` is the floor actually in effect, set internally by `play(url:)` — `liveMinRate` for a normal stream, forced to `1.0` for the recording-playback relay (`/api/watch-recording`, see `docs/WebServer.md`). A local loopback file read has no network jitter to buffer against, so the fill ramp — and the buffer pill it drives in the toolbar — would just be theatre there. External code should set `liveMinRate`, never `minRate` directly.
 
 ### Stream state detection
 
@@ -172,7 +174,7 @@ The player routes audio through `auhal` (CoreAudio) on macOS. Devices are enumer
 
 ```swift
 var isAvailable: Bool                                          // false when VLC not installed
-var minRate: Float                                             // fill-phase floor (0.90–1.0); set from AppConfig
+var liveMinRate: Float                                         // fill-phase floor for live streams (0.90–1.0); set from AppConfig — external code sets this, never minRate
 var currentURL: String?                                        // URL currently playing; nil when stopped
 @Published var bufferInfo: VLCBufferInfo                      // rate/lag/bitrate snapshot; published every 3s tick
 @Published var hasError:    Bool                              // true when libvlc_Error (state 7) detected; cleared on play/stop/release

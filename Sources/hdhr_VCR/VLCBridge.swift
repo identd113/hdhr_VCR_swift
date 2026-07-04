@@ -95,8 +95,14 @@ final class VLCBridge: ObservableObject {
     private var deviceChangeContext: AudioDeviceChangeContext?
 
     // MARK: - Buffer rate controller state
-    /// Minimum playback rate (fill-phase floor). Set from AppConfig by VLCPlayerView. 1.0 = disabled.
-    var minRate: Float = 0.93
+    /// Configured fill-phase floor for **live** streams (from AppConfig, set by VLCPlayerView).
+    /// 1.0 = disabled. Not used directly — play(url:) copies it into `minRate` for a live URL, or
+    /// forces `minRate = 1.0` for the recording relay (a local loopback file read has no network
+    /// jitter to buffer against, so the ramp — and the toolbar's buffer pill — would be theatre).
+    var liveMinRate: Float = 0.93
+    /// The floor actually in effect for the current stream — live-appropriate or forced to 1.0 for
+    /// the recording relay. Set by play(url:); do not set externally.
+    private var minRate: Float = 1.0
     @Published var bufferInfo = VLCBufferInfo()
     @Published var hasError:   Bool = false
     @Published var isPlaying:  Bool = false   // true only after libvlc_Playing (state 3) confirmed
@@ -122,9 +128,12 @@ final class VLCBridge: ObservableObject {
         recordingStartDate       = recordingStart
         recordingSeekBaseSeconds = seekBaseSeconds
         recordingReopenedAt      = Date()
+        glog("[VLC] beginRecordingSeek — showId=\(showId) recordingStart=\(recordingStart) seekBase=\(seekBaseSeconds)s")
     }
 
     func clearRecordingSeek() {
+        guard recordingShowId != nil else { return }
+        glog("[VLC] clearRecordingSeek — was showId=\(recordingShowId ?? "?")")
         recordingShowId          = nil
         recordingStartDate       = nil
         recordingSeekBaseSeconds = 0
@@ -275,8 +284,10 @@ final class VLCBridge: ObservableObject {
         // via beginRecordingSeek().
         if url.contains("/api/watch-recording") {
             recordingReopenedAt = Date()
+            minRate = 1.0   // local loopback file read — no network jitter to buffer against
         } else {
             clearRecordingSeek()
+            minRate = liveMinRate
         }
         guard drawableView != nil else {
             glog("[VLC] play deferred — no drawable yet, queuing as pending: \(url)", level: .warning)
@@ -402,7 +413,12 @@ final class VLCBridge: ObservableObject {
     // MARK: - Rate controller (private)
 
     private func startStatsTimer() {
-        guard minRate < 1.0 || _mpGetStats != nil else { return }
+        // Always starts — tickController does more than the rate ramp/stats (isPlaying/hasError
+        // state detection, track fetching, video pixel size), all needed regardless of minRate.
+        // The old guard (`minRate < 1.0 || _mpGetStats != nil`) could skip the timer entirely
+        // whenever minRate == 1.0 and _mpGetStats somehow failed to resolve, silently disabling
+        // isPlaying detection too — exactly the kind of stall a recording-relay session (which now
+        // always sets minRate = 1.0) would hit if that ever happened.
         statsTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in self?.tickController() }
         }

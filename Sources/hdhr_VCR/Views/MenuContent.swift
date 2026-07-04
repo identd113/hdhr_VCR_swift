@@ -311,12 +311,10 @@ struct MenuContent: View {
                 menuInfo(sig.displayString, font: .footnote, secondary: true)
             }
             Divider()
-            Button("Skip", role: .destructive) { Task { await state.skipRecording(showId: show.show_id) } }
-            Button("Delete…", role: .destructive) { state.confirmAndDeleteShow(show) }
-            if !show.show_recording_path.isEmpty {
-                Button("Show Recording in Finder") {
-                    NSWorkspace.shared.selectFile(show.show_recording_path,
-                                                  inFileViewerRootedAtPath: "")
+            if VLCBridge.shared.isAvailable {
+                Button(action: { state.watchRecordingInApp(show) }) {
+                    Label { Text("Watch Now!").foregroundColor(watchNowBlue) }
+                          icon: { Image(systemName: "play.tv.fill").foregroundColor(watchNowBlue) }
                 }
             }
             if state.config.Watch_in_VLC {
@@ -325,10 +323,12 @@ struct MenuContent: View {
                           icon: { Image(systemName: "arrow.up.forward.app").foregroundColor(watchNowOrange) }
                 }
             }
-            if VLCBridge.shared.isAvailable {
-                Button(action: { state.watchRecordingInApp(show) }) {
-                    Label { Text("Watch Now!").foregroundColor(watchNowBlue) }
-                          icon: { Image(systemName: "play.tv.fill").foregroundColor(watchNowBlue) }
+            Button("Skip", role: .destructive) { Task { await state.skipRecording(showId: show.show_id) } }
+            Button("Delete…", role: .destructive) { state.confirmAndDeleteShow(show) }
+            if !show.show_recording_path.isEmpty {
+                Button("Show Recording in Finder") {
+                    NSWorkspace.shared.selectFile(show.show_recording_path,
+                                                  inFileViewerRootedAtPath: "")
                 }
             }
             Button("Edit…") { editShow(show) }

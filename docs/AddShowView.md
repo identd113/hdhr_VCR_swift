@@ -33,7 +33,7 @@ Fixed 560×540 window. White/system background. `ScrollView` containing a `VStac
 - Form fields using `ShowFormSection` (shared with `EditShowView`)
 - Bottom-right: orange `StarburstBadge` (115pt size) floats via `.overlay(alignment: .bottomTrailing)`, springs in on appear if `show_bonus_time == true` and `Sports_padding_enabled`. Sports entries have Bonus Time pre-checked; any show type can enable it.
 
-**Nav bar** (bottom): **Back** on left, **Save** (`.borderedProminent`) on right. A `Divider` above.
+**Nav bar** (bottom): **Back** on left, **Record** (`.borderedProminent`, tinted `recordRed` — same red as the web guide's Record button, `#c0392b`, see `GuideViewHelpers.swift`) on right. A `Divider` above.
 
 ## Intent
 

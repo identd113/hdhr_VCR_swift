@@ -1,5 +1,17 @@
 # hdhrVCRplus Changelog
 
+## 2026-07-03 (260703-2203)
+
+- **Watch Now! on a recording no longer costs a tuner** — clicking "Watch Now!" on a show that's currently recording used to re-request the same channel from the HDHomeRun device, silently consuming a second tuner for content already being captured. It now plays the in-progress recording straight from disk instead, through a new local relay (served over the built-in web server, even with the LAN web UI disabled in Settings) that streams the growing file as it's written — so recording and watching the same show now shares the one tuner already in use. Starts ~30 seconds behind the live edge, matching how live TV normally feels, rather than at the beginning of the file.
+- **Scrub bar for in-progress recordings** — hover over the video while watching a recording to reveal a scrub bar (fades in/out) showing the recording's start time and current live time as clock times, with a slider to jump anywhere already written to disk. Seeking is approximate (the raw recording has no index) but close enough for casual scrubbing.
+- **Switch between simultaneous recordings from the channel picker** — the in-app player's channel picker now lists a "Live" row for every show currently recording on that tuner, letting you switch straight between them (or back to a live channel) without leaving the player window.
+- **Fix — recording playback buffer** — the live-stream buffer fill-ramp (and its toolbar indicator) no longer applies to recording playback, which is a local disk read with no network jitter to buffer against; recordings now start at full speed immediately.
+- **Fix — tuner count while watching your own recording** — watching a recording via Watch Now! was incorrectly counted as occupying an extra tuner, which could block scheduling a second, actually-free recording and inflate the tuner count shown in the web guide. The app now correctly recognizes that a recording-relay session (unlike watching a live channel) doesn't use a tuner at all.
+- **Fix — re-clicking Watch Now! on an already-open recording** — used to reconnect and rebuffer instead of just bringing the window forward, discarding any scrub position.
+- **Fix — "catch up to live" during recording playback** — now actually jumps to the live edge of the recording instead of reconnecting at the same stale position.
+- **Fix — media-key next/prev** — no longer goes dead when a "Live" recording row is selected in the channel picker.
+- **Add Show — Record button** — the wizard's final "Save" button is now labeled **Record**, tinted the same red as the web guide's Record button, to make it clearer that finishing the wizard starts a recording.
+
 ## 2026-06-27 (260627-1933)
 
 - **Web guide — instant page load** — The guide HTML is now pre-built and cached after every guide fetch (`prebuildPageHTML`). `GET /` serves the cached copy immediately instead of blocking the `@MainActor` thread for 2–4 seconds to build ~1.1 MB of HTML on every request. Desktop and mobile variants are cached separately; the cache is invalidated and rebuilt on each hourly guide refresh.

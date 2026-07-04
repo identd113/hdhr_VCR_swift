@@ -236,9 +236,10 @@ struct AddShowView: View {
             case .details:
                 HStack(spacing: 8) {
                     Button("Back") { goBack() }
-                    Button("Save") { save() }
+                    Button("Record") { save() }
                         .disabled(!canAdvance)
                         .buttonStyle(.borderedProminent)
+                        .tint(recordRed)
                 }
             }
         }

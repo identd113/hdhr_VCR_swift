@@ -270,13 +270,24 @@ final class WebServer: @unchecked Sendable {
             send(.badRequest("missing show id"), on: conn); return
         }
         Task { @MainActor in
+            // Only the show_id lookup and property read happen on the MainActor — both in-memory,
+            // no I/O. The fileExists check and all of streamGrowingFile's disk I/O (FileHandle
+            // open/seek) are dispatched to `queue` below so a slow/contended recording volume
+            // can't stall the main thread on every watch-recording connection (including every
+            // scrub-bar commit, which reconnects through this same path).
             guard let show = state.shows.first(where: { $0.show_id == showId }),
-                  !show.show_recording_path.isEmpty,
-                  FileManager.default.fileExists(atPath: show.show_recording_path) else {
+                  !show.show_recording_path.isEmpty else {
                 self.send(.notFound("recording not found"), on: conn)
                 return
             }
-            self.streamGrowingFile(path: show.show_recording_path, showId: showId, startOffset: startOffset, conn: conn)
+            let path = show.show_recording_path
+            self.queue.async {
+                guard FileManager.default.fileExists(atPath: path) else {
+                    self.send(.notFound("recording not found"), on: conn)
+                    return
+                }
+                self.streamGrowingFile(path: path, showId: showId, startOffset: startOffset, conn: conn)
+            }
         }
     }
 
@@ -316,6 +327,18 @@ final class WebServer: @unchecked Sendable {
     // yields back to the network queue between file reads and socket sends.
     private func pumpGrowingFile(handle: FileHandle, showId: String, conn: NWConnection,
                                   bytesSent: Int, waitStreak: Int, waitStartedAt: Date?) {
+        // Checked once per recursion (covers both the "have data" and "waiting" paths below) —
+        // without this, a connection cancelled while the loop is in its 0.5s wait-for-more-data
+        // poll (the common state once caught up to the live edge) wouldn't be noticed until a
+        // conn.send() was actually attempted, which only happens once new bytes arrive.
+        switch conn.state {
+        case .cancelled, .failed:
+            glog("[WebServer] watch-recording show=\(showId) connection no longer alive at \(bytesSent) bytes — stopping")
+            handle.closeFile()
+            return
+        default:
+            break
+        }
         let chunk = handle.readData(ofLength: Self.watchRecordingChunkSize)
         guard !chunk.isEmpty else {
             // Caught up to what curl has written so far — poll until either more data lands or

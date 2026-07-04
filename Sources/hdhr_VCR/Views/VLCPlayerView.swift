@@ -52,6 +52,7 @@ struct VLCPlayerView: View {
     @State private var nativeResHovered   = false
     @State private var scrubValue: Double = 0     // recording scrub bar — only meaningful while isScrubbing
     @State private var isScrubbing = false
+    @State private var videoControlsHovered = false   // shows the recording scrub overlay on hover
 
     private var currentGuideEntry: GuideEntry? {
         guard let ch = selectedChannel else { return nil }
@@ -65,6 +66,36 @@ struct VLCPlayerView: View {
             $0.GuideNumber.localizedStandardCompare($1.GuideNumber) == .orderedAscending
         }
     }
+
+    // MARK: - "Live" recording entries in the channel picker
+    //
+    // LineupEntry's Hashable/Equatable (AddShowView.swift) keys solely on GuideNumber, so a
+    // synthetic entry must use a GuideNumber that can never collide with a real channel's — hence
+    // the "live:" prefix — rather than reusing the show's actual channel number.
+    private static let liveGuideNumberPrefix = "live:"
+
+    private func showId(fromLiveGuideNumber guideNumber: String) -> String? {
+        guard guideNumber.hasPrefix(Self.liveGuideNumberPrefix) else { return nil }
+        return String(guideNumber.dropFirst(Self.liveGuideNumberPrefix.count))
+    }
+
+    // One synthetic row per show currently recording on this player's device — lets the picker
+    // switch directly between simultaneous recordings via the relay (docs/WebServer.md), the same
+    // way it switches between live channels.
+    private var recordingChannelEntries: [LineupEntry] {
+        state.recordingShows
+            .filter { $0.hdhr_record == device.DeviceID }
+            .sorted { $0.show_channel.localizedStandardCompare($1.show_channel) == .orderedAscending }
+            .map { show in
+                LineupEntry(GuideNumber: "\(Self.liveGuideNumberPrefix)\(show.show_id)",
+                            GuideName: "Live \(show.show_channel)  \(show.show_title)",
+                            URL: nil, HD: nil, Favorite: nil)
+            }
+    }
+
+    // Media-key next/prev cycle order — recording rows first, then real channels, matching the
+    // picker's own row order (see toolbar's Picker content).
+    private var channelCycleOrder: [LineupEntry] { recordingChannelEntries + lineup }
 
     // HDHomeRun raw streams are always MPEG-2/AC-3; any transcode= param means H.264/AAC.
     private var inferredCodecs: (video: String, audio: String) {
@@ -90,10 +121,31 @@ struct VLCPlayerView: View {
                     errorOverlay
                         .transition(.opacity)
                 }
+                if posterHidden, !bridge.hasError,
+                   let showId = bridge.recordingShowId, let startDate = bridge.recordingStartDate {
+                    VStack {
+                        Spacer()
+                        // .onHover sits after the outer padding so the whole margin around the bar
+                        // is part of the hover target, not just the visible bar/background rect.
+                        // Opacity (not allowsHitTesting) gates hover detection while hidden — a
+                        // hidden view can still be hovered into, so this is how it reveals itself
+                        // in the first place; there's no chicken-and-egg with hit-testing disabled.
+                        recordingScrubBar(showId: showId, startDate: startDate)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
+                            .padding(20)
+                            .opacity(videoControlsHovered ? 1 : 0)
+                            .animation(.easeInOut(duration: 0.2), value: videoControlsHovered)
+                            .onHover { videoControlsHovered = $0 }
+                    }
+                    .transition(.opacity)
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .animation(.easeOut(duration: 0.35), value: posterHidden)
             .animation(.easeOut(duration: 0.35), value: bridge.hasError)
+            .animation(.easeInOut(duration: 0.2), value: bridge.recordingShowId)
             .task(id: currentGuideEntry?.ImageURL) {
                 guard let url = currentGuideEntry?.ImageURL else { posterNSImage = nil; return }
                 posterNSImage = await ChannelIconCache.shared.image(for: url)
@@ -102,7 +154,7 @@ struct VLCPlayerView: View {
         .onAppear {
             glog("[VLC] VLCPlayerView.onAppear device=\(device.DeviceID) initialURL=\(initialURL)")
             availableScreens = NSScreen.screens   // NSScreen.screens is main-thread-only; safe here
-            VLCBridge.shared.minRate = Float(state.config.Player_buffer_min_rate) / 100.0
+            VLCBridge.shared.liveMinRate = Float(state.config.Player_buffer_min_rate) / 100.0
             VLCBridge.shared.setVolume(0)   // muted until Start is clicked
             refreshAudioDevices()
             VLCBridge.shared.startDeviceChangeMonitoring { refreshAudioDevices() }
@@ -126,9 +178,16 @@ struct VLCPlayerView: View {
             glog("[VLC] vlcCurrentURL changed → syncChannel: \(rawURL.isEmpty ? "(empty)" : rawURL)")
             syncChannel(to: rawURL)
         }
+        .onChange(of: bridge.recordingShowId) { _, showId in
+            // AppState.watchRecordingInApp defers setting this to the next run-loop turn, so the
+            // very first syncChannel(to:) call (from .onAppear, in the same synchronous window-
+            // open transaction) can run before it lands — re-sync once it does.
+            guard showId != nil, let url = bridge.currentURL else { return }
+            syncChannel(to: url)
+        }
         .onChange(of: state.config.Player_buffer_min_rate) { _, pct in
             glog("[VLC] Player_buffer_min_rate changed → \(pct)%")
-            VLCBridge.shared.minRate = Float(pct) / 100.0
+            VLCBridge.shared.liveMinRate = Float(pct) / 100.0
         }
         .onChange(of: bridge.audioTracks.count) { _, count in
             // When audio tracks first appear, sync picker to first track (VLC already plays it).
@@ -155,14 +214,19 @@ struct VLCPlayerView: View {
             cc.previousTrackCommand.removeTarget(nil)
         }
         .onReceive(NotificationCenter.default.publisher(for: .vlcChannelNext)) { _ in
+            // channelCycleOrder (recording rows + real channels) matches the picker's own display
+            // order, so media-key next/prev also cycles through "Live" recording entries — not
+            // just real channels, which would otherwise leave next/prev dead while on one of them.
+            let order = channelCycleOrder
             guard let ch = selectedChannel,
-                  let idx = lineup.firstIndex(where: { $0.GuideNumber == ch.GuideNumber }) else { return }
-            selectedChannel = lineup[idx < lineup.count - 1 ? idx + 1 : 0]
+                  let idx = order.firstIndex(where: { $0.GuideNumber == ch.GuideNumber }) else { return }
+            selectedChannel = order[idx < order.count - 1 ? idx + 1 : 0]
         }
         .onReceive(NotificationCenter.default.publisher(for: .vlcChannelPrev)) { _ in
+            let order = channelCycleOrder
             guard let ch = selectedChannel,
-                  let idx = lineup.firstIndex(where: { $0.GuideNumber == ch.GuideNumber }) else { return }
-            selectedChannel = lineup[idx > 0 ? idx - 1 : lineup.count - 1]
+                  let idx = order.firstIndex(where: { $0.GuideNumber == ch.GuideNumber }) else { return }
+            selectedChannel = order[idx > 0 ? idx - 1 : order.count - 1]
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in
             availableScreens = NSScreen.screens
@@ -309,6 +373,19 @@ struct VLCPlayerView: View {
         return HStack(spacing: 10) {
             // Channel picker — sorted by guide number
             Picker("Channel", selection: $selectedChannel) {
+                // Fallback: selected whenever selectedChannel is nil and nothing else matched
+                // (shouldn't normally happen once recordingChannelEntries covers every relay
+                // stream, but avoids ever rendering blank). Hidden entirely when nothing on this
+                // device is recording — there's no "Live" to fall back to in that case.
+                if !recordingChannelEntries.isEmpty {
+                    Text("Live").tag(Optional<LineupEntry>.none)
+                }
+                // One row per show currently recording on this device — GuideName already holds
+                // the full "Live 5.1  Title" label, so it's rendered directly (not the
+                // "GuideNumber  GuideName" template below, which would show the synthetic tag).
+                ForEach(recordingChannelEntries, id: \.GuideNumber) { entry in
+                    Text(entry.GuideName).tag(Optional(entry))
+                }
                 ForEach(lineup, id: \.GuideNumber) { ch in
                     Text("\(ch.GuideNumber)  \(ch.GuideName)").tag(Optional(ch))
                 }
@@ -322,7 +399,13 @@ struct VLCPlayerView: View {
                 if suppressNextChannelPlay { suppressNextChannelPlay = false; return }
                 selectedAudioTrackId = -1
                 selectedSpuTrackId   = -1
-                if let ch { playChannel(ch) }
+                guard let ch else { return }
+                if let showId = showId(fromLiveGuideNumber: ch.GuideNumber) {
+                    guard let show = state.shows.first(where: { $0.show_id == showId }) else { return }
+                    state.watchRecordingInApp(show)
+                } else {
+                    playChannel(ch)
+                }
             }
 
             Spacer()
@@ -359,16 +442,14 @@ struct VLCPlayerView: View {
             .onHover { if $0 { nativeResHovered = true } }
             .popover(isPresented: $nativeResHovered, arrowEdge: .bottom) { nativeResPopover }
 
-            if let showId = bridge.recordingShowId, let startDate = bridge.recordingStartDate {
-                recordingScrubBar(showId: showId, startDate: startDate)
-            } else {
-                // Live wall-clock time — meaningful for live TV; no elapsed/scrubbing concept
-                TimelineView(.periodic(from: .now, by: 1.0)) { ctx in
-                    Text(ctx.date, style: .time)
-                        .monospacedDigit()
-                        .foregroundStyle(.secondary)
-                        .frame(minWidth: 70)
-                }
+            // Live wall-clock time. The recording scrub bar lives in a hover overlay on the video
+            // instead (see body's ZStack) rather than here — it needs more room than this toolbar
+            // has to spare alongside everything else.
+            TimelineView(.periodic(from: .now, by: 1.0)) { ctx in
+                Text(ctx.date, style: .time)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .frame(minWidth: 70)
             }
 
             // Volume
@@ -470,53 +551,65 @@ struct VLCPlayerView: View {
 
     // MARK: - Recording scrub bar
 
-    // The raw MPEG-TS recording has no index, so this isn't a true libvlc time-based seek — see
-    // VLCBridge.recordingPlaybackSeconds. Ticks at wall-clock pace between scrubs; a drag commits
-    // by reconnecting the relay at a new byte offset (AppState.seekRecording).
+    // Shown as a hover overlay on the video (see body's ZStack), not the toolbar — standard
+    // video-player convention, and there's no room for it in the toolbar alongside everything
+    // else. Labels use local clock time (when the show started / live edge right now) rather than
+    // elapsed duration, since "started at 7:00 PM" reads more naturally than "0:00" for a
+    // recording. The raw MPEG-TS file has no index, so this isn't a true libvlc time-based seek —
+    // see VLCBridge.recordingPlaybackSeconds. Position ticks at wall-clock pace between scrubs; a
+    // drag commits by reconnecting the relay at a new byte offset (AppState.seekRecording).
     private func recordingScrubBar(showId: String, startDate: Date) -> some View {
         TimelineView(.periodic(from: .now, by: 1.0)) { ctx in
             let elapsed = max(1, ctx.date.timeIntervalSince(startDate))
             let display = min(isScrubbing ? scrubValue : VLCBridge.shared.recordingPlaybackSeconds, elapsed)
-            HStack(spacing: 6) {
-                Text(Self.formatDuration(display))
+            VStack(spacing: 4) {
+                Text(startDate.addingTimeInterval(display), style: .time)
+                    .font(.caption.bold())
                     .monospacedDigit()
-                    .foregroundStyle(.secondary)
-                    .frame(minWidth: 44, alignment: .trailing)
-                Slider(value: Binding(get: { display }, set: { scrubValue = $0 }), in: 0...elapsed,
-                       onEditingChanged: { editing in
-                    if editing {
-                        scrubValue  = display
-                        isScrubbing = true
-                    } else {
-                        isScrubbing = false
-                        state.seekRecording(showId: showId, toSeconds: scrubValue)
-                    }
-                })
-                .frame(minWidth: 120, maxWidth: 220)
-                .accessibilityLabel("Recording position")
-                Text(Self.formatDuration(elapsed))
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-                    .frame(minWidth: 44, alignment: .leading)
+                    .foregroundStyle(.white)
+                HStack(spacing: 8) {
+                    Text(startDate, style: .time)
+                        .monospacedDigit()
+                        .foregroundStyle(.white.opacity(0.7))
+                    Slider(value: Binding(get: { display }, set: { scrubValue = $0 }), in: 0...elapsed,
+                           onEditingChanged: { editing in
+                        if editing {
+                            scrubValue  = display
+                            isScrubbing = true
+                        } else {
+                            isScrubbing = false
+                            state.seekRecording(showId: showId, toSeconds: scrubValue)
+                        }
+                    })
+                    .accessibilityLabel("Recording position")
+                    Text(ctx.date, style: .time)
+                        .monospacedDigit()
+                        .foregroundStyle(.white.opacity(0.7))
+                }
             }
         }
-    }
-
-    private static func formatDuration(_ seconds: Double) -> String {
-        let total = max(0, Int(seconds))
-        let h = total / 3600, m = (total % 3600) / 60, s = total % 60
-        return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
     }
 
     // MARK: - Buffer monitor
 
     private var catchUpButton: some View {
-        Button { VLCBridge.shared.catchUpToLive() } label: {
+        // For a recording-relay session, VLCBridge.catchUpToLive() alone just replays the current
+        // URL verbatim — reconnecting at the same stale &start= byte offset, doing nothing toward
+        // "live". AppState.seekRecordingToLiveEdge computes a fresh near-live-edge offset instead.
+        Button {
+            if let showId = bridge.recordingShowId {
+                state.seekRecordingToLiveEdge(showId: showId)
+            } else {
+                VLCBridge.shared.catchUpToLive()
+            }
+        } label: {
             Image(systemName: "forward.end.circle")
                 .foregroundStyle(.secondary)
         }
         .buttonStyle(.plain)
-        .help("Speed up to live — discard buffer and jump to live edge")
+        .help(bridge.recordingShowId != nil
+              ? "Jump to the live edge of the recording"
+              : "Speed up to live — discard buffer and jump to live edge")
     }
 
     private var bufferMonitor: some View {
@@ -602,6 +695,26 @@ struct VLCPlayerView: View {
     private func syncChannel(to url: String) {
         guard !url.isEmpty else { return }
         let base = url.urlBase
+        // Recording-relay stream: match against this device's currently-recording shows instead
+        // of the lineup — the relay URL (docs/WebServer.md) never matches a real channel URL.
+        // AppState.watchRecordingInApp defers setting bridge.recordingShowId to the next run-loop
+        // turn (see its comment — a SwiftUI render-timing fix), so this can miss on the very first
+        // call from .onAppear; the .onChange(of: bridge.recordingShowId) handler below re-runs it
+        // once that lands.
+        if base.contains("/api/watch-recording"), let showId = bridge.recordingShowId,
+           let entry = recordingChannelEntries.first(where: { self.showId(fromLiveGuideNumber: $0.GuideNumber) == showId }) {
+            glog("[VLC] syncChannel matched recording \(entry.GuideName) for url=\(base)")
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = [
+                MPMediaItemPropertyTitle:             entry.GuideName,
+                MPMediaItemPropertyArtist:            "Live",
+                MPNowPlayingInfoPropertyIsLiveStream: true
+            ]
+            MPNowPlayingInfoCenter.default().playbackState = .playing
+            guard selectedChannel?.GuideNumber != entry.GuideNumber else { return }
+            suppressNextChannelPlay = true
+            selectedChannel = entry
+            return
+        }
         if let match = lineup.first(where: { ($0.URL ?? "").hasPrefix(base) || base.hasPrefix($0.URL ?? "") }) {
             glog("[VLC] syncChannel matched \(match.GuideNumber) \(match.GuideName) for url=\(base)")
             updateNowPlaying(channel: match)
@@ -705,7 +818,7 @@ final class VLCPlayerWindowManager {
     func open(url: String, title: String, device: HDHRDevice, appState: AppState, channelNumber: String? = nil) {
         self.appState = appState
         currentDeviceID = device.DeviceID
-        VLCBridge.shared.minRate = Float(appState.config.Player_buffer_min_rate) / 100.0
+        VLCBridge.shared.liveMinRate = Float(appState.config.Player_buffer_min_rate) / 100.0
         VLCBridge.shared.setVolume(0)   // mute before buffering starts; Start click unmutes
         VLCBridge.shared.ensurePlayer() // create fresh player if previous session released it
         VLCBridge.shared.play(url: url)

@@ -2145,6 +2145,29 @@ final class AppState: ObservableObject {
     // Uses ensureWebServerRunning()/releaseInternalWebServer() (the same refcounted internal-use
     // path FloatingGuideView uses) so this works even when the user has the LAN web UI disabled in
     // Settings; releaseRecordingRelayIfNeeded() balances the count when the player window closes.
+    // How far behind the live edge Watch Now! starts a recording-relay session — enough that the
+    // file already has a few seconds buffered past the start point (avoids opening right at the
+    // write pointer), while still landing the viewer close to "now" instead of the recording's
+    // start. Purely a starting-position default; the scrub bar can reach anywhere from 0 to live.
+    private static let recordingLiveEdgeBackoffSeconds: Double = 30
+
+    private func recordingElapsedSeconds(_ show: Show) -> Double {
+        max(1, Date().timeIntervalSince(show.show_next ?? Date()))
+    }
+
+    // Raw MPEG-TS has no index — this estimates a byte offset from a constant-bitrate assumption
+    // (bytes written so far / seconds recorded so far), aligned to a 188-byte TS packet boundary.
+    // Approximate, not frame-accurate; good enough for casual scrubbing.
+    private func recordingByteOffset(for show: Show, atSeconds targetSeconds: Double) -> Int? {
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: show.show_recording_path),
+              let size = attrs[.size] as? Int, size > 0 else { return nil }
+        let elapsed = recordingElapsedSeconds(show)
+        let bytesPerSec = Double(size) / elapsed
+        let clamped = max(0, min(targetSeconds, elapsed))
+        let raw = Int(clamped * bytesPerSec)
+        return max(0, raw - raw % 188)
+    }
+
     func watchRecordingInApp(_ show: Show) {
         guard VLCBridge.shared.isAvailable else { return }
         guard !show.show_recording_path.isEmpty,
@@ -2158,15 +2181,31 @@ final class AppState: ObservableObject {
             recordingRelayActive = true
             ensureWebServerRunning()
         }
-        let relayURL = "http://127.0.0.1:\(config.Web_server_port)/api/watch-recording?show=\(show.show_id)"
+        let recordingStart = show.show_next ?? Date()
+        let elapsed         = recordingElapsedSeconds(show)
+        let startSeconds    = max(0, elapsed - Self.recordingLiveEdgeBackoffSeconds)
+        let startOffset     = recordingByteOffset(for: show, atSeconds: startSeconds) ?? 0
+        let relayURL = "http://127.0.0.1:\(config.Web_server_port)/api/watch-recording?show=\(show.show_id)&start=\(startOffset)"
         let mgr = VLCPlayerWindowManager.shared
 
-        let alreadyPlaying = mgr.currentDeviceID == device.DeviceID && VLCBridge.shared.currentURL == relayURL
+        // Compares by show id, not the relay URL — startOffset moves every call (it's derived
+        // from live elapsed time), so comparing full URLs would almost never match even when this
+        // exact show is already open, causing a needless reconnect (remute + rebuffer) instead of
+        // just focusing the window.
+        let alreadyPlaying = mgr.currentDeviceID == device.DeviceID && VLCBridge.shared.recordingShowId == show.show_id
         if alreadyPlaying { mgr.focus(); return }
 
-        glog("[Watch] '\(show.show_title)' from disk via local relay (recording in progress): \(show.show_recording_path)")
+        glog("[Watch] '\(show.show_title)' from disk via local relay, starting ~\(Int(elapsed - startSeconds))s behind live (recording in progress): \(show.show_recording_path)")
         mgr.open(url: relayURL, title: show.show_title, device: device, appState: self)
-        VLCBridge.shared.beginRecordingSeek(showId: show.show_id, recordingStart: show.show_next ?? Date(), seekBaseSeconds: 0)
+        // Deferred to the next run-loop turn: mgr.open() synchronously creates the player window,
+        // and SwiftUI's first render of its toolbar happens inside that same call — setting the
+        // scrub-bar anchor synchronously right after lands in the same transaction and never
+        // produces a visible update (confirmed: beginRecordingSeek logged, but the toolbar's
+        // recordingShowId-driven view never re-rendered). Posting it as a separate main-queue turn
+        // makes it a distinct SwiftUI update the toolbar reliably picks up.
+        DispatchQueue.main.async {
+            VLCBridge.shared.beginRecordingSeek(showId: show.show_id, recordingStart: recordingStart, seekBaseSeconds: startSeconds)
+        }
     }
 
     /// Balances the ensureWebServerRunning() call in watchRecordingInApp(_:) — called from
@@ -2179,26 +2218,30 @@ final class AppState: ObservableObject {
     }
 
     /// Scrubs the in-progress-recording player (VLCPlayerView's scrub bar) to an approximate point
-    /// in the recording. The raw MPEG-TS file has no index, so this estimates a byte offset from
-    /// (bytes written so far / seconds recorded so far) and reconnects the relay stream at that
-    /// offset — not frame-accurate, but close enough for casual scrubbing. Reconnecting calls
-    /// VLCBridge.play(url:) directly (not VLCPlayerWindowManager.open), so it doesn't re-mute or
-    /// re-show the Start overlay the way a channel switch does.
+    /// in the recording. Reconnecting calls VLCBridge.play(url:) directly (not
+    /// VLCPlayerWindowManager.open), so it doesn't re-mute or re-show the Start overlay the way a
+    /// channel switch does.
     func seekRecording(showId: String, toSeconds seconds: Double) {
         guard let show = shows.first(where: { $0.show_id == showId }),
               !show.show_recording_path.isEmpty,
-              let attrs = try? FileManager.default.attributesOfItem(atPath: show.show_recording_path),
-              let size = attrs[.size] as? Int, size > 0 else { return }
-        let started = show.show_next ?? Date()
-        let elapsed = max(1, Date().timeIntervalSince(started))
-        let bytesPerSec = Double(size) / elapsed
-        let clampedSeconds = max(0, min(seconds, elapsed))
-        let rawOffset = Int(clampedSeconds * bytesPerSec)
-        let byteOffset = max(0, rawOffset - rawOffset % 188)   // align to TS packet boundary
+              let byteOffset = recordingByteOffset(for: show, atSeconds: seconds) else { return }
+        let started        = show.show_next ?? Date()
+        let clampedSeconds  = max(0, min(seconds, recordingElapsedSeconds(show)))
         let relayURL = "http://127.0.0.1:\(config.Web_server_port)/api/watch-recording?show=\(showId)&start=\(byteOffset)"
-        glog("[Watch] seeking '\(show.show_title)' to \(Int(clampedSeconds))s (byte \(byteOffset) of \(size))")
+        glog("[Watch] seeking '\(show.show_title)' to \(Int(clampedSeconds))s (byte \(byteOffset))")
         VLCBridge.shared.play(url: relayURL)
         VLCBridge.shared.beginRecordingSeek(showId: showId, recordingStart: started, seekBaseSeconds: clampedSeconds)
+    }
+
+    /// Jumps a recording-relay session back to the live edge (the same ~30s-behind-live default
+    /// watchRecordingInApp starts at) — used by the toolbar's "catch up" button for a recording
+    /// session. VLCBridge.catchUpToLive() alone just replays the current URL verbatim, which for
+    /// the relay means reconnecting at the same stale &start= byte offset — doing nothing toward
+    /// "live" despite the button's tooltip, since that offset never changes on its own.
+    func seekRecordingToLiveEdge(showId: String) {
+        guard let show = shows.first(where: { $0.show_id == showId }) else { return }
+        let elapsed = recordingElapsedSeconds(show)
+        seekRecording(showId: showId, toSeconds: max(0, elapsed - Self.recordingLiveEdgeBackoffSeconds))
     }
 
     func watchRecordingInVLC(_ show: Show) {
@@ -2432,22 +2475,33 @@ final class AppState: ObservableObject {
 
     // MARK: - Conflict detection
 
+    // True only when the in-app VLC window is open on this device AND playing a live device
+    // stream — not the recording-playback relay (bridge.recordingShowId != nil), which reads an
+    // already-recording show from disk over a loopback connection and occupies no tuner of its
+    // own. Without this distinction, watching your own in-progress recording via Watch Now! would
+    // make the app think a tuner is in use that isn't — exactly the cost this feature exists to
+    // avoid (docs/WebServer.md's /api/watch-recording relay).
+    private func vlcOccupiesTuner(for deviceId: String) -> Bool {
+        VLCPlayerWindowManager.shared.currentDeviceID == deviceId && VLCBridge.shared.recordingShowId == nil
+    }
+
     func tunersFull(for deviceId: String) -> Bool {
         guard let device = devices.first(where: { $0.DeviceID == deviceId }),
               let tunerCount = device.TunerCount, tunerCount > 0 else { return false }
         let recActive = recordingShows.filter { $0.hdhr_record == deviceId }.count
-        let vlcActive = VLCPlayerWindowManager.shared.currentDeviceID == deviceId ? 1 : 0
+        let vlcActive = vlcOccupiesTuner(for: deviceId) ? 1 : 0
         return recActive + vlcActive >= tunerCount
     }
 
     // Live active-tuner count for a device, consistent with the guide's status.json-based badge.
     // Takes the max of hardware occupancy (catches externally-used tuners) and this app's
     // recordings + VLC stream (catches a just-started capture not yet reflected in status.json).
-    // Never count recordings alone — the in-app VLC stream also occupies a tuner.
+    // Never count recordings alone — the in-app VLC stream also occupies a tuner (unless it's
+    // playing the recording relay — see vlcOccupiesTuner).
     func activeTunerCount(for deviceId: String) -> Int {
         let hw  = deviceTunerOccupancy[deviceId]?.filter { $0.VctNumber != nil }.count ?? 0
         let rec = recordingShows.filter { $0.hdhr_record == deviceId }.count
-        let vlc = VLCPlayerWindowManager.shared.currentDeviceID == deviceId ? 1 : 0
+        let vlc = vlcOccupiesTuner(for: deviceId) ? 1 : 0
         return max(hw, rec + vlc)
     }
 
