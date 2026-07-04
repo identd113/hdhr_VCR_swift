@@ -1,6 +1,6 @@
 # hdhrVCRplus Changelog
 
-## 2026-07-03 (260703-2203)
+## 2026-07-03 (260703-2203) — v1.3.0
 
 - **Watch Now! on a recording no longer costs a tuner** — clicking "Watch Now!" on a show that's currently recording used to re-request the same channel from the HDHomeRun device, silently consuming a second tuner for content already being captured. It now plays the in-progress recording straight from disk instead, through a new local relay (served over the built-in web server, even with the LAN web UI disabled in Settings) that streams the growing file as it's written — so recording and watching the same show now shares the one tuner already in use. Starts ~30 seconds behind the live edge, matching how live TV normally feels, rather than at the beginning of the file.
 - **Scrub bar for in-progress recordings** — hover over the video while watching a recording to reveal a scrub bar (fades in/out) showing the recording's start time and current live time as clock times, with a slider to jump anywhere already written to disk. Seeking is approximate (the raw recording has no index) but close enough for casual scrubbing.
