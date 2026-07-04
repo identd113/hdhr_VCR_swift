@@ -31,7 +31,6 @@ You already paid for an HDHomeRun tuner and a cable/antenna subscription. You sh
 | **LAN web UI** | ✅ guide/schedule | ✅ + stream | ✅ + stream | ✅ + stream | ❌ |
 | **Cloud-free** | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **Open source** | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **Auto-updates** | ✅ Sparkle | ✅ | ✅ | ✅ | ✅ |
 
 **The short version:** hdhrVCRplus does everything the paid services do, costs nothing, runs entirely on your Mac, and gets out of your way in the menu bar.
 
@@ -100,21 +99,11 @@ You already paid for an HDHomeRun tuner and a cable/antenna subscription. You sh
 
 ---
 
-## What's New
+## What's New in v1.3.0
 
 **Watch a recording without a second tuner** — "Watch Now!" on a currently-recording show now plays it straight from disk instead of tuning the channel again, with a scrub bar to jump around what's already recorded and a channel-picker shortcut to switch between simultaneous recordings.
 
-**Sparkle auto-updater** — Check for Updates button in Settings → About. Updates are signed and verified automatically.
-
-**LAN web server** — Browse the cable guide and manage your schedule from any browser on your network. Shows what's airing now per device with tuner status. Enable in Settings → Web Server. (Live streaming requires the Mac app's built-in VLC player.)
-
-**Built-in VLC player** — "Watch Now!" streams live TV directly in the app. Includes a channel picker, volume, and audio output controls. Free tuner check before opening.
-
-**Discord notifications** — Rich embeds for every recording event with per-event toggles and live Test buttons.
-
-**Per-show bonus time** — Extra recording padding per show, not just globally.
-
-→ [Full changelog](CHANGELOG.md)
+Everything else (LAN web UI, Discord notifications, per-show bonus time, etc.) is covered above under [Features](#features) — see the → [full changelog](CHANGELOG.md) for the complete release history.
 
 ---
 
@@ -226,7 +215,7 @@ Shows that fail more than the configured threshold (default: 3) are automaticall
 | **Web Server** | Enable/disable; port; live status and access URL |
 | **Advanced** | Idle interval; verbose curl logging |
 | **Maintenance** | Rescan Series; Reset Fail Counts; Reactivate Paused; Refresh Guide; Rediscover Devices |
-| **About** | Version history (rendered Markdown); Check for Updates |
+| **About** | Version history (rendered Markdown); link to GitHub |
 
 Settings use a **draft/save** pattern — click **Save** (⌘S) to apply. Closing with unsaved changes prompts to save or discard.
 
