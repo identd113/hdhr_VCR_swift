@@ -67,11 +67,7 @@ You already paid for an HDHomeRun tuner and a cable/antenna subscription. You sh
 ### Scheduling
 
 - **Cable TV-style guide** — scrollable grid showing channels and upcoming shows, color-coded by genre. Click to schedule, double-click to confirm.
-- **Four recording modes:**
-  - **Single** — record one episode, then done
-  - **DateTime** — repeat every week on the same day/time
-  - **SeriesID (Channel)** — any episode of a series on a specific channel
-  - **SeriesID (All)** — any episode of the series, on any channel
+- **Four recording modes** — one-off, weekly repeat, or series-based (see [Recording Modes](#recording-modes) below)
 - **Per-show bonus time** — add extra padding to individual shows (great for sports)
 - **Pop-out guide browser** — browse the full guide in its own window any time, without going through Add Show
 
