@@ -2166,6 +2166,7 @@ final class AppState: ObservableObject {
 
         glog("[Watch] '\(show.show_title)' from disk via local relay (recording in progress): \(show.show_recording_path)")
         mgr.open(url: relayURL, title: show.show_title, device: device, appState: self)
+        VLCBridge.shared.beginRecordingSeek(showId: show.show_id, recordingStart: show.show_next ?? Date(), seekBaseSeconds: 0)
     }
 
     /// Balances the ensureWebServerRunning() call in watchRecordingInApp(_:) — called from
@@ -2175,6 +2176,29 @@ final class AppState: ObservableObject {
         guard recordingRelayActive else { return }
         recordingRelayActive = false
         releaseInternalWebServer()
+    }
+
+    /// Scrubs the in-progress-recording player (VLCPlayerView's scrub bar) to an approximate point
+    /// in the recording. The raw MPEG-TS file has no index, so this estimates a byte offset from
+    /// (bytes written so far / seconds recorded so far) and reconnects the relay stream at that
+    /// offset — not frame-accurate, but close enough for casual scrubbing. Reconnecting calls
+    /// VLCBridge.play(url:) directly (not VLCPlayerWindowManager.open), so it doesn't re-mute or
+    /// re-show the Start overlay the way a channel switch does.
+    func seekRecording(showId: String, toSeconds seconds: Double) {
+        guard let show = shows.first(where: { $0.show_id == showId }),
+              !show.show_recording_path.isEmpty,
+              let attrs = try? FileManager.default.attributesOfItem(atPath: show.show_recording_path),
+              let size = attrs[.size] as? Int, size > 0 else { return }
+        let started = show.show_next ?? Date()
+        let elapsed = max(1, Date().timeIntervalSince(started))
+        let bytesPerSec = Double(size) / elapsed
+        let clampedSeconds = max(0, min(seconds, elapsed))
+        let rawOffset = Int(clampedSeconds * bytesPerSec)
+        let byteOffset = max(0, rawOffset - rawOffset % 188)   // align to TS packet boundary
+        let relayURL = "http://127.0.0.1:\(config.Web_server_port)/api/watch-recording?show=\(showId)&start=\(byteOffset)"
+        glog("[Watch] seeking '\(show.show_title)' to \(Int(clampedSeconds))s (byte \(byteOffset) of \(size))")
+        VLCBridge.shared.play(url: relayURL)
+        VLCBridge.shared.beginRecordingSeek(showId: showId, recordingStart: started, seekBaseSeconds: clampedSeconds)
     }
 
     func watchRecordingInVLC(_ show: Show) {

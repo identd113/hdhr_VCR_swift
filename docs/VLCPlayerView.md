@@ -144,14 +144,16 @@ Pre-selection via `syncChannel` only updates `selectedChannel` — it does **not
 ### Toolbar Layout
 
 ```
-[Channel picker ─────────] Spacer [buffer] [1:1] [⏭] [🕐] [🔊] [─── slider ───] | [🎧 audio track] | [CC picker] | [♩ audio device] | [📺 screen menu]
+[Channel picker ─────────] Spacer [buffer] [1:1] [⏭] [🕐 or scrub bar] [🔊] [─── slider ───] | [🎧 audio track] | [CC picker] | [♩ audio device] | [📺 screen menu]
 ```
+
+`[🕐 or scrub bar]` is the live wall-clock `TimelineView` for a plain live channel, or the recording scrub bar (position label + `Slider` + total label) while watching an actively-recording show via Watch Now! — see below.
 
 - **Channel picker**: `.labelsHidden()`, max width 220 pt, tags use `Optional(ch)` to match the `LineupEntry?` binding
 - **Buffer monitor**: visible only when `bufferInfo.enabled` (i.e. `minRate < 1.0`)
 - **Native resolution button** (`aspectratio`): calls `sizeToNativeVideo()`
-- **Catch Up button** (`forward.end.circle`): calls `VLCBridge.shared.catchUpToLive()` — discards the accumulated buffer and reconnects at the live edge. Poster overlay does NOT re-appear after catch-up (it only appears on a fresh channel switch).
-- **Clock**: live wall-clock `TimelineView`, monospaced
+- **Catch Up button** (`forward.end.circle`): calls `VLCBridge.shared.catchUpToLive()` — discards the accumulated buffer and reconnects at the live edge. Poster overlay does NOT re-appear after catch-up (it only appears on a fresh channel switch). For a recording-relay stream (see below), this just reconnects at the same byte offset rather than jumping to the live edge of the file — a resync, not a "skip to now."
+- **Clock / recording scrub bar**: `bridge.recordingShowId`/`recordingStartDate` non-nil (set by `AppState.watchRecordingInApp(_:)` when Watch Now! is used on an actively-recording show — see `docs/WebServer.md`'s `/api/watch-recording` relay) swaps the plain live wall-clock `TimelineView` for `recordingScrubBar(showId:startDate:)`: elapsed-position label, `Slider`, total-so-far label, all inside the same 1s `TimelineView` tick. Position is estimated from wall-clock time via `VLCBridge.recordingPlaybackSeconds` (seek base + time since last reconnect) — the raw file has no index, so this is not a real libvlc time-based seek. Dragging sets local `@State isScrubbing`/`scrubValue` (so the 1s tick doesn't fight the user's finger); releasing calls `AppState.seekRecording(showId:toSeconds:)`, which estimates a byte offset from (file size / elapsed recording time) and reconnects the relay URL with `&start={offset}` — a new connection, not an in-place seek, so there's a brief rebuffer on each scrub commit. Plain live channels still show the wall-clock clock exactly as before; this only appears while watching an in-progress recording via Watch Now!.
 - **Volume**: speaker icon + `Slider(value:in:0...100)`. `onChange` maps to `VLCBridge.shared.setVolume(Int(v))`.
 - **Audio track picker** (when `bridge.audioTracks.count > 1`): `headphones` SF Symbol + `Picker` (max 150 pt). Shows all audio tracks returned by `libvlc_audio_get_track_description` with `id ≥ 0`. Appears ~3 s after playback starts (first `tickController` tick after `isPlaying`). Defaults to the first track (already active in VLC). `onChange` calls `VLCBridge.shared.setAudioTrack(id:)`. Reset to unloaded (id = −1) on every channel switch.
 - **CC picker** (when `!bridge.spuTracks.isEmpty`): `captions.bubble` SF Symbol + `Picker` (max 130 pt). First row is always "Off" (tag `Int32(-1)`); remaining rows are CC tracks from `libvlc_video_get_spu_description` with `id ≥ 0`. Icon highlights (`.primary`) when a CC track is active. Defaults to Off; some streams auto-enable CC so `setSpuTrack(id: -1)` is called explicitly when `spuTracks` first loads. `onChange` calls `VLCBridge.shared.setSpuTrack(id:)`. Reset on channel switch.

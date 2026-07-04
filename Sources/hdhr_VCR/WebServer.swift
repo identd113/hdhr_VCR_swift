@@ -262,7 +262,10 @@ final class WebServer: @unchecked Sendable {
     // held open, bytes drip-fed as they land on disk) mirrors exactly how the real HDHomeRun tuner
     // stream already works, which VLC already handles fine. show_recording_path never moves once
     // recording starts (AppState writes directly to the final output path — see docs/AppState.md).
-    private func handleWatchRecording(showId: String, conn: NWConnection) {
+    // `start` is an app-level byte offset (not an RFC 7233 Range header) computed by
+    // AppState.seekRecording(_:) from an approximate bytes-per-second estimate — the recording
+    // has no index, so this is an approximate scrub, not a frame-accurate seek.
+    private func handleWatchRecording(showId: String, startOffset: Int, conn: NWConnection) {
         guard !showId.isEmpty, let state = appState else {
             send(.badRequest("missing show id"), on: conn); return
         }
@@ -273,17 +276,27 @@ final class WebServer: @unchecked Sendable {
                 self.send(.notFound("recording not found"), on: conn)
                 return
             }
-            self.streamGrowingFile(path: show.show_recording_path, showId: showId, conn: conn)
+            self.streamGrowingFile(path: show.show_recording_path, showId: showId, startOffset: startOffset, conn: conn)
         }
     }
 
-    private func streamGrowingFile(path: String, showId: String, conn: NWConnection) {
+    private func streamGrowingFile(path: String, showId: String, startOffset: Int, conn: NWConnection) {
         guard let handle = FileHandle(forReadingAtPath: path) else {
             send(.notFound("could not open recording file"), on: conn)
             return
         }
+        var initialBytes = 0
+        if startOffset > 0 {
+            // Clamp to the file's current size so a stale/racy offset (e.g. computed just before
+            // the recording restarted) can't seek past EOF — it'll just enter the normal
+            // wait-for-more-data poll below instead of erroring.
+            let currentSize = (try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? Int
+            let clamped = min(startOffset, currentSize ?? startOffset)
+            handle.seek(toFileOffset: UInt64(max(0, clamped)))
+            initialBytes = clamped
+        }
         let header = "HTTP/1.1 200 OK\r\nContent-Type: video/mp2t\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\n\r\n"
-        glog("[WebServer] watch-recording OPEN show=\(showId) path=\(path)")
+        glog("[WebServer] watch-recording OPEN show=\(showId) path=\(path) startOffset=\(initialBytes)")
         conn.send(content: Data(header.utf8), completion: .contentProcessed({ [weak self] err in
             guard let self, err == nil else {
                 handle.closeFile()
@@ -291,7 +304,7 @@ final class WebServer: @unchecked Sendable {
                 return
             }
             self.pumpGrowingFile(handle: handle, showId: showId, conn: conn,
-                                  bytesSent: 0, waitStreak: 0, waitStartedAt: nil)
+                                  bytesSent: initialBytes, waitStreak: 0, waitStartedAt: nil)
         }))
     }
 
@@ -473,8 +486,10 @@ final class WebServer: @unchecked Sendable {
                 self.registerSSE(conn); return
             }
             if cleanPath == "/api/watch-recording" && method == "GET" {
-                let showId = URLComponents(string: path)?.queryItems?.first(where: { $0.name == "show" })?.value ?? ""
-                self.handleWatchRecording(showId: showId, conn: conn); return
+                let query = URLComponents(string: path)?.queryItems ?? []
+                let showId = query.first(where: { $0.name == "show" })?.value ?? ""
+                let startOffset = query.first(where: { $0.name == "start" }).flatMap { Int($0.value ?? "") } ?? 0
+                self.handleWatchRecording(showId: showId, startOffset: max(0, startOffset), conn: conn); return
             }
             // Reuse the connection only when we fully understand the request's framing and the
             // response is safe to follow with another: HTTP/1.1, a method whose response body the

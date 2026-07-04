@@ -50,6 +50,8 @@ struct VLCPlayerView: View {
     @ObservedObject private var bridge = VLCBridge.shared
     @State private var bufferInfoHovered  = false
     @State private var nativeResHovered   = false
+    @State private var scrubValue: Double = 0     // recording scrub bar — only meaningful while isScrubbing
+    @State private var isScrubbing = false
 
     private var currentGuideEntry: GuideEntry? {
         guard let ch = selectedChannel else { return nil }
@@ -357,12 +359,16 @@ struct VLCPlayerView: View {
             .onHover { if $0 { nativeResHovered = true } }
             .popover(isPresented: $nativeResHovered, arrowEdge: .bottom) { nativeResPopover }
 
-            // Live wall-clock time — meaningful for live TV; no elapsed/scrubbing concept
-            TimelineView(.periodic(from: .now, by: 1.0)) { ctx in
-                Text(ctx.date, style: .time)
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-                    .frame(minWidth: 70)
+            if let showId = bridge.recordingShowId, let startDate = bridge.recordingStartDate {
+                recordingScrubBar(showId: showId, startDate: startDate)
+            } else {
+                // Live wall-clock time — meaningful for live TV; no elapsed/scrubbing concept
+                TimelineView(.periodic(from: .now, by: 1.0)) { ctx in
+                    Text(ctx.date, style: .time)
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                        .frame(minWidth: 70)
+                }
             }
 
             // Volume
@@ -460,6 +466,46 @@ struct VLCPlayerView: View {
         .onChange(of: bridge.isPlaying) { _, playing in
             if !playing { nativeResHovered = false }
         }
+    }
+
+    // MARK: - Recording scrub bar
+
+    // The raw MPEG-TS recording has no index, so this isn't a true libvlc time-based seek — see
+    // VLCBridge.recordingPlaybackSeconds. Ticks at wall-clock pace between scrubs; a drag commits
+    // by reconnecting the relay at a new byte offset (AppState.seekRecording).
+    private func recordingScrubBar(showId: String, startDate: Date) -> some View {
+        TimelineView(.periodic(from: .now, by: 1.0)) { ctx in
+            let elapsed = max(1, ctx.date.timeIntervalSince(startDate))
+            let display = min(isScrubbing ? scrubValue : VLCBridge.shared.recordingPlaybackSeconds, elapsed)
+            HStack(spacing: 6) {
+                Text(Self.formatDuration(display))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .frame(minWidth: 44, alignment: .trailing)
+                Slider(value: Binding(get: { display }, set: { scrubValue = $0 }), in: 0...elapsed,
+                       onEditingChanged: { editing in
+                    if editing {
+                        scrubValue  = display
+                        isScrubbing = true
+                    } else {
+                        isScrubbing = false
+                        state.seekRecording(showId: showId, toSeconds: scrubValue)
+                    }
+                })
+                .frame(minWidth: 120, maxWidth: 220)
+                .accessibilityLabel("Recording position")
+                Text(Self.formatDuration(elapsed))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .frame(minWidth: 44, alignment: .leading)
+            }
+        }
+    }
+
+    private static func formatDuration(_ seconds: Double) -> String {
+        let total = max(0, Int(seconds))
+        let h = total / 3600, m = (total % 3600) / 60, s = total % 60
+        return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
     }
 
     // MARK: - Buffer monitor

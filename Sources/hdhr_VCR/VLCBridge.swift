@@ -104,6 +104,39 @@ final class VLCBridge: ObservableObject {
     @Published var spuTracks:   [(id: Int32, name: String)] = []  // CC/subtitle tracks; empty = none detected
     @Published private(set) var currentURL: String?
     @Published private(set) var videoPixelSize: CGSize? = nil  // physical pixels; nil until first decoded frame
+
+    // MARK: - Recording-playback scrub anchor
+    // Set by AppState.watchRecordingInApp(_:)/seekRecording(_:) when playing a recording through
+    // the WebServer relay (docs/WebServer.md's /api/watch-recording). The relay has no declared
+    // Content-Length, so libvlc can't report a real duration/seek — position is instead derived
+    // purely from wall-clock time assuming ~1x realtime playback (true for a live TV recording),
+    // anchored to the base offset set at the last (re)connect. A scrub commits by reconnecting at
+    // a new byte offset (AppState.seekRecording), which resets the anchor via beginRecordingSeek.
+    @Published private(set) var recordingShowId:    String? = nil
+    @Published private(set) var recordingStartDate: Date?   = nil
+    private var recordingSeekBaseSeconds: Double = 0
+    private var recordingReopenedAt:      Date   = .distantPast
+
+    func beginRecordingSeek(showId: String, recordingStart: Date, seekBaseSeconds: Double) {
+        recordingShowId          = showId
+        recordingStartDate       = recordingStart
+        recordingSeekBaseSeconds = seekBaseSeconds
+        recordingReopenedAt      = Date()
+    }
+
+    func clearRecordingSeek() {
+        recordingShowId          = nil
+        recordingStartDate       = nil
+        recordingSeekBaseSeconds = 0
+        recordingReopenedAt      = .distantPast
+    }
+
+    /// Estimated position within the recording — seek base plus wall-clock time since the last
+    /// (re)connect. Meaningless unless recordingShowId is non-nil.
+    var recordingPlaybackSeconds: Double {
+        recordingSeekBaseSeconds + Date().timeIntervalSince(recordingReopenedAt)
+    }
+
     private var statsTimer:      Timer?
     private var currentRate:     Float  = 1.0
     private var estimatedLagSec: Double = 0.0
@@ -232,6 +265,19 @@ final class VLCBridge: ObservableObject {
     /// Stops current media, sets new media on the same player, resumes play.
     /// Always applies 2s network cache, drops late/corrupt frames, and starts the rate controller.
     func play(url: String) {
+        // Auto-clear the scrub anchor for any URL that isn't the recording relay — covers every
+        // call site that starts a live stream (playChannel, watchInApp) without each of them
+        // needing to remember to clear it themselves. For a relay URL, refresh the wall-clock
+        // anchor point on every (re)connect — including catchUpToLive(), which replays the exact
+        // same relay URL — so recordingPlaybackSeconds doesn't drift ahead of what's actually
+        // playing after a reconnect that isn't a scrub (no seekBaseSeconds change needed there).
+        // AppState.seekRecording/watchRecordingInApp additionally set seekBaseSeconds afterward
+        // via beginRecordingSeek().
+        if url.contains("/api/watch-recording") {
+            recordingReopenedAt = Date()
+        } else {
+            clearRecordingSeek()
+        }
         guard drawableView != nil else {
             glog("[VLC] play deferred — no drawable yet, queuing as pending: \(url)", level: .warning)
             pendingURL = url
@@ -302,6 +348,7 @@ final class VLCBridge: ObservableObject {
     /// Does NOT release the media player itself — call releasePlayer() for full teardown.
     private func stopAndClearState() {
         stopStatsTimer()
+        clearRecordingSeek()
         hasError       = false
         isPlaying      = false
         currentURL     = nil
