@@ -10,9 +10,6 @@ struct MenuContent: View {
     private static let timeFormatter: DateFormatter = {
         let f = DateFormatter(); f.timeStyle = .short; f.dateStyle = .none; return f
     }()
-    private static let weekdayFormatter: DateFormatter = {
-        let f = DateFormatter(); f.dateFormat = "EEEE"; return f
-    }()
     // "Thu" abbreviation for compact upcoming-slot labels in scheduledMenu
     private static let shortWeekdayFormatter: DateFormatter = {
         let f = DateFormatter(); f.dateFormat = "EEE"; return f
@@ -433,23 +430,6 @@ struct MenuContent: View {
         }
     }
 
-    /// "2h 15m", "45m", "30s" — for a positive interval
-    private func relativeLabel(_ interval: TimeInterval) -> String {
-        let total = max(0, Int(interval))
-        let h = total / 3600; let m = (total % 3600) / 60; let s = total % 60
-        if h > 0 { return m > 0 ? "\(h)h \(m)m" : "\(h)h" }
-        if m > 0 { return "\(m)m" }
-        return "\(s)s"
-    }
-
-    private func elapsedLabel(since start: Date) -> String {
-        relativeLabel(Date().timeIntervalSince(start))
-    }
-
-    private func remainingLabel(until end: Date) -> String {
-        relativeLabel(end.timeIntervalSince(Date()))
-    }
-
     // "ch 5.1 · 8:00 PM" (today) or "ch 5.1 · Thu 8:00 PM" (future day)
     private func upcomingLabel(channel: String, date: Date) -> String {
         let t = Self.timeFormatter.string(from: date)
@@ -495,15 +475,6 @@ struct MenuContent: View {
                 // expanding the menu horizontally to fit a single long line.
                 .frame(width: maxWidth, alignment: .leading)
         }
-    }
-
-    // "8:00 PM – 8:30 PM"
-    private func timeRange(_ entry: GuideEntry) -> String {
-        return "\(Self.timeFormatter.string(from: entry.startDate)) – \(Self.timeFormatter.string(from: entry.endDate))"
-    }
-
-    private func weekdayName(_ date: Date) -> String {
-        return Self.weekdayFormatter.string(from: date)
     }
 
     private func truncateSynopsis(_ text: String, limit: Int = 160) -> String {

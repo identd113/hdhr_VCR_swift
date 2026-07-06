@@ -6,22 +6,6 @@ Deferred features and improvements. Add items here when a task is punted. Remove
 
 ## Player / Watch Now
 
-### Watch Now plays live recording file instead of opening a new tuner
-
-When the VLC player is opened for a show that is currently being recorded on the same device, it opens a fresh HTTP stream to the tuner — consuming a second tuner slot unnecessarily. Instead, VLC should play the partial `.ts` file being written by curl, which is valid as a growing file.
-
-This applies everywhere "Watch Now" / "Watch in App" is offered: `WatchNowView`, `MenuContent` (`entryMenu`, `recordingMenu`), and `FloatingGuideView` / `CableGuideView` summary panels.
-
-**Gating**: New `AppConfig` boolean `Watch_live_file: Bool = true` (Settings → Recording or Playback section). When enabled, opening a show that is actively recording uses the output file path instead of the stream URL. When disabled, always opens a new tuner stream.
-
-**Detection**: Check `state.shows.first(where: { $0.show_recording && $0.show_url == channel.url })` (or match by device + channel number) before calling `VLCBridge.play()`. If matched, substitute `show.show_output_path` (or equivalent) as the URL.
-
-**Edge cases**: File may not exist yet if curl just started (guard with `FileManager.default.fileExists`; fall back to stream URL). Seeking works normally in VLC against a growing file. Stopping the recording while VLC is playing the file will leave VLC at end-of-stream — acceptable.
-
-**Key files**: `AppState.swift` (`watchInApp`, tuner check logic), `WatchNowView.swift`, `MenuContent.swift`, `AppConfig` (new field), `SettingsView.swift` (new toggle).
-
----
-
 ### Elapsed/remaining timer in recording menu doesn't tick
 
 Times shown in `recordingMenu` / `scheduledMenu` are computed when the menu opens and stay static for the duration it's open. NSMenu doesn't auto-refresh its view hierarchy. A real-time display would require redesigning recording detail as a window-based popover.
@@ -88,65 +72,10 @@ Power users managing multiple machines must copy the JSON manually. Export / Imp
 
 ---
 
-## UI / Guide
-
-### Replace native cable guide with WKWebView
-
-Embed the existing web guide (`http://localhost:1980/`) in a `WKWebView` instead of maintaining the native SwiftUI cable grid. See full analysis in [`docs/WKWebView_guide_analysis.md`](docs/WKWebView_guide_analysis.md).
-
-**Summary**: Removes ~1,600 lines of fragile AppKit/SwiftUI scroll-sync code. Memory impact is slightly negative (WKWebView WebContent process overhead). Recommended in two phases — FloatingGuideView first (low risk), AddShowView guide step second (needs `WKScriptMessageHandler` bridge).
-
----
-
-### Colored guide entry rows in .menu add-show cascade
-
-Color the background of each guide entry row in the `.menu` mode add-show cascade (channel submenu → entry list) with the genre color, matching the cable guide grid.
-
-**Implementation notes**: SwiftUI `Menu {}` maps to native `NSMenuItem`; `.background()` modifiers are ignored at row level. Requires AppKit interop:
-1. Create a `ColoredMenuItemView: NSView` subclass that draws genre color at low opacity; check `enclosingMenuItem?.isHighlighted` in `draw(_:)` to show `NSColor.selectedMenuItemColor` on hover.
-2. Build entries imperatively and assign `.view = ColoredMenuItemView(...)` on each `NSMenuItem`.
-3. `NSMenu` calls `setNeedsDisplay()` on highlight state changes — checking `isHighlighted` in `draw` is sufficient, no KVO needed.
-
-**Key file**: `MenuContent.swift` → `entryMenu()` (~line 250); `entryColor` already computed via `guideEntryColor(for:onAir:)`.
-
----
-
-## Web UI / SSE
-
-### Tuner button count real-time update
-
-The `#tun-{devId}` button ("1/2" / "2/2 — FULL") in the web guide header doesn't update when a recording starts or stops — it reflects the page-load state until the next `refreshGuide()`. Fix: push `tunerActive` and `tunerTotal` integers in `broadcastRecordingEvent`; JS updates button `textContent` and `className` inline.
-
-`tunerActive` = `state.recordingShows.filter { $0.hdhr_record == device }.count` (already correct at broadcast time). `tunerTotal` = `state.devices.first { $0.DeviceID == device }?.TunerCount ?? 0`.
-
-**Key file**: `Sources/hdhr_VCR/WebServer.swift` — `broadcastRecordingEvent`, SSE `onmessage` handler.
-
----
-
-### Tuner popup `recsByDev` freshness
-
-The `recsByDev` JS variable (drives popup content when user clicks the tuner button) is baked at page load and never updated by SSE events. Two parts to fix:
-
-1. **Flip broadcast order** — `refreshTunerOccupancy()` must run BEFORE `broadcastRecordingEvent` so occupancy data is fresh. For `recording_started` (AppState ~line 1185): move `refreshTunerOccupancy()` above the broadcast. For `recording_stopped`: move the broadcast out of `teardownRecordingState` into `stopRecording` after `refreshTunerOccupancy()`.
-
-2. **Push `recsByDev` JSON** — Extract the `recsByDevJS` closure in `buildHTML` (~lines 716–760) into a private `@MainActor buildRecsByDevDict(state:) -> [String: [[String: String]]]` helper. Include it in `broadcastRecordingEvent` as `"recsByDev": buildRecsByDevDict(state: state)`. JS receives it, sets `recsByDev = d.recsByDev`, and calls `closeTunerPop()` so the user re-opens to fresh data.
-
-**Key files**: `Sources/hdhr_VCR/WebServer.swift` — new helper, `broadcastRecordingEvent`, SSE handler. `Sources/hdhr_VCR/AppState.swift` — call-order change in `startRecording` and `stopRecording`.
-
----
-
 ## Code Quality
 
-### Swift 6-mode warning: `counts` mutated in `pushFreshTunerCounts`
+### Homebrew installer spawning (`runBrew`) needs a sandbox story
 
-`WebServer.swift` → `pushFreshTunerCounts()` mutates the captured `var counts` dict inside the `await MainActor.run { … }` closure, which triggers a `mutation of captured var in concurrently-executing code` warning (an error under the Swift 6 language mode; currently just a warning). Fix by building and returning the dict from the closure instead of mutating a captured var, e.g. `let counts = await MainActor.run { … return dict }`.
+`SettingsView.swift` → `runBrew()` spawns `/opt/homebrew/bin/brew` / `/usr/local/bin/brew` with `install`/`install --cask` to install VLC / hdhomerun_config from the Settings → Maintenance "Tools" section. This is a second class of `Process`-spawning beyond the curl/caffeinate sandbox debt already tracked elsewhere, and isn't covered by the App Store migration plan. There's no sandboxed way to invoke Homebrew, so the likely fix is dropping this row entirely in a sandboxed build.
 
-**Key file**: `WebServer.swift` → `pushFreshTunerCounts()`.
-
----
-
-### Remove unused `_release` symbol from VLCBridge
-
-`_release` (`libvlc_release`) is loaded via `dlsym` in `VLCBridge.init()` but never called. The VLC instance lives for the app's entire lifetime so releasing it is never needed. Remove the stored property, typedef, and `sym()` lookup.
-
-**Key file**: `VLCBridge.swift`.
+**Key file**: `SettingsView.swift` → `runBrew()`.

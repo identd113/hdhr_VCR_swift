@@ -91,7 +91,7 @@ You already paid for an HDHomeRun tuner and a cable/antenna subscription. You sh
 - **Multi-tuner support** — discovers and manages multiple HDHomeRun devices (CONNECT, PRIME, EXTEND, FLEX, etc.) via mDNS and UDP broadcast
 - **EXTEND support** — uses SiliconDust's cloud guide API for HDTC-2US devices
 - **Transcode options** — none (`.m2ts`), heavy, mobile, or internet720 (`.mkv` via the device)
-- **Sleep prevention** — uses `caffeinate` so recordings survive display sleep
+- **Sleep prevention** — holds an IOKit power assertion so recordings survive display sleep
 
 ---
 
@@ -170,17 +170,11 @@ Config is saved automatically at:
 
 ## Adding Shows
 
-### Wizard mode (default)
-
 **Menu bar icon → Add Show…** opens a 3-step wizard:
 
 1. **Select Tuner** — choose device (skipped with only one tuner)
 2. **Guide** — browse the cable grid; click to select, double-click to advance
 3. **Details** — recording type, air days, transcode, save folder
-
-### Menu mode
-
-Switch in **Settings → General → Add Show Method** for a faster inline flow directly from the menu bar.
 
 ---
 
@@ -212,7 +206,7 @@ Shows that fail more than the configured threshold (default: 3) are automaticall
 
 | Section | Key options |
 |---------|-------------|
-| **General** | Launch at Login; Add Show mode (wizard vs menu) |
+| **General** | Launch at Login |
 | **Recording** | Save folder; transcode profile; min free disk; failure threshold |
 | **Guide** | Hours of guide data; series scan retry interval |
 | **Notifications** | Up Next / Recording Soon timing; Discord webhook + per-event toggles |
@@ -227,7 +221,7 @@ Settings use a **draft/save** pattern — click **Save** (⌘S) to apply. Closin
 
 ## Recordings
 
-Default save location: `~/Documents/hdhr_videos` (created automatically). Configurable globally in Settings or per-show via **Edit…** in the menu.
+Default save location: `~/Movies/hdhr_videos` (created automatically). Configurable globally in Settings or per-show via **Edit…** in the menu.
 
 File naming: `ShowTitle_Channel_YYYYMMDD_HHmm.m2ts` (or `.mkv` for transcoded recordings).
 

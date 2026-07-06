@@ -156,8 +156,8 @@ final class AppState: ObservableObject {
     private var lastDeviceProbe: Date     = .distantPast
     private var nextQuickProbe: Date?     = nil   // set when any device misses a probe; cleared when all are seen
     private var guideRefreshInFlight: Bool = false
-    // Tracks in-flight lineup fetches so concurrent callers don't fire duplicate requests
-    private var loadingLineupDevices: Set<String> = []
+    // Tracks in-flight lineup fetches so concurrent callers await the same Task instead of polling
+    private var loadingLineupTasks: [String: Task<Void, Never>] = [:]
     // Per-device exponential backoff after guide API failures (replaces flat guideLoadFailTimes).
     private var guideApiBackoff: [String: APIBackoff] = [:]
     private var failThreshold: Int { config.Fail_count_setting }
@@ -502,24 +502,23 @@ final class AppState: ObservableObject {
         webServer.broadcastEvent(["type": "deviceOnline", "deviceId": newDevices.map { $0.DeviceID }.joined(separator: ",")])
     }
 
-    // Coalesces concurrent callers — only the first fetches; others wait. Guards against
-    // silent try? failures in fetchAllLineups leaving lineups[deviceID] nil.
+    // Coalesces concurrent callers — only the first fetches; others await its Task directly. Guards
+    // against silent try? failures in fetchAllLineups leaving lineups[deviceID] nil.
     func ensureLineupLoaded(for device: HDHRDevice) async {
         let id = device.DeviceID
         guard lineups[id]?.isEmpty ?? true else { return }
-        // Coalesce concurrent callers: only the first proceeds; others wait for it to finish.
-        guard !loadingLineupDevices.contains(id) else {
-            var waited = 0
-            while loadingLineupDevices.contains(id), waited < 50 {
-                try? await Task.sleep(nanoseconds: 100_000_000)
-                waited += 1
-            }
+        // Coalesce concurrent callers: only the first proceeds; others await its in-flight Task.
+        if let existing = loadingLineupTasks[id] {
+            await existing.value
             return
         }
-        loadingLineupDevices.insert(id)
-        defer { loadingLineupDevices.remove(id) }
-        glog("[Lineup] \(id) lineup missing — fetching on demand")
-        await fetchAllLineups(for: [device])
+        let task = Task {
+            glog("[Lineup] \(id) lineup missing — fetching on demand")
+            await self.fetchAllLineups(for: [device])
+        }
+        loadingLineupTasks[id] = task
+        defer { loadingLineupTasks.removeValue(forKey: id) }
+        await task.value
     }
 
     private func fetchAllLineups(for devices: [HDHRDevice]) async {
@@ -1308,6 +1307,16 @@ final class AppState: ObservableObject {
         signalDropoutTicks.removeValue(forKey: show.show_id)
         shows[index].show_recording = false
         shows[index].show_tuner_resource = ""
+        // Optimistically clear this tuner's hardware-reported lock so the immediate broadcast
+        // below (and activeTunerCount's max(hw, rec+vlc)) doesn't over-report occupancy for the
+        // ~1.5s until refreshTunerOccupancy's next poll confirms the release.
+        if !show.show_tuner_resource.isEmpty,
+           let tuners = deviceTunerOccupancy[show.hdhr_record],
+           let idx = tuners.firstIndex(where: { $0.Resource.lowercased() == show.show_tuner_resource }) {
+            deviceTunerOccupancy[show.hdhr_record]?[idx] = DeviceTunerInfo(
+                Resource: tuners[idx].Resource, VctNumber: nil,
+                TargetIP: tuners[idx].TargetIP, SignalQualityPercent: tuners[idx].SignalQualityPercent)
+        }
         webServer.broadcastRecordingEvent(type: "recording_stopped", channel: show.show_channel, device: show.hdhr_record, state: self)
     }
 
@@ -2485,12 +2494,13 @@ final class AppState: ObservableObject {
         VLCPlayerWindowManager.shared.currentDeviceID == deviceId && VLCBridge.shared.recordingShowId == nil
     }
 
+    // Uses activeTunerCount's hardware-polled status.json count (not just this instance's own
+    // recordingShows) so a tuner locked by another machine running this app against the same
+    // physical HDHomeRun device is also honored — not just tuners this instance started itself.
     func tunersFull(for deviceId: String) -> Bool {
         guard let device = devices.first(where: { $0.DeviceID == deviceId }),
               let tunerCount = device.TunerCount, tunerCount > 0 else { return false }
-        let recActive = recordingShows.filter { $0.hdhr_record == deviceId }.count
-        let vlcActive = vlcOccupiesTuner(for: deviceId) ? 1 : 0
-        return recActive + vlcActive >= tunerCount
+        return activeTunerCount(for: deviceId) >= tunerCount
     }
 
     // Live active-tuner count for a device, consistent with the guide's status.json-based badge.
@@ -2537,7 +2547,7 @@ final class AppState: ObservableObject {
         alert.messageText = "Recordings in progress"
         let list = recordingShows.map { "• \($0.show_title) (Channel \($0.show_channel))" }.joined(separator: "\n")
         alert.informativeText = "These recordings will be stopped:\n\n\(list)\n\nChoose \"Keep Recording\" to exit while recordings continue — relaunch the app to reconnect."
-        alert.addButton(withTitle: "Keep Recording & Quit") // default (Return key) — caffeinate+curl survive as orphans; reattachRecordings() reconnects on next launch
+        alert.addButton(withTitle: "Keep Recording & Quit") // default (Return key) — curl survives as an orphan; reattachRecordings() reconnects on next launch
         alert.addButton(withTitle: "Stop Recordings & Quit")
         alert.addButton(withTitle: "Go Back")
         alert.alertStyle = .warning

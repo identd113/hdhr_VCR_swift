@@ -23,7 +23,7 @@ struct AddShowView: View {
         let stored = UserDefaults.standard.string(forKey: "defaultSaveDirectory") ?? ""
         if !stored.isEmpty { return URL(fileURLWithPath: stored) }
         return FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Documents/hdhr_videos")
+            .appendingPathComponent("Movies/hdhr_videos")
     }()
 
     var body: some View {
@@ -403,7 +403,7 @@ private struct AddShowWebView: NSViewRepresentable {
         func webView(_ wv: WKWebView, didFinish _: WKNavigation!) {
             let isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             wv.evaluateJavaScript(
-                "localStorage.setItem('theme','\(isDark ? "dark" : "light")');if(typeof applyTheme==='function')applyTheme();",
+                "localStorage.setItem('theme','\(isDark ? "dark" : "light")');if(typeof setTheme==='function')setTheme('\(isDark ? "dark" : "light")');",
                 completionHandler: nil
             )
         }

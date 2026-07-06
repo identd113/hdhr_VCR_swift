@@ -33,12 +33,11 @@ hdhr_VCRApp.swift          Entry point — MenuBarExtra (.menu style — native 
 AppState.swift             @MainActor ObservableObject — all app logic, idle loop, state
 HDHRManager.swift          Device discovery (concurrent known-hosts + mDNS + UDP) and lineup fetch
 GuideStore.swift           Guide cache: fetch, index, query
-RecordingManager.swift     Launches/stops caffeinate+curl processes, sleep prevention
+RecordingManager.swift     Launches/stops curl processes, IOKit sleep-prevention assertions
 ConfigManager.swift        Reads/writes ~/Library/Application Support/hdhrVCRplus/hdhr_VCR-{hostname}.json
 WebServer.swift            NWListener LAN web server (port 1980) — guide HTML, JSON API, SSE push
 Models.swift               All data types + glog() logging function
 DiscordNotifier.swift      sendDiscordEmbed() — posts embeds to a Discord webhook URL
-AddShowMode.swift          Enum: .menu vs .wizard
 ChannelIconCache.swift     Actor: async disk-backed cache for channel logos
 ChannelSignalStore.swift   Actor-like @MainActor store: per-channel SNQ history + stats
 Views/
@@ -65,7 +64,7 @@ Systems: [AppState](docs/AppState.md) · [GuideStore](docs/GuideStore.md) · [Re
 
 ## Invariants & Gotchas
 
-**Tuner occupancy** — watching and recording both occupy a tuner, *except* watching a currently-recording show via Watch Now! (`AppState.watchRecordingInApp`), which plays it back from disk through the local relay (`docs/WebServer.md`'s `/api/watch-recording`) and consumes none. Always use `AppState.tunersFull(for:)` (counts `recordingShows` + in-app VLC stream, via the private `vlcOccupiesTuner(for:)` helper that excludes a relay session — checks `VLCBridge.shared.recordingShowId == nil`). Never count recordings alone, and never count the VLC stream unconditionally — check whether it's the relay first.
+**Tuner occupancy** — watching and recording both occupy a tuner, *except* watching a currently-recording show via Watch Now! (`AppState.watchRecordingInApp`), which plays it back from disk through the local relay (`docs/WebServer.md`'s `/api/watch-recording`) and consumes none. Always use `AppState.tunersFull(for:)`, which delegates to `activeTunerCount(for:)` = `max(status.json hardware-polled count, recordingShows + in-app VLC stream)` (VLC via the private `vlcOccupiesTuner(for:)` helper that excludes a relay session — checks `VLCBridge.shared.recordingShowId == nil`). The hardware-polled half matters when multiple machines run this app against the same physical HDHomeRun device — local `recordingShows` alone only sees this instance's own recordings. Never count recordings alone, and never count the VLC stream unconditionally — check whether it's the relay first.
 
 **Web guide rows are never hidden** — guide filtering (genre, infomercial) dims individual `.g-prog` blocks via `.g-prog-dim`; `.g-row` elements stay visible at all times. Never add `display:none` to a row as a filter mechanism.
 

@@ -1,5 +1,14 @@
 # hdhrVCRplus Changelog
 
+## 2026-07-06
+
+- **Fix — tuner-full check now honors another machine's recordings** — `tunersFull(for:)` (the gate checked before starting a new recording) previously only counted this instance's own `recordingShows`, missing tuners already locked by another machine running this app against the same physical HDHomeRun device. It now uses the same hardware-polled `status.json` count the display badge already relied on, giving an accurate global tuner count across machines.
+- **Fix — tuner badge could briefly over-report occupancy right after a recording stops** — the SSE-pushed tuner count takes the max of the hardware-polled and software-tracked occupancy; on a stop, a stale hardware count could outrank the already-decremented software count for up to ~1.5s. The just-released tuner's hardware entry is now cleared immediately instead of waiting for the next poll.
+- **Fix — dead theme-sync call in Add Show wizard** — the embedded web guide's `didFinish` handler called a nonexistent `applyTheme()` function (a silent no-op); it now calls `setTheme(...)` like `FloatingGuideView` already did, so dark/light mode applies immediately instead of on the guide's next load.
+- **Fix — wrong default save folder in Add Show wizard** — a first-time user who went straight to the guide step without opening Settings could get shows saved to `~/Documents/hdhr_videos` instead of the real default, `~/Movies/hdhr_videos`.
+- **Fix — lineup-load waiters polled instead of awaiting** — `ensureLineupLoaded` polled a `loadingLineupDevices` set every 100ms (up to 5s) while waiting for a concurrent in-flight fetch; it now stores and awaits the in-flight `Task` directly, so coalesced callers resume the instant the fetch finishes.
+- **Cleanup** — removed an orphaned label-formatting chain in `MenuContent.swift` (`relativeLabel`/`elapsedLabel`/`remainingLabel`/`timeRange`/`weekdayName` + a static `weekdayFormatter`) that nothing called.
+
 ## 2026-07-03 (260703-2203) — v1.3.0
 
 - **Watch Now! on a recording no longer costs a tuner** — clicking "Watch Now!" on a show that's currently recording used to re-request the same channel from the HDHomeRun device, silently consuming a second tuner for content already being captured. It now plays the in-progress recording straight from disk instead, through a new local relay (served over the built-in web server, even with the LAN web UI disabled in Settings) that streams the growing file as it's written — so recording and watching the same show now shares the one tuner already in use. Starts ~30 seconds behind the live edge, matching how live TV normally feels, rather than at the beginning of the file.

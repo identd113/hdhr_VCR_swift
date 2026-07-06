@@ -83,7 +83,7 @@ Schedules a recording by calling `state.addShowFromGuide(entry:type:device:chann
 | `"seriesChannel"` | `.seriesChannel` | Record new episodes via SeriesID on this channel |
 | `"seriesAll"` | `.seriesAll` | Record new episodes via SeriesID on any channel |
 
-**`tunerFull`** is determined by `AppState.tunersFull(for: deviceId)` — this counts both active recordings **and** the in-app VLC stream. Do not use raw `deviceTunerOccupancy` counts for this check, as VLC occupies a tuner that does not appear in `status.json`.
+**`tunerFull`** is determined by `AppState.tunersFull(for: deviceId)`, which delegates to `activeTunerCount(for:)` — `max(hardware-polled deviceTunerOccupancy count, this instance's recordingShows + in-app VLC stream)`. Neither signal alone is sufficient: raw `deviceTunerOccupancy` misses the in-app VLC stream (it doesn't appear in `status.json`), while local `recordingShows` alone misses tuners locked by another machine running this app against the same physical device.
 
 **Success:** `{"ok": true, "title": "Show Title", "tunerFull": false, "recStarted": false, "tunerActive": 1, "tunerTotal": 2}`
 
@@ -348,7 +348,7 @@ Fixed overlay (z-index 200). Positioned below the clicked tuner badge. Shows:
 
 **Generation token (`tPopGen`):** bumped on every `showTunerInfo` open and `closeTunerPop`. Each enrichment fetch (signal-stats and now-airing) captures `gen` at start and bails if `gen !== tPopGen` when its response arrives — prevents stale fetches from a closed/rebuilt popover appending duplicate or outdated DOM.
 
-Active tuner detection: `DeviceTunerInfo` entries where `VctNumber != nil`. Idle slots (returned by the device with only `"Resource"` present) are not counted. Occupancy data comes from `AppState.deviceTunerOccupancy`, kept warm by the idle loop (see Tuner occupancy section).
+Active tuner detection: `DeviceTunerInfo` entries where `VctNumber != nil`. Idle slots (returned by the device with only `"Resource"` present) are not counted. Occupancy data comes from `AppState.deviceTunerOccupancy`, kept warm by the idle loop and optimistically updated on recording stop (see Tuner occupancy section).
 
 **`GET /api/now-airing/{devId}/{ch}`** — returns `{title, epTitle, poster, endTime}` for the currently-airing guide entry on that device/channel. `endTime` is a Unix timestamp string.
 
@@ -732,7 +732,7 @@ This all exists because every request without keep-alive pays a full TCP handsha
 
 On SSE connect, `pushFreshTunerCounts()` fires immediately: it reads `state.recordingShows` on `@MainActor` and broadcasts a `tuner_update` event. This corrects the baked-in counts for any client that loads the page before a recording starts — the badge updates within milliseconds of SSE connection rather than waiting for the next recording event or idle tick.
 
-`deviceTunerOccupancy` (populated by `fetchDeviceStatus` in the idle loop) is used for the tuner popover detail rows — per-tuner channel and title — not for the badge count.
+`deviceTunerOccupancy` (populated by `fetchDeviceStatus` in the idle loop) is used for the tuner popover detail rows — per-tuner channel and title — not for the badge count. `teardownRecordingState` also writes into it directly on a recording stop, clearing the just-released tuner's `VctNumber` to `nil` immediately rather than waiting for the next idle-loop poll — otherwise `activeTunerCount`'s `max(hardwarePolledCount, recordingShows+vlc)` could transiently over-report that tuner as still occupied for the ~1.5s until the poll catches up.
 
 ---
 

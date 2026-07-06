@@ -250,12 +250,7 @@ A plain `Button` with `Label("Add Show…", systemImage: "plus")`. Opens the `"a
 |---|---|
 | `showInfoHeader(_:entry:)` | Shared poster + title + episode + synopsis block; always shows yellow flag triangle |
 | `stateIcon(_:)` | Emoji for show type |
-| `relativeLabel(_:)` | "2h 15m", "45m", "30s" from a `TimeInterval` |
-| `elapsedLabel(since:)` | `relativeLabel(Date().timeIntervalSince(start))` |
-| `remainingLabel(until:)` | `relativeLabel(end.timeIntervalSince(Date()))` |
 | `upcomingLabel(channel:date:)` | `"Channel 5.1 · Thu 8:00 PM"` / `"Channel 5.1 · 8:00 PM"` for today |
-| `timeRange(_:)` | `"8:00 PM – 9:00 PM"` — inside entry submenus |
-| `weekdayName(_:)` | Full weekday name from a `Date` |
 | `entry.episodeInfoLabel` | `GuideEntry` extension (Models.swift); joins `EpisodeNumber` + `EpisodeTitle` with ` · `; nil if both empty |
 | `truncateSynopsis(_:limit:)` | Clips to 160 chars at a word boundary |
 | `editShow(_:)` | Sets `state.editingShowId`, calls `open("edit-show")` |
