@@ -112,3 +112,4 @@ Systems: [AppState](docs/AppState.md) · [GuideStore](docs/GuideStore.md) · [Re
 | `log-detective` | Answers "what happened?" from `hdhrVCRplus.log` — knows prefixes, benign noise, healthy-session signatures, bounded-read rule |
 | `docs-auditor` | Cross-checks `docs/*.md` claims against code; reports drift, never reconciles (flag-and-stop rule) |
 | `invariants-reviewer` | Reviews a diff against the Invariants & Gotchas above — use as an extra finder angle in `/code-review` or standalone pre-commit |
+| `swift-quality-reviewer` | Swift/SwiftUI/network craftsmanship review — hacks, diff scope, dead code, efficiency, notarization/App Store fitness; appends observations to `.claude/CODE_NOTES.md` |
