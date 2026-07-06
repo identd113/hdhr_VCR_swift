@@ -104,3 +104,11 @@ Systems: [AppState](docs/AppState.md) · [GuideStore](docs/GuideStore.md) · [Re
 | `tools/setup_signing.sh` | One-time: Developer ID cert + notarization creds (run before first `deploy_release.sh`) |
 | `tools/generate_sparkle_keys.sh` | One-time: EdDSA Sparkle keys → `Info.plist` / `~/.sparkle_private_key` |
 | `tools/mock_hdhr.py` | Fake HDHomeRun device for discovery/guide/fault-injection testing |
+
+## Agents (`.claude/agents/`)
+
+| | |
+|---|---|
+| `log-detective` | Answers "what happened?" from `hdhrVCRplus.log` — knows prefixes, benign noise, healthy-session signatures, bounded-read rule |
+| `docs-auditor` | Cross-checks `docs/*.md` claims against code; reports drift, never reconciles (flag-and-stop rule) |
+| `invariants-reviewer` | Reviews a diff against the Invariants & Gotchas above — use as an extra finder angle in `/code-review` or standalone pre-commit |

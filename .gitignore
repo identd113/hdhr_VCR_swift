@@ -6,6 +6,9 @@ TestMacro
 CLAUDE.md
 /src
 /hdhrVCRplus.app
-/.claude
+# .claude: track durable project config (agents/, CONVENTIONS.md); ignore local state
+/.claude/settings.local.json
+/.claude/worktrees/
+/.claude/scheduled_tasks.lock
 Tests/hdhr_VCRTests/__Snapshots__/
 codeReview.md
