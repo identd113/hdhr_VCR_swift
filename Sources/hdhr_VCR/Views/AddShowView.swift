@@ -216,8 +216,46 @@ struct AddShowView: View {
                     onSeriesTypeChange: { /* no-op: series flags applied at save() */ },
                     onChooseFolder: { chooseFolder() }
                 )
+
+                otherAiringsSection
             }
             .padding()
+        }
+    }
+
+    // MARK: - Other Airings
+
+    // Other upcoming airings of the same SeriesID, excluding the airing just selected in Step 2.
+    // SeriesID-recording types only (seriesType.isSeries) — a Single/DateTime show records
+    // one specific slot, so other airings aren't relevant to what will actually record.
+    // Bounded by GuideStore's ~29h guide window per device — best-effort preview, not exhaustive.
+    private var otherAirings: [(channel: String, entry: GuideEntry)] {
+        guard seriesType.isSeries, !show.show_seriesid.isEmpty else { return [] }
+        let selectedStart = show.show_next.map { Int($0.timeIntervalSince1970) }
+        return state.upcomingGuideEpisodes(seriesID: show.show_seriesid)
+            .filter { !($0.channel == show.show_channel && $0.entry.StartTime == selectedStart) }
+    }
+
+    // Hidden entirely when there's nothing informative to show.
+    @ViewBuilder
+    private var otherAiringsSection: some View {
+        let airings = otherAirings
+        if !airings.isEmpty {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Other Upcoming Airings")
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
+                ForEach(Array(airings.enumerated()), id: \.offset) { _, pair in
+                    OtherAiringRow(
+                        channel: pair.channel,
+                        entry: pair.entry,
+                        channelName: state.lineups[pair.entry.deviceId]?
+                            .first(where: { $0.GuideNumber == pair.channel })?.GuideName
+                    )
+                }
+            }
+            .padding(8)
+            .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
         }
     }
 
@@ -407,6 +445,29 @@ private struct AddShowWebView: NSViewRepresentable {
                 completionHandler: nil
             )
         }
+    }
+}
+
+// Read-only single-line row for the "Other Upcoming Airings" panel on the Details step.
+// No show title (redundant — the whole panel is about one series); episode info only
+// when the guide actually has it.
+private struct OtherAiringRow: View {
+    let channel: String        // GuideNumber, e.g. "4.1"
+    let entry: GuideEntry
+    let channelName: String?   // resolved GuideName, if lineup is loaded
+
+    var body: some View {
+        Text(line)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+    }
+
+    private var line: String {
+        var parts = [upcomingFormatter.string(from: entry.startDate)]
+        parts.append(channelName.map { "Ch \(channel) \($0)" } ?? "Ch \(channel)")
+        if let info = entry.episodeInfoLabel { parts.append(info) }
+        return parts.joined(separator: " · ")
     }
 }
 
