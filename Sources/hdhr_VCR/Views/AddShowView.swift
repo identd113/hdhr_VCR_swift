@@ -241,22 +241,48 @@ struct AddShowView: View {
     private var otherAiringsSection: some View {
         let airings = otherAirings
         if !airings.isEmpty {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 6) {
                 Text("Other Upcoming Airings")
                     .font(.caption.bold())
                     .foregroundStyle(.secondary)
-                ForEach(Array(airings.enumerated()), id: \.offset) { _, pair in
-                    OtherAiringRow(
-                        channel: pair.channel,
-                        entry: pair.entry,
-                        channelName: state.lineups[pair.entry.deviceId]?
-                            .first(where: { $0.GuideNumber == pair.channel })?.GuideName
-                    )
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(airings.enumerated()), id: \.offset) { index, pair in
+                        if index > 0 { Divider() }
+                        OtherAiringRow(
+                            channel: pair.channel,
+                            entry: pair.entry,
+                            channelName: state.lineups[pair.entry.deviceId]?
+                                .first(where: { $0.GuideNumber == pair.channel })?.GuideName,
+                            channelLogo: state.channelImageURLs["\(pair.entry.deviceId):\(pair.channel)"]
+                                .flatMap { state.channelIconImages[$0] },
+                            onSwitchTo: { switchToAiring(channel: pair.channel, entry: pair.entry) }
+                        )
+                    }
                 }
             }
             .padding(8)
             .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
         }
+    }
+
+    // Double-click on an "Other Upcoming Airings" row re-anchors the Details step to that
+    // airing — same field set as the initial guide selection (applyWebGuideEntry/applyPendingEntry),
+    // minus seriesType/airDays/bonus, which are left as the user already set them on this step.
+    private func switchToAiring(channel: String, entry: GuideEntry) {
+        if selectedDevice?.DeviceID != entry.deviceId {
+            selectedDevice = state.devices.first(where: { $0.DeviceID == entry.deviceId })
+        }
+        show.show_title    = entry.Title
+        show.show_channel  = channel
+        show.show_length   = entry.durationMinutes
+        show.show_next     = entry.startDate
+        show.show_end      = entry.endDate
+        show.show_logo_url = entry.ImageURL ?? show.show_logo_url
+        show.show_genre    = entry.firstGenre ?? show.show_genre
+        show.hdhr_record   = entry.deviceId
+        show.show_url      = state.lineups[entry.deviceId]?.first(where: { $0.GuideNumber == channel })?.URL ?? ""
+        let comps = Calendar.current.dateComponents([.hour, .minute], from: entry.startDate)
+        show.show_time = Double(comps.hour ?? 20) + Double(comps.minute ?? 0) / 60.0
     }
 
     // MARK: - Nav bar
@@ -448,26 +474,62 @@ private struct AddShowWebView: NSViewRepresentable {
     }
 }
 
-// Read-only single-line row for the "Other Upcoming Airings" panel on the Details step.
-// No show title (redundant — the whole panel is about one series); episode info only
-// when the guide actually has it.
+// Row for the "Other Upcoming Airings" panel on the Details step. No show title (redundant —
+// the whole panel is about one series); episode info only when the guide has it. Styling
+// mirrors WatchNowRow (channel logo + bold/secondary text hierarchy) and reuses the guide's
+// genre color (guideEntryColor) as a leading accent bar — same visual language as the guide
+// grid and Watch Now, just condensed to a compact list row. Double-click re-anchors the whole
+// Details step to this airing (see AddShowView.switchToAiring) — a light hover tint plus a
+// tooltip are the only affordance, since double-click isn't otherwise used in this view.
 private struct OtherAiringRow: View {
     let channel: String        // GuideNumber, e.g. "4.1"
     let entry: GuideEntry
     let channelName: String?   // resolved GuideName, if lineup is loaded
+    let channelLogo: NSImage?  // resolved from state.channelImageURLs/channelIconImages, if cached
+    let onSwitchTo: () -> Void
+
+    @State private var hovering = false
 
     var body: some View {
-        Text(line)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
+        HStack(alignment: .top, spacing: 8) {
+            RoundedRectangle(cornerRadius: 1.5)
+                .fill(guideEntryColor(for: entry, onAir: true))
+                .frame(width: 3)
+            channelIcon
+            VStack(alignment: .leading, spacing: 1) {
+                Text(upcomingFormatter.string(from: entry.startDate))
+                    .font(.caption.weight(.semibold))
+                Text(channelName.map { "Ch \(channel) · \($0)" } ?? "Ch \(channel)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                if let info = entry.episodeInfoLabel {
+                    Text(info)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 4)
+        .padding(.horizontal, 4)
+        .background(hovering ? Color.secondary.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 4))
+        .contentShape(Rectangle())
+        .onHover { hovering = $0 }
+        .onTapGesture(count: 2, perform: onSwitchTo)
+        .help("Double-click to record this airing instead")
     }
 
-    private var line: String {
-        var parts = [upcomingFormatter.string(from: entry.startDate)]
-        parts.append(channelName.map { "Ch \(channel) \($0)" } ?? "Ch \(channel)")
-        if let info = entry.episodeInfoLabel { parts.append(info) }
-        return parts.joined(separator: " · ")
+    @ViewBuilder
+    private var channelIcon: some View {
+        Group {
+            if let logo = channelLogo {
+                Image(nsImage: logo).resizable().scaledToFit()
+            } else {
+                Image(systemName: "tv").font(.caption2).foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: 18, height: 18)
     }
 }
 

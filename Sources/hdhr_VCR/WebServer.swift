@@ -636,9 +636,11 @@ final class WebServer: @unchecked Sendable {
                 let items: [[String: Any]] = state.upcomingGuideEpisodes(seriesID: seriesId).map { pair in
                     let chName = state.lineups[pair.entry.deviceId]?
                         .first(where: { $0.GuideNumber == pair.channel })?.GuideName
-                    return ["start": pair.entry.StartTime, "ch": pair.channel,
+                    let logoURL = state.channelImageURLs["\(pair.entry.deviceId):\(pair.channel)"] ?? ""
+                    return ["start": pair.entry.StartTime, "end": pair.entry.EndTime, "ch": pair.channel,
                             "chName": chName ?? "", "ep": pair.entry.episodeInfoLabel ?? "",
-                            "device": pair.entry.deviceId]
+                            "device": pair.entry.deviceId, "genre": pair.entry.firstGenre ?? "",
+                            "chLogo": logoURL, "title": pair.entry.Title]
                 }
                 let json = (try? JSONSerialization.data(withJSONObject: ["airings": items]))
                     .flatMap { String(data: $0, encoding: .utf8) } ?? "{\"airings\":[]}"
@@ -1730,6 +1732,16 @@ final class WebServer: @unchecked Sendable {
         html.lm .sp-rec{color:#cc2020}
         .sp-div{height:1px;background:var(--b1);margin:2px 0}
         .sp-empty{font-size:.8rem;color:var(--t5);padding:12px 14px;text-align:center}
+        /* ── Other Upcoming Airings (record modal) — same row language as .sp-row ── */
+        .rm-air-row{display:flex;align-items:flex-start;gap:7px;padding:5px 4px;margin:0 -4px;border-bottom:1px solid var(--b0);border-radius:4px;cursor:pointer;transition:background .12s}
+        .rm-air-row:last-child{border-bottom:none}
+        .rm-air-row:hover{background:rgba(127,127,127,.14)}
+        .rm-air-bar{width:3px;align-self:stretch;border-radius:2px;flex-shrink:0}
+        .rm-air-logo{width:18px;height:18px;object-fit:contain;flex-shrink:0;margin-top:1px}
+        .rm-air-info{flex:1;min-width:0}
+        .rm-air-t{font-size:.78rem;color:var(--t0);font-weight:600}
+        .rm-air-ch{font-size:.7rem;color:var(--t4);margin-top:1px}
+        .rm-air-ep{font-size:.7rem;color:var(--t4);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
         /* ── Record / Edit modals ── */
         #rec-modal>div,#edit-modal>div{background:var(--s2)!important;border-color:var(--b2)!important}
         #em-rec-warn{color:#ff9090!important;background:#3c1818!important;border-color:#883030!important}
@@ -1823,7 +1835,7 @@ final class WebServer: @unchecked Sendable {
             <div id="rm-sid" class="em-row" style="display:none"><div class="em-lbl">SeriesID</div><div id="rm-sid-val" class="em-sid"></div></div>
             <div id="rm-airings" class="em-row" style="display:none">
               <div class="em-lbl">Other Upcoming Airings</div>
-              <div id="rm-airings-list" style="font-size:.72rem;color:var(--t4);display:flex;flex-direction:column;gap:2px;margin-top:2px"></div>
+              <div id="rm-airings-list" style="margin-top:2px"></div>
             </div>
             <div id="rm-days-row" class="em-row" style="display:none"><div class="em-lbl" id="rm-days-lbl">Days</div><div class="em-days" id="rm-days"></div></div>
             <div class="em-row"><div class="em-lbl">Transcode</div><select id="rm-transcode" class="em-input"><option value="none">None (copy stream)</option><option value="heavy">Heavy (H.264 CRF 18)</option><option value="mobile">Mobile (480p H.264)</option><option value="internet720">Internet 720 (720p H.264)</option></select></div>
@@ -2018,11 +2030,11 @@ final class WebServer: @unchecked Sendable {
           document.getElementById('rm-airings').style.display='none';
           _airCache={};_airGen++;var _myGen=_airGen;
           // Build day buttons — pre-check the day-of-week matching the guide entry
-          var entryDow=new Date(_s*1000).getDay();
+          _entryDow=new Date(_s*1000).getDay();
           var rmDaysEl=document.getElementById('rm-days');rmDaysEl.innerHTML='';
           _dayNames.forEach(function(day,i){
             var btn=document.createElement('button');
-            btn.type='button';btn.className='day-btn'+(i===entryDow?' sel':'');
+            btn.type='button';btn.className='day-btn'+(i===_entryDow?' sel':'');
             btn.textContent=_dayShort[i];btn.dataset.day=day;
             btn.onclick=function(){
               var checked=document.querySelector('input[name="rm-type"]:checked');
@@ -2059,7 +2071,7 @@ final class WebServer: @unchecked Sendable {
               document.getElementById('rm-days-lbl').textContent=(v==='single')?'Day':'Days';
               document.getElementById('rm-days-row').style.display='flex';
               if(v==='single'){
-                Array.from(rmDaysEl.querySelectorAll('.day-btn')).forEach(function(b,i){b.classList.toggle('sel',i===entryDow);});
+                Array.from(rmDaysEl.querySelectorAll('.day-btn')).forEach(function(b,i){b.classList.toggle('sel',i===_entryDow);});
               }
             } else {
               document.getElementById('rm-days-row').style.display='none';
@@ -2069,7 +2081,7 @@ final class WebServer: @unchecked Sendable {
           };
           document.getElementById('rec-modal').style.display='flex';
         }
-        var _airCache={},_airGen=0;
+        var _airCache={},_airGen=0,_airCurrent=[],_entryDow=0;
         function loadAirings(ser,gen){
           if(_airCache[ser]){renderAirings(_airCache[ser]);return;}
           fetch('/api/airings/'+encodeURIComponent(ser)).then(function(r){return r.json();}).then(function(d){
@@ -2078,16 +2090,41 @@ final class WebServer: @unchecked Sendable {
             renderAirings(_airCache[ser]);
           }).catch(function(){});
         }
+        // Double-click on an "Other Upcoming Airings" row re-anchors the whole modal to that
+        // airing — same fields the initial showInfo()/doRecord() pair sets up, minus the
+        // selected Type/Transcode/Bonus, which are left as the user already set them.
+        function switchAiring(idx){
+          var a=_airCurrent[idx]; if(!a)return;
+          _d=a.device; _n=String(a.ch); _s=+a.start; _e=+a.end; _genre=a.genre||''; _title=a.title||_title;
+          _entryDow=new Date(_s*1000).getDay();
+          document.getElementById('rm-title-in').value=_title;
+          document.getElementById('rm-ch').textContent='Ch '+_n+' · '+(a.chName||'')+' · '+ft(new Date(_s*1000))+' – '+ft(new Date(_e*1000));
+          var nowTs=Math.floor(Date.now()/1000);
+          var isLive=(_s<=nowTs&&_e>nowTs);
+          document.getElementById('rm-tuner').style.display=(isLive&&devFull(_d))?'block':'none';
+          renderAirings(_airCache[_ser]||[]);
+        }
         function renderAirings(list){
           var filtered=list.filter(function(a){return !(String(a.ch)===_n&&+a.start===_s);});
+          _airCurrent=filtered;
           var panel=document.getElementById('rm-airings');
-          if(!filtered.length){panel.style.display='none';return;}
-          document.getElementById('rm-airings-list').innerHTML=filtered.map(function(a){
+          var listEl=document.getElementById('rm-airings-list');
+          if(!filtered.length){panel.style.display='none';listEl.innerHTML='';return;}
+          listEl.innerHTML=filtered.map(function(a,i){
             var d=new Date(a.start*1000);
-            var parts=[_dayShort[d.getDay()]+' '+ft(d)];
-            parts.push(a.chName?('Ch '+a.ch+' '+a.chName):('Ch '+a.ch));
-            if(a.ep)parts.push(a.ep);
-            return '<div>'+hej(parts.join(' · '))+'</div>';
+            var timeLabel=_dayShort[d.getDay()]+' '+ft(d);
+            var chLabel=a.chName?('Ch '+a.ch+' · '+a.chName):('Ch '+a.ch);
+            var logo=a.chLogo
+              ? '<img class="rm-air-logo" src="'+heJs(a.chLogo)+'" alt="" loading="lazy" onerror="this.style.visibility=\\'hidden\\'">'
+              : '<div class="rm-air-logo"></div>';
+            return '<div class="rm-air-row" ondblclick="switchAiring('+i+')" title="Double-click to record this airing instead">'
+              +'<div class="rm-air-bar" style="background:'+gc(a.genre)+'"></div>'
+              +logo
+              +'<div class="rm-air-info">'
+              +'<div class="rm-air-t">'+hej(timeLabel)+'</div>'
+              +'<div class="rm-air-ch">'+hej(chLabel)+'</div>'
+              +(a.ep?'<div class="rm-air-ep">'+hej(a.ep)+'</div>':'')
+              +'</div></div>';
           }).join('');
           panel.style.display='flex';
         }
