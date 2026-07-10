@@ -855,6 +855,13 @@ final class AppState: ObservableObject {
                     extra: [("Type", type.rawValue, true)])
     }
 
+    // Tie-break for SeriesID(All) shows simulcast/rerun on multiple channels of the same device
+    // at the identical time — prefer the channel the user has favorited over the arbitrary
+    // insertion-order winner GuideStore would otherwise return. See GuideStore.nextEpisode/currentEpisode.
+    func isFavoriteChannel(deviceId: String, channelNum: String) -> Bool {
+        lineups[deviceId]?.first(where: { $0.GuideNumber == channelNum })?.isFavorite ?? false
+    }
+
     // Checks currently-airing first so show_next may be in the past — idle loop records the remaining portion.
     func resolveSeriesAir(show: inout Show, device: HDHRDevice, isAll: Bool, channel: LineupEntry) {
         let chFilter  = isAll ? nil : channel.GuideNumber
@@ -873,7 +880,7 @@ final class AppState: ObservableObject {
             }
         }
 
-        if let m = guideStore.currentEpisode(seriesID: show.show_seriesid, channelNum: chFilter, deviceId: devFilter, at: now) {
+        if let m = guideStore.currentEpisode(seriesID: show.show_seriesid, channelNum: chFilter, deviceId: devFilter, at: now, preferFavorite: isFavoriteChannel) {
             apply(m); return
         }
         // Fallback: title match on channelEntryIndex — handles guide entries where SeriesID is absent.
@@ -881,7 +888,7 @@ final class AppState: ObservableObject {
            let m = guideStore.currentEntryByTitle(show.show_title, channelNum: ch, deviceId: dev, at: now) {
             apply(m); return
         }
-        if let m = guideStore.nextEpisode(seriesID: show.show_seriesid, channelNum: chFilter, deviceId: devFilter, after: now) {
+        if let m = guideStore.nextEpisode(seriesID: show.show_seriesid, channelNum: chFilter, deviceId: devFilter, after: now, preferFavorite: isFavoriteChannel) {
             apply(m); return
         }
         // Fallback: title match for next airing — handles guide entries where SeriesID is absent.
@@ -1496,13 +1503,14 @@ final class AppState: ObservableObject {
                         shows[index].show_url = url
                     }
                 }
-                if let match = guideStore.currentEpisode(seriesID: show.show_seriesid, channelNum: chFilter, deviceId: devFilter, at: now) {
+                if let match = guideStore.currentEpisode(seriesID: show.show_seriesid, channelNum: chFilter, deviceId: devFilter, at: now, preferFavorite: isFavoriteChannel) {
                     glog("[\(show.show_title)] NEXT now (on-air) ch=\(match.channelNum) \(match.entry.Title)")
                     applyMatch(match); return
                 }
                 if let match = guideStore.nextEpisode(seriesID: show.show_seriesid,
                                                       channelNum: chFilter,
-                                                      deviceId: devFilter) {
+                                                      deviceId: devFilter,
+                                                      preferFavorite: isFavoriteChannel) {
                     glog("[\(show.show_title)] NEXT \(shortTime(match.entry.startDate)) ch=\(match.channelNum) \(match.entry.Title)")
                     applyMatch(match); return
                 }

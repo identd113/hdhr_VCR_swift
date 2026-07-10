@@ -277,19 +277,30 @@ final class GuideStore {
 
     /// First episode matching seriesID with StartTime > after, optionally constrained by
     /// channelNum (for SeriesID-channel shows) or deviceId.
+    ///
+    /// When multiple channels air the identical next episode at the same StartTime (e.g. a
+    /// SeriesID(All) show simulcast/rerun on several channels of one device), the tie would
+    /// otherwise resolve to whichever channel happened to sort first (insertion order from the
+    /// guide fetch, since the underlying sort is StartTime-only and stable) — not a deliberate
+    /// choice. Pass `preferFavorite` to break that tie toward a favorited channel instead.
     func nextEpisode(
         seriesID: String,
         channelNum: String? = nil,
         deviceId: String? = nil,
-        after: Date = Date()
+        after: Date = Date(),
+        preferFavorite isFavorite: ((_ deviceId: String, _ channelNum: String) -> Bool)? = nil
     ) -> SeriesMatch? {
         sortIfNeeded(seriesID)
         let epoch = Int(after.timeIntervalSince1970)
-        return seriesIndex[seriesID]?.first { m in
+        let candidates = seriesIndex[seriesID]?.filter { m in
             m.entry.StartTime > epoch
                 && (channelNum == nil || m.channelNum == channelNum)
                 && (deviceId == nil || m.deviceId == deviceId)
-        }
+        } ?? []
+        guard let first = candidates.first else { return nil }
+        guard let isFavorite else { return first }
+        let tied = candidates.prefix(while: { $0.entry.StartTime == first.entry.StartTime })
+        return tied.first { isFavorite($0.deviceId, $0.channelNum) } ?? first
     }
 
     /// Up to `limit` upcoming episodes matching seriesID with StartTime > after.
@@ -307,19 +318,26 @@ final class GuideStore {
 
     /// Episode matching seriesID whose broadcast window spans `at` (StartTime ≤ at < EndTime).
     /// Used to detect a partially-airing episode so recording can be scheduled from the beginning.
+    ///
+    /// Pass `preferFavorite` to break a multi-channel-simulcast tie toward a favorited channel —
+    /// see `nextEpisode(seriesID:channelNum:deviceId:after:preferFavorite:)` for the rationale.
     func currentEpisode(
         seriesID: String,
         channelNum: String? = nil,
         deviceId: String? = nil,
-        at date: Date = Date()
+        at date: Date = Date(),
+        preferFavorite isFavorite: ((_ deviceId: String, _ channelNum: String) -> Bool)? = nil
     ) -> SeriesMatch? {
         sortIfNeeded(seriesID)
         let epoch = Int(date.timeIntervalSince1970)
-        return seriesIndex[seriesID]?.first { m in
+        let candidates = seriesIndex[seriesID]?.filter { m in
             m.entry.StartTime <= epoch && m.entry.EndTime > epoch
                 && (channelNum == nil || m.channelNum == channelNum)
                 && (deviceId == nil || m.deviceId == deviceId)
-        }
+        } ?? []
+        guard let first = candidates.first else { return nil }
+        guard let isFavorite else { return first }
+        return candidates.first { isFavorite($0.deviceId, $0.channelNum) } ?? first
     }
 
     /// Currently-airing entry matching `title` on a specific channel, regardless of SeriesID.

@@ -309,6 +309,100 @@ struct GuideStoreMockNetworkTests {
         }
     }
 
+    // MARK: - Favorite-channel tie-break
+
+    @Suite("GuideStore favorite tie-break")
+    struct GuideStoreFavoriteTieBreakTests {
+
+        // Two channels air the identical SeriesID at the identical StartTime/EndTime — a genuine
+        // tie, unlike sampleGuideJSON where "The Daily Show" airs at different times per channel.
+        // 2.1 is listed first, so it's the incidental (insertion-order) winner with no preference.
+        private static let simulcastJSON = """
+        [
+            {
+                "GuideNumber": "2.1",
+                "GuideName": "TPT 2",
+                "Guide": [
+                    {"StartTime": 2000000000, "EndTime": 2000003600, "Title": "Simulcast Show", "SeriesID": "sim789", "EpisodeTitle": "Ep1"}
+                ]
+            },
+            {
+                "GuideNumber": "2.4",
+                "GuideName": "TPTKids",
+                "Guide": [
+                    {"StartTime": 2000000000, "EndTime": 2000003600, "Title": "Simulcast Show", "SeriesID": "sim789", "EpisodeTitle": "Ep1"}
+                ]
+            }
+        ]
+        """
+
+        @Test @MainActor func nextEpisode_noPreference_picksInsertionOrderWinner() async {
+            let store = GuideStore(session: makeSession())
+            let device = makeLocalDevice()
+            MockURLProtocol.requestHandler = { req in
+                (okResponse(for: req.url!), Self.simulcastJSON.data(using: .utf8)!)
+            }
+            await store.load(for: device)
+            let before = Date(timeIntervalSince1970: 1_000_000_000)
+            let match = store.nextEpisode(seriesID: "sim789", after: before)
+            #expect(match?.channelNum == "2.1")
+        }
+
+        @Test @MainActor func nextEpisode_preferFavorite_picksFavoritedChannel() async {
+            let store = GuideStore(session: makeSession())
+            let device = makeLocalDevice()
+            MockURLProtocol.requestHandler = { req in
+                (okResponse(for: req.url!), Self.simulcastJSON.data(using: .utf8)!)
+            }
+            await store.load(for: device)
+            let before = Date(timeIntervalSince1970: 1_000_000_000)
+            let match = store.nextEpisode(seriesID: "sim789", after: before,
+                                          preferFavorite: { _, ch in ch == "2.4" })
+            #expect(match?.channelNum == "2.4", "Should break the tie toward the favorited channel")
+        }
+
+        @Test @MainActor func nextEpisode_preferFavorite_noneFavorited_fallsBackToFirst() async {
+            let store = GuideStore(session: makeSession())
+            let device = makeLocalDevice()
+            MockURLProtocol.requestHandler = { req in
+                (okResponse(for: req.url!), Self.simulcastJSON.data(using: .utf8)!)
+            }
+            await store.load(for: device)
+            let before = Date(timeIntervalSince1970: 1_000_000_000)
+            let match = store.nextEpisode(seriesID: "sim789", after: before,
+                                          preferFavorite: { _, _ in false })
+            #expect(match?.channelNum == "2.1", "No favorite among tied candidates — keep the original winner")
+        }
+
+        @Test @MainActor func currentEpisode_preferFavorite_picksFavoritedChannel() async {
+            let store = GuideStore(session: makeSession())
+            let device = makeLocalDevice()
+            MockURLProtocol.requestHandler = { req in
+                (okResponse(for: req.url!), Self.simulcastJSON.data(using: .utf8)!)
+            }
+            await store.load(for: device)
+            let at = Date(timeIntervalSince1970: 2_000_001_000)   // inside [StartTime, EndTime) for both
+            let match = store.currentEpisode(seriesID: "sim789", at: at,
+                                             preferFavorite: { _, ch in ch == "2.4" })
+            #expect(match?.channelNum == "2.4")
+        }
+
+        @Test @MainActor func nextEpisode_preferFavorite_respectsChannelFilter() async {
+            // A channel/device filter narrows candidates before the tie-break runs — the
+            // favorited channel outside the filter must not be picked.
+            let store = GuideStore(session: makeSession())
+            let device = makeLocalDevice()
+            MockURLProtocol.requestHandler = { req in
+                (okResponse(for: req.url!), Self.simulcastJSON.data(using: .utf8)!)
+            }
+            await store.load(for: device)
+            let before = Date(timeIntervalSince1970: 1_000_000_000)
+            let match = store.nextEpisode(seriesID: "sim789", channelNum: "2.1", after: before,
+                                          preferFavorite: { _, ch in ch == "2.4" })
+            #expect(match?.channelNum == "2.1", "channelNum filter restricts to 2.1 regardless of favorite status")
+        }
+    }
+
     // MARK: - Invalidation
 
     @Suite("GuideStore invalidation")

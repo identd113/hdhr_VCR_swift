@@ -38,7 +38,8 @@ func load(for device: HDHRDevice, hours: Int, useXML: Bool = false)    // fetch 
 func loadAll(devices: [HDHRDevice], hours: Int, useXML: Bool = false)  // parallel load for all devices
 func channels(deviceId: String) -> [GuideChannel]
 func entries(deviceId: String, channelNum: String, after: Date) -> [GuideEntry]
-func nextEpisode(seriesID: String, channelNum: String?, deviceId: String?, after: Date) -> SeriesMatch?
+func nextEpisode(seriesID: String, channelNum: String?, deviceId: String?, after: Date, preferFavorite: ((String, String) -> Bool)?) -> SeriesMatch?
+func currentEpisode(seriesID: String, channelNum: String?, deviceId: String?, at: Date, preferFavorite: ((String, String) -> Bool)?) -> SeriesMatch?
 func nextEpisodes(seriesID: String, after: Date, limit: Int) -> [SeriesMatch]
 func isFresh(deviceId: String, within interval: TimeInterval) -> Bool  // default 1 hour
 func invalidate(deviceId: String)
@@ -54,6 +55,14 @@ func invalidateAll()
 `buildIndex` appends entries into `seriesIndex` but does **not** sort them — it marks affected series in `unsortedSeries` instead. `sortIfNeeded(_:)` is called at the top of `nextEpisode`, `nextEpisodes`, and `currentEpisode`; it sorts only the queried series on first access, then removes it from `unsortedSeries`. This defers the O(series × entries log entries) sort cost from guide-load time (main-actor, synchronous) to first-query time (typically spread across the first idle-loop `rebuildMenuEntries` call after load).
 
 `invalidate(deviceId:)` prunes `unsortedSeries` to only entries still in `seriesIndex`. `invalidateAll()` clears it entirely.
+
+---
+
+## Favorite-Channel Tie-Break
+
+A SeriesID(All) show can have the *same* episode airing on multiple channels of one device at the identical time (simulcast, or a rerun scheduled to overlap). `seriesIndex[seriesID]` is sorted by `StartTime` only (stable sort) — with no `preferFavorite` closure, `.first` on a tie resolves to whichever channel happened to be inserted first while `buildIndex` walked that device's guide-fetch response, which is incidental, not a deliberate preference.
+
+`nextEpisode`/`currentEpisode` accept an optional `preferFavorite: (deviceId, channelNum) -> Bool` closure. When supplied: `nextEpisode` narrows to the candidates sharing the earliest StartTime as `first` (`prefix(while:)`) and returns the first one the closure marks favorite, falling back to `first` if none are; `currentEpisode` searches all currently-airing candidates the same way (no StartTime narrowing needed — the "currently airing" filter already scopes them to the tie). `AppState.resolveSeriesAir` and `AppState.scheduleNextAir` — the two places that actually decide which channel a SeriesID show records — pass `AppState.isFavoriteChannel(deviceId:channelNum:)` (looks up `LineupEntry.isFavorite` in `lineups`) as this closure. Other `nextEpisode` callers (`nextGuideEpisode(for:)`, the menu's scheduled-entry lookup) are display-only and don't pass it — they don't decide what records, so an incidental tie there doesn't change behavior.
 
 ---
 
