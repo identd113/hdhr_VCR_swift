@@ -7,7 +7,9 @@ Fixed **560×540** for steps 1 and 3; expands to resizable **min 1100×720** for
 
 **Top of window (all steps)**: 2 small 8pt circles in a row, left-padded under the top edge — progress indicator. Filled accent-color circle = current step; hollow gray circle = other step. `guide` and `details` steps only — `ForEach([Step.guide, .details])` always produces exactly 2 dots. Below the circles: a `Divider`.
 
-### Step 1 — Device selection (usually auto-skipped)
+### Step 1 — Device selection (currently unreachable — dead code)
+**Not part of the live flow.** `step` defaults to `.guide` (`@State private var step: Step = .guide`) and is never programmatically set to `.device` anywhere in the file — every `.onAppear` path (fresh open, `pendingAddChannel`, `pendingAddEntry`) lands on `.guide` or jumps straight to `.details`. The progress-dot comment even says so: "device step intentionally omitted (device is chosen inside web guide)". `deviceStep`, its `canAdvance`/`goForward` branches, and the description below are retained in the file but have no way to actually render. Documented here for completeness/history, not as current behavior:
+
 White background. Title `"Select Tuner"` in `.title2` left-padded, with a `"Refresh"` labeled button (↺ icon) at the right.
 
 If no devices: centered `ContentUnavailableView` — `wifi.slash` SF Symbol, `"No tuners found"` title, description text.
@@ -53,7 +55,7 @@ enum Step { case device, guide, details }
 
 A progress indicator (2 dots, filled vs hollow) tracks position across the `guide` and `details` steps. The guide step hides the nav bar entirely; navigation is via the Record button in the web guide summary panel. **Escape key** dismisses the window from any step (`.onExitCommand { dismiss() }`).
 
-### Step 1 — Device
+### Step 1 — Device (unreachable — see the Visual Appearance section above)
 
 Shows a `List` of `state.devices` with expanded device info:
 - **DeviceID** + active recording count (red when > 0)
@@ -61,7 +63,7 @@ Shows a `List` of `state.devices` with expanded device info:
 
 Tapping a row sets `selectedDevice`. **Double-tapping** sets `selectedDevice` and immediately advances to step 2. The "Next" button also advances when `selectedDevice != nil`.
 
-**Single-device skip**: `.onAppear` auto-selects the only device and jumps to step 2 immediately, so single-tuner setups never see the device list.
+**Not just single-device setups** — `.onAppear` always resolves `selectedDevice` (to `state.devices.first`, or via `pendingAddChannel`/`pendingAddEntry`) and always lands on `step = .guide` or `.details`, regardless of how many devices exist. This `deviceStep` view has no live entry point.
 
 A **Refresh** button runs `state.discoverDevices()` in a `Task`.
 

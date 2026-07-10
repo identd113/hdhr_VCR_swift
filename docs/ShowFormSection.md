@@ -38,9 +38,9 @@ Only shown when `state.config.Sports_padding_enabled`. The label reads `"+N min 
 
 ---
 
-## `WhiteOutlineButtonStyle`
+## `WhiteOutlineButtonStyle` (dead code — zero call sites)
 
-A custom `ButtonStyle` defined in the same file. Used for "Watch in VLC" and "Watch in App" buttons in the summary panels, where a white fill + colored border is needed. Standard SwiftUI `.bordered` can't express a different fill vs. border color, hence the custom style.
+A custom `ButtonStyle` defined in the same file. `git log -S "WhiteOutlineButtonStyle"` shows its last actual usages were removed in `89610a2` ("remove native SwiftUI guide"); the struct itself was left behind. **No current view references it** — the "Watch in VLC"/"Watch in App" buttons it was reportedly for now use standard `.borderedProminent`/`.bordered` styling (see `WatchNowView.swift`). Left in place for whoever cleans it up; not documenting it as live behavior.
 
 ```swift
 struct WhiteOutlineButtonStyle: ButtonStyle {
@@ -56,8 +56,6 @@ struct WhiteOutlineButtonStyle: ButtonStyle {
     }
 }
 ```
-
-VLC buttons pass `borderColor: Color(red: 1.0, green: 0.482, blue: 0.0)` (VLC's brand orange).
 
 ---
 

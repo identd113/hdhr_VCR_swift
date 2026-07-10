@@ -852,7 +852,7 @@ curl -s -X POST http://localhost:1980/api/record \
 
 **Expected success:**
 ```json
-{"ok": true, "title": "Local News at 11", "tunerFull": false}
+{"ok": true, "title": "Local News at 11", "tunerFull": false, "recStarted": false, "tunerActive": 1, "tunerTotal": 2}
 ```
 
 **Expected failure (wrong startTime):**
@@ -875,7 +875,7 @@ curl -s http://localhost:1980/api/airings/EP000000012345 | python3 -m json.tool
 
 **Expected success:**
 ```json
-{"airings":[{"start":1752182400,"ch":"4.1","chName":"KOMO","ep":"S01E13 · Episode Name","device":"105404BE","genre":"Kids","chLogo":"https://img.hdhomerun.com/channels/US31262.png"}]}
+{"airings":[{"start":1752182400,"end":1752186000,"ch":"4.1","chName":"KOMO","ep":"S01E13 · Episode Name","device":"105404BE","genre":"Kids","chLogo":"https://img.hdhomerun.com/channels/US31262.png","title":"Local News at 11"}]}
 ```
 
 **Unknown/absent series:**

@@ -95,3 +95,19 @@ Power users managing multiple machines must copy the JSON manually. Export / Imp
 `SettingsView.swift` → `runBrew()` spawns `/opt/homebrew/bin/brew` / `/usr/local/bin/brew` with `install`/`install --cask` to install VLC / hdhomerun_config from the Settings → Maintenance "Tools" section. This is a second class of `Process`-spawning beyond the curl/caffeinate sandbox debt already tracked elsewhere, and isn't covered by the App Store migration plan. There's no sandboxed way to invoke Homebrew, so the likely fix is dropping this row entirely in a sandboxed build.
 
 **Key file**: `SettingsView.swift` → `runBrew()`.
+
+---
+
+### `WhiteOutlineButtonStyle` is dead code
+
+Defined in `ShowFormSection.swift`, zero call sites (`git log -S "WhiteOutlineButtonStyle"` shows its last usages were removed in `89610a2`). Delete it, or restore a caller if it was meant to still be used somewhere.
+
+**Key file**: `Views/ShowFormSection.swift`.
+
+---
+
+### `AddShowView`'s device-selection step (`.device`) is unreachable
+
+`step` defaults to `.guide` and is never programmatically set to `.device` anywhere in the file — `deviceStep`, its `canAdvance`/`goForward` branches, and the whole Step-1 UI have no live entry point (device is chosen inside the web guide instead). Either delete the dead path or wire up a real entry point if it's still wanted.
+
+**Key file**: `Views/AddShowView.swift`.

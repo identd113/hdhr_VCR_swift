@@ -160,13 +160,14 @@ Decodable struct for one entry in the `/status.json` array:
 
 ```swift
 struct DeviceTunerInfo: Decodable {
-    let Resource: String       // e.g. "tuner0"
-    let VctNumber: String?     // non-nil when tuner is in use
-    let TargetIP: String?      // client receiving the stream
+    let Resource: String              // e.g. "tuner0"
+    let VctNumber: String?            // non-nil when tuner is in use
+    let TargetIP: String?             // client receiving the stream
+    let SignalQualityPercent: Int?    // snq 0–100; used for passive signal collection
 }
 ```
 
-A tuner is occupied when `VctNumber != nil`.
+A tuner is occupied when `VctNumber != nil`. `SignalQualityPercent` is read by `AppState.teardownRecordingState` when reconstructing a tuner's occupancy entry.
 
 ---
 

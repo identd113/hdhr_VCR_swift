@@ -178,7 +178,7 @@ In a SwiftUI `.menu`-style `MenuBarExtra`, the menu body re-evaluates on every `
 
 ## Show Delete / Skip (`deleteShow`, `skipRecording`)
 
-Both functions call `recordingManager.stop(showId:)` first (sends SIGTERM to curl and releases the show's sleep assertion), then `VLCPlayerWindowManager.shared.closeIfPlayingURL(show.show_url)` — if the in-app VLC player is currently streaming the deleted/skipped show's URL the player window is closed, freeing the tuner.
+Both functions call `recordingManager.stop(showId:)` first (sends SIGKILL to curl and releases the show's sleep assertion — see `docs/RecordingManager.md` for why SIGTERM isn't used), then `VLCPlayerWindowManager.shared.closeIfPlaying(showId:url:)` — if the in-app VLC player is currently streaming the deleted/skipped show (matched by relay showId or stream URL) the player window is closed, freeing the tuner.
 
 `deleteShow` removes the show from `shows` and saves config. `skipRecording` additionally marks `show_paused = true`, sets `show_fail_reason = "Skipped"`, and calls `scheduleNextAir` to advance to the next airing.
 

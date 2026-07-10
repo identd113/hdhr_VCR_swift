@@ -60,9 +60,9 @@ The OS also auto-expires each assertion via `kIOPMAssertionTimeoutActionRelease`
 
 ## Natural Stop + File Verification
 
-After `show_end` passes, the idle loop calls `stopRecording(index:natural:true)`. Before scheduling the next air time:
-- If the output file is missing or zero bytes → increments `show_fail_count` with reason `"Output file missing or empty"` and sends a notification.
-- If the file exists and is non-empty → calls `scheduleNextAir`.
+After `show_end` passes, the idle loop calls `stopRecording(index:natural:true)`. Either branch below ends by calling `scheduleNextAir` — a failed recording is rescheduled too, not left stranded:
+- If the output file is missing or zero bytes → increments `show_fail_count` with reason `"Output file missing or empty"`, sends a notification, then calls `scheduleNextAir` and returns immediately (no completion embed/file-size bookkeeping).
+- If the file exists and is non-empty → runs the post-recording script, builds the completion embed's file-size fields, then calls `scheduleNextAir`.
 
 ---
 
