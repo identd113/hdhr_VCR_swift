@@ -307,7 +307,7 @@ struct SettingsView: View {
                     HStack { Text("Pause after \(draft.Fail_count_setting) failure(s)"); InfoButton("A show is automatically paused after this many consecutive failures. Restore it via Maintenance → Reactivate Paused Shows.") }
                 }
 
-                if FileManager.default.fileExists(atPath: "/Applications/VLC.app") {
+                if vlcInstalled {
                     Toggle(isOn: $draft.Watch_in_VLC) {
                         HStack { Text("Watch in VLC"); InfoButton("Adds Watch in VLC buttons for live and recorded streams throughout the app.") }
                     }
@@ -758,7 +758,7 @@ struct SettingsView: View {
     }
 
     private var vlcInstalled: Bool {
-        FileManager.default.fileExists(atPath: "/Applications/VLC.app")
+        VLCBridge.locateApp() != nil
     }
 
     private var hdhrCliInstalled: Bool {

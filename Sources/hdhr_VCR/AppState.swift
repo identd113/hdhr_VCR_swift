@@ -198,7 +198,7 @@ final class AppState: ObservableObject {
 
         // Auto-enable Watch in VLC on first launch if VLC is installed
         if !config.Watch_in_VLC_initialized {
-            config.Watch_in_VLC = FileManager.default.fileExists(atPath: "/Applications/VLC.app")
+            config.Watch_in_VLC = VLCBridge.locateApp() != nil
             config.Watch_in_VLC_initialized = true
             saveConfig()
         }
@@ -2123,9 +2123,7 @@ final class AppState: ObservableObject {
         let raw = config.applyTranscode(url, override: transcode)
         guard config.Watch_in_VLC,
               let streamURL = URL(string: raw) else { return }
-        let vlcPath = "/Applications/VLC.app"
-        guard FileManager.default.fileExists(atPath: vlcPath) else { return }
-        let vlcApp = URL(fileURLWithPath: vlcPath) // URL(fileURLWithPath:) handles spaces/special chars correctly
+        guard let vlcApp = VLCBridge.locateApp() else { return }
         let device = devices.first { $0.DeviceID == (deviceId ?? "") }
         Task {
             if let device {
@@ -2261,10 +2259,7 @@ final class AppState: ObservableObject {
             watchInVLC(url: show.show_url, transcode: show.show_transcode, deviceId: show.hdhr_record)
             return
         }
-        guard config.Watch_in_VLC else { return }
-        let vlcPath = "/Applications/VLC.app"
-        guard FileManager.default.fileExists(atPath: vlcPath) else { return }
-        let vlcApp = URL(fileURLWithPath: vlcPath)
+        guard config.Watch_in_VLC, let vlcApp = VLCBridge.locateApp() else { return }
         let fileURL = URL(fileURLWithPath: show.show_recording_path)
         glog("[Watch] '\(show.show_title)' from disk in external VLC: \(show.show_recording_path)")
         NSWorkspace.shared.open([fileURL], withApplicationAt: vlcApp, configuration: .init()) { _, _ in }

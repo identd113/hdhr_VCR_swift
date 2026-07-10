@@ -77,6 +77,13 @@ struct VLCBufferInfo {
 final class VLCBridge: ObservableObject {
     static let shared = VLCBridge()
 
+    /// Resolves the installed VLC.app via Launch Services (bundle identifier lookup) instead of
+    /// assuming /Applications/VLC.app — works for Homebrew cask installs, ~/Applications, or any
+    /// other location the user (or macOS) put it.
+    static func locateApp() -> URL? {
+        NSWorkspace.shared.urlForApplication(withBundleIdentifier: "org.videolan.vlc")
+    }
+
     private let libHandle: UnsafeMutableRawPointer?
 
     /// True when VLC.app is installed and libvlc loaded successfully.
@@ -179,10 +186,12 @@ final class VLCBridge: ObservableObject {
     private let _trackDescRelease: vlc_track_rel_fn?   // libvlc_track_description_list_release
 
     private init() {
-        let vlcLib = "/Applications/VLC.app/Contents/MacOS/lib/"
-        dlopen(vlcLib + "libvlccore.dylib", RTLD_LAZY | RTLD_GLOBAL)
-        let libPath = vlcLib + "libvlc.dylib"
-        let h = dlopen(libPath, RTLD_LAZY | RTLD_LOCAL)
+        let vlcAppURL = Self.locateApp()
+        let vlcLibDir = vlcAppURL?.appendingPathComponent("Contents/MacOS/lib")
+        let h = vlcLibDir.flatMap { libDir -> UnsafeMutableRawPointer? in
+            dlopen(libDir.appendingPathComponent("libvlccore.dylib").path, RTLD_LAZY | RTLD_GLOBAL)
+            return dlopen(libDir.appendingPathComponent("libvlc.dylib").path, RTLD_LAZY | RTLD_LOCAL)
+        }
         libHandle = h
 
         func sym<T>(_ name: String) -> T? {
@@ -233,7 +242,9 @@ final class VLCBridge: ObservableObject {
         // C function pointers are plain values, safe to capture across threads.
         let newFn   = _new!
         let mpNewFn = _mpNew!
-        setenv("VLC_PLUGIN_PATH", "/Applications/VLC.app/Contents/MacOS/plugins", 1)
+        if let pluginPath = vlcAppURL?.appendingPathComponent("Contents/MacOS/plugins").path {
+            setenv("VLC_PLUGIN_PATH", pluginPath, 1)
+        }
         Task.detached(priority: .userInitiated) { [weak self] in
             let inst = newFn(0, nil)
             let mp   = inst.flatMap { mpNewFn($0) }
