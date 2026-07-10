@@ -41,6 +41,7 @@ func invalidateHTMLCache()               // clears cachedHTML so the next GET / 
 | GET | `/api/now-airing/{devId}/{ch}` | JSON `{title, epTitle, poster, endTime}` for the currently-airing guide entry on the given device+channel; used by the tuner popover to enrich external stream rows asynchronously |
 | GET | `/api/guide-detail/{devId}/{ch}/{winStart}/{winSec}` | JSON `{entries: [{start, syn, poster, ep, date}]}` — heavy fields (Synopsis/poster/episode/air date) for every entry currently in that channel's guide window, keyed by `start` epoch. `winStart`/`winSec` are the client's own `_winStart`/`_winSec` (the window its DOM was actually rendered against), so the response matches what the client has rather than silently drifting with server "now" time; falls back to the server's current window if those segments are missing/malformed. Lazily fetched by the client's per-row `IntersectionObserver` once a row scrolls into view; these fields are omitted from the initial grid HTML (see "Lazy heavy-data loading" below) |
 | GET | `/api/signal-stats/{guideName}` | JSON `{bucket, last, avg, min, max, checked, n, total}` — full signal stats for one channel from `ChannelSignalStore.stats()`; `checked` is the last-sampled epoch (client renders relative). Empty `{}` when no samples. Used by the tuner popover to show inline recordability per active tuner |
+| GET | `/api/airings/{seriesId}` | JSON `{airings: [{start, ch, chName, ep, device}]}` — up to 4 upcoming episodes of the given SeriesID, via `state.upcomingGuideEpisodes(seriesID:)`. Powers the Record modal's "Other Upcoming Airings" preview. Unknown/absent series → `{"airings":[]}` |
 | GET | `/api/icon` | Serves the app icon as a 72×72 PNG (for the splash overlay) |
 | GET | `/api/watch-recording?show={id}` | Relays a currently-recording show's on-disk file as an open-ended HTTP stream (see below) |
 | anything else | | 404 plain text |
@@ -49,7 +50,7 @@ func invalidateHTMLCache()               // clears cachedHTML so the next GET / 
 
 ## POST /api/record
 
-Schedules a recording by calling `state.addShowFromGuide(entry:type:device:channel:)` — the same function the Mac guide wizard uses, so web-scheduled recordings are identical to app-scheduled ones (same notifications, conflict detection, config fields).
+Schedules a recording by calling `state.addShowFromGuide(entry:type:device:channel:airDays:transcode:bonusTime:titleOverride:)` — the same function the menu's quick-add uses (not the in-app wizard, which goes through `save()` → `addShow`) — so web-scheduled recordings get the same notifications, conflict detection, and config fields as menu quick-add ones.
 
 **Request body (JSON):**
 
@@ -71,8 +72,9 @@ Schedules a recording by calling `state.addShowFromGuide(entry:type:device:chann
 | `startTime` | yes | Unix timestamp — locates the exact `GuideEntry` via `guideStore.entries(after: .distantPast)` |
 | `endTime` | no | Unused server-side |
 | `showType` | no | `"single"` (default) · `"dateTime"` · `"seriesChannel"` · `"seriesAll"` |
-| `airDays` | no | Day names for `dateTime` shows (e.g. `["Monday","Friday"]`). When absent or empty, defaults to the day-of-week of `startTime`. |
+| `airDays` | no | Day names (e.g. `["Monday","Friday"]`). For `dateTime`, absent/empty defaults to the day-of-week of `startTime`. For `single`, stored as informational metadata only (`show_air_date`) — it does not affect `show_next`/what actually records; the web Record modal sends the entry's own weekday here. |
 | `transcode` | no | Transcode profile: `"none"` (default) · `"heavy"` · `"mobile"` · `"internet720"`. When absent, the show inherits `config.Default_transcode`. |
+| `title` | no | Overrides the show title. Sent by the web Record modal only when the user edits the prefilled title — omitted otherwise so the server-side SeriesID episode-suffix stripping (`addShowFromGuide`) still applies to the raw guide title. |
 
 `showType` maps to `ShowState`:
 
@@ -392,17 +394,23 @@ The **Edit** button (`#sum-edit`) is only shown for managed shows that are **not
 
 Styled to match `#edit-modal`: same 400 px width, `max-height: calc(100vh - 40px)`, scrollable, themed via `var(--s2)` / `var(--b2)` CSS variables. `position: fixed` overlay (z-index 100). Appears when Record is clicked.
 
+Mirrors the native Add Show wizard's Details step (`ShowFormSection`) minus the Folder field (the server keeps the config default directory) — kept in sync deliberately.
+
 **Contents (top to bottom):**
 - **"Record Show"** header with border-bottom separator
-- **Show row** — `em-lbl` "Show" label + show title + channel/time below (read-only)
+- **Title row** — `em-lbl` "Title" label + editable `<input id="rm-title-in">` prefilled with the guide title + channel/time below (read-only)
 - **Type row** — `em-lbl` "Type" label + four radio options (`recOpts`): Single episode · Weekly repeat · Series — this channel · Series — any channel
 - **SeriesID row** (`#rm-sid`, `em-row` style) — visible when a series type is selected; value in `em-sid` monospace style
-- **Days row** (`#rm-days-row`, `em-row` style) — visible when "Weekly repeat" (`dateTime`) is selected; 7 Su–Sa toggle buttons pre-checked to the guide entry's day of week. At least one day must remain selected (last-day deselect is blocked).
-- **Transcode row** — `em-lbl` "Transcode" label + `<select id="rm-transcode">` with the same 4 options as the edit modal. Resets to "None (copy stream)" each time the modal opens.
+- **Other Upcoming Airings row** (`#rm-airings`, `em-row` style) — visible when a series type is selected *and* `GET /api/airings/{seriesId}` returns at least one airing after excluding the one just selected; each row is `Day time · Ch N Name · episode info`. Fetched once per series per modal-open and cached client-side (`_airCache`); a generation counter (`_airGen`) discards a response that arrives after the modal was reopened for a different program.
+- **Days row** (`#rm-days-row`, `em-row` style) — visible for `single` (label "Day") and `dateTime` (label "Days"); hidden for series types. Pre-checked to the guide entry's day of week. For `single`, clicking a day moves the selection to it (clicking the already-selected day clears it — matches the native wizard's single-day Toggle semantics exactly, including allowing zero selected). For `dateTime`, days multi-toggle with at least one required (last-day deselect is blocked). Switching the Type radio back to `single` collapses the selection back to the guide entry's weekday.
+- **Transcode row** — `em-lbl` "Transcode" label + `<select id="rm-transcode">` with the same 4 options as the edit modal. Defaults to `config.Default_transcode` (allowlist-sanitized server-side) each time the modal opens, not a hardcoded `"none"`.
+- **Bonus Time row** (`#rm-bonus-row`) — hidden entirely when `config.Sports_padding_enabled` is `false`; label reads `Bonus Time (+{Sports_padding_minutes} min past guide end)`. Auto-checked for Sports-genre entries only when bonus is enabled.
 - **Tuner-full warning** (`#rm-tuner`) — amber banner shown when device is full and show is currently airing
 - **Footer** with border-top separator — Cancel / Schedule buttons
 
-On **Schedule**: `confirmRecord()` collects selected air days from `#rm-days .day-btn.sel` and the transcode value from `#rm-transcode`, then POSTs both to `/api/record`. The transcode value is applied to the new show (overriding the config default). On success:
+**Config staleness:** `_defaultTranscode`, `_bonusEnabled`, and the bonus row's minutes label are baked into the served HTML at page-generation time (same as `_bonusMins`) — a config change in Settings takes effect on the next guide load (page refresh or the hourly `guide_refreshed` reload), not immediately.
+
+On **Schedule**: `confirmRecord()` collects selected air days from `#rm-days .day-btn.sel`, the transcode value from `#rm-transcode`, and the trimmed title from `#rm-title-in` (included in the POST only if it differs from the original guide title — see `title` field above), then POSTs to `/api/record`. The transcode value is applied to the new show (overriding the config default). On success:
 - Guide block gains `.g-prog-rec` + red triangle flag if `recStarted` is true (show currently airing); otherwise `.g-prog-sched` + yellow triangle flag.
 - Summary note shows "● Recording now", "⚠ Queued — all tuners busy", or "★ Scheduled — next idle loop pick-up".
 - The summary delete button becomes **"Stop & Delete"** (+ `danger` class) when `recStarted`; stays **"Remove"** otherwise.
@@ -580,9 +588,11 @@ add/remove/edit, which arrive as `show_*` SSE → `refreshGuide`); a recording s
 | `showInfo(el)` | `onclick` on program blocks; reads `el.dataset`, populates summary panel, sets globals |
 | `closeSummary()` | Hides summary, restores placeholder, clears `.g-sel` |
 | `refreshGuide(selOverride?)` | Partial DOM refresh: saves `.gw` scroll + selected entry; `GET /`; swaps `.gi`, `#sum-ph`, and each `.tdrop` body (`#tdrop-{devId}`); resyncs `_winStart`/`_winSec` from the new `.g-hdr` (so the now-line doesn't drift); restores scroll; re-selects prior entry. Optional `selOverride` object patches `dataset` attrs on the re-selected block before `showInfo()` — used after Record to inject `{recording:'1',managed:'1'}` without a manual re-click. |
-| `doRecord()` | Opens record modal; pre-checks day-of-week button matching guide entry; pre-checks Bonus Time for sports entries; resets transcode to `"none"`; shows tuner-full warning if applicable |
+| `doRecord()` | Opens record modal; prefills the title input; pre-checks day-of-week button matching guide entry (Day row shown for `single`/`dateTime`); pre-checks Bonus Time for sports entries when `_bonusEnabled`; sets transcode to `_defaultTranscode`; shows tuner-full warning if applicable; resets the airings cache/generation counter |
 | `cancelRecord()` | Hides modal |
-| `confirmRecord()` | Collects `airDays` from `#rm-days` and `transcode` from `#rm-transcode`; POSTs `/api/record`; on success: red flag + `.g-prog-rec` if `recStarted`, yellow flag + `.g-prog-sched` otherwise. Delete button becomes **"Stop & Delete"** (+ `danger` class) when `recStarted`, stays **"Remove"** otherwise. Calls `refreshGuide({recording:'1',managed:'1'})` or `refreshGuide({managed:'1'})` so the summary panel reflects the new state immediately. Updates tuner badge `#tun-{devId}` in place. |
+| `loadAirings(seriesId, gen)` | Fetches `/api/airings/{seriesId}` (cached per series in `_airCache`); discards the response if `gen` no longer matches `_airGen` (modal was reopened for a different program); renders via `renderAirings()` |
+| `renderAirings(list)` | Filters out the currently-selected airing (matching `ch`+`start`), hides `#rm-airings` if nothing remains, else renders up to 4 `Day time · Ch N Name · episode info` rows |
+| `confirmRecord()` | Collects `airDays` from `#rm-days`, `transcode` from `#rm-transcode`, and the trimmed title from `#rm-title-in` (included only if edited); POSTs `/api/record`; on success: red flag + `.g-prog-rec` if `recStarted`, yellow flag + `.g-prog-sched` otherwise. Delete button becomes **"Stop & Delete"** (+ `danger` class) when `recStarted`, stays **"Remove"** otherwise. Calls `refreshGuide({recording:'1',managed:'1'})` or `refreshGuide({managed:'1'})` so the summary panel reflects the new state immediately. Updates tuner badge `#tun-{devId}` in place. |
 | `updateDaysVisibility()` | Shows `#em-days-row` when `_editType === 'dateTime'`; hides for all other types |
 | `toggleDay(btn)` | Toggles a day-button selection in the edit modal; prevents deselecting the last selected day |
 | `doDelete()` | POSTs `/api/delete`; removes triangle flag/color from block, restores Record button |
@@ -605,7 +615,7 @@ add/remove/edit, which arrive as `show_*` SSE → `refreshGuide`); a recording s
 | `so(id, val)` | Shows element with textContent, or hides if falsy |
 | `hej(s)` | HTML-escapes a string for safe `innerHTML` concatenation (`&`, `<`, `>`) — used in the tuner popover where values come from server-side data |
 
-**Globals:** `_d` (deviceId), `_n` (guideNumber), `_s` (startTime), `_e` (endTime), `_ser` (SeriesID), `_genre` (first genre string), `curDev` (active device filter), `_genreFilter` (active genre filter, `''` = none) — set by `showInfo` (except `_genreFilter`, set by `filterGenre`), consumed by `doRecord`/`doDelete`/`confirmRecord`/`applyGenreDim`. `_genre` is used by `doRecord()` to pre-check Bonus Time for sports entries.
+**Globals:** `_d` (deviceId), `_n` (guideNumber), `_s` (startTime), `_e` (endTime), `_ser` (SeriesID), `_genre` (first genre string), `_title` (guide title), `curDev` (active device filter), `_genreFilter` (active genre filter, `''` = none) — set by `showInfo` (except `_genreFilter`, set by `filterGenre`), consumed by `doRecord`/`doDelete`/`confirmRecord`/`applyGenreDim`. `_genre` is used by `doRecord()` to pre-check Bonus Time for sports entries; `_title` prefills `#rm-title-in` and is the baseline `confirmRecord()` diffs the edited value against. `_bonusEnabled`/`_defaultTranscode` (config-derived, baked into the page like `_bonusMins`) and `_airCache`/`_airGen` (Other Upcoming Airings cache + staleness guard, reset each `doRecord()` open) are also page-level globals used by the record modal.
 
 **Embedded JS data:**
 - `var tuners` — `{deviceId: {t: total, a: active, surl: "http://ip/status.json"}, …}` — tuner counts from fresh `/status.json` fetch
@@ -830,6 +840,14 @@ curl -s -X POST http://localhost:1980/api/record \
   | python3 -m json.tool
 ```
 
+```bash
+# Title override — omit "title" entirely to keep the server's own SeriesID suffix stripping
+curl -s -X POST http://localhost:1980/api/record \
+  -H "Content-Type: application/json" \
+  -d '{"deviceId":"105404BE","guideNumber":"5.1","startTime":1748822400,"showType":"single","title":"My Custom Title"}' \
+  | python3 -m json.tool
+```
+
 **Expected success:**
 ```json
 {"ok": true, "title": "Local News at 11", "tunerFull": false}
@@ -843,6 +861,24 @@ curl -s -X POST http://localhost:1980/api/record \
 **Expected 400 (missing field):**
 ```
 Missing required fields: deviceId, guideNumber, startTime
+```
+
+---
+
+### GET /api/airings/{seriesId} — other upcoming episodes
+
+```bash
+curl -s http://localhost:1980/api/airings/EP000000012345 | python3 -m json.tool
+```
+
+**Expected success:**
+```json
+{"airings":[{"start":1752182400,"ch":"4.1","chName":"KOMO","ep":"S01E13 · Episode Name","device":"105404BE"}]}
+```
+
+**Unknown/absent series:**
+```json
+{"airings":[]}
 ```
 
 ---

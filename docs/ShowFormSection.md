@@ -4,6 +4,8 @@
 
 `ShowFormSection` is a reusable `Group` of `Form` rows shared between `AddShowView` step 3 (Details) and `EditShowView`. It contains the fields that are common to both: title, type, air days, transcode, Bonus Time, and folder. Extracting this into a shared component ensures both views stay in sync when new fields are added.
 
+The web guide's Record modal (`#rec-modal` in `WebServer.swift`, see `docs/WebServer.md`'s "Record type modal" section) mirrors these fields minus Folder (the server keeps the config default directory) — keep them in sync when either changes.
+
 ---
 
 ## Fields

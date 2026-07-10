@@ -628,6 +628,22 @@ final class WebServer: @unchecked Sendable {
                 let body = (try? JSONSerialization.data(withJSONObject: result)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
                 return .ok(contentType: "application/json", body: Data(body.utf8))
             }
+            if path.hasPrefix("/api/airings/") {
+                // /api/airings/{seriesId} — up to 4 upcoming episodes of a series across all
+                // devices/channels, for the web Record modal's "Other Upcoming Airings" preview.
+                // Mirrors the native otherAirings computed property in AddShowView.swift.
+                let seriesId = String(path.dropFirst("/api/airings/".count)).removingPercentEncoding ?? ""
+                let items: [[String: Any]] = state.upcomingGuideEpisodes(seriesID: seriesId).map { pair in
+                    let chName = state.lineups[pair.entry.deviceId]?
+                        .first(where: { $0.GuideNumber == pair.channel })?.GuideName
+                    return ["start": pair.entry.StartTime, "ch": pair.channel,
+                            "chName": chName ?? "", "ep": pair.entry.episodeInfoLabel ?? "",
+                            "device": pair.entry.deviceId]
+                }
+                let json = (try? JSONSerialization.data(withJSONObject: ["airings": items]))
+                    .flatMap { String(data: $0, encoding: .utf8) } ?? "{\"airings\":[]}"
+                return .ok(contentType: "application/json", body: Data(json.utf8))
+            }
             if path.hasPrefix("/api/guide-detail/") {
                 // /api/guide-detail/{devId}/{channelNum}/{winStart}/{winSec} — heavy fields
                 // (Synopsis/poster/episode/air date) for every entry currently in that channel's
@@ -726,8 +742,10 @@ final class WebServer: @unchecked Sendable {
         let airDays   = obj["airDays"]   as? [String]
         let transcode = obj["transcode"] as? String
         let bonusTime = obj["bonusTime"] as? Bool ?? false
-        state.addShowFromGuide(entry: entry, type: showType, device: device, channel: ch, airDays: airDays, transcode: transcode, bonusTime: bonusTime)
-        return json(["ok": true, "title": entry.Title, "tunerFull": tunerFull,
+        let title     = (obj["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        state.addShowFromGuide(entry: entry, type: showType, device: device, channel: ch, airDays: airDays, transcode: transcode, bonusTime: bonusTime, titleOverride: title)
+        let effectiveTitle = (title?.isEmpty == false) ? title! : entry.Title
+        return json(["ok": true, "title": effectiveTitle, "tunerFull": tunerFull,
                      "recStarted": recStarted, "tunerActive": newActive, "tunerTotal": total])
     }
 
@@ -1465,7 +1483,6 @@ final class WebServer: @unchecked Sendable {
         #t-pop-status{color:var(--ac)!important;border-color:var(--b0)!important}
         /* ── Record modal ── */
         #rec-modal>div{background:var(--s2)!important;border-color:var(--b2)!important}
-        #rm-title{color:var(--t0)!important}
         #rm-ch{color:var(--t4)!important}
         #rm-sid{background:var(--bg)!important;color:var(--t4)!important}
         #rm-sid-val{color:var(--t3)!important}
@@ -1798,15 +1815,19 @@ final class WebServer: @unchecked Sendable {
             <span id="rm-bonus-star" class="sb-web sb-web-lg" style="display:none"></span>
             <div style="font-weight:700;font-size:.88rem;color:var(--t0);margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--b2)">Record Show</div>
             <div class="em-row">
-              <div class="em-lbl">Show</div>
-              <div id="rm-title" style="font-size:.88rem;color:var(--t0);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
-              <div id="rm-ch" style="font-size:.72rem;color:var(--t4);margin-top:1px"></div>
+              <div class="em-lbl">Title</div>
+              <input id="rm-title-in" class="em-input" type="text">
+              <div id="rm-ch" style="font-size:.72rem;color:var(--t4);margin-top:3px"></div>
             </div>
             <div class="em-row"><div class="em-lbl">Type</div><div id="rm-opts" style="display:flex;flex-direction:column;gap:5px;margin-top:2px"></div></div>
             <div id="rm-sid" class="em-row" style="display:none"><div class="em-lbl">SeriesID</div><div id="rm-sid-val" class="em-sid"></div></div>
-            <div id="rm-days-row" class="em-row" style="display:none"><div class="em-lbl">Days</div><div class="em-days" id="rm-days"></div></div>
+            <div id="rm-airings" class="em-row" style="display:none">
+              <div class="em-lbl">Other Upcoming Airings</div>
+              <div id="rm-airings-list" style="font-size:.72rem;color:var(--t4);display:flex;flex-direction:column;gap:2px;margin-top:2px"></div>
+            </div>
+            <div id="rm-days-row" class="em-row" style="display:none"><div class="em-lbl" id="rm-days-lbl">Days</div><div class="em-days" id="rm-days"></div></div>
             <div class="em-row"><div class="em-lbl">Transcode</div><select id="rm-transcode" class="em-input"><option value="none">None (copy stream)</option><option value="heavy">Heavy (H.264 CRF 18)</option><option value="mobile">Mobile (480p H.264)</option><option value="internet720">Internet 720 (720p H.264)</option></select></div>
-            <div id="rm-bonus-row" style="margin-bottom:8px;display:flex;align-items:center;gap:8px"><label class="em-check"><input type="checkbox" id="rm-bonus" onchange="toggleRmBonusStar()"> Bonus Time (extend recording past guide end)</label></div>
+            <div id="rm-bonus-row" style="margin-bottom:8px;display:flex;align-items:center;gap:8px"><label class="em-check"><input type="checkbox" id="rm-bonus" onchange="toggleRmBonusStar()"> Bonus Time (+\(state.config.Sports_padding_minutes) min past guide end)</label></div>
             <div id="rm-tuner" style="display:none;font-size:.74rem;color:#ffcc66;background:#2a1e00;border:1px solid #7a5500;border-radius:6px;padding:7px 10px;margin-bottom:10px">⚠ All tuners are currently in use. This show will be queued and recorded as soon as a tuner is free.</div>
             <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--b2)">
               <button onclick="cancelRecord()" style="font-size:.78rem;padding:6px 16px;border-radius:6px;border:1px solid #444;background:transparent;color:#aaa;cursor:pointer">Cancel</button>
@@ -1865,6 +1886,8 @@ final class WebServer: @unchecked Sendable {
         function tagBg(f){var lo=f.toLowerCase();var g=_ggAlias[lo]||lo;return _ggKnown.indexOf(g)>=0?'var(--gg-'+g+')':null;}
         function heJs(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
         var _bonusMins=\(state.config.Sports_padding_minutes);
+        var _bonusEnabled=\(state.config.Sports_padding_enabled);
+        var _defaultTranscode='\(["none","heavy","mobile","internet720"].contains(state.config.Default_transcode) ? state.config.Default_transcode : "none")';
         function triggerSb(id){var el=document.getElementById(id);if(!el)return;el.classList.remove('sb-anim');void el.offsetWidth;el.classList.add('sb-anim');}
         function toggleBonusStar(){var chk=document.getElementById('em-bonus');var star=document.getElementById('em-bonus-star');if(chk.checked){star.textContent='+'+_bonusMins+'m';star.style.display='inline-flex';triggerSb('em-bonus-star');}else{star.style.display='none';star.classList.remove('sb-anim');}}
         function ft(d){var h=d.getHours(),m=d.getMinutes(),ap=h>=12?'PM':'AM';h=h%12||12;return h+(m?':'+(m<10?'0':'')+m:'')+' '+ap;}
@@ -1980,7 +2003,7 @@ final class WebServer: @unchecked Sendable {
             window.webkit.messageHandlers.record.postMessage({deviceId:_d,guideNumber:_n,startTime:_s,endTime:_e,title:_title,seriesId:_ser,genre:_genre,imageURL:_poster});
             return;
           }
-          document.getElementById('rm-title').textContent=document.getElementById('sum-title').textContent||'';
+          document.getElementById('rm-title-in').value=_title||'';
           document.getElementById('rm-ch').textContent=document.getElementById('sum-ct').textContent||'';
           var opts=document.getElementById('rm-opts');opts.innerHTML='';var first=true;
           recOpts.forEach(function(o){
@@ -1992,6 +2015,8 @@ final class WebServer: @unchecked Sendable {
             lbl.appendChild(inp);lbl.appendChild(info);opts.appendChild(lbl);
           });
           document.getElementById('rm-sid').style.display='none';
+          document.getElementById('rm-airings').style.display='none';
+          _airCache={};_airGen++;var _myGen=_airGen;
           // Build day buttons — pre-check the day-of-week matching the guide entry
           var entryDow=new Date(_s*1000).getDay();
           var rmDaysEl=document.getElementById('rm-days');rmDaysEl.innerHTML='';
@@ -2000,16 +2025,26 @@ final class WebServer: @unchecked Sendable {
             btn.type='button';btn.className='day-btn'+(i===entryDow?' sel':'');
             btn.textContent=_dayShort[i];btn.dataset.day=day;
             btn.onclick=function(){
-              if(this.classList.contains('sel')&&document.querySelectorAll('#rm-days .day-btn.sel').length<=1)return;
-              this.classList.toggle('sel');
+              var checked=document.querySelector('input[name="rm-type"]:checked');
+              var v=checked?checked.value:'single';
+              if(v==='single'){
+                var wasSel=this.classList.contains('sel');
+                Array.from(rmDaysEl.querySelectorAll('.day-btn.sel')).forEach(function(b){b.classList.remove('sel');});
+                if(!wasSel)this.classList.add('sel');
+              } else {
+                if(this.classList.contains('sel')&&rmDaysEl.querySelectorAll('.day-btn.sel').length<=1)return;
+                this.classList.toggle('sel');
+              }
             };
             rmDaysEl.appendChild(btn);
           });
-          document.getElementById('rm-days-row').style.display='none';
-          document.getElementById('rm-transcode').value='none';
+          document.getElementById('rm-days-lbl').textContent='Day';
+          document.getElementById('rm-days-row').style.display='flex';
+          document.getElementById('rm-transcode').value=_defaultTranscode;
           var _isSports=_genre.toLowerCase().indexOf('sports')>=0;
-          document.getElementById('rm-bonus').checked=_isSports;
-          var rbstar=document.getElementById('rm-bonus-star');rbstar.textContent='+'+_bonusMins+'m';if(_isSports){rbstar.style.display='inline-flex';triggerSb('rm-bonus-star');}else{rbstar.style.display='none';rbstar.classList.remove('sb-anim');}
+          document.getElementById('rm-bonus-row').style.display=_bonusEnabled?'flex':'none';
+          document.getElementById('rm-bonus').checked=_bonusEnabled&&_isSports;
+          var rbstar=document.getElementById('rm-bonus-star');rbstar.textContent='+'+_bonusMins+'m';if(_bonusEnabled&&_isSports){rbstar.style.display='inline-flex';triggerSb('rm-bonus-star');}else{rbstar.style.display='none';rbstar.classList.remove('sb-anim');}
           // Show tuner-full warning only when the show is live and that device has no free tuners
           var nowTs=Math.floor(Date.now()/1000);
           var isLive=(_s<=nowTs&&_e>nowTs);
@@ -2020,9 +2055,41 @@ final class WebServer: @unchecked Sendable {
             var sid=document.getElementById('rm-sid');
             if(isSeries&&_ser){document.getElementById('rm-sid-val').textContent=_ser;sid.style.display='flex';}
             else{sid.style.display='none';}
-            document.getElementById('rm-days-row').style.display=(v==='dateTime')?'flex':'none';
+            if(v==='single'||v==='dateTime'){
+              document.getElementById('rm-days-lbl').textContent=(v==='single')?'Day':'Days';
+              document.getElementById('rm-days-row').style.display='flex';
+              if(v==='single'){
+                Array.from(rmDaysEl.querySelectorAll('.day-btn')).forEach(function(b,i){b.classList.toggle('sel',i===entryDow);});
+              }
+            } else {
+              document.getElementById('rm-days-row').style.display='none';
+            }
+            if(isSeries&&_ser){loadAirings(_ser,_myGen);}
+            else{document.getElementById('rm-airings').style.display='none';}
           };
           document.getElementById('rec-modal').style.display='flex';
+        }
+        var _airCache={},_airGen=0;
+        function loadAirings(ser,gen){
+          if(_airCache[ser]){renderAirings(_airCache[ser]);return;}
+          fetch('/api/airings/'+encodeURIComponent(ser)).then(function(r){return r.json();}).then(function(d){
+            if(gen!==_airGen)return;
+            _airCache[ser]=d.airings||[];
+            renderAirings(_airCache[ser]);
+          }).catch(function(){});
+        }
+        function renderAirings(list){
+          var filtered=list.filter(function(a){return !(String(a.ch)===_n&&+a.start===_s);});
+          var panel=document.getElementById('rm-airings');
+          if(!filtered.length){panel.style.display='none';return;}
+          document.getElementById('rm-airings-list').innerHTML=filtered.map(function(a){
+            var d=new Date(a.start*1000);
+            var parts=[_dayShort[d.getDay()]+' '+ft(d)];
+            parts.push(a.chName?('Ch '+a.ch+' '+a.chName):('Ch '+a.ch));
+            if(a.ep)parts.push(a.ep);
+            return '<div>'+hej(parts.join(' · '))+'</div>';
+          }).join('');
+          panel.style.display='flex';
         }
         function cancelRecord(){document.getElementById('rec-modal').style.display='none';var rbstar=document.getElementById('rm-bonus-star');rbstar.style.display='none';rbstar.classList.remove('sb-anim');}
         function toggleRmBonusStar(){var chk=document.getElementById('rm-bonus');var star=document.getElementById('rm-bonus-star');if(chk.checked){star.textContent='+'+_bonusMins+'m';star.style.display='inline-flex';triggerSb('rm-bonus-star');}else{star.style.display='none';star.classList.remove('sb-anim');}}
@@ -2031,11 +2098,14 @@ final class WebServer: @unchecked Sendable {
           var type=checked?checked.value:'single';
           var airDays=Array.from(document.querySelectorAll('#rm-days .day-btn.sel')).map(function(b){return b.dataset.day;});
           var transcode=document.getElementById('rm-transcode').value;
+          var editedTitle=document.getElementById('rm-title-in').value.trim();
+          var payload={deviceId:_d,guideNumber:_n,startTime:_s,endTime:_e,showType:type,airDays:airDays,transcode:transcode,bonusTime:document.getElementById('rm-bonus').checked};
+          if(editedTitle&&editedTitle!==_title)payload.title=editedTitle;
           cancelRecord();
           var btn=document.getElementById('sum-btn');
           btn.disabled=true;btn.textContent='Scheduling…';
           fetch('/api/record',{method:'POST',headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({deviceId:_d,guideNumber:_n,startTime:_s,endTime:_e,showType:type,airDays:airDays,transcode:transcode,bonusTime:document.getElementById('rm-bonus').checked})})
+            body:JSON.stringify(payload)})
           .then(function(r){
             if(r.ok){
               return r.json().then(function(j){

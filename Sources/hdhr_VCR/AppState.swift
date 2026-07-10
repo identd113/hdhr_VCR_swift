@@ -788,7 +788,7 @@ final class AppState: ObservableObject {
 
     // MARK: - Add show from guide entry (called by menu)
 
-    func addShowFromGuide(entry: GuideEntry, type: ShowState, device: HDHRDevice, channel: LineupEntry, airDays: [String]? = nil, transcode: String? = nil, bonusTime: Bool = false) {
+    func addShowFromGuide(entry: GuideEntry, type: ShowState, device: HDHRDevice, channel: LineupEntry, airDays: [String]? = nil, transcode: String? = nil, bonusTime: Bool = false, titleOverride: String? = nil) {
         // Use the default directory automatically; user can override per-show via Edit.
         let folder = defaultSaveDir
 
@@ -802,6 +802,9 @@ final class AppState: ObservableObject {
             ? (rawTitle.range(of: #"\s+S\d+E\d+.*$"#, options: [.regularExpression, .caseInsensitive])
                .map { String(rawTitle[..<$0.lowerBound]) } ?? rawTitle)
             : rawTitle
+        if let override = titleOverride?.trimmingCharacters(in: .whitespacesAndNewlines), !override.isEmpty {
+            show.show_title = override
+        }
         show.show_length    = entry.durationMinutes
         show.show_next      = entry.startDate
         show.show_end       = entry.endDate
@@ -820,7 +823,7 @@ final class AppState: ObservableObject {
         switch type {
         case .single:
             show.show_is_series = false; show.show_use_seriesid = false; show.show_use_seriesid_all = false
-            show.show_air_date = []
+            show.show_air_date = airDays ?? []
         case .dateTime:
             show.show_is_series = true; show.show_use_seriesid = false; show.show_use_seriesid_all = false
             if let days = airDays, !days.isEmpty {

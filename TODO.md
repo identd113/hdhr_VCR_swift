@@ -58,6 +58,22 @@ Can't update `show_seriesid` if SiliconDust changes a series' ID (which happens 
 
 ---
 
+## Web Guide
+
+### Edit modal (`#edit-modal`) doesn't have the Record modal's Details-step parity
+
+The Record modal (`#rec-modal`) was brought to parity with the native `ShowFormSection` (editable title, Day row for both `single`/`dateTime`, config-driven transcode default, gated Bonus Time). The Edit modal wasn't touched: its day row still only shows for `dateTime`, and its Bonus Time row isn't gated on `Sports_padding_enabled`. Same treatment, separate change.
+
+**Key file**: `WebServer.swift` → `openEditShow()`, `updateDaysVisibility()`, `#em-days-row`/`#em-bonus-row`.
+
+---
+
+### Native/web title divergence for series shows
+
+The native Add Show wizard saves series shows under the raw (possibly episode-suffixed) guide title; the web Record modal's `addShowFromGuide` call strips the suffix server-side unless the user supplies an explicit title override. Documented as intentional pre-existing divergence in `docs/WebServer.md`, not changed.
+
+---
+
 ## Settings
 
 ### No per-show fail threshold or bonus duration
