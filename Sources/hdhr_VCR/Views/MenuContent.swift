@@ -69,7 +69,7 @@ struct MenuContent: View {
         // ── Header ────────────────────────────────────────────────────────
         ForEach(state.devices) { device in
             let slots       = device.TunerCount ?? 1
-            let vlcUsing    = VLCPlayerWindowManager.shared.currentDeviceID == device.DeviceID ? 1 : 0
+            let vlcUsing    = state.vlcOccupiesTuner(for: device.DeviceID) ? 1 : 0
             let appCount    = recordingShows.filter { $0.hdhr_record == device.DeviceID }.count + vlcUsing
             let liveInfo    = state.deviceTunerOccupancy[device.DeviceID]
             let liveCount   = liveInfo?.filter { $0.VctNumber != nil }.count ?? appCount

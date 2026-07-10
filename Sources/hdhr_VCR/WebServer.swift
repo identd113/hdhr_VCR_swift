@@ -1863,6 +1863,7 @@ final class WebServer: @unchecked Sendable {
         var _ggAlias={'sitcom':'comedy','movies':'movie','kids':'children','sport':'sports','documentary':'doc','game show':'gameshow','animation':'children','animated':'children'};
         var _ggKnown=['drama','comedy','news','sports','reality','movie','talk','children','crime','romance','thriller','action','mystery','doc','science','nature','history','music','food','travel','gameshow','home','health','faith'];
         function tagBg(f){var lo=f.toLowerCase();var g=_ggAlias[lo]||lo;return _ggKnown.indexOf(g)>=0?'var(--gg-'+g+')':null;}
+        function heJs(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
         var _bonusMins=\(state.config.Sports_padding_minutes);
         function triggerSb(id){var el=document.getElementById(id);if(!el)return;el.classList.remove('sb-anim');void el.offsetWidth;el.classList.add('sb-anim');}
         function toggleBonusStar(){var chk=document.getElementById('em-bonus');var star=document.getElementById('em-bonus-star');if(chk.checked){star.textContent='+'+_bonusMins+'m';star.style.display='inline-flex';triggerSb('em-bonus-star');}else{star.style.display='none';star.classList.remove('sb-anim');}}
@@ -1885,7 +1886,7 @@ final class WebServer: @unchecked Sendable {
           var gi=document.getElementById('sum-genre');
           var _allTags=(d.filters||d.genre||'').split(',').filter(function(f){return f&&f.toLowerCase()!=='series';});
           if(d.new==='1')_allTags.unshift('__new__');
-          if(_allTags.length){gi.innerHTML=_allTags.map(function(f){if(f==='__new__')return '<span class="sum-tag" style="background:#27ae60;color:#fff;font-weight:800;letter-spacing:.07em">NEW</span>';var c=tagBg(f);return '<span class="sum-tag"'+(c?' style="background:'+c+'"':'')+'>'+f.toUpperCase()+'</span>';}).join('');gi.style.display='flex';}else{gi.style.display='none';}
+          if(_allTags.length){gi.innerHTML=_allTags.map(function(f){if(f==='__new__')return '<span class="sum-tag" style="background:#27ae60;color:#fff;font-weight:800;letter-spacing:.07em">NEW</span>';var c=tagBg(f);return '<span class="sum-tag"'+(c?' style="background:'+c+'"':'')+'>'+heJs(f.toUpperCase())+'</span>';}).join('');gi.style.display='flex';}else{gi.style.display='none';}
           renderHeavyFields(el);
           document.getElementById('sum-ct').textContent='Ch '+d.num+' · '+d.chname+' · '+ft(new Date(+d.start*1000))+' – '+ft(new Date(+d.end*1000));
           var btn=document.getElementById('sum-btn');

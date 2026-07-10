@@ -1290,14 +1290,16 @@ final class AppState: ObservableObject {
         glog("[\(shows[i].show_title)] SKIP — paused until next airing")
         pendingDiscordStart.remove(showId)
         recordingManager.stop(showId: showId)
-        VLCPlayerWindowManager.shared.closeIfPlayingURL(shows[i].show_url)
+        VLCPlayerWindowManager.shared.closeIfPlaying(showId: shows[i].show_id, url: shows[i].show_url)
         tunerStatus.removeValue(forKey: showId)
         shows[i].show_recording = false
         shows[i].show_last = Date()
         shows[i].show_paused = true
         shows[i].show_fail_reason = "Skipped"
+        let channel = shows[i].show_channel, device = shows[i].hdhr_record
         await scheduleNextAir(index: i)
         saveConfig()
+        webServer.broadcastEvent(["type": "show_updated", "channel": channel, "device": device])
     }
 
     private func teardownRecordingState(index: Int) {
@@ -1642,18 +1644,21 @@ final class AppState: ObservableObject {
         guard let i = shows.firstIndex(where: { $0.show_id == show.show_id }) else { return }
         glog("[\(show.show_title)] PAUSED manual")
         shows[i].show_paused = true; shows[i].show_fail_reason = "Manually paused"; saveConfig()
+        webServer.broadcastEvent(["type": "show_updated", "channel": show.show_channel, "device": show.hdhr_record])
     }
     func resumeShow(_ show: Show) {
         guard let i = shows.firstIndex(where: { $0.show_id == show.show_id }) else { return }
         glog("[\(show.show_title)] RESUMED")
         shows[i].show_paused = false; shows[i].clearFailures(); saveConfig()
+        webServer.broadcastEvent(["type": "show_updated", "channel": show.show_channel, "device": show.hdhr_record])
     }
     func deleteShow(_ show: Show) {
         glog("[Show] Deleted '\(show.show_title)'")
         recordingManager.stop(showId: show.show_id)
-        VLCPlayerWindowManager.shared.closeIfPlayingURL(show.show_url)
+        VLCPlayerWindowManager.shared.closeIfPlaying(showId: show.show_id, url: show.show_url)
         shows.removeAll { $0.show_id == show.show_id }
         saveConfig()
+        webServer.broadcastEvent(["type": "show_deleted", "channel": show.show_channel, "device": show.hdhr_record])
     }
 
     func confirmAndDeleteShow(_ show: Show, then completion: @escaping () -> Void = {}) {
@@ -2090,16 +2095,14 @@ final class AppState: ObservableObject {
             // Switching channels in an already-open player on this device reuses the same slot —
             // skip the availability check so we don't block a legal channel switch.
             if mgr.currentDeviceID != device.DeviceID {
-                if let statusURL = URL(string: device.statusURL),
-                   let (data, _) = try? await URLSession.shared.data(from: statusURL),
-                   let tuners = try? JSONDecoder().decode([DeviceTunerInfo].self, from: data) {
+                // Fresh hw poll folded into tunersFull's max(hw, recordingShows+vlc) — a raw
+                // status.json read alone misses a just-started recording (docs/AppState.md).
+                await fetchDeviceStatus(for: device)
+                if tunersFull(for: device.DeviceID) {
                     let tunerCount = device.TunerCount ?? 2
-                    let active = tuners.filter { $0.VctNumber != nil }.count
-                    if active >= tunerCount {
-                        glog("[Watch] BLOCKED — all \(tunerCount) tuner(s) on \(device.DeviceID) in use; '\(title)' not opened", level: .warning)
-                        alertTunerFull(tunerCount: tunerCount, deviceId: device.DeviceID)
-                        return
-                    }
+                    glog("[Watch] BLOCKED — all \(tunerCount) tuner(s) on \(device.DeviceID) in use; '\(title)' not opened", level: .warning)
+                    alertTunerFull(tunerCount: tunerCount, deviceId: device.DeviceID)
+                    return
                 }
             }
             glog("[Watch] '\(title)' on \(device.DeviceID)")
@@ -2125,13 +2128,12 @@ final class AppState: ObservableObject {
         let vlcApp = URL(fileURLWithPath: vlcPath) // URL(fileURLWithPath:) handles spaces/special chars correctly
         let device = devices.first { $0.DeviceID == (deviceId ?? "") }
         Task {
-            if let device,
-               let statusURL = URL(string: device.statusURL),
-               let (data, _) = try? await URLSession.shared.data(from: statusURL),
-               let tuners = try? JSONDecoder().decode([DeviceTunerInfo].self, from: data) {
-                let tunerCount = device.TunerCount ?? 2
-                let active = tuners.filter { $0.VctNumber != nil }.count
-                if active >= tunerCount {
+            if let device {
+                // Fresh hw poll folded into tunersFull's max(hw, recordingShows+vlc) — a raw
+                // status.json read alone misses a just-started recording (docs/AppState.md).
+                await fetchDeviceStatus(for: device)
+                if tunersFull(for: device.DeviceID) {
+                    let tunerCount = device.TunerCount ?? 2
                     alertTunerFull(tunerCount: tunerCount, deviceId: device.DeviceID)
                     return
                 }
@@ -2490,7 +2492,7 @@ final class AppState: ObservableObject {
     // own. Without this distinction, watching your own in-progress recording via Watch Now! would
     // make the app think a tuner is in use that isn't — exactly the cost this feature exists to
     // avoid (docs/WebServer.md's /api/watch-recording relay).
-    private func vlcOccupiesTuner(for deviceId: String) -> Bool {
+    func vlcOccupiesTuner(for deviceId: String) -> Bool {
         VLCPlayerWindowManager.shared.currentDeviceID == deviceId && VLCBridge.shared.recordingShowId == nil
     }
 

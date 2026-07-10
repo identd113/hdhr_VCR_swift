@@ -807,9 +807,13 @@ final class VLCPlayerWindowManager {
         win.makeKeyAndOrderFront(nil)
     }
 
-    /// Close the player window if it is currently playing the given URL.
-    func closeIfPlayingURL(_ url: String) {
-        guard !url.isEmpty, VLCBridge.shared.currentURL?.urlBase == url else { return }
+    /// Close the player window if it is currently playing the given show — either its raw tuner
+    /// stream URL, or (Watch Now! relay playback) VLCBridge.recordingShowId matching the show's ID,
+    /// since the relay plays a local /api/watch-recording URL that never equals show_url.
+    func closeIfPlaying(showId: String, url: String) {
+        let matchesURL   = !url.isEmpty && VLCBridge.shared.currentURL?.urlBase == url
+        let matchesRelay = !showId.isEmpty && VLCBridge.shared.recordingShowId == showId
+        guard matchesURL || matchesRelay else { return }
         window?.close()   // triggers windowWillClose → playerWindowDidClose
     }
 
