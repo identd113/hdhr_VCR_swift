@@ -133,7 +133,8 @@ struct Show: Identifiable, Equatable {
         show_fail_count += 1
         show_fail_reason = reason
         // show_paused is NOT set here — startRecording's threshold check pauses the show
-        // after Fail_count_setting consecutive failures, allowing 1 retry per idle loop tick.
+        // after Fail_count_setting consecutive failures. AppState.recordShowFailure(index:reason:)
+        // also starts an escalating idle-loop-tick cooldown before the next retry is attempted.
     }
 
     mutating func clearFailures() {

@@ -291,3 +291,17 @@ When the tuner picker changes, `genreFilter` resets to `nil` because `availableG
 **Resolution**: Replaced with `NSViewRepresentable` wrapping the scroll view's `NSClipView`, observing `NSView.boundsDidChangeNotification`. This fires on every AppKit scroll frame including momentum. The CompatibilityHelpers extension uses `onScrollGeometryChange` natively on macOS 15+ and falls back to this AppKit approach on macOS 14.
 
 **Resolving commit**: cable guide scroll sync stabilization (see git log)
+
+---
+
+## RESOLVED — Disk-full "Recording Skipped" posted a brand-new Discord message on every retry
+
+**File:** `AppState.swift` → `startRecording(index:)`, disk-check guard
+
+**Symptom**: While a show's tuner slot stayed ready but the disk was over the free-space threshold, every idle-loop retry posted a fresh "💾 Recording Skipped" Discord message instead of updating one card — spamming the channel once per retry.
+
+**Root cause**: This was the one failure path still calling the fire-and-forget `discordShow(...)` helper with no `editMessageId`, instead of the `discordRecordingCard(showId:event:color:enabled:extra:)` helper the other four failure paths (curl exit, no stream URL, launch error, empty output file) already used. `discordShow` neither reuses `discord_start_msg_id` nor captures a new message ID, so each call was an orphaned POST.
+
+**Resolution**: Switched the disk-full path to `discordRecordingCard`, matching the other failure paths — reuses the existing card if `discord_start_msg_id` is set, otherwise creates one and captures the ID. Found and fixed alongside adding the idle-loop retry backoff (see `TODO.md`'s former "No retry backoff for failed shows" entry).
+
+**Resolving commit**: pending (uncommitted at time of writing)

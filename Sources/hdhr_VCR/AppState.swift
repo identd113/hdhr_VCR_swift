@@ -160,6 +160,13 @@ final class AppState: ObservableObject {
     private var loadingLineupTasks: [String: Task<Void, Never>] = [:]
     // Per-device exponential backoff after guide API failures (replaces flat guideLoadFailTimes).
     private var guideApiBackoff: [String: APIBackoff] = [:]
+    // Per-show cooldown after a recording failure, expressed in idle-loop ticks (scales with
+    // Idle_timer_interval) rather than wall-clock time. 1st consecutive failure waits 2 ticks;
+    // every failure after that waits 3 (capped) until show_fail_count reaches Fail_count_setting
+    // and the show pauses. Mirrors APIBackoff's escalating-delay shape above. Not persisted —
+    // resets to "no backoff" on relaunch.
+    private static let retryBackoffLoops: [Int] = [2, 3]
+    private var showRetryAfter: [String: Date] = [:]
     private var failThreshold: Int { config.Fail_count_setting }
     private let maxDiskPct: Double = 93
     // Set true while the MenuBarExtra menu is open (tracked via MenuContent onAppear/onDisappear).
@@ -994,12 +1001,14 @@ final class AppState: ObservableObject {
                 if endDate <= now {
                     shows[i].show_paused = false
                     shows[i].clearFailures()
+                    showRetryAfter.removeValue(forKey: show.show_id)
                     glog("[\(show.show_title)] auto-resuming — paused window expired, rescheduling")
                     await scheduleNextAir(index: i)
                     dirty = true
                 } else if nextDate <= now + 10 {
                     shows[i].show_paused = false
                     shows[i].clearFailures()
+                    showRetryAfter.removeValue(forKey: show.show_id)
                     glog("[\(show.show_title)] auto-resuming — next airing imminent")
                     dirty = true
                 }
@@ -1048,7 +1057,7 @@ final class AppState: ObservableObject {
                 let hdhrReason = recordingManager.readAndClearHDHRError(showId: show.show_id)
                 teardownRecordingState(index: i) // kills pid (harmless), releases assertion, clears caches
                 let failReason = hdhrReason ?? "curl exited unexpectedly"
-                shows[i].recordFailure(reason: failReason)
+                recordShowFailure(index: i, reason: failReason)
                 glog("[\(show.show_title)] FAIL \(failReason) — fail_count=\(shows[i].show_fail_count)", level: .error)
                 // Only notify on persistent failures (2+ in a row) to avoid spamming user during transient retries.
                 // Show will be paused and notified if fail_count reaches the threshold.
@@ -1113,7 +1122,9 @@ final class AppState: ObservableObject {
             let s = shows[i]
             guard s.show_active, !s.show_recording, !s.show_paused,
                   let next = s.show_next, let end = s.show_end else { return false }
-            return next <= now + 10 && end > now
+            guard next <= now + 10 && end > now else { return false }
+            if let retryAfter = showRetryAfter[s.show_id], now < retryAfter { return false }
+            return true
         }.sorted { isFavoriteChannel(shows[$0]) && !isFavoriteChannel(shows[$1]) }
         if !readyIndices.isEmpty { dirty = true }
         for i in readyIndices { await startRecording(index: i) }
@@ -1157,6 +1168,15 @@ final class AppState: ObservableObject {
 
     // MARK: - Recording
 
+    // Records a failed recording attempt and starts a cooldown so the idle loop's readyIndices
+    // filter won't retry the same show again until it expires — avoids burning through
+    // Fail_count_setting in rapid-fire retries (one per Idle_timer_interval) on a transient blip.
+    private func recordShowFailure(index: Int, reason: String) {
+        shows[index].recordFailure(reason: reason)
+        let loops = Self.retryBackoffLoops[min(shows[index].show_fail_count - 1, Self.retryBackoffLoops.count - 1)]
+        showRetryAfter[shows[index].show_id] = Date().addingTimeInterval(Double(loops) * Double(config.Idle_timer_interval))
+    }
+
     func startRecording(index: Int) async {
         var show = shows[index]
         guard !show.show_recording else { return }
@@ -1191,7 +1211,7 @@ final class AppState: ObservableObject {
                 shows[index].show_url = url; show.show_url = url
             } else {
                 glog("[\(show.show_title)] NO STREAM URL — ch=\(show.show_channel) device=\(show.hdhr_record)", level: .error)
-                shows[index].recordFailure(reason: "No stream URL for ch \(show.show_channel) on \(show.hdhr_record)"); return
+                recordShowFailure(index: index, reason: "No stream URL for ch \(show.show_channel) on \(show.hdhr_record)"); return
             }
         }
         if show.show_fail_count == failThreshold - 1 {
@@ -1217,10 +1237,14 @@ final class AppState: ObservableObject {
         }
         guard diskOK(for: show) else {
             glog("[\(show.show_title)] DISK FULL — skipping recording", level: .warning)
-            shows[index].recordFailure(reason: "Disk over \(Int(maxDiskPct))% — free up space")
+            recordShowFailure(index: index, reason: "Disk over \(Int(maxDiskPct))% — free up space")
             notify("Recording Skipped", body: show.show_title, subtitle: "Disk over \(Int(maxDiskPct))%")
-            discordShow("💾 Recording Skipped", show: show, color: 0xE67E22, enabled: config.Discord_on_skipped,
-                        extra: [("Reason", "Disk over \(Int(maxDiskPct))% — free up space", false)])
+            let sid = show.show_id, reason = "Disk over \(Int(maxDiskPct))% — free up space"
+            Task { @MainActor in
+                await discordRecordingCard(showId: sid, event: "💾 Recording Skipped", color: 0xE67E22,
+                                           enabled: config.Discord_on_skipped, extra: [("Reason", reason, false)])
+                saveConfig()
+            }
             return
         }
         var seriesSubfolder: String? = nil
@@ -1264,7 +1288,7 @@ final class AppState: ObservableObject {
                                        networkInterface: config.Network_interface)
         } catch {
             glog("[\(show.show_title)] LAUNCH ERROR: \(error)", level: .error)
-            shows[index].recordFailure(reason: "Launch failed: \(error.localizedDescription)")
+            recordShowFailure(index: index, reason: "Launch failed: \(error.localizedDescription)")
             notify("Recording Failed", body: show.show_title, subtitle: "Could not launch — \(error.localizedDescription)")
             let sid = show.show_id, reason = "Launch failed: \(error.localizedDescription)"
             Task { @MainActor in
@@ -1355,7 +1379,7 @@ final class AppState: ObservableObject {
         let fileSize  = fileAttrs?[.size] as? Int ?? 0
 
         if !path.isEmpty && fileSize == 0 {
-            shows[index].recordFailure(reason: "Output file missing or empty — check disk space")
+            recordShowFailure(index: index, reason: "Output file missing or empty — check disk space")
             glog("[\(show.show_title)] STOP file missing or empty — fail_count=\(shows[index].show_fail_count)", level: .error)
             notify("Recording Failed", body: show.show_title, subtitle: "File not written — check disk space and URL")
             discordShow("❌ Recording Failed", show: show, color: 0xE74C3C, enabled: config.Discord_on_failed,
@@ -1660,7 +1684,7 @@ final class AppState: ObservableObject {
     func resumeShow(_ show: Show) {
         guard let i = shows.firstIndex(where: { $0.show_id == show.show_id }) else { return }
         glog("[\(show.show_title)] RESUMED")
-        shows[i].show_paused = false; shows[i].clearFailures(); saveConfig()
+        shows[i].show_paused = false; shows[i].clearFailures(); showRetryAfter.removeValue(forKey: show.show_id); saveConfig()
         webServer.broadcastEvent(["type": "show_updated", "channel": show.show_channel, "device": show.hdhr_record])
     }
     func deleteShow(_ show: Show) {
@@ -1668,6 +1692,7 @@ final class AppState: ObservableObject {
         recordingManager.stop(showId: show.show_id)
         VLCPlayerWindowManager.shared.closeIfPlaying(showId: show.show_id, url: show.show_url)
         shows.removeAll { $0.show_id == show.show_id }
+        showRetryAfter.removeValue(forKey: show.show_id)
         saveConfig()
         webServer.broadcastEvent(["type": "show_deleted", "channel": show.show_channel, "device": show.hdhr_record])
     }
@@ -1717,6 +1742,7 @@ final class AppState: ObservableObject {
 
     func resetAllFailCounts() {
         for i in shows.indices { shows[i].clearFailures() }
+        showRetryAfter.removeAll()
         saveConfig()
     }
 
@@ -1726,6 +1752,7 @@ final class AppState: ObservableObject {
             else if !shows[i].show_active { shows[i].show_active = true }
             shows[i].clearFailures()
         }
+        showRetryAfter.removeAll()
         saveConfig()
     }
 

@@ -20,14 +20,6 @@ No direct path to immediately record an in-progress show without going through W
 
 ## Recording
 
-### No retry backoff for failed shows
-
-Failed shows go straight to Paused after N consecutive failures with no grace period. A short wait (e.g. 5 minutes) before retrying the next eligible airing would handle transient network blips without deactivating the show.
-
-**Key files**: `AppState.swift` (idle loop / failure handling), `AppConfig` (optional backoff duration field).
-
----
-
 ### DeviceAuth via UDP tag 0x2B
 
 `HDHRManager.udpDiscoverSync()` reads only tag `0x02` (DeviceID) from the UDP discovery reply. The EXTEND device also includes DeviceAuth in tag `0x2B`. Parsing it would populate `HDHRDevice.DeviceAuth` from UDP so the guide API works when the device's HTTP server is sleeping or unreachable.

@@ -12,7 +12,7 @@ struct EditShowView: View {
 
     private var isDirty: Bool { show != nil && show != originalShow }
 
-    private let weekdays = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
+    private let weekdays = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"]
 
     var body: some View {
         Group {

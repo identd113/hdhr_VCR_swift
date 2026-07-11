@@ -29,7 +29,7 @@ struct ShowFormSection: View {
     var onSeriesTypeChange: () -> Void
     var onChooseFolder: () -> Void
 
-    private let weekdays = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
+    private let weekdays = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"]
 
     var body: some View {
         Group {

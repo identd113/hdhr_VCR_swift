@@ -150,7 +150,7 @@ show.show_is_series        = seriesType != .single
 show.show_use_seriesid     = seriesType.isSeries
 show.show_use_seriesid_all = seriesType == .seriesAll
 show.show_air_date         = seriesType.isSeries
-    ? ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
+    ? ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"]
     : Array(airDays)
 ```
 
