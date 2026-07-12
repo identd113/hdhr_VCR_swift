@@ -498,11 +498,15 @@ struct SettingsView: View {
 
             Section("Logging") {
                 Button("Show App Log in Console") {
-                    // Pass --predicate so Console opens pre-filtered to this app's subsystem
-                    let proc = Process()
-                    proc.executableURL = URL(fileURLWithPath: "/System/Applications/Utilities/Console.app/Contents/MacOS/Console")
-                    proc.arguments = ["--predicate", "subsystem == \"com.hdhr.vcrplus\""]
-                    try? proc.run()
+                    // Console.app has a launch constraint that SIGKILLs it ("Code Signature
+                    // Invalid") if exec'd directly via Process() — must go through LaunchServices.
+                    // Pass --predicate so Console opens pre-filtered to this app's subsystem.
+                    let config = NSWorkspace.OpenConfiguration()
+                    config.arguments = ["--predicate", "subsystem == \"\(Bundle.main.bundleIdentifier ?? "com.hdhr.vcrplus")\""]
+                    NSWorkspace.shared.openApplication(
+                        at: URL(fileURLWithPath: "/System/Applications/Utilities/Console.app"),
+                        configuration: config
+                    )
                 }
                 Text("Filter: subsystem == \"\(Bundle.main.bundleIdentifier ?? "com.hdhr.vcrplus")\"")
                     .font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
