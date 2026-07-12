@@ -4,6 +4,22 @@ set -e
 APP="hdhrVCRplus.app"
 BINARY="$APP/Contents/MacOS/hdhr_VCR"
 
+CLEAR_CACHE=0
+for _arg in "$@"; do
+    case "$_arg" in
+        --clear) CLEAR_CACHE=1 ;;
+    esac
+done
+
+if [ "$CLEAR_CACHE" = "1" ]; then
+    echo "==> Clearing module cache…"
+    # The Swift module cache under .build can go stale/corrupt on this toolchain (surfaces as
+    # spurious "No such file or directory" .pcm warnings, or a hard "no such module" error for
+    # things like _Testing_Foundation) — wiping it forces a clean regenerate.
+    rm -rf .build/arm64-apple-macosx/debug/ModuleCache .build/index-build/arm64-apple-macosx/debug/ModuleCache
+    echo "    Cleared."
+fi
+
 echo "==> Checking prerequisites…"
 if ! xcode-select -p &>/dev/null || ! command -v swift &>/dev/null; then
     echo "    Xcode Command Line Tools not found. Launching installer…"
