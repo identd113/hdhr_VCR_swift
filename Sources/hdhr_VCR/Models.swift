@@ -27,7 +27,7 @@ func glog(_ msg: String, level: LogLevel = .info) {
             let fm = FileManager.default
             if !fm.fileExists(atPath: logFilePath) { fm.createFile(atPath: logFilePath, contents: nil) }
             if let fh = FileHandle(forWritingAtPath: logFilePath) {
-                try? fh.seekToEnd()
+                _ = try? fh.seekToEnd()
                 logHandle = fh
             }
         }

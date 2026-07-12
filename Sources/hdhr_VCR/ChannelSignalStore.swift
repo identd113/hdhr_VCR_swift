@@ -34,12 +34,12 @@ final class ChannelSignalStore {
 
     func load() async {
         let path = filePath
-        guard let h = await Task.detached(priority: .utility) { () -> [String: [ChannelSignalSample]]? in
+        guard let h = await Task.detached(priority: .utility, operation: { () -> [String: [ChannelSignalSample]]? in
             guard let data    = try? Data(contentsOf: path),
                   let decoded = try? JSONDecoder().decode([String: [ChannelSignalSample]].self, from: data)
             else { return nil }
             return decoded.mapValues { Array($0.suffix(50)) }.filter { !$0.value.isEmpty }
-        }.value else { return }
+        }).value else { return }
         history = h
         buckets = computeAllBuckets()
     }

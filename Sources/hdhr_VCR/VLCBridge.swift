@@ -246,8 +246,10 @@ final class VLCBridge: ObservableObject {
             setenv("VLC_PLUGIN_PATH", pluginPath, 1)
         }
         Task.detached(priority: .userInitiated) { [weak self] in
-            let inst = newFn(0, nil)
-            let mp   = inst.flatMap { mpNewFn($0) }
+            // OpaquePointer isn't Sendable, but these are freshly-created VLC handles with no
+            // other owner yet — safe to hand across the actor boundary to MainActor.run below.
+            nonisolated(unsafe) let inst = newFn(0, nil)
+            nonisolated(unsafe) let mp   = inst.flatMap { mpNewFn($0) }
             await MainActor.run { [weak self] in
                 guard let self else { return }
                 self.vlcInstance = inst
