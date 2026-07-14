@@ -14,6 +14,7 @@ func stop()
 func updateTXTRecord()    // @MainActor — refreshes mDNS TXT record; called from idleLoop
 func broadcastEvent(_:)   // pushes a JSON event to all open SSE clients
 func broadcastRecordingEvent(type:channel:device:state:)  // @MainActor — builds sumPh + the device's tdrop fragment and calls broadcastEvent
+func broadcastGuideChangeEvent(type:extra:state:)  // @MainActor — builds grid + sumph + all tdrop fragments once (buildGuideRefreshPayload) and calls broadcastEvent, so connected clients apply the pushed HTML instead of each independently re-fetching /api/guide-refresh
 func prebuildPageHTML(state: AppState)   // @MainActor — pre-renders and caches desktop + mobile HTML; called after fetchAllGuides / refreshGuides
 func invalidateHTMLCache()               // clears cachedHTML so the next GET / rebuilds
 ```
@@ -128,7 +129,7 @@ Match priority: recording show on exact device+channel first, then active show m
 
 ## POST /api/toggle-favorite
 
-Toggles the favorite status of a channel by calling `AppState.toggleFavorite(device:channel:)`. Optimistically mutates `lineups[deviceId][idx].Favorite` in-place, fires an async HDHR API call (`HDHRManager.setFavorite()` → `POST http://{ip}/lineup.post?favorite=+/-GuideNumber`), and reverts on failure. Broadcasts a `favorite_toggled` SSE event so all open guide pages refresh.
+Toggles the favorite status of a channel by calling `AppState.toggleFavorite(device:channel:)`. Optimistically mutates `lineups[deviceId][idx].Favorite` in-place, fires an async HDHR API call (`HDHRManager.setFavorite()` → `POST http://{ip}/lineup.post?favorite=+/-GuideNumber`), and reverts on failure. Broadcasts a `favorite_toggled` SSE event (via `broadcastGuideChangeEvent` — carries the rebuilt grid/sumph/tdrop, see SSE section) so all open guide pages update in place.
 
 **Request body (JSON):**
 
@@ -205,7 +206,7 @@ Promoting a show to a `seriesId` type (`seriesChannel`/`seriesAll`) when it prev
 
 Save Directory is **not** editable from the web UI — directory path changes require local app access.
 
-On **Save**: `confirmEdit()` POSTs `/api/edit` and closes modal on success. An SSE event (`show_updated`) is pushed to all connected clients immediately after the server-side update, triggering `refreshGuide()` in place.
+On **Save**: `confirmEdit()` POSTs `/api/edit` and closes modal on success. A `show_updated` SSE event carrying the rebuilt grid/sumph/tdrop (via `broadcastGuideChangeEvent`) is pushed to all connected clients immediately after the server-side update, so every open tab applies the update in place without its own fetch.
 
 ---
 
@@ -242,28 +243,35 @@ A persistent SSE endpoint. Browsers connect once on page load via `EventSource('
 
 | Event `type` | Triggered by | Payload fields |
 |---|---|---|
-| `recording_started` | `AppState.startRecording` | `channel`, `device`, `sumPh` (HTML), `tdrop` (HTML), `tdropDev` |
-| `recording_stopped` | `AppState.teardownRecordingState` | `channel`, `device`, `sumPh` (HTML), `tdrop` (HTML), `tdropDev` |
-| `guide_refreshed` | `AppState.refreshGuides` (on success) | *(none beyond type)* |
-| `show_added` | `AppState.addShowFromGuide` | `channel`, `device` |
-| `show_deleted` | `WebServer.handleDelete` | `channel`, `device` |
-| `show_updated` | `WebServer.handleEdit` | `channel`, `device` |
-| `favorite_toggled` | `WebServer.handleToggleFavorite` | `device`, `guideNumber` |
+| `recording_started` | `AppState.startRecording` | `channel`, `device`, `sumPh` (HTML), `tdrop` (HTML string), `tdropDev` |
+| `recording_stopped` | `AppState.teardownRecordingState` | `channel`, `device`, `sumPh` (HTML), `tdrop` (HTML string), `tdropDev` |
+| `guide_refreshed` | `AppState.refreshGuides` (on success) | `grid` (HTML), `sumph` (HTML), `tdrop` (`{deviceId: HTML}`) |
+| `show_added` | `AppState.addShowFromGuide` | `channel`, `device`, `grid`, `sumph`, `tdrop` |
+| `show_deleted` | `AppState.deleteShow` | `channel`, `device`, `grid`, `sumph`, `tdrop` |
+| `show_updated` | `WebServer.handleEdit`, `AppState.skipRecording`/`pauseShow`/`resumeShow` | `channel`, `device`, `grid`, `sumph`, `tdrop` |
+| `favorite_toggled` | `WebServer.handleToggleFavorite` | `device`, `guideNumber`, `grid`, `sumph`, `tdrop` |
 | `deviceOffline` | `AppState.probeForNewDevices` (miss #3) | `deviceId` |
 | `deviceOnline` | `AppState.probeForNewDevices` (seen after unavailable, or new device) | `deviceId` |
 | `signal_update` | `AppState.startSignalScan` | `gname` (guideName.lowercased()), `bucket` (raw string: `"good"` / `"fair"` / `"poor"` / `"noData"`) |
 | `tuner_update` | `WebServer.pushFreshTunerCounts` (on SSE connect) | `counts`: `{deviceId: {a: active, t: total}, …}` — live occupancy from `recordingShows` |
 
-`recording_started` and `recording_stopped` carry pre-rendered `sumPh` and `tdrop` HTML fragments built by `broadcastRecordingEvent` → `buildSumPhHTML` + `buildTunerShowsHTML(state, device)`. The client applies `sumPh` to `#sum-ph` and `tdrop` to `#tdrop-{tdropDev}` inline without a second HTTP request.
+`recording_started` and `recording_stopped` carry pre-rendered `sumPh` and `tdrop` HTML fragments built by `broadcastRecordingEvent` → `buildSumPhHTML` + `buildTunerShowsHTML(state, device)` (one device only — `tdrop` here is a single HTML string, applied to `#tdrop-{tdropDev}`). The client applies `sumPh` to `#sum-ph` inline without a second HTTP request.
 
-**Client handling (four cases):**
+`guide_refreshed`/`show_added`/`show_deleted`/`show_updated`/`favorite_toggled` carry the full `grid`/`sumph`/`tdrop` payload built by `broadcastGuideChangeEvent` → `buildGuideRefreshPayload` (same shape `GET /api/guide-refresh` returns — `tdrop` here is an *object* keyed by device ID, not a single string). This is computed **once per event**, server-side, and pushed to every connected client, instead of each client independently calling `/api/guide-refresh` and rebuilding the grid itself — see "Guide-change fragment push" below.
+
+**Client handling (five cases, checked in order):**
 
 1. `tuner_update` — updates `tuners[dev].a` in-place and refreshes all `#tun-{dev}` badge elements. Fired on every new SSE connection so the badge is accurate immediately, not just after a recording event.
 2. `signal_update` — updates SVG signal bars in-place on matching `.g-row[data-gname]` rows. No `refreshGuide()`.
-3. Events with `sumPh`/`tdrop` — applies `#sum-ph` and the affected tuner's `#tdrop-{tdropDev}` directly. For recording events also toggles `.g-prog-rec` / `.g-prog-now` classes and the `.g-flag-rec` child on the currently-airing guide entry for the affected channel+device. No `refreshGuide()`.
-4. All other events — `refreshGuide()` (scroll-preserving partial DOM swap).
+3. Events with `grid` — applies the pushed `{grid, sumph, tdrop}` payload via `applyGuidePayload(d)` (swaps `.gi`, `#sum-ph`, every `#tdrop-body-{dev}`, re-syncs `_winStart`/`_winSec`, restores scroll + selection). **Must be checked before case 4** — this payload's `tdrop` is a `{device: html}` object, which would otherwise satisfy case 4's `d.tdrop` truthiness check and get assigned directly into `innerHTML`, rendering the literal string `[object Object]`.
+4. Events with `sumPh`/`tdrop` (recording events only, now that case 3 intercepts the guide-change events) — applies `#sum-ph` and the affected tuner's `#tdrop-{tdropDev}` directly, and toggles `.g-prog-rec`/`.g-prog-now` classes + the `.g-flag-rec` child on the currently-airing guide entry for the affected channel+device. No `refreshGuide()`.
+5. All other events (or a `grid`-carrying event missed for some reason) — `refreshGuide()` (fetch-based fallback, same `applyGuidePayload` under the hood).
 
-`guide_refreshed` falls into case 4 — `refreshGuide()` fetches the full page and swaps the grid, bringing schedule flags and channel data up to date after a guide cycle. It is broadcast roughly **once per clock-hour boundary** (the `lastRefreshHour` gate in `AppState.idleLoop` → `refreshGuides()`), so an idle guide window does a background refresh about hourly even with no user activity.
+`guide_refreshed` now falls into case 3 instead of the old fetch-based fallback — the grid the idle loop already rebuilt via `prebuildPageHTML` at guide-refresh time is reused by pushing the identical fragments computed by `broadcastGuideChangeEvent`, so no additional rebuild happens per connected tab. It's broadcast roughly **once per clock-hour boundary** (the `lastRefreshHour` gate in `AppState.idleLoop` → `refreshGuides()`), so an idle guide window does a background refresh about hourly even with no user activity.
+
+### Guide-change fragment push (avoiding a rebuild per open tab)
+
+Before `broadcastGuideChangeEvent` existed, every one of the events in case 3 above (`guide_refreshed`, `show_added`, `show_deleted`, `show_updated`, `favorite_toggled`) was broadcast bare (`{"type": ...}` only), so every connected tab fell into the fetch-based fallback (case 5) and independently called `/api/guide-refresh` — a full, uncached rebuild of the grid across every device/channel/entry. For N open tabs that meant N redundant rebuilds per state change. `broadcastGuideChangeEvent` computes the rebuild exactly once, server-side, and embeds the result in the SSE push — cost is now one rebuild per state change regardless of how many tabs are watching. `WebServer.handleDelete` relies on `AppState.deleteShow`'s own broadcast rather than also broadcasting itself, to avoid double-rebuilding on delete.
 
 `EventSource` auto-reconnects after 3 s on drop. `stop()` cancels all SSE connections and clears the registry.
 
@@ -576,9 +584,11 @@ Empty → `<div class="sp-empty">No shows on this tuner.</div>`. Each `.sp-row` 
 + the show's `data-*` and an `onclick="openEditShow(this)"`. Offline/absent tuners use the same
 builder, so their assigned shows still appear in their dropdown even though they can't record.
 
-Update paths: `refreshGuide()` swaps each `.tdrop` body in place from a fresh `GET /` (covers
-add/remove/edit, which arrive as `show_*` SSE → `refreshGuide`); a recording start/stop pushes
-`tdrop`/`tdropDev` in its SSE event and the client swaps just `#tdrop-{tdropDev}`.
+Update paths: add/remove/edit/favorite-toggle arrive as `show_*`/`favorite_toggled`/`guide_refreshed`
+SSE events carrying the rebuilt `tdrop` object (all devices) via `applyGuidePayload`, which swaps
+each `#tdrop-body-{dev}` in place (see "Guide-change fragment push" above); a recording start/stop
+instead pushes a single-device `tdrop`/`tdropDev` in its SSE event and the client swaps just
+`#tdrop-{tdropDev}`.
 
 ---
 
@@ -763,11 +773,13 @@ func quit()             // calls webServer.stop()
 
 `addShowFromGuide` and `deleteShow` called by the web handlers are the same functions used throughout the app — no web-specific recording logic.
 
-`broadcastEvent` is called from `AppState` (`addShowFromGuide`) and from `WebServer` handlers (`handleDelete`, `handleEdit`) after state changes.
+`broadcastEvent` is called directly for `deviceOffline`/`deviceOnline`/`signal_update`/`tuner_update` — events that don't carry guide HTML.
 
 `broadcastRecordingEvent` is called from `AppState` for `recording_started` and `recording_stopped`. It builds a fresh `#sum-ph` fragment (`buildSumPhHTML`) and the affected device's `#tdrop-{device}` dropdown body (`buildTunerShowsHTML`), embedding them as `sumPh` + `tdrop`/`tdropDev` so clients update those elements without a second HTTP request.
 
-`guide_refreshed` is broadcast from `AppState.refreshGuides()` when at least one device returned guide data; connected clients call `refreshGuide()` to swap the full grid.
+`broadcastGuideChangeEvent` is called from `AppState` (`refreshGuides`, `addShowFromGuide`, `skipRecording`, `pauseShow`, `resumeShow`, `deleteShow`) and from `WebServer` handlers (`handleEdit`, `handleToggleFavorite`) after state changes that affect the grid. It builds the full `grid`/`sumph`/`tdrop` payload once (`buildGuideRefreshPayload`) and embeds it in the broadcast — see "Guide-change fragment push" above. `handleDelete` does not broadcast itself; it relies on `deleteShow`'s broadcast so a web-initiated delete doesn't fire the event twice.
+
+`guide_refreshed` is broadcast from `AppState.refreshGuides()` when at least one device returned guide data; connected clients apply the pushed grid/sumph/tdrop payload directly (no fetch needed).
 
 ---
 

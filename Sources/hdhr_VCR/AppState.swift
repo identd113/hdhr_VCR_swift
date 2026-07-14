@@ -625,7 +625,7 @@ final class AppState: ObservableObject {
         // Notify connected web clients that guide data has changed so they can refresh the grid.
         if anyLoaded {
             webServer.prebuildPageHTML(state: self)
-            webServer.broadcastEvent(["type": "guide_refreshed"])
+            webServer.broadcastGuideChangeEvent(type: "guide_refreshed", state: self)
         }
     }
 
@@ -856,7 +856,9 @@ final class AppState: ObservableObject {
                         extra: [("Note", "All tuners on \(show.hdhr_record) are busy at \(shortTime(show.show_next))", false)])
         }
         addShow(show)
-        webServer.broadcastEvent(["type": "show_added", "channel": show.show_channel, "device": show.hdhr_record])
+        webServer.broadcastGuideChangeEvent(type: "show_added",
+                                            extra: ["channel": show.show_channel, "device": show.hdhr_record],
+                                            state: self)
         notify("Show Added", body: show.show_title, subtitle: type.rawValue)
         discordShow("✅ Show Added", show: show, color: 0x1ABC9C, enabled: config.Discord_on_show_added,
                     extra: [("Type", type.rawValue, true)])
@@ -943,34 +945,38 @@ final class AppState: ObservableObject {
         let now = Date()
         var dirty = false
 
-        // If startup discovery failed, keep retrying — single attempt per tick so we return quickly
+        // If startup discovery failed, keep retrying — single attempt per tick so we return quickly.
+        // Falls through to Pass 1/Pass 2 below even while devices is empty, so stale show_recording
+        // flags (e.g. a reattached recording whose show_end has passed) still get cleared during a
+        // prolonged discovery outage instead of leaving the menu bar stuck showing "recording".
         if devices.isEmpty {
             await discoverDevices(knownHosts: knownHostsFromShows(), attempts: 1)
             if !devices.isEmpty { await fetchAllGuides() }
-            return
         }
 
-        // If guide is missing for any device (fetch failed at startup), load it now
-        for device in devices where guideStore.channels(deviceId: device.DeviceID).isEmpty {
-            ensureGuideLoaded(for: device.DeviceID)
-        }
+        if !devices.isEmpty {
+            // If guide is missing for any device (fetch failed at startup), load it now
+            for device in devices where guideStore.channels(deviceId: device.DeviceID).isEmpty {
+                ensureGuideLoaded(for: device.DeviceID)
+            }
 
-        // Warn if any active show is assigned to a device we can no longer see
-        let knownIDs = Set(devices.map { $0.DeviceID })
-        for show in activeShows where !show.hdhr_record.isEmpty && !knownIDs.contains(show.hdhr_record) {
-            glog("[\(show.show_title)] device \(show.hdhr_record) not found — show may miss its recording", level: .warning)
-        }
+            // Warn if any active show is assigned to a device we can no longer see
+            let knownIDs = Set(devices.map { $0.DeviceID })
+            for show in activeShows where !show.hdhr_record.isEmpty && !knownIDs.contains(show.hdhr_record) {
+                glog("[\(show.show_title)] device \(show.hdhr_record) not found — show may miss its recording", level: .warning)
+            }
 
-        // Probe for newly-connected tuners every 5 minutes.
-        // If any device was missed on a probe, follow up every 60 s until confirmed gone (3 misses).
-        let quickProbeDue = nextQuickProbe.map { now >= $0 } ?? false
-        if now.timeIntervalSince(lastDeviceProbe) > 300 {
-            lastDeviceProbe = now
-            nextQuickProbe = nil
-            Task { await probeForNewDevices() }
-        } else if quickProbeDue {
-            nextQuickProbe = nil
-            Task { await probeForNewDevices() }
+            // Probe for newly-connected tuners every 5 minutes.
+            // If any device was missed on a probe, follow up every 60 s until confirmed gone (3 misses).
+            let quickProbeDue = nextQuickProbe.map { now >= $0 } ?? false
+            if now.timeIntervalSince(lastDeviceProbe) > 300 {
+                lastDeviceProbe = now
+                nextQuickProbe = nil
+                Task { await probeForNewDevices() }
+            } else if quickProbeDue {
+                nextQuickProbe = nil
+                Task { await probeForNewDevices() }
+            }
         }
 
         // Refresh lineup + guide at each hour boundary (aligned with web UI's 30-min window slide)
@@ -1333,7 +1339,9 @@ final class AppState: ObservableObject {
         let channel = shows[i].show_channel, device = shows[i].hdhr_record
         await scheduleNextAir(index: i)
         saveConfig()
-        webServer.broadcastEvent(["type": "show_updated", "channel": channel, "device": device])
+        webServer.broadcastGuideChangeEvent(type: "show_updated",
+                                            extra: ["channel": channel, "device": device],
+                                            state: self)
     }
 
     private func teardownRecordingState(index: Int) {
@@ -1679,13 +1687,17 @@ final class AppState: ObservableObject {
         guard let i = shows.firstIndex(where: { $0.show_id == show.show_id }) else { return }
         glog("[\(show.show_title)] PAUSED manual")
         shows[i].show_paused = true; shows[i].show_fail_reason = "Manually paused"; saveConfig()
-        webServer.broadcastEvent(["type": "show_updated", "channel": show.show_channel, "device": show.hdhr_record])
+        webServer.broadcastGuideChangeEvent(type: "show_updated",
+                                            extra: ["channel": show.show_channel, "device": show.hdhr_record],
+                                            state: self)
     }
     func resumeShow(_ show: Show) {
         guard let i = shows.firstIndex(where: { $0.show_id == show.show_id }) else { return }
         glog("[\(show.show_title)] RESUMED")
         shows[i].show_paused = false; shows[i].clearFailures(); showRetryAfter.removeValue(forKey: show.show_id); saveConfig()
-        webServer.broadcastEvent(["type": "show_updated", "channel": show.show_channel, "device": show.hdhr_record])
+        webServer.broadcastGuideChangeEvent(type: "show_updated",
+                                            extra: ["channel": show.show_channel, "device": show.hdhr_record],
+                                            state: self)
     }
     func deleteShow(_ show: Show) {
         glog("[Show] Deleted '\(show.show_title)'")
@@ -1694,7 +1706,9 @@ final class AppState: ObservableObject {
         shows.removeAll { $0.show_id == show.show_id }
         showRetryAfter.removeValue(forKey: show.show_id)
         saveConfig()
-        webServer.broadcastEvent(["type": "show_deleted", "channel": show.show_channel, "device": show.hdhr_record])
+        webServer.broadcastGuideChangeEvent(type: "show_deleted",
+                                            extra: ["channel": show.show_channel, "device": show.hdhr_record],
+                                            state: self)
     }
 
     func confirmAndDeleteShow(_ show: Show, then completion: @escaping () -> Void = {}) {

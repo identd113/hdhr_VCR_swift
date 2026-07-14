@@ -203,6 +203,33 @@ final class WebServer: @unchecked Sendable {
         ])
     }
 
+    // Full grid + summary + per-tuner dropdown fragments — same shape /api/guide-refresh
+    // returns. Shared by that route and broadcastGuideChangeEvent so a rebuild triggered by
+    // a state change happens once server-side, not once per fetch.
+    @MainActor
+    private func buildGuideRefreshPayload(state: AppState) -> [String: Any] {
+        let grid = buildGuideGridHTML(state: state, isDesktop: true) // isDesktop unread inside — see buildGuideGridHTML
+        let sumph = buildSumPhHTML(state: state)
+        var tdropBodies: [String: String] = [:]
+        for dev in state.usableDeviceIDs {
+            tdropBodies[dev] = buildTunerShowsHTML(state: state, deviceId: dev)
+        }
+        return ["grid": grid, "sumph": sumph, "tdrop": tdropBodies]
+    }
+
+    // Push a state-change event with the grid/summary/tuner-dropdown HTML embedded, computed
+    // once here instead of every connected tab independently re-fetching /api/guide-refresh
+    // and rebuilding the same grid. Mirrors broadcastRecordingEvent's fragment-embedding pattern.
+    // `extra` carries whatever identifying fields the caller used before (channel/device,
+    // or device/guideNumber for favorite_toggled) — merged in verbatim.
+    @MainActor
+    func broadcastGuideChangeEvent(type: String, extra: [String: Any] = [:], state: AppState) {
+        var event = extra
+        event["type"] = type
+        for (k, v) in buildGuideRefreshPayload(state: state) { event[k] = v }
+        broadcastEvent(event)
+    }
+
     private func removeSSE(_ conn: NWConnection) {
         sseLock.lock()
         sseConns.removeAll { $0 === conn }
@@ -571,13 +598,7 @@ final class WebServer: @unchecked Sendable {
             return .ok(contentType: "application/json", body: pingBody)
 
         case "/api/guide-refresh":
-            let grid  = buildGuideGridHTML(state: state, isDesktop: isDesktopUA(userAgent))
-            let sumph = buildSumPhHTML(state: state)
-            var tdropBodies: [String: String] = [:]
-            for dev in state.usableDeviceIDs {
-                tdropBodies[dev] = buildTunerShowsHTML(state: state, deviceId: dev)
-            }
-            let payload: [String: Any] = ["grid": grid, "sumph": sumph, "tdrop": tdropBodies]
+            let payload = buildGuideRefreshPayload(state: state)
             guard let data = try? JSONSerialization.data(withJSONObject: payload),
                   let json = String(data: data, encoding: .utf8) else {
                 return .badRequest("serialization failed")
@@ -789,8 +810,9 @@ final class WebServer: @unchecked Sendable {
             state.shows[idx].show_url       = ""
             state.shows[idx].show_recording = false
         }
+        // deleteShow() already broadcasts show_deleted (with grid/summary/tuner fragments) —
+        // don't double-broadcast here.
         state.deleteShow(show)
-        broadcastEvent(["type": "show_deleted", "channel": show.show_channel, "device": show.hdhr_record])
         return json(["ok": true, "title": show.show_title])
     }
 
@@ -840,7 +862,9 @@ final class WebServer: @unchecked Sendable {
         if let reset = obj["resetFailures"] as? Bool, reset { updated.clearFailures(); updated.show_active = true }
 
         state.updateShow(updated)
-        broadcastEvent(["type": "show_updated", "channel": updated.show_channel, "device": updated.hdhr_record])
+        broadcastGuideChangeEvent(type: "show_updated",
+                                  extra: ["channel": updated.show_channel, "device": updated.hdhr_record],
+                                  state: state)
         // If the show was just promoted to a seriesID type, search the guide immediately
         // so show_next is set before the next idle loop tick.
         if updated.show_use_seriesid && !show.show_use_seriesid {
@@ -864,7 +888,9 @@ final class WebServer: @unchecked Sendable {
 
         let newFav = !ch.isFavorite   // ch is a struct copy; capture before toggleFavorite mutates lineups
         state.toggleFavorite(device: device, channel: ch)
-        broadcastEvent(["type": "favorite_toggled", "device": deviceId, "guideNumber": guideNum])
+        broadcastGuideChangeEvent(type: "favorite_toggled",
+                                  extra: ["device": deviceId, "guideNumber": guideNum],
+                                  state: state)
         return json(["ok": true, "isFavorite": newFav])
     }
 
@@ -2190,34 +2216,40 @@ final class WebServer: @unchecked Sendable {
             var note=document.getElementById('sum-note');note.textContent=msg;note.style.color=isLM()?'#cc2020':'#ff8080';note.style.display='inline';
           });
         }
-        function refreshGuide(selOverride){
+        // Applies a {grid,sumph,tdrop} payload to the DOM — shared by refreshGuide()'s fetch
+        // response and the SSE-pushed guide-change events (which carry the same shape so a
+        // rebuild triggered by a state change happens once server-side, not once per open tab).
+        function applyGuidePayload(d,selOverride){
           var gw=document.querySelector('.gw');
           var sl=gw?gw.scrollLeft:0,st=gw?gw.scrollTop:0;
           var prev=document.querySelector('.g-prog.g-sel');
           var prevStart=prev?prev.dataset.start:null,prevNum=prev?prev.dataset.num:null,prevDev=prev?prev.dataset.device:null;
-          fetch('/api/guide-refresh').then(function(r){return r.json();}).then(function(d){
-            var oldGi=document.querySelector('.gi');
-            if(oldGi)oldGi.innerHTML=d.grid;
-            // Sync time window vars from the new g-hdr so the now-line plots against the fresh origin.
-            var nh=document.querySelector('.g-hdr');
-            if(nh&&nh.dataset.winstart){_winStart=+nh.dataset.winstart;_winSec=+nh.dataset.winsec;}
-            var oldPh=document.getElementById('sum-ph');
-            if(oldPh)oldPh.innerHTML=d.sumph;
-            // Update each tuner's show list; header/toggle-open state is preserved.
-            Object.keys(d.tdrop).forEach(function(dev){
-              var el=document.getElementById('tdrop-body-'+dev);
-              if(el)el.innerHTML=d.tdrop[dev];
+          var oldGi=document.querySelector('.gi');
+          if(oldGi)oldGi.innerHTML=d.grid;
+          // Sync time window vars from the new g-hdr so the now-line plots against the fresh origin.
+          var nh=document.querySelector('.g-hdr');
+          if(nh&&nh.dataset.winstart){_winStart=+nh.dataset.winstart;_winSec=+nh.dataset.winsec;}
+          var oldPh=document.getElementById('sum-ph');
+          if(oldPh)oldPh.innerHTML=d.sumph;
+          // Update each tuner's show list; header/toggle-open state is preserved.
+          Object.keys(d.tdrop).forEach(function(dev){
+            var el=document.getElementById('tdrop-body-'+dev);
+            if(el)el.innerHTML=d.tdrop[dev];
+          });
+          _rows=document.querySelectorAll('.g-row');
+          initRowObserver();
+          setDev(curDev);
+          if(gw){gw.scrollLeft=sl;gw.scrollTop=st;}
+          if(prevStart){
+            var match=Array.from(document.querySelectorAll('.g-prog')).find(function(el){
+              return el.dataset.start===prevStart&&el.dataset.num===prevNum&&el.dataset.device===prevDev;
             });
-            _rows=document.querySelectorAll('.g-row');
-            initRowObserver();
-            setDev(curDev);
-            if(gw){gw.scrollLeft=sl;gw.scrollTop=st;}
-            if(prevStart){
-              var match=Array.from(document.querySelectorAll('.g-prog')).find(function(el){
-                return el.dataset.start===prevStart&&el.dataset.num===prevNum&&el.dataset.device===prevDev;
-              });
-              if(match){if(selOverride)Object.assign(match.dataset,selOverride);showInfo(match);}
-            }
+            if(match){if(selOverride)Object.assign(match.dataset,selOverride);showInfo(match);}
+          }
+        }
+        function refreshGuide(selOverride){
+          fetch('/api/guide-refresh').then(function(r){return r.json();}).then(function(d){
+            applyGuidePayload(d,selOverride);
           }).catch(function(){});
         }
         function doEditFromGuide(){
@@ -2766,6 +2798,14 @@ final class WebServer: @unchecked Sendable {
                   if(sig){sig.replaceWith(tmp.firstChild);}
                   else{var cn=row.querySelector('.g-cn');if(cn)cn.appendChild(tmp.firstChild);}
                 });
+              } else if(d.grid){
+                // Guide-change event (guide_refreshed/show_added/show_updated/show_deleted/
+                // favorite_toggled) — server already rebuilt the grid once for everyone; apply
+                // it directly instead of triggering our own refreshGuide() fetch+rebuild.
+                // Must be checked before the d.sumPh||d.tdrop branch below: this payload's
+                // "tdrop" is a {device:html} object (see applyGuidePayload), not the single-
+                // string shape that branch expects.
+                applyGuidePayload(d);
               } else if(d.sumPh||d.tdrop){
                 // Fragment push — apply inline without a full page fetch
                 if(d.sumPh){var ph=document.getElementById('sum-ph');if(ph)ph.innerHTML=d.sumPh;}
