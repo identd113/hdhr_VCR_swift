@@ -22,7 +22,7 @@ swift test           # Tests/hdhr_VCRTests/ (uses unsafeFlags for Swift Testing)
 
 **Info.plist**: `LSUIElement = true` · `NSAllowsLocalNetworking = true` (required for WKWebView loading `localhost:1980`).
 
-**Logs**: `~/Library/Logs/hdhrVCRplus.log` (via `glog()`). Always read with `tail -n N` / bounded grep, never open-ended.
+**Logs**: `~/Library/Logs/hdhrVCRplus.log` (via `glog()`). Always read with `tail -n N` / bounded grep, never open-ended. Discord sends/edits also log to a dedicated `~/Library/Logs/hdhrVCRplus-discord.log` (via `discordLog()` in `DiscordNotifier.swift`) — one line per SEND/CREATE/EDIT with embed title, HTTP result, and (for CREATE/EDIT) the message ID used, so retry/edit patterns can be reviewed without wading through the main log.
 
 ---
 
