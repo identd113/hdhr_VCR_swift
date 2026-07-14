@@ -133,6 +133,34 @@ final class HDHRManager {
         }
     }
 
+    /// Subnet-directed broadcast address (e.g. 10.0.3.255) for each active, non-loopback,
+    /// non-point-to-point IPv4 interface — or just the named one if `interface` is non-empty.
+    /// Values are raw sin_addr.s_addr bit patterns (already in network byte order), computed as
+    /// (addr | ~netmask) via bitwise ops that are byte-order agnostic.
+    private static func subnetBroadcastAddresses(interface: String) -> [in_addr_t] {
+        var results: [in_addr_t] = []
+        var ptr: UnsafeMutablePointer<ifaddrs>? = nil
+        guard getifaddrs(&ptr) == 0 else { return results }
+        defer { freeifaddrs(ptr) }
+        var cur = ptr
+        while let iface = cur {
+            defer { cur = iface.pointee.ifa_next }
+            let flags = iface.pointee.ifa_flags
+            guard flags & UInt32(IFF_UP) != 0,
+                  flags & UInt32(IFF_LOOPBACK) == 0,
+                  flags & UInt32(IFF_POINTOPOINT) == 0,
+                  let addrPtr = iface.pointee.ifa_addr, addrPtr.pointee.sa_family == sa_family_t(AF_INET),
+                  let maskPtr = iface.pointee.ifa_netmask, maskPtr.pointee.sa_family == sa_family_t(AF_INET)
+            else { continue }
+            let name = String(cString: iface.pointee.ifa_name)
+            guard interface.isEmpty || name == interface else { continue }
+            let addr = addrPtr.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { $0.pointee.sin_addr.s_addr }
+            let mask = maskPtr.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { $0.pointee.sin_addr.s_addr }
+            results.append(addr | ~mask)
+        }
+        return results
+    }
+
     private static func udpDiscoverSync(interface: String = "") -> [HDHRDevice] {
         // Tunnel/VPN interfaces don't support broadcast — skip UDP entirely.
         // Known-hosts discovery handles remote devices via their saved IPs.
@@ -174,18 +202,33 @@ final class HDHRManager {
         let crcVal = crc32(pkt)
         pkt += withUnsafeBytes(of: crcVal.littleEndian) { Array($0) }
 
-        // Broadcast to 255.255.255.255:65001
-        var dst = sockaddr_in()
-        dst.sin_family   = sa_family_t(AF_INET)
-        dst.sin_port     = in_port_t(65001).bigEndian
-        dst.sin_addr.s_addr = 0xFFFFFFFF  // INADDR_BROADCAST
+        // Send to each active interface's subnet-directed broadcast (e.g. 10.0.3.255), plus the
+        // global 255.255.255.255 as a best-effort extra. Some setups — a Thunderbolt Bridge or
+        // Internet Sharing adding a second "default" route (visible as a reject route in `netstat -rn`)
+        // — cause the kernel to route global broadcast into that dead route (EHOSTUNREACH/errno 65)
+        // even though the subnet is perfectly reachable, so global broadcast alone can silently find
+        // nothing while every device is one directed broadcast away.
+        var targets = subnetBroadcastAddresses(interface: interface)
+        targets.append(0xFFFFFFFF)  // INADDR_BROADCAST — kept as a fallback for setups where it works
 
-        pkt.withUnsafeBytes { raw in
-            withUnsafePointer(to: dst) { dstPtr in
-                dstPtr.withMemoryRebound(to: sockaddr.self, capacity: 1) { saPtr in
-                    let sent = sendto(sock, raw.baseAddress!, pkt.count, 0, saPtr,
-                                      socklen_t(MemoryLayout<sockaddr_in>.size))
-                    if sent < 0 { glog("UDP sendto failed: errno \(errno)", level: .warning) }
+        for targetAddr in targets {
+            var dst = sockaddr_in()
+            dst.sin_family      = sa_family_t(AF_INET)
+            dst.sin_port        = in_port_t(65001).bigEndian
+            dst.sin_addr.s_addr = targetAddr
+
+            pkt.withUnsafeBytes { raw in
+                withUnsafePointer(to: dst) { dstPtr in
+                    dstPtr.withMemoryRebound(to: sockaddr.self, capacity: 1) { saPtr in
+                        let sent = sendto(sock, raw.baseAddress!, pkt.count, 0, saPtr,
+                                          socklen_t(MemoryLayout<sockaddr_in>.size))
+                        // The global-broadcast fallback failing is expected on networks with a
+                        // second default route (see above) — only warn for directed-broadcast
+                        // failures, which indicate a real problem reaching the local subnet.
+                        if sent < 0 && targetAddr != 0xFFFFFFFF {
+                            glog("UDP sendto failed: errno \(errno)", level: .warning)
+                        }
+                    }
                 }
             }
         }
