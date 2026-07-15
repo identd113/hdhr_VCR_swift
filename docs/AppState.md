@@ -55,7 +55,7 @@ Three paths run **concurrently**; results merged by DeviceID:
 
 1. **Known hosts** — extracts IPs from `show_url` fields of saved shows → probes `/discover.json`. Sub-second on stable networks.
 2. **mDNS** — `http://hdhomerun.local/discover.json`. Handles single-object or array response.
-3. **UDP broadcast** — SiliconDust packet to `255.255.255.255:65001`, waits 2 s; each reply followed up with `fetchDeviceInfo(ip:)`.
+3. **UDP broadcast** — SiliconDust packet sent to each active network interface's subnet-directed broadcast address (e.g. `10.0.3.255:65001`, computed via `subnetBroadcastAddresses(interface:)`), plus the global `255.255.255.255:65001` as a best-effort fallback; waits 2 s, each reply followed up with `fetchDeviceInfo(ip:)`. Global broadcast alone can silently miss devices on setups with a second default route (Thunderbolt Bridge, Internet Sharing) — the kernel routes it into the dead route (`errno 65`/`EHOSTUNREACH`) even though the device's subnet is reachable; only directed-broadcast `sendto` failures are logged as warnings, since the global-broadcast fallback failing in that scenario is expected.
 
 Falls back to **SiliconDust cloud API** (`http://discover.hdhomerun.com/discover.json`) if all three yield nothing. After merging, devices missing `DeviceAuth` are supplemented from the cloud response (needed for EXTEND devices). Session timeouts: 2 s request / 6 s resource.
 
