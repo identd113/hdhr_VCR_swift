@@ -188,7 +188,12 @@ struct AddShowView: View {
         }
         // Ensure the lineup is present before the user can click Record in the web guide.
         // Recovers from silent startup fetch failures so show_url is never empty on first click.
-        .task {
+        // Keyed by state.devices.isEmpty (not a bare .task) — a plain .task only fires once for
+        // this view's lifetime, so if the wizard opens during a cold launch before device
+        // discovery has completed, `state.devices` is empty, the guard returns immediately, and
+        // it would otherwise never retry once discovery finishes; this id flips false once
+        // devices populate, re-running the task at that point.
+        .task(id: state.devices.isEmpty) {
             guard let device = selectedDevice ?? state.devices.first else { return }
             await state.ensureLineupLoaded(for: device)
         }

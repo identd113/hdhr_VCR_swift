@@ -131,6 +131,18 @@ final class VLCBridge: ObservableObject {
     private var recordingReopenedAt:      Date   = .distantPast
 
     func beginRecordingSeek(showId: String, recordingStart: Date, seekBaseSeconds: Double) {
+        // Guard against a stale deferred call: AppState.watchRecordingInApp posts this call via
+        // DispatchQueue.main.async (a separate run-loop turn so SwiftUI's toolbar picks up the
+        // update — see its own comment), creating a brief window where the user can switch to a
+        // live channel before this runs. play(url:) for a live URL already calls
+        // clearRecordingSeek() synchronously in that case; applying this deferred call anyway
+        // would resurrect a dead recordingShowId and corrupt vlcOccupiesTuner's "is this really a
+        // zero-cost relay session" check. currentURL still encoding this exact show's id confirms
+        // nothing else has taken over the player since this call was scheduled.
+        guard let url = currentURL, url.contains("/api/watch-recording"), url.contains("show=\(showId)") else {
+            glog("[VLC] beginRecordingSeek — ignored stale call for showId=\(showId), currentURL=\(currentURL ?? "nil") no longer matches", level: .warning)
+            return
+        }
         recordingShowId          = showId
         recordingStartDate       = recordingStart
         recordingSeekBaseSeconds = seekBaseSeconds
@@ -316,6 +328,13 @@ final class VLCBridge: ObservableObject {
         stopStatsTimer()
         hasError  = false
         isPlaying = false
+        // Reset track state for the new stream — tickController's fetchTracks() only runs once
+        // per !tracksFetched, so without this an ordinary channel switch would keep showing the
+        // previous channel's audio/CC tracks, and selecting one could call setAudioTrack/
+        // setSpuTrack with an id that doesn't exist on the new stream.
+        audioTracks    = []
+        spuTracks      = []
+        tracksFetched  = false
         _mpStop?(mp)
         if let old = currentMedia { _mediaRelease?(old); currentMedia = nil }
         guard let media = url.withCString({ _mediaNL?(inst, $0) }) else {

@@ -173,7 +173,11 @@ final class GuideStore {
                 return false
             }
 
-            let channels = XmltvParser().parse(data)
+            let (channels, parsedOK) = XmltvParser().parse(data)
+            guard parsedOK else {
+                glog("[\(id)] ERROR: XMLTV parse failed/truncated — discarding partial result", level: .error)
+                return false
+            }
             let entryCount = channels.reduce(0) { $0 + ($1.Guide?.count ?? 0) }
             glog("[\(id)] XMLTV parsed \(channels.count) channels, \(entryCount) total guide entries")
 

@@ -59,7 +59,24 @@ struct EditShowView: View {
         .onAppear { loadShow() }
         // The window is a single reusable instance, so onAppear won't fire when it's merely
         // re-focused for a different show — reload whenever the target show id changes.
-        .onChange(of: state.editingShowId) { _, _ in loadShow() }
+        // Guard against discarding unsaved edits: if the user re-targets this window to a
+        // different show (e.g. clicking "Edit…" on show B while show A's edits are unsaved),
+        // prompt the same way onExitCommand does instead of silently overwriting `show`.
+        .onChange(of: state.editingShowId) { oldValue, newValue in
+            guard newValue != show?.show_id else { return } // reverted back to the loaded show (Cancel below) — nothing to do
+            guard isDirty else { loadShow(); return }
+            let alert = NSAlert()
+            alert.messageText     = "Unsaved Changes"
+            alert.informativeText = "Save your changes to \"\(show?.show_title ?? "this show")\" before switching?"
+            alert.addButton(withTitle: "Save")
+            alert.addButton(withTitle: "Discard")
+            alert.addButton(withTitle: "Cancel")
+            switch alert.runModal() {
+            case .alertFirstButtonReturn:  saveWithoutDismiss(); loadShow()
+            case .alertSecondButtonReturn: loadShow()
+            default: state.editingShowId = oldValue // stay on the show currently being edited
+            }
+        }
     }
 
     // MARK: - Form

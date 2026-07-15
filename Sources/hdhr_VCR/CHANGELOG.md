@@ -1,5 +1,29 @@
 # hdhrVCRplus Changelog
 
+## 2026-07-15
+
+- **Fix — recording retry storm after a mid-episode failure** — once a show hit the fail-count threshold and paused, it could immediately auto-resume (the "next airing imminent" check was trivially true right after a mid-recording pause, since `show_next` still pointed at the airing that just failed) and re-fail in a ~20–30s loop for the rest of that airing's window instead of staying paused until the window actually ended. The Carol Burnett Show was hitting this nightly.
+- **Fix — Discord posted dozens of duplicate messages during a retry storm** — a side effect of the above, compounded by every recording-lifecycle Discord send now being serialized through a new per-show mutex (`discordCardInFlight`) so two events for the same show (e.g. a "Recording Started" confirmation racing a "Paused" card) can no longer both create their own message and orphan/stomp each other's card.
+- **Fix — recording failure messages didn't say why** — failures now report the actual HDHomeRun device error or a decoded curl exit code (e.g. `"No Video Data (807)"`, `"curl timeout (28)"`) instead of a generic `"curl exited unexpectedly"` or bare `"file missing or empty"`.
+- **Fix — idle loop could crash under network stress** — `idleLoop()` now guards against two overlapping runs (the timer fires a new one every tick regardless of whether the last one finished), and stopped trusting array indices captured before an `await` — a show deleted while a guide fetch was in flight could previously leave a stale index pointing out of bounds or at the wrong show.
+- **Fix — deleting an actively-recording show left stale state behind** — `deleteShow` now fully tears down the recording (tuner-occupancy clear, stopped-event broadcast) instead of just killing the curl process, and clears all of its internal per-show tracking instead of leaking most of it for the rest of the session.
+- **Fix — shows added/edited via the native Add Show / Edit Show windows never appeared in the web guide** — those two windows call the same `addShow`/`updateShow` used everywhere else, which now push the update themselves instead of leaving it to each caller to remember.
+- **Fix — a tuner going online/offline mid-session never updated in the web guide** — previously silently stale until the next 2-hour reload; now pushes a live update to the tuner's box.
+- **Fix — the web guide's edit modal accepted any save-folder path with no validation** — since that endpoint has no auth beyond LAN-subnet matching, any device on the network could redirect a show's recording output anywhere on disk; it now requires a real (or creatable) absolute directory.
+- **Fix — deleting/stopping a show by channel + title could hit the wrong tuner** — the web guide's fallback match (used when no show ID is given) now also requires the device to match, so a multi-tuner setup with an identically-titled show on the same channel number on two tuners can't cross-hit.
+- **Fix — a malformed UDP discovery reply could crash the app** — any device on the LAN replying to the discovery broadcast with a crafted payload-length field could walk the parser past its buffer; it's now bounded against the actual bytes received.
+- **Fix — a single corrupted show in the saved config could wipe every scheduled show** — a missing/invalid ID on one show previously threw during decode, discarding the entire list; that field now always has a fallback.
+- **Fix — Discord webhook validation accepted lookalike hosts** — e.g. `notdiscord.com` passed the old suffix check; it now requires an exact match or a proper subdomain.
+- **Fix — a truncated or malformed XMLTV guide response was treated as a complete, successful load** — parse errors are now detected and the load is rejected instead of silently indexing a partial guide.
+- **Fix — Guide Hours allowed up to 48h but the cloud guide API silently truncates past ~29h** — capped the setting at 28 to match what a single request actually returns.
+- **Fix — switching channels in the in-app player kept the previous channel's audio/CC track list** — tracks now reset and re-detect on every switch.
+- **Fix — switching from a recording relay to a live channel in a narrow timing window could resurrect the old recording's scrub-bar state over live video** — closed with a staleness guard on the deferred seek-state update.
+- **Fix — a double-click on Watch Now could re-mute an already-playing stream** — added a second "already playing" check after the async device-status fetch that the race was slipping through.
+- **Fix — a channel with no stream URL in the lineup left the in-app player stuck on a permanently-disabled "Connecting…"** — now caught upfront with a clear alert instead of a silent dead end.
+- **Fix — Edit Show silently discarded unsaved edits when re-targeted to a different show from the menu** — now prompts to save/discard/cancel, same as closing the window with unsaved changes.
+- **Fix — the Add Show wizard could get permanently stuck showing "Stream URL not found"** — if opened before device discovery finished, the lineup-load task never retried; it now re-runs once devices populate.
+- **Fix — Settings' Discord webhook "Test" button could mark a since-edited, never-tested URL as "Verified"** — if you changed the field again before the test finished, its result now only applies if the URL it tested is still the one showing.
+
 ## 2026-07-06
 
 - **Fix — tuner-full check now honors another machine's recordings** — `tunersFull(for:)` (the gate checked before starting a new recording) previously only counted this instance's own `recordingShows`, missing tuners already locked by another machine running this app against the same physical HDHomeRun device. It now uses the same hardware-polled `status.json` count the display badge already relied on, giving an accurate global tuner count across machines.

@@ -31,13 +31,22 @@ private func embedTitle(_ embed: [String: Any]) -> String {
     embed["title"] as? String ?? "?"
 }
 
+// Exact host or a proper subdomain of discord.com/discordapp.com — a bare `hasSuffix` check
+// would also accept "notdiscord.com" or "harddiscordapp.com" since it has no "." boundary.
+private func isDiscordHost(_ host: String) -> Bool {
+    for domain in ["discord.com", "discordapp.com"] {
+        if host == domain || host.hasSuffix("." + domain) { return true }
+    }
+    return false
+}
+
 // Sends a single Discord embed to the given webhook URL.
 // Silently no-ops if the URL is blank or not a discord.com/discordapp.com host.
 func sendDiscordEmbed(to webhookURL: String, embed: [String: Any]) {
     guard !webhookURL.isEmpty,
           let url = URL(string: webhookURL),
           let host = url.host,
-          host.hasSuffix("discord.com") || host.hasSuffix("discordapp.com") else { return }
+          isDiscordHost(host) else { return }
 
     var req = URLRequest(url: url)
     req.httpMethod = "POST"
@@ -76,7 +85,7 @@ func sendDiscordEmbed(to webhookURL: String, embed: [String: Any]) {
 func sendDiscordEmbedCapturing(to webhookURL: String, embed: [String: Any]) async -> String? {
     guard !webhookURL.isEmpty,
           var components = URLComponents(string: webhookURL),
-          components.host.map({ $0.hasSuffix("discord.com") || $0.hasSuffix("discordapp.com") }) == true else { return nil }
+          components.host.map(isDiscordHost) == true else { return nil }
     components.queryItems = (components.queryItems ?? []) + [URLQueryItem(name: "wait", value: "true")]
     guard let url = components.url else { return nil }
 
@@ -123,7 +132,7 @@ func sendDiscordEmbedCapturing(to webhookURL: String, embed: [String: Any]) asyn
 func editDiscordEmbed(webhookURL: String, messageId: String, embed: [String: Any]) {
     guard !webhookURL.isEmpty, !messageId.isEmpty,
           let url = URL(string: "\(webhookURL)/messages/\(messageId)"),
-          url.host.map({ $0.hasSuffix("discord.com") || $0.hasSuffix("discordapp.com") }) == true else { return }
+          url.host.map(isDiscordHost) == true else { return }
 
     var req = URLRequest(url: url)
     req.httpMethod = "PATCH"

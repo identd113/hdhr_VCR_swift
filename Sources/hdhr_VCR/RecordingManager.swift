@@ -6,6 +6,7 @@ final class RecordingManager {
     private var pids:         [String: Int32]            = [:]   // curl PID per show
     private var headerFiles:  [String: String]           = [:]   // --dump-header file path per show
     private var assertionIds: [String: IOPMAssertionID]  = [:]   // IOKit assertion per show (+ "vlc")
+    private var lastExitStatus: [String: Int32]           = [:]   // raw waitpid status, set when isRunning() reaps a dead curl
 
     static var curlLogPath: String { logFilePath }
 
@@ -65,6 +66,9 @@ final class RecordingManager {
         }
         releaseAssertion(id: showId)
         clearHeaderFile(showId: showId)
+        // Defensive, same as clearHeaderFile above: a stale exit status from this attempt must
+        // never leak into a later, unrelated FAIL check for the same recurring show_id.
+        lastExitStatus.removeValue(forKey: showId)
         glog("[Rec] Stopped \(showId)")
     }
 
@@ -139,12 +143,44 @@ final class RecordingManager {
         let wret = waitpid(pid, &status, WNOHANG)
         if wret == 0 { return true }   // our child, still running
         if wret > 0 {                  // our child exited — zombie reaped
-            pids.removeValue(forKey: showId); return false
+            pids.removeValue(forKey: showId)
+            lastExitStatus[showId] = status
+            return false
         }
         // ECHILD: not our child — orphaned to launchd after an app restart.
         // launchd auto-reaps orphan zombies so kill(pid,0) is reliable here.
         if kill(pid, 0) == 0 { return true }
         pids.removeValue(forKey: showId); return false
+    }
+
+    /// Reads and clears the raw wait-status captured the last time `isRunning` reaped this
+    /// show's curl process, decoded into a human-readable curl exit reason. Fills in the gap
+    /// left when `readAndClearHDHRError` finds no X-HDHomeRun-Error header (e.g. curl itself
+    /// timed out or couldn't connect, rather than the device reporting an error) — so failure
+    /// messages still say *why* instead of falling back to a generic string.
+    func readAndClearExitStatus(showId: String) -> String? {
+        guard let status = lastExitStatus.removeValue(forKey: showId) else { return nil }
+        guard status & 0x7f == 0 else { return "curl killed by signal \(status & 0x7f)" } // not WIFEXITED
+        let code = (status >> 8) & 0xff // WEXITSTATUS
+        guard code != 0 else { return nil } // clean exit isn't itself a failure reason
+        return curlExitLabel(code)
+    }
+
+    private func curlExitLabel(_ code: Int32) -> String {
+        switch code {
+        case 2:  return "curl init failed (2)"
+        case 5:  return "curl couldn't resolve proxy (5)"
+        case 6:  return "curl couldn't resolve host (6)"
+        case 7:  return "curl couldn't connect (7)"
+        case 18: return "curl partial file (18)"
+        case 23: return "curl write error (23)"
+        case 28: return "curl timeout (28)"
+        case 35: return "curl SSL connect error (35)"
+        case 52: return "curl empty reply from server (52)"
+        case 55: return "curl failed sending data (55)"
+        case 56: return "curl failure receiving data (56)"
+        default: return "curl exit \(code)"
+        }
     }
 
     func stopAll() {

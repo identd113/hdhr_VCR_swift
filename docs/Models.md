@@ -59,6 +59,14 @@ Called after each recording completes and file verification passes:
 
 ---
 
+## Decode Resilience (`Show.init(from:)` / `ConfigFile.init(from:)`)
+
+Every field in `Show.init(from:)` decodes via `try?` with a fallback default — including `show_id` (falls back to a fresh generated UUID, same format as `Show.blank()`). This matters because `ConfigFile.init(from:)`'s `shows` array decode is all-or-nothing: `(try? c.decode([Show].self, forKey: .shows)) ?? (try? … forKey: .the_shows) ?? []` — if decoding a single element in the array throws, the *entire* array decode throws and falls through to the next `try?`/eventually `[]`. Before `show_id` had a fallback, one show with a missing/corrupt `show_id` anywhere in the saved JSON would silently wipe every saved show on next launch. With every field now optional-with-fallback, a well-formed JSON array of show objects can no longer throw during decode.
+
+If the `shows`/`the_shows` key *is* present in the config but the array still fails to decode entirely (a genuinely malformed structure, not just a missing field — e.g. the value isn't an array of objects at all), `ConfigFile.init` logs `[Config] shows array present but failed to decode — starting with an empty list; check config file for corruption` at `.error` before falling back to `[]`, so that failure mode is no longer silent.
+
+---
+
 ## Show Output Path
 
 `Show.outputPath(date:)` builds the recording file path. The `DateFormatter` used for the timestamp suffix (`outputDateFormatter`) is a `private static let` — allocated once per app session, not on every recording start.

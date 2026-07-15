@@ -367,8 +367,12 @@ struct SettingsView: View {
     private var guideView: some View {
         Form {
             Section("Fetch") {
-                Stepper(value: $draft.GuideHours, in: 1...48) {
-                    HStack { Text("Show next \(draft.GuideHours) hours"); InfoButton("How far ahead guide data is fetched and how long before it auto-refreshes. Longer windows let you schedule further out.") }
+                // Capped at 28, not the old 48: GuideStore.load() makes a single API call, and the
+                // cloud guide.php endpoint silently truncates any Duration beyond ~29h regardless
+                // of what's requested (confirmed in docs/HDHRFindings.md) — a higher setting would
+                // look accepted but never actually fetch further out, with no error surfaced.
+                Stepper(value: $draft.GuideHours, in: 1...28) {
+                    HStack { Text("Show next \(draft.GuideHours) hours"); InfoButton("How far ahead guide data is fetched and how long before it auto-refreshes. Longer windows let you schedule further out. Capped at 28h — the cloud guide API silently truncates single-call requests beyond ~29h.") }
                 }
                 Stepper(value: $draft.Series_scan_retry_hours, in: 1...24) {
                     HStack { Text("Series scan retry: \(draft.Series_scan_retry_hours) hr"); InfoButton("How long to wait before re-checking the guide when a series show has no matching air time yet.") }
@@ -430,9 +434,17 @@ struct SettingsView: View {
                             ProgressView().controlSize(.small).frame(width: 60)
                         } else {
                             Button("Test") {
+                                // Capture the URL under test; if the field changes before the
+                                // async check returns, discard the stale result instead of
+                                // overwriting whatever status now describes the *new* URL (e.g.
+                                // the .untested the onChange handler above just set) — otherwise
+                                // an old test's "passed" could mark a since-edited, never-tested
+                                // URL as verified, defeating the save-gate this status drives.
+                                let testingURL = draft.Discord_webhook_url
                                 webhookTestStatus = .testing
                                 Task {
-                                    let ok = await state.checkWebhookURL(draft.Discord_webhook_url)
+                                    let ok = await state.checkWebhookURL(testingURL)
+                                    guard draft.Discord_webhook_url == testingURL else { return }
                                     webhookTestStatus = ok ? .passed : .failed
                                 }
                             }

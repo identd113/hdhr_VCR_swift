@@ -168,7 +168,11 @@ extension Show: Codable {
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        show_id            = try c.decode(String.self, forKey: .show_id)
+        // Every other field below has a `try?` fallback; show_id must too — ConfigFile's [Show]
+        // decode is all-or-nothing (falls to [] on any element throw, see ConfigFile.init), so a
+        // single show with a missing/corrupt show_id would otherwise silently wipe every show.
+        show_id            = (try? c.decode(String.self, forKey: .show_id))
+            ?? UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
         show_title         = (try? c.decode(String.self, forKey: .show_title)) ?? ""
         show_is_series     = (try? c.decode(Bool.self,   forKey: .show_is_series)) ?? false
         show_use_seriesid  = (try? c.decode(Bool.self,   forKey: .show_use_seriesid)) ?? false
@@ -272,7 +276,10 @@ extension AppConfig: Codable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         Notify_recording      = (try? c.decode(Double.self,  forKey: .Notify_recording))      ?? 15.5
         Notify_upnext         = (try? c.decode(Double.self,  forKey: .Notify_upnext))         ?? 35.0
-        GuideHours            = (try? c.decode(Int.self,     forKey: .GuideHours))            ?? 24
+        // Clamp to 28 even for an old saved value above that — GuideStore.load()'s single-call
+        // cloud request silently truncates past ~29h regardless (docs/HDHRFindings.md), so a
+        // stale higher setting from before this cap was enforced would otherwise look honored.
+        GuideHours            = min(28, (try? c.decode(Int.self, forKey: .GuideHours)) ?? 24)
         Guide_use_xml         = (try? c.decode(Bool.self,   forKey: .Guide_use_xml))         ?? false
         Default_transcode     = (try? c.decode(String.self,  forKey: .Default_transcode))     ?? "none"
         Fail_count_setting    = (try? c.decode(Int.self,     forKey: .Fail_count_setting))    ?? 3
@@ -322,9 +329,17 @@ extension ConfigFile {
         enum K: String, CodingKey { case config, shows, the_shows }
         let c = try decoder.container(keyedBy: K.self)
         config = try c.decode(AppConfig.self, forKey: .config)
-        shows = (try? c.decode([Show].self, forKey: .shows))
-             ?? (try? c.decode([Show].self, forKey: .the_shows))
-             ?? []
+        let decodedShows = (try? c.decode([Show].self, forKey: .shows))
+                         ?? (try? c.decode([Show].self, forKey: .the_shows))
+        // Every Show field (including show_id, as of this fix) has a fallback, so this array
+        // decode should never throw on well-formed JSON — but if the "shows"/"the_shows" key is
+        // present and still fails to decode (genuinely malformed structure, not just a missing
+        // field), falling back to [] would silently wipe every saved show. Log loudly so that's
+        // visible instead of a mysterious empty show list on next launch.
+        if decodedShows == nil, c.contains(.shows) || c.contains(.the_shows) {
+            glog("[Config] shows array present but failed to decode — starting with an empty list; check config file for corruption", level: .error)
+        }
+        shows = decodedShows ?? []
     }
 }
 

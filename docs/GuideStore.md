@@ -16,6 +16,8 @@ All methods run on `@MainActor`. Network calls yield the actor during I/O; state
 
 Returns `nil` if neither DeviceAuth nor LocalIP is available (logs a diagnostic).
 
+`load()` makes a single call per device, so it is structurally capped at the cloud API's ~29h per-call window regardless of `Duration` (see `docs/HDHRFindings.md`'s "Per-call window cap" — pagination would be required to genuinely exceed it, not currently implemented). `AppConfig`'s `GuideHours` setting is clamped to `1...28` (Settings UI range, and `min(28, …)` on decode of an old saved value) to keep the requested window inside that cap — previously the UI allowed up to 48, silently exceeding it with no truncation signal.
+
 `xmltvURL(for:)` — XMLTV cloud endpoint, no Start/Duration parameters (server controls the window). Returns `nil` if the device has no `DeviceAuth` (XMLTV is cloud-only; local devices use JSON regardless of the format flag).
 
 ---

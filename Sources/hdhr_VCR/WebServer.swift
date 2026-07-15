@@ -790,12 +790,16 @@ final class WebServer: @unchecked Sendable {
         else { return .badRequest("Missing required field: showId or (deviceId + guideNumber)") }
 
         // Primary: showId (from edit modal). Fallback: active recording on device+channel, then title match.
+        // Both fallbacks must include deviceId — a multi-tuner setup can legitimately have two
+        // devices each scheduled to record an identically-titled show on the same channel number,
+        // and a title-only match would delete/stop the wrong tuner's show.
         let show: Show? = !showId.isEmpty
             ? state.shows.first(where: { $0.show_id == showId })
             : state.recordingShows.first(where: {
                   $0.hdhr_record == deviceId && $0.show_channel == guideNum
               }) ?? state.shows.first(where: {
                   $0.show_active &&
+                  $0.hdhr_record == deviceId &&
                   $0.show_channel == guideNum &&
                   $0.show_title == title
               })
@@ -855,16 +859,26 @@ final class WebServer: @unchecked Sendable {
         if let bonus = obj["bonusTime"] as? Bool { updated.show_bonus_time = bonus }
         if let transcode = obj["transcode"] as? String { updated.show_transcode = transcode }
         if let saveDir = obj["saveDir"] as? String, !saveDir.isEmpty {
+            // This endpoint has no auth beyond LAN-subnet matching — validate saveDir actually
+            // resolves to a real (or creatable) directory rather than blindly accepting any
+            // string, which would let any device on the LAN silently redirect this show's
+            // recording output anywhere the app process can write.
+            guard saveDir.hasPrefix("/") else { return .badRequest("saveDir must be an absolute path") }
+            var isDir: ObjCBool = false
+            let exists = FileManager.default.fileExists(atPath: saveDir, isDirectory: &isDir)
+            if exists, !isDir.boolValue { return .badRequest("saveDir exists but is not a directory") }
+            if !exists {
+                guard (try? FileManager.default.createDirectory(atPath: saveDir, withIntermediateDirectories: true)) != nil else {
+                    return .badRequest("saveDir could not be created")
+                }
+            }
             updated.show_dir = saveDir
             updated.show_temp_dir = saveDir
         }
         if let airDays = obj["airDays"] as? [String] { updated.show_air_date = airDays }
         if let reset = obj["resetFailures"] as? Bool, reset { updated.clearFailures(); updated.show_active = true }
 
-        state.updateShow(updated)
-        broadcastGuideChangeEvent(type: "show_updated",
-                                  extra: ["channel": updated.show_channel, "device": updated.hdhr_record],
-                                  state: state)
+        state.updateShow(updated) // broadcasts "show_updated" itself
         // If the show was just promoted to a seriesID type, search the guide immediately
         // so show_next is set before the next idle loop tick.
         if updated.show_use_seriesid && !show.show_use_seriesid {
@@ -975,6 +989,72 @@ final class WebServer: @unchecked Sendable {
         }
 
         return parts.isEmpty ? "<div class=\"sp-empty\">No shows on this tuner.</div>" : parts.joined()
+    }
+
+    // Inner content of #dev-bar (one tuner box per discovered device + any offline/absent
+    // device referenced by a scheduled show) — no outer wrapping div, so callers can either
+    // embed it in buildHTML's full page or push it standalone for an innerHTML swap over SSE.
+    // Factored out of buildHTML so a deviceOnline/deviceOffline event can push a fresh copy
+    // instead of only updating on the next full page load.
+    @MainActor
+    private func buildDevBarHTML(state: AppState) -> String {
+        struct DevTuners { let total: Int; let active: Int; var isFull: Bool { total > 0 && active >= total } }
+        var devTuners: [String: DevTuners] = [:]
+        for d in state.devices {
+            let total = d.TunerCount ?? 0
+            let occupancy = state.deviceTunerOccupancy[d.DeviceID]
+            let active = occupancy?.filter({ $0.VctNumber != nil }).count ?? 0
+            devTuners[d.DeviceID] = DevTuners(total: total, active: active)
+        }
+
+        func tunerInfoBtn(_ devId: String, _ dt: DevTuners) -> String {
+            guard dt.total > 0 else { return "" }
+            let cls   = "t-info" + (dt.isFull ? " t-info-full" : "")
+            let label = "\(dt.active)/\(dt.total)\(dt.isFull ? " — FULL" : "")"
+            return "<button id=\"tun-\(he(devId))\" class=\"\(cls)\" data-dev=\"\(he(devId))\" onclick=\"showTunerInfo(this.dataset.dev,this)\" title=\"Click to see active recordings\">\(label)</button>"
+        }
+
+        let onlineIDs  = Set(state.devices.map { $0.DeviceID })
+        let offlineIDs = Set(state.shows.map { $0.hdhr_record }).subtracting(onlineIDs).filter { !$0.isEmpty }
+        let usableIDs  = state.usableDeviceIDs
+
+        func tunerBox(_ devId: String, active: Bool, uiURL: String?) -> String {
+            let label = he("HDHR-\(devId.uppercased())")
+            var s = "<div class=\"tuner-box\(active ? "" : " tuner-off")\">"
+            s += "<div class=\"tuner-row\">"
+            if active {
+                s += "<button class=\"d-btn\" data-dev=\"\(he(devId))\" onclick=\"setDev(this.dataset.dev)\">\(label)</button>"
+            } else {
+                s += "<span class=\"d-btn d-btn-off\" title=\"Not detected — recordings assigned here will fail until it returns\">\(label)</span>"
+            }
+            s += "<button class=\"tdrop-btn\" data-dev=\"\(he(devId))\" onclick=\"toggleTunerDrop(this.dataset.dev)\" aria-label=\"Shows on this tuner\" title=\"Shows on this tuner\">▾</button>"
+            s += "</div>"
+            s += "<div class=\"tdrop\" id=\"tdrop-\(he(devId))\" style=\"display:none\">"
+            s += "<div class=\"tdrop-hdr\">"
+            if active, let dt = devTuners[devId] { s += tunerInfoBtn(devId, dt) }
+            else { s += "<span id=\"tun-\(he(devId))\" class=\"t-info t-info-off\">offline</span>" }
+            if let uiURL { s += "<a href=\"\(he(uiURL))\" target=\"_blank\" class=\"d-ui tdrop-ui\" title=\"Open \(label) web UI\">↗ Device web UI</a>" }
+            s += "</div>"
+            s += "<div class=\"tdrop-body\" id=\"tdrop-body-\(he(devId))\">\(buildTunerShowsHTML(state: state, deviceId: devId))</div>"
+            s += "</div>"
+            s += "</div>"
+            return s
+        }
+
+        var bar = ""
+        for d in state.devices { bar += tunerBox(d.DeviceID, active: usableIDs.contains(d.DeviceID), uiURL: "http://\(d.LocalIP)/") }
+        for id in offlineIDs.sorted() { bar += tunerBox(id, active: false, uiURL: nil) }
+        return bar
+    }
+
+    // Push a devbar-only update for a device coming online/offline or being newly discovered.
+    // Previously deviceOnline/deviceOffline broadcast a bare {type,deviceId} with no HTML
+    // payload; the client's SSE dispatcher had no branch for it and fell through to
+    // refreshGuide(), whose payload never includes #dev-bar's HTML at all — so the tuner-box
+    // online/offline state silently went stale until the next full page reload.
+    @MainActor
+    func broadcastDeviceBarEvent(type: String, deviceId: String, state: AppState) {
+        broadcastEvent(["type": type, "deviceId": deviceId, "devbar": buildDevBarHTML(state: state)])
     }
 
     @MainActor
@@ -1339,22 +1419,6 @@ final class WebServer: @unchecked Sendable {
             return "var recsByDev={};"
         }()
 
-        // ── Helper: tuner-info button HTML ───────────────────────────────────────
-        func tunerInfoBtn(_ devId: String, _ dt: DevTuners) -> String {
-            guard dt.total > 0 else { return "" }
-            let cls   = "t-info" + (dt.isFull ? " t-info-full" : "")
-            let label = "\(dt.active)/\(dt.total)\(dt.isFull ? " — FULL" : "")"
-            // data-dev carries the already-he()-escaped DeviceID; onclick reads it via dataset
-            // so no DeviceID value ever touches a JS string literal.
-            return "<button id=\"tun-\(he(devId))\" class=\"\(cls)\" data-dev=\"\(he(devId))\" onclick=\"showTunerInfo(this.dataset.dev,this)\" title=\"Click to see active recordings\">\(label)</button>"
-        }
-
-        // ── Tuner boxes (one per discovered device + any offline/absent device) ──
-        // Offline devices: referenced by a scheduled show but not currently discovered.
-        let onlineIDs  = Set(state.devices.map { $0.DeviceID })
-        let offlineIDs = Set(state.shows.map { $0.hdhr_record }).subtracting(onlineIDs).filter { !$0.isEmpty }
-        let usableIDs  = state.usableDeviceIDs   // discovered AND reachable → "active"
-
         // Default tuner for the initial guide view. With >1 tuner there is no combined view —
         // open on the first tuner that has both a lineup and loaded guide data (fall back to
         // first with a lineup, then ""). Single-device keeps "" (that one device's channels).
@@ -1364,42 +1428,9 @@ final class WebServer: @unchecked Sendable {
                ?? "")
             : ""
 
-        // One tuner box: name (a guide filter when active, plain dimmed label when not) +
-        // a ▾ that opens a dropdown. The dropdown header holds the tuner count badge and
-        // device web-UI link; below it is the refreshable show list. Inactive tuners are
-        // dimmed and their name is not selectable, but the ▾ still lists their shows.
-        func tunerBox(_ devId: String, active: Bool, uiURL: String?) -> String {
-            let label = he("HDHR-\(devId.uppercased())")
-            var s = "<div class=\"tuner-box\(active ? "" : " tuner-off")\">"
-            s += "<div class=\"tuner-row\">"
-            if active {
-                s += "<button class=\"d-btn\" data-dev=\"\(he(devId))\" onclick=\"setDev(this.dataset.dev)\">\(label)</button>"
-            } else {
-                s += "<span class=\"d-btn d-btn-off\" title=\"Not detected — recordings assigned here will fail until it returns\">\(label)</span>"
-            }
-            s += "<button class=\"tdrop-btn\" data-dev=\"\(he(devId))\" onclick=\"toggleTunerDrop(this.dataset.dev)\" aria-label=\"Shows on this tuner\" title=\"Shows on this tuner\">▾</button>"
-            s += "</div>"
-            // Dropdown: static header (count badge + device link) + refreshable body (shows).
-            // refreshGuide() swaps the full .tdrop innerHTML; SSE events target .tdrop-body.
-            s += "<div class=\"tdrop\" id=\"tdrop-\(he(devId))\" style=\"display:none\">"
-            s += "<div class=\"tdrop-hdr\">"
-            if active, let dt = devTuners[devId] { s += tunerInfoBtn(devId, dt) }
-            else { s += "<span id=\"tun-\(he(devId))\" class=\"t-info t-info-off\">offline</span>" }
-            if let uiURL { s += "<a href=\"\(he(uiURL))\" target=\"_blank\" class=\"d-ui tdrop-ui\" title=\"Open \(label) web UI\">↗ Device web UI</a>" }
-            s += "</div>"
-            s += "<div class=\"tdrop-body\" id=\"tdrop-body-\(he(devId))\">\(buildTunerShowsHTML(state: state, deviceId: devId))</div>"
-            s += "</div>"
-            s += "</div>"
-            return s
-        }
-
         // Header is just the title now; every tuner (incl. offline) gets a box in the dev-bar.
         let headerHTML = "<h1 style=\"margin:0\">hdhrVCR+ Guide</h1>"
-        var bar = "<div id=\"dev-bar\">"
-        for d in state.devices { bar += tunerBox(d.DeviceID, active: usableIDs.contains(d.DeviceID), uiURL: "http://\(d.LocalIP)/") }
-        for id in offlineIDs.sorted() { bar += tunerBox(id, active: false, uiURL: nil) }
-        bar += "</div>"
-        let deviceBarHTML = bar
+        let deviceBarHTML = "<div id=\"dev-bar\">" + buildDevBarHTML(state: state) + "</div>"
 
         // ── Summary placeholder: current recording or next scheduled show ────
         let sumPhHTML = buildSumPhHTML(state: state)
@@ -2835,6 +2866,10 @@ final class WebServer: @unchecked Sendable {
                     if(tb){var full=d.tunerA>=d.tunerT;tb.textContent=d.tunerA+'/'+d.tunerT+(full?' — FULL':'');if(full)tb.classList.add('t-info-full');else tb.classList.remove('t-info-full');}
                   }
                 }
+              } else if(d.devbar){
+                // deviceOnline/deviceOffline — swap the dev-bar's tuner boxes in place instead
+                // of falling through to refreshGuide(), whose payload never touches #dev-bar.
+                var db=document.getElementById('dev-bar');if(db)db.innerHTML=d.devbar;
               } else {
                 refreshGuide();
               }

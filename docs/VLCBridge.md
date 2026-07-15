@@ -135,6 +135,8 @@ _mpSetNSO?(mp, Unmanaged.passUnretained(view).toOpaque())
 ```swift
 func play(url: String) {
     stopStatsTimer()
+    hasError = false; isPlaying = false
+    audioTracks = []; spuTracks = []; tracksFetched = false
     _mpStop?(mp)
     if let old = currentMedia { _mediaRelease?(old); currentMedia = nil }
     guard let media = url.withCString({ _mediaNL?(inst, $0) }) else { return }
@@ -151,6 +153,16 @@ func play(url: String) {
 ```
 
 The sequence stop → cancel timer → release old media → add options → set on player → play → set rate → start timer is the correct libvlc pattern. `libvlc_media_add_option` must be called before `libvlc_media_player_set_media` — options set after that call are silently ignored. The `currentMedia` reference is retained because libvlc does not retain the media object after `libvlc_media_player_set_media`.
+
+`audioTracks`/`spuTracks`/`tracksFetched` are reset here too (not just in `stopAndClearState()`/`releasePlayer()`) — `tickController` only calls `fetchTracks()` when `!tracksFetched`, so without this reset an ordinary channel switch would leave the *previous* channel's track lists showing in the toolbar pickers, and selecting one could call `setAudioTrack`/`setSpuTrack` with an id that doesn't exist on the new stream.
+
+---
+
+## Recording-Relay Seek State
+
+`recordingShowId: String?` / `recordingStartDate: Date?` are the signal `AppState.vlcOccupiesTuner(for:)` reads to tell a zero-cost recording-playback relay session (`/api/watch-recording`, see `docs/WebServer.md`) apart from a real, tuner-occupying live stream — non-nil `recordingShowId` means "this is the relay, don't count it." `recordingSeekBaseSeconds`/`recordingReopenedAt` back `estimatedElapsedSeconds` (byte-offset-derived playback position, meaningless unless `recordingShowId` is non-nil).
+
+`beginRecordingSeek(showId:recordingStart:seekBaseSeconds:)` and `clearRecordingSeek()` set/clear all four together. `AppState.watchRecordingInApp` calls `mgr.open()` synchronously to start the relay, then defers `beginRecordingSeek` via `DispatchQueue.main.async` (a separate run-loop turn so SwiftUI's toolbar picks up the update). `beginRecordingSeek` guards against that deferred call landing *after* the player has since moved on to a different stream (e.g. the user switched to a live channel in the gap before it fired, which already called `clearRecordingSeek()` synchronously via `play(url:)`): it only applies the update if `currentURL` still points at a `/api/watch-recording` URL containing `show=<showId>`; otherwise it logs a warning and no-ops rather than resurrecting a `recordingShowId` for a session that's no longer live, which would have made `vlcOccupiesTuner` under-count a real live stream as a free relay.
 
 ---
 
@@ -181,6 +193,10 @@ var currentURL: String?                                        // URL currently 
 @Published var isPlaying:   Bool                              // true after libvlc_Playing (state 3) first confirmed; cleared on play/stop/release
 @Published var audioTracks: [(id: Int32, name: String)]       // stream audio tracks; empty = single/unknown; populated ~3s after playing
 @Published var spuTracks:   [(id: Int32, name: String)]       // CC/subtitle tracks; empty = none detected; populated ~3s after playing
+var recordingShowId: String?                                  // non-nil while playing the /api/watch-recording relay for this show_id; nil = live stream (see Recording-Relay Seek State)
+var recordingStartDate: Date?                                 // paired with recordingShowId; the recording's scheduled start, for elapsed-time display
+func beginRecordingSeek(showId: String, recordingStart: Date, seekBaseSeconds: Double)  // arms recording-relay seek state; no-ops if currentURL no longer matches showId (stale deferred call)
+func clearRecordingSeek()                                     // clears recording-relay seek state; called by play(url:) for any non-relay URL
 func setDrawable(_ view: NSView)                              // must be called before first play()
 func play(url: String)                                        // stop + switch to new URL; resets rate controller, hasError, isPlaying
 func stop()                                                   // stop + release media; cancels stats timer; clears hasError, isPlaying

@@ -18,12 +18,16 @@ final class XmltvParser: NSObject, XMLParserDelegate {
     private var currentProg: ProgBuilder? = nil
     private var currentChars = ""
     private var currentEpisodeSystem = ""
+    private var parseError: Error? = nil
 
-    func parse(_ data: Data) -> [GuideChannel] {
+    /// Parses XMLTV data. `succeeded` is false if the parser stopped early on malformed/truncated
+    /// XML — in that case `channels` reflects only whatever had been accumulated via delegate
+    /// callbacks before the error, which callers must not treat as a complete guide load.
+    func parse(_ data: Data) -> (channels: [GuideChannel], succeeded: Bool) {
         let parser = XMLParser(data: data)
         parser.delegate = self
-        parser.parse()
-        return channelMeta.compactMap { id, meta -> GuideChannel? in
+        let ok = parser.parse()
+        let channels = channelMeta.compactMap { id, meta -> GuideChannel? in
             guard !meta.number.isEmpty else { return nil }
             var entries = progsByChannelId[id] ?? []
             entries.sort { $0.StartTime < $1.StartTime }
@@ -35,9 +39,14 @@ final class XmltvParser: NSObject, XMLParserDelegate {
                 Guide: entries
             )
         }.sorted { $0.GuideNumber < $1.GuideNumber }
+        return (channels, ok && parseError == nil)
     }
 
     // MARK: - XMLParserDelegate
+
+    func parser(_ parser: XMLParser, parseErrorOccurred error: Error) {
+        parseError = error
+    }
 
     func parser(_ parser: XMLParser,
                 didStartElement elementName: String,

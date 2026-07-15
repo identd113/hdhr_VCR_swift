@@ -255,14 +255,19 @@ final class HDHRManager {
             }
             guard n > 8, buf[0] == 0x00, buf[1] == 0x03 else { continue }  // DISCOVER_REPLY = 0x0003
 
-            // Parse TLV payload for DeviceID tag (0x02)
+            // Parse TLV payload for DeviceID tag (0x02).
+            // payloadLen is attacker-controlled (2 bytes straight from the packet, up to 65535)
+            // and must never be trusted alone — bound the loop against the actual bytes received
+            // (n) and the fixed buffer capacity too, or a reply claiming a huge payloadLen while
+            // sending few actual bytes walks `off` past `buf`'s bounds and traps the whole app.
             let payloadLen = Int(buf[2]) << 8 | Int(buf[3])
+            let limit = min(4 + payloadLen, n, bufCapacity)
             var off = 4
             var deviceID: UInt32 = 0
-            while off + 2 <= 4 + payloadLen {
+            while off + 2 <= limit {
                 let tag = buf[off], tagLen = Int(buf[off + 1])
                 off += 2
-                if off + tagLen > 4 + payloadLen { break }
+                if off + tagLen > limit { break }
                 if tag == 0x02, tagLen == 4 {
                     deviceID = UInt32(buf[off]) << 24 | UInt32(buf[off+1]) << 16
                              | UInt32(buf[off+2]) << 8  | UInt32(buf[off+3])
