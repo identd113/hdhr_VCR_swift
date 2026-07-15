@@ -78,15 +78,21 @@ Systems: [AppState](docs/AppState.md) · [GuideStore](docs/GuideStore.md) · [Re
 
 **New show field** — (1) add to `Show` in `Models.swift` (2) `CodingKeys` entry (3) `init(from:)` with fallback default (4) update `Show.blank()`.
 
+**New show_id-keyed tracking table** — any new `Set<String>`/`[String: X]` in `AppState` keyed by `show_id` (there are over a dozen: `showRetryAfter`, `conflictNotifiedEpochs`, `discordCardInFlight`, etc.) must also be cleared in `deleteShow`, or it leaks for the life of the app session.
+
 **Bonus Time** — `show_bonus_time` extends past guide end; sports genres default `true` via `applyGuideEntry()` (genre comes from guide `Filter` tags). Duration = `Sports_padding_minutes`.
 
-**Web UI push** — after any state change the web UI should reflect, call `webServer.broadcastEvent(...)`; for recording start/stop use `broadcastRecordingEvent(...)` (embeds pre-rendered HTML fragments). External browsers and in-app WKWebView windows share the same SSE stream.
+**Web UI push** — after any state change the web UI should reflect, call `webServer.broadcastEvent(...)`; for recording start/stop use `broadcastRecordingEvent(...)` (embeds pre-rendered HTML fragments). External browsers and in-app WKWebView windows share the same SSE stream. `addShow`/`updateShow`/`deleteShow`/`pauseShow`/`resumeShow` broadcast themselves — don't rely on the caller to do it.
 
-**WebServer.swift is ~half JavaScript** inside Swift multiline strings — regex metachars need double escaping (`\\W`), and `node --check` on extracted `<script>` blocks is the fast way to validate JS edits.
+**Discord card sends** — always go through `fireDiscordCard(...)`, never call `discordRecordingCard` directly. `fireDiscordCard` serializes per-show sends via `discordCardInFlight` so two lifecycle events for the same show (e.g. a "Recording Started" confirmation racing a "Paused" card) can't race and orphan/duplicate a Discord message.
+
+**WebServer.swift is ~half JavaScript** inside Swift multiline strings — regex metachars need double escaping (`\\W`), and `node --check` on extracted `<script>` blocks is the fast way to validate JS edits. **No auth beyond LAN-subnet matching** on any endpoint — validate inputs defensively (paths, IDs, ranges) on any new mutating route rather than trusting the caller.
 
 **Signal keys** — every signal-history read/write derives its key via `ChannelSignalStore.key(for:)` (trim+lowercase). A reader that only lowercases silently misses data.
 
-**Guide API** — cloud `guide.php` caps a single call at ~29h regardless of `Duration`; `DeviceAuth` rotates (re-fetch from `/discover.json`). Details + untapped endpoints: `docs/HDHRFindings.md`.
+**Guide API** — cloud `guide.php` caps a single call at ~29h regardless of `Duration`; `GuideHours` setting is clamped to 28 to stay within it (`GuideStore.load()` makes one call, no pagination); `DeviceAuth` rotates (re-fetch from `/discover.json`). Details + untapped endpoints: `docs/HDHRFindings.md`.
+
+**Idle-loop show-array safety** — `idleLoop()` guards against overlapping runs (`idleLoopRunning`). Its passes, plus `scheduleNextAir`/`stopRecording(showId:)`, re-resolve `shows` by `show_id` after any `await` — never reuse a captured `Int` index, since `shows` can mutate (a web-UI delete, another show's own reschedule) while suspended.
 
 **Menu rebuild churn** — frequent `@Published` mutations while the NSMenu is open cause rebuild glitches; batch/coalesce assignments (see `prefetchChannelIcons`).
 
