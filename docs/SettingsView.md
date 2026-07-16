@@ -47,7 +47,7 @@ One `Section`:
 Two `Section`s:
 
 **Fetch** section:
-- Guide hours: `Stepper` `"Show next N hours"`, range 1–48
+- Guide hours: `Stepper` `"Show next N hours"`, range 1–28
 - Series scan retry: `Stepper` `"Series scan retry: N hr"`, range 1–24
 - `"Update Guides Now"` `.borderedProminent` button
 
@@ -172,7 +172,7 @@ Sidebar entries (with SF Symbol icons):
 ### Guide
 
 **Fetch section:**
-- **Show next N hours** — `Stepper` (1–48). Controls how far ahead the guide fetches and how long until the guide auto-refreshes (`max(3600, GuideHours × 1800)` seconds).
+- **Show next N hours** — `Stepper` (1–28, capped below the old 1–48 range). Controls how far ahead the guide fetches and how long until the guide auto-refreshes (`max(3600, GuideHours × 1800)` seconds). Capped at 28 because `GuideStore.load()` makes a single API call and the cloud `guide.php` endpoint silently truncates any single request past ~29h (`docs/HDHRFindings.md`) — a higher setting would look accepted but never actually fetch further out. `AppConfig.init(from:)` also clamps a decoded value from an older config that saved something above 28.
 - **Series scan retry** — `Stepper` (1–24 hr). How long to wait before re-scanning the guide for a SeriesID show's next episode when no match was found.
 - **Update Guides Now** — `Button` (always visible). Calls `state.refreshAll()` immediately, invalidating and reloading guide data for all devices. Useful any time fresh data is needed without restarting the app.
 

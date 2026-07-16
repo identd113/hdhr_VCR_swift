@@ -991,6 +991,30 @@ final class WebServer: @unchecked Sendable {
         return parts.isEmpty ? "<div class=\"sp-empty\">No shows on this tuner.</div>" : parts.joined()
     }
 
+    // Per-device tuner counts (total slots vs. currently occupied). Shared by buildHTML (feeds
+    // the client-side `tuners` JS var) and buildDevBarHTML (feeds the server-rendered dropdown
+    // badge) so the two can never define "active" differently — they used to each compute this
+    // independently and had already drifted (only one copy carried the diagnostic glog line).
+    private struct DevTuners { let total: Int; let active: Int; var isFull: Bool { total > 0 && active >= total } }
+
+    @MainActor
+    private static func computeDevTuners(state: AppState, logDiagnostics: Bool = false) -> [String: DevTuners] {
+        var devTuners: [String: DevTuners] = [:]
+        for d in state.devices {
+            let total = d.TunerCount ?? 0
+            // Active = VctNumber present; idle slots appear in status.json with only "Resource" set.
+            let occupancy = state.deviceTunerOccupancy[d.DeviceID]
+            let active = occupancy?.filter({ $0.VctNumber != nil }).count ?? 0
+            if logDiagnostics {
+                let occStr = occupancy.map { "\($0.count)" } ?? "nil"
+                let recCount = state.recordingShows.filter { $0.hdhr_record == d.DeviceID }.count
+                glog("[WebServer] buildHTML tuners \(d.DeviceID): occupancy=\(occStr) active=\(active)/\(total) recordingShows=\(recCount)")
+            }
+            devTuners[d.DeviceID] = DevTuners(total: total, active: active)
+        }
+        return devTuners
+    }
+
     // Inner content of #dev-bar (one tuner box per discovered device + any offline/absent
     // device referenced by a scheduled show) — no outer wrapping div, so callers can either
     // embed it in buildHTML's full page or push it standalone for an innerHTML swap over SSE.
@@ -998,14 +1022,7 @@ final class WebServer: @unchecked Sendable {
     // instead of only updating on the next full page load.
     @MainActor
     private func buildDevBarHTML(state: AppState) -> String {
-        struct DevTuners { let total: Int; let active: Int; var isFull: Bool { total > 0 && active >= total } }
-        var devTuners: [String: DevTuners] = [:]
-        for d in state.devices {
-            let total = d.TunerCount ?? 0
-            let occupancy = state.deviceTunerOccupancy[d.DeviceID]
-            let active = occupancy?.filter({ $0.VctNumber != nil }).count ?? 0
-            devTuners[d.DeviceID] = DevTuners(total: total, active: active)
-        }
+        let devTuners = Self.computeDevTuners(state: state)
 
         func tunerInfoBtn(_ devId: String, _ dt: DevTuners) -> String {
             guard dt.total > 0 else { return "" }
@@ -1333,23 +1350,11 @@ final class WebServer: @unchecked Sendable {
         let (winStart, winSec) = guideWindow(state: state)   // winStart needed for _winStart JS literal
         let guideMinWidth = max(1200, winSec / 1800 * 100)
         let gridInner   = buildGuideGridHTML(state: state, isDesktop: isDesktop)
-        // Capture recording shows once — used by recsByDevJS and devTuners below.
+        // Capture recording shows once — used by recsByDevJS below.
         let recording   = state.recordingShows
 
         // ── Per-device tuner counts (total slots vs. currently occupied) ────────
-        // active = live status.json snapshot; falls back to scheduled recording count.
-        struct DevTuners { let total: Int; let active: Int; var isFull: Bool { total > 0 && active >= total } }
-        var devTuners: [String: DevTuners] = [:]
-        for d in state.devices {
-            let total  = d.TunerCount ?? 0
-            // Active = VctNumber present; idle slots appear in status.json with only "Resource" set.
-            let occupancy  = state.deviceTunerOccupancy[d.DeviceID]
-            let active     = occupancy?.filter({ $0.VctNumber != nil }).count ?? 0
-            let occStr     = occupancy.map { "\($0.count)" } ?? "nil"
-            // recCount is diagnostic only — active (from status.json) drives isFull, not recCount.
-            glog("[WebServer] buildHTML tuners \(d.DeviceID): occupancy=\(occStr) active=\(active)/\(total) recordingShows=\(recording.filter { $0.hdhr_record == d.DeviceID }.count)")
-            devTuners[d.DeviceID] = DevTuners(total: total, active: active)
-        }
+        let devTuners = Self.computeDevTuners(state: state, logDiagnostics: true)
         // Embed tuner counts + per-device active-recording list as JS literals.
         // Build via JSONSerialization so DeviceID and LocalIP values are properly JSON-encoded;
         // raw string interpolation into JS string literals would allow injection if a device
@@ -2869,7 +2874,17 @@ final class WebServer: @unchecked Sendable {
               } else if(d.devbar){
                 // deviceOnline/deviceOffline — swap the dev-bar's tuner boxes in place instead
                 // of falling through to refreshGuide(), whose payload never touches #dev-bar.
-                var db=document.getElementById('dev-bar');if(db)db.innerHTML=d.devbar;
+                // buildDevBarHTML always renders every .tdrop closed (it has no notion of client
+                // UI state), so a bare innerHTML swap would silently close whichever tuner's
+                // dropdown the user currently has open — at most one is ever open at a time
+                // (toggleTunerDrop closes the rest), so just remember its id and reopen it.
+                var db=document.getElementById('dev-bar');
+                if(db){
+                  var openId=null;
+                  db.querySelectorAll('.tdrop').forEach(function(x){if(x.style.display==='block')openId=x.id;});
+                  db.innerHTML=d.devbar;
+                  if(openId){var reopened=document.getElementById(openId);if(reopened)reopened.style.display='block';}
+                }
               } else {
                 refreshGuide();
               }

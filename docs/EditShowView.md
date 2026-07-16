@@ -62,7 +62,7 @@ Escape key: `.onExitCommand` on root Group — shows dirty-check `NSAlert` (Save
 
 ### `loadShow()`
 
-Called from `.onAppear` **and** from `.onChange(of: state.editingShowId)`. The Edit window is a single-instance `Window` (not `WindowGroup`), so the view persists between opens — when it's re-focused for a different show, `onAppear` does not fire again, and the `onChange` is what reloads it. Reads `state.editingShowId`, finds the matching show in `state.shows`, and seeds the view's `@State` vars:
+Called from `.onAppear` and, conditionally, from `.onChange(of: state.editingShowId)`. The Edit window is a single-instance `Window` (not `WindowGroup`), so the view persists between opens — when it's re-focused for a different show, `onAppear` does not fire again, and the `onChange` handler is what would reload it. That handler no longer calls `loadShow()` unconditionally: if the currently-loaded show has unsaved edits (`isDirty`, comparing `show` against the `originalShow` snapshot), it shows the same Save/Discard/Cancel `NSAlert` `onExitCommand` uses before proceeding — Save calls `saveWithoutDismiss()` then `loadShow()`, Discard calls `loadShow()` directly, and Cancel reverts `state.editingShowId` back to the show currently loaded (via the `onChange` closure's captured `oldValue`) without ever calling `loadShow()`, so the in-progress edits are never silently discarded. `loadShow()` reads `state.editingShowId`, finds the matching show in `state.shows`, and seeds the view's `@State` vars:
 - `show` — the full `Show` copy (edits happen on this local copy, not on `state` directly)
 - `seriesType` — derived from `show.state`
 - `airDays` — `Set(show.show_air_date)`

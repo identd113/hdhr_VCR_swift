@@ -1,5 +1,16 @@
 # hdhrVCRplus Changelog
 
+## 2026-07-16
+
+Follow-up review of the 2026-07-15 fix pass (fresh 8-angle review of that commit) caught several gaps in its own fixes:
+
+- **Fix — a recording could still crash or corrupt the wrong show's notification** — `stopRecording`'s natural-completion path awaited a guide reload, then read the show back out by its original position instead of re-checking it was still there; a show deleted during that reload could point it at a different show (or crash outright). The same gap existed in "Rescan Series" (Settings → Maintenance) if a show was deleted mid-scan.
+- **Fix — Discord card serialization was a busy-poll that could race a deploy's stop-the-app step** — replaced the polling mutex with a chained-Task design (same idea already used elsewhere in the app for lineup loading), and closed a narrow window where killing the app mid-send (as every deploy does) could leave a stale Discord message reference that caused a bogus "Recording Complete" notice on the next launch.
+- **Fix — a device coming online or offline could close a dropdown you had open in the web guide** — the live update now remembers and restores whichever tuner's schedule you had expanded.
+- **Fix — editing a show's schedule could show outdated info in the web guide for a few seconds** — the live update now fires again once the change actually finishes processing, not just when it starts.
+- **Cleanup** — a tuner-occupancy calculation that existed in two copies (and had already drifted between them) is now one shared calculation.
+- **Docs** — corrected three settings/behavior descriptions that fell out of sync with yesterday's fixes (Guide Hours range, Add Show's retry behavior, Edit Show's unsaved-changes prompt).
+
 ## 2026-07-15
 
 - **Fix — recording retry storm after a mid-episode failure** — once a show hit the fail-count threshold and paused, it could immediately auto-resume (the "next airing imminent" check was trivially true right after a mid-recording pause, since `show_next` still pointed at the airing that just failed) and re-fail in a ~20–30s loop for the rest of that airing's window instead of staying paused until the window actually ended. The Carol Burnett Show was hitting this nightly.

@@ -271,7 +271,7 @@ A persistent SSE endpoint. Browsers connect once on page load via `EventSource('
 2. `signal_update` — updates SVG signal bars in-place on matching `.g-row[data-gname]` rows. No `refreshGuide()`.
 3. Events with `grid` — applies the pushed `{grid, sumph, tdrop}` payload via `applyGuidePayload(d)` (swaps `.gi`, `#sum-ph`, every `#tdrop-body-{dev}`, re-syncs `_winStart`/`_winSec`, restores scroll + selection). **Must be checked before case 4** — this payload's `tdrop` is a `{device: html}` object, which would otherwise satisfy case 4's `d.tdrop` truthiness check and get assigned directly into `innerHTML`, rendering the literal string `[object Object]`.
 4. Events with `sumPh`/`tdrop` (recording events only, now that case 3 intercepts the guide-change events) — applies `#sum-ph` and the affected tuner's `#tdrop-{tdropDev}` directly, and toggles `.g-prog-rec`/`.g-prog-now` classes + the `.g-flag-rec` child on the currently-airing guide entry for the affected channel+device. No `refreshGuide()`.
-5. Events with `devbar` (`deviceOnline`/`deviceOffline`) — swaps `#dev-bar`'s `innerHTML` in place. No `refreshGuide()`.
+5. Events with `devbar` (`deviceOnline`/`deviceOffline`) — swaps `#dev-bar`'s `innerHTML` in place. No `refreshGuide()`. `buildDevBarHTML` always renders every `.tdrop` closed (it has no notion of client UI state), so the handler first records which single `.tdrop` (if any — `toggleTunerDrop` only ever leaves one open at a time) currently has `style.display==='block'`, then re-applies that after the swap, so a device coming online/offline elsewhere doesn't silently close a dropdown the user has open.
 6. All other events (or a `grid`-carrying event missed for some reason) — `refreshGuide()` (fetch-based fallback, same `applyGuidePayload` under the hood).
 
 `guide_refreshed` now falls into case 3 instead of the old fetch-based fallback — the grid the idle loop already rebuilt via `prebuildPageHTML` at guide-refresh time is reused by pushing the identical fragments computed by `broadcastGuideChangeEvent`, so no additional rebuild happens per connected tab. It's broadcast roughly **once per clock-hour boundary** (the `lastRefreshHour` gate in `AppState.idleLoop` → `refreshGuides()`), so an idle guide window does a background refresh about hourly even with no user activity.
@@ -339,6 +339,8 @@ tuners via the active device names.
 **Tuner badges** (`.t-info` / `.t-info-full`): show `active/total` slots. Red styling when full. Clicking opens the tuner popover.
 
 **Live updates:** the whole `#dev-bar` fragment (built by `buildDevBarHTML(state:)`, the same content `buildHTML` embeds on initial page load) is re-pushed via the `devbar` SSE payload on `deviceOnline`/`deviceOffline` — see SSE section — so a device recovering, going offline, or being newly discovered updates this row live in every open tab.
+
+Both `buildDevBarHTML` and `buildHTML` (which separately needs per-device active/total counts to build the client-side `tuners` JS var) get their tuner-occupancy numbers from one shared `Self.computeDevTuners(state:logDiagnostics:)`, not two independent computations — they briefly diverged when `buildDevBarHTML` was first factored out (only `buildHTML`'s copy carried a diagnostic `glog()` line), which is exactly the kind of drift risk a single shared function closes for good.
 
 ---
 

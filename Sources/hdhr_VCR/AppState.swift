@@ -199,9 +199,27 @@ final class AppState: ObservableObject {
         signal(SIGTERM, SIG_IGN)
         sigtermSource = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
         sigtermSource?.setEventHandler { [weak self] in
-            self?.saveConfig()
-            signal(SIGTERM, SIG_DFL)
-            raise(SIGTERM)
+            guard let self else { signal(SIGTERM, SIG_DFL); raise(SIGTERM); return }
+            Task { @MainActor in
+                // Give any in-flight Discord card send a bounded window to finish and clear
+                // discord_start_msg_id before the final save — otherwise a pkill mid-send
+                // (deploy.sh's normal stop-before-rebuild step) can persist a stale id that
+                // reattachRecordings() later mistakes for an unfinished recording, posting a
+                // bogus recovery embed on next launch. Skipped entirely when nothing is
+                // pending (the overwhelmingly common case), so a normal deploy isn't slowed.
+                let pending = Array(self.discordCardTasks.values)
+                if !pending.isEmpty {
+                    await withTaskGroup(of: Void.self) { group in
+                        group.addTask { try? await Task.sleep(nanoseconds: 2_000_000_000) } // 2s cap
+                        group.addTask { for t in pending { _ = await t.value } }
+                        await group.next() // first of {timeout, all-sends-done} wins
+                        group.cancelAll()
+                    }
+                }
+                self.saveConfig()
+                signal(SIGTERM, SIG_DFL)
+                raise(SIGTERM)
+            }
         }
         sigtermSource?.resume()
 
@@ -1468,9 +1486,13 @@ final class AppState: ObservableObject {
         }
 
         await scheduleNextAir(index: index)
-        let completedShow = shows[index]
+        // Re-resolve by show_id — scheduleNextAir's own internal guide-fetch await can let `shows`
+        // mutate (e.g. an interleaved delete) while this call was suspended; the original `index`
+        // parameter is no longer guaranteed valid or to still refer to this show.
+        guard let curIndex = shows.firstIndex(where: { $0.show_id == show.show_id }) else { return }
+        let completedShow = shows[curIndex]
         // Route through fireDiscordCard (not the old direct discordShow(editMessageId:) call) so
-        // this terminal event is serialized by discordCardInFlight like every other lifecycle
+        // this terminal event is chained behind any in-flight send like every other lifecycle
         // event — otherwise a still-in-flight "Recording Started" CREATE (slow webhook) could
         // race this read of discord_start_msg_id, posting an orphan ID-less "Complete" message
         // while the Started card's id lands afterward with nothing to clear it.
@@ -1710,6 +1732,15 @@ final class AppState: ObservableObject {
             guard let self, let j = self.shows.firstIndex(where: { $0.show_id == show.show_id }) else { return }
             await self.scheduleNextAir(index: j)
             self.saveConfig()
+            // Re-broadcast now that scheduleNextAir resolved the real show_next/channel — the
+            // broadcast above fired immediately with pre-reschedule data, so on a type change
+            // (e.g. seriesChannel → seriesAll) web guide viewers would otherwise keep seeing
+            // stale schedule info until an unrelated event happened to trigger another push.
+            if let updated = self.shows.first(where: { $0.show_id == show.show_id }) {
+                self.webServer.broadcastGuideChangeEvent(type: "show_updated",
+                                                         extra: ["channel": updated.show_channel, "device": updated.hdhr_record],
+                                                         state: self)
+            }
         }
     }
 
@@ -1803,7 +1834,10 @@ final class AppState: ObservableObject {
         pendingDiscordStart.remove(show.show_id)
         failedThisAttempt.remove(show.show_id)
         suppressStartDiscord.remove(show.show_id)
-        discordCardInFlight.remove(show.show_id)
+        // Safe to drop unconditionally even if a send for this show is still running — removing
+        // the dict entry doesn't affect an already-started Task, it only stops a future call from
+        // chaining behind it (and there won't be one for a deleted show).
+        discordCardTasks.removeValue(forKey: show.show_id)
         saveConfig()
         webServer.broadcastGuideChangeEvent(type: "show_deleted",
                                             extra: ["channel": show.show_channel, "device": show.hdhr_record],
@@ -1842,8 +1876,19 @@ final class AppState: ObservableObject {
     // MARK: - Maintenance actions (Settings → Maintenance panel)
 
     func rescheduleAllSeries() async {
-        let indices = shows.indices.filter { shows[$0].show_active && !shows[$0].show_paused && !shows[$0].show_recording && shows[$0].show_use_seriesid }
-        for i in indices { await scheduleNextAir(index: i) }
+        // Iterate by show_id, not a snapshotted index — scheduleNextAir's internal guide-fetch
+        // await can let `shows` mutate between iterations. Re-checking the filter after
+        // re-resolving guards against acting on an unrelated show that shifted into a stale slot
+        // (scheduleNextAir itself only guards index < shows.count, not "is this still the show
+        // and state I meant to reschedule").
+        let ids = shows.indices.filter { shows[$0].show_active && !shows[$0].show_paused && !shows[$0].show_recording && shows[$0].show_use_seriesid }
+            .map { shows[$0].show_id }
+        for id in ids {
+            guard let i = shows.firstIndex(where: { $0.show_id == id }),
+                  shows[i].show_active, !shows[i].show_paused, !shows[i].show_recording, shows[i].show_use_seriesid
+            else { continue }
+            await scheduleNextAir(index: i)
+        }
         saveConfig()
     }
 
@@ -2131,33 +2176,33 @@ final class AppState: ObservableObject {
         }
     }
 
-    // Per-show mutex for lifecycle-card sends: at most one discordRecordingCard call is ever in
-    // flight for a given show_id. Without this, two events racing for the same show — e.g. a
-    // "Recording Started" confirmation firing while a fail-threshold "Paused" card from the
-    // previous attempt is still awaiting a slow webhook's CREATE round trip — could both observe
-    // discord_start_msg_id empty, each capture their own new message id, and the loser's card
-    // becomes a permanent orphan (or a later id-clear stomps a card a concurrent send just made).
-    private var discordCardInFlight: Set<String> = []
+    // Per-show serialization for lifecycle-card sends: each new call for a show_id chains behind
+    // whatever call is already running for that same show_id, so at most one discordRecordingCard
+    // is ever actually in flight per show. Without this, two events racing for the same show —
+    // e.g. a "Recording Started" confirmation firing while a fail-threshold "Paused" card from
+    // the previous attempt is still awaiting a slow webhook's CREATE round trip — could both
+    // observe discord_start_msg_id empty, each capture their own new message id, and the loser's
+    // card becomes a permanent orphan (or a later id-clear stomps a card a concurrent send just
+    // made). Mirrors ensureLineupLoaded's Task-caching idiom (loadingLineupTasks) rather than a
+    // busy-poll: no latency floor waiting for a lock, and clearing a stale dict entry (deleteShow)
+    // can never race a still-running send, since nothing here treats presence-in-dict as a lock.
+    private var discordCardTasks: [String: Task<Void, Never>] = [:]
 
-    /// Fires a Discord lifecycle card update from a detached Task so a slow/hung webhook can't
-    /// stall the idle loop's per-tick show processing, serialized per show_id via
-    /// `discordCardInFlight` so no two sends for the same show ever touch `discord_start_msg_id`
-    /// concurrently. Pass `clearIdAfter: true` for terminal events (paused, empty-output-file
-    /// failure) so the next airing's attempt starts a fresh card — safe to clear unconditionally
-    /// here because the mutex guarantees this is the only in-flight send for this show.
+    /// Fires a Discord lifecycle card update from a detached, per-show-chained Task so a slow/hung
+    /// webhook can't stall the idle loop's per-tick show processing. Pass `clearIdAfter: true` for
+    /// terminal events (paused, empty-output-file failure) so the next airing's attempt starts a
+    /// fresh card — safe to clear unconditionally here because the chain guarantees this is the
+    /// only send touching `discord_start_msg_id` for this show at that moment.
     private func fireDiscordCard(showId: String, event: String, color: Int, enabled: Bool,
                                  extra: [(name: String, value: String, inline: Bool)] = [],
                                  clearIdAfter: Bool = false) {
-        Task { @MainActor in
-            while self.discordCardInFlight.contains(showId) {
-                try? await Task.sleep(nanoseconds: 150_000_000)
-            }
-            self.discordCardInFlight.insert(showId)
+        let previous = discordCardTasks[showId]
+        discordCardTasks[showId] = Task { @MainActor in
+            _ = await previous?.value
             await self.discordRecordingCard(showId: showId, event: event, color: color, enabled: enabled, extra: extra)
             if clearIdAfter, let j = self.shows.firstIndex(where: { $0.show_id == showId }) {
                 self.shows[j].discord_start_msg_id = ""
             }
-            self.discordCardInFlight.remove(showId)
             self.saveConfig()
         }
     }

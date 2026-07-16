@@ -78,13 +78,13 @@ Systems: [AppState](docs/AppState.md) · [GuideStore](docs/GuideStore.md) · [Re
 
 **New show field** — (1) add to `Show` in `Models.swift` (2) `CodingKeys` entry (3) `init(from:)` with fallback default (4) update `Show.blank()`.
 
-**New show_id-keyed tracking table** — any new `Set<String>`/`[String: X]` in `AppState` keyed by `show_id` (there are over a dozen: `showRetryAfter`, `conflictNotifiedEpochs`, `discordCardInFlight`, etc.) must also be cleared in `deleteShow`, or it leaks for the life of the app session.
+**New show_id-keyed tracking table** — any new `Set<String>`/`[String: X]` in `AppState` keyed by `show_id` (there are over a dozen: `showRetryAfter`, `conflictNotifiedEpochs`, `discordCardTasks`, etc.) must also be cleared in `deleteShow`, or it leaks for the life of the app session.
 
 **Bonus Time** — `show_bonus_time` extends past guide end; sports genres default `true` via `applyGuideEntry()` (genre comes from guide `Filter` tags). Duration = `Sports_padding_minutes`.
 
 **Web UI push** — after any state change the web UI should reflect, call `webServer.broadcastEvent(...)`; for recording start/stop use `broadcastRecordingEvent(...)` (embeds pre-rendered HTML fragments). External browsers and in-app WKWebView windows share the same SSE stream. `addShow`/`updateShow`/`deleteShow`/`pauseShow`/`resumeShow` broadcast themselves — don't rely on the caller to do it.
 
-**Discord card sends** — always go through `fireDiscordCard(...)`, never call `discordRecordingCard` directly. `fireDiscordCard` serializes per-show sends via `discordCardInFlight` so two lifecycle events for the same show (e.g. a "Recording Started" confirmation racing a "Paused" card) can't race and orphan/duplicate a Discord message.
+**Discord card sends** — always go through `fireDiscordCard(...)`, never call `discordRecordingCard` directly. `fireDiscordCard` chains per-show sends behind each other via `discordCardTasks` (mirrors `ensureLineupLoaded`'s `loadingLineupTasks` idiom) so two lifecycle events for the same show (e.g. a "Recording Started" confirmation racing a "Paused" card) can't race and orphan/duplicate a Discord message.
 
 **WebServer.swift is ~half JavaScript** inside Swift multiline strings — regex metachars need double escaping (`\\W`), and `node --check` on extracted `<script>` blocks is the fast way to validate JS edits. **No auth beyond LAN-subnet matching** on any endpoint — validate inputs defensively (paths, IDs, ranges) on any new mutating route rather than trusting the caller.
 
