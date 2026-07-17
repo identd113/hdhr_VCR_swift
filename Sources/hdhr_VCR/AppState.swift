@@ -301,8 +301,15 @@ final class AppState: ObservableObject {
 
     func setupWebServer() {
         guard config.Web_server_enabled else {
-            webServer.stop()                       // no-op (and silent) if already stopped
-            if webServerRunning  { webServerRunning  = false }
+            // Only tear the listener down if no internal holder still needs it. FloatingGuideView,
+            // AddShowView, and the Watch-Now-from-disk relay (watchRecordingInApp) all keep the
+            // localhost server alive via internalWebServerUseCount independent of this LAN-exposure
+            // toggle — an unconditional stop() here would kill an in-app guide's WKWebView or a live
+            // relay stream mid-playback. releaseInternalWebServer uses the same count==0 gate.
+            if internalWebServerUseCount == 0 {
+                webServer.stop()                   // no-op (and silent) if already stopped
+                if webServerRunning { webServerRunning = false }
+            }
             if webServerError != nil { webServerError = nil }
             return
         }

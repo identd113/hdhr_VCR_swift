@@ -113,7 +113,7 @@ struct VLCPlayerView: View {
             ZStack {
                 VLCVideoSurface()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                if !posterHidden && !bridge.hasError {
+                if !posterHidden && !bridge.hasError && !bridge.hasEnded {
                     posterOverlay
                         .transition(.opacity)
                 }
@@ -121,7 +121,11 @@ struct VLCPlayerView: View {
                     errorOverlay
                         .transition(.opacity)
                 }
-                if posterHidden, !bridge.hasError,
+                if bridge.hasEnded {
+                    endedOverlay
+                        .transition(.opacity)
+                }
+                if posterHidden, !bridge.hasError, !bridge.hasEnded,
                    let showId = bridge.recordingShowId, let startDate = bridge.recordingStartDate {
                     VStack {
                         Spacer()
@@ -145,6 +149,7 @@ struct VLCPlayerView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .animation(.easeOut(duration: 0.35), value: posterHidden)
             .animation(.easeOut(duration: 0.35), value: bridge.hasError)
+            .animation(.easeOut(duration: 0.35), value: bridge.hasEnded)
             .animation(.easeInOut(duration: 0.2), value: bridge.recordingShowId)
             .task(id: currentGuideEntry?.ImageURL) {
                 guard let url = currentGuideEntry?.ImageURL else { posterNSImage = nil; return }
@@ -358,6 +363,42 @@ struct VLCPlayerView: View {
                         .foregroundStyle(.white)
                 }
                 .buttonStyle(.plain)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+    }
+
+    // MARK: - Ended overlay
+
+    // Shown when libvlc reaches EOF (state 6) — e.g. a finished recording relay read to its last
+    // byte. Without this the player would just freeze on the final frame. Retry replays the current
+    // URL from the top (for a relay that means from its seek anchor); for live it reconnects.
+    private var endedOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.85)
+            VStack(spacing: 16) {
+                Image(systemName: "stop.circle")
+                    .font(.system(size: 44))
+                    .foregroundStyle(.white.opacity(0.8))
+                Text("Playback Ended")
+                    .font(.title2.bold())
+                    .foregroundStyle(.white)
+                if let url = bridge.currentURL {
+                    Button {
+                        posterHidden = false
+                        bridge.play(url: url)
+                    } label: {
+                        Label("Play Again", systemImage: "arrow.clockwise")
+                            .font(.callout.bold())
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 10)
+                            .background(.ultraThinMaterial)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .foregroundStyle(.white)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

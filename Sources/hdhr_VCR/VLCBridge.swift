@@ -112,6 +112,7 @@ final class VLCBridge: ObservableObject {
     private var minRate: Float = 1.0
     @Published var bufferInfo = VLCBufferInfo()
     @Published var hasError:   Bool = false
+    @Published var hasEnded:   Bool = false   // true after libvlc_Ended (state 6) — stream reached EOF
     @Published var isPlaying:  Bool = false   // true only after libvlc_Playing (state 3) confirmed
     @Published var audioTracks: [(id: Int32, name: String)] = []  // stream audio tracks; empty = single/unknown
     @Published var spuTracks:   [(id: Int32, name: String)] = []  // CC/subtitle tracks; empty = none detected
@@ -327,6 +328,7 @@ final class VLCBridge: ObservableObject {
         glog("[VLC] play url=\(url)")
         stopStatsTimer()
         hasError  = false
+        hasEnded  = false
         isPlaying = false
         // Reset track state for the new stream — tickController's fetchTracks() only runs once
         // per !tracksFetched, so without this an ordinary channel switch would keep showing the
@@ -393,6 +395,7 @@ final class VLCBridge: ObservableObject {
         stopStatsTimer()
         clearRecordingSeek()
         hasError       = false
+        hasEnded       = false
         isPlaying      = false
         currentURL     = nil
         pendingURL     = nil
@@ -473,6 +476,16 @@ final class VLCBridge: ObservableObject {
                 stopStatsTimer()
                 return
             }
+            if state == 6 {  // libvlc_Ended: stream reached EOF (a finished recording relay read to its
+                // final byte, or a live source closed). Without handling this, isPlaying stays true and
+                // the stats timer polls a stopped player forever, freezing on the last frame with no
+                // indication. Publish hasEnded so the view shows an "ended" overlay, and stop polling.
+                glog("[VLC] stream ended (libvlc_Ended) — publishing hasEnded")
+                hasEnded  = true
+                isPlaying = false
+                stopStatsTimer()
+                return
+            }
             if state == 3 && !isPlaying {  // libvlc_Playing: first confirmed decode tick
                 isPlaying = true
                 glog("[VLC] stream playing confirmed")
@@ -518,6 +531,13 @@ final class VLCBridge: ObservableObject {
         // i_lost_pictures is a rendering metric — it spikes when the window is backgrounded
         // (macOS stops compositing the surface). Only use i_demux_corrupted (stream-level) to
         // avoid false catch-up loops when the window isn't visible.
+        // Never auto-catch-up a recording-relay session. catchUpToLive() replays currentURL verbatim,
+        // and a relay URL carries a fixed &start=<byteOffset>; reconnecting at that anchor yanks
+        // playback *backward* to the last seek, discarding progress. The user is deliberately behind
+        // live while watching an in-progress recording, so catch-up doesn't apply — the manual
+        // catch-up button routes relays to seekRecordingToLiveEdge instead. Checked before the cooldown
+        // so a relay never even arms it. (recordingShowId is nil for live-tuner playback.)
+        guard recordingShowId == nil else { return }
         guard corruptDelta > 15 else { return }
         guard Date() > catchUpCooldown else { return }
         catchUpCooldown = Date().addingTimeInterval(30)

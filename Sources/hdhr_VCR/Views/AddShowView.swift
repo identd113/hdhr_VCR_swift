@@ -82,18 +82,19 @@ struct AddShowView: View {
         .onExitCommand { dismiss() }
         .onAppear {
             show.show_transcode = state.config.Default_transcode
+            // Acquire the internal web server for this wizard instance on EVERY entry path — the
+            // matching onDisappear release is unconditional, so a path that skips the acquire would
+            // underflow internalWebServerUseCount and stop a server another window/relay still needs.
+            // The pending-entry path lands on .details but can still navigate Back to .guide (goBack:
+            // details → guide), whose WKWebView loads localhost:1980, so it genuinely needs it too.
+            state.ensureWebServerRunning()
             if let pending = state.pendingAddEntry {
-                // Goes directly to details — no guide step, no web server needed.
                 applyPendingEntry(pending)
+            } else if let pending = state.pendingAddChannel {
+                applyPendingChannel(pending)
             } else {
-                // Guide step will show; start server now so it's ready before onRecord fires.
-                state.ensureWebServerRunning()
-                if let pending = state.pendingAddChannel {
-                    applyPendingChannel(pending)
-                } else {
-                    if selectedDevice == nil { selectedDevice = state.devices.first }
-                    step = .guide
-                }
+                if selectedDevice == nil { selectedDevice = state.devices.first }
+                step = .guide
             }
         }
         .onDisappear { state.releaseInternalWebServer() }

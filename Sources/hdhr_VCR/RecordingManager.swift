@@ -58,11 +58,16 @@ final class RecordingManager {
     func stop(showId: String) {
         if let pid = pids[showId] {
             kill(pid, SIGKILL)
-            // Reap the zombie immediately — isRunning() is the only other waitpid site but it
-            // guards on pids[showId], which we clear below, so it would never reach waitpid.
-            // SIGKILL cannot be ignored; the wait should return almost instantly.
-            waitpid(pid, nil, 0)
             pids.removeValue(forKey: showId)
+            // Reap the zombie OFF the main actor. SIGKILL is normally reaped in microseconds, but it
+            // can't be delivered while the target sits in an uninterruptible (D-state) syscall — e.g.
+            // curl blocked writing to a stalled network mount, a perfectly valid recording target. A
+            // blocking waitpid(pid, nil, 0) here (RecordingManager is @MainActor, and stopAll() loops
+            // it over every recording) would freeze the menu-bar UI until the mount recovers. A
+            // detached wait reaps the child whenever it finally dies without stalling the UI. Safe to
+            // background: we've already cleared pids[showId], and isRunning() guards on pids, so the
+            // only other waitpid site can never touch this pid again.
+            DispatchQueue.global(qos: .utility).async { waitpid(pid, nil, 0) }
         }
         releaseAssertion(id: showId)
         clearHeaderFile(showId: showId)

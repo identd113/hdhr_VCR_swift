@@ -279,7 +279,11 @@ extension AppConfig: Codable {
         // Clamp to 28 even for an old saved value above that — GuideStore.load()'s single-call
         // cloud request silently truncates past ~29h regardless (docs/HDHRFindings.md), so a
         // stale higher setting from before this cap was enforced would otherwise look honored.
-        GuideHours            = min(28, (try? c.decode(Int.self, forKey: .GuideHours)) ?? 24)
+        // Clamp both ends: the ~29h cloud cap sets the ceiling (28), and a floor of 1 guards against a
+        // corrupt/hand-edited config with 0 or a negative — GuideHours feeds winSec = GuideHours*3600,
+        // and WebServer.pct() divides by winSec, so 0 would be a division-by-zero trap that aborts the
+        // app on every page render (and at startup during prebuildPageHTML), not just a bad UI value.
+        GuideHours            = max(1, min(28, (try? c.decode(Int.self, forKey: .GuideHours)) ?? 24))
         Guide_use_xml         = (try? c.decode(Bool.self,   forKey: .Guide_use_xml))         ?? false
         Default_transcode     = (try? c.decode(String.self,  forKey: .Default_transcode))     ?? "none"
         Fail_count_setting    = (try? c.decode(Int.self,     forKey: .Fail_count_setting))    ?? 3

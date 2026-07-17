@@ -6,6 +6,81 @@ Historical record of bugs encountered during development. Used as a "don't repea
 
 ---
 
+# Full-source review — 2026-07-17
+
+A 5-way whole-file correctness sweep of all `Sources/` files (not just the recent diff). Crasher + all four medium findings fixed this pass; low-severity findings logged OPEN below.
+
+## RESOLVED — `GuideHours == 0` in a corrupt config crashes the app on every page render (division by zero)
+
+**File:** `Models.swift` — `AppConfig.init(from:)`; trap surfaces in `WebServer.pct()`
+
+**Root cause**: The decoder clamped only the upper bound (`min(28, decode ?? 24)`). A hand-edited/corrupt `hdhr_VCR-{hostname}.json` with `"GuideHours":0` decodes to 0, so `winSec = GuideHours*3600 = 0`, and `pct()` does `offset * 1_000_000 / winSec` → Swift integer division-by-zero trap → process abort at startup (`prebuildPageHTML`) and on every `GET /`.
+
+**Resolution**: Clamp both ends — `max(1, min(28, …))`. The Settings stepper already enforces 1…28; this guards the corrupt/hand-edited config path.
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+## RESOLVED — Web server torn down out from under an in-use holder (Settings toggle-off / Add-Show close)
+
+**File:** `AppState.swift` — `setupWebServer()`; `Views/AddShowView.swift` — `onAppear`/`onDisappear`
+
+**Root cause**: Two refcount-imbalance bugs on the internal web-server use-count. (1) `setupWebServer()`'s disable branch called `webServer.stop()` unconditionally, ignoring `internalWebServerUseCount` — flipping the Settings toggle off killed an in-app guide WKWebView or a Watch-Now-from-disk relay still holding a use-count. (2) `AddShowView.onDisappear` always released, but `onAppear` only acquired on the guide path (not the `pendingAddEntry` "straight to details" path, which can still navigate Back to the guide) — an unbalanced release that could underflow the count and stop the server for another holder.
+
+**Resolution**: `setupWebServer` disable branch now stops only when `internalWebServerUseCount == 0` (mirrors `releaseInternalWebServer`). `AddShowView.onAppear` now calls `ensureWebServerRunning()` on every entry path so the unconditional release stays balanced.
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+## RESOLVED — Blocking `waitpid` on the main actor can freeze the menu-bar UI
+
+**File:** `RecordingManager.swift` — `stop(showId:)`
+
+**Root cause**: `RecordingManager` is `@MainActor`; `stop()` reaped the killed curl with a blocking `waitpid(pid, nil, 0)`. SIGKILL can't be delivered while the target is in an uninterruptible (D-state) syscall — e.g. curl blocked writing to a stalled network mount, a valid recording target — so the wait (and `stopAll()`, which loops it) beachballs the UI until the mount recovers.
+
+**Resolution**: Clear `pids[showId]` first, then reap on a detached background queue (`DispatchQueue.global(qos:.utility).async { waitpid(pid,nil,0) }`). Safe because `isRunning()` guards on `pids`, so no other waitpid site can touch the pid again.
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+## RESOLVED — Corruption auto-catch-up rewinds a recording-relay session
+
+**File:** `VLCBridge.swift` — `tickController()`
+
+**Root cause**: On a demux-corruption spike the tick called `catchUpToLive()` unconditionally, which replays `currentURL` verbatim. A recording-relay URL carries a fixed `&start=<byteOffset>`, so reconnecting at that anchor yanked playback *backward* to the last seek, discarding progress. The manual catch-up button already special-cases relays (routes to `seekRecordingToLiveEdge`); the auto path did not.
+
+**Resolution**: `guard recordingShowId == nil else { return }` before the corruption threshold — the user is deliberately behind live while watching an in-progress recording, so auto catch-up doesn't apply to relays.
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+## RESOLVED — `libvlc_Ended` (state 6) unhandled — player freezes on last frame, timer polls forever
+
+**File:** `VLCBridge.swift` — `tickController()`; `Views/VLCPlayerView.swift`
+
+**Root cause**: `tickController` handled only state 7 (Error) and 3 (Playing). On EOF (state 6 — a finished recording relay read to its last byte, or a live source closing) `isPlaying` stayed true and the 3s stats timer kept polling a stopped player forever, with the video frozen on the last frame and no indication.
+
+**Resolution**: Handle state 6 → publish new `hasEnded`, set `isPlaying=false`, stop the stats timer; reset `hasEnded` in `play()`/`stopAndClearState()`. `VLCPlayerView` shows a "Playback Ended" overlay with a Play-Again button, gated like the error overlay.
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+## OPEN — Deferred low-severity findings from the 2026-07-17 sweep
+
+Verified real, deferred by scope decision (crasher + medium fixed; these logged for a later pass).
+
+- **`ChannelIconCache.swift:29,48`** — disk cache keyed by `URL.lastPathComponent` only; two logo URLs sharing a basename (or both hitting the `"icon.png"` default) collide → wrong channel logo after a restart, and `countMissing` under-counts so it's never re-fetched. Fix: key the on-disk file by a hash of the full URL (preserve extension). Invalidates the existing disk cache once (harmless re-download).
+- **`EditShowView.swift:149`** — Save button has no `.disabled` gate and Title has no non-empty check; a user can clear the title or type a non-existent channel (free-text field) and save a show that never records correctly. Fix: gate Save like `AddShowView.canAdvance` (non-empty title + channel-in-lineup).
+- **`AddShowView.swift:266`** — `canAdvance` for `.details` doesn't check `airDays`; a DateTime (recurring) show with all days deselected saves and never fires. Fix: require `!airDays.isEmpty` when `seriesType == .dateTime`.
+- **`AppState.swift:483`** — `probeForNewDevices()` has no reentrancy guard and is launched detached from the idle loop; if `discoverDevices` runs longer than the probe interval, two runs each capture `existingIDs` before appending → a first-seen device is appended twice (corrupting occupancy counts/menu/dev-bar for the session) and unseen devices' `missedProbes` double-increment. Fix: a `probeInFlight` guard mirroring `idleLoopRunning` (low probability — needs discovery > 300 s).
+- **`AppState.swift:2669`** — in `fetchDeviceStatus`, the `tunerStatus[show.show_id]` write happens after the per-tuner `vstatus` await; a web-UI delete during that await re-adds the entry for a show `deleteShow` already cleared → a display-only leak that never clears again. Fix: re-check the show still exists after the await.
+- **`WebServer.swift:2781`** — `setDev('\(defaultDev)')` interpolates a DeviceID raw into a JS string literal, bypassing the file's `jsEscapeForScript`/`he` discipline. Not attacker-controlled (DeviceIDs are hardware hex), but the one escaping-discipline gap. Fix: escape it.
+- **`VLCPlayerView.swift:399` / `VLCBridge.swift:454`** — (a) `selectedAudioTrackId`/`selectedSpuTrackId` reset sits after the `suppressNextChannelPlay` early-return, so a synced (external) channel switch doesn't reset them and the picker can hold a stale track id; (b) the stats/playback `Timer` is scheduled in `.default` run-loop mode, so it stalls during modal tracking (open menu / live resize) — e.g. "Connecting…" can stick until a menu closes. Fix: reset track ids on synced switches; add the timer to `.common` modes.
+
+## Notes — flagged, not scheduled (marginal / by-design)
+
+- **`RecordingManager.swift:152`** — orphaned-recording liveness uses `kill(pid,0)`, which tests PID existence not identity; PID reuse could report a dead recording as running. Astronomically low probability (slow PID cycling); accept.
+- **`Models.swift:464`** — `GuideEntry` `==`/`hash`/`id` are StartTime-only, unsafe for cross-channel `Set`/`ForEach(id:)`. Already documented (`WatchNowView.swift:28-29`) and every call site deliberately uses `\.GuideNumber` — latent trap, no live bug.
+- **`WebServer.swift`** — `stateCallback`/`activePort`/`listener` are unsynchronized under `@unchecked Sendable` (benign word writes); a dropped SSE conn lingers in `sseConns` up to 25 s until the keepalive prunes it (self-heals). Neither observed to misbehave.
+- **`VLCBridge.swift:55-60`** — a CoreAudio device-change callback already in flight during `stopDeviceChangeMonitoring()` teardown could read a freed context. Very edge; related listener-lifecycle issues already RESOLVED below.
+
+---
+
 ## RESOLVED — "No active tuner" shown after a UDP-only startup with the device's HTTP briefly down
 
 **File:** `AppState.swift` — `probeForNewDevices()`; symptom surfaces in `WebServer.computeDevTuners`
