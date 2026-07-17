@@ -3,36 +3,22 @@
 ## Visual Appearance
 
 ### Overall window
-Fixed **560×540** for steps 1 and 3; expands to resizable **min 1100×720** for the guide step. The window animates between sizes with a 0.2s ease-in-out. Escape closes the window from any step.
+Fixed **560×540** for the details step; expands to resizable **min 1100×720** for the guide step. The window animates between sizes with a 0.2s ease-in-out. Escape closes the window from any step.
 
 **Top of window (all steps)**: 2 small 8pt circles in a row, left-padded under the top edge — progress indicator. Filled accent-color circle = current step; hollow gray circle = other step. `guide` and `details` steps only — `ForEach([Step.guide, .details])` always produces exactly 2 dots. Below the circles: a `Divider`.
 
-### Step 1 — Device selection (currently unreachable — dead code)
-**Not part of the live flow.** `step` defaults to `.guide` (`@State private var step: Step = .guide`) and is never programmatically set to `.device` anywhere in the file — every `.onAppear` path (fresh open, `pendingAddChannel`, `pendingAddEntry`) lands on `.guide` or jumps straight to `.details`. The progress-dot comment even says so: "device step intentionally omitted (device is chosen inside web guide)". `deviceStep`, its `canAdvance`/`goForward` branches, and the description below are retained in the file but have no way to actually render. Documented here for completeness/history, not as current behavior:
+> The native device-selection step was removed (the tuner is chosen inside the web guide). `Step` is now `{ case guide, details }`; there is no `deviceStep` view any more.
 
-White background. Title `"Select Tuner"` in `.title2` left-padded, with a `"Refresh"` labeled button (↺ icon) at the right.
-
-If no devices: centered `ContentUnavailableView` — `wifi.slash` SF Symbol, `"No tuners found"` title, description text.
-
-If devices present: macOS `List` with rows, each row:
-- `antenna.radiowaves.left.and.right` SF Symbol icon (decorative, hidden from VoiceOver)
-- **DeviceID** in bold on the left
-- `"Recording N"` in red bold caption on the right (if recording)
-- Below: `"192.168.1.x · 4 tuners · 106 channels · fw 20240101"` in caption secondary color
-- Selected row highlighted in system accent color
-
-Nav bar (bottom): **Next** button (`.borderedProminent`) enabled when a device is selected.
-
-### Step 2 — Guide (web guide)
+### Step 1 — Guide (web guide)
 A `WKWebView` (`AddShowWebView`) loading `http://localhost:{port}/`. The web guide is the same interface served to LAN browsers. Clicking **Record** in the web guide's summary panel posts a `WKScriptMessage` (`"record"` handler) with entry data, which advances the wizard to step 3. The nav bar is hidden on this step; navigation happens via the Record button in the web guide.
 
 If the web server is not yet running, a `ProgressView("Starting guide…")` is shown until it becomes ready.
 
-### Step 3 — Details
+### Step 2 — Details
 Fixed 560×540 window. White/system background. `ScrollView` containing a `VStack` with 16pt spacing.
 
 - Orange warning banner if `show.show_url` is empty — lineup may not have loaded yet.
-- Form fields using `ShowFormSection` (shared with `EditShowView`)
+- Form fields using `ShowFormSection` (shared with `EditShowView`) — this now includes a **Signal** row (bars for the selected channel + a weak-signal warning banner when the channel's signal is poor), gated on `Signal_quality_enabled`. See `docs/ShowFormSection.md`.
 - **Other Upcoming Airings** panel (below the form, only when `seriesType.isSeries` — i.e. SeriesID(Channel) or SeriesID(All) — and results are non-empty): other future airings of the same `show_seriesid`, excluding the airing just selected in Step 2. Each `OtherAiringRow` is a compact row — a leading 3pt accent bar tinted by `guideEntryColor(for:onAir:)` (same genre-color mapping as the guide grid and Watch Now), an 18×18 channel logo (from `state.channelImageURLs`/`channelIconImages`, falling back to a `tv` SF Symbol when uncached), and a text column: bold day+time (`upcomingFormatter`), secondary `Ch N · Channel Name`, and episode info (`GuideEntry.episodeInfoLabel`, e.g. "S01E13 · Episode Name") when the guide has it — no show title (redundant, the whole panel is about one series). Rows are separated by a `Divider()`, not individual card backgrounds; a light hover tint plus a `.help()` tooltip signal the row is double-clickable. Backed by `AppState.upcomingGuideEpisodes(seriesID:)` — bounded by the guide's ~29h-per-device window and a 4-row cap, so it's a best-effort preview, not an exhaustive schedule; a weekly series will often show only 1 entry (or none) simply because that's all the cloud guide window contains, not a bug. Hidden entirely (no placeholder) for Single/DateTime shows, when `show_seriesid` is empty, or when no other airings are found. Mirrored on the web guide's Record modal via `GET /api/airings/{seriesId}` — see `docs/WebServer.md`'s "Record type modal" section — keep the two in sync.
 - **Double-click a row to switch the Details step to that airing** (`AddShowView.switchToAiring(channel:entry:)`): re-anchors `show.show_title`/`show_channel`/`show_length`/`show_next`/`show_end`/`show_logo_url`/`show_genre`/`hdhr_record`/`show_url`/`show_time` (and `selectedDevice`, if the airing is on a different device) to the clicked entry — the same field set the initial guide selection populates, minus `seriesType`/`airDays`/`show_bonus_time`, which are left as already set on this step. Since the panel recomputes from `show.show_channel`/`show.show_next` on every render, the just-switched-from airing reappears in the list — a swap, not an append.
 - Bottom-right: orange `StarburstBadge` (115pt size) floats via `.overlay(alignment: .bottomTrailing)`, springs in on appear if `show_bonus_time == true` and `Sports_padding_enabled`. Sports entries have Bonus Time pre-checked; any show type can enable it.
@@ -41,33 +27,21 @@ Fixed 560×540 window. White/system background. `ScrollView` containing a `VStac
 
 ## Intent
 
-`AddShowView` is a 3-step wizard window for adding a new recording schedule. Steps: tuner selection → web guide browsing → recording details.
+`AddShowView` is a 2-step wizard window for adding a new recording schedule. Steps: web guide browsing → recording details. (The tuner is chosen inside the web guide, so there is no separate device-selection step.)
 
-Window size: **560×540** for steps 1 and 3; **resizable** (min 1100×720, ideal 1280×820) for step 2. The guide step window can be expanded — the web guide fills the available width.
+Window size: **560×540** for the details step; **resizable** (min 1100×720, ideal 1280×820) for the guide step. The guide step window can be expanded — the web guide fills the available width.
 
 ---
 
 ## Steps
 
 ```
-enum Step { case device, guide, details }
+enum Step { case guide, details }
 ```
 
 A progress indicator (2 dots, filled vs hollow) tracks position across the `guide` and `details` steps. The guide step hides the nav bar entirely; navigation is via the Record button in the web guide summary panel. **Escape key** dismisses the window from any step (`.onExitCommand { dismiss() }`).
 
-### Step 1 — Device (unreachable — see the Visual Appearance section above)
-
-Shows a `List` of `state.devices` with expanded device info:
-- **DeviceID** + active recording count (red when > 0)
-- **IP · N tuners · M channels · fw YYYYMMDD** (firmware shown if non-nil)
-
-Tapping a row sets `selectedDevice`. **Double-tapping** sets `selectedDevice` and immediately advances to step 2. The "Next" button also advances when `selectedDevice != nil`.
-
-**Not just single-device setups** — `.onAppear` always resolves `selectedDevice` (to `state.devices.first`, or via `pendingAddChannel`/`pendingAddEntry`) and always lands on `step = .guide` or `.details`, regardless of how many devices exist. This `deviceStep` view has no live entry point.
-
-A **Refresh** button runs `state.discoverDevices()` in a `Task`.
-
-### Step 2 — Guide
+### Step 1 — Guide
 
 `AddShowWebView: NSViewRepresentable` wraps a `WKWebView` loaded with `http://localhost:{port}/`. A `WKScriptMessageHandler` named `"record"` is registered; when the user clicks Record in the web summary panel, JS posts the entry data to this handler. The coordinator calls `onRecord([String: Any])` on the main queue.
 
@@ -85,12 +59,13 @@ Dark/light theme is synced via JS in `webView(_:didFinish:)`.
 
 `dismantleNSView` removes the `"record"` message handler to prevent a retain cycle.
 
-### Step 3 — Details
+### Step 2 — Details
 
 `ScrollView` containing the form fields, with a `StarburstBadge` floating at the bottom-right via `.overlay(alignment: .bottomTrailing)` on the outer `Group { switch step }` — outside and above the `ScrollView`.
 
 Form fields:
 - **Title** — `TextField` pre-populated from the web guide entry
+- **Signal** — bars for the selected channel + a weak-signal warning when its signal is poor (only when `Signal_quality_enabled` and the channel has signal history); shared via `ShowFormSection`
 - **Type** — segmented `Picker` for `ShowState.allCases`
 - **Days** — weekday toggle buttons (shown for `.single` and `.dateTime`). Single enforces single-day selection; dateTime allows any combination
 - **Transcode** — `Picker`: None / Heavy / Mobile / Internet 720
@@ -169,14 +144,12 @@ For SeriesID shows (`show_use_seriesid == true`), channel is looked up from the 
 | `applyPendingChannel(_:)` | Sets `selectedDevice` from `state.pendingAddChannel`; goes to guide step |
 | `save()` | Applies series flags + folder; optionally calls `resolveSeriesAir`; calls `state.addShow` |
 | `chooseFolder()` | `NSOpenPanel` folder picker; writes to `UserDefaults["defaultSaveDirectory"]` |
-| `goForward()` / `goBack()` | Step navigation: `.device → .guide`, `.guide → break` (nav bar hidden; web guide advances via its own Record button), `.details → save()` |
+| `goBack()` | Step navigation: `.details → .guide` (the guide step advances via the web guide's own Record button, so there is no `goForward()`) |
 
 ---
 
 ## What Still Needs Doing
 
 - **Time picker for DateTime shows** — air time is always taken from the guide entry's start time. If the user wants to schedule 5 minutes early, there's no control for that.
-
-- **Single device step skip + slow discovery** — if discovery is still running when the wizard opens, it might auto-select a device that isn't the preferred one.
 
 - **No edit integration** — there's no way to change a show's scheduled episode by browsing the guide in the Edit view.

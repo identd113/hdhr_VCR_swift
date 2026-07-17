@@ -9,7 +9,7 @@ Fixed **480×520**. Standard macOS window chrome. Title: `"Edit Show"`. While lo
 White/system background. `VStack` with 16pt spacing, 16pt padding on all sides:
 
 - **`"Edit Show"`** title in `.title2`
-- **`ShowFormSection`** — shared form fields (title field, type picker, days toggles, transcode picker, folder row) — see `ShowFormSection.md`
+- **`ShowFormSection`** — shared form fields (title field, signal row, type picker, days toggles, transcode picker, folder row) — see `ShowFormSection.md`. The signal row shows bars + a weak-signal warning for the show's channel when `Signal_quality_enabled`.
 - **`LabeledContent("Channel")`** — `TextField` with placeholder `"e.g. 5.4"`, 80pt wide. Tooltip: guide channel number format and redirect use.
 - **`LabeledContent("Length (min)")`** — numeric `TextField`, 60pt wide, placeholder `"60"`. Tooltip: set from guide end time; Bonus Time adds extra minutes past guide end.
 - **Failures row** (only when `show_fail_count > 0`): `LabeledContent("Failures")` — orange text `"3 — Output file missing"` + blue `"Reset"` button
