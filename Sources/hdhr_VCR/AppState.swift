@@ -495,6 +495,13 @@ final class AppState: ObservableObject {
                 devices[i].missedProbes = 0
                 if fresh.DeviceAuth != nil { devices[i].DeviceAuth = fresh.DeviceAuth }
                 if !fresh.LocalIP.isEmpty  { devices[i].LocalIP    = fresh.LocalIP    }
+                // Restore hardware capacity when a probe reaches the device's HTTP server. A
+                // UDP-only startup (device HTTP briefly down) caches a bare device with
+                // TunerCount == nil; without re-applying it here it stays nil for the whole
+                // session, and computeDevTuners renders no tuner badge at all when total == 0 —
+                // so the app shows "no active tuner" even while both tuners are recording.
+                if fresh.TunerCount != nil { devices[i].TunerCount = fresh.TunerCount }
+                if fresh.FirmwareVersion != nil { devices[i].FirmwareVersion = fresh.FirmwareVersion }
                 if wasUnavailable {
                     glog("[DeviceProbe] \(devices[i].DeviceID) is back online")
                     webServer.broadcastDeviceBarEvent(type: "deviceOnline", deviceId: devices[i].DeviceID, state: self)
@@ -515,7 +522,11 @@ final class AppState: ObservableObject {
         // Schedule a 60 s follow-up probe until the device is confirmed unavailable (3 misses).
         // <= 3 (not < 3) so the tick that crosses the threshold also schedules a follow-up,
         // enabling faster recovery detection rather than reverting to the 5-min idle interval.
-        if devices.contains(where: { $0.missedProbes > 0 && $0.missedProbes <= 3 }) {
+        // Also re-probe quickly while any device is missing its TunerCount (UDP-only startup with
+        // the HTTP fetch down) so its capacity — and the tuner badge — is restored within ~60 s of
+        // the device's HTTP server becoming reachable, not up to 5 min later.
+        if devices.contains(where: { $0.missedProbes > 0 && $0.missedProbes <= 3 })
+            || devices.contains(where: { $0.TunerCount == nil }) {
             nextQuickProbe = Date().addingTimeInterval(60)
         }
 

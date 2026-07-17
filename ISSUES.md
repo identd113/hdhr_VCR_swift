@@ -6,6 +6,20 @@ Historical record of bugs encountered during development. Used as a "don't repea
 
 ---
 
+## RESOLVED — "No active tuner" shown after a UDP-only startup with the device's HTTP briefly down
+
+**File:** `AppState.swift` — `probeForNewDevices()`; symptom surfaces in `WebServer.computeDevTuners`
+
+**Symptom**: The tuner badge disappeared for a device (app showed no active tuner) even while it was actively recording. Confirmed via log: a startup discovered the device via UDP only (`known=0 mDNS=0 UDP=1`) and its `/discover.json` fetch failed, so it was cached with `TunerCount == nil`.
+
+**Root cause**: A bare UDP-discovered device carries `TunerCount: nil` (capacity comes from the HTTP `/discover.json` fetch, which `udpDiscoverAndFetch` falls back from on failure). `discoverDevices` does `devices = found` at startup, and the ongoing `probeForNewDevices` merge only re-applied `DeviceAuth`/`LocalIP` — never `TunerCount` — so a device that started at nil stayed nil for the whole session. `computeDevTuners` renders no tuner badge when `total == 0`. Exposed by the recent DeviceAuth-over-UDP change, which makes UDP-only-with-HTTP-down startups viable rather than fully broken.
+
+**Resolution**: `probeForNewDevices` now also restores `TunerCount` and `FirmwareVersion` from a fresh probe when present, and schedules a 60 s quick re-probe while any device has a nil `TunerCount` — so capacity (and the badge) is restored within ~60 s of the device's HTTP server becoming reachable.
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+---
+
 ## RESOLVED — Web Edit endpoint accepted an arbitrary recording output directory (`saveDir`)
 
 **File:** `WebServer.swift` — `handleEdit`
