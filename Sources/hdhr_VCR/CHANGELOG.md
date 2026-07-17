@@ -1,5 +1,18 @@
 # hdhrVCRplus Changelog
 
+## 2026-07-16 (fix pass 2 — review of the last 6 commits)
+
+A fresh 3-angle review of the recent recording/Discord/WebServer fix passes found six real defects (the supporting device/guide/player files reviewed clean):
+
+- **Fix — tuner count could read low right after a device reconnects** — when a tuner device flapped offline then online, the web guide re-rendered its tuner badge from hardware-reported occupancy alone, briefly undercounting an in-app stream or a just-started recording that the hardware status hadn't caught up to yet. The badge now uses the same combined count everywhere.
+- **Fix — recording save-directory field hardened** — the web Edit form's "save to" path is validated on an app that has no auth beyond being on your LAN: it now rejects `..` path tricks, resolves symlinks, requires the target (or its existing parent) to be a writable directory, and will only create a single new folder under an existing one instead of building arbitrary deep paths.
+- **Fix — two per-show tracking entries could leak** — deleting a show that had been skipped after a signal dropout left behind internal signal/tuner tracking state for the rest of the session; `deleteShow` and the skip path now clear it.
+- **Fix — a dying recording could post a stray "In Progress" Discord update** — on the exact tick a recording's process died as a 5-minute progress update came due, the app could post a bogus "Recording In Progress" edit; the progress update now checks the recording is actually still running first.
+- **Hardening — start-recording loop no longer trusts a stale list position across an await** — matches the pattern applied everywhere else in the recent passes, so a future change that adds a suspension point can't make it act on the wrong show.
+- **Fix — web Edit form now validates channel and length** — the channel must exist in the device's lineup (matching the Record form) and the length is capped at 24 hours, instead of being stored unchecked.
+
+Four lower-severity / pre-existing nuances were logged to `ISSUES.md` rather than changed in this pass.
+
 ## 2026-07-16
 
 Follow-up review of the 2026-07-15 fix pass (fresh 8-angle review of that commit) caught several gaps in its own fixes:

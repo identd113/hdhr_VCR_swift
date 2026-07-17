@@ -1145,7 +1145,13 @@ final class AppState: ObservableObject {
             }
 
             // Discord progress update — edit start embed once per 5-min boundary during active recordings
-            if show.show_recording, !show.discord_start_msg_id.isEmpty,
+            // isRunning guard is load-bearing: the mid-recording FAIL branch above tears down the
+            // recording (show_recording = false, live) but does not `continue`, so `show` here is a
+            // stale snapshot still reading show_recording == true with discord_start_msg_id set —
+            // without the liveness check this would post a bogus "In Progress" edit for a just-died
+            // recording, bypassing the discordCardTasks serialization chain.
+            if show.show_recording, recordingManager.isRunning(showId: show.show_id),
+               !show.discord_start_msg_id.isEmpty,
                config.Discord_on_progress, config.Discord_enabled, !config.Discord_webhook_url.isEmpty {
                 guard let showStart = show.show_next else { continue }
                 let elapsedSec = Int(now.timeIntervalSince(showStart))
@@ -1182,7 +1188,20 @@ final class AppState: ObservableObject {
             return true
         }.sorted { isFavoriteChannel(shows[$0]) && !isFavoriteChannel(shows[$1]) }
         if !readyIndices.isEmpty { dirty = true }
-        for i in readyIndices { await startRecording(index: i) }
+        // Re-resolve each show by show_id inside the loop rather than reusing the captured Int
+        // index across `await startRecording`. Safe today only because startRecording has no
+        // suspension point; resolving by id (and re-checking the ready predicate) keeps this
+        // consistent with Pass 1/Pass 2 so a future await inside startRecording can't act on a
+        // stale/out-of-range index after an interleaved delete/add mutates `shows`.
+        let readyIds = readyIndices.map { shows[$0].show_id }
+        for id in readyIds {
+            guard let i = shows.firstIndex(where: { $0.show_id == id }) else { continue }
+            let s = shows[i]
+            guard s.show_active, !s.show_recording, !s.show_paused,
+                  let next = s.show_next, let end = s.show_end, next <= now + 10, end > now else { continue }
+            if let retryAfter = showRetryAfter[s.show_id], now < retryAfter { continue }
+            await startRecording(index: i)
+        }
 
         if dirty { saveConfig() }
 
@@ -1378,6 +1397,9 @@ final class AppState: ObservableObject {
         recordingManager.stop(showId: showId)
         VLCPlayerWindowManager.shared.closeIfPlaying(showId: shows[i].show_id, url: shows[i].show_url)
         tunerStatus.removeValue(forKey: showId)
+        // Clear signalDropoutTicks too, matching teardownRecordingState — skip doesn't route
+        // through teardown, so otherwise a dropout tick count would linger past the skip.
+        signalDropoutTicks.removeValue(forKey: showId)
         shows[i].show_recording = false
         shows[i].show_last = Date()
         shows[i].show_paused = true
@@ -1834,6 +1856,12 @@ final class AppState: ObservableObject {
         pendingDiscordStart.remove(show.show_id)
         failedThisAttempt.remove(show.show_id)
         suppressStartDiscord.remove(show.show_id)
+        // Clear unconditionally (not just via teardownRecordingState) — a non-recording delete
+        // takes the else branch above and skips teardown, so without this a show that was skipped
+        // mid-dropout (skipRecording leaves signalDropoutTicks set) then deleted would leak these
+        // show_id-keyed entries for the session. Harmless if teardown already removed them.
+        tunerStatus.removeValue(forKey: show.show_id)
+        signalDropoutTicks.removeValue(forKey: show.show_id)
         // Safe to drop unconditionally even if a send for this show is still running — removing
         // the dict entry doesn't affect an already-started Task, it only stops a future call from
         // chaining behind it (and there won't be one for a deleted show).

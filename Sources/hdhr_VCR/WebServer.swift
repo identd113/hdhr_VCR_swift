@@ -854,26 +854,58 @@ final class WebServer: @unchecked Sendable {
             if paused { updated.show_fail_reason = "Manually paused" } else { updated.clearFailures() }
         }
         if let title = obj["title"] as? String, !title.isEmpty { updated.show_title = title }
-        if let ch = obj["channel"] as? String, !ch.isEmpty { updated.show_channel = ch }
-        if let len = obj["length"] as? Int, len > 0 { updated.show_length = len }
+        if let ch = obj["channel"] as? String, !ch.isEmpty {
+            // Validate the channel exists in this device's lineup before storing — this endpoint has
+            // no auth beyond LAN-subnet matching, and an unvalidated channel silently yields a
+            // failing recording (matches handleRecord/handleToggleFavorite's lineup check).
+            guard state.lineups[updated.hdhr_record]?.first(where: { $0.GuideNumber == ch }) != nil else {
+                return .badRequest("channel not found in device lineup")
+            }
+            updated.show_channel = ch
+        }
+        if let len = obj["length"] as? Int, len > 0 {
+            // Cap at 24h — reject absurd/hostile lengths on this unauthenticated endpoint.
+            guard len <= 1440 else { return .badRequest("length exceeds 24h maximum") }
+            updated.show_length = len
+        }
         if let bonus = obj["bonusTime"] as? Bool { updated.show_bonus_time = bonus }
         if let transcode = obj["transcode"] as? String { updated.show_transcode = transcode }
         if let saveDir = obj["saveDir"] as? String, !saveDir.isEmpty {
-            // This endpoint has no auth beyond LAN-subnet matching — validate saveDir actually
-            // resolves to a real (or creatable) directory rather than blindly accepting any
-            // string, which would let any device on the LAN silently redirect this show's
-            // recording output anywhere the app process can write.
+            // This endpoint has no auth beyond LAN-subnet matching — harden saveDir so a LAN host
+            // can't redirect recording output via traversal/symlink tricks or use the endpoint as a
+            // blind mkdir -p primitive. Still permits pointing at any real, writable directory.
             guard saveDir.hasPrefix("/") else { return .badRequest("saveDir must be an absolute path") }
+            // Reject any ".." component regardless of position — blocks path traversal.
+            guard !saveDir.split(separator: "/").contains("..") else {
+                return .badRequest("saveDir must not contain '..'")
+            }
+            // Resolve symlinks and validate/use the resolved path from here on, so a symlinked
+            // directory can't smuggle output somewhere other than where the path appears to point.
+            let resolved = URL(fileURLWithPath: saveDir).resolvingSymlinksInPath().path
             var isDir: ObjCBool = false
-            let exists = FileManager.default.fileExists(atPath: saveDir, isDirectory: &isDir)
-            if exists, !isDir.boolValue { return .badRequest("saveDir exists but is not a directory") }
-            if !exists {
-                guard (try? FileManager.default.createDirectory(atPath: saveDir, withIntermediateDirectories: true)) != nil else {
+            let exists = FileManager.default.fileExists(atPath: resolved, isDirectory: &isDir)
+            if exists {
+                if !isDir.boolValue { return .badRequest("saveDir exists but is not a directory") }
+                guard FileManager.default.isWritableFile(atPath: resolved) else {
+                    return .badRequest("saveDir is not writable")
+                }
+            } else {
+                // Create only a single leaf dir, and only under an existing writable parent — never
+                // an arbitrary mkdir -p of a deep tree the caller doesn't already own.
+                let parent = (resolved as NSString).deletingLastPathComponent
+                var parentIsDir: ObjCBool = false
+                guard FileManager.default.fileExists(atPath: parent, isDirectory: &parentIsDir), parentIsDir.boolValue else {
+                    return .badRequest("saveDir parent does not exist")
+                }
+                guard FileManager.default.isWritableFile(atPath: parent) else {
+                    return .badRequest("saveDir parent is not writable")
+                }
+                guard (try? FileManager.default.createDirectory(atPath: resolved, withIntermediateDirectories: false)) != nil else {
                     return .badRequest("saveDir could not be created")
                 }
             }
-            updated.show_dir = saveDir
-            updated.show_temp_dir = saveDir
+            updated.show_dir = resolved
+            updated.show_temp_dir = resolved
         }
         if let airDays = obj["airDays"] as? [String] { updated.show_air_date = airDays }
         if let reset = obj["resetFailures"] as? Bool, reset { updated.clearFailures(); updated.show_active = true }
@@ -1002,9 +1034,12 @@ final class WebServer: @unchecked Sendable {
         var devTuners: [String: DevTuners] = [:]
         for d in state.devices {
             let total = d.TunerCount ?? 0
-            // Active = VctNumber present; idle slots appear in status.json with only "Resource" set.
             let occupancy = state.deviceTunerOccupancy[d.DeviceID]
-            let active = occupancy?.filter({ $0.VctNumber != nil }).count ?? 0
+            // Use activeTunerCount = max(hardware occupancy, this app's recordings + VLC stream) so
+            // the dev-bar badge agrees with the SSE tuner_update push. A bare VctNumber count would
+            // undercount an in-app VLC stream or a just-started recording not yet in status.json,
+            // and a deviceOnline/deviceOffline dev-bar swap would then clobber the pushed count.
+            let active = state.activeTunerCount(for: d.DeviceID)
             if logDiagnostics {
                 let occStr = occupancy.map { "\($0.count)" } ?? "nil"
                 let recCount = state.recordingShows.filter { $0.hdhr_record == d.DeviceID }.count
