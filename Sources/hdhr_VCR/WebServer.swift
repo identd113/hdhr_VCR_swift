@@ -1894,6 +1894,7 @@ final class WebServer: @unchecked Sendable {
               <div class="em-lbl">Title</div>
               <input id="rm-title-in" class="em-input" type="text">
               <div id="rm-ch" style="font-size:.72rem;color:var(--t4);margin-top:3px"></div>
+              <div id="rm-sig" style="margin-top:4px;min-height:12px"></div>
             </div>
             <div class="em-row"><div class="em-lbl">Type</div><div id="rm-opts" style="display:flex;flex-direction:column;gap:5px;margin-top:2px"></div></div>
             <div id="rm-sid" class="em-row" style="display:none"><div class="em-lbl">SeriesID</div><div id="rm-sid-val" class="em-sid"></div></div>
@@ -1905,6 +1906,7 @@ final class WebServer: @unchecked Sendable {
             <div class="em-row"><div class="em-lbl">Transcode</div><select id="rm-transcode" class="em-input"><option value="none">None (copy stream)</option><option value="heavy">Heavy (H.264 CRF 18)</option><option value="mobile">Mobile (480p H.264)</option><option value="internet720">Internet 720 (720p H.264)</option></select></div>
             <div id="rm-bonus-row" style="margin-bottom:8px;display:flex;align-items:center;gap:8px"><label class="em-check"><input type="checkbox" id="rm-bonus" onchange="toggleRmBonusStar()"> Bonus Time (+\(state.config.Sports_padding_minutes) min past guide end)</label></div>
             <div id="rm-tuner" style="display:none;font-size:.74rem;color:#ffcc66;background:#2a1e00;border:1px solid #7a5500;border-radius:6px;padding:7px 10px;margin-bottom:10px">⚠ All tuners are currently in use. This show will be queued and recorded as soon as a tuner is free.</div>
+            <div id="rm-sig-warn" style="display:none;font-size:.74rem;color:#ffcc66;background:#2a1e00;border:1px solid #7a5500;border-radius:6px;padding:7px 10px;margin-bottom:10px">⚠ Weak signal on this channel — recordings may drop out or fail.</div>
             <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--b2)">
               <button onclick="cancelRecord()" style="font-size:.78rem;padding:6px 16px;border-radius:6px;border:1px solid #444;background:transparent;color:#aaa;cursor:pointer">Cancel</button>
               <button onclick="confirmRecord()" style="font-size:.78rem;padding:6px 16px;border-radius:6px;border:none;background:#c0392b;color:#fff;font-weight:600;cursor:pointer">Schedule</button>
@@ -1963,6 +1965,7 @@ final class WebServer: @unchecked Sendable {
         function heJs(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
         var _bonusMins=\(state.config.Sports_padding_minutes);
         var _bonusEnabled=\(state.config.Sports_padding_enabled);
+        var _sigEnabled=\(state.config.Signal_quality_enabled);
         var _defaultTranscode='\(["none","heavy","mobile","internet720"].contains(state.config.Default_transcode) ? state.config.Default_transcode : "none")';
         function triggerSb(id){var el=document.getElementById(id);if(!el)return;el.classList.remove('sb-anim');void el.offsetWidth;el.classList.add('sb-anim');}
         function toggleBonusStar(){var chk=document.getElementById('em-bonus');var star=document.getElementById('em-bonus-star');if(chk.checked){star.textContent='+'+_bonusMins+'m';star.style.display='inline-flex';triggerSb('em-bonus-star');}else{star.style.display='none';star.classList.remove('sb-anim');}}
@@ -2072,6 +2075,34 @@ final class WebServer: @unchecked Sendable {
           {v:'seriesChannel', l:'Series — this channel', d:'Record new episodes on this channel',   s:true},
           {v:'seriesAll',     l:'Series — any channel',  d:'Record new episodes on any channel',    s:true}
         ];
+        // 3-bar signal SVG (same geometry/palette as the guide-row bars). bucket: poor|fair|good.
+        function _sigBarsSvg(bucket){
+          var color=bucket==='poor'?'#e53935':bucket==='fair'?'#fbc02d':'#43a047';
+          var b2=bucket!=='poor'?color:'#555';
+          var b3=bucket==='good'?color:'#555';
+          return '<svg viewBox="0 0 11 10" width="13" height="12" style="vertical-align:middle" title="Signal: '+bucket+'">'
+            +'<rect x="0" y="6" width="3" height="4" fill="'+color+'"/>'
+            +'<rect x="4" y="3" width="3" height="7" fill="'+b2+'"/>'
+            +'<rect x="8" y="0" width="3" height="10" fill="'+b3+'"/></svg>';
+        }
+        // Populate the record modal's signal bars + weak-signal warning for the current channel
+        // (_chname) from the existing /api/signal-stats endpoint. Blank on disabled / no-data /
+        // error, same as the .noData behavior elsewhere. Guarded against a switchAiring race.
+        function renderRmSignal(){
+          var sig=document.getElementById('rm-sig');
+          var warn=document.getElementById('rm-sig-warn');
+          if(sig)sig.innerHTML='';
+          if(warn)warn.style.display='none';
+          if(!_sigEnabled||!_chname)return;
+          var name=_chname;
+          fetch('/api/signal-stats/'+encodeURIComponent(name)).then(function(r){return r.json();}).then(function(d){
+            if(_chname!==name)return;
+            var b=d&&d.bucket;
+            if(!b||b==='noData')return;
+            if(sig)sig.innerHTML=_sigBarsSvg(b);
+            if(warn)warn.style.display=(b==='poor')?'block':'none';
+          }).catch(function(){});
+        }
         function doRecord(){
           // In-app WKWebView (AddShowView wizard): send entry data to Swift instead of showing the record modal.
           // Swift intercepts this, calls applyWebGuideEntry(), and advances to the Details step.
@@ -2125,6 +2156,7 @@ final class WebServer: @unchecked Sendable {
           var nowTs=Math.floor(Date.now()/1000);
           var isLive=(_s<=nowTs&&_e>nowTs);
           document.getElementById('rm-tuner').style.display=(isLive&&devFull(_d))?'block':'none';
+          renderRmSignal();
           opts.onchange=function(){
             var v=(document.querySelector('input[name="rm-type"]:checked')||{}).value||'';
             var isSeries=v==='seriesChannel'||v==='seriesAll';
@@ -2166,6 +2198,7 @@ final class WebServer: @unchecked Sendable {
           var nowTs=Math.floor(Date.now()/1000);
           var isLive=(_s<=nowTs&&_e>nowTs);
           document.getElementById('rm-tuner').style.display=(isLive&&devFull(_d))?'block':'none';
+          renderRmSignal();
           renderAirings(_airCache[_ser]||[]);
         }
         function renderAirings(list){

@@ -12,6 +12,10 @@ The web guide's Record modal (`#rec-modal` in `WebServer.swift`, see `docs/WebSe
 
 ```
 Title        — TextField bound to show.show_title
+Signal       — SignalBarsView for the selected channel + a "weak signal" warning banner when the
+               channel's bucket is .poor. Only when state.config.Signal_quality_enabled and the
+               channel has signal history (bucket != .noData). Reuses signalBucket(guideName:) via
+               state.lineups[show.hdhr_record] → GuideName. Appears in both Add and Edit.
 Type         — Segmented Picker (ShowState.allCases): Single | DateTime | SeriesID(Channel) | SeriesID(All)
                Tooltip: explains each mode
 Day/Days     — Weekday toggle buttons (only for .single and .dateTime)
@@ -35,27 +39,6 @@ Folder       — Last path component of recordFolder + a button (label from fold
 ## Bonus Time Toggle
 
 Only shown when `state.config.Sports_padding_enabled`. The label reads `"+N min past guide end"` where N is `state.config.Sports_padding_minutes`. The toggle sets `show.show_bonus_time`. The `withAnimation(.spring(...))` wrapper on the setter makes the `StarburstBadge` in the parent's ZStack animate in/out when the toggle changes.
-
----
-
-## `WhiteOutlineButtonStyle` (dead code — zero call sites)
-
-A custom `ButtonStyle` defined in the same file. `git log -S "WhiteOutlineButtonStyle"` shows its last actual usages were removed in `89610a2` ("remove native SwiftUI guide"); the struct itself was left behind. **No current view references it** — the "Watch in VLC"/"Watch in App" buttons it was reportedly for now use standard `.borderedProminent`/`.bordered` styling (see `WatchNowView.swift`). Left in place for whoever cleans it up; not documenting it as live behavior.
-
-```swift
-struct WhiteOutlineButtonStyle: ButtonStyle {
-    var borderColor: Color
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .foregroundStyle(borderColor)
-            .padding(.horizontal, 8).padding(.vertical, 3)
-            .background(.white, in: RoundedRectangle(cornerRadius: 6))
-            .overlay(RoundedRectangle(cornerRadius: 6).stroke(borderColor, lineWidth: 1.5))
-            .opacity(configuration.isPressed ? 0.65 : isEnabled ? 1 : 0.4)
-            .contentShape(RoundedRectangle(cornerRadius: 6))
-    }
-}
-```
 
 ---
 

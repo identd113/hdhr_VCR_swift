@@ -14,10 +14,35 @@ struct ShowFormSection: View {
 
     private let weekdays = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"]
 
+    // Signal quality for the selected channel, resolved from the same call-sign-keyed store the
+    // guide/menu use. nil when the feature is off or the channel/GuideName can't be resolved;
+    // .noData when the channel has never been recorded or scanned (nothing to show).
+    private var channelSignal: (name: String, bucket: SignalBucket)? {
+        guard state.config.Signal_quality_enabled,
+              let gn = state.lineups[show.hdhr_record]?
+                         .first(where: { $0.GuideNumber == show.show_channel })?.GuideName
+        else { return nil }
+        return (gn, signalBucket(guideName: gn))
+    }
+
     var body: some View {
         Group {
             LabeledContent("Title") {
                 TextField("Title", text: $show.show_title)
+            }
+
+            if let sig = channelSignal, sig.bucket != .noData {
+                if sig.bucket == .poor {
+                    Label("Weak signal on this channel — recordings may drop out or fail.",
+                          systemImage: "antenna.radiowaves.left.and.right.slash")
+                        .foregroundStyle(.white)
+                        .padding(10)
+                        .background(Color.orange.cornerRadius(8))
+                        .font(.callout)
+                }
+                LabeledContent("Signal") {
+                    SignalBarsView(bucket: sig.bucket, guideName: sig.name)
+                }
             }
 
             LabeledContent("Type") {

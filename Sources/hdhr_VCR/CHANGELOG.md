@@ -1,5 +1,10 @@
 # hdhrVCRplus Changelog
 
+## 2026-07-16 (tuner-count regression + Add-Show signal quality)
+
+- **Fix — tuner display could read "no active tuner" after a UDP-only startup** — if the app discovered a tuner over UDP while that device's built-in web server was briefly unreachable (increasingly common now that UDP-only discovery works), the device was cached with an unknown tuner count and the tuner badge vanished entirely — even while it was actively recording. Device probes now restore the tuner count (and firmware) as soon as the device's web server is reachable again, and re-probe every ~60 s until it is, so the badge comes back on its own instead of staying blank for the session.
+- **New — signal quality shown when scheduling a recording** — the Add Show (and Edit Show) dialog and the web guide's Record form now show the channel's signal bars, plus a "weak signal" warning when the channel's signal is poor, so you can see before scheduling whether a channel is reliable. Uses the signal history the app already collects (gated on the existing signal-quality setting); channels never recorded or scanned simply show nothing.
+
 ## 2026-07-16 (fix pass 3 — security + TODO cleanup)
 
 - **Security — the web UI can no longer choose where recordings are saved** — the web Edit form's endpoint used to accept a save-directory path, which on a LAN-only-no-auth app meant any device on your network could redirect where a recording is written. That field is now ignored entirely; the save location is only changeable from the local app (matching what the UI already implied). The local filesystem path is also no longer embedded in the web page.
