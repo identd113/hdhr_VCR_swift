@@ -6,6 +6,18 @@ Historical record of bugs encountered during development. Used as a "don't repea
 
 ---
 
+## RESOLVED — Web Edit endpoint accepted an arbitrary recording output directory (`saveDir`)
+
+**File:** `WebServer.swift` — `handleEdit`
+
+**Symptom / risk**: The `/api/edit-show` endpoint accepted a `saveDir` field and wrote it to `show_dir`/`show_temp_dir`. Since the LAN API has no auth beyond subnet matching, any host on the network could redirect where a show's recording is written. This also contradicted the documented behavior ("Save Directory is not editable from the web UI").
+
+**Resolution**: Removed `saveDir` handling from `handleEdit` entirely — the endpoint now ignores any output-path field; directory changes require local app access. Also dropped the now-unused `data-dir` (local path) attribute from the web show-row data to avoid leaking filesystem paths to LAN browsers. Supersedes the earlier "harden saveDir" change (the field is no longer accepted at all). Docs (`docs/WebServer.md`) updated.
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+---
+
 ## RESOLVED — Web guide: open tuner dropdown vanishes when its device goes offline and is referenced by no scheduled show
 
 **File:** `WebServer.swift` — `deviceOnline`/`deviceOffline` dev-bar swap

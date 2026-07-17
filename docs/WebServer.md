@@ -179,14 +179,13 @@ Updates config fields on an existing managed show. All fields except `showId` ar
 | `transcode` | String | Transcode profile |
 | `airDays` | [String] | Air day list (used for `dateTime` shows) |
 | `resetFailures` | Bool | Clears `show_fail_count`/`show_fail_reason` and sets `show_active = true` |
-| `saveDir` | String | Recording output directory — sets both `show_dir` and `show_temp_dir` |
 
-**`saveDir` validation:** this endpoint has no auth beyond LAN-subnet matching, so `saveDir` is hardened before being accepted rather than written through blind. It must be an absolute path (`hasPrefix("/")`), must contain no `..` component (blocks traversal), and is resolved through `resolvingSymlinksInPath()` — the resolved path is what gets stored and validated. An existing target must be a writable directory. A non-existent target is created only as a single leaf directory (`withIntermediateDirectories: false`) under an already-existing, writable parent — never an arbitrary `mkdir -p` of a deep tree. Fails with `400 Bad Request` (`"saveDir must be an absolute path"`, `"saveDir must not contain '..'"`, `"saveDir exists but is not a directory"`, `"saveDir is not writable"`, `"saveDir parent does not exist"`, `"saveDir parent is not writable"`, or `"saveDir could not be created"`) otherwise, rather than silently accepting any string. Both `show_dir` and `show_temp_dir` get the resolved path.
+**Recording directory is not web-settable:** this endpoint has no auth beyond LAN-subnet matching, so it deliberately does **not** accept a `saveDir` (or any output-path) field — allowing a LAN host to redirect where recordings land is a security risk. Any `saveDir` in the request body is ignored; `show_dir`/`show_temp_dir` can only be changed with local app access.
 
 Promoting a show to a `seriesId` type (`seriesChannel`/`seriesAll`) when it previously was not triggers `rescheduleAllSeries()` immediately so `show_next` is populated before the next idle loop tick.
 
 **Success:** `{"ok": true, "title": "Updated Title"}`  
-**Failure:** `400 Bad Request` — `"Missing required field: showId"`, show not found, or an invalid `saveDir` (see above).
+**Failure:** `400 Bad Request` — `"Missing required field: showId"`, show not found, a `channel` not in the device lineup, or a `length` over the 24 h (1440 min) cap.
 
 ---
 
@@ -199,10 +198,10 @@ Promoting a show to a `seriesId` type (`seriesChannel`/`seriesAll`) when it prev
 **Contents:**
 - Show title + channel (read-only display)
 - Type selector (single / weekly / series channel / series any)
-- **Air Days row** — visible **only for `dateTime`** (weekly repeat) type; 7 Su–Sa toggle buttons. Hidden for all other types. At least one day must remain selected.
+- **Air Days row** — visible for **`single` and `dateTime`** types (parity with the Record modal); 7 Su–Sa toggle buttons, label reads "Day" for `single` / "Days" for `dateTime`. Hidden for series types. At least one day must remain selected.
 - **SeriesID row** — visible for series types
 - Length field (minutes)
-- Bonus Time toggle
+- **Bonus Time toggle** (`#em-bonus-row`) — hidden entirely when `config.Sports_padding_enabled` is `false` (parity with the Record modal), and always hidden while the show is recording
 - Transcode selector
 - Paused toggle
 - **Reset Failures link** — shown when `failcount > 0`; sets `resetFailures: true` in payload
@@ -616,7 +615,7 @@ instead pushes a single-device `tdrop`/`tdropDev` in its SSE event and the clien
 | `renderAirings(list)` | Filters out the currently-selected airing (matching `ch`+`start`), stores the filtered array in `_airCurrent` (index-addressed by each row's `ondblclick`), hides `#rm-airings` and clears `#rm-airings-list` if nothing remains, else renders up to 4 `Day time · Ch N Name · episode info` rows |
 | `switchAiring(idx)` | Looks up `_airCurrent[idx]`, re-anchors `_d`/`_n`/`_s`/`_e`/`_genre`/`_title`/`_entryDow` to it, updates the title input + `Ch N · Name · time` line + tuner-full warning, then calls `renderAirings(_airCache[_ser])` again so the list swaps to reflect the new selection |
 | `confirmRecord()` | Collects `airDays` from `#rm-days`, `transcode` from `#rm-transcode`, and the trimmed title from `#rm-title-in` (included only if edited); POSTs `/api/record`; on success: red flag + `.g-prog-rec` if `recStarted`, yellow flag + `.g-prog-sched` otherwise. Delete button becomes **"Stop & Delete"** (+ `danger` class) when `recStarted`, stays **"Remove"** otherwise. Calls `refreshGuide({recording:'1',managed:'1'})` or `refreshGuide({managed:'1'})` so the summary panel reflects the new state immediately. Updates tuner badge `#tun-{devId}` in place. |
-| `updateDaysVisibility()` | Shows `#em-days-row` when `_editType === 'dateTime'`; hides for all other types |
+| `updateDaysVisibility()` | Shows `#em-days-row` for `single` and `dateTime` types (label "Day"/"Days"); hides for series types |
 | `toggleDay(btn)` | Toggles a day-button selection in the edit modal; prevents deselecting the last selected day |
 | `doDelete()` | POSTs `/api/delete`; removes triangle flag/color from block, restores Record button |
 | `doEditFromGuide()` | Reads `data-show-*` attrs from selected `.g-prog` block; calls `openEditShow()` |

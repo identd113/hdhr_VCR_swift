@@ -870,43 +870,10 @@ final class WebServer: @unchecked Sendable {
         }
         if let bonus = obj["bonusTime"] as? Bool { updated.show_bonus_time = bonus }
         if let transcode = obj["transcode"] as? String { updated.show_transcode = transcode }
-        if let saveDir = obj["saveDir"] as? String, !saveDir.isEmpty {
-            // This endpoint has no auth beyond LAN-subnet matching — harden saveDir so a LAN host
-            // can't redirect recording output via traversal/symlink tricks or use the endpoint as a
-            // blind mkdir -p primitive. Still permits pointing at any real, writable directory.
-            guard saveDir.hasPrefix("/") else { return .badRequest("saveDir must be an absolute path") }
-            // Reject any ".." component regardless of position — blocks path traversal.
-            guard !saveDir.split(separator: "/").contains("..") else {
-                return .badRequest("saveDir must not contain '..'")
-            }
-            // Resolve symlinks and validate/use the resolved path from here on, so a symlinked
-            // directory can't smuggle output somewhere other than where the path appears to point.
-            let resolved = URL(fileURLWithPath: saveDir).resolvingSymlinksInPath().path
-            var isDir: ObjCBool = false
-            let exists = FileManager.default.fileExists(atPath: resolved, isDirectory: &isDir)
-            if exists {
-                if !isDir.boolValue { return .badRequest("saveDir exists but is not a directory") }
-                guard FileManager.default.isWritableFile(atPath: resolved) else {
-                    return .badRequest("saveDir is not writable")
-                }
-            } else {
-                // Create only a single leaf dir, and only under an existing writable parent — never
-                // an arbitrary mkdir -p of a deep tree the caller doesn't already own.
-                let parent = (resolved as NSString).deletingLastPathComponent
-                var parentIsDir: ObjCBool = false
-                guard FileManager.default.fileExists(atPath: parent, isDirectory: &parentIsDir), parentIsDir.boolValue else {
-                    return .badRequest("saveDir parent does not exist")
-                }
-                guard FileManager.default.isWritableFile(atPath: parent) else {
-                    return .badRequest("saveDir parent is not writable")
-                }
-                guard (try? FileManager.default.createDirectory(atPath: resolved, withIntermediateDirectories: false)) != nil else {
-                    return .badRequest("saveDir could not be created")
-                }
-            }
-            updated.show_dir = resolved
-            updated.show_temp_dir = resolved
-        }
+        // Recording output directory is deliberately NOT settable from the web UI. This endpoint has
+        // no auth beyond LAN-subnet matching, so accepting an arbitrary write path from any LAN host
+        // is a security risk (redirecting where recordings land). Directory changes require local app
+        // access. Any `saveDir` in the request body is ignored.
         if let airDays = obj["airDays"] as? [String] { updated.show_air_date = airDays }
         if let reset = obj["resetFailures"] as? Bool, reset { updated.clearFailures(); updated.show_active = true }
 
@@ -970,7 +937,7 @@ final class WebServer: @unchecked Sendable {
             let t = showTypeStr(s)
             let ad = s.show_air_date.joined(separator: ",")
             let nextEpoch = s.show_next.map { Int($0.timeIntervalSince1970) } ?? 0
-            let da = "data-dev=\"\(he(s.hdhr_record))\" data-id=\"\(he(s.show_id))\" data-title=\"\(he(s.show_title))\" data-ch=\"\(he(s.show_channel))\" data-type=\"\(t)\" data-paused=\"\(s.show_paused ? 1 : 0)\" data-recording=\"\(recording ? 1 : 0)\" data-next=\"\(nextEpoch)\" data-length=\"\(s.show_length)\" data-bonus=\"\(s.show_bonus_time ? 1 : 0)\" data-dir=\"\(he(s.show_dir))\" data-transcode=\"\(he(s.show_transcode))\" data-seriesid=\"\(he(s.show_seriesid))\" data-airdays=\"\(he(ad))\" data-failcount=\"\(s.show_fail_count)\" data-failreason=\"\(he(s.show_fail_reason))\""
+            let da = "data-dev=\"\(he(s.hdhr_record))\" data-id=\"\(he(s.show_id))\" data-title=\"\(he(s.show_title))\" data-ch=\"\(he(s.show_channel))\" data-type=\"\(t)\" data-paused=\"\(s.show_paused ? 1 : 0)\" data-recording=\"\(recording ? 1 : 0)\" data-next=\"\(nextEpoch)\" data-length=\"\(s.show_length)\" data-bonus=\"\(s.show_bonus_time ? 1 : 0)\" data-transcode=\"\(he(s.show_transcode))\" data-seriesid=\"\(he(s.show_seriesid))\" data-airdays=\"\(he(ad))\" data-failcount=\"\(s.show_fail_count)\" data-failreason=\"\(he(s.show_fail_reason))\""
             let endDetail = recording ? s.show_end.map { " · Ends \(state.shortTime($0))" } ?? "" : ""
             let chLine = chDetail.isEmpty
                 ? "Ch \(he(s.show_channel))\(endDetail)"
@@ -1954,7 +1921,7 @@ final class WebServer: @unchecked Sendable {
               <div class="em-row" style="margin-bottom:0;flex:0 0 auto"><div class="em-lbl">Length (min)</div><input id="em-len-in" class="em-input em-input-sm" type="number" min="1" max="1440" placeholder="60"></div>
             </div>
             <div class="em-row"><div class="em-lbl">Type</div><div id="em-type-opts" style="display:flex;flex-direction:column;gap:5px;margin-top:2px"></div></div>
-            <div id="em-days-row" class="em-row" style="display:none"><div class="em-lbl">Days</div><div class="em-days" id="em-days"></div></div>
+            <div id="em-days-row" class="em-row" style="display:none"><div class="em-lbl" id="em-days-lbl">Days</div><div class="em-days" id="em-days"></div></div>
             <div id="em-bonus-row" style="margin-bottom:8px;display:flex;align-items:center;gap:8px"><label class="em-check"><input type="checkbox" id="em-bonus" onchange="toggleBonusStar()"> Bonus Time (extend recording past guide end)</label></div>
             <div class="em-row"><div class="em-lbl">Transcode</div><select id="em-transcode" class="em-input"><option value="none">None (copy stream)</option><option value="heavy">Heavy (H.264 CRF 18)</option><option value="mobile">Mobile (480p H.264)</option><option value="internet720">Internet 720 (720p H.264)</option></select></div>
             <div id="em-sid-row" style="display:none;margin-bottom:8px"><div class="em-lbl">SeriesID</div><div id="em-sid" class="em-sid"></div></div>
@@ -2564,7 +2531,11 @@ final class WebServer: @unchecked Sendable {
         var _dayNames=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
         var _dayShort=['Su','M','Tu','W','Th','F','Sa'];
         function updateDaysVisibility(){
-          document.getElementById('em-days-row').style.display=(_editType==='dateTime')?'flex':'none';
+          // Parity with the Record modal: show the day row for single AND dateTime (hidden for
+          // series types, which always record every day), with a singular/plural label.
+          var show=(_editType==='single'||_editType==='dateTime');
+          document.getElementById('em-days-row').style.display=show?'flex':'none';
+          if(show)document.getElementById('em-days-lbl').textContent=(_editType==='single')?'Day':'Days';
         }
         function toggleDay(btn){
           if(btn.classList.contains('sel')&&document.querySelectorAll('#em-days .day-btn.sel').length<=1)return;
@@ -2599,7 +2570,7 @@ final class WebServer: @unchecked Sendable {
           document.getElementById('em-bonus').checked=d.bonus==='1';
           var ebstar=document.getElementById('em-bonus-star');ebstar.textContent='+'+_bonusMins+'m';
           if(d.bonus==='1'){ebstar.style.display='inline-flex';triggerSb('em-bonus-star');}else{ebstar.style.display='none';ebstar.classList.remove('sb-anim');}
-          document.getElementById('em-bonus-row').style.display=_editRec?'none':'flex';
+          document.getElementById('em-bonus-row').style.display=(!_editRec&&_bonusEnabled)?'flex':'none';
           document.getElementById('em-transcode').value=d.transcode||'none';
           var sid=d.seriesid||'';
           var sidRow=document.getElementById('em-sid-row');

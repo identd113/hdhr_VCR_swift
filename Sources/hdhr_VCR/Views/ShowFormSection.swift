@@ -1,22 +1,5 @@
 import SwiftUI
 
-// White-filled button with a colored border + matching label color.
-// Standard SwiftUI styles can't separate fill from border color, so we need a custom style.
-struct WhiteOutlineButtonStyle: ButtonStyle {
-    var borderColor: Color
-    @Environment(\.isEnabled) private var isEnabled
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .foregroundStyle(borderColor)
-            .padding(.horizontal, 8).padding(.vertical, 3)
-            .background(.white, in: RoundedRectangle(cornerRadius: 6))
-            .overlay(RoundedRectangle(cornerRadius: 6).stroke(borderColor, lineWidth: 1.5))
-            .opacity(configuration.isPressed ? 0.65 : isEnabled ? 1 : 0.4)
-            .contentShape(RoundedRectangle(cornerRadius: 6))
-    }
-}
-
 struct ShowFormSection: View {
     @EnvironmentObject var state: AppState
 

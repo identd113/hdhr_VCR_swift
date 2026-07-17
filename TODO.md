@@ -18,18 +18,6 @@ No direct path to immediately record an in-progress show without going through W
 
 ---
 
-## Recording
-
-### DeviceAuth via UDP tag 0x2B
-
-`HDHRManager.udpDiscoverSync()` reads only tag `0x02` (DeviceID) from the UDP discovery reply. The EXTEND device also includes DeviceAuth in tag `0x2B`. Parsing it would populate `HDHRDevice.DeviceAuth` from UDP so the guide API works when the device's HTTP server is sleeping or unreachable.
-
-Confirmed DeviceAuth from live UDP packet on device `105404BE`; guide URL with that token returns 106 channels.
-
-**Key file**: `HDHRManager.swift` → `udpDiscoverSync()`.
-
----
-
 ## Add Show / Edit Show
 
 ### No time offset picker for DateTime shows
@@ -51,14 +39,6 @@ Can't update `show_seriesid` if SiliconDust changes a series' ID (which happens 
 ---
 
 ## Web Guide
-
-### Edit modal (`#edit-modal`) doesn't have the Record modal's Details-step parity
-
-The Record modal (`#rec-modal`) was brought to parity with the native `ShowFormSection` (editable title, Day row for both `single`/`dateTime`, config-driven transcode default, gated Bonus Time). The Edit modal wasn't touched: its day row still only shows for `dateTime`, and its Bonus Time row isn't gated on `Sports_padding_enabled`. Same treatment, separate change.
-
-**Key file**: `WebServer.swift` → `openEditShow()`, `updateDaysVisibility()`, `#em-days-row`/`#em-bonus-row`.
-
----
 
 ### Native/web title divergence for series shows
 
@@ -90,16 +70,3 @@ Power users managing multiple machines must copy the JSON manually. Export / Imp
 
 ---
 
-### `WhiteOutlineButtonStyle` is dead code
-
-Defined in `ShowFormSection.swift`, zero call sites (`git log -S "WhiteOutlineButtonStyle"` shows its last usages were removed in `89610a2`). Delete it, or restore a caller if it was meant to still be used somewhere.
-
-**Key file**: `Views/ShowFormSection.swift`.
-
----
-
-### `AddShowView`'s device-selection step (`.device`) is unreachable
-
-`step` defaults to `.guide` and is never programmatically set to `.device` anywhere in the file — `deviceStep`, its `canAdvance`/`goForward` branches, and the whole Step-1 UI have no live entry point (device is chosen inside the web guide instead). Either delete the dead path or wire up a real entry point if it's still wanted.
-
-**Key file**: `Views/AddShowView.swift`.

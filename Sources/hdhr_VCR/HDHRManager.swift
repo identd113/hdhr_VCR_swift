@@ -260,7 +260,7 @@ final class HDHRManager {
             }
             guard n > 8, buf[0] == 0x00, buf[1] == 0x03 else { continue }  // DISCOVER_REPLY = 0x0003
 
-            // Parse TLV payload for DeviceID tag (0x02).
+            // Parse TLV payload for DeviceID tag (0x02) and DeviceAuth tag (0x2B).
             // payloadLen is attacker-controlled (2 bytes straight from the packet, up to 65535)
             // and must never be trusted alone — bound the loop against the actual bytes received
             // (n) and the fixed buffer capacity too, or a reply claiming a huge payloadLen while
@@ -269,6 +269,7 @@ final class HDHRManager {
             let limit = min(4 + payloadLen, n, bufCapacity)
             var off = 4
             var deviceID: UInt32 = 0
+            var deviceAuth: String? = nil
             while off + 2 <= limit {
                 let tag = buf[off], tagLen = Int(buf[off + 1])
                 off += 2
@@ -276,6 +277,13 @@ final class HDHRManager {
                 if tag == 0x02, tagLen == 4 {
                     deviceID = UInt32(buf[off]) << 24 | UInt32(buf[off+1]) << 16
                              | UInt32(buf[off+2]) << 8  | UInt32(buf[off+3])
+                } else if tag == 0x2B, tagLen > 0 {
+                    // DeviceAuth token (EXTEND and similar) — lets the cloud guide API work when the
+                    // device's HTTP server is asleep/unreachable. TLV strings are null-terminated, so
+                    // drop a trailing NUL before decoding. Bounds already checked above (off+tagLen<=limit).
+                    var authBytes = Array(buf[off..<off+tagLen])
+                    if authBytes.last == 0 { authBytes.removeLast() }
+                    deviceAuth = String(bytes: authBytes, encoding: .utf8)
                 }
                 off += tagLen
             }
@@ -291,7 +299,7 @@ final class HDHRManager {
 
             found.append(HDHRDevice(DeviceID: String(format: "%08X", deviceID),
                                     LocalIP: ipStr, BaseURL: "http://\(ipStr)",
-                                    TunerCount: nil, FirmwareVersion: nil))
+                                    TunerCount: nil, FirmwareVersion: nil, DeviceAuth: deviceAuth))
         }
         return found
     }

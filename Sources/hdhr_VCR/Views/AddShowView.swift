@@ -8,7 +8,8 @@ struct AddShowView: View {
     @Environment(\.dismiss) var dismiss
     @Environment(\.openWindow) private var openWindow
 
-    enum Step { case device, guide, details }
+    // No device-selection step — the tuner is chosen inside the web guide.
+    enum Step { case guide, details }
 
     @State private var step: Step = .guide
     @State private var show = Show.blank()   // transcode overridden in onAppear
@@ -38,7 +39,6 @@ struct AddShowView: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel({
                 switch step {
-                case .device:  return "Select tuner"
                 case .guide:   return "Step 1 of 2: Guide"
                 case .details: return "Step 2 of 2: Details"
                 }
@@ -49,7 +49,6 @@ struct AddShowView: View {
 
             Group {
                 switch step {
-                case .device:  deviceStep
                 case .guide:   guideStep
                 case .details: detailsStep
                 }
@@ -108,58 +107,6 @@ struct AddShowView: View {
     }
 
     // MARK: - Steps
-
-    private var deviceStep: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Select Tuner").font(.title2)
-                Spacer()
-                Button { Task { await state.discoverDevices() } } label: {
-                    Label("Refresh", systemImage: "arrow.clockwise")
-                }
-            }
-            .padding()
-            if state.devices.isEmpty {
-                ContentUnavailableView("No tuners found", systemImage: "wifi.slash",
-                                      description: Text("Make sure your HDHomeRun is on the network."))
-            } else {
-                List(state.devices, selection: $selectedDevice) { device in
-                    let activeRecordings = state.recordingShows.filter { $0.hdhr_record == device.DeviceID }.count
-                    let channelCount = state.lineups[device.DeviceID]?.count ?? 0
-                    HStack {
-                        Image(systemName: "antenna.radiowaves.left.and.right")
-                            .accessibilityHidden(true)
-                        VStack(alignment: .leading, spacing: 2) {
-                            HStack {
-                                Text(device.DeviceID).bold()
-                                Spacer()
-                                if activeRecordings > 0 {
-                                    Text("Recording \(activeRecordings)")
-                                        .font(.caption).bold()
-                                        .foregroundStyle(.red)
-                                }
-                            }
-                            HStack(spacing: 6) {
-                                Text(device.LocalIP)
-                                if let tc = device.TunerCount { Text("· \(tc) tuners") }
-                                if channelCount > 0 { Text("· \(channelCount) channels") }
-                                if let fw = device.FirmwareVersion { Text("· fw \(fw)") }
-                            }
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        }
-                    }
-                    .tag(device)
-                    .contentShape(Rectangle())
-                    .onTapGesture { selectedDevice = device }
-                    .simultaneousGesture(TapGesture(count: 2).onEnded {
-                        selectedDevice = device
-                        goForward()
-                    })
-                }
-            }
-        }
-    }
 
     private var guideStep: some View {
         Group {
@@ -296,10 +243,6 @@ struct AddShowView: View {
         HStack {
             Spacer()
             switch step {
-            case .device:
-                Button("Next") { goForward() }
-                    .disabled(!canAdvance)
-                    .buttonStyle(.borderedProminent)
             case .guide:
                 EmptyView()
             case .details:
@@ -319,17 +262,8 @@ struct AddShowView: View {
 
     private var canAdvance: Bool {
         switch step {
-        case .device:  return selectedDevice != nil
         case .guide:   return false  // web guide advances via its own Record button
         case .details: return !show.show_title.isEmpty && recordFolder != nil && !show.show_url.isEmpty
-        }
-    }
-
-    private func goForward() {
-        switch step {
-        case .device:  step = .guide
-        case .guide:   break   // web guide advances via its own Record button; nav bar hidden
-        case .details: save()
         }
     }
 

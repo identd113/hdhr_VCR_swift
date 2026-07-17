@@ -1,5 +1,12 @@
 # hdhrVCRplus Changelog
 
+## 2026-07-16 (fix pass 3 — security + TODO cleanup)
+
+- **Security — the web UI can no longer choose where recordings are saved** — the web Edit form's endpoint used to accept a save-directory path, which on a LAN-only-no-auth app meant any device on your network could redirect where a recording is written. That field is now ignored entirely; the save location is only changeable from the local app (matching what the UI already implied). The local filesystem path is also no longer embedded in the web page.
+- **DeviceAuth now read straight from UDP discovery** — the tuner's cloud-guide token (tag `0x2B`) is parsed from the UDP discovery reply, so the guide keeps working even when the device's built-in web server is asleep or unreachable. Previously only the DeviceID was read from that reply.
+- **Web Edit form now matches the Record form** — the day-of-week row shows for one-time and weekly shows (not just weekly), and the Bonus Time row is hidden when Sports padding is disabled — same behavior as the Add/Record form.
+- **Cleanup** — removed two pieces of dead code (an unused button style and the unreachable device-selection step in the native Add Show wizard, since the tuner is chosen in the web guide).
+
 ## 2026-07-16 (fix pass 2 — review of the last 6 commits)
 
 A fresh 3-angle review of the recent recording/Discord/WebServer fix passes found six real defects (the supporting device/guide/player files reviewed clean):
