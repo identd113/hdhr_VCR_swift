@@ -1,5 +1,9 @@
 # hdhrVCRplus Changelog
 
+## 2026-07-17 (tuner-count re-probe follow-up)
+
+- **Fix — a permanently-unreachable tuner no longer keeps the app probing every 60 s** — the tuner-count restore added on 2026-07-16 re-probed the network every ~60 s while *any* device had an unknown tuner count. A device that never returns a tuner count (e.g. a device whose web server stays unreachable) kept that fast cadence running for the whole session instead of settling back to the normal 5-minute cycle. The quick re-probe now only fires for devices that are actually reachable.
+
 ## 2026-07-16 (tuner-count regression + Add-Show signal quality)
 
 - **Fix — tuner display could read "no active tuner" after a UDP-only startup** — if the app discovered a tuner over UDP while that device's built-in web server was briefly unreachable (increasingly common now that UDP-only discovery works), the device was cached with an unknown tuner count and the tuner badge vanished entirely — even while it was actively recording. Device probes now restore the tuner count (and firmware) as soon as the device's web server is reachable again, and re-probe every ~60 s until it is, so the badge comes back on its own instead of staying blank for the session.

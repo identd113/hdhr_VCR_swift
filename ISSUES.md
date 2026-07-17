@@ -14,9 +14,9 @@ Historical record of bugs encountered during development. Used as a "don't repea
 
 **Root cause**: A bare UDP-discovered device carries `TunerCount: nil` (capacity comes from the HTTP `/discover.json` fetch, which `udpDiscoverAndFetch` falls back from on failure). `discoverDevices` does `devices = found` at startup, and the ongoing `probeForNewDevices` merge only re-applied `DeviceAuth`/`LocalIP` — never `TunerCount` — so a device that started at nil stayed nil for the whole session. `computeDevTuners` renders no tuner badge when `total == 0`. Exposed by the recent DeviceAuth-over-UDP change, which makes UDP-only-with-HTTP-down startups viable rather than fully broken.
 
-**Resolution**: `probeForNewDevices` now also restores `TunerCount` and `FirmwareVersion` from a fresh probe when present, and schedules a 60 s quick re-probe while any device has a nil `TunerCount` — so capacity (and the badge) is restored within ~60 s of the device's HTTP server becoming reachable.
+**Resolution**: `probeForNewDevices` now also restores `TunerCount` and `FirmwareVersion` from a fresh probe when present, and schedules a 60 s quick re-probe while any **reachable** (`isAvailable`) device has a nil `TunerCount` — so capacity (and the badge) is restored within ~60 s of the device's HTTP server becoming reachable. The `isAvailable` guard (follow-up) stops a device that never yields a `discover.json` `TunerCount` (e.g. the fake `FFFF0001` test device) from pinning the quick-probe cadence at 60 s for the whole session.
 
-**Resolving commit**: pending (uncommitted at time of writing)
+**Resolving commit**: `256cf69` (restore + unguarded re-probe); follow-up commit adds the `isAvailable` guard on the re-probe condition.
 
 ---
 

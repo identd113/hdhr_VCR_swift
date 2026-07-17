@@ -522,11 +522,14 @@ final class AppState: ObservableObject {
         // Schedule a 60 s follow-up probe until the device is confirmed unavailable (3 misses).
         // <= 3 (not < 3) so the tick that crosses the threshold also schedules a follow-up,
         // enabling faster recovery detection rather than reverting to the 5-min idle interval.
-        // Also re-probe quickly while any device is missing its TunerCount (UDP-only startup with
-        // the HTTP fetch down) so its capacity — and the tuner badge — is restored within ~60 s of
-        // the device's HTTP server becoming reachable, not up to 5 min later.
+        // Also re-probe quickly while any *available* device is missing its TunerCount (UDP-only
+        // startup with the HTTP fetch down) so its capacity — and the tuner badge — is restored
+        // within ~60 s of the device's HTTP server becoming reachable, not up to 5 min later.
+        // The isAvailable guard is essential: a device that never yields a discover.json TunerCount
+        // (e.g. the fake FFFF0001 test device, permanently HTTP-unreachable) would otherwise pin the
+        // quick-probe cadence at 60 s for the whole session instead of settling to the idle interval.
         if devices.contains(where: { $0.missedProbes > 0 && $0.missedProbes <= 3 })
-            || devices.contains(where: { $0.TunerCount == nil }) {
+            || devices.contains(where: { $0.TunerCount == nil && $0.isAvailable }) {
             nextQuickProbe = Date().addingTimeInterval(60)
         }
 
