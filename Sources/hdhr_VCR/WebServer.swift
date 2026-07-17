@@ -2398,7 +2398,10 @@ final class WebServer: @unchecked Sendable {
               var recDot=r.rec==='1'?'<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#e53935;margin-right:6px;flex-shrink:0;vertical-align:middle"></span>':'';
               var etHtml='';
               if(r.endTime&&r.rec==='1'){var et=new Date(parseInt(r.endTime,10)*1000);etHtml='<div style="font-size:.72rem;color:var(--t3);padding-left:56px">Ends '+et.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})+'</div>';}
-              var rid='tnr-'+hej(r.tuner).replace(/\\W/g,'');
+              // Build the element id from the raw tuner name (not hej()-escaped) so it matches the
+              // r.tuner-based getElementById lookups below — an HTML-escaped id would diverge if a
+              // Resource ever contained & < >, and an id attribute doesn't need HTML escaping.
+              var rid='tnr-'+r.tuner.replace(/\\W/g,'');
               return '<div id="'+rid+'" style="display:flex;flex-direction:column;gap:2px;padding:8px 0;border-bottom:1px solid var(--b0)">'
                 +'<div style="display:flex;align-items:center;gap:8px">'
                   +'<span style="font-size:.67rem;color:var(--t4);min-width:48px;flex-shrink:0">'+hej(r.tuner)+'</span>'
@@ -2917,8 +2920,15 @@ final class WebServer: @unchecked Sendable {
                 if(db){
                   var openId=null;
                   db.querySelectorAll('.tdrop').forEach(function(x){if(x.style.display==='block')openId=x.id;});
-                  db.innerHTML=d.devbar;
-                  if(openId){var reopened=document.getElementById(openId);if(reopened)reopened.style.display='block';}
+                  // If the user has a dropdown open whose device is absent from the incoming dev-bar
+                  // (device fully gone and referenced by no scheduled show), skip the swap so the open
+                  // dropdown isn't silently destroyed — the next full refresh reconciles the bar.
+                  var skip=false;
+                  if(openId){var tmp=document.createElement('div');tmp.innerHTML=d.devbar;if(!tmp.querySelector('[id="'+openId+'"]'))skip=true;}
+                  if(!skip){
+                    db.innerHTML=d.devbar;
+                    if(openId){var reopened=document.getElementById(openId);if(reopened)reopened.style.display='block';}
+                  }
                 }
               } else {
                 refreshGuide();

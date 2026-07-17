@@ -150,7 +150,12 @@ final class HDHRManager {
                   flags & UInt32(IFF_LOOPBACK) == 0,
                   flags & UInt32(IFF_POINTOPOINT) == 0,
                   let addrPtr = iface.pointee.ifa_addr, addrPtr.pointee.sa_family == sa_family_t(AF_INET),
-                  let maskPtr = iface.pointee.ifa_netmask, maskPtr.pointee.sa_family == sa_family_t(AF_INET)
+                  // Accept a netmask sockaddr whose family is 0 as well as AF_INET: macOS sometimes
+                  // reports an IPv4 interface's netmask with sa_family == 0, and the s_addr bytes are
+                  // still valid at the same offset. Skipping it would drop that interface's directed
+                  // broadcast (only the global-broadcast fallback would reach it).
+                  let maskPtr = iface.pointee.ifa_netmask,
+                  maskPtr.pointee.sa_family == sa_family_t(AF_INET) || maskPtr.pointee.sa_family == 0
             else { continue }
             let name = String(cString: iface.pointee.ifa_name)
             guard interface.isEmpty || name == interface else { continue }

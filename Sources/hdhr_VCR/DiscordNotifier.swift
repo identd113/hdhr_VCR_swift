@@ -34,6 +34,9 @@ private func embedTitle(_ embed: [String: Any]) -> String {
 // Exact host or a proper subdomain of discord.com/discordapp.com — a bare `hasSuffix` check
 // would also accept "notdiscord.com" or "harddiscordapp.com" since it has no "." boundary.
 private func isDiscordHost(_ host: String) -> Bool {
+    // URL.host preserves case, so a user pasting DISCORD.COM would otherwise be rejected —
+    // hostnames are case-insensitive, and real Discord hosts are ASCII-lowercase.
+    let host = host.lowercased()
     for domain in ["discord.com", "discordapp.com"] {
         if host == domain || host.hasSuffix("." + domain) { return true }
     }

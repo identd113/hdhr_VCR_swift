@@ -6,45 +6,53 @@ Historical record of bugs encountered during development. Used as a "don't repea
 
 ---
 
-## OPEN — Web guide: open tuner dropdown vanishes when its device goes offline and is referenced by no scheduled show
+## RESOLVED — Web guide: open tuner dropdown vanishes when its device goes offline and is referenced by no scheduled show
 
-**File:** `WebServer.swift` — `deviceOnline`/`deviceOffline` dev-bar swap (~line 2882), `buildDevBarHTML` offline filter (~line 1035)
+**File:** `WebServer.swift` — `deviceOnline`/`deviceOffline` dev-bar swap
 
 **Symptom**: When the user has a tuner's schedule dropdown expanded in the web guide and that device flaps offline, the dropdown can silently disappear instead of being restored.
 
 **Root cause**: The dev-bar swap remembers the open `.tdrop` id and reopens it after `innerHTML` replacement. But if the now-offline device is referenced by no scheduled show, `buildDevBarHTML` renders no box for it, so the reopen-by-id lookup returns null and the dropdown is lost. The common case (device stays present) works.
 
-**Fix direction**: If the remembered open id has no element after the swap, fall back to leaving a placeholder or skip the swap for that device. Deferred — narrow edge, not user-reported.
+**Resolution**: The swap now parses the incoming `d.devbar` HTML first and, if it lacks the currently-open dropdown's id, skips the `innerHTML` swap entirely — preserving the user's open dropdown rather than destroying it. The next full `refreshGuide()`/`guide_refreshed` reconciles the bar.
+
+**Resolving commit**: pending (uncommitted at time of writing)
 
 ---
 
-## OPEN — Web guide: `showTunerInfo` element-id mismatch (latent, pre-existing)
+## RESOLVED — Web guide: `showTunerInfo` element-id mismatch (latent, pre-existing)
 
-**File:** `WebServer.swift` — `showTunerInfo` (`rid` built ~line 2366; looked up ~2380/2389/2413)
+**File:** `WebServer.swift` — `showTunerInfo`
 
 **Root cause**: `rid` is built from `hej(r.tuner).replace(/\W/g,'')` but the later lookups use `r.tuner.replace(/\W/g,'')`. If a tuner `Resource` ever contained `& < >`, `hej()` expands it and the two `.replace(/\W/g,'')` results diverge, so `getElementById(rid)` fails and the click/enrichment handlers never bind. Benign today because `Resource` is always `tunerN`. Predates the recent fix passes.
 
-**Fix direction**: build `rid` and the lookups from the same un-escaped source.
+**Resolution**: The `rid` builder now uses the raw `r.tuner.replace(/\W/g,'')`, matching the lookups. An `id` attribute doesn't need HTML escaping, so dropping `hej()` there is safe and removes the divergence.
+
+**Resolving commit**: pending (uncommitted at time of writing)
 
 ---
 
-## OPEN — Discord webhook host check is case-sensitive
+## RESOLVED — Discord webhook host check is case-sensitive
 
 **File:** `DiscordNotifier.swift` — `isDiscordHost`
 
 **Root cause**: The host comparison is case-sensitive against lowercase literals, and `URL.host` preserves case, so a user pasting `https://DISCORD.COM/...` is silently rejected (no-op send). Fails safe (never accepts a non-Discord host), so it's a UX edge, not a security issue. Real Discord webhook URLs are always lowercase.
 
-**Fix direction**: lowercase `url.host` before comparing.
+**Resolution**: `isDiscordHost` now lowercases the host before comparing (hostnames are case-insensitive). Still exact-match / proper-subdomain only, so no lookalike-host bypass is introduced.
+
+**Resolving commit**: pending (uncommitted at time of writing)
 
 ---
 
-## OPEN — UDP discovery skips an interface whose netmask sockaddr reports `sa_family == 0`
+## RESOLVED — UDP discovery skips an interface whose netmask sockaddr reports `sa_family == 0`
 
 **File:** `HDHRManager.swift` — `subnetBroadcastAddresses`
 
 **Root cause**: The directed-broadcast computation requires `ifa_netmask.sa_family == AF_INET`; on macOS a live IPv4 interface occasionally reports its netmask sockaddr with `sa_family == 0`, so that interface's directed broadcast isn't sent. Masked by the `255.255.255.255` global-broadcast fallback, so it degrades to "may miss a device on an odd config," never a crash.
 
-**Fix direction**: when `sa_family == 0` but the interface is AF_INET, treat the netmask bytes as IPv4 (or fall back to a /24 assumption) rather than skipping.
+**Resolution**: The netmask guard now also accepts `sa_family == 0` (the `s_addr` mask bytes are valid at the same offset regardless), so the interface is still gated on its *address* being `AF_INET` but no longer dropped for an unusual netmask family.
+
+**Resolving commit**: pending (uncommitted at time of writing)
 
 ---
 
