@@ -1299,9 +1299,13 @@ final class WebServer: @unchecked Sendable {
                     }
 
                     let sub   = e.EpisodeTitle.flatMap { $0.isEmpty ? nil : $0 } ?? ""
-                    let tip   = sub.isEmpty
+                    // Explains the corner-flag color on hover (same priority as flagHTML below).
+                    let stateLabel = isEntryRec          ? "  — Recording now"
+                                   : (isMgd && willSkip) ? "  — Already recorded · will skip"
+                                   : isMgd               ? "  — Scheduled to record" : ""
+                    let tip   = (sub.isEmpty
                         ? "\(he(e.Title))  (\(he(guideTimeRange(e))))"
-                        : "\(he(e.Title)) · \(he(sub))  (\(he(guideTimeRange(e))))"
+                        : "\(he(e.Title)) · \(he(sub))  (\(he(guideTimeRange(e))))") + stateLabel
                     let subH  = sub.isEmpty ? "" : "<span class=\"g-sub\">\(he(sub))</span>"
 
                     let filtersAttr = (e.Filter ?? []).joined(separator: ",")
