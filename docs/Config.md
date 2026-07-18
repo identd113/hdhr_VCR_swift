@@ -31,6 +31,7 @@ Fail_count_setting      Int     3       pause show after N consecutive failures
 Min_disk_free_gb        Double  10.0    refuse to record below this free space (GB)
 Idle_timer_interval     Int     10      seconds between idle loop checks (min enforced: 5)
 Series_subfolder_enabled Bool   false   when true, SeriesID recordings are saved to Title/Season XX/ subfolders inside the recording folder; falls back to flat path if no parseable season in guide EpisodeNumber
+Skip_recorded_episodes  Bool    false   when true (needs Series_subfolder_enabled), skip recording a series episode whose SxxExx is already on disk — advances to the next airing without recording or a fail count; only when the guide entry has a full season+episode tag
 Post_recording_script   String  ""      POSIX path to a shell script run after each successful recording; $1 = file path; HDHR_PATH, HDHR_TITLE, HDHR_CHANNEL, HDHR_TRANSCODE, HDHR_EPISODE, HDHR_DEVICE, HDHR_SERIES, HDHR_FILESIZE set as env vars; Homebrew paths prepended to PATH; script exits are logged but never block the app
 Series_scan_retry_hours Int     4       hours before re-scanning guide when no episode found
 Network_interface       String  ""      bind UDP discovery + curl to NIC; empty = Auto; utun* = VPN
@@ -47,6 +48,7 @@ Discord_on_complete     Bool    true    embed when recording completes (includes
 Discord_on_failed       Bool    true    embed on recording failure
 Discord_on_paused       Bool    true    embed when show is paused
 Discord_on_skipped      Bool    true    embed when recording skipped (disk full)
+Discord_on_duplicate    Bool    true    embed when recording skipped (episode already recorded)
 Discord_on_conflict     Bool    true    embed on tuner conflict
 Discord_on_guide_error  Bool    true    embed on guide load failure
 Discord_on_upnext       Bool    false   embed for Up Next reminder
@@ -56,6 +58,8 @@ Discord_on_progress     Bool    false   edit the "Recording Started" embed every
 Web_server_enabled      Bool    false   enable NWListener LAN web server (Settings → Web Server)
 Web_server_port         Int     1980    TCP port for the web server (1025–65534; macOS requires root for <1024)
 Hdhr_setup_folder       String  ""      default recording folder (POSIX path; empty = ~/Movies/hdhr_videos)
+Signal_quality_enabled      Bool false   collect per-channel SNQ signal history and show signal bars when scheduling a recording (Add/Edit/web Record)
+Signal_quality_alert_notify Bool false   notify + Discord embed when a recording's signal drops below 30% for ~20s, and again on recovery
 Config_version          String  "2"     format version marker; "2" = ISO8601 dates + "shows" key
 ```
 

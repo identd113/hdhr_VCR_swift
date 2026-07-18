@@ -12,8 +12,8 @@ struct AddShowView: View {
     enum Step { case guide, details }
 
     // Guide-step size is remembered across reopens and app restarts (persisted in UserDefaults via
-    // @AppStorage). These feed the guide-step ideal width/height on open; `WindowSizeSaver` (below)
-    // writes the user's resized size back. Floored at the 1100×720 resizable minimum on read.
+    // @AppStorage). These feed the guide-step ideal width/height on open; the background
+    // GeometryReader in `body` writes the user's resized size back. Floored at the 1100×720 minimum.
     @AppStorage("addShowGuideWidth")  private var savedGuideWidth:  Double = 1450
     @AppStorage("addShowGuideHeight") private var savedGuideHeight: Double = 820
 

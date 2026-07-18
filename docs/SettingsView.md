@@ -62,7 +62,7 @@ Two `Section`s:
 - Failed: red `xmark.circle.fill` + error text
 - Untested: orange text `"Test the webhook before saving."`
 
-**Notify when…** section (visible only when enabled + URL set): 11 toggles for individual event types.
+**Notify when…** section (visible only when enabled + URL set): 12 toggles for individual event types.
 
 ### Category: Advanced
 Four sections:

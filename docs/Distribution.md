@@ -10,8 +10,8 @@ A guide for shipping hdhrVCRplus outside the Mac App Store — notarization, cos
 |------|------|-------|
 | Apple Developer Program | $99/year | Required for Developer ID cert + notarization. Renews annually — if you let it lapse, existing notarized copies still work but you can't ship new versions. |
 | GitHub (hosting + releases) | Free | Public repo with release assets (DMG files) up to 2 GB each. |
-| Sparkle (auto-update) | Free | Open source, MIT licensed. |
-| GitHub Pages (appcast feed) | Free | Static file hosting for the Sparkle update feed. |
+| ~~Sparkle (auto-update)~~ | Free | **Removed** — no auto-updater; releases are downloaded manually. Kept as reference below. |
+| ~~GitHub Pages (appcast feed)~~ | Free | **Removed** with Sparkle. |
 | Payment processing | ~2.9% + $0.30/transaction | Stripe or Gumroad take a cut; no monthly fee on free tier. |
 
 **Minimum cost to ship: $99/year.**
