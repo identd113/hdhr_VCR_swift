@@ -224,6 +224,7 @@ struct AppConfig: Equatable {
     var Min_disk_free_gb: Double    = 10.0    // refuse to record below this free space
     var Idle_timer_interval: Int    = 10      // seconds between idle checks
     var Series_subfolder_enabled: Bool = false  // organize SeriesID recordings into Title/Season XX/ subfolders
+    var Skip_recorded_episodes: Bool = false    // skip a series episode already on disk (needs Series_subfolder_enabled + SxxExx guide data)
     var Post_recording_script: String = ""      // POSIX path to script run after each successful recording
 
     // Series
@@ -254,6 +255,7 @@ struct AppConfig: Equatable {
     var Discord_on_failed:   Bool    = true    // Recording Failed
     var Discord_on_paused:   Bool    = true    // Show Paused (max fails / no air days)
     var Discord_on_skipped:  Bool    = true    // Skipped — disk full
+    var Discord_on_duplicate: Bool   = true    // Skipped — already recorded
     var Discord_on_conflict: Bool    = true    // Tuner Conflict
     var Discord_on_guide_error: Bool = true    // Guide Load Failed
     var Discord_on_upnext:    Bool   = false   // Up Next reminder
@@ -305,6 +307,7 @@ extension AppConfig: Codable {
         Discord_on_failed       = (try? c.decode(Bool.self,   forKey: .Discord_on_failed))       ?? true
         Discord_on_paused       = (try? c.decode(Bool.self,   forKey: .Discord_on_paused))       ?? true
         Discord_on_skipped      = (try? c.decode(Bool.self,   forKey: .Discord_on_skipped))      ?? true
+        Discord_on_duplicate    = (try? c.decode(Bool.self,   forKey: .Discord_on_duplicate))    ?? true
         Discord_on_conflict     = (try? c.decode(Bool.self,   forKey: .Discord_on_conflict))     ?? true
         Discord_on_guide_error  = (try? c.decode(Bool.self,   forKey: .Discord_on_guide_error))  ?? true
         Discord_on_upnext       = (try? c.decode(Bool.self,   forKey: .Discord_on_upnext))       ?? false
@@ -318,6 +321,7 @@ extension AppConfig: Codable {
         Signal_quality_enabled      = (try? c.decode(Bool.self, forKey: .Signal_quality_enabled))      ?? false
         Signal_quality_alert_notify = (try? c.decode(Bool.self, forKey: .Signal_quality_alert_notify)) ?? false
         Series_subfolder_enabled    = (try? c.decode(Bool.self,   forKey: .Series_subfolder_enabled))    ?? false
+        Skip_recorded_episodes      = (try? c.decode(Bool.self,   forKey: .Skip_recorded_episodes))      ?? false
         Post_recording_script       = (try? c.decode(String.self, forKey: .Post_recording_script))       ?? ""
     }
 }

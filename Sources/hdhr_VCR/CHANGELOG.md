@@ -1,5 +1,11 @@
 # hdhrVCRplus Changelog
 
+## 2026-07-17 (skip already-recorded episodes)
+
+- **New — skip an episode you've already recorded** — a new Settings → Post-Processing toggle, **Skip already-recorded episodes** (only available when **Series subfolders** is on), stops a series from grabbing the same episode twice on a rerun or simulcast. Before recording, the app checks whether a file with the same season/episode (e.g. `S02E04`) already exists in that show's folder; if so it quietly advances to the next airing without recording or counting a failure. Matching is by season+episode number read straight from existing filenames — no new bookkeeping, and deleting a recording lets it record again. Episodes the guide gives no season/episode number for are unaffected (recorded as before).
+- **New — web guide "SKIP" pill** — a scheduled airing the app will skip because you already have that episode now shows a grey **SKIP** pill (in place of the usual gold "will record" flag) on the guide, so you can see at a glance that it's recognized and being skipped on purpose.
+- **New — optional Discord card for duplicate skips** — a dedicated "Skipped — already recorded" Discord toggle (separate from the disk-full skip card) posts when an airing is skipped as a duplicate.
+
 ## 2026-07-17 (tuner-count re-probe follow-up)
 
 - **Fix — a permanently-unreachable tuner no longer keeps the app probing every 60 s** — the tuner-count restore added on 2026-07-16 re-probed the network every ~60 s while *any* device had an unknown tuner count. A device that never returns a tuner count (e.g. a device whose web server stays unreachable) kept that fast cadence running for the whole session instead of settling back to the normal 5-minute cycle. The quick re-probe now only fires for devices that are actually reachable.

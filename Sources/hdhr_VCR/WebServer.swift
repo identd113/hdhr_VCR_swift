@@ -1169,6 +1169,17 @@ final class WebServer: @unchecked Sendable {
         }()
         let activeMgd    = state.shows.filter { $0.show_active && !$0.show_paused }
         let guideMatcher = ManagedGuideMatcher(activeManagedShows: activeMgd)
+        // Skip-already-recorded: precompute each managed series' on-disk SxxExx tags ONCE (one dir
+        // scan per series, off the per-block hot path) so a guide block whose episode we already
+        // have can show a SKIP pill instead of the gold "will record" flag.
+        let skipEnabled = state.config.Series_subfolder_enabled && state.config.Skip_recorded_episodes
+        var recordedTagsByShow: [String: Set<String>] = [:]
+        if skipEnabled {
+            for s in activeMgd where s.isSeries {
+                let safe = s.show_title.replacingOccurrences(of: "/", with: "-")
+                recordedTagsByShow[s.show_id] = state.recordedEpisodeTags(forTitle: safe, baseDir: s.posixRecordDir)
+            }
+        }
         let activeMgdBySeries = Dictionary(
             activeMgd.filter { $0.isSeries && !$0.show_seriesid.isEmpty }.map { ($0.show_seriesid, $0) },
             uniquingKeysWith: { a, _ in a })
@@ -1245,6 +1256,16 @@ final class WebServer: @unchecked Sendable {
                     let isNow      = e.StartTime <= nowTs && e.EndTime > nowTs
                     let isEntryRec = isRecCh && isNow
                     let isMgd      = guideMatcher.isManaged(entry: e)
+                    // Owning show for a managed block (reused by showDA below and the skip check).
+                    let owner = isMgd ? findManagedShow(e, ch) : nil
+                    // Will this managed airing be skipped because the episode is already on disk?
+                    let willSkip: Bool = {
+                        guard skipEnabled, let owner,
+                              let ep = e.EpisodeNumber,
+                              ep.range(of: #"^S\d+E\d+$"#, options: [.regularExpression, .caseInsensitive]) != nil
+                        else { return false }
+                        return recordedTagsByShow[owner.show_id]?.contains(ep.uppercased()) == true
+                    }()
                     var cls = "g-prog"
                     if isEntryRec      { cls += " g-prog-rec"   }
                     else if isNow      { cls += " g-prog-now"   }
@@ -1292,24 +1313,30 @@ final class WebServer: @unchecked Sendable {
                         return false
                     }()
                     let newAttr     = isNew ? " data-new=\"1\"" : ""
-                    let titleHTML   = isNew
-                        ? "<div class=\"g-ti-row\"><span class=\"g-ti\">\(he(e.Title))</span><span class=\"g-new-tag\">NEW</span></div>"
-                        : "<span class=\"g-ti\">\(he(e.Title))</span>"
+                    let skipAttr    = willSkip ? " data-skip=\"1\"" : ""
+                    let titleHTML: String = {
+                        // Plain title unless we need a NEW and/or SKIP pill alongside it.
+                        guard isNew || willSkip else { return "<span class=\"g-ti\">\(he(e.Title))</span>" }
+                        var tags = ""
+                        if isNew    { tags += "<span class=\"g-new-tag\">NEW</span>" }
+                        if willSkip { tags += "<span class=\"g-skip-tag\">SKIP</span>" }
+                        return "<div class=\"g-ti-row\"><span class=\"g-ti\">\(he(e.Title))</span>\(tags)</div>"
+                    }()
                     // Heavy fields (Synopsis, poster, episode, air date) are deliberately omitted here —
                     // fetched lazily per-row via /api/guide-detail once the row scrolls into view (see
                     // the client-side IntersectionObserver in buildHTML's <script>).
                     let da = "data-title=\"\(he(e.Title))\" data-genre=\"\(he(e.firstGenre ?? ""))\" data-filters=\"\(he(filtersAttr))\" data-start=\"\(e.StartTime)\" data-end=\"\(e.EndTime)\" data-device=\"\(he(device.DeviceID))\" data-num=\"\(he(ch.GuideNumber))\" data-chname=\"\(he(ch.GuideName))\" data-logo=\"\(he(logoURL))\" data-series=\"\(he(e.SeriesID ?? ""))\" data-managed=\"\(isMgd ? 1 : 0)\" data-recording=\"\(isEntryRec ? 1 : 0)\""
 
+                    // Skipping replaces the gold "will record" flag with the inline SKIP pill (added above).
                     let flagHTML = isEntryRec ? "<div class=\"g-flag-rec\"></div>"
-                                 : isMgd      ? "<div class=\"g-flag\"></div>" : ""
-                    let showDA: String = isMgd ? {
-                        let s = findManagedShow(e, ch)
-                        guard let s else { return "" }
+                                 : (isMgd && !willSkip) ? "<div class=\"g-flag\"></div>" : ""
+                    let showDA: String = {
+                        guard let s = owner else { return "" }
                         let ad = s.show_air_date.joined(separator: ",")
                         return " data-show-id=\"\(he(s.show_id))\" data-show-type=\"\(showTypeStr(s))\" data-show-paused=\"\(s.show_paused ? 1 : 0)\" data-show-length=\"\(s.show_length)\" data-show-bonus=\"\(s.show_bonus_time ? 1 : 0)\" data-show-transcode=\"\(he(s.show_transcode))\" data-show-seriesid=\"\(he(s.show_seriesid))\" data-show-airdays=\"\(he(ad))\" data-show-failcount=\"\(s.show_fail_count)\" data-show-failreason=\"\(he(s.show_fail_reason))\" data-show-recording=\"\(s.show_recording ? 1 : 0)\""
-                    }() : ""
+                    }()
                     let infDA = (infSIDs.contains(e.SeriesID ?? "") || e.Title == "Paid Programming") ? " data-inf=\"1\"" : ""
-                    blockParts.append("<div class=\"\(cls)\" style=\"left:\(pct(cs))%;width:\(pct(ce - cs))%\(extraStyle)\" title=\"\(tip)\" \(da)\(showDA)\(infDA)\(newAttr) onclick=\"showInfo(this)\"><div class=\"g-pi\">\(titleHTML)\(subH)</div>\(flagHTML)</div>")
+                    blockParts.append("<div class=\"\(cls)\" style=\"left:\(pct(cs))%;width:\(pct(ce - cs))%\(extraStyle)\" title=\"\(tip)\" \(da)\(showDA)\(infDA)\(newAttr)\(skipAttr) onclick=\"showInfo(this)\"><div class=\"g-pi\">\(titleHTML)\(subH)</div>\(flagHTML)</div>")
                 }
 
                 let gnameAttr = ChannelSignalStore.key(for: ch.GuideName)
@@ -1772,6 +1799,7 @@ final class WebServer: @unchecked Sendable {
         .g-ti-row{display:flex;align-items:center;gap:4px;min-width:0;overflow:hidden}
         .g-ti-row .g-ti{flex:0 1 auto;min-width:0}
         .g-new-tag{display:inline-block;font-size:.5rem;font-weight:800;background:#27ae60;color:#fff;border-radius:2px;padding:1px 3px;letter-spacing:.07em;flex-shrink:0;line-height:1.5}
+        .g-skip-tag{display:inline-block;font-size:.5rem;font-weight:800;background:#8a8a8a;color:#fff;border-radius:2px;padding:1px 3px;letter-spacing:.07em;flex-shrink:0;line-height:1.5}
         .g-flag,.g-flag-rec{position:absolute;top:0;right:0;width:0;height:0;border-style:solid;border-width:0 18px 18px 0;pointer-events:none}
         .g-flag{border-color:transparent #ffd700 transparent transparent}
         .g-flag-rec{border-color:transparent #ff6060 transparent transparent}

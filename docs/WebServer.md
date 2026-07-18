@@ -406,6 +406,8 @@ The **Edit** button (`#sum-edit`) is only shown for managed shows that are **not
 
 **Actions are applied in-place** — no page reload on record or delete. On record success, the selected block gains `.g-prog-sched` + yellow triangle flag and the action row swaps to Scheduled+Remove. On delete success, the block loses its flag/color and the Record button reappears.
 
+**Skip-already-recorded marker (`.g-skip-tag`)** — when **Series subfolders** *and* **Skip already-recorded episodes** are both on (config `Series_subfolder_enabled` + `Skip_recorded_episodes`), a managed program block whose season/episode (`SxxExx`) is already on disk renders an inline grey **SKIP** pill next to the title (`data-skip="1"`) **instead of** the gold `.g-flag` corner triangle — the block keeps its `.g-prog-sched` styling. Computed server-side in `buildGuideGridHTML`: the recorded `SxxExx` tags per managed series are gathered once per grid build via `AppState.recordedEpisodeTags(forTitle:baseDir:)` (one directory scan per managed series, off the per-block path), then each block compares its `EpisodeNumber` against them. Like the gold/red flags, the pill is re-emitted on every full grid rebuild (refresh + guide-change SSE), so it survives refreshes; the in-place recording-event patch (which doesn't rebuild the grid) does not recompute it — same limitation as the existing flags.
+
 ---
 
 ### Record type modal (`#rec-modal`)

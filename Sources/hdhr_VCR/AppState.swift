@@ -1353,6 +1353,23 @@ final class AppState: ObservableObject {
                 seriesSubfolder = safeTitle
             }
         }
+        // Skip already-recorded episode: if this exact SxxExx is already on disk for this series,
+        // advance to the next airing instead of recording a duplicate (rerun/simulcast). Gated under
+        // Series subfolders; needs a full season+episode tag (season-only can't identify one episode).
+        if config.Series_subfolder_enabled, config.Skip_recorded_episodes, show.isSeries,
+           let tag = episodeTag,
+           tag.range(of: #"^S\d+E\d+$"#, options: [.regularExpression, .caseInsensitive]) != nil {
+            let safeTitle = show.show_title.replacingOccurrences(of: "/", with: "-")
+            if recordedEpisodeTags(forTitle: safeTitle, baseDir: show.posixRecordDir).contains(tag.uppercased()) {
+                glog("[\(show.show_title)] SKIP \(tag) — already recorded")
+                notify("Recording Skipped", body: show.show_title, subtitle: "\(tag) already recorded")
+                fireDiscordCard(showId: show.show_id, event: "🔁 Skipped — already recorded",
+                                color: 0x95A5A6, enabled: config.Discord_on_duplicate,
+                                extra: [("Episode", tag, true)])
+                await scheduleNextAir(index: index)   // like a completed airing — no fail-count change
+                return
+            }
+        }
         let path = show.outputPath(date: show.show_next ?? Date(), subfolder: seriesSubfolder, episodeTag: episodeTag)
         let recordDir = (path as NSString).deletingLastPathComponent
         do {
@@ -2107,6 +2124,40 @@ final class AppState: ObservableObject {
         guard let range = epString.range(of: #"^S(\d+)(?:E\d+)?$"#, options: [.regularExpression, .caseInsensitive]) else { return nil }
         let sub = epString[range].dropFirst()   // drop leading "S"
         return Int(sub.prefix(while: { $0.isNumber }))
+    }
+
+    /// Uppercased SxxExx (or bare SxxE-less) episode tags already recorded on disk for a series,
+    /// scanning `<baseDir>/<safeTitle>` (flat files) plus each `Season NN` subfolder. Used by the
+    /// skip-already-recorded feature (record-time skip + the web-guide SKIP pill). Reuses the same
+    /// filename tag regex as `organizeSeriesRecordings` so parsing stays consistent. Files under
+    /// ~1 MB are treated as crashed/zero-byte stubs and ignored, so a prior failed attempt never
+    /// masks a real re-record.
+    func recordedEpisodeTags(forTitle safeTitle: String, baseDir: String) -> Set<String> {
+        let fm = FileManager.default
+        let seriesDir = (baseDir as NSString).appendingPathComponent(safeTitle)
+        // No recursive enumerator elsewhere in the codebase — walk exactly two levels: the title
+        // dir itself and its "Season NN" children (where season subfolders place their files).
+        var dirs = [seriesDir]
+        if let children = try? fm.contentsOfDirectory(atPath: seriesDir) {
+            for child in children where child.hasPrefix("Season ") {
+                let sub = (seriesDir as NSString).appendingPathComponent(child)
+                var isDir: ObjCBool = false
+                if fm.fileExists(atPath: sub, isDirectory: &isDir), isDir.boolValue { dirs.append(sub) }
+            }
+        }
+        var tags = Set<String>()
+        for dir in dirs {
+            guard let files = try? fm.contentsOfDirectory(atPath: dir) else { continue }
+            for filename in files where filename.hasSuffix(".m2ts") || filename.hasSuffix(".mkv") {
+                guard let tagRange = filename.range(of: #"[_ ](S\d+(?:E\d+)?)"#,
+                                                    options: [.regularExpression, .caseInsensitive]) else { continue }
+                let full = (dir as NSString).appendingPathComponent(filename)
+                let size = ((try? fm.attributesOfItem(atPath: full))?[.size] as? Int) ?? 0
+                if size < 1_000_000 { continue }   // ignore failed/stub files
+                tags.insert(String(filename[tagRange].dropFirst()).uppercased())  // drop leading "_"/" "
+            }
+        }
+        return tags
     }
 
     private func guideEntryForShow(_ show: Show) -> GuideEntry? {

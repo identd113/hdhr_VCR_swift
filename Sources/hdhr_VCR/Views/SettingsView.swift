@@ -335,6 +335,11 @@ struct SettingsView: View {
                     HStack { Text("Series subfolders"); InfoButton("Save SeriesID recordings into Title/Season XX/ subfolders. Requires season data from the guide (e.g. S02E04). Date-scheduled shows always use a flat path.") }
                 }
 
+                Toggle(isOn: $draft.Skip_recorded_episodes) {
+                    HStack { Text("Skip already-recorded episodes"); InfoButton("Before recording a series episode, skip it if a file with the same season/episode (e.g. S02E04) already exists in the show's folder. Advances to the next airing without a failure. Requires Series subfolders and season/episode data from the guide.") }
+                }
+                .disabled(!draft.Series_subfolder_enabled)
+
                 LabeledContent {
                     HStack {
                         Text(draft.Post_recording_script.isEmpty
@@ -477,6 +482,7 @@ struct SettingsView: View {
                     Toggle("Recording failed",              isOn: $draft.Discord_on_failed)
                     Toggle("Show paused",                   isOn: $draft.Discord_on_paused)
                     Toggle("Skipped — disk full",           isOn: $draft.Discord_on_skipped)
+                    Toggle("Skipped — already recorded",    isOn: $draft.Discord_on_duplicate)
                     Toggle("Tuner conflict",                isOn: $draft.Discord_on_conflict)
                     Toggle("Guide load failed",             isOn: $draft.Discord_on_guide_error)
                     Toggle("Show added",                    isOn: $draft.Discord_on_show_added)

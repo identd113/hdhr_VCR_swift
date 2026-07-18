@@ -38,6 +38,14 @@ Can't update `show_seriesid` if SiliconDust changes a series' ID (which happens 
 
 ---
 
+## Recording
+
+### Skip-already-recorded: extend to episode-title matching
+
+The season/episode-number half of "skip already-recorded episodes" is **done** (`Skip_recorded_episodes`, filesystem `SxxExx` scan — see `CHANGELOG.md`). Still deferred: dedup for shows the guide numbers by episode **title** only (no `SxxExx`). The blocker is that the filename doesn't carry the episode title today. Plan: first extend the recording filename to embed a sanitized episode title (update `Show.outputPath` and the `Organize`/`recordedEpisodeTags` parse regex together), then have `recordedEpisodeTags` also collect title keys so the same scan-based, self-healing approach covers title-only shows — no persisted ledger, no stale-delete caveat.
+
+---
+
 ## Web Guide
 
 ### Native/web title divergence for series shows
