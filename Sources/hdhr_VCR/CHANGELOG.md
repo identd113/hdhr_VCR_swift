@@ -75,6 +75,24 @@ Follow-up review of the 2026-07-15 fix pass (fresh 8-angle review of that commit
 - **Fix — the Add Show wizard could get permanently stuck showing "Stream URL not found"** — if opened before device discovery finished, the lineup-load task never retried; it now re-runs once devices populate.
 - **Fix — Settings' Discord webhook "Test" button could mark a since-edited, never-tested URL as "Verified"** — if you changed the field again before the test finished, its result now only applies if the URL it tested is still the one showing.
 
+## 2026-07-14
+
+- **Discord activity log** — Discord sends/edits now also write to a dedicated `~/Library/Logs/hdhrVCRplus-discord.log` (embed title, HTTP result, and the message ID used for edits), so legitimate progress-update edits can be told apart from real duplicate sends without wading through the main log.
+
+## 2026-07-11
+
+- **Escalating retry backoff for failed recordings** — a failing recording now waits 2 idle-loop ticks (then 3, capped) before retrying, instead of hammering the same show every idle interval and burning through the whole fail-count in well under a minute. Also fixed the disk-full "Recording Skipped" path — the one failure branch still posting a brand-new Discord message on every retry instead of updating the existing card.
+- **Weekday toggles are Sunday-first** — the Day/Days pickers in the native Add Show / Edit Show forms now read Su Mo Tu We Th Fr Sa, matching the web guide's Record modal (they had drifted apart).
+
+## 2026-07-10
+
+- **Other Upcoming Airings — redesigned, and double-click to switch** — when adding or editing a SeriesID show, the list of other upcoming airings of that series now shows channel logos and a genre-color accent bar (matching the guide / Watch Now look) instead of a plain text line, and renders correctly with more than one result. **Double-click any row to re-anchor the whole Record dialog / Details step to that airing** (title, channel, time, device) while keeping your Type / Transcode / Bonus settings — a swap, not an append.
+- **Web guide Record modal now matches the in-app Details step** — editable title, a day-of-week row for one-time and weekly shows, config-driven transcode default, Bonus Time gated on the Sports-padding setting, and the same Other Upcoming Airings panel (via `GET /api/airings/{seriesId}`).
+
+## 2026-07-09
+
+- **See other upcoming airings while adding a series** — the Add Show wizard's Details step now surfaces other future airings of the same series (time, channel, episode info) for SeriesID(Channel) / SeriesID(All) shows, so you can see at a glance when else it's on without leaving the wizard.
+
 ## 2026-07-06
 
 - **Fix — tuner-full check now honors another machine's recordings** — `tunersFull(for:)` (the gate checked before starting a new recording) previously only counted this instance's own `recordingShows`, missing tuners already locked by another machine running this app against the same physical HDHomeRun device. It now uses the same hardware-polled `status.json` count the display badge already relied on, giving an accurate global tuner count across machines.
