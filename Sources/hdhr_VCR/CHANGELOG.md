@@ -1,7 +1,8 @@
 # hdhrVCRplus Changelog
 
-## 2026-07-18 (recordings saved as .ts)
+## 2026-07-18 — v1.4.0
 
+- **Add Show — the cable-guide step remembers its size** — resize the Add Show guide window (wider, taller) and it now reopens, and survives an app restart, at that size instead of resetting to a fixed default. Persisted per-machine; the compact details step is unaffected.
 - **Recordings now use the `.ts` extension** — for every transcode profile. Captured directly from the tuner and confirmed that HDHomeRun sends an **MPEG-2 transport stream** on the wire for *all* profiles (188-byte TS packets); transcoding only re-encodes the video *inside* the TS (MPEG-2 → H.264), it never changes the container. The recorder writes the stream verbatim (no remux), so the accurate extension is `.ts` — the same convention Plex/Emby/Jellyfin/MythTV use, and it matches the `video/mp2t` type the built-in player relay already serves. Previously recordings were named `.m2ts` (no transcode) or `.mkv` (transcoded); `.mkv` in particular described a container the device never produces. **Existing `.m2ts`/`.mkv` recordings are unaffected** — they're still recognized everywhere (Watch Now, Organize, skip-already-recorded), just no longer created. A new regression test locks the wire-format finding against real captured stream fixtures.
 
 ## 2026-07-17 (skip already-recorded episodes)
