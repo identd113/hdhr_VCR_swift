@@ -2383,7 +2383,7 @@ final class WebServer: @unchecked Sendable {
               var sel=document.querySelector('.g-prog.g-sel');
               if(sel){
                 sel.classList.remove('g-prog-rec','g-prog-sched','g-prog-now');sel.dataset.managed='0';sel.dataset.recording='0';
-                var flag=sel.querySelector('.g-flag,.g-flag-rec');if(flag)flag.remove();
+                var flag=sel.querySelector('.g-flag,.g-flag-rec,.g-flag-skip');if(flag)flag.remove();
                 var nowTs=Math.floor(Date.now()/1000);
                 if(_s<=nowTs&&_e>nowTs){sel.classList.add('g-prog-now');}
               }
