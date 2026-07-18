@@ -16,7 +16,7 @@ swift test           # Tests/hdhr_VCRTests/ (uses unsafeFlags for Swift Testing)
 
 `.app` bundle at `hdhrVCRplus.app/` — binary replaced on each deploy; `Info.plist` there is live (not SPM-generated). `deploy_release.sh` = release build + Developer ID sign + notarize (`--skip-notarize` to sign only).
 
-**Trust `swift build`, not SourceKit** — on macOS 26 Beta, SourceKit reports bogus cross-file errors ("Cannot find type X in scope", "No such module Sparkle") for same-module types. If `swift build` passes, the diagnostics are noise.
+**Trust `swift build`, not SourceKit** — on macOS 26 Beta, SourceKit reports bogus cross-file errors ("Cannot find type X in scope", spurious "No such module" errors) for same-module types. If `swift build` passes, the diagnostics are noise.
 
 **macOS 15.0 minimum** — use string literal `"15.0"` in `Package.swift` (enum form triggers false SourceKit diagnostic). `LazyVStack(pinnedViews:)` in a bidirectional ScrollView requires macOS 15+; do not lower target.
 
@@ -107,7 +107,6 @@ Systems: [AppState](docs/AppState.md) · [GuideStore](docs/GuideStore.md) · [Re
 | | |
 |---|---|
 | `tools/setup_signing.sh` | One-time: Developer ID cert + notarization creds (run before first `deploy_release.sh`) |
-| `tools/generate_sparkle_keys.sh` | One-time: EdDSA Sparkle keys → `Info.plist` / `~/.sparkle_private_key` |
 | `tools/mock_hdhr.py` | Fake HDHomeRun device for discovery/guide/fault-injection testing |
 | `tools/mock_scenario.py` | Plant mock app states via the live guide API to demo/test behavior, then clean up. Subcommands: `duplicate` (fake "already recorded" file → green skip flag), `conflict` (schedule >tuner-count overlapping shows → conflict), `record-test` (schedule a now-airing entry, verify it records, self-clean), `list`, `clean`. Safety markers: planted files carry the `19700101_0000` date signature; scheduled shows are titled `[MOCK] …`; `clean` removes only those. Needs the app running (web server on); `duplicate` also needs Series-subfolders + Skip-already-recorded on. |
 

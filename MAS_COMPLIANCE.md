@@ -58,12 +58,10 @@ Config migration required: existing path-string configs would lose their saved d
 
 ## Required Policy 📋
 
-### 6. Remove Sparkle auto-updater
-MAS handles all updates. Sparkle is not permitted.
-- Remove `.package(url: "sparkle-project/Sparkle")` from `Package.swift`
-- Remove Sparkle framework bundling from `deploy.sh` and `deploy_release.sh`
-- Remove Sparkle update-check UI from `SettingsView` (About tab)
-- Remove `SUFeedURL` and `SUPublicEDKey` from `Info.plist`
+### 6. Remove Sparkle auto-updater ✅ Done
+Sparkle was removed from the app entirely (commit `6e9dca8`) — no `Package.swift`
+dependency, no framework bundling in the deploy scripts, no About-tab update UI,
+and no `SUFeedURL`/`SUPublicEDKey` in `Info.plist`. Nothing further needed here.
 
 ### 8. App Store Connect registration
 Bundle ID `com.hdhr.vcrplus` must be registered in App Store Connect under your Apple Developer account before submission. Entitlements file will also need `com.apple.application-identifier` and `com.apple.developer.team-identifier` keys (replaced the current ad-hoc `–` signing).

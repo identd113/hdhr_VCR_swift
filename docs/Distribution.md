@@ -107,6 +107,8 @@ Libraries that handle this cleanly:
 
 ## Auto-Update with Sparkle
 
+> **Status: removed.** Sparkle was integrated and then removed (commit `6e9dca8`); the app currently has **no auto-updater** — updates are distributed as GitHub releases that users download and install manually. The section below is retained as reference for if/when auto-update is reintroduced.
+
 [Sparkle](https://sparkle-project.org) is the standard auto-update framework for Mac apps outside the App Store. It's what 1Password, BBEdit, and most indie Mac apps use.
 
 ### How it works

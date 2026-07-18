@@ -6,15 +6,14 @@
 
 ## Startup (`AppState.startup`)
 
-1. Sparkle `SPUStandardUpdaterController` initialized (`startingUpdater: true`) — begins background update checks immediately. Deferred to `startup()` (not a stored property) so tests that set `skipStartup = true` never trigger updater UI.
-2. `loadConfig()` — reads JSON, resets all `show_recording = false`. Auto-removes inactive Single shows (already recorded; no further scheduling needed).
-3. `reattachRecordings()` — scans `ps -Axo pid,args` for lines containing `show_id:` + `/usr/bin/curl` + `hdhrVCRplus`. If the matching show's `show_end` is still future, sets `show_recording = true`, clears `show_tuner_resource` (will be re-captured by `captureResourceHeaders`), and calls `recordingManager.reattach(showId:pid:title:endDate:)` — recording continues uninterrupted and the sleep assertion is re-armed for the remaining duration. **Read pipe data before `waitUntilExit()`** to avoid deadlock when ps output exceeds the ~64 KB pipe buffer. After the PID scan, any show that has a non-empty `discord_start_msg_id` but was **not** reattached (i.e. its recording ended while the app was down) gets a recovery Discord embed: "✅ Recording Complete" if the output file has non-zero size, or "⚠️ Recording Interrupted" otherwise. The `discord_start_msg_id` is cleared to `""` in config **before** the network send — a crash during the PATCH won't re-trigger the recovery on the next launch.
-4. `setupWebServer()` — binds the NWListener on `config.Web_server_port` immediately after config load, before device discovery. Port is available within ~1 s of launch; responses that require guide data are delayed by main-actor availability, not by the startup sequence itself.
-5. Notification permission (background `Task` — non-blocking).
-6. `discoverDevices(knownHosts:attempts:10)` — up to 10 retries with 1 s pauses; idle loop retries on each tick if devices remain empty.
-7. `fetchAllGuides()` — parallel guide load for all devices; mirrors result into `guideByDevice`.
-8. `startTimer()` — fires `idleLoop()` every `config.Idle_timer_interval` seconds (default 10, min 5).
-9. Sets `isStartingUp = false` (menu bar icon switches from dimmed to normal/red-dot).
+1. `loadConfig()` — reads JSON, resets all `show_recording = false`. Auto-removes inactive Single shows (already recorded; no further scheduling needed).
+2. `reattachRecordings()` — scans `ps -Axo pid,args` for lines containing `show_id:` + `/usr/bin/curl` + `hdhrVCRplus`. If the matching show's `show_end` is still future, sets `show_recording = true`, clears `show_tuner_resource` (will be re-captured by `captureResourceHeaders`), and calls `recordingManager.reattach(showId:pid:title:endDate:)` — recording continues uninterrupted and the sleep assertion is re-armed for the remaining duration. **Read pipe data before `waitUntilExit()`** to avoid deadlock when ps output exceeds the ~64 KB pipe buffer. After the PID scan, any show that has a non-empty `discord_start_msg_id` but was **not** reattached (i.e. its recording ended while the app was down) gets a recovery Discord embed: "✅ Recording Complete" if the output file has non-zero size, or "⚠️ Recording Interrupted" otherwise. The `discord_start_msg_id` is cleared to `""` in config **before** the network send — a crash during the PATCH won't re-trigger the recovery on the next launch.
+3. `setupWebServer()` — binds the NWListener on `config.Web_server_port` immediately after config load, before device discovery. Port is available within ~1 s of launch; responses that require guide data are delayed by main-actor availability, not by the startup sequence itself.
+4. Notification permission (background `Task` — non-blocking).
+5. `discoverDevices(knownHosts:attempts:10)` — up to 10 retries with 1 s pauses; idle loop retries on each tick if devices remain empty.
+6. `fetchAllGuides()` — parallel guide load for all devices; mirrors result into `guideByDevice`.
+7. `startTimer()` — fires `idleLoop()` every `config.Idle_timer_interval` seconds (default 10, min 5).
+8. Sets `isStartingUp = false` (menu bar icon switches from dimmed to normal/red-dot).
 
 ---
 
