@@ -72,7 +72,7 @@ struct AddShowView: View {
         }
         .frame(
             minWidth:    step == .guide ? 1100 : 560,
-            idealWidth:  step == .guide ? 1280 : 560,
+            idealWidth:  step == .guide ? 1450 : 560,
             maxWidth:    step == .guide ? .infinity : 560,
             minHeight:   step == .guide ? 720  : 540,
             idealHeight: step == .guide ? 820  : 540,
