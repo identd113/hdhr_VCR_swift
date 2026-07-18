@@ -13,7 +13,7 @@ A small custom TV icon sits in the macOS menu bar. It changes state based on app
 Clicking the icon opens a native macOS cascading menu (NSMenu style). The menu has no custom background — it uses the system's standard menu appearance (dark translucent on macOS). Items are full-width, standard menu item height (~22pt). Interactive items highlight in system accent color on hover.
 
 **Header rows** (non-interactive, at the top):
-- One row per detected HDHomeRun device: `"105404BE  1/4"` — DeviceID left-aligned, live-active/total-tuners. Live count comes from polling `status.json` each idle tick (`deviceTunerOccupancy`); falls back to the app's own recording count before the first poll. The "app expects N" count includes both active recordings **and** the VLC player if it is open on that device — recording one show while watching counts as 2. Color: `systemOrange` when the device has lineup/guide warnings; full `labelColor` when recording (no warnings); `secondaryLabelColor` when idle and healthy. If the live count differs from the app's expected count, appends `"  ⚠ app expects N"`. After startup, missing lineup or guide data appends `"  ⚠ no lineup"` or `"  ⚠ no guide"` (or both, comma-separated) to the same line.
+- One row per detected HDHomeRun device: `"105404BE  1/4"` — DeviceID left-aligned, live-active/total-tuners. Live count comes from polling `status.json` each idle tick (`deviceTunerOccupancy`); falls back to the app's own recording count before the first poll. The "app expects N" count includes both active recordings **and** the VLC player if it is open on that device — recording one show while watching counts as 2. Color: `systemRed` when the device is offline/unreachable (highest priority — the count is also replaced with an em dash, `"105404BE  —"`); else `systemOrange` when the device has lineup/guide warnings; full `labelColor` when recording (no warnings); `secondaryLabelColor` when idle and healthy. If the live count differs from the app's expected count, appends `"  ⚠ app expects N"`. After startup, missing lineup or guide data appends `"  ⚠ no lineup"` or `"  ⚠ no guide"` (or both, comma-separated); an offline device appends `"  ⚠ unavailable"` instead. All warning strings share one comma-separated `"  ⚠ ..."` suffix on the same line.
 - Status message row: `"16 show(s) — 1 tuner(s) ready"` — the tuner count uses `availableDeviceCount`, which excludes any device that has an empty lineup or empty guide data.
 
 Immediately below the header: **Watch Now** button (when devices present), **Add Show…** button, then **Settings…**, then a divider.
@@ -33,6 +33,8 @@ Immediately below the header: **Watch Now** button (when devices present), **Add
 **Scheduled** section: `"Scheduled"` or `"Scheduled · DeviceID"` header, shows listed with state icon prefix
 
 **Paused** section: `"Paused"` or `"Paused · DeviceID"` header, shows prefixed with `⏸`
+
+**Unavailable Tuner** section (only visible when a show's assigned device is offline/unreachable): `"Unavailable Tuner"` or `"Unavailable Tuner · DeviceID"` header (per device, when more than one offline device has shows). Each show renders via `recordingMenu` or `scheduledMenu` — whichever matches its current state — same submenu as if the device were online.
 
 A divider separates show sections from the **Quit hdhrVCRplus** destructive button at the bottom.
 
@@ -112,12 +114,12 @@ Window IDs → titles: `"add-show"` → "Add Show", `"edit-show"` → "Edit Show
 ```
 [Header: one line per device — DeviceID  liveCount/slots  ⚠ no lineup, no guide (inline, orange)]
 [Status message — secondary color, uses availableDeviceCount]
-[Now Watching — "Ch 5.1  NBC · Show Title", play.tv.fill icon, only when vlcCurrentURL is non-empty]
-[Watch Now — Label("Watch Now", systemImage: "play.tv.fill"), when devices present]
+[Watch Now… — Label("Watch Now…", systemImage: "play.tv.fill"), when devices present]
 [Add Show… — Button, opens wizard window]
 Divider
 Settings…
 Divider
+[Now Watching — "Ch 5.1  NBC · Show Title", play.tv.fill icon, only when vlcCurrentURL is non-empty]
 Section "Recording Now"              ← only when shows are recording (single tuner)
 Section "Recording · DeviceID"       ← per device when multiple tuners present
   recordingMenu(show) …
@@ -133,6 +135,10 @@ Section "Scheduled · DeviceID"       ← per device when multiple tuners
 Section "Paused"                     ← show_active && show_paused (single tuner)
 Section "Paused · DeviceID"          ← per device when multiple tuners
   pausedMenu(show) …
+Divider                              ← only when any Unavailable Tuner shows exist
+Section "Unavailable Tuner"          ← shows on an offline/unreachable device (single such device)
+Section "Unavailable Tuner · DeviceID" ← per device when multiple such devices
+  recordingMenu(show) / scheduledMenu(show) …  ← whichever matches the show's state
 Divider
 Quit hdhrVCRplus
 ```
@@ -143,7 +149,7 @@ Quit hdhrVCRplus
 
 One `Text` line per device: `"105404BE  1/4"` (DeviceID + `liveCount/totalTuners`). `liveCount` comes from `state.deviceTunerOccupancy[deviceId]` — the decoded `/status.json` array polled each idle tick; falls back to `recordingShows` count before the first poll. Full `labelColor` when recording; `secondaryLabelColor` when idle. If `liveCount != appCount` (and occupancy has been polled at least once), appends `"  ⚠ app expects N"`.
 
-After startup, lineup/guide failures are appended inline to the device row: `"  ⚠ no lineup"`, `"  ⚠ no guide"`, or `"  ⚠ no lineup, no guide"`. The entire row turns `systemOrange` when any warning is present — a single visual pop replaces the earlier pattern of separate orange rows below each device. Both conditions read `@Published` vars directly so SwiftUI reliably re-renders when either changes. Devices with active warnings are excluded from `availableDeviceCount`, so `state.statusMessage` reads e.g. `"16 show(s) — 1 tuner(s) ready"` when one of two devices is unhealthy.
+After startup, lineup/guide failures are appended inline to the device row: `"  ⚠ no lineup"`, `"  ⚠ no guide"`, `"  ⚠ no lineup, no guide"`, or `"  ⚠ unavailable"` for an offline device. The entire row turns `systemOrange` when any warning is present (or `systemRed`, taking priority, when the device is offline) — a single visual pop replaces the earlier pattern of separate orange rows below each device. Both conditions read `@Published` vars directly so SwiftUI reliably re-renders when either changes. Devices with active warnings are excluded from `availableDeviceCount`, so `state.statusMessage` reads e.g. `"16 show(s) — 1 tuner(s) ready"` when one of two devices is unhealthy.
 
 ---
 
@@ -154,9 +160,9 @@ Menu label: `🔴 [Title]` (or `🔴 [Title] · S02E05` when guide entry is foun
 Submenu contents — uses `showInfoHeader(show, entry:)` for the top block, then:
 1. **Type + channel** — `"SeriesID(All) · Channel 5.1"`, full `labelColor`
 2. **Start time + duration** — `"8:00 PM · 60 min"`, `secondaryLabelColor`
-3. **Bonus Time callout** — `"🏈 Bonus Time (+N min)"` when `show.show_bonus_time == true` and the recording is past the guide end time
+3. **Bonus Time callout** — `"🏈 Bonus Time (+N min)"` when `state.config.Sports_padding_enabled` is on, `show.show_bonus_time == true`, and the recording is past the guide end time (all three required — the config toggle gates the feature even when a show's own flag is set)
 4. **Tuner ID** — `"tuner 105404BE"`, `secondaryLabelColor`
-5. **Signal** — shown when `state.tunerStatus[show.show_id]` is set: `"Signal: 78% · lock: qam256 · 12.4 Mbps"`, `secondaryLabelColor`
+5. **Signal** — shown when `state.tunerStatus[show.show_id]` is set: `"Signal: 78% · QAM256 · 12.4 Mbps"` (no "lock:" label; lock type uppercased), `secondaryLabelColor`
 6. Divider
 7. **Watch Now!** — shown when `VLCBridge.shared.isAvailable` (VLC app installed and dylib loaded); **Watch in VLC** — shown when `state.config.Watch_in_VLC == true` (user toggle in Settings → Advanced). These are independent conditions. Both call `state.watchRecordingInApp(show)` / `state.watchRecordingInVLC(show)` (not the generic `watchInApp`/`watchInVLC`) instead of opening a second tuner stream, since HDHomeRun allocates one tuner per TCP connection with no way to share a stream between the recording and a watch session (see `docs/HDHRFindings.md`). **Watch Now!** plays it via the WebServer's `/api/watch-recording` relay (open-ended HTTP stream — see `docs/WebServer.md`); **Watch in VLC** plays `show.show_recording_path` directly as a `file://` URL (external app, no reliable close hook to manage the relay). Both fall back to opening a live stream only if the recording file is missing.
 8. **Skip** (destructive) — `state.skipRecording(showId:)`: stops recording, advances schedule to next airing, no fail-count increment
@@ -234,7 +240,7 @@ Label format: `"Ch 5.1  NBC · Show Title"` where the channel comes from matchin
 
 ## Watch Now — `watchNowMenu`
 
-A `Button` with `Label("Watch Now", systemImage: "play.tv.fill")` in a blue tint (`watchNowBlue = Color(red: 0.2, green: 0.6, blue: 1.0)`). Shown when `state.devices` is non-empty. Opens the `"watch-now"` `Window` (`WatchNowView`) — a 420×620 poster-card grid of currently-airing shows. Single-instance, so reopening brings the existing window to front rather than duplicating.
+A `Button` with `Label("Watch Now…", systemImage: "play.tv.fill")` in a blue tint (`watchNowBlue = Color(red: 0.2, green: 0.6, blue: 1.0)`). Shown when `state.devices` is non-empty. Opens the `"watch-now"` `Window` (`WatchNowView`) — a 420×620 poster-card grid of currently-airing shows. Single-instance, so reopening brings the existing window to front rather than duplicating.
 
 ---
 

@@ -10,7 +10,7 @@ Fixed **560×540** for the details step; expands to resizable **min 1100×720** 
 > The native device-selection step was removed (the tuner is chosen inside the web guide). `Step` is now `{ case guide, details }`; there is no `deviceStep` view any more.
 
 ### Step 1 — Guide (web guide)
-A `WKWebView` (`AddShowWebView`) loading `http://localhost:{port}/`. The web guide is the same interface served to LAN browsers. Clicking **Record** in the web guide's summary panel posts a `WKScriptMessage` (`"record"` handler) with entry data, which advances the wizard to step 3. The nav bar is hidden on this step; navigation happens via the Record button in the web guide.
+A `WKWebView` (`AddShowWebView`) loading `http://localhost:{port}/`. The web guide is the same interface served to LAN browsers. Clicking **Record** in the web guide's summary panel posts a `WKScriptMessage` (`"record"` handler) with entry data, which advances the wizard to step 2 (Details). The nav bar is hidden on this step; navigation happens via the Record button in the web guide.
 
 If the web server is not yet running, a `ProgressView("Starting guide…")` is shown until it becomes ready.
 
@@ -23,13 +23,13 @@ Fixed 560×540 window. White/system background. `ScrollView` containing a `VStac
 - **Double-click a row to switch the Details step to that airing** (`AddShowView.switchToAiring(channel:entry:)`): re-anchors `show.show_title`/`show_channel`/`show_length`/`show_next`/`show_end`/`show_logo_url`/`show_genre`/`hdhr_record`/`show_url`/`show_time` (and `selectedDevice`, if the airing is on a different device) to the clicked entry — the same field set the initial guide selection populates, minus `seriesType`/`airDays`/`show_bonus_time`, which are left as already set on this step. Since the panel recomputes from `show.show_channel`/`show.show_next` on every render, the just-switched-from airing reappears in the list — a swap, not an append.
 - Bottom-right: orange `StarburstBadge` (115pt size) floats via `.overlay(alignment: .bottomTrailing)`, springs in on appear if `show_bonus_time == true` and `Sports_padding_enabled`. Sports entries have Bonus Time pre-checked; any show type can enable it.
 
-**Nav bar** (bottom): **Back** on left, **Record** (`.borderedProminent`, tinted `recordRed` — same red as the web guide's Record button, `#c0392b`, see `GuideViewHelpers.swift`) on right. A `Divider` above.
+**Nav bar** (bottom): **Back** and **Record** grouped together and right-aligned (`HStack { Spacer(); HStack { Back; Record } }`) — Record is `.borderedProminent`, tinted `recordRed` (same red as the web guide's Record button, `#c0392b`, see `GuideViewHelpers.swift`). A `Divider` above.
 
 ## Intent
 
-`AddShowView` is a 2-step wizard window for adding a new recording schedule. Steps: web guide browsing → recording details. (The tuner is chosen inside the web guide, so there is no separate device-selection step.)
+`AddShowView` is a 2-step wizard window for adding a new recording schedule: web guide browsing → recording details (see the note under "Overall window" above for why there's no separate device-selection step).
 
-Window size: **560×540** for the details step; **resizable** (min 1100×720) for the guide step, which **remembers its size** across reopens and restarts (`@AppStorage`, default 1450×820, captured by a background `GeometryReader` + `onChange` — no AppKit). The guide step can be resized freely — the web guide fills the available width.
+Window size: **560×540** for the details step; **resizable** (min 1100×720) for the guide step, which remembers its size across reopens/restarts (mechanism in "Overall window" above) and can otherwise be resized freely — the web guide fills the available width.
 
 ---
 
@@ -102,7 +102,7 @@ show.show_url = state.lineups[deviceId]?.first(where: { $0.GuideNumber == guideN
 
 ## `applyPendingEntry()`
 
-Called from `.onAppear` when `state.pendingAddEntry` is set, **or** from the root `.onChange(of: state.pendingAddEntryGeneration)` when it fires while the wizard is already open. Inlines field population from the pending tuple, bypassing the web guide step entirely and jumping directly to step 3:
+Called from `.onAppear` when `state.pendingAddEntry` is set, **or** from the root `.onChange(of: state.pendingAddEntryGeneration)` when it fires while the wizard is already open. Inlines field population from the pending tuple, bypassing the web guide step entirely and jumping directly to step 2 (Details):
 
 ```swift
 show.show_title    = entry.Title

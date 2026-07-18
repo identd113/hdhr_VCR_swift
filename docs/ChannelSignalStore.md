@@ -75,6 +75,7 @@ func cancelSignalScan()                    // cancels in-flight scan Task, clear
 - Takes **3 SNQ readings per channel** at 500 ms intervals (~1.5 s lock time per channel).
 - Calls `flush()` after each channel so progress is saved incrementally.
 - Skips channels where `needsSample()` returns `false` (already fresh) unless `force: true`.
+- Channels that never lock a signal across all 3 polls are recorded with `snq=0` (via `record(guideName:snq: 0)`) rather than left with no data — this renders as a red 1-bar indicator instead of staying invisible, so a channel that fails to lock is visibly distinguished from one that just hasn't been scanned yet.
 - At startup, if `Signal_quality_enabled` and the store already has data (a prior scan was started), any channels still needing samples are scanned automatically.
 
 Each scanned channel broadcasts one `signal_update` SSE event so connected web clients update bars in-place without a page reload.

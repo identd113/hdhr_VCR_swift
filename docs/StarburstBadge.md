@@ -18,12 +18,7 @@ The badge slams in over ~0.4 seconds:
 The net visual effect: the badge pops in spinning fast from the upper-right, overshoots slightly, then bounces to rest. The `initialValue.scale = 0` keeps it invisible before the first pop fires from `onAppear`.
 
 ### 5-tap celebration animation
-After the 5th tap on the badge:
-1. Badge compresses to ~70% scale (0.10s `CubicKeyframe` — a quick press-squish feel)
-2. Explodes outward to 165% scale while spinning a full 360° (0.22s cubic)
-3. Springs back to 100% scale + 0° rotation (spring response 0.38, damping 0.40 — light bounce)
-
-Because `celebCount` is incremented on every 5th tap, repeated celebrations trigger cleanly (360° end = 0° visually, so the next keyframe sequence starts from the same neutral state).
+After the 5th tap on the badge, while spinning a full 360°: compresses to 45% scale (press-squish), springs out to 165% (explosive pop), cubic-backs to 90% (slight undershoot), then springs to rest at 100% — see "Celebration Keyframes" below for exact timing/spring parameters and why the rotation reset makes repeated celebrations trigger cleanly.
 
 ### Transition
 When Bonus Time is toggled off (badge removed from the hierarchy): `.scale(scale: 0.05).combined(with: .opacity)` removal transition — shrinks to nearly nothing and fades out simultaneously.

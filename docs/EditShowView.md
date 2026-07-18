@@ -31,8 +31,6 @@ Both buttons are always visible and enabled (Delete enabled any time a show is l
 
 The show to edit is identified by `state.editingShowId` (set by `MenuContent` before calling `open("edit-show")`).
 
-Window size: **480×520**.
-
 ---
 
 ## Layout
@@ -127,4 +125,4 @@ Calls `state.confirmAndDeleteShow(s) { dismiss() }` — same flow as menu-based 
 
 - **No "Schedule Now" button** — for debugging, it would be useful to immediately trigger a scheduling pass for a show (force it to find its next episode in the guide) without waiting for the idle loop.
 
-- **No undo** — once Save is pressed, the old values are gone. A Revert button (or Cancel-to-original) is the standard macOS pattern and would make this view safer to use.
+- **No undo** (see "Relationship to AppState" above) — a Revert button (or Cancel-to-original) is the standard macOS pattern and would make this view safer to use.

@@ -77,6 +77,7 @@ Schedules a recording by calling `state.addShowFromGuide(entry:type:device:chann
 | `airDays` | no | Day names (e.g. `["Monday","Friday"]`). For `dateTime`, absent/empty defaults to the day-of-week of `startTime`. For `single`, stored as informational metadata only (`show_air_date`) — it does not affect `show_next`/what actually records; the web Record modal sends the entry's own weekday here. |
 | `transcode` | no | Transcode profile: `"none"` (default) · `"heavy"` · `"mobile"` · `"internet720"`. When absent, the show inherits `config.Default_transcode`. |
 | `title` | no | Overrides the show title. Sent by the web Record modal only when the user edits the prefilled title — omitted otherwise so the server-side SeriesID episode-suffix stripping (`addShowFromGuide`) still applies to the raw guide title. |
+| `bonusTime` | no | `Bool`, default `false`. Passed through to `addShowFromGuide(...bonusTime:...)`; sent by the web Record modal's bonus-time checkbox. |
 
 `showType` maps to `ShowState`:
 
@@ -114,6 +115,7 @@ The stream URL is explicitly cleared on the live show record *before* `deleteSho
 
 ```json
 {
+  "showId":      "XXXXXXXX-XXXX",
   "deviceId":    "XXXXXXXX",
   "guideNumber": "5.1",
   "startTime":   1748822400,
@@ -121,7 +123,9 @@ The stream URL is explicitly cleared on the live show record *before* `deleteSho
 }
 ```
 
-Match priority: recording show on exact device+channel first, then active show matching **device+channel+title** (handles series shows on any channel; the deviceId check on this fallback is required — a multi-tuner setup can have two devices scheduled to record an identically-titled show on the same channel number, and a title-only match would delete/stop the wrong tuner's show).
+Requires `showId` OR (`deviceId` + `guideNumber`); missing both is a `400` (`"Missing required field: showId or (deviceId + guideNumber)"`).
+
+Match priority: **`showId`** first (sent by the edit modal, matches `state.shows` directly) — falls back, when `showId` is absent, to a recording show on exact device+channel, then to an active show matching **device+channel+title** (handles series shows on any channel; the deviceId check on this fallback is required — a multi-tuner setup can have two devices scheduled to record an identically-titled show on the same channel number, and a title-only match would delete/stop the wrong tuner's show).
 
 **Success:** `{"ok": true, "title": "Show Title"}`  
 **Failure:** `{"ok": false, "error": "Show not found"}`
@@ -546,8 +550,9 @@ State classes (rec / now / sched) take precedence over genre. `.g-prog-now.gg-*`
 **Corner triangle flags:** a right-triangle CSS flag (`position:absolute; top:0; right:0`) is rendered as a `<div>` child of the program block using the CSS border trick (`border-width: 0 18px 18px 0`):
 - `.g-flag` (yellow `#ffd700`) — managed/scheduled show
 - `.g-flag-rec` (red `#ff6060`) — currently recording
+- `.g-flag-skip` (green `#2ecc71`) — already recorded, will skip (see below)
 
-Recording takes precedence; yellow shows only when managed but not recording. There are no star or red-circle badges.
+Recording takes precedence over yellow; the skip flag takes precedence over yellow when both apply (see **Skip-already-recorded marker** above). There are no star or red-circle badges beyond these three.
 
 **Managed show matching:** `buildHTML` constructs a `ManagedGuideMatcher(activeManagedShows: activeMgd)` — the same struct used by the SwiftUI cable guide — to decide which blocks get a flag and the `data-managed="1"` attribute. `activeMgd` is active, non-paused shows only; the same exclusion applies in `/api/now.json`'s `isScheduled` field so the two flag paths agree.
 
@@ -703,11 +708,7 @@ All values are truncated to 120 characters. The TXT record is refreshed on `.rea
 
 **Request size cap:** `accumulate()` rejects any request whose accumulated bytes exceed 128 KB (`maxRequestBytes`) — both on an oversized `Content-Length` header and on total buffer growth — returning `413 Content Too Large`. This prevents memory exhaustion from slow or malicious LAN clients.
 
-**HTML/JS injection prevention:**
-- All user-derived strings in HTML attributes pass through `he()` (`& < > "` escaped).
-- JSON blobs embedded in `<script>` blocks (`var tuners`, `var recsByDev`) pass through `jsEscapeForScript()`, which replaces `<`, `>`, and `&` with `\uXXXX` Unicode escapes to prevent `</script>` tag injection.
-- Device filter `onclick` handlers use `this.dataset.dev` (already HTML-escaped) instead of interpolating `DeviceID` into a JS string literal.
-- The tuner popover builds its rows via `innerHTML` concatenation using the client-side `hej()` helper to HTML-escape show titles, channel numbers, and tuner names.
+**HTML/JS injection prevention:** see [HTML escaping](#html-escaping) below for the two escaping paths (`he()` for HTML attributes, `jsEscapeForScript()` for JSON blobs in `<script>` tags) and the client-side `hej()` helper.
 
 **No authentication** — LAN-only tool. Settings warns: *"Local network access only. No authentication. Do not expose this port to the internet."*
 
@@ -715,11 +716,11 @@ All values are truncated to 120 characters. The TXT record is refreshed on `.rea
 
 ## HTML escaping
 
-All user-derived strings pass through `he(_ s: String)` (defined in `GuideViewHelpers.swift`) before HTML interpolation. Escapes `& < > "`. JS reads via `el.dataset.*` which auto-decodes, so no double-decoding needed.
+All user-derived strings pass through `he(_ s: String)` (defined in `GuideViewHelpers.swift`) before HTML interpolation. Escapes `& < > "`. JS reads via `el.dataset.*` which auto-decodes, so no double-decoding needed. Device filter `onclick` handlers use `this.dataset.dev` (already HTML-escaped) instead of interpolating `DeviceID` into a JS string literal.
 
-JSON blobs embedded inside `<script>…</script>` additionally pass through `jsEscapeForScript()` (defined in `WebServer.swift`), which replaces `<`, `>`, and `&` with their `\uXXXX` JS Unicode escapes (`<`, `>`, `&`). `JSONSerialization` does not escape these characters by default, and browsers treat `</script>` as an end-tag even inside a JS string literal.
+JSON blobs embedded inside `<script>…</script>` (`var tuners`, `var recsByDev`) additionally pass through `jsEscapeForScript()` (defined in `WebServer.swift`), which replaces `<`, `>`, and `&` with their `\uXXXX` JS Unicode escapes. `JSONSerialization` does not escape these characters by default, and browsers treat `</script>` as an end-tag even inside a JS string literal.
 
-Client-side `innerHTML` concatenation (tuner popover rows) uses the page-local `hej(s)` JS helper for the same escaping in the browser.
+Client-side `innerHTML` concatenation (tuner popover rows) uses the page-local `hej(s)` JS helper — same escaping, in the browser. Show titles, channel numbers, and tuner names all go through it there.
 
 ---
 
@@ -788,11 +789,11 @@ func quit()             // calls webServer.stop()
 
 `broadcastEvent` is called directly for `signal_update`/`tuner_update` — events that don't carry guide HTML.
 
-`broadcastRecordingEvent` is called from `AppState` for `recording_started` and `recording_stopped`. It builds a fresh `#sum-ph` fragment (`buildSumPhHTML`) and the affected device's `#tdrop-{device}` dropdown body (`buildTunerShowsHTML`), embedding them as `sumPh` + `tdrop`/`tdropDev` so clients update those elements without a second HTTP request.
+`broadcastRecordingEvent` is called from `AppState` for `recording_started` and `recording_stopped` — see the SSE "Events pushed" table above for what it builds and embeds (`sumPh`/`tdrop`/`tdropDev`).
 
-`broadcastGuideChangeEvent` is called from `AppState` (`refreshGuides`, `addShow`, `skipRecording`, `pauseShow`, `resumeShow`, `deleteShow`, `updateShow`) and from `WebServer` handlers (`handleToggleFavorite`) after state changes that affect the grid. It builds the full `grid`/`sumph`/`tdrop` payload once (`buildGuideRefreshPayload`) and embeds it in the broadcast — see "Guide-change fragment push" above. `handleDelete`/`handleEdit` do not broadcast themselves; they rely on `deleteShow`'s/`updateShow`'s own broadcast so a web-initiated delete or edit doesn't fire the event twice. `addShow` and `updateShow` broadcasting internally (rather than leaving it to each caller) is what makes this unconditional for every add/edit path, not just the web ones — see the `show_added`/`show_updated` notes above.
+`broadcastGuideChangeEvent` is called from `AppState` (`refreshGuides`, `addShow`, `skipRecording`, `pauseShow`, `resumeShow`, `deleteShow`, `updateShow`) and from `WebServer` handlers (`handleToggleFavorite`) after state changes that affect the grid — see "Guide-change fragment push" above for what it builds. `handleDelete`/`handleEdit` do not broadcast themselves; they rely on `deleteShow`'s/`updateShow`'s own broadcast so a web-initiated delete or edit doesn't fire the event twice. `addShow` and `updateShow` broadcasting internally (rather than leaving it to each caller) is what makes this unconditional for every add/edit path, not just the web ones — see the `show_added`/`show_updated` notes above.
 
-`broadcastDeviceBarEvent` is called from `AppState.probeForNewDevices` for `deviceOnline`/`deviceOffline` (a device recovering after being missed, or a newly-discovered device). It builds `#dev-bar`'s inner HTML once (`buildDevBarHTML`) and embeds it as `devbar`, so the tuner-box row's online/offline state updates live for every connected client instead of only on the next full page reload.
+`broadcastDeviceBarEvent` is called from `AppState.probeForNewDevices` for `deviceOnline`/`deviceOffline` (a device recovering after being missed, or a newly-discovered device) — see the SSE events table above for the `devbar` payload it builds and why.
 
 `guide_refreshed` is broadcast from `AppState.refreshGuides()` when at least one device returned guide data; connected clients apply the pushed grid/sumph/tdrop payload directly (no fetch needed).
 

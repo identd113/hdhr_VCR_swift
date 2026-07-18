@@ -11,7 +11,7 @@
 The alternative (linking VLCKit as a framework or SPM package) would require distributing a copy of VLC inside the app bundle (~100 MB) or require the user to have VLCKit installed separately. Neither is acceptable for a menu bar utility. With `dlopen`:
 
 - Binary stays small — no VLC code at link time
-- User's already-installed `/Applications/VLC.app` is used as-is
+- User's already-installed VLC.app is used as-is, wherever it's actually installed
 - The feature degrades gracefully when VLC is absent
 
 ---
@@ -20,8 +20,10 @@ The alternative (linking VLCKit as a framework or SPM package) would require dis
 
 `VLCBridge` is a `@MainActor` singleton (`VLCBridge.shared`). Its `private init()` runs once on first access.
 
+VLC's location is resolved dynamically via Launch Services rather than assumed at `/Applications/VLC.app` — `VLCBridge.locateApp()` calls `NSWorkspace.shared.urlForApplication(withBundleIdentifier: "org.videolan.vlc")`, which works for Homebrew cask installs, `~/Applications`, or any other location the user (or macOS) put it. The resolved app URL is then used to build the lib path:
+
 ```
-dlopen("/Applications/VLC.app/Contents/MacOS/lib/libvlc.dylib", RTLD_LAZY | RTLD_LOCAL)
+dlopen("\(vlcAppURL)/Contents/MacOS/lib/libvlc.dylib", RTLD_LAZY | RTLD_LOCAL)
 ```
 
 `RTLD_LOCAL` prevents VLC's symbols from polluting the global namespace. `RTLD_LAZY` defers symbol resolution until call time.
@@ -85,10 +87,11 @@ Each `tickController` tick calls `libvlc_media_player_get_state` before the rate
 | State value | libvlc constant | Action |
 |---|---|---|
 | 3 | `libvlc_Playing` | Sets `isPlaying = true` on first confirmation; enables Start button in UI |
+| 6 | `libvlc_Ended` | Sets `hasEnded = true`, `isPlaying = false`, stops timer; "Playback Ended" overlay appears in UI |
 | 7 | `libvlc_Error` | Sets `hasError = true`, stops timer; error overlay appears in UI |
 | other | — | No action; rate controller proceeds normally |
 
-`hasError` and `isPlaying` are reset to `false` in `play()`, `stop()`, and `releasePlayer()` so state is clean on every new stream attempt.
+`hasError`, `hasEnded`, and `isPlaying` are reset to `false` in `play()`, `stop()`, and `releasePlayer()` so state is clean on every new stream attempt.
 
 ### Logging
 
@@ -140,7 +143,7 @@ func play(url: String) {
     _mpStop?(mp)
     if let old = currentMedia { _mediaRelease?(old); currentMedia = nil }
     guard let media = url.withCString({ _mediaNL?(inst, $0) }) else { return }
-    for opt in ["--network-caching=2000", "--drop-late-frames", "--avcodec-hurry-up"] {
+    for opt in ["--network-caching=2000", "--drop-late-frames", "--avcodec-hurry-up", "--no-audio-time-stretch"] {
         opt.withCString { _mediaAddOpt?(media, $0) }
     }
     currentURL = url; currentMedia = media
@@ -190,11 +193,14 @@ var liveMinRate: Float                                         // fill-phase flo
 var currentURL: String?                                        // URL currently playing; nil when stopped
 @Published var bufferInfo: VLCBufferInfo                      // rate/lag/bitrate snapshot; published every 3s tick
 @Published var hasError:    Bool                              // true when libvlc_Error (state 7) detected; cleared on play/stop/release
+@Published var hasEnded:    Bool                              // true after libvlc_Ended (state 6) detected; cleared on play/stop/release
 @Published var isPlaying:   Bool                              // true after libvlc_Playing (state 3) first confirmed; cleared on play/stop/release
 @Published var audioTracks: [(id: Int32, name: String)]       // stream audio tracks; empty = single/unknown; populated ~3s after playing
 @Published var spuTracks:   [(id: Int32, name: String)]       // CC/subtitle tracks; empty = none detected; populated ~3s after playing
 var recordingShowId: String?                                  // non-nil while playing the /api/watch-recording relay for this show_id; nil = live stream (see Recording-Relay Seek State)
 var recordingStartDate: Date?                                 // paired with recordingShowId; the recording's scheduled start, for elapsed-time display
+var recordingPlaybackSeconds: Double                           // computed elapsed seconds into the relay playback; meaningless unless recordingShowId is non-nil (drives scrub position in VLCPlayerView)
+static func locateApp() -> URL?                                // resolves installed VLC.app via Launch Services bundle-id lookup; used as the VLC-installed gate in Settings/AppState
 func beginRecordingSeek(showId: String, recordingStart: Date, seekBaseSeconds: Double)  // arms recording-relay seek state; no-ops if currentURL no longer matches showId (stale deferred call)
 func clearRecordingSeek()                                     // clears recording-relay seek state; called by play(url:) for any non-relay URL
 func setDrawable(_ view: NSView)                              // must be called before first play()
@@ -235,20 +241,20 @@ struct VLCBufferInfo {
 
 ### `libvlccore.dylib` preload
 
-Before loading `libvlc.dylib`, the init loads:
+Before loading `libvlc.dylib`, the init loads (using the `vlcAppURL` resolved by `locateApp()`, not a hardcoded path):
 
 ```swift
-dlopen("/Applications/VLC.app/Contents/MacOS/lib/libvlccore.dylib", RTLD_LAZY | RTLD_GLOBAL)
+dlopen("\(vlcAppURL)/Contents/MacOS/lib/libvlccore.dylib", RTLD_LAZY | RTLD_GLOBAL)
 ```
 
 `RTLD_GLOBAL` exposes `libvlccore`'s symbols to the dynamic linker's global namespace. This is required because `libvlc.dylib` calls into `libvlccore` by symbol name at load time; if the core isn't already globally visible, `libvlc` fails to find its own symbols and the dlopen returns nil.
 
 ### `VLC_PLUGIN_PATH`
 
-Set before `libvlc_new` runs:
+Set before `libvlc_new` runs, again derived from the resolved `vlcAppURL`:
 
 ```swift
-setenv("VLC_PLUGIN_PATH", "/Applications/VLC.app/Contents/MacOS/plugins", 1)
+setenv("VLC_PLUGIN_PATH", "\(vlcAppURL)/Contents/MacOS/plugins", 1)
 ```
 
 VLC discovers its codec and mux plugins via this path. Without it, `libvlc_new` can't find any decoders and the player creates successfully but nothing plays.

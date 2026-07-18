@@ -109,8 +109,6 @@ private struct InfoButton: View {
 
 `SettingsView` is a `NavigationSplitView` settings window (sidebar + detail, like Finder column view). All app configuration lives here. Changes are held in a `draft: AppConfig` until the user explicitly presses **Save** (⌘S) — nothing writes to disk mid-edit.
 
-Window size: **560×520** (fixed).
-
 ---
 
 ## Draft / Save Pattern
@@ -213,7 +211,7 @@ Recording Complete embeds additionally include **Format** (file extension, e.g. 
 ### Advanced
 
 - **Idle check interval** — `Stepper` (5–60 sec, step 5). Merged into the Network section. How often the idle loop fires. Minimum enforced at 5s (`max(5, config.Idle_timer_interval)`). Changing this calls `state.startTimer()` immediately via `applyAndSave()`.
-- **Discovery & recording interface** — `Picker`: "Auto" (empty string) plus all IPv4-bearing interfaces, each shown as `name  ip` (e.g. `en0  192.168.1.5`, `utun0  10.8.0.2`). Populated by `availableNetworkInterfaces()` via `getifaddrs`; uses `IFF_POINTOPOINT` to detect all VPN/tunnel types (utun*, tun*, cscotun*, gpd*, zt*, ppp*, ipsec*, etc.) regardless of vendor naming. Stored in `draft.Network_interface`. On Settings open, if the saved value names an interface that is no longer available (VPN disconnected), `draft.Network_interface` is silently reset to `""` so a Save can't persist a broken value. **On Save**, if the interface changed, `applyAndSave()` invalidates the guide cache and triggers `rediscoverDevices()` + `refreshGuide()` in a background Task — the new NIC is active immediately. When non-empty:
+- **Discovery & recording interface** — `Picker`: "Auto" (empty string) plus all IPv4-bearing interfaces, each shown as `name  ip` (e.g. `en0  192.168.1.5`, `utun0  10.8.0.2`). Populated by `availableNetworkInterfaces()` via `getifaddrs`; uses `IFF_POINTOPOINT` to detect all VPN/tunnel types (utun*, tun*, cscotun*, gpd*, zt*, ppp*, ipsec*, etc.) regardless of vendor naming. Stored in `draft.Network_interface`. On Settings open, if the saved value names an interface that is no longer available (VPN disconnected), `draft.Network_interface` is silently reset to `""` so a Save can't persist a broken value. On Save, a changed interface triggers the guide-cache invalidate + rediscover/refresh side effect described under Draft/Save Pattern above, so the new NIC is active immediately. When non-empty:
   - UDP discovery (`HDHRManager.udpDiscoverSync`) binds via `IP_BOUND_IF`+`if_nametoindex`; **automatically skipped for tunnel/point-to-point interfaces** (`isPointToPointInterface()` check) since tunnels don't support broadcast — known-hosts (saved device IPs) handles remote device lookup
   - curl recordings get `--interface <name>` appended to args
   - URLSession HTTP requests rely on OS routing — correct for VPN since the VPN routes the remote subnet through the tunnel automatically

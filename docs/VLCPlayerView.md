@@ -15,9 +15,9 @@
 
 - **Channel picker** (left, max 220pt wide): standard `Picker` popup. Three row groups, in order: (1) a bare **"Live"** fallback row, tagged `Optional<LineupEntry>.none` — selected only if `selectedChannel` is nil and nothing else below matched, so the picker never renders blank; hidden entirely when nothing on this device is recording (`recordingChannelEntries.isEmpty`), since there's no "Live" to fall back to then; (2) one **"Live 5.1  Show Title"** row per show currently recording on this device (`recordingChannelEntries` — see below); (3) the device's real channels, `"5.1  NBC"` channel number + name. Hidden label. `onChange(of: selectedChannel)` routes: a `recordingChannelEntries` tag → `AppState.watchRecordingInApp(_:)` (switch to that recording's relay stream, no new tuner); anything else → `playChannel()` (live device channel, new tuner).
 - **Spacer**
-- **Buffer monitor** (visible only when buffering is enabled, i.e. `minRate < 1.0`): `waveform` SF Symbol (`.accessibilityHidden(true)`) + 50pt fill-bar capsule. Bar fill = `estimatedLagSec / 8s`; blue while filling, green when ≥ 87.5% full (≥ 7s). Hover → popover showing lag, rate, bitrate (kB/s from `f_demux_bitrate`), and cumulative corruption count. Driven by `@Published VLCBridge.bufferInfo` (updated every 3s by the rate controller tick). Published unconditionally so the bar appears even when `_mpGetStats` is unavailable (VLC 4+). Accessibility: collapsed to a single element — `.accessibilityLabel("Live buffer")`, `.accessibilityValue("N of 8 seconds")` using whole seconds to avoid flooding VoiceOver with fine-grained changes on each 3-second tick. Never shown for a recording-relay session — `play(url:)` forces `minRate = 1.0` there (see `docs/VLCBridge.md`), since a local loopback file read has no network jitter to buffer against; only `catchUpButton` (standalone, no pill) is shown.
-- **Native resolution button** (`aspectratio`, `.plain` style): calls `VLCPlayerWindowManager.shared.sizeToNativeVideo()` — reads the stream's pixel dimensions via `libvlc_video_get_size`, divides by the screen's backing scale factor to get logical points, adds 44pt for the toolbar, and resizes the window with `setContentSize` + `center()`. No-op if no video frame has been decoded yet. Tooltip: `"Native resolution — resize window to 1:1 pixels"`.
-- **Speed up to live button** (`forward.end.circle`, `.plain` style): calls `VLCBridge.shared.catchUpToLive()` — stops the stream, discards the accumulated buffer, and reconnects at the live edge. The rate controller resets and the fill phase starts over. The poster overlay does **not** re-appear after catch-up (it only shows on a fresh channel switch, not on a same-channel restart). Tooltip: `"Speed up to live — discard buffer and jump to live edge"`.
+- **Buffer monitor + catch-up pill** (visible only when buffering is enabled, i.e. `minRate < 1.0`): `waveform` SF Symbol (`.accessibilityHidden(true)`) + 50pt fill-bar capsule, grouped with the catch-up button into one pill (`.secondary.opacity(0.08)` background, hairline `Divider` between them) — both relate to live-stream temporal state. Bar fill = `estimatedLagSec / 8s`; blue while filling, green when ≥ 87.5% full (≥ 7s). Hover → popover showing lag, rate, bitrate (kB/s from `f_demux_bitrate`), and cumulative corruption count. Driven by `@Published VLCBridge.bufferInfo` (updated every 3s by the rate controller tick). Published unconditionally so the bar appears even when `_mpGetStats` is unavailable (VLC 4+). Accessibility: collapsed to a single element — `.accessibilityLabel("Live buffer")`, `.accessibilityValue("N of 8 seconds")` using whole seconds to avoid flooding VoiceOver with fine-grained changes on each 3-second tick. Never shown for a recording-relay session — `play(url:)` forces `minRate = 1.0` there (see `docs/VLCBridge.md`), since a local loopback file read has no network jitter to buffer against; only `catchUpButton` (standalone, no pill) is shown then.
+- **Native resolution button** (`aspectratio`, `.plain` style): calls `VLCPlayerWindowManager.shared.sizeToNativeVideo()` — reads the stream's pixel dimensions via `libvlc_video_get_size`, divides by the screen's backing scale factor to get logical points, adds 44pt for the toolbar, and resizes the window with `setContentSize` + `center()`. `.disabled(!canResizeToNative)`, where `canResizeToNative` requires **both** a decoded video frame (`bridge.videoPixelSize != nil`) **and** that the native size fits the current screen (`nativeVideoFitsCurrentScreen()`) — not just "no video decoded yet". No `.help()` tooltip; instead hover opens a `.popover` (`nativeResPopover`) showing resolution (px), display size (pt @ scale), inferred video/audio codec, and — when the stream is too large for the current display — an orange "Too large for current display" warning row. The icon itself glows accent-color with a soft shadow when native is achievable but the window isn't already sized to it (`notAtNative`); otherwise it's `.secondary` (achievable) or `.tertiary` (disabled).
+- **Speed up to live / catch-up button** (`forward.end.circle`, `.plain` style, grouped into the buffer-monitor pill above when buffering is enabled, standalone otherwise): for a live channel, calls `VLCBridge.shared.catchUpToLive()` — stops the stream, discards the accumulated buffer, and reconnects at the live edge; the rate controller resets and the fill phase starts over. The poster overlay does **not** re-appear after catch-up (it only shows on a fresh channel switch, not on a same-channel restart). For a recording-relay stream (`bridge.recordingShowId != nil`), calls `AppState.seekRecordingToLiveEdge(showId:)` instead — plain `catchUpToLive()` would just replay the current URL verbatim at the same stale `&start=` offset, so a fresh near-live-edge offset is computed (the same `elapsed - recordingLiveEdgeBackoffSeconds` math `watchRecordingInApp` uses on first open) and reconnected. Tooltip changes accordingly: `"Speed up to live — discard buffer and jump to live edge"` vs. `"Jump to the live edge of the recording"`.
 - **Live clock**: `TimelineView(.periodic(from: .now, by: 1.0))` rendering current wall time in monospacedDigit secondary-color text, min 70pt width. Updates every second.
 - **Volume section**:
   - `speaker.wave.2` SF Symbol in secondary color (`.accessibilityHidden(true)` — decorative)
@@ -34,7 +34,7 @@
 ### Video surface
 `VLCVideoSurface: NSViewRepresentable` — a plain `NSView` with `wantsLayer = true` and black `CALayer` background. VLC renders directly into this layer via `VLCBridge.shared.setDrawable(_:)`.
 
-The video surface is wrapped in a `ZStack` with a **poster overlay** and an **error overlay** sitting on top. The poster is visible when `posterHidden == false && !bridge.hasError` and fades out with `.easeOut(duration: 0.35)` when the user clicks **Start**. The poster reappears (by resetting `posterHidden = false`) whenever `selectedChannel` changes. The error overlay (see below) appears on top of both the video and poster when `bridge.hasError == true`, suppressing the poster entirely until the user retries.
+The video surface is wrapped in a `ZStack` with a **poster overlay**, an **error overlay**, and an **ended overlay** sitting on top. The poster is visible when `posterHidden == false && !bridge.hasError && !bridge.hasEnded` and fades out with `.easeOut(duration: 0.35)` when the user clicks **Start**. The poster reappears (by resetting `posterHidden = false`) whenever `selectedChannel` changes. The error overlay (see below) appears on top of both the video and poster when `bridge.hasError == true`, suppressing the poster entirely until the user retries. The ended overlay appears when `bridge.hasEnded == true` (see "Ended Overlay" below), also suppressing the poster.
 
 ## Intent
 
@@ -145,7 +145,7 @@ Pre-selection via `syncChannel` only updates `selectedChannel` — it does **not
 
 Lets the channel picker switch directly between simultaneous recordings on this device (via the relay — `docs/WebServer.md`'s `/api/watch-recording`), the same way it switches between live channels — no separate menu needed.
 
-`LineupEntry`'s `Hashable`/`Equatable` (`AddShowView.swift`) keys solely on `GuideNumber`, so a synthetic row can't reuse the show's real channel number (it would collide with — compare equal to — that channel's real lineup row). Instead:
+`LineupEntry`'s `Equatable` (`AddShowView.swift`) compares `GuideNumber` **and** `Favorite`; `Hashable` hashes `GuideNumber` alone. Either way, a synthetic row can't reuse the show's real channel number (it would collide with — compare equal to, or at least hash-collide with — that channel's real lineup row). Instead:
 
 - `recordingChannelEntries: [LineupEntry]` — one entry per `state.recordingShows` on this device (`show.hdhr_record == device.DeviceID`), sorted by channel. `GuideNumber` is `"live:{show_id}"` (never collides with a real channel number); `GuideName` holds the full display label, `"Live 5.1  The Closer"` — rendered directly (`Text(entry.GuideName)`) rather than through the `"GuideNumber  GuideName"` template used for real channels, which would show the synthetic tag.
 - `showId(fromLiveGuideNumber:)` — strips the `"live:"` prefix; returns `nil` for a real channel's `GuideNumber` or the bare-fallback row.
@@ -157,15 +157,15 @@ Lets the channel picker switch directly between simultaneous recordings on this 
 ### Toolbar Layout
 
 ```
-[Channel picker ─────────] Spacer [buffer] [1:1] [⏭] [🕐] [🔊] [─── slider ───] | [🎧 audio track] | [CC picker] | [♩ audio device] | [📺 screen menu]
+[Channel picker ─────────] Spacer [buffer|⏭ pill] [1:1] [🕐] [🔊] [─── slider ───] | [🎧 audio track] | [CC picker] | [♩ audio device] | [📺 screen menu]
 ```
 
 `[🕐]` is the live wall-clock `TimelineView` — always shown here, unconditionally, for every stream including a recording-relay session. The recording scrub bar does **not** live in the toolbar (see "Recording scrub overlay" below); it's a hover overlay on the video instead — the toolbar had no room to spare for it alongside everything else.
 
 - **Channel picker**: `.labelsHidden()`, max width 220 pt, tags use `Optional(ch)` to match the `LineupEntry?` binding. See "Live recording entries" below for the "Live" fallback row and per-recording rows shown above the real channel list.
-- **Buffer monitor**: visible only when `bufferInfo.enabled` (i.e. `minRate < 1.0`) — never true for a recording-relay session (see below), so only `catchUpButton` shows there, standalone with no pill
-- **Native resolution button** (`aspectratio`): calls `sizeToNativeVideo()`
-- **Catch Up button** (`forward.end.circle`): for a live channel, calls `VLCBridge.shared.catchUpToLive()` — discards the accumulated buffer and reconnects at the live edge. Poster overlay does NOT re-appear after catch-up (it only appears on a fresh channel switch). For a recording-relay stream (`bridge.recordingShowId != nil`), calls `AppState.seekRecordingToLiveEdge(showId:)` instead — `catchUpToLive()` alone would just replay the current URL verbatim, reconnecting at the same stale `&start=` byte offset rather than actually jumping toward "now"; `seekRecordingToLiveEdge` computes a fresh near-live-edge offset (the same `elapsed - recordingLiveEdgeBackoffSeconds` math `watchRecordingInApp` uses on first open) and reconnects there. Tooltip changes accordingly ("Jump to the live edge of the recording" vs. the live-stream wording).
+- **Buffer monitor + catch-up pill**: visible only when `bufferInfo.enabled` (i.e. `minRate < 1.0`) — never true for a recording-relay session (see below), so only `catchUpButton` shows there, standalone with no pill. When shown, the buffer monitor and catch-up button share one pill background with a hairline divider, positioned before the native-resolution button.
+- **Native resolution button** (`aspectratio`): calls `sizeToNativeVideo()`, disabled unless a frame has decoded and the native size fits the current screen; hover shows a popover with resolution/codec detail (see "Visual Appearance" above for the full breakdown)
+- **Catch Up button** (`forward.end.circle`): live-channel vs. recording-relay behavior and tooltip differ — see "Visual Appearance" above for the full breakdown.
 - **Clock**: live wall-clock `TimelineView`, monospaced — unconditional, same for every stream
 - **Volume**: speaker icon + `Slider(value:in:0...100)`. `onChange` maps to `VLCBridge.shared.setVolume(Int(v))`.
 - **Audio track picker** (when `bridge.audioTracks.count > 1`): `headphones` SF Symbol + `Picker` (max 150 pt). Shows all audio tracks returned by `libvlc_audio_get_track_description` with `id ≥ 0`. Appears ~3 s after playback starts (first `tickController` tick after `isPlaying`). Defaults to the first track (already active in VLC). `onChange` calls `VLCBridge.shared.setAudioTrack(id:)`. Reset to unloaded (id = −1) on every channel switch.
@@ -254,6 +254,21 @@ The overlay appears within ~3 seconds of a stream failure (one rate-controller t
 
 Clicking **Retry** resets `posterHidden = false` (returns to poster state so the buffer can rebuild) and calls `catchUpToLive()`, which calls `play(url: currentURL)` — resetting `hasError = false` and starting the fill phase again.
 
+### Ended Overlay (`endedOverlay`)
+
+When `VLCBridge.shared.hasEnded` is `true` (state 6 = `libvlc_Ended`, e.g. a recording-relay file reaching EOF), the `endedOverlay` appears on top of both the video surface and the poster overlay, suppressing the poster.
+
+```
+ZStack (black 85% opacity, fills video area)
+  VStack (spacing 16)
+    stop.circle SF Symbol (44pt, white 80% opacity)
+    "Playback Ended" (.title2.bold, white)
+    Play Again button (shown only if bridge.currentURL is non-nil)
+      — Label("Play Again", systemImage: "arrow.clockwise"), .callout.bold
+      — .ultraThinMaterial background, RoundedRectangle(8pt)
+      — sets posterHidden = false, calls bridge.play(url: currentURL)
+```
+
 ### Layout (`posterOverlay`)
 
 ```
@@ -296,7 +311,7 @@ final class VLCPlayerWindowManager {
         win.makeKeyAndOrderFront(nil)
     }
 
-    func open(url: String, title: String, device: HDHRDevice, appState: AppState) {
+    func open(url: String, title: String, device: HDHRDevice, appState: AppState, channelNumber: String? = nil) {
         self.appState = appState
         VLCBridge.shared.setVolume(0)            // mute before buffering starts; Start click unmutes
         VLCBridge.shared.ensurePlayer()          // recreate mediaPlayer if releasePlayer() was called on last close
@@ -314,9 +329,9 @@ final class VLCPlayerWindowManager {
 
 **`focus()`**: brings the player window to the front without switching the stream. Called from the "Now Watching" button in `MenuContent` (via `DispatchQueue.main.async` to defer past NSMenu teardown). No-op when `window` is nil.
 
-**`closeIfPlayingURL(_ url: String)`**: closes the player window if `VLCBridge.shared.currentURL?.urlBase == url` (raw base URL, no query params — reads directly from VLCBridge, no `appState` reference needed). Called from `AppState.deleteShow` and `AppState.skipRecording` immediately after `recordingManager.stop()` — if the user is watching the same channel they just deleted/skipped, the VLC window tears down cleanly and the tuner is freed. No-op when the URL doesn't match or no window is open. Triggers `windowWillClose → playerWindowDidClose → VLCBridge.releasePlayer()`.
+**`closeIfPlaying(showId: String, url: String)`**: closes the player window if it's playing the given show — either its raw tuner stream URL (`VLCBridge.shared.currentURL?.urlBase == url`) or, for Watch Now! relay playback, `VLCBridge.shared.recordingShowId == showId` (the relay plays a local `/api/watch-recording` URL that never equals `show_url`, so the URL check alone would miss it). Called from `AppState.deleteShow` and `AppState.skipRecording` immediately after `recordingManager.stop()` — if the user is watching the same show they just deleted/skipped (live or via relay), the VLC window tears down cleanly and the tuner is freed. No-op when neither matches or no window is open. Triggers `windowWillClose → playerWindowDidClose → VLCBridge.releasePlayer()`. (Renamed from `closeIfPlayingURL(_:)`; the relay-match branch is new.)
 
-**`playerWindowDidClose()`**: called by `WindowCloseObserver.windowWillClose`. Calls `VLCBridge.shared.stopDeviceChangeMonitoring()` first — `windowWillClose` fires before `onDisappear`, so without this the CoreAudio device-change listener would fire callbacks into a partially torn-down view. Then calls `VLCBridge.shared.releasePlayer()` (full teardown — releases `mediaPlayer` so the tuner is freed immediately; also nils `currentURL`, which triggers the Combine chain in `AppState` to clear `vlcCurrentURL` automatically), clears `currentDeviceID`, sets `window = nil`, and calls `appState?.refreshTunerOccupancy()` so the menu header reflects the freed tuner within ~1.5 s. No explicit `vlcCurrentURL = ""` needed — the Combine sink handles it. The `appState` weak reference is set in `open()` and persists for the window lifetime.
+**`playerWindowDidClose()`**: called by `WindowCloseObserver.windowWillClose`. Calls `VLCBridge.shared.stopDeviceChangeMonitoring()` first — `windowWillClose` fires before `onDisappear`, so without this the CoreAudio device-change listener would fire callbacks into a partially torn-down view. Then calls `VLCBridge.shared.releasePlayer()` (full teardown — releases `mediaPlayer` so the tuner is freed immediately; also nils `currentURL`, which triggers the Combine chain in `AppState` to clear `vlcCurrentURL` automatically), clears `currentDeviceID`, sets `window = nil`, releases the VLC sleep assertion immediately via `appState?.recordingManager.releaseAssertion(id: "vlc")` (rather than waiting for `refreshTunerOccupancy()`'s own `releaseAllAssertions()`, which is blocked while a recording is simultaneously active), calls `appState?.releaseRecordingRelayIfNeeded()`, and calls `appState?.refreshTunerOccupancy()` so the menu header reflects the freed tuner within ~1.5 s. No explicit `vlcCurrentURL = ""` needed — the Combine sink handles it. The `appState` weak reference is set in `open()` and persists for the window lifetime.
 
 ### Singleton NSWindow with isReleasedWhenClosed = false
 

@@ -43,7 +43,10 @@ func entries(deviceId: String, channelNum: String, after: Date) -> [GuideEntry]
 func nextEpisode(seriesID: String, channelNum: String?, deviceId: String?, after: Date, preferFavorite: ((String, String) -> Bool)?) -> SeriesMatch?
 func currentEpisode(seriesID: String, channelNum: String?, deviceId: String?, at: Date, preferFavorite: ((String, String) -> Bool)?) -> SeriesMatch?
 func nextEpisodes(seriesID: String, after: Date, limit: Int) -> [SeriesMatch]
+func currentEntryByTitle(_ title: String, channelNum: String, deviceId: String, at: Date = Date()) -> SeriesMatch?  // SeriesID-missing fallback, matches by title instead
+func nextEntryByTitle(_ title: String, channelNum: String, deviceId: String, after: Date = Date()) -> SeriesMatch?  // same fallback, for the next airing
 func isFresh(deviceId: String, within interval: TimeInterval) -> Bool  // default 1 hour
+func isLoading(deviceId: String) -> Bool
 func invalidate(deviceId: String)
 func invalidateAll()
 ```
@@ -81,4 +84,6 @@ These fields are excluded from JSON (`CodingKeys` omits them) and are purely in-
 
 ## Freshness
 
-`isFresh(deviceId:within:)` compares `loadTimestamps[deviceId]` against `Date()`. The idle loop calls this before scheduling a series episode; if stale, it reloads before searching for the next airing. `AddShowView` and `FloatingGuideView` call `invalidate` on Refresh button tap to force a reload regardless of freshness.
+`isFresh(deviceId:within:)` compares `loadTimestamps[deviceId]` against `Date()`. The idle loop calls this before scheduling a series episode; if stale, it reloads before searching for the next airing.
+
+`invalidate(deviceId:)` (per-device) exists but has no call sites — nothing currently forces a single device's cache stale. The only invalidation in use is `invalidateAll()`, called from `AppState` on manual guide refresh and from `SettingsView` when guide-affecting settings change (e.g. `GuideHours`, format). Neither `AddShowView` nor `FloatingGuideView` calls into `GuideStore` directly — `AddShowView`'s guide step and `FloatingGuideView` are both `WKWebView` wrappers embedding the LAN web guide (`localhost:{port}`), which reads guide state server-side via `WebServer.swift`, not through `GuideStore` calls from these views.

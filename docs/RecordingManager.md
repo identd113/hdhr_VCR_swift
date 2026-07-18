@@ -12,6 +12,7 @@ func reattach(showId:, pid:, title:, endDate:)    // register an existing PID wi
 func stop(showId:)
 func readHDHRResource(showId:) -> String?          // reads X-HDHomeRun-Resource without deleting the file
 func readAndClearHDHRError(showId:) -> String?     // reads X-HDHomeRun-Error, deletes the file
+func readAndClearExitStatus(showId:) -> String?    // decodes curl's own exit code into a reason; see below
 func preventSleep(id:, reason:, duration:)         // create or replace a tracked sleep assertion
 func releaseAssertion(id:)                         // release one assertion by key
 func releaseAllAssertions()                        // release all; called when status check confirms idle
@@ -35,7 +36,7 @@ Each recording produces **one ps line**: a direct `curl` process in its own POSI
 
 ## Stop
 
-`stop()` sends `SIGKILL` to the curl PID, immediately calls `waitpid(pid, nil, 0)` to reap the zombie, removes the PID from `pids`, then releases its sleep assertion. `waitpid` is called here rather than relying on `isRunning()` because `stop()` clears the `pids` entry first — without the inline reap, the zombie would persist for the lifetime of the app since `isRunning()` guards on `pids[showId] != nil`.
+`stop()` sends `SIGKILL` to the curl PID, removes the PID from `pids`, releases its sleep assertion, then reaps the zombie via `waitpid(pid, nil, 0)` on a background utility queue — **not** inline. `SIGKILL` is normally reaped in microseconds, but it can't be delivered while curl sits in an uninterruptible (D-state) syscall — e.g. blocked writing to a stalled network mount, a perfectly valid recording target. A blocking `waitpid` here would freeze the menu-bar UI (`RecordingManager` is `@MainActor`, and `stopAll()` loops this over every recording) until the mount recovered. Backgrounding it is safe because `pids[showId]` is already cleared before the async reap runs, and `isRunning()` guards on `pids` — so no other `waitpid` call can ever race this pid.
 
 `SIGKILL` is used (not `SIGTERM`) because curl processes spawned with `POSIX_SPAWN_SETSID` may have `SIGTERM` masked from a previous bad app state, and `SIGKILL` cannot be ignored or blocked.
 
@@ -61,7 +62,7 @@ The OS also auto-expires each assertion via `kIOPMAssertionTimeoutActionRelease`
 ## Natural Stop + File Verification
 
 After `show_end` passes, the idle loop calls `stopRecording(index:natural:true)`. Either branch below ends by calling `scheduleNextAir` — a failed recording is rescheduled too, not left stranded:
-- If the output file is missing or zero bytes → increments `show_fail_count` with reason `"Output file missing or empty"`, sends a notification, then calls `scheduleNextAir` and returns immediately (no completion embed/file-size bookkeeping).
+- If the output file is missing or zero bytes → increments `show_fail_count`, sends a notification and a Discord "Recording Failed" card (via `fireDiscordCard`, reusing/capturing the existing lifecycle card rather than a fresh POST), then calls `scheduleNextAir` and returns immediately (no completion embed/file-size bookkeeping). The failure reason picks the most specific source available, in priority order: the device-reported `X-HDHomeRun-Error` (captured *before* teardown, since `RecordingManager.stop()` deletes the header file) → `show_fail_reason` from a FAIL already recorded *this* attempt (tracked via `failedThisAttempt`, so a stale reason from an unrelated earlier episode isn't reused) → the generic fallback `"Output file missing or empty — check disk space"`. When an underlying reason is found, `" — output file missing or empty"` is appended (idempotently — the suffix isn't re-added if a resumed attempt already carries it).
 - If the file exists and is non-empty → runs the post-recording script, builds the completion embed's file-size fields, then calls `scheduleNextAir`.
 
 ---
@@ -83,6 +84,10 @@ Called from `AppState.captureResourceHeaders()` 1.5 s after start. Result stored
 Error codes: 804 Tuner In Use · 805 All Tuners In Use · 806 Tune Failed · 807 No Video Data · 808 DVR Failure · 809 Playback Connection Limit · 810 DVR Full · 811 Content Protection Required.
 
 `stop()` deletes the header file via `clearHeaderFile(showId:)` — if the recording is manually stopped before the error reader fires, the file is cleaned up without being read.
+
+### curl Exit Code (fallback when there's no HDHomeRun error)
+
+`isRunning(showId:)` captures the raw `waitpid` status into `lastExitStatus: [String: Int32]` whenever it reaps a dead curl. `readAndClearExitStatus(showId:)` decodes that status (`WIFEXITED`/`WEXITSTATUS`, or "killed by signal N" if curl didn't exit normally) into a human-readable string via `curlExitLabel(_:)` — e.g. `"curl couldn't connect (7)"`, `"curl timeout (28)"`, `"curl empty reply from server (52)"`. This fills in the gap left when `readAndClearHDHRError` finds no `X-HDHomeRun-Error` header — i.e. curl itself failed (bad network, DNS, timeout) rather than the tuner device reporting an error — so a failure message still says *why* instead of falling back to a generic string. A clean exit (`code == 0`) returns `nil`, since that isn't itself a failure reason.
 
 ---
 
