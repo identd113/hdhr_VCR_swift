@@ -104,10 +104,28 @@ struct Show: Identifiable, Equatable {
         return f
     }()
 
+    /// Extensions this app has ever written for a recording. Current output is `.ts`; `.m2ts`
+    /// and `.mkv` are legacy (pre-2026-07) and stay here so existing recordings still count for
+    /// dedup (`recordedEpisodeTags`) and Organize. Never includes `.mp4` — the app never wrote it.
+    static let recordingExtensions: Set<String> = ["ts", "m2ts", "mkv"]
+
+    /// True if `filename` is one this app produced as a recording (by extension).
+    static func isRecordingFile(_ filename: String) -> Bool {
+        recordingExtensions.contains((filename as NSString).pathExtension.lowercased())
+    }
+
     func outputPath(date: Date = Date(), subfolder: String? = nil, episodeTag: String? = nil) -> String {
         let dateStr = Self.outputDateFormatter.string(from: date)
         let safe = show_title.replacingOccurrences(of: "/", with: "-")
-        let ext = (show_transcode.lowercased() == "none" || show_transcode.isEmpty) ? ".m2ts" : ".mkv"
+        // The recorder writes the device's HTTP response verbatim (curl -o, no remux). On the wire
+        // that is always an MPEG-2 transport stream — verified 188-byte TS packets (sync 0x47) for
+        // BOTH transcode=none (MPEG-2 video) and transcode profiles (H.264 video); only the video
+        // codec inside changes, never the container. So every recording is `.ts` regardless of
+        // profile — matching the `video/mp2t` MIME the disk relay already serves it under, and the
+        // `.ts` convention Plex/Emby/Jellyfin/MythTV/TVHeadend use for raw HDHR captures. (Before
+        // 2026-07 this wrote `.m2ts` for none and `.mkv` for transcoded — both container mislabels;
+        // those linger in `recordingExtensions` so old files still scan.)
+        let ext = ".ts"
         var dir = posixRecordDir
         if let sub = subfolder { dir = (dir as NSString).appendingPathComponent(sub) }
         let epPart = episodeTag.map { "_\($0)" } ?? ""

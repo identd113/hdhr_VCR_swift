@@ -130,6 +130,15 @@ A separate mechanism used by apps like MythTV and TVHeadend that bypass port 500
 
 hdhr_VCR passes the user's `Default_transcode` config value directly. VLC handles MPEG-2 natively so `none` works without forced transcode for OTA.
 
+**On-wire container (verified 2026-07-18, device 105404BE ch 4.1):** every profile returns an **MPEG-2 Transport Stream** — 188-byte packets, sync byte `0x47` at each boundary (`file(1)` → "MPEG transport stream data"). Transcoding is a **video-only re-encode inside the same TS container**; the container never changes to MP4/MKV:
+
+| Profile | Video (PMT `stream_type`) | Audio | ~2 s size (ch 4.1) |
+|---|---|---|---|
+| `none` | MPEG-2 (`0x02`) | AC-3 ×2 (`0x81`) | ~1.84 MB |
+| `heavy` | H.264/AVC (`0x1b`) | AC-3 ×1 (`0x81`) | ~0.79 MB |
+
+Because the recorder writes the HTTP body verbatim (`curl -o`, no remux), the correct extension for **both** profiles is a TS one — the app uses `.ts` (`Show.outputPath`), matching the `video/mp2t` MIME the disk relay serves and the `.ts` convention used by Plex/Emby/Jellyfin/MythTV/TVHeadend. `.mkv`/`.mp4` would require an actual remux step the app doesn't do. Regression-locked by `TranscodeStreamFormatTests` (real PAT+PMT fixtures). *(History: before 2026-07 the app wrote `.m2ts` for `none` and `.mkv` for transcoded — both container mislabels; those extensions remain recognized by the recording-file scans for backward compatibility.)*
+
 ---
 
 ## Duration Parameter

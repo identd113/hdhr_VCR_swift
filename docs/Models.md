@@ -71,6 +71,8 @@ If the `shows`/`the_shows` key *is* present in the config but the array still fa
 
 `Show.outputPath(date:)` builds the recording file path. The `DateFormatter` used for the timestamp suffix (`outputDateFormatter`) is a `private static let` — allocated once per app session, not on every recording start.
 
+**Extension is always `.ts`** regardless of transcode profile. The recorder writes the device's HTTP response verbatim (`curl -o`, no remux), and that response is always an MPEG-2 transport stream — transcoding only swaps the video codec inside the TS (MPEG-2 → H.264), not the container (see `docs/HDHRFindings.md`). `Show.recordingExtensions = {ts, m2ts, mkv}` and `Show.isRecordingFile(_:)` are the single source of truth for "is this a file we produced": `.ts` is current output, `.m2ts`/`.mkv` are legacy (pre-2026-07) and stay recognized so old recordings still count for `recordedEpisodeTags` (skip-already-recorded) and `organizeSeriesRecordings`. `.mp4` is deliberately excluded — the app never wrote it.
+
 ---
 
 ## Date Fields in Show

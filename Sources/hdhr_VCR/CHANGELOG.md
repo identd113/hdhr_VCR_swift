@@ -1,5 +1,9 @@
 # hdhrVCRplus Changelog
 
+## 2026-07-18 (recordings saved as .ts)
+
+- **Recordings now use the `.ts` extension** — for every transcode profile. Captured directly from the tuner and confirmed that HDHomeRun sends an **MPEG-2 transport stream** on the wire for *all* profiles (188-byte TS packets); transcoding only re-encodes the video *inside* the TS (MPEG-2 → H.264), it never changes the container. The recorder writes the stream verbatim (no remux), so the accurate extension is `.ts` — the same convention Plex/Emby/Jellyfin/MythTV use, and it matches the `video/mp2t` type the built-in player relay already serves. Previously recordings were named `.m2ts` (no transcode) or `.mkv` (transcoded); `.mkv` in particular described a container the device never produces. **Existing `.m2ts`/`.mkv` recordings are unaffected** — they're still recognized everywhere (Watch Now, Organize, skip-already-recorded), just no longer created. A new regression test locks the wire-format finding against real captured stream fixtures.
+
 ## 2026-07-17 (skip already-recorded episodes)
 
 - **New — skip an episode you've already recorded** — a new Settings → Post-Processing toggle, **Skip already-recorded episodes** (only available when **Series subfolders** is on), stops a series from grabbing the same episode twice on a rerun or simulcast. Before recording, the app checks whether a file with the same season/episode (e.g. `S02E04`) already exists in that show's folder; if so it quietly advances to the next airing without recording or counting a failure. Matching is by season+episode number read straight from existing filenames — no new bookkeeping, and deleting a recording lets it record again. Episodes the guide gives no season/episode number for are unaffected (recorded as before).

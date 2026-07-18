@@ -2006,7 +2006,7 @@ final class AppState: ObservableObject {
             // Match both new format (title_channel_date) and old format (title SxxExx guests_channel_date).
             guard let files = try? FileManager.default.contentsOfDirectory(atPath: baseDir) else { continue }
             for filename in files where (filename.hasPrefix("\(safeFolderTitle)_") || filename.hasPrefix("\(safeFolderTitle) "))
-                                    && (filename.hasSuffix(".m2ts") || filename.hasSuffix(".mkv")) {
+                                    && Show.isRecordingFile(filename) {
                 let src = (baseDir as NSString).appendingPathComponent(filename)
                 guard !activePaths.contains(src) else { continue }
 
@@ -2148,7 +2148,7 @@ final class AppState: ObservableObject {
         var tags = Set<String>()
         for dir in dirs {
             guard let files = try? fm.contentsOfDirectory(atPath: dir) else { continue }
-            for filename in files where filename.hasSuffix(".m2ts") || filename.hasSuffix(".mkv") {
+            for filename in files where Show.isRecordingFile(filename) {
                 guard let tagRange = filename.range(of: #"[_ ](S\d+(?:E\d+)?)"#,
                                                     options: [.regularExpression, .caseInsensitive]) else { continue }
                 let full = (dir as NSString).appendingPathComponent(filename)
