@@ -1,6 +1,6 @@
-# Distribution, Monetization & Auto-Update
+# Distribution & Monetization
 
-A guide for shipping hdhrVCRplus outside the Mac App Store — notarization, costs, what users experience, how to get paid, and how to deliver updates automatically.
+A guide for shipping hdhrVCRplus outside the Mac App Store — notarization, costs, what users experience, and how to get paid.
 
 ---
 
@@ -10,8 +10,7 @@ A guide for shipping hdhrVCRplus outside the Mac App Store — notarization, cos
 |------|------|-------|
 | Apple Developer Program | $99/year | Required for Developer ID cert + notarization. Renews annually — if you let it lapse, existing notarized copies still work but you can't ship new versions. |
 | GitHub (hosting + releases) | Free | Public repo with release assets (DMG files) up to 2 GB each. |
-| ~~Sparkle (auto-update)~~ | Free | **Removed** — no auto-updater; releases are downloaded manually. Kept as reference below. |
-| ~~GitHub Pages (appcast feed)~~ | Free | **Removed** with Sparkle. |
+| Auto-update | None | Releases are downloaded manually; no appcast, no updater framework. |
 | Payment processing | ~2.9% + $0.30/transaction | Stripe or Gumroad take a cut; no monthly fee on free tier. |
 
 **Minimum cost to ship: $99/year.**
@@ -28,24 +27,9 @@ A guide for shipping hdhrVCRplus outside the Mac App Store — notarization, cos
 5. Fill in `SIGN_IDENTITY` in `deploy_release.sh`
 
 ### Each release
-```bash
-# 1. Build, sign, notarize, staple
-./deploy_release.sh
+See "Release Checklist" below — build, sign, notarize, zip, publish as a GitHub Release.
 
-# 2. Create a DMG
-hdiutil create -volname "hdhrVCRplus" \
-  -srcfolder hdhrVCRplus.app \
-  -ov -format UDZO \
-  ~/Desktop/hdhrVCRplus-1.0.dmg
-
-# 3. Tag and push
-git tag v1.0 && git push --tags
-
-# 4. Create GitHub Release, attach the DMG
-# github.com → your repo → Releases → Draft a new release
-```
-
-The DMG is the thing you hand users. Everything else (auto-update feed, payment gate) is layered on top.
+The zip is the thing you hand users. Everything else (payment gate) is layered on top.
 
 ---
 
@@ -62,7 +46,7 @@ The DMG is the thing you hand users. Everything else (auto-update feed, payment 
 ### Ongoing use
 - App lives in the menu bar (no Dock icon)
 - Launches at login if the user enables it in Settings → General
-- If auto-update is enabled (see below), the app checks for updates in the background and prompts when one is available — user clicks **Install & Relaunch**, done
+- No background update checks — users get new versions by downloading a new zip from GitHub Releases
 
 ---
 
@@ -105,130 +89,10 @@ Libraries that handle this cleanly:
 
 ---
 
-## Auto-Update with Sparkle
+## Release Checklist
 
-> **Status: removed.** Sparkle was integrated and then removed (commit `6e9dca8`); the app currently has **no auto-updater** — updates are distributed as GitHub releases that users download and install manually. The section below is retained as reference for if/when auto-update is reintroduced.
-
-[Sparkle](https://sparkle-project.org) is the standard auto-update framework for Mac apps outside the App Store. It's what 1Password, BBEdit, and most indie Mac apps use.
-
-### How it works
-1. Your app bundles the Sparkle framework
-2. On launch (or periodically), Sparkle fetches an **appcast** — an XML file you host — and compares the latest version to the running version
-3. If an update is available, Sparkle shows a dialog: "A new version is available — install now?"
-4. User clicks Install; Sparkle downloads the new DMG/zip, verifies its signature, replaces the app, and relaunches
-
-### Integration overview
-
-**Step 1: Add Sparkle to the project**
-
-Sparkle ships as a pre-built `.xcframework`. Since this project uses Swift Package Manager:
-
-```swift
-// Package.swift
-dependencies: [
-    .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.0.0")
-],
-targets: [
-    .executableTarget(
-        name: "hdhr_VCR",
-        dependencies: [
-            .product(name: "Sparkle", package: "Sparkle")
-        ],
-        path: "Sources/hdhr_VCR"
-    )
-]
-```
-
-**Step 2: Generate an EdDSA key pair**
-
-Sparkle 2 uses EdDSA signatures to verify update packages — prevents someone from serving a malicious update through your appcast URL.
-
-```bash
-# Run once — save the private key somewhere safe (NOT in the repo)
-./Sparkle/bin/generate_keys
-```
-
-Add the public key to `Info.plist`:
-```xml
-<key>SUPublicEDKey</key>
-<string>YOUR_PUBLIC_KEY_HERE</string>
-```
-
-**Step 3: Wire Sparkle into the app**
-
-In `hdhr_VCRApp.swift`:
-```swift
-import Sparkle
-
-@main
-struct hdhr_VCRApp: App {
-    private let updaterController = SPUStandardUpdaterController(
-        startingUpdater: true,
-        updaterDelegate: nil,
-        userDriverDelegate: nil
-    )
-    // ...
-}
-```
-
-Add a "Check for Updates…" menu item in `MenuContent.swift`:
-```swift
-Button("Check for Updates…") {
-    updaterController.updater.checkForUpdates()
-}
-```
-
-Add the appcast URL to `Info.plist`:
-```xml
-<key>SUFeedURL</key>
-<string>https://YOUR_GITHUB_USERNAME.github.io/hdhr_VCR_swift/appcast.xml</string>
-```
-
-**Step 4: Host the appcast on GitHub Pages**
-
-Enable GitHub Pages on your repo (Settings → Pages → branch: `main`, folder: `/docs`).
-
-Create `docs/appcast.xml`:
-```xml
-<?xml version="1.0" encoding="utf-8"?>
-<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
-  <channel>
-    <title>hdhrVCRplus</title>
-    <item>
-      <title>Version 1.0</title>
-      <pubDate>Sat, 24 May 2026 00:00:00 +0000</pubDate>
-      <sparkle:version>260524-1926</sparkle:version>
-      <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
-      <enclosure
-        url="https://github.com/YOUR_USERNAME/hdhr_VCR_swift/releases/download/v1.0/hdhrVCRplus-1.0.dmg"
-        sparkle:edSignature="YOUR_SIGNATURE_HERE"
-        length="6919280"
-        type="application/octet-stream"
-      />
-    </item>
-  </channel>
-</rss>
-```
-
-Generate the `edSignature` for each release:
-```bash
-./Sparkle/bin/sign_update hdhrVCRplus-1.0.dmg
-# Paste the output into sparkle:edSignature above
-```
-
-**Step 5: Update the entitlements**
-
-Sparkle needs outbound network access (already covered by `network.client`) and the ability to update the app bundle. Add to `hdhrVCRplus.entitlements`:
-```xml
-<!-- Sparkle: needed to replace the app bundle during update -->
-<key>com.apple.security.files.user-selected.read-write</key>
-<true/>
-```
-
-### Release checklist (current — no auto-updater)
-
-Sparkle was removed; there is no appcast and no auto-update. A release is just a
-signed build attached to a GitHub Release that users download manually.
+There is no auto-updater and no appcast. A release is just a signed build
+attached to a GitHub Release that users download manually.
 
 1. `./deploy_release.sh <version>` — builds, Developer-ID signs, notarizes, staples, and sets `CFBundleShortVersionString`/`CFBundleVersion` (needs the Apple Developer cert + a stored notary credential; `--skip-notarize` signs only, for testing).
 2. Zip the stapled app: `ditto -c -k --keepParent hdhrVCRplus.app hdhrVCRplus-v<version>.zip`.
@@ -249,7 +113,7 @@ For a first release:
 |----------|---------------|
 | Payment | Gumroad, $10–$15 one-time |
 | Distribution | GitHub Releases (`.zip` of the notarized `.app`) |
-| Auto-update | None — Sparkle was removed; users download new releases manually |
+| Auto-update | None — users download new releases manually |
 | License enforcement | Optional — start without it, add later if needed |
 
-Once you have the Developer ID cert, cutting a release is `deploy_release.sh` → zip → `gh release create` (minutes). Re-adding auto-update later would mean reintroducing Sparkle (see the reference section above).
+Once you have the Developer ID cert, cutting a release is `deploy_release.sh` → zip → `gh release create` (minutes).
