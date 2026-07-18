@@ -109,6 +109,7 @@ Systems: [AppState](docs/AppState.md) · [GuideStore](docs/GuideStore.md) · [Re
 | `tools/setup_signing.sh` | One-time: Developer ID cert + notarization creds (run before first `deploy_release.sh`) |
 | `tools/generate_sparkle_keys.sh` | One-time: EdDSA Sparkle keys → `Info.plist` / `~/.sparkle_private_key` |
 | `tools/mock_hdhr.py` | Fake HDHomeRun device for discovery/guide/fault-injection testing |
+| `tools/mock_duplicate.py` | Plant/remove a fake "already recorded" file (`--list`/`--plant`/`--clean`) to demo the web guide's green skip flag against a real upcoming airing; mock files carry the `19700101_0000` date signature. Needs the app running + Series-subfolders & Skip-already-recorded on. |
 
 ## Agents (`.claude/agents/`)
 
