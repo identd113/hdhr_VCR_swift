@@ -225,14 +225,19 @@ Sparkle needs outbound network access (already covered by `network.client`) and 
 <true/>
 ```
 
-### Release checklist (with Sparkle)
-1. `./deploy_release.sh` — builds, signs, notarizes, staples
-2. Create DMG: `hdiutil create ...`
-3. Sign the DMG for Sparkle: `./Sparkle/bin/sign_update hdhrVCRplus-X.X.dmg`
-4. Upload DMG to GitHub Releases
-5. Update `docs/appcast.xml` with new version, URL, signature, and file size
-6. `git push` — GitHub Pages serves the updated appcast within seconds
-7. Running copies of the app will pick up the update on next check
+### Release checklist (current — no auto-updater)
+
+Sparkle was removed; there is no appcast and no auto-update. A release is just a
+signed build attached to a GitHub Release that users download manually.
+
+1. `./deploy_release.sh <version>` — builds, Developer-ID signs, notarizes, staples, and sets `CFBundleShortVersionString`/`CFBundleVersion` (needs the Apple Developer cert + a stored notary credential; `--skip-notarize` signs only, for testing).
+2. Zip the stapled app: `ditto -c -k --keepParent hdhrVCRplus.app hdhrVCRplus-v<version>.zip`.
+3. Publish the GitHub Release with notes + the zip:
+   `gh release create v<version> --title "…" --notes-file notes.md hdhrVCRplus-v<version>.zip`
+   (or, if a draft already exists: `gh release upload v<version> …zip --clobber` then `gh release edit v<version> --draft=false --latest`).
+4. Users download the zip and install manually; existing installs don't self-update.
+
+**Un-notarized fallback:** if you can't notarize yet, ship an **ad-hoc** build (rebuild via `deploy.sh` after bumping the plist version, then zip as above). Gatekeeper will block it, so put bypass instructions in the release body — on **macOS 15 / 26** that's `xattr -dr com.apple.quarantine …` or **System Settings → Privacy & Security → Open Anyway** (right-click → Open no longer works). Swap in the notarized zip later with `gh release upload v<version> …zip --clobber`.
 
 ---
 
@@ -243,8 +248,8 @@ For a first release:
 | Decision | Recommendation |
 |----------|---------------|
 | Payment | Gumroad, $10–$15 one-time |
-| Distribution | GitHub Releases (DMG) |
-| Auto-update | Sparkle 2 + GitHub Pages appcast |
+| Distribution | GitHub Releases (`.zip` of the notarized `.app`) |
+| Auto-update | None — Sparkle was removed; users download new releases manually |
 | License enforcement | Optional — start without it, add later if needed |
 
-Total setup time once you have the Developer ID cert: **2–4 hours** for Sparkle integration + appcast + Gumroad product page.
+Once you have the Developer ID cert, cutting a release is `deploy_release.sh` → zip → `gh release create` (minutes). Re-adding auto-update later would mean reintroducing Sparkle (see the reference section above).
