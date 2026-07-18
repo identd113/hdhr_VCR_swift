@@ -1,6 +1,5 @@
 import SwiftUI
 import WebKit
-import AppKit
 
 // Multi-step wizard: (optional Device) → Web Guide → Details → Save
 struct AddShowView: View {
@@ -12,13 +11,11 @@ struct AddShowView: View {
     // No device-selection step — the tuner is chosen inside the web guide.
     enum Step { case guide, details }
 
-    // Guide-step ideal (open) width: as wide as comfortably fits the current display — leave a
-    // margin so it never opens off-screen, cap it so it stays reasonable on large/ultrawide
-    // displays, and never drop below the resizable 1100 minimum. Falls back to 1450 if no screen.
-    private var guideIdealWidth: CGFloat {
-        guard let visible = NSScreen.main?.visibleFrame.width else { return 1450 }
-        return max(1100, min(1800, visible - 100))
-    }
+    // Guide-step size is remembered across reopens and app restarts (persisted in UserDefaults via
+    // @AppStorage). These feed the guide-step ideal width/height on open; `WindowSizeSaver` (below)
+    // writes the user's resized size back. Floored at the 1100×720 resizable minimum on read.
+    @AppStorage("addShowGuideWidth")  private var savedGuideWidth:  Double = 1450
+    @AppStorage("addShowGuideHeight") private var savedGuideHeight: Double = 820
 
     @State private var step: Step = .guide
     @State private var show = Show.blank()   // transcode overridden in onAppear
@@ -81,13 +78,25 @@ struct AddShowView: View {
         }
         .frame(
             minWidth:    step == .guide ? 1100 : 560,
-            idealWidth:  step == .guide ? guideIdealWidth : 560,
+            idealWidth:  step == .guide ? max(1100, CGFloat(savedGuideWidth))  : 560,
             maxWidth:    step == .guide ? .infinity : 560,
             minHeight:   step == .guide ? 720  : 540,
-            idealHeight: step == .guide ? 820  : 540,
+            idealHeight: step == .guide ? max(720, CGFloat(savedGuideHeight)) : 540,
             maxHeight:   step == .guide ? .infinity : 540
         )
         .animation(.easeInOut(duration: 0.2), value: step)
+        // Remember the guide-step size across reopens/restarts — pure SwiftUI, no AppKit. This
+        // background GeometryReader reads the window-content size (== window size under .contentSize)
+        // and writes it to @AppStorage on resize. Sizes narrower than 1000 (the details step) are
+        // ignored, so they never overwrite the saved guide size.
+        .background(GeometryReader { geo in
+            Color.clear.onChange(of: geo.size) { _, newSize in
+                if newSize.width >= 1000 {
+                    savedGuideWidth  = Double(newSize.width)
+                    savedGuideHeight = Double(newSize.height)
+                }
+            }
+        })
         .onExitCommand { dismiss() }
         .onAppear {
             show.show_transcode = state.config.Default_transcode
