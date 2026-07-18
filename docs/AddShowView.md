@@ -3,7 +3,7 @@
 ## Visual Appearance
 
 ### Overall window
-Fixed **560×540** for the details step; expands to resizable **min 1100×720 (ideal 1450×820)** for the guide step. The window animates between sizes with a 0.2s ease-in-out. Escape closes the window from any step.
+Fixed **560×540** for the details step; expands to resizable **min 1100×720** for the guide step, opening at a **display-aware ideal width** (`guideIdealWidth` = `max(1100, min(1800, mainScreen.visibleFrame.width − 100))`, height 820) so it fills a large screen yet never opens off-screen on a small one. The window animates between sizes with a 0.2s ease-in-out. Escape closes the window from any step.
 
 **Top of window (all steps)**: 2 small 8pt circles in a row, left-padded under the top edge — progress indicator. Filled accent-color circle = current step; hollow gray circle = other step. `guide` and `details` steps only — `ForEach([Step.guide, .details])` always produces exactly 2 dots. Below the circles: a `Divider`.
 
@@ -29,7 +29,7 @@ Fixed 560×540 window. White/system background. `ScrollView` containing a `VStac
 
 `AddShowView` is a 2-step wizard window for adding a new recording schedule. Steps: web guide browsing → recording details. (The tuner is chosen inside the web guide, so there is no separate device-selection step.)
 
-Window size: **560×540** for the details step; **resizable** (min 1100×720, ideal 1450×820) for the guide step. The guide step window can be expanded — the web guide fills the available width.
+Window size: **560×540** for the details step; **resizable** (min 1100×720, display-aware ideal width `max(1100, min(1800, screenWidth − 100))` × 820) for the guide step. The guide step opens as wide as fits the current display and can be expanded further — the web guide fills the available width.
 
 ---
 

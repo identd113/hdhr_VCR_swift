@@ -1,5 +1,6 @@
 import SwiftUI
 import WebKit
+import AppKit
 
 // Multi-step wizard: (optional Device) → Web Guide → Details → Save
 struct AddShowView: View {
@@ -10,6 +11,14 @@ struct AddShowView: View {
 
     // No device-selection step — the tuner is chosen inside the web guide.
     enum Step { case guide, details }
+
+    // Guide-step ideal (open) width: as wide as comfortably fits the current display — leave a
+    // margin so it never opens off-screen, cap it so it stays reasonable on large/ultrawide
+    // displays, and never drop below the resizable 1100 minimum. Falls back to 1450 if no screen.
+    private var guideIdealWidth: CGFloat {
+        guard let visible = NSScreen.main?.visibleFrame.width else { return 1450 }
+        return max(1100, min(1800, visible - 100))
+    }
 
     @State private var step: Step = .guide
     @State private var show = Show.blank()   // transcode overridden in onAppear
@@ -72,7 +81,7 @@ struct AddShowView: View {
         }
         .frame(
             minWidth:    step == .guide ? 1100 : 560,
-            idealWidth:  step == .guide ? 1450 : 560,
+            idealWidth:  step == .guide ? guideIdealWidth : 560,
             maxWidth:    step == .guide ? .infinity : 560,
             minHeight:   step == .guide ? 720  : 540,
             idealHeight: step == .guide ? 820  : 540,
