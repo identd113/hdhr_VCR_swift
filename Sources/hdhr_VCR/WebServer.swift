@@ -1171,7 +1171,7 @@ final class WebServer: @unchecked Sendable {
         let guideMatcher = ManagedGuideMatcher(activeManagedShows: activeMgd)
         // Skip-already-recorded: precompute each managed series' on-disk SxxExx tags ONCE (one dir
         // scan per series, off the per-block hot path) so a guide block whose episode we already
-        // have can show a SKIP pill instead of the gold "will record" flag.
+        // have can show a green "already recorded" corner flag instead of the gold "will record" one.
         let skipEnabled = state.config.Series_subfolder_enabled && state.config.Skip_recorded_episodes
         var recordedTagsByShow: [String: Set<String>] = [:]
         if skipEnabled {
@@ -1259,8 +1259,10 @@ final class WebServer: @unchecked Sendable {
                     // Owning show for a managed block (reused by showDA below and the skip check).
                     let owner = isMgd ? findManagedShow(e, ch) : nil
                     // Will this managed airing be skipped because the episode is already on disk?
+                    // Exclude the airing that is recording right now — its own in-progress file is on
+                    // disk, so it would otherwise flag itself as a duplicate.
                     let willSkip: Bool = {
-                        guard skipEnabled, let owner,
+                        guard skipEnabled, !isEntryRec, let owner,
                               let ep = e.EpisodeNumber,
                               ep.range(of: #"^S\d+E\d+$"#, options: [.regularExpression, .caseInsensitive]) != nil
                         else { return false }
@@ -1313,23 +1315,21 @@ final class WebServer: @unchecked Sendable {
                         return false
                     }()
                     let newAttr     = isNew ? " data-new=\"1\"" : ""
+                    // Skip state is shown by a distinct corner flag (below), not a title pill.
                     let skipAttr    = willSkip ? " data-skip=\"1\"" : ""
-                    let titleHTML: String = {
-                        // Plain title unless we need a NEW and/or SKIP pill alongside it.
-                        guard isNew || willSkip else { return "<span class=\"g-ti\">\(he(e.Title))</span>" }
-                        var tags = ""
-                        if isNew    { tags += "<span class=\"g-new-tag\">NEW</span>" }
-                        if willSkip { tags += "<span class=\"g-skip-tag\">SKIP</span>" }
-                        return "<div class=\"g-ti-row\"><span class=\"g-ti\">\(he(e.Title))</span>\(tags)</div>"
-                    }()
+                    let titleHTML   = isNew
+                        ? "<div class=\"g-ti-row\"><span class=\"g-ti\">\(he(e.Title))</span><span class=\"g-new-tag\">NEW</span></div>"
+                        : "<span class=\"g-ti\">\(he(e.Title))</span>"
                     // Heavy fields (Synopsis, poster, episode, air date) are deliberately omitted here —
                     // fetched lazily per-row via /api/guide-detail once the row scrolls into view (see
                     // the client-side IntersectionObserver in buildHTML's <script>).
                     let da = "data-title=\"\(he(e.Title))\" data-genre=\"\(he(e.firstGenre ?? ""))\" data-filters=\"\(he(filtersAttr))\" data-start=\"\(e.StartTime)\" data-end=\"\(e.EndTime)\" data-device=\"\(he(device.DeviceID))\" data-num=\"\(he(ch.GuideNumber))\" data-chname=\"\(he(ch.GuideName))\" data-logo=\"\(he(logoURL))\" data-series=\"\(he(e.SeriesID ?? ""))\" data-managed=\"\(isMgd ? 1 : 0)\" data-recording=\"\(isEntryRec ? 1 : 0)\""
 
-                    // Skipping replaces the gold "will record" flag with the inline SKIP pill (added above).
-                    let flagHTML = isEntryRec ? "<div class=\"g-flag-rec\"></div>"
-                                 : (isMgd && !willSkip) ? "<div class=\"g-flag\"></div>" : ""
+                    // Corner flag: red = recording, green = managed but already recorded (will skip),
+                    // gold = managed and will record.
+                    let flagHTML = isEntryRec              ? "<div class=\"g-flag-rec\"></div>"
+                                 : (isMgd && willSkip)     ? "<div class=\"g-flag-skip\"></div>"
+                                 : isMgd                   ? "<div class=\"g-flag\"></div>" : ""
                     let showDA: String = {
                         guard let s = owner else { return "" }
                         let ad = s.show_air_date.joined(separator: ",")
@@ -1799,10 +1799,10 @@ final class WebServer: @unchecked Sendable {
         .g-ti-row{display:flex;align-items:center;gap:4px;min-width:0;overflow:hidden}
         .g-ti-row .g-ti{flex:0 1 auto;min-width:0}
         .g-new-tag{display:inline-block;font-size:.5rem;font-weight:800;background:#27ae60;color:#fff;border-radius:2px;padding:1px 3px;letter-spacing:.07em;flex-shrink:0;line-height:1.5}
-        .g-skip-tag{display:inline-block;font-size:.5rem;font-weight:800;background:#8a8a8a;color:#fff;border-radius:2px;padding:1px 3px;letter-spacing:.07em;flex-shrink:0;line-height:1.5}
-        .g-flag,.g-flag-rec{position:absolute;top:0;right:0;width:0;height:0;border-style:solid;border-width:0 18px 18px 0;pointer-events:none}
+        .g-flag,.g-flag-rec,.g-flag-skip{position:absolute;top:0;right:0;width:0;height:0;border-style:solid;border-width:0 18px 18px 0;pointer-events:none}
         .g-flag{border-color:transparent #ffd700 transparent transparent}
         .g-flag-rec{border-color:transparent #ff6060 transparent transparent}
+        .g-flag-skip{border-color:transparent #2ecc71 transparent transparent}
         /* ── Starburst bonus badge ── */
         @keyframes sbPop{0%{transform:scale(0) rotate(-240deg);opacity:0}55%{transform:scale(1.28) rotate(12deg);opacity:1}75%{transform:scale(.84) rotate(-3deg)}90%{transform:scale(1.04)}100%{transform:scale(1) rotate(0deg)}}
         @keyframes sbPulse{0%,100%{transform:scale(1) rotate(0deg)}50%{transform:scale(1.07) rotate(5deg)}}
