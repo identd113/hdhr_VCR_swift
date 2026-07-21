@@ -40,19 +40,17 @@ You already paid for an HDHomeRun tuner and a cable/antenna subscription. You sh
 
 | Menu bar | Recording in progress |
 |----------|-----------------------|
-| ![Menu bar dropdown showing tuner status, scheduled shows, and Next Up section](docs/screenshots/menu.png) | ![Recording active with red dot icon and Stop Recording option](docs/screenshots/recording.png) |
+| ![Menu bar dropdown showing tuner status, scheduled shows, and Next Up section](docs/screenshots/menu.png) | ![Recording active, shown with a red dot under a Recording Now section](docs/screenshots/recording.png) |
 
 | Recording submenu | Scheduled show |
 |-------------------|----------------|
-| ![Recording submenu with elapsed time, time remaining, Stop Recording, Watch in VLC, Edit](docs/screenshots/recording_submenu.png) | ![Scheduled show submenu showing type, channel, upcoming airings, and Edit/Deactivate/Delete](docs/screenshots/scheduled_submenu_series.png) |
+| ![Recording submenu showing start time, length, Watch Now!, Skip, Delete, and Edit](docs/screenshots/recording_submenu.png) | ![Scheduled show submenu showing type, channel, upcoming airings, and Edit/Pause/Delete](docs/screenshots/scheduled_submenu_series.png) |
 
 | Add Show — Details | Edit Show |
 |--------------------|-----------|
 | ![Add Show details step with title, type, days, transcode, bonus time, and folder](docs/screenshots/addshow_details.png) | ![Edit Show window with starburst bonus time badge](docs/screenshots/edit_show.png) |
 
-| Settings | Standalone Guide |
-|----------|-----------------|
-| ![Settings general panel](docs/screenshots/settings_general.png) | ![Standalone cable guide browse window](docs/screenshots/floating_guide.png) |
+![Settings general panel](docs/screenshots/settings_general.png)
 
 ---
 
@@ -69,7 +67,6 @@ You already paid for an HDHomeRun tuner and a cable/antenna subscription. You sh
 - **Cable TV-style guide** — scrollable grid showing channels and upcoming shows, color-coded by genre. Click to schedule, double-click to confirm.
 - **Four recording modes** — one-off, weekly repeat, or series-based (see [Recording Modes](#recording-modes) below)
 - **Per-show bonus time** — add extra padding to individual shows (great for sports)
-- **Pop-out guide browser** — browse the full guide in its own window any time, without going through Add Show
 
 ### Watching
 
@@ -80,26 +77,28 @@ You already paid for an HDHomeRun tuner and a cable/antenna subscription. You sh
 ### Notifications
 
 - **macOS alerts** — "Up Next" and "Recording Soon" before each show
-- **Discord webhooks** — rich embeds for recording started, completed (with file size), failed, paused, conflict, and more. Per-event toggles with live Test buttons in Settings — no waiting for a real recording
+- **Discord webhooks** — rich embeds for recording started, completed (with file size), failed, paused, conflict, and more. Per-event toggles, with a live Test button for the webhook in Settings — no waiting for a real recording
 
 ### Remote access
 
-- **LAN web UI** — built-in web server (port 1980) serves a cable guide grid, schedule view, and what's-on-now cards accessible from any browser on your network. No port forwarding needed; subnet-guarded. (Viewing is Mac-only via the in-app VLC player.)
+- **LAN web UI** — built-in web server (port 1980) serves the same cable guide grid, with per-tuner Recording/Up Next/Scheduled lists, accessible from any browser on your network. No port forwarding needed; subnet-guarded. (Viewing is Mac-only via the in-app VLC player.)
 
 ### Multi-device & formats
 
 - **Multi-tuner support** — discovers and manages multiple HDHomeRun devices (CONNECT, PRIME, EXTEND, FLEX, etc.) via mDNS and UDP broadcast
 - **EXTEND support** — uses SiliconDust's cloud guide API for HDTC-2US devices
-- **Transcode options** — none (`.m2ts`), heavy, mobile, or internet720 (`.mkv` via the device)
+- **Transcode options** — none, heavy, mobile, or internet720 — all written as `.ts`, the tuner's actual wire format (transcoding re-encodes the video only; the container never changes)
 - **Sleep prevention** — holds an IOKit power assertion so recordings survive display sleep
 
 ---
 
-## What's New in v1.3.0
+## What's New in v1.4.0
 
-**Watch a recording without a second tuner** — "Watch Now!" on a currently-recording show now plays it straight from disk instead of tuning the channel again, with a scrub bar to jump around what's already recorded and a channel-picker shortcut to switch between simultaneous recordings.
+**Recordings now use the accurate `.ts` extension** for every transcode profile — the tuner always sends an MPEG-2 transport stream over the wire; transcoding only re-encodes the video inside it, the container never changes. This matches the convention Plex/Emby/Jellyfin/MythTV use. Existing `.m2ts`/`.mkv` recordings are unaffected and still work everywhere.
 
-Everything else (LAN web UI, Discord notifications, per-show bonus time, etc.) is covered above under [Features](#features) — see the → [full changelog](CHANGELOG.md) for the complete release history.
+**The Add Show guide step remembers its window size** — resize it wider or taller and it reopens at that size next time, even across an app restart.
+
+Everything else (LAN web UI, Discord notifications, per-show bonus time, watching a recording in progress without a second tuner, etc.) is covered above under [Features](#features) — see the → [full changelog](CHANGELOG.md) for the complete release history.
 
 ---
 
@@ -210,8 +209,8 @@ Shows that fail more than the configured threshold (default: 3) are automaticall
 | **Recording** | Save folder; transcode profile; min free disk; failure threshold |
 | **Guide** | Hours of guide data; series scan retry interval |
 | **Notifications** | Up Next / Recording Soon timing; Discord webhook + per-event toggles |
-| **Web Server** | Enable/disable; port; live status and access URL |
 | **Advanced** | Idle interval; verbose curl logging |
+| **Web Server** | Enable/disable; port; live status and access URL |
 | **Maintenance** | Rescan Series; Reset Fail Counts; Reactivate Paused; Refresh Guide; Rediscover Devices |
 | **About** | Version history (rendered Markdown); link to GitHub |
 
@@ -223,7 +222,7 @@ Settings use a **draft/save** pattern — click **Save** (⌘S) to apply. Closin
 
 Default save location: `~/Movies/hdhr_videos` (created automatically). Configurable globally in Settings or per-show via **Edit…** in the menu.
 
-File naming: `ShowTitle_Channel_YYYYMMDD_HHmm.m2ts` (or `.mkv` for transcoded recordings).
+File naming: `ShowTitle_Channel_YYYYMMDD_HHmm.ts`.
 
 ---
 
