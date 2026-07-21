@@ -67,6 +67,8 @@ You already paid for an HDHomeRun tuner and a cable/antenna subscription. You sh
 - **Cable TV-style guide** — scrollable grid showing channels and upcoming shows, color-coded by genre. Click to schedule, double-click to confirm.
 - **Four recording modes** — one-off, weekly repeat, or series-based (see [Recording Modes](#recording-modes) below)
 - **Per-show bonus time** — add extra padding to individual shows (great for sports)
+- **Skip already-recorded episodes** — a series won't grab the same episode twice on a rerun or simulcast. Before recording, it checks whether that season/episode is already on disk and quietly advances to the next airing if so (Settings → Post-Processing; requires Series subfolders)
+- **Signal quality at scheduling** — Add Show, Edit Show, and the web guide's Record form show a channel's signal bars, with a weak-signal warning, before you commit to recording it
 
 ### Watching
 
@@ -94,9 +96,11 @@ You already paid for an HDHomeRun tuner and a cable/antenna subscription. You sh
 
 ## What's New in v1.4.0
 
-**Recordings now use the accurate `.ts` extension** for every transcode profile — the tuner always sends an MPEG-2 transport stream over the wire; transcoding only re-encodes the video inside it, the container never changes. This matches the convention Plex/Emby/Jellyfin/MythTV use. Existing `.m2ts`/`.mkv` recordings are unaffected and still work everywhere.
+**Skip already-recorded episodes** — a series recording won't grab the same episode twice. Before recording, the app checks whether that season/episode is already on disk and quietly advances to the next airing instead of grabbing a rerun or simulcast.
 
-**The Add Show guide step remembers its window size** — resize it wider or taller and it reopens at that size next time, even across an app restart.
+**Signal quality at scheduling** — the Add Show, Edit Show, and web guide Record dialogs now show a channel's signal bars (and a weak-signal warning) before you schedule it, using the signal history the app already collects.
+
+Plus a large reliability and security pass: recording failures now say why (the real device error or a decoded curl exit code), a stored-XSS hole and a save-path validation gap in the web UI are fixed, and recordings now use the accurate `.ts` extension for every transcode profile.
 
 Everything else (LAN web UI, Discord notifications, per-show bonus time, watching a recording in progress without a second tuner, etc.) is covered above under [Features](#features) — see the → [full changelog](CHANGELOG.md) for the complete release history.
 
