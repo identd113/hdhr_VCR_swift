@@ -2,6 +2,14 @@
 
 Status of each requirement for submitting hdhrVCR+ to the Mac App Store.
 
+> **This entire document is about App Store (sandboxed) submission — not plain notarization.**
+> Notarized Developer ID distribution (the ad-hoc-signed release you get from `./deploy_release.sh`)
+> does **not** require the App Sandbox, so none of the blockers below apply to it. `deploy_release.sh`
+> and `tools/setup_signing.sh` already implement full sign + notarize + staple; the only missing piece
+> is a paid Apple Developer Program membership ($99/yr) to generate the Developer ID cert. Everything
+> on this page — subprocess spawning, dlopen, `Process()`, security-scoped bookmarks — is only a
+> problem if the goal is the **Mac App Store** specifically.
+
 ---
 
 ## Done ✅
@@ -35,7 +43,7 @@ Covers all LAN device HTTP URLs (192.168.x.x, 10.x.x.x, 172.16–31.x.x). Guide 
 **Option C — Bundle curl:** Place a signed curl binary at `Contents/Helpers/curl`, launch via `Bundle.main.bundleURL`. Sandboxed apps may execute binaries within their own bundle. Adds ~2.5 MB, requires ongoing security updates.
 
 ### 2. VLC in-app player (dlopen)
-**What:** `VLCBridge.swift` dlopens `libvlc.dylib` from `/Applications/VLC.app`. Two problems: (1) cross-app bundle file access is forbidden in sandbox; (2) `com.apple.security.cs.disable-library-validation` — which the current entitlements require — is forbidden in MAS builds.
+**What:** `VLCBridge.swift` dlopens `libvlc.dylib`/`libvlccore.dylib` from VLC.app, located via `NSWorkspace.shared.urlForApplication(withBundleIdentifier: "org.videolan.vlc")` (wherever it's installed — Homebrew cask, `~/Applications`, etc., not a hardcoded `/Applications/VLC.app` path). Two problems either way: (1) cross-app bundle file access is forbidden in sandbox; (2) `com.apple.security.cs.disable-library-validation` — which the current entitlements require — is forbidden in MAS builds.
 
 **Options:**
 - Drop in-app player for the MAS version. Show stream URL; let user open in external VLC.
