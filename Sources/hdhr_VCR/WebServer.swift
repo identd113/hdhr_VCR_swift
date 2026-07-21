@@ -1492,13 +1492,15 @@ final class WebServer: @unchecked Sendable {
           --bg:#141414;--s1:#1a1a1a;--s2:#1c1c1c;--s3:#1e1e1e;--s4:#222222;
           --b0:#252525;--b1:#333333;--b2:#383838;--b3:#3a3a3a;--b4:#444444;--b5:#484848;
           --t0:#f0f0f0;--t1:#e8e8e8;--t2:#d0d0d0;--t3:#aaaaaa;--t4:#888888;--t5:#777777;--t6:#666666;
-          --pg:#2c2c2c;--pgb:#484848;--ac:#5aacff;--acb:#0e1f35;--fav:#e8a000;
+          --pg:#2c2c2c;--pgb:#484848;--ac:#0A84FF;--acb:#0e1f35;--fav:#e8a000;
+          --mat-bg:rgba(30,30,32,.72);--mat-backdrop:rgba(0,0,0,.42);--mat-border:rgba(255,255,255,.09);--mat-highlight:rgba(255,255,255,.06);
         }
         html.lm{
           --bg:#e4e6ea;--s1:#eceef2;--s2:#f2f4f7;--s3:#ffffff;--s4:#dddfe4;
           --b0:#c4c7ce;--b1:#b0b4bc;--b2:#9a9faa;--b3:#b0b4bc;--b4:#8a8f9a;--b5:#787e8a;
           --t0:#111214;--t1:#1e2126;--t2:#363a42;--t3:#545860;--t4:#666b75;--t5:#72777f;--t6:#7d8289;
-          --pg:#cbd0dc;--pgb:#8590a8;--ac:#0062c0;--acb:#ddeeff;--fav:#a05800;
+          --pg:#cbd0dc;--pgb:#8590a8;--ac:#007AFF;--acb:#ddeeff;--fav:#a05800;
+          --mat-bg:rgba(246,246,248,.78);--mat-backdrop:rgba(0,0,0,.22);--mat-border:rgba(0,0,0,.08);--mat-highlight:rgba(255,255,255,.5);
         }
         body{background:var(--bg);color:var(--t0);font-family:-apple-system,sans-serif;padding:16px;height:100vh;box-sizing:border-box;display:flex;flex-direction:column;overflow:hidden}
         h1{font-size:1.15rem;color:var(--t2);margin-bottom:0}
@@ -1579,13 +1581,11 @@ final class WebServer: @unchecked Sendable {
         #t-pop-c button{color:var(--t6)!important}
         #t-pop-status{color:var(--ac)!important;border-color:var(--b0)!important}
         /* ── Record modal ── */
-        #rec-modal>div{background:var(--s2)!important;border-color:var(--b2)!important}
         #rm-ch{color:var(--t4)!important}
         #rm-sid{background:var(--bg)!important;color:var(--t4)!important}
         #rm-sid-val{color:var(--t3)!important}
-        #rec-modal button:first-child{border-color:var(--b4)!important;color:var(--t3)!important;background:transparent!important}
-        .rm-opt-l{font-size:.82rem;font-weight:500;color:var(--t1)}
-        .rm-opt-d{font-size:.7rem;color:var(--t4);margin-top:1px}
+        .rm-opt-l{font-size:.85rem;font-weight:500;color:var(--t1)}
+        .rm-opt-d{font-size:.72rem;color:var(--t4);margin-top:1px;line-height:1.3}
         html.lm #rm-tuner{color:#7a3c00;background:#fff8e8;border-color:#d09020}
         /* ── Guide grid ── */
         .gw-outer{border:1px solid var(--b1);border-radius:8px;overflow:clip;flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
@@ -1839,12 +1839,43 @@ final class WebServer: @unchecked Sendable {
         .rm-air-ch{font-size:.7rem;color:var(--t4);margin-top:1px}
         .rm-air-ep{font-size:.7rem;color:var(--t4);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
         /* ── Record / Edit modals ── */
-        #rec-modal>div,#edit-modal>div{background:var(--s2)!important;border-color:var(--b2)!important}
+        .mac-sheet{
+          background:var(--mat-bg);
+          -webkit-backdrop-filter:blur(20px) saturate(1.8);
+          backdrop-filter:blur(20px) saturate(1.8);
+          border:1px solid var(--mat-border);
+          box-shadow:0 1px 0 var(--mat-highlight) inset,0 22px 48px rgba(0,0,0,.5),0 2px 8px rgba(0,0,0,.35);
+        }
         #em-rec-warn{color:#ff9090!important;background:#3c1818!important;border-color:#883030!important}
         html.lm #em-rec-warn{color:#8b0000!important;background:#fce8e8!important;border-color:#cc3030!important}
-        .rm-lbl{display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:9px 11px;border-radius:7px;border:1px solid var(--b3);transition:border-color .15s}
-        .rm-lbl:hover{border-color:var(--t4)}
-        .rm-lbl input{margin-top:3px;flex-shrink:0;accent-color:#c0392b}
+        .rm-lbl{display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:8px 10px;border-radius:8px;border:1px solid transparent;transition:background .12s,border-color .12s}
+        .rm-lbl:hover{background:rgba(127,127,127,.10)}
+        .rm-lbl:has(input:checked),.rm-lbl.rm-sel{background:var(--acb);border-color:var(--ac)}
+        .rm-lbl input{-webkit-appearance:none;appearance:none;margin-top:2px;flex-shrink:0;width:16px;height:16px;border-radius:50%;border:1.5px solid var(--b4);background:var(--s3);position:relative;cursor:pointer;transition:border-color .12s,background .12s}
+        .rm-lbl input:checked{border-color:var(--ac);background:var(--ac)}
+        .rm-lbl input:checked::after{content:'';position:absolute;top:50%;left:50%;width:6px;height:6px;border-radius:50%;background:#fff;transform:translate(-50%,-50%)}
+        .rm-lbl input:focus-visible{box-shadow:0 0 0 3px var(--acb)}
+        /* macOS-style switch (Bonus Time toggle) */
+        .mac-switch{-webkit-appearance:none;appearance:none;width:32px;height:19px;border-radius:10px;flex-shrink:0;background:var(--b3);border:none;position:relative;cursor:pointer;transition:background .18s ease;outline:none}
+        .mac-switch::before{content:'';position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.35),0 0 0 .5px rgba(0,0,0,.06);transition:transform .18s cubic-bezier(.4,0,.2,1)}
+        .mac-switch:checked{background:var(--ac)}
+        .mac-switch:checked::before{transform:translateX(13px)}
+        .mac-switch:focus-visible{box-shadow:0 0 0 3px var(--acb)}
+        .mac-switch:disabled{opacity:.4;cursor:default}
+        /* macOS-style bordered/borderedProminent buttons */
+        .mac-btn{font-size:.8rem;padding:6px 16px;border-radius:7px;cursor:pointer;font-weight:590;font-family:inherit;line-height:1.2;transition:background .1s,box-shadow .1s,opacity .1s;border:none}
+        .mac-btn:active{filter:brightness(.92)}
+        .mac-btn:disabled{opacity:.5;cursor:default;filter:none}
+        .mac-btn-plain{background:var(--s4);color:var(--t1);box-shadow:0 0 0 1px var(--b3) inset}
+        .mac-btn-plain:hover{background:var(--s3)}
+        .mac-btn-prom{background:var(--ac);color:#fff;box-shadow:0 1px 0 rgba(255,255,255,.18) inset,0 1px 2px rgba(0,0,0,.25)}
+        .mac-btn-prom:hover{filter:brightness(1.08)}
+        .mac-btn-record{background:#c0392b;color:#fff;box-shadow:0 1px 0 rgba(255,255,255,.18) inset,0 1px 2px rgba(0,0,0,.25)}
+        .mac-btn-record:hover{filter:brightness(1.08)}
+        .mac-btn-destructive{background:rgba(197,48,48,.14);color:#ff6b6b;box-shadow:0 0 0 1px rgba(197,48,48,.4) inset}
+        html.lm .mac-btn-destructive{background:rgba(197,48,48,.10);color:#c0392b;box-shadow:0 0 0 1px rgba(197,48,48,.35) inset}
+        .mac-btn-destructive:hover{background:rgba(197,48,48,.22)}
+        html.lm .mac-btn-destructive:hover{background:rgba(197,48,48,.16)}
         .em-row{display:flex;flex-direction:column;gap:3px;margin-bottom:8px}
         .em-lbl{font-size:.68rem;color:var(--t4);font-weight:600;text-transform:uppercase;letter-spacing:.06em}
         .em-input{background:var(--bg);border:1px solid var(--b3);border-radius:5px;padding:5px 8px;font-size:.82rem;color:var(--t0);width:100%;outline:none;font-family:inherit}
@@ -1857,7 +1888,6 @@ final class WebServer: @unchecked Sendable {
         .day-btn.sel{background:var(--ac);border-color:var(--ac);color:#fff}
         .em-days{display:flex;gap:4px;flex-wrap:wrap}
         .em-check{display:flex;align-items:center;gap:7px;font-size:.82rem;color:var(--t1);cursor:pointer;margin-bottom:8px}
-        .em-check input{accent-color:var(--ac)}
         .em-sid{font-size:.72rem;color:var(--t4);font-family:monospace;word-break:break-all;margin-top:2px}
         #splash{opacity:0;animation:splash-show .2s ease .3s forwards}
         @keyframes splash-show{to{opacity:1}}
@@ -1918,10 +1948,10 @@ final class WebServer: @unchecked Sendable {
             <button onclick="closeSummary()" style="background:none;border:none;color:#666;font-size:.9rem;cursor:pointer;padding:6px 10px;align-self:flex-start;flex-shrink:0;margin-top:4px" title="Close">✕</button>
           </div>
         </div>
-        <div id="rec-modal" onclick="if(event.target===this)cancelRecord()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:100;align-items:center;justify-content:center;padding:20px">
-          <div style="background:#1c1c1e;border:1px solid #383838;border-radius:12px;padding:20px 22px;width:400px;max-width:calc(100vw - 32px);max-height:calc(100vh - 40px);overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.6);position:relative">
+        <div id="rec-modal" onclick="if(event.target===this)cancelRecord()" style="display:none;position:fixed;inset:0;background:var(--mat-backdrop);z-index:100;align-items:center;justify-content:center;padding:20px">
+          <div class="mac-sheet" style="padding:20px 22px;width:400px;max-width:calc(100vw - 32px);max-height:calc(100vh - 40px);overflow-y:auto;position:relative">
             <span id="rm-bonus-star" class="sb-web sb-web-lg" style="display:none"></span>
-            <div style="font-weight:700;font-size:.88rem;color:var(--t0);margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--b2)">Record Show</div>
+            <div style="font-weight:600;font-size:.94rem;color:var(--t0);margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--b2)">Record Show</div>
             <div class="em-row">
               <div class="em-lbl">Title</div>
               <input id="rm-title-in" class="em-input" type="text">
@@ -1936,19 +1966,19 @@ final class WebServer: @unchecked Sendable {
             </div>
             <div id="rm-days-row" class="em-row" style="display:none"><div class="em-lbl" id="rm-days-lbl">Days</div><div class="em-days" id="rm-days"></div></div>
             <div class="em-row"><div class="em-lbl">Transcode</div><select id="rm-transcode" class="em-input"><option value="none">None (copy stream)</option><option value="heavy">Heavy (H.264 CRF 18)</option><option value="mobile">Mobile (480p H.264)</option><option value="internet720">Internet 720 (720p H.264)</option></select></div>
-            <div id="rm-bonus-row" style="margin-bottom:8px;display:flex;align-items:center;gap:8px"><label class="em-check"><input type="checkbox" id="rm-bonus" onchange="toggleRmBonusStar()"> Bonus Time (+\(state.config.Sports_padding_minutes) min past guide end)</label></div>
-            <div id="rm-tuner" style="display:none;font-size:.74rem;color:#ffcc66;background:#2a1e00;border:1px solid #7a5500;border-radius:6px;padding:7px 10px;margin-bottom:10px">⚠ All tuners are currently in use. This show will be queued and recorded as soon as a tuner is free.</div>
-            <div id="rm-sig-warn" style="display:none;font-size:.74rem;color:#ffcc66;background:#2a1e00;border:1px solid #7a5500;border-radius:6px;padding:7px 10px;margin-bottom:10px">⚠ Weak signal on this channel — recordings may drop out or fail.</div>
+            <div id="rm-bonus-row" style="margin-bottom:8px;display:flex;align-items:center;gap:8px"><label class="em-check"><input type="checkbox" class="mac-switch" id="rm-bonus" onchange="toggleRmBonusStar()"><span>Bonus Time (+\(state.config.Sports_padding_minutes) min past guide end)</span></label></div>
+            <div id="rm-tuner" style="display:none;font-size:.74rem;color:#ffcc66;background:#2a1e00;border:1px solid #7a5500;border-radius:6px;padding:7px 10px;margin-bottom:10px"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" style="vertical-align:-2px;margin-right:3px"><path d="M8 1.6 1.4 13.2c-.4.7.1 1.6 1 1.6h11.2c.9 0 1.4-.9 1-1.6L8.6 1.6a.7.7 0 0 0-1.2 0Z" fill="currentColor"/><rect x="7.3" y="5.6" width="1.4" height="4.2" rx=".7" fill="#2a1e00"/><rect x="7.3" y="10.6" width="1.4" height="1.4" rx=".7" fill="#2a1e00"/></svg>All tuners are currently in use. This show will be queued and recorded as soon as a tuner is free.</div>
+            <div id="rm-sig-warn" style="display:none;font-size:.74rem;color:#ffcc66;background:#2a1e00;border:1px solid #7a5500;border-radius:6px;padding:7px 10px;margin-bottom:10px"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" style="vertical-align:-2px;margin-right:3px"><path d="M8 1.6 1.4 13.2c-.4.7.1 1.6 1 1.6h11.2c.9 0 1.4-.9 1-1.6L8.6 1.6a.7.7 0 0 0-1.2 0Z" fill="currentColor"/><rect x="7.3" y="5.6" width="1.4" height="4.2" rx=".7" fill="#2a1e00"/><rect x="7.3" y="10.6" width="1.4" height="1.4" rx=".7" fill="#2a1e00"/></svg>Weak signal on this channel — recordings may drop out or fail.</div>
             <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--b2)">
-              <button onclick="cancelRecord()" style="font-size:.78rem;padding:6px 16px;border-radius:6px;border:1px solid #444;background:transparent;color:#aaa;cursor:pointer">Cancel</button>
-              <button onclick="confirmRecord()" style="font-size:.78rem;padding:6px 16px;border-radius:6px;border:none;background:#c0392b;color:#fff;font-weight:600;cursor:pointer">Schedule</button>
+              <button onclick="cancelRecord()" class="mac-btn mac-btn-plain">Cancel</button>
+              <button onclick="confirmRecord()" class="mac-btn mac-btn-record">Schedule</button>
             </div>
           </div>
         </div>
-        <div id="edit-modal" onclick="if(event.target===this)closeEditShow()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:201;align-items:center;justify-content:center;padding:20px">
-          <div style="background:#1c1c1e;border:1px solid #383838;border-radius:12px;padding:20px 22px;width:400px;max-width:calc(100vw - 32px);max-height:calc(100vh - 40px);overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.6);position:relative">
+        <div id="edit-modal" onclick="if(event.target===this)closeEditShow()" style="display:none;position:fixed;inset:0;background:var(--mat-backdrop);z-index:201;align-items:center;justify-content:center;padding:20px">
+          <div class="mac-sheet" style="padding:20px 22px;width:400px;max-width:calc(100vw - 32px);max-height:calc(100vh - 40px);overflow-y:auto;position:relative">
             <span id="em-bonus-star" class="sb-web sb-web-lg" style="display:none"></span>
-            <div style="font-weight:700;font-size:.88rem;color:var(--t0);margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--b2)">Edit Show</div>
+            <div style="font-weight:600;font-size:.94rem;color:var(--t0);margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--b2)">Edit Show</div>
             <div class="em-row"><div class="em-lbl">Title</div><input id="em-title-in" class="em-input" type="text" placeholder="Show title"></div>
             <div style="display:flex;gap:8px;margin-bottom:8px">
               <div class="em-row" style="margin-bottom:0;flex:0 0 auto"><div class="em-lbl">Channel</div><input id="em-ch-in" class="em-input em-input-sm" type="text" placeholder="e.g. 5.4"></div>
@@ -1956,17 +1986,17 @@ final class WebServer: @unchecked Sendable {
             </div>
             <div class="em-row"><div class="em-lbl">Type</div><div id="em-type-opts" style="display:flex;flex-direction:column;gap:5px;margin-top:2px"></div></div>
             <div id="em-days-row" class="em-row" style="display:none"><div class="em-lbl" id="em-days-lbl">Days</div><div class="em-days" id="em-days"></div></div>
-            <div id="em-bonus-row" style="margin-bottom:8px;display:flex;align-items:center;gap:8px"><label class="em-check"><input type="checkbox" id="em-bonus" onchange="toggleBonusStar()"> Bonus Time (extend recording past guide end)</label></div>
+            <div id="em-bonus-row" style="margin-bottom:8px;display:flex;align-items:center;gap:8px"><label class="em-check"><input type="checkbox" class="mac-switch" id="em-bonus" onchange="toggleBonusStar()"><span>Bonus Time (extend recording past guide end)</span></label></div>
             <div class="em-row"><div class="em-lbl">Transcode</div><select id="em-transcode" class="em-input"><option value="none">None (copy stream)</option><option value="heavy">Heavy (H.264 CRF 18)</option><option value="mobile">Mobile (480p H.264)</option><option value="internet720">Internet 720 (720p H.264)</option></select></div>
             <div id="em-sid-row" style="display:none;margin-bottom:8px"><div class="em-lbl">SeriesID</div><div id="em-sid" class="em-sid"></div></div>
             <div id="em-fail-row" style="display:none" class="em-fail"><span id="em-fail-txt"></span><button id="em-reset" onclick="doEditReset()" style="font-size:.72rem;padding:3px 8px;border-radius:4px;border:1px solid currentColor;background:transparent;color:inherit;cursor:pointer;flex-shrink:0;white-space:nowrap">Reset</button></div>
-            <div id="em-rec-warn" style="display:none;font-size:.74rem;color:#ff9090;background:#3c1818;border:1px solid #883030;border-radius:6px;padding:7px 10px;margin-bottom:10px">● Recording now — delete will stop the active recording.</div>
+            <div id="em-rec-warn" style="display:none;font-size:.74rem;color:#ff9090;background:#3c1818;border:1px solid #883030;border-radius:6px;padding:7px 10px;margin-bottom:10px"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:currentColor;margin-right:4px;vertical-align:1px"></span>Recording now — delete will stop the active recording.</div>
             <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--b2)">
-              <button id="em-del" onclick="doEditDelete()" style="font-size:.78rem;padding:6px 14px;border-radius:6px;border:1px solid #883030;background:#3c1010;color:#ff9090;font-weight:600;cursor:pointer">Delete</button>
+              <button id="em-del" onclick="doEditDelete()" class="mac-btn mac-btn-destructive">Delete</button>
               <div style="display:flex;gap:8px">
-                <button id="em-pause" onclick="doEditPause()" style="display:none;font-size:.78rem;padding:6px 14px;border-radius:6px;border:1px solid #444;background:transparent;color:#aaa;cursor:pointer"></button>
-                <button onclick="closeEditShow()" style="font-size:.78rem;padding:6px 16px;border-radius:6px;border:1px solid #444;background:transparent;color:#aaa;cursor:pointer">Cancel</button>
-                <button id="em-save" onclick="confirmEdit()" style="font-size:.78rem;padding:6px 16px;border-radius:6px;border:none;background:#1a5abf;color:#fff;font-weight:600;cursor:pointer">Save</button>
+                <button id="em-pause" onclick="doEditPause()" class="mac-btn mac-btn-plain" style="display:none"></button>
+                <button onclick="closeEditShow()" class="mac-btn mac-btn-plain">Cancel</button>
+                <button id="em-save" onclick="confirmEdit()" class="mac-btn mac-btn-prom">Save</button>
               </div>
             </div>
           </div>
@@ -2148,7 +2178,7 @@ final class WebServer: @unchecked Sendable {
           recOpts.forEach(function(o){
             var lbl=document.createElement('label');lbl.className='rm-lbl';
             var inp=document.createElement('input');inp.type='radio';inp.name='rm-type';inp.value=o.v;
-            if(first){inp.checked=true;first=false;}
+            if(first){inp.checked=true;first=false;lbl.className='rm-lbl rm-sel';}
             var info=document.createElement('div');
             info.innerHTML='<div class="rm-opt-l">'+o.l+'</div><div class="rm-opt-d">'+o.d+'</div>';
             lbl.appendChild(inp);lbl.appendChild(info);opts.appendChild(lbl);
@@ -2190,6 +2220,7 @@ final class WebServer: @unchecked Sendable {
           document.getElementById('rm-tuner').style.display=(isLive&&devFull(_d))?'block':'none';
           renderRmSignal();
           opts.onchange=function(){
+            Array.from(opts.querySelectorAll('.rm-lbl')).forEach(function(l){l.classList.toggle('rm-sel',l.querySelector('input').checked);});
             var v=(document.querySelector('input[name="rm-type"]:checked')||{}).value||'';
             var isSeries=v==='seriesChannel'||v==='seriesAll';
             var sid=document.getElementById('rm-sid');
@@ -2616,8 +2647,11 @@ final class WebServer: @unchecked Sendable {
           recOpts.forEach(function(o){
             var lbl=document.createElement('label');lbl.className='rm-lbl';
             var inp=document.createElement('input');inp.type='radio';inp.name='em-type';inp.value=o.v;
-            if(o.v===_editType)inp.checked=true;
-            inp.onchange=function(){_editType=this.value;updateDaysVisibility();};
+            if(o.v===_editType){inp.checked=true;lbl.className='rm-lbl rm-sel';}
+            inp.onchange=function(){
+              _editType=this.value;updateDaysVisibility();
+              Array.from(opts.querySelectorAll('.rm-lbl')).forEach(function(l){l.classList.toggle('rm-sel',l.querySelector('input').checked);});
+            };
             var info=document.createElement('div');
             info.innerHTML='<div class="rm-opt-l">'+o.l+'</div><div class="rm-opt-d">'+o.d+'</div>';
             lbl.appendChild(inp);lbl.appendChild(info);opts.appendChild(lbl);
