@@ -6,15 +6,23 @@
 	<dict>
 		<key>Resources/AppIcon.icns</key>
 		<data>
-		pvpJjZaMYD0o5IdqVI88tNEEI8M=
+		lA7U+QroUqKFXxoX3rmBaSY14I4=
+		</data>
+		<key>Resources/app-recording.jpg</key>
+		<data>
+		UGsoA1Z5w/ZguzjghFUNdKDRXEU=
+		</data>
+		<key>Resources/app-upnext.jpg</key>
+		<data>
+		4QvQtCCVerKgJOyeWl6Zxev5mMM=
 		</data>
 		<key>Resources/app.jpg</key>
 		<data>
-		QBVmAwOsr0FGRrSXKRgMDWLSBMA=
+		wRhXHvn4Y3Ogic873Pjzkgtgslw=
 		</data>
 		<key>Resources/favicon.ico</key>
 		<data>
-		TsLVVbL3hbGvHT5/Ren+7UJomW0=
+		b9Osrut49zjCMoahmZoaenjnE6k=
 		</data>
 	</dict>
 	<key>files2</key>
@@ -23,21 +31,35 @@
 		<dict>
 			<key>hash2</key>
 			<data>
-			28dHFC2CV9198PeRlh0xZDMqI6tb3PUwMmrWO7Daej8=
+			NcGlWyzyfC/7ViSrEg7y4ZrRppE2pJoVOge3ADhm1mE=
+			</data>
+		</dict>
+		<key>Resources/app-recording.jpg</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			1TsUlDk9yUlw8oJPKvQQHOyKrDPU9GKzKrbDnJMxa/4=
+			</data>
+		</dict>
+		<key>Resources/app-upnext.jpg</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			ITmarXzOoHClA1acY16+klmreBtbIKezzgIJ2nMiV6c=
 			</data>
 		</dict>
 		<key>Resources/app.jpg</key>
 		<dict>
 			<key>hash2</key>
 			<data>
-			Bz+iczaj14xfz4S+z3eIY0d+rz1B7gY4+0arTyFicwk=
+			pP8TuqqOKrVuoOTrPHPI0GbZSlx1bug4oVOGavdhsEk=
 			</data>
 		</dict>
 		<key>Resources/favicon.ico</key>
 		<dict>
 			<key>hash2</key>
 			<data>
-			vNLrnPOMfIVsI3Ta/9z/sukprSh6VsrhmXI4pGVYKgw=
+			+iuhh6I2bCK20nj2zY0ZrzVliv6mpqcbwY4oL1cCbT8=
 			</data>
 		</dict>
 	</dict>

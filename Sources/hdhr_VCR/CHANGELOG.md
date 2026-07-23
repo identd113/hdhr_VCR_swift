@@ -1,5 +1,9 @@
 # hdhrVCRplus Changelog
 
+## 2026-07-23 (new app icon)
+
+- **New app icon** — redrawn as a single VHS cassette (two reels, red/white label) with a fold-out antenna, replacing the old three-panel banner. The label's bottom half now doubles as a live status light in the menu bar: dim when idle, red while recording, amber when a show is coming up within 30 minutes — reusing the app's existing `isRecording`/`nextShowMinutes` state instead of swapping to a generic `record.circle.fill`/`clock.badge.fill` SF Symbol. Also fixes a longstanding bug where the Dock/Finder icon showed black letterbox bars: `AppIcon.icns` was previously padded from the rectangular menu-bar image with a solid fill color; it's now built from a dedicated square, alpha-transparent master (`Resources/AppIcon-source.png`), so the icon is a clean transparent-cornered squircle. `deploy.sh`/`deploy_release.sh` updated to match.
+
 ## 2026-07-18 — v1.4.0
 
 - **Add Show — the cable-guide step remembers its size** — resize the Add Show guide window (wider, taller) and it now reopens, and survives an app restart, at that size instead of resetting to a fixed default. Persisted per-machine; the compact details step is unaffected.

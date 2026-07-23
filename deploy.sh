@@ -48,21 +48,24 @@ cp .build/debug/hdhr_VCR "$BINARY"
 echo "==> Deploying resources…"
 mkdir -p "$APP/Contents/Resources"
 cp Resources/app.jpg "$APP/Contents/Resources/app.jpg"
+cp Resources/app-recording.jpg "$APP/Contents/Resources/app-recording.jpg"
+cp Resources/app-upnext.jpg "$APP/Contents/Resources/app-upnext.jpg"
 
 echo "==> Generating app icon…"
-# Build AppIcon.icns from app.jpg so the bundle icon in Finder stays current
+# Build AppIcon.icns from AppIcon-source.png — a dedicated 1024x1024 master with the icon
+# shape already baked in and transparent corners (unlike app.jpg, which is flat/opaque and
+# sized for the menu bar + About tab). Using app.jpg here used to force a pad-to-square step
+# that letterboxed with visible bars; the source is square already, so no padding needed.
 _ICONSET="$(mktemp -d)/hdhr_icon.iconset"
 mkdir -p "$_ICONSET"
-sips -s format png Resources/app.jpg --out /tmp/hdhr_src.png > /dev/null
-sips --padToHeightWidth 507 507 --padColor 1A1A1A /tmp/hdhr_src.png --out /tmp/hdhr_sq.png > /dev/null
 for _SZ in 16 32 128 256 512; do
-    sips -z $_SZ $_SZ /tmp/hdhr_sq.png --out "$_ICONSET/icon_${_SZ}x${_SZ}.png" > /dev/null
+    sips -z $_SZ $_SZ Resources/AppIcon-source.png --out "$_ICONSET/icon_${_SZ}x${_SZ}.png" > /dev/null
 done
-sips -z 32   32   /tmp/hdhr_sq.png --out "$_ICONSET/icon_16x16@2x.png"   > /dev/null
-sips -z 64   64   /tmp/hdhr_sq.png --out "$_ICONSET/icon_32x32@2x.png"   > /dev/null
-sips -z 256  256  /tmp/hdhr_sq.png --out "$_ICONSET/icon_128x128@2x.png" > /dev/null
-sips -z 512  512  /tmp/hdhr_sq.png --out "$_ICONSET/icon_256x256@2x.png" > /dev/null
-sips -z 1024 1024 /tmp/hdhr_sq.png --out "$_ICONSET/icon_512x512@2x.png" > /dev/null
+sips -z 32   32   Resources/AppIcon-source.png --out "$_ICONSET/icon_16x16@2x.png"   > /dev/null
+sips -z 64   64   Resources/AppIcon-source.png --out "$_ICONSET/icon_32x32@2x.png"   > /dev/null
+sips -z 256  256  Resources/AppIcon-source.png --out "$_ICONSET/icon_128x128@2x.png" > /dev/null
+sips -z 512  512  Resources/AppIcon-source.png --out "$_ICONSET/icon_256x256@2x.png" > /dev/null
+sips -z 1024 1024 Resources/AppIcon-source.png --out "$_ICONSET/icon_512x512@2x.png" > /dev/null
 iconutil --convert icns "$_ICONSET" --output Resources/AppIcon.icns
 cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 python3 - "$_ICONSET/icon_16x16.png" "$_ICONSET/icon_32x32.png" Resources/favicon.ico <<'PYEOF'

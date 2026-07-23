@@ -1,1 +1,1 @@
-let appVersion = "260720-1929"
+let appVersion = "260723-0122"

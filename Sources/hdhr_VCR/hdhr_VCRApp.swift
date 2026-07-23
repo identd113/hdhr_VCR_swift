@@ -85,16 +85,28 @@ struct hdhr_VCRApp: App {
     @ViewBuilder
     private var statusLabel: some View {
         if appState.isRecording {
-            Image(systemName: "record.circle.fill")
-                .symbolRenderingMode(.palette)
-                .foregroundStyle(.red, .primary)
-                .accessibilityLabel("hdhr VCR — recording in progress")
+            if let icon = appIconMenuBarRecording {
+                Image(nsImage: icon)
+                    .accessibilityLabel("hdhr VCR — recording in progress")
+            } else {
+                // Fallback: no bundle resources (e.g. direct swift build)
+                Image(systemName: "record.circle.fill")
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(.red, .primary)
+                    .accessibilityLabel("hdhr VCR — recording in progress")
+            }
         } else if let mins = appState.nextShowMinutes, mins <= 30 {
             let minsInt = Int(mins.rounded())
-            Image(systemName: "clock.badge.fill")
-                .symbolRenderingMode(.palette)
-                .foregroundStyle(.orange, .primary)
-                .accessibilityLabel("hdhr VCR — recording starting in \(minsInt) minute\(minsInt == 1 ? "" : "s")")
+            if let icon = appIconMenuBarUpNext {
+                Image(nsImage: icon)
+                    .accessibilityLabel("hdhr VCR — recording starting in \(minsInt) minute\(minsInt == 1 ? "" : "s")")
+            } else {
+                // Fallback: no bundle resources (e.g. direct swift build)
+                Image(systemName: "clock.badge.fill")
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(.orange, .primary)
+                    .accessibilityLabel("hdhr VCR — recording starting in \(minsInt) minute\(minsInt == 1 ? "" : "s")")
+            }
         } else if let icon = appIconMenuBar {
             Image(nsImage: icon)
                 .opacity(appState.isReady ? 1.0 : 0.3)
