@@ -62,16 +62,16 @@ Two `Section`s:
 - Failed: red `xmark.circle.fill` + error text
 - Untested: orange text `"Test the webhook before saving."`
 
-**Notify when…** section (visible only when enabled + URL set): 12 toggles for individual event types.
+**Notify when…** section (visible only when enabled + URL set): 4 grouped toggles (Lifecycle events, Reminders, Problems, Other) instead of 12 flat per-event rows.
 
 ### Category: Advanced
 Four sections:
-- **Network**: `Picker` for discovery/recording interface (`"Auto"` default + available NICs with display names). Caption explaining VPN usage. `Stepper` for idle check interval (5–60s, step 5) — moved here from the former standalone Performance section.
+- **Network**: `Picker` for discovery/recording interface (`"Auto"` default + available NICs with display names). Caption explaining VPN usage. (The idle-check-interval stepper that used to live here was removed 2026-07-23 — see below.)
 - **Logging**: `"Show App Log in Console"` button (opens Console.app for OSLog output) + selectable filter hint label (`subsystem == "com.hdhr.vcrplus"`). `Toggle("Verbose curl logging")`; when on: caption with curl log path (text-selectable) + `"Show curl log in Finder"` button. Config path (text-selectable) + `"Show config in Finder"` button — merged here from the former standalone Config File section.
 - **Signal Quality**: two `Toggle`s (show bars, send dropout alerts) + conditional **Scan Channels** section with per-device scan buttons (visible only when Show signal bars is on)
 
 ### Category: Maintenance
-Sections: Shows, Guide & Devices, Tools (if Homebrew found), Developer (if macOS > 13).
+Sections: Shows, Guide & Devices, Tools (if Homebrew found).
 
 Each action row: title in medium weight + a small `ⓘ` `InfoButton` (tapping shows the description in a popover) + `"Run"` `.bordered` button on the right (or `ProgressView(.small)` while running).
 
@@ -79,7 +79,7 @@ When a task finishes: green `checkmark.circle.fill` + result message in a separa
 
 **Tools section** (Homebrew): brew install rows for VLC and HDHomeRun CLI; result label in green/red.
 
-**Developer section**: `Picker` to simulate an older macOS version (for testing layout on macOS 14). Orange warning label when simulating.
+**Developer section** — removed (2026-07-23): it only offered a "Simulate macOS version" picker, which had been dead since `CableGuideView` (its one consumer) was removed.
 
 ### Category: About
 See the About section description below — app image with signal-pulse tap effect, version, native markdown changelog, GitHub link.
@@ -120,7 +120,7 @@ private var isDirty: Bool { draft != state.config }
 
 - `.onAppear` seeds `draft = state.config`
 - All controls bind to `$draft.*` — not to `state.config` directly
-- **Save** → `applyAndSave()` sets `state.config = draft`, calls `state.saveConfig()`, and applies side effects: if `Idle_timer_interval` changed, calls `state.startTimer()`; if `Network_interface` changed, invalidates the guide cache and triggers `state.rediscoverDevices()` + `state.refreshGuide()` in a background Task so the new NIC is active immediately
+- **Save** → `applyAndSave()` sets `state.config = draft`, calls `state.saveConfig()`, and applies side effects: if `Network_interface` changed, invalidates the guide cache and triggers `state.rediscoverDevices()` + `state.refreshGuide()` in a background Task so the new NIC is active immediately
 - **Save & Close** → if `isDirty`, calls `applyAndSave()`, then always closes the window. **Always enabled** (acts as "Done" even when clean). Rightmost button, `.borderedProminent`, triggered by Return (`.defaultAction`). Turns orange when `canSave` is true.
 - **Discard** → `draft = state.config`
 - **Close with unsaved changes** → `WindowCloseInterceptor` intercepts and shows an NSAlert: Save / Discard / Cancel
@@ -139,9 +139,9 @@ Sidebar entries (with SF Symbol icons):
 | Recording | `record.circle` | Folder, transcode, disk, failures, VLC, Bonus Time, Series subfolders, Post-recording script |
 | Guide | `tv` | Guide hours, series scan retry, JSON/XMLTV format toggle |
 | Notifications | `bell.badge` | Up Next timing, Recording alert timing |
-| Advanced | `terminal` | Network interface + idle interval, logging + verbose curl + config file path, signal quality |
+| Advanced | `terminal` | Network interface, logging + verbose curl + config file path, signal quality |
 | Web Server | `globe` | Enable/disable LAN web server, port, access URL |
-| Maintenance | `wrench.and.screwdriver` | Show maintenance, guide/device ops, brew tool installs, Developer (OS sim) |
+| Maintenance | `wrench.and.screwdriver` | Show maintenance, guide/device ops, brew tool installs |
 | About | `info.circle` | App logo, version, history, GitHub link |
 
 ---
@@ -159,7 +159,7 @@ Sidebar entries (with SF Symbol icons):
 - **Min free disk** — `Stepper` (1–100 GB). Recording is refused when free space is below this threshold (`AppState.diskOK(for:)`).
 - **Pause after N failures** — `Stepper` (1–10). After `Fail_count_setting` consecutive failures, `show_active = false` and the show moves to Paused. Each successful recording start decrements `show_fail_count` by 1.
 - **Watch in VLC** — `Toggle`, only shown when `/Applications/VLC.app` exists. Enables "Watch in VLC" buttons throughout the app. Stored in `draft.Watch_in_VLC`. **Auto-initialized**: on first launch (when `Watch_in_VLC_initialized == false`), the setting is auto-enabled if VLC is installed, then `Watch_in_VLC_initialized` is set to true so subsequent user toggles are never overridden.
-- **Min buffer rate** — `Picker` (90–100%, or `"100% (disabled)"`), only shown when VLC is installed. Sets the fill-phase floor for the in-app player's 8-second live buffer. Lower values fill the buffer faster; 100% disables buffering entirely. Stored in `draft.Player_buffer_min_rate`.
+- **Min buffer rate** — no longer exposed in Settings (removed 2026-07-23; low-utility tuning knob). `Player_buffer_min_rate` still exists in `AppConfig` and still sets the fill-phase floor for the in-app player's 8-second live buffer — it's just fixed at its default (93%) instead of user-adjustable.
 - **Bonus Time** — `Toggle` (on by default). Extends any show's recording past guide end. Sports entries default to enabled via `applyWebGuideEntry()`; any show can override via the per-show toggle. Stored in `draft.Sports_padding_enabled`.
 - **Bonus Time duration** — `Stepper` (10–60 min, step 5, default 30). Only visible when Bonus Time toggle is on. Stored in `draft.Sports_padding_minutes`.
 - **Series subfolders** — `Toggle` (off by default). When enabled, SeriesID recordings (`seriesChannel`/`seriesAll`) are saved into `Title/Season XX/` subfolders inside the recording folder, and the episode tag (e.g. `S02E04`) is embedded in the filename before the channel. Falls back to `Title/` when no season is parseable from the guide's `EpisodeNumber`. Flat path used when disabled or for non-SeriesID shows. Stored in `draft.Series_subfolder_enabled`.
@@ -190,7 +190,11 @@ Sidebar entries (with SF Symbol icons):
 
 - **Webhook URL** — `TextField` bound to `draft.Discord_webhook_url`. Monospaced font. Shown only when `draft.Discord_enabled` is true. Leave blank (or disable the master toggle) to suppress all Discord notifications. `sendDiscordEmbed()` in `DiscordNotifier.swift` silently no-ops for blank or non-discord.com URLs.
 - **Test button** — a single `.bordered` `"Test"` button next to the URL field; replaced by `ProgressView(.small)` while testing. Calls `state.checkWebhookURL(draft.Discord_webhook_url)` (sends a real ping to Discord). Disabled when the URL is blank.
-- **`Section("Notify when…")`** — flat list of 12 plain `Toggle` rows, shown only when `draft.Discord_enabled && !draft.Discord_webhook_url.isEmpty`. No per-row Test buttons, no sub-sections, no helper function. Event names: Recording started, Recording complete, Recording failed, Show paused, Skipped — disk full, **Skipped — already recorded** (`Discord_on_duplicate` — fires when a duplicate episode is skipped), Tuner conflict, Guide load failed, Show added, Up Next reminder, Recording Soon reminder, **Progress updates (every 5 min)** (`Discord_on_progress` — edits the start embed in-place every 5 min with elapsed/remaining time while recording).
+- **`Section("Notify when…")`** — shown only when `draft.Discord_enabled && !draft.Discord_webhook_url.isEmpty`. Condensed (2026-07-23) from 12 flat per-event toggles into 4 grouped ones via a `groupToggle(_:_:fields:)` helper — each Toggle's `isOn` reflects whether *every* field in its group is on, and flipping it sets every field in the group to that new value together. The underlying `Discord_on_*` fields are unchanged and still checked independently by `fireDiscordCard`/`discordShow` call sites — this only reduces how many controls Settings shows, not the granularity of what's stored. Groups:
+  - **Lifecycle events** — `Discord_on_start`, `Discord_on_complete`, `Discord_on_failed`, `Discord_on_paused`
+  - **Reminders** — `Discord_on_upnext`, `Discord_on_soon`
+  - **Problems** — `Discord_on_skipped` (disk full), `Discord_on_duplicate` (already recorded), `Discord_on_conflict`, `Discord_on_guide_error`
+  - **Other** — `Discord_on_show_added`, `Discord_on_progress` (edits the start embed in-place every 5 min with elapsed/remaining time while recording)
 
 #### Discord embed structure
 
@@ -210,7 +214,7 @@ Recording Complete embeds additionally include **Format** (file extension, e.g. 
 
 ### Advanced
 
-- **Idle check interval** — `Stepper` (5–60 sec, step 5). Merged into the Network section. How often the idle loop fires. Minimum enforced at 5s (`max(5, config.Idle_timer_interval)`). Changing this calls `state.startTimer()` immediately via `applyAndSave()`.
+- **Idle check interval** — no longer exposed in Settings (removed 2026-07-23; low-utility tuning knob). `Idle_timer_interval` still exists in `AppConfig` and still controls how often the idle loop fires (`AppState.startTimer()`, minimum enforced at 5s) — it's just fixed at its default (10s) instead of user-adjustable, applied once at launch.
 - **Discovery & recording interface** — `Picker`: "Auto" (empty string) plus all IPv4-bearing interfaces, each shown as `name  ip` (e.g. `en0  192.168.1.5`, `utun0  10.8.0.2`). Populated by `availableNetworkInterfaces()` via `getifaddrs`; uses `IFF_POINTOPOINT` to detect all VPN/tunnel types (utun*, tun*, cscotun*, gpd*, zt*, ppp*, ipsec*, etc.) regardless of vendor naming. Stored in `draft.Network_interface`. On Settings open, if the saved value names an interface that is no longer available (VPN disconnected), `draft.Network_interface` is silently reset to `""` so a Save can't persist a broken value. On Save, a changed interface triggers the guide-cache invalidate + rediscover/refresh side effect described under Draft/Save Pattern above, so the new NIC is active immediately. When non-empty:
   - UDP discovery (`HDHRManager.udpDiscoverSync`) binds via `IP_BOUND_IF`+`if_nametoindex`; **automatically skipped for tunnel/point-to-point interfaces** (`isPointToPointInterface()` check) since tunnels don't support broadcast — known-hosts (saved device IPs) handles remote device lookup
   - curl recordings get `--interface <name>` appended to args
@@ -263,8 +267,7 @@ One-tap operations for recovering from stuck states. Each uses `maintenanceRow(_
 - **VLC** — `brew install --cask vlc`. Shown as installed (checkmark) when `/Applications/VLC.app` exists.
 - **HDHomeRun CLI** — `brew install libhdhomerun`. Shown as installed when `hdhomerun_config` is on PATH. Brew output is streamed to a `brewStatus` string shown at the bottom of the section.
 
-**Developer section** (only shown when macOS major version > 13):
-- **Simulate macOS version** — `Picker` that sets `draftSimulatedOS` (`@AppStorage`). A development aid; the simulated value is stored in `@AppStorage` (not in `AppConfig`). Note: `CableGuideView` (which consumed this value) has been removed; the setting currently has no effect on the guide.
+**Developer section** — removed (2026-07-23). It offered a "Simulate macOS version" picker (`draftSimulatedOS`/`@AppStorage("simulatedMacOSVersion")`) that had been dead since `CableGuideView`, its one consumer, was removed — the picker changed nothing.
 
 ---
 

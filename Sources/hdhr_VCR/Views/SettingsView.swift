@@ -51,13 +51,11 @@ private enum SettingsCategory: String, CaseIterable, Identifiable {
 struct SettingsView: View {
     @EnvironmentObject var state: AppState
     @AppStorage("defaultSaveDirectory") private var defaultSaveDirectory: String = ""
-    @AppStorage("simulatedMacOSVersion") private var simulatedMacOSVersion: Int = 0
     @State private var selection: SettingsCategory? = .general
     @State private var draft: AppConfig = AppConfig()
     // Shadow drafts for settings that live outside AppConfig — applied only on Save
     @State private var draftSaveDirectory: String      = ""
     @State private var draftLaunchAtLogin: Bool        = false
-    @State private var draftSimulatedOS:   Int         = 0
     @State private var loginItemError: String          = ""
 
     private var launchAtLoginRegistered: Bool {
@@ -99,7 +97,6 @@ struct SettingsView: View {
         draft != state.config
             || draftSaveDirectory != defaultSaveDirectory
             || draftLaunchAtLogin != launchAtLoginRegistered
-            || draftSimulatedOS   != simulatedMacOSVersion
     }
 
     var body: some View {
@@ -169,12 +166,6 @@ struct SettingsView: View {
                 state.config.Network_interface = ""
                 state.saveConfig()
             }
-            // Migrate: a previous build stored realVersion for "current"; normalize to 0.
-            let real = ProcessInfo.processInfo.operatingSystemVersion.majorVersion
-            if simulatedMacOSVersion == real {
-                simulatedMacOSVersion = 0
-                draftSimulatedOS = 0   // re-sync after migration
-            }
         }
     }
 
@@ -183,7 +174,6 @@ struct SettingsView: View {
         draftSaveDirectory = defaultSaveDirectory
         draftLaunchAtLogin = launchAtLoginRegistered
         loginItemError = ""
-        draftSimulatedOS   = simulatedMacOSVersion
         // Existing saved URL is considered verified (was tested when first saved)
         webhookTestStatus  = state.config.Discord_webhook_url.isEmpty ? .idle : .passed
     }
@@ -192,7 +182,6 @@ struct SettingsView: View {
 
     private func applyAndSave() {
         let old = state.config
-        if draft.Idle_timer_interval != old.Idle_timer_interval { glog("[Settings] IdleTimerInterval: \(old.Idle_timer_interval) → \(draft.Idle_timer_interval)") }
         if draft.Network_interface   != old.Network_interface   { glog("[Settings] NetworkInterface: '\(old.Network_interface)' → '\(draft.Network_interface)'") }
         if draft.Discord_webhook_url != old.Discord_webhook_url { glog("[Settings] DiscordWebhook changed") }
         if draft.Discord_enabled     != old.Discord_enabled     { glog("[Settings] DiscordEnabled: \(old.Discord_enabled) → \(draft.Discord_enabled)") }
@@ -200,17 +189,14 @@ struct SettingsView: View {
         if draft.GuideHours          != old.GuideHours          { glog("[Settings] GuideHours: \(old.GuideHours) → \(draft.GuideHours)") }
         if draft.Default_transcode   != old.Default_transcode   { glog("[Settings] DefaultTranscode: '\(old.Default_transcode)' → '\(draft.Default_transcode)'") }
         if draft.Guide_use_xml       != old.Guide_use_xml       { glog("[Settings] GuideUseXml: \(old.Guide_use_xml) → \(draft.Guide_use_xml)") }
-        let intervalChanged   = draft.Idle_timer_interval != old.Idle_timer_interval
         let interfaceChanged  = draft.Network_interface   != old.Network_interface
         let webServerChanged  = draft.Web_server_enabled  != old.Web_server_enabled
                              || draft.Web_server_port     != old.Web_server_port
         let formatChanged     = draft.Guide_use_xml       != old.Guide_use_xml
         state.config = draft
         state.saveConfig()
-        if intervalChanged { state.startTimer() }
         // Commit settings that live outside AppConfig
         defaultSaveDirectory = draftSaveDirectory
-        simulatedMacOSVersion = draftSimulatedOS
         loginItemError = ""
         if draftLaunchAtLogin != launchAtLoginRegistered {
             do {
@@ -310,14 +296,6 @@ struct SettingsView: View {
                 if vlcInstalled {
                     Toggle(isOn: $draft.Watch_in_VLC) {
                         HStack { Text("Watch in VLC"); InfoButton("Adds Watch in VLC buttons for live and recorded streams throughout the app.") }
-                    }
-
-                    Picker(selection: $draft.Player_buffer_min_rate) {
-                        ForEach(Array(stride(from: 90, through: 100, by: 1)), id: \.self) { pct in
-                            Text(pct == 100 ? "100% (disabled)" : "\(pct)%").tag(pct)
-                        }
-                    } label: {
-                        HStack { Text("Min buffer rate"); InfoButton("Minimum playback speed while filling the in-app player's 8-second live buffer. Lower fills faster; 100% disables adaptive buffering.") }
                     }
                 }
 
@@ -476,24 +454,39 @@ struct SettingsView: View {
             }
 
             if draft.Discord_enabled && !draft.Discord_webhook_url.isEmpty {
+                // Grouped into 4 clusters instead of 12 flat toggles — each cluster's Toggle
+                // reflects "all its events on" and flips every member field together. The
+                // underlying Discord_on_* fields stay independent (fireDiscordCard checks each
+                // one on its own); this only reduces how many controls Settings exposes.
                 Section("Notify when…") {
-                    Toggle("Recording started",             isOn: $draft.Discord_on_start)
-                    Toggle("Recording complete",            isOn: $draft.Discord_on_complete)
-                    Toggle("Recording failed",              isOn: $draft.Discord_on_failed)
-                    Toggle("Show paused",                   isOn: $draft.Discord_on_paused)
-                    Toggle("Skipped — disk full",           isOn: $draft.Discord_on_skipped)
-                    Toggle("Skipped — already recorded",    isOn: $draft.Discord_on_duplicate)
-                    Toggle("Tuner conflict",                isOn: $draft.Discord_on_conflict)
-                    Toggle("Guide load failed",             isOn: $draft.Discord_on_guide_error)
-                    Toggle("Show added",                    isOn: $draft.Discord_on_show_added)
-                    Toggle("Up Next reminder",              isOn: $draft.Discord_on_upnext)
-                    Toggle("Recording Soon reminder",       isOn: $draft.Discord_on_soon)
-                    Toggle("Progress updates (every 5 min)", isOn: $draft.Discord_on_progress)
+                    groupToggle("Lifecycle events",
+                                "Recording started, completed, failed, or paused.",
+                                fields: [\.Discord_on_start, \.Discord_on_complete, \.Discord_on_failed, \.Discord_on_paused])
+                    groupToggle("Reminders",
+                                "Up Next and Recording Soon heads-up notifications.",
+                                fields: [\.Discord_on_upnext, \.Discord_on_soon])
+                    groupToggle("Problems",
+                                "Skipped (disk full), skipped (already recorded), tuner conflict, and guide load failures.",
+                                fields: [\.Discord_on_skipped, \.Discord_on_duplicate, \.Discord_on_conflict, \.Discord_on_guide_error])
+                    groupToggle("Other",
+                                "Show added, and progress updates every 5 minutes while recording.",
+                                fields: [\.Discord_on_show_added, \.Discord_on_progress])
                 }
             }
         }
         .formStyle(.grouped)
         .navigationTitle("Notifications")
+    }
+
+    /// A single Toggle that reads/writes several AppConfig bool fields together — "on" only
+    /// when every field in the group is on; toggling sets them all to the new value at once.
+    private func groupToggle(_ label: String, _ info: String, fields: [WritableKeyPath<AppConfig, Bool>]) -> some View {
+        Toggle(isOn: Binding(
+            get: { fields.allSatisfy { draft[keyPath: $0] } },
+            set: { newValue in for f in fields { draft[keyPath: f] = newValue } }
+        )) {
+            HStack { Text(label); InfoButton(info) }
+        }
     }
 
     // MARK: - Advanced
@@ -508,9 +501,6 @@ struct SettingsView: View {
                     }
                 } label: {
                     HStack { Text("Discovery & recording interface"); InfoButton("Binds UDP discovery and curl recordings to a specific interface. VPN tunnels are listed (utun*, tun*, cscotun*, gpd*, etc.) — use one if your HDHomeRun is on a remote network reachable via VPN.") }
-                }
-                Stepper(value: $draft.Idle_timer_interval, in: 5...60, step: 5) {
-                    HStack { Text("Idle check: every \(draft.Idle_timer_interval) sec"); InfoButton("How often the app checks for recordings due to start or stop. Lower = more precise timing, slightly more CPU.") }
                 }
             }
 
@@ -714,20 +704,6 @@ struct SettingsView: View {
                         Label(brewStatus, systemImage: brewStatus.hasPrefix("Error") ? "xmark.circle.fill" : "checkmark.circle.fill")
                             .foregroundStyle(brewStatus.hasPrefix("Error") ? .red : .green)
                             .font(.callout)
-                    }
-                }
-            }
-            let realVersion = ProcessInfo.processInfo.operatingSystemVersion.majorVersion
-            if realVersion > 13 {
-                Section("Developer") {
-                    Picker("Simulate macOS version", selection: $draftSimulatedOS) {
-                        Text("macOS \(realVersion) (current)").tag(0)
-                        if realVersion >= 15 { Text("macOS 14 (Sonoma)").tag(14) }
-                    }
-                    if draftSimulatedOS > 0 {
-                        Label("Simulating macOS \(draftSimulatedOS) — reopen guide or wizard to see effect",
-                              systemImage: "exclamationmark.triangle")
-                            .font(.caption).foregroundStyle(.orange)
                     }
                 }
             }
