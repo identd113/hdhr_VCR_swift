@@ -289,6 +289,9 @@ struct AppConfig: Equatable {
     // Signal quality
     var Signal_quality_enabled:      Bool = false  // show signal bars in guide + web UI
     var Signal_quality_alert_notify: Bool = false  // deliver system notification + Discord on dropout
+
+    // Menu bar icon
+    var Status_light_blink_enabled: Bool = false  // blink the built-in status light while recording/up-next
 }
 
 extension AppConfig: Codable {
@@ -338,6 +341,7 @@ extension AppConfig: Codable {
         Web_server_port         = (try? c.decode(Int.self,    forKey: .Web_server_port))         ?? 1980
         Signal_quality_enabled      = (try? c.decode(Bool.self, forKey: .Signal_quality_enabled))      ?? false
         Signal_quality_alert_notify = (try? c.decode(Bool.self, forKey: .Signal_quality_alert_notify)) ?? false
+        Status_light_blink_enabled  = (try? c.decode(Bool.self, forKey: .Status_light_blink_enabled))  ?? false
         Series_subfolder_enabled    = (try? c.decode(Bool.self,   forKey: .Series_subfolder_enabled))    ?? false
         Skip_recorded_episodes      = (try? c.decode(Bool.self,   forKey: .Skip_recorded_episodes))      ?? false
         Post_recording_script       = (try? c.decode(String.self, forKey: .Post_recording_script))       ?? ""

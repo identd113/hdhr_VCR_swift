@@ -3,11 +3,14 @@
 ## Visual Appearance
 
 ### Menu bar icon
-A small custom TV icon sits in the macOS menu bar. It changes state based on app activity:
-- **Starting up** — icon rendered at 30% opacity (dimmed), indicating the app is not yet ready
-- **Idle** — full-opacity TV icon, black in light mode / white in dark mode
-- **Show starting soon** — replaced with an orange `clock.badge.fill` SF Symbol when any show starts within 30 minutes
-- **Recording** — replaced with a red `record.circle.fill` SF Symbol when any show is actively recording
+A VHS-cassette mark with a built-in status light sits in the macOS menu bar (`AppIcon.swift` — three pre-baked bitmaps loaded once at launch: `app.jpg`/`app-recording.jpg`/`app-upnext.jpg`). Selection logic lives in `hdhr_VCRApp.swift`'s `statusLabel`, not in this file, despite `MenuContent` being the rest of the menu bar UI. It changes state based on app activity:
+- **Starting up** — idle mark rendered at 30% opacity (dimmed), indicating the app is not yet ready
+- **Idle** — full-opacity idle mark, light off/dim
+- **Show starting soon** — swaps to the mark with its light lit amber when any show starts within 30 minutes
+- **Recording** — swaps to the mark with its light lit red when any show is actively recording
+- **Blink** (Settings → General → "Blink menu bar icon", off by default) — while recording or show-soon, the lit mark alternates with the dim/idle mark on a 6s cycle (5s lit, 1s off) instead of staying lit continuously
+
+If the bundled image resources are missing (e.g. a direct `swift build` without the app bundle), each state falls back to an SF Symbol instead: dimmed `tv`, orange `clock.badge.fill`, red `record.circle.fill` — these fallbacks blink the same way when enabled.
 
 ### Dropdown menu
 Clicking the icon opens a native macOS cascading menu (NSMenu style). The menu has no custom background — it uses the system's standard menu appearance (dark translucent on macOS). Items are full-width, standard menu item height (~22pt). Interactive items highlight in system accent color on hover.
@@ -98,14 +101,20 @@ Window IDs → titles: `"add-show"` → "Add Show", `"edit-show"` → "Edit Show
 
 | State | Icon | Condition |
 |---|---|---|
-| Starting up | Dimmed (30% opacity) custom icon | `isReady == false` |
-| Idle | Custom icon | No recordings, no imminent shows |
-| Show soon | `clock.badge.fill` (orange) | `nextShowMinutes <= 30` |
-| Recording | `record.circle.fill` (red) | `isRecording == true` |
+| Starting up | Dimmed (30% opacity) idle mark | `isReady == false` |
+| Idle | Idle mark, light off | No recordings, no imminent shows |
+| Show soon | Mark, light lit amber (blinks if enabled) | `nextShowMinutes <= 30` |
+| Recording | Mark, light lit red (blinks if enabled) | `isRecording == true` |
 
-`nextShowMinutes` is an `AppState` computed property: minutes until the nearest active show's `show_next`. The clock badge is driven by this being ≤30.
+`nextShowMinutes` is an `AppState` computed property: minutes until the nearest active show's `show_next`. The lit light is driven by this being ≤30.
 
 `isReady` is a computed property on `AppState` that returns `true` once at least one device is found, a lineup is populated, and guide data is loaded. The icon stays at 30% opacity until all three conditions are met — a visual signal that the app isn't yet usable.
+
+### Blink (Settings → General → "Blink menu bar icon")
+
+Off by default (`config.Status_light_blink_enabled`). When on, `AppState` runs a dedicated 1Hz `Timer` (`startStatusLightTimer()`/`tickStatusLight()`, separate from the idle-loop timer) that toggles `@Published var statusLightOn` on a 6-second cycle — lit for 5s, off for 1s — only while a recording or show-soon state is active; otherwise it holds `statusLightOn == true` so the lit branches render steadily, matching pre-blink behavior. `hdhr_VCRApp.swift`'s `statusLabel` reads `statusLightOn` to pick between the lit image/symbol and the idle/dim one (`appIconMenuBar`, reused as the "off" frame — no separate blink assets exist).
+
+This is deliberately a real `@Published` property with its own timer rather than a view-local `TimelineView` inside the `MenuBarExtra` label — a `TimelineView` there was found to break click-to-open (AppKit's `NSStatusItem` stops forwarding clicks once its label content free-runs its own render loop). It's also deliberately **not** gated on `menuIsOpen` (unlike `rebuildMenuEntries()` and the other guards in this file) — `menuIsOpen` can get stuck `true` from SwiftUI's eager startup build of the dropdown content before the user ever opens it for real, which would otherwise block the blink indefinitely on a fresh launch. A lone boolean flip feeding only the label (never `MenuContent`) doesn't carry the same menu-rebuild-glitch risk that guard exists for.
 
 ---
 

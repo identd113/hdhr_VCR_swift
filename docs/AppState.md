@@ -14,7 +14,8 @@
 6. `discoverDevices(knownHosts:attempts:10)` — up to 10 retries with 1 s pauses; idle loop retries on each tick if devices remain empty.
 7. `fetchAllGuides()` — parallel guide load for all devices; mirrors result into `guideByDevice`.
 8. `startTimer()` — fires `idleLoop()` every `config.Idle_timer_interval` seconds (default 10, min 5).
-9. Sets `isStartingUp = false` (menu bar icon switches from dimmed to normal/red-dot).
+9. `startStatusLightTimer()` — separate 1Hz `Timer` driving the menu bar icon's optional blink (Settings → General → "Blink menu bar icon", off by default); see `docs/MenuContent.md#menu-bar-icon-states`.
+10. Sets `isStartingUp = false` (menu bar icon switches from dimmed to its normal lit mark).
 
 ---
 
@@ -99,7 +100,7 @@ Falls back to **SiliconDust cloud API** (`http://discover.hdhomerun.com/discover
 | `unavailableDeviceIDs` | `Set<String>` of DeviceIDs whose `isAvailable == false` (missedProbes ≥ 3) |
 | `unavailableDeviceShows` | Active shows (recording or scheduled) whose `hdhr_record` is in `unavailableDeviceIDs` |
 | `usableDeviceIDs` | `Set<String>` of DeviceIDs that are discovered AND reachable (`isAvailable == true`). Used by the web guide to determine active vs. inactive tuner boxes. Inactive tuners are dimmed and non-selectable but still listed with their assigned shows. |
-| `nextShowMinutes` | Minutes until nearest active show; drives orange `clock.badge` icon when ≤ 30 |
+| `nextShowMinutes` | Minutes until nearest active show; drives the menu bar icon's amber-lit "show soon" state when ≤ 30 |
 | `availableDeviceCount` | Excludes devices with missing lineup or guide; used in status message |
 | `onAirNow(for:at:)` | Returns one `(channel: LineupEntry, entry: GuideEntry)` per unique on-air channel for a device at `date` (default `Date()`), sorted favorites-first then by channel number. Used by `WatchNowView` and `WebServer.buildNowJSON`. |
 | `tunersFull(for: deviceId)` | Returns `true` when every tuner on the device is occupied. Delegates to `activeTunerCount(for:)` — `max(status.json hw count, recordings + VLC)` — so it also honors tuners locked by another machine running this app against the same physical device, not just this instance's own recordings. Never count recordings alone — watching and recording occupy tuners equally, *except* watching a recording via the relay. Used by `startRecording`, `WatchNowView`, and `WebServer.handleRecord`. |

@@ -85,28 +85,16 @@ struct hdhr_VCRApp: App {
     @ViewBuilder
     private var statusLabel: some View {
         if appState.isRecording {
-            if let icon = appIconMenuBarRecording {
-                Image(nsImage: icon)
-                    .accessibilityLabel("hdhr VCR — recording in progress")
-            } else {
-                // Fallback: no bundle resources (e.g. direct swift build)
-                Image(systemName: "record.circle.fill")
-                    .symbolRenderingMode(.palette)
-                    .foregroundStyle(.red, .primary)
-                    .accessibilityLabel("hdhr VCR — recording in progress")
-            }
+            blinkableIcon(litImage: appIconMenuBarRecording,
+                          litSystemName: "record.circle.fill",
+                          litColor: .red,
+                          accessibilityLabel: "hdhr VCR — recording in progress")
         } else if let mins = appState.nextShowMinutes, mins <= 30 {
             let minsInt = Int(mins.rounded())
-            if let icon = appIconMenuBarUpNext {
-                Image(nsImage: icon)
-                    .accessibilityLabel("hdhr VCR — recording starting in \(minsInt) minute\(minsInt == 1 ? "" : "s")")
-            } else {
-                // Fallback: no bundle resources (e.g. direct swift build)
-                Image(systemName: "clock.badge.fill")
-                    .symbolRenderingMode(.palette)
-                    .foregroundStyle(.orange, .primary)
-                    .accessibilityLabel("hdhr VCR — recording starting in \(minsInt) minute\(minsInt == 1 ? "" : "s")")
-            }
+            blinkableIcon(litImage: appIconMenuBarUpNext,
+                          litSystemName: "clock.badge.fill",
+                          litColor: .orange,
+                          accessibilityLabel: "hdhr VCR — recording starting in \(minsInt) minute\(minsInt == 1 ? "" : "s")")
         } else if let icon = appIconMenuBar {
             Image(nsImage: icon)
                 .opacity(appState.isReady ? 1.0 : 0.3)
@@ -116,6 +104,37 @@ struct hdhr_VCRApp: App {
             Image(systemName: "tv")
                 .opacity(appState.isReady ? 1.0 : 0.3)
                 .accessibilityLabel("hdhr VCR")
+        }
+    }
+
+    // Renders the recording/up-next status light, optionally blinking it (Settings → "Blink menu
+    // bar icon"). Reads appState.statusLightOn — driven by AppState's own 1Hz timer — rather than
+    // a view-local TimelineView: a TimelineView inside the MenuBarExtra label broke click-to-open
+    // (AppKit's NSStatusItem stopped forwarding clicks once the label free-ran its own render loop).
+    @ViewBuilder
+    private func blinkableIcon(litImage: NSImage?, litSystemName: String, litColor: Color,
+                                accessibilityLabel: String) -> some View {
+        blinkFrame(lightOn: appState.statusLightOn, litImage: litImage, litSystemName: litSystemName, litColor: litColor)
+            .accessibilityLabel(accessibilityLabel)
+    }
+
+    // "Off" frame reuses the existing idle/dim mark (appIconMenuBar) — no new assets needed.
+    @ViewBuilder
+    private func blinkFrame(lightOn: Bool, litImage: NSImage?, litSystemName: String, litColor: Color) -> some View {
+        if lightOn {
+            if let litImage {
+                Image(nsImage: litImage)
+            } else {
+                // Fallback: no bundle resources (e.g. direct swift build)
+                Image(systemName: litSystemName)
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(litColor, .primary)
+            }
+        } else if let idle = appIconMenuBar {
+            Image(nsImage: idle)
+        } else {
+            Image(systemName: "tv")
+                .opacity(0.3)
         }
     }
 }

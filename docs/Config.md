@@ -60,6 +60,7 @@ Web_server_port         Int     1980    TCP port for the web server (1025–6553
 Hdhr_setup_folder       String  ""      default recording folder (POSIX path; empty = ~/Movies/hdhr_videos)
 Signal_quality_enabled      Bool false   collect per-channel SNQ signal history and show signal bars when scheduling a recording (Add/Edit/web Record)
 Signal_quality_alert_notify Bool false   notify + Discord embed when a recording's signal drops below 30% for ~20s, and again on recovery
+Status_light_blink_enabled  Bool false   blink the recording/up-next menu bar status light (6s cycle: 5s lit, 1s off) instead of showing it lit continuously; driven by AppState's own 1Hz timer, independent of the idle loop
 Config_version          String  "2"     format version marker; "2" = ISO8601 dates + "shows" key
 ```
 

@@ -253,6 +253,9 @@ struct SettingsView: View {
                         .font(.caption).foregroundStyle(.red)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                Toggle(isOn: $draft.Status_light_blink_enabled) {
+                    HStack { Text("Blink menu bar icon"); InfoButton("Blink the menu bar icon's status light while a recording is in progress or a show is starting soon, instead of showing it lit continuously.") }
+                }
             }
         }
         .formStyle(.grouped)

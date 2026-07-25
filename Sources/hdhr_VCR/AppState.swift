@@ -84,6 +84,12 @@ final class AppState: ObservableObject {
         lineups.values.contains { !$0.isEmpty } &&
         guideByDevice.values.contains { !$0.isEmpty }
     }
+    // Menu bar "blink" state for Settings → "Blink menu bar icon"; driven by statusLightTimer
+    // (see startStatusLightTimer/tickStatusLight below), read by hdhr_VCRApp's statusLabel.
+    // Deliberately a real @Published rather than a view-local TimelineView — a TimelineView
+    // inside the MenuBarExtra label broke click-to-open-menu (AppKit's NSStatusItem stops
+    // forwarding clicks once its label content free-runs on its own render loop).
+    @Published var statusLightOn: Bool = true
     var isRecording: Bool      { shows.contains { $0.show_recording } }
     var recordingShows: [Show] { shows.filter { $0.show_recording && ($0.show_end ?? .distantPast) > Date() } }
     var activeShows: [Show]    { shows.filter { $0.show_active && !$0.show_recording && !$0.show_paused }
@@ -158,6 +164,7 @@ final class AppState: ObservableObject {
     }
 
     private var idleTimer: Timer?
+    private var statusLightTimer: Timer?
     private var lastRefreshHour: Int?     = nil  // hour on which guide was last refreshed; triggers new refresh when hour changes
     private var lastDeviceProbe: Date     = .distantPast
     private var nextQuickProbe: Date?     = nil   // set when any device misses a probe; cleared when all are seen
@@ -271,6 +278,7 @@ final class AppState: ObservableObject {
         }
 
         startTimer()
+        startStatusLightTimer()
         isStartingUp = false
         glog("[Startup] complete")
 
@@ -981,6 +989,33 @@ final class AppState: ObservableObject {
             Task { @MainActor [weak self] in await self?.idleLoop() }
         }
         idleTimer?.fire()
+    }
+
+    // Lightweight 1Hz timer driving the menu bar blink (independent of the idle-loop timer above,
+    // which does much heavier network/bookkeeping work on a much slower cadence).
+    func startStatusLightTimer() {
+        statusLightTimer?.invalidate()
+        statusLightTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.tickStatusLight() }
+        }
+    }
+
+    // 6s cycle: lit 5s, off 1s. No-ops (beyond resetting to lit) when blink is disabled or nothing
+    // is recording/up-next. Deliberately NOT gated on menuIsOpen — unlike rebuildMenuEntries() and
+    // friends, this only feeds the MenuBarExtra *label* (never MenuContent, the dropdown itself),
+    // and menuIsOpen can get stuck true from SwiftUI's eager startup build of the dropdown content
+    // (see the "Silently open+close" comment on statusLabel in hdhr_VCRApp.swift) — gating on it
+    // here would silently block the blink indefinitely on a fresh launch until the user's first
+    // real menu open/close.
+    private func tickStatusLight() {
+        guard config.Status_light_blink_enabled,
+              isRecording || (nextShowMinutes.map { $0 <= 30 } ?? false) else {
+            if !statusLightOn { statusLightOn = true }
+            return
+        }
+        let cyclePosition = Date().timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 6.0)
+        let newValue = cyclePosition < 5.0
+        if statusLightOn != newValue { statusLightOn = newValue }
     }
 
     // Reentrancy guard: startTimer() fires a new Task every Idle_timer_interval regardless of

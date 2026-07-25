@@ -30,7 +30,7 @@ Selected row highlighted in accent color.
 
 ### Category: General
 One `Section`:
-- **System**: `Toggle("Launch at Login")`
+- **System**: `Toggle("Launch at Login")`, `Toggle("Blink menu bar icon")`
 
 ### Category: Recording
 One `Section`:
@@ -135,7 +135,7 @@ Sidebar entries (with SF Symbol icons):
 
 | Category | Icon | Contents |
 |---|---|---|
-| General | `gear` | Launch at Login |
+| General | `gear` | Launch at Login, Blink menu bar icon |
 | Recording | `record.circle` | Folder, transcode, disk, failures, VLC, Bonus Time, Series subfolders, Post-recording script |
 | Guide | `tv` | Guide hours, series scan retry, JSON/XMLTV format toggle |
 | Notifications | `bell.badge` | Up Next timing, Recording alert timing |
@@ -149,6 +149,7 @@ Sidebar entries (with SF Symbol icons):
 ### General
 
 - **Launch at Login** — writes/deletes `~/Library/LaunchAgents/com.hdhr.vcrplus.plist` (a `RunAtLoad` plist that calls `open -a <bundle path>`). Does **not** use `SMAppService` — the plist approach works regardless of code signing and requires no BTM approval. Toggle reverts on write failure; error shown in red below the toggle.
+- **Blink menu bar icon** — `Toggle` bound to `draft.Status_light_blink_enabled` (off by default). When on, the menu bar icon's built-in status light blinks on a 6s cycle (5s lit, 1s off) instead of staying lit continuously while a recording is in progress or a show is starting within 30 minutes. Takes effect live — no restart or window reopen needed. Driven by `AppState.statusLightTimer`/`tickStatusLight()`, a dedicated 1Hz timer independent of the idle loop; see [MenuContent.md](MenuContent.md#menu-bar-icon-states).
 
 ---
 
