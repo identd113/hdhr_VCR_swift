@@ -54,6 +54,12 @@ The native Add Show wizard saves series shows under the raw (possibly episode-su
 
 ---
 
+### Duplicate-episode override is a web-guide dead end
+
+`willSkip` (`WebServer.swift`) already renders the green `.g-flag-skip` corner flag + "Already recorded · will skip" tooltip for a managed block the guide grid knows will be skipped as a duplicate — but the web UI has no way to act on it. `show_ignore_duplicate_once` (the per-show one-shot override, see `docs/ShowFormSection.md`) is only exposed in the native Add/Edit dialogs; `handleRecord`/`handleEdit` never read or set it, so any show scheduled or edited from the browser is stuck with it `false` and no in-browser escape hatch. A user watching the web guide sees "this won't record" with zero recourse short of switching to the native app. At minimum, clicking a `.g-flag-skip` block could open a lightweight confirm-to-override call. Also note `docs/ShowFormSection.md`'s claim that the web Record modal "mirrors these fields minus Folder" was already stale before this gap (Duplicate Episodes is a second omission beyond Folder) — worth a doc pass if the modal is revisited.
+
+---
+
 ## Settings
 
 ### No per-show fail threshold or bonus duration

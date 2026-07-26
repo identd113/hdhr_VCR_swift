@@ -66,6 +66,7 @@ Dark/light theme is synced via JS in `webView(_:didFinish:)`.
 Form fields:
 - **Title** — `TextField` pre-populated from the web guide entry
 - **Signal** — bars for the selected channel + a weak-signal warning when its signal is poor (only when `Signal_quality_enabled` and the channel has signal history); shared via `ShowFormSection`
+- **Duplicate Episodes** — only when Series subfolders + Skip already-recorded episodes are both on and the show is a series; an orange "already on disk — will be skipped" warning plus a "Record even if already on disk" toggle (`show_ignore_duplicate_once`); shared via `ShowFormSection`
 - **Type** — segmented `Picker` for `ShowState.allCases`
 - **Days** — weekday toggle buttons (shown for `.single` and `.dateTime`). Single enforces single-day selection; dateTime allows any combination
 - **Transcode** — `Picker`: None / Heavy / Mobile / Internet 720

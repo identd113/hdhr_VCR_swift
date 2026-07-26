@@ -40,6 +40,12 @@ final class AppState: ObservableObject {
     // still describes this attempt or is stale detail left over from an earlier, resolved one —
     // show_fail_count alone can't tell the difference since a success only decrements it.
     private var failedThisAttempt: Set<String> = []
+    // Per-attempt marker: set in startRecording only when show_ignore_duplicate_once actually
+    // suppressed a real duplicate-skip for the airing being recorded right now. stopRecording's
+    // natural-success path consumes this to decide whether to clear the override — so enabling
+    // it preemptively on a recording that was never actually a duplicate doesn't silently burn
+    // the one-shot before the rerun it was meant for ever airs.
+    private var duplicateOverrideUsedThisAttempt: Set<String> = []
     // Retained DispatchSource for SIGTERM — saves config before the process exits so
     // show_recording_path and discord_start_msg_id survive pkill during development.
     private var sigtermSource: DispatchSourceSignal?
@@ -1391,11 +1397,18 @@ final class AppState: ObservableObject {
         // Skip already-recorded episode: if this exact SxxExx is already on disk for this series,
         // advance to the next airing instead of recording a duplicate (rerun/simulcast). Gated under
         // Series subfolders; needs a full season+episode tag (season-only can't identify one episode).
-        if config.Series_subfolder_enabled, config.Skip_recorded_episodes, show.isSeries,
-           let tag = episodeTag,
-           tag.range(of: #"^S\d+E\d+$"#, options: [.regularExpression, .caseInsensitive]) != nil {
-            let safeTitle = show.show_title.replacingOccurrences(of: "/", with: "-")
-            if recordedEpisodeTags(forTitle: safeTitle, baseDir: show.posixRecordDir).contains(tag.uppercased()) {
+        // show_ignore_duplicate_once is a per-show override (set in the Add/Edit dialog) that bypasses
+        // this — checked regardless of the override so duplicateOverrideUsedThisAttempt only records
+        // that the override actually suppressed a real skip, not merely that it happened to be on.
+        // Reset first — fresh attempt — so a marker left over from an earlier attempt on this same
+        // show that never reached stopRecording (e.g. LAUNCH ERROR below) can't cause a later,
+        // genuinely non-duplicate success to be misread as "this is the one that used the override".
+        duplicateOverrideUsedThisAttempt.remove(show.show_id)
+        if let tag = episodeTag,
+           duplicateEpisodeTag(title: show.show_title, episodeTag: tag, baseDir: show.posixRecordDir) != nil {
+            if show.show_ignore_duplicate_once {
+                duplicateOverrideUsedThisAttempt.insert(show.show_id)
+            } else {
                 glog("[\(show.show_title)] SKIP \(tag) — already recorded")
                 notify("Recording Skipped", body: show.show_title, subtitle: "\(tag) already recorded")
                 fireDiscordCard(showId: show.show_id, event: "🔁 Skipped — already recorded",
@@ -1569,6 +1582,24 @@ final class AppState: ObservableObject {
             if fileSize > 0 {
                 shows[index].show_fail_count = max(0, shows[index].show_fail_count - 1)
                 runPostRecordingScript(path: path, show: show, fileSize: fileSize)
+                // One-shot: the override exists to force past a single already-recorded rerun,
+                // not to permanently disable dedup for this series — clear it once the recording
+                // that actually needed it lands, so the next rerun goes back to being skipped as a
+                // duplicate. Gated on duplicateOverrideUsedThisAttempt (set in startRecording only
+                // when the override actually suppressed a real skip for this attempt), not merely
+                // on the flag being on — otherwise turning it on ahead of time and having it "spend
+                // itself" on some unrelated, non-duplicate recording would leave the real rerun
+                // un-protected later.
+                if duplicateOverrideUsedThisAttempt.remove(show.show_id) != nil {
+                    shows[index].show_ignore_duplicate_once = false
+                    glog("[\(show.show_title)] OVERRIDE CLEARED — duplicate-recording override used up")
+                    // Flips the exact flag WebServer's willSkip reads for the green/gold corner
+                    // flag — without this, an open web guide window keeps showing the stale flag
+                    // until the next unrelated rebuild (hourly refresh, another show's edit, etc.).
+                    webServer.broadcastGuideChangeEvent(type: "show_updated",
+                                                         extra: ["channel": show.show_channel, "device": show.hdhr_record],
+                                                         state: self)
+                }
             }
         }
 
@@ -1928,6 +1959,7 @@ final class AppState: ObservableObject {
         missedStartNotifiedEpochs.removeValue(forKey: show.show_id)
         pendingDiscordStart.remove(show.show_id)
         failedThisAttempt.remove(show.show_id)
+        duplicateOverrideUsedThisAttempt.remove(show.show_id)
         suppressStartDiscord.remove(show.show_id)
         // Clear unconditionally (not just via teardownRecordingState) — a non-recording delete
         // takes the else branch above and skips teardown, so without this a show that was skipped
@@ -2193,6 +2225,33 @@ final class AppState: ObservableObject {
             }
         }
         return tags
+    }
+
+    /// Returns the uppercased episode tag (e.g. "S51E20") if `episodeTag` is a full season+episode
+    /// tag, the skip-already-recorded feature is on, and a matching file already exists on disk for
+    /// `title` — nil otherwise. Shared by the record-time skip in `startRecording` and the Add/Edit
+    /// dialog's "already on disk" warning so both reflect the exact same on-disk check.
+    func duplicateEpisodeTag(title: String, episodeTag: String, baseDir: String) -> String? {
+        guard config.Skip_recorded_episodes,
+              episodeTag.range(of: #"^S\d+E\d+$"#, options: [.regularExpression, .caseInsensitive]) != nil
+        else { return nil }
+        let safeTitle = title.replacingOccurrences(of: "/", with: "-")
+        let upper = episodeTag.uppercased()
+        return recordedEpisodeTags(forTitle: safeTitle, baseDir: baseDir).contains(upper) ? upper : nil
+    }
+
+    /// UI convenience: looks up `show`'s next-airing episode tag from the guide and checks it via
+    /// `duplicateEpisodeTag(title:episodeTag:baseDir:)`. Used by the Add/Edit dialog to warn that a
+    /// scheduled recording will be skipped as a duplicate unless `show_ignore_duplicate_once` is set.
+    /// Takes `isSeries`/`baseDir` explicitly rather than reading `show.isSeries`/`show.posixRecordDir`
+    /// because in the Add wizard those `Show` fields aren't written until Save — the caller's live
+    /// `seriesType`/`recordFolder` picker state is the only accurate source before then. Excludes a
+    /// show that's currently recording (its own in-progress file would otherwise flag itself as a
+    /// duplicate), mirroring the `!isEntryRec` exclusion in WebServer's `.g-flag-skip` logic.
+    func duplicateEpisodeTag(for show: Show, isSeries: Bool, baseDir: String) -> String? {
+        guard config.Series_subfolder_enabled, isSeries, !show.show_recording,
+              let tag = guideEntryForShow(show)?.EpisodeNumber else { return nil }
+        return duplicateEpisodeTag(title: show.show_title, episodeTag: tag, baseDir: baseDir)
     }
 
     private func guideEntryForShow(_ show: Show) -> GuideEntry? {

@@ -72,6 +72,7 @@ struct Show: Identifiable, Equatable {
     var show_bonus_time: Bool       // true = extend recording past guide end
     var discord_start_msg_id: String = ""   // message ID of the "Recording Started" embed; "" = none
     var show_tuner_resource: String  = ""   // e.g. "tuner0" — from X-HDHomeRun-Resource response header
+    var show_ignore_duplicate_once: Bool  = false // per-show override: record even if Skip_recorded_episodes would skip it as already on disk
 
     var state: ShowState {
         if !show_is_series { return .single }
@@ -181,7 +182,7 @@ extension Show: Codable {
         case show_transcode, show_recording, show_last
         case notify_upnext_time, notify_recording_time
         case show_dir, show_temp_dir, show_recording_path, show_genre, show_bonus_time
-        case discord_start_msg_id, show_tuner_resource
+        case discord_start_msg_id, show_tuner_resource, show_ignore_duplicate_once
     }
 
     init(from decoder: Decoder) throws {
@@ -222,6 +223,7 @@ extension Show: Codable {
             ?? show_genre.lowercased().contains("sports")
         discord_start_msg_id = (try? c.decode(String.self, forKey: .discord_start_msg_id)) ?? ""
         show_tuner_resource  = (try? c.decode(String.self, forKey: .show_tuner_resource))  ?? ""
+        show_ignore_duplicate_once = (try? c.decode(Bool.self, forKey: .show_ignore_duplicate_once)) ?? false
     }
 }
 

@@ -14,6 +14,25 @@ struct ShowFormSection: View {
 
     private let weekdays = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"]
 
+    // Cached result of the (disk-scanning) duplicate-episode check — recomputed via .task(id:)
+    // below only when an input it actually depends on changes, rather than on every unrelated
+    // body re-render (e.g. toggling Bonus Time no longer re-scans the series' folder). A title
+    // edit that still names a real series folder does still trigger a real rescan — the cache
+    // saves re-renders that don't touch these fields, not every keystroke unconditionally.
+    @State private var duplicateTag: String? = nil
+
+    private struct DuplicateCheckKey: Equatable {
+        var title: String, isSeries: Bool, baseDir: String, channel: String, device: String, next: Date?
+        var subfolderEnabled: Bool, skipEnabled: Bool
+    }
+    private var duplicateCheckKey: DuplicateCheckKey {
+        DuplicateCheckKey(title: show.show_title, isSeries: seriesType.isSeries,
+                          baseDir: recordFolder?.path ?? "", channel: show.show_channel,
+                          device: show.hdhr_record, next: show.show_next,
+                          subfolderEnabled: state.config.Series_subfolder_enabled,
+                          skipEnabled: state.config.Skip_recorded_episodes)
+    }
+
     // Signal quality for the selected channel, resolved from the same call-sign-keyed store the
     // guide/menu use. nil when the feature is off or the channel/GuideName can't be resolved;
     // .noData when the channel has never been recorded or scanned (nothing to show).
@@ -104,12 +123,39 @@ struct ShowFormSection: View {
                 }
             }
 
+            if state.config.Series_subfolder_enabled, state.config.Skip_recorded_episodes, seriesType.isSeries {
+                if !show.show_ignore_duplicate_once, let tag = duplicateTag {
+                    Label("Episode \(tag) is already on disk — this recording will be skipped.",
+                          systemImage: "tray.full")
+                        .foregroundStyle(.white)
+                        .padding(10)
+                        .background(Color.orange.cornerRadius(8))
+                        .font(.callout)
+                }
+                LabeledContent("Duplicate Episodes") {
+                    Toggle("Record even if already on disk", isOn: $show.show_ignore_duplicate_once)
+                }
+                .help("Overrides \"Skip already-recorded episodes\" for this one recording — use this if you want a rerun captured again (e.g. you deleted the existing file, or want another copy). Clears itself once the recording succeeds, so future reruns go back to being skipped.")
+            }
+
             LabeledContent("Folder") {
                 HStack {
                     Text(recordFolder?.lastPathComponent ?? "Not set").foregroundStyle(.secondary)
                     Button(folderButtonLabel) { onChooseFolder() }
                 }
             }
+        }
+        .task(id: duplicateCheckKey) {
+            // Debounce: .task(id:) cancels the previous task on every id change, i.e. every
+            // keystroke in Title — the disk scan behind duplicateEpisodeTag runs on the main
+            // actor (recordedEpisodeTags does synchronous FileManager calls with no offloading),
+            // which can block the whole app for real wall-clock time if the recording folder is
+            // on a slow-to-wake external drive. Waiting briefly first means a burst of keystrokes
+            // only scans once, after typing pauses, instead of on every character.
+            try? await Task.sleep(for: .milliseconds(350))
+            guard !Task.isCancelled else { return }
+            duplicateTag = state.duplicateEpisodeTag(for: show, isSeries: seriesType.isSeries,
+                                                      baseDir: recordFolder?.path ?? "")
         }
     }
 }

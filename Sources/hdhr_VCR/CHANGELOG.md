@@ -1,5 +1,9 @@
 # hdhrVCRplus Changelog
 
+## 2026-07-25 (duplicate-episode override)
+
+- **New — override "skip already-recorded episodes" for one recording** — the Add/Edit dialog's new **Duplicate Episodes** row warns when the upcoming airing is already on disk and would otherwise be skipped, with a **"Record even if already on disk"** toggle to force it through anyway (e.g. you deleted the existing file, or just want another copy). One-shot: it only ever suppresses a skip that would actually have happened, and clears itself automatically once that recording succeeds — later reruns go back to being skipped normally, no need to remember to turn it back off. The web guide's green "already recorded" corner flag reflects the override too (falls back to the normal gold "will record" flag while it's active).
+
 ## 2026-07-23 (new app icon)
 
 - **New app icon** — redrawn as a single VHS cassette (two reels, red/white label) with a fold-out antenna, replacing the old three-panel banner. The label's bottom half now doubles as a live status light in the menu bar: dim when idle, red while recording, amber when a show is coming up within 30 minutes — reusing the app's existing `isRecording`/`nextShowMinutes` state instead of swapping to a generic `record.circle.fill`/`clock.badge.fill` SF Symbol. Also fixes a longstanding bug where the Dock/Finder icon showed black letterbox bars: `AppIcon.icns` was previously padded from the rectangular menu-bar image with a solid fill color; it's now built from a dedicated square, alpha-transparent master (`Resources/AppIcon-source.png`), so the icon is a clean transparent-cornered squircle. `deploy.sh`/`deploy_release.sh` updated to match.

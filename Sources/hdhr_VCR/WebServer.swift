@@ -1262,7 +1262,7 @@ final class WebServer: @unchecked Sendable {
                     // Exclude the airing that is recording right now — its own in-progress file is on
                     // disk, so it would otherwise flag itself as a duplicate.
                     let willSkip: Bool = {
-                        guard skipEnabled, !isEntryRec, let owner,
+                        guard skipEnabled, !isEntryRec, let owner, !owner.show_ignore_duplicate_once,
                               let ep = e.EpisodeNumber,
                               ep.range(of: #"^S\d+E\d+$"#, options: [.regularExpression, .caseInsensitive]) != nil
                         else { return false }
