@@ -109,6 +109,7 @@ Systems: [AppState](docs/AppState.md) · [GuideStore](docs/GuideStore.md) · [Re
 | `tools/setup_signing.sh` | One-time: Developer ID cert + notarization creds (run before first `deploy_release.sh`) |
 | `tools/mock_hdhr.py` | Fake HDHomeRun device for discovery/guide/fault-injection testing |
 | `tools/mock_scenario.py` | Plant mock app states via the live guide API to demo/test behavior, then clean up. Subcommands: `duplicate` (fake "already recorded" file → green skip flag), `conflict` (schedule >tuner-count overlapping shows → conflict), `record-test` (schedule a now-airing entry, verify it records, self-clean), `list`, `clean`. Safety markers: planted files carry the `19700101_0000` date signature; scheduled shows are titled `[MOCK] …`; `clean` removes only those. Needs the app running (web server on); `duplicate` also needs Series-subfolders + Skip-already-recorded on. |
+| `tools/test_favorite.sh [device-ip] [channel]` | Manual diagnostic against a **real** HDHomeRun device (not a mock) — toggles a channel's favorite via `/lineup.post`, verifies via `/lineup.json`, restores the original state. Standalone bash+curl+python3, no app instance needed. Useful for confirming the device's own favorite-toggle API still behaves as expected, independent of this app's code. |
 
 ## Agents (`.claude/agents/`)
 

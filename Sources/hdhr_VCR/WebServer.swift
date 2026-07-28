@@ -36,8 +36,8 @@ final class WebServer: @unchecked Sendable {
     private let connLock  = NSLock()
 
     // Pre-built page HTML cache — rebuilt after guide refresh, served instantly on GET /.
-    // Desktop and mobile now share the same guide window size (see guideWindow(state:)), so
-    // isDesktop no longer affects buildHTML's output — one cached copy serves every UA.
+    // Desktop and mobile share the same guide window size (see guideWindow(state:)) — one
+    // cached copy serves every UA.
     private var cachedHTML: Data? = nil
     // gzip of cachedHTML, computed once alongside it instead of on every request — the page is
     // ~1.5MB raw, and libcompression's DEFLATE pass over that costs ~30-60ms; recomputing it per
@@ -57,18 +57,22 @@ final class WebServer: @unchecked Sendable {
     }()
 
     @MainActor
-    func prebuildPageHTML(state: AppState) {
-        let html = Data(buildHTML(state: state, isDesktop: true).utf8)
+    func prebuildPageHTML(state: AppState, prebuiltGrid: String? = nil) {
+        let html = Data(buildHTML(state: state, prebuiltGrid: prebuiltGrid).utf8)
         cachedHTML     = html
         cachedHTMLGzip = Self.gzip(html)
         let gzKB = (cachedHTMLGzip?.count ?? 0) / 1024
         glog("[WebServer] page HTML cached (\(html.count / 1024)KB, \(gzKB)KB gzip'd)")
     }
 
+    // Used where a guide refresh needs both the cached full-page HTML (prebuildPageHTML) and the
+    // SSE guide-change broadcast (broadcastGuideChangeEvent) — building the grid once here and
+    // passing it to both avoids buildGuideGridHTML running twice for the same unchanged state.
     @MainActor
-    func invalidateHTMLCache() {
-        cachedHTML     = nil
-        cachedHTMLGzip = nil
+    func refreshPageAndBroadcastGuideChange(type: String, state: AppState) {
+        let grid = buildGuideGridHTML(state: state)
+        prebuildPageHTML(state: state, prebuiltGrid: grid)
+        broadcastGuideChangeEvent(type: type, state: state, prebuiltGrid: grid)
     }
 
     // Static so the DateFormatter is allocated once, not on every GET /.
@@ -205,10 +209,12 @@ final class WebServer: @unchecked Sendable {
 
     // Full grid + summary + per-tuner dropdown fragments — same shape /api/guide-refresh
     // returns. Shared by that route and broadcastGuideChangeEvent so a rebuild triggered by
-    // a state change happens once server-side, not once per fetch.
+    // a state change happens once server-side, not once per fetch. `prebuiltGrid` lets a
+    // caller that already built the grid for another purpose (see
+    // refreshPageAndBroadcastGuideChange) reuse it instead of rebuilding it a second time.
     @MainActor
-    private func buildGuideRefreshPayload(state: AppState) -> [String: Any] {
-        let grid = buildGuideGridHTML(state: state, isDesktop: true) // isDesktop unread inside — see buildGuideGridHTML
+    private func buildGuideRefreshPayload(state: AppState, prebuiltGrid: String? = nil) -> [String: Any] {
+        let grid = prebuiltGrid ?? buildGuideGridHTML(state: state)
         let sumph = buildSumPhHTML(state: state)
         var tdropBodies: [String: String] = [:]
         for dev in state.usableDeviceIDs {
@@ -223,10 +229,10 @@ final class WebServer: @unchecked Sendable {
     // `extra` carries whatever identifying fields the caller used before (channel/device,
     // or device/guideNumber for favorite_toggled) — merged in verbatim.
     @MainActor
-    func broadcastGuideChangeEvent(type: String, extra: [String: Any] = [:], state: AppState) {
+    func broadcastGuideChangeEvent(type: String, extra: [String: Any] = [:], state: AppState, prebuiltGrid: String? = nil) {
         var event = extra
         event["type"] = type
-        for (k, v) in buildGuideRefreshPayload(state: state) { event[k] = v }
+        for (k, v) in buildGuideRefreshPayload(state: state, prebuiltGrid: prebuiltGrid) { event[k] = v }
         broadcastEvent(event)
     }
 
@@ -476,10 +482,9 @@ final class WebServer: @unchecked Sendable {
             let headerSection = data[..<sepRange.lowerBound]
             let bodyBytes     = data[sepRange.upperBound...]
 
-            // Parse Content-Length, User-Agent, Accept-Encoding, and Connection from headers
+            // Parse Content-Length, Accept-Encoding, and Connection from headers
             let headerText    = String(data: headerSection, encoding: .utf8) ?? ""
             var contentLength = 0
-            var userAgent     = ""
             var acceptsGzip   = false
             var explicitClose = false
             for line in headerText.components(separatedBy: "\r\n").dropFirst() {
@@ -487,9 +492,6 @@ final class WebServer: @unchecked Sendable {
                 if lower.hasPrefix("content-length:") {
                     contentLength = Int(lower.dropFirst("content-length:".count)
                                            .trimmingCharacters(in: .whitespaces)) ?? 0
-                } else if lower.hasPrefix("user-agent:") {
-                    userAgent = String(line.dropFirst("user-agent:".count)
-                                          .trimmingCharacters(in: .whitespaces))
                 } else if lower.hasPrefix("accept-encoding:"), lower.contains("gzip") {
                     acceptsGzip = true
                 } else if lower.hasPrefix("connection:"), lower.contains("close") {
@@ -552,7 +554,7 @@ final class WebServer: @unchecked Sendable {
                 && (method == "GET" || method == "POST")
                 && leftover.isEmpty
             Task {
-                let response = await self.route(method: method, path: cleanPath, body: body, userAgent: userAgent)
+                let response = await self.route(method: method, path: cleanPath, body: body)
                 self.send(response, on: conn, acceptsGzip: acceptsGzip, keepAlive: keepAlive)
             }
         }
@@ -560,12 +562,12 @@ final class WebServer: @unchecked Sendable {
 
     // MARK: - Routing
 
-    private func route(method: String, path: String, body: Data?, userAgent: String) async -> WebResponse {
-        return await MainActor.run { routeOnMain(method: method, path: path, body: body, userAgent: userAgent) }
+    private func route(method: String, path: String, body: Data?) async -> WebResponse {
+        return await MainActor.run { routeOnMain(method: method, path: path, body: body) }
     }
 
     @MainActor
-    private func routeOnMain(method: String, path: String, body: Data?, userAgent: String) -> WebResponse {
+    private func routeOnMain(method: String, path: String, body: Data?) -> WebResponse {
         guard let state = appState else { return .notFound("App state unavailable") }
 
         // POST routes
@@ -590,7 +592,7 @@ final class WebServer: @unchecked Sendable {
             }
             // Cache not warm yet (before the first guide load) — fall back to a live build; send()
             // gzips this one on the fly same as before.
-            let body = Data(buildHTML(state: state, isDesktop: true).utf8)
+            let body = Data(buildHTML(state: state).utf8)
             return .ok(contentType: "text/html; charset=utf-8", body: body)
 
         case "/api/ping":
@@ -1123,7 +1125,7 @@ final class WebServer: @unchecked Sendable {
     // Builds the .gi innerHTML (g-hdr + per-channel rows) used by both buildHTML() and /api/guide-refresh.
     // Self-contained: all dependencies come from `state` or module-level globals (he, hourFmt, etc.).
     @MainActor
-    private func buildGuideGridHTML(state: AppState, isDesktop: Bool) -> String {
+    private func buildGuideGridHTML(state: AppState) -> String {
 
         // ── Time window ────────────────────────────────────────────────────────
         let nowTs = Int(Date().timeIntervalSince1970)
@@ -1180,33 +1182,6 @@ final class WebServer: @unchecked Sendable {
                 recordedTagsByShow[s.show_id] = state.recordedEpisodeTags(forTitle: safe, baseDir: s.posixRecordDir)
             }
         }
-        let activeMgdBySeries = Dictionary(
-            activeMgd.filter { $0.isSeries && !$0.show_seriesid.isEmpty }.map { ($0.show_seriesid, $0) },
-            uniquingKeysWith: { a, _ in a })
-        let fmsDayNames = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"]
-        var activeMgdBySlot: [String: Show] = [:]
-        for s in activeMgd where !s.isSeries {
-            guard let next = s.show_next else { continue }
-            let c = Calendar.current.dateComponents([.hour, .minute], from: next)
-            let hhmm = String(format: "%02d:%02d", c.hour ?? 0, c.minute ?? 0)
-            if s.state == .dateTime {
-                let airDays = s.show_air_date.isEmpty ? fmsDayNames : s.show_air_date.filter { fmsDayNames.contains($0) }
-                for day in airDays { activeMgdBySlot["\(s.hdhr_record):\(s.show_channel):\(day):\(hhmm)"] = s }
-            } else {
-                activeMgdBySlot["\(s.hdhr_record):\(s.show_channel):\(Int(next.timeIntervalSince1970))"] = s
-            }
-        }
-        let findManagedShow: (GuideEntry, LineupEntry) -> Show? = { e, ch in
-            if let sid = e.SeriesID, !sid.isEmpty, let s = activeMgdBySeries[sid] { return s }
-            let c = Calendar.current.dateComponents([.hour, .minute, .weekday],
-                from: Date(timeIntervalSince1970: TimeInterval(e.StartTime)))
-            let hhmm = String(format: "%02d:%02d", c.hour ?? 0, c.minute ?? 0)
-            let dayName = fmsDayNames[(c.weekday ?? 1) - 1]
-            let dev = e.deviceId; let chan = ch.GuideNumber
-            if let s = activeMgdBySlot["\(dev):\(chan):\(dayName):\(hhmm)"] { return s }
-            return activeMgdBySlot["\(dev):\(chan):\(Int(e.StartTime))"]
-        }
-
         // ── Guide grid rows ────────────────────────────────────────────────────
         var rowParts: [String] = []
 
@@ -1255,9 +1230,9 @@ final class WebServer: @unchecked Sendable {
 
                     let isNow      = e.StartTime <= nowTs && e.EndTime > nowTs
                     let isEntryRec = isRecCh && isNow
-                    let isMgd      = guideMatcher.isManaged(entry: e)
                     // Owning show for a managed block (reused by showDA below and the skip check).
-                    let owner = isMgd ? findManagedShow(e, ch) : nil
+                    let owner = guideMatcher.owner(for: e)
+                    let isMgd = owner != nil
                     // Will this managed airing be skipped because the episode is already on disk?
                     // Exclude the airing that is recording right now — its own in-progress file is on
                     // disk, so it would otherwise flag itself as a duplicate.
@@ -1379,10 +1354,10 @@ final class WebServer: @unchecked Sendable {
     }
 
     @MainActor
-    private func buildHTML(state: AppState, isDesktop: Bool) -> String {
+    private func buildHTML(state: AppState, prebuiltGrid: String? = nil) -> String {
         let (winStart, winSec) = guideWindow(state: state)   // winStart needed for _winStart JS literal
         let guideMinWidth = max(1200, winSec / 1800 * 100)
-        let gridInner   = buildGuideGridHTML(state: state, isDesktop: isDesktop)
+        let gridInner   = prebuiltGrid ?? buildGuideGridHTML(state: state)
         // Capture recording shows once — used by recsByDevJS below.
         let recording   = state.recordingShows
 
@@ -2009,6 +1984,13 @@ final class WebServer: @unchecked Sendable {
         \(recsByDevJS)
         var _d='',_n='',_s=0,_e=0,_ser='',_genre='',_title='',_poster='',_logo='',_chname='';
         function hej(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+        // Shared POST helper — every mutating action (record/edit/delete/toggle-favorite) posts
+        // JSON and gets JSON back; callers still handle their own response/error logic (which
+        // differs enough per action — e.g. confirmRecord's r.text() fallback on a non-JSON error
+        // body — that only the fetch-construction boilerplate is shared here, not the response path).
+        function postJSON(url,payload){
+          return fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+        }
         // Theme: .lm class on <html> = light mode active
         var _mq=window.matchMedia('(prefers-color-scheme:light)');
         var _themeMode='dark';
@@ -2301,8 +2283,7 @@ final class WebServer: @unchecked Sendable {
           cancelRecord();
           var btn=document.getElementById('sum-btn');
           btn.disabled=true;btn.textContent='Scheduling…';
-          fetch('/api/record',{method:'POST',headers:{'Content-Type':'application/json'},
-            body:JSON.stringify(payload)})
+          postJSON('/api/record',payload)
           .then(function(r){
             if(r.ok){
               return r.json().then(function(j){
@@ -2331,7 +2312,7 @@ final class WebServer: @unchecked Sendable {
                 note.style.color=j.recStarted?(isLM()?'#cc2020':'#ff8080'):j.tunerFull?(isLM()?'#c07000':'#ffcc66'):'var(--t2)';
                 note.style.display='inline';
                 if(j.recStarted){del.textContent='Stop & Delete';del.classList.add('danger');}else{del.textContent='Remove';del.style.background='';del.style.color='';}del.style.display='inline-block';del.disabled=false;
-                refreshGuide(j.recStarted?{recording:'1',managed:'1'}:{managed:'1'});
+                // No explicit refreshGuide() here — /api/record's addShow/updateShow already broadcasts show_updated over SSE
               });
             } else {
               return r.text().then(function(t){
@@ -2375,9 +2356,9 @@ final class WebServer: @unchecked Sendable {
           setDev(curDev);
           if(gw){gw.scrollLeft=sl;gw.scrollTop=st;}
           if(prevStart){
-            var match=Array.from(document.querySelectorAll('.g-prog')).find(function(el){
-              return el.dataset.start===prevStart&&el.dataset.num===prevNum&&el.dataset.device===prevDev;
-            });
+            // Direct attribute selector instead of materializing every .g-prog into an array and
+            // scanning it — lets the browser's native selector engine find the match directly.
+            var match=document.querySelector('.g-prog[data-start="'+prevStart+'"][data-num="'+prevNum+'"][data-device="'+prevDev+'"]');
             if(match){if(selOverride)Object.assign(match.dataset,selOverride);showInfo(match);}
           }
         }
@@ -2404,8 +2385,7 @@ final class WebServer: @unchecked Sendable {
           var _delLabel=del.textContent;
           del.disabled=true;del.textContent='Deleting…';
           var title=document.getElementById('sum-title').textContent||'';
-          fetch('/api/delete',{method:'POST',headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({deviceId:_d,guideNumber:_n,startTime:_s,title:title})})
+          postJSON('/api/delete',{deviceId:_d,guideNumber:_n,startTime:_s,title:title})
           .then(function(r){return r.json();})
           .then(function(j){
             var note=document.getElementById('sum-note');
@@ -2423,7 +2403,7 @@ final class WebServer: @unchecked Sendable {
               document.getElementById('sum-btn').textContent='Record';document.getElementById('sum-btn').style.background='#c0392b';
               document.getElementById('sum-btn').style.color='#fff';document.getElementById('sum-btn').style.display='inline-block';
               document.getElementById('sum-btn').disabled=false;
-              refreshGuide();
+              // No explicit refreshGuide() here — deleteShow() already broadcasts show_deleted over SSE
             } else {
               del.textContent=_delLabel;del.disabled=false;
               note.textContent='Error: '+(j.error||'Delete failed');note.style.color='#ff8080';note.style.fontStyle='normal';note.style.display='inline';
@@ -2690,19 +2670,17 @@ final class WebServer: @unchecked Sendable {
           var pb=document.getElementById('em-pause');
           pb.disabled=true;pb.textContent='…';
           var np=!_editPaused;
-          fetch('/api/edit',{method:'POST',headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({showId:_editId,paused:np})})
+          postJSON('/api/edit',{showId:_editId,paused:np})
           .then(function(r){return r.json();})
           .then(function(j){
             pb.disabled=false;
-            if(j.ok){_editPaused=np;pb.textContent=_editPaused?'Resume':'Pause';refreshGuide();}
+            if(j.ok){_editPaused=np;pb.textContent=_editPaused?'Resume':'Pause';} // /api/edit already broadcasts show_updated over SSE
             else{pb.textContent=_editPaused?'Resume':'Pause';}
           }).catch(function(){pb.disabled=false;pb.textContent=_editPaused?'Resume':'Pause';});
         }
         function doEditReset(){
           var btn=document.getElementById('em-reset');btn.disabled=true;btn.textContent='…';
-          fetch('/api/edit',{method:'POST',headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({showId:_editId,resetFailures:true})})
+          postJSON('/api/edit',{showId:_editId,resetFailures:true})
           .then(function(r){return r.json();})
           .then(function(j){
             btn.disabled=false;btn.textContent='Reset';
@@ -2722,11 +2700,11 @@ final class WebServer: @unchecked Sendable {
             transcode:document.getElementById('em-transcode').value,
             airDays:selDays
           };
-          fetch('/api/edit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
+          postJSON('/api/edit',payload)
           .then(function(r){return r.json();})
           .then(function(j){
             btn.disabled=false;btn.textContent='Save';
-            if(j.ok){closeEditShow();refreshGuide();}
+            if(j.ok){closeEditShow();} // /api/edit already broadcasts show_updated over SSE
             else{btn.style.background='#6a1010';btn.textContent='Error: '+(j.error||'failed');}
           }).catch(function(){btn.disabled=false;btn.textContent='Save';});
         }
@@ -2734,12 +2712,11 @@ final class WebServer: @unchecked Sendable {
           var btn=document.getElementById('em-del');
           var lbl=btn.textContent;
           btn.disabled=true;btn.textContent='Deleting…';
-          fetch('/api/delete',{method:'POST',headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({showId:_editId})})
+          postJSON('/api/delete',{showId:_editId})
           .then(function(r){return r.json();})
           .then(function(j){
             btn.disabled=false;btn.textContent=lbl;
-            if(j.ok){closeEditShow();refreshGuide();}
+            if(j.ok){closeEditShow();} // deleteShow() already broadcasts show_deleted over SSE
           }).catch(function(){btn.disabled=false;btn.textContent=lbl;});
         }
         var curDev='';
@@ -2838,11 +2815,8 @@ final class WebServer: @unchecked Sendable {
           evt.stopPropagation();
           var row=btn.closest('.g-row');
           if(!row)return;
-          fetch('/api/toggle-favorite',{method:'POST',headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({deviceId:row.dataset.dev,guideNumber:row.dataset.ch})})
-          .then(function(r){return r.json();})
-          .then(function(j){if(j.ok)refreshGuide();})
-          .catch(function(){});
+          postJSON('/api/toggle-favorite',{deviceId:row.dataset.dev,guideNumber:row.dataset.ch})
+          .catch(function(){}); // handleToggleFavorite already broadcasts favorite_toggled over SSE
         }
         setDev('\(defaultDev)');
         // Build genre filter; add Infomercials option if any inf rows exist
@@ -3125,17 +3099,25 @@ final class WebServer: @unchecked Sendable {
 
     // MARK: - mDNS TXT update
 
+    // Last dict actually published — lets updateTXTRecord() skip the NWListener.service
+    // reassignment (and the mDNS re-announcement it triggers) when nothing changed since
+    // the last idle-loop tick, rather than re-publishing unconditionally every tick.
+    private var lastTXTDict: [String: String]? = nil
+
     // Refreshes the mDNS TXT record with current recording + schedule state.
     // Called from AppState.idleLoop() and immediately when the server first becomes ready.
     @MainActor
     func updateTXTRecord() {
         guard let state = appState, listener != nil else { return }
+        let dict = buildTXTDict(state: state)
+        guard dict != lastTXTDict else { return }
+        lastTXTDict = dict
         listener?.service = NWListener.Service(name: "hdhrVCR+", type: "_http._tcp", domain: nil,
-                                               txtRecord: buildTXTRecord(state: state))
+                                               txtRecord: NWTXTRecord(dict))
     }
 
     @MainActor
-    private func buildTXTRecord(state: AppState) -> NWTXTRecord {
+    private func buildTXTDict(state: AppState) -> [String: String] {
         var dict: [String: String] = ["path": "/", "port": "\(activePort)"]
 
         // All current recordings — rec, rec2, rec3, … (one key per show)
@@ -3154,7 +3136,7 @@ final class WebServer: @unchecked Sendable {
             dict["next"] = String("\(next.show_title) · \(next.show_channel) · \(next.hdhr_record) · \(txtRelativeTime(next.show_next!))".prefix(120))
         }
 
-        return NWTXTRecord(dict)
+        return dict
     }
 
     private func txtRelativeTime(_ date: Date) -> String {
@@ -3280,16 +3262,6 @@ final class WebServer: @unchecked Sendable {
         s.replacingOccurrences(of: "<",  with: "\\u003c")
          .replacingOccurrences(of: ">",  with: "\\u003e")
          .replacingOccurrences(of: "&",  with: "\\u0026")
-    }
-
-    // MARK: - User-Agent helpers
-
-    // Returns true for desktop browser UAs (macOS/Windows/Linux without mobile tokens).
-    // Used to serve a wider guide time window (full GuideHours) to desktop clients.
-    private func isDesktopUA(_ ua: String) -> Bool {
-        let l = ua.lowercased()
-        if l.contains("mobile") || l.contains("iphone") || l.contains("ipad") || l.contains("android") { return false }
-        return l.contains("macintosh") || l.contains("windows") || l.contains("linux")
     }
 
     // MARK: - Subnet guard

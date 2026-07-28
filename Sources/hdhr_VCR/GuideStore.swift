@@ -376,19 +376,6 @@ final class GuideStore {
 
     // MARK: - Invalidation
 
-    func invalidate(deviceId: String) {
-        loadingDevices.remove(deviceId)
-        channelsByDevice.removeValue(forKey: deviceId)
-        channelEntryIndex = channelEntryIndex.filter { !$0.key.hasPrefix("\(deviceId):") }
-        for key in seriesIndex.keys {
-            seriesIndex[key]?.removeAll { $0.deviceId == deviceId }
-        }
-        seriesIndex = seriesIndex.filter { !$1.isEmpty }
-        unsortedSeries = unsortedSeries.filter { seriesIndex[$0] != nil }
-        loadTimestamps.removeValue(forKey: deviceId)
-        glog("[\(deviceId)] cache invalidated")
-    }
-
     func invalidateAll() {
         loadingDevices.removeAll()
         channelsByDevice = [:]

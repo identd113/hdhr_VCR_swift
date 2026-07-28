@@ -408,23 +408,6 @@ struct GuideStoreMockNetworkTests {
     @Suite("GuideStore invalidation")
     struct GuideStoreInvalidationTests {
 
-        @Test @MainActor func invalidate_clearsOneDevice() async {
-            let store = GuideStore(session: makeSession())
-            let device = makeLocalDevice()
-            MockURLProtocol.requestHandler = { req in
-                (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!)
-            }
-            await store.load(for: device)
-            #expect(!store.channels(deviceId: device.DeviceID).isEmpty)
-
-            store.invalidate(deviceId: device.DeviceID)
-            #expect(store.channels(deviceId: device.DeviceID).isEmpty)
-            #expect(!store.isFresh(deviceId: device.DeviceID))
-            let before = Date(timeIntervalSince1970: 1_000_000_000)
-            #expect(store.nextEpisode(seriesID: "ds456", after: before) == nil,
-                    "Series index should be cleared after invalidation")
-        }
-
         @Test @MainActor func invalidateAll_clearsEverything() async {
             let store = GuideStore(session: makeSession())
             let d1 = makeLocalDevice(ip: "1.1.1.1", id: "DEV1")

@@ -29,8 +29,7 @@ struct AddShowView: View {
     @State private var recordFolder: URL? = {
         let stored = UserDefaults.standard.string(forKey: "defaultSaveDirectory") ?? ""
         if !stored.isEmpty { return URL(fileURLWithPath: stored) }
-        return FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Movies/hdhr_videos")
+        return URL(fileURLWithPath: Show.localFallbackDir)
     }()
 
     var body: some View {
@@ -192,15 +191,31 @@ struct AddShowView: View {
             }
             .padding()
         }
+        .task(id: otherAiringsKey) {
+            otherAiringsCache = computeOtherAirings()
+        }
     }
 
     // MARK: - Other Airings
+
+    // Cached result of computeOtherAirings() — recomputed via .task(id:) in detailsStep only when
+    // an input it actually depends on changes, not on every unrelated body re-render (e.g. every
+    // keystroke in the Title field, which otherAirings never depended on in the first place).
+    @State private var otherAiringsCache: [(channel: String, entry: GuideEntry)] = []
+
+    private struct OtherAiringsKey: Equatable {
+        var seriesId: String, isSeries: Bool, channel: String, next: Date?
+    }
+    private var otherAiringsKey: OtherAiringsKey {
+        OtherAiringsKey(seriesId: show.show_seriesid, isSeries: seriesType.isSeries,
+                        channel: show.show_channel, next: show.show_next)
+    }
 
     // Other upcoming airings of the same SeriesID, excluding the airing just selected in Step 2.
     // SeriesID-recording types only (seriesType.isSeries) — a Single/DateTime show records
     // one specific slot, so other airings aren't relevant to what will actually record.
     // Bounded by GuideStore's ~29h guide window per device — best-effort preview, not exhaustive.
-    private var otherAirings: [(channel: String, entry: GuideEntry)] {
+    private func computeOtherAirings() -> [(channel: String, entry: GuideEntry)] {
         guard seriesType.isSeries, !show.show_seriesid.isEmpty else { return [] }
         let selectedStart = show.show_next.map { Int($0.timeIntervalSince1970) }
         return state.upcomingGuideEpisodes(seriesID: show.show_seriesid)
@@ -210,7 +225,7 @@ struct AddShowView: View {
     // Hidden entirely when there's nothing informative to show.
     @ViewBuilder
     private var otherAiringsSection: some View {
-        let airings = otherAirings
+        let airings = otherAiringsCache
         if !airings.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Other Upcoming Airings")
@@ -370,11 +385,24 @@ struct AddShowView: View {
         show.show_is_series         = seriesType != .single
         show.show_use_seriesid      = seriesType.isSeries
         show.show_use_seriesid_all  = seriesType == .seriesAll
+        // Step 2's guide selection sets show_title straight from the raw guide entry (which can
+        // carry an episode-specific suffix, e.g. " S24E116 Trey Parker; Matt Stone; Alison Brie") —
+        // strip it now that the show is confirmed as a SeriesID type, matching addShowFromGuide's
+        // web-guide path. Without this, the title (and everything that reads it — menu bar, Discord
+        // cards, the recording folder name) stays frozen on whichever single airing's guests were on
+        // screen when the show was added, even though new episodes correctly record every night.
+        if seriesType.isSeries {
+            show.show_title = Show.seriesTitle(from: show.show_title)
+        }
         show.show_air_date          = seriesType.isSeries
             ? ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"]
             : Array(airDays)
         show.show_dir               = folder.path
-        show.show_temp_dir          = folder.path
+        // A local fallback distinct from show_dir — not a copy of it — so posixRecordDir has
+        // somewhere real to redirect to if this folder's volume (e.g. an external drive or NAS)
+        // is offline when a recording is due. Matches addShowFromGuide's web-guide path; setting
+        // show_temp_dir to the same folder as show_dir (as this used to) leaves no actual fallback.
+        show.show_temp_dir          = Show.localFallbackDir
         if show.show_use_seriesid, let device = selectedDevice,
            let channel = state.lineups[device.DeviceID]?.first(where: { $0.GuideNumber == show.show_channel }) {
             state.resolveSeriesAir(show: &show, device: device, isAll: show.show_use_seriesid_all, channel: channel)

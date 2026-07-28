@@ -185,7 +185,7 @@ Submenu contents — uses `showInfoHeader(show, entry:)` for the top block, then
 
 Used by `recordingMenu`, `scheduledMenu`, and `pausedMenu`. Renders:
 
-1. **Poster** — `AsyncImage` of `show.show_logo_url` (460×258, cornerRadius 6) with a gray placeholder when absent. Accessibility label: `"\(show.show_title) poster"`.
+1. **Poster** — `MenuPosterImage` (a private view in `MenuContent.swift`) of `show.show_logo_url` (460×258, `.fill` content mode, clipped, cornerRadius 6) with a gray placeholder when absent. Routed through `ChannelIconCache.shared.image(for:)` (disk+memory cache) rather than `AsyncImage`, since the `.menu`-style `MenuBarExtra` rebuilds its whole view graph fresh on every menu open — a raw `AsyncImage` would re-download/re-decode the same poster over the network every time. Accessibility label: `"\(show.show_title) poster"`.
 2. **Title** — `menuInfo(show.show_title, font: .title3, maxWidth: 460)`
 3. **Episode info** — `entry.episodeInfoLabel` if the entry is non-nil
 4. **Synopsis** — `entry.Synopsis` truncated to 160 chars

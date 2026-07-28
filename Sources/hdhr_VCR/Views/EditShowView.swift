@@ -191,7 +191,12 @@ struct EditShowView: View {
         s.show_use_seriesid_all = seriesType == .seriesAll
         if let folder = recordFolder {
             s.show_dir      = folder.path
-            s.show_temp_dir = folder.path
+            // A local fallback distinct from show_dir, not a copy of it — this used to set
+            // show_temp_dir to the same folder as show_dir, which silently destroyed the local
+            // fallback posixRecordDir would otherwise redirect to if this folder's volume (e.g.
+            // an external drive or NAS) went offline — on every single Edit Show save, whether or
+            // not the user actually touched the folder picker. See Show.localFallbackDir.
+            s.show_temp_dir = Show.localFallbackDir
         }
         state.updateShow(s)
         originalShow = s   // reset dirty tracking after save

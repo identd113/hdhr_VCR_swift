@@ -441,16 +441,9 @@ struct MenuContent: View {
     // Renders poster (460×258), title, episode info, and synopsis in a consistent layout.
     @ViewBuilder
     private func showInfoHeader(_ show: Show, entry: GuideEntry?) -> some View {
-        if !show.show_logo_url.isEmpty, let url = URL(string: show.show_logo_url) {
-            AsyncImage(url: url) { img in
-                img.resizable().aspectRatio(contentMode: .fill)
-                    .frame(width: 460, height: 258).clipped().cornerRadius(6)
-            } placeholder: {
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Color(NSColor.separatorColor))
-                    .frame(width: 460, height: 258)
-            }
-            .accessibilityLabel("\(show.show_title) poster")
+        if !show.show_logo_url.isEmpty, URL(string: show.show_logo_url) != nil {
+            MenuPosterImage(urlString: show.show_logo_url)
+                .accessibilityLabel("\(show.show_title) poster")
         }
         menuInfo(show.show_title, font: .title3, maxWidth: 460)
         if let ep = entry?.episodeInfoLabel {
@@ -486,5 +479,30 @@ struct MenuContent: View {
         return String(text[..<cut]) + "…"
     }
 
+}
+
+// showInfoHeader's poster, routed through ChannelIconCache's disk+memory cache instead of
+// AsyncImage's own per-instance fetch — this .menu-style MenuBarExtra rebuilds its whole view
+// graph fresh every time the dropdown opens, so a raw AsyncImage would re-download/re-decode
+// the same poster over the network on every single menu open.
+private struct MenuPosterImage: View {
+    let urlString: String
+    @State private var img: NSImage? = nil
+
+    var body: some View {
+        Group {
+            if let img {
+                Image(nsImage: img).resizable().aspectRatio(contentMode: .fill)
+            } else {
+                RoundedRectangle(cornerRadius: 6).fill(Color(NSColor.separatorColor))
+            }
+        }
+        .frame(width: 460, height: 258)
+        .clipped()
+        .cornerRadius(6)
+        .task(id: urlString) {
+            img = await ChannelIconCache.shared.image(for: urlString)
+        }
+    }
 }
 

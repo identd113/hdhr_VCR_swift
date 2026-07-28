@@ -47,7 +47,6 @@ func currentEntryByTitle(_ title: String, channelNum: String, deviceId: String, 
 func nextEntryByTitle(_ title: String, channelNum: String, deviceId: String, after: Date = Date()) -> SeriesMatch?  // same fallback, for the next airing
 func isFresh(deviceId: String, within interval: TimeInterval) -> Bool  // default 1 hour
 func isLoading(deviceId: String) -> Bool
-func invalidate(deviceId: String)
 func invalidateAll()
 ```
 
@@ -59,7 +58,7 @@ func invalidateAll()
 
 `buildIndex` appends entries into `seriesIndex` but does **not** sort them — it marks affected series in `unsortedSeries` instead. `sortIfNeeded(_:)` is called at the top of `nextEpisode`, `nextEpisodes`, and `currentEpisode`; it sorts only the queried series on first access, then removes it from `unsortedSeries`. This defers the O(series × entries log entries) sort cost from guide-load time (main-actor, synchronous) to first-query time (typically spread across the first idle-loop `rebuildMenuEntries` call after load).
 
-`invalidate(deviceId:)` prunes `unsortedSeries` to only entries still in `seriesIndex`. `invalidateAll()` clears it entirely.
+`invalidateAll()` clears `unsortedSeries` entirely. (A prior `invalidate(deviceId:)` did the equivalent per-device prune, but was removed as dead code — it had no production call sites, only `invalidateAll()` is used.)
 
 ---
 
@@ -86,4 +85,4 @@ These fields are excluded from JSON (`CodingKeys` omits them) and are purely in-
 
 `isFresh(deviceId:within:)` compares `loadTimestamps[deviceId]` against `Date()`. The idle loop calls this before scheduling a series episode; if stale, it reloads before searching for the next airing.
 
-`invalidate(deviceId:)` (per-device) exists but has no call sites — nothing currently forces a single device's cache stale. The only invalidation in use is `invalidateAll()`, called from `AppState` on manual guide refresh and from `SettingsView` when guide-affecting settings change (e.g. `GuideHours`, format). Neither `AddShowView` nor `FloatingGuideView` calls into `GuideStore` directly — `AddShowView`'s guide step and `FloatingGuideView` are both `WKWebView` wrappers embedding the LAN web guide (`localhost:{port}`), which reads guide state server-side via `WebServer.swift`, not through `GuideStore` calls from these views.
+The only invalidation in use is `invalidateAll()` — a per-device `invalidate(deviceId:)` used to exist but was removed as dead code (no production call sites; nothing currently forces a single device's cache stale independently). `invalidateAll()` is called from `SettingsView` when guide-affecting settings change (e.g. `GuideHours`, format) or the user triggers a manual rescan — an explicit, user-initiated action where an immediate wipe-then-reload is expected. `AppState.refreshGuides()` (the silent automatic hourly refresh) deliberately does **not** call it — see `docs/AppState.md`'s `refreshGuides()` entry for why (a prior version did, and it raced with anything reading the guide store during the refresh's own network fetch). Neither `AddShowView` nor `FloatingGuideView` calls into `GuideStore` directly — `AddShowView`'s guide step and `FloatingGuideView` are both `WKWebView` wrappers embedding the LAN web guide (`localhost:{port}`), which reads guide state server-side via `WebServer.swift`, not through `GuideStore` calls from these views.

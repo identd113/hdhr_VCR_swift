@@ -59,6 +59,16 @@ Called after each recording completes and file verification passes:
 
 ---
 
+## Recording Folder Fallback (`show_dir` / `show_temp_dir` / `posixRecordDir`)
+
+`Show.localFallbackDir` (`NSHomeDirectory() + "/Movies/hdhr_videos"`) is the single shared constant for "the folder that always exists, purely local, no volume to go offline" — used by `posixRecordDir`'s own fallback tier, `AppState.defaultSaveDir`, `addShowFromGuide`, and the Add/Edit Show dialogs' folder handling, rather than each duplicating the literal path.
+
+`posixRecordDir` treats `show_dir` as primary and `show_temp_dir` as the fallback: if `show_dir`'s parent directory doesn't exist (the volume is unmounted), it redirects to `show_temp_dir`. For this to do anything, `show_temp_dir` has to actually be a *different* folder from `show_dir` — a prior bug in the native Add/Edit Show dialogs set them to the identical value (the user's chosen folder) on every save, silently discarding whatever real fallback a show had (including one set correctly by the web guide's `addShowFromGuide`, which always uses `Show.localFallbackDir` for `show_temp_dir` regardless of what `show_dir` is). Both dialogs now set `show_temp_dir` to `Show.localFallbackDir` instead of copying `show_dir`.
+
+**Self-healing for shows already saved with the bug:** `Show.init(from:)` repairs it on every load — a non-empty `show_temp_dir` identical to a non-default `show_dir` (i.e. `show_temp_dir == show_dir && show_dir != Show.localFallbackDir`) is treated as unambiguous evidence of the bug (a genuinely intentional matching value would be pointless to ever set) and is reset to `Show.localFallbackDir` in memory immediately, before anything reads `posixRecordDir`. This doesn't require re-saving through the now-fixed dialogs, and doesn't force an immediate config-file rewrite either — it just reapplies on every load, so the running app's fallback behavior is correct from the moment the config loads regardless of what's actually persisted on disk.
+
+---
+
 ## Decode Resilience (`Show.init(from:)` / `ConfigFile.init(from:)`)
 
 Every field in `Show.init(from:)` decodes via `try?` with a fallback default — including `show_id` (falls back to a fresh generated UUID, same format as `Show.blank()`). This matters because `ConfigFile.init(from:)`'s `shows` array decode is all-or-nothing: `(try? c.decode([Show].self, forKey: .shows)) ?? (try? … forKey: .the_shows) ?? []` — if decoding a single element in the array throws, the *entire* array decode throws and falls through to the next `try?`/eventually `[]`. Before `show_id` had a fallback, one show with a missing/corrupt `show_id` anywhere in the saved JSON would silently wipe every saved show on next launch. With every field now optional-with-fallback, a well-formed JSON array of show objects can no longer throw during decode.
@@ -116,29 +126,36 @@ Two mutating methods on `Show` consolidate the repeated failure-state field grou
 
 ## ManagedGuideMatcher
 
-`struct ManagedGuideMatcher: Equatable` in `Models.swift` is the **single source of truth** for managed-show identification. Used by WebServer to flag managed shows in the guide HTML. Callers pass `activeManagedShows` once at construction; then call `isManaged(entry:)` per block.
+`struct ManagedGuideMatcher: Equatable` in `Models.swift` is the **single source of truth** for managed-show identification *and* ownership. Used by WebServer to flag managed shows in the guide HTML and to embed the owning show's config for the edit modal. Callers pass `activeManagedShows` once at construction; then call `owner(for:)` per block (`isManaged(entry:)` is a thin `owner(for:) != nil` wrapper kept for call sites that only need the boolean).
 
 ```swift
 struct ManagedGuideMatcher: Equatable {
-    let seriesAllIDs:    Set<String>   // bare SeriesID — seriesAll shows (record on any device)
-    let seriesAllTitles: Set<String>   // bare title — seriesAll shows without a SeriesID
-    let seriesChKeys:    Set<String>   // "device:SeriesID" — seriesChannel shows (device-scoped)
-    let seriesChTitles:  Set<String>   // "device:title" — seriesChannel shows without a SeriesID
-    let singleSlotKeys:  Set<String>   // "device:channel:epoch" — single shows, exact slot
-    let datetimeSlotKeys: Set<String>  // "device:channel:Weekday:HH:MM" — dateTime shows, per allowed day
+    let seriesAllIDs:    [String: Show]   // bare SeriesID → owner — seriesAll shows (record on any device)
+    let seriesAllTitles: [String: Show]   // bare title → owner — seriesAll shows without a SeriesID
+    let seriesChKeys:    [String: Show]   // "device:SeriesID" → owner — seriesChannel shows (device-scoped)
+    let seriesChTitles:  [String: Show]   // "device:title" → owner — seriesChannel shows without a SeriesID
+    let singleSlotKeys:  [String: Show]   // "device:channel:epoch" → owner — single shows, exact slot
+    let datetimeSlotKeys: [String: Show]  // "device:channel:Weekday:HH:MM" → owner — dateTime shows, per allowed day
 
     init(activeManagedShows: [Show])
 
     // Reads entry.deviceId and entry.channelNum directly — no caller-supplied args.
+    func owner(for entry: GuideEntry) -> Show?
     func isManaged(entry: GuideEntry) -> Bool
 }
 ```
 
-Matching tiers (in order):
+Values are the owning `Show`, not just presence — this is what lets `WebServer.swift` embed a managed block's `data-show-*` edit attributes directly from `owner(for:)` instead of maintaining a second, independently-derived owner lookup (a prior `findManagedShow` helper there did exactly that, and being built differently — no title fallback for series shows — could disagree with the flag about whether a block had a resolvable owner; see `docs/WebServer.md`'s "Managed show data attributes" section).
+
+Matching tiers (in order — `owner(for:)` returns the first match, `isManaged` is `owner(for:) != nil`):
 1. `entry.SeriesID` in `seriesAllIDs` (any device) OR `"device:SeriesID"` in `seriesChKeys` → managed
 2. `entry.Title` in `seriesAllTitles` OR `"device:title"` in `seriesChTitles` → managed
 3. `"device:channel:Weekday:HH:MM"` local-time key in `datetimeSlotKeys` → managed (dateTime shows: only on allowed weekdays)
 4. `"device:channel:epoch"` key in `singleSlotKeys` → managed (single shows: exact scheduled slot only)
+
+Tiers 3–4 (the `Calendar.current.dateComponents` call and everything after) are skipped entirely via an early return when both `datetimeSlotKeys` and `singleSlotKeys` are empty — the common case for a guide with only SeriesID-managed shows, and otherwise this ran for every non-managed entry in the grid (the majority of entries) on every rebuild.
+
+All six dictionaries keep the *first* match on a key collision (e.g. two shows sharing a SeriesID, or two shows landing on the identical slot key) rather than trapping or silently overwriting — matching the tolerant dedup a plain `Set` gave before switching from presence-only keys to key→owner maps. `seriesAllIDs`/`seriesAllTitles`/`seriesChKeys`/`seriesChTitles` get this via `Dictionary(_:uniquingKeysWith: { a, _ in a })`; `singleSlotKeys`/`datetimeSlotKeys` are built with a manual loop (`if dict[key] == nil { dict[key] = s }`) since they're populated incrementally per allowed air-day rather than from a single flat mapping, but the collision behavior is the same first-wins semantics.
 
 `dateTime` shows emit one key per entry in `show_air_date` (e.g. a Wednesday-only show at 4:30 PM local emits only `"device:4.3:Wednesday:16:30"`). A Friday airing of that show at 4:30 PM looks for `"device:4.3:Friday:16:30"` and finds nothing — no yellow diamond. If `show_air_date` is empty, keys are emitted for all 7 days. `single` shows use the epoch so only the specific airing is flagged.
 

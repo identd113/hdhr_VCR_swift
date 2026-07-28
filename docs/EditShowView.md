@@ -90,7 +90,7 @@ When `show.show_fail_count > 0`, a "Failures: N — reason" row appears in orang
 
 ### Save — `save()`
 
-Applies `airDays` and series type flags to the local `show`, applies `recordFolder` to both `show_dir` and `show_temp_dir`, then calls `state.updateShow(s)`. `updateShow` replaces the matching show by ID, saves config, and for any active, non-paused, non-recording, non-single show fires `scheduleNextAir` immediately in an async Task — so type or channel changes take effect without waiting for the next idle loop tick. The window dismisses after save.
+Applies `airDays` and series type flags to the local `show`, applies `recordFolder` to `show_dir`, and sets `show_temp_dir` to `Show.localFallbackDir` (**not** a copy of `recordFolder`) so `posixRecordDir` has a genuinely distinct local fallback to redirect to if `recordFolder`'s volume goes offline — a prior version set both to the same folder here, which silently discarded whatever real fallback the show previously had (including one set correctly by the web guide's `addShowFromGuide`) on every single Edit Show save, whether or not the user touched the folder picker. `Show.init(from:)` self-heals any show already saved with this bug (non-empty `show_temp_dir` identical to a non-default `show_dir`) back to the local fallback on every config load, so no manual per-show fix is needed for shows saved before this was corrected. Then calls `state.updateShow(s)`. `updateShow` replaces the matching show by ID, saves config, and for any active, non-paused, non-recording, non-single show fires `scheduleNextAir` immediately in an async Task — so type or channel changes take effect without waiting for the next idle loop tick. The window dismisses after save.
 
 ### Delete
 

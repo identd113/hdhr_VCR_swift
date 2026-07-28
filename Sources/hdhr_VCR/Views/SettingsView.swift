@@ -79,7 +79,6 @@ struct SettingsView: View {
     // Discord webhook test state
     private enum WebhookTestStatus { case idle, untested, testing, passed, failed }
     @State private var webhookTestStatus: WebhookTestStatus = .idle
-    @State private var webhookTestInProgress: Bool = false
 
     private var webhookNeedsTest: Bool {
         draft.Discord_enabled

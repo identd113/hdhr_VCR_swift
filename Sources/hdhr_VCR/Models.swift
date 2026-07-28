@@ -81,9 +81,16 @@ struct Show: Identifiable, Equatable {
         return .dateTime
     }
 
+    // Single source of truth for the "always exists, always local" recording destination —
+    // used as the ultimate fallback below, and as the local disk safety net any caller can fall
+    // back to when a NAS/external volume that show_dir points at goes offline. Not a POSIX path
+    // conversion target itself (already POSIX), unlike show_dir/show_temp_dir which may still be
+    // legacy HFS colon-separated strings needing toPosix().
+    static let localFallbackDir = NSHomeDirectory() + "/Movies/hdhr_videos"
+
     var posixRecordDir: String {
-        let primary  = Self.toPosix(show_dir.isEmpty      ? NSHomeDirectory() + "/Movies/hdhr_videos" : show_dir)
-        let fallback = Self.toPosix(show_temp_dir.isEmpty ? NSHomeDirectory() + "/Movies/hdhr_videos" : show_temp_dir)
+        let primary  = Self.toPosix(show_dir.isEmpty      ? Self.localFallbackDir : show_dir)
+        let fallback = Self.toPosix(show_temp_dir.isEmpty ? Self.localFallbackDir : show_temp_dir)
         guard primary != fallback else { return primary }
         // Use primary only when its parent directory exists (i.e. the volume is mounted)
         let parent = URL(fileURLWithPath: primary).deletingLastPathComponent().path
@@ -131,6 +138,20 @@ struct Show: Identifiable, Equatable {
         if let sub = subfolder { dir = (dir as NSString).appendingPathComponent(sub) }
         let epPart = episodeTag.map { "_\($0)" } ?? ""
         return (dir as NSString).appendingPathComponent("\(safe)\(epPart)_\(show_channel)_\(dateStr)\(ext)")
+    }
+
+    /// Strips a trailing episode-specific suffix (e.g. " S24E116 Trey Parker; Matt Stone; Alison
+    /// Brie") from a raw guide title. For SeriesID-type shows — which go on to record many future,
+    /// different episodes under one umbrella — keeping whichever single airing's guest line happened
+    /// to be on screen when the show was added would freeze the display name at that one night
+    /// forever (menu bar, Discord cards, and the recording folder name all read show_title, and
+    /// nothing re-derives it from the guide on later nights). Single/dateTime shows deliberately
+    /// keep the raw title since they refer to one specific airing, where that descriptive suffix is
+    /// exactly what the user wants to see.
+    static func seriesTitle(from rawTitle: String) -> String {
+        guard let range = rawTitle.range(of: #"\s+S\d+E\d+.*$"#, options: [.regularExpression, .caseInsensitive])
+        else { return rawTitle }
+        return String(rawTitle[..<range.lowerBound])
     }
 
     static func blank(channel: String = "", device: String = "") -> Show {
@@ -216,7 +237,18 @@ extension Show: Codable {
         notify_upnext_time     = try? c.decode(Date.self, forKey: .notify_upnext_time)
         notify_recording_time  = try? c.decode(Date.self, forKey: .notify_recording_time)
         show_dir           = (try? c.decode(String.self, forKey: .show_dir)) ?? ""
-        show_temp_dir      = (try? c.decode(String.self, forKey: .show_temp_dir)) ?? ""
+        let decodedTempDir = (try? c.decode(String.self, forKey: .show_temp_dir)) ?? ""
+        // Self-heal a prior bug where the native Add/Edit Show dialogs set show_temp_dir to the
+        // exact same folder as show_dir (see AddShowView.swift's save() / EditShowView.swift's
+        // saveWithoutDismiss()), leaving posixRecordDir nowhere real to redirect to if that
+        // folder's volume (external drive/NAS) goes offline. A non-empty show_temp_dir identical
+        // to a non-default show_dir is the unambiguous signature of that bug — a genuinely
+        // intentional matching value would be pointless to ever set — so repair it to the local
+        // fallback on every load instead of requiring every affected show to be re-saved through
+        // the now-fixed dialogs.
+        show_temp_dir = (!decodedTempDir.isEmpty && decodedTempDir == show_dir && show_dir != Show.localFallbackDir)
+            ? Show.localFallbackDir
+            : decodedTempDir
         show_recording_path = (try? c.decode(String.self, forKey: .show_recording_path)) ?? ""
         show_genre          = (try? c.decode(String.self, forKey: .show_genre)) ?? ""
         show_bonus_time     = (try? c.decode(Bool.self,   forKey: .show_bonus_time))
@@ -392,7 +424,6 @@ struct HDHRDevice: Identifiable, Equatable {
     var isAvailable: Bool { missedProbes < 3 }
 
     var streamBase: String { "http://\(LocalIP):5004" }
-    var guideURL:   String { "http://\(LocalIP)/guide.json" }
     var lineupURL:  String { "http://\(LocalIP)/lineup.json" }  // always IP — LineupURL from discover.json may contain mDNS hostname
     var statusURL:  String { "http://\(LocalIP)/status.json" }
 }
@@ -467,7 +498,6 @@ struct DeviceTunerInfo: Decodable {
 
 struct TunerStatus {
     let signalStrength: Int   // ss field (0–100)
-    let signalQuality: Int    // snq field (0–100)
     let lockType: String      // e.g. "qam256", "8vsb", "none"
     let bitrateMbps: Double   // bps / 1_000_000
 
@@ -529,55 +559,85 @@ struct GuideEntry: Codable, Identifiable, Hashable {
 
 struct ManagedGuideMatcher: Equatable {
     // seriesAll shows record on any device — bare SeriesID/title keys, match regardless of device.
-    let seriesAllIDs:    Set<String>   // bare SeriesID
-    let seriesAllTitles: Set<String>   // bare title (no SeriesID)
+    // Values are the owning Show so callers needing "which show does this entry belong to" (e.g.
+    // the web guide's skip-already-recorded check) don't need a second, separately-maintained
+    // lookup alongside this one — see owner(for:).
+    let seriesAllIDs:    [String: Show]   // bare SeriesID → owner
+    let seriesAllTitles: [String: Show]   // bare title (no SeriesID) → owner
     // seriesChannel shows are assigned to a specific device — keys are "device:SeriesID" / "device:title".
-    let seriesChKeys:    Set<String>   // "device:SeriesID"
-    let seriesChTitles:  Set<String>   // "device:title" (no SeriesID)
-    let singleSlotKeys:  Set<String>   // "device:channel:epoch"
-    let datetimeSlotKeys: Set<String>  // "device:channel:Weekday:HH:MM"
+    let seriesChKeys:    [String: Show]   // "device:SeriesID" → owner
+    let seriesChTitles:  [String: Show]   // "device:title" (no SeriesID) → owner
+    let singleSlotKeys:  [String: Show]   // "device:channel:epoch" → owner
+    let datetimeSlotKeys: [String: Show]  // "device:channel:Weekday:HH:MM" → owner
 
     init(activeManagedShows: [Show]) {
         let cal = Calendar.current
         let dayNames = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"]
         let allShows  = activeManagedShows.filter { $0.state == .seriesAll }
         let chShows   = activeManagedShows.filter { $0.state == .seriesChannel }
-        seriesAllIDs    = Set(allShows.compactMap { $0.show_seriesid.isEmpty ? nil : $0.show_seriesid })
-        seriesAllTitles = Set(allShows.map { $0.show_title })
-        seriesChKeys    = Set(chShows.compactMap { s -> String? in
+        // uniquingKeysWith keeps the first match on a key collision (e.g. two shows sharing a
+        // SeriesID) rather than trapping — matches the tolerant dedup a plain Set gave before.
+        seriesAllIDs    = Dictionary(allShows.compactMap { s -> (String, Show)? in
+            s.show_seriesid.isEmpty ? nil : (s.show_seriesid, s)
+        }, uniquingKeysWith: { a, _ in a })
+        seriesAllTitles = Dictionary(allShows.map { ($0.show_title, $0) }, uniquingKeysWith: { a, _ in a })
+        seriesChKeys    = Dictionary(chShows.compactMap { s -> (String, Show)? in
             guard !s.show_seriesid.isEmpty else { return nil }
-            return "\(s.hdhr_record):\(s.show_seriesid)"
-        })
-        seriesChTitles  = Set(chShows.map { "\($0.hdhr_record):\($0.show_title)" })
-        singleSlotKeys = Set(activeManagedShows.compactMap { s -> String? in
-            guard s.state == .single, let next = s.show_next else { return nil }
-            return "\(s.hdhr_record):\(s.show_channel):\(Int(next.timeIntervalSince1970))"
-        })
+            return ("\(s.hdhr_record):\(s.show_seriesid)", s)
+        }, uniquingKeysWith: { a, _ in a })
+        seriesChTitles  = Dictionary(chShows.map { ("\($0.hdhr_record):\($0.show_title)", $0) }, uniquingKeysWith: { a, _ in a })
+        // Plain subscript assignment, guarded to keep the first match on a collision — same
+        // first-wins tolerance as the uniquingKeysWith dictionaries above, for consistency.
+        var single: [String: Show] = [:]
+        for s in activeManagedShows {
+            guard s.state == .single, let next = s.show_next else { continue }
+            let key = "\(s.hdhr_record):\(s.show_channel):\(Int(next.timeIntervalSince1970))"
+            if single[key] == nil { single[key] = s }
+        }
+        singleSlotKeys = single
         // Key = "device:channel:Weekday:HH:MM" — one key per allowed air day.
         // Weekday comes from show_air_date; falls back to all 7 days if empty.
-        datetimeSlotKeys = Set(activeManagedShows.flatMap { s -> [String] in
-            guard s.state == .dateTime, let next = s.show_next else { return [] }
+        var datetime: [String: Show] = [:]
+        for s in activeManagedShows {
+            guard s.state == .dateTime, let next = s.show_next else { continue }
             let c = cal.dateComponents([.hour, .minute], from: next)
             let hhmm = String(format: "%02d:%02d", c.hour ?? 0, c.minute ?? 0)
             let airDays = s.show_air_date.isEmpty ? dayNames : s.show_air_date.filter { dayNames.contains($0) }
-            return airDays.map { "\(s.hdhr_record):\(s.show_channel):\($0):\(hhmm)" }
-        })
+            for day in airDays {
+                let key = "\(s.hdhr_record):\(s.show_channel):\(day):\(hhmm)"
+                if datetime[key] == nil { datetime[key] = s }
+            }
+        }
+        datetimeSlotKeys = datetime
     }
 
-    func isManaged(entry: GuideEntry) -> Bool {
+    /// The managed show an entry belongs to, if any — same matching tiers as `isManaged`, but
+    /// returns the owning `Show` instead of just whether one exists. Single source of truth for
+    /// "is this entry managed, and by which show" — callers that need both no longer maintain a
+    /// second, independently-derived lookup (which risked drifting out of sync with these tiers,
+    /// e.g. a series lookup that isn't device-scoped for seriesChannel shows the way this is).
+    func owner(for entry: GuideEntry) -> Show? {
         let dev = entry.deviceId
         if let sid = entry.SeriesID, !sid.isEmpty {
-            if seriesAllIDs.contains(sid) || seriesChKeys.contains("\(dev):\(sid)") { return true }
+            if let s = seriesAllIDs[sid] { return s }
+            if let s = seriesChKeys["\(dev):\(sid)"] { return s }
         }
-        if seriesAllTitles.contains(entry.Title) || seriesChTitles.contains("\(dev):\(entry.Title)") { return true }
+        if let s = seriesAllTitles[entry.Title] { return s }
+        if let s = seriesChTitles["\(dev):\(entry.Title)"] { return s }
+        // Skip the Calendar computation entirely when there are no dateTime/single-slot managed
+        // shows to match against — the common case for a guide with only SeriesID shows, and
+        // otherwise this runs for every non-managed entry in the grid (most entries).
+        guard !datetimeSlotKeys.isEmpty || !singleSlotKeys.isEmpty else { return nil }
         let c = Calendar.current.dateComponents([.hour, .minute, .weekday],
                     from: Date(timeIntervalSince1970: TimeInterval(entry.StartTime)))
         let hhmm = String(format: "%02d:%02d", c.hour ?? 0, c.minute ?? 0)
         let dayName = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][(c.weekday ?? 1) - 1]
         let ch = entry.channelNum
-        if datetimeSlotKeys.contains("\(dev):\(ch):\(dayName):\(hhmm)") { return true }
-        return singleSlotKeys.contains("\(dev):\(ch):\(entry.StartTime)")
+        if let s = datetimeSlotKeys["\(dev):\(ch):\(dayName):\(hhmm)"] { return s }
+        return singleSlotKeys["\(dev):\(ch):\(entry.StartTime)"]
     }
+
+    func isManaged(entry: GuideEntry) -> Bool { owner(for: entry) != nil }
 }
 
 extension GuideEntry {

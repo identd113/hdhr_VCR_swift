@@ -12,7 +12,7 @@ final class AppState: ObservableObject {
         // ensureGuideLoaded's success-only guard on guideByDevice assignment.
         // menuIsOpen guard mirrors the idle-loop guard — prevents mid-display redraws when a
         // background guide refresh assigns guideByDevice while the menu is open.
-        didSet { if !menuIsOpen { rebuildMenuEntries() } }
+        didSet { if !menuIsOpen { rebuildChannelImageURLs(); rebuildMenuEntries() } }
     }
     // Per-show guide entry for the scheduled menu label and info header — avoids O(series) scan per open.
     @Published var menuScheduledEntry: [String: GuideEntry] = [:]
@@ -26,6 +26,10 @@ final class AppState: ObservableObject {
     private var conflictNotifiedEpochs: [String: TimeInterval] = [:]
     // "channelNum:startTime" keys for guide entries already logged as now-airing without a genre tag.
     private var loggedNowAiring: Set<String> = []
+    // Last time the NowAiring diagnostic scan (below) ran — gates it to a coarse cadence since
+    // it's a full device×channel guide walk purely for discovering untagged infomercial
+    // SeriesIDs, not anything requiring sub-minute freshness.
+    private var lastNowAiringScan: Date = .distantPast
     // Same pattern as conflictNotifiedEpochs, for MISSED START warnings.
     private var missedStartNotifiedEpochs: [String: TimeInterval] = [:]
     // Shows whose recording was interrupted by an app quit and will be relaunched this session.
@@ -174,7 +178,21 @@ final class AppState: ObservableObject {
     private var lastRefreshHour: Int?     = nil  // hour on which guide was last refreshed; triggers new refresh when hour changes
     private var lastDeviceProbe: Date     = .distantPast
     private var nextQuickProbe: Date?     = nil   // set when any device misses a probe; cleared when all are seen
+    // Deadline past which a device with TunerCount == nil (otherwise available — UDP-alive, HTTP
+    // dead) stops re-arming the 60s quick-probe cadence (see probeForNewDevices) and falls back to
+    // the normal 5-min cadence, so a device whose HTTP server is permanently unreachable (rather
+    // than just slow to start) doesn't pin the fast cadence for the rest of the session. Stores the
+    // deadline itself (not the start time), matching showRetryAfter/nextQuickProbe's shape. Cleared
+    // once TunerCount is restored or the device becomes unavailable.
+    private var tunerCountFallbackAt: [String: Date] = [:]
     private var guideRefreshInFlight: Bool = false
+    // In-flight fetchDeviceStatus(for:) calls, keyed by device — coalesces concurrent callers onto
+    // the same real fetch (mirrors ensureLineupLoaded's loadingLineupTasks idiom) instead of a
+    // second caller silently skipping and reading stale tunerStatus. That distinction matters here:
+    // watchInApp/watchInVLC specifically await this call to force a fresh poll before deciding
+    // whether tuners are full, so a skip-and-return-immediately guard would defeat the whole point
+    // of awaiting it whenever the idle loop's own per-tick call happened to already be in flight.
+    private var fetchStatusTasks: [String: Task<Void, Never>] = [:]
     // Tracks in-flight lineup fetches so concurrent callers await the same Task instead of polling
     private var loadingLineupTasks: [String: Task<Void, Never>] = [:]
     // Per-device exponential backoff after guide API failures (replaces flat guideLoadFailTimes).
@@ -358,8 +376,6 @@ final class AppState: ObservableObject {
         webServerRunning = false
     }
 
-    func logGuide(_ msg: String, level: LogLevel = .info) { glog(msg, level: level) }
-
     // .local hostnames excluded — mDNS resolution happens in mDNSDiscover(), no benefit adding them here.
     private func knownHostsFromShows() -> [String] {
         var seen = Set<String>()
@@ -540,17 +556,34 @@ final class AppState: ObservableObject {
             }
         }
 
+        // Track how long each available device has had TunerCount == nil, bounding the quick-probe
+        // re-arm below to the first 5 minutes of that state — a device whose HTTP server never
+        // comes up (as opposed to one that's merely slow to start after UDP replies) falls back to
+        // the normal 5-min probe cadence instead of pinning the fast one for the whole session.
+        let now = Date()
+        var tunerCountRecentlyMissing = false
+        for device in devices {
+            guard device.TunerCount == nil, device.isAvailable else {
+                tunerCountFallbackAt.removeValue(forKey: device.DeviceID)
+                continue
+            }
+            let deadline = tunerCountFallbackAt[device.DeviceID] ?? now.addingTimeInterval(300)
+            tunerCountFallbackAt[device.DeviceID] = deadline
+            if now < deadline { tunerCountRecentlyMissing = true }
+        }
+
         // Schedule a 60 s follow-up probe until the device is confirmed unavailable (3 misses).
         // <= 3 (not < 3) so the tick that crosses the threshold also schedules a follow-up,
         // enabling faster recovery detection rather than reverting to the 5-min idle interval.
-        // Also re-probe quickly while any *available* device is missing its TunerCount (UDP-only
-        // startup with the HTTP fetch down) so its capacity — and the tuner badge — is restored
-        // within ~60 s of the device's HTTP server becoming reachable, not up to 5 min later.
-        // The isAvailable guard is essential: a device that never yields a discover.json TunerCount
-        // (e.g. the fake FFFF0001 test device, permanently HTTP-unreachable) would otherwise pin the
-        // quick-probe cadence at 60 s for the whole session instead of settling to the idle interval.
+        // Also re-probe quickly while any *available* device has recently started missing its
+        // TunerCount (UDP-only startup with the HTTP fetch down) so its capacity — and the tuner
+        // badge — is restored within ~60 s of the device's HTTP server becoming reachable, not up
+        // to 5 min later. The isAvailable guard (plus the 5-min bound above) is essential: a device
+        // that never yields a discover.json TunerCount (e.g. the fake FFFF0001 test device, or a
+        // real device whose HTTP server is permanently down rather than just slow) would otherwise
+        // pin the quick-probe cadence at 60 s for the whole session instead of settling back to it.
         if devices.contains(where: { $0.missedProbes > 0 && $0.missedProbes <= 3 })
-            || devices.contains(where: { $0.TunerCount == nil && $0.isAvailable }) {
+            || tunerCountRecentlyMissing {
             nextQuickProbe = Date().addingTimeInterval(60)
         }
 
@@ -636,9 +669,10 @@ final class AppState: ObservableObject {
         statusMessage = "Loading guide…"
         let results = await guideStore.loadAll(devices: devices, hours: config.GuideHours, useXML: config.Guide_use_xml)
         guideByDevice = guideStore.channelsByDevice
-        // didSet skips rebuildMenuEntries() when the menu is open (common at startup).
-        // Call it directly here so channelImageURLs is always populated after guide load.
-        rebuildMenuEntries()
+        // didSet already ran these when the menu is closed — only the menu-open case (where
+        // didSet's own guard skips them) needs the explicit call here, so guide load doesn't
+        // populate channelImageURLs/menu caches twice back-to-back when it's closed.
+        if menuIsOpen { rebuildChannelImageURLs(); rebuildMenuEntries() }
         // Seed per-device backoff state from startup results (no notification — user may not have
         // granted permission yet; ensureGuideLoaded will notify when it retries and fails again).
         for (deviceId, ok) in results {
@@ -661,7 +695,17 @@ final class AppState: ObservableObject {
         // Per-device retries are handled separately by ensureGuideLoaded with exponential backoff.
         // Hourly refresh boundary in idleLoop naturally prevents retry storms.
         defer { guideRefreshInFlight = false }
-        guideStore.invalidateAll()
+        // Deliberately no guideStore.invalidateAll() here (unlike SettingsView's user-initiated
+        // rescan/setting-change callers, where an immediate wipe-then-reload is expected and the
+        // brief empty window is fine). This runs silently in the background every hour, and
+        // buildIndex(deviceId:channels:) already atomically replaces each device's stale data
+        // with fresh data the moment its own fetch succeeds — devices are never removed from
+        // `devices` in this app, so nothing is ever orphaned by skipping an upfront wipe here.
+        // A prior version DID invalidate eagerly, and it raced with anything reading guideStore
+        // between the wipe and loadAll's completion — e.g. a "Recording Started" Discord embed
+        // built in that window would see zero guide entries and fall back to a bare title with
+        // no episode/matchup info, easy to hit whenever a show's start time lands near the hour
+        // boundary (as this refresh does), even though the guide data had been correct all day.
         await fetchAllLineups(for: devices)
         let results = await guideStore.loadAll(devices: devices, hours: config.GuideHours, useXML: config.Guide_use_xml)
         guideByDevice = guideStore.channelsByDevice
@@ -682,9 +726,9 @@ final class AppState: ObservableObject {
         // past the guide window get scheduled as soon as a matching episode appears.
         await rescheduleAllSeries()
         // Notify connected web clients that guide data has changed so they can refresh the grid.
+        // Builds the grid once and reuses it for both the page cache and the SSE broadcast.
         if anyLoaded {
-            webServer.prebuildPageHTML(state: self)
-            webServer.broadcastGuideChangeEvent(type: "guide_refreshed", state: self)
+            webServer.refreshPageAndBroadcastGuideChange(type: "guide_refreshed", state: self)
         }
     }
 
@@ -761,6 +805,22 @@ final class AppState: ObservableObject {
     }
 
 
+    // O(1) channel logo URL lookup for channelMenu — depends only on guideByDevice, which
+    // changes on guide load (~hourly), not per idle tick. Called from guideByDevice's didSet
+    // and once after fetchAllGuides — deliberately NOT from rebuildMenuEntries() itself, since
+    // that also runs every idle tick and guideByDevice won't have changed on most of those.
+    private func rebuildChannelImageURLs() {
+        var imageURLs: [String: String] = [:]
+        for (deviceId, channels) in guideByDevice {
+            for ch in channels {
+                if let url = ch.ImageURL, !url.isEmpty {
+                    imageURLs["\(deviceId):\(ch.GuideNumber)"] = url
+                }
+            }
+        }
+        channelImageURLs = imageURLs
+    }
+
     func rebuildMenuEntries() {
         let now = Date()
 
@@ -773,17 +833,6 @@ final class AppState: ObservableObject {
         }
         managedShowBySeriesID = bySeriesID
         managedShowByTitle    = byTitle
-
-        // ── O(1) channel logo URL lookup for channelMenu ──────────────────────
-        var imageURLs: [String: String] = [:]
-        for (deviceId, channels) in guideByDevice {
-            for ch in channels {
-                if let url = ch.ImageURL, !url.isEmpty {
-                    imageURLs["\(deviceId):\(ch.GuideNumber)"] = url
-                }
-            }
-        }
-        channelImageURLs = imageURLs
 
         // ── Scheduled menu: guide entry + upcoming slots per active show ──────
         // Include recording shows in candidateShows so conflict detection catches them too.
@@ -865,8 +914,7 @@ final class AppState: ObservableObject {
         // so the show is named after the series, not a single airing.
         let rawTitle = entry.Title
         show.show_title = (type == .seriesChannel || type == .seriesAll)
-            ? (rawTitle.range(of: #"\s+S\d+E\d+.*$"#, options: [.regularExpression, .caseInsensitive])
-               .map { String(rawTitle[..<$0.lowerBound]) } ?? rawTitle)
+            ? Show.seriesTitle(from: rawTitle)
             : rawTitle
         if let override = titleOverride?.trimmingCharacters(in: .whitespacesAndNewlines), !override.isEmpty {
             show.show_title = override
@@ -879,7 +927,7 @@ final class AppState: ObservableObject {
         show.show_url       = channel.URL ?? ""
         show.show_genre     = entry.firstGenre ?? ""
         show.show_dir       = folder.path
-        show.show_temp_dir  = NSHomeDirectory() + "/Movies/hdhr_videos"
+        show.show_temp_dir  = Show.localFallbackDir
 
         // Local decimal hour from guide start time (matches what the user sees in the guide)
         let comps = Calendar.current.dateComponents([.hour, .minute], from: entry.startDate)
@@ -908,16 +956,7 @@ final class AppState: ObservableObject {
             resolveSeriesAir(show: &show, device: device, isAll: true, channel: channel)
         }
 
-        if hasConflict(for: show) {
-            notify("Recording Conflict", body: show.show_title,
-                   subtitle: "All tuners on \(show.hdhr_record) are busy at \(shortTime(show.show_next))")
-            discordShow("⚠️ Tuner Conflict", show: show, color: 0xF1C40F, enabled: config.Discord_on_conflict,
-                        extra: [("Note", "All tuners on \(show.hdhr_record) are busy at \(shortTime(show.show_next))", false)])
-        }
-        addShow(show) // broadcasts "show_added" itself
-        notify("Show Added", body: show.show_title, subtitle: type.rawValue)
-        discordShow("✅ Show Added", show: show, color: 0x1ABC9C, enabled: config.Discord_on_show_added,
-                    extra: [("Type", type.rawValue, true)])
+        addShow(show) // conflict check, "Show Added" notify/Discord, and web broadcast all happen there
     }
 
     // Tie-break for SeriesID(All) shows simulcast/rerun on multiple channels of the same device
@@ -968,22 +1007,9 @@ final class AppState: ObservableObject {
         let stored = UserDefaults.standard.string(forKey: "defaultSaveDirectory") ?? ""
         if !stored.isEmpty { return URL(fileURLWithPath: stored) }
         if !config.Hdhr_setup_folder.isEmpty { return URL(fileURLWithPath: config.Hdhr_setup_folder) }
-        let dir = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Movies/hdhr_videos")
+        let dir = URL(fileURLWithPath: Show.localFallbackDir)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
-    }
-
-    func pickFolder(message: String) -> URL? {
-        NSApp.activate(ignoringOtherApps: true)
-        let panel = NSOpenPanel()
-        panel.message = message
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.prompt = "Choose"
-        panel.directoryURL = defaultSaveDir
-        return panel.runModal() == .OK ? panel.url : nil
     }
 
     // MARK: - Timer
@@ -1281,21 +1307,27 @@ final class AppState: ObservableObject {
 
         // Log untagged (no genre) guide entries as they start airing, once per slot.
         // Helps discover new infomercial SeriesIDs to add to the hidden-by-default filter.
-        let knownInfSIDs: Set<String> = ["C11809220ENAPZK", "C459763EN3L6D"]
-        for device in devices {
-            for ch in (lineups[device.DeviceID] ?? []) {
-                let entries = guideStore.entries(deviceId: device.DeviceID, channelNum: ch.GuideNumber)
-                for e in entries where e.StartTime <= Int(now.timeIntervalSince1970) && e.EndTime > Int(now.timeIntervalSince1970) {
-                    guard e.firstGenre == nil else { continue }
-                    let key = "\(ch.GuideNumber):\(e.StartTime)"
-                    guard !loggedNowAiring.contains(key) else { continue }
-                    // Bound growth on a long-running session — keys use absolute StartTimes that
-                    // never recur, so reset once large (a rare re-log burst is fine for a diagnostic).
-                    if loggedNowAiring.count > 2000 { loggedNowAiring.removeAll(keepingCapacity: true) }
-                    loggedNowAiring.insert(key)
-                    let sid = e.SeriesID ?? "none"
-                    if !knownInfSIDs.contains(sid) && e.Title != "Paid Programming" {
-                        glog("[NowAiring] \(ch.GuideNumber) \(ch.GuideName) — \(e.Title) SeriesID=\(sid)")
+        // Gated to every 5 minutes rather than every tick — this is a full device×channel guide
+        // walk (guideStore.entries() filters each channel's entries) purely for diagnostic
+        // discovery, not anything a program's actual air time depends on.
+        if now.timeIntervalSince(lastNowAiringScan) > 300 {
+            lastNowAiringScan = now
+            let knownInfSIDs: Set<String> = ["C11809220ENAPZK", "C459763EN3L6D"]
+            for device in devices {
+                for ch in (lineups[device.DeviceID] ?? []) {
+                    let entries = guideStore.entries(deviceId: device.DeviceID, channelNum: ch.GuideNumber)
+                    for e in entries where e.StartTime <= Int(now.timeIntervalSince1970) && e.EndTime > Int(now.timeIntervalSince1970) {
+                        guard e.firstGenre == nil else { continue }
+                        let key = "\(ch.GuideNumber):\(e.StartTime)"
+                        guard !loggedNowAiring.contains(key) else { continue }
+                        // Bound growth on a long-running session — keys use absolute StartTimes that
+                        // never recur, so reset once large (a rare re-log burst is fine for a diagnostic).
+                        if loggedNowAiring.count > 2000 { loggedNowAiring.removeAll(keepingCapacity: true) }
+                        loggedNowAiring.insert(key)
+                        let sid = e.SeriesID ?? "none"
+                        if !knownInfSIDs.contains(sid) && e.Title != "Paid Programming" {
+                            glog("[NowAiring] \(ch.GuideNumber) \(ch.GuideName) — \(e.Title) SeriesID=\(sid)")
+                        }
                     }
                 }
             }
@@ -1822,7 +1854,24 @@ final class AppState: ObservableObject {
     func addShow(_ show: Show) {
         guard !shows.contains(where: { $0.show_id == show.show_id }) else { return }
         glog("[Show] Added '\(show.show_title)' ch=\(show.show_channel) \(show.show_is_series ? "series" : "single")")
+        // Conflict check + notifications live here (not left to each caller) so every path that
+        // adds a show — the guide's "Record" action, the native Add Show wizard, any future
+        // caller — gets the same tuner-conflict warning and "Show Added" confirmation
+        // unconditionally, matching the broadcastGuideChangeEvent call just below. The native
+        // wizard used to skip both entirely (only addShowFromGuide, the web/quick-add path, fired
+        // them), so adding a conflicting show there gave no warning until it silently failed or
+        // queued later, and enabling Discord's "Show Added" notification never covered shows
+        // added from the native app.
+        if hasConflict(for: show) {
+            notify("Recording Conflict", body: show.show_title,
+                   subtitle: "All tuners on \(show.hdhr_record) are busy at \(shortTime(show.show_next))")
+            discordShow("⚠️ Tuner Conflict", show: show, color: 0xF1C40F, enabled: config.Discord_on_conflict,
+                        extra: [("Note", "All tuners on \(show.hdhr_record) are busy at \(shortTime(show.show_next))", false)])
+        }
         shows.append(show); saveConfig()
+        notify("Show Added", body: show.show_title, subtitle: show.state.rawValue)
+        discordShow("✅ Show Added", show: show, color: 0x1ABC9C, enabled: config.Discord_on_show_added,
+                    extra: [("Type", show.state.rawValue, true)])
         // Broadcast here (not left to each caller) so every path that adds a show — the guide's
         // "Record" action, the native Add Show wizard, any future caller — pushes to the web UI
         // unconditionally instead of depending on the caller remembering to.
@@ -2132,8 +2181,11 @@ final class AppState: ObservableObject {
     func refreshAll() {
         glog("[Guide] refreshAll() — triggering discovery + refreshGuides()")
         guideByDevice = [:]
-        // Discovery first (updates device IPs), then refreshGuides() which invalidates and reloads.
-        // The idle loop checks hour boundaries, so concurrent calls are naturally throttled.
+        // Discovery first (updates device IPs), then refreshGuides() reloads. guideByDevice is
+        // cleared eagerly right above (unlike refreshGuides()'s own guideStore, which is left in
+        // place until fresh data lands) because this is a user-initiated "Update Guides Now" action
+        // (SettingsView) — an immediate visual clear is expected here, unlike the silent automatic
+        // hourly refresh. The idle loop checks hour boundaries, so concurrent calls are naturally throttled.
         Task { await discoverDevices(); await refreshGuides() }
     }
 
@@ -2446,41 +2498,6 @@ final class AppState: ObservableObject {
         return String(format: "%.0f KB", Double(bytes) / 1024)
     }
 
-    func testDiscordEvent(_ eventType: String, webhookURL: String) {
-        guard !webhookURL.isEmpty else { return }
-        let testShow = recordingShows.first ?? activeShows.first ?? shows.first
-        switch eventType {
-        case "start":
-            if let show = testShow { discordShow("🔴 Recording Started",  show: show, color: 0x2ECC71, enabled: true, webhookURL: webhookURL) }
-        case "complete":
-            if let show = testShow { discordShow("✅ Recording Complete", show: show, color: 0x3498DB, enabled: true,
-                                                  extra: [("Format", "TS", true), ("File Size", "2.34 GB", true)], webhookURL: webhookURL) }
-        case "failed":
-            if let show = testShow { discordShow("❌ Recording Failed",   show: show, color: 0xE74C3C, enabled: true,
-                                                  extra: [("Reason", "curl error 6 — could not resolve host", false)], webhookURL: webhookURL) }
-        case "paused":
-            if let show = testShow { discordShow("⏸ Recording Paused",   show: show, color: 0xE67E22, enabled: true,
-                                                  extra: [("Reason", "Max failures reached", false)], webhookURL: webhookURL) }
-        case "skipped":
-            if let show = testShow { discordShow("💾 Recording Skipped",  show: show, color: 0xE67E22, enabled: true,
-                                                  extra: [("Reason", "Only 4 GB free — limit: \(Int(config.Min_disk_free_gb)) GB", false)], webhookURL: webhookURL) }
-        case "conflict":
-            if let show = testShow { discordShow("⚠️ Tuner Conflict",     show: show, color: 0xF1C40F, enabled: true, webhookURL: webhookURL) }
-        case "show_added":
-            if let show = testShow { discordShow("✅ Show Added",          show: show, color: 0x1ABC9C, enabled: true, webhookURL: webhookURL) }
-        case "upnext":
-            if let show = testShow { discordShow("🔔 Up Next",            show: show, color: 0x9B59B6, enabled: true,
-                                                  extra: [("Starts In", "\(Int(config.Notify_upnext)) min", true)], webhookURL: webhookURL) }
-        case "soon":
-            if let show = testShow { discordShow("⏱ Recording Soon",     show: show, color: 0x9B59B6, enabled: true,
-                                                  extra: [("Starts In", "\(Int(config.Notify_recording)) min", true)], webhookURL: webhookURL) }
-        case "guide_error":
-            discordError("🚫 Guide Load Failed",
-                         detail: "Test — guide could not be fetched for device \(devices.first?.DeviceID ?? "unknown")",
-                         color: 0x95A5A6, enabled: true, webhookURL: webhookURL)
-        default: break
-        }
-    }
 
     // Static — shortTime is called per notification and per scheduled menu render
     private static let shortTimeFormatter: DateFormatter = {
@@ -2749,8 +2766,26 @@ final class AppState: ObservableObject {
         }
     }
 
-    // Fetches /tunerN/vstatus via the tuner index from status.json — O(1) vstatus calls per show.
+    // Coalesces concurrent callers for the same device onto one real fetch — several call sites
+    // (idle-loop per-tick, startup, probes, watchInApp/watchInVLC forcing a fresh poll before
+    // checking tuner availability) can all target the same device within a short window. A second
+    // caller awaits the same in-flight Task rather than either stacking up redundant requests or
+    // (the wrong fix) skipping and returning immediately with stale data — watchInApp/watchInVLC
+    // specifically need the awaited call to reflect an actually-fresh poll.
     private func fetchDeviceStatus(for device: HDHRDevice) async {
+        let id = device.DeviceID
+        if let existing = fetchStatusTasks[id] {
+            await existing.value
+            return
+        }
+        let task = Task { await self.fetchDeviceStatusUncached(for: device) }
+        fetchStatusTasks[id] = task
+        defer { fetchStatusTasks.removeValue(forKey: id) }
+        await task.value
+    }
+
+    // Fetches /tunerN/vstatus via the tuner index from status.json — O(1) vstatus calls per show.
+    private func fetchDeviceStatusUncached(for device: HDHRDevice) async {
         guard let url = URL(string: device.statusURL),
               let (data, _) = try? await URLSession.shared.data(from: url),
               let tuners = try? JSONDecoder().decode([DeviceTunerInfo].self, from: data)
@@ -2820,7 +2855,6 @@ final class AppState: ObservableObject {
             guard lock != "none" else { continue }
             tunerStatus[show.show_id] = TunerStatus(
                 signalStrength: Int(kv["ss"]  ?? "0") ?? 0,
-                signalQuality:  Int(kv["snq"] ?? "0") ?? 0,
                 lockType:       lock,
                 bitrateMbps:    Double(kv["bps"] ?? "0").map { $0 / 1_000_000 } ?? 0
             )

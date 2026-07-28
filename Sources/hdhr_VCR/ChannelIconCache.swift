@@ -1,5 +1,4 @@
 import AppKit
-import SwiftUI
 
 // ── Channel icon disk cache ───────────────────────────────────────────────────
 // Images are downloaded once and stored in ~/Library/Caches/hdhr_VCR/channel_icons/
@@ -67,34 +66,5 @@ actor ChannelIconCache {
         if mem.count > 600 { mem.removeAll() }
         try? data.write(to: diskPath)
         return img
-    }
-}
-
-// ── SwiftUI view ──────────────────────────────────────────────────────────────
-
-struct ChannelIcon: View {
-    let urlString: String?
-    let size: CGFloat
-    var accessibilityLabel: String? = nil   // nil = decorative (hidden from VoiceOver)
-
-    @State private var img: NSImage? = nil
-
-    var body: some View {
-        Group {
-            if let img {
-                Image(nsImage: img)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-            } else {
-                Rectangle().hidden()
-            }
-        }
-        .frame(width: size, height: size)
-        .accessibilityLabel(accessibilityLabel.map(Text.init) ?? Text(""))
-        .accessibilityHidden(accessibilityLabel == nil)
-        .task(id: urlString) {
-            guard let s = urlString, !s.isEmpty else { img = nil; return }
-            img = await ChannelIconCache.shared.image(for: s)
-        }
     }
 }

@@ -11,13 +11,13 @@ The web server is scoped to **scheduling and management** — playback is not su
 ```swift
 func start(port: Int, appState: AppState, onState: @escaping (String?) -> Void)
 func stop()
-func updateTXTRecord()    // @MainActor — refreshes mDNS TXT record; called from idleLoop
+func updateTXTRecord()    // @MainActor — refreshes mDNS TXT record if it actually changed since the last call; called from idleLoop
 func broadcastEvent(_:)   // pushes a JSON event to all open SSE clients
 func broadcastRecordingEvent(type:channel:device:state:)  // @MainActor — builds sumPh + the device's tdrop fragment and calls broadcastEvent
-func broadcastGuideChangeEvent(type:extra:state:)  // @MainActor — builds grid + sumph + all tdrop fragments once (buildGuideRefreshPayload) and calls broadcastEvent, so connected clients apply the pushed HTML instead of each independently re-fetching /api/guide-refresh
+func broadcastGuideChangeEvent(type:extra:state:prebuiltGrid:)  // @MainActor — builds grid + sumph + all tdrop fragments once (buildGuideRefreshPayload) and calls broadcastEvent, so connected clients apply the pushed HTML instead of each independently re-fetching /api/guide-refresh; `prebuiltGrid` lets a caller that already built the grid (see refreshPageAndBroadcastGuideChange) reuse it
 func broadcastDeviceBarEvent(type:deviceId:state:)  // @MainActor — builds #dev-bar's inner HTML (buildDevBarHTML) and calls broadcastEvent; used for deviceOnline/deviceOffline so the tuner-box row updates live instead of only on next page reload
-func prebuildPageHTML(state: AppState)   // @MainActor — pre-renders and caches desktop + mobile HTML; called after fetchAllGuides / refreshGuides
-func invalidateHTMLCache()               // clears cachedHTML so the next GET / rebuilds
+func prebuildPageHTML(state:prebuiltGrid:)   // @MainActor — pre-renders and caches desktop + mobile HTML; called after fetchAllGuides / refreshGuides
+func refreshPageAndBroadcastGuideChange(type:state:)  // @MainActor — builds the guide grid once and passes it to both prebuildPageHTML and broadcastGuideChangeEvent, instead of each rebuilding it independently; used by refreshGuides() for the hourly "guide_refreshed" refresh
 ```
 
 `onState` is called on `DispatchQueue.main`. `nil` = server is ready; non-nil = error string.
@@ -295,9 +295,9 @@ Self-contained HTML with all CSS inlined. Updates arrive via SSE push events (se
 
 **Splash overlay:** a fixed `#splash` div (z-index 9999) covers the page on load, showing the app icon (from `/api/icon`), name, and build version. A 300 ms CSS animation delay means the splash is never visible on fast local loads (the page's `requestAnimationFrame` fires and removes it before the animation starts). On slow remote loads it fades in after 300 ms and is removed once the first `rAF` fires. `/api/icon` serves the `AppIcon.icns` scaled to 72×72 as PNG via `NSImage` + `NSBitmapImageRep`.
 
-`refreshGuide()` is called client-side after user actions (record, delete, edit) and on receipt of an SSE event. It updates the guide grid without a page reload:
+`refreshGuide()` is only called client-side for the manual **↺** refresh button and as the SSE `onmessage` handler's fallback for an event shape it doesn't otherwise recognize (see the SSE events list above). User actions (record, delete, edit, pause, favorite-toggle) do **not** call it — each of those already gets its change pushed via the SSE-broadcast `show_updated`/`show_deleted`/`favorite_toggled` guide-change event (the server calls `broadcastGuideChangeEvent` once per action, delivered to every connected tab including the one that triggered it), which `applyGuidePayload` applies the same way `refreshGuide()` would. Calling both used to mean every one of these actions rebuilt the grid server-side twice — once for the broadcast, once for the initiating tab's own redundant fetch — for no benefit, since the broadcast already covers it.
 
-- **`refreshGuide(selOverride?)`** — saves `.gw` scroll position and the currently-selected `.g-prog` element (`data-start` + `data-num` + `data-device`); `GET /` → DOMParser → swaps `.gi` (guide grid), `#sum-ph` (summary placeholder), and each `.tdrop` body (`#tdrop-{devId}`); re-reads `data-winstart`/`data-winsec` from the new `.g-hdr` into `_winStart`/`_winSec` (keeps the live now-line aligned to the refreshed grid); restores scroll position; re-selects the previously-highlighted entry via `showInfo()`. If `selOverride` is passed (a JS object), its key-value pairs are merged into the re-selected block's `dataset` before `showInfo()` runs — used after a Record action to inject `{recording:'1', managed:'1'}` so the summary panel shows the correct state without requiring a manual re-select.
+- **`refreshGuide(selOverride?)`** — saves `.gw` scroll position and the currently-selected `.g-prog` element (`data-start` + `data-num` + `data-device`); fetches `/api/guide-refresh` (same JSON shape an SSE guide-change event carries) → `applyGuidePayload()` swaps `.gi` (guide grid), `#sum-ph` (summary placeholder), and each `.tdrop` body (`#tdrop-{devId}`); re-reads `data-winstart`/`data-winsec` from the new `.g-hdr` into `_winStart`/`_winSec` (keeps the live now-line aligned to the refreshed grid); restores scroll position; re-selects the previously-highlighted entry via `showInfo()`. `selOverride`, if passed (a JS object), is merged into the re-selected block's `dataset` before `showInfo()` runs — no current caller passes one (the last one, `confirmRecord()`'s post-Record injection of `{recording:'1', managed:'1'}`, was removed along with that call once the SSE broadcast was confirmed to already carry the correct values), but the parameter stays since `applyGuidePayload()` (shared with the SSE handler) still accepts it.
 
 **Theme variables:** CSS custom properties defined on `:root` (dark default) and overridden on `html.lm` (light). Dark: body `--bg:#141414` · surfaces `--s1–s4` `#1a–#22` · borders `--b0–b5` `#25–#48` · text `--t0–t6` `#f0–#66`. Light: body `--bg:#e4e6ea` · surfaces `#ec–#ff` · borders `#78–#c4` (visible against light backgrounds) · text `--t0–t6` `#11–#7d` (all pass WCAG AA contrast on light surfaces). Theme is toggled by adding/removing the `lm` class on `<html>`; preference is stored in `localStorage('theme')` with `'auto'` following `prefers-color-scheme`.
 
@@ -440,15 +440,14 @@ On **Schedule**: `confirmRecord()` collects selected air days from `#rm-days .da
 - Guide block gains `.g-prog-rec` + red triangle flag if `recStarted` is true (show currently airing); otherwise `.g-prog-sched` + yellow triangle flag.
 - Summary note shows "● Recording now", "⚠ Queued — all tuners busy", or "★ Scheduled — next idle loop pick-up".
 - The summary delete button becomes **"Stop & Delete"** (+ `danger` class) when `recStarted`; stays **"Remove"** otherwise.
-- `refreshGuide({recording:'1',managed:'1'})` or `refreshGuide({managed:'1'})` is called so the re-selected block's `dataset` reflects the new recording/managed state before `showInfo()` runs — the summary panel updates without requiring a manual re-click.
 - Tuner badge `#tun-{devId}` is updated in place with the new active/total count from `tunerActive`/`tunerTotal`.
-- Per-tuner dropdown bodies are refreshed in place by `refreshGuide()` (and recording events).
+- No explicit `refreshGuide()` call — `/api/record`'s `addShow`/`updateShow` already broadcasts a `show_updated` guide-change event over SSE, which this same tab applies via `applyGuidePayload()` (including re-selecting the block and refreshing per-tuner dropdown bodies) just as `refreshGuide()` would have; calling both meant every Record rebuilt the grid server-side twice.
 
 ---
 
 ### Guide grid
 
-A cable-TV-style horizontal time grid. Desktop and mobile clients both get the full `GuideHours` window (default 24 h) — `winSec = GuideHours * 3600` regardless of UA. `isDesktopUA(_ ua: String)` (private helper) still classifies the UA server-side for `/api/guide-refresh`'s grid rebuild, but no longer affects window size or which cached page HTML is served (see "HTML cache" above — one shared `cachedHTML` now covers all UAs).
+A cable-TV-style horizontal time grid. Desktop and mobile clients both get the full `GuideHours` window (default 24 h) — `winSec = GuideHours * 3600` regardless of UA. There is no UA-based branching left anywhere in the request path — `isDesktopUA`, the `isDesktop` parameter threaded through `buildGuideGridHTML`/`buildHTML`, and the `userAgent` parameter threaded through `route`/`routeOnMain` were all removed as dead code once UA no longer affected window size or which cached page HTML is served (see "HTML cache" above — one shared `cachedHTML` now covers all UAs); the server no longer parses `User-Agent` from request headers at all.
 
 **Window start:** `winStart = (nowTs / 1800) * 1800 - 1800` — floors to the nearest 30-minute boundary then subtracts one slot, giving a 30–60 minute lookback. `GuideStore.entries()` is called with `after: Date(winStart)` (not the default `after: Date()`) so shows that already ended but fall within the lookback are included. Gap periods with no guide data render as `.g-gap` divs (fully opaque `var(--bg)`) so the striped `.g-tl` background never shows through. On page load, `scrollToNow()` is called inside the `requestAnimationFrame` callback (alongside the auto-select IIFE) so the now-line sits ~25% from the left of the visible viewport after the first paint.
 
@@ -562,7 +561,7 @@ The four matching tiers (seriesID → title fallback → datetime `device:channe
 
 `pendingRecChannelsByDevice` supplements `recChannelsByDevice` with shows that have passed `show_next` but whose idle-loop recording start hasn't fired yet (condition: `show_active && !show_paused && !show_recording && show_next <= now && show_end > now`). This means a guide cell turns red (`.g-prog-rec`) immediately after a web Record tap on a live show — before the next idle loop tick marks `show_recording = true`. Scoped to device the same way as `recChannelsByDevice`.
 
-**Managed show data attributes:** when `isMgd` is true, `findManagedShow(e, ch)` is called to locate the `Show` record and embed its config on the block for use by the edit modal:
+**Managed show data attributes:** `owner = guideMatcher.owner(for: e)` (see [Models.md — ManagedGuideMatcher](Models.md)) locates the owning `Show` record and embeds its config on the block for use by the edit modal; `isMgd` is just `owner != nil`:
 
 | Attribute | Content |
 |---|---|
@@ -578,12 +577,9 @@ The four matching tiers (seriesID → title fallback → datetime `device:channe
 | `data-show-failreason` | `show.show_fail_reason` |
 | `data-show-recording` | `1` if recording, `0` otherwise |
 
-`findManagedShow` lookup strategy:
-- **Series shows** (`isSeries`): SeriesID only — `activeMgdBySeries[entry.SeriesID]`. No title fallback; avoids returning the wrong device's show when the same title is scheduled on multiple devices.
-- **dateTime shows**: `"device:channel:Weekday:HH:MM"` slot key — same format as `ManagedGuideMatcher.datetimeSlotKeys`, built from `show_next` time and `show_air_date` entries.
-- **Single shows**: `"device:channel:epoch"` slot key — exact scheduled-slot match.
+`owner(for:)` uses the exact same tiered lookup the flag itself is derived from (SeriesID → title fallback → dateTime slot → single slot — see Models.md), so the flag and the embedded edit attributes can never disagree about which show a block belongs to. This replaced an earlier, separately-maintained `findManagedShow(e, ch)` lookup that only checked SeriesID for series shows (no title fallback) — meaning a series entry whose guide data happened to lack a SeriesID could get flagged managed (via the title-fallback tier the boolean flag already used) but resolve to no owner at all, leaving the Edit button unable to pre-fill from the guide for that block. `owner(for:)` closes that gap: since it shares the identical tiers, a title-fallback match now always populates the same `data-show-*` attributes.
 
-If no match is found (e.g. a series show whose guide entry has no SeriesID), the block still gets `data-managed="1"` and the triangle flag but no `data-show-*` edit attrs — the Edit button will not be pre-filled from the guide for that block.
+If no match is found at all (e.g. a series show whose guide entry has no SeriesID *and* no title match), the block still gets `data-managed="1"` and the triangle flag but no `data-show-*` edit attrs — the Edit button will not be pre-filled from the guide for that block.
 
 ---
 
@@ -616,25 +612,26 @@ instead pushes a single-device `tdrop`/`tdropDev` in its SSE event and the clien
 |---|---|
 | `showInfo(el)` | `onclick` on program blocks; reads `el.dataset`, populates summary panel, sets globals |
 | `closeSummary()` | Hides summary, restores placeholder, clears `.g-sel` |
-| `refreshGuide(selOverride?)` | Partial DOM refresh: saves `.gw` scroll + selected entry; `GET /`; swaps `.gi`, `#sum-ph`, and each `.tdrop` body (`#tdrop-{devId}`); resyncs `_winStart`/`_winSec` from the new `.g-hdr` (so the now-line doesn't drift); restores scroll; re-selects prior entry. Optional `selOverride` object patches `dataset` attrs on the re-selected block before `showInfo()` — used after Record to inject `{recording:'1',managed:'1'}` without a manual re-click. |
+| `postJSON(url,payload)` | Shared POST helper — `fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})`. Used by all 7 mutating actions (`confirmRecord`, `doDelete`, `doEditPause`, `doEditReset`, `confirmEdit`, `doEditDelete`, `toggleFav`); each still handles its own response/error path since those differ enough per action (e.g. `confirmRecord`'s `r.text()` fallback on a non-JSON error body) that only the fetch-construction boilerplate is shared. |
+| `refreshGuide(selOverride?)` | Partial DOM refresh: saves `.gw` scroll + selected entry; fetches `/api/guide-refresh`; swaps `.gi`, `#sum-ph`, and each `.tdrop` body (`#tdrop-{devId}`) via `applyGuidePayload()`; resyncs `_winStart`/`_winSec` from the new `.g-hdr` (so the now-line doesn't drift); restores scroll; re-selects prior entry. Only called by the manual **↺** refresh button and the SSE handler's fallback for an unrecognized event shape — no user action calls it directly anymore (see line ~300 above and the "Guide-change events" SSE section for why). Optional `selOverride` object would patch `dataset` attrs on the re-selected block before `showInfo()` runs, but no current caller passes one. |
 | `doRecord()` | Opens record modal; prefills the title input; pre-checks day-of-week button matching guide entry (Day row shown for `single`/`dateTime`); pre-checks Bonus Time for sports entries when `_bonusEnabled`; sets transcode to `_defaultTranscode`; shows tuner-full warning if applicable; resets the airings cache/generation counter |
 | `cancelRecord()` | Hides modal |
 | `loadAirings(seriesId, gen)` | Fetches `/api/airings/{seriesId}` (cached per series in `_airCache`); discards the response if `gen` no longer matches `_airGen` (modal was reopened for a different program); renders via `renderAirings()` |
 | `renderAirings(list)` | Filters out the currently-selected airing (matching `ch`+`start`), stores the filtered array in `_airCurrent` (index-addressed by each row's `ondblclick`), hides `#rm-airings` and clears `#rm-airings-list` if nothing remains, else renders up to 4 `Day time · Ch N Name · episode info` rows |
 | `switchAiring(idx)` | Looks up `_airCurrent[idx]`, re-anchors `_d`/`_n`/`_s`/`_e`/`_genre`/`_title`/`_entryDow` to it, updates the title input + `Ch N · Name · time` line + tuner-full warning, then calls `renderAirings(_airCache[_ser])` again so the list swaps to reflect the new selection |
-| `confirmRecord()` | Collects `airDays` from `#rm-days`, `transcode` from `#rm-transcode`, and the trimmed title from `#rm-title-in` (included only if edited); POSTs `/api/record`; on success: red flag + `.g-prog-rec` if `recStarted`, yellow flag + `.g-prog-sched` otherwise. Delete button becomes **"Stop & Delete"** (+ `danger` class) when `recStarted`, stays **"Remove"** otherwise. Calls `refreshGuide({recording:'1',managed:'1'})` or `refreshGuide({managed:'1'})` so the summary panel reflects the new state immediately. Updates tuner badge `#tun-{devId}` in place. |
+| `confirmRecord()` | Collects `airDays` from `#rm-days`, `transcode` from `#rm-transcode`, and the trimmed title from `#rm-title-in` (included only if edited); POSTs `/api/record`; on success: red flag + `.g-prog-rec` if `recStarted`, yellow flag + `.g-prog-sched` otherwise. Delete button becomes **"Stop & Delete"** (+ `danger` class) when `recStarted`, stays **"Remove"** otherwise. Updates tuner badge `#tun-{devId}` in place. No explicit `refreshGuide()` — `/api/record`'s broadcast SSE event covers the summary panel/dataset update. |
 | `updateDaysVisibility()` | Shows `#em-days-row` for `single` and `dateTime` types (label "Day"/"Days"); hides for series types |
 | `toggleDay(btn)` | Toggles a day-button selection in the edit modal; prevents deselecting the last selected day |
-| `doDelete()` | POSTs `/api/delete`; removes triangle flag/color from block, restores Record button |
+| `doDelete()` | POSTs `/api/delete`; removes triangle flag/color from block, restores Record button; no explicit `refreshGuide()` — `deleteShow()` already broadcasts `show_deleted` over SSE |
 | `doEditFromGuide()` | Reads `data-show-*` attrs from selected `.g-prog` block; calls `openEditShow()` |
 | `openEditShow(el)` | Populates and opens `#edit-modal` from `el.dataset`; handles both guide blocks and schedule popover rows |
 | `closeEditShow()` | Hides `#edit-modal` |
-| `confirmEdit()` | POSTs `/api/edit`; closes modal on success |
+| `confirmEdit()` | POSTs `/api/edit`; closes modal on success; no explicit `refreshGuide()` — `handleEdit`'s `updateShow` already broadcasts `show_updated` over SSE |
 | `setDev(id)` | Filters guide rows by `data-dev`; empty string = deduped single-device fallback (multi-tuner bootstraps to a real `defaultDev`, not `''`); uses cached `_rows` NodeList; calls `applyGenreDim()` then shows/hides `.g-fav-sep` separators |
 | `filterGenre(g)` | Sets `_genreFilter` and calls `applyGenreDim()` |
 | `applyGenreDim()` | Clears all `.g-prog-dim`. In new-episode mode (`__new`): dims non-new programs. In infomercial mode (`__inf`): dims all non-inf programs. In normal mode: dims programs that fail the genre filter OR have `data-inf="1"`. Rows always remain visible. |
 | `scrollToNow()` | Scrolls `.gw` so the now-line sits ~25% from the left of the viewport; corner-cell ⊙ button and page load both call it |
-| `toggleFav(evt, btn)` | `onclick` on `.g-fav-btn` star buttons; reads `data-dev` / `data-ch` from parent `.g-row`; POSTs `/api/toggle-favorite`; calls `refreshGuide()` on success |
+| `toggleFav(evt, btn)` | `onclick` on `.g-fav-btn` star buttons; reads `data-dev` / `data-ch` from parent `.g-row`; POSTs `/api/toggle-favorite` — no explicit `refreshGuide()` call, `handleToggleFavorite` already broadcasts `favorite_toggled` over SSE |
 | `toggleTunerDrop(devId)` | Toggles that tuner's `#tdrop-{devId}` dropdown; closes any other open `.tdrop` first. A document-level click handler closes open dropdowns on any click outside a `.tuner-box`. |
 | `devFull(devId)` | Returns true if `tuners[devId].a >= tuners[devId].t` |
 | `showTunerInfo(devId, anchor)` | Opens tuner popover anchored below the clicked badge; renders per-tuner rows immediately from `recsByDev`, then fires async `/api/now-airing` fetches to enrich external stream rows with guide title, episode, poster, and end time |
