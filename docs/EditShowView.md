@@ -74,11 +74,11 @@ Fires from `onChange(of: seriesType)`. Sets the three boolean flags immediately:
 
 ```swift
 show?.show_is_series        = seriesType != .single
-show?.show_use_seriesid     = seriesType == .seriesChannel || seriesType == .seriesAll
+show?.show_use_seriesid     = seriesType.isSeries
 show?.show_use_seriesid_all = seriesType == .seriesAll
 ```
 
-Switching to `seriesChannel` or `seriesAll` automatically selects all weekdays, since SeriesID records any episode on any day.
+Switching to `seriesChannel` or `seriesAll` automatically selects all weekdays, since SeriesID records any episode on any day, and also strips any episode-specific suffix from `show_title` via `Show.seriesTitle(from:)` — a show originally added as `.single` (so never passed through `AddShowView.save()`'s stripping step) could otherwise get promoted to a SeriesID type here while still carrying that one episode's guest names/subtitle, freezing on it the same way the original native-Add bug did.
 
 ### Single Day Enforcement
 
@@ -90,7 +90,7 @@ When `show.show_fail_count > 0`, a "Failures: N — reason" row appears in orang
 
 ### Save — `save()`
 
-Applies `airDays` and series type flags to the local `show`, applies `recordFolder` to `show_dir`, and sets `show_temp_dir` to `Show.localFallbackDir` (**not** a copy of `recordFolder`) so `posixRecordDir` has a genuinely distinct local fallback to redirect to if `recordFolder`'s volume goes offline — a prior version set both to the same folder here, which silently discarded whatever real fallback the show previously had (including one set correctly by the web guide's `addShowFromGuide`) on every single Edit Show save, whether or not the user touched the folder picker. `Show.init(from:)` self-heals any show already saved with this bug (non-empty `show_temp_dir` identical to a non-default `show_dir`) back to the local fallback on every config load, so no manual per-show fix is needed for shows saved before this was corrected. Then calls `state.updateShow(s)`. `updateShow` replaces the matching show by ID, saves config, and for any active, non-paused, non-recording, non-single show fires `scheduleNextAir` immediately in an async Task — so type or channel changes take effect without waiting for the next idle loop tick. The window dismisses after save.
+Applies `airDays` and series type flags to the local `show`, applies `recordFolder` to `show_dir`, and sets `show_temp_dir` to `Show.localFallbackDir` (**not** a copy of `recordFolder`) so `posixRecordDir` has a genuinely distinct local fallback to redirect to if `recordFolder`'s volume goes offline — a prior version set both to the same folder here, which silently discarded whatever real fallback the show previously had (including one set correctly by the web guide's `addShowFromGuide`) on every single Edit Show save, whether or not the user touched the folder picker. `Show.init(from:)` self-heals any show already saved with this bug (non-empty `show_temp_dir` identical to a non-default `show_dir`) back to the local fallback on every config load, so no manual per-show fix is needed for shows saved before this was corrected. `show_air_date` is set via `weekdays.filter { airDays.contains($0) }`, not `Array(airDays)` — `airDays` is a `Set`, whose iteration order is hash-seed dependent, so a bare `Array()` conversion rewrote `show_air_date` in a different permutation on every save even when the user changed nothing. Then calls `state.updateShow(s)`, and — critically — resets **both** `show` and `originalShow` to the saved `s` (`saveWithoutDismiss()` previously only reset `originalShow`, so `isDirty` (`show != originalShow`) stayed permanently `true` after any save, popping a spurious "Unsaved Changes" prompt the next time a different show was opened for edit in this same reused window). `updateShow` replaces the matching show by ID, saves config, and for any active, non-paused, non-recording, non-single show fires `scheduleNextAir` immediately in an async Task — so type or channel changes take effect without waiting for the next idle loop tick. The window dismisses after save.
 
 ### Delete
 

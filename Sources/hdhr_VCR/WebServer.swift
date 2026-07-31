@@ -2247,7 +2247,11 @@ final class WebServer: @unchecked Sendable {
           renderAirings(_airCache[_ser]||[]);
         }
         function renderAirings(list){
-          var filtered=list.filter(function(a){return !(String(a.ch)===_n&&+a.start===_s);});
+          // Excludes by device too, not just channel+time — two tuners sharing one antenna report
+          // the same channel number with identical airings, so channel+time alone would wrongly
+          // hide the *other* device's copy of the just-selected airing, even though double-clicking
+          // it is exactly how you'd steer the recording to that other tuner instead.
+          var filtered=list.filter(function(a){return !(String(a.ch)===_n&&+a.start===_s&&String(a.device)===_d);});
           _airCurrent=filtered;
           var panel=document.getElementById('rm-airings');
           var listEl=document.getElementById('rm-airings-list');

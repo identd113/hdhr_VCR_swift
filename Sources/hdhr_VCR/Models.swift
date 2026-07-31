@@ -66,7 +66,7 @@ struct Show: Identifiable, Equatable {
     var notify_upnext_time: Date?
     var notify_recording_time: Date?
     var show_dir: String            // recording destination (POSIX path)
-    var show_temp_dir: String       // same as show_dir in most configs
+    var show_temp_dir: String       // local recording-folder fallback — see Show.localFallbackDir; deliberately NOT the same as show_dir (that was a bug, self-healed in init(from:))
     var show_recording_path: String // path of active/last recording file
     var show_genre: String          // first genre tag from guide (e.g. "Sports")
     var show_bonus_time: Bool       // true = extend recording past guide end

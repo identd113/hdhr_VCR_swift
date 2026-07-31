@@ -204,11 +204,16 @@ struct AddShowView: View {
     @State private var otherAiringsCache: [(channel: String, entry: GuideEntry)] = []
 
     private struct OtherAiringsKey: Equatable {
-        var seriesId: String, isSeries: Bool, channel: String, next: Date?
+        var seriesId: String, isSeries: Bool, channel: String, next: Date?, guideGeneration: Int
     }
     private var otherAiringsKey: OtherAiringsKey {
+        // guideGeneration included so the ~hourly background guide refresh forces a recompute even
+        // when none of this show's own fields changed — otherwise the wizard could keep showing a
+        // stale "Other Upcoming Airings" list (a moved/cancelled/newly-visible airing) for as long
+        // as it's left open across that refresh.
         OtherAiringsKey(seriesId: show.show_seriesid, isSeries: seriesType.isSeries,
-                        channel: show.show_channel, next: show.show_next)
+                        channel: show.show_channel, next: show.show_next,
+                        guideGeneration: state.guideGeneration)
     }
 
     // Other upcoming airings of the same SeriesID, excluding the airing just selected in Step 2.
@@ -218,8 +223,13 @@ struct AddShowView: View {
     private func computeOtherAirings() -> [(channel: String, entry: GuideEntry)] {
         guard seriesType.isSeries, !show.show_seriesid.isEmpty else { return [] }
         let selectedStart = show.show_next.map { Int($0.timeIntervalSince1970) }
+        // Excludes by deviceId too, not just channel+time — two tuners sharing one antenna report
+        // the same channel number with identical airings, so channel+time alone would wrongly hide
+        // the *other* device's copy of the just-selected airing, even though double-clicking it is
+        // exactly how you'd steer the recording to that other tuner instead.
         return state.upcomingGuideEpisodes(seriesID: show.show_seriesid)
-            .filter { !($0.channel == show.show_channel && $0.entry.StartTime == selectedStart) }
+            .filter { !($0.channel == show.show_channel && $0.entry.StartTime == selectedStart
+                        && $0.entry.deviceId == show.hdhr_record) }
     }
 
     // Hidden entirely when there's nothing informative to show.
@@ -253,7 +263,12 @@ struct AddShowView: View {
 
     // Double-click on an "Other Upcoming Airings" row re-anchors the Details step to that
     // airing — same field set as the initial guide selection (applyWebGuideEntry/applyPendingEntry),
-    // minus seriesType/airDays/bonus, which are left as the user already set them on this step.
+    // minus seriesType/bonus, which are left as the user already set them on this step. This panel
+    // only shows while seriesType.isSeries (save() overrides show_air_date to all 7 days for series
+    // types regardless of airDays' value), but airDays IS kept in sync with the newly-picked
+    // entry's weekday — nothing stops the user from switching Type to dateTime/single afterward,
+    // and a stale airDays from whichever airing was originally selected would then silently
+    // schedule the wrong day's recurrence.
     private func switchToAiring(channel: String, entry: GuideEntry) {
         if selectedDevice?.DeviceID != entry.deviceId {
             selectedDevice = state.devices.first(where: { $0.DeviceID == entry.deviceId })
@@ -267,8 +282,9 @@ struct AddShowView: View {
         show.show_genre    = entry.firstGenre ?? show.show_genre
         show.hdhr_record   = entry.deviceId
         show.show_url      = state.lineups[entry.deviceId]?.first(where: { $0.GuideNumber == channel })?.URL ?? ""
-        let comps = Calendar.current.dateComponents([.hour, .minute], from: entry.startDate)
+        let comps = Calendar.current.dateComponents([.hour, .minute, .weekday], from: entry.startDate)
         show.show_time = Double(comps.hour ?? 20) + Double(comps.minute ?? 0) / 60.0
+        airDays = [["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][(comps.weekday ?? 2) - 1]]
     }
 
     // MARK: - Nav bar

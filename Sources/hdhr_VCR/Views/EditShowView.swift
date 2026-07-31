@@ -174,6 +174,12 @@ struct EditShowView: View {
         show?.show_use_seriesid_all = seriesType == .seriesAll
         if seriesType.isSeries {
             airDays = Set(weekdays)
+            // A Single show promoted to SeriesID may still carry a raw, episode-specific title
+            // (e.g. from the guide entry it was originally added from) — strip it the same way
+            // AddShowView.save() does, or it'd freeze on that one episode's title indefinitely.
+            if let title = show?.show_title {
+                show?.show_title = Show.seriesTitle(from: title)
+            }
         }
     }
 
@@ -185,7 +191,11 @@ struct EditShowView: View {
 
     private func saveWithoutDismiss() {
         guard var s = show else { return }
-        s.show_air_date         = Array(airDays)
+        // Sorted, not just Array(airDays) — Set iteration order is hash-seed dependent, so an
+        // unsorted conversion rewrote show_air_date in a different permutation on every single
+        // save even when the user changed nothing, which also fed into the isDirty divergence
+        // below (show never got normalized back to match, so it never equaled originalShow).
+        s.show_air_date         = weekdays.filter { airDays.contains($0) }
         s.show_is_series        = seriesType != .single
         s.show_use_seriesid     = seriesType.isSeries
         s.show_use_seriesid_all = seriesType == .seriesAll
@@ -199,6 +209,11 @@ struct EditShowView: View {
             s.show_temp_dir = Show.localFallbackDir
         }
         state.updateShow(s)
+        // Both show and originalShow must be reset to the normalized s — show alone was never
+        // updated here before, so isDirty (show != originalShow) stayed true after every save,
+        // popping a spurious "Unsaved Changes" prompt the next time a different show was opened
+        // for edit in this same reused window.
+        show = s
         originalShow = s   // reset dirty tracking after save
     }
 

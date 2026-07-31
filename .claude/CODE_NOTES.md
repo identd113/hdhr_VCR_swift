@@ -52,3 +52,17 @@ accuracy regresses right after app launch specifically.
   bundle-id change would silently empty the Console filter. Minor coupling, noted not flagged.
 - `VLCBridge.swift:516-517` `videoPixelSize` republished only on change (`if newPixelSize != …`),
   computed once per 3s stats tick — not per render. Good; no churn.
+
+## 2026-07-28 — cb327a1 review (native/web add-flow parity + Show.seriesTitle/localFallbackDir helpers)
+
+- Verified `Show.localFallbackDir`'s self-heal repair condition (`decodedTempDir == show_dir &&
+  show_dir != Show.localFallbackDir`) has no legitimate false-positive case: every current write
+  path (AddShowView.swift:405, EditShowView.swift:199, AppState.swift:930) sets
+  `show_temp_dir = Show.localFallbackDir` unconditionally, never to a copy of `show_dir`, and the
+  one case where a user deliberately sets `show_dir` to the fallback path itself is explicitly
+  excluded from the repair. Confirmed clean, no misfire risk found.
+- `ManagedGuideMatcher` (Models.swift ~562-643) changed from `Set<String>` membership tables to
+  `[String: Show]` lookup tables with a new `owner(for:)` method, consumed by the skip-already-
+  recorded corner-flag logic (`WebServer.swift:1234`) — confirmed this replaces what would
+  otherwise be a second, separately-maintained series→Show lookup, not redundant/dead. `isManaged`
+  is now a one-line wrapper (`owner(for:) != nil`) — no remaining direct Set-membership callers.

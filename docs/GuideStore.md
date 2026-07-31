@@ -43,14 +43,18 @@ func entries(deviceId: String, channelNum: String, after: Date) -> [GuideEntry]
 func nextEpisode(seriesID: String, channelNum: String?, deviceId: String?, after: Date, preferFavorite: ((String, String) -> Bool)?) -> SeriesMatch?
 func currentEpisode(seriesID: String, channelNum: String?, deviceId: String?, at: Date, preferFavorite: ((String, String) -> Bool)?) -> SeriesMatch?
 func nextEpisodes(seriesID: String, after: Date, limit: Int) -> [SeriesMatch]
-func currentEntryByTitle(_ title: String, channelNum: String, deviceId: String, at: Date = Date()) -> SeriesMatch?  // SeriesID-missing fallback, matches by title instead
-func nextEntryByTitle(_ title: String, channelNum: String, deviceId: String, after: Date = Date()) -> SeriesMatch?  // same fallback, for the next airing
+func currentEntryByTitle(_ title: String, channelNum: String? = nil, deviceId: String? = nil, at: Date = Date()) -> SeriesMatch?  // SeriesID-missing fallback, matches by title instead
+func nextEntryByTitle(_ title: String, channelNum: String? = nil, deviceId: String? = nil, after: Date = Date()) -> SeriesMatch?  // same fallback, for the next airing
 func isFresh(deviceId: String, within interval: TimeInterval) -> Bool  // default 1 hour
 func isLoading(deviceId: String) -> Bool
 func invalidateAll()
 ```
 
 `load()` logs: URL fetched, HTTP status + byte count + ms, channel count + total entry count, and a warning if all channels have zero entries. On parse failure the full raw response (up to 2000 chars) is logged at `.error`. No verbose/debug mode — there is no `verbose` flag.
+
+`currentEntryByTitle`/`nextEntryByTitle` compare `Show.seriesTitle(from: $0.Title) == title`, not raw equality — `title` is the stored `show_title`, which for a series show has already had any episode-specific suffix stripped by `Show.seriesTitle(from:)` (see `docs/AddShowView.md`'s `save()` entry), but an individual guide entry missing SeriesID can still carry that suffix on its raw `Title`. Stripping `entry.Title` the same way before comparing keeps both sides in series-name-only form — an exact `$0.Title == title` would otherwise never match once the stored title is stripped.
+
+`channelNum`/`deviceId` default `nil` to scan every device+channel (via `channelEntryIndex.values.flatMap`, using each matching `GuideEntry`'s own stamped `deviceId`/`channelNum` fields) rather than one specific `"deviceId:channelNum"` bucket — needed so a SeriesID(All) show's title-fallback isn't silently skipped just because it has no single channel/device to filter by (mirrors how `currentEpisode`/`nextEpisode` already treat `nil` as "any"). `nextEntryByTitle`'s all-device scan takes the `min(by: StartTime)` of all matches, not the first — concatenating each per-channel list (individually StartTime-sorted) via `flatMap` does not itself produce a StartTime-sorted result, since dictionary iteration order is arbitrary.
 
 ---
 

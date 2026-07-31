@@ -12,8 +12,12 @@ final class AppState: ObservableObject {
         // ensureGuideLoaded's success-only guard on guideByDevice assignment.
         // menuIsOpen guard mirrors the idle-loop guard — prevents mid-display redraws when a
         // background guide refresh assigns guideByDevice while the menu is open.
-        didSet { if !menuIsOpen { rebuildChannelImageURLs(); rebuildMenuEntries() } }
+        didSet { guideGeneration += 1; if !menuIsOpen { rebuildChannelImageURLs(); rebuildMenuEntries() } }
     }
+    // Bumped every time guideByDevice is reassigned (~hourly, or on-demand) — a cheap freshness
+    // signal for views that cache a guide-derived computation and need to know when to recompute,
+    // without re-deriving from guideByDevice's actual contents (AddShowView's otherAiringsCache).
+    @Published var guideGeneration: Int = 0
     // Per-show guide entry for the scheduled menu label and info header — avoids O(series) scan per open.
     @Published var menuScheduledEntry: [String: GuideEntry] = [:]
     // Pre-computed upcoming slots for SeriesID shows — avoids O(series) nextEpisodes scan per open.
@@ -975,6 +979,15 @@ final class AppState: ObservableObject {
         // Helper: apply a SeriesMatch to the show — uses m.deviceId for lineup lookup so
         // SeriesID(All) works correctly when the episode is on a different device than browsed.
         func apply(_ m: GuideStore.SeriesMatch) {
+            // SeriesID is trusted as authoritative by currentEpisode/nextEpisode (a differently
+            // formatted display title across affiliates is normal for a genuinely correct match),
+            // so this doesn't reject the match — but a title this far off is exactly the shape of a
+            // guide-provider crosswalk error (an unrelated program mistagged with this show's own
+            // SeriesID). Log loudly so a real mistagging incident is visible instead of silently
+            // scheduling the wrong episode.
+            if Show.seriesTitle(from: m.entry.Title) != show.show_title {
+                glog("[\(show.show_title)] resolveSeriesAir: matched entry title is \"\(m.entry.Title)\" — possible guide provider mistagging, using it anyway", level: .warning)
+            }
             show.show_next    = m.entry.startDate
             show.show_end     = m.entry.endDate
             show.show_channel = m.channelNum
@@ -987,17 +1000,17 @@ final class AppState: ObservableObject {
         if let m = guideStore.currentEpisode(seriesID: show.show_seriesid, channelNum: chFilter, deviceId: devFilter, at: now, preferFavorite: isFavoriteChannel) {
             apply(m); return
         }
-        // Fallback: title match on channelEntryIndex — handles guide entries where SeriesID is absent.
-        if let ch = chFilter, let dev = devFilter,
-           let m = guideStore.currentEntryByTitle(show.show_title, channelNum: ch, deviceId: dev, at: now) {
+        // Fallback: title match on channelEntryIndex — handles guide entries where SeriesID is
+        // absent. chFilter/devFilter are already nil for SeriesID(All), so this correctly scans
+        // every device/channel in that case rather than being skipped.
+        if let m = guideStore.currentEntryByTitle(show.show_title, channelNum: chFilter, deviceId: devFilter, at: now) {
             apply(m); return
         }
         if let m = guideStore.nextEpisode(seriesID: show.show_seriesid, channelNum: chFilter, deviceId: devFilter, after: now, preferFavorite: isFavoriteChannel) {
             apply(m); return
         }
         // Fallback: title match for next airing — handles guide entries where SeriesID is absent.
-        if let ch = chFilter, let dev = devFilter,
-           let m = guideStore.nextEntryByTitle(show.show_title, channelNum: ch, deviceId: dev, after: now) {
+        if let m = guideStore.nextEntryByTitle(show.show_title, channelNum: chFilter, deviceId: devFilter, after: now) {
             apply(m); return
         }
     }
@@ -1776,6 +1789,12 @@ final class AppState: ObservableObject {
                 // Use match.deviceId for lineup lookup — SeriesID(All) may resolve to a different device.
                 let now = Date()
                 func applyMatch(_ match: GuideStore.SeriesMatch) {
+                    // See resolveSeriesAir's identical check — SeriesID is trusted as authoritative
+                    // here too, so this doesn't reject the match, but logs loudly if the title looks
+                    // like it belongs to an unrelated program (a guide-provider crosswalk error).
+                    if Show.seriesTitle(from: match.entry.Title) != show.show_title {
+                        glog("[\(show.show_title)] scheduleNextAir: matched entry title is \"\(match.entry.Title)\" — possible guide provider mistagging, using it anyway", level: .warning)
+                    }
                     shows[idx].show_next    = match.entry.startDate
                     shows[idx].show_end     = match.entry.endDate
                     shows[idx].show_channel = match.channelNum
@@ -1797,15 +1816,15 @@ final class AppState: ObservableObject {
                     applyMatch(match); return
                 }
                 // Fallback: title match — handles guide entries where SeriesID is absent.
-                if let ch = chFilter, let dev = devFilter {
-                    if let match = guideStore.currentEntryByTitle(show.show_title, channelNum: ch, deviceId: dev, at: now) {
-                        glog("[\(show.show_title)] NEXT now (title match, on-air) ch=\(match.channelNum)")
-                        applyMatch(match); return
-                    }
-                    if let match = guideStore.nextEntryByTitle(show.show_title, channelNum: ch, deviceId: dev, after: now) {
-                        glog("[\(show.show_title)] NEXT \(shortTime(match.entry.startDate)) ch=\(match.channelNum) (title match)")
-                        applyMatch(match); return
-                    }
+                // chFilter/devFilter are already nil for SeriesID(All), so this correctly scans
+                // every device/channel in that case rather than being skipped.
+                if let match = guideStore.currentEntryByTitle(show.show_title, channelNum: chFilter, deviceId: devFilter, at: now) {
+                    glog("[\(show.show_title)] NEXT now (title match, on-air) ch=\(match.channelNum)")
+                    applyMatch(match); return
+                }
+                if let match = guideStore.nextEntryByTitle(show.show_title, channelNum: chFilter, deviceId: devFilter, after: now) {
+                    glog("[\(show.show_title)] NEXT \(shortTime(match.entry.startDate)) ch=\(match.channelNum) (title match)")
+                    applyMatch(match); return
                 }
             }
             // Bump show_next if stranded (nil or past). If it's already a future guide match,
@@ -1815,6 +1834,26 @@ final class AppState: ObservableObject {
                 shows[idx].show_next = Date().addingTimeInterval(Double(config.Series_scan_retry_hours) * 3600)
             } else {
                 glog("[\(show.show_title)] no episode found in guide — show_next already future, leaving unchanged", level: .warning)
+            }
+            // Neither branch above sources a fresh show_end alongside show_next the way applyMatch
+            // does — without this, show_end keeps whatever a much earlier successful match last set
+            // it to, however stale. Routine for a weekly show (SNL, 20/20): the guide's ~29h window
+            // rarely contains their next airing, so this fallback runs for days at a stretch between
+            // real matches, and show_end can end up months behind show_next — a mismatched pair that
+            // reads as a nonsensical Time range in any Discord card/menu built before the next real
+            // match refreshes both fields together. Re-derive a reasonable estimate from show_length
+            // instead of leaving it stale.
+            if let next = shows[idx].show_next {
+                let oldEnd = shows[idx].show_end
+                let newEnd = next.addingTimeInterval(Double(show.show_length) * 60)
+                // Only log when this actually corrects meaningful drift (not every routine tick where
+                // show_end was already in sync) — the gap size doubles as a signal for how stale it
+                // had gotten, useful for confirming this fix is doing something on a real install.
+                if oldEnd == nil || abs(oldEnd!.timeIntervalSince(newEnd)) > 60 {
+                    let oldStr = oldEnd.map { Self.completionDateFormatter.string(from: $0) } ?? "nil"
+                    glog("[\(show.show_title)] show_end re-synced to show_next+length (was \(oldStr), now \(Self.completionDateFormatter.string(from: newEnd)))", level: .info)
+                }
+                shows[idx].show_end = newEnd
             }
         }
     }
@@ -2111,10 +2150,7 @@ final class AppState: ObservableObject {
             let rawTitle  = show.show_title
             let safeTitle = rawTitle.replacingOccurrences(of: "/", with: "-")
             // Strip any episode-specific suffix for folder naming (handles shows saved before this fix).
-            let strippedTitle = rawTitle
-                .range(of: #"\s+S\d+E\d+.*$"#, options: [.regularExpression, .caseInsensitive])
-                .map { String(rawTitle[..<$0.lowerBound]) } ?? rawTitle
-            let safeFolderTitle = strippedTitle.replacingOccurrences(of: "/", with: "-")
+            let safeFolderTitle = Show.seriesTitle(from: rawTitle).replacingOccurrences(of: "/", with: "-")
             let key = "\(baseDir)|\(safeTitle)"
             guard scanned.insert(key).inserted else { continue }
 
@@ -2306,12 +2342,49 @@ final class AppState: ObservableObject {
         return duplicateEpisodeTag(title: show.show_title, episodeTag: tag, baseDir: baseDir)
     }
 
+    // Rerun/multiplex channels (e.g. H&I) air many unrelated series back-to-back on one channel
+    // number, hour by hour — several different Star Trek series plus MacGyver, Walker, CSI, etc.
+    // A bare channel+time match can silently latch onto whichever program actually occupies that
+    // slot if show_next is even slightly stale relative to the current guide (a provider schedule
+    // correction, or a guide refresh landing between when show_next was set and when this runs) —
+    // producing a card/subfolder/episode-tag with the right show_title but a wrong show's episode
+    // number and synopsis. Confirm identity via SeriesID when both sides have one; otherwise fall
+    // back to a title compare (stripped the same way `GuideStore.currentEntryByTitle` is, since
+    // show.show_title is already stripped for a series show).
     private func guideEntryForShow(_ show: Show) -> GuideEntry? {
         guard let startDate = show.show_next else { return nil }
         let target = Int(startDate.timeIntervalSince1970)
         let entries = guideStore.entries(deviceId: show.hdhr_record, channelNum: show.show_channel,
                                          after: startDate.addingTimeInterval(-60))
-        return entries.first { abs($0.StartTime - target) < 120 }
+        guard let entry = entries.first(where: { abs($0.StartTime - target) < 120 }) else { return nil }
+        // Only a series show's stored title has had an episode suffix stripped at add time
+        // (Show.seriesTitle(from:)) — a Single/DateTime show's show_title is the raw, possibly
+        // still-suffixed guide title as originally selected, so stripping entry.Title before
+        // comparing would compare a normalized value against an unnormalized one and could
+        // never match, breaking this check for every Single/DateTime show with a suffixed title.
+        let entryTitle = show.isSeries ? Show.seriesTitle(from: entry.Title) : entry.Title
+        let titlesAgree = entryTitle == show.show_title
+        if let sid = entry.SeriesID, !sid.isEmpty, !show.show_seriesid.isEmpty {
+            guard sid == show.show_seriesid else {
+                glog("[\(show.show_title)] guideEntryForShow: rejected channel+time match — SeriesID \(sid) != \(show.show_seriesid) (entry title: \(entry.Title))", level: .warning)
+                return nil
+            }
+            // SeriesID matched, but the title still doesn't line up — SeriesID is trusted as
+            // authoritative here (a correct match can legitimately have a differently-formatted
+            // display title across affiliates), so this doesn't reject the entry, but it's exactly
+            // the shape of a guide-provider crosswalk error (a real one: an H&I "MacGyver" rerun
+            // entry carrying this show's own Star Trek SeriesID) — log loudly so a real mistagging
+            // incident is visible instead of silently producing a wrong-episode card/subfolder.
+            if !titlesAgree {
+                glog("[\(show.show_title)] guideEntryForShow: SeriesID matched but entry title is \"\(entry.Title)\" — possible guide provider mistagging, using it anyway", level: .warning)
+            }
+            return entry
+        }
+        guard titlesAgree else {
+            glog("[\(show.show_title)] guideEntryForShow: rejected channel+time match — title \"\(entry.Title)\" doesn't match", level: .warning)
+            return nil
+        }
+        return entry
     }
 
     func checkWebhookURL(_ url: String) async -> Bool {
