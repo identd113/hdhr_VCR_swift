@@ -66,3 +66,14 @@ accuracy regresses right after app launch specifically.
   recorded corner-flag logic (`WebServer.swift:1234`) — confirmed this replaces what would
   otherwise be a second, separately-maintained series→Show lookup, not redundant/dead. `isManaged`
   is now a one-line wrapper (`owner(for:) != nil`) — no remaining direct Set-membership callers.
+
+## 2026-07-31 — 0fc566b review (VCR-glyph guide markers, conflict-simulation rewrite)
+
+- `AppState.swift:894-916` conflict-simulation's `ordered.contains { … }` inner scan (populating
+  `conflictBeatenByFavorite`) is O(N) per loser, O(N²) worst case per device — technically
+  reintroduces the quadratic shape the rewrite's headline goal was to eliminate. Not worth fixing:
+  it only runs for actual conflict losers (rare), bounded by shows-per-device (tens, not
+  thousands), and the whole `rebuildMenuEntries()` call itself is already gated to run once per
+  idle tick / guide load (not once per menu open, per its own comment) — nowhere near a hot path
+  at this app's scale. Tracking slot *occupant* instead of just free-at `Date` (to make this O(1)
+  lookup) would add real complexity for a savings that never matters here.

@@ -1245,8 +1245,16 @@ final class WebServer: @unchecked Sendable {
                     }()
                     // Scheduled but can't get a tuner — see AppState.conflictingShowIDs (a
                     // per-device greedy tuner-slot simulation, not a live scan here).
-                    let isConflict = isMgd && !willSkip && !isEntryRec
-                                    && (owner.map { state.conflictingShowIDs.contains($0.show_id) } ?? false)
+                    // conflictingShowIDs is computed against a show's single show_next/hdhr_record,
+                    // but owner(for:) matches ANY block sharing the show's SeriesID/title (by design,
+                    // for seriesAll fan-out) — so guard on device + a 5-min window around show_next
+                    // (same tolerance rebuildMenuEntries uses for its own guide-entry match) to avoid
+                    // flagging every rerun/simulcast of a show whose *next* airing conflicts.
+                    let isConflict = isMgd && !willSkip && !isEntryRec && (owner.map { s in
+                        guard s.hdhr_record == device.DeviceID, let sNext = s.show_next else { return false }
+                        return state.conflictingShowIDs.contains(s.show_id)
+                            && abs(Double(e.StartTime) - sNext.timeIntervalSince1970) < 300
+                    } ?? false)
                     var cls = "g-prog"
                     if isEntryRec      { cls += " g-prog-rec"   }
                     else if isNow      { cls += " g-prog-now"   }

@@ -1937,6 +1937,11 @@ final class AppState: ObservableObject {
         notify("Show Added", body: show.show_title, subtitle: show.state.rawValue)
         discordShow("✅ Show Added", show: show, color: 0x1ABC9C, enabled: config.Discord_on_show_added,
                     extra: [("Type", show.state.rawValue, true)])
+        // Refresh conflictingShowIDs/menu caches before the push below so the web guide's
+        // conflict badge reflects this add immediately instead of waiting for the next guide
+        // reload or idle-loop tick. Gated like every other rebuildMenuEntries() call site to
+        // avoid the documented menu-rebuild-churn glitch while the NSMenu is open.
+        if !menuIsOpen { rebuildMenuEntries() }
         // Broadcast here (not left to each caller) so every path that adds a show — the guide's
         // "Record" action, the native Add Show wizard, any future caller — pushes to the web UI
         // unconditionally instead of depending on the caller remembering to.
@@ -1959,6 +1964,8 @@ final class AppState: ObservableObject {
         guard let i = shows.firstIndex(where: { $0.show_id == show.show_id }) else { return }
         glog("[Show] Updated '\(show.show_title)'")
         shows[i] = show; saveConfig()
+        // See addShow's identical call for why this precedes the broadcast.
+        if !menuIsOpen { rebuildMenuEntries() }
         // Broadcast here (not left to each caller) so every path that edits a show — the guide's
         // edit modal, the native Edit Show window, any future caller — pushes to the web UI
         // unconditionally instead of depending on the caller remembering to.
@@ -1977,6 +1984,7 @@ final class AppState: ObservableObject {
             // (e.g. seriesChannel → seriesAll) web guide viewers would otherwise keep seeing
             // stale schedule info until an unrelated event happened to trigger another push.
             if let updated = self.shows.first(where: { $0.show_id == show.show_id }) {
+                if !self.menuIsOpen { self.rebuildMenuEntries() }
                 self.webServer.broadcastGuideChangeEvent(type: "show_updated",
                                                          extra: ["channel": updated.show_channel, "device": updated.hdhr_record],
                                                          state: self)
@@ -2040,6 +2048,8 @@ final class AppState: ObservableObject {
         guard let i = shows.firstIndex(where: { $0.show_id == show.show_id }) else { return }
         glog("[\(show.show_title)] PAUSED manual")
         shows[i].show_paused = true; shows[i].show_fail_reason = "Manually paused"; saveConfig()
+        // See addShow's identical call for why this precedes the broadcast.
+        if !menuIsOpen { rebuildMenuEntries() }
         webServer.broadcastGuideChangeEvent(type: "show_updated",
                                             extra: ["channel": show.show_channel, "device": show.hdhr_record],
                                             state: self)
@@ -2048,6 +2058,8 @@ final class AppState: ObservableObject {
         guard let i = shows.firstIndex(where: { $0.show_id == show.show_id }) else { return }
         glog("[\(show.show_title)] RESUMED")
         shows[i].show_paused = false; shows[i].clearFailures(); showRetryAfter.removeValue(forKey: show.show_id); saveConfig()
+        // See addShow's identical call for why this precedes the broadcast.
+        if !menuIsOpen { rebuildMenuEntries() }
         webServer.broadcastGuideChangeEvent(type: "show_updated",
                                             extra: ["channel": show.show_channel, "device": show.hdhr_record],
                                             state: self)
@@ -2086,6 +2098,8 @@ final class AppState: ObservableObject {
         // chaining behind it (and there won't be one for a deleted show).
         discordCardTasks.removeValue(forKey: show.show_id)
         saveConfig()
+        // See addShow's identical call for why this precedes the broadcast.
+        if !menuIsOpen { rebuildMenuEntries() }
         webServer.broadcastGuideChangeEvent(type: "show_deleted",
                                             extra: ["channel": show.show_channel, "device": show.hdhr_record],
                                             state: self)
@@ -2361,7 +2375,7 @@ final class AppState: ObservableObject {
     /// because in the Add wizard those `Show` fields aren't written until Save — the caller's live
     /// `seriesType`/`recordFolder` picker state is the only accurate source before then. Excludes a
     /// show that's currently recording (its own in-progress file would otherwise flag itself as a
-    /// duplicate), mirroring the `!isEntryRec` exclusion in WebServer's `.g-flag-skip` logic.
+    /// duplicate), mirroring the `!isEntryRec` exclusion in WebServer's `.g-st-skip` logic.
     func duplicateEpisodeTag(for show: Show, isSeries: Bool, baseDir: String) -> String? {
         guard config.Series_subfolder_enabled, isSeries, !show.show_recording,
               let tag = guideEntryForShow(show)?.EpisodeNumber else { return nil }
