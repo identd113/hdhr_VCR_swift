@@ -1243,10 +1243,20 @@ final class WebServer: @unchecked Sendable {
                         else { return false }
                         return recordedTagsByShow[owner.show_id]?.contains(ep.uppercased()) == true
                     }()
+                    // Scheduled but can't get a tuner — see AppState.conflictingShowIDs (a
+                    // per-device greedy tuner-slot simulation, not a live scan here).
+                    let isConflict = isMgd && !willSkip && !isEntryRec
+                                    && (owner.map { state.conflictingShowIDs.contains($0.show_id) } ?? false)
                     var cls = "g-prog"
                     if isEntryRec      { cls += " g-prog-rec"   }
                     else if isNow      { cls += " g-prog-now"   }
                     else if isMgd      { cls += " g-prog-sched" }
+                    // Status ring + badge (independent of the background class above — genre
+                    // colour stays untouched): recording > skip > conflict > scheduled.
+                    cls += isEntryRec              ? " g-st-rec"
+                         : (isMgd && willSkip)     ? " g-st-skip"
+                         : isConflict              ? " g-st-conflict"
+                         : isMgd                   ? " g-st-sched" : ""
                     let ggSkip: Set<String>  = ["series","miniseries","mini-series","mini series","special"]
                     let ggAlias: [String: String] = [
                         "sitcom":"comedy","movies":"movie","kids":"children","sport":"sports",
@@ -1274,10 +1284,19 @@ final class WebServer: @unchecked Sendable {
                     }
 
                     let sub   = e.EpisodeTitle.flatMap { $0.isEmpty ? nil : $0 } ?? ""
-                    // Explains the corner-flag color on hover (same priority as flagHTML below).
-                    let stateLabel = isEntryRec          ? "  — Recording now"
-                                   : (isMgd && willSkip) ? "  — Already recorded · will skip"
-                                   : isMgd               ? "  — Scheduled to record" : ""
+                    // Explains the status ring/badge on hover — same precedence as the cls chain above.
+                    let stateLabel: String = {
+                        if isEntryRec { return "  — Recording now" }
+                        if isMgd && willSkip { return "  — Already recorded · will skip" }
+                        if isConflict {
+                            if let owner, state.conflictBeatenByFavorite.contains(owner.show_id) {
+                                return "  — Conflict: a favorited channel has priority for this tuner"
+                            }
+                            return "  — Conflict: all tuners busy at this time"
+                        }
+                        if isMgd { return "  — Scheduled to record" }
+                        return ""
+                    }()
                     let tip   = (sub.isEmpty
                         ? "\(he(e.Title))  (\(he(guideTimeRange(e))))"
                         : "\(he(e.Title)) · \(he(sub))  (\(he(guideTimeRange(e))))") + stateLabel
@@ -1304,18 +1323,13 @@ final class WebServer: @unchecked Sendable {
                     // the client-side IntersectionObserver in buildHTML's <script>).
                     let da = "data-title=\"\(he(e.Title))\" data-genre=\"\(he(e.firstGenre ?? ""))\" data-filters=\"\(he(filtersAttr))\" data-start=\"\(e.StartTime)\" data-end=\"\(e.EndTime)\" data-device=\"\(he(device.DeviceID))\" data-num=\"\(he(ch.GuideNumber))\" data-chname=\"\(he(ch.GuideName))\" data-logo=\"\(he(logoURL))\" data-series=\"\(he(e.SeriesID ?? ""))\" data-managed=\"\(isMgd ? 1 : 0)\" data-recording=\"\(isEntryRec ? 1 : 0)\""
 
-                    // Corner flag: red = recording, green = managed but already recorded (will skip),
-                    // gold = managed and will record.
-                    let flagHTML = isEntryRec              ? "<div class=\"g-flag-rec\"></div>"
-                                 : (isMgd && willSkip)     ? "<div class=\"g-flag-skip\"></div>"
-                                 : isMgd                   ? "<div class=\"g-flag\"></div>" : ""
                     let showDA: String = {
                         guard let s = owner else { return "" }
                         let ad = s.show_air_date.joined(separator: ",")
                         return " data-show-id=\"\(he(s.show_id))\" data-show-type=\"\(showTypeStr(s))\" data-show-paused=\"\(s.show_paused ? 1 : 0)\" data-show-length=\"\(s.show_length)\" data-show-bonus=\"\(s.show_bonus_time ? 1 : 0)\" data-show-transcode=\"\(he(s.show_transcode))\" data-show-seriesid=\"\(he(s.show_seriesid))\" data-show-airdays=\"\(he(ad))\" data-show-failcount=\"\(s.show_fail_count)\" data-show-failreason=\"\(he(s.show_fail_reason))\" data-show-recording=\"\(s.show_recording ? 1 : 0)\""
                     }()
                     let infDA = (infSIDs.contains(e.SeriesID ?? "") || e.Title == "Paid Programming") ? " data-inf=\"1\"" : ""
-                    blockParts.append("<div class=\"\(cls)\" style=\"left:\(pct(cs))%;width:\(pct(ce - cs))%\(extraStyle)\" title=\"\(tip)\" \(da)\(showDA)\(infDA)\(newAttr)\(skipAttr) onclick=\"showInfo(this)\"><div class=\"g-pi\">\(titleHTML)\(subH)</div>\(flagHTML)</div>")
+                    blockParts.append("<div class=\"\(cls)\" style=\"left:\(pct(cs))%;width:\(pct(ce - cs))%\(extraStyle)\" title=\"\(tip)\" \(da)\(showDA)\(infDA)\(newAttr)\(skipAttr) onclick=\"showInfo(this)\"><div class=\"g-pi\">\(titleHTML)\(subH)</div></div>")
                 }
 
                 let gnameAttr = ChannelSignalStore.key(for: ch.GuideName)
@@ -1619,6 +1633,32 @@ final class WebServer: @unchecked Sendable {
         .g-prog{position:absolute;top:4px;bottom:4px;border-radius:5px;overflow:hidden;background:var(--pg);border:1px solid var(--pgb);min-width:3px;cursor:pointer}
         .g-prog:hover{filter:brightness(1.1);border-color:var(--t5);z-index:3}
         .g-prog.g-sel{border-color:var(--t0)!important;box-shadow:0 0 0 1px rgba(128,128,128,.5);z-index:4}
+        /* ── Status ring + badge (scheduled/recording/skip/conflict) — independent of the
+           g-prog-rec/-now/-sched background classes above, so genre colour stays untouched ── */
+        :root{--vc-sched:#3b93ff;--vc-rec:#ff5a5a;--vc-skip:#8a92a3;--vc-conflict:#ff9500}
+        @keyframes gRecPulse{0%,100%{opacity:1}50%{opacity:.4}}
+        @keyframes gRingPulse{0%,100%{box-shadow:0 0 0 2.5px var(--vc-rec)}50%{box-shadow:0 0 0 2.5px rgba(255,90,90,.5)}}
+        .g-prog.g-st-sched{box-shadow:0 0 0 2.5px var(--vc-sched)}
+        .g-prog.g-st-rec{box-shadow:0 0 0 2.5px var(--vc-rec);animation:gRingPulse 1.6s ease-in-out infinite}
+        .g-prog.g-st-skip{box-shadow:0 0 0 2.5px var(--vc-skip)}
+        .g-prog.g-st-conflict{box-shadow:0 0 0 2.5px var(--vc-conflict)}
+        .g-prog.g-sel.g-st-sched{box-shadow:0 0 0 1px rgba(128,128,128,.5),0 0 0 4px var(--vc-sched)}
+        .g-prog.g-sel.g-st-rec{box-shadow:0 0 0 1px rgba(128,128,128,.5),0 0 0 4px var(--vc-rec);animation:none}
+        .g-prog.g-sel.g-st-skip{box-shadow:0 0 0 1px rgba(128,128,128,.5),0 0 0 4px var(--vc-skip)}
+        .g-prog.g-sel.g-st-conflict{box-shadow:0 0 0 1px rgba(128,128,128,.5),0 0 0 4px var(--vc-conflict)}
+        .g-prog.g-st-sched::after,.g-prog.g-st-rec::after,.g-prog.g-st-skip::after,.g-prog.g-st-conflict::after{
+          position:absolute;top:4px;right:4px;width:19px;height:19px;border-radius:50%;
+          display:flex;align-items:center;justify-content:center;font-size:11px;line-height:1;
+          color:#fff;box-shadow:0 1px 2px rgba(0,0,0,.4);z-index:2
+        }
+        .g-prog.g-st-sched::after   {content:"⏱\\FE0E";background:var(--vc-sched)}
+        .g-prog.g-st-rec::after     {content:"⏺\\FE0E";background:var(--vc-rec);animation:gRecPulse 1.6s ease-in-out infinite}
+        .g-prog.g-st-skip::after    {content:"⏭\\FE0E";background:var(--vc-skip)}
+        .g-prog.g-st-conflict::after{content:"⚠\\FE0E";background:var(--vc-conflict)}
+        @media (prefers-reduced-motion: reduce){
+          .g-prog.g-st-rec{animation:none;box-shadow:0 0 0 2.5px var(--vc-rec)}
+          .g-prog.g-st-rec::after{animation:none}
+        }
         :root{--gg-drama:hsl(216,48%,36%);--gg-drama-now:hsl(216,52%,44%);--gg-comedy:hsl(47,48%,36%);--gg-comedy-now:hsl(47,52%,44%);--gg-news:hsl(342,43%,36%);--gg-news-now:hsl(342,47%,44%);--gg-sports:hsl(119,48%,33%);--gg-sports-now:hsl(119,52%,41%);--gg-reality:hsl(25,48%,36%);--gg-reality-now:hsl(25,52%,44%);--gg-movie:hsl(270,58%,38%);--gg-movie-now:hsl(270,62%,46%);--gg-talk:hsl(173,43%,34%);--gg-talk-now:hsl(173,47%,42%);--gg-children:hsl(315,43%,35%);--gg-children-now:hsl(315,47%,43%);--gg-crime:hsl(0,55%,33%);--gg-crime-now:hsl(0,60%,41%);--gg-romance:hsl(333,50%,37%);--gg-romance-now:hsl(333,54%,45%);--gg-thriller:hsl(238,48%,38%);--gg-thriller-now:hsl(238,52%,46%);--gg-action:hsl(12,52%,35%);--gg-action-now:hsl(12,56%,43%);--gg-mystery:hsl(255,52%,38%);--gg-mystery-now:hsl(255,56%,46%);--gg-doc:hsl(202,48%,35%);--gg-doc-now:hsl(202,52%,43%);--gg-science:hsl(188,52%,33%);--gg-science-now:hsl(188,56%,41%);--gg-nature:hsl(82,50%,33%);--gg-nature-now:hsl(82,54%,41%);--gg-history:hsl(28,50%,34%);--gg-history-now:hsl(28,54%,42%);--gg-music:hsl(287,52%,37%);--gg-music-now:hsl(287,56%,45%);--gg-food:hsl(52,52%,34%);--gg-food-now:hsl(52,56%,42%);--gg-travel:hsl(182,48%,33%);--gg-travel-now:hsl(182,52%,41%);--gg-gameshow:hsl(58,55%,34%);--gg-gameshow-now:hsl(58,60%,42%);--gg-home:hsl(35,46%,33%);--gg-home-now:hsl(35,50%,41%);--gg-health:hsl(148,50%,32%);--gg-health-now:hsl(148,54%,40%);--gg-faith:hsl(65,48%,32%);--gg-faith-now:hsl(65,52%,40%)}
         html.lm{--gg-drama:hsl(216,52%,70%);--gg-drama-now:hsl(216,57%,78%);--gg-comedy:hsl(47,58%,68%);--gg-comedy-now:hsl(47,65%,76%);--gg-news:hsl(342,52%,70%);--gg-news-now:hsl(342,57%,78%);--gg-sports:hsl(119,57%,68%);--gg-sports-now:hsl(119,62%,76%);--gg-reality:hsl(25,58%,70%);--gg-reality-now:hsl(25,67%,78%);--gg-movie:hsl(270,62%,72%);--gg-movie-now:hsl(270,68%,80%);--gg-talk:hsl(173,52%,68%);--gg-talk-now:hsl(173,57%,76%);--gg-children:hsl(315,55%,72%);--gg-children-now:hsl(315,62%,78%);--gg-crime:hsl(0,60%,68%);--gg-crime-now:hsl(0,65%,76%);--gg-romance:hsl(333,55%,70%);--gg-romance-now:hsl(333,62%,78%);--gg-thriller:hsl(238,52%,70%);--gg-thriller-now:hsl(238,58%,78%);--gg-action:hsl(12,57%,68%);--gg-action-now:hsl(12,65%,76%);--gg-mystery:hsl(255,57%,70%);--gg-mystery-now:hsl(255,65%,78%);--gg-doc:hsl(202,52%,68%);--gg-doc-now:hsl(202,58%,76%);--gg-science:hsl(188,57%,66%);--gg-science-now:hsl(188,65%,74%);--gg-nature:hsl(82,55%,66%);--gg-nature-now:hsl(82,62%,74%);--gg-history:hsl(28,55%,68%);--gg-history-now:hsl(28,62%,76%);--gg-music:hsl(287,57%,70%);--gg-music-now:hsl(287,65%,78%);--gg-food:hsl(52,58%,68%);--gg-food-now:hsl(52,65%,76%);--gg-travel:hsl(182,52%,66%);--gg-travel-now:hsl(182,58%,74%);--gg-gameshow:hsl(58,62%,68%);--gg-gameshow-now:hsl(58,68%,76%);--gg-home:hsl(35,50%,68%);--gg-home-now:hsl(35,56%,76%);--gg-health:hsl(148,55%,66%);--gg-health-now:hsl(148,62%,74%);--gg-faith:hsl(65,53%,66%);--gg-faith-now:hsl(65,60%,74%)}
         .gg-drama    {background:hsl(216,48%,36%)}
@@ -1778,10 +1818,6 @@ final class WebServer: @unchecked Sendable {
         .g-ti-row{display:flex;align-items:center;gap:4px;min-width:0;overflow:hidden}
         .g-ti-row .g-ti{flex:0 1 auto;min-width:0}
         .g-new-tag{display:inline-block;font-size:.5rem;font-weight:800;background:#27ae60;color:#fff;border-radius:2px;padding:1px 3px;letter-spacing:.07em;flex-shrink:0;line-height:1.5}
-        .g-flag,.g-flag-rec,.g-flag-skip{position:absolute;top:0;right:0;width:0;height:0;border-style:solid;border-width:0 18px 18px 0;pointer-events:none}
-        .g-flag{border-color:transparent #ffd700 transparent transparent}
-        .g-flag-rec{border-color:transparent #ff6060 transparent transparent}
-        .g-flag-skip{border-color:transparent #2ecc71 transparent transparent}
         /* ── Starburst bonus badge ── */
         @keyframes sbPop{0%{transform:scale(0) rotate(-240deg);opacity:0}55%{transform:scale(1.28) rotate(12deg);opacity:1}75%{transform:scale(.84) rotate(-3deg)}90%{transform:scale(1.04)}100%{transform:scale(1) rotate(0deg)}}
         @keyframes sbPulse{0%,100%{transform:scale(1) rotate(0deg)}50%{transform:scale(1.07) rotate(5deg)}}
@@ -2294,13 +2330,11 @@ final class WebServer: @unchecked Sendable {
                 // Update guide block in place — no page reload needed
                 var sel=document.querySelector('.g-prog.g-sel');
                 if(sel){
-                  sel.classList.remove('g-prog-now');
+                  sel.classList.remove('g-prog-now','g-st-sched','g-st-conflict');
                   if(j.recStarted){
-                    sel.classList.add('g-prog-rec');sel.dataset.recording='1';
-                    if(!sel.querySelector('.g-flag-rec')){var f=document.createElement('div');f.className='g-flag-rec';sel.appendChild(f);}
+                    sel.classList.add('g-prog-rec','g-st-rec');sel.dataset.recording='1';
                   } else {
-                    sel.classList.add('g-prog-sched');sel.dataset.managed='1';
-                    if(!sel.querySelector('.g-flag')){var f=document.createElement('div');f.className='g-flag';sel.appendChild(f);}
+                    sel.classList.add('g-prog-sched','g-st-sched');sel.dataset.managed='1';
                   }
                 }
                 // Refresh tuner count button
@@ -2397,8 +2431,8 @@ final class WebServer: @unchecked Sendable {
               // Update guide tile in place — restore g-prog-now if the show is still airing
               var sel=document.querySelector('.g-prog.g-sel');
               if(sel){
-                sel.classList.remove('g-prog-rec','g-prog-sched','g-prog-now');sel.dataset.managed='0';sel.dataset.recording='0';
-                var flag=sel.querySelector('.g-flag,.g-flag-rec,.g-flag-skip');if(flag)flag.remove();
+                sel.classList.remove('g-prog-rec','g-prog-sched','g-prog-now','g-st-sched','g-st-rec','g-st-skip','g-st-conflict');
+                sel.dataset.managed='0';sel.dataset.recording='0';
                 var nowTs=Math.floor(Date.now()/1000);
                 if(_s<=nowTs&&_e>nowTs){sel.classList.add('g-prog-now');}
               }
@@ -2942,11 +2976,9 @@ final class WebServer: @unchecked Sendable {
                     var s=parseInt(el.dataset.start,10),en=parseInt(el.dataset.end,10);
                     if(s<=nowTs&&en>nowTs){
                       if(isRec){
-                        el.classList.add('g-prog-rec');el.classList.remove('g-prog-now');
-                        if(!el.querySelector('.g-flag-rec'))el.insertAdjacentHTML('beforeend','<div class="g-flag-rec"></div>');
+                        el.classList.add('g-prog-rec','g-st-rec');el.classList.remove('g-prog-now','g-st-sched','g-st-conflict');
                       } else {
-                        el.classList.remove('g-prog-rec');el.classList.add('g-prog-now');
-                        var fr=el.querySelector('.g-flag-rec');if(fr)fr.remove();
+                        el.classList.remove('g-prog-rec','g-st-rec');el.classList.add('g-prog-now');
                       }
                     }
                   });

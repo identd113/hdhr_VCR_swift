@@ -352,7 +352,10 @@ struct MenuContent: View {
 
             menuInfo("\(show.state.rawValue) · Channel \(show.show_channel)", font: .footnote)
             if conflict {
-                menuInfo("⚠️ Conflict — all tuners busy at this time", font: .footnote, secondary: true)
+                let conflictMsg = state.conflictBeatenByFavorite.contains(show.show_id)
+                    ? "⚠️ Conflict — a favorited channel has priority for this tuner"
+                    : "⚠️ Conflict — all tuners busy at this time"
+                menuInfo(conflictMsg, font: .footnote, secondary: true)
             }
 
             // Timing: start time · duration

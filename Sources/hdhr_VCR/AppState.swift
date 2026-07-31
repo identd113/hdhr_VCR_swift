@@ -22,8 +22,12 @@ final class AppState: ObservableObject {
     @Published var menuScheduledEntry: [String: GuideEntry] = [:]
     // Pre-computed upcoming slots for SeriesID shows — avoids O(series) nextEpisodes scan per open.
     @Published var menuUpcomingSlots: [String: [(channel: String, date: Date)]] = [:]
-    // Pre-computed set of show IDs with scheduling conflicts — rebuilt alongside menu entries.
+    // Pre-computed set of show IDs that will actually lose a tuner — rebuilt alongside menu
+    // entries. Only the loser(s) of an over-capacity cluster are included, not every member.
     var conflictingShowIDs: Set<String> = []
+    // Subset of conflictingShowIDs where the loss is specifically to a favorited competitor —
+    // lets the UI say "a favorited channel has priority" instead of a generic busy message.
+    var conflictBeatenByFavorite: Set<String> = []
     // Tracks which shows have already fired a runtime conflict notification.
     // Value = show_next epoch (TimeInterval) for which the notification was sent;
     // clears on reschedule so a new time slot can notify again.
@@ -867,27 +871,49 @@ final class AppState: ObservableObject {
         menuScheduledEntry  = scheduledResult
         menuUpcomingSlots   = upcomingResult
 
-        // ── Conflict detection: one O(N²) pass instead of one per menu open ──
+        // ── Conflict detection: per-device greedy tuner-slot simulation, one pass instead of
+        // one per menu open. Flags only the show(s) that would actually lose a tuner — not
+        // every member of an over-capacity cluster — by walking each device's shows in
+        // (show_next, favorite-first tiebreak) order and assigning the first free slot,
+        // mirroring the real recording-start priority (see the favorite-first sort below in
+        // this same function). Not a lookahead optimizer — real arbitration is retry-based at
+        // runtime — but this tracks the same priority signal the real system uses.
         let deviceMap = Dictionary(uniqueKeysWithValues: devices.compactMap { d -> (String, Int)? in
             guard let t = d.TunerCount, t > 0 else { return nil }
             return (d.DeviceID, t)
         })
         var newConflicts = Set<String>()
-        for show in candidateShows {
-            guard let next = show.show_next,
-                  let end  = show.show_end,
-                  let tunerCount = deviceMap[show.hdhr_record] else { continue }
-            let overlapping = candidateShows.filter { other in
-                guard other.show_id != show.show_id,
-                      other.hdhr_record == show.hdhr_record,
-                      let oNext = other.show_next,
-                      let oEnd  = other.show_end
-                else { return false }
-                return oNext < end && oEnd > next
-            }.count
-            if overlapping >= tunerCount { newConflicts.insert(show.show_id) }
+        var newBeatenByFavorite = Set<String>()
+        let byDevice = Dictionary(grouping: candidateShows.filter { $0.show_next != nil && $0.show_end != nil },
+                                   by: { $0.hdhr_record })
+        for (deviceId, deviceShows) in byDevice {
+            guard let tunerCount = deviceMap[deviceId] else { continue }
+            let ordered = deviceShows.sorted { a, b in
+                let an = a.show_next!, bn = b.show_next!
+                if an != bn { return an < bn }
+                let af = isFavoriteChannel(a), bf = isFavoriteChannel(b)
+                if af != bf { return af && !bf }
+                return a.show_id < b.show_id
+            }
+            var slotFreeAt = [Date](repeating: .distantPast, count: tunerCount)
+            for show in ordered {
+                let next = show.show_next!, end = show.show_end!
+                if let slot = slotFreeAt.firstIndex(where: { $0 <= next }) {
+                    slotFreeAt[slot] = end
+                } else {
+                    newConflicts.insert(show.show_id)
+                    if !isFavoriteChannel(show) {
+                        let beatenByFavorite = ordered.contains { other in
+                            other.show_id != show.show_id && isFavoriteChannel(other)
+                            && other.show_next! <= next && other.show_end! > next
+                        }
+                        if beatenByFavorite { newBeatenByFavorite.insert(show.show_id) }
+                    }
+                }
+            }
         }
         conflictingShowIDs = newConflicts
+        conflictBeatenByFavorite = newBeatenByFavorite
     }
 
     func upcomingGuideEpisodes(seriesID: String, after: Date = Date(), limit: Int = 4) -> [(channel: String, entry: GuideEntry)] {
