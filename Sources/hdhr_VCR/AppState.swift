@@ -1316,10 +1316,11 @@ final class AppState: ObservableObject {
         }.sorted { isFavoriteChannel(shows[$0]) && !isFavoriteChannel(shows[$1]) }
         if !readyIndices.isEmpty { dirty = true }
         // Re-resolve each show by show_id inside the loop rather than reusing the captured Int
-        // index across `await startRecording`. Safe today only because startRecording has no
-        // suspension point; resolving by id (and re-checking the ready predicate) keeps this
-        // consistent with Pass 1/Pass 2 so a future await inside startRecording can't act on a
-        // stale/out-of-range index after an interleaved delete/add mutates `shows`.
+        // index across `await startRecording`. startRecording can now suspend internally (its
+        // SeriesID re-check calls `await scheduleNextAir` on a failed guide reconfirmation) —
+        // resolving by id (and re-checking the ready predicate) right before each call keeps
+        // this consistent with Pass 1/Pass 2 so that suspension can't act on a stale/
+        // out-of-range index after an interleaved delete/add mutates `shows`.
         let readyIds = readyIndices.map { shows[$0].show_id }
         for id in readyIds {
             guard let i = shows.firstIndex(where: { $0.show_id == id }) else { continue }
@@ -1395,6 +1396,26 @@ final class AppState: ObservableObject {
         if !device.isAvailable {
             glog("[\(show.show_title)] device \(show.hdhr_record) unavailable — skipping recording start", level: .warning)
             return
+        }
+        // SeriesID-based shows only: show_next may have been locked in from an earlier
+        // successful guide match and never reconfirmed since (see scheduleNextAir's "no
+        // episode found in guide — show_next already future, leaving unchanged" warning) —
+        // recording would otherwise fire blind on a stale time and capture whatever's
+        // actually airing, not necessarily this show (e.g. a live preemption the guide has
+        // since caught up to). Final live re-check, same SeriesID-then-title trust tiers
+        // scheduleNextAir itself uses, right before actually recording.
+        if show.show_use_seriesid, !show.show_seriesid.isEmpty {
+            let confirmed = guideStore.currentEpisode(seriesID: show.show_seriesid,
+                                channelNum: show.show_channel, deviceId: show.hdhr_record, at: Date()) != nil
+                         || guideStore.currentEntryByTitle(show.show_title,
+                                channelNum: show.show_channel, deviceId: show.hdhr_record, at: Date()) != nil
+            if !confirmed {
+                glog("[\(show.show_title)] guide no longer confirms this airing at record time — skipping, will re-resolve", level: .warning)
+                notify("Recording Skipped", body: show.show_title, subtitle: "Guide no longer confirms this airing")
+                shows[index].show_next = nil
+                await scheduleNextAir(index: index)
+                return
+            }
         }
         // Enforce tuner limit: skip if all slots on this device are already occupied
         if tunersFull(for: show.hdhr_record) {

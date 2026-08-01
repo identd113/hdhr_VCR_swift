@@ -456,3 +456,17 @@ When the tuner picker changes, `genreFilter` resets to `nil` because `availableG
 **Resolution**: Switched the disk-full path to `discordRecordingCard`, matching the other failure paths — reuses the existing card if `discord_start_msg_id` is set, otherwise creates one and captures the ID. Found and fixed alongside adding the idle-loop retry backoff (see `TODO.md`'s former "No retry backoff for failed shows" entry).
 
 **Resolving commit**: pending (uncommitted at time of writing)
+
+---
+
+## RESOLVED — Recording fires on a stale `show_next` after repeated "no episode found in guide" rescans, recording whatever's actually airing
+
+**File:** `AppState.swift` — the hourly guide-rescan path that logs `"no episode found in guide — show_next already future, leaving unchanged"` (feeds `resolveSeriesAir`/`scheduleNextAir`); fix lives in `startRecording(index:)`
+
+**Symptom**: A recurring SeriesID show (`The Late Show With Stephen Colbert`) recorded a program that didn't match its SeriesID — user identified the actual content as a Byron Allen syndicated program, not Colbert.
+
+**Root cause**: `show_next` was locked in from an earlier successful SeriesID match against the guide. Five consecutive hourly rescans (19:00, 20:00, 22:00, 23:00, 00:00) all failed to reconfirm any guide entry for that SeriesID at that time slot, each logging "no episode found in guide — show_next already future, leaving unchanged" — i.e. the guide had stopped listing Colbert there at all, most likely because the network swapped in different programming (a live preemption) and the guide provider's data caught up to reflect it. The "leave unchanged" fallback is reasonable for a single transient guide gap, but had no escalation once a slot goes unconfirmed for hours — the idle loop's ready-check (`next <= now+10`) only cared that the stored timestamp arrived, not whether the guide still backs it up, so the show recorded blind at the stale time and captured whatever was actually broadcasting.
+
+**Resolution**: `startRecording(index:)` now does a final, synchronous, live re-check for any SeriesID-based show (`show_use_seriesid`) right before actually recording — `GuideStore.currentEpisode`/`currentEntryByTitle` against the show's own resolved device+channel, the same SeriesID-then-title trust tiers `scheduleNextAir` already uses. If neither confirms the airing anymore, the recording is skipped, `show_next` is cleared to `nil`, and `scheduleNextAir` is called immediately — which falls into its own existing "no match, retry in `Series_scan_retry_hours`" branch and sets a fresh future time, the same path a brand-new show's first resolution takes. No new state machinery.
+
+**Resolving commit**: pending (uncommitted at time of writing)
