@@ -1,5 +1,9 @@
 # hdhrVCRplus Changelog
 
+## 2026-08-01 (stale recording marker on fresh guide page loads)
+
+- **Fix — a fresh web guide page load (a new tab, a hard refresh, or reopening the native Guide window, which loads a fresh `GET /` every time it's created) could show a currently-recording show as merely on-air, not recording, for up to an hour.** The full-page HTML cache (`cachedHTML`, served on every `GET /`) was only rebuilt on the hourly guide refresh — a recording start/stop, or any add/delete/pause/resume/edit/favorite-toggle, only pushed a live SSE patch to tabs that were already open, without updating the cached page itself. `broadcastRecordingEvent` and `broadcastGuideChangeEvent` now also re-run `prebuildPageHTML` after every push, so the cache stays in sync with the same state change connected tabs already see live. Verified live with `tools/mock_scenario.py record-test`-style scheduling: before the fix, a `GET /` issued immediately after a recording started still showed `g-prog-now` with no recording marker; after the fix, it shows `g-prog-rec g-st-rec` with the "— Recording now" tooltip immediately.
+
 ## 2026-07-31 (guide status markers redesign, conflict-detection over-flagging)
 
 - **Feature — the web guide's recording-status markers switched from an 18px corner triangle (gold/red/green) to a colored ring + VCR-transport-glyph badge (⏱ scheduled, ⏺ recording, ⏭ will-skip-duplicate, ⚠ conflict)** — genre background stays untouched, and the palette moved off stoplight gold/red/green (which implied stop/caution/go, backwards for "will skip") to blue/red/slate/orange.

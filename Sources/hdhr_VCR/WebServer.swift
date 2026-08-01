@@ -65,14 +65,13 @@ final class WebServer: @unchecked Sendable {
         glog("[WebServer] page HTML cached (\(html.count / 1024)KB, \(gzKB)KB gzip'd)")
     }
 
-    // Used where a guide refresh needs both the cached full-page HTML (prebuildPageHTML) and the
-    // SSE guide-change broadcast (broadcastGuideChangeEvent) — building the grid once here and
-    // passing it to both avoids buildGuideGridHTML running twice for the same unchanged state.
+    // Kept as a distinctly-named entry point for the hourly guide refresh (its one caller) even
+    // though broadcastGuideChangeEvent now does the same cachedHTML rebuild for every guide-change
+    // event — the name documents that this specific call site's `state` reflects a freshly-loaded
+    // guide window, not just a schedule tweak.
     @MainActor
     func refreshPageAndBroadcastGuideChange(type: String, state: AppState) {
-        let grid = buildGuideGridHTML(state: state)
-        prebuildPageHTML(state: state, prebuiltGrid: grid)
-        broadcastGuideChangeEvent(type: type, state: state, prebuiltGrid: grid)
+        broadcastGuideChangeEvent(type: type, state: state)
     }
 
     // Static so the DateFormatter is allocated once, not on every GET /.
@@ -205,6 +204,11 @@ final class WebServer: @unchecked Sendable {
             "tdropDev": device,
             "tdrop":    buildTunerShowsHTML(state: state, deviceId: device)
         ])
+        // Connected tabs get the class-toggle patch above without a grid rebuild, but the cached
+        // full-page HTML (served to any *new* page load — a fresh tab, hard refresh, or reopening
+        // the native Guide window) was previously only rebuilt on the hourly guide refresh, so a
+        // just-started recording wouldn't show its marker until then. Keep it in sync here too.
+        prebuildPageHTML(state: state)
     }
 
     // Full grid + summary + per-tuner dropdown fragments — same shape /api/guide-refresh
@@ -230,10 +234,15 @@ final class WebServer: @unchecked Sendable {
     // or device/guideNumber for favorite_toggled) — merged in verbatim.
     @MainActor
     func broadcastGuideChangeEvent(type: String, extra: [String: Any] = [:], state: AppState, prebuiltGrid: String? = nil) {
+        let grid = prebuiltGrid ?? buildGuideGridHTML(state: state)
         var event = extra
         event["type"] = type
-        for (k, v) in buildGuideRefreshPayload(state: state, prebuiltGrid: prebuiltGrid) { event[k] = v }
+        for (k, v) in buildGuideRefreshPayload(state: state, prebuiltGrid: grid) { event[k] = v }
         broadcastEvent(event)
+        // Keep the cached full-page HTML (served to any new page load) in sync with every
+        // guide-changing event, not just the hourly refresh — see broadcastRecordingEvent for
+        // the same reasoning on the recording-start/stop path.
+        prebuildPageHTML(state: state, prebuiltGrid: grid)
     }
 
     private func removeSSE(_ conn: NWConnection) {
