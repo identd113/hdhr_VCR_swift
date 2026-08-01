@@ -167,7 +167,7 @@ After startup, lineup/guide failures are appended inline to the device row: `"  
 Menu label: `🔴 [Title]` (or `🔴 [Title] · S02E05` when guide entry is found for the airing)
 
 Submenu contents — uses `showInfoHeader(show, entry:)` for the top block, then:
-1. **Type + channel** — `"SeriesID(All) · Channel 5.1"`, full `labelColor`
+1. **Type + channel** — `"SeriesID(All) · Channel 5.1"`, full `labelColor` — followed inline by a `SignalBarsView` when `state.config.Signal_quality_enabled` and the channel is found in the device's lineup (same signal-bucket source as `docs/ChannelSignalStore.md`'s generic mention of this component)
 2. **Start time + duration** — `"8:00 PM · 60 min"`, `secondaryLabelColor`
 3. **Bonus Time callout** — `"🏈 Bonus Time (+N min)"` when `state.config.Sports_padding_enabled` is on, `show.show_bonus_time == true`, and the recording is past the guide end time (all three required — the config toggle gates the feature even when a show's own flag is set)
 4. **Tuner ID** — `"tuner 105404BE"`, `secondaryLabelColor`
@@ -204,7 +204,7 @@ State icons: `1️⃣` Single · `📅` DateTime · `🔂` SeriesID(Channel) · 
 
 Submenu — uses `showInfoHeader(show, entry:)` for the top block, then:
 1. **Type + channel** — `"SeriesID(All) · Channel 5.1"`, full `labelColor`
-2. **Conflict warning** — `"⚠️ Conflict — all tuners busy at this time"`, `secondaryLabelColor`
+2. **Conflict warning** — `state.conflictBeatenByFavorite.contains(show.show_id)` picks between two messages: `"⚠️ Conflict — a favorited channel has priority for this tuner"` (this show specifically lost to a favorited competitor) or the generic `"⚠️ Conflict — all tuners busy at this time"`, both `secondaryLabelColor`
 3. **Start time + duration** — `"8:00 PM · 60 min"` (absolute start time · recording length), `secondaryLabelColor`
 4. **Upcoming slots** — for DateTime: next 3 weekday occurrences; for SeriesID: from `state.menuUpcomingSlots[show.show_id]`. Each slot: `"Channel 5.1 · Thu 8:00 PM"` or `"Channel 5.1 · 8:00 PM"` (omits weekday when today). Preceded by "Upcoming" header when count > 1.
 5. **Failure warning** — `"⚠️ N failure(s): reason"` when `show_fail_count > 0`

@@ -121,7 +121,7 @@ private var isDirty: Bool { draft != state.config }
 - `.onAppear` seeds `draft = state.config`
 - All controls bind to `$draft.*` — not to `state.config` directly
 - **Save** → `applyAndSave()` sets `state.config = draft`, calls `state.saveConfig()`, and applies side effects: if `Network_interface` changed, invalidates the guide cache and triggers `state.rediscoverDevices()` + `state.refreshGuide()` in a background Task so the new NIC is active immediately
-- **Save & Close** → if `isDirty`, calls `applyAndSave()`, then always closes the window. **Always enabled** (acts as "Done" even when clean). Rightmost button, `.borderedProminent`, triggered by Return (`.defaultAction`). Turns orange when `canSave` is true.
+- **Save & Close** → if `canSave` (`isDirty && !webhookNeedsTest && !webPortInvalid`), calls `applyAndSave()`, then always closes the window regardless. **Disabled** (not always enabled) when the Discord webhook needs testing or the web port is out of range — closing without saving in that state is still possible via the window's own close button, just not this one. Rightmost button, `.borderedProminent`, triggered by Return (`.defaultAction`). Turns orange when `canSave` is true.
 - **Discard** → `draft = state.config`
 - **Close with unsaved changes** → `WindowCloseInterceptor` intercepts and shows an NSAlert: Save / Discard / Cancel
 
@@ -148,7 +148,7 @@ Sidebar entries (with SF Symbol icons):
 
 ### General
 
-- **Launch at Login** — writes/deletes `~/Library/LaunchAgents/com.hdhr.vcrplus.plist` (a `RunAtLoad` plist that calls `open -a <bundle path>`). Does **not** use `SMAppService` — the plist approach works regardless of code signing and requires no BTM approval. Toggle reverts on write failure; error shown in red below the toggle.
+- **Launch at Login** — uses `SMAppService.mainApp` (`register()`/`unregister()`), Apple's Login Item API — not a hand-written LaunchAgents plist. `launchAtLoginRegistered` reads `SMAppService.mainApp.status == .enabled`; the toggle only calls register/unregister on Save if the draft value differs from that live status. Toggle reverts to the actual registered state on a thrown error; the error's `localizedDescription` is shown in red below the toggle.
 - **Blink menu bar icon** — `Toggle` bound to `draft.Status_light_blink_enabled` (off by default). When on, the menu bar icon's built-in status light blinks on a 6s cycle (5s lit, 1s off) instead of staying lit continuously while a recording is in progress or a show is starting within 30 minutes. Takes effect live — no restart or window reopen needed. Driven by `AppState.statusLightTimer`/`tickStatusLight()`, a dedicated 1Hz timer independent of the idle loop; see [MenuContent.md](MenuContent.md#menu-bar-icon-states).
 
 ---
