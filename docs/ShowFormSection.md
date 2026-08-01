@@ -18,11 +18,11 @@ Signal       — SignalBarsView for the selected channel + a "weak signal" warni
                state.lineups[show.hdhr_record] → GuideName. Appears in both Add and Edit.
 Type         — Segmented Picker (ShowState.allCases): Single | DateTime | SeriesID(Channel) | SeriesID(All)
                Tooltip: explains each mode
-Day/Days     — Weekday toggle buttons (only for .single and .dateTime)
-               Tooltip: single-day vs. multi-day selection intent
 Transcode    — Picker: None | Heavy | Mobile | Internet 720
                Tooltip: None keeps raw MPEG; others transcode for size/device
 Bonus Time   — Toggle (only when state.config.Sports_padding_enabled); bound to show.show_bonus_time
+Day/Days     — Weekday toggle buttons (only for .single and .dateTime)
+               Tooltip: single-day vs. multi-day selection intent
 Duplicate    — Only when state.config.Series_subfolder_enabled && state.config.Skip_recorded_episodes
 Episodes       && seriesType.isSeries. A "Record even if already on disk" toggle bound to
                show.show_ignore_duplicate_once (per-show override of the global skip-already-recorded

@@ -12,7 +12,7 @@ All methods run on `@MainActor`. Network calls yield the actor during I/O; state
 - **EXTEND / cloud** (DeviceAuth present): `https://api.hdhomerun.com/api/guide.php?DeviceAuth=...&Start={epoch}&Duration=N`
 - **Local device**: `http://{LocalIP}/guide.json?Start={epoch}&Duration=N`
 
-`Start` is set to `now - 3600` so the current hour's programs are included even when called mid-hour.
+`Start` is set to `now - 3600` so the current hour's programs are included even when called mid-hour. `N` is `hours + 1`, not the raw `hours` value — one hour of padding to preserve the configured future window despite the earlier start.
 
 Returns `nil` if neither DeviceAuth nor LocalIP is available (logs a diagnostic).
 

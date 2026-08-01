@@ -218,7 +218,7 @@ Uses `AppConfig.applyTranscode(_:override:)` — applies `Default_transcode` wit
 
 `onAppear` logs `[VLC] VLCPlayerView.onAppear device=… initialURL=…`, sets up the rate controller, audio devices, media-key remote commands, and calls `syncChannel`.
 
-`onDisappear` logs `[VLC] VLCPlayerView.onDisappear` and calls `VLCBridge.shared.releasePlayer()` — full teardown: stops the stream, releases the media object, releases and nils the media player, and frees the tuner immediately. This is a safety net; `playerWindowDidClose()` normally fires first via the window delegate. `releasePlayer()` is idempotent so calling it twice is harmless.
+`onDisappear` logs `[VLC] VLCPlayerView.onDisappear`, then calls `VLCBridge.shared.releasePlayer()` — full teardown: stops the stream, releases the media object, releases and nils the media player, and frees the tuner immediately — and `VLCBridge.shared.stopDeviceChangeMonitoring()`, clears `MPNowPlayingInfoCenter.default().nowPlayingInfo` and sets its `playbackState` to `.stopped`, and removes the stop/next-track/previous-track targets from `MPRemoteCommandCenter.shared()`. This is a safety net; `playerWindowDidClose()` normally fires first via the window delegate and does the same teardown (plus more — see below). `releasePlayer()` is idempotent so calling it twice is harmless.
 
 **Remote stop command (known issue)**: the Now Playing / media-key Stop command calls `VLCBridge.stop()`, which clears `drawableView = nil`. Every subsequent `play()` then queues as pending but the SwiftUI view is still alive so `makeNSView` never re-fires — the window goes black until closed and reopened. This is logged as `[VLC] remote stopCommand received` immediately before `[VLC] stop called — drawable=had view`. If this sequence appears in the log it confirms the black-screen cause.
 
@@ -361,29 +361,45 @@ Without this, the second `open()` call would create a new window with a new `NSH
 ## AppState.watchInApp
 
 ```swift
-func watchInApp(url: String, title: String, deviceId: String? = nil, transcode: String? = nil) {
+func watchInApp(url: String, title: String, deviceId: String? = nil, transcode: String? = nil, guideNumber: String? = nil) {
     guard VLCBridge.shared.isAvailable else { return }
-    // Tuner availability check — skip if the player already owns a tuner on this device
-    if VLCPlayerWindowManager.shared.currentDeviceID != deviceId {
-        // fetch /status.json and alert if all tuners occupied
-    }
-    let streamURL = config.applyTranscode(url, override: transcode)
     let device = devices.first { $0.DeviceID == (deviceId ?? "") } ?? devices.first
     guard let device else { return }
-    VLCPlayerWindowManager.shared.open(url: streamURL, title: title, device: device, appState: self)
+    guard !url.isEmpty else { /* NSAlert "No Stream URL"; return */ }
+    let streamURL = config.applyTranscode(url, override: transcode)
+    let mgr = VLCPlayerWindowManager.shared
+
+    Task {
+        // Already playing this exact channel on this device? Just focus the window.
+        if isAlreadyPlaying() { mgr.focus(); return }
+        // Switching channels within an already-open player on this device skips the
+        // tuner check (reuses the same slot) — only a device switch needs one.
+        if mgr.currentDeviceID != device.DeviceID {
+            await fetchDeviceStatus(for: device)
+            if tunersFull(for: device.DeviceID) { alertTunerFull(...); return }
+        }
+        // Re-check after the await — a second concurrent call (e.g. a double-click)
+        // could have already opened the player while this one was suspended.
+        if isAlreadyPlaying() { mgr.focus(); return }
+        mgr.open(url: streamURL, title: title, device: device, appState: self, channelNumber: guideNumber)
+        refreshTunerOccupancy()
+    }
 }
 ```
 
-**Tuner availability check**: before opening, `watchInApp` fetches `device.statusURL` (`http://hdhr-{DeviceID}.local/status.json`) and decodes a `[DeviceTunerInfo]` array. If all entries have `VctNumber != nil` (all tuners occupied), it shows an NSAlert explaining why the player can't open. The check is **skipped** when `VLCPlayerWindowManager.shared.currentDeviceID == deviceId` — the player window already holds a tuner slot on that device, so switching channels doesn't need a free slot.
+**Tuner availability check**: switching channels within an already-open player on the *same* device skips the check entirely (reuses the existing slot). Opening on a *different* device first awaits a fresh `fetchDeviceStatus(for:)` poll, then checks `tunersFull(for:)` — the same `max(hardware-polled count, recordingShows + in-app VLC stream)` logic documented in `docs/AppState.md`'s Invariants, not a raw `VctNumber` scan of `status.json`. If full, shows an NSAlert (`alertTunerFull`) explaining why the player can't open.
+
+**Empty-URL guard**: a missing/empty lineup URL passed straight to libvlc can leave the player stuck on "Connecting…" forever with no error surfaced — `watchInApp` catches this upfront with its own NSAlert ("No Stream URL") before opening the window at all.
+
+**Already-playing dedup**: `isAlreadyPlaying()` (`mgr.currentDeviceID == device.DeviceID && VLCBridge.shared.currentURL?.urlBase == url.urlBase`) is checked both before and after the tuner-status `await` — re-opening the same channel from Watch Now while it's already playing would otherwise call `mgr.open()` a second time, muting an already-playing stream with no recovery UI. On a match, it just calls `mgr.focus()` instead of restarting the stream.
 
 `vlcCurrentURL` is no longer set manually here. `open()` calls `VLCBridge.play()`, which sets `currentURL` on the bridge; the Combine sink in `AppState` maps that through `.urlBase` and updates `vlcCurrentURL` automatically. `onChange(of: state.vlcCurrentURL)` in a running `VLCPlayerView` fires and syncs the channel picker.
 
-`deviceId` call sites:
-- Guide entry menu (`entryMenu`): passes `device.DeviceID`
-- Recording menu (`recordingMenu`): passes `show.hdhr_record`
-- AddShowView summary panel: passes `selectedDevice?.DeviceID`
+`deviceId`/`guideNumber` call sites:
+- `FloatingGuideView`'s WKWebView JS bridge ("Watch in App" button in the web guide's summary panel): passes `deviceId`/`guideNumber` from the clicked guide block's `dataset`
+- `WatchNowView`: passes `device.DeviceID`/the channel's `GuideNumber`
 
-Falls back to `devices.first` if no match.
+Falls back to `devices.first` if no `deviceId` match.
 
 ## VLCPlayerWindowManager.currentDeviceID
 

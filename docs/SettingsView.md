@@ -33,15 +33,20 @@ One `Section`:
 - **System**: `Toggle("Launch at Login")`, `Toggle("Blink menu bar icon")`
 
 ### Category: Recording
-One `Section`:
+Two `Section`s:
+
+**Recording** section:
 - Default folder: `LabeledContent` with secondary path text + `"Choose…"` + optional `"Reset"` buttons
 - Default transcode: inline `Picker` — None / Heavy / Mobile / Internet 720
 - Min free disk: `Stepper` showing `"Min free disk: N GB"`, range 1–100
 - Pause after N failures: `Stepper`, range 1–10
 - Watch in VLC: `Toggle` (only visible when VLC is installed)
 - Bonus Time: `Toggle`; when on, reveals a `Stepper` for bonus minutes (10–60, step 5)
-- `Divider`
+
+**Post-Processing** section:
 - Series subfolders: `Toggle`; when on, SeriesID recordings are organized into `Title/Season XX/` subfolders; episode tag (e.g. `S02E04`) is embedded in the filename
+- Skip already-recorded episodes: `Toggle` (only visible when Series subfolders is on) — skips a managed episode whose `SxxExx` is already on disk
+- Post-recording script: path field + `"Choose…"` button — runs after a recording finishes
 
 ### Category: Guide
 Two `Section`s:
@@ -254,15 +259,15 @@ See [WebServer.md](WebServer.md) for full route and feature documentation.
 One-tap operations for recovering from stuck states. Each uses `maintenanceRow(_:_:action:)` — a helper that takes a title string, a description string, and an async closure that returns a result string. The result is shown in a green `Label` at the bottom of the section after completion.
 
 **Shows section:**
+- **Reactivate Paused Shows** — calls `state.reactivatePausedShows()`, setting `show_active = true` on all inactive shows and resetting their fail counts. Result: count of shows reactivated.
 - **Rescan Series** — calls `state.rescheduleAllSeries()`, which iterates all active, non-paused, non-recording SeriesID shows, reloads each device's guide if stale, and resets `show_next` to the next matching episode. The count shown in the result excludes currently-recording shows. Result: `"N series show(s) rescheduled"`.
 - **Reset Fail Counts** — calls `state.resetAllFailCounts()`, zeroing `show_fail_count` and clearing `show_fail_reason` on every show without touching `show_active`. Useful when shows get stuck in Paused after transient network failures.
-- **Reactivate Paused Shows** — calls `state.reactivatePausedShows()`, setting `show_active = true` on all inactive shows and resetting their fail counts. Result: count of shows reactivated.
 - **Organize Series Recordings** — calls `state.organizeSeriesRecordings()`. Scans the flat root of each SeriesID show's recording directory for matching files and moves them into `Title/Season XX/` subfolders (or `Title/` when no season is parseable). Skips files currently being recorded. Updates `show_recording_path` on any show whose file was moved and saves config. Result: `"Moved N file(s) into subfolders"` or `"No files to organize"`.
 
 **Guide & Devices section:**
+- **Rediscover Devices** — calls `state.rediscoverDevices()` (same 3-path mDNS+UDP+known-hosts scan as startup). Reports device count.
 - **Refresh Guide** — calls `state.refreshGuide()` (invalidate + reload all devices). Reports channel count on completion.
 - **Clear Guide Cache** — calls `state.guideStore.invalidateAll()` and clears `state.guideByDevice`. The next time the guide step or floating guide opens, it fetches fresh data.
-- **Rediscover Devices** — calls `state.rediscoverDevices()` (same 3-path mDNS+UDP+known-hosts scan as startup). Reports device count.
 
 **Tools section** (only shown when `/usr/local/bin/brew` or `/opt/homebrew/bin/brew` exists):
 - **VLC** — `brew install --cask vlc`. Shown as installed (checkmark) when `/Applications/VLC.app` exists.

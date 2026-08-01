@@ -1,4 +1,8 @@
-# WKWebView Guide — Feasibility Analysis
+# WKWebView Guide — Feasibility Analysis (historical)
+
+**Historical planning doc — superseded.** Written 2026-06-05 as a pre-implementation feasibility analysis; the very next day (`89610a2`, 2026-06-06) the native SwiftUI guide (`CableGuideView.swift`) was removed entirely, `FloatingGuideView.swift` was collapsed to a thin `WKWebView` wrapper (~100 lines), and `AddShowView`'s guide step was also converted to a `WKWebView` (`GuideWebView` in `AddShowView.swift`) — completing what this doc called the "higher risk, optional" Phase 2. `CableGuideView.swift`/`docs/CableGuideView.md`/`docs/CableGuideView_pitfalls.md` no longer exist. Kept for historical context only — see `docs/FloatingGuideView.md` for the current architecture.
+
+---
 
 ## Background
 

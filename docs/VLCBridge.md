@@ -76,7 +76,7 @@ newRate   = minRate + (1.0 - minRate) * fillRatio
 
 `catchUpToLive()` calls `play(url: currentURL)`, which stops the stream, resets `estimatedLagSec` to 0, and restarts the fill phase from scratch.
 
-When `minRate == 1.0` (buffering disabled in Settings, or forced — see below), rate control is skipped entirely; the stats timer still runs for corruption detection only.
+When `minRate == 1.0` (buffering disabled in Settings, or forced — see below), rate control is skipped entirely; the stats timer still runs — it continues driving `isPlaying`/`hasError` state detection, track fetching, `videoPixelSize` updates, and corruption detection, just not the buffer-rate adjustment itself.
 
 **`minRate` vs `liveMinRate`**: `liveMinRate` is the externally-configured floor (`AppConfig.Player_buffer_min_rate`, set by `VLCPlayerView`); `minRate` is the floor actually in effect, set internally by `play(url:)` — `liveMinRate` for a normal stream, forced to `1.0` for the recording-playback relay (`/api/watch-recording`, see `docs/WebServer.md`). A local loopback file read has no network jitter to buffer against, so the fill ramp — and the buffer pill it drives in the toolbar — would just be theatre there. External code should set `liveMinRate`, never `minRate` directly.
 
@@ -110,7 +110,7 @@ Every significant controller event is logged to `hdhrVCRplus.log`:
 | Audio track selected | INFO | `[VLC] setAudioTrack id=2` |
 | SPU/CC track selected | INFO | `[VLC] setSpuTrack id=0 (on)` / `id=-1 (off)` |
 | Stats call failed | WARN | `[VLC] WARNING: get_stats returned N — stats polling skipped (may indicate VLC 4 struct mismatch)` |
-| Auto catch-up | INFO | `[VLC] signal corruption detected (corrupt=N lost=N) — catching up to live` |
+| Auto catch-up | INFO | `[VLC] stream corruption detected (i_demux_corrupted delta=N) — catching up to live` |
 
 ### Known risks
 
@@ -190,13 +190,14 @@ The player routes audio through `auhal` (CoreAudio) on macOS. Devices are enumer
 ```swift
 var isAvailable: Bool                                          // false when VLC not installed
 var liveMinRate: Float                                         // fill-phase floor for live streams (0.90–1.0); set from AppConfig — external code sets this, never minRate
-var currentURL: String?                                        // URL currently playing; nil when stopped
+@Published var currentURL: String?                            // URL currently playing; nil when stopped
 @Published var bufferInfo: VLCBufferInfo                      // rate/lag/bitrate snapshot; published every 3s tick
 @Published var hasError:    Bool                              // true when libvlc_Error (state 7) detected; cleared on play/stop/release
 @Published var hasEnded:    Bool                              // true after libvlc_Ended (state 6) detected; cleared on play/stop/release
 @Published var isPlaying:   Bool                              // true after libvlc_Playing (state 3) first confirmed; cleared on play/stop/release
 @Published var audioTracks: [(id: Int32, name: String)]       // stream audio tracks; empty = single/unknown; populated ~3s after playing
 @Published var spuTracks:   [(id: Int32, name: String)]       // CC/subtitle tracks; empty = none detected; populated ~3s after playing
+@Published var videoPixelSize: CGSize?                        // physical pixel dims from the decoded frame; nil until first frame; drives canResizeToNative/native-res popover in VLCPlayerView
 var recordingShowId: String?                                  // non-nil while playing the /api/watch-recording relay for this show_id; nil = live stream (see Recording-Relay Seek State)
 var recordingStartDate: Date?                                 // paired with recordingShowId; the recording's scheduled start, for elapsed-time display
 var recordingPlaybackSeconds: Double                           // computed elapsed seconds into the relay playback; meaningless unless recordingShowId is non-nil (drives scrub position in VLCPlayerView)
@@ -290,10 +291,12 @@ At most one URL is queued (last write wins). This is sufficient because `VLCPlay
 func ensurePlayer()
 ```
 
-Recreates the media player after `releasePlayer()` without reloading the full VLC stack. Called by `VLCPlayerWindowManager` when a new player window opens after the previous one was torn down. Steps:
+Recreates the media player after `releasePlayer()` without reloading the full VLC stack. Called by `VLCPlayerWindowManager.open()` before each new player session. Steps:
 
-1. Creates a new `mediaPlayer` via `_mpNew?(vlcInstance)`
-2. If `drawableView` is non-nil, calls `setDrawable` immediately (also clears `retainedDrawable`)
-3. If `pendingURL` is set, calls `play(url:)` to start the deferred stream
+1. No-op if `mediaPlayer` is already non-nil (already created for this session)
+2. Creates a new `mediaPlayer` via `_mpNew?(vlcInstance)`
+3. If `drawableView` is non-nil, re-attaches it: calls `_mpSetNSO?(mp, ...)` and sets `retainedDrawable = view` (assigns the drawable view, doesn't clear it)
+
+`ensurePlayer()` does **not** start playback itself — it has no `pendingURL` handling. `VLCPlayerWindowManager.open()` calls `ensurePlayer()` and then `play(url:)` as two separate steps right after.
 
 If `vlcInstance` or `_mpNew` is nil (VLC not loaded), logs a warning and returns without crashing — the `isAvailable` gate in the UI prevents this path from being reached under normal conditions.

@@ -73,11 +73,13 @@ Also moved the function definitions before the rAF block so they're in scope ins
 
 ---
 
-## Change 6 — 30-second HTML cache
+## Change 6 — HTML cache
+
+**Superseded — see `docs/WebServer.md`'s "HTML cache" section for the current mechanism.** As originally implemented (below), the cache was a 30-second TTL keyed by desktop/mobile UA. Both of those are gone: UA-keying was removed once desktop and mobile started rendering the same guide window (one shared `cachedHTML` for all UAs), and the TTL was replaced with event-driven rebuilds — `prebuildPageHTML` now reruns on every guide-affecting state change (recording start/stop, add/delete/pause/resume/edit/favorite-toggle) as well as the hourly guide refresh, not on a timer. The original problem this change solved (`buildHTML()` holding the MainActor for 84ms per request) is unchanged history; only the cache's invalidation policy has evolved since.
 
 **What it was:** Every `GET /` called `buildHTML()` (84 ms on MainActor) then `gzip()` (42 ms) = 126 ms per request, including requests from the in-app WKWebView window and any browser tabs simultaneously.
 
-**Fix:** Cache the built + gzipped `Data` for 30 seconds, keyed by desktop/mobile UA. Cache hits skip both steps.
+**Fix (as originally implemented):** Cache the built + gzipped `Data` for 30 seconds, keyed by desktop/mobile UA. Cache hits skip both steps.
 
 | Request | Before | After |
 |---|---|---|

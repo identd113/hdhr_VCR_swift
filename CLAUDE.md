@@ -58,7 +58,7 @@ Views/
 
 Views: [MenuContent](docs/MenuContent.md) · [AddShowView](docs/AddShowView.md) · [FloatingGuideView](docs/FloatingGuideView.md) · [EditShowView](docs/EditShowView.md) · [SettingsView](docs/SettingsView.md) · [StarburstBadge](docs/StarburstBadge.md) · [WatchNowView](docs/WatchNowView.md) · [VLCPlayerView](docs/VLCPlayerView.md) · [VLCBridge](docs/VLCBridge.md) · [ShowFormSection](docs/ShowFormSection.md) · [PlayerView](docs/PlayerView.md) (historical)
 
-Systems: [AppState](docs/AppState.md) · [GuideStore](docs/GuideStore.md) · [RecordingManager](docs/RecordingManager.md) · [Models](docs/Models.md) · [Config](docs/Config.md) · [WebServer](docs/WebServer.md) · [ChannelSignalStore](docs/ChannelSignalStore.md) · [HDHRFindings](docs/HDHRFindings.md) (live-tested device/API behavior)
+Systems: [AppState](docs/AppState.md) · [GuideStore](docs/GuideStore.md) · [RecordingManager](docs/RecordingManager.md) · [Models](docs/Models.md) · [Config](docs/Config.md) · [WebServer](docs/WebServer.md) · [ChannelSignalStore](docs/ChannelSignalStore.md) · [HDHRFindings](docs/HDHRFindings.md) (live-tested device/API behavior) · [WKWebView_guide_analysis](docs/WKWebView_guide_analysis.md) (historical)
 
 ---
 

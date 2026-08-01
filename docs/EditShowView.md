@@ -9,7 +9,7 @@ Fixed **480×520**. Standard macOS window chrome. Title: `"Edit Show"`. While lo
 White/system background. `VStack` with 16pt spacing, 16pt padding on all sides:
 
 - **`"Edit Show"`** title in `.title2`
-- **`ShowFormSection`** — shared form fields (title field, signal row, type picker, days toggles, transcode picker, duplicate-episodes toggle, folder row) — see `ShowFormSection.md`. The signal row shows bars + a weak-signal warning for the show's channel when `Signal_quality_enabled`. The duplicate-episodes row (only when Series subfolders + Skip already-recorded episodes are on, and the show is a series) shows an orange "already on disk — will be skipped" warning plus a "Record even if already on disk" override toggle (`show_ignore_duplicate_once`).
+- **`ShowFormSection`** — shared form fields (title field, signal row, type picker, transcode picker, Bonus Time toggle, days toggles, duplicate-episodes toggle, folder row) — see `ShowFormSection.md`. The signal row shows bars + a weak-signal warning for the show's channel when `Signal_quality_enabled`. The duplicate-episodes row (only when Series subfolders + Skip already-recorded episodes are on, and the show is a series) shows an orange "already on disk — will be skipped" warning plus a "Record even if already on disk" override toggle (`show_ignore_duplicate_once`).
 - **`LabeledContent("Channel")`** — `TextField` with placeholder `"e.g. 5.4"`, 80pt wide. Tooltip: guide channel number format and redirect use.
 - **`LabeledContent("Length (min)")`** — numeric `TextField`, 60pt wide, placeholder `"60"`. Tooltip: set from guide end time; Bonus Time adds extra minutes past guide end.
 - **Failures row** (only when `show_fail_count > 0`): `LabeledContent("Failures")` — orange text `"3 — Output file missing"` + blue `"Reset"` button
@@ -39,12 +39,16 @@ The show to edit is identified by `state.editingShowId` (set by `MenuContent` be
 ScrollView {
   VStack {
     Title (editable TextField)
-    Channel (editable TextField, width 80)
+    Signal (bars + weak-signal warning — only when Signal_quality_enabled and channel has data)
     Type (segmented Picker: Single / DateTime / SeriesID(Channel) / SeriesID(All))
-    Day / Days (toggle buttons — only for Single and DateTime)
-    Length in minutes (TextField + .number format)
     Transcode (Picker: None / Heavy / Mobile / Internet 720)
+    Bonus Time (toggle — only when Sports_padding_enabled)
+    Day / Days (toggle buttons — only for Single and DateTime)
+    Duplicate Episodes (override toggle + warning — only when Series subfolders + Skip
+                         already-recorded episodes are on, and the show is a series)
     Folder (display last path component + Change… button)
+    Channel (editable TextField, width 80)
+    Length in minutes (TextField + .number format)
     Failures (orange text + Reset button — only shown when show_fail_count > 0)
     SeriesID (read-only Text, "none" if empty)
     Stream URL (read-only Text, .caption, lineLimit 1)
