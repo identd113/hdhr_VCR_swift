@@ -61,7 +61,7 @@ struct AddShowView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .overlay(alignment: .bottomTrailing) {
                 if step == .details && show.show_bonus_time && state.config.Sports_padding_enabled {
-                    StarburstBadge(minutes: state.config.Sports_padding_minutes, size: 115)
+                    StarburstBadge(minutes: state.config.Sports_padding_minutes, size: 65)
                         .padding(.trailing, 12).padding(.bottom, 12)
                         .transition(.asymmetric(
                             insertion: .identity,

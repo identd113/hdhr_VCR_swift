@@ -199,17 +199,16 @@ Promoting a show to a `seriesId` type (`seriesChannel`/`seriesAll`) when it prev
 - **Per-tuner dropdown rows** — each `.sp-row` has an `onclick="openEditShow(this)"` handler; `data-*` attrs are embedded by `buildTunerShowsHTML`
 - **Guide grid** — Edit button in the summary panel calls `doEditFromGuide()`, which re-packages `data-show-*` attrs from the selected `.g-prog` block into the same shape `openEditShow()` expects
 
-**Contents:**
-- Show title + channel (read-only display)
+**Contents (top to bottom):**
+- Title (editable input, `#em-title-in`)
+- Channel + Length fields (minutes)
 - Type selector (single / weekly / series channel / series any)
-- **Air Days row** — visible for **`single` and `dateTime`** types (parity with the Record modal); 7 Su–Sa toggle buttons, label reads "Day" for `single` / "Days" for `dateTime`. Hidden for series types. At least one day must remain selected.
 - **SeriesID row** — visible for series types
-- Length field (minutes)
-- **Bonus Time toggle** (`#em-bonus-row`) — hidden entirely when `config.Sports_padding_enabled` is `false` (parity with the Record modal), and always hidden while the show is recording
 - Transcode selector
-- Paused toggle
+- **Bonus Time toggle** (`#em-bonus-row`) — hidden entirely when `config.Sports_padding_enabled` is `false` (parity with the Record modal), and always hidden while the show is recording
+- **Air Days row** — visible for **`single` and `dateTime`** types (parity with the Record modal); 7 Su–Sa toggle buttons, label reads "Day" for `single` / "Days" for `dateTime`. Hidden for series types. At least one day must remain selected. Placed after Transcode/Bonus Time (fields common to every type) so the one type-specific field sits at the bottom, matching the Record modal and the native wizard's field order (`ShowFormSection.swift`).
 - **Reset Failures link** — shown when `failcount > 0`; sets `resetFailures: true` in payload
-- Cancel / Save buttons
+- Cancel / Delete / Pause / Save buttons
 
 Save Directory is **not** editable from the web UI — directory path changes require local app access.
 
@@ -431,9 +430,9 @@ Mirrors the native Add Show wizard's Details step (`ShowFormSection`) minus the 
 - **SeriesID row** (`#rm-sid`, `em-row` style) — visible when a series type is selected; value in `em-sid` monospace style
 - **Other Upcoming Airings row** (`#rm-airings`, `em-row` style) — visible when a series type is selected *and* `GET /api/airings/{seriesId}` returns at least one airing after excluding the one just selected. Each `.rm-air-row` (mirrors the tuner dropdown's `.sp-row` list styling) has: a genre-color accent bar (`gc(a.genre)`, same mapping as the guide grid), the channel logo (`.rm-air-logo`, 18px, hidden via `onerror` if it fails to load), and a two/three-line info column — bold day+time, secondary `Ch N · Name`, and episode info when the guide has it. Rows are separated by a bottom border (`.rm-air-row`), not full card backgrounds — same list language as `.sp-row`; hover tints the row and the cursor becomes a pointer as a click affordance. Fetched once per series per modal-open and cached client-side (`_airCache`); a generation counter (`_airGen`) discards a response that arrives after the modal was reopened for a different program.
 - **Double-click a row to switch the modal to that airing** (`switchAiring(idx)`) — re-anchors `_d`/`_n`/`_s`/`_e`/`_genre`/`_title` to the clicked airing (looked up from `_airCurrent`, the last-rendered filtered array), updates the title input and the `Ch N · Name · time` line, re-checks the tuner-full warning for the (possibly different) device, and re-renders the airings list from the same `_airCache` entry — which now excludes the newly-selected airing and re-includes whichever one was previously selected. Selected Type/Transcode/Bonus are left untouched. Native parity: `AddShowView.switchToAiring(channel:entry:)`.
-- **Days row** (`#rm-days-row`, `em-row` style) — visible for `single` (label "Day") and `dateTime` (label "Days"); hidden for series types. Pre-checked to the guide entry's day of week. For `single`, clicking a day moves the selection to it (clicking the already-selected day clears it — matches the native wizard's single-day Toggle semantics exactly, including allowing zero selected). For `dateTime`, days multi-toggle with at least one required (last-day deselect is blocked). Switching the Type radio back to `single` collapses the selection back to the guide entry's weekday.
 - **Transcode row** — `em-lbl` "Transcode" label + `<select id="rm-transcode">` with the same 4 options as the edit modal. Defaults to `config.Default_transcode` (allowlist-sanitized server-side) each time the modal opens, not a hardcoded `"none"`.
 - **Bonus Time row** (`#rm-bonus-row`) — hidden entirely when `config.Sports_padding_enabled` is `false`; label reads `Bonus Time (+{Sports_padding_minutes} min past guide end)`. Auto-checked for Sports-genre entries only when bonus is enabled.
+- **Days row** (`#rm-days-row`, `em-row` style) — visible for `single` (label "Day") and `dateTime` (label "Days"); hidden for series types. Placed after Transcode/Bonus Time (fields common to every type) so the one type-specific field sits at the bottom, matching the native wizard's field order (`ShowFormSection.swift`). Pre-checked to the guide entry's day of week. For `single`, clicking a day moves the selection to it (clicking the already-selected day clears it — matches the native wizard's single-day Toggle semantics exactly, including allowing zero selected). For `dateTime`, days multi-toggle with at least one required (last-day deselect is blocked). Switching the Type radio back to `single` collapses the selection back to the guide entry's weekday.
 - **Tuner-full warning** (`#rm-tuner`) — amber banner shown when device is full and show is currently airing
 - **Weak-signal warning** (`#rm-sig-warn`) — amber banner (same style as `#rm-tuner`) shown by `renderRmSignal()` when the channel's signal bucket is `poor`; hidden otherwise
 - **Footer** with border-top separator — Cancel / Schedule buttons

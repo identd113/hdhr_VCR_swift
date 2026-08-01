@@ -3,7 +3,7 @@
 ## Visual Appearance
 
 ### At rest
-A solid **orange** 12-point starburst polygon, `size` × `size` (default 100pt, 150pt in EditShowView, 115pt in AddShowView details). The starburst has alternating outer and inner radii (`outerR` and `0.55 × outerR`), making it look like a sale/badge shape.
+A solid **orange** 12-point starburst polygon, `size` × `size` (default 100pt, 48pt in EditShowView, 65pt in AddShowView details — sized down from 150pt/115pt so the badge no longer overlaps the form's field rows). The starburst has alternating outer and inner radii (`outerR` and `0.55 × outerR`), making it look like a sale/badge shape.
 
 Centered inside the starburst: `"+N min"` in white `.caption` bold. At 100pt size this text is ~12pt, clearly legible. At the default orange color (SwiftUI `Color.orange`) the badge reads as warm and energetic.
 
@@ -26,10 +26,12 @@ When Bonus Time is toggled off (badge removed from the hierarchy): `.scale(scale
 ## Intent
 
 `StarburstBadge` is an orange 12-point starburst that indicates Bonus Time is enabled on a show. It displays `"+N min"` where N is `state.config.Sports_padding_minutes`. Sports shows have Bonus Time enabled by default; any show type can use it. It appears in exactly two places (both `WKWebView`-based guide browsing — `FloatingGuideView` and `AddShowView` step 2 — have no SwiftUI overlay of their own to host it):
-- In `AddShowView` step 3 (Details), overlaid at the **bottom-right** corner of the form (115pt)
-- In `EditShowView`, overlaid at the **top-right** corner of the form (150pt)
+- In `AddShowView` step 3 (Details), overlaid at the **bottom-right** corner of the form (65pt)
+- In `EditShowView`, overlaid at the **top-right** corner of the form (48pt — the Title field sits closer to the top edge here than in AddShowView's taller layout, so it needed a smaller size than AddShowView's to fully clear it)
 
 It has a pop-in animation on appear and a 5-tap celebration spin easter egg.
+
+Both are `.overlay`s pinned to a form corner with no reserved space of their own — earlier, larger sizes (150pt/115pt) sat on top of the Title/Type/Bonus Time/Folder rows underneath. The current sizes were chosen to stay in the corner without covering any field content.
 
 ---
 
@@ -133,6 +135,21 @@ Without the final snap, `celebCount` increments drive the rotation to 360°, 720
 ```
 
 After every 5th tap, `celebCount` increments, re-triggering `keyframeAnimator`. `tapCount` resets to 0 so the next 5 taps trigger another celebration.
+
+---
+
+## Web Guide Counterpart (`WebServer.swift`)
+
+The web guide (served on `localhost:1980`, shared by external browsers and in-app `WKWebView` windows) has its own CSS/JS re-implementation of this badge — not the SwiftUI `StarburstBadge` type, since the guide is plain HTML/JS. Two style classes in `WebServer.swift`:
+- `.sb-web` — small 28px inline badge (12-point starburst via `clip-path`, orange `#e86e00` fill)
+- `.sb-web-lg` — 56px × 56px, `position:absolute; top:6px; right:44px`, `pointer-events:none`, `font-size:.42rem` — the large corner-badge variant, analogous to the native `StarburstBadge`'s corner overlay
+
+`.sb-web-lg` is used at three spots, each an absolutely-positioned span in the top-right corner of its `position:relative` container:
+- `#sum-bonus-star` — guide summary panel (`#sum-c`)
+- `#rm-bonus-star` — Record modal (`.mac-sheet`)
+- `#em-bonus-star` — Edit modal (`.mac-sheet`)
+
+All three are toggled via JS (`toggleBonusStar()`, `toggleRmBonusStar()`, and the summary-panel renderer), setting `textContent` to `"+Nm"` and `display:inline-flex`/`none`. Like the native badge, sizing was reduced (from 110px) so it stays inside the corner without covering the panel/modal header or field text underneath. `right` is 44px rather than a smaller corner-hugging value specifically because `#sum-c`'s own `✕` close button (`closeSummary()`) is a flex item flush against that same top-right corner — an 8px right offset put the badge directly on top of it. 44px clears the close button in all three contexts (the two modals have no equivalent top-right control, so the extra left shift just leaves more empty margin there).
 
 ---
 

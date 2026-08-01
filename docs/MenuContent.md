@@ -123,8 +123,8 @@ This is deliberately a real `@Published` property with its own timer rather than
 ```
 [Header: one line per device — DeviceID  liveCount/slots  ⚠ no lineup, no guide (inline, orange)]
 [Status message — secondary color, uses availableDeviceCount]
-[Watch Now… — Label("Watch Now…", systemImage: "play.tv.fill"), when devices present]
 [Add Show… — Button, opens wizard window]
+[Watch Now… — Label("Watch Now…", systemImage: "play.tv.fill"), when devices present]
 Divider
 Settings…
 Divider
@@ -169,7 +169,7 @@ Menu label: `🔴 [Title]` (or `🔴 [Title] · S02E05` when guide entry is foun
 Submenu contents — uses `showInfoHeader(show, entry:)` for the top block, then:
 1. **Type + channel** — `"SeriesID(All) · Channel 5.1"`, full `labelColor` — followed inline by a `SignalBarsView` when `state.config.Signal_quality_enabled` and the channel is found in the device's lineup (same signal-bucket source as `docs/ChannelSignalStore.md`'s generic mention of this component)
 2. **Start time + duration** — `"8:00 PM · 60 min"`, `secondaryLabelColor`
-3. **Bonus Time callout** — `"🏈 Bonus Time (+N min)"` when `state.config.Sports_padding_enabled` is on, `show.show_bonus_time == true`, and the recording is past the guide end time (all three required — the config toggle gates the feature even when a show's own flag is set)
+3. **Bonus Time callout** — `"Bonus Time (+N min)"` when `state.config.Sports_padding_enabled` is on, `show.show_bonus_time == true`, and the recording is past the guide end time (all three required — the config toggle gates the feature even when a show's own flag is set)
 4. **Tuner ID** — `"tuner 105404BE"`, `secondaryLabelColor`
 5. **Signal** — shown when `state.tunerStatus[show.show_id]` is set: `"Signal: 78% · QAM256 · 12.4 Mbps"` (no "lock:" label; lock type uppercased), `secondaryLabelColor`
 6. Divider
@@ -205,11 +205,12 @@ State icons: `1️⃣` Single · `📅` DateTime · `🔂` SeriesID(Channel) · 
 Submenu — uses `showInfoHeader(show, entry:)` for the top block, then:
 1. **Type + channel** — `"SeriesID(All) · Channel 5.1"`, full `labelColor`
 2. **Conflict warning** — `state.conflictBeatenByFavorite.contains(show.show_id)` picks between two messages: `"⚠️ Conflict — a favorited channel has priority for this tuner"` (this show specifically lost to a favorited competitor) or the generic `"⚠️ Conflict — all tuners busy at this time"`, both `secondaryLabelColor`
-3. **Start time + duration** — `"8:00 PM · 60 min"` (absolute start time · recording length), `secondaryLabelColor`
-4. **Upcoming slots** — for DateTime: next 3 weekday occurrences; for SeriesID: from `state.menuUpcomingSlots[show.show_id]`. Each slot: `"Channel 5.1 · Thu 8:00 PM"` or `"Channel 5.1 · 8:00 PM"` (omits weekday when today). Preceded by "Upcoming" header when count > 1.
-5. **Failure warning** — `"⚠️ N failure(s): reason"` when `show_fail_count > 0`
-6. Divider
-7. **Edit…**, **Pause**, **Delete…** (destructive — uses `confirmAndDeleteShow`)
+3. **Conflicts-with list** — shown only when `conflict` is true and `state.conflictingShows(for: show)` (a fresh, on-demand filter — same overlap definition as `AppState.hasConflict(for:)`: same `hdhr_record`, active/unpaused, overlapping `[show_next, show_end)`, excluding the show itself, sorted by channel) is non-empty: its own `Divider()`, then a `"Conflicts with:"` caption header, then one footnote row per competing show — `"Ch 5.1 — Other Show Title · S02E05"` (episode info from `state.menuScheduledEntry[other.show_id]?.episodeInfoLabel`, same source `schEp` uses for this show's own label, omitted when not available)
+4. **Start time + duration** — `"8:00 PM · 60 min"` (absolute start time · recording length), `secondaryLabelColor`
+5. **Upcoming slots** — for DateTime: next 3 weekday occurrences; for SeriesID: from `state.menuUpcomingSlots[show.show_id]`. Each slot: `"Channel 5.1 · Thu 8:00 PM"` or `"Channel 5.1 · 8:00 PM"` (omits weekday when today). Preceded by "Upcoming" header when count > 1.
+6. **Failure warning** — `"⚠️ N failure(s): reason"` when `show_fail_count > 0`
+7. Divider
+8. **Edit…**, **Pause**, **Delete…** (destructive — uses `confirmAndDeleteShow`)
 
 ### Up Next section
 

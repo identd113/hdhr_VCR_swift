@@ -21,8 +21,8 @@ struct EditShowView: View {
                     form(for: s)
                         .overlay(alignment: .topTrailing) {
                             if show?.show_bonus_time == true && state.config.Sports_padding_enabled {
-                                StarburstBadge(minutes: state.config.Sports_padding_minutes, size: 150)
-                                    .padding(.trailing, 16).padding(.top, 16)
+                                StarburstBadge(minutes: state.config.Sports_padding_minutes, size: 48)
+                                    .padding(.trailing, 16).padding(.top, 10)
                                     .transition(.asymmetric(
                                         insertion: .identity,
                                         removal: .scale(scale: 0.05).combined(with: .opacity)

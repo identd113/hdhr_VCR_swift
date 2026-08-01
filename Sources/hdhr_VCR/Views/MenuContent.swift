@@ -91,10 +91,10 @@ struct MenuContent: View {
                                                  Color(NSColor.secondaryLabelColor))
         }
         Text(state.statusMessage).foregroundStyle(Color(NSColor.secondaryLabelColor))
-        // ── Watch Now ─────────────────────────────────────────────────────
-        watchNowMenu
         // ── Add Show ──────────────────────────────────────────────────────
         Button { open("add-show") } label: { Label("Add Show…", systemImage: "plus") }
+        // ── Watch Now ─────────────────────────────────────────────────────
+        watchNowMenu
         Divider()
 
         Button("Settings…")    { open("settings") }
@@ -301,7 +301,7 @@ struct MenuContent: View {
             }
             menuInfo("\(Self.timeFormatter.string(from: started)) · \(show.show_length) min", font: .footnote, secondary: true)
             if inBonusTime {
-                menuInfo("🏈 Bonus Time (+\(state.config.Sports_padding_minutes) min)", font: .footnote, secondary: true)
+                menuInfo("Bonus Time (+\(state.config.Sports_padding_minutes) min)", font: .footnote, secondary: true)
             }
             menuInfo("tuner \(show.hdhr_record)", font: .footnote, secondary: true)
             if let sig = state.tunerStatus[show.show_id] {
@@ -356,6 +356,17 @@ struct MenuContent: View {
                     ? "⚠️ Conflict — a favorited channel has priority for this tuner"
                     : "⚠️ Conflict — all tuners busy at this time"
                 menuInfo(conflictMsg, font: .footnote, secondary: true)
+
+                let others = state.conflictingShows(for: show)
+                if !others.isEmpty {
+                    Divider()
+                    menuInfo("Conflicts with:", font: .caption, secondary: true)
+                    ForEach(others, id: \.show_id) { other in
+                        let otherEp = state.menuScheduledEntry[other.show_id]?.episodeInfoLabel
+                        menuInfo("Ch \(other.show_channel) — \(other.show_title)" +
+                                 (otherEp.map { " · \($0)" } ?? ""), font: .footnote)
+                    }
+                }
             }
 
             // Timing: start time · duration

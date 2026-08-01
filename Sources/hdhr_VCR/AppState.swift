@@ -3136,6 +3136,20 @@ final class AppState: ObservableObject {
         return max(hw, rec + vlc)
     }
 
+    // Same overlap definition as hasConflict, but returns the other show(s) so the menu can
+    // list what's actually contending for the tuner instead of just flagging that it conflicts.
+    func conflictingShows(for show: Show) -> [Show] {
+        guard let next = show.show_next, let end = show.show_end else { return [] }
+        return shows.filter { other in
+            guard other.show_active, !other.show_paused,
+                  other.show_id != show.show_id,
+                  other.hdhr_record == show.hdhr_record,
+                  let oNext = other.show_next, let oEnd = other.show_end
+            else { return false }
+            return oNext < end && oEnd > next
+        }.sorted { $0.show_channel < $1.show_channel }
+    }
+
     func hasConflict(for show: Show) -> Bool {
         guard let next = show.show_next,
               let end  = show.show_end,

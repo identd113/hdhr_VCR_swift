@@ -16,7 +16,7 @@ White/system background. `VStack` with 16pt spacing, 16pt padding on all sides:
 - **SeriesID row**: `LabeledContent("SeriesID")` — secondary-color text, `"none"` if empty. Tooltip: HDHomeRun series identifier used for smart cross-channel matching.
 - **Stream URL row**: `LabeledContent("Stream URL")` — secondary-color caption, 1-line truncated; `"not set"` if empty. Tooltip: tuner stream URL, set automatically from the guide.
 
-**Bonus Time badge**: when `show_bonus_time == true` AND `Sports_padding_enabled`, an orange 150pt `StarburstBadge` floats at the **top-right** corner of the form via `.overlay(alignment: .topTrailing)`, 16pt from the edges. It animates in on appear and out with a shrink-to-zero + fade on dismiss.
+**Bonus Time badge**: when `show_bonus_time == true` AND `Sports_padding_enabled`, an orange 48pt `StarburstBadge` floats at the **top-right** corner of the form via `.overlay(alignment: .topTrailing)`, 16pt from the trailing edge / 10pt from the top. Sized down from an earlier 150pt, which overlapped the Title field — see `docs/StarburstBadge.md`. It animates in on appear and out with a shrink-to-zero + fade on dismiss.
 
 ### Nav bar (bottom, ~52pt tall)
 `HStack` with 16pt padding. `Divider` above.

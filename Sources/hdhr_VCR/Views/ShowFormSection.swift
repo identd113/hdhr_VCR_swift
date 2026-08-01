@@ -73,32 +73,6 @@ struct ShowFormSection: View {
                 .help("Single: one recording on a specific date and time. DateTime: repeats weekly on selected days. Series Channel: records new episodes on this channel via SeriesID matching. Series All: records new episodes on any channel.")
             }
 
-            if seriesType == .dateTime || seriesType == .single {
-                let daysLabel = seriesType == .single ? "Day" : "Days"
-                LabeledContent(daysLabel) {
-                    HStack {
-                        ForEach(weekdays, id: \.self) { day in
-                            let abbr = String(day.prefix(2))
-                            Toggle(isOn: Binding(
-                                get: { airDays.contains(day) },
-                                set: { on in
-                                    if seriesType == .single {
-                                        airDays = on ? [day] : []
-                                    } else {
-                                        if on { airDays.insert(day) } else { airDays.remove(day) }
-                                    }
-                                }
-                            )) { Text(abbr).font(.caption) }
-                            .toggleStyle(.button)
-                            .buttonStyle(.bordered)
-                        }
-                    }
-                }
-                .help(seriesType == .single
-                      ? "The day of the week this one-time recording will air."
-                      : "All days of the week this show airs — select every applicable day.")
-            }
-
             LabeledContent("Transcode") {
                 Picker("", selection: $show.show_transcode) {
                     Text("None").tag("none")
@@ -121,6 +95,32 @@ struct ShowFormSection: View {
                         }
                     ))
                 }
+            }
+
+            if seriesType == .dateTime || seriesType == .single {
+                let daysLabel = seriesType == .single ? "Day " : "Days"
+                LabeledContent(daysLabel) {
+                    HStack {
+                        ForEach(weekdays, id: \.self) { day in
+                            let abbr = String(day.prefix(2))
+                            Toggle(isOn: Binding(
+                                get: { airDays.contains(day) },
+                                set: { on in
+                                    if seriesType == .single {
+                                        airDays = on ? [day] : []
+                                    } else {
+                                        if on { airDays.insert(day) } else { airDays.remove(day) }
+                                    }
+                                }
+                            )) { Text(abbr).font(.caption) }
+                            .toggleStyle(.button)
+                            .buttonStyle(.bordered)
+                        }
+                    }
+                }
+                .help(seriesType == .single
+                      ? "The day of the week this one-time recording will air."
+                      : "All days of the week this show airs — select every applicable day.")
             }
 
             if state.config.Series_subfolder_enabled, state.config.Skip_recorded_episodes, seriesType.isSeries {
