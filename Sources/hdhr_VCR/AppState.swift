@@ -1404,9 +1404,14 @@ final class AppState: ObservableObject {
         // actually airing, not necessarily this show (e.g. a live preemption the guide has
         // since caught up to). Final live re-check, same SeriesID-then-title trust tiers
         // scheduleNextAir itself uses, right before actually recording.
-        if show.show_use_seriesid, !show.show_seriesid.isEmpty {
-            let confirmed = guideStore.currentEpisode(seriesID: show.show_seriesid,
-                                channelNum: show.show_channel, deviceId: show.hdhr_record, at: Date()) != nil
+        if show.show_use_seriesid {
+            // The title-only fallback must run even when show_seriesid is empty — a series
+            // show added from a guide entry that lacked SeriesID data (GuideStore's
+            // currentEntryByTitle/nextEntryByTitle exist specifically for this, and
+            // scheduleNextAir already calls the title tier unconditionally) would otherwise
+            // get zero protection from this guard, the exact gap it exists to close.
+            let confirmed = (!show.show_seriesid.isEmpty && guideStore.currentEpisode(seriesID: show.show_seriesid,
+                                channelNum: show.show_channel, deviceId: show.hdhr_record, at: Date()) != nil)
                          || guideStore.currentEntryByTitle(show.show_title,
                                 channelNum: show.show_channel, deviceId: show.hdhr_record, at: Date()) != nil
             if !confirmed {
@@ -1414,6 +1419,14 @@ final class AppState: ObservableObject {
                 notify("Recording Skipped", body: show.show_title, subtitle: "Guide no longer confirms this airing")
                 shows[index].show_next = nil
                 await scheduleNextAir(index: index)
+                // Re-resolve by show_id — scheduleNextAir may have moved this show to a
+                // different channel/device (seriesAll) or reordered `shows` via its own
+                // internal awaits. Mirrors updateShow's identical re-broadcast pattern.
+                if let updated = shows.first(where: { $0.show_id == show.show_id }) {
+                    webServer.broadcastGuideChangeEvent(type: "show_updated",
+                                                        extra: ["channel": updated.show_channel, "device": updated.hdhr_record],
+                                                        state: self)
+                }
                 return
             }
         }
