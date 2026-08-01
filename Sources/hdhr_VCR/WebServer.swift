@@ -1964,7 +1964,7 @@ final class WebServer: @unchecked Sendable {
           </div>
         </div>
         <div id="rec-modal" onclick="if(event.target===this)cancelRecord()" style="display:none;position:fixed;inset:0;background:var(--mat-backdrop);z-index:100;align-items:center;justify-content:center;padding:20px">
-          <div class="mac-sheet" style="padding:20px 22px;width:400px;max-width:calc(100vw - 32px);max-height:calc(100vh - 40px);overflow-y:auto;position:relative">
+          <div class="mac-sheet" style="padding:20px 22px;width:480px;max-width:calc(100vw - 32px);max-height:calc(100vh - 40px);overflow-y:auto;position:relative">
             <span id="rm-bonus-star" class="sb-web sb-web-lg" style="display:none"></span>
             <div style="font-weight:600;font-size:.94rem;color:var(--t0);margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--b2)">Record Show</div>
             <div class="em-row">
@@ -1991,7 +1991,7 @@ final class WebServer: @unchecked Sendable {
           </div>
         </div>
         <div id="edit-modal" onclick="if(event.target===this)closeEditShow()" style="display:none;position:fixed;inset:0;background:var(--mat-backdrop);z-index:201;align-items:center;justify-content:center;padding:20px">
-          <div class="mac-sheet" style="padding:20px 22px;width:400px;max-width:calc(100vw - 32px);max-height:calc(100vh - 40px);overflow-y:auto;position:relative">
+          <div class="mac-sheet" style="padding:20px 22px;width:480px;max-width:calc(100vw - 32px);max-height:calc(100vh - 40px);overflow-y:auto;position:relative">
             <span id="em-bonus-star" class="sb-web sb-web-lg" style="display:none"></span>
             <div style="font-weight:600;font-size:.94rem;color:var(--t0);margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--b2)">Edit Show</div>
             <div class="em-row"><div class="em-lbl">Title</div><input id="em-title-in" class="em-input" type="text" placeholder="Show title"></div>
