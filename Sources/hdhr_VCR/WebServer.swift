@@ -1581,8 +1581,11 @@ final class WebServer: @unchecked Sendable {
         #rm-ch{color:var(--t4)!important}
         #rm-sid{background:var(--bg)!important;color:var(--t4)!important}
         #rm-sid-val{color:var(--t3)!important}
-        .rm-opt-l{font-size:.85rem;font-weight:500;color:var(--t1)}
-        .rm-opt-d{font-size:.72rem;color:var(--t4);margin-top:1px;line-height:1.3}
+        .rm-type-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:2px}
+        .rm-type-btn{background:var(--s4);border:1px solid var(--b3);color:var(--t2);border-radius:6px;padding:6px 10px;font-size:.76rem;font-weight:500;cursor:pointer;transition:background .12s,border-color .12s,color .12s;white-space:nowrap}
+        .rm-type-btn:hover{background:rgba(127,127,127,.10)}
+        .rm-type-btn.sel{background:var(--ac);border-color:var(--ac);color:#fff}
+        .rm-type-desc{font-size:.72rem;color:var(--t4);margin-top:5px;line-height:1.3}
         html.lm #rm-tuner{color:#7a3c00;background:#fff8e8;border-color:#d09020}
         /* ── Guide grid ── */
         .gw-outer{border:1px solid var(--b1);border-radius:8px;overflow:clip;flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
@@ -1867,13 +1870,6 @@ final class WebServer: @unchecked Sendable {
         }
         #em-rec-warn{color:#ff9090!important;background:#3c1818!important;border-color:#883030!important}
         html.lm #em-rec-warn{color:#8b0000!important;background:#fce8e8!important;border-color:#cc3030!important}
-        .rm-lbl{display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:8px 10px;border-radius:8px;border:1px solid transparent;transition:background .12s,border-color .12s}
-        .rm-lbl:hover{background:rgba(127,127,127,.10)}
-        .rm-lbl:has(input:checked),.rm-lbl.rm-sel{background:var(--acb);border-color:var(--ac)}
-        .rm-lbl input{-webkit-appearance:none;appearance:none;margin-top:2px;flex-shrink:0;width:16px;height:16px;border-radius:50%;border:1.5px solid var(--b4);background:var(--s3);position:relative;cursor:pointer;transition:border-color .12s,background .12s}
-        .rm-lbl input:checked{border-color:var(--ac);background:var(--ac)}
-        .rm-lbl input:checked::after{content:'';position:absolute;top:50%;left:50%;width:6px;height:6px;border-radius:50%;background:#fff;transform:translate(-50%,-50%)}
-        .rm-lbl input:focus-visible{box-shadow:0 0 0 3px var(--acb)}
         /* macOS-style switch (Bonus Time toggle) */
         .mac-switch{-webkit-appearance:none;appearance:none;width:32px;height:19px;border-radius:10px;flex-shrink:0;background:var(--b3);border:none;position:relative;cursor:pointer;transition:background .18s ease;outline:none}
         .mac-switch::before{content:'';position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.35),0 0 0 .5px rgba(0,0,0,.06);transition:transform .18s cubic-bezier(.4,0,.2,1)}
@@ -1977,7 +1973,7 @@ final class WebServer: @unchecked Sendable {
               <div id="rm-ch" style="font-size:.72rem;color:var(--t4);margin-top:3px"></div>
               <div id="rm-sig" style="margin-top:4px;min-height:12px"></div>
             </div>
-            <div class="em-row"><div class="em-lbl">Type</div><div id="rm-opts" style="display:flex;flex-direction:column;gap:5px;margin-top:2px"></div></div>
+            <div class="em-row"><div class="em-lbl">Type</div><div id="rm-opts" class="rm-type-row"></div><div id="rm-type-desc" class="rm-type-desc"></div></div>
             <div class="em-row"><div class="em-lbl">Transcode</div><select id="rm-transcode" class="em-input"><option value="none">None (copy stream)</option><option value="heavy">Heavy (H.264 CRF 18)</option><option value="mobile">Mobile (480p H.264)</option><option value="internet720">Internet 720 (720p H.264)</option></select></div>
             <div id="rm-bonus-row" style="margin-bottom:8px;display:flex;align-items:center;gap:8px"><label class="em-check"><input type="checkbox" class="mac-switch" id="rm-bonus" onchange="toggleRmBonusStar()"><span>Bonus Time (+\(state.config.Sports_padding_minutes) min past guide end)</span></label></div>
             <div id="rm-days-row" class="em-row" style="display:none"><div class="em-lbl" id="rm-days-lbl">Days</div><div class="em-days" id="rm-days"></div></div>
@@ -1999,7 +1995,7 @@ final class WebServer: @unchecked Sendable {
             <span id="em-bonus-star" class="sb-web sb-web-lg" style="display:none"></span>
             <div style="font-weight:600;font-size:.94rem;color:var(--t0);margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--b2)">Edit Show</div>
             <div class="em-row"><div class="em-lbl">Title</div><input id="em-title-in" class="em-input" type="text" placeholder="Show title"></div>
-            <div class="em-row"><div class="em-lbl">Type</div><div id="em-type-opts" style="display:flex;flex-direction:column;gap:5px;margin-top:2px"></div></div>
+            <div class="em-row"><div class="em-lbl">Type</div><div id="em-type-opts" class="rm-type-row"></div><div id="em-type-desc" class="rm-type-desc"></div></div>
             <div class="em-row"><div class="em-lbl">Transcode</div><select id="em-transcode" class="em-input"><option value="none">None (copy stream)</option><option value="heavy">Heavy (H.264 CRF 18)</option><option value="mobile">Mobile (480p H.264)</option><option value="internet720">Internet 720 (720p H.264)</option></select></div>
             <div id="em-bonus-row" style="margin-bottom:8px;display:flex;align-items:center;gap:8px"><label class="em-check"><input type="checkbox" class="mac-switch" id="em-bonus" onchange="toggleBonusStar()"><span>Bonus Time (extend recording past guide end)</span></label></div>
             <div id="em-days-row" class="em-row" style="display:none"><div class="em-lbl" id="em-days-lbl">Days</div><div class="em-days" id="em-days"></div></div>
@@ -2157,12 +2153,39 @@ final class WebServer: @unchecked Sendable {
           document.querySelectorAll('.g-prog.g-sel').forEach(function(b){b.classList.remove('g-sel');});
           var bstar=document.getElementById('sum-bonus-star');bstar.style.display='none';bstar.classList.remove('sb-anim');
         }
+        // t = short label, matching native ShowState.rawValue exactly (native is the layout
+        // baseline both modals mirror) — shown on the button itself. d = longer description,
+        // shown on a single line below the button row for whichever option is selected.
         var recOpts=[
-          {v:'single',        l:'Single episode',       d:'Record this airing only',               s:false},
-          {v:'dateTime',      l:'Weekly repeat',         d:'Record at this time each week',         s:false},
-          {v:'seriesChannel', l:'Series — this channel', d:'Record new episodes on this channel',   s:true},
-          {v:'seriesAll',     l:'Series — any channel',  d:'Record new episodes on any channel',    s:true}
+          {v:'single',        t:'Single',            d:'Record this airing only'},
+          {v:'dateTime',      t:'DateTime',          d:'Record at this time each week'},
+          {v:'seriesChannel', t:'SeriesID(Channel)', d:'Record new episodes on this channel'},
+          {v:'seriesAll',     t:'SeriesID(All)',     d:'Record new episodes on any channel'}
         ];
+        // Renders the Type row as compact buttons (native's segmented Type picker equivalent)
+        // plus one description line for whichever option is selected — puts every option along
+        // the top like the native wizard, with the rest of the form below, instead of the old
+        // one-card-per-row stacked layout. Shared by the Record and Edit modals.
+        function renderTypeRow(containerId,descId,selected,onSelect){
+          var container=document.getElementById(containerId);
+          var descEl=document.getElementById(descId);
+          container.innerHTML='';
+          recOpts.forEach(function(o){
+            var btn=document.createElement('button');
+            btn.type='button';
+            btn.className='rm-type-btn'+(o.v===selected?' sel':'');
+            btn.textContent=o.t;
+            btn.onclick=function(){
+              Array.from(container.querySelectorAll('.rm-type-btn')).forEach(function(b){b.classList.remove('sel');});
+              btn.classList.add('sel');
+              descEl.textContent=o.d;
+              onSelect(o.v);
+            };
+            container.appendChild(btn);
+          });
+          var initial=recOpts.filter(function(o){return o.v===selected;})[0]||recOpts[0];
+          descEl.textContent=initial.d;
+        }
         // 3-bar signal SVG (same geometry/palette as the guide-row bars). bucket: poor|fair|good.
         function _sigBarsSvg(bucket){
           var color=bucket==='poor'?'#e53935':bucket==='fair'?'#fbc02d':'#43a047';
@@ -2200,18 +2223,10 @@ final class WebServer: @unchecked Sendable {
           }
           document.getElementById('rm-title-in').value=_title||'';
           document.getElementById('rm-ch').textContent=document.getElementById('sum-ct').textContent||'';
-          var opts=document.getElementById('rm-opts');opts.innerHTML='';var first=true;
-          recOpts.forEach(function(o){
-            var lbl=document.createElement('label');lbl.className='rm-lbl';
-            var inp=document.createElement('input');inp.type='radio';inp.name='rm-type';inp.value=o.v;
-            if(first){inp.checked=true;first=false;lbl.className='rm-lbl rm-sel';}
-            var info=document.createElement('div');
-            info.innerHTML='<div class="rm-opt-l">'+o.l+'</div><div class="rm-opt-d">'+o.d+'</div>';
-            lbl.appendChild(inp);lbl.appendChild(info);opts.appendChild(lbl);
-          });
           document.getElementById('rm-sid').style.display='none';
           document.getElementById('rm-airings').style.display='none';
           _airCache={};_airGen++;var _myGen=_airGen;
+          _rmType='single';
           // Build day buttons — pre-check the day-of-week matching the guide entry
           _entryDow=new Date(_s*1000).getDay();
           var rmDaysEl=document.getElementById('rm-days');rmDaysEl.innerHTML='';
@@ -2220,9 +2235,7 @@ final class WebServer: @unchecked Sendable {
             btn.type='button';btn.className='day-btn'+(i===_entryDow?' sel':'');
             btn.textContent=_dayShort[i];btn.dataset.day=day;
             btn.onclick=function(){
-              var checked=document.querySelector('input[name="rm-type"]:checked');
-              var v=checked?checked.value:'single';
-              if(v==='single'){
+              if(_rmType==='single'){
                 var wasSel=this.classList.contains('sel');
                 Array.from(rmDaysEl.querySelectorAll('.day-btn.sel')).forEach(function(b){b.classList.remove('sel');});
                 if(!wasSel)this.classList.add('sel');
@@ -2245,9 +2258,8 @@ final class WebServer: @unchecked Sendable {
           var isLive=(_s<=nowTs&&_e>nowTs);
           document.getElementById('rm-tuner').style.display=(isLive&&devFull(_d))?'block':'none';
           renderRmSignal();
-          opts.onchange=function(){
-            Array.from(opts.querySelectorAll('.rm-lbl')).forEach(function(l){l.classList.toggle('rm-sel',l.querySelector('input').checked);});
-            var v=(document.querySelector('input[name="rm-type"]:checked')||{}).value||'';
+          renderTypeRow('rm-opts','rm-type-desc','single',function(v){
+            _rmType=v;
             var isSeries=v==='seriesChannel'||v==='seriesAll';
             var sid=document.getElementById('rm-sid');
             if(isSeries&&_ser){document.getElementById('rm-sid-val').textContent=_ser;sid.style.display='flex';}
@@ -2263,10 +2275,10 @@ final class WebServer: @unchecked Sendable {
             }
             if(isSeries&&_ser){loadAirings(_ser,_myGen);}
             else{document.getElementById('rm-airings').style.display='none';}
-          };
+          });
           document.getElementById('rec-modal').style.display='flex';
         }
-        var _airCache={},_airGen=0,_airCurrent=[],_entryDow=0;
+        var _airCache={},_airGen=0,_airCurrent=[],_entryDow=0,_rmType='single';
         function loadAirings(ser,gen){
           if(_airCache[ser]){renderAirings(_airCache[ser]);return;}
           fetch('/api/airings/'+encodeURIComponent(ser)).then(function(r){return r.json();}).then(function(d){
@@ -2321,8 +2333,7 @@ final class WebServer: @unchecked Sendable {
         function cancelRecord(){document.getElementById('rec-modal').style.display='none';var rbstar=document.getElementById('rm-bonus-star');rbstar.style.display='none';rbstar.classList.remove('sb-anim');}
         function toggleRmBonusStar(){var chk=document.getElementById('rm-bonus');var star=document.getElementById('rm-bonus-star');if(chk.checked){star.textContent='+'+_bonusMins+'m';star.style.display='inline-flex';triggerSb('rm-bonus-star');}else{star.style.display='none';star.classList.remove('sb-anim');}}
         function confirmRecord(){
-          var checked=document.querySelector('input[name="rm-type"]:checked');
-          var type=checked?checked.value:'single';
+          var type=_rmType||'single';
           var airDays=Array.from(document.querySelectorAll('#rm-days .day-btn.sel')).map(function(b){return b.dataset.day;});
           var transcode=document.getElementById('rm-transcode').value;
           var editedTitle=document.getElementById('rm-title-in').value.trim();
@@ -2669,18 +2680,8 @@ final class WebServer: @unchecked Sendable {
           document.getElementById('em-title-in').value=d.title||'';
           document.getElementById('em-ch-in').value=d.ch||'';
           document.getElementById('em-len-in').value=d.length||'60';
-          var opts=document.getElementById('em-type-opts');opts.innerHTML='';
-          recOpts.forEach(function(o){
-            var lbl=document.createElement('label');lbl.className='rm-lbl';
-            var inp=document.createElement('input');inp.type='radio';inp.name='em-type';inp.value=o.v;
-            if(o.v===_editType){inp.checked=true;lbl.className='rm-lbl rm-sel';}
-            inp.onchange=function(){
-              _editType=this.value;updateDaysVisibility();
-              Array.from(opts.querySelectorAll('.rm-lbl')).forEach(function(l){l.classList.toggle('rm-sel',l.querySelector('input').checked);});
-            };
-            var info=document.createElement('div');
-            info.innerHTML='<div class="rm-opt-l">'+o.l+'</div><div class="rm-opt-d">'+o.d+'</div>';
-            lbl.appendChild(inp);lbl.appendChild(info);opts.appendChild(lbl);
+          renderTypeRow('em-type-opts','em-type-desc',_editType,function(v){
+            _editType=v;updateDaysVisibility();
           });
           var selDays=(d.airdays||'').split(',').filter(Boolean);
           var daysEl=document.getElementById('em-days');daysEl.innerHTML='';
@@ -2734,11 +2735,10 @@ final class WebServer: @unchecked Sendable {
           }).catch(function(){btn.disabled=false;btn.textContent='Reset';});
         }
         function confirmEdit(){
-          var ck=document.querySelector('input[name="em-type"]:checked');if(!ck)return;
           var btn=document.getElementById('em-save');btn.disabled=true;btn.textContent='Saving…';
           var selDays=Array.from(document.querySelectorAll('#em-days .day-btn.sel')).map(function(b){return b.dataset.day;});
           var payload={
-            showId:_editId,showType:ck.value,
+            showId:_editId,showType:_editType,
             title:document.getElementById('em-title-in').value.trim(),
             channel:document.getElementById('em-ch-in').value.trim(),
             length:parseInt(document.getElementById('em-len-in').value)||60,
