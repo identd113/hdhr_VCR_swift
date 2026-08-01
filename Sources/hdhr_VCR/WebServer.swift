@@ -1579,12 +1579,14 @@ final class WebServer: @unchecked Sendable {
         #t-pop-status{color:var(--ac)!important;border-color:var(--b0)!important}
         /* ── Record modal ── */
         #rm-ch{color:var(--t4)!important}
-        #rm-sid{background:var(--bg)!important;color:var(--t4)!important}
-        #rm-sid-val{color:var(--t3)!important}
-        .rm-type-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:2px}
-        .rm-type-btn{background:var(--s4);border:1px solid var(--b3);color:var(--t2);border-radius:6px;padding:6px 10px;font-size:.76rem;font-weight:500;cursor:pointer;transition:background .12s,border-color .12s,color .12s;white-space:nowrap}
-        .rm-type-btn:hover{background:rgba(127,127,127,.10)}
-        .rm-type-btn.sel{background:var(--ac);border-color:var(--ac);color:#fff}
+        /* Type row — joined segmented-bar look (thin dividers between segments, rounded only at
+           the outer ends), matching native's .pickerStyle(.segmented) instead of separate pill
+           buttons with gaps between them. */
+        .rm-type-row{display:flex;border:1px solid var(--b3);border-radius:7px;overflow:hidden;width:fit-content;max-width:100%}
+        .rm-type-btn{background:var(--s4);border:none;border-right:1px solid var(--b3);color:var(--t2);padding:6px 12px;font-size:.8rem;font-weight:500;cursor:pointer;transition:background .12s,color .12s;white-space:nowrap}
+        .rm-type-btn:last-child{border-right:none}
+        .rm-type-btn:hover:not(.sel){background:rgba(127,127,127,.10)}
+        .rm-type-btn.sel{background:var(--ac);color:#fff}
         .rm-type-desc{font-size:.72rem;color:var(--t4);margin-top:5px;line-height:1.3}
         html.lm #rm-tuner{color:#7a3c00;background:#fff8e8;border-color:#d09020}
         /* ── Guide grid ── */
@@ -1870,13 +1872,13 @@ final class WebServer: @unchecked Sendable {
         }
         #em-rec-warn{color:#ff9090!important;background:#3c1818!important;border-color:#883030!important}
         html.lm #em-rec-warn{color:#8b0000!important;background:#fce8e8!important;border-color:#cc3030!important}
-        /* macOS-style switch (Bonus Time toggle) */
-        .mac-switch{-webkit-appearance:none;appearance:none;width:32px;height:19px;border-radius:10px;flex-shrink:0;background:var(--b3);border:none;position:relative;cursor:pointer;transition:background .18s ease;outline:none}
-        .mac-switch::before{content:'';position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.35),0 0 0 .5px rgba(0,0,0,.06);transition:transform .18s cubic-bezier(.4,0,.2,1)}
-        .mac-switch:checked{background:var(--ac)}
-        .mac-switch:checked::before{transform:translateX(13px)}
-        .mac-switch:focus-visible{box-shadow:0 0 0 3px var(--acb)}
-        .mac-switch:disabled{opacity:.4;cursor:default}
+        /* macOS-style checkbox (Bonus Time toggle) — native's default Toggle style outside a
+           List/Form is a checkbox, not a switch, so this replaces the earlier pill-switch look. */
+        .mac-check{-webkit-appearance:none;appearance:none;width:16px;height:16px;border-radius:4px;border:1px solid var(--b4);background:var(--s3);cursor:pointer;position:relative;flex-shrink:0;transition:background .12s,border-color .12s;outline:none}
+        .mac-check:checked{background:var(--ac);border-color:var(--ac)}
+        .mac-check:checked::after{content:'';position:absolute;left:5px;top:2px;width:4px;height:8px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}
+        .mac-check:focus-visible{box-shadow:0 0 0 3px var(--acb)}
+        .mac-check:disabled{opacity:.4;cursor:default}
         /* macOS-style bordered/borderedProminent buttons */
         .mac-btn{font-size:.8rem;padding:6px 16px;border-radius:7px;cursor:pointer;font-weight:590;font-family:inherit;line-height:1.2;transition:background .1s,box-shadow .1s,opacity .1s;border:none}
         .mac-btn:active{filter:brightness(.92)}
@@ -1891,19 +1893,27 @@ final class WebServer: @unchecked Sendable {
         html.lm .mac-btn-destructive{background:rgba(197,48,48,.10);color:#c0392b;box-shadow:0 0 0 1px rgba(197,48,48,.35) inset}
         .mac-btn-destructive:hover{background:rgba(197,48,48,.22)}
         html.lm .mac-btn-destructive:hover{background:rgba(197,48,48,.16)}
-        .em-row{display:flex;flex-direction:column;gap:3px;margin-bottom:8px}
-        .em-lbl{font-size:.68rem;color:var(--t4);font-weight:600;text-transform:uppercase;letter-spacing:.06em}
-        .em-input{background:var(--bg);border:1px solid var(--b3);border-radius:5px;padding:5px 8px;font-size:.82rem;color:var(--t0);width:100%;outline:none;font-family:inherit}
+        /* Record/Edit modal rows — inline label + content, matching native's LabeledContent look
+           (label to the left, content following on the same row) instead of a label-above-value
+           form caption. */
+        .em-row{display:flex;align-items:flex-start;gap:10px;margin-bottom:14px}
+        .em-lbl{font-size:.85rem;color:var(--t1);flex-shrink:0;padding-top:6px}
+        .em-content{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+        .em-input{background:var(--bg);border:1px solid var(--b3);border-radius:5px;padding:5px 8px;font-size:.82rem;color:var(--t0);outline:none;font-family:inherit}
         .em-input:focus{border-color:var(--ac)}
-        select.em-input{cursor:pointer}
-        .em-input-sm{width:84px}
-        .em-fail{font-size:.75rem;color:#ff9090;padding:5px 8px;background:#3c1818;border:1px solid #883030;border-radius:5px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:8px}
-        html.lm .em-fail{color:#8b0000;background:#fce8e8;border-color:#cc3030}
+        input.em-input{width:100%}
+        select.em-input{cursor:pointer;width:auto;min-width:150px}
+        .em-input-sm{width:84px!important}
+        .em-fail-content{display:flex;align-items:center;gap:8px;font-size:.82rem;color:#ff9090;padding-top:5px}
+        html.lm .em-fail-content{color:#c0392b}
+        .em-fail-reset{font-size:.72rem;padding:3px 8px;border-radius:4px;border:1px solid currentColor;background:transparent;color:inherit;cursor:pointer;flex-shrink:0;white-space:nowrap}
         .day-btn{background:var(--s4);border:1px solid var(--b3);color:var(--t3);border-radius:4px;padding:4px 7px;font-size:.72rem;cursor:pointer;transition:background .12s,border-color .12s,color .12s}
         .day-btn.sel{background:var(--ac);border-color:var(--ac);color:#fff}
-        .em-days{display:flex;gap:4px;flex-wrap:wrap}
-        .em-check{display:flex;align-items:center;gap:7px;font-size:.82rem;color:var(--t1);cursor:pointer;margin-bottom:8px}
-        .em-sid{font-size:.72rem;color:var(--t4);font-family:monospace;word-break:break-all;margin-top:2px}
+        .em-days{display:flex;gap:4px;flex-wrap:wrap;padding-top:6px}
+        .em-check{display:flex;align-items:center;gap:7px;font-size:.85rem;color:var(--t1);cursor:pointer;padding-top:5px}
+        .em-sid{font-size:.78rem;color:var(--t3);font-family:monospace;word-break:break-all;padding-top:6px}
+        .em-panel-hdr{font-size:.74rem;font-weight:700;color:var(--t3);margin-bottom:6px}
+        .em-panel{background:rgba(127,127,127,.08);border-radius:8px;padding:8px}
         #splash{opacity:0;animation:splash-show .2s ease .3s forwards}
         @keyframes splash-show{to{opacity:1}}
         </style>
@@ -1969,18 +1979,20 @@ final class WebServer: @unchecked Sendable {
             <div style="font-weight:600;font-size:.94rem;color:var(--t0);margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--b2)">Record Show</div>
             <div class="em-row">
               <div class="em-lbl">Title</div>
-              <input id="rm-title-in" class="em-input" type="text">
-              <div id="rm-ch" style="font-size:.72rem;color:var(--t4);margin-top:3px"></div>
-              <div id="rm-sig" style="margin-top:4px;min-height:12px"></div>
+              <div class="em-content">
+                <input id="rm-title-in" class="em-input" type="text">
+                <div id="rm-ch" style="font-size:.72rem;color:var(--t4)"></div>
+                <div id="rm-sig" style="min-height:12px"></div>
+              </div>
             </div>
-            <div class="em-row"><div class="em-lbl">Type</div><div id="rm-opts" class="rm-type-row"></div><div id="rm-type-desc" class="rm-type-desc"></div></div>
+            <div class="em-row"><div class="em-lbl">Type</div><div class="em-content"><div id="rm-opts" class="rm-type-row"></div><div id="rm-type-desc" class="rm-type-desc"></div></div></div>
             <div class="em-row"><div class="em-lbl">Transcode</div><select id="rm-transcode" class="em-input"><option value="none">None (copy stream)</option><option value="heavy">Heavy (H.264 CRF 18)</option><option value="mobile">Mobile (480p H.264)</option><option value="internet720">Internet 720 (720p H.264)</option></select></div>
-            <div id="rm-bonus-row" style="margin-bottom:8px;display:flex;align-items:center;gap:8px"><label class="em-check"><input type="checkbox" class="mac-switch" id="rm-bonus" onchange="toggleRmBonusStar()"><span>Bonus Time (+\(state.config.Sports_padding_minutes) min past guide end)</span></label></div>
+            <div id="rm-bonus-row" class="em-row"><div class="em-lbl">Bonus Time</div><label class="em-check"><input type="checkbox" class="mac-check" id="rm-bonus" onchange="toggleRmBonusStar()"><span>+\(state.config.Sports_padding_minutes) min past guide end</span></label></div>
             <div id="rm-days-row" class="em-row" style="display:none"><div class="em-lbl" id="rm-days-lbl">Days</div><div class="em-days" id="rm-days"></div></div>
             <div id="rm-sid" class="em-row" style="display:none"><div class="em-lbl">SeriesID</div><div id="rm-sid-val" class="em-sid"></div></div>
-            <div id="rm-airings" class="em-row" style="display:none">
-              <div class="em-lbl">Other Upcoming Airings</div>
-              <div id="rm-airings-list" style="margin-top:2px"></div>
+            <div id="rm-airings" style="display:none;margin-bottom:14px">
+              <div class="em-panel-hdr">Other Upcoming Airings</div>
+              <div id="rm-airings-list" class="em-panel"></div>
             </div>
             <div id="rm-tuner" style="display:none;font-size:.74rem;color:#ffcc66;background:#2a1e00;border:1px solid #7a5500;border-radius:6px;padding:7px 10px;margin-bottom:10px"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" style="vertical-align:-2px;margin-right:3px"><path d="M8 1.6 1.4 13.2c-.4.7.1 1.6 1 1.6h11.2c.9 0 1.4-.9 1-1.6L8.6 1.6a.7.7 0 0 0-1.2 0Z" fill="currentColor"/><rect x="7.3" y="5.6" width="1.4" height="4.2" rx=".7" fill="#2a1e00"/><rect x="7.3" y="10.6" width="1.4" height="1.4" rx=".7" fill="#2a1e00"/></svg>All tuners are currently in use. This show will be queued and recorded as soon as a tuner is free.</div>
             <div id="rm-sig-warn" style="display:none;font-size:.74rem;color:#ffcc66;background:#2a1e00;border:1px solid #7a5500;border-radius:6px;padding:7px 10px;margin-bottom:10px"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" style="vertical-align:-2px;margin-right:3px"><path d="M8 1.6 1.4 13.2c-.4.7.1 1.6 1 1.6h11.2c.9 0 1.4-.9 1-1.6L8.6 1.6a.7.7 0 0 0-1.2 0Z" fill="currentColor"/><rect x="7.3" y="5.6" width="1.4" height="4.2" rx=".7" fill="#2a1e00"/><rect x="7.3" y="10.6" width="1.4" height="1.4" rx=".7" fill="#2a1e00"/></svg>Weak signal on this channel — recordings may drop out or fail.</div>
@@ -1995,16 +2007,14 @@ final class WebServer: @unchecked Sendable {
             <span id="em-bonus-star" class="sb-web sb-web-lg" style="display:none"></span>
             <div style="font-weight:600;font-size:.94rem;color:var(--t0);margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--b2)">Edit Show</div>
             <div class="em-row"><div class="em-lbl">Title</div><input id="em-title-in" class="em-input" type="text" placeholder="Show title"></div>
-            <div class="em-row"><div class="em-lbl">Type</div><div id="em-type-opts" class="rm-type-row"></div><div id="em-type-desc" class="rm-type-desc"></div></div>
+            <div class="em-row"><div class="em-lbl">Type</div><div class="em-content"><div id="em-type-opts" class="rm-type-row"></div><div id="em-type-desc" class="rm-type-desc"></div></div></div>
             <div class="em-row"><div class="em-lbl">Transcode</div><select id="em-transcode" class="em-input"><option value="none">None (copy stream)</option><option value="heavy">Heavy (H.264 CRF 18)</option><option value="mobile">Mobile (480p H.264)</option><option value="internet720">Internet 720 (720p H.264)</option></select></div>
-            <div id="em-bonus-row" style="margin-bottom:8px;display:flex;align-items:center;gap:8px"><label class="em-check"><input type="checkbox" class="mac-switch" id="em-bonus" onchange="toggleBonusStar()"><span>Bonus Time (extend recording past guide end)</span></label></div>
+            <div id="em-bonus-row" class="em-row"><div class="em-lbl">Bonus Time</div><label class="em-check"><input type="checkbox" class="mac-check" id="em-bonus" onchange="toggleBonusStar()"><span>Extend recording past guide end</span></label></div>
             <div id="em-days-row" class="em-row" style="display:none"><div class="em-lbl" id="em-days-lbl">Days</div><div class="em-days" id="em-days"></div></div>
-            <div style="display:flex;gap:8px;margin-bottom:8px">
-              <div class="em-row" style="margin-bottom:0;flex:0 0 auto"><div class="em-lbl">Channel</div><input id="em-ch-in" class="em-input em-input-sm" type="text" placeholder="e.g. 5.4"></div>
-              <div class="em-row" style="margin-bottom:0;flex:0 0 auto"><div class="em-lbl">Length (min)</div><input id="em-len-in" class="em-input em-input-sm" type="number" min="1" max="1440" placeholder="60"></div>
-            </div>
-            <div id="em-fail-row" style="display:none" class="em-fail"><span id="em-fail-txt"></span><button id="em-reset" onclick="doEditReset()" style="font-size:.72rem;padding:3px 8px;border-radius:4px;border:1px solid currentColor;background:transparent;color:inherit;cursor:pointer;flex-shrink:0;white-space:nowrap">Reset</button></div>
-            <div id="em-sid-row" style="display:none;margin-bottom:8px"><div class="em-lbl">SeriesID</div><div id="em-sid" class="em-sid"></div></div>
+            <div class="em-row"><div class="em-lbl">Channel</div><input id="em-ch-in" class="em-input em-input-sm" type="text" placeholder="e.g. 5.4"></div>
+            <div class="em-row"><div class="em-lbl">Length (min)</div><input id="em-len-in" class="em-input em-input-sm" type="number" min="1" max="1440" placeholder="60"></div>
+            <div id="em-fail-row" class="em-row" style="display:none"><div class="em-lbl">Failures</div><div class="em-fail-content"><span id="em-fail-txt"></span><button id="em-reset" onclick="doEditReset()" class="em-fail-reset">Reset</button></div></div>
+            <div id="em-sid-row" class="em-row" style="display:none"><div class="em-lbl">SeriesID</div><div id="em-sid" class="em-sid"></div></div>
             <div id="em-rec-warn" style="display:none;font-size:.74rem;color:#ff9090;background:#3c1818;border:1px solid #883030;border-radius:6px;padding:7px 10px;margin-bottom:10px"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:currentColor;margin-right:4px;vertical-align:1px"></span>Recording now — delete will stop the active recording.</div>
             <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--b2)">
               <button id="em-del" onclick="doEditDelete()" class="mac-btn mac-btn-destructive">Delete</button>
