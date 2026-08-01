@@ -1978,14 +1978,14 @@ final class WebServer: @unchecked Sendable {
               <div id="rm-sig" style="margin-top:4px;min-height:12px"></div>
             </div>
             <div class="em-row"><div class="em-lbl">Type</div><div id="rm-opts" style="display:flex;flex-direction:column;gap:5px;margin-top:2px"></div></div>
+            <div class="em-row"><div class="em-lbl">Transcode</div><select id="rm-transcode" class="em-input"><option value="none">None (copy stream)</option><option value="heavy">Heavy (H.264 CRF 18)</option><option value="mobile">Mobile (480p H.264)</option><option value="internet720">Internet 720 (720p H.264)</option></select></div>
+            <div id="rm-bonus-row" style="margin-bottom:8px;display:flex;align-items:center;gap:8px"><label class="em-check"><input type="checkbox" class="mac-switch" id="rm-bonus" onchange="toggleRmBonusStar()"><span>Bonus Time (+\(state.config.Sports_padding_minutes) min past guide end)</span></label></div>
+            <div id="rm-days-row" class="em-row" style="display:none"><div class="em-lbl" id="rm-days-lbl">Days</div><div class="em-days" id="rm-days"></div></div>
             <div id="rm-sid" class="em-row" style="display:none"><div class="em-lbl">SeriesID</div><div id="rm-sid-val" class="em-sid"></div></div>
             <div id="rm-airings" class="em-row" style="display:none">
               <div class="em-lbl">Other Upcoming Airings</div>
               <div id="rm-airings-list" style="margin-top:2px"></div>
             </div>
-            <div class="em-row"><div class="em-lbl">Transcode</div><select id="rm-transcode" class="em-input"><option value="none">None (copy stream)</option><option value="heavy">Heavy (H.264 CRF 18)</option><option value="mobile">Mobile (480p H.264)</option><option value="internet720">Internet 720 (720p H.264)</option></select></div>
-            <div id="rm-bonus-row" style="margin-bottom:8px;display:flex;align-items:center;gap:8px"><label class="em-check"><input type="checkbox" class="mac-switch" id="rm-bonus" onchange="toggleRmBonusStar()"><span>Bonus Time (+\(state.config.Sports_padding_minutes) min past guide end)</span></label></div>
-            <div id="rm-days-row" class="em-row" style="display:none"><div class="em-lbl" id="rm-days-lbl">Days</div><div class="em-days" id="rm-days"></div></div>
             <div id="rm-tuner" style="display:none;font-size:.74rem;color:#ffcc66;background:#2a1e00;border:1px solid #7a5500;border-radius:6px;padding:7px 10px;margin-bottom:10px"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" style="vertical-align:-2px;margin-right:3px"><path d="M8 1.6 1.4 13.2c-.4.7.1 1.6 1 1.6h11.2c.9 0 1.4-.9 1-1.6L8.6 1.6a.7.7 0 0 0-1.2 0Z" fill="currentColor"/><rect x="7.3" y="5.6" width="1.4" height="4.2" rx=".7" fill="#2a1e00"/><rect x="7.3" y="10.6" width="1.4" height="1.4" rx=".7" fill="#2a1e00"/></svg>All tuners are currently in use. This show will be queued and recorded as soon as a tuner is free.</div>
             <div id="rm-sig-warn" style="display:none;font-size:.74rem;color:#ffcc66;background:#2a1e00;border:1px solid #7a5500;border-radius:6px;padding:7px 10px;margin-bottom:10px"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" style="vertical-align:-2px;margin-right:3px"><path d="M8 1.6 1.4 13.2c-.4.7.1 1.6 1 1.6h11.2c.9 0 1.4-.9 1-1.6L8.6 1.6a.7.7 0 0 0-1.2 0Z" fill="currentColor"/><rect x="7.3" y="5.6" width="1.4" height="4.2" rx=".7" fill="#2a1e00"/><rect x="7.3" y="10.6" width="1.4" height="1.4" rx=".7" fill="#2a1e00"/></svg>Weak signal on this channel — recordings may drop out or fail.</div>
             <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--b2)">
@@ -1999,16 +1999,16 @@ final class WebServer: @unchecked Sendable {
             <span id="em-bonus-star" class="sb-web sb-web-lg" style="display:none"></span>
             <div style="font-weight:600;font-size:.94rem;color:var(--t0);margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--b2)">Edit Show</div>
             <div class="em-row"><div class="em-lbl">Title</div><input id="em-title-in" class="em-input" type="text" placeholder="Show title"></div>
-            <div style="display:flex;gap:8px;margin-bottom:8px">
-              <div class="em-row" style="margin-bottom:0;flex:0 0 auto"><div class="em-lbl">Channel</div><input id="em-ch-in" class="em-input em-input-sm" type="text" placeholder="e.g. 5.4"></div>
-              <div class="em-row" style="margin-bottom:0;flex:0 0 auto"><div class="em-lbl">Length (min)</div><input id="em-len-in" class="em-input em-input-sm" type="number" min="1" max="1440" placeholder="60"></div>
-            </div>
             <div class="em-row"><div class="em-lbl">Type</div><div id="em-type-opts" style="display:flex;flex-direction:column;gap:5px;margin-top:2px"></div></div>
             <div class="em-row"><div class="em-lbl">Transcode</div><select id="em-transcode" class="em-input"><option value="none">None (copy stream)</option><option value="heavy">Heavy (H.264 CRF 18)</option><option value="mobile">Mobile (480p H.264)</option><option value="internet720">Internet 720 (720p H.264)</option></select></div>
             <div id="em-bonus-row" style="margin-bottom:8px;display:flex;align-items:center;gap:8px"><label class="em-check"><input type="checkbox" class="mac-switch" id="em-bonus" onchange="toggleBonusStar()"><span>Bonus Time (extend recording past guide end)</span></label></div>
             <div id="em-days-row" class="em-row" style="display:none"><div class="em-lbl" id="em-days-lbl">Days</div><div class="em-days" id="em-days"></div></div>
-            <div id="em-sid-row" style="display:none;margin-bottom:8px"><div class="em-lbl">SeriesID</div><div id="em-sid" class="em-sid"></div></div>
+            <div style="display:flex;gap:8px;margin-bottom:8px">
+              <div class="em-row" style="margin-bottom:0;flex:0 0 auto"><div class="em-lbl">Channel</div><input id="em-ch-in" class="em-input em-input-sm" type="text" placeholder="e.g. 5.4"></div>
+              <div class="em-row" style="margin-bottom:0;flex:0 0 auto"><div class="em-lbl">Length (min)</div><input id="em-len-in" class="em-input em-input-sm" type="number" min="1" max="1440" placeholder="60"></div>
+            </div>
             <div id="em-fail-row" style="display:none" class="em-fail"><span id="em-fail-txt"></span><button id="em-reset" onclick="doEditReset()" style="font-size:.72rem;padding:3px 8px;border-radius:4px;border:1px solid currentColor;background:transparent;color:inherit;cursor:pointer;flex-shrink:0;white-space:nowrap">Reset</button></div>
+            <div id="em-sid-row" style="display:none;margin-bottom:8px"><div class="em-lbl">SeriesID</div><div id="em-sid" class="em-sid"></div></div>
             <div id="em-rec-warn" style="display:none;font-size:.74rem;color:#ff9090;background:#3c1818;border:1px solid #883030;border-radius:6px;padding:7px 10px;margin-bottom:10px"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:currentColor;margin-right:4px;vertical-align:1px"></span>Recording now — delete will stop the active recording.</div>
             <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--b2)">
               <button id="em-del" onclick="doEditDelete()" class="mac-btn mac-btn-destructive">Delete</button>
