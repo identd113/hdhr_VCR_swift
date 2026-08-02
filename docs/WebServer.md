@@ -1002,11 +1002,31 @@ Stop with **Ctrl+C** — the loopback alias (`127.0.0.2`) is removed automatical
 
 With the mock running, the web server will show two devices in the switcher bar and a combined channel list in the guide grid.
 
+**Gotcha — `FFFF0001` collision with a leftover config test device.** This mock's hardcoded device ID (`FFFF0001`) is the same ID a fake EXTEND device sometimes left sitting in a dev config points at (kept intentionally to exercise the "tuner no longer detected" edit-modal path above — see `tools/mock_scenario.py` below, and the "Web guide offline devices" invariant in `CLAUDE.md`). If a show in `state.shows` references `hdhr_record: "FFFF0001"` and you start `mock_hdhr.py`, that device suddenly becomes *detected* (real mDNS + UDP responses), so the show stops showing the not-detected edit-modal banner for as long as the mock runs. Expected, not a bug — just worth knowing before you go looking for why that banner disappeared.
+
+---
+
+### Scenario mocking with mock_scenario.py
+
+`tools/mock_scenario.py` plants mock states in the **running app** over its own live web/guide API — no root, no fake device, no second tuner. It reads the real guide and either schedules `[MOCK] `-prefixed shows or plants a fake "already recorded" stub file, then can clean up after itself. Verified working end-to-end (2026-08-01): `record-test` schedules a real now-airing entry and confirms the recorder actually writes growing bytes before cleaning up; `conflict` schedules N+1 overlapping shows on an N-tuner device and confirms the conflict; `clean` removes only its own `[MOCK]`-titled shows and `19700101_0000`-signed files.
+
+```bash
+tools/mock_scenario.py list                    # upcoming managed airings mockable via `duplicate`
+tools/mock_scenario.py duplicate [--series X]   # plant a fake "already recorded" file → green skip flag
+tools/mock_scenario.py conflict [--device X]    # schedule overlapping shows on one tuner → conflict
+tools/mock_scenario.py record-test [--series X] # schedule a now-airing entry, verify it records, self-clean
+tools/mock_scenario.py clean                    # remove everything the tool created
+```
+
+Needs the app running with the web server on; `duplicate` also needs Series-subfolders + Skip-already-recorded on. Not wired into `swift test` or `deploy.sh` — it's a manual/on-demand check, and `record-test` in particular is the best available regression check for the RecordingManager pipeline (spawn/write/stop), which has no automated unit-test coverage since it drives a real `curl` process.
+
 ---
 
 ### Testing a recording without live TV
 
 From CLAUDE.md: set `show_next` to `now + 30 s` and `show_end` to `now + 2 min` in the saved config JSON, then restart the app. The idle loop will pick it up and attempt to start `curl`. Check `show_fail_reason` in the config if it fails; enable verbose curl (Settings → Advanced) to see the raw HTTP exchange with the device.
+
+**Simpler alternative:** `tools/mock_scenario.py record-test` (see above) does this same schedule-and-verify against a real currently-airing guide entry, without hand-editing the config JSON, and self-cleans afterward.
 
 ---
 
