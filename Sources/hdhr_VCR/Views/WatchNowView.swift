@@ -48,26 +48,22 @@ struct WatchNowView: View {
         .task { await boundaryRefreshLoop() }
     }
 
-    private static let favAmber = Color(hue: 0.13, saturation: 0.85, brightness: 0.80)
+    // favAmber lives in GuideViewHelpers.swift, shared with MenuContent/VLCPlayerView.
 
     private var favTopBorder: some View {
         VStack(spacing: 0) {
-            Rectangle().fill(Self.favAmber).frame(height: 2)
+            Rectangle().fill(favAmber).frame(height: 2)
             HStack(spacing: 5) {
                 Text("★  Favorites")
                     .font(.caption.bold())
-                    .foregroundStyle(Self.favAmber)
+                    .foregroundStyle(favAmber)
                 Spacer()
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 5)
-            .background(Self.favAmber.opacity(0.08))
-            Rectangle().fill(Self.favAmber).frame(height: 1)
+            // 16% matches the Guide's color-mix(in srgb, var(--fav) 16%, var(--s1)) row wash.
+            .background(favAmber.opacity(0.16))
         }
-    }
-
-    private var favBottomBorder: some View {
-        Rectangle().fill(Self.favAmber).frame(height: 2)
     }
 
     @ViewBuilder
@@ -204,7 +200,6 @@ struct WatchNowView: View {
                         ForEach(favs, id: \.channel.id) { pair in
                             channelRow(pair, device: device)
                         }
-                        favBottomBorder
                     }
                     ForEach(others, id: \.channel.id) { pair in
                         channelRow(pair, device: device)
@@ -274,6 +269,9 @@ struct WatchNowRow: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
+        // Matches the web Guide's .g-row[data-fav="1"] row wash — favorited rows are
+        // highlighted throughout, not just under the "★ Favorites" section divider.
+        .background(channel.isFavorite ? favAmber.opacity(0.16) : Color.clear)
         .alert("All Tuners Busy", isPresented: $showTunerFullAlert) {
             Button("OK", role: .cancel) { }
         } message: {

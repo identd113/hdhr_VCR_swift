@@ -1,10 +1,50 @@
 import SwiftUI
+import AppKit
 
 // Shared brand colors used by MenuContent, WatchNowView, and VLCPlayerView.
 let watchNowBlue   = Color(red: 0.2, green: 0.6, blue: 1.0)
 let watchNowOrange = Color(red: 1.0, green: 0.482, blue: 0.0)
 // Matches the web guide's Record button (WebServer.swift, `#c0392b`) — same "record" red everywhere.
 let recordRed      = Color(red: 0.753, green: 0.224, blue: 0.169)
+// Matches the web guide's --fav CSS custom property (WebServer.swift: #e8a000 dark / #a05800
+// light) — same favorites amber everywhere. Source of truth is the Guide; other views adapt to it.
+let favAmber = Color(NSColor(name: nil) { appearance in
+    let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+    return isDark
+        ? NSColor(srgbRed: 0xE8 / 255.0, green: 0xA0 / 255.0, blue: 0x00 / 255.0, alpha: 1)
+        : NSColor(srgbRed: 0xA0 / 255.0, green: 0x58 / 255.0, blue: 0x00 / 255.0, alpha: 1)
+})
+
+// MARK: - Unsaved-changes alert
+
+// Shared by EditShowView (onExitCommand + onChange(of: state.editingShowId)) and SettingsView's
+// WindowCloseInterceptor — all three ran the same NSAlert shape independently before this.
+enum UnsavedChangesChoice { case save, discard, cancel }
+
+@MainActor
+func promptUnsavedChanges(title: String, canSave: Bool, savePrompt: String, blockedPrompt: String) -> UnsavedChangesChoice {
+    let alert = NSAlert()
+    alert.messageText = title
+    if canSave {
+        alert.informativeText = savePrompt
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Discard")
+        alert.addButton(withTitle: "Cancel")
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:  return .save
+        case .alertSecondButtonReturn: return .discard
+        default:                       return .cancel
+        }
+    } else {
+        alert.informativeText = blockedPrompt
+        alert.addButton(withTitle: "Discard Changes")
+        alert.addButton(withTitle: "Cancel")
+        switch alert.runModal() {
+        case .alertFirstButtonReturn: return .discard
+        default:                      return .cancel
+        }
+    }
+}
 
 // Shared DateFormatters used by WebServer, WatchNowView, and VLCPlayerView.
 let origAirdateFormatter: DateFormatter = {
