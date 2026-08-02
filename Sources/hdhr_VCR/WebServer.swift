@@ -918,7 +918,9 @@ final class WebServer: @unchecked Sendable {
         return json(["ok": true, "isFavorite": newFav])
     }
 
-    private func showTypeStr(_ show: Show) -> String {
+    // Internal (not private) so WebServerHelperTests can round-trip these against ShowState
+    // directly — same reasoning as jsEscapeForScript below.
+    func showTypeStr(_ show: Show) -> String {
         switch show.state {
         case .single:        return "single"
         case .dateTime:      return "dateTime"
@@ -927,7 +929,7 @@ final class WebServer: @unchecked Sendable {
         }
     }
 
-    private func showStateFromString(_ s: String) -> ShowState {
+    func showStateFromString(_ s: String) -> ShowState {
         switch s {
         case "dateTime":      return .dateTime
         case "seriesChannel": return .seriesChannel
@@ -3321,7 +3323,9 @@ final class WebServer: @unchecked Sendable {
     // JSONSerialization leaves `<`, `>`, and `&` as literal bytes; browsers tokenise
     // `</script>` as an end-tag even inside a JS string literal, so these must be
     // replaced with their \uXXXX equivalents before inserting JSON into HTML.
-    private func jsEscapeForScript(_ s: String) -> String {
+    // Internal (not private) so WebServerHelperTests can exercise this directly — it's the
+    // </script>-breakout guard for every JSON literal embedded in the page (tuners, etc.).
+    func jsEscapeForScript(_ s: String) -> String {
         s.replacingOccurrences(of: "<",  with: "\\u003c")
          .replacingOccurrences(of: ">",  with: "\\u003e")
          .replacingOccurrences(of: "&",  with: "\\u0026")
