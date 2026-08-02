@@ -842,7 +842,7 @@ final class WebServer: @unchecked Sendable {
         else { return .badRequest("Missing required field: showId") }
 
         var updated = show
-        let allDays = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"]
+        let allDays = Show.weekdayNames
 
         if let typeStr = obj["showType"] as? String {
             switch showStateFromString(typeStr) {

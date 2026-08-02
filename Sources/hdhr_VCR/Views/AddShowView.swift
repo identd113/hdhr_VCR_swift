@@ -284,7 +284,7 @@ struct AddShowView: View {
         show.show_url      = state.lineups[entry.deviceId]?.first(where: { $0.GuideNumber == channel })?.URL ?? ""
         let comps = Calendar.current.dateComponents([.hour, .minute, .weekday], from: entry.startDate)
         show.show_time = Double(comps.hour ?? 20) + Double(comps.minute ?? 0) / 60.0
-        airDays = [["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][(comps.weekday ?? 2) - 1]]
+        airDays = [Show.weekdayNames[(comps.weekday ?? 2) - 1]]
     }
 
     // MARK: - Nav bar
@@ -356,7 +356,7 @@ struct AddShowView: View {
         show.show_url            = channel.URL ?? ""
         let comps = Calendar.current.dateComponents([.hour, .minute, .weekday], from: entry.startDate)
         show.show_time = Double(comps.hour ?? 20) + Double(comps.minute ?? 0) / 60.0
-        airDays    = [["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][(comps.weekday ?? 2) - 1]]
+        airDays    = [Show.weekdayNames[(comps.weekday ?? 2) - 1]]
         seriesType = .single
         step = .details
         state.pendingAddEntry = nil
@@ -386,7 +386,7 @@ struct AddShowView: View {
         }
         let comps = Calendar.current.dateComponents([.hour, .minute, .weekday], from: startDate)
         show.show_time = Double(comps.hour ?? 20) + Double(comps.minute ?? 0) / 60.0
-        airDays    = [["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][(comps.weekday ?? 2) - 1]]
+        airDays    = [Show.weekdayNames[(comps.weekday ?? 2) - 1]]
         seriesType = .single
     }
 
@@ -417,7 +417,7 @@ struct AddShowView: View {
             show.show_title = Show.seriesTitle(from: show.show_title)
         }
         show.show_air_date          = seriesType.isSeries
-            ? ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"]
+            ? Show.weekdayNames
             : Array(airDays)
         show.show_dir               = folder.path
         // A local fallback distinct from show_dir — not a copy of it — so posixRecordDir has

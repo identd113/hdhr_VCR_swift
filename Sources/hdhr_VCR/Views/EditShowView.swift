@@ -24,7 +24,7 @@ struct EditShowView: View {
         return lineup.contains { $0.GuideNumber == s.show_channel }
     }
 
-    private let weekdays = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"]
+    private let weekdays = Show.weekdayNames
 
     var body: some View {
         Group {

@@ -39,6 +39,7 @@ func glog(_ msg: String, level: LogLevel = .info) {
 // MARK: - Show
 
 struct Show: Identifiable, Equatable {
+    static let weekdayNames = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"]
     var id: String { show_id }
     var isSeries: Bool { state.isSeries }
     var show_id: String
@@ -572,7 +573,7 @@ struct ManagedGuideMatcher: Equatable {
 
     init(activeManagedShows: [Show]) {
         let cal = Calendar.current
-        let dayNames = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"]
+        let dayNames = Show.weekdayNames
         let allShows  = activeManagedShows.filter { $0.state == .seriesAll }
         let chShows   = activeManagedShows.filter { $0.state == .seriesChannel }
         // uniquingKeysWith keeps the first match on a key collision (e.g. two shows sharing a
@@ -631,7 +632,7 @@ struct ManagedGuideMatcher: Equatable {
         let c = Calendar.current.dateComponents([.hour, .minute, .weekday],
                     from: Date(timeIntervalSince1970: TimeInterval(entry.StartTime)))
         let hhmm = String(format: "%02d:%02d", c.hour ?? 0, c.minute ?? 0)
-        let dayName = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][(c.weekday ?? 1) - 1]
+        let dayName = Show.weekdayNames[(c.weekday ?? 1) - 1]
         let ch = entry.channelNum
         if let s = datetimeSlotKeys["\(dev):\(ch):\(dayName):\(hhmm)"] { return s }
         return singleSlotKeys["\(dev):\(ch):\(entry.StartTime)"]

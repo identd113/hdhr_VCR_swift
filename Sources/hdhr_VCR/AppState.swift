@@ -979,7 +979,7 @@ final class AppState: ObservableObject {
         let comps = Calendar.current.dateComponents([.hour, .minute], from: entry.startDate)
         show.show_time = Double(comps.hour ?? 20) + Double(comps.minute ?? 0) / 60.0
 
-        let allDays = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
+        let allDays = Show.weekdayNames
         switch type {
         case .single:
             show.show_is_series = false; show.show_use_seriesid = false; show.show_use_seriesid_all = false
@@ -990,7 +990,7 @@ final class AppState: ObservableObject {
                 show.show_air_date = days
             } else {
                 let weekday = Calendar.current.component(.weekday, from: entry.startDate)
-                show.show_air_date = [["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][weekday - 1]]
+                show.show_air_date = [Show.weekdayNames[weekday - 1]]
             }
         case .seriesChannel:
             show.show_is_series = true; show.show_use_seriesid = true; show.show_use_seriesid_all = false

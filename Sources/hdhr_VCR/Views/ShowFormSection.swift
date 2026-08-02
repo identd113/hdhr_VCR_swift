@@ -12,7 +12,7 @@ struct ShowFormSection: View {
     var onSeriesTypeChange: () -> Void
     var onChooseFolder: () -> Void
 
-    private let weekdays = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"]
+    private let weekdays = Show.weekdayNames
 
     // Cached result of the (disk-scanning) duplicate-episode check — recomputed via .task(id:)
     // below only when an input it actually depends on changes, rather than on every unrelated
