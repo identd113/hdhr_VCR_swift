@@ -36,7 +36,7 @@ Doc per view/system: intent, architecture, key behaviors. Source of truth for vi
 | File | Purpose |
 |---|---|
 | [Distribution.md](Distribution.md) | Shipping outside the App Store — notarization, updates, monetization |
-| [WebServerPerfFindings.md](WebServerPerfFindings.md) | Point-in-time investigation into slow guide page loads |
-| [WKWebView_guide_analysis.md](WKWebView_guide_analysis.md) | Feasibility analysis for the WKWebView guide implementation |
+| [WebServerPerfFindings.md](WebServerPerfFindings.md) | Historical — point-in-time investigation into slow guide page loads; current caching behavior is in `WebServer.md` |
+| [WKWebView_guide_analysis.md](WKWebView_guide_analysis.md) | Historical — pre-implementation feasibility analysis, superseded the next day by the actual rewrite; current architecture is in `FloatingGuideView.md` |
 
 Root-level reference: [`CLAUDE.md`](../CLAUDE.md) — architecture overview, invariants, build/deploy.
