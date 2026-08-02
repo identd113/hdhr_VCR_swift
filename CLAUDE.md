@@ -12,6 +12,7 @@ macOS menu bar app (`LSUIElement`, no Dock icon) recording TV from HDHomeRun tun
 ./deploy.sh          # stop → swift build → copy binary → ad-hoc sign → launch → WebServerPerfTests
 swift build          # build only
 swift test           # Tests/hdhr_VCRTests/ — full Xcode required (xctest); snapshot refs: RECORD_SNAPSHOTS=1 swift test
+swift test --enable-code-coverage && xcrun llvm-cov report .build/*/debug/hdhr_VCRPackageTests.xctest/Contents/MacOS/hdhr_VCRPackageTests -instr-profile .build/*/debug/codecov/default.profdata -ignore-filename-regex='\.build|Tests/'
 ```
 
 `.app` bundle at `hdhrVCRplus.app/` — binary replaced on each deploy; `Info.plist` there is live (not SPM-generated). `deploy_release.sh` = release build + Developer ID sign + notarize (`--skip-notarize` to sign only).
