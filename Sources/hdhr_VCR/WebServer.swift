@@ -1036,9 +1036,7 @@ final class WebServer: @unchecked Sendable {
     // Factored out of buildHTML so a deviceOnline/deviceOffline event can push a fresh copy
     // instead of only updating on the next full page load.
     @MainActor
-    private func buildDevBarHTML(state: AppState) -> String {
-        let devTuners = Self.computeDevTuners(state: state)
-
+    private func buildDevBarHTML(state: AppState, devTuners: [String: DevTuners]) -> String {
         func tunerInfoBtn(_ devId: String, _ dt: DevTuners) -> String {
             guard dt.total > 0 else { return "" }
             let cls   = "t-info" + (dt.isFull ? " t-info-full" : "")
@@ -1086,7 +1084,7 @@ final class WebServer: @unchecked Sendable {
     // online/offline state silently went stale until the next full page reload.
     @MainActor
     func broadcastDeviceBarEvent(type: String, deviceId: String, state: AppState) {
-        broadcastEvent(["type": type, "deviceId": deviceId, "devbar": buildDevBarHTML(state: state)])
+        broadcastEvent(["type": type, "deviceId": deviceId, "devbar": buildDevBarHTML(state: state, devTuners: Self.computeDevTuners(state: state))])
     }
 
     @MainActor
@@ -1476,7 +1474,7 @@ final class WebServer: @unchecked Sendable {
 
         // Header is just the title now; every tuner (incl. offline) gets a box in the dev-bar.
         let headerHTML = "<h1 style=\"margin:0\">hdhrVCR+ Guide</h1>"
-        let deviceBarHTML = "<div id=\"dev-bar\">" + buildDevBarHTML(state: state) + "</div>"
+        let deviceBarHTML = "<div id=\"dev-bar\">" + buildDevBarHTML(state: state, devTuners: devTuners) + "</div>"
 
         // ── Summary placeholder: current recording or next scheduled show ────
         let sumPhHTML = buildSumPhHTML(state: state)
@@ -1664,7 +1662,6 @@ final class WebServer: @unchecked Sendable {
         .g-fav-btn[data-fav="1"]{color:var(--fav);opacity:1}
         .g-ch{width:125px;min-width:125px;display:flex;align-items:center;gap:4px;padding:4px 6px;position:-webkit-sticky;position:sticky;left:0;z-index:2;background:var(--s1);border-right:1px solid var(--b1)}
         .g-logo{width:24px;height:24px;object-fit:contain;flex-shrink:0}
-        .g-logo-ph{width:24px;height:24px;border-radius:3px;background:var(--s4);display:flex;align-items:center;justify-content:center;font-size:.75rem;color:var(--t4);flex-shrink:0}
         .g-cl{flex:1;min-width:0}
         .g-cn{display:block;font-size:.68rem;color:var(--t3);white-space:nowrap;font-weight:500}
         .g-cname{display:block;font-size:.72rem;color:var(--t1);font-weight:600;white-space:nowrap}
@@ -1752,102 +1749,54 @@ final class WebServer: @unchecked Sendable {
         html.lm .gg-home     {background:hsl(35,50%,68%);border-color:hsl(35,50%,46%)}
         html.lm .gg-health   {background:hsl(148,55%,66%);border-color:hsl(148,55%,44%)}
         html.lm .gg-faith    {background:hsl(65,53%,66%);border-color:hsl(65,53%,44%)}
-        .g-prog-now.gg-drama    {background:hsl(216,52%,44%);border-color:hsl(216,57%,62%)}
-        .g-prog-now.gg-comedy   {background:hsl(47,52%,44%);border-color:hsl(47,57%,62%)}
-        .g-prog-now.gg-news     {background:hsl(342,47%,44%);border-color:hsl(342,52%,62%)}
-        .g-prog-now.gg-sports   {background:hsl(119,52%,41%);border-color:hsl(119,57%,58%)}
-        .g-prog-now.gg-reality  {background:hsl(25,52%,44%);border-color:hsl(25,57%,62%)}
-        .g-prog-now.gg-movie    {background:hsl(270,62%,46%);border-color:hsl(270,68%,64%)}
-        .g-prog-now.gg-talk     {background:hsl(173,47%,42%);border-color:hsl(173,52%,60%)}
-        .g-prog-now.gg-children {background:hsl(315,47%,43%);border-color:hsl(315,52%,61%)}
-        .g-prog-now.gg-crime    {background:hsl(0,60%,41%);border-color:hsl(0,65%,58%)}
-        .g-prog-now.gg-romance  {background:hsl(333,54%,45%);border-color:hsl(333,60%,62%)}
-        .g-prog-now.gg-thriller {background:hsl(238,52%,46%);border-color:hsl(238,58%,63%)}
-        .g-prog-now.gg-action   {background:hsl(12,56%,43%);border-color:hsl(12,62%,60%)}
-        .g-prog-now.gg-mystery  {background:hsl(255,56%,46%);border-color:hsl(255,62%,63%)}
-        .g-prog-now.gg-doc      {background:hsl(202,52%,43%);border-color:hsl(202,57%,60%)}
-        .g-prog-now.gg-science  {background:hsl(188,56%,41%);border-color:hsl(188,62%,58%)}
-        .g-prog-now.gg-nature   {background:hsl(82,54%,41%);border-color:hsl(82,60%,58%)}
-        .g-prog-now.gg-history  {background:hsl(28,54%,42%);border-color:hsl(28,60%,59%)}
-        .g-prog-now.gg-music    {background:hsl(287,56%,45%);border-color:hsl(287,62%,62%)}
-        .g-prog-now.gg-food     {background:hsl(52,56%,42%);border-color:hsl(52,62%,59%)}
-        .g-prog-now.gg-travel   {background:hsl(182,52%,41%);border-color:hsl(182,58%,58%)}
-        .g-prog-now.gg-gameshow {background:hsl(58,60%,42%);border-color:hsl(58,66%,59%)}
-        .g-prog-now.gg-home     {background:hsl(35,50%,41%);border-color:hsl(35,56%,58%)}
-        .g-prog-now.gg-health   {background:hsl(148,54%,40%);border-color:hsl(148,60%,57%)}
-        .g-prog-now.gg-faith    {background:hsl(65,52%,40%);border-color:hsl(65,58%,57%)}
-        html.lm .g-prog-now.gg-drama    {background:hsl(216,57%,78%);border-color:hsl(216,52%,48%)}
-        html.lm .g-prog-now.gg-comedy   {background:hsl(47,65%,76%);border-color:hsl(47,57%,46%)}
-        html.lm .g-prog-now.gg-news     {background:hsl(342,57%,78%);border-color:hsl(342,52%,48%)}
-        html.lm .g-prog-now.gg-sports   {background:hsl(119,62%,76%);border-color:hsl(119,57%,46%)}
-        html.lm .g-prog-now.gg-reality  {background:hsl(25,67%,78%);border-color:hsl(25,57%,48%)}
-        html.lm .g-prog-now.gg-movie    {background:hsl(270,68%,80%);border-color:hsl(270,58%,50%)}
-        html.lm .g-prog-now.gg-talk     {background:hsl(173,57%,76%);border-color:hsl(173,52%,46%)}
-        html.lm .g-prog-now.gg-children {background:hsl(315,62%,78%);border-color:hsl(315,57%,48%)}
-        html.lm .g-prog-now.gg-crime    {background:hsl(0,65%,76%);border-color:hsl(0,60%,46%)}
-        html.lm .g-prog-now.gg-romance  {background:hsl(333,62%,78%);border-color:hsl(333,55%,48%)}
-        html.lm .g-prog-now.gg-thriller {background:hsl(238,58%,78%);border-color:hsl(238,52%,48%)}
-        html.lm .g-prog-now.gg-action   {background:hsl(12,65%,76%);border-color:hsl(12,57%,46%)}
-        html.lm .g-prog-now.gg-mystery  {background:hsl(255,65%,78%);border-color:hsl(255,57%,48%)}
-        html.lm .g-prog-now.gg-doc      {background:hsl(202,58%,76%);border-color:hsl(202,52%,46%)}
-        html.lm .g-prog-now.gg-science  {background:hsl(188,65%,74%);border-color:hsl(188,57%,44%)}
-        html.lm .g-prog-now.gg-nature   {background:hsl(82,62%,74%);border-color:hsl(82,55%,44%)}
-        html.lm .g-prog-now.gg-history  {background:hsl(28,62%,76%);border-color:hsl(28,55%,46%)}
-        html.lm .g-prog-now.gg-music    {background:hsl(287,65%,78%);border-color:hsl(287,57%,48%)}
-        html.lm .g-prog-now.gg-food     {background:hsl(52,65%,76%);border-color:hsl(52,58%,46%)}
-        html.lm .g-prog-now.gg-travel   {background:hsl(182,58%,74%);border-color:hsl(182,52%,44%)}
-        html.lm .g-prog-now.gg-gameshow {background:hsl(58,68%,76%);border-color:hsl(58,62%,46%)}
-        html.lm .g-prog-now.gg-home     {background:hsl(35,56%,76%);border-color:hsl(35,50%,46%)}
-        html.lm .g-prog-now.gg-health   {background:hsl(148,62%,74%);border-color:hsl(148,55%,44%)}
-        html.lm .g-prog-now.gg-faith    {background:hsl(65,60%,74%);border-color:hsl(65,53%,44%)}
-        .g-prog-sched.gg-drama    {background:hsl(216,52%,44%);border-color:hsl(216,57%,62%)}
-        .g-prog-sched.gg-comedy   {background:hsl(47,52%,44%);border-color:hsl(47,57%,62%)}
-        .g-prog-sched.gg-news     {background:hsl(342,47%,44%);border-color:hsl(342,52%,62%)}
-        .g-prog-sched.gg-sports   {background:hsl(119,52%,41%);border-color:hsl(119,57%,58%)}
-        .g-prog-sched.gg-reality  {background:hsl(25,52%,44%);border-color:hsl(25,57%,62%)}
-        .g-prog-sched.gg-movie    {background:hsl(270,62%,46%);border-color:hsl(270,68%,64%)}
-        .g-prog-sched.gg-talk     {background:hsl(173,47%,42%);border-color:hsl(173,52%,60%)}
-        .g-prog-sched.gg-children {background:hsl(315,47%,43%);border-color:hsl(315,52%,61%)}
-        .g-prog-sched.gg-crime    {background:hsl(0,60%,41%);border-color:hsl(0,65%,58%)}
-        .g-prog-sched.gg-romance  {background:hsl(333,54%,45%);border-color:hsl(333,60%,62%)}
-        .g-prog-sched.gg-thriller {background:hsl(238,52%,46%);border-color:hsl(238,58%,63%)}
-        .g-prog-sched.gg-action   {background:hsl(12,56%,43%);border-color:hsl(12,62%,60%)}
-        .g-prog-sched.gg-mystery  {background:hsl(255,56%,46%);border-color:hsl(255,62%,63%)}
-        .g-prog-sched.gg-doc      {background:hsl(202,52%,43%);border-color:hsl(202,57%,60%)}
-        .g-prog-sched.gg-science  {background:hsl(188,56%,41%);border-color:hsl(188,62%,58%)}
-        .g-prog-sched.gg-nature   {background:hsl(82,54%,41%);border-color:hsl(82,60%,58%)}
-        .g-prog-sched.gg-history  {background:hsl(28,54%,42%);border-color:hsl(28,60%,59%)}
-        .g-prog-sched.gg-music    {background:hsl(287,56%,45%);border-color:hsl(287,62%,62%)}
-        .g-prog-sched.gg-food     {background:hsl(52,56%,42%);border-color:hsl(52,62%,59%)}
-        .g-prog-sched.gg-travel   {background:hsl(182,52%,41%);border-color:hsl(182,58%,58%)}
-        .g-prog-sched.gg-gameshow {background:hsl(58,60%,42%);border-color:hsl(58,66%,59%)}
-        .g-prog-sched.gg-home     {background:hsl(35,50%,41%);border-color:hsl(35,56%,58%)}
-        .g-prog-sched.gg-health   {background:hsl(148,54%,40%);border-color:hsl(148,60%,57%)}
-        .g-prog-sched.gg-faith    {background:hsl(65,52%,40%);border-color:hsl(65,58%,57%)}
-        html.lm .g-prog-sched.gg-drama    {background:hsl(216,57%,78%);border-color:hsl(216,52%,48%)}
-        html.lm .g-prog-sched.gg-comedy   {background:hsl(47,65%,76%);border-color:hsl(47,57%,46%)}
-        html.lm .g-prog-sched.gg-news     {background:hsl(342,57%,78%);border-color:hsl(342,52%,48%)}
-        html.lm .g-prog-sched.gg-sports   {background:hsl(119,62%,76%);border-color:hsl(119,57%,46%)}
-        html.lm .g-prog-sched.gg-reality  {background:hsl(25,67%,78%);border-color:hsl(25,57%,48%)}
-        html.lm .g-prog-sched.gg-movie    {background:hsl(270,68%,80%);border-color:hsl(270,58%,50%)}
-        html.lm .g-prog-sched.gg-talk     {background:hsl(173,57%,76%);border-color:hsl(173,52%,46%)}
-        html.lm .g-prog-sched.gg-children {background:hsl(315,62%,78%);border-color:hsl(315,57%,48%)}
-        html.lm .g-prog-sched.gg-crime    {background:hsl(0,65%,76%);border-color:hsl(0,60%,46%)}
-        html.lm .g-prog-sched.gg-romance  {background:hsl(333,62%,78%);border-color:hsl(333,55%,48%)}
-        html.lm .g-prog-sched.gg-thriller {background:hsl(238,58%,78%);border-color:hsl(238,52%,48%)}
-        html.lm .g-prog-sched.gg-action   {background:hsl(12,65%,76%);border-color:hsl(12,57%,46%)}
-        html.lm .g-prog-sched.gg-mystery  {background:hsl(255,65%,78%);border-color:hsl(255,57%,48%)}
-        html.lm .g-prog-sched.gg-doc      {background:hsl(202,58%,76%);border-color:hsl(202,52%,46%)}
-        html.lm .g-prog-sched.gg-science  {background:hsl(188,65%,74%);border-color:hsl(188,57%,44%)}
-        html.lm .g-prog-sched.gg-nature   {background:hsl(82,62%,74%);border-color:hsl(82,55%,44%)}
-        html.lm .g-prog-sched.gg-history  {background:hsl(28,62%,76%);border-color:hsl(28,55%,46%)}
-        html.lm .g-prog-sched.gg-music    {background:hsl(287,65%,78%);border-color:hsl(287,57%,48%)}
-        html.lm .g-prog-sched.gg-food     {background:hsl(52,65%,76%);border-color:hsl(52,58%,46%)}
-        html.lm .g-prog-sched.gg-travel   {background:hsl(182,58%,74%);border-color:hsl(182,52%,44%)}
-        html.lm .g-prog-sched.gg-gameshow {background:hsl(58,68%,76%);border-color:hsl(58,62%,46%)}
-        html.lm .g-prog-sched.gg-home     {background:hsl(35,56%,76%);border-color:hsl(35,50%,46%)}
-        html.lm .g-prog-sched.gg-health   {background:hsl(148,62%,74%);border-color:hsl(148,55%,44%)}
-        html.lm .g-prog-sched.gg-faith    {background:hsl(65,60%,74%);border-color:hsl(65,53%,44%)}
+        .g-prog-now.gg-drama, .g-prog-sched.gg-drama {background:hsl(216,52%,44%);border-color:hsl(216,57%,62%)}
+        .g-prog-now.gg-comedy, .g-prog-sched.gg-comedy {background:hsl(47,52%,44%);border-color:hsl(47,57%,62%)}
+        .g-prog-now.gg-news, .g-prog-sched.gg-news {background:hsl(342,47%,44%);border-color:hsl(342,52%,62%)}
+        .g-prog-now.gg-sports, .g-prog-sched.gg-sports {background:hsl(119,52%,41%);border-color:hsl(119,57%,58%)}
+        .g-prog-now.gg-reality, .g-prog-sched.gg-reality {background:hsl(25,52%,44%);border-color:hsl(25,57%,62%)}
+        .g-prog-now.gg-movie, .g-prog-sched.gg-movie {background:hsl(270,62%,46%);border-color:hsl(270,68%,64%)}
+        .g-prog-now.gg-talk, .g-prog-sched.gg-talk {background:hsl(173,47%,42%);border-color:hsl(173,52%,60%)}
+        .g-prog-now.gg-children, .g-prog-sched.gg-children {background:hsl(315,47%,43%);border-color:hsl(315,52%,61%)}
+        .g-prog-now.gg-crime, .g-prog-sched.gg-crime {background:hsl(0,60%,41%);border-color:hsl(0,65%,58%)}
+        .g-prog-now.gg-romance, .g-prog-sched.gg-romance {background:hsl(333,54%,45%);border-color:hsl(333,60%,62%)}
+        .g-prog-now.gg-thriller, .g-prog-sched.gg-thriller {background:hsl(238,52%,46%);border-color:hsl(238,58%,63%)}
+        .g-prog-now.gg-action, .g-prog-sched.gg-action {background:hsl(12,56%,43%);border-color:hsl(12,62%,60%)}
+        .g-prog-now.gg-mystery, .g-prog-sched.gg-mystery {background:hsl(255,56%,46%);border-color:hsl(255,62%,63%)}
+        .g-prog-now.gg-doc, .g-prog-sched.gg-doc {background:hsl(202,52%,43%);border-color:hsl(202,57%,60%)}
+        .g-prog-now.gg-science, .g-prog-sched.gg-science {background:hsl(188,56%,41%);border-color:hsl(188,62%,58%)}
+        .g-prog-now.gg-nature, .g-prog-sched.gg-nature {background:hsl(82,54%,41%);border-color:hsl(82,60%,58%)}
+        .g-prog-now.gg-history, .g-prog-sched.gg-history {background:hsl(28,54%,42%);border-color:hsl(28,60%,59%)}
+        .g-prog-now.gg-music, .g-prog-sched.gg-music {background:hsl(287,56%,45%);border-color:hsl(287,62%,62%)}
+        .g-prog-now.gg-food, .g-prog-sched.gg-food {background:hsl(52,56%,42%);border-color:hsl(52,62%,59%)}
+        .g-prog-now.gg-travel, .g-prog-sched.gg-travel {background:hsl(182,52%,41%);border-color:hsl(182,58%,58%)}
+        .g-prog-now.gg-gameshow, .g-prog-sched.gg-gameshow {background:hsl(58,60%,42%);border-color:hsl(58,66%,59%)}
+        .g-prog-now.gg-home, .g-prog-sched.gg-home {background:hsl(35,50%,41%);border-color:hsl(35,56%,58%)}
+        .g-prog-now.gg-health, .g-prog-sched.gg-health {background:hsl(148,54%,40%);border-color:hsl(148,60%,57%)}
+        .g-prog-now.gg-faith, .g-prog-sched.gg-faith {background:hsl(65,52%,40%);border-color:hsl(65,58%,57%)}
+        html.lm .g-prog-now.gg-drama, html.lm .g-prog-sched.gg-drama {background:hsl(216,57%,78%);border-color:hsl(216,52%,48%)}
+        html.lm .g-prog-now.gg-comedy, html.lm .g-prog-sched.gg-comedy {background:hsl(47,65%,76%);border-color:hsl(47,57%,46%)}
+        html.lm .g-prog-now.gg-news, html.lm .g-prog-sched.gg-news {background:hsl(342,57%,78%);border-color:hsl(342,52%,48%)}
+        html.lm .g-prog-now.gg-sports, html.lm .g-prog-sched.gg-sports {background:hsl(119,62%,76%);border-color:hsl(119,57%,46%)}
+        html.lm .g-prog-now.gg-reality, html.lm .g-prog-sched.gg-reality {background:hsl(25,67%,78%);border-color:hsl(25,57%,48%)}
+        html.lm .g-prog-now.gg-movie, html.lm .g-prog-sched.gg-movie {background:hsl(270,68%,80%);border-color:hsl(270,58%,50%)}
+        html.lm .g-prog-now.gg-talk, html.lm .g-prog-sched.gg-talk {background:hsl(173,57%,76%);border-color:hsl(173,52%,46%)}
+        html.lm .g-prog-now.gg-children, html.lm .g-prog-sched.gg-children {background:hsl(315,62%,78%);border-color:hsl(315,57%,48%)}
+        html.lm .g-prog-now.gg-crime, html.lm .g-prog-sched.gg-crime {background:hsl(0,65%,76%);border-color:hsl(0,60%,46%)}
+        html.lm .g-prog-now.gg-romance, html.lm .g-prog-sched.gg-romance {background:hsl(333,62%,78%);border-color:hsl(333,55%,48%)}
+        html.lm .g-prog-now.gg-thriller, html.lm .g-prog-sched.gg-thriller {background:hsl(238,58%,78%);border-color:hsl(238,52%,48%)}
+        html.lm .g-prog-now.gg-action, html.lm .g-prog-sched.gg-action {background:hsl(12,65%,76%);border-color:hsl(12,57%,46%)}
+        html.lm .g-prog-now.gg-mystery, html.lm .g-prog-sched.gg-mystery {background:hsl(255,65%,78%);border-color:hsl(255,57%,48%)}
+        html.lm .g-prog-now.gg-doc, html.lm .g-prog-sched.gg-doc {background:hsl(202,58%,76%);border-color:hsl(202,52%,46%)}
+        html.lm .g-prog-now.gg-science, html.lm .g-prog-sched.gg-science {background:hsl(188,65%,74%);border-color:hsl(188,57%,44%)}
+        html.lm .g-prog-now.gg-nature, html.lm .g-prog-sched.gg-nature {background:hsl(82,62%,74%);border-color:hsl(82,55%,44%)}
+        html.lm .g-prog-now.gg-history, html.lm .g-prog-sched.gg-history {background:hsl(28,62%,76%);border-color:hsl(28,55%,46%)}
+        html.lm .g-prog-now.gg-music, html.lm .g-prog-sched.gg-music {background:hsl(287,65%,78%);border-color:hsl(287,57%,48%)}
+        html.lm .g-prog-now.gg-food, html.lm .g-prog-sched.gg-food {background:hsl(52,65%,76%);border-color:hsl(52,58%,46%)}
+        html.lm .g-prog-now.gg-travel, html.lm .g-prog-sched.gg-travel {background:hsl(182,58%,74%);border-color:hsl(182,52%,44%)}
+        html.lm .g-prog-now.gg-gameshow, html.lm .g-prog-sched.gg-gameshow {background:hsl(58,68%,76%);border-color:hsl(58,62%,46%)}
+        html.lm .g-prog-now.gg-home, html.lm .g-prog-sched.gg-home {background:hsl(35,56%,76%);border-color:hsl(35,50%,46%)}
+        html.lm .g-prog-now.gg-health, html.lm .g-prog-sched.gg-health {background:hsl(148,62%,74%);border-color:hsl(148,55%,44%)}
+        html.lm .g-prog-now.gg-faith, html.lm .g-prog-sched.gg-faith {background:hsl(65,60%,74%);border-color:hsl(65,53%,44%)}
         .g-prog-now  {background:#424242;border-color:#787878}
         .g-prog-rec  {background:#3c1818;border-color:#c03030}
         .g-prog-sched{background:#1a1a40;border-color:#4848c8}
@@ -1971,25 +1920,25 @@ final class WebServer: @unchecked Sendable {
           </div>
         </div>
         <div id="t-pop" onclick="if(event.target===this)closeTunerPop()" style="display:none;position:fixed;inset:0;z-index:200">
-          <div id="t-pop-c" style="position:absolute;background:#1e1e1e;border:1px solid #484848;border-radius:10px;padding:16px 18px;min-width:280px;max-width:400px;box-shadow:0 8px 32px rgba(0,0,0,.75)">
+          <div id="t-pop-c" style="position:absolute;border:1px solid #484848;border-radius:10px;padding:16px 18px;min-width:280px;max-width:400px;box-shadow:0 8px 32px rgba(0,0,0,.75)">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-              <span id="t-pop-hdr" style="font-size:.82rem;font-weight:600;color:#e0e0e0"></span>
-              <button onclick="closeTunerPop()" style="background:none;border:none;color:#666;font-size:.9rem;cursor:pointer;padding:0 0 0 12px;line-height:1">✕</button>
+              <span id="t-pop-hdr" style="font-size:.82rem;font-weight:600"></span>
+              <button onclick="closeTunerPop()" style="background:none;border:none;font-size:.9rem;cursor:pointer;padding:0 0 0 12px;line-height:1">✕</button>
             </div>
             <div id="t-pop-list" style="display:flex;flex-direction:column;gap:1px"></div>
-            <a id="t-pop-status" href="#" target="_blank" style="display:none;margin-top:10px;font-size:.72rem;color:#5aacff;text-decoration:none;border-top:1px solid #2e2e2e;padding-top:8px">status.json ↗</a>
+            <a id="t-pop-status" href="#" target="_blank" style="display:none;margin-top:10px;font-size:.72rem;text-decoration:none;border-top:1px solid #2e2e2e;padding-top:8px">status.json ↗</a>
           </div>
         </div>
         <div id="sum" style="border:1px solid #333;border-radius:8px;margin-bottom:16px;display:flex;align-items:stretch;overflow:hidden;min-height:44px;flex-shrink:0">
-          <div id="sum-ph" style="flex:1;display:flex;align-items:center;padding:12px 16px;background:#1a1a1a">\(sumPhHTML)</div>
+          <div id="sum-ph" style="flex:1;display:flex;align-items:center;padding:12px 16px">\(sumPhHTML)</div>
           <div id="sum-c" style="display:none;flex:1;flex-direction:row;position:relative">
             <img id="sum-poster" src="" alt="" loading="lazy" style="width:72px;min-width:72px;object-fit:contain;display:none;background:#888">
             <div id="sum-grad" style="flex:1;padding:8px 10px;display:flex;flex-direction:column;gap:1px;overflow:hidden">
-              <div id="sum-title" style="font-size:.92rem;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+              <div id="sum-title" style="font-size:.92rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
               <div id="sum-genre" style="display:none;align-self:flex-start;flex-wrap:wrap;gap:3px"></div>
-              <div id="sum-ep"   style="display:none;font-size:.78rem;color:#ddd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
-              <div id="sum-date" style="display:none;font-size:.68rem;color:rgba(255,255,255,.7)"></div>
-              <div id="sum-syn"  class="s-syn" style="display:none;font-size:.76rem;color:#e0e0e0;line-height:1.35"></div>
+              <div id="sum-ep"   style="display:none;font-size:.78rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+              <div id="sum-date" style="display:none;font-size:.68rem"></div>
+              <div id="sum-syn"  class="s-syn" style="display:none;font-size:.76rem;line-height:1.35"></div>
               <div id="sum-actions" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:3px">
                 <span id="sum-note" style="display:none;font-size:.75rem;font-style:italic;color:rgba(255,255,255,.75)"></span>
                 <button id="sum-btn" onclick="doRecord()" style="display:none;font-size:.75rem;padding:4px 12px;border-radius:5px;border:none;cursor:pointer;font-weight:600;background:#c0392b;color:#fff">Record</button>
@@ -2000,7 +1949,7 @@ final class WebServer: @unchecked Sendable {
               </div>
               <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:3px">
                 <img id="sum-logo" src="" alt="" loading="lazy" style="width:24px;height:24px;object-fit:contain;display:none;background:#aaa" onerror="this.style.display='none'">
-                <span id="sum-ct" style="font-size:.68rem;color:rgba(255,255,255,.8)"></span>
+                <span id="sum-ct" style="font-size:.68rem"></span>
               </div>
             </div>
             <span id="sum-bonus-star" class="sb-web sb-web-lg" style="display:none"></span>
@@ -2049,8 +1998,8 @@ final class WebServer: @unchecked Sendable {
             <div class="em-row"><div class="em-lbl">Length (min)</div><input id="em-len-in" class="em-input em-input-sm" type="number" min="1" max="1440" placeholder="60"></div>
             <div id="em-fail-row" class="em-row" style="display:none"><div class="em-lbl">Failures</div><div class="em-fail-content"><span id="em-fail-txt"></span><button id="em-reset" onclick="doEditReset()" class="em-fail-reset">Reset</button></div></div>
             <div id="em-sid-row" class="em-row" style="display:none"><div class="em-lbl">SeriesID</div><div id="em-sid" class="em-sid"></div></div>
-            <div id="em-dev-warn" style="display:none;font-size:.74rem;color:#ffcf8a;background:#3c2e10;border:1px solid #8a6a20;border-radius:6px;padding:7px 10px;margin-bottom:10px"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:currentColor;margin-right:4px;vertical-align:1px"></span><span id="em-dev-warn-txt"></span></div>
-            <div id="em-rec-warn" style="display:none;font-size:.74rem;color:#ff9090;background:#3c1818;border:1px solid #883030;border-radius:6px;padding:7px 10px;margin-bottom:10px"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:currentColor;margin-right:4px;vertical-align:1px"></span>Recording now — delete will stop the active recording.</div>
+            <div id="em-dev-warn" style="display:none;font-size:.74rem;border:1px solid #8a6a20;border-radius:6px;padding:7px 10px;margin-bottom:10px"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:currentColor;margin-right:4px;vertical-align:1px"></span><span id="em-dev-warn-txt"></span></div>
+            <div id="em-rec-warn" style="display:none;font-size:.74rem;border:1px solid #883030;border-radius:6px;padding:7px 10px;margin-bottom:10px"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:currentColor;margin-right:4px;vertical-align:1px"></span>Recording now — delete will stop the active recording.</div>
             <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--b2)">
               <button id="em-del" onclick="doEditDelete()" class="mac-btn mac-btn-destructive">Delete</button>
               <div style="display:flex;gap:8px">

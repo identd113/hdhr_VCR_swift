@@ -31,7 +31,6 @@ private typealias vlc_mp_release_fn      = @convention(c) (OpaquePointer?) -> Vo
 private typealias vlc_mp_set_nso_fn      = @convention(c) (OpaquePointer?, UnsafeMutableRawPointer?) -> Void
 private typealias vlc_mp_play_fn         = @convention(c) (OpaquePointer?) -> Int32
 private typealias vlc_mp_stop_fn         = @convention(c) (OpaquePointer?) -> Void
-private typealias vlc_audio_get_vol_fn   = @convention(c) (OpaquePointer?) -> Int32
 private typealias vlc_audio_set_vol_fn   = @convention(c) (OpaquePointer?, Int32) -> Int32
 private typealias vlc_adev_set_fn        = @convention(c) (OpaquePointer?, UnsafePointer<CChar>?, UnsafePointer<CChar>?) -> Void
 private typealias vlc_media_add_opt_fn   = @convention(c) (OpaquePointer?, UnsafePointer<CChar>?) -> Void
@@ -182,7 +181,6 @@ final class VLCBridge: ObservableObject {
     private let _mpSetNSO:     vlc_mp_set_nso_fn?     // libvlc_media_player_set_nsobject
     private let _mpPlay:       vlc_mp_play_fn?
     private let _mpStop:       vlc_mp_stop_fn?
-    private let _audioGetVol:  vlc_audio_get_vol_fn?
     private let _audioSetVol:  vlc_audio_set_vol_fn?
     private let _adevSet:      vlc_adev_set_fn?
     private let _mediaAddOpt:  vlc_media_add_opt_fn?
@@ -221,7 +219,6 @@ final class VLCBridge: ObservableObject {
         _mpSetNSO     = sym("libvlc_media_player_set_nsobject")
         _mpPlay       = sym("libvlc_media_player_play")
         _mpStop       = sym("libvlc_media_player_stop")
-        _audioGetVol  = sym("libvlc_audio_get_volume")
         _audioSetVol  = sym("libvlc_audio_set_volume")
         _adevSet      = sym("libvlc_audio_output_device_set")
         _mediaAddOpt  = sym("libvlc_media_add_option")
@@ -605,11 +602,6 @@ final class VLCBridge: ObservableObject {
     }
 
     // MARK: - Volume  (UI scale 0–100; VLC scale 0–200, unity = 100)
-
-    func volume() -> Int {
-        guard let mp = mediaPlayer else { return 50 }
-        return max(0, min(100, Int(_audioGetVol?(mp) ?? 100) / 2))
-    }
 
     func setVolume(_ v: Int) {
         guard let mp = mediaPlayer else { return }
