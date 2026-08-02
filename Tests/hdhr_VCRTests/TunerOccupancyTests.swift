@@ -26,6 +26,9 @@ struct TunerOccupancyTests {
     }
 
     @Test func activeTunerCount_hardwareOnly() async {
+        // Zero local recordings — max(hw, 0) must still honor a tuner locked by another
+        // machine/app against the same physical device, not just this instance's own recordings.
+        // Idle slot (VctNumber == nil) proves the hw count filters those out too.
         let state = await makeTestAppState(devices: [.test(id: "DEV1", tuners: 4)])
         await MainActor.run {
             state.deviceTunerOccupancy["DEV1"] = [
@@ -58,18 +61,6 @@ struct TunerOccupancyTests {
             ]
         }
         #expect(await state.activeTunerCount(for: "DEV1") == 2)
-    }
-
-    @Test func activeTunerCount_takesMax_hardwareOvercounts_externalUse() async {
-        // A tuner locked by another machine/app against the same physical device — this instance
-        // has zero local recordings, but the hardware poll must still be honored.
-        let state = await makeTestAppState(devices: [.test(id: "DEV1", tuners: 4)])
-        await MainActor.run {
-            state.deviceTunerOccupancy["DEV1"] = [
-                DeviceTunerInfo(Resource: "tuner0", VctNumber: "5.1", TargetIP: nil, SignalQualityPercent: nil)
-            ]
-        }
-        #expect(await state.activeTunerCount(for: "DEV1") == 1)
     }
 
     @Test func activeTunerCount_ignoresOtherDevicesRecordings() async {
