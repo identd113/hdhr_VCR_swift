@@ -1,5 +1,18 @@
 # hdhrVCRplus Changelog
 
+## 2026-08-01 (pre-release cleanup — 7 deferred findings resolved)
+
+Pre-release pass ahead of v1.3.5: three parallel reviews (docs accuracy, project-invariant compliance, code-quality/notarization fitness) against everything unreleased since v1.3.0, plus re-verifying and fixing every item from `ISSUES.md`'s one remaining open batch (see `ISSUES.md` for full detail on each).
+
+- **Fix — a channel logo could show the wrong channel after a restart** — the on-disk icon cache keyed files by `URL.lastPathComponent` alone, so two logo URLs sharing a basename (or both falling back to a generic `"icon.png"` name) collided. Now keys by a SHA256 hash of the full URL.
+- **Fix — Edit Show's Save button had no validation** — a cleared title or a channel number typed into the free-text field that doesn't exist on the assigned device could be saved as a show that will never record correctly. Save is now gated the same way Add Show already was (non-empty title + channel-in-lineup), with a graceful fallback to a bare non-empty check when the device's lineup isn't currently known — so editing a show on a temporarily offline tuner (see the tuner-not-detected work above) still works.
+- **Fix — a recurring DateTime show with every day deselected saved and silently never fired** — Add Show now requires at least one day selected before Record is enabled for that type.
+- **Fix — a rare device-discovery race could double-register a newly-connected tuner** — the background device probe had no reentrancy guard; a probe slower than its own ~60s/300s trigger interval could overlap with the next one, both appending the same first-seen device.
+- **Fix — a display-only per-show tracking leak** — deleting a show mid-flight during a tuner-status network call could leave a stale entry behind that nothing would ever clear again.
+- **Fix — the in-app player's audio/caption track picker could show a stale selection** after an externally-triggered (not user-initiated) channel switch.
+- **Fix — the in-app player's buffering/connecting state could stick** — its stats timer ran in a run-loop mode that pauses during modal UI tracking (an open menu, a live window resize), so "Connecting…" could hang until the tracking ended.
+- **Hardening** — one inline-script value in the web guide now goes through the same JS-escaping helper every other dynamic value there already uses (consistency fix; not exploitable — the value is always hardware-generated hex).
+
 ## 2026-08-01 (web guide tuner-not-detected handling + mobile fixes)
 
 - **Feature — the web guide's edit modal now flags a show whose tuner is no longer detected** — clicking a show inside an offline/undetected tuner's ▾ dropdown shows an amber banner ("Tuner HDHR-XXXX is no longer detected — delete this show, or leave it as is in case the tuner returns") and hides the Pause button, since pausing a show tied to a phantom tuner does nothing useful. Cancel/Delete remain the only meaningful actions.
