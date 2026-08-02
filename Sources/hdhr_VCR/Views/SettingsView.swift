@@ -1075,26 +1075,14 @@ struct WindowCloseInterceptor: NSViewRepresentable {
 
         func windowShouldClose(_ sender: NSWindow) -> Bool {
             guard isDirty else { return true }
-            let alert = NSAlert()
-            alert.messageText = "Unsaved Settings"
-            if canSave {
-                alert.informativeText = "Save your changes before closing?"
-                alert.addButton(withTitle: "Save")
-                alert.addButton(withTitle: "Discard")
-                alert.addButton(withTitle: "Cancel")
-                switch alert.runModal() {
-                case .alertFirstButtonReturn:  onSave(); return true
-                case .alertSecondButtonReturn: return true
-                default:                       return false
-                }
-            } else {
-                alert.informativeText = "Settings can't be saved yet — fix the validation error first. Discard changes?"
-                alert.addButton(withTitle: "Discard Changes")
-                alert.addButton(withTitle: "Cancel")
-                switch alert.runModal() {
-                case .alertFirstButtonReturn: return true
-                default:                      return false
-                }
+            switch promptUnsavedChanges(
+                title: "Unsaved Settings", canSave: canSave,
+                savePrompt: "Save your changes before closing?",
+                blockedPrompt: "Settings can't be saved yet — fix the validation error first. Discard changes?"
+            ) {
+            case .save:    onSave(); return true
+            case .discard: return true
+            case .cancel:  return false
             }
         }
     }

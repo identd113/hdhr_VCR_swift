@@ -304,16 +304,6 @@ final class HDHRManager {
         return found
     }
 
-    // Standard CRC-32 (ISO 3309, polynomial 0xEDB88320)
-    private static func crc32(_ data: [UInt8]) -> UInt32 {
-        var crc: UInt32 = 0xFFFFFFFF
-        for byte in data {
-            crc ^= UInt32(byte)
-            for _ in 0..<8 { crc = (crc & 1) != 0 ? (crc >> 1) ^ 0xEDB88320 : crc >> 1 }
-        }
-        return ~crc
-    }
-
     // MARK: - Lineup
 
     func fetchLineup(for device: HDHRDevice) async throws -> [LineupEntry] {

@@ -609,12 +609,7 @@ final class WebServer: @unchecked Sendable {
             return .ok(contentType: "application/json", body: pingBody)
 
         case "/api/guide-refresh":
-            let payload = buildGuideRefreshPayload(state: state)
-            guard let data = try? JSONSerialization.data(withJSONObject: payload),
-                  let json = String(data: data, encoding: .utf8) else {
-                return .badRequest("serialization failed")
-            }
-            return .ok(contentType: "application/json", body: Data(json.utf8))
+            return jsonResponse(buildGuideRefreshPayload(state: state))
 
         case "/api/now.json":
             let data = buildNowJSON(state: state)
@@ -651,14 +646,13 @@ final class WebServer: @unchecked Sendable {
                 let airing = state.guideStore.entries(deviceId: devId, channelNum: ch,
                     after: Date(timeIntervalSince1970: TimeInterval(now - 7200)))
                     .first { $0.StartTime <= now && $0.EndTime > now }
-                let result: [String: String] = [
+                let result: [String: Any] = [
                     "title":   airing?.Title ?? "",
                     "epTitle": airing?.EpisodeTitle ?? "",
                     "poster":  airing?.ImageURL ?? "",
                     "endTime": airing.map { String($0.EndTime) } ?? ""
                 ]
-                let body = (try? JSONSerialization.data(withJSONObject: result)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
-                return .ok(contentType: "application/json", body: Data(body.utf8))
+                return jsonResponse(result)
             }
             if path.hasPrefix("/api/airings/") {
                 // /api/airings/{seriesId} — up to 4 upcoming episodes of a series across all
@@ -674,9 +668,7 @@ final class WebServer: @unchecked Sendable {
                             "device": pair.entry.deviceId, "genre": pair.entry.firstGenre ?? "",
                             "chLogo": logoURL, "title": pair.entry.Title]
                 }
-                let json = (try? JSONSerialization.data(withJSONObject: ["airings": items]))
-                    .flatMap { String(data: $0, encoding: .utf8) } ?? "{\"airings\":[]}"
-                return .ok(contentType: "application/json", body: Data(json.utf8))
+                return jsonResponse(["airings": items])
             }
             if path.hasPrefix("/api/guide-detail/") {
                 // /api/guide-detail/{devId}/{channelNum}/{winStart}/{winSec} — heavy fields
@@ -711,9 +703,7 @@ final class WebServer: @unchecked Sendable {
                     return ["start": e.StartTime, "syn": synAttr, "poster": e.ImageURL ?? "",
                             "ep": e.episodeInfoLabel ?? "", "date": dateAttr]
                 }
-                let json = (try? JSONSerialization.data(withJSONObject: ["entries": items]))
-                    .flatMap { String(data: $0, encoding: .utf8) } ?? "{\"entries\":[]}"
-                return .ok(contentType: "application/json", body: Data(json.utf8))
+                return jsonResponse(["entries": items])
             }
             if path.hasPrefix("/api/signal-stats/") {
                 // /api/signal-stats/{guideName} — full signal stats for one channel, used by the
@@ -744,11 +734,15 @@ final class WebServer: @unchecked Sendable {
             body: (try? JSONSerialization.data(withJSONObject: dict)) ?? Data("{}".utf8))
     }
 
+    private func parseJSONBody(_ body: Data?) -> [String: Any]? {
+        guard let body else { return nil }
+        return try? JSONSerialization.jsonObject(with: body) as? [String: Any]
+    }
+
     @MainActor
     private func handleRecord(state: AppState, body: Data?) -> WebResponse {
         let json = jsonResponse
-        guard let body,
-              let obj       = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+        guard let obj       = parseJSONBody(body),
               let deviceId  = obj["deviceId"]    as? String,
               let guideNum  = obj["guideNumber"] as? String,
               let startTime = obj["startTime"]   as? Int
@@ -788,8 +782,7 @@ final class WebServer: @unchecked Sendable {
     @MainActor
     private func handleDelete(state: AppState, body: Data?) -> WebResponse {
         let json = jsonResponse
-        guard let body,
-              let obj = try? JSONSerialization.jsonObject(with: body) as? [String: Any]
+        guard let obj = parseJSONBody(body)
         else { return .badRequest("Missing or invalid JSON body") }
 
         let showId   = obj["showId"]      as? String ?? ""
@@ -835,8 +828,7 @@ final class WebServer: @unchecked Sendable {
     @MainActor
     private func handleEdit(state: AppState, body: Data?) -> WebResponse {
         let json = jsonResponse
-        guard let body,
-              let obj    = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+        guard let obj    = parseJSONBody(body),
               let showId = obj["showId"] as? String,
               let show   = state.shows.first(where: { $0.show_id == showId })
         else { return .badRequest("Missing required field: showId") }
@@ -900,8 +892,7 @@ final class WebServer: @unchecked Sendable {
     @MainActor
     private func handleToggleFavorite(state: AppState, body: Data?) -> WebResponse {
         let json = jsonResponse
-        guard let body,
-              let obj      = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+        guard let obj      = parseJSONBody(body),
               let deviceId = obj["deviceId"]    as? String,
               let guideNum = obj["guideNumber"] as? String
         else { return .badRequest("Missing required fields: deviceId, guideNumber") }
@@ -3262,21 +3253,6 @@ final class WebServer: @unchecked Sendable {
     }
 
     // MARK: - gzip
-
-    // CRC-32 lookup table (IEEE 802.3 polynomial) — needed for the gzip trailer.
-    private static let crcTable: [UInt32] = (0..<256).map { i in
-        var c = UInt32(i)
-        for _ in 0..<8 { c = (c & 1) == 1 ? 0xEDB8_8320 ^ (c >> 1) : c >> 1 }
-        return c
-    }
-
-    private static func crc32(_ data: Data) -> UInt32 {
-        var c: UInt32 = 0xFFFF_FFFF
-        data.withUnsafeBytes { (buf: UnsafeRawBufferPointer) in
-            for b in buf { c = crcTable[Int((c ^ UInt32(b)) & 0xFF)] ^ (c >> 8) }
-        }
-        return c ^ 0xFFFF_FFFF
-    }
 
     // Wraps libcompression's raw DEFLATE output in a gzip container
     // (10-byte header + CRC-32 + input-size trailer). Returns nil if

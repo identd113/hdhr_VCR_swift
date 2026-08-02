@@ -932,6 +932,16 @@ final class AppState: ObservableObject {
         conflictBeatenByFavorite = newBeatenByFavorite
     }
 
+    // Refreshes the menu cache (gated on menuIsOpen to avoid the documented menu-rebuild-churn
+    // glitch) and pushes the change to the web UI, in that order — every show lifecycle path
+    // (add/update/pause/resume/delete, plus the mid-flight re-broadcasts after scheduleNextAir
+    // resolves real data) does this same pair so the web guide's conflict badge and schedule
+    // reflect the change immediately instead of waiting for the next unrelated rebuild.
+    func pushShowUpdate(type: String, channel: String, device: String, rebuildMenu: Bool = true) {
+        if rebuildMenu, !menuIsOpen { rebuildMenuEntries() }
+        webServer.broadcastGuideChangeEvent(type: type, extra: ["channel": channel, "device": device], state: self)
+    }
+
     func upcomingGuideEpisodes(seriesID: String, after: Date = Date(), limit: Int = 4) -> [(channel: String, entry: GuideEntry)] {
         guideStore.nextEpisodes(seriesID: seriesID, after: after, limit: limit)
             .map { ($0.channelNum, $0.entry) }
@@ -1439,9 +1449,7 @@ final class AppState: ObservableObject {
                 // different channel/device (seriesAll) or reordered `shows` via its own
                 // internal awaits. Mirrors updateShow's identical re-broadcast pattern.
                 if let updated = shows.first(where: { $0.show_id == show.show_id }) {
-                    webServer.broadcastGuideChangeEvent(type: "show_updated",
-                                                        extra: ["channel": updated.show_channel, "device": updated.hdhr_record],
-                                                        state: self)
+                    pushShowUpdate(type: "show_updated", channel: updated.show_channel, device: updated.hdhr_record, rebuildMenu: false)
                 }
                 return
             }
@@ -1614,9 +1622,7 @@ final class AppState: ObservableObject {
         let channel = shows[i].show_channel, device = shows[i].hdhr_record
         await scheduleNextAir(index: i)
         saveConfig()
-        webServer.broadcastGuideChangeEvent(type: "show_updated",
-                                            extra: ["channel": channel, "device": device],
-                                            state: self)
+        pushShowUpdate(type: "show_updated", channel: channel, device: device, rebuildMenu: false)
     }
 
     private func teardownRecordingState(index: Int) {
@@ -1717,9 +1723,7 @@ final class AppState: ObservableObject {
                     // Flips the exact flag WebServer's willSkip reads for the green/gold corner
                     // flag — without this, an open web guide window keeps showing the stale flag
                     // until the next unrelated rebuild (hourly refresh, another show's edit, etc.).
-                    webServer.broadcastGuideChangeEvent(type: "show_updated",
-                                                         extra: ["channel": show.show_channel, "device": show.hdhr_record],
-                                                         state: self)
+                    pushShowUpdate(type: "show_updated", channel: show.show_channel, device: show.hdhr_record, rebuildMenu: false)
                 }
             }
         }
@@ -1972,7 +1976,7 @@ final class AppState: ObservableObject {
         // Conflict check + notifications live here (not left to each caller) so every path that
         // adds a show — the guide's "Record" action, the native Add Show wizard, any future
         // caller — gets the same tuner-conflict warning and "Show Added" confirmation
-        // unconditionally, matching the broadcastGuideChangeEvent call just below. The native
+        // unconditionally, matching the pushShowUpdate call just below. The native
         // wizard used to skip both entirely (only addShowFromGuide, the web/quick-add path, fired
         // them), so adding a conflicting show there gave no warning until it silently failed or
         // queued later, and enabling Discord's "Show Added" notification never covered shows
@@ -1987,17 +1991,10 @@ final class AppState: ObservableObject {
         notify("Show Added", body: show.show_title, subtitle: show.state.rawValue)
         discordShow("✅ Show Added", show: show, color: 0x1ABC9C, enabled: config.Discord_on_show_added,
                     extra: [("Type", show.state.rawValue, true)])
-        // Refresh conflictingShowIDs/menu caches before the push below so the web guide's
-        // conflict badge reflects this add immediately instead of waiting for the next guide
-        // reload or idle-loop tick. Gated like every other rebuildMenuEntries() call site to
-        // avoid the documented menu-rebuild-churn glitch while the NSMenu is open.
-        if !menuIsOpen { rebuildMenuEntries() }
         // Broadcast here (not left to each caller) so every path that adds a show — the guide's
         // "Record" action, the native Add Show wizard, any future caller — pushes to the web UI
         // unconditionally instead of depending on the caller remembering to.
-        webServer.broadcastGuideChangeEvent(type: "show_added",
-                                            extra: ["channel": show.show_channel, "device": show.hdhr_record],
-                                            state: self)
+        pushShowUpdate(type: "show_added", channel: show.show_channel, device: show.hdhr_record)
         // If the show is currently airing, don't wait for the idle loop — start immediately.
         // Capture show_id (not index) so the Task re-derives position after any interleaved mutation.
         let now = Date()
@@ -2014,14 +2011,10 @@ final class AppState: ObservableObject {
         guard let i = shows.firstIndex(where: { $0.show_id == show.show_id }) else { return }
         glog("[Show] Updated '\(show.show_title)'")
         shows[i] = show; saveConfig()
-        // See addShow's identical call for why this precedes the broadcast.
-        if !menuIsOpen { rebuildMenuEntries() }
         // Broadcast here (not left to each caller) so every path that edits a show — the guide's
         // edit modal, the native Edit Show window, any future caller — pushes to the web UI
         // unconditionally instead of depending on the caller remembering to.
-        webServer.broadcastGuideChangeEvent(type: "show_updated",
-                                            extra: ["channel": show.show_channel, "device": show.hdhr_record],
-                                            state: self)
+        pushShowUpdate(type: "show_updated", channel: show.show_channel, device: show.hdhr_record)
         // Re-run scheduleNextAir immediately so a type/channel/device change (e.g. seriesChannel →
         // seriesAll) takes effect without waiting for the next idle-loop tick.
         guard show.show_active, !show.show_paused, !show.show_recording, show.state != .single else { return }
@@ -2034,10 +2027,7 @@ final class AppState: ObservableObject {
             // (e.g. seriesChannel → seriesAll) web guide viewers would otherwise keep seeing
             // stale schedule info until an unrelated event happened to trigger another push.
             if let updated = self.shows.first(where: { $0.show_id == show.show_id }) {
-                if !self.menuIsOpen { self.rebuildMenuEntries() }
-                self.webServer.broadcastGuideChangeEvent(type: "show_updated",
-                                                         extra: ["channel": updated.show_channel, "device": updated.hdhr_record],
-                                                         state: self)
+                self.pushShowUpdate(type: "show_updated", channel: updated.show_channel, device: updated.hdhr_record)
             }
         }
     }
@@ -2098,21 +2088,13 @@ final class AppState: ObservableObject {
         guard let i = shows.firstIndex(where: { $0.show_id == show.show_id }) else { return }
         glog("[\(show.show_title)] PAUSED manual")
         shows[i].show_paused = true; shows[i].show_fail_reason = "Manually paused"; saveConfig()
-        // See addShow's identical call for why this precedes the broadcast.
-        if !menuIsOpen { rebuildMenuEntries() }
-        webServer.broadcastGuideChangeEvent(type: "show_updated",
-                                            extra: ["channel": show.show_channel, "device": show.hdhr_record],
-                                            state: self)
+        pushShowUpdate(type: "show_updated", channel: show.show_channel, device: show.hdhr_record)
     }
     func resumeShow(_ show: Show) {
         guard let i = shows.firstIndex(where: { $0.show_id == show.show_id }) else { return }
         glog("[\(show.show_title)] RESUMED")
         shows[i].show_paused = false; shows[i].clearFailures(); showRetryAfter.removeValue(forKey: show.show_id); saveConfig()
-        // See addShow's identical call for why this precedes the broadcast.
-        if !menuIsOpen { rebuildMenuEntries() }
-        webServer.broadcastGuideChangeEvent(type: "show_updated",
-                                            extra: ["channel": show.show_channel, "device": show.hdhr_record],
-                                            state: self)
+        pushShowUpdate(type: "show_updated", channel: show.show_channel, device: show.hdhr_record)
     }
     func deleteShow(_ show: Show) {
         glog("[Show] Deleted '\(show.show_title)'")
@@ -2148,11 +2130,7 @@ final class AppState: ObservableObject {
         // chaining behind it (and there won't be one for a deleted show).
         discordCardTasks.removeValue(forKey: show.show_id)
         saveConfig()
-        // See addShow's identical call for why this precedes the broadcast.
-        if !menuIsOpen { rebuildMenuEntries() }
-        webServer.broadcastGuideChangeEvent(type: "show_deleted",
-                                            extra: ["channel": show.show_channel, "device": show.hdhr_record],
-                                            state: self)
+        pushShowUpdate(type: "show_deleted", channel: show.show_channel, device: show.hdhr_record)
     }
 
     func confirmAndDeleteShow(_ show: Show, then completion: @escaping () -> Void = {}) {
@@ -2225,6 +2203,15 @@ final class AppState: ObservableObject {
         saveConfig()
     }
 
+    // "_S02E04_" or " S22E125 " → "S02E04"/"S22E125". Shared by organizeSeriesRecordings (season
+    // subfolder placement) and recordedEpisodeTags (duplicate-episode detection) so both parse
+    // recording filenames identically.
+    private func episodeTag(inFilename filename: String) -> String? {
+        guard let tagRange = filename.range(of: #"[_ ](S\d+(?:E\d+)?)"#, options: [.regularExpression, .caseInsensitive])
+        else { return nil }
+        return String(filename[tagRange].dropFirst())  // drop leading "_" or " "
+    }
+
     func organizeSeriesRecordings() -> String {
         // Paths currently being written to — never touch these.
         let activePaths = Set(shows.filter { $0.show_recording }
@@ -2254,9 +2241,7 @@ final class AppState: ObservableObject {
 
                 // Extract episode tag from either separator style: "_S02E04_" or " S22E125 ".
                 let subfolder: String
-                if let tagRange = filename.range(of: #"[_ ](S\d+(?:E\d+)?)"#,
-                                                 options: [.regularExpression, .caseInsensitive]) {
-                    let tag = String(filename[tagRange].dropFirst()) // drop leading "_" or " "
+                if let tag = episodeTag(inFilename: filename) {
                     if let season = seasonNumber(from: tag) {
                         subfolder = "\(safeFolderTitle)/Season \(String(format: "%02d", season))"
                     } else {
@@ -2374,7 +2359,8 @@ final class AppState: ObservableObject {
     /// Uppercased SxxExx (or bare SxxE-less) episode tags already recorded on disk for a series,
     /// scanning `<baseDir>/<safeTitle>` (flat files) plus each `Season NN` subfolder. Used by the
     /// skip-already-recorded feature (record-time skip + the web-guide SKIP pill). Reuses the same
-    /// filename tag regex as `organizeSeriesRecordings` so parsing stays consistent. Files under
+    /// filename tag parsing (`episodeTag(inFilename:)`) as `organizeSeriesRecordings` so both stay
+    /// consistent. Files under
     /// ~1 MB are treated as crashed/zero-byte stubs and ignored, so a prior failed attempt never
     /// masks a real re-record.
     func recordedEpisodeTags(forTitle safeTitle: String, baseDir: String) -> Set<String> {
@@ -2394,12 +2380,11 @@ final class AppState: ObservableObject {
         for dir in dirs {
             guard let files = try? fm.contentsOfDirectory(atPath: dir) else { continue }
             for filename in files where Show.isRecordingFile(filename) {
-                guard let tagRange = filename.range(of: #"[_ ](S\d+(?:E\d+)?)"#,
-                                                    options: [.regularExpression, .caseInsensitive]) else { continue }
+                guard let tag = episodeTag(inFilename: filename) else { continue }
                 let full = (dir as NSString).appendingPathComponent(filename)
                 let size = ((try? fm.attributesOfItem(atPath: full))?[.size] as? Int) ?? 0
                 if size < 1_000_000 { continue }   // ignore failed/stub files
-                tags.insert(String(filename[tagRange].dropFirst()).uppercased())  // drop leading "_"/" "
+                tags.insert(tag.uppercased())
             }
         }
         return tags
@@ -2676,6 +2661,19 @@ final class AppState: ObservableObject {
         return Self.shortTimeFormatter.string(from: d)
     }
 
+    // Fresh hw poll folded into tunersFull's max(hw, recordingShows+vlc) — a raw status.json
+    // read alone misses a just-started recording (docs/AppState.md). Alerts the user and returns
+    // false if every tuner on `device` is busy; callers should bail out without proceeding.
+    private func tunerAvailable(_ device: HDHRDevice, context: String? = nil) async -> Bool {
+        await fetchDeviceStatus(for: device)
+        guard tunersFull(for: device.DeviceID) else { return true }
+        let tunerCount = device.TunerCount ?? 2
+        let suffix = context.map { "; '\($0)' not opened" } ?? ""
+        glog("[Watch] BLOCKED — all \(tunerCount) tuner(s) on \(device.DeviceID) in use\(suffix)", level: .warning)
+        alertTunerFull(tunerCount: tunerCount, deviceId: device.DeviceID)
+        return false
+    }
+
     func watchInApp(url: String, title: String, deviceId: String? = nil, transcode: String? = nil, guideNumber: String? = nil) {
         guard VLCBridge.shared.isAvailable else { return }
         let device = devices.first { $0.DeviceID == (deviceId ?? "") } ?? devices.first
@@ -2711,15 +2709,7 @@ final class AppState: ObservableObject {
             // Switching channels in an already-open player on this device reuses the same slot —
             // skip the availability check so we don't block a legal channel switch.
             if mgr.currentDeviceID != device.DeviceID {
-                // Fresh hw poll folded into tunersFull's max(hw, recordingShows+vlc) — a raw
-                // status.json read alone misses a just-started recording (docs/AppState.md).
-                await fetchDeviceStatus(for: device)
-                if tunersFull(for: device.DeviceID) {
-                    let tunerCount = device.TunerCount ?? 2
-                    glog("[Watch] BLOCKED — all \(tunerCount) tuner(s) on \(device.DeviceID) in use; '\(title)' not opened", level: .warning)
-                    alertTunerFull(tunerCount: tunerCount, deviceId: device.DeviceID)
-                    return
-                }
+                guard await tunerAvailable(device, context: title) else { return }
             }
             // Re-check after the await above: neither currentDeviceID nor currentURL change until
             // mgr.open() actually runs below, so a second watchInApp call for this same channel
@@ -2750,14 +2740,7 @@ final class AppState: ObservableObject {
         let device = devices.first { $0.DeviceID == (deviceId ?? "") }
         Task {
             if let device {
-                // Fresh hw poll folded into tunersFull's max(hw, recordingShows+vlc) — a raw
-                // status.json read alone misses a just-started recording (docs/AppState.md).
-                await fetchDeviceStatus(for: device)
-                if tunersFull(for: device.DeviceID) {
-                    let tunerCount = device.TunerCount ?? 2
-                    alertTunerFull(tunerCount: tunerCount, deviceId: device.DeviceID)
-                    return
-                }
+                guard await tunerAvailable(device) else { return }
             }
             NSWorkspace.shared.open([streamURL], withApplicationAt: vlcApp,
                                     configuration: .init()) { _, _ in }

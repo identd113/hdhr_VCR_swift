@@ -51,34 +51,15 @@ struct EditShowView: View {
             }
         }
         .onExitCommand {
-            if isDirty {
-                let alert = NSAlert()
-                if canSave {
-                    alert.messageText     = "Unsaved Changes"
-                    alert.informativeText = "Save your changes before closing?"
-                    alert.addButton(withTitle: "Save")
-                    alert.addButton(withTitle: "Discard")
-                    alert.addButton(withTitle: "Cancel")
-                    switch alert.runModal() {
-                    case .alertFirstButtonReturn:  saveWithoutDismiss(); dismiss()
-                    case .alertSecondButtonReturn: dismiss()
-                    default: break
-                    }
-                } else {
-                    // Mirrors WindowCloseInterceptor's canSave==false branch (SettingsView) —
-                    // no Save option offered when the edit is currently invalid (empty title, or
-                    // a channel not in the assigned device's lineup).
-                    alert.messageText     = "Unsaved Changes"
-                    alert.informativeText = "This show can't be saved yet — fix the title/channel first. Discard changes?"
-                    alert.addButton(withTitle: "Discard Changes")
-                    alert.addButton(withTitle: "Cancel")
-                    switch alert.runModal() {
-                    case .alertFirstButtonReturn: dismiss()
-                    default: break
-                    }
-                }
-            } else {
-                dismiss()
+            guard isDirty else { dismiss(); return }
+            switch promptUnsavedChanges(
+                title: "Unsaved Changes", canSave: canSave,
+                savePrompt: "Save your changes before closing?",
+                blockedPrompt: "This show can't be saved yet — fix the title/channel first. Discard changes?"
+            ) {
+            case .save:    saveWithoutDismiss(); dismiss()
+            case .discard: dismiss()
+            case .cancel:  break
             }
         }
         .background(WindowCloseInterceptor(isDirty: isDirty, canSave: canSave, onSave: saveWithoutDismiss))
@@ -91,27 +72,14 @@ struct EditShowView: View {
         .onChange(of: state.editingShowId) { oldValue, newValue in
             guard newValue != show?.show_id else { return } // reverted back to the loaded show (Cancel below) — nothing to do
             guard isDirty else { loadShow(); return }
-            let alert = NSAlert()
-            if canSave {
-                alert.messageText     = "Unsaved Changes"
-                alert.informativeText = "Save your changes to \"\(show?.show_title ?? "this show")\" before switching?"
-                alert.addButton(withTitle: "Save")
-                alert.addButton(withTitle: "Discard")
-                alert.addButton(withTitle: "Cancel")
-                switch alert.runModal() {
-                case .alertFirstButtonReturn:  saveWithoutDismiss(); loadShow()
-                case .alertSecondButtonReturn: loadShow()
-                default: state.editingShowId = oldValue // stay on the show currently being edited
-                }
-            } else {
-                alert.messageText     = "Unsaved Changes"
-                alert.informativeText = "\"\(show?.show_title ?? "This show")\" can't be saved yet — fix the title/channel first. Discard changes?"
-                alert.addButton(withTitle: "Discard Changes")
-                alert.addButton(withTitle: "Cancel")
-                switch alert.runModal() {
-                case .alertFirstButtonReturn: loadShow()
-                default: state.editingShowId = oldValue // stay on the show currently being edited
-                }
+            switch promptUnsavedChanges(
+                title: "Unsaved Changes", canSave: canSave,
+                savePrompt: "Save your changes to \"\(show?.show_title ?? "this show")\" before switching?",
+                blockedPrompt: "\"\(show?.show_title ?? "This show")\" can't be saved yet — fix the title/channel first. Discard changes?"
+            ) {
+            case .save:    saveWithoutDismiss(); loadShow()
+            case .discard: loadShow()
+            case .cancel:  state.editingShowId = oldValue // stay on the show currently being edited
             }
         }
     }
