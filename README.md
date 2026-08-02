@@ -240,3 +240,11 @@ hdhr_VCR started in 2016 as an AppleScript app to fill the gap left by discontin
 
 **Swift/SwiftUI version:** [identd113/hdhr_VCR_swift](https://github.com/identd113/hdhr_VCR_swift)  
 **Original AppleScript version:** [identd113/hdhr_VCR-AS](https://github.com/identd113/hdhr_VCR-AS)
+
+---
+
+## License
+
+Copyright (C) 2026 identd113
+
+hdhrVCRplus is free software: you can redistribute it and/or modify it under the terms of the [GNU General Public License, version 3](LICENSE) as published by the Free Software Foundation. This means anyone can use, study, and modify this code — but a modified or redistributed version (including one bundled into a commercial product) must also be released as source under GPLv3. There is no warranty; see the [LICENSE](LICENSE) file for the full terms.
