@@ -125,12 +125,8 @@ struct GuideStoreURLTests {
         #expect(items["Start"] != nil)
     }
 
-    @Test func cloudDevice_usesCloudHostNotLocal() {
-        let device = makeCloudDevice(auth: "abc")
-        let url = GuideStore.guideURL(for: device)
-        #expect(url?.host == "api.hdhomerun.com",
-                "DeviceAuth present → must use cloud API host")
-    }
+    // Cloud host assertion (DeviceAuth present → api.hdhomerun.com) is already covered by
+    // cloudDevice above — guideURL(for:hours:) has one code path, not a separate default-hours one.
 }
 
 // MARK: - MockURLProtocol-dependent suites (serialized to prevent handler collisions)

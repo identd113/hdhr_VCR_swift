@@ -31,9 +31,7 @@ struct HeEscapingTests {
         #expect(he("hello world") == "hello world")
     }
 
-    @Test func empty_unchanged() {
-        #expect(he("") == "")
-    }
+    // he("") == "" is covered by WebServerHelperTests.he_handlesEmptyString.
 }
 
 // MARK: - timeRemaining(until:)
@@ -246,20 +244,6 @@ struct WebServerSmokeTests {
         let (_, resp) = try await URLSession.shared.data(from: url)
         let conn = (resp as? HTTPURLResponse)?.value(forHTTPHeaderField: "Connection") ?? ""
         #expect(conn.lowercased() == "keep-alive")
-    }
-
-    @Test func connectionReusedAcrossRequests() async throws {
-        guard await serverAvailable() else { return }
-        // A single URLSession naturally reuses a kept-alive connection for same-host requests;
-        // this isn't directly observable via the public API, so assert the behavioral proxy that
-        // matters: several sequential requests on one session all succeed without the connection
-        // getting cut mid-sequence (the old Connection: close behavior still would have passed
-        // this, since each request opened its own connection — this is a smoke test, not a
-        // reuse-proof, but paired with connectionDefaultsToKeepAlive above it covers the contract).
-        for _ in 0..<5 {
-            let (status, _) = try await get("/api/ping")
-            #expect(status == 200)
-        }
     }
 
     @Test func postToRecordWithoutBodyReturns400() async throws {

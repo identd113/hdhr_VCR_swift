@@ -30,10 +30,10 @@ struct ShowDecodingTests {
         #expect(show.show_temp_dir == "")
     }
 
-    @Test func leavesMatchingLocalFallbackDirsAlone() throws {
-        // Both already the local fallback — nothing to repair, this is the natural resting state
-        // for a show that was never pointed at a custom folder.
-        let show = try decode(showDir: Show.localFallbackDir, tempDir: Show.localFallbackDir)
-        #expect(show.show_temp_dir == Show.localFallbackDir)
-    }
+    // A "both already Show.localFallbackDir" case was deliberately not added here: the repair
+    // guard is `decodedTempDir == show_dir && show_dir != Show.localFallbackDir ? fallback :
+    // decodedTempDir` — when show_dir already equals the fallback, that third clause is false,
+    // but the repair and no-repair branches produce the identical value (fallback) regardless.
+    // No input exercises that clause's correctness for this scenario; a test asserting the
+    // output there would pass identically whether the clause were correct, inverted, or deleted.
 }
