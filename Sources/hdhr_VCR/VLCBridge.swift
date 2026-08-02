@@ -454,9 +454,16 @@ final class VLCBridge: ObservableObject {
         // whenever minRate == 1.0 and _mpGetStats somehow failed to resolve, silently disabling
         // isPlaying detection too — exactly the kind of stall a recording-relay session (which now
         // always sets minRate = 1.0) would hit if that ever happened.
-        statsTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
+        // Timer.scheduledTimer(withTimeInterval:) implicitly runs in .default run-loop mode, which
+        // stalls while the run loop is in .eventTracking mode (an open NSMenu, a live window
+        // resize/drag) — isPlaying/hasError detection and the rate ramp would silently freeze for
+        // the duration, e.g. "Connecting…" sticking until a menu closes. .common includes both
+        // .default and .eventTracking, so the timer keeps firing through UI tracking.
+        let timer = Timer(timeInterval: 3.0, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in self?.tickController() }
         }
+        RunLoop.main.add(timer, forMode: .common)
+        statsTimer = timer
     }
 
     private func stopStatsTimer() {

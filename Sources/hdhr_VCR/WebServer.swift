@@ -2920,7 +2920,7 @@ final class WebServer: @unchecked Sendable {
           postJSON('/api/toggle-favorite',{deviceId:row.dataset.dev,guideNumber:row.dataset.ch})
           .catch(function(){}); // handleToggleFavorite already broadcasts favorite_toggled over SSE
         }
-        setDev('\(defaultDev)');
+        setDev('\(jsEscapeForScript(defaultDev))');
         // Build genre filter; add Infomercials option if any inf rows exist
         (function(){
           var gs=new Set();

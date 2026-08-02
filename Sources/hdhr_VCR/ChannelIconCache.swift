@@ -1,4 +1,5 @@
 import AppKit
+import CryptoKit
 
 // ── Channel icon disk cache ───────────────────────────────────────────────────
 // Images are downloaded once and stored in ~/Library/Caches/hdhr_VCR/channel_icons/
@@ -17,6 +18,17 @@ actor ChannelIconCache {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     }
 
+    // SHA256 of the full URL, not just URL.lastPathComponent — two logo URLs sharing a basename
+    // (or both lacking a path, falling to the "icon.png" default) previously collided on disk,
+    // silently serving one channel's icon for another after a restart. Swift's built-in
+    // .hashValue is randomized per-process, so it can't be used for an on-disk key that needs to
+    // be stable across launches.
+    private func cacheFileName(for urlString: String) -> String {
+        let digest = SHA256.hash(data: Data(urlString.utf8)).map { String(format: "%02x", $0) }.joined()
+        let ext = URL(string: urlString)?.pathExtension ?? ""
+        return ext.isEmpty ? digest : "\(digest).\(ext)"
+    }
+
     /// How many of these URLs are not yet on disk (need a download).
     /// Uses a single contentsOfDirectory call instead of one fileExists per URL —
     /// replaces ~400 individual disk stat calls with one directory scan after each guide load.
@@ -25,8 +37,7 @@ actor ChannelIconCache {
         return urlStrings.filter { url in
             guard !url.isEmpty else { return false }
             if mem[url] != nil { return false }
-            let fileName = URL(string: url)?.lastPathComponent ?? "icon.png"
-            return !onDisk.contains(fileName)
+            return !onDisk.contains(cacheFileName(for: url))
         }.count
     }
 
@@ -44,8 +55,7 @@ actor ChannelIconCache {
         if let hit = mem[urlString] { return hit }
         if failedURLs.contains(urlString) { return nil }
 
-        let fileName = URL(string: urlString)?.lastPathComponent ?? "icon.png"
-        let diskPath = dir.appendingPathComponent(fileName)
+        let diskPath = dir.appendingPathComponent(cacheFileName(for: urlString))
 
         if let data = try? Data(contentsOf: diskPath),
            let img  = NSImage(data: data) {

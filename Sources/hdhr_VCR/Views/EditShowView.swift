@@ -12,6 +12,18 @@ struct EditShowView: View {
 
     private var isDirty: Bool { show != nil && show != originalShow }
 
+    // Mirrors AddShowView.canAdvance's non-empty-title + channel-in-lineup gate — Save had no
+    // validation at all, so a cleared title or a free-text channel number that doesn't exist on
+    // the assigned device could be saved as a show that will never record correctly. When the
+    // device's lineup isn't currently known (e.g. its tuner is offline/undetected — see the web
+    // guide's "tuner not detected" handling), membership can't be checked, so only the non-empty
+    // check applies rather than blocking every edit to a show on a temporarily offline tuner.
+    private var canSave: Bool {
+        guard let s = show, !s.show_title.isEmpty, !s.show_channel.isEmpty else { return false }
+        guard let lineup = state.lineups[s.hdhr_record], !lineup.isEmpty else { return true }
+        return lineup.contains { $0.GuideNumber == s.show_channel }
+    }
+
     private let weekdays = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"]
 
     var body: some View {
@@ -41,21 +53,35 @@ struct EditShowView: View {
         .onExitCommand {
             if isDirty {
                 let alert = NSAlert()
-                alert.messageText     = "Unsaved Changes"
-                alert.informativeText = "Save your changes before closing?"
-                alert.addButton(withTitle: "Save")
-                alert.addButton(withTitle: "Discard")
-                alert.addButton(withTitle: "Cancel")
-                switch alert.runModal() {
-                case .alertFirstButtonReturn:  saveWithoutDismiss(); dismiss()
-                case .alertSecondButtonReturn: dismiss()
-                default: break
+                if canSave {
+                    alert.messageText     = "Unsaved Changes"
+                    alert.informativeText = "Save your changes before closing?"
+                    alert.addButton(withTitle: "Save")
+                    alert.addButton(withTitle: "Discard")
+                    alert.addButton(withTitle: "Cancel")
+                    switch alert.runModal() {
+                    case .alertFirstButtonReturn:  saveWithoutDismiss(); dismiss()
+                    case .alertSecondButtonReturn: dismiss()
+                    default: break
+                    }
+                } else {
+                    // Mirrors WindowCloseInterceptor's canSave==false branch (SettingsView) —
+                    // no Save option offered when the edit is currently invalid (empty title, or
+                    // a channel not in the assigned device's lineup).
+                    alert.messageText     = "Unsaved Changes"
+                    alert.informativeText = "This show can't be saved yet — fix the title/channel first. Discard changes?"
+                    alert.addButton(withTitle: "Discard Changes")
+                    alert.addButton(withTitle: "Cancel")
+                    switch alert.runModal() {
+                    case .alertFirstButtonReturn: dismiss()
+                    default: break
+                    }
                 }
             } else {
                 dismiss()
             }
         }
-        .background(WindowCloseInterceptor(isDirty: isDirty, canSave: true, onSave: saveWithoutDismiss))
+        .background(WindowCloseInterceptor(isDirty: isDirty, canSave: canSave, onSave: saveWithoutDismiss))
         .onAppear { loadShow() }
         // The window is a single reusable instance, so onAppear won't fire when it's merely
         // re-focused for a different show — reload whenever the target show id changes.
@@ -66,15 +92,26 @@ struct EditShowView: View {
             guard newValue != show?.show_id else { return } // reverted back to the loaded show (Cancel below) — nothing to do
             guard isDirty else { loadShow(); return }
             let alert = NSAlert()
-            alert.messageText     = "Unsaved Changes"
-            alert.informativeText = "Save your changes to \"\(show?.show_title ?? "this show")\" before switching?"
-            alert.addButton(withTitle: "Save")
-            alert.addButton(withTitle: "Discard")
-            alert.addButton(withTitle: "Cancel")
-            switch alert.runModal() {
-            case .alertFirstButtonReturn:  saveWithoutDismiss(); loadShow()
-            case .alertSecondButtonReturn: loadShow()
-            default: state.editingShowId = oldValue // stay on the show currently being edited
+            if canSave {
+                alert.messageText     = "Unsaved Changes"
+                alert.informativeText = "Save your changes to \"\(show?.show_title ?? "this show")\" before switching?"
+                alert.addButton(withTitle: "Save")
+                alert.addButton(withTitle: "Discard")
+                alert.addButton(withTitle: "Cancel")
+                switch alert.runModal() {
+                case .alertFirstButtonReturn:  saveWithoutDismiss(); loadShow()
+                case .alertSecondButtonReturn: loadShow()
+                default: state.editingShowId = oldValue // stay on the show currently being edited
+                }
+            } else {
+                alert.messageText     = "Unsaved Changes"
+                alert.informativeText = "\"\(show?.show_title ?? "This show")\" can't be saved yet — fix the title/channel first. Discard changes?"
+                alert.addButton(withTitle: "Discard Changes")
+                alert.addButton(withTitle: "Cancel")
+                switch alert.runModal() {
+                case .alertFirstButtonReturn: loadShow()
+                default: state.editingShowId = oldValue // stay on the show currently being edited
+                }
             }
         }
     }
@@ -146,7 +183,7 @@ struct EditShowView: View {
                 if let s = show { state.confirmAndDeleteShow(s) { dismiss() } }
             }
             Spacer()
-            Button("Save") { save() }.buttonStyle(.borderedProminent)
+            Button("Save") { save() }.buttonStyle(.borderedProminent).disabled(!canSave)
         }
         .padding()
     }

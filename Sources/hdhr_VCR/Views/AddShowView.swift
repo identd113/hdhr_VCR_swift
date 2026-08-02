@@ -313,7 +313,13 @@ struct AddShowView: View {
     private var canAdvance: Bool {
         switch step {
         case .guide:   return false  // web guide advances via its own Record button
-        case .details: return !show.show_title.isEmpty && recordFolder != nil && !show.show_url.isEmpty
+        case .details:
+            guard !show.show_title.isEmpty, recordFolder != nil, !show.show_url.isEmpty else { return false }
+            // A recurring DateTime show with every day deselected saves and then never fires —
+            // single/seriesChannel/seriesAll shows don't use airDays this way (series types
+            // override show_air_date to all 7 days at save regardless of this UI state).
+            if seriesType == .dateTime { return !airDays.isEmpty }
+            return true
         }
     }
 

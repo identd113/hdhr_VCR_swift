@@ -437,9 +437,14 @@ struct VLCPlayerView: View {
                 posterHidden = false
                 posterNSImage = nil
                 VLCBridge.shared.setVolume(0)
-                if suppressNextChannelPlay { suppressNextChannelPlay = false; return }
+                // Reset unconditionally, before the suppress check below — a synced (externally
+                // triggered) channel switch still means the track list underneath genuinely
+                // changed, even though suppressNextChannelPlay skips re-triggering playback here.
+                // Resetting only on the non-suppressed path left the picker holding a stale track
+                // id from the previous channel after a synced switch.
                 selectedAudioTrackId = -1
                 selectedSpuTrackId   = -1
+                if suppressNextChannelPlay { suppressNextChannelPlay = false; return }
                 guard let ch else { return }
                 if let showId = showId(fromLiveGuideNumber: ch.GuideNumber) {
                     guard let show = state.shows.first(where: { $0.show_id == showId }) else { return }

@@ -189,6 +189,13 @@ final class AppState: ObservableObject {
     private var lastRefreshHour: Int?     = nil  // hour on which guide was last refreshed; triggers new refresh when hour changes
     private var lastDeviceProbe: Date     = .distantPast
     private var nextQuickProbe: Date?     = nil   // set when any device misses a probe; cleared when all are seen
+    // idleLoop() launches probeForNewDevices() as a detached `Task { }`, not awaited — its own
+    // idleLoopRunning guard only prevents overlapping idleLoop() bodies, not this background probe
+    // outliving one tick. Without this, a probe slower than the ~60s/300s trigger interval (e.g.
+    // discoverDevices stalling under network stress) could have a second probe start while the
+    // first is still in flight; both would capture `existingIDs` before either appends, appending
+    // the same first-seen device twice and corrupting occupancy counts/menu/dev-bar for the session.
+    private var probeInFlight = false
     // Deadline past which a device with TunerCount == nil (otherwise available — UDP-alive, HTTP
     // dead) stops re-arming the 60s quick-probe cadence (see probeForNewDevices) and falls back to
     // the normal 5-min cadence, so a device whose HTTP server is permanently unreachable (rather
@@ -532,6 +539,9 @@ final class AppState: ObservableObject {
 
     // Never removes entries — avoids disrupting active recordings; isAvailable goes false after 3 missed probes.
     private func probeForNewDevices() async {
+        guard !probeInFlight else { return }
+        probeInFlight = true
+        defer { probeInFlight = false }
         // Use a nil `found` to mean discovery itself failed (network error) — still counts as a miss
         // so a device that's offline AND causing discovery failures still reaches the unavailable threshold.
         let found = try? await hdhrManager.discoverDevices(knownHosts: knownHostsFromShows(), interface: config.Network_interface)
@@ -3006,6 +3016,11 @@ final class AppState: ObservableObject {
             }
             let lock = kv["lock"] ?? "none"
             guard lock != "none" else { continue }
+            // The vstatus fetch above suspends on a real network await — a web-UI delete landing
+            // during that window already ran deleteShow's tunerStatus cleanup for this show_id;
+            // writing here afterward would silently re-add a display-only leak that nothing will
+            // ever clear again (the show is gone, so deleteShow never runs on it a second time).
+            guard shows.contains(where: { $0.show_id == show.show_id }) else { continue }
             tunerStatus[show.show_id] = TunerStatus(
                 signalStrength: Int(kv["ss"]  ?? "0") ?? 0,
                 lockType:       lock,
