@@ -7,6 +7,7 @@ No subscription. No media server. No cloud account. Just your tuner, your Mac, a
 [![macOS 15+](https://img.shields.io/badge/macOS-15%2B-blue?logo=apple\&logoColor=white)](https://github.com/identd113/hdhr_VCR_swift/releases)
 [![Swift 5.9](https://img.shields.io/badge/Swift-5.9-FA7343?logo=swift\&logoColor=white)](Package.swift)
 [![Latest Release](https://img.shields.io/github/v/release/identd113/hdhr_VCR_swift?label=latest\&color=green)](https://github.com/identd113/hdhr_VCR_swift/releases)
+[![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 [![Proven since 2016](https://img.shields.io/badge/proven%20since-2016-lightgrey)](https://github.com/identd113/hdhr_VCR-AS)
 
 ---
@@ -231,6 +232,17 @@ Settings use a **draft/save** pattern — click **Save** (⌘S) to apply. Closin
 Default save location: `~/Movies/hdhr_videos` (created automatically). Configurable globally in Settings or per-show via **Edit…** in the menu.
 
 File naming: `ShowTitle_Channel_YYYYMMDD_HHmm.ts`.
+
+---
+
+## For Developers
+
+Contributions are welcome — see [CONTRIBUTING.md](.github/CONTRIBUTING.md) to get started.
+
+- **[Wiki](https://github.com/identd113/hdhr_VCR_swift/wiki)** — architecture and per-view/per-system technical documentation (mirrors [`docs/`](docs/) in this repo)
+- **[ISSUES.md](ISSUES.md)** — known issues and resolved-bug history
+- **[TODO.md](TODO.md)** — deferred features and improvements
+- **[MAS_COMPLIANCE.md](MAS_COMPLIANCE.md)** — Mac App Store sandboxing compliance status, for anyone looking at that distribution path
 
 ---
 

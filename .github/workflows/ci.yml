@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    # macos-latest for now; pin to a specific runner image (e.g. macos-15) if it stops
+    # shipping an Xcode with the macOS 15 SDK this package's Package.swift requires.
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show Swift/Xcode versions
+        run: |
+          swift --version
+          xcodebuild -version
+
+      - name: Build
+        run: swift build
+
+      - name: Test
+        # Tests/hdhr_VCRTests needs full Xcode (not just Command Line Tools) — GitHub-hosted
+        # macOS runners have it preinstalled, so this should just work. See CLAUDE.md.
+        run: swift test
