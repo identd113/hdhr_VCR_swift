@@ -210,7 +210,9 @@ Promoting a show to a `seriesId` type (`seriesChannel`/`seriesAll`) when it prev
 - Channel + Length fields (minutes) — web-only editable fields (native `EditShowView` shows these too, in the same relative position after the shared `ShowFormSection` block)
 - **Reset Failures link** — shown when `failcount > 0`; sets `resetFailures: true` in payload
 - **SeriesID row** — visible for series types; web-only display (native shows it even further down, after Stream URL)
-- Cancel / Delete / Pause / Save buttons
+- **Tuner-not-detected banner** (`#em-dev-warn`, amber) — shown when the show's `hdhr_record` device isn't a key in the client-side `tuners` JS var (from `tunerJS`, built from `state.devices` — i.e. genuinely undiscovered, not just offline-but-known). Reads "Tuner HDHR-XXXX is no longer detected — delete this show, or leave it as is in case the tuner returns."
+- **Recording-in-progress banner** (`#em-rec-warn`, red) — shown while the show is actively recording; warns that Delete will stop the active recording
+- Cancel / Delete / Pause / Save buttons — **Pause is hidden** (not just disabled, so the row reflows via flexbox rather than leaving a dead gap) while the show is recording *or* while its tuner isn't detected — in both cases pausing has no meaningful effect (already mid-capture, or no future occurrence on a phantom tuner to pause)
 
 Save Directory is **not** editable from the web UI — directory path changes require local app access.
 
@@ -292,6 +294,8 @@ Before `broadcastGuideChangeEvent` existed, every one of the events in case 3 ab
 
 Self-contained HTML with all CSS inlined. Updates arrive via SSE push events (see below) and targeted DOM swaps after user actions. The page hard-reloads automatically if the server version changes (redeploy detected via 60-second `/api/ping` poll) or if the baked-in 2-hour expiry elapses. Tuner occupancy is sourced from the `AppState.deviceTunerOccupancy` cache, which the idle loop refreshes every 10 seconds via `fetchDeviceStatus()`.
 
+**`body{height:100vh;height:100dvh}`** — the `100dvh` line (after the `100vh` fallback, so older engines that don't understand `dvh` keep the `vh` behavior) tracks the browser's actual *visible* viewport rather than the taller one that includes mobile Safari's address-bar chrome. Without it, a landscape phone sizes the page to a height greater than what's on screen, and `body`'s `overflow:hidden` (needed so the grid's own internal scroll region — `.gw{overflow:auto}` — is the only scrollable area) leaves the bottom of the guide unreachable, since there's no page-level scroll to get to it. Desktop/portrait is unaffected — `100vh` and `100dvh` agree there.
+
 **HTML cache:** `prebuildPageHTML(state:)` pre-renders the page HTML and stores it in `cachedHTML` — one shared copy for all UAs, since desktop and mobile now render the same guide window (see below). It also gzips that HTML once at the same time and stores the result in `cachedHTMLGzip`; `GET /` returns `.okPrecompressed(...)`, which picks whichever of the two `send()` already has on hand based on the request's `Accept-Encoding` instead of re-running DEFLATE on every request (the page is ~1.5 MB raw — compressing it costs ~30–60 ms, dwarfing everything else in a LAN page load, so paying that cost once per rebuild instead of once per `GET /` was a meaningful win). Both caches are `nil` only before the first guide load, in which case the page falls back to a live synchronous build (via the generic `.ok(...)` case, gzipped on the fly by `send()` same as any other response). This eliminates the 2–4 second `@MainActor` blocking time on first load for remote clients.
 
 `prebuildPageHTML` is called after every guide load (`fetchAllGuides`, `refreshGuides`), and also from `broadcastRecordingEvent` (every recording start/stop) and `broadcastGuideChangeEvent` (every add/delete/pause/resume/edit/favorite-toggle, plus the hourly guide refresh) — so `cachedHTML` stays current with every state change that affects the grid, not just the hourly guide reload. Without this, a fresh page load (a new tab, a hard refresh, or reopening the native Guide window's `WKWebView`, which does a fresh `GET /` each time it's created) could show a show as not-yet-recording for up to an hour after it actually started — connected tabs don't hit this because they get a live SSE class-toggle/grid-swap patch instead of re-fetching the page.
@@ -330,9 +334,18 @@ configuration including a single device. Each box (`.tuner-box`) has a `.tuner-r
 
 **Active vs inactive.** A tuner is *active* when it's in `state.usableDeviceIDs` (discovered AND
 reachable). Active: name is a `.d-btn` `setDev` filter, badge shows live `n/m`. Inactive
-(unreachable or absent): the whole box gets `.tuner-off` (dimmed), the name is a non-clickable
+(unreachable or absent): the box gets `.tuner-off`, the name is a non-clickable
 `.d-btn-off` label, and the badge reads **offline** (`.t-info-off`). The ▾ dropdown works either
 way and lists that tuner's assigned shows.
+
+**Dimming must target `.tuner-row`, not `.tuner-box`.** `.tuner-off` sets `opacity` on `.tuner-row`
+(the name+▾ row) only, *not* on the outer `.tuner-box` that also contains `.tdrop`. `opacity < 1`
+creates a new CSS stacking context for whatever element it's on — if it were on `.tuner-box`, that
+context would trap `.tdrop`'s `z-index: 150` inside it, so `.tdrop`'s stacking would only be
+compared against its sibling `.tuner-row`, not against later page siblings like `#sum`. The result:
+an offline tuner's dropdown would paint *underneath* the summary panel instead of over it, while an
+active tuner's identical-looking dropdown (no opacity ancestor) rendered fine — a bug that only
+reproduces on an offline/undetected tuner specifically. Keep the opacity scoped to `.tuner-row`.
 
 Clicking an active name calls `setDev(devId)`, filtering guide rows to that device via `data-dev`.
 
@@ -389,6 +402,8 @@ Always rendered above the guide grid. Two states:
 
 **Selected** (`#sum-c`): appears when the user clicks a program block. Layout (left to right):
 - **Poster image** — hidden if no `ImageURL`. Default: 72 px wide, `object-fit: contain`. Tablet (≤ 960 px): 56 px. Desktop (≥ 961 px): 260 px, `align-self: center`. **Progressive loading:** `showInfo()` sets the `<img src>` to the CDN poster URL directly. If the poster fails to load, an `onerror` handler (set in JS each time `showInfo()` runs, not inline) falls back to the channel logo URL; if that also fails, the image is hidden. A `data-pgen` generation counter prevents a slow CDN fetch for an earlier selection from overwriting a later selection's image.
+
+**Short-viewport compaction (`@media(max-height:480px)`)** — a *height*, not width, breakpoint, so it catches landscape phones the width-based tiers above don't (a landscape phone is often wide enough to land in the "tablet" or even "desktop" poster-width tier while still being very short). `#sum` is pinned above the scrollable grid by design (a plain flex item before `.gw-outer`'s `flex:1` region, never inside `.gw`'s own scroll) — on a short screen its *own* height is what starves the grid of room, so below 480px viewport height the poster, genre badge, air-date, and synopsis are all hidden and padding/margin are trimmed, leaving just title/episode + the action buttons.
 - **Info column** (flex: 1):
   - Title (bold, 0.92 rem, ellipsis)
   - Genre badge (uppercase pill) — hidden if absent or `"Series"`

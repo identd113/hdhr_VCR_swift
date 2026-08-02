@@ -1510,14 +1510,21 @@ final class WebServer: @unchecked Sendable {
           --pg:#cbd0dc;--pgb:#8590a8;--ac:#007AFF;--acb:#ddeeff;--fav:#a05800;
           --mat-bg:rgba(246,246,248,.78);--mat-backdrop:rgba(0,0,0,.22);--mat-border:rgba(0,0,0,.08);--mat-highlight:rgba(255,255,255,.5);
         }
-        body{background:var(--bg);color:var(--t0);font-family:-apple-system,sans-serif;padding:16px;height:100vh;box-sizing:border-box;display:flex;flex-direction:column;overflow:hidden}
+        /* height:100dvh (after the 100vh fallback) tracks the *visible* viewport, not the tall one
+           that includes mobile Safari's address-bar chrome — without it, landscape phones size the
+           page to a height taller than what's on screen, and body's overflow:hidden then leaves the
+           bottom of the guide unreachable since there's no page-level scroll to get to it. */
+        body{background:var(--bg);color:var(--t0);font-family:-apple-system,sans-serif;padding:16px;height:100vh;height:100dvh;box-sizing:border-box;display:flex;flex-direction:column;overflow:hidden}
         h1{font-size:1.15rem;color:var(--t2);margin-bottom:0}
         a[target="_blank"]{color:var(--t6)!important;text-decoration:none}
         /* ── Device switcher bar ── */
         #dev-bar{display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap}
         .tuner-box{position:relative}
         .tuner-row{display:flex;align-items:center;gap:6px}
-        .tuner-box.tuner-off{opacity:.6}
+        /* Dim only the row (name+arrow), not the whole tuner-box — opacity on an ancestor of
+           .tdrop would create a stacking context that traps its z-index:150, making an offline
+           tuner's dropdown paint under later siblings like #sum instead of over them. */
+        .tuner-off .tuner-row{opacity:.6}
         .tuner-off .d-btn-off{opacity:1;cursor:default}
         .tdrop-btn{background:var(--s4);border:1px solid var(--b4);color:var(--t3);border-radius:5px;padding:5px 8px;font-size:.7rem;line-height:1;cursor:pointer;transition:border-color .15s,color .15s,background .15s}
         .tdrop-btn:hover{border-color:var(--b5);color:var(--t0);background:var(--s3)}
@@ -1582,6 +1589,18 @@ final class WebServer: @unchecked Sendable {
         }
         @media(min-width:961px){
           #sum-poster{width:260px!important;min-width:260px!important;object-fit:contain!important;align-self:center!important}
+        }
+        /* Landscape phones (short viewport height, not narrow width — the width brackets above
+           don't catch this). #sum is pinned above the scrollable grid on purpose (never part of
+           .gw's scroll), so on a short screen its own height is what's stealing room from the
+           grid — trim the expanded summary down to just title/episode/actions here. */
+        @media(max-height:480px){
+          #sum{margin-bottom:8px!important;min-height:0!important}
+          #sum-poster{display:none!important}
+          #sum-genre{display:none!important}
+          #sum-date{display:none!important}
+          #sum-syn{display:none!important}
+          #sum-grad{padding:4px 8px!important}
         }
         /* ── Tuner popover ── */
         #t-pop-c{background:var(--s3)!important;border-color:var(--b5)!important}
@@ -1883,6 +1902,10 @@ final class WebServer: @unchecked Sendable {
         }
         #em-rec-warn{color:#ff9090!important;background:#3c1818!important;border-color:#883030!important}
         html.lm #em-rec-warn{color:#8b0000!important;background:#fce8e8!important;border-color:#cc3030!important}
+        /* Amber (not red) — same banner slot as em-rec-warn but this one isn't urgent: the show
+           just needs a Delete-or-leave-as-is decision, not an active-recording warning. */
+        #em-dev-warn{color:#ffcf8a!important;background:#3c2e10!important;border-color:#8a6a20!important}
+        html.lm #em-dev-warn{color:#7a5200!important;background:#fdf0dc!important;border-color:#d9a53a!important}
         /* macOS-style checkbox (Bonus Time toggle) — native's default Toggle style outside a
            List/Form is a checkbox, not a switch, so this replaces the earlier pill-switch look. */
         .mac-check{-webkit-appearance:none;appearance:none;width:16px;height:16px;border-radius:4px;border:1px solid var(--b4);background:var(--s3);cursor:pointer;position:relative;flex-shrink:0;transition:background .12s,border-color .12s;outline:none}
@@ -2026,6 +2049,7 @@ final class WebServer: @unchecked Sendable {
             <div class="em-row"><div class="em-lbl">Length (min)</div><input id="em-len-in" class="em-input em-input-sm" type="number" min="1" max="1440" placeholder="60"></div>
             <div id="em-fail-row" class="em-row" style="display:none"><div class="em-lbl">Failures</div><div class="em-fail-content"><span id="em-fail-txt"></span><button id="em-reset" onclick="doEditReset()" class="em-fail-reset">Reset</button></div></div>
             <div id="em-sid-row" class="em-row" style="display:none"><div class="em-lbl">SeriesID</div><div id="em-sid" class="em-sid"></div></div>
+            <div id="em-dev-warn" style="display:none;font-size:.74rem;color:#ffcf8a;background:#3c2e10;border:1px solid #8a6a20;border-radius:6px;padding:7px 10px;margin-bottom:10px"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:currentColor;margin-right:4px;vertical-align:1px"></span><span id="em-dev-warn-txt"></span></div>
             <div id="em-rec-warn" style="display:none;font-size:.74rem;color:#ff9090;background:#3c1818;border:1px solid #883030;border-radius:6px;padding:7px 10px;margin-bottom:10px"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:currentColor;margin-right:4px;vertical-align:1px"></span>Recording now — delete will stop the active recording.</div>
             <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--b2)">
               <button id="em-del" onclick="doEditDelete()" class="mac-btn mac-btn-destructive">Delete</button>
@@ -2728,8 +2752,19 @@ final class WebServer: @unchecked Sendable {
           if(fc>0){document.getElementById('em-fail-txt').textContent=fc+' failure'+(fc>1?'s':'')+' — '+(d.failreason||'');failRow.style.display='flex';}
           else{failRow.style.display='none';}
           document.getElementById('em-rec-warn').style.display=_editRec?'block':'none';
+          // 'tuners' (from tunerJS) is keyed by every currently-discovered DeviceID, so a show's
+          // dev missing from it means that tuner is gone (not just offline-but-known) — flag it
+          // rather than silently letting the user edit/save a show that can never record again.
+          var devMissing=!!d.dev&&!(d.dev in tuners);
+          var devWarn=document.getElementById('em-dev-warn');
+          devWarn.style.display=devMissing?'block':'none';
+          if(devMissing){document.getElementById('em-dev-warn-txt').textContent='Tuner HDHR-'+d.dev.toUpperCase()+' is no longer detected — delete this show, or leave it as is in case the tuner returns.';}
           var pb=document.getElementById('em-pause');
-          pb.textContent=_editPaused?'Resume':'Pause';pb.style.display=_editRec?'none':'inline-block';
+          // Pausing a show whose tuner is gone accomplishes nothing (there's no future occurrence
+          // on that tuner to pause) — hide it like the recording case already does, so the
+          // Cancel/Save buttons reflow left via the row's existing flexbox gap instead of leaving
+          // a dead slot.
+          pb.textContent=_editPaused?'Resume':'Pause';pb.style.display=(_editRec||devMissing)?'none':'inline-block';
           document.getElementById('em-del').textContent=_editRec?'Stop & Delete':'Delete';
           document.getElementById('edit-modal').style.display='flex';
         }
