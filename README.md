@@ -94,7 +94,7 @@ You already paid for an HDHomeRun tuner and a cable/antenna subscription. You sh
 
 ---
 
-## What's New in v1.4.0
+## What's New in v1.3.5
 
 **Skip already-recorded episodes** — a series recording won't grab the same episode twice. Before recording, the app checks whether that season/episode is already on disk and quietly advances to the next airing instead of grabbing a rerun or simulcast.
 
