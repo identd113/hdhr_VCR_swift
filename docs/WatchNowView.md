@@ -53,7 +53,7 @@ Width = 34% of scroll-container width, capped at 220pt (`.containerRelativeFrame
 - Time range + remaining — `.caption2` tertiary, e.g. `"8:00 PM – 9:00 PM  ·  42m left"`
 - **Action row** (`.controlSize(.small)`); each button has an `.accessibilityLabel` that includes the show title so VoiceOver can distinguish rows:
   - **Watch** (`.borderedProminent`, `watchNowBlue`) — `state.watchInApp(url:title:deviceId:)`; shown only when `VLCBridge.shared.isAvailable`; label `"Watch [title]"`
-  - **VLC** (`.borderedProminent`, VLC orange) — `state.watchInVLC(url:deviceId:)`; shown only when `config.Watch_in_VLC && VLCBridge.shared.isAvailable`; button text `"VLC"`; `.accessibilityLabel("Watch [title] in VLC")`
+  - **VLC** (`.borderedProminent`, VLC orange) — `state.watchInVLC(url:deviceId:)`; shown only when `config.Watch_in_VLC` (no `isAvailable` check — this launches the *external* VLC.app via `NSWorkspace`, so it doesn't need the in-app libvlc dylib the `isAvailable` check above guards); button text `"VLC"`; `.accessibilityLabel("Watch [title] in VLC")`
   - **Edit** (`.bordered`) — opens `"edit-show"` window for managed shows; label `"Edit [title]"`
   - **Record** (`.borderedProminent`, red tint) — for unmanaged shows: calls `state.tunersFull(for: device.DeviceID)` first; if all tuners are occupied, shows an "All Tuners Busy" alert and does **not** open the Add Show window (the show is on air now and would immediately fail). If tuners are available, sets `state.pendingAddEntry` and opens `"add-show"`. Label: `"Record [title]"`
 

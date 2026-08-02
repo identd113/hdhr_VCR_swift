@@ -8,7 +8,7 @@ Minimum **1100×720**, no maximum. Resizable. Floating above other windows (via 
 ### Content area
 The full window is a `WKWebView` loading `http://localhost:{port}/` — the same web guide served to LAN browsers. Dark/light theme is synced from `NSApp.effectiveAppearance` via JS injection after page load.
 
-The page uses a full-viewport flex column layout (`body{height:100vh;display:flex;flex-direction:column}`). The guide grid (`.gw`) fills all remaining height below the toolbar and summary card, so the guide extends to the bottom edge of the window with no dead space regardless of window size.
+The page uses a full-viewport flex column layout (`body{height:100vh;height:100dvh;display:flex;flex-direction:column}` — the `100dvh` fallback fixes mobile Safari's address-bar-chrome viewport sizing and is a no-op for this desktop-only `WKWebView` window). The guide grid (`.gw`) fills all remaining height below the toolbar and summary card, so the guide extends to the bottom edge of the window with no dead space regardless of window size.
 
 **Watch in App / Watch in VLC buttons** appear in the summary panel for currently-airing shows, injected by the web server when it detects the `window.webkit.messageHandlers.watch` bridge. They are hidden for past or future shows.
 

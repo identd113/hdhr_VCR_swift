@@ -77,3 +77,33 @@ accuracy regresses right after app launch specifically.
   idle tick / guide load (not once per menu open, per its own comment) — nowhere near a hot path
   at this app's scale. Tracking slot *occupant* instead of just free-at `Date` (to make this O(1)
   lookup) would add real complexity for a savings that never matters here.
+
+## 2026-08-01 — v1.3.0..HEAD pre-release quality gate (94 commits)
+
+- `Views/ShowFormSection.swift:148-157` (`duplicateCheckKey` `.task(id:)`) debounces the
+  already-recorded-episode check with `try? await Task.sleep(for: .milliseconds(350))` before
+  calling `AppState.duplicateEpisodeTag(for:isSeries:baseDir:)`, whose comment explicitly
+  acknowledges `recordedEpisodeTags` does synchronous `FileManager` calls (`contentsOfDirectory` +
+  `attributesOfItem` per file, two directory levels) on the main actor and "can block the whole
+  app for real wall-clock time if the recording folder is on a slow-to-wake external drive." The
+  debounce reduces *frequency* (once per typing pause instead of per keystroke) but doesn't remove
+  the main-actor blocking risk it names — a genuinely slow volume still stalls the Add/Edit dialog
+  (and, since this is `@MainActor` `AppState`, the whole app) for that one scan. Real fix would hop
+  the scan off `@MainActor` (e.g. `Task.detached` + `nonisolated` FileManager work) and publish the
+  result back. Low real-world severity (feature is opt-in via `Skip_recorded_episodes`, and local
+  disks return near-instantly) but worth fixing before it's someone's bug report from a NAS-backed
+  recording folder.
+- `WebServer.broadcastGuideChangeEvent` (added this range) is now called from 9+ `AppState` show
+  lifecycle sites (add/update/pause/resume/delete/favorite-toggle/duplicate-override-clear), each
+  triggering a full `buildGuideGridHTML` + `buildDevBarHTML` + `prebuildPageHTML` (gzip) rebuild on
+  the main actor — previously only the hourly guide refresh and recording start/stop paid this
+  cost (`prebuildPageHTML`'s own comment cites ~30-60ms for the gzip pass alone on the ~1.5MB page).
+  When `Series_subfolder_enabled && Skip_recorded_episodes` are both on, each of those rebuilds also
+  re-scans every managed series' recording folder via `recordedEpisodeTags` (one `FileManager`
+  directory walk per series, per CLAUDE.md's own documented "one scan per managed series per
+  build" invariant) — so toggling a single favorite now costs one full-page rebuild + N directory
+  scans where before it was a bare `{type,device,guideNumber}` SSE push. Deliberate tradeoff for
+  guide-freshness on new tab loads (documented in the surrounding comments), and show mutations are
+  low-frequency (human-paced, not per-render/per-tick), so likely fine — but if a large recording
+  library with many managed series starts showing UI hitches on Add/Edit/Delete/favorite-toggle,
+  this rebuild-fan-out is the first place to look.

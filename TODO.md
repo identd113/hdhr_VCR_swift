@@ -78,3 +78,19 @@ Power users managing multiple machines must copy the JSON manually. Export / Imp
 
 ---
 
+### `recordedEpisodeTags` directory scan can block the whole app, not just the dialog
+
+The Add/Edit dialog's duplicate-episode check debounces with a 350ms delay before scanning, but the scan itself still runs synchronous `FileManager` calls (`contentsOfDirectory` + `attributesOfItem` per file, two directory levels) on `@MainActor` — the debounce reduces frequency, not risk. A slow-to-wake external/NAS-backed recording drive stalls the whole app (not just the dialog) for that one scan. Fix: hop the scan off `@MainActor` (`Task.detached` + `nonisolated` FileManager work), publish the result back. Low real-world severity today (local disks return near-instantly), flagged in the 2026-08-01 pre-release review (`.claude/CODE_NOTES.md`).
+
+**Key file**: `AppState.swift` → `recordedEpisodeTags`; caller `Views/ShowFormSection.swift` (`duplicateCheckKey` `.task(id:)`).
+
+---
+
+### Watch for UI hitches from `broadcastGuideChangeEvent`'s wider call-site fan-out
+
+As of the 2026-08-01 pre-release review, `broadcastGuideChangeEvent` is called from 9+ show-lifecycle sites (add/update/pause/resume/delete/favorite-toggle/duplicate-override-clear), each triggering a full page rebuild (`buildGuideGridHTML` + `buildDevBarHTML` + gzip'd `prebuildPageHTML`) on the main actor — previously only the hourly refresh and recording start/stop paid this cost. With `Series_subfolder_enabled && Skip_recorded_episodes` both on, each rebuild also re-scans every managed series' recording folder. Deliberate tradeoff for guide freshness on new tab loads, and show mutations are human-paced so likely fine — but if a large recording library with many managed series shows UI hitches on Add/Edit/Delete/favorite-toggle, this rebuild fan-out is the first place to look.
+
+**Key file**: `WebServer.swift` → `broadcastGuideChangeEvent`.
+
+---
+
