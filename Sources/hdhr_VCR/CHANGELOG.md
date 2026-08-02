@@ -1,8 +1,8 @@
 # hdhrVCRplus Changelog
 
-## 2026-08-01 (pre-release cleanup — 7 deferred findings resolved)
+## 2026-08-01 (pre-release cleanup — 7 deferred findings resolved) — v1.4.5
 
-Pre-release pass ahead of v1.3.5: three parallel reviews (docs accuracy, project-invariant compliance, code-quality/notarization fitness) against everything unreleased since v1.3.0, plus re-verifying and fixing every item from `ISSUES.md`'s one remaining open batch (see `ISSUES.md` for full detail on each).
+Pre-release pass ahead of v1.4.5: three parallel reviews (docs accuracy, project-invariant compliance, code-quality/notarization fitness) against everything unreleased since v1.4.0, plus re-verifying and fixing every item from `ISSUES.md`'s one remaining open batch (see `ISSUES.md` for full detail on each).
 
 - **Fix — a channel logo could show the wrong channel after a restart** — the on-disk icon cache keyed files by `URL.lastPathComponent` alone, so two logo URLs sharing a basename (or both falling back to a generic `"icon.png"` name) collided. Now keys by a SHA256 hash of the full URL.
 - **Fix — Edit Show's Save button had no validation** — a cleared title or a channel number typed into the free-text field that doesn't exist on the assigned device could be saved as a show that will never record correctly. Save is now gated the same way Add Show already was (non-empty title + channel-in-lineup), with a graceful fallback to a bare non-empty check when the device's lineup isn't currently known — so editing a show on a temporarily offline tuner (see the tuner-not-detected work above) still works.
@@ -85,7 +85,7 @@ Pre-release pass ahead of v1.3.5: three parallel reviews (docs accuracy, project
 
 - **New app icon** — redrawn as a single VHS cassette (two reels, red/white label) with a fold-out antenna, replacing the old three-panel banner. The label's bottom half now doubles as a live status light in the menu bar: dim when idle, red while recording, amber when a show is coming up within 30 minutes — reusing the app's existing `isRecording`/`nextShowMinutes` state instead of swapping to a generic `record.circle.fill`/`clock.badge.fill` SF Symbol. Also fixes a longstanding bug where the Dock/Finder icon showed black letterbox bars: `AppIcon.icns` was previously padded from the rectangular menu-bar image with a solid fill color; it's now built from a dedicated square, alpha-transparent master (`Resources/AppIcon-source.png`), so the icon is a clean transparent-cornered squircle. `deploy.sh`/`deploy_release.sh` updated to match.
 
-## 2026-07-18 — v1.3.5
+## 2026-07-18 — v1.4.0
 
 - **Add Show — the cable-guide step remembers its size** — resize the Add Show guide window (wider, taller) and it now reopens, and survives an app restart, at that size instead of resetting to a fixed default. Persisted per-machine; the compact details step is unaffected.
 - **Recordings now use the `.ts` extension** — for every transcode profile. Captured directly from the tuner and confirmed that HDHomeRun sends an **MPEG-2 transport stream** on the wire for *all* profiles (188-byte TS packets); transcoding only re-encodes the video *inside* the TS (MPEG-2 → H.264), it never changes the container. The recorder writes the stream verbatim (no remux), so the accurate extension is `.ts` — the same convention Plex/Emby/Jellyfin/MythTV use, and it matches the `video/mp2t` type the built-in player relay already serves. Previously recordings were named `.m2ts` (no transcode) or `.mkv` (transcoded); `.mkv` in particular described a container the device never produces. **Existing `.m2ts`/`.mkv` recordings are unaffected** — they're still recognized everywhere (Watch Now, Organize, skip-already-recorded), just no longer created. A new regression test locks the wire-format finding against real captured stream fixtures.

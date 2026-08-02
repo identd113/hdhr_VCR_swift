@@ -94,13 +94,17 @@ You already paid for an HDHomeRun tuner and a cable/antenna subscription. You sh
 
 ---
 
-## What's New in v1.3.5
+## What's New in v1.4.5
 
-**Skip already-recorded episodes** — a series recording won't grab the same episode twice. Before recording, the app checks whether that season/episode is already on disk and quietly advances to the next airing instead of grabbing a rerun or simulcast.
+**Redesigned guide status markers** — the web guide's scheduled/recording/skip/conflict states are now a colored ring + icon badge instead of corner triangles, with more accurate conflict detection: only the tuner slot that's actually lost gets flagged, not every show in an overbooked time window.
 
-**Signal quality at scheduling** — the Add Show, Edit Show, and web guide Record dialogs now show a channel's signal bars (and a weak-signal warning) before you schedule it, using the signal history the app already collects.
+**Web guide: a show on a tuner that's no longer detected is now handled explicitly** — the edit modal flags it with a clear warning and offers Cancel/Delete, instead of silently letting you edit a show tied to a tuner that's gone. The guide is also now scrollable on a landscape phone.
 
-Plus a large reliability and security pass: recording failures now say why (the real device error or a decoded curl exit code), a stored-XSS hole and a save-path validation gap in the web UI are fixed, and recordings now use the accurate `.ts` extension for every transcode profile.
+**New app icon** — a VHS-cassette design; its label doubles as a menu-bar status light (dim idle / red recording / amber upcoming).
+
+**Duplicate-episode override** — the Add/Edit dialog's Duplicate Episodes row warns when an upcoming airing is already on disk and would be skipped, with a one-shot "Record even if already on disk" toggle to force it through.
+
+Plus another reliability pass: fixed a wrong-episode-info bug on channels that air several different series back-to-back (e.g. a multiplex channel), a stale `show_end` causing nonsensical time ranges on weekly shows, a guide-refresh race that could blank a Discord card's episode info, and — in a dedicated pre-release audit — 7 additional low-severity fixes (a channel-logo cache collision, missing Edit Show Save validation, a recurring show that could save with no recording days selected, a device-discovery race, a display-only tracking leak, and two in-app-player issues).
 
 Everything else (LAN web UI, Discord notifications, per-show bonus time, watching a recording in progress without a second tuner, etc.) is covered above under [Features](#features) — see the → [full changelog](CHANGELOG.md) for the complete release history.
 
