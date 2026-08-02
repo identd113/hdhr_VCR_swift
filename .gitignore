@@ -13,3 +13,4 @@ CLAUDE.md
 /.claude/scheduled_tasks.lock
 Tests/hdhr_VCRTests/__Snapshots__/
 codeReview.md
+tools/__pycache__/
