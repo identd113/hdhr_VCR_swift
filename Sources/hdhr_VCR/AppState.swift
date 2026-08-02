@@ -31,7 +31,10 @@ final class AppState: ObservableObject {
     // Tracks which shows have already fired a runtime conflict notification.
     // Value = show_next epoch (TimeInterval) for which the notification was sent;
     // clears on reschedule so a new time slot can notify again.
-    private var conflictNotifiedEpochs: [String: TimeInterval] = [:]
+    // Not `private`: deleteShow's cleanup test reads this directly (@testable import doesn't
+    // reach true `private`) rather than via a hand-duplicated shadow list that could itself
+    // drift out of sync with deleteShow's own cleanup.
+    var conflictNotifiedEpochs: [String: TimeInterval] = [:]
     // "channelNum:startTime" keys for guide entries already logged as now-airing without a genre tag.
     private var loggedNowAiring: Set<String> = []
     // Last time the NowAiring diagnostic scan (below) ran — gates it to a coarse cadence since
@@ -39,25 +42,25 @@ final class AppState: ObservableObject {
     // SeriesIDs, not anything requiring sub-minute freshness.
     private var lastNowAiringScan: Date = .distantPast
     // Same pattern as conflictNotifiedEpochs, for MISSED START warnings.
-    private var missedStartNotifiedEpochs: [String: TimeInterval] = [:]
+    var missedStartNotifiedEpochs: [String: TimeInterval] = [:]
     // Shows whose recording was interrupted by an app quit and will be relaunched this session.
     // Suppresses the duplicate Discord "Recording Started" on the first relaunch after startup.
-    private var suppressStartDiscord: Set<String> = []
+    var suppressStartDiscord: Set<String> = []
     // Shows whose "Recording Started" embed is deferred until the first idle-loop tick confirms
     // the curl process is still alive — prevents a Discord ping for a recording that fails instantly.
-    private var pendingDiscordStart: Set<String> = []
+    var pendingDiscordStart: Set<String> = []
     // Shows that recorded at least one mid-recording FAIL event during the *current* recording
     // attempt (inserted in the idle-loop FAIL branch, cleared when a fresh attempt starts).
     // stopRecording's empty-output-file check consumes this to decide whether show_fail_reason
     // still describes this attempt or is stale detail left over from an earlier, resolved one —
     // show_fail_count alone can't tell the difference since a success only decrements it.
-    private var failedThisAttempt: Set<String> = []
+    var failedThisAttempt: Set<String> = []
     // Per-attempt marker: set in startRecording only when show_ignore_duplicate_once actually
     // suppressed a real duplicate-skip for the airing being recorded right now. stopRecording's
     // natural-success path consumes this to decide whether to clear the override — so enabling
     // it preemptively on a recording that was never actually a duplicate doesn't silently burn
     // the one-shot before the rerun it was meant for ever airs.
-    private var duplicateOverrideUsedThisAttempt: Set<String> = []
+    var duplicateOverrideUsedThisAttempt: Set<String> = []
     // Retained DispatchSource for SIGTERM — saves config before the process exits so
     // show_recording_path and discord_start_msg_id survive pkill during development.
     private var sigtermSource: DispatchSourceSignal?
@@ -89,7 +92,7 @@ final class AppState: ObservableObject {
     @Published var signalScanProgress: String? = nil
 
     private var signalScanTask:     Task<Void, Never>? = nil
-    private var signalDropoutTicks: [String: Int] = [:]               // showId → consecutive low-snq ticks
+    var signalDropoutTicks: [String: Int] = [:]               // showId → consecutive low-snq ticks
 
     // Tracks optimistically-toggled favorite state: [deviceId: [GuideNumber: expectedBool]]
     // Cleared per-device after the next lineup reload; mismatches are logged as warnings.
@@ -154,7 +157,7 @@ final class AppState: ObservableObject {
     }
 
 
-    let configManager    = ConfigManager()
+    let configManager: ConfigManager
     let hdhrManager      = HDHRManager()
     let recordingManager = RecordingManager()
     let guideStore       = GuideStore()
@@ -211,14 +214,17 @@ final class AppState: ObservableObject {
     // and the show pauses. Mirrors APIBackoff's escalating-delay shape above. Not persisted —
     // resets to "no backoff" on relaunch.
     private static let retryBackoffLoops: [Int] = [2, 3]
-    private var showRetryAfter: [String: Date] = [:]
+    var showRetryAfter: [String: Date] = [:]
     private var failThreshold: Int { config.Fail_count_setting }
     private let maxDiskPct: Double = 93
     // Set true while the MenuBarExtra menu is open (tracked via MenuContent onAppear/onDisappear).
     // Guards guideByDevice.didSet and idle-loop rebuilds so @Published changes don't redraw the menu.
     var menuIsOpen: Bool = false
 
-    init() {
+    // configManager param is a test seam only — real app startup (hdhr_VCRApp.swift) always uses
+    // the default, which points at the real on-disk config; see ConfigManager.init's own comment.
+    init(configManager: ConfigManager = ConfigManager()) {
+        self.configManager = configManager
         // Keep vlcCurrentURL in sync with VLCBridge.currentURL so any close path that
         // nils currentURL (releasePlayer → stopAndClearState) automatically clears the
         // "now watching" indicator without every caller needing to do it explicitly.
@@ -2579,7 +2585,7 @@ final class AppState: ObservableObject {
     // made). Mirrors ensureLineupLoaded's Task-caching idiom (loadingLineupTasks) rather than a
     // busy-poll: no latency floor waiting for a lock, and clearing a stale dict entry (deleteShow)
     // can never race a still-running send, since nothing here treats presence-in-dict as a lock.
-    private var discordCardTasks: [String: Task<Void, Never>] = [:]
+    var discordCardTasks: [String: Task<Void, Never>] = [:]
 
     /// Fires a Discord lifecycle card update from a detached, per-show-chained Task so a slow/hung
     /// webhook can't stall the idle loop's per-tick show processing. Pass `clearIdAfter: true` for

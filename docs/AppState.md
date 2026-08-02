@@ -225,6 +225,8 @@ In a SwiftUI `.menu`-style `MenuBarExtra`, the menu body re-evaluates on every `
 
 `deleteShow` removes the show from `shows`, then purges every show_id-keyed side table before saving — not just `showRetryAfter`, but also `conflictNotifiedEpochs`, `missedStartNotifiedEpochs`, `pendingDiscordStart`, `failedThisAttempt`, `suppressStartDiscord`, `discordCardTasks`, `duplicateOverrideUsedThisAttempt`, `tunerStatus`, and `signalDropoutTicks`. Since `show_id` is never reused, skipping any of these would leak an entry for the life of the app session; a long-running install that adds/deletes shows over weeks would otherwise grow these dictionaries/sets without bound. `skipRecording` additionally marks `show_paused = true`, sets `show_fail_reason = "Skipped"`, and calls `scheduleNextAir` to advance to the next airing.
 
+This cleanup list has a regression test (`Tests/hdhr_VCRTests/AppStateDeleteShowCleanupTests.swift`) that populates all nine tables for a show, calls `deleteShow`, and asserts every one is empty — which is why these nine are `internal` (no `private`) rather than truly private: `@testable import` doesn't reach `private`, and testing the real properties directly avoids a hand-duplicated shadow list in the test that could itself drift out of sync with this cleanup. See also `docs/Config.md`'s "Test seam" note — this test is exactly why `ConfigManager` needed one (`deleteShow` calls `saveConfig()`).
+
 ---
 
 ## Quit (`quit()`)

@@ -4,10 +4,13 @@ final class ConfigManager {
     private let hostname: String
     private var configURL: URL
 
-    init() {
+    // appSupportDir is a test seam only — production always passes nil and gets the real
+    // ~/Library/Application Support/hdhrVCRplus/ (not TCC-protected, survives ad-hoc re-signs).
+    // Without this, any test that exercises an AppState mutating path (deleteShow, addShow, …)
+    // would silently overwrite the live user's config through the app's real save path.
+    init(appSupportDir: URL? = nil) {
         hostname = ProcessInfo.processInfo.hostName
-        // ~/Library/Application Support/hdhrVCRplus/ — not TCC-protected, survives ad-hoc re-signs
-        let appSupport = (FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory)
+        let appSupport = appSupportDir ?? (FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory)
             .appendingPathComponent("hdhrVCRplus")
         try? FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
         configURL = appSupport.appendingPathComponent("hdhr_VCR-\(hostname).json")

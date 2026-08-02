@@ -11,6 +11,8 @@
 
 `ConfigManager` auto-migrates v1 → v2 on first load and saves immediately. If the save fails (disk full, permissions), a warning is logged and migration retries on the next launch. The custom date decoder also accepts numeric epoch, so any format round-trips correctly.
 
+**Test seam:** `ConfigManager.init(appSupportDir:)` takes an optional directory override; production always passes `nil` and gets the real path above. `AppState.init(configManager:)` accepts an injected `ConfigManager`, defaulting to a real `ConfigManager()` — the app's own startup (`hdhr_VCRApp.swift`) always uses that default. Tests go through `makeTestAppState()` (`Tests/hdhr_VCRTests/TestFixtures.swift`), which points every test's `ConfigManager` at a fresh per-call temp directory. Without this seam, any test exercising a mutating `AppState` path that calls `saveConfig()` (`deleteShow`, `addShow`, `updateShow`, `pauseShow`, `resumeShow`) would silently overwrite the real on-disk config the deployed app uses — this is exactly what would have happened testing `deleteShow`'s side-table cleanup (`Tests/hdhr_VCRTests/AppStateDeleteShowCleanupTests.swift`) before this seam existed.
+
 ## Adding a New Field
 
 1. Add `var MyField: Type = defaultValue` to `AppConfig` in `Models.swift`.
