@@ -1,12 +1,17 @@
 #!/bin/bash
-# Release build: Developer ID signing + notarization.
+# Release build: Developer ID signing + notarization (or ad-hoc, before a Developer ID cert exists).
 # Usage:
 #   ./deploy_release.sh <version>                  # sign + notarize + staple + open
-#   ./deploy_release.sh <version> --skip-notarize  # sign only (for testing the signing step)
+#   ./deploy_release.sh <version> --skip-notarize  # Developer ID sign only (for testing the signing step)
+#   ./deploy_release.sh <version> --adhoc          # ad-hoc sign, no notarization — for shipping a
+#                                                   # release before a Developer ID cert is set up.
+#                                                   # Produces a distributable zip, but Gatekeeper
+#                                                   # will warn "unidentified developer" on first
+#                                                   # launch until a real notarized build replaces it.
 #
 # <version> is the semantic version string, e.g.: 1.3.0
 #
-# Prerequisites:
+# Prerequisites (--skip-notarize / full notarize modes only — --adhoc needs none of these):
 #   1. Apple Developer Program membership ($99/year)
 #   2. "Developer ID Application: <name> (<TEAM_ID>)" cert in your keychain
 #   3. App-specific password stored in keychain:
@@ -20,22 +25,25 @@ APP="hdhrVCRplus.app"
 BINARY="$APP/Contents/MacOS/hdhr_VCR"
 ENTITLEMENTS="hdhrVCRplus.entitlements"
 BUNDLE_ID="com.hdhr.vcrplus"
+DIST_DIR="dist"
 
-# ── Fill these in ────────────────────────────────────────────────────────────
+# ── Fill these in (unused in --adhoc mode) ──────────────────────────────────
 SIGN_IDENTITY="Developer ID Application: YOUR NAME (XXXXXXXXXX)"
 NOTARY_PROFILE="hdhrVCR-notary"   # name used in store-credentials above
 # ─────────────────────────────────────────────────────────────────────────────
 
 SKIP_NOTARIZE=0
+ADHOC=0
 RELEASE_VERSION=""
 for _arg in "$@"; do
     case "$_arg" in
         --skip-notarize) SKIP_NOTARIZE=1 ;;
+        --adhoc)         ADHOC=1; SKIP_NOTARIZE=1 ;;
         *) RELEASE_VERSION="$_arg" ;;
     esac
 done
 if [ -z "$RELEASE_VERSION" ]; then
-    echo "Usage: ./deploy_release.sh <version> [--skip-notarize]"
+    echo "Usage: ./deploy_release.sh <version> [--skip-notarize|--adhoc]"
     echo "       e.g.: ./deploy_release.sh 1.3.0"
     exit 1
 fi
@@ -83,21 +91,30 @@ sips -z 1024 1024 Resources/AppIcon-source.png --out "$_ICONSET/icon_512x512@2x.
 iconutil --convert icns "$_ICONSET" --output Resources/AppIcon.icns
 cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
-echo "==> Signing with Hardened Runtime…"
 find "$APP" -name "._*" -delete
 find "$APP" -name ".DS_Store" -delete
 xattr -cr "$APP"
-_signed=0
-for _attempt in 1 2 3; do
-    find "$APP" -name "._*" -delete 2>/dev/null || true
-    find "$APP" -print0 | xargs -0 xattr -d com.apple.FinderInfo 2>/dev/null || true
+
+if [ "$ADHOC" -eq 1 ]; then
+    echo "==> Signing ad-hoc (no Developer ID cert configured)…"
     codesign --force --options runtime \
              --entitlements "$ENTITLEMENTS" \
-             --sign "$SIGN_IDENTITY" \
-             "$APP" && _signed=1 && break
-    echo "    Attempt $_attempt failed, retrying…"
-done
-[ "$_signed" -eq 1 ] || { echo "ERROR: codesign failed after 3 attempts"; exit 1; }
+             --sign - \
+             "$APP"
+else
+    echo "==> Signing with Hardened Runtime…"
+    _signed=0
+    for _attempt in 1 2 3; do
+        find "$APP" -name "._*" -delete 2>/dev/null || true
+        find "$APP" -print0 | xargs -0 xattr -d com.apple.FinderInfo 2>/dev/null || true
+        codesign --force --options runtime \
+                 --entitlements "$ENTITLEMENTS" \
+                 --sign "$SIGN_IDENTITY" \
+                 "$APP" && _signed=1 && break
+        echo "    Attempt $_attempt failed, retrying…"
+    done
+    [ "$_signed" -eq 1 ] || { echo "ERROR: codesign failed after 3 attempts"; exit 1; }
+fi
 
 echo "==> Verifying signature…"
 # --strict is omitted: iCloud file provider continuously re-attaches com.apple.FinderInfo
@@ -106,10 +123,23 @@ echo "==> Verifying signature…"
 # so Apple's notarization service sees a clean bundle. That is the authoritative check.
 xattr -cr "$APP"
 codesign --verify --deep --verbose=2 "$APP"
-spctl --assess --type execute --verbose "$APP" 2>&1 || true   # will say "rejected" until notarized — that's expected
+spctl --assess --type execute --verbose "$APP" 2>&1 || true   # will say "rejected" until notarized — that's expected (ad-hoc/unnotarized always does)
 
 if [ "$SKIP_NOTARIZE" -eq 1 ]; then
-    echo "==> Skipping notarization (--skip-notarize)."
+    mkdir -p "$DIST_DIR"
+    ZIP_PATH="$DIST_DIR/hdhrVCRplus-${RELEASE_VERSION}.zip"
+    echo "==> Zipping for distribution…"
+    ditto -c -k --keepParent "$APP" "$ZIP_PATH"
+    if [ "$ADHOC" -eq 1 ]; then
+        echo "==> Skipping notarization (ad-hoc build — no Developer ID cert configured)."
+        echo "    NOTE: recipients will see an 'unidentified developer' Gatekeeper warning on"
+        echo "    first launch — right-click > Open, or run 'xattr -cr hdhrVCRplus.app' after"
+        echo "    unzipping. Re-release with real Developer ID signing + notarization once a"
+        echo "    cert is available (tools/setup_signing.sh, then this script without --adhoc)."
+    else
+        echo "==> Skipping notarization (--skip-notarize)."
+    fi
+    echo "    Artifact: $ZIP_PATH"
     echo "==> Launching $APP…"
     open "$APP"
     echo "==> Done."
@@ -130,6 +160,12 @@ xcrun stapler staple "$APP"
 
 echo "==> Final Gatekeeper check…"
 spctl --assess --type execute --verbose "$APP"
+
+mkdir -p "$DIST_DIR"
+FINAL_ZIP="$DIST_DIR/hdhrVCRplus-${RELEASE_VERSION}.zip"
+echo "==> Zipping notarized build for distribution…"
+ditto -c -k --keepParent "$APP" "$FINAL_ZIP"
+echo "    Artifact: $FINAL_ZIP"
 
 touch "$APP"
 echo "==> Launching $APP…"

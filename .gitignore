@@ -14,3 +14,4 @@ CLAUDE.md
 Tests/hdhr_VCRTests/__Snapshots__/
 codeReview.md
 tools/__pycache__/
+/dist/
