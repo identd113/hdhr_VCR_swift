@@ -18,6 +18,14 @@ No direct path to immediately record an in-progress show without going through W
 
 ---
 
+### No "Recording Now" section separating active recordings
+
+Watch Now currently only splits entries into Favorites / Others (`content`'s `favs`/`others` filter on `channel.isFavorite`). Shows that are actively recording (`managedShow?.show_recording == true`) are mixed into whichever section they'd normally land in, so "what's recording right now" isn't visually distinct from "what's just on air." Add a third partition, above Favorites, for entries whose managed show is currently recording — when the recording ends, the entry falls back into Favorites/Others automatically since the partition is just a filter re-evaluated on every render. Companion to the web Guide's version below — implement together for one consistent story across both surfaces.
+
+**Key file**: `Views/WatchNowView.swift` → `content` (favs/others filter, ~line 206).
+
+---
+
 ## Add Show / Edit Show
 
 ### No time offset picker for DateTime shows
@@ -46,7 +54,25 @@ The season/episode-number half of "skip already-recorded episodes" is **done** (
 
 ---
 
+### `seriesAll` shows should scope to a single tuner
+
+`seriesAll` shows currently use bare (non-device-scoped) keys in `ManagedGuideMatcher` and match/mark on every tuner (see CLAUDE.md's "Web guide managed markers are tuner-scoped" invariant) — but that means the same recurring series can be picked up and recorded independently on more than one tuner at once instead of being confined to one. Should scope to a single tuner like `seriesChannel` shows do. Needs a decision on which tuner "wins" when the series airs on more than one (first-seen? lowest device ID? user-assigned?), and whether that changes matching-for-display (guide markers) as well as matching-for-record, or just the latter.
+
+**Key file**: `Models.swift` → `ManagedGuideMatcher` (seriesAll keying), `AppState.swift` (schedule/matching).
+
+---
+
 ## Web Guide
+
+### No "Recording Now" section pulling active-recording channel rows to the top
+
+The web Guide already partitions channel rows into Favorites vs. everything else (`favRows`/`otherRows`, sorted via `ch.isFavorite` at ~line 1200, joined with a `.g-fav-sep` divider at ~line 1374). Channels with an actively-recording show are mixed in wherever they'd normally sort, so a recording in progress isn't immediately obvious without scanning the whole grid. Add a third partition, above Favorites, for channels where `recChannelsByDevice[device]` contains the channel's `GuideNumber` (already computed per-row as `isRecCh`, ~line 1219) — pull that channel's entire row out of Favorites/Others into a new section with its own divider (e.g. `.g-rec-sep`, red-themed to match `.g-prog-rec`). Since the grid rebuilds on every recording-state change (`broadcastGuideChangeEvent`/`broadcastRecordingEvent`), the channel returns to its normal section automatically once the recording ends — no explicit "un-pin" logic needed. Companion to Watch Now's version above — implement together for one consistent story across both surfaces.
+
+Note: this is the shared web guide grid (`WebServer.swift`) rendered both in a browser and embedded via WKWebView in `FloatingGuideView.swift` and `AddShowView.swift`'s guide step — there is no separate native "cable view" implementation anymore (the old `CableGuideView` described in `.claude/CONVENTIONS.md`-adjacent memory/CHANGELOG history was fully replaced by this web-based grid; fixing it here covers all three embeddings at once).
+
+**Key file**: `WebServer.swift` → `buildGuideGridHTML`/`buildHTML` (favRows/otherRows split, `.g-fav-sep` divider, `recChannelsByDevice`).
+
+---
 
 ### Duplicate-episode override is a web-guide dead end
 
