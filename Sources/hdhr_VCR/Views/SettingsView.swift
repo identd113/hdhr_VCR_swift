@@ -790,7 +790,10 @@ struct SettingsView: View {
                         do {
                             try await runBrew(brew, args: args)
                             await MainActor.run {
-                                brewStatus = "\(name) installed"
+                                // VLCBridge.shared.isAvailable is captured once at first access (app launch)
+                                // via dlopen, so a fresh install won't enable Watch Now until relaunch.
+                                let restartNote = name == "VLC" ? " — restart the app to enable Watch Now" : ""
+                                brewStatus = "\(name) installed\(restartNote)"
                                 brewBusy = false
                             }
                         } catch {

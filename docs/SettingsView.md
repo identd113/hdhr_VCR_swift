@@ -270,8 +270,8 @@ One-tap operations for recovering from stuck states. Each uses `maintenanceRow(_
 - **Clear Guide Cache** — calls `state.guideStore.invalidateAll()` and clears `state.guideByDevice`. The next time the guide step or floating guide opens, it fetches fresh data.
 
 **Tools section** (only shown when `/usr/local/bin/brew` or `/opt/homebrew/bin/brew` exists):
-- **VLC** — `brew install --cask vlc`. Shown as installed (checkmark) when `/Applications/VLC.app` exists.
-- **HDHomeRun CLI** — `brew install libhdhomerun`. Shown as installed when `hdhomerun_config` is on PATH. Brew output is streamed to a `brewStatus` string shown at the bottom of the section.
+- **VLC** — `brew install --cask vlc`. Shown as installed (checkmark) via `VLCBridge.locateApp()` (Launch Services bundle-ID lookup, not a hardcoded path — works for Homebrew cask, `~/Applications`, etc). On successful install, `brewStatus` appends "— restart the app to enable Watch Now": `VLCBridge.shared.isAvailable` (which gates the Watch Now buttons) is captured once via `dlopen` at first access, so a VLC install mid-session doesn't retroactively enable them.
+- **HDHomeRun CLI** — `brew install libhdhomerun`. Shown as installed when `hdhomerun_config` is on PATH. Not called anywhere else in the app — offered purely as a convenience for the user's own terminal use. Brew output is streamed to a `brewStatus` string shown at the bottom of the section.
 
 **Developer section** — removed (2026-07-23). It offered a "Simulate macOS version" picker (`draftSimulatedOS`/`@AppStorage("simulatedMacOSVersion")`) that had been dead since `CableGuideView`, its one consumer, was removed — the picker changed nothing.
 
