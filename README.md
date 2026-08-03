@@ -201,12 +201,16 @@ Shows that fail more than the configured threshold (default: 3) are automaticall
 
 ## Menu Bar Icon
 
-| Icon | Meaning |
-|------|---------|
-| 📺 (dim) | Starting up |
-| 📺 | Idle — nothing due in 30 minutes |
-| 🕐 orange | A show starts within 30 minutes |
-| ⏺ red | Recording in progress |
+The VHS-cassette icon's label doubles as a status light:
+
+| State | Icon | Meaning |
+|------|------|---------|
+| Starting up | Dimmed (30% opacity) | App isn't ready yet — still discovering devices/lineup/guide |
+| Idle | Full opacity, light off | Nothing due in 30 minutes |
+| Show soon | Light lit amber | A show starts within 30 minutes |
+| Recording | Light lit red | Recording in progress |
+
+The lit states blink on a 6-second cycle if "Blink menu bar icon" is enabled in Settings → General (off by default).
 
 ---
 
