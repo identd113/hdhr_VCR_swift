@@ -38,5 +38,7 @@ Doc per view/system: intent, architecture, key behaviors. Source of truth for vi
 | [Distribution.md](Distribution.md) | Shipping outside the App Store — notarization, updates, monetization |
 | [WebServerPerfFindings.md](WebServerPerfFindings.md) | Historical — point-in-time investigation into slow guide page loads; current caching behavior is in `WebServer.md` |
 | [WKWebView_guide_analysis.md](WKWebView_guide_analysis.md) | Historical — pre-implementation feasibility analysis, superseded the next day by the actual rewrite; current architecture is in `FloatingGuideView.md` |
+| [MAS_COMPLIANCE.md](MAS_COMPLIANCE.md) | Mac App Store sandboxing compliance status — a distribution-path decision doc, not a code reference |
+| [CODE_REVIEW_2026-08-02.md](CODE_REVIEW_2026-08-02.md) | Unactioned simplification/efficiency triage snapshot across all `Sources/` files — proposals for the user to review, not yet applied |
 
 Root-level reference: [`CLAUDE.md`](../CLAUDE.md) — architecture overview, invariants, build/deploy.

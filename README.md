@@ -18,7 +18,7 @@ No subscription. No media server. No cloud account. Just your tuner, your Mac, a
 
 ## Why hdhrVCRplus?
 
-You already paid for an HDHomeRun tuner and a cable/antenna subscription. You shouldn't have to pay again just to record TV.
+You already paid for an HDHomeRun tuner, so you  shouldn't have to pay again just to record TV.
 
 | | hdhrVCRplus | SiliconDust DVR Service | Plex DVR | Channels DVR | EyeTV |
 |---|---|---|---|---|---|
@@ -242,7 +242,7 @@ Contributions are welcome — see [CONTRIBUTING.md](.github/CONTRIBUTING.md) to 
 - **[Wiki](https://github.com/identd113/hdhr_VCR_swift/wiki)** — architecture and per-view/per-system technical documentation (mirrors [`docs/`](docs/) in this repo)
 - **[ISSUES.md](ISSUES.md)** — known issues and resolved-bug history
 - **[TODO.md](TODO.md)** — deferred features and improvements
-- **[MAS_COMPLIANCE.md](MAS_COMPLIANCE.md)** — Mac App Store sandboxing compliance status, for anyone looking at that distribution path
+- **[MAS_COMPLIANCE.md](docs/MAS_COMPLIANCE.md)** — Mac App Store sandboxing compliance status, for anyone looking at that distribution path
 
 ---
 
