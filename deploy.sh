@@ -50,6 +50,9 @@ mkdir -p "$APP/Contents/Resources"
 cp Resources/app.jpg "$APP/Contents/Resources/app.jpg"
 cp Resources/app-recording.jpg "$APP/Contents/Resources/app-recording.jpg"
 cp Resources/app-upnext.jpg "$APP/Contents/Resources/app-upnext.jpg"
+cp Resources/guide.css "$APP/Contents/Resources/guide.css"
+cp Resources/guide.js "$APP/Contents/Resources/guide.js"
+cp Resources/guide-shell.html "$APP/Contents/Resources/guide-shell.html"
 
 echo "==> Generating app icon…"
 # Build AppIcon.icns from AppIcon-source.png — a dedicated 1024x1024 master with the icon

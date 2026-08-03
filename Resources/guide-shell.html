@@ -1,0 +1,111 @@
+<div id="splash" style="position:fixed;inset:0;z-index:9999;background:rgba(17,17,17,.97);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;pointer-events:none">
+  <img src="/api/icon" width="72" height="72" style="border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,.6)" onerror="this.style.display='none'">
+  <div style="color:#fff;font-size:1.1rem;font-weight:700;letter-spacing:.01em">hdhrVCR+</div>
+  <div style="color:#555;font-size:.72rem">{{APP_VERSION}}</div>
+</div>
+<div id="toolbar" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px;flex-shrink:0">
+  {{HEADER_HTML}}
+  {{DEVICE_BAR_HTML}}
+  <div id="genre-bar" style="display:none">
+    <select id="genre-sel" onchange="filterGenre(this.value)" class="genre-sel"><option value="">All genres</option></select>
+  </div>
+  <div id="theme-sw" style="margin-left:auto">
+    <button data-m="dark"  onclick="setTheme('dark')"  title="Dark">◗</button>
+    <button data-m="auto"  onclick="setTheme('auto')"  title="Auto (system)">◐</button>
+    <button data-m="light" onclick="setTheme('light')" title="Light">◖</button>
+  </div>
+</div>
+<div id="t-pop" onclick="if(event.target===this)closeTunerPop()" style="display:none;position:fixed;inset:0;z-index:200">
+  <div id="t-pop-c" style="position:absolute;border:1px solid #484848;border-radius:10px;padding:16px 18px;min-width:280px;max-width:400px;box-shadow:0 8px 32px rgba(0,0,0,.75)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <span id="t-pop-hdr" style="font-size:.82rem;font-weight:600"></span>
+      <button onclick="closeTunerPop()" style="background:none;border:none;font-size:.9rem;cursor:pointer;padding:0 0 0 12px;line-height:1">✕</button>
+    </div>
+    <div id="t-pop-list" style="display:flex;flex-direction:column;gap:1px"></div>
+    <a id="t-pop-status" href="#" target="_blank" style="display:none;margin-top:10px;font-size:.72rem;text-decoration:none;border-top:1px solid #2e2e2e;padding-top:8px">status.json ↗</a>
+  </div>
+</div>
+<div id="sum" style="border:1px solid #333;border-radius:8px;margin-bottom:16px;display:flex;align-items:stretch;overflow:hidden;min-height:44px;flex-shrink:0">
+  <div id="sum-ph" style="flex:1;display:flex;align-items:center;padding:12px 16px">{{SUM_PH_HTML}}</div>
+  <div id="sum-c" style="display:none;flex:1;flex-direction:row;position:relative">
+    <img id="sum-poster" src="" alt="" loading="lazy" style="width:72px;min-width:72px;object-fit:contain;display:none;background:#888">
+    <div id="sum-grad" style="flex:1;padding:8px 10px;display:flex;flex-direction:column;gap:1px;overflow:hidden">
+      <div id="sum-title" style="font-size:.92rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+      <div id="sum-genre" style="display:none;align-self:flex-start;flex-wrap:wrap;gap:3px"></div>
+      <div id="sum-ep"   style="display:none;font-size:.78rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+      <div id="sum-date" style="display:none;font-size:.68rem"></div>
+      <div id="sum-syn"  class="s-syn" style="display:none;font-size:.76rem;line-height:1.35"></div>
+      <div id="sum-actions" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:3px">
+        <span id="sum-note" style="display:none;font-size:.75rem;font-style:italic;color:rgba(255,255,255,.75)"></span>
+        <button id="sum-btn" onclick="doRecord()" style="display:none;font-size:.75rem;padding:4px 12px;border-radius:5px;border:none;cursor:pointer;font-weight:600;background:#c0392b;color:#fff">Record</button>
+        <button id="sum-edit" onclick="doEditFromGuide()" style="display:none;font-size:.75rem;padding:4px 12px;border-radius:5px;cursor:pointer;font-weight:600">Edit</button>
+        <button id="sum-del" onclick="doDelete()" style="display:none;font-size:.75rem;padding:4px 12px;border-radius:5px;cursor:pointer;font-weight:600">Delete</button>
+        <button id="sum-watch-app" onclick="doWatchInApp()" style="display:none;font-size:.75rem;padding:4px 12px;border-radius:5px;border:none;cursor:pointer;font-weight:600;background:#1a6abf;color:#fff">Watch in App</button>
+        <button id="sum-watch-vlc" onclick="doWatchInVLC()" style="display:none;font-size:.75rem;padding:4px 12px;border-radius:5px;border:none;cursor:pointer;font-weight:600;background:#b06200;color:#fff">Watch in VLC</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:3px">
+        <img id="sum-logo" src="" alt="" loading="lazy" style="width:24px;height:24px;object-fit:contain;display:none;background:#aaa" onerror="this.style.display='none'">
+        <span id="sum-ct" style="font-size:.68rem"></span>
+      </div>
+    </div>
+    <span id="sum-bonus-star" class="sb-web sb-web-lg" style="display:none"></span>
+    <button onclick="closeSummary()" style="background:none;border:none;color:#666;font-size:.9rem;cursor:pointer;padding:6px 10px;align-self:flex-start;flex-shrink:0;margin-top:4px" title="Close">✕</button>
+  </div>
+</div>
+<div id="rec-modal" onclick="if(event.target===this)cancelRecord()" style="display:none;position:fixed;inset:0;background:var(--mat-backdrop);z-index:100;align-items:center;justify-content:center;padding:20px">
+  <div class="mac-sheet" style="padding:20px 22px;width:480px;max-width:calc(100vw - 32px);max-height:calc(100vh - 40px);overflow-y:auto;position:relative">
+    <span id="rm-bonus-star" class="sb-web sb-web-lg" style="display:none"></span>
+    <div style="font-weight:600;font-size:.94rem;color:var(--t0);margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--b2)">Record Show</div>
+    <div class="em-row">
+      <div class="em-lbl">Title</div>
+      <div class="em-content">
+        <input id="rm-title-in" class="em-input" type="text">
+        <div id="rm-ch" style="font-size:.72rem;color:var(--t4)"></div>
+        <div id="rm-sig" style="min-height:12px"></div>
+      </div>
+    </div>
+    <div class="em-row"><div class="em-lbl">Type</div><div class="em-content"><div id="rm-opts" class="rm-type-row"></div><div id="rm-type-desc" class="rm-type-desc"></div></div></div>
+    <div class="em-row"><div class="em-lbl">Transcode</div><select id="rm-transcode" class="em-input"><option value="none">None (copy stream)</option><option value="heavy">Heavy (H.264 CRF 18)</option><option value="mobile">Mobile (480p H.264)</option><option value="internet720">Internet 720 (720p H.264)</option></select></div>
+    <div id="rm-bonus-row" class="em-row"><div class="em-lbl">Bonus Time</div><label class="em-check"><input type="checkbox" class="mac-check" id="rm-bonus" onchange="toggleRmBonusStar()"><span>+{{SPORTS_PADDING_MINUTES}} min past guide end</span></label></div>
+    <div id="rm-days-row" class="em-row" style="display:none"><div class="em-lbl" id="rm-days-lbl">Days</div><div class="em-days" id="rm-days"></div></div>
+    <div id="rm-sid" class="em-row" style="display:none"><div class="em-lbl">SeriesID</div><div id="rm-sid-val" class="em-sid"></div></div>
+    <div id="rm-airings" style="display:none;margin-bottom:14px">
+      <div class="em-panel-hdr">Other Upcoming Airings</div>
+      <div id="rm-airings-list" class="em-panel"></div>
+    </div>
+    <div id="rm-tuner" style="display:none;font-size:.74rem;color:#ffcc66;background:#2a1e00;border:1px solid #7a5500;border-radius:6px;padding:7px 10px;margin-bottom:10px"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" style="vertical-align:-2px;margin-right:3px"><path d="M8 1.6 1.4 13.2c-.4.7.1 1.6 1 1.6h11.2c.9 0 1.4-.9 1-1.6L8.6 1.6a.7.7 0 0 0-1.2 0Z" fill="currentColor"/><rect x="7.3" y="5.6" width="1.4" height="4.2" rx=".7" fill="#2a1e00"/><rect x="7.3" y="10.6" width="1.4" height="1.4" rx=".7" fill="#2a1e00"/></svg>All tuners are currently in use. This show will be queued and recorded as soon as a tuner is free.</div>
+    <div id="rm-sig-warn" style="display:none;font-size:.74rem;color:#ffcc66;background:#2a1e00;border:1px solid #7a5500;border-radius:6px;padding:7px 10px;margin-bottom:10px"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" style="vertical-align:-2px;margin-right:3px"><path d="M8 1.6 1.4 13.2c-.4.7.1 1.6 1 1.6h11.2c.9 0 1.4-.9 1-1.6L8.6 1.6a.7.7 0 0 0-1.2 0Z" fill="currentColor"/><rect x="7.3" y="5.6" width="1.4" height="4.2" rx=".7" fill="#2a1e00"/><rect x="7.3" y="10.6" width="1.4" height="1.4" rx=".7" fill="#2a1e00"/></svg>Weak signal on this channel — recordings may drop out or fail.</div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--b2)">
+      <button onclick="cancelRecord()" class="mac-btn mac-btn-plain">Cancel</button>
+      <button onclick="confirmRecord()" class="mac-btn mac-btn-record">Schedule</button>
+    </div>
+  </div>
+</div>
+<div id="edit-modal" onclick="if(event.target===this)closeEditShow()" style="display:none;position:fixed;inset:0;background:var(--mat-backdrop);z-index:201;align-items:center;justify-content:center;padding:20px">
+  <div class="mac-sheet" style="padding:20px 22px;width:480px;max-width:calc(100vw - 32px);max-height:calc(100vh - 40px);overflow-y:auto;position:relative">
+    <span id="em-bonus-star" class="sb-web sb-web-lg" style="display:none"></span>
+    <div style="font-weight:600;font-size:.94rem;color:var(--t0);margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--b2)">Edit Show</div>
+    <div class="em-row"><div class="em-lbl">Title</div><input id="em-title-in" class="em-input" type="text" placeholder="Show title"></div>
+    <div class="em-row"><div class="em-lbl">Type</div><div class="em-content"><div id="em-type-opts" class="rm-type-row"></div><div id="em-type-desc" class="rm-type-desc"></div></div></div>
+    <div class="em-row"><div class="em-lbl">Transcode</div><select id="em-transcode" class="em-input"><option value="none">None (copy stream)</option><option value="heavy">Heavy (H.264 CRF 18)</option><option value="mobile">Mobile (480p H.264)</option><option value="internet720">Internet 720 (720p H.264)</option></select></div>
+    <div id="em-bonus-row" class="em-row"><div class="em-lbl">Bonus Time</div><label class="em-check"><input type="checkbox" class="mac-check" id="em-bonus" onchange="toggleBonusStar()"><span>Extend recording past guide end</span></label></div>
+    <div id="em-days-row" class="em-row" style="display:none"><div class="em-lbl" id="em-days-lbl">Days</div><div class="em-days" id="em-days"></div></div>
+    <div class="em-row"><div class="em-lbl">Channel</div><input id="em-ch-in" class="em-input em-input-sm" type="text" placeholder="e.g. 5.4"></div>
+    <div class="em-row"><div class="em-lbl">Length (min)</div><input id="em-len-in" class="em-input em-input-sm" type="number" min="1" max="1440" placeholder="60"></div>
+    <div id="em-fail-row" class="em-row" style="display:none"><div class="em-lbl">Failures</div><div class="em-fail-content"><span id="em-fail-txt"></span><button id="em-reset" onclick="doEditReset()" class="em-fail-reset">Reset</button></div></div>
+    <div id="em-sid-row" class="em-row" style="display:none"><div class="em-lbl">SeriesID</div><div id="em-sid" class="em-sid"></div></div>
+    <div id="em-dev-warn" style="display:none;font-size:.74rem;border:1px solid #8a6a20;border-radius:6px;padding:7px 10px;margin-bottom:10px"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:currentColor;margin-right:4px;vertical-align:1px"></span><span id="em-dev-warn-txt"></span></div>
+    <div id="em-rec-warn" style="display:none;font-size:.74rem;border:1px solid #883030;border-radius:6px;padding:7px 10px;margin-bottom:10px"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:currentColor;margin-right:4px;vertical-align:1px"></span>Recording now — delete will stop the active recording.</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--b2)">
+      <button id="em-del" onclick="doEditDelete()" class="mac-btn mac-btn-destructive">Delete</button>
+      <div style="display:flex;gap:8px">
+        <button id="em-pause" onclick="doEditPause()" class="mac-btn mac-btn-plain" style="display:none"></button>
+        <button onclick="closeEditShow()" class="mac-btn mac-btn-plain">Cancel</button>
+        <button id="em-save" onclick="confirmEdit()" class="mac-btn mac-btn-prom">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="gw-outer"><div class="gw"><div class="gi">
+{{GRID_INNER}}
+</div></div><div id="g-hscroll"><div id="g-hscroll-thumb"></div></div></div>

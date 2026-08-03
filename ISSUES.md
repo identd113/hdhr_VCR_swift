@@ -472,3 +472,27 @@ When the tuner picker changes, `genreFilter` resets to `nil` because `availableG
 **Resolution**: `startRecording(index:)` now does a final, synchronous, live re-check for any SeriesID-based show (`show_use_seriesid`) right before actually recording — `GuideStore.currentEpisode`/`currentEntryByTitle` against the show's own resolved device+channel, the same SeriesID-then-title trust tiers `scheduleNextAir` already uses. The title-only tier runs even when `show_seriesid` is empty (a real, already-handled case for guide entries that omit SeriesID — fixed in review after an initial version gated the whole check on a non-empty `show_seriesid`, silently leaving those shows unprotected). If neither confirms the airing anymore, the recording is skipped, `show_next` is cleared to `nil`, `scheduleNextAir` is called immediately — falling into its own existing "no match, retry in `Series_scan_retry_hours`" branch, the same path a brand-new show's first resolution takes — and a `show_updated` guide-change event is broadcast (using the post-reschedule channel/device) so an open web guide doesn't show stale schedule info. No new state machinery.
 
 **Resolving commit**: pending (uncommitted at time of writing)
+
+---
+
+# Found during WebServer.swift CSS/JS/HTML extraction — 2026-08-02
+
+## OPEN — `CHANGELOG.md` never copied into the app bundle; in-app changelog view silently renders empty
+
+**File:** `Views/SettingsView.swift` (`Bundle.main.url(forResource: "CHANGELOG", withExtension: "md")`); `deploy.sh`/`deploy_release.sh`; `Package.swift`
+
+**Root cause**: `Package.swift` declares `CHANGELOG.md` via SPM's `resources: [.copy(...)]`, which relies on the `Bundle.module` mechanism. The generated `Bundle.module` accessor looks for the resource bundle at `Bundle.main.bundleURL.appendingPathComponent("hdhr_VCR_hdhr_VCR.bundle")` — i.e. as a *sibling* of `Contents/` inside the `.app` (like `hdhrVCRplus.app/hdhr_VCR_hdhr_VCR.bundle`) — which neither `deploy.sh` nor `deploy_release.sh` ever creates. `SettingsView.swift` actually calls `Bundle.main.url(...)`, not `Bundle.module`, so it's not even reaching that (broken) mechanism — either way, `CHANGELOG.md` never lands anywhere `Bundle.main` looks (`Contents/Resources/`), so the lookup returns nil and the changelog view renders empty in every deployed build.
+
+**Fix**: Either (a) drop the SPM `resources:` reliance and copy `CHANGELOG.md` into `Contents/Resources/` via `deploy.sh`/`deploy_release.sh`, matching how `favicon.ico`/`AppIcon.icns`/`app*.jpg` already work, or (b) fix `Bundle.module`'s accessor path expectation. (a) is simpler and matches the pattern the rest of the app already uses for bundled resources.
+
+**Resolving commit**: —
+
+## OPEN — `deploy_release.sh` has no favicon generation/copy step
+
+**File:** `deploy_release.sh`
+
+**Root cause**: `deploy.sh` generates `favicon.ico` from `Resources/AppIcon-source.png` and copies it into `Contents/Resources/` (`deploy.sh:71-83` at time of writing). `deploy_release.sh` has no equivalent step at all — release builds silently rely on whatever `Resources/favicon.ico` happens to already be checked into git from a prior `deploy.sh` run, rather than regenerating it themselves.
+
+**Fix**: Add the same favicon-generation block to `deploy_release.sh`, or explicitly document that release builds intentionally reuse the committed `Resources/favicon.ico` as-is.
+
+**Resolving commit**: —
