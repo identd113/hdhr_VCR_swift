@@ -91,8 +91,32 @@ final class WebServer: @unchecked Sendable {
     }
 
     // Substitutes {{TOKEN}} placeholders in a loaded template with their runtime values.
-    private func fillTemplate(_ template: String, _ tokens: [(String, String)]) -> String {
-        tokens.reduce(template) { $0.replacingOccurrences(of: "{{\($1.0)}}", with: $1.1) }
+    // Single left-to-right pass over the ORIGINAL template — a substituted value is appended
+    // straight into the result and never rescanned, so a value that happens to contain literal
+    // "{{OTHER_TOKEN}}" text (e.g. a user-entered show title) can't get a second, corrupting
+    // substitution the way a reduce-over-replacingOccurrences chain would.
+    // Not private — same reasoning as jsEscapeForScript below (WebServerHelperTests exercises
+    // this directly).
+    func fillTemplate(_ template: String, _ tokens: [(String, String)]) -> String {
+        let values = Dictionary(uniqueKeysWithValues: tokens)
+        var result = ""
+        var remainder = Substring(template)
+        while let openRange = remainder.range(of: "{{") {
+            result += remainder[remainder.startIndex..<openRange.lowerBound]
+            let afterOpen = remainder[openRange.upperBound...]
+            guard let closeRange = afterOpen.range(of: "}}") else {
+                result += remainder[openRange.lowerBound...]
+                remainder = Substring("")
+                break
+            }
+            let tokenName = String(afterOpen[afterOpen.startIndex..<closeRange.lowerBound])
+            // Unrecognized token text is left as literal "{{...}}" so a typo'd/renamed token
+            // shows up visibly on the page instead of silently vanishing.
+            result += values[tokenName] ?? "{{\(tokenName)}}"
+            remainder = afterOpen[closeRange.upperBound...]
+        }
+        result += remainder
+        return result
     }
 
     @MainActor

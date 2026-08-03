@@ -100,4 +100,39 @@ struct WebServerHelperTests {
         #expect(ws.showStateFromString("bogus") == .single)
         #expect(ws.showStateFromString("") == .single)
     }
+
+    // MARK: fillTemplate() — {{TOKEN}} substitution for Resources/guide.{css,js,html}
+
+    @Test func fillTemplate_substitutesAllTokens() {
+        let ws = WebServer()
+        let result = ws.fillTemplate("a={{A}};b={{B}};", [("A", "1"), ("B", "2")])
+        #expect(result == "a=1;b=2;")
+    }
+
+    @Test func fillTemplate_leavesUnrecognizedTokenLiteral() {
+        let ws = WebServer()
+        // A typo'd/renamed token should stay visible as "{{...}}" rather than silently vanish.
+        let result = ws.fillTemplate("x={{TYPO}};", [("A", "1")])
+        #expect(result == "x={{TYPO}};")
+    }
+
+    @Test func fillTemplate_substitutedValueContainingTokenSyntaxIsNotRescanned() {
+        // Regression: a reduce-over-replacingOccurrences implementation rescans its own output,
+        // so a value substituted early (e.g. a user-entered show title landing in recsByDevJS)
+        // that happens to contain literal "{{OTHER_TOKEN}}" text would get corrupted when that
+        // later token is substituted. fillTemplate must do a single pass over the original
+        // template so inserted values are never rescanned.
+        let ws = WebServer()
+        let result = ws.fillTemplate(
+            "first={{FIRST}};second={{SECOND}};",
+            [("FIRST", "Meeting {{SECOND}} Notes"), ("SECOND", "42")]
+        )
+        #expect(result == "first=Meeting {{SECOND}} Notes;second=42;")
+    }
+
+    @Test func fillTemplate_unterminatedTokenLeftAsLiteral() {
+        let ws = WebServer()
+        let result = ws.fillTemplate("x={{A", [("A", "1")])
+        #expect(result == "x={{A")
+    }
 }
