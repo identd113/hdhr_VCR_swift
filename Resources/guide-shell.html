@@ -6,13 +6,15 @@
 <div id="toolbar" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px;flex-shrink:0">
   {{HEADER_HTML}}
   {{DEVICE_BAR_HTML}}
-  <div id="genre-bar" style="display:none">
-    <select id="genre-sel" onchange="filterGenre(this.value)" class="genre-sel"><option value="">All genres</option></select>
-  </div>
-  <div id="theme-sw" style="margin-left:auto">
-    <button data-m="dark"  onclick="setTheme('dark')"  title="Dark">◗</button>
-    <button data-m="auto"  onclick="setTheme('auto')"  title="Auto (system)">◐</button>
-    <button data-m="light" onclick="setTheme('light')" title="Light">◖</button>
+  <div id="toolbar-right" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-left:auto">
+    <div id="genre-bar" style="display:none">
+      <select id="genre-sel" onchange="filterGenre(this.value)" class="genre-sel"><option value="">All genres</option></select>
+    </div>
+    <div id="theme-sw">
+      <button data-m="dark"  onclick="setTheme('dark')"  title="Dark">◗</button>
+      <button data-m="auto"  onclick="setTheme('auto')"  title="Auto (system)">◐</button>
+      <button data-m="light" onclick="setTheme('light')" title="Light">◖</button>
+    </div>
   </div>
 </div>
 <div id="t-pop" onclick="if(event.target===this)closeTunerPop()" style="display:none;position:fixed;inset:0;z-index:200">
@@ -43,7 +45,7 @@
         <button id="sum-watch-app" onclick="doWatchInApp()" style="display:none;font-size:.75rem;padding:4px 12px;border-radius:5px;border:none;cursor:pointer;font-weight:600;background:#1a6abf;color:#fff">Watch in App</button>
         <button id="sum-watch-vlc" onclick="doWatchInVLC()" style="display:none;font-size:.75rem;padding:4px 12px;border-radius:5px;border:none;cursor:pointer;font-weight:600;background:#b06200;color:#fff">Watch in VLC</button>
       </div>
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:3px">
+      <div id="sum-ch-row" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:3px">
         <img id="sum-logo" src="" alt="" loading="lazy" style="width:24px;height:24px;object-fit:contain;display:none;background:#aaa" onerror="this.style.display='none'">
         <span id="sum-ct" style="font-size:.68rem"></span>
       </div>

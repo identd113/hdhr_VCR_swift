@@ -1,0 +1,91 @@
+/* ── Vertical time-axis mode (@media (orientation:portrait) — automatic, no manual toggle) ──
+   Transposes the grid: channels become side-by-side columns (sticky-top headers), time
+   becomes the shared vertical axis (a sticky-left ruler, scrolling down moves through time
+   for every visible channel at once — same relationship as a calendar day/week view).
+   Every .g-prog/.g-gap/.g-now-bar/.g-tick position still comes from the SAME --gs/--gw
+   percentages buildGuideGridHTML() emits for horizontal mode (they express "how far into
+   the time window", not a screen direction) — only which physical property they drive
+   (left/width vs top/height) changes here. Composition mirrors the horizontal corner-sticky
+   trick: .g-hdr sticks on ONE axis (left, so it stays put while channel columns scroll by)
+   and .g-hdr-ch sticks on the OTHER (top, so it stays put while time scrolls by) — nesting
+   two single-axis stickies is what pins the true corner, same as horizontal mode does with
+   the axes swapped. align-items:stretch (the flex default, stated explicitly here since it's
+   load-bearing) is what makes .g-hdr's ruler column match every .g-row's real, tall content
+   height — .g-hdr-tl's flex:1 only has something to grow into because its .g-hdr parent gets
+   stretched to the tallest sibling's height by .gi; flex-start would leave .g-hdr collapsed to
+   just .g-hdr-ch's height, bunching every tick into that first sliver instead of down the page.
+
+   Pure media query, no JS-toggled class — portrait always gets this layout, landscape always
+   gets the normal horizontal one, with no manual override. guide.js's isVT() mirrors this same
+   query (window.matchMedia('(orientation: portrait)')) so the scroll/now-line math in guide.js
+   agrees with which layout is actually on screen. Every selector keeps a redundant "html"
+   element qualifier (rather than being bare, e.g. "html .gi" not ".gi") purely for a
+   specificity margin over guide.css's base rules — loaded as a later <style> block already
+   wins ties by source order, but the extra qualifier means that stays true even if guide.css
+   later grows an equal-or-higher-specificity rule for the same selector.
+
+   .g-hdr is deliberately NOT position:sticky here (unlike every other sticky element in this
+   file) — sticky along the inline/left axis inside a flex row is a known weak spot in WebKit
+   (top/bottom-axis sticky, used everywhere else in this grid, is far more reliably supported
+   than left/right-axis sticky in a flex container) and was observed actually failing on-device:
+   the ruler scrolled away with the channel columns instead of staying pinned. guide.js's
+   syncHdrPin() pins it instead via a plain transform:translateX(gw.scrollLeft), driven by a
+   scroll listener — a mechanism that doesn't depend on any particular sticky implementation.
+
+   .g-hdr is also pulled OUT of .gi's flex flow entirely (position:absolute) rather than left as
+   a flex item with a transform — a transform repaints an element at a new visual position but
+   does NOT remove its original space from layout, so a still-in-flow, merely-transformed .g-hdr
+   would visually overlap whichever channel column had scrolled underneath it (observed
+   on-device: overlapping/garbled text where the ruler sat on top of real content) instead of
+   content simply starting after it. .gi's padding-left:var(--ch-w) reserves the exact space
+   .g-hdr used to occupy as a flex item, so real columns (now the actual first flex children)
+   still start in the right place; .g-hdr's top:0;bottom:0 (not height:100%, which would be a
+   percentage against .gi's auto/intrinsic height and compute to nothing, the same class of bug
+   as the .g-ch width fix earlier in this file's history) spans .gi's full height instead. */
+@media (orientation: portrait) {
+html .gi{display:flex;flex-direction:row;align-items:stretch;min-width:0;position:relative;padding-left:var(--ch-w)}
+html .g-hdr{position:absolute;top:0;bottom:0;left:0;width:var(--ch-w);min-width:var(--ch-w);flex-direction:column;border-bottom:none;border-right:1px solid var(--b2)}
+html .g-hdr-ch{width:100%;height:var(--ch-h);min-height:var(--ch-h);position:sticky;top:0;left:auto;border-right:none;border-bottom:1px solid var(--b2)}
+html .g-hdr-tl{flex:1;width:100%;height:auto}
+html .g-tick{left:50%;top:var(--gs)}
+html .g-now-tick{left:0;right:0;width:auto;top:var(--gs);bottom:auto;height:2px}
+/* contain-intrinsic-size takes an [auto]? [none|<length>] GROUP per axis (width, then height)
+   — "130px auto" is invalid (a lone trailing "auto" needs its own length) and browsers resolve
+   it to 130px on BOTH axes, which under content-visibility:auto collapses an off-screen
+   column's placeholder to 130px tall instead of the real ~GUIDE_MIN_HEIGHT-tall column,
+   causing a squash-then-snap flash as it scrolls into view. Two explicit groups fixes it. */
+/* Explicit width (mirrors .g-hdr's) rather than leaving .g-row to size from its children's
+   content — .g-ch below sets width:100%, and a percentage against an indefinite containing
+   block resolves unpredictably (observed: some channels' logo/name collapsing to nothing)
+   instead of reliably filling the column.
+   content-visibility:visible cancels the base (horizontal-mode) .g-row{content-visibility:auto}
+   — sticky-positioned descendants (.g-ch, right below) inside a content-visibility:auto
+   ancestor are a known WebKit/Chromium rendering bug category (observed: the first channel's
+   header failing to paint its logo/name/star until a real scroll forced a recompute — two
+   different nudge attempts, including a forced synchronous reflow, didn't fix it). The lazy-
+   render optimization moves to .g-tl instead (below), scoped to just the expensive part — the
+   ~50+ program blocks — since the single small header cell never needed it. */
+html .g-row{flex-direction:column;width:var(--ch-w);min-width:var(--ch-w);border-bottom:none;border-right:1px solid var(--b0);flex-shrink:0;content-visibility:visible}
+html .g-row:last-child{border-right:none}
+html .g-row>.g-tl{content-visibility:auto;contain-intrinsic-size:auto 130px auto {{GUIDE_MIN_HEIGHT}}px}
+html .g-fav-sep{flex-direction:column;border-bottom:none;border-right:1px solid var(--b0);flex-shrink:0;width:12px;min-width:12px}
+/* A rotated "FAVORITES" word (writing-mode:vertical-rl) needs a head-tilt to read and felt
+   cramped at this column's width, and a lone star still read as stray clutter at a glance —
+   the amber tint alone (background on .g-fav-sep .g-ch, base rule above) marks the section. */
+/* position:static (not sticky) — this cell has no visible content here (star/text both
+   hidden below) so it doesn't need to stick, and un-sticking it rules out a suspected WebKit
+   rendering issue with two differently-sized position:sticky;top:0 cells sitting immediately
+   adjacent (this 12px-wide one and the real channel column's ~var(--ch-w) one right after it),
+   which correlated with that neighbor's header (logo/name/star) failing to paint at all. */
+html .g-fav-sep .g-ch{position:static;top:auto;left:auto;height:var(--ch-h);min-height:var(--ch-h);padding:0;border-right:none;border-bottom:1px solid var(--b1)}
+html .g-fav-sep-txt,html .g-fav-sep-star{display:none}
+html .g-fav-sep .g-tl{min-height:0;min-width:0}
+html .g-ch{width:100%;height:var(--ch-h);min-height:var(--ch-h);position:sticky;top:0;left:auto;border-right:none;border-bottom:1px solid var(--b1)}
+html .g-tl{min-height:{{GUIDE_MIN_HEIGHT}}px;background:repeating-linear-gradient(180deg,transparent,transparent calc(8.3333% - 1px),var(--b0) calc(8.3333% - 1px),var(--b0) 8.3333%)}
+html .g-row[data-fav="1"] .g-tl{background:repeating-linear-gradient(180deg,color-mix(in srgb,var(--fav) 13%,transparent),color-mix(in srgb,var(--fav) 13%,transparent) calc(8.3333% - 1px),var(--b0) calc(8.3333% - 1px),var(--b0) 8.3333%)}
+html{--gg-dir:to bottom}
+html .g-now-bar{left:0;right:0;width:auto;top:var(--gs);bottom:auto;height:2px}
+html .g-gap{left:3px;right:3px;width:auto;top:var(--gs);height:var(--gw);bottom:auto}
+html .g-prog{left:3px;right:3px;width:auto;top:var(--gs);height:var(--gw);bottom:auto}
+html #g-hscroll{display:none}
+}

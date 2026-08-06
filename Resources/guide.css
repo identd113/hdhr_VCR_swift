@@ -6,6 +6,8 @@
   --t0:#f0f0f0;--t1:#e8e8e8;--t2:#d0d0d0;--t3:#aaaaaa;--t4:#888888;--t5:#777777;--t6:#666666;
   --pg:#2c2c2c;--pgb:#484848;--ac:#0A84FF;--acb:#0e1f35;--fav:#e8a000;
   --mat-bg:rgba(30,30,32,.72);--mat-backdrop:rgba(0,0,0,.42);--mat-border:rgba(255,255,255,.09);--mat-highlight:rgba(255,255,255,.06);
+  --ch-w:125px;
+  --ch-h:52px;
 }
 html.lm{
   --bg:#e4e6ea;--s1:#eceef2;--s2:#f2f4f7;--s3:#ffffff;--s4:#dddfe4;
@@ -105,6 +107,76 @@ html.lm #sum-poster{background:#ccc}
   #sum-date{display:none!important}
   #sum-syn{display:none!important}
   #sum-grad{padding:4px 8px!important}
+  /* With the poster/genre/date/synopsis all hidden above, #sum-grad's flex:1 still stretches
+     it to the card's full width (the card spans the grid, which on a landscape phone is wide)
+     — a vertical stack of just title/episode/actions/channel-row then leaves most of that
+     width empty while still costing 4 lines of the scarce vertical space. Switch to a single
+     row instead: title/episode truncate to make room, the channel/time line moves inline
+     after them, and #sum-actions' margin-left:auto pushes Record/Edit/etc to the right edge
+     (the close ✕ button is a sibling of #sum-grad, not inside it, so it's already pinned at
+     the card's true right edge regardless of this reflow). */
+  #sum-c{align-items:center!important}
+  #sum-grad{flex-direction:row!important;align-items:center!important;flex-wrap:nowrap!important;gap:8px!important;overflow:hidden!important}
+  #sum-title{order:1;flex:1 1 auto;min-width:0!important;font-size:.82rem!important}
+  #sum-ep{order:2;flex:0 1 auto;min-width:0!important;max-width:32%}
+  #sum-ep::before{content:"\00b7\00a0"}
+  #sum-ch-row{order:3;margin-top:0!important;flex:0 0 auto;flex-wrap:nowrap!important}
+  #sum-logo{width:18px!important;height:18px!important}
+  #sum-ct{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:170px;display:inline-block}
+  #sum-actions{order:4;margin-top:0!important;margin-left:auto!important;flex:0 0 auto;flex-wrap:nowrap!important}
+  #sum-actions button{padding:3px 10px!important;font-size:.72rem!important}
+  /* Same short-viewport bucket catches landscape phones, where the toolbar (h1 + per-tuner
+     boxes + genre filter + theme switcher) is the row most likely to overflow — shrink its
+     controls so the row is less likely to wrap at all; #toolbar-right (genre+theme) is a
+     single flex item so if it still doesn't fit, it wraps as a unit instead of the theme
+     switcher splitting off onto its own near-empty line. */
+  #toolbar{gap:8px!important;margin-bottom:8px!important}
+  h1{font-size:1rem}
+  .d-btn,.tdrop-btn{padding:4px 7px;font-size:.7rem}
+  .t-info{padding:2px 6px;font-size:.66rem}
+  #theme-sw button{padding:4px 7px;font-size:.75rem}
+  .genre-sel{padding:3px 6px;font-size:.72rem}
+  /* Grid time-header row (the "8 PM · 9 PM · ..." strip) — every pixel trimmed here is a
+     pixel handed back to .gw's scrollable area, which is the whole point of this bucket. */
+  .g-hdr-tl{height:24px}
+  .g-hdr-ch{padding:2px 6px}
+  .g-hdr-btn{padding:1px 4px;font-size:.7rem}
+  .g-tick{font-size:.6rem}
+}
+/* ── Small-screen compaction (phones) — shrinks the toolbar controls, the sticky
+   channel column (--ch-w, also read by guide.js's nowPx calc — never resize .g-ch/
+   .g-hdr-ch without it), row height (kept in lockstep with .g-row's
+   contain-intrinsic-size so lazy-rendered rows don't shift the scrollbar), and grid
+   text/icon sizes so more of the timeline fits on a narrow viewport. ── */
+@media(max-width:600px){
+  body{padding:10px}
+  h1{font-size:1rem}
+  :root{--ch-w:86px}
+  .d-btn,.tdrop-btn{padding:4px 7px;font-size:.7rem}
+  .t-info{padding:2px 6px;font-size:.66rem}
+  #theme-sw button{padding:4px 7px;font-size:.75rem}
+  .genre-sel{padding:3px 6px;font-size:.72rem}
+  .g-hdr-tl{height:28px}
+  .g-hdr-ch-lbl{font-size:.58rem}
+  .g-hdr-btn{padding:1px 4px;font-size:.72rem}
+  .g-tick{font-size:.6rem}
+  .g-logo{width:18px;height:18px}
+  .g-cn{font-size:.6rem}
+  .g-cname{font-size:.64rem}
+  .g-tl{min-height:44px}
+  .g-row{contain-intrinsic-size:auto 45px}
+  .g-prog{top:3px;bottom:3px}
+  .g-pi{padding:2px 5px}
+  .g-ti{font-size:.7rem}
+  .g-sub{font-size:.58rem}
+  .g-prog.g-st-sched::after,.g-prog.g-st-rec::after,.g-prog.g-st-skip::after,.g-prog.g-st-conflict::after{
+    top:3px;right:3px;width:15px;height:15px;font-size:9px
+  }
+  .mac-sheet{padding:14px 16px!important}
+  .em-row{gap:8px;margin-bottom:10px}
+  .em-lbl{font-size:.78rem}
+  .em-input{font-size:.78rem;padding:4px 7px}
+  .mac-btn{font-size:.75rem;padding:5px 12px}
 }
 /* ── Tuner popover ── */
 #t-pop-c{background:var(--s3)!important;border-color:var(--b5)!important}
@@ -126,7 +198,7 @@ html.lm #rm-tuner{color:#7a3c00;background:#fff8e8;border-color:#d09020}
 /* ── Guide grid ── */
 .gw-outer{border:1px solid var(--b1);border-radius:8px;overflow:clip;flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
 .gw::-webkit-scrollbar:horizontal{height:0}
-#g-hscroll{position:absolute;bottom:0;left:125px;right:0;height:10px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:5}
+#g-hscroll{position:absolute;bottom:0;left:var(--ch-w);right:0;height:10px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:5}
 .gw-outer:hover #g-hscroll{opacity:1;pointer-events:auto}
 #g-hscroll-thumb{position:absolute;top:2px;height:6px;min-width:40px;background:rgba(255,255,255,.22);border-radius:3px;cursor:grab;transition:background .15s}
 #g-hscroll-thumb:hover,#g-hscroll-thumb.g-dragging{background:rgba(255,255,255,.45);cursor:grabbing}
@@ -135,7 +207,7 @@ html.lm #g-hscroll-thumb:hover,html.lm #g-hscroll-thumb.g-dragging{background:rg
 .gw{overflow:auto;flex:1;background:var(--bg)}
 .gi{min-width:{{GUIDE_MIN_WIDTH}}px}
 .g-hdr{display:flex;position:-webkit-sticky;position:sticky;top:0;z-index:10;background:var(--s2);border-bottom:1px solid var(--b2)}
-.g-hdr-ch{width:125px;min-width:125px;position:-webkit-sticky;position:sticky;left:0;z-index:11;background:var(--s2);border-right:1px solid var(--b2);padding:4px 6px;display:flex;align-items:center;justify-content:space-between}
+.g-hdr-ch{width:var(--ch-w);min-width:var(--ch-w);position:-webkit-sticky;position:sticky;left:0;z-index:11;background:var(--s2);border-right:1px solid var(--b2);padding:4px 6px;display:flex;align-items:center;justify-content:space-between}
 .g-hdr-ch-lbl{font-size:.65rem;color:var(--t4);text-transform:uppercase;letter-spacing:.07em}
 .g-hdr-btns{display:flex;gap:3px}
 .g-hdr-btn{background:none;border:1px solid var(--b3);color:var(--t4);border-radius:3px;padding:2px 5px;font-size:.8rem;cursor:pointer;line-height:1;transition:border-color .15s,color .15s,background .15s}
@@ -149,8 +221,8 @@ html.lm .g-hdr-btn:hover{border-color:#888;color:#111;background:#e8e8e8}
 html.lm .g-hdr-btn-now{border-color:rgba(180,40,40,.5);color:#b02020}
 html.lm .g-hdr-btn-now:hover{border-color:#c03030!important;color:#fff!important;background:#c03030!important}
 .g-hdr-tl{flex:1;position:relative;height:32px}
-.g-tick{position:absolute;top:50%;transform:translate(-50%,-50%);font-size:.68rem;color:var(--t4);white-space:nowrap;pointer-events:none}
-.g-now-tick{position:absolute;top:0;bottom:0;width:2px;background:rgba(255,90,90,.65);pointer-events:none}
+.g-tick{position:absolute;left:var(--gs);top:50%;transform:translate(-50%,-50%);font-size:.68rem;color:var(--t4);white-space:nowrap;pointer-events:none}
+.g-now-tick{position:absolute;left:var(--gs);top:0;bottom:0;width:2px;background:rgba(255,90,90,.65);pointer-events:none}
 /* content-visibility:auto lets the browser skip layout/paint for rows scrolled out of
    view — only on-screen rows (plus a small buffer) are rendered, so the initial paint
    costs ~12 rows instead of all ~100. contain-intrinsic-size reserves each skipped row's
@@ -166,7 +238,7 @@ html.lm .g-hdr-btn-now:hover{border-color:#c03030!important;color:#fff!important
 .g-fav-btn{background:none;border:none;padding:0 2px;cursor:pointer;font-size:.85rem;line-height:1;color:var(--t5);flex-shrink:0;opacity:.5;transition:opacity .15s}
 .g-fav-btn:hover{opacity:1}
 .g-fav-btn[data-fav="1"]{color:var(--fav);opacity:1}
-.g-ch{width:125px;min-width:125px;display:flex;align-items:center;gap:4px;padding:4px 6px;position:-webkit-sticky;position:sticky;left:0;z-index:2;background:var(--s1);border-right:1px solid var(--b1)}
+.g-ch{width:var(--ch-w);min-width:var(--ch-w);display:flex;align-items:center;gap:4px;padding:4px 6px;position:-webkit-sticky;position:sticky;left:0;z-index:2;background:var(--s1);border-right:1px solid var(--b1)}
 .g-logo{width:24px;height:24px;object-fit:contain;flex-shrink:0}
 .g-cl{flex:1;min-width:0}
 .g-cn{display:block;font-size:.68rem;color:var(--t3);white-space:nowrap;font-weight:500}
@@ -174,9 +246,9 @@ html.lm .g-hdr-btn-now:hover{border-color:#c03030!important;color:#fff!important
 .g-sig{vertical-align:middle;margin-left:2px}
 /* 30-min gridlines */
 .g-tl{flex:1;position:relative;min-height:54px;background:repeating-linear-gradient(90deg,transparent,transparent calc(8.3333% - 1px),var(--b0) calc(8.3333% - 1px),var(--b0) 8.3333%)}
-.g-now-bar{position:absolute;top:0;bottom:0;width:2px;background:rgba(255,90,90,.75);z-index:1;pointer-events:none}
-.g-gap{position:absolute;top:0;bottom:0;background:var(--bg);pointer-events:none}
-.g-prog{position:absolute;top:4px;bottom:4px;border-radius:5px;overflow:hidden;background:var(--pg);border:1px solid var(--pgb);min-width:3px;cursor:pointer}
+.g-now-bar{position:absolute;left:var(--gs);top:0;bottom:0;width:2px;background:rgba(255,90,90,.75);z-index:1;pointer-events:none}
+.g-gap{position:absolute;left:var(--gs);width:var(--gw);top:0;bottom:0;background:var(--bg);pointer-events:none}
+.g-prog{position:absolute;left:var(--gs);width:var(--gw);top:4px;bottom:4px;border-radius:5px;overflow:hidden;background:var(--pg);border:1px solid var(--pgb);min-width:3px;cursor:pointer}
 .g-prog:hover{filter:brightness(1.1);border-color:var(--t5);z-index:3}
 .g-prog.g-sel{border-color:var(--t0)!important;box-shadow:0 0 0 1px rgba(128,128,128,.5);z-index:4}
 /* ── Status ring + badge (scheduled/recording/skip/conflict) — independent of the
@@ -316,6 +388,11 @@ html.lm .g-prog-sched{background:#c0c0f0;border-color:#4040c8}
 .g-ti-row{display:flex;align-items:center;gap:4px;min-width:0;overflow:hidden}
 .g-ti-row .g-ti{flex:0 1 auto;min-width:0}
 .g-new-tag{display:inline-block;font-size:.5rem;font-weight:800;background:#27ae60;color:#fff;border-radius:2px;padding:1px 3px;letter-spacing:.07em;flex-shrink:0;line-height:1.5}
+/* Vertical time-axis mode's rules live in a separate file, Resources/guide-vertical.css —
+   loaded as its own <style> block after this one (see WebServer.swift buildHTML()) — so
+   editing this file's horizontal-mode rules can't accidentally touch vertical mode, or vice
+   versa. Everything in that file is scoped under @media (orientation:portrait) — automatic,
+   no manual toggle — so it only ever applies when the device/window is actually portrait. */
 /* ── Starburst bonus badge ── */
 @keyframes sbPop{0%{transform:scale(0) rotate(-240deg);opacity:0}55%{transform:scale(1.28) rotate(12deg);opacity:1}75%{transform:scale(.84) rotate(-3deg)}90%{transform:scale(1.04)}100%{transform:scale(1) rotate(0deg)}}
 @keyframes sbPulse{0%,100%{transform:scale(1) rotate(0deg)}50%{transform:scale(1.07) rotate(5deg)}}

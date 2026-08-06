@@ -107,3 +107,34 @@ accuracy regresses right after app launch specifically.
   low-frequency (human-paced, not per-render/per-tick), so likely fine — but if a large recording
   library with many managed series starts showing UI hitches on Add/Edit/Delete/favorite-toggle,
   this rebuild-fan-out is the first place to look.
+
+## 2026-08-06 — vertical time-axis mode (uncommitted working-tree review)
+
+- `Sources/hdhr_VCR/WebServer.swift:681-683` carries a stale comment ("`/vertical` is a plain
+  alias for `/` — kept only because it was bookmarked/typed during vertical-mode development…
+  the guide is identical either way") that describes an *earlier, since-replaced* design —
+  `docs/WebServer.md`'s new "Vertical time-axis mode" section explicitly says that alias
+  behavior was replaced specifically so `/` and `/vertical` would differ (`includeVerticalCSS`
+  false vs true, `VT_ELIGIBLE` token baked differently). The very next case block (`"/vertical"`,
+  line 693-696) and every other comment added in this diff correctly describe the real,
+  divergent behavior. Left as a flag for the main agent to fix (delete/replace the stale
+  comment) rather than edited directly, per this agent's write restrictions.
+- `Resources/guide.js` — `updateNowLine()` (~899-916), `scrollToNow()` (~918-921), and the
+  now-button visibility `check()` (~1083-1090) each hand-roll the same
+  `ch/cw + (gi.scrollHeight/scrollWidth - ch/cw) * (nowPct()/100)` formula in parallel
+  `isVT() ? … : …` branches (3x duplication of the vertical-axis formula, 3x of the horizontal
+  one). Explicitly justified in `docs/WebServer.md` ("kept as small paired branches rather than
+  a shared abstraction, matching this file's existing terse style") and not currently diverged
+  (all three copies agree), so not flagged as a bug — but it's exactly the shape CLAUDE.md calls
+  out as WebServer.swift's JS-string repeat-offender pattern. Worth collapsing into one
+  `nowScrollTarget()` helper returning `{prop, value}` if a fourth call site ever needs the same
+  math, or if any of the three drift out of sync.
+- `Resources/guide.css` has two separate `@media(max-width:600px){...}` blocks (~line 88 and
+  ~line 151) rather than one merged block — pre-existing summary-panel rules in the first,
+  new toolbar/grid/modal compaction rules in the second. Not a functional bug (CSS allows
+  repeated media queries; no property collisions between the two), just a missed tidy-up.
+- `guide-vertical.css`/`guide.js`'s `isVT()`-branching code is unusually well-commented with
+  on-device WebKit failure modes (sticky-left-in-flex-row unreliability, `content-visibility:auto`
+  + sticky-descendant paint bug, `contain-intrinsic-size` two-group requirement) — read as
+  hard-won findings, not speculative hedging. Treat these as load-bearing constraints, not
+  cleanup targets, if touching vertical-mode CSS later.

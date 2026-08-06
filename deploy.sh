@@ -51,6 +51,7 @@ cp Resources/app.jpg "$APP/Contents/Resources/app.jpg"
 cp Resources/app-recording.jpg "$APP/Contents/Resources/app-recording.jpg"
 cp Resources/app-upnext.jpg "$APP/Contents/Resources/app-upnext.jpg"
 cp Resources/guide.css "$APP/Contents/Resources/guide.css"
+cp Resources/guide-vertical.css "$APP/Contents/Resources/guide-vertical.css"
 cp Resources/guide.js "$APP/Contents/Resources/guide.js"
 cp Resources/guide-shell.html "$APP/Contents/Resources/guide-shell.html"
 

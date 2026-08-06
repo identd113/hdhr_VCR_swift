@@ -24,6 +24,22 @@
 		<data>
 		b9Osrut49zjCMoahmZoaenjnE6k=
 		</data>
+		<key>Resources/guide-shell.html</key>
+		<data>
+		3wI4eOjYHInVHk4uGOavyQxix0k=
+		</data>
+		<key>Resources/guide-vertical.css</key>
+		<data>
+		4C3nBsj3Vop2ECdCGPhmftD8HUg=
+		</data>
+		<key>Resources/guide.css</key>
+		<data>
+		7b9304SChqBnkENsyGyPKmuvjmc=
+		</data>
+		<key>Resources/guide.js</key>
+		<data>
+		VVtwhpnO9l9LBZOnIlQtQCTag9k=
+		</data>
 	</dict>
 	<key>files2</key>
 	<dict>
@@ -60,6 +76,34 @@
 			<key>hash2</key>
 			<data>
 			+iuhh6I2bCK20nj2zY0ZrzVliv6mpqcbwY4oL1cCbT8=
+			</data>
+		</dict>
+		<key>Resources/guide-shell.html</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			1hYEdZ3EhVhCrYVnkgR54DwETD+HlBeSeAlpFd0gfL4=
+			</data>
+		</dict>
+		<key>Resources/guide-vertical.css</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			UDyeW8FWr4VNGAL6WOYH044pT1OeKvhqd23Fe3mDdhk=
+			</data>
+		</dict>
+		<key>Resources/guide.css</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			C/MSRq02Oh4jlEJinigHIa6VFTCS0RuR+nSzA17K+Q0=
+			</data>
+		</dict>
+		<key>Resources/guide.js</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			FEh4gOr1jJiDVeXKyooqtVobIKXmVkrBp6MWENgVOrI=
 			</data>
 		</dict>
 	</dict>

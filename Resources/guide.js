@@ -18,6 +18,24 @@ function setTheme(m){_themeMode=m;try{localStorage.setItem('theme',m);}catch(e){
 _mq.addEventListener('change',function(e){if(_themeMode==='auto'){applyLM(e.matches);refreshSumTheme();}});
 (function(){try{_themeMode=localStorage.getItem('theme')||'dark';}catch(e){}applyLM(_themeMode==='light'||(_themeMode==='auto'&&_mq.matches));})();
 function isLM(){return document.documentElement.classList.contains('lm');}
+// Vertical time-axis mode: automatic, tied directly to device orientation — portrait gets the
+// transposed grid (time flows top-to-bottom, channels become columns), landscape gets the
+// normal one. No manual toggle, no persisted preference: isVT() and guide-vertical.css's
+// @media (orientation:portrait) block both key off the same matchMedia query, so CSS layout
+// and this file's scroll/now-line math always agree on which mode is actually on screen.
+// _vtEligible is baked in server-side per route (WebServer.swift's includeVerticalCSS) — true
+// only on GET /vertical. GET / never sends the vertical <style> block at all, so without this
+// flag isVT() would say true (orientation alone) while the CSS never actually transposed
+// anything, desyncing this file's scroll math from what's really on screen.
+var _vtEligible={{VT_ELIGIBLE}};
+var _orientMq=window.matchMedia('(orientation: portrait)');
+function isVT(){return _vtEligible&&_orientMq.matches;}
+// Rotating the phone mid-session changes the CSS layout instantly (pure media query), but the
+// now-line's inline left/top (set once by updateNowLine, see below) and the lazy-load
+// observer's margin (set once by initRowObserver, keyed to the axis at call time) don't
+// re-derive themselves — without this listener they'd stay wrong until updateNowLine's next
+// 60s tick or the next refreshGuide() DOM swap re-runs initRowObserver().
+_orientMq.addEventListener('change',function(){updateNowLine();initRowObserver();syncHdrPin();});
 var _gcDk={drama:'hsl(216,48%,35%)',comedy:'hsl(47,48%,35%)',news:'hsl(342,43%,35%)',sports:'hsl(119,48%,31%)',reality:'hsl(25,48%,35%)',movie:'hsl(270,58%,38%)',talk:'hsl(173,43%,34%)',children:'hsl(315,43%,35%)'};
 var _gcLk={drama:'hsl(216,55%,88%)',comedy:'hsl(47,65%,88%)',news:'hsl(342,55%,88%)',sports:'hsl(119,60%,87%)',reality:'hsl(25,65%,88%)',movie:'hsl(270,62%,90%)',talk:'hsl(173,55%,87%)',children:'hsl(315,60%,88%)'};
 function gc(g){var m=isLM()?_gcLk:_gcDk;return m[(g||'').toLowerCase()]||(isLM()?'#d8d8d8':'#424242');}
@@ -390,6 +408,7 @@ function applyGuidePayload(d,selOverride){
   initRowObserver();
   setDev(curDev);
   if(gw){gw.scrollLeft=sl;gw.scrollTop=st;}
+  syncHdrPin();
   if(prevStart){
     // Direct attribute selector instead of materializing every .g-prog into an array and
     // scanning it — lets the browser's native selector engine find the match directly.
@@ -807,7 +826,7 @@ function initRowObserver(){
       if(!allCached)fetchRowHeavy(row);
       _rowObserver.unobserve(row);
     });
-  },{root:root,rootMargin:'400px 0px 400px 0px',threshold:0});
+  },{root:root,rootMargin:isVT()?'0px 400px 0px 400px':'400px 0px 400px 0px',threshold:0});
   _rows.forEach(function(r){if(r.dataset.dev)_rowObserver.observe(r);});
 }
 initRowObserver();
@@ -871,18 +890,57 @@ setDev('{{DEFAULT_DEV}}');
 // scrollToNow + live now-line: recompute position from winStart/winSec every 30 s
 var _winStart={{WIN_START}},_winSec={{WIN_SEC}};
 function nowPct(){return Math.max(0,Math.min(100,(Math.floor(Date.now()/1000)-_winStart)/_winSec*100));}
+// Sticky channel-column width — read live from CSS (--ch-w) rather than hardcoded, since
+// the small-screen breakpoint in guide.css overrides it and .gi's scrollWidth includes it.
+function chW(){return parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ch-w'))||125;}
+// Sticky channel-header height (vertical time-axis mode's counterpart to chW()) — reads
+// --ch-h, which .g-ch/.g-hdr-ch use as their height when isVT() is true.
+function chH(){return parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ch-h'))||52;}
 function updateNowLine(){
-  var p=nowPct();
-  document.querySelectorAll('.g-now-bar,.g-now-tick').forEach(function(el){el.style.left=p+'%';});
+  var p=nowPct(),vt=isVT();
+  document.querySelectorAll('.g-now-bar,.g-now-tick').forEach(function(el){
+    if(vt){el.style.left='';el.style.top=p+'%';}else{el.style.top='';el.style.left=p+'%';}
+  });
   // If the now-line has drifted past 75% of the viewport, nudge back to 25%.
-  // If the user has scrolled ahead, the now-line is near the left edge (<75%) so we leave them alone.
+  // If the user has scrolled ahead, the now-line is near the leading edge (<75%) so we leave them alone.
   var gw=document.querySelector('.gw'),gi=document.querySelector('.gi');
   if(!gw||!gi)return;
-  var nowPx=125+(gi.scrollWidth-125)*(p/100);
-  if(nowPx>gw.scrollLeft+gw.clientWidth*0.75)
-    gw.scrollLeft=Math.max(0,nowPx-gw.clientWidth*0.25);
+  if(vt){
+    var ch=chH(),nowPy=ch+(gi.scrollHeight-ch)*(p/100);
+    if(nowPy>gw.scrollTop+gw.clientHeight*0.75)
+      gw.scrollTop=Math.max(0,nowPy-gw.clientHeight*0.25);
+  }else{
+    var cw=chW(),nowPx=cw+(gi.scrollWidth-cw)*(p/100);
+    if(nowPx>gw.scrollLeft+gw.clientWidth*0.75)
+      gw.scrollLeft=Math.max(0,nowPx-gw.clientWidth*0.25);
+  }
 }
-function scrollToNow(){var gw=document.querySelector('.gw');var gi=document.querySelector('.gi');if(!gw||!gi)return;var nowPx=125+(gi.scrollWidth-125)*(nowPct()/100);gw.scrollLeft=Math.max(0,nowPx-gw.clientWidth*0.25);}
+function scrollToNow(){
+  var gw=document.querySelector('.gw');var gi=document.querySelector('.gi');if(!gw||!gi)return;
+  if(isVT()){var ch=chH(),nowPy=ch+(gi.scrollHeight-ch)*(nowPct()/100);gw.scrollTop=Math.max(0,nowPy-gw.clientHeight*0.25);}
+  else{var cw=chW(),nowPx=cw+(gi.scrollWidth-cw)*(nowPct()/100);gw.scrollLeft=Math.max(0,nowPx-gw.clientWidth*0.25);}
+}
+// Manually pins .g-hdr (the time ruler) to the left edge while scrolling through channel
+// columns in vertical mode — see guide-vertical.css's comment on .g-hdr for why this isn't
+// done with position:sticky (observed failing on-device: sticky along the left/inline axis
+// inside a flex row is a known weak spot in WebKit). Re-queries .g-hdr each call since
+// refreshGuide() replaces it (a fresh .gi innerHTML swap), same as the g-now-btn pattern.
+function syncHdrPin(){
+  var hdr=document.querySelector('.g-hdr');
+  if(!hdr)return;
+  // Clears any stale transform from a portrait->landscape rotation — horizontal mode's .g-hdr
+  // is sticky-top, not translated, so a leftover translateX would shift it off to the side.
+  if(!isVT()){hdr.style.transform='';return;}
+  var gw=document.querySelector('.gw');
+  if(!gw)return;
+  hdr.style.transform='translateX('+gw.scrollLeft+'px)';
+}
+(function(){
+  // .gw itself persists across refreshGuide() DOM swaps (only .gi's innerHTML is replaced),
+  // so this listener never needs re-attaching — same reasoning as the scrollbar/now-button IIFEs.
+  var gw=document.querySelector('.gw');
+  if(gw)gw.addEventListener('scroll',syncHdrPin,{passive:true});
+})();
 // Defer auto-select and initial scroll to after first paint so the guide grid is
 // the LCP element instead of the externally-fetched show poster image.
 requestAnimationFrame(function(){
@@ -893,6 +951,7 @@ requestAnimationFrame(function(){
     if(prog)showInfo(prog);
   }
   scrollToNow();
+  syncHdrPin();
   // Remove splash after first paint. If it loaded fast it's still invisible (delayed CSS animation);
   // if it's already visible, fade it out first.
   requestAnimationFrame(function(){
@@ -1022,8 +1081,13 @@ setInterval(updateNowLine,60000);
     // Re-query each call: refreshGuide() replaces .gi innerHTML, detaching any cached ref.
     var btn=document.getElementById('g-now-btn');
     if(!btn)return;
-    var nowPx=125+(gi.scrollWidth-125)*(nowPct()/100);
-    btn.classList.toggle('g-now-vis',nowPx<gw.scrollLeft);
+    if(isVT()){
+      var ch=chH(),nowPy=ch+(gi.scrollHeight-ch)*(nowPct()/100);
+      btn.classList.toggle('g-now-vis',nowPy<gw.scrollTop);
+    }else{
+      var cw=chW(),nowPx=cw+(gi.scrollWidth-cw)*(nowPct()/100);
+      btn.classList.toggle('g-now-vis',nowPx<gw.scrollLeft);
+    }
   }
   gw.addEventListener('scroll',check,{passive:true});
   setInterval(check,5000);
@@ -1037,6 +1101,9 @@ setInterval(updateNowLine,60000);
   var thumb=document.getElementById('g-hscroll-thumb');
   if(!gw||!gi||!track||!thumb)return;
   function syncThumb(){
+    // Hidden entirely when isVT() is true (vertical mode) — the horizontal axis there is
+    // channels, not time, and the native vertical scrollbar covers time-axis navigation instead.
+    if(isVT()){track.style.display='none';return;}
     var trackW=track.clientWidth;
     var maxScroll=gi.scrollWidth-gw.clientWidth;
     if(maxScroll<=0){track.style.display='none';return;}

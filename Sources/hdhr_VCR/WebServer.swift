@@ -44,6 +44,15 @@ final class WebServer: @unchecked Sendable {
     // GET / (this page is fetched far more often than the guide actually changes) is pure waste.
     private var cachedHTMLGzip: Data? = nil
 
+    // Separate cache for GET /vertical — identical grid/data, but with the vertical time-axis
+    // <style> block included (see buildHTML(includeVerticalCSS:)) so portrait can transpose the
+    // grid while landscape on that same route falls back to normal. GET / never includes that
+    // stylesheet at all, in either cache pair, so it can never show the vertical layout no
+    // matter how the phone is held — that's the whole reason there are two cache pairs instead
+    // of one shared page toggled by a class/route.
+    private var cachedVerticalHTML: Data? = nil
+    private var cachedVerticalHTMLGzip: Data? = nil
+
     // App icon rendered once as 72×72 PNG; reused on every /api/icon request.
     private lazy var cachedIconPNG: Data? = {
         guard let url = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
@@ -61,6 +70,11 @@ final class WebServer: @unchecked Sendable {
     // literals, so they get normal syntax highlighting/linting and don't need Swift-string
     // double-escaping for JS regex.
     private lazy var cachedGuideCSS: String?       = Self.loadTemplate("guide", "css")
+    // Vertical time-axis mode's CSS, kept in its own file/cache/<style> block (not concatenated
+    // into cachedGuideCSS) specifically so editing one can't accidentally touch the other —
+    // every selector in it is scoped under @media (orientation:portrait), automatic and
+    // toggle-free, so it's inert whenever the viewport is actually landscape.
+    private lazy var cachedGuideVerticalCSS: String? = Self.loadTemplate("guide-vertical", "css")
     private lazy var cachedGuideJS: String?        = Self.loadTemplate("guide", "js")
     private lazy var cachedGuideShellHTML: String? = Self.loadTemplate("guide-shell", "html")
 
@@ -121,9 +135,15 @@ final class WebServer: @unchecked Sendable {
 
     @MainActor
     func prebuildPageHTML(state: AppState, prebuiltGrid: String? = nil) {
-        let html = Data(buildHTML(state: state, prebuiltGrid: prebuiltGrid).utf8)
+        // Computed once (it's the expensive part — 1300+ program blocks) and reused for both
+        // variants below, which differ only in their <head>/<style>, not the grid itself.
+        let grid = prebuiltGrid ?? buildGuideGridHTML(state: state)
+        let html = Data(buildHTML(state: state, prebuiltGrid: grid, includeVerticalCSS: false).utf8)
         cachedHTML     = html
         cachedHTMLGzip = Self.gzip(html)
+        let vHtml = Data(buildHTML(state: state, prebuiltGrid: grid, includeVerticalCSS: true).utf8)
+        cachedVerticalHTML     = vHtml
+        cachedVerticalHTMLGzip = Self.gzip(vHtml)
         let gzKB = (cachedHTMLGzip?.count ?? 0) / 1024
         glog("[WebServer] page HTML cached (\(html.count / 1024)KB, \(gzKB)KB gzip'd)")
     }
@@ -664,7 +684,18 @@ final class WebServer: @unchecked Sendable {
             }
             // Cache not warm yet (before the first guide load) — fall back to a live build; send()
             // gzips this one on the fly same as before.
-            let body = Data(buildHTML(state: state).utf8)
+            let body = Data(buildHTML(state: state, includeVerticalCSS: false).utf8)
+            return .ok(contentType: "text/html; charset=utf-8", body: body)
+
+        // Orientation-responsive: portrait transposes the grid, landscape looks identical to
+        // "/". GET / never carries the vertical stylesheet at all (see buildHTML's
+        // includeVerticalCSS), so it can't show the vertical layout no matter how the phone is
+        // held — only this route can.
+        case "/vertical":
+            if let html = cachedVerticalHTML, let gz = cachedVerticalHTMLGzip {
+                return .okPrecompressed(contentType: "text/html; charset=utf-8", raw: html, gzip: gz)
+            }
+            let body = Data(buildHTML(state: state, includeVerticalCSS: true).utf8)
             return .ok(contentType: "text/html; charset=utf-8", body: body)
 
         case "/api/ping":
@@ -1204,8 +1235,8 @@ final class WebServer: @unchecked Sendable {
         let firstHour = ((winStart + 3599) / 3600) * 3600
         let ticksHTML: String = stride(from: firstHour, through: winEnd, by: 3600).map { ts in
             let lbl = he(Self.hourFmt.string(from: Date(timeIntervalSince1970: TimeInterval(ts))))
-            return "<div class=\"g-tick\" style=\"left:\(pct(ts - winStart))%\">\(lbl)</div>"
-        }.joined() + "<div class=\"g-now-tick\" style=\"left:\(nowPct)%\"></div>"
+            return "<div class=\"g-tick\" style=\"--gs:\(pct(ts - winStart))%\">\(lbl)</div>"
+        }.joined() + "<div class=\"g-now-tick\" style=\"--gs:\(nowPct)%\"></div>"
 
         // ── New-episode detection anchors (computed once, reused per entry in the grid loop) ──
         let nowDate = Date()
@@ -1273,18 +1304,18 @@ final class WebServer: @unchecked Sendable {
                 let isRecCh  = (recChannelsByDevice[device.DeviceID]?.contains(ch.GuideNumber) ?? false)
                              || (pendingRecChannelsByDevice[device.DeviceID]?.contains(ch.GuideNumber) ?? false)
 
-                var blockParts: [String] = ["<div class=\"g-now-bar\" style=\"left:\(nowPct)%\"></div>"]
+                var blockParts: [String] = ["<div class=\"g-now-bar\" style=\"--gs:\(nowPct)%\"></div>"]
                 let infSIDs: Set<String> = ["C11809220ENAPZK", "C459763EN3L6D"]
                 var cursor = winStart
                 for e in entries {
                     let gapEnd = min(e.StartTime, winEnd)
                     if gapEnd > cursor {
-                        blockParts.append("<div class=\"g-gap\" style=\"left:\(pct(cursor - winStart))%;width:\(pct(gapEnd - cursor))%\"></div>")
+                        blockParts.append("<div class=\"g-gap\" style=\"--gs:\(pct(cursor - winStart))%;--gw:\(pct(gapEnd - cursor))%\"></div>")
                     }
                     cursor = max(cursor, e.EndTime)
                 }
                 if cursor < winEnd {
-                    blockParts.append("<div class=\"g-gap\" style=\"left:\(pct(cursor - winStart))%;width:\(pct(winEnd - cursor))%\"></div>")
+                    blockParts.append("<div class=\"g-gap\" style=\"--gs:\(pct(cursor - winStart))%;--gw:\(pct(winEnd - cursor))%\"></div>")
                 }
                 for e in entries {
                     let cs = max(e.StartTime, winStart) - winStart
@@ -1348,7 +1379,7 @@ final class WebServer: @unchecked Sendable {
                     var extraStyle = ""
                     if (e.Filter?.count ?? 0) > 1 && gg.count == 2 && !isEntryRec {
                         let sfx = (isNow || isMgd) ? "-now" : ""
-                        extraStyle = ";background:linear-gradient(to right,var(--gg-\(gg[0])\(sfx)),var(--gg-\(gg[1])\(sfx)))"
+                        extraStyle = ";background:linear-gradient(var(--gg-dir,to right),var(--gg-\(gg[0])\(sfx)),var(--gg-\(gg[1])\(sfx)))"
                         cls += " gg-\(gg[0])"
                     } else if let g = gg.first {
                         cls += " gg-\(g)"
@@ -1400,7 +1431,7 @@ final class WebServer: @unchecked Sendable {
                         return " data-show-id=\"\(he(s.show_id))\" data-show-type=\"\(showTypeStr(s))\" data-show-paused=\"\(s.show_paused ? 1 : 0)\" data-show-length=\"\(s.show_length)\" data-show-bonus=\"\(s.show_bonus_time ? 1 : 0)\" data-show-transcode=\"\(he(s.show_transcode))\" data-show-seriesid=\"\(he(s.show_seriesid))\" data-show-airdays=\"\(he(ad))\" data-show-failcount=\"\(s.show_fail_count)\" data-show-failreason=\"\(he(s.show_fail_reason))\" data-show-recording=\"\(s.show_recording ? 1 : 0)\""
                     }()
                     let infDA = (infSIDs.contains(e.SeriesID ?? "") || e.Title == "Paid Programming") ? " data-inf=\"1\"" : ""
-                    blockParts.append("<div class=\"\(cls)\" style=\"left:\(pct(cs))%;width:\(pct(ce - cs))%\(extraStyle)\" title=\"\(tip)\" \(da)\(showDA)\(infDA)\(newAttr)\(skipAttr) onclick=\"showInfo(this)\"><div class=\"g-pi\">\(titleHTML)\(subH)</div></div>")
+                    blockParts.append("<div class=\"\(cls)\" style=\"--gs:\(pct(cs))%;--gw:\(pct(ce - cs))%\(extraStyle)\" title=\"\(tip)\" \(da)\(showDA)\(infDA)\(newAttr)\(skipAttr) onclick=\"showInfo(this)\"><div class=\"g-pi\">\(titleHTML)\(subH)</div></div>")
                 }
 
                 let gnameAttr = ChannelSignalStore.key(for: ch.GuideName)
@@ -1425,7 +1456,7 @@ final class WebServer: @unchecked Sendable {
             }
             let devId = he(device.DeviceID)
             if !favRows.isEmpty {
-                rowParts.append("<div class=\"g-fav-sep\" data-dev=\"\(devId)\"><div class=\"g-ch\">★ FAVORITES</div><div class=\"g-tl\"></div></div>")
+                rowParts.append("<div class=\"g-fav-sep\" data-dev=\"\(devId)\"><div class=\"g-ch\"><span class=\"g-fav-sep-star\">★</span><span class=\"g-fav-sep-txt\"> FAVORITES</span></div><div class=\"g-tl\"></div></div>")
                 rowParts.append(contentsOf: favRows)
             }
             rowParts.append(contentsOf: otherRows)
@@ -1439,9 +1470,13 @@ final class WebServer: @unchecked Sendable {
     }
 
     @MainActor
-    private func buildHTML(state: AppState, prebuiltGrid: String? = nil) -> String {
+    private func buildHTML(state: AppState, prebuiltGrid: String? = nil, includeVerticalCSS: Bool) -> String {
         let (winStart, winSec) = guideWindow(state: state)   // winStart needed for _winStart JS literal
         let guideMinWidth = max(1200, winSec / 1800 * 100)
+        // Vertical time-axis mode's per-column timeline height — same shape as guideMinWidth but
+        // a smaller px/30min constant, since each column only needs to be tall enough for legible
+        // stacked program blocks, not wide enough for side-by-side ones.
+        let guideMinHeight = max(1600, winSec / 1800 * 70)
         let gridInner   = prebuiltGrid ?? buildGuideGridHTML(state: state)
         // Capture recording shows once — used by recsByDevJS below.
         let recording   = state.recordingShows
@@ -1537,8 +1572,18 @@ final class WebServer: @unchecked Sendable {
 
         // ── Assemble ──────────────────────────────────────────────────────────
         let cssFilled = fillTemplate(cachedGuideCSS ?? "/* guide.css failed to load */", [
-            ("GUIDE_MIN_WIDTH", String(guideMinWidth))
+            ("GUIDE_MIN_WIDTH", String(guideMinWidth)),
+            ("GUIDE_MIN_HEIGHT", String(guideMinHeight))
         ])
+        // Only computed/embedded for GET /vertical — GET / must never be ABLE to show the
+        // vertical layout, in any orientation, so its page doesn't even carry this stylesheet.
+        let verticalStyleBlock: String = {
+            guard includeVerticalCSS else { return "" }
+            let cssVerticalFilled = fillTemplate(cachedGuideVerticalCSS ?? "/* guide-vertical.css failed to load */", [
+                ("GUIDE_MIN_HEIGHT", String(guideMinHeight))
+            ])
+            return "<style>\n\(cssVerticalFilled)\n</style>"
+        }()
         let shellFilled = fillTemplate(cachedGuideShellHTML ?? "<p>guide-shell.html failed to load</p>", [
             ("APP_VERSION", appVersion),
             ("HEADER_HTML", headerHTML),
@@ -1561,9 +1606,11 @@ final class WebServer: @unchecked Sendable {
             ("WIN_START", String(winStart)),
             ("WIN_SEC", String(winSec)),
             ("APP_VERSION", appVersion),
-            ("VER_EXP_TS", String(verExpTs))
+            ("VER_EXP_TS", String(verExpTs)),
+            ("VT_ELIGIBLE", includeVerticalCSS ? "true" : "false")
         ])
         if cachedGuideCSS == nil { glog("[WebServer] guide.css template missing — check Resources/ deploy", level: .warning) }
+        if includeVerticalCSS && cachedGuideVerticalCSS == nil { glog("[WebServer] guide-vertical.css template missing — check Resources/ deploy", level: .warning) }
         if cachedGuideShellHTML == nil { glog("[WebServer] guide-shell.html template missing — check Resources/ deploy", level: .warning) }
         if cachedGuideJS == nil { glog("[WebServer] guide.js template missing — check Resources/ deploy", level: .warning) }
 
@@ -1579,6 +1626,7 @@ final class WebServer: @unchecked Sendable {
         <style>
         \(cssFilled)
         </style>
+        \(verticalStyleBlock)
         </head>
         <body>
         \(shellFilled)
