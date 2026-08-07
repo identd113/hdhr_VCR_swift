@@ -75,7 +75,7 @@ Form fields, in fixed source order (`ShowFormSection.swift`) — only presence t
 
 **Bonus Time starburst**: when `show.show_bonus_time == true && state.config.Sports_padding_enabled`, a `StarburstBadge` floats at the bottom-right corner showing "+N min". Sports entries auto-enable Bonus Time.
 
-`canAdvance` for details step: `!show.show_title.isEmpty && recordFolder != nil && !show.show_url.isEmpty`.
+`canAdvance` for details step: `!show.show_title.isEmpty && recordFolder != nil && !show.show_url.isEmpty`, **and**, when `seriesType == .dateTime`, `!airDays.isEmpty` — a recurring DateTime show with every weekday deselected can't advance/save, since it would save and then never fire (single/seriesChannel/seriesAll shows don't gate on `airDays` this way; series types override `show_air_date` to all 7 days at save regardless of UI state).
 
 ---
 

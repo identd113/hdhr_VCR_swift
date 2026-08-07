@@ -23,7 +23,7 @@ White/system background. `VStack` with 16pt spacing, 16pt padding on all sides:
 - **Left**: `"Delete"` button in destructive red — triggers `confirmAndDeleteShow` (async poster fetch + NSAlert)
 - **Right**: `"Save"` button in `.borderedProminent` (accent color / blue)
 
-Both buttons are always visible and enabled (Delete enabled any time a show is loaded; Save enabled always). Escape triggers a dirty-check alert with Save / Discard / Cancel options.
+Both buttons are always visible; Delete is enabled any time a show is loaded, but Save is gated by `canSave` — non-empty title, and (when the assigned device's lineup is known) the channel number must exist on that lineup; when the lineup isn't currently known (tuner offline/undetected), only the non-empty check applies. Escape triggers a dirty-check alert; the button set depends on `canSave` — Save / Discard / Cancel when the current edits pass `canSave`, but only Discard Changes / Cancel (no Save option) when they don't.
 
 ## Intent
 
@@ -55,7 +55,7 @@ ScrollView {
   }
 }
 navBar: [Delete] ... [Save]
-Escape key: `.onExitCommand` on root Group — shows dirty-check `NSAlert` (Save / Discard / Cancel) when unsaved changes exist; dismisses immediately if clean
+Escape key: `.onExitCommand` on root Group — shows dirty-check `NSAlert` when unsaved changes exist (Save / Discard / Cancel if `canSave`, else Discard Changes / Cancel); dismisses immediately if clean
 ```
 
 ---
@@ -64,7 +64,7 @@ Escape key: `.onExitCommand` on root Group — shows dirty-check `NSAlert` (Save
 
 ### `loadShow()`
 
-Called from `.onAppear` and, conditionally, from `.onChange(of: state.editingShowId)`. The Edit window is a single-instance `Window` (not `WindowGroup`), so the view persists between opens — when it's re-focused for a different show, `onAppear` does not fire again, and the `onChange` handler is what would reload it. That handler no longer calls `loadShow()` unconditionally: if the currently-loaded show has unsaved edits (`isDirty`, comparing `show` against the `originalShow` snapshot), it shows the same Save/Discard/Cancel `NSAlert` `onExitCommand` uses before proceeding — Save calls `saveWithoutDismiss()` then `loadShow()`, Discard calls `loadShow()` directly, and Cancel reverts `state.editingShowId` back to the show currently loaded (via the `onChange` closure's captured `oldValue`) without ever calling `loadShow()`, so the in-progress edits are never silently discarded. `loadShow()` reads `state.editingShowId`, finds the matching show in `state.shows`, and seeds the view's `@State` vars:
+Called from `.onAppear` and, conditionally, from `.onChange(of: state.editingShowId)`. The Edit window is a single-instance `Window` (not `WindowGroup`), so the view persists between opens — when it's re-focused for a different show, `onAppear` does not fire again, and the `onChange` handler is what would reload it. That handler no longer calls `loadShow()` unconditionally: if the currently-loaded show has unsaved edits (`isDirty`, comparing `show` against the `originalShow` snapshot), it shows the same `canSave`-gated `NSAlert` `onExitCommand` uses before proceeding — Save calls `saveWithoutDismiss()` then `loadShow()`, Discard calls `loadShow()` directly, and Cancel reverts `state.editingShowId` back to the show currently loaded (via the `onChange` closure's captured `oldValue`) without ever calling `loadShow()`, so the in-progress edits are never silently discarded. `loadShow()` reads `state.editingShowId`, finds the matching show in `state.shows`, and seeds the view's `@State` vars:
 - `show` — the full `Show` copy (edits happen on this local copy, not on `state` directly)
 - `seriesType` — derived from `show.state`
 - `airDays` — `Set(show.show_air_date)`
@@ -92,6 +92,10 @@ For `.single` type, the day toggle buttons are mutually exclusive: selecting one
 
 When `show.show_fail_count > 0`, a "Failures: N — reason" row appears in orange with a Reset button. Reset sets `show_fail_count = 0`, `show_fail_reason = ""`, and `show_active = true` on the local `show` copy (saved only when the user taps Save).
 
+### Validation — `canSave`
+
+Mirrors `AddShowView`'s `canAdvance` non-empty-title gate, plus a channel-in-lineup check: `!show_title.isEmpty && !show_channel.isEmpty`, and if the assigned device's lineup is currently known and non-empty, `show_channel` must match a `GuideNumber` in it. Before this existed, Save had no validation at all — a cleared title or a free-text channel number that doesn't exist on the assigned device could be saved as a show that would never record correctly. When the lineup isn't currently known (e.g. the tuner is offline/undetected — see the web guide's "tuner not detected" handling), lineup membership can't be checked, so only the non-empty check applies, rather than blocking every edit to a show on a temporarily offline tuner. `canSave` gates the Save button's `.disabled` state and is threaded into every dirty-check alert (`onExitCommand`, `onChange(of: state.editingShowId)`, `WindowCloseInterceptor`) to decide whether those alerts offer a Save option at all.
+
 ### Save — `save()`
 
 Applies `airDays` and series type flags to the local `show`, applies `recordFolder` to `show_dir`, and sets `show_temp_dir` to `Show.localFallbackDir` (**not** a copy of `recordFolder`) so `posixRecordDir` has a genuinely distinct local fallback to redirect to if `recordFolder`'s volume goes offline — a prior version set both to the same folder here, which silently discarded whatever real fallback the show previously had (including one set correctly by the web guide's `addShowFromGuide`) on every single Edit Show save, whether or not the user touched the folder picker. `Show.init(from:)` self-heals any show already saved with this bug (non-empty `show_temp_dir` identical to a non-default `show_dir`) back to the local fallback on every config load, so no manual per-show fix is needed for shows saved before this was corrected. `show_air_date` is set via `weekdays.filter { airDays.contains($0) }`, not `Array(airDays)` — `airDays` is a `Set`, whose iteration order is hash-seed dependent, so a bare `Array()` conversion rewrote `show_air_date` in a different permutation on every save even when the user changed nothing. Then calls `state.updateShow(s)`, and — critically — resets **both** `show` and `originalShow` to the saved `s` (`saveWithoutDismiss()` previously only reset `originalShow`, so `isDirty` (`show != originalShow`) stayed permanently `true` after any save, popping a spurious "Unsaved Changes" prompt the next time a different show was opened for edit in this same reused window). `updateShow` replaces the matching show by ID, saves config, and for any active, non-paused, non-recording, non-single show fires `scheduleNextAir` immediately in an async Task — so type or channel changes take effect without waiting for the next idle loop tick. The window dismisses after save.
@@ -110,7 +114,7 @@ Calls `state.confirmAndDeleteShow(s) { dismiss() }` — same flow as menu-based 
 
 `EditShowView` edits a local copy of `Show` and calls `state.updateShow(_:)` only on Save. This means:
 - Cancel always discards all edits (local copy is thrown away)
-- `WindowCloseInterceptor` intercepts window close when `isDirty` and shows a Save / Discard / Cancel alert — same pattern as `SettingsView`
+- `WindowCloseInterceptor` intercepts window close when `isDirty` and shows the same `canSave`-gated alert (Save / Discard / Cancel, or Discard Changes / Cancel) — same pattern as `SettingsView`, with `canSave` threaded through so an invalid title/channel can't be silently saved via the close path either
 - No undo — once Save is pressed, the old values are gone
 
 ---

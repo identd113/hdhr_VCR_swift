@@ -61,7 +61,7 @@ Every `play(url:)` call applies four media options before starting:
 
 `--no-audio-time-stretch` is specifically required for live MPEG-2 transport streams from HDHomeRun tuners. VLC's audio time-stretch module tries to initialize before the first audio frame arrives, sees a 0 Hz sample rate, and fails with `too low audio sample frequency (0)` / `module not functional`. The option prevents that module from loading for live streams.
 
-An adaptive rate controller runs every 3 seconds via a repeating `Timer` (`statsTimer`):
+An adaptive rate controller runs every 3 seconds via a repeating `Timer` (`statsTimer`), added to `RunLoop.main` explicitly under `.common` mode (`RunLoop.main.add(timer, forMode: .common)` rather than the implicit `.default`) so it keeps ticking during `.eventTracking` (an open NSMenu, a live window resize/drag) — previously `isPlaying`/`hasError` detection and the rate ramp could stall during tracking, leaving a "Connecting…" state stuck on screen:
 
 - **Fill phase**: Plays at `minRate` (from `AppConfig.Player_buffer_min_rate`; default 0.93). Stream arrives ~7% faster than consumed — VLC's demux buffer grows.
 - **Hold phase**: Rate ramps linearly toward 1.0 as `estimatedLagSec` approaches the 8-second target. At 8s the rate reaches 1.0 and the buffer stabilises.
@@ -172,8 +172,9 @@ The sequence stop → cancel timer → release old media → add options → set
 ## Volume Scale
 
 libvlc uses 0–200 (100 = unity gain). The UI uses 0–100. The bridge maps:
-- `volume()` → `Int(vlcVol) / 2` clamped to 0–100
 - `setVolume(_:)` → `Int32(v * 2)` clamped to 0–200
+
+There is no `volume()` getter — it had zero call sites and was removed; callers track the 0–100 UI value themselves and only ever push it one-way via `setVolume(_:)`.
 
 ---
 
@@ -210,7 +211,6 @@ func stop()                                                   // stop + release 
 func releasePlayer()                                          // full teardown; releases mediaPlayer; clears hasError, isPlaying
 func catchUpToLive()                                          // discard buffer, reconnect at live edge
 func videoNativeSize() -> CGSize?                             // pixel dims from libvlc_video_get_size; nil until decoding
-func volume() -> Int                                          // 0–100
 func setVolume(_ v: Int)                                      // 0–100
 func setAudioDevice(output: String, deviceId: String)         // output = "auhal"; deviceId = CoreAudio device UID
 func systemAudioOutputDevices() -> [(id: String, name: String)]  // all CoreAudio output devices (built-in, BT, AirPlay, USB)

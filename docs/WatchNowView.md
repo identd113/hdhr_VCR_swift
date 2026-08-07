@@ -22,7 +22,9 @@ A `Divider` separates toolbar from content.
 1. **Favorites** (amber `★ Favorites` section header + amber accent bars above and below)
 2. **All others** (no separator label)
 
-Favorites section header: 2pt amber top bar, `"★  Favorites"` caption.bold in `favAmber` (`Color(hue: 0.13, sat: 0.85, bri: 0.80)`) with 8% opacity amber tint background, 1pt amber bottom bar, then 2pt amber bottom-of-section bar.
+Favorites section header: 2pt amber top bar, `"★  Favorites"` caption.bold in `favAmber` (an appearance-adaptive `NSColor` defined once in `GuideViewHelpers.swift`, shared with `MenuContent`/`VLCPlayerView` — `#e8a000` dark / `#a05800` light, matching the web Guide's `--fav` value) with 16% opacity amber tint background (matches the web Guide's `color-mix(in srgb, var(--fav) 16%, var(--s1))` row wash). There is no separate bottom border on the section header or bottom-of-section bar — the highlight is carried instead by every favorited row's own background (see below).
+
+Every `WatchNowRow` for a favorited channel gets `favAmber.opacity(0.16)` as its own row background — not just rows inside the Favorites section — matching the web Guide's `.g-row[data-fav="1"]` wash applying throughout the grid, not only under the section divider.
 
 **Empty state**: `tv.slash` SF Symbol (40pt, `.tertiary`) + `"Nothing on right now"` secondary text. If the guide is still loading, a small `ProgressView` appears below the text.
 
