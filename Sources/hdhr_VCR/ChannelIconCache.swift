@@ -75,6 +75,34 @@ actor ChannelIconCache {
         mem[urlString] = img
         if mem.count > 600 { mem.removeAll() }
         try? data.write(to: diskPath)
+        pruneDiskCacheIfNeeded()
         return img
+    }
+
+    // Generous cap — real-world usage settles around 64 MB / ~2000 icons for a typical lineup;
+    // this is a backstop against slow indefinite growth (e.g. a station's CDN logo URL changing
+    // over months, leaving the old SHA256-keyed file orphaned) rather than a routine trim, so it
+    // almost never fires. Evicts oldest-by-mtime first when it does.
+    private let maxDiskCacheBytes: UInt64 = 150 * 1024 * 1024
+
+    private func pruneDiskCacheIfNeeded() {
+        let fm = FileManager.default
+        guard let entries = try? fm.contentsOfDirectory(
+            at: dir, includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey]
+        ) else { return }
+        var items: [(url: URL, date: Date, size: UInt64)] = entries.compactMap { url in
+            guard let vals = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey]),
+                  let date = vals.contentModificationDate, let size = vals.fileSize
+            else { return nil }
+            return (url, date, UInt64(size))
+        }
+        var total = items.reduce(UInt64(0)) { $0 + $1.size }
+        guard total > maxDiskCacheBytes else { return }
+        items.sort { $0.date < $1.date }
+        for item in items {
+            guard total > maxDiskCacheBytes else { break }
+            try? fm.removeItem(at: item.url)
+            total -= item.size
+        }
     }
 }

@@ -135,6 +135,11 @@ final class RecordingManager {
     /// for the remaining show duration so the system doesn't sleep mid-recording.
     func reattach(showId: String, pid: Int32, title: String, endDate: Date) {
         pids[showId] = pid
+        // Same deterministic path start() builds — without this, readAndClearHDHRError/
+        // readHDHRResource/clearHeaderFile all no-op for the rest of this recording (they guard
+        // on headerFiles[showId] being present), and the --dump-header temp file this curl
+        // process was launched with orphans in /tmp instead of being cleaned up on stop.
+        headerFiles[showId] = "\(NSTemporaryDirectory())hdhrVCRplus-\(showId).headers"
         let remaining = max(60, endDate.timeIntervalSinceNow) + 300
         preventSleep(id: showId, reason: "Recording: \(title)", duration: remaining)
         glog("[Rec] Reattached \(showId) curl=\(pid)")
