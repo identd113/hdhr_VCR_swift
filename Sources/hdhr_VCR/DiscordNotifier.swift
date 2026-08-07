@@ -7,23 +7,17 @@ import Foundation
 // Same [timestamp] [LEVEL] line format as glog(), written via its own serial queue/handle.
 private let discordLogQueue = DispatchQueue(label: "com.hdhr.vcrplus.discordlog", qos: .utility)
 private let discordLogDateFormatter = ISO8601DateFormatter()
-private var discordLogHandle: FileHandle? = nil
 let discordLogFilePath = NSHomeDirectory() + "/Library/Logs/hdhrVCRplus-discord.log"
+// Discord logging runs at roughly 1% of the main log's volume (measured: ~11 KB/day vs. the main
+// log's ~1.2 MB/day) — a 5 MB cap is still generous (over a year of live history) without
+// carrying the main log's 20 MB default for a file this quiet.
+private let discordLogFile = RotatingLogFile(path: discordLogFilePath, rotateThresholdBytes: 5 * 1024 * 1024)
 
 func discordLog(_ msg: String, level: LogLevel = .info) {
     let tag = level == .info ? "INFO" : level == .warning ? "WARN" : "ERROR"
     let ts = Date()
     discordLogQueue.async {
-        if discordLogHandle == nil {
-            let fm = FileManager.default
-            if !fm.fileExists(atPath: discordLogFilePath) { fm.createFile(atPath: discordLogFilePath, contents: nil) }
-            if let fh = FileHandle(forWritingAtPath: discordLogFilePath) {
-                _ = try? fh.seekToEnd()
-                discordLogHandle = fh
-            }
-        }
-        guard let data = "[\(discordLogDateFormatter.string(from: ts))] [\(tag)] \(msg)\n".data(using: .utf8) else { return }
-        discordLogHandle?.write(data)
+        discordLogFile.write("[\(discordLogDateFormatter.string(from: ts))] [\(tag)] \(msg)\n")
     }
 }
 

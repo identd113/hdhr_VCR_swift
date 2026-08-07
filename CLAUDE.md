@@ -23,7 +23,7 @@ swift test --enable-code-coverage && xcrun llvm-cov report .build/*/debug/hdhr_V
 
 **Info.plist**: `LSUIElement = true` · `NSAllowsLocalNetworking = true` (required for WKWebView loading `localhost:1980`).
 
-**Logs**: `~/Library/Logs/hdhrVCRplus.log` (via `glog()`). Always read with `tail -n N` / bounded grep, never open-ended. Discord sends/edits also log to a dedicated `~/Library/Logs/hdhrVCRplus-discord.log` (via `discordLog()` in `DiscordNotifier.swift`) — one line per SEND/CREATE/EDIT with embed title, HTTP result, and (for CREATE/EDIT) the message ID used, so retry/edit patterns can be reviewed without wading through the main log.
+**Logs**: `~/Library/Logs/hdhrVCRplus.log` (via `glog()`). Always read with `tail -n N` / bounded grep, never open-ended. Discord sends/edits also log to a dedicated `~/Library/Logs/hdhrVCRplus-discord.log` (via `discordLog()` in `DiscordNotifier.swift`) — one line per SEND/CREATE/EDIT with embed title, HTTP result, and (for CREATE/EDIT) the message ID used, so retry/edit patterns can be reviewed without wading through the main log. Both files self-rotate via the shared `RotatingLogFile` (`Models.swift`) — one prior generation kept at `<name>.log.1` — so a months-long running session can't grow either log unbounded. Main log caps at 20 MB (sized off its measured ~1.2 MB/day real-world rate — roughly 2.5 weeks live + 2.5 weeks backup); the Discord log, running at ~1% of that volume, caps at 5 MB. A `tail`/bounded grep that needs history older than the current file should also check the `.1` sibling.
 
 ---
 

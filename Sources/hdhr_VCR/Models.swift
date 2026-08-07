@@ -7,12 +7,62 @@ enum LogLevel {
     case info, warning, error
 }
 
+// A single-writer, size-capped append log. Not thread-safe on its own — every call site drives
+// one of these from its own serial DispatchQueue (glog's logQueue, discordLog's
+// discordLogQueue), which is what actually makes access safe.
+//
+// Rotation is a generous backstop against unbounded growth over a months-long running session,
+// not a housekeeping schedule — one prior generation kept (path + ".1") so a post-mortem can
+// still see what led up to a rotation. Default cap (20 MB) is sized off the main app log's
+// measured real-world rate (~1.2 MB/day, ~11,700 glog() lines/day) — roughly 2.5 weeks live plus
+// 2.5 weeks in the backup.
+final class RotatingLogFile {
+    private let path: String
+    private var handle: FileHandle?
+    private var bytesWritten: UInt64 = 0
+    private let rotateThreshold: UInt64
+
+    init(path: String, rotateThresholdBytes: UInt64 = 20 * 1024 * 1024) {
+        self.path = path
+        self.rotateThreshold = rotateThresholdBytes
+    }
+
+    func write(_ line: String) {
+        guard let data = line.data(using: .utf8) else { return }
+        if handle == nil { open() }
+        handle?.write(data)
+        bytesWritten += UInt64(data.count)
+        if bytesWritten >= rotateThreshold { rotate() }
+    }
+
+    private func open() {
+        let fm = FileManager.default
+        if !fm.fileExists(atPath: path) { fm.createFile(atPath: path, contents: nil) }
+        guard let fh = FileHandle(forWritingAtPath: path) else { return }
+        _ = try? fh.seekToEnd()
+        handle = fh
+        let attrs = try? fm.attributesOfItem(atPath: path)
+        bytesWritten = (attrs?[.size] as? NSNumber)?.uint64Value ?? 0
+    }
+
+    private func rotate() {
+        handle?.closeFile()
+        handle = nil
+        let fm = FileManager.default
+        let backupPath = path + ".1"
+        try? fm.removeItem(atPath: backupPath)
+        try? fm.moveItem(atPath: path, toPath: backupPath)
+        bytesWritten = 0
+        // Next write() reopens via open(), which creates a fresh empty file.
+    }
+}
+
 private let appLog = Logger(subsystem: "com.hdhr.vcrplus", category: "app")
 private let logQueue = DispatchQueue(label: "com.hdhr.vcrplus.log", qos: .utility)
-// Shared formatter and handle — accessed only from the serial logQueue so no concurrent access.
+// Shared formatter and file — accessed only from the serial logQueue so no concurrent access.
 private let logDateFormatter = ISO8601DateFormatter()
-private var logHandle: FileHandle? = nil
 let logFilePath = NSHomeDirectory() + "/Library/Logs/hdhrVCRplus.log"
+private let logFile = RotatingLogFile(path: logFilePath)
 
 func glog(_ msg: String, level: LogLevel = .info) {
     switch level {
@@ -23,16 +73,7 @@ func glog(_ msg: String, level: LogLevel = .info) {
     let tag = level == .info ? "INFO" : level == .warning ? "WARN" : "ERROR"
     let ts = Date()
     logQueue.async {
-        if logHandle == nil {
-            let fm = FileManager.default
-            if !fm.fileExists(atPath: logFilePath) { fm.createFile(atPath: logFilePath, contents: nil) }
-            if let fh = FileHandle(forWritingAtPath: logFilePath) {
-                _ = try? fh.seekToEnd()
-                logHandle = fh
-            }
-        }
-        guard let data = "[\(logDateFormatter.string(from: ts))] [\(tag)] \(msg)\n".data(using: .utf8) else { return }
-        logHandle?.write(data)
+        logFile.write("[\(logDateFormatter.string(from: ts))] [\(tag)] \(msg)\n")
     }
 }
 

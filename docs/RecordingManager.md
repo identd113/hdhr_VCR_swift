@@ -95,9 +95,9 @@ Error codes: 804 Tuner In Use · 805 All Tuners In Use · 806 Tune Failed · 807
 
 Toggle in Settings → Advanced → "Verbose curl logging". When enabled:
 - Adds `-v` to curl args.
-- Appends curl stderr to `~/Library/Logs/hdhrVCRplus.log`.
-- Each recording block starts with a timestamp header and the full command line.
-- **Log rotation**: before writing each block header, if the log file exceeds **5 MB**, it is truncated to empty.
+- curl's own stderr is appended directly to `~/Library/Logs/hdhrVCRplus.log` via a raw `posix_spawn` file descriptor (`spawnDetached`'s `stderrPath`) — independent of `glog()`'s queue.
+- Each recording block starts with a timestamp header and the full command line, written via its own ad-hoc `FileHandle` open/append/close in `writeCurlLogHeader`.
+- **Log rotation**: none of its own — `curlLogPath` is the same path as `logFilePath`, so it rides on `glog()`'s shared `RotatingLogFile` cap (see `docs/Models.md`/CLAUDE.md's "Logs" note). A prior in-place truncate-at-5MB here was removed: it raced with `RotatingLogFile`'s persistently-open handle, desyncing its internal byte counter from the file's real (now-zero) size.
 
 ---
 

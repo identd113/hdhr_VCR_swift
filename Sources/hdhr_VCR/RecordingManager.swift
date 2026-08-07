@@ -280,11 +280,13 @@ final class RecordingManager {
 
     private func writeCurlLogHeader(showId: String, curlArgs: [String], outputPath: String) {
         let path = Self.curlLogPath
-        // Rotate at 5 MB so the file doesn't grow unbounded across many verbose recordings.
-        if let attrs = try? FileManager.default.attributesOfItem(atPath: path),
-           let size = attrs[.size] as? Int, size > 5 * 1024 * 1024 {
-            try? "".write(toFile: path, atomically: false, encoding: .utf8)
-        }
+        // No size cap here — curlLogPath is logFilePath, and glog()'s RotatingLogFile already
+        // caps that file centrally. An in-place truncate here previously raced with
+        // RotatingLogFile's persistently-open FileHandle: truncating the file out from under it
+        // left its internal byte counter out of sync with the file's real (now zero) size,
+        // and the next glog() write would resume at RotatingLogFile's stale offset, leaving a
+        // zero-filled gap. curl's own -v stderr also writes directly to this same path via a
+        // raw posix_spawn fd (see spawnDetached's stderrPath), independent of both.
         if !FileManager.default.fileExists(atPath: path) {
             FileManager.default.createFile(atPath: path, contents: nil)
         }
