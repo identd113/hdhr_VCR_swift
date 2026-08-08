@@ -90,7 +90,7 @@ struct hdhr_VCRApp: App {
         // hiddenTitleBar (no title text, traffic lights remain) + DonationNagView's own
         // FloatingWindowLevelSetter for a modern floating-panel look, distinct from the other
         // standard-titled windows above.
-        Window("Support hdhrVCR+", id: "donation-nag") {
+        Window("Support hdhrVCRplus", id: "donation-nag") {
             DonationNagView()
                 .environmentObject(appState)
         }
@@ -115,22 +115,22 @@ struct hdhr_VCRApp: App {
             blinkableIcon(litImage: appIconMenuBarRecording,
                           litSystemName: "record.circle.fill",
                           litColor: .red,
-                          accessibilityLabel: "hdhr VCR — recording in progress")
+                          accessibilityLabel: "hdhrVCRplus — recording in progress")
         } else if let mins = appState.nextShowMinutes, mins <= 30 {
             let minsInt = Int(mins.rounded())
             blinkableIcon(litImage: appIconMenuBarUpNext,
                           litSystemName: "clock.badge.fill",
                           litColor: .orange,
-                          accessibilityLabel: "hdhr VCR — recording starting in \(minsInt) minute\(minsInt == 1 ? "" : "s")")
+                          accessibilityLabel: "hdhrVCRplus — recording starting in \(minsInt) minute\(minsInt == 1 ? "" : "s")")
         } else if let icon = appIconMenuBar {
             Image(nsImage: icon)
                 .opacity(appState.isReady ? 1.0 : 0.3)
-                .accessibilityLabel("hdhr VCR")
+                .accessibilityLabel("hdhrVCRplus")
         } else {
             // Fallback: no bundle resources (e.g. direct swift build)
             Image(systemName: "tv")
                 .opacity(appState.isReady ? 1.0 : 0.3)
-                .accessibilityLabel("hdhr VCR")
+                .accessibilityLabel("hdhrVCRplus")
         }
     }
 

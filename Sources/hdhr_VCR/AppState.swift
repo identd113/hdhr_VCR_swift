@@ -2528,7 +2528,7 @@ final class AppState: ObservableObject {
             "description": descLines.joined(separator: "\n"),
             "color":       color,
             "fields":      fields,
-            "footer":      ["text": "hdhr VCR  ·  \(show.hdhr_record)"]
+            "footer":      ["text": "hdhrVCRplus  ·  \(show.hdhr_record)"]
         ]
         if !show.show_logo_url.isEmpty { embed["thumbnail"] = ["url": show.show_logo_url] }
         return embed
@@ -2638,7 +2638,7 @@ final class AppState: ObservableObject {
             "title":       event,
             "description": detail,
             "color":       color,
-            "footer":      ["text": "hdhr VCR"]
+            "footer":      ["text": "hdhrVCRplus"]
         ]
         sendDiscordEmbed(to: url, embed: embed)
     }

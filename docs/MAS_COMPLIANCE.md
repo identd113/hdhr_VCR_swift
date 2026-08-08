@@ -1,6 +1,6 @@
 # Mac App Store Compliance Notes
 
-Status of each requirement for submitting hdhrVCR+ to the Mac App Store.
+Status of each requirement for submitting hdhrVCRplus to the Mac App Store.
 
 > **This entire document is about App Store (sandboxed) submission — not plain notarization.**
 > Notarized Developer ID distribution (the ad-hoc-signed release you get from `./deploy_release.sh`)

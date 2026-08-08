@@ -220,7 +220,7 @@ final class WebServer: @unchecked Sendable {
 
         // Advertise via mDNS so browsers on the LAN discover the server without knowing the IP.
         // NWListener owns the advertisement — listener?.cancel() in stop() withdraws it automatically.
-        l.service = NWListener.Service(name: "hdhrVCR+", type: "_http._tcp", domain: nil,
+        l.service = NWListener.Service(name: "hdhrVCRplus", type: "_http._tcp", domain: nil,
                                        txtRecord: NWTXTRecord(["path": "/"]))
         l.serviceRegistrationUpdateHandler = { change in
             switch change {
@@ -1562,7 +1562,7 @@ final class WebServer: @unchecked Sendable {
             : ""
 
         // Header is just the title now; every tuner (incl. offline) gets a box in the dev-bar.
-        let headerHTML = "<h1 style=\"margin:0\">hdhrVCR+ Guide</h1>"
+        let headerHTML = "<h1 style=\"margin:0\">hdhrVCRplus Guide</h1>"
         let deviceBarHTML = "<div id=\"dev-bar\">" + buildDevBarHTML(state: state, devTuners: devTuners) + "</div>"
 
         // ── Summary placeholder: current recording or next scheduled show ────
@@ -1620,7 +1620,7 @@ final class WebServer: @unchecked Sendable {
         <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width,initial-scale=1">
-        <title>hdhrVCR+</title>
+        <title>hdhrVCRplus</title>
         <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico">
         <script>(function(){try{var m=localStorage.getItem('theme')||'dark';if(m==='light'||(m==='auto'&&window.matchMedia('(prefers-color-scheme:light)').matches))document.documentElement.classList.add('lm');}catch(e){}})();</script>
         <style>
@@ -1701,7 +1701,7 @@ final class WebServer: @unchecked Sendable {
         let dict = buildTXTDict(state: state)
         guard dict != lastTXTDict else { return }
         lastTXTDict = dict
-        listener?.service = NWListener.Service(name: "hdhrVCR+", type: "_http._tcp", domain: nil,
+        listener?.service = NWListener.Service(name: "hdhrVCRplus", type: "_http._tcp", domain: nil,
                                                txtRecord: NWTXTRecord(dict))
     }
 

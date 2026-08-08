@@ -377,6 +377,7 @@ struct AppConfig: Equatable {
     // in this file: this repo is public, and the real number should only ever live in this
     // machine's own ~/Library/Application Support/hdhrVCRplus/ config, never in git.
     var Donation_target_checksum: Int = -1
+    var Donation_unlock_code: String = ""  // the validated code entered on successful unlock; shown back in Settings → About as registration confirmation
 }
 
 extension AppConfig: Codable {
@@ -432,6 +433,7 @@ extension AppConfig: Codable {
         Post_recording_script       = (try? c.decode(String.self, forKey: .Post_recording_script))       ?? ""
         Donation_unlocked           = (try? c.decode(Bool.self,   forKey: .Donation_unlocked))            ?? false
         Donation_target_checksum    = (try? c.decode(Int.self,    forKey: .Donation_target_checksum))     ?? -1
+        Donation_unlock_code        = (try? c.decode(String.self, forKey: .Donation_unlock_code))          ?? ""
     }
 }
 

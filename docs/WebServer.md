@@ -738,7 +738,7 @@ When the listener reaches `.ready`, it advertises via `NWListener.Service`:
 | Field | Value |
 |---|---|
 | Service type | `_http._tcp` |
-| Service name | `"hdhrVCR+"` |
+| Service name | `"hdhrVCRplus"` |
 | TXT record | see below |
 
 **TXT record keys:**

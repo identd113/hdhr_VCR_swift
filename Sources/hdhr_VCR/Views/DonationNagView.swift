@@ -89,9 +89,9 @@ struct DonationNagView: View {
                     .shadow(color: .black.opacity(0.25), radius: 8, y: 4)
                 }
                 .frame(height: 68)
-                .accessibilityLabel("hdhr VCR app icon")
+                .accessibilityLabel("hdhrVCRplus app icon")
 
-                Text("Support hdhrVCR+")
+                Text("Support hdhrVCRplus")
                     .font(.system(.title3, design: .monospaced)).bold()
             }
             .padding(.top, 30)
@@ -184,6 +184,7 @@ struct DonationNagView: View {
             return
         }
         state.config.Donation_unlocked = true
+        state.config.Donation_unlock_code = normalized.uppercased()
         state.saveConfig()
         dismiss()
     }

@@ -26,7 +26,7 @@ than generic system-blue chrome:
 - Header band: a top-down orange→red→clear `LinearGradient` behind the content, `appIconImage`
   (the app's own icon, from `AppIcon.swift` — same asset the About tab and menu bar use) at 60×60
   with rounded corners + a soft one-shot radial-gradient glow that eases out on appear, then
-  "Support hdhrVCR+" in `.system(.title3, design: .monospaced)`
+  "Support hdhrVCRplus" in `.system(.title3, design: .monospaced)`
 - Body: a short "this app is free, consider a tip" message
 - A full-width blue-gradient capsule "Tip via PayPal" button with a heart icon (custom
   `.buttonStyle(.plain)` + `.background(...).clipShape(Capsule())`, not the default
