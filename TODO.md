@@ -68,7 +68,7 @@ The season/episode-number half of "skip already-recorded episodes" is **done** (
 
 The web Guide already partitions channel rows into Favorites vs. everything else (`favRows`/`otherRows`, sorted via `ch.isFavorite` at ~line 1200, joined with a `.g-fav-sep` divider at ~line 1374). Channels with an actively-recording show are mixed in wherever they'd normally sort, so a recording in progress isn't immediately obvious without scanning the whole grid. Add a third partition, above Favorites, for channels where `recChannelsByDevice[device]` contains the channel's `GuideNumber` (already computed per-row as `isRecCh`, ~line 1219) — pull that channel's entire row out of Favorites/Others into a new section with its own divider (e.g. `.g-rec-sep`, red-themed to match `.g-prog-rec`). Since the grid rebuilds on every recording-state change (`broadcastGuideChangeEvent`/`broadcastRecordingEvent`), the channel returns to its normal section automatically once the recording ends — no explicit "un-pin" logic needed. Companion to Watch Now's version above — implement together for one consistent story across both surfaces.
 
-Note: this is the shared web guide grid (`WebServer.swift`) rendered both in a browser and embedded via WKWebView in `FloatingGuideView.swift` and `AddShowView.swift`'s guide step — there is no separate native "cable view" implementation anymore (the old `CableGuideView` described in `.claude/CONVENTIONS.md`-adjacent memory/CHANGELOG history was fully replaced by this web-based grid; fixing it here covers all three embeddings at once).
+Note: this is the shared web guide grid (`WebServer.swift`) rendered both in a browser and embedded via WKWebView in `AddShowView.swift`'s guide step — there is no separate native "cable view" implementation anymore (the old `CableGuideView`, and later the unreachable `FloatingGuideView`/"Cable Guide" window built on top of it, were both removed; fixing it here covers both remaining embeddings at once).
 
 **Key file**: `WebServer.swift` → `buildGuideGridHTML`/`buildHTML` (favRows/otherRows split, `.g-fav-sep` divider, `recChannelsByDevice`).
 
@@ -94,11 +94,29 @@ Power users managing multiple machines must copy the JSON manually. Export / Imp
 
 ---
 
+## Distribution
+
+### Mac App Store distribution requires a sandbox rewrite
+
+Full blocker-by-blocker analysis already lives in **`docs/MAS_COMPLIANCE.md`** — do not duplicate it here, keep this pointer up to date instead. Direct-distribution notarization (Developer ID cert + `notarytool`, see `tools/setup_signing.sh` / `deploy_release.sh`, and `docs/Distribution.md`) does **not** require sandboxing and is the in-progress track as of 2026-08-08. MAS is a separate, larger track: App Sandbox is mandatory for submission, and `docs/MAS_COMPLIANCE.md` tracks the open blockers (curl subprocess spawning — three options weighed: URLSession/XPC-helper/bundled-curl, no decision made yet; VLC dlopen; `Process()` brew installs; security-scoped bookmarks for the recording directory) plus what's already done (Launch at Login via `SMAppService`, Privacy Manifest, narrowed ATS exception).
+
+**Not started.** Sequenced after direct-distribution notarization is working.
+
+---
+
 ## Code Quality
+
+### `deploy.sh`/`deploy_release.sh`'s favicon-generation heredoc is duplicated verbatim
+
+Added to `deploy_release.sh` on 2026-08-07 by copying `deploy.sh`'s existing ~13-line inline `python3` heredoc that builds `favicon.ico` from the iconset's 16×16/32×32 PNGs, rather than factoring it into one shared script. Matches this codebase's existing pattern of keeping the two deploy scripts independently self-contained (the "Deploying resources" `cp` block is duplicated the same way), so not urgent — but a future fix to the ICO-writing logic (wrong byte order, a malformed header, adding more sizes) has to be found and applied in both places, and it's easy to fix one and forget the other.
+
+**Key file**: `deploy.sh` / `deploy_release.sh` (favicon generation block).
+
+---
 
 ### Homebrew installer spawning (`runBrew`) needs a sandbox story
 
-`SettingsView.swift` → `runBrew()` spawns `/opt/homebrew/bin/brew` / `/usr/local/bin/brew` with `install`/`install --cask` to install VLC / hdhomerun_config from the Settings → Maintenance "Tools" section. This is a second class of `Process`-spawning beyond the curl sandbox debt already tracked elsewhere, and isn't covered by the App Store migration plan. There's no sandboxed way to invoke Homebrew, so the likely fix is dropping this row entirely in a sandboxed build.
+`SettingsView.swift` → `runBrew()` spawns `/opt/homebrew/bin/brew` / `/usr/local/bin/brew` with `install`/`install --cask` to install VLC / hdhomerun_config from the Settings → Maintenance "Tools" section. This is a second class of `Process`-spawning beyond the curl sandbox debt tracked in "Mac App Store distribution requires a sandbox rewrite" above, and isn't covered by that helper-app rewrite either. There's no sandboxed way to invoke Homebrew, so the likely fix is dropping this row entirely in a sandboxed build.
 
 **Key file**: `SettingsView.swift` → `runBrew()`.
 

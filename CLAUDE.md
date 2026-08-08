@@ -16,7 +16,7 @@ RUN_WINDOW_NAV_TESTS=1 swift test --filter WindowNavigationTests   # opt-in: dri
 swift test --enable-code-coverage && xcrun llvm-cov report .build/*/debug/hdhr_VCRPackageTests.xctest/Contents/MacOS/hdhr_VCRPackageTests -instr-profile .build/*/debug/codecov/default.profdata -ignore-filename-regex='\.build|Tests/'
 ```
 
-`.app` bundle at `hdhrVCRplus.app/` — binary replaced on each deploy; `Info.plist` there is live (not SPM-generated). `deploy_release.sh` = release build + Developer ID sign + notarize (`--skip-notarize` to sign only).
+`.app` bundle at `hdhrVCRplus.app/` — binary replaced on each deploy; `Info.plist` there is live (not SPM-generated). `deploy_release.sh` = release build + Developer ID sign + notarize (`--skip-notarize` to sign only). This covers direct distribution only (see `docs/Distribution.md`) — Mac App Store distribution is a separate, larger track requiring App Sandbox; see `docs/MAS_COMPLIANCE.md` for the full blocker list.
 
 **Trust `swift build`, not SourceKit** — on macOS 26 Beta, SourceKit reports bogus cross-file errors ("Cannot find type X in scope", spurious "No such module" errors) for same-module types. If `swift build` passes, the diagnostics are noise.
 
