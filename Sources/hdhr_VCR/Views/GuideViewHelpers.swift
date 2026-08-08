@@ -65,7 +65,7 @@ let timeRangeFormatter: DateFormatter = {
     return f
 }()
 
-// Accessibility labels shared by FloatingGuideView and WatchNowView — single source of truth.
+// Accessibility labels for WatchNowView's Watch/Watch-in-VLC buttons.
 func watchInAppLabel(_ title: String) -> String { "Watch \(title)" }
 func watchInVLCLabel(_ title: String) -> String { "Watch \(title) in VLC" }
 

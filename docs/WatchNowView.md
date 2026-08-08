@@ -75,4 +75,4 @@ Poster images: fetched via `ChannelIconCache.shared` (disk-backed actor with in-
 
 ## Intent
 
-`WatchNowView` is a live "what's on" grid that shows only channels with a currently-airing show. It is browse-and-watch focused: the primary action is **Watch** (in-app VLC player) rather than recording. It complements the full cable guide (`FloatingGuideView`) by being compact and quick to open — no scrolling through empty grid slots.
+`WatchNowView` is a live "what's on" grid that shows only channels with a currently-airing show. It is browse-and-watch focused: the primary action is **Watch** (in-app VLC player) rather than recording. It complements the full web guide (accessed via a browser, or embedded in the Add Show wizard's guide step) by being compact and quick to open — no scrolling through empty grid slots.

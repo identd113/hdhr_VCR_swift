@@ -496,3 +496,41 @@ When the tuner picker changes, `genreFilter` resets to `nil` because `availableG
 **Resolution**: Added the same favicon-generation block from `deploy.sh` (built from the iconset `deploy_release.sh` already generates for `AppIcon.icns`, no duplicate `sips` work) plus the `Contents/Resources/favicon.ico` copy. Verified via `./deploy_release.sh 1.4.6 --adhoc`: the regenerated `Resources/favicon.ico` is byte-identical to the previously committed one, and it lands correctly in the bundle before the (pre-existing, unrelated) iCloud FinderInfo codesign flake was hit.
 
 **Resolving commit**: pending (uncommitted at time of writing)
+
+---
+
+# Code audit — 2026-08-08
+
+8-angle `/code-review` sweep of the committed diff plus that session's uncommitted working-tree changes (vertical time-axis guide mode, log rotation, `ChannelIconCache` disk cap, markdown changelog renderer, deploy script fixes, `FloatingGuideView` removal, web guide now-button/channel-column fixes, new `WindowNavigationTests.swift`). Findings tied directly to that session's own uncommitted work were fixed immediately (now-button `CHANGELOG` entry corrected to match the actual shipped direction, dead client-side "watch" bridge left over from the `FloatingGuideView` removal fully removed from `guide.js`/`guide-shell.html` — including a real bug where a leftover reset line would throw on every summary-panel click, `docs/WebServer.md` staleness from the same session's own `--ch-w` and `/vertical` caching changes fixed, dead `@Environment(\.openWindow)` in `AddShowView.swift` removed, dormant ordered-markdown-list rendering bug in `SettingsView.swift`'s `MarkdownView` fixed and verified live). The four below predate that session (from earlier, already-committed work) and are logged rather than fixed inline, per this file's own convention.
+
+## OPEN — Verbose curl `-v` logging can silently exceed `RotatingLogFile`'s cap, and a rotation mid-recording can race an open curl file descriptor
+
+**File:** `RecordingManager.swift` (curl's `-v` stderr piped via `posix_spawn`'s `stderrPath` directly to `hdhrVCRplus.log`); `Models.swift` (`RotatingLogFile`)
+
+**Root cause**: `RotatingLogFile.bytesWritten` only increments inside `RotatingLogFile.write()`, called by `glog()`. When Settings → Advanced → Verbose curl logging is on, curl's own `-v` stderr stream is piped straight into the same log file via its process spawn config, invisible to that byte counter — so the documented 20MB cap isn't actually enforced while verbose logging is active for a long recording. Separately, if a rotation does fire (`rotate()` renames the file to `.log.1` and may delete a prior `.log.1`) while curl's fd is still open and writing to the pre-rotation path, curl keeps writing into the now-renamed file until it closes; a *second* rotation before that close could unlink that renamed file out from under curl, losing whatever it wrote in the interim.
+
+**Fix**: Either route curl's `-v` output through `glog()`/`RotatingLogFile.write()` instead of a direct file redirect (so it's counted and rotation-safe), or give verbose curl logging its own separately-capped file the way Discord sends already do.
+
+## OPEN — `ChannelIconCache.pruneDiskCacheIfNeeded()` runs a full directory scan + per-file `stat` after every single disk write
+
+**File:** `ChannelIconCache.swift`
+
+**Root cause**: The actor-isolated prune runs unconditionally after every icon write, listing the whole disk cache directory and calling `resourceValues` (a `stat`) on each file. `AppState.prefetchChannelIcons` fans out one concurrent `Task` per missing icon via `withTaskGroup` on cold start / lineup refresh — since the cache is an actor, every one of those (potentially hundreds, up to the ~2000-file cap) completions serializes through this full O(n) scan, turning a bulk prefetch into effectively O(n²) directory I/O and stalling unrelated cache-hit reads on the same actor during startup.
+
+**Fix**: Only run the prune periodically (e.g. every N writes, or time-gated) rather than on every single write, or debounce it to run once after a burst of writes settles.
+
+## OPEN — `prebuildPageHTML` now does two full-page HTML builds + two sequential gzip passes on every guide-changing event
+
+**File:** `WebServer.swift` (`prebuildPageHTML`, `@MainActor`)
+
+**Root cause**: Since vertical time-axis mode added a second cached page (`cachedVerticalHTML`/`cachedVerticalHTMLGzip` alongside `cachedHTML`/`cachedHTMLGzip`), every rebuild — which per this file's own comments fires on every add/delete/pause/resume/edit/favorite-toggle and recording start/stop — now runs `buildHTML` and a ~30-60ms gzip pass twice, sequentially, on `@MainActor`, roughly doubling how long menu/UI responsiveness blocks on each such state change versus before vertical mode existed.
+
+**Fix**: Run the two gzip passes concurrently (e.g. via a `TaskGroup` or `DispatchQueue.concurrentPerform`) rather than sequentially, since they're independent of each other once the shared grid HTML is built.
+
+## OPEN — `RotatingLogFile.write()` advances `bytesWritten` even when the underlying write silently no-ops
+
+**File:** `Models.swift` (`RotatingLogFile`)
+
+**Root cause**: If `open()` fails to obtain a `FileHandle` (transient permissions issue, full disk, Logs directory briefly unavailable), `handle?.write(data)` is a silent no-op via optional chaining, but `bytesWritten += UInt64(data.count)` runs unconditionally regardless. The counter can then cross `rotateThreshold` and trigger `rotate()` based on phantom growth that never actually reached disk, potentially renaming/deleting a file that's smaller than the counter believes (or doesn't exist).
+
+**Fix**: Only advance `bytesWritten` when `handle` is non-nil (i.e. the write actually happened).

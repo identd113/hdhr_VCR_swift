@@ -134,19 +134,6 @@ struct SnapshotTests {
         assertSnapshot(view, named: "AddShowView_guideStep", size: CGSize(width: 1100, height: 720))
     }
 
-    // ─── FloatingGuideView ────────────────────────────────────────────────────
-    // Full standalone guide browser. onAppear/task won't fire in ImageRenderer
-    // so the guide grid starts empty — captures the window chrome and empty state.
-
-    @Test("FloatingGuideView — empty state")
-    @MainActor func floatingGuideView() {
-        let device = HDHRDevice.test()
-        let state = makeTestAppState(devices: [device], lineups: ["FFFFFFFF": [.test()]])
-        let view = FloatingGuideView()
-            .environmentObject(state)
-        assertSnapshot(view, named: "FloatingGuideView_empty", size: CGSize(width: 1100, height: 760))
-    }
-
     // ─── EditShowView ─────────────────────────────────────────────────────────
     // loadShow() runs in onAppear (not fired by ImageRenderer), so show == nil
     // and the view renders its ProgressView("Loading…") placeholder.

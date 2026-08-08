@@ -89,3 +89,16 @@ html .g-gap{left:3px;right:3px;width:auto;top:var(--gs);height:var(--gw);bottom:
 html .g-prog{left:3px;right:3px;width:auto;top:var(--gs);height:var(--gw);bottom:auto}
 html #g-hscroll{display:none}
 }
+/* ── Small-phone refinement: vertical mode's channel columns sit side by side (often several
+   at once) rather than horizontal mode's single sticky column, so the same 86px small-screen
+   --ch-w (guide.css's own @media(max-width:600px) block) that's fine as one column is too
+   tight here — channel name/number text could overflow into the neighboring column. Bumped
+   up a bit and the text shrunk to match, with an ellipsis fallback for names still too long
+   to fit. Scoped to max-width:600px (not just portrait) so portrait tablets — which never hit
+   guide.css's 86px shrink and are already comfortable at the base 125px — are left alone.
+   html:root (not bare :root) keeps a specificity margin over guide.css's own :root rule for
+   the same variable, rather than relying on source order alone. ── */
+@media (orientation: portrait) and (max-width: 600px) {
+html:root{--ch-w:108px}
+html .g-cn,html .g-cname{font-size:.6rem;overflow:hidden;text-overflow:ellipsis}
+}

@@ -69,15 +69,6 @@ struct hdhr_VCRApp: App {
         .windowStyle(.titleBar)
         .windowResizability(.contentMinSize)
         .defaultSize(width: 420, height: 620)
-
-        // Floating cable guide — single instance; opened from the Add Show guide step pop-out button
-        Window("Cable Guide", id: "cable-guide") {
-            FloatingGuideView()
-                .environmentObject(appState)
-        }
-        .windowStyle(.titleBar)
-        .windowResizability(.contentMinSize)
-        .defaultSize(width: 1280, height: 820)
     }
 
     // Silently open+close the menu so SwiftUI builds the view graph while the icon is still dimmed.

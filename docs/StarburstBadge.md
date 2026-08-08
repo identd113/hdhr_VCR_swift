@@ -25,7 +25,7 @@ When Bonus Time is toggled off (badge removed from the hierarchy): `.scale(scale
 
 ## Intent
 
-`StarburstBadge` is an orange 12-point starburst that indicates Bonus Time is enabled on a show. It displays `"+N min"` where N is `state.config.Sports_padding_minutes`. Sports shows have Bonus Time enabled by default; any show type can use it. It appears in exactly two places (both `WKWebView`-based guide browsing — `FloatingGuideView` and `AddShowView` step 2 — have no SwiftUI overlay of their own to host it):
+`StarburstBadge` is an orange 12-point starburst that indicates Bonus Time is enabled on a show. It displays `"+N min"` where N is `state.config.Sports_padding_minutes`. Sports shows have Bonus Time enabled by default; any show type can use it. It appears in exactly two places (`AddShowView` step 2's `WKWebView`-based guide browsing has no SwiftUI overlay of its own to host it):
 - In `AddShowView` step 3 (Details), overlaid at the **bottom-right** corner of the form (65pt)
 - In `EditShowView`, overlaid at the **top-right** corner of the form (48pt — the Title field sits closer to the top edge here than in AddShowView's taller layout, so it needed a smaller size than AddShowView's to fully clear it)
 

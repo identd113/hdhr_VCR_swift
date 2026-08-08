@@ -77,7 +77,6 @@ function showInfo(el){
   // Reset all action elements first
   var edit=document.getElementById('sum-edit');
   btn.style.display='none';edit.style.display='none';del.style.display='none';note.style.display='none';
-  document.getElementById('sum-watch-app').style.display='none';document.getElementById('sum-watch-vlc').style.display='none';
   del.disabled=false;del.textContent='Delete';del.classList.remove('danger');del.style.background='';del.style.color='';
   var bstar=document.getElementById('sum-bonus-star');
   bstar.style.display='none';bstar.classList.remove('sb-anim');
@@ -100,11 +99,6 @@ function showInfo(el){
     }
     btn.style.display='inline-block';btn.disabled=false;
   }
-  // Watch buttons: only in WKWebView (in-app guide), only for live shows
-  var _wNow=Math.floor(Date.now()/1000);var _wLive=(_s<=_wNow&&_e>_wNow);
-  var _wInApp=!!(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.watch);
-  document.getElementById('sum-watch-app').style.display=(_wLive&&_wInApp)?'inline-block':'none';
-  document.getElementById('sum-watch-vlc').style.display=(_wLive&&_wInApp)?'inline-block':'none';
 }
 // Heavy fields (Synopsis/poster/episode/air date) aren't baked into the initial grid HTML —
 // they're fetched lazily per-row (see fetchRowHeavy/initRowObserver below). renderHeavyFields
@@ -141,8 +135,6 @@ function renderHeavyFields(el){
     paintHeavyFields(el);
   });
 }
-function doWatchInApp(){if(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.watch)window.webkit.messageHandlers.watch.postMessage({type:'app',deviceId:_d,guideNumber:_n,title:_title});}
-function doWatchInVLC(){if(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.watch)window.webkit.messageHandlers.watch.postMessage({type:'vlc',deviceId:_d,guideNumber:_n,title:_title});}
 function closeSummary(){
   document.getElementById('sum-c').style.display='none';
   document.getElementById('sum-ph').style.display='flex';
@@ -1077,8 +1069,8 @@ setInterval(updateNowLine,60000);
   var gw=document.querySelector('.gw');
   var gi=document.querySelector('.gi');
   if(!gw||!gi)return;
-  // Small dead zone so the button doesn't pop in the instant the now-line touches the scroll
-  // boundary — only once it's actually crossed out of view by a few pixels.
+  // Shows a few pixels early — while the now-line is still just barely on-screen — rather
+  // than waiting for it to fully scroll out of view first.
   var NOW_BTN_MARGIN=5;
   function check(){
     // Re-query each call: refreshGuide() replaces .gi innerHTML, detaching any cached ref.
@@ -1086,10 +1078,10 @@ setInterval(updateNowLine,60000);
     if(!btn)return;
     if(isVT()){
       var ch=chH(),nowPy=ch+(gi.scrollHeight-ch)*(nowPct()/100);
-      btn.classList.toggle('g-now-vis',nowPy<gw.scrollTop-NOW_BTN_MARGIN);
+      btn.classList.toggle('g-now-vis',nowPy<gw.scrollTop+NOW_BTN_MARGIN);
     }else{
       var cw=chW(),nowPx=cw+(gi.scrollWidth-cw)*(nowPct()/100);
-      btn.classList.toggle('g-now-vis',nowPx<gw.scrollLeft-NOW_BTN_MARGIN);
+      btn.classList.toggle('g-now-vis',nowPx<gw.scrollLeft+NOW_BTN_MARGIN);
     }
   }
   gw.addEventListener('scroll',check,{passive:true});

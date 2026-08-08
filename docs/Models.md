@@ -112,7 +112,7 @@ Two mutating methods on `Show` consolidate the repeated failure-state field grou
 
 - `Filter: [String]?` — genre tags (e.g. `["Drama", "Series"]`). Absent from some devices; decodes as `nil` when key is missing. In XMLTV mode (`Guide_use_xml = true`), may also contain `"Shop"` or `"Shopping"` for paid-programming entries (explicit category; JSON uses SeriesID blocklist instead).
 - `firstGenre: String?` — computed property on `Filter`; returns `"Movie"` when `Filter` contains `"Movie"` or `"Movies"` (regardless of position), otherwise returns the first element that is not `"series"` (case-insensitive). Used for guide cell coloring and genre filter picker.
-- `episodeInfoLabel: String?` — computed property; joins `EpisodeNumber` and `EpisodeTitle` with `" · "`, returning `nil` when both are absent or empty. Used in WatchNowView, AddShowView, and FloatingGuideView summary panels.
+- `episodeInfoLabel: String?` — computed property; joins `EpisodeNumber` and `EpisodeTitle` with `" · "`, returning `nil` when both are absent or empty. Used in WatchNowView and AddShowView summary panels.
 - `deviceId: String` (default `""`) — **not in JSON; excluded from `CodingKeys`**. Stamped by `GuideStore.buildIndex` from the owning device's `DeviceID` so the device identity travels with the entry.
 - `channelNum: String` (default `""`) — **not in JSON; excluded from `CodingKeys`**. Stamped by `GuideStore.buildIndex` alongside `deviceId` so managed-show slot keys can be built from the entry alone.
 

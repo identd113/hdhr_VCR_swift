@@ -151,7 +151,7 @@ html.lm #sum-poster{background:#ccc}
 @media(max-width:600px){
   body{padding:10px}
   h1{font-size:1rem}
-  :root{--ch-w:86px}
+  :root{--ch-w:100px}
   .d-btn,.tdrop-btn{padding:4px 7px;font-size:.7rem}
   .t-info{padding:2px 6px;font-size:.66rem}
   #theme-sw button{padding:4px 7px;font-size:.75rem}
@@ -161,8 +161,8 @@ html.lm #sum-poster{background:#ccc}
   .g-hdr-btn{padding:1px 4px;font-size:.72rem}
   .g-tick{font-size:.6rem}
   .g-logo{width:18px;height:18px}
-  .g-cn{font-size:.6rem}
-  .g-cname{font-size:.64rem}
+  .g-cn{font-size:.56rem}
+  .g-cname{font-size:.6rem}
   .g-tl{min-height:44px}
   .g-row{contain-intrinsic-size:auto 45px}
   .g-prog{top:3px;bottom:3px}
@@ -241,8 +241,8 @@ html.lm .g-hdr-btn-now:hover{border-color:#c03030!important;color:#fff!important
 .g-ch{width:var(--ch-w);min-width:var(--ch-w);display:flex;align-items:center;gap:4px;padding:4px 6px;position:-webkit-sticky;position:sticky;left:0;z-index:2;background:var(--s1);border-right:1px solid var(--b1)}
 .g-logo{width:24px;height:24px;object-fit:contain;flex-shrink:0}
 .g-cl{flex:1;min-width:0}
-.g-cn{display:block;font-size:.68rem;color:var(--t3);white-space:nowrap;font-weight:500}
-.g-cname{display:block;font-size:.72rem;color:var(--t1);font-weight:600;white-space:nowrap}
+.g-cn{display:block;font-size:.68rem;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
+.g-cname{display:block;font-size:.72rem;color:var(--t1);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .g-sig{vertical-align:middle;margin-left:2px}
 /* 30-min gridlines */
 .g-tl{flex:1;position:relative;min-height:54px;background:repeating-linear-gradient(90deg,transparent,transparent calc(8.3333% - 1px),var(--b0) calc(8.3333% - 1px),var(--b0) 8.3333%)}

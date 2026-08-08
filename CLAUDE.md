@@ -12,6 +12,7 @@ macOS menu bar app (`LSUIElement`, no Dock icon) recording TV from HDHomeRun tun
 ./deploy.sh          # stop → swift build → copy binary → ad-hoc sign → launch → WebServerPerfTests
 swift build          # build only
 swift test           # Tests/hdhr_VCRTests/ — full Xcode required (xctest); snapshot refs: RECORD_SNAPSHOTS=1 swift test
+RUN_WINDOW_NAV_TESTS=1 swift test --filter WindowNavigationTests   # opt-in: drives real app windows via Accessibility API (osascript); needs the app running + Accessibility permission granted to whatever runs swift test
 swift test --enable-code-coverage && xcrun llvm-cov report .build/*/debug/hdhr_VCRPackageTests.xctest/Contents/MacOS/hdhr_VCRPackageTests -instr-profile .build/*/debug/codecov/default.profdata -ignore-filename-regex='\.build|Tests/'
 ```
 
@@ -44,7 +45,6 @@ ChannelSignalStore.swift   Actor-like @MainActor store: per-channel SNQ history 
 Views/
   MenuContent.swift        Menu bar dropdown (entire UI)
   AddShowView.swift        3-step Add Show wizard
-  FloatingGuideView.swift  Browse-only guide window (WKWebView — embeds localhost:1980)
   EditShowView.swift       Edit existing show
   SettingsView.swift       NavigationSplitView settings window
   StarburstBadge.swift     Animated starburst badge for Bonus Time
@@ -57,7 +57,7 @@ Views/
 
 **`docs/*.md` are the source of truth for visual layout and style.** Read the matching doc before editing any view; cross-check after. If doc contradicts code, stop and flag — never silently reconcile. Any visual removal requires explicit approval.
 
-Views: [MenuContent](docs/MenuContent.md) · [AddShowView](docs/AddShowView.md) · [FloatingGuideView](docs/FloatingGuideView.md) · [EditShowView](docs/EditShowView.md) · [SettingsView](docs/SettingsView.md) · [StarburstBadge](docs/StarburstBadge.md) · [WatchNowView](docs/WatchNowView.md) · [VLCPlayerView](docs/VLCPlayerView.md) · [VLCBridge](docs/VLCBridge.md) · [ShowFormSection](docs/ShowFormSection.md) · [PlayerView](docs/PlayerView.md) (historical)
+Views: [MenuContent](docs/MenuContent.md) · [AddShowView](docs/AddShowView.md) · [EditShowView](docs/EditShowView.md) · [SettingsView](docs/SettingsView.md) · [StarburstBadge](docs/StarburstBadge.md) · [WatchNowView](docs/WatchNowView.md) · [VLCPlayerView](docs/VLCPlayerView.md) · [VLCBridge](docs/VLCBridge.md) · [ShowFormSection](docs/ShowFormSection.md) · [PlayerView](docs/PlayerView.md) (historical)
 
 Systems: [AppState](docs/AppState.md) · [GuideStore](docs/GuideStore.md) · [RecordingManager](docs/RecordingManager.md) · [Models](docs/Models.md) · [Config](docs/Config.md) · [WebServer](docs/WebServer.md) · [ChannelSignalStore](docs/ChannelSignalStore.md) · [HDHRFindings](docs/HDHRFindings.md) (live-tested device/API behavior) · [WKWebView_guide_analysis](docs/WKWebView_guide_analysis.md) (historical)
 

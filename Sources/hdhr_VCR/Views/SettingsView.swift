@@ -104,6 +104,11 @@ struct SettingsView: View {
                 List(SettingsCategory.allCases, selection: $selection) { cat in
                     Label(cat.rawValue, systemImage: cat.icon)
                         .tag(cat)
+                        // Stable per-tab handle for UI automation/accessibility tooling — the
+                        // window's own title tracks the selected tab's .navigationTitle, so
+                        // there's no fixed "Settings" window name to find these rows under, and
+                        // a row's position/index shifts if SettingsCategory ever gains a case.
+                        .accessibilityIdentifier("settings-tab-\(cat.id.lowercased().replacingOccurrences(of: " ", with: "-"))")
                 }
                 .navigationSplitViewColumnWidth(min: 150, ideal: 170, max: 200)
             } detail: {
@@ -120,24 +125,28 @@ struct SettingsView: View {
                         .foregroundStyle(.orange)
                     Button("Discard") { discardDraft() }
                         .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("settings-discard")
                 } else if webPortInvalid {
                     Label("Fix the web server port before saving", systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)
                         .foregroundStyle(.orange)
                     Button("Discard") { discardDraft() }
                         .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("settings-discard")
                 } else if isDirty {
                     Text("Unsaved changes")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Button("Discard") { discardDraft() }
                         .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("settings-discard")
                 }
                 Spacer()
                 let canSave = isDirty && !webhookNeedsTest && !webPortInvalid
                 Button("Save") { applyAndSave() }
                     .disabled(!canSave)
                     .keyboardShortcut("s", modifiers: .command)
+                    .accessibilityIdentifier("settings-save")
                 Button("Save & Close") {
                     if canSave { applyAndSave() }
                     NSApp.keyWindow?.close()
@@ -146,6 +155,7 @@ struct SettingsView: View {
                 .tint(canSave ? .orange : .accentColor)
                 .keyboardShortcut(.defaultAction)
                 .disabled(webhookNeedsTest || webPortInvalid)
+                .accessibilityIdentifier("settings-save-close")
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
@@ -1046,30 +1056,40 @@ private struct MarkdownView: NSViewRepresentable {
 
     private enum BlockKind: Equatable {
         case header(level: Int)
-        case listItem(depth: Int)
+        case listItem(depth: Int, ordered: Bool, ordinal: Int)
         case other
     }
 
-    /// Reads a run's presentation intent to classify which block it belongs to, and how deep
-    /// any enclosing list nests (a list item's own intent chain includes one .unorderedList/
-    /// .orderedList component per enclosing list level).
+    /// Reads a run's presentation intent to classify which block it belongs to, how deep any
+    /// enclosing list nests (a list item's own intent chain includes one .unorderedList/
+    /// .orderedList component per enclosing list level), and whether the *immediately* enclosing
+    /// list is ordered, so numbered markdown lists (`1. `, `2. `) render with real numbers instead
+    /// of bullets. `intent.components` runs `[paragraph, listItem(ordinal), unorderedList|
+    /// orderedList, ...ancestors]` (verified directly against Foundation, not documented) — the
+    /// first list-kind component encountered after `.listItem` sets `ordinal` is the directly
+    /// enclosing list, which `listDepth == 1` (freshly incremented) identifies.
     private static func blockKind(for intent: PresentationIntent?) -> BlockKind {
         guard let intent else { return .other }
         var listDepth = 0
-        var isListItem = false
+        var ordinal: Int?
+        var ordered = false
         for component in intent.components {
             switch component.kind {
             case .header(let level):
                 return .header(level: level)
-            case .unorderedList, .orderedList:
+            case .unorderedList:
                 listDepth += 1
-            case .listItem:
-                isListItem = true
+            case .orderedList:
+                listDepth += 1
+                if ordinal != nil && listDepth == 1 { ordered = true }
+            case .listItem(let n):
+                ordinal = n
             default:
                 break
             }
         }
-        return isListItem ? .listItem(depth: max(listDepth, 1)) : .other
+        guard let ordinal else { return .other }
+        return .listItem(depth: max(listDepth, 1), ordered: ordered, ordinal: ordinal)
     }
 
     static func render(_ markdown: String) -> NSAttributedString {
@@ -1098,15 +1118,16 @@ private struct MarkdownView: NSViewRepresentable {
                 previousIdentity = identity
                 previousWasListItem = isListItem
 
-                if case .listItem(let depth) = kind {
+                if case .listItem(let depth, let ordered, let ordinal) = kind {
                     let indent = bulletStep * CGFloat(depth)
                     let style = NSMutableParagraphStyle()
                     style.headIndent = indent
                     style.firstLineHeadIndent = indent - bulletStep
                     style.tabStops = [NSTextTab(textAlignment: .left, location: indent)]
                     style.defaultTabInterval = indent
+                    let marker = ordered ? "\(ordinal).\t" : "•\t"
                     result.append(NSAttributedString(
-                        string: "•\t",
+                        string: marker,
                         attributes: [.paragraphStyle: style]
                     ))
                     pendingParagraphStyle = style

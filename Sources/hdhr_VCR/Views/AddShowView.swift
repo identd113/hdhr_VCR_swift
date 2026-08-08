@@ -6,7 +6,6 @@ struct AddShowView: View {
 
     @EnvironmentObject var state: AppState
     @Environment(\.dismiss) var dismiss
-    @Environment(\.openWindow) private var openWindow
 
     // No device-selection step — the tuner is chosen inside the web guide.
     enum Step { case guide, details }

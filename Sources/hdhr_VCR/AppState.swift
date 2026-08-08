@@ -354,8 +354,8 @@ final class AppState: ObservableObject {
 
     func setupWebServer() {
         guard config.Web_server_enabled else {
-            // Only tear the listener down if no internal holder still needs it. FloatingGuideView,
-            // AddShowView, and the Watch-Now-from-disk relay (watchRecordingInApp) all keep the
+            // Only tear the listener down if no internal holder still needs it. AddShowView's
+            // guide step and the Watch-Now-from-disk relay (watchRecordingInApp) both keep the
             // localhost server alive via internalWebServerUseCount independent of this LAN-exposure
             // toggle — an unconditional stop() here would kill an in-app guide's WKWebView or a live
             // relay stream mid-playback. releaseInternalWebServer uses the same count==0 gate.
@@ -2758,8 +2758,9 @@ final class AppState: ObservableObject {
     // WebServer's `/api/watch-recording` relay (WebServer.swift), which serves the file as an
     // open-ended HTTP stream — same shape as the real tuner stream, which VLC already handles.
     // Uses ensureWebServerRunning()/releaseInternalWebServer() (the same refcounted internal-use
-    // path FloatingGuideView uses) so this works even when the user has the LAN web UI disabled in
-    // Settings; releaseRecordingRelayIfNeeded() balances the count when the player window closes.
+    // path AddShowView's guide step uses) so this works even when the user has the LAN web UI
+    // disabled in Settings; releaseRecordingRelayIfNeeded() balances the count when the player
+    // window closes.
     // How far behind the live edge Watch Now! starts a recording-relay session — enough that the
     // file already has a few seconds buffered past the start point (avoids opening right at the
     // write pointer), while still landing the viewer close to "now" instead of the recording's

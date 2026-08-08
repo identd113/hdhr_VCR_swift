@@ -8,7 +8,6 @@ Doc per view/system: intent, architecture, key behaviors. Source of truth for vi
 |---|---|---|
 | [MenuContent.md](MenuContent.md) | `Views/MenuContent.swift` | Menu bar dropdown — recording, scheduling, add show |
 | [AddShowView.md](AddShowView.md) | `Views/AddShowView.swift` | 3-step wizard: Device → Web Guide → Details |
-| [FloatingGuideView.md](FloatingGuideView.md) | `Views/FloatingGuideView.swift` | Browse-only guide window (WKWebView), FloatingWindowLevelSetter |
 | [EditShowView.md](EditShowView.md) | `Views/EditShowView.swift` | Form for editing an existing scheduled show |
 | [SettingsView.md](SettingsView.md) | `Views/SettingsView.swift` | App settings — draft/save pattern, all config knobs |
 | [StarburstBadge.md](StarburstBadge.md) | `Views/StarburstBadge.swift` | Animated starburst badge for Bonus Time |
@@ -37,7 +36,7 @@ Doc per view/system: intent, architecture, key behaviors. Source of truth for vi
 |---|---|
 | [Distribution.md](Distribution.md) | Shipping outside the App Store — notarization, updates, monetization |
 | [WebServerPerfFindings.md](WebServerPerfFindings.md) | Historical — point-in-time investigation into slow guide page loads; current caching behavior is in `WebServer.md` |
-| [WKWebView_guide_analysis.md](WKWebView_guide_analysis.md) | Historical — pre-implementation feasibility analysis, superseded the next day by the actual rewrite; current architecture is in `FloatingGuideView.md` |
+| [WKWebView_guide_analysis.md](WKWebView_guide_analysis.md) | Historical — pre-implementation feasibility analysis, superseded the next day by the actual rewrite; current architecture is `AddShowView`'s guide step (`Views/AddShowView.swift`) |
 | [MAS_COMPLIANCE.md](MAS_COMPLIANCE.md) | Mac App Store sandboxing compliance status — a distribution-path decision doc, not a code reference |
 | [CODE_REVIEW_2026-08-02.md](CODE_REVIEW_2026-08-02.md) | Unactioned simplification/efficiency triage snapshot across all `Sources/` files — proposals for the user to review, not yet applied |
 

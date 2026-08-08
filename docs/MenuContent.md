@@ -79,7 +79,7 @@ private func open(_ id: String) {
         case "edit-show": title = "Edit Show"
         case "settings":  title = "Settings"
         case "watch-now": title = "Watch Now"
-        default:          title = id   // cable-guide: not in map, always opens via openWindow
+        default:          title = id   // any future id not in this map falls through unchanged
         }
         if let w = NSApp.windows.first(where: { $0.title == title }) {
             w.makeKeyAndOrderFront(nil); return
@@ -91,9 +91,9 @@ private func open(_ id: String) {
 
 The `DispatchQueue.main.async` is essential: `.menu`-style `MenuBarExtra` dismisses the menu synchronously on interaction. Calling `openWindow` before the menu is fully dismissed can cause the window to appear behind the menu or fail silently. The deferred dispatch fires after the menu is gone.
 
-Window IDs → titles: `"add-show"` → "Add Show", `"edit-show"` → "Edit Show", `"settings"` → "Settings", `"watch-now"` → "Watch Now", `"cable-guide"` → "Cable Guide"
+Window IDs → titles: `"add-show"` → "Add Show", `"edit-show"` → "Edit Show", `"settings"` → "Settings", `"watch-now"` → "Watch Now"
 
-**No duplicate windows is enforced structurally**, not by the title match. All scenes are single-instance `Window` scenes (not `WindowGroup`) in `hdhr_VCRApp.swift`, so `openWindow(id:)` always targets the one instance and can never spawn a duplicate. The `NSApp.windows.first(where: { $0.title == ... })` lookup in `open()` is now redundant reinforcement (it raises an already-open window a hair sooner); even when it misses — e.g. `"cable-guide"`, whose lowercase id doesn't match the `"Cable Guide"` title — the fall-through `openWindow(id:)` still cannot duplicate. See [[feedback-no-duplicate-windows]].
+**No duplicate windows is enforced structurally**, not by the title match. All scenes are single-instance `Window` scenes (not `WindowGroup`) in `hdhr_VCRApp.swift`, so `openWindow(id:)` always targets the one instance and can never spawn a duplicate. The `NSApp.windows.first(where: { $0.title == ... })` lookup in `open()` is now redundant reinforcement (it raises an already-open window a hair sooner); even when it misses — e.g. a future id whose lowercase form doesn't match its window's real title — the fall-through `openWindow(id:)` still cannot duplicate. See [[feedback-no-duplicate-windows]].
 
 ---
 

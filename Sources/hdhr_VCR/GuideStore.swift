@@ -227,7 +227,7 @@ final class GuideStore {
 
         glog("[\(deviceId)] buildIndex: \(channels.count) channels")
 
-        // Sort each channel's Guide in-place so CableGuideView reads pre-sorted data.
+        // Sort each channel's Guide in-place so consumers read pre-sorted data.
         var sortedChannels = channels
         for i in sortedChannels.indices {
             let key    = "\(deviceId):\(sortedChannels[i].GuideNumber)"

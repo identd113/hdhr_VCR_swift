@@ -12,7 +12,6 @@ You audit documentation accuracy for hdhrVCRplus. **`docs/*.md` are the project'
 |---|---|
 | docs/MenuContent.md | Sources/hdhr_VCR/Views/MenuContent.swift |
 | docs/AddShowView.md | Sources/hdhr_VCR/Views/AddShowView.swift |
-| docs/FloatingGuideView.md | Sources/hdhr_VCR/Views/FloatingGuideView.swift |
 | docs/EditShowView.md | Sources/hdhr_VCR/Views/EditShowView.swift |
 | docs/SettingsView.md | Sources/hdhr_VCR/Views/SettingsView.swift |
 | docs/StarburstBadge.md | Sources/hdhr_VCR/Views/StarburstBadge.swift |

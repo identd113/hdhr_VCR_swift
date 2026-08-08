@@ -396,7 +396,6 @@ func watchInApp(url: String, title: String, deviceId: String? = nil, transcode: 
 `vlcCurrentURL` is no longer set manually here. `open()` calls `VLCBridge.play()`, which sets `currentURL` on the bridge; the Combine sink in `AppState` maps that through `.urlBase` and updates `vlcCurrentURL` automatically. `onChange(of: state.vlcCurrentURL)` in a running `VLCPlayerView` fires and syncs the channel picker.
 
 `deviceId`/`guideNumber` call sites:
-- `FloatingGuideView`'s WKWebView JS bridge ("Watch in App" button in the web guide's summary panel): passes `deviceId`/`guideNumber` from the clicked guide block's `dataset`
 - `WatchNowView`: passes `device.DeviceID`/the channel's `GuideNumber`
 
 Falls back to `devices.first` if no `deviceId` match.
