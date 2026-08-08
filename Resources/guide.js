@@ -1077,16 +1077,19 @@ setInterval(updateNowLine,60000);
   var gw=document.querySelector('.gw');
   var gi=document.querySelector('.gi');
   if(!gw||!gi)return;
+  // Small dead zone so the button doesn't pop in the instant the now-line touches the scroll
+  // boundary — only once it's actually crossed out of view by a few pixels.
+  var NOW_BTN_MARGIN=5;
   function check(){
     // Re-query each call: refreshGuide() replaces .gi innerHTML, detaching any cached ref.
     var btn=document.getElementById('g-now-btn');
     if(!btn)return;
     if(isVT()){
       var ch=chH(),nowPy=ch+(gi.scrollHeight-ch)*(nowPct()/100);
-      btn.classList.toggle('g-now-vis',nowPy<gw.scrollTop);
+      btn.classList.toggle('g-now-vis',nowPy<gw.scrollTop-NOW_BTN_MARGIN);
     }else{
       var cw=chW(),nowPx=cw+(gi.scrollWidth-cw)*(nowPct()/100);
-      btn.classList.toggle('g-now-vis',nowPx<gw.scrollLeft);
+      btn.classList.toggle('g-now-vis',nowPx<gw.scrollLeft-NOW_BTN_MARGIN);
     }
   }
   gw.addEventListener('scroll',check,{passive:true});
