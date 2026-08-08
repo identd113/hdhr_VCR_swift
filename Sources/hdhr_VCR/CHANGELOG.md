@@ -1,5 +1,14 @@
 # hdhrVCRplus Changelog
 
+## 2026-08-07 (web guide now-button dead zone)
+
+- **Fix — the web guide's "snap to now" button could pop in the instant the red now-line touched the edge of the visible scroll area** — its visibility check compared the now-line's pixel position to the scroll offset with zero tolerance (`nowPx < scrollLeft`). Added a 5px margin (`nowPx < scrollLeft - 5`, mirrored for vertical mode's `scrollTop`) so the button only appears once the now-line has actually scrolled out of view by a small amount, not the instant it crosses the boundary.
+
+## 2026-08-07 (About panel changelog rendering)
+
+- **Fix — the About panel's changelog text was nearly unreadable in dark mode** — `MarkdownView`'s `NSTextView` displayed the parsed markdown as-is, and AppKit draws any run with no explicit `.foregroundColor` as literal black regardless of appearance, rather than falling back to the text view's own `.textColor`. Now backfilled with `NSColor.labelColor` (AppKit's adaptive system text color) wherever a run doesn't already carry its own color, so plain body text tracks light/dark mode automatically; markdown-link colors are left untouched.
+- **Feature — the About panel's changelog now renders real markdown structure** — headers, bulleted lists, and paragraph breaks were previously flattened into one run of continuous text with no separators or list markers (`NSAttributedString(AttributedString)` bridges inline styling like bold/italic/code automatically, but drops block-level structure on the floor). `MarkdownView` now walks each run's `PresentationIntent` to reproduce it: `## ` headers render bold and on their own line, `- ` list items get a hanging-indent bullet (nested lists indent further), consecutive list items get tight spacing while other block transitions get a blank line.
+
 ## 2026-08-07 (deploy script fixes)
 
 - **Fix — the in-app changelog view rendered empty in every deployed build** — `CHANGELOG.md` was declared as an SPM `resources:` bundle asset, but `SettingsView` reads it via `Bundle.main.url(...)`, which looks in `Contents/Resources/`; neither `deploy.sh` nor `deploy_release.sh` ever copied it there. Both scripts now copy `CHANGELOG.md` into `Contents/Resources/` alongside the app's other bundled assets.

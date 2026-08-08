@@ -1007,8 +1007,12 @@ private struct SignalRing: View {
 
 // MARK: - Markdown renderer
 
-/// NSTextView-backed markdown renderer. Reports its natural height via `height` so the
-/// caller can size the frame after the first layout pass.
+/// NSTextView-backed markdown renderer. `NSAttributedString(AttributedString)` bridges inline
+/// styling (bold/italic/code/links) automatically but flattens every block onto one run with no
+/// paragraph breaks or list markers — this walks each run's `PresentationIntent` to reproduce
+/// block structure (headers, paragraph spacing, bulleted/nested lists) the naive bridge drops.
+/// Reports its natural height via `height` so the caller can size the frame after the first
+/// layout pass.
 private struct MarkdownView: NSViewRepresentable {
     let markdown: String
     @Binding var height: CGFloat
@@ -1018,6 +1022,7 @@ private struct MarkdownView: NSViewRepresentable {
         tv.isEditable = false
         tv.isSelectable = true
         tv.drawsBackground = false
+        tv.textColor = .labelColor
         tv.textContainer?.lineFragmentPadding = 0
         tv.textContainerInset = .zero
         tv.isVerticallyResizable = false
@@ -1027,11 +1032,7 @@ private struct MarkdownView: NSViewRepresentable {
     }
 
     func updateNSView(_ textView: NSTextView, context: Context) {
-        let parsed = (try? AttributedString(
-            markdown: markdown,
-            options: .init(interpretedSyntax: .full)
-        )).map { NSAttributedString($0) } ?? NSAttributedString(string: markdown)
-        textView.textStorage?.setAttributedString(parsed)
+        textView.textStorage?.setAttributedString(Self.render(markdown))
 
         DispatchQueue.main.async {
             guard let lm = textView.layoutManager, let tc = textView.textContainer else { return }
@@ -1039,6 +1040,111 @@ private struct MarkdownView: NSViewRepresentable {
             let used = lm.usedRect(for: tc)
             height = ceil(used.height)
         }
+    }
+
+    private static let bulletStep: CGFloat = 16
+
+    private enum BlockKind: Equatable {
+        case header(level: Int)
+        case listItem(depth: Int)
+        case other
+    }
+
+    /// Reads a run's presentation intent to classify which block it belongs to, and how deep
+    /// any enclosing list nests (a list item's own intent chain includes one .unorderedList/
+    /// .orderedList component per enclosing list level).
+    private static func blockKind(for intent: PresentationIntent?) -> BlockKind {
+        guard let intent else { return .other }
+        var listDepth = 0
+        var isListItem = false
+        for component in intent.components {
+            switch component.kind {
+            case .header(let level):
+                return .header(level: level)
+            case .unorderedList, .orderedList:
+                listDepth += 1
+            case .listItem:
+                isListItem = true
+            default:
+                break
+            }
+        }
+        return isListItem ? .listItem(depth: max(listDepth, 1)) : .other
+    }
+
+    static func render(_ markdown: String) -> NSAttributedString {
+        let attributed = (try? AttributedString(
+            markdown: markdown,
+            options: .init(interpretedSyntax: .full)
+        )) ?? AttributedString(markdown)
+
+        let result = NSMutableAttributedString()
+        var previousIdentity: Int?
+        var previousWasListItem = false
+        var pendingParagraphStyle: NSParagraphStyle?
+
+        for run in attributed.runs {
+            let intent = run.presentationIntent
+            let kind = blockKind(for: intent)
+            let isListItem = { if case .listItem = kind { return true } else { return false } }()
+            // The innermost component (the run's own paragraph/header/list-item, not its
+            // ancestor containers) uniquely identifies which block this run belongs to.
+            let identity = intent?.components.first?.identity
+
+            if identity != previousIdentity {
+                if result.length > 0 {
+                    result.append(NSAttributedString(string: (previousWasListItem && isListItem) ? "\n" : "\n\n"))
+                }
+                previousIdentity = identity
+                previousWasListItem = isListItem
+
+                if case .listItem(let depth) = kind {
+                    let indent = bulletStep * CGFloat(depth)
+                    let style = NSMutableParagraphStyle()
+                    style.headIndent = indent
+                    style.firstLineHeadIndent = indent - bulletStep
+                    style.tabStops = [NSTextTab(textAlignment: .left, location: indent)]
+                    style.defaultTabInterval = indent
+                    result.append(NSAttributedString(
+                        string: "•\t",
+                        attributes: [.paragraphStyle: style]
+                    ))
+                    pendingParagraphStyle = style
+                } else {
+                    pendingParagraphStyle = nil
+                }
+            }
+
+            let piece = NSMutableAttributedString(
+                attributedString: NSAttributedString(AttributedString(attributed[run.range]))
+            )
+            let pieceRange = NSRange(location: 0, length: piece.length)
+
+            if case .header(let level) = kind {
+                let size = NSFont.systemFontSize + max(0, 4 - CGFloat(level))
+                piece.addAttribute(.font, value: NSFont.systemFont(ofSize: size, weight: .semibold), range: pieceRange)
+            }
+            if let style = pendingParagraphStyle {
+                piece.addAttribute(.paragraphStyle, value: style, range: pieceRange)
+            }
+
+            result.append(piece)
+        }
+
+        // AttributedString(markdown:) leaves plain runs with no .foregroundColor attribute, and
+        // NSTextView draws missing color as black rather than falling back to its .textColor —
+        // near-invisible black-on-dark in dark mode. .labelColor is AppKit's adaptive system text
+        // color (tracks light/dark + Increase Contrast automatically); fill it in only where a
+        // run doesn't already specify one, so markdown links (which get their own color from the
+        // parser) are left alone.
+        let fullRange = NSRange(location: 0, length: result.length)
+        result.enumerateAttribute(.foregroundColor, in: fullRange) { value, range, _ in
+            if value == nil {
+                result.addAttribute(.foregroundColor, value: NSColor.labelColor, range: range)
+            }
+        }
+
+        return result
     }
 }
 
