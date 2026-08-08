@@ -17,3 +17,6 @@ tools/__pycache__/
 # Reveals the donation-nag unlock rule (see docs/DonationNagView.md) — deliberately never
 # committed to this public repo, even though it's harmless without the private target number.
 /tools/generate_donation_code.py
+# tools/setup_signing.sh's scratch dir — private key material during cert setup, deleted by the
+# script itself once imported into the keychain, but ignored too in case cleanup is ever skipped.
+/.signing_work/
