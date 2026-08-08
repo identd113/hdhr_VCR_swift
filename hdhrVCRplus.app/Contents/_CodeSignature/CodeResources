@@ -8,6 +8,10 @@
 		<data>
 		lA7U+QroUqKFXxoX3rmBaSY14I4=
 		</data>
+		<key>Resources/CHANGELOG.md</key>
+		<data>
+		PAObSyjfNsCnQdvt3VmTOqlxbo8=
+		</data>
 		<key>Resources/app-recording.jpg</key>
 		<data>
 		UGsoA1Z5w/ZguzjghFUNdKDRXEU=
@@ -48,6 +52,13 @@
 			<key>hash2</key>
 			<data>
 			NcGlWyzyfC/7ViSrEg7y4ZrRppE2pJoVOge3ADhm1mE=
+			</data>
+		</dict>
+		<key>Resources/CHANGELOG.md</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			q8vu6u3CNKZ1YwAI3YUo4io94z0YclcAJhYnvF9Kxk4=
 			</data>
 		</dict>
 		<key>Resources/app-recording.jpg</key>

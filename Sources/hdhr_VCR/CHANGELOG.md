@@ -1,5 +1,10 @@
 # hdhrVCRplus Changelog
 
+## 2026-08-07 (deploy script fixes)
+
+- **Fix — the in-app changelog view rendered empty in every deployed build** — `CHANGELOG.md` was declared as an SPM `resources:` bundle asset, but `SettingsView` reads it via `Bundle.main.url(...)`, which looks in `Contents/Resources/`; neither `deploy.sh` nor `deploy_release.sh` ever copied it there. Both scripts now copy `CHANGELOG.md` into `Contents/Resources/` alongside the app's other bundled assets.
+- **Fix — `deploy_release.sh` had no favicon generation step** — release builds silently reused whatever `Resources/favicon.ico` happened to already be checked into git from a prior `deploy.sh` run instead of regenerating it. `deploy_release.sh` now generates and copies `favicon.ico` the same way `deploy.sh` does, reusing the iconset it already builds for `AppIcon.icns`.
+
 ## 2026-08-01 (pre-release cleanup — 7 deferred findings resolved) — v1.4.5
 
 Pre-release pass ahead of v1.4.5: three parallel reviews (docs accuracy, project-invariant compliance, code-quality/notarization fitness) against everything unreleased since v1.4.0, plus re-verifying and fixing every item from `ISSUES.md`'s one remaining open batch (see `ISSUES.md` for full detail on each).

@@ -477,22 +477,22 @@ When the tuner picker changes, `genreFilter` resets to `nil` because `availableG
 
 # Found during WebServer.swift CSS/JS/HTML extraction — 2026-08-02
 
-## OPEN — `CHANGELOG.md` never copied into the app bundle; in-app changelog view silently renders empty
+## RESOLVED — `CHANGELOG.md` never copied into the app bundle; in-app changelog view silently renders empty
 
 **File:** `Views/SettingsView.swift` (`Bundle.main.url(forResource: "CHANGELOG", withExtension: "md")`); `deploy.sh`/`deploy_release.sh`; `Package.swift`
 
 **Root cause**: `Package.swift` declares `CHANGELOG.md` via SPM's `resources: [.copy(...)]`, which relies on the `Bundle.module` mechanism. The generated `Bundle.module` accessor looks for the resource bundle at `Bundle.main.bundleURL.appendingPathComponent("hdhr_VCR_hdhr_VCR.bundle")` — i.e. as a *sibling* of `Contents/` inside the `.app` (like `hdhrVCRplus.app/hdhr_VCR_hdhr_VCR.bundle`) — which neither `deploy.sh` nor `deploy_release.sh` ever creates. `SettingsView.swift` actually calls `Bundle.main.url(...)`, not `Bundle.module`, so it's not even reaching that (broken) mechanism — either way, `CHANGELOG.md` never lands anywhere `Bundle.main` looks (`Contents/Resources/`), so the lookup returns nil and the changelog view renders empty in every deployed build.
 
-**Fix**: Either (a) drop the SPM `resources:` reliance and copy `CHANGELOG.md` into `Contents/Resources/` via `deploy.sh`/`deploy_release.sh`, matching how `favicon.ico`/`AppIcon.icns`/`app*.jpg` already work, or (b) fix `Bundle.module`'s accessor path expectation. (a) is simpler and matches the pattern the rest of the app already uses for bundled resources.
+**Resolution**: Took option (a) from the original fix note — added `cp CHANGELOG.md "$APP/Contents/Resources/CHANGELOG.md"` to both `deploy.sh` and `deploy_release.sh`, matching how `favicon.ico`/`AppIcon.icns`/`app*.jpg` already land there. Left the SPM `resources:` declaration in `Package.swift` alone (harmless, unused by `Bundle.main`). Verified via a real `./deploy.sh` run: `hdhrVCRplus.app/Contents/Resources/CHANGELOG.md` now exists and diffs identical to the repo copy.
 
-**Resolving commit**: —
+**Resolving commit**: pending (uncommitted at time of writing)
 
-## OPEN — `deploy_release.sh` has no favicon generation/copy step
+## RESOLVED — `deploy_release.sh` has no favicon generation/copy step
 
 **File:** `deploy_release.sh`
 
 **Root cause**: `deploy.sh` generates `favicon.ico` from `Resources/AppIcon-source.png` and copies it into `Contents/Resources/` (`deploy.sh:71-83` at time of writing). `deploy_release.sh` has no equivalent step at all — release builds silently rely on whatever `Resources/favicon.ico` happens to already be checked into git from a prior `deploy.sh` run, rather than regenerating it themselves.
 
-**Fix**: Add the same favicon-generation block to `deploy_release.sh`, or explicitly document that release builds intentionally reuse the committed `Resources/favicon.ico` as-is.
+**Resolution**: Added the same favicon-generation block from `deploy.sh` (built from the iconset `deploy_release.sh` already generates for `AppIcon.icns`, no duplicate `sips` work) plus the `Contents/Resources/favicon.ico` copy. Verified via `./deploy_release.sh 1.4.6 --adhoc`: the regenerated `Resources/favicon.ico` is byte-identical to the previously committed one, and it lands correctly in the bundle before the (pre-existing, unrelated) iCloud FinderInfo codesign flake was hit.
 
-**Resolving commit**: —
+**Resolving commit**: pending (uncommitted at time of writing)

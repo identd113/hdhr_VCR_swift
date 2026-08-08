@@ -54,6 +54,10 @@ cp Resources/guide.css "$APP/Contents/Resources/guide.css"
 cp Resources/guide-vertical.css "$APP/Contents/Resources/guide-vertical.css"
 cp Resources/guide.js "$APP/Contents/Resources/guide.js"
 cp Resources/guide-shell.html "$APP/Contents/Resources/guide-shell.html"
+# Bundle.main.url(forResource:withExtension:) (SettingsView's in-app changelog) looks in
+# Contents/Resources — SPM's Bundle.module resources: declaration in Package.swift never
+# reaches there, so this copy is the only thing that actually makes it visible in-app.
+cp CHANGELOG.md "$APP/Contents/Resources/CHANGELOG.md"
 
 echo "==> Generating app icon…"
 # Build AppIcon.icns from AppIcon-source.png — a dedicated 1024x1024 master with the icon
