@@ -75,6 +75,7 @@ Four sections:
 - **Network**: `Picker` for discovery/recording interface (`"Auto"` default + available NICs with display names). Caption explaining VPN usage. (The idle-check-interval stepper that used to live here was removed 2026-07-23 — see below.)
 - **Logging**: `"Show App Log in Console"` button (opens Console.app for OSLog output) + selectable filter hint label (`subsystem == "com.hdhr.vcrplus"`). `Toggle("Verbose curl logging")`; when on: caption with curl log path (text-selectable) + `"Show curl log in Finder"` button. Config path (text-selectable) + `"Show config in Finder"` button — merged here from the former standalone Config File section.
 - **Signal Quality**: two `Toggle`s (show bars, send dropout alerts) + conditional **Scan Channels** section with per-device scan buttons (visible only when Show signal bars is on)
+- **Donation Nag**: `TextField` for `Donation_target_checksum` (Int, default `-1` = unconfigured). Deliberately kept out of the (public) git repo — this value only ever lives in this machine's local config file. See [DonationNagView.md](DonationNagView.md).
 
 ### Category: Maintenance
 Sections: Shows, Guide & Devices, Tools (if Homebrew found).

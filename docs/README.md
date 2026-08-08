@@ -15,6 +15,7 @@ Doc per view/system: intent, architecture, key behaviors. Source of truth for vi
 | [VLCPlayerView.md](VLCPlayerView.md) | `Views/VLCPlayerView.swift` | VLC-backed player UI |
 | [VLCBridge.md](VLCBridge.md) | `VLCBridge.swift` | VLCKit wrapper — playback engine behind VLCPlayerView |
 | [ShowFormSection.md](ShowFormSection.md) | `Views/ShowFormSection.swift` | Shared form fields used by Add/Edit show views |
+| [DonationNagView.md](DonationNagView.md) | `Views/DonationNagView.swift` | Honor-system donation nag window |
 | [PlayerView.md](PlayerView.md) | — | Historical — pre-VLC AVKit player, superseded |
 
 ## Systems

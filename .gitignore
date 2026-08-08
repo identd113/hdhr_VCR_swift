@@ -14,3 +14,6 @@ CLAUDE.md
 Tests/hdhr_VCRTests/__Snapshots__/
 tools/__pycache__/
 /dist/
+# Reveals the donation-nag unlock rule (see docs/DonationNagView.md) — deliberately never
+# committed to this public repo, even though it's harmless without the private target number.
+/tools/generate_donation_code.py

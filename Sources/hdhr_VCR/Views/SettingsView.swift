@@ -584,6 +584,16 @@ struct SettingsView: View {
                     }
                 }
             }
+
+            Section("Donation Nag") {
+                LabeledContent {
+                    TextField("not set", value: $draft.Donation_target_checksum, format: .number.grouping(.never))
+                        .frame(width: 80)
+                        .multilineTextAlignment(.trailing)
+                } label: {
+                    HStack { Text("Unlock target"); InfoButton("The donation nag's unlock code is any 6 hex digits (0-9, A-F) whose values sum to this number — see docs/DonationNagView.md and tools/generate_donation_code.py. This value is private to this machine's config file; it is never committed to the (public) repo. Leave at -1 to disable unlocking entirely.") }
+                }
+            }
         }
         .formStyle(.grouped)
         .navigationTitle("Advanced")

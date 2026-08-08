@@ -84,6 +84,7 @@ final class AppState: ObservableObject {
     @Published var pendingAddEntryGeneration: Int = 0   // bumped each time a new entry is set; drives onChange in AddShowView
     @Published var pendingAddChannel: (device: HDHRDevice, channel: LineupEntry)? = nil
     @Published var pendingAddChannelGeneration: Int = 0  // bumped each time pendingAddChannel is set
+    @Published var pendingDonationNagTrigger: Int = 0    // bumped after a show is added (native or web); drives onChange in MenuContent to open the donation nag window
     @Published var tunerStatus: [String: TunerStatus] = [:]         // showId → last polled vstatus
     @Published var deviceTunerOccupancy: [String: [DeviceTunerInfo]] = [:]  // deviceId → live status.json snapshot
     private var lastTunerAudit: [String: String] = [:]                      // deviceId → last logged audit string; suppresses unchanged lines
@@ -1995,6 +1996,10 @@ final class AppState: ObservableObject {
         // "Record" action, the native Add Show wizard, any future caller — pushes to the web UI
         // unconditionally instead of depending on the caller remembering to.
         pushShowUpdate(type: "show_added", channel: show.show_channel, device: show.hdhr_record)
+        // Donation nag — covers both the native wizard and the web guide's Record action
+        // (addShowFromGuide ends by calling this same function), so a single hook here reaches
+        // both. No-op once the shared unlock code has been entered.
+        if !config.Donation_unlocked { pendingDonationNagTrigger += 1 }
         // If the show is currently airing, don't wait for the idle loop — start immediately.
         // Capture show_id (not index) so the Task re-derives position after any interleaved mutation.
         let now = Date()

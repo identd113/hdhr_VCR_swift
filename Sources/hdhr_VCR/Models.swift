@@ -368,6 +368,15 @@ struct AppConfig: Equatable {
 
     // Menu bar icon
     var Status_light_blink_enabled: Bool = false  // blink the built-in status light while recording/up-next
+
+    // Donation nag
+    var Donation_unlocked: Bool = false  // set true once the shared unlock code is entered in DonationNagView
+    // Required hex-digit-sum for a valid unlock code (see DonationNagView.swift). -1 means
+    // "not configured" — no code can ever match a negative target, so the nag simply never
+    // unlocks until this is set via Settings → Advanced. Deliberately NOT a literal secret value
+    // in this file: this repo is public, and the real number should only ever live in this
+    // machine's own ~/Library/Application Support/hdhrVCRplus/ config, never in git.
+    var Donation_target_checksum: Int = -1
 }
 
 extension AppConfig: Codable {
@@ -421,6 +430,8 @@ extension AppConfig: Codable {
         Series_subfolder_enabled    = (try? c.decode(Bool.self,   forKey: .Series_subfolder_enabled))    ?? false
         Skip_recorded_episodes      = (try? c.decode(Bool.self,   forKey: .Skip_recorded_episodes))      ?? false
         Post_recording_script       = (try? c.decode(String.self, forKey: .Post_recording_script))       ?? ""
+        Donation_unlocked           = (try? c.decode(Bool.self,   forKey: .Donation_unlocked))            ?? false
+        Donation_target_checksum    = (try? c.decode(Int.self,    forKey: .Donation_target_checksum))     ?? -1
     }
 }
 

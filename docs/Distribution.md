@@ -54,11 +54,13 @@ The zip is the thing you hand users. Everything else (payment gate) is layered o
 
 You have a few options depending on how you want to handle access control.
 
-### Option A: Honor system / donation (simplest)
-- Put a **"Buy Me a Coffee"** or **Ko-fi** link in Settings → About
+### Option A: Honor system / donation (simplest) — implemented
 - App is free to use; payment is voluntary
 - No license enforcement, no server, no complexity
 - Works well for enthusiast tools with a small audience
+- **Implemented as an in-app nag window**, not a Settings → About link — see
+  [`DonationNagView.md`](DonationNagView.md). Shows on app launch and whenever a show is
+  scheduled (native or web), with a PayPal link and an unlock code entered after a tip.
 
 ### Option B: One-time purchase via Gumroad (recommended for solo dev)
 - Create a product on [gumroad.com](https://gumroad.com) — set a price (e.g. $10–$15)
