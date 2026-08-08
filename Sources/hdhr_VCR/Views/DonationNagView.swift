@@ -13,7 +13,7 @@ struct DonationNagView: View {
     @EnvironmentObject var state: AppState
     @Environment(\.dismiss) var dismiss
 
-    private let paypalURL = "https://www.paypal.com/paypalme/MikeWoodfill/"
+    private let paypalURL = "https://www.paypal.com/paypalme/MikeWoodfill/10"
 
     // Unlock validation: any hex string (0-9, A-F) of exactly `requiredCodeLength` digits whose
     // nibble values sum to config.Donation_target_checksum is accepted — lets a fresh valid code
