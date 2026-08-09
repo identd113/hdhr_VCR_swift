@@ -58,7 +58,14 @@ final class HDHRManager {
         guard !ips.isEmpty else { return [] }
         return await withTaskGroup(of: HDHRDevice?.self) { group in
             for ip in ips {
-                group.addTask { try? await self.fetchDeviceInfo(ip: ip) }
+                group.addTask {
+                    do {
+                        return try await self.fetchDeviceInfo(ip: ip)
+                    } catch {
+                        glog("[Discovery] fetchDeviceInfo(\(ip)) failed: \(error)", level: .warning)
+                        return nil
+                    }
+                }
             }
             var found: [HDHRDevice] = []
             for await d in group {
@@ -74,7 +81,14 @@ final class HDHRManager {
         guard !raw.isEmpty else { return [] }
         return await withTaskGroup(of: HDHRDevice?.self) { group in
             for device in raw {
-                group.addTask { (try? await self.fetchDeviceInfo(ip: device.LocalIP)) ?? device }
+                group.addTask {
+                    do {
+                        return try await self.fetchDeviceInfo(ip: device.LocalIP)
+                    } catch {
+                        glog("[Discovery] fetchDeviceInfo(\(device.LocalIP)) failed: \(error)", level: .warning)
+                        return device
+                    }
+                }
             }
             var result: [HDHRDevice] = []
             for await d in group { if let d { result.append(d) } }

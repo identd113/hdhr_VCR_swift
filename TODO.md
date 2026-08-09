@@ -25,12 +25,15 @@ Guide data loads fine (`GuideStore.load()` hits `api.hdhomerun.com`, a cloud hos
 
 **Code fix already applied**: `AppState.fetchAllLineups` (`AppState.swift`, `fetchAllLineups`) previously swallowed the failure via `try?`, logging only `"fetch failed"` with zero detail — this made the bug silent and effectively undiagnosable from the log alone. Now does `do`/`catch` and logs the real `NSError` (including the NWPath reason), so this class of failure is self-diagnosing from `hdhrVCRplus.log` going forward.
 
-**Still open** — an OS permission decision, not something code can fix, but the code-side fallout isn't fully covered yet:
-- `fetchDeviceInfo(ip:)` (`HDHRManager.swift` → `fetchDeviceInfo`, called from `knownHostsDiscover` and `udpDiscoverAndFetch`) almost certainly hits the same LNP block and is called behind bare `try?` in both callers — same silent-failure shape as the lineup bug before today's fix. Deserves the same do/catch + `glog` treatment.
-- `setFavorite` (`HDHRManager.swift` → `setFavorite`) already logs on HTTP error *responses*, but a request that never connects (this LNP case) throws before any response exists, so a Settings favorite-toggle would fail with no log line at all.
-- Ad-hoc dev builds (`deploy.sh` → `Signature=adhoc`, no Team ID) and Developer-ID release builds (`deploy_release.sh` → Team ID `W2N772J2XY`) are different code identities as far as TCC is concerned — granting Local Network access on one does not carry over to the other. Worth remembering during dev/release testing so "I already approved this" doesn't get assumed incorrectly.
+**Code fix applied 2026-08-09**: `fetchDeviceInfo(ip:)` (`HDHRManager.swift` → `fetchDeviceInfo`, called from `knownHostsDiscover` and `udpDiscoverAndFetch`) hit the same silent-failure shape as the lineup bug before today's first fix — both callers used bare `try?` with zero logging. Both now do the same `do`/`catch` + `glog("[Discovery] fetchDeviceInfo(...) failed: ...", level: .warning)` treatment, preserving each caller's existing fallback (`nil` for `knownHostsDiscover`, the raw UDP-reply `device` for `udpDiscoverAndFetch`).
 
-**Key files**: `AppState.swift` → `fetchAllLineups` (instrumented/fixed). `HDHRManager.swift` → `fetchLineup`, `fetchDeviceInfo`, `setFavorite` (same failure class, not yet instrumented).
+**Verified already correct, not a bug**: `setFavorite` (`HDHRManager.swift` → `setFavorite`) only logs on HTTP error *responses* itself, but its one caller — `AppState.toggleFavorite` — already wraps every call in a `do`/`catch` that logs *any* thrown error (including a connection that never completes, this LNP case) at `.error` level and reverts the optimistic UI update. This has existed since the original favorites commit, predating this investigation. No fix needed.
+
+**Still open** — an OS permission decision, not something code can fix:
+- Ad-hoc dev builds (`deploy.sh` → `Signature=adhoc`, no Team ID) and Developer-ID release builds (`deploy_release.sh` → Team ID `W2N772J2XY`) are different code identities as far as TCC is concerned — granting Local Network access on one does not carry over to the other. Worth remembering during dev/release testing so "I already approved this" doesn't get assumed incorrectly.
+- Per the 2026-08-09 20:50Z note above: the Developer-ID-signed `/Applications` build kept failing even after the TCC toggle was confirmed on, suggesting a possible stale OS-level network-path cache keyed by code identity, separate from the TCC row itself — untested: Wi-Fi off/on, full reboot, or waiting out whatever cache TTL is in play.
+
+**Key files**: `AppState.swift` → `fetchAllLineups`, `toggleFavorite` (both already correct). `HDHRManager.swift` → `fetchLineup` (unaffected, no in-function change needed since its caller handles the error), `fetchDeviceInfo`'s two callers (instrumented today), `setFavorite` (verified already correct).
 
 ---
 
