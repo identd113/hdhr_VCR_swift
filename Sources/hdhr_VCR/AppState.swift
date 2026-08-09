@@ -649,8 +649,13 @@ final class AppState: ObservableObject {
         await withTaskGroup(of: (String, [LineupEntry]?).self) { group in
             for device in devices {
                 group.addTask {
-                    let lu = try? await self.hdhrManager.fetchLineup(for: device)
-                    return (device.DeviceID, lu)
+                    do {
+                        let lu = try await self.hdhrManager.fetchLineup(for: device)
+                        return (device.DeviceID, lu)
+                    } catch {
+                        glog("[Lineup] \(device.DeviceID) fetch failed: \(error)", level: .warning)
+                        return (device.DeviceID, nil)
+                    }
                 }
             }
             for await (id, lu) in group {
@@ -658,8 +663,6 @@ final class AppState: ObservableObject {
                     glog("[Lineup] \(id) loaded \(lu.count) channels")
                     reconcileFavorites(deviceId: id, freshLineup: lu)
                     lineups[id] = lu
-                } else {
-                    glog("[Lineup] \(id) fetch failed", level: .warning)
                 }
             }
         }

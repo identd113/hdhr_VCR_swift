@@ -4,6 +4,36 @@ Deferred features and improvements. Add items here when a task is punted. Remove
 
 ---
 
+## Show Stoppers
+
+### macOS Local Network permission block — lineup (and likely device-info/favorites) fetch fails on every launch
+
+Confirmed root cause via an instrumented build (2026-08-09). `AppState.fetchAllLineups`'s call into `HDHRManager.fetchLineup` (a plain `URLSession.shared.data(from:)` GET to `http://{LocalIP}/lineup.json`) fails with:
+
+```
+NSURLErrorDomain Code=-1009 "The Internet connection appears to be offline."
+NSUnderlyingError={..., _NSURLErrorNWPathKey=unsatisfied (Local network prohibited), ...}
+```
+
+— macOS's Local Network Privacy (TCC) is blocking the app's direct-IP HTTP requests to the HDHomeRun tuner. Reproduced identically on both the ad-hoc-signed dev build (`deploy.sh`) and the Developer-ID-signed release build running from `/Applications` — same `[WARN] [Lineup] {id} fetch failed` on every launch of either, no exception.
+
+Guide data loads fine (`GuideStore.load()` hits `api.hdhomerun.com`, a cloud host — not gated by LNP), which is why the guide looks healthy in the log while lineup silently fails right next to it, and why the on-screen symptom can read as "guide is broken" when the actual break is lineup-only. Once lineup is empty, everything downstream of it degrades too: `reconcileFavorites` (channel favorite flags), `streamURL(for:)` (used by `updateShowURLsFromLineups` when a device's IP changes — stale/broken Watch Now and recording URLs), and the channel list in Settings.
+
+**Suspected trigger**: Info.plist correctly declares `NSLocalNetworkUsageDescription`, so the OS *should* prompt on first local-subnet connection attempt — but this is an `LSUIElement` (no Dock icon, no main window) menu-bar-only app, a known case where the system permission dialog can fail to surface on first launch, leaving the app permanently in "prohibited" state with no visible ask and no self-recovery path. Confirming this needs `sudo tccutil reset LocalNetwork com.hdhr.vcrplus` to force a re-prompt — which itself failed here with error 70, most likely because the calling process lacks Full Disk Access, a second permission gate standing in front of the fix.
+
+**User-side fix — partial, unresolved as of 2026-08-09 20:50Z**: System Settings → Privacy & Security → Local Network → find hdhrVCRplus and toggle it on. On this machine the toggle was confirmed present and on (single row, no separate `hdhr_VCR` entry) — after that, the ad-hoc dev build (`~/Documents/github/hdhr_VCR_swift/hdhrVCRplus.app`) started succeeding consistently (`[Lineup] 105404BE loaded 112 channels`), **but the Developer-ID-signed `/Applications/hdhrVCRplus.app` build kept failing on repeated relaunches immediately after**, with the same single toggle reportedly already on. So flipping the one visible toggle did not fix the actual installed app. Working theory: some OS-level network-path/NECP cache keyed by the app's code identity (separate from the TCC permission row itself) is holding a stale "prohibited" verdict for the Developer-ID-signed binary specifically, independent of the TCC toggle state — untested fixes for next session: toggling Wi-Fi off/on (clears NECP path cache), a full reboot, or waiting out whatever cache TTL is in play, then relaunching `/Applications/hdhrVCRplus.app` again and checking `hdhrVCRplus.log` for `[Lineup] ... loaded` vs `fetch failed`. If it's not listed in Local Network at all on a clean machine, grant Full Disk Access to Terminal first, then `sudo tccutil reset LocalNetwork com.hdhr.vcrplus` and relaunch to force a fresh prompt.
+
+**Code fix already applied**: `AppState.fetchAllLineups` (`AppState.swift`, `fetchAllLineups`) previously swallowed the failure via `try?`, logging only `"fetch failed"` with zero detail — this made the bug silent and effectively undiagnosable from the log alone. Now does `do`/`catch` and logs the real `NSError` (including the NWPath reason), so this class of failure is self-diagnosing from `hdhrVCRplus.log` going forward.
+
+**Still open** — an OS permission decision, not something code can fix, but the code-side fallout isn't fully covered yet:
+- `fetchDeviceInfo(ip:)` (`HDHRManager.swift` → `fetchDeviceInfo`, called from `knownHostsDiscover` and `udpDiscoverAndFetch`) almost certainly hits the same LNP block and is called behind bare `try?` in both callers — same silent-failure shape as the lineup bug before today's fix. Deserves the same do/catch + `glog` treatment.
+- `setFavorite` (`HDHRManager.swift` → `setFavorite`) already logs on HTTP error *responses*, but a request that never connects (this LNP case) throws before any response exists, so a Settings favorite-toggle would fail with no log line at all.
+- Ad-hoc dev builds (`deploy.sh` → `Signature=adhoc`, no Team ID) and Developer-ID release builds (`deploy_release.sh` → Team ID `W2N772J2XY`) are different code identities as far as TCC is concerned — granting Local Network access on one does not carry over to the other. Worth remembering during dev/release testing so "I already approved this" doesn't get assumed incorrectly.
+
+**Key files**: `AppState.swift` → `fetchAllLineups` (instrumented/fixed). `HDHRManager.swift` → `fetchLineup`, `fetchDeviceInfo`, `setFavorite` (same failure class, not yet instrumented).
+
+---
+
 ## Player / Watch Now
 
 ### Elapsed/remaining timer in recording menu doesn't tick
