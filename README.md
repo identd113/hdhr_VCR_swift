@@ -260,6 +260,12 @@ hdhr_VCR started in 2016 as an AppleScript app to fill the gap left by discontin
 **Swift/SwiftUI version:** [identd113/hdhr_VCR_swift](https://github.com/identd113/hdhr_VCR_swift)  
 **Original AppleScript version:** [identd113/hdhr_VCR-AS](https://github.com/identd113/hdhr_VCR-AS)
 
+**A note on AI assistance:** this Swift rewrite was built with substantial help from Claude
+(Anthropic's AI coding assistant) — implementation, code review, testing, and documentation
+throughout. Disclosed here so nobody mistakes AI-assisted work for something it isn't; every
+change is reviewed by a human before shipping, and the app is used daily by its author on real
+hardware.
+
 ---
 
 ## License
