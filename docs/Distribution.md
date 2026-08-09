@@ -99,7 +99,16 @@ onward follows this full notarized path — the Developer ID cert and notary cre
 are already set up (see `tools/setup_signing.sh`), so this is the normal flow, not an
 aspirational one.
 
-1. `./deploy_release.sh <version>` — builds, Developer-ID signs, notarizes, staples, and sets `CFBundleShortVersionString`/`CFBundleVersion`. Zips the finished, stapled app itself, no separate manual zip step needed — look for the printed `Artifact: dist/hdhrVCRplus-<version>.zip` line (no `v` prefix in the filename, unlike the git tag). Needs the Apple Developer cert + a stored notary credential; `--skip-notarize` signs only, for testing.
+**Every release — not just the first — goes through a pre-release pass before `deploy_release.sh`
+runs, scoped to whatever's landed since the last tag** (`git log <last-tag>..main`):
+
+0. **Review, document, test, then commit any fixes** — in this order, before touching `deploy_release.sh`:
+   1. Code review the unreleased commits (`invariants-reviewer` and/or `swift-quality-reviewer` against `git diff <last-tag>..main`) — catches regressions/hackiness before they ship, not after.
+   2. Update documentation for anything the reviewed commits touched (`docs-auditor`, or a manual pass) — `docs/*.md` should already describe the current behavior by the time a release ships, not lag behind it.
+   3. Run the full test suite: `swift build && swift test`, **and** the UI/window-navigation suite (`RUN_WINDOW_NAV_TESTS=1 swift test --filter WindowNavigationTests` — needs the app running + Accessibility permission granted to whatever runs the tests, see the root `CLAUDE.md`). Don't skip the UI pass just because the unit suite is green — it catches a different class of regression (real window/menu interaction, not just logic).
+   4. Fix anything the above finds, commit those fixes, and re-run step 3 until clean.
+
+1. `./deploy_release.sh <version>` — builds, Developer-ID signs, notarizes, staples, and sets `CFBundleShortVersionString`/`CFBundleVersion`. Zips the finished, stapled app itself, no separate manual zip step needed — look for the printed `Artifact: dist/hdhrVCRplus-<version>.zip` line (no `v` prefix in the filename, unlike the git tag). Needs the Apple Developer cert + a stored notary credential; `--skip-notarize` signs only, for testing. **Developer ID signing prompts for Touch ID/password on every run** (not just first use) — whoever runs this needs to be physically at the machine (or have real remote screen access) to clear it; it will hang otherwise.
 2. Publish the GitHub Release with notes + that zip:
    `gh release create v<version> --title "…" --notes-file notes.md dist/hdhrVCRplus-<version>.zip`
    (or, if a draft already exists: `gh release upload v<version> …zip --clobber` then `gh release edit v<version> --draft=false --latest`).
