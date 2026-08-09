@@ -61,7 +61,7 @@ Action buttons at the bottom of the submenu (standard blue text, destructive ite
 
 `MenuContent` is the entire visible UI of the app while the menu is closed. It is the `body` of the `MenuBarExtra` scene declared with `.menu` style in `hdhr_VCRApp.swift`. Every interaction the user has with the app — starting, stopping, scheduling, editing, and adding shows — flows through here or through a window it opens.
 
-Because this is a menu bar app (`LSUIElement = true`, no Dock icon, no main window), `MenuContent` IS the app's primary interface.
+Because this is a menu bar app (no main window; the Dock icon is now runtime-conditional — see CLAUDE.md's Info.plist note and `TODO.md`'s "Show Stoppers" entry — but the app is never Dock-driven either way), `MenuContent` IS the app's primary interface.
 
 ---
 

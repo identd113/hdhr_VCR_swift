@@ -175,6 +175,14 @@ Added to `deploy_release.sh` on 2026-08-07 by copying `deploy.sh`'s existing ~13
 
 ---
 
+### Local Network fast-retry has no backoff for a permanent denial
+
+Flagged in the v2.0.2 pre-release review (`swift-quality-reviewer`). `idleLoop()`'s fast-retry (see "Show Stoppers" above — retries `fetchAllLineups` every tick while `Local_network_confirmed` is false) is correctly bounded to eventually stop once access is confirmed working, but if permission is genuinely denied (indistinguishable from "still pending" per this project's own research into the underlying macOS bug), it retries forever at the full idle-tick cadence (default 10s) with no backoff or attempt cap. Low real-world cost today (a LAN GET to a device already polled every tick anyway for tuner status), but worth an exponential backoff or a cap-then-fall-back-to-hourly if this needs revisiting.
+
+**Key file**: `AppState.swift` → `idleLoop` (fast-retry branch).
+
+---
+
 ### Homebrew installer spawning (`runBrew`) needs a sandbox story
 
 `SettingsView.swift` → `runBrew()` spawns `/opt/homebrew/bin/brew` / `/usr/local/bin/brew` with `install`/`install --cask` to install VLC / hdhomerun_config from the Settings → Maintenance "Tools" section. This is a second class of `Process`-spawning beyond the curl sandbox debt tracked in "Mac App Store distribution requires a sandbox rewrite" above, and isn't covered by that helper-app rewrite either. There's no sandboxed way to invoke Homebrew, so the likely fix is dropping this row entirely in a sandboxed build.

@@ -273,3 +273,55 @@ accuracy regresses right after app launch specifically.
   `--skip <regex>` is a real `swift test` flag (checked `swift test --help`) and `SnapshotTests` is
   the actual struct name in `Tests/hdhr_VCRTests/SnapshotTests.swift:15`, so the regex match is
   correct, not a typo'd skip that silently does nothing.
+
+## 2026-08-09 — v2.0.2 pre-release review (v2.0.1..main)
+
+- `Sources/hdhr_VCR/AppState.swift:2996-2998` (`fetchDeviceStatusUncached`) — the new count-only
+  gate (`newActiveCount != oldActiveCount`) correctly leaves the app's own recording-control logic
+  unaffected: the alerting/matching loop just below the gate (`for show in recordingShows where
+  show.hdhr_record == device.DeviceID`) reads the freshly-fetched local `tuners` array, never the
+  stored `deviceTunerOccupancy`, so signal alerting and tuner-resource matching for this app's own
+  recordings stay fully fresh every poll regardless of the gate. Verified by reading the full
+  function body.
+- Same spot — the doc addition at `docs/AppState.md`'s `fetchDeviceStatus(for:)` paragraph claims
+  "the only other reader of those [stale] fields (`TargetIP`/`SignalQualityPercent`) is
+  `stopRecording`'s optimistic tuner-clear) just copies them through unchanged," but this misses
+  `WebServer.swift:1514` (`recsByDevJS`, feeding the web UI's per-tuner dev-bar dropdown), which
+  reads full per-tuner identity (`info.Resource`, `info.VctNumber`) out of the same stored
+  `deviceTunerOccupancy` array to decide which physical tuner is idle/recording/live-streaming and
+  what channel. Per `docs/WebServer.md:831`, this is a documented, real consumer of per-tuner
+  detail, not just count. Practical exposure is narrow — it only shows a wrong tuner-to-channel
+  label in the web UI's per-tuner dropdown, and only during the exact race the new gate's own
+  comment calls out (an external consumer swapping which physical tuner is active while the
+  aggregate active-tuner count coincidentally stays flat) — self-heals on the next count-changing
+  poll, and does not touch the app's actual recording-control path (see previous bullet). Also
+  worth noting for whoever revisits this: pre-fix, this staleness window was bounded to "while the
+  menu happens to be open"; post-fix it can now persist across idle ticks indefinitely whenever the
+  aggregate count happens not to move, even with the menu closed — a real (if narrow) widening of
+  the staleness surface versus the old `menuIsOpen`-only gate, not just a relocation of it. Not
+  filed as a bug (display-only, self-healing, narrow trigger) — recorded here so the docs claim
+  isn't taken as the complete picture if someone chases a "wrong tuner in the web dropdown" report.
+- `Sources/hdhr_VCR/AppState.swift:1197-1207` (`idleLoop`'s fast lineup-retry branch) — correctly
+  bounded to *stop* (guarded by `config.Local_network_confirmed`, which only ever flips one-way to
+  true), but has no backoff or attempt cap: if a user's Local Network permission is actually denied
+  (as opposed to merely pending — the two are indistinguishable from this app's side, per
+  `TODO.md`'s "Show Stoppers" research), this calls `fetchAllLineups` (full per-device lineup
+  fetch + `reconcileFavorites`) every idle tick (`Idle_timer_interval`, default 10s) forever, not
+  just while genuinely waiting on the one-time OS prompt. Low real-world impact (LAN-local HTTP GET
+  to a device that's already being polled for status every tick anyway) but worth an exponential
+  backoff or attempt cap falling back to the existing hourly cadence if this ever needs revisiting.
+- `Sources/hdhr_VCR/hdhr_VCRApp.swift:24` — the throwaway `ConfigManager().load()` in `init()` is
+  a reasonable, well-commented tradeoff (not a hack): `@StateObject`'s `AppState()` hasn't loaded
+  its own config yet at this point in `init()`, and the alternative (restructuring init order or
+  threading a shared `ConfigManager` through `App` init before `@StateObject` is available) is more
+  invasive than a second small sync JSON read of a small file, once, at launch. Minor and harmless:
+  it re-runs `ConfigManager.init()`'s `FileManager.default.createDirectory` for the already-existing
+  Application Support directory — a no-op in practice, not worth removing given the clarity of
+  keeping `ConfigManager()` self-contained.
+- `AppConfig.Dock_icon_mode: String` (`Models.swift:377`, values `"auto"/"always"/"never"`) is
+  stringly-typed matched via `switch` in three places (`hdhr_VCRApp.swift`, `AppState.swift`'s
+  `confirmLocalNetworkAccessIfNeeded`, `SettingsView.swift`'s `applyAndSave`) plus `Picker` tags —
+  but this exactly mirrors the codebase's pre-existing, established idiom for mode-style config
+  strings (`Default_transcode: String = "none"`, matched the same way across `Models.swift`,
+  `WebServer.swift`, `AddShowView.swift`, `SettingsView.swift`). Not flagging as new debt — it's
+  consistency with the existing convention, not a third divergent copy of a different pattern.

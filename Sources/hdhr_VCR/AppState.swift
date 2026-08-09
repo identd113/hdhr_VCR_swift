@@ -88,6 +88,12 @@ final class AppState: ObservableObject {
     @Published var tunerStatus: [String: TunerStatus] = [:]         // showId → last polled vstatus
     @Published var deviceTunerOccupancy: [String: [DeviceTunerInfo]] = [:]  // deviceId → live status.json snapshot
     private var lastTunerAudit: [String: String] = [:]                      // deviceId → last logged audit string; suppresses unchanged lines
+    // deviceId → last time a real tuner-count change was allowed to write while the menu was
+    // open (see fetchDeviceStatusUncached). Bounds disruption to at most once per cooldown window
+    // even if the count keeps flapping tick-to-tick (e.g. an external consumer channel-surfing) —
+    // without this, a rapidly flapping count could re-glitch the open menu on every single tick.
+    private var lastMenuOpenTunerWrite: [String: Date] = [:]
+    private static let menuOpenTunerWriteCooldown: TimeInterval = 30
     @Published var vlcCurrentURL: String = ""               // raw URL (no transcode query) playing in VLCPlayerView
     @Published var channelIconImages: [String: NSImage] = [:]  // ImageURL → NSImage; populated during prefetch for sync menu use
     @Published var signalScanProgress: String? = nil
@@ -2985,16 +2991,38 @@ final class AppState: ObservableObject {
         // Deliberately compares just the count, not the full tuners array/struct: per-tuner fields
         // like SignalQualityPercent fluctuate on essentially every poll even when nothing about
         // occupancy changed, so a full-struct comparison would defeat the point (every tick would
-        // look "changed"). A stale "X/Y" menu-header count for as long as the menu happens to be
-        // open (this app's own tuner usage never changes that fast, but an external consumer —
-        // another machine running this app, a TV, any other client hitting the same physical
-        // tuner — can, and the whole point of this count is to reflect that) is worse than the
-        // rare submenu dismiss a genuine count change could cause (see CLAUDE.md's "Menu rebuild
-        // churn" invariant). Signal alerting always runs regardless, further down — not
+        // look "changed"). Tradeoff: per-tuner identity (Resource/VctNumber/TargetIP) in the
+        // stored value can now go stale whenever the count doesn't move, even with the menu
+        // closed — a real widening vs. the old behavior, where staleness was bounded to "while
+        // the menu happens to be open." Two known readers of that per-tuner detail (not just the
+        // count): stopRecording's optimistic tuner-clear (AppState.swift), and the web UI's
+        // per-tuner dev-bar dropdown (WebServer.swift's recsByDevJS, docs/WebServer.md) — both
+        // just display/copy through whatever's stored, so a stale entry there self-heals on the
+        // next count-changing poll rather than needing anything more. A stale "X/Y" menu-header
+        // count for as long as the menu happens to be open (this app's own tuner usage never
+        // changes that fast, but an external consumer — another machine running this app, a TV,
+        // any other client hitting the same physical tuner — can, and the whole point of this
+        // count is to reflect that) is worse than the occasional submenu dismiss a genuine count
+        // change could cause (see CLAUDE.md's "Menu rebuild churn" invariant). Signal alerting
+        // always runs regardless, further down — not
         // display-only.
+        //
+        // While the menu is open specifically, that "worth the rare dismiss" reasoning only holds
+        // if the dismiss really is rare — the count-changed check alone doesn't bound how *often*
+        // it can fire. An external consumer channel-surfing can legitimately flip the locked/
+        // unlocked count on consecutive ~10s idle-loop ticks, which would otherwise re-glitch the
+        // open menu every tick for as long as the surfing continues — exactly the scenario a user
+        // opening the menu to check "who's using my tuner" would hit. The cooldown below caps
+        // real-change disruption to once per menuOpenTunerWriteCooldown regardless; closed-menu
+        // writes are never throttled (no glitch risk there).
         let newActiveCount = tuners.filter { $0.VctNumber != nil }.count
         let oldActiveCount = deviceTunerOccupancy[device.DeviceID]?.filter { $0.VctNumber != nil }.count
-        if newActiveCount != oldActiveCount {
+        let countChanged = newActiveCount != oldActiveCount
+        let cooldownElapsed = lastMenuOpenTunerWrite[device.DeviceID].map {
+            Date().timeIntervalSince($0) >= Self.menuOpenTunerWriteCooldown
+        } ?? true
+        if countChanged && (!menuIsOpen || cooldownElapsed) {
+            if menuIsOpen { lastMenuOpenTunerWrite[device.DeviceID] = Date() }
             deviceTunerOccupancy[device.DeviceID] = tuners
 
             let active   = tuners.filter { $0.VctNumber != nil }.count
