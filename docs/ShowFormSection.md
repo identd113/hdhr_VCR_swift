@@ -19,7 +19,9 @@ Signal       — SignalBarsView for the selected channel + a "weak signal" warni
 Type         — Segmented Picker (ShowState.allCases): Single | DateTime | SeriesID(Channel) | SeriesID(All)
                Tooltip: explains each mode
 Transcode    — Picker: None | Heavy | Mobile | Internet 720
-               Tooltip: None keeps raw MPEG; others transcode for size/device
+               Tooltip: None keeps raw MPEG; others transcode for size/device; notes that not all
+               tuner models support transcoding and to fall back to None if a recording fails
+               immediately (app has no per-device capability detection to warn proactively)
 Bonus Time   — Toggle (only when state.config.Sports_padding_enabled); bound to show.show_bonus_time
 Day/Days     — Weekday toggle buttons (only for .single and .dateTime)
                Tooltip: single-day vs. multi-day selection intent

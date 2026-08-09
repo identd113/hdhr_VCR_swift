@@ -80,7 +80,7 @@ struct ShowFormSection: View {
                     Text("Mobile").tag("mobile")
                     Text("Internet 720").tag("internet720")
                 }
-                .help("None keeps the raw MPEG stream (recommended). Heavy, Mobile, and Internet 720 transcode the stream to reduce file size or target a specific playback device.")
+                .help("None keeps the raw MPEG stream (recommended). Heavy, Mobile, and Internet 720 transcode the stream to reduce file size or target a specific playback device. Not all tuner models support transcoding — if a recording fails immediately after picking one, switch back to None.")
             }
 
             if state.config.Sports_padding_enabled {
