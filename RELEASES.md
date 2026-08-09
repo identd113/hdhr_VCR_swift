@@ -6,6 +6,24 @@ What's new in each version. For day-by-day implementation detail, see
 
 ---
 
+## v2.0.2 (2026-08-09)
+
+### Fixed
+- **A stuck Local Network permission prompt could require quitting and reopening the app** — the
+  app now shows a Dock icon on launch until it confirms it can actually reach your tuner (giving
+  macOS's permission prompt a normal app to attach to), then hides it automatically. New
+  **Settings → Advanced → "Dock icon"** option (Auto/Always/Never) to override. The app also now
+  retries reaching your tuner every ~10 seconds instead of up to an hour, so granting permission
+  takes effect on its own — no relaunch needed.
+- **The menu bar's tuner-in-use count could go stale while the dropdown was open** — it now
+  updates live, so if something else on your network (another machine running this app, a TV,
+  etc.) starts or stops using a tuner, you'll see it right away instead of only after closing and
+  reopening the menu.
+
+Full day-by-day detail: [CHANGELOG.md](Sources/hdhr_VCR/CHANGELOG.md)
+
+---
+
 ## v2.0.1 (2026-08-09)
 
 ### Fixed

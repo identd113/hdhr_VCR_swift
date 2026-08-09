@@ -1,5 +1,25 @@
 # hdhrVCRplus Changelog
 
+## 2026-08-09 (Dock icon until network access confirmed, live tuner count while menu is open) — v2.0.2
+
+- **Fix — a stuck Local Network permission prompt could require quitting and reopening the app.**
+  On a machine where macOS's Local Network permission dialog gets stuck or delayed (a known,
+  currently-unresolved macOS bug, not unique to this app — see v2.0.1's note), the app now shows a
+  Dock icon on launch until it actually confirms it can reach your tuner, giving the system's
+  permission prompt a normal foreground app to attach to. Once confirmed, the Dock icon hides
+  itself automatically. A new **Settings → Advanced → "Dock icon"** option (Auto/Always/Never) lets
+  you override this. The app also now retries reaching your tuner every ~10 seconds instead of
+  waiting up to an hour, so granting permission — whenever that happens — takes effect
+  automatically without needing to quit and relaunch.
+- **Fix — the menu bar's tuner count could show stale info while the dropdown was open.** The
+  "X/Y tuners in use" count reflects real usage from any device — this app's own recordings, or
+  anything else on your network using the same tuner (another machine running this app, a TV,
+  etc.). Previously, if that count changed while you had the menu open, it wouldn't update until
+  you closed and reopened it. It now updates live, verified against a real device correctly
+  showing "1/2 · app expects 0" while a TV was using a tuner this app didn't initiate — with a
+  30-second cooldown so a rapidly changing count (e.g. someone channel-surfing) can't repeatedly
+  interrupt the menu.
+
 ## 2026-08-09 (Local Network permission show-stopper, transcode note, repo polish) — v2.0.1
 
 - **Fix — some machines never fully loaded channel data.** macOS's Local Network privacy
