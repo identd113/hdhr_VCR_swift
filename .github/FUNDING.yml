@@ -1,0 +1,3 @@
+# Same link used by the in-app donation nag (Views/DonationNagView.swift) — kept in sync so the
+# GitHub "Sponsor" button and the in-app prompt always point at the same place.
+custom: ["https://www.paypal.com/paypalme/MikeWoodfill/10"]

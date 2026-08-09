@@ -1,9 +1,12 @@
-# 📺 hdhrVCRplus
+<p align="center"><img src="docs/screenshots/app_icon.png" width="96" alt="hdhrVCRplus app icon — a VHS cassette tape with a status-light antenna"></p>
+
+# hdhrVCRplus
 
 **Free, open-source DVR for your HDHomeRun — lives in your Mac menu bar, records in the background.**
 
 No subscription. No media server. No cloud account. Just your tuner, your Mac, and your shows.
 
+[![CI](https://github.com/identd113/hdhr_VCR_swift/actions/workflows/ci.yml/badge.svg)](https://github.com/identd113/hdhr_VCR_swift/actions/workflows/ci.yml)
 [![macOS 15+](https://img.shields.io/badge/macOS-15%2B-blue?logo=apple\&logoColor=white)](https://github.com/identd113/hdhr_VCR_swift/releases)
 [![Swift 5.9](https://img.shields.io/badge/Swift-5.9-FA7343?logo=swift\&logoColor=white)](Package.swift)
 [![Latest Release](https://img.shields.io/github/v/release/identd113/hdhr_VCR_swift?label=latest\&color=green)](https://github.com/identd113/hdhr_VCR_swift/releases)
