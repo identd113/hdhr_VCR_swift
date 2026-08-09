@@ -372,6 +372,10 @@ struct AppConfig: Equatable {
     // Donation nag
     var Donation_unlocked: Bool = false  // set true once a valid unlock code is entered in DonationNagView
     var Donation_unlock_code: String = ""  // the validated code entered on successful unlock; shown back in Settings → About as registration confirmation
+
+    // Dock icon (Local Network permission mitigation — see TODO.md's "Show Stoppers" entry)
+    var Dock_icon_mode: String = "auto"  // auto | always | never — user override for the launch-time Dock-icon heuristic
+    var Local_network_confirmed: Bool = false  // internal, auto-set true on the first successful lineup load; drives "auto" mode's switch back to accessory
 }
 
 extension AppConfig: Codable {
@@ -427,6 +431,8 @@ extension AppConfig: Codable {
         Post_recording_script       = (try? c.decode(String.self, forKey: .Post_recording_script))       ?? ""
         Donation_unlocked           = (try? c.decode(Bool.self,   forKey: .Donation_unlocked))            ?? false
         Donation_unlock_code        = (try? c.decode(String.self, forKey: .Donation_unlock_code))          ?? ""
+        Dock_icon_mode              = (try? c.decode(String.self, forKey: .Dock_icon_mode))                ?? "auto"
+        Local_network_confirmed     = (try? c.decode(Bool.self,   forKey: .Local_network_confirmed))       ?? false
     }
 }
 

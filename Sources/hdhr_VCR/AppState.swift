@@ -188,6 +188,10 @@ final class AppState: ObservableObject {
     private var idleTimer: Timer?
     private var statusLightTimer: Timer?
     private var lastRefreshHour: Int?     = nil  // hour on which guide was last refreshed; triggers new refresh when hour changes
+    // Guards the fast lineup-only retry below — separate from guideRefreshInFlight (refreshGuides'
+    // own guard) since this fires on every idle tick, not just the hourly boundary, and a
+    // permission-blocked fetch is exactly the kind of call that could plausibly hang past one tick.
+    private var lineupConfirmRetryInFlight = false
     private var lastDeviceProbe: Date     = .distantPast
     private var nextQuickProbe: Date?     = nil   // set when any device misses a probe; cleared when all are seen
     // idleLoop() launches probeForNewDevices() as a detached `Task { }`, not awaited — its own
@@ -663,11 +667,27 @@ final class AppState: ObservableObject {
                     glog("[Lineup] \(id) loaded \(lu.count) channels")
                     reconcileFavorites(deviceId: id, freshLineup: lu)
                     lineups[id] = lu
+                    confirmLocalNetworkAccessIfNeeded()
                 }
             }
         }
         // After lineups are current, fix any stale show URLs caused by device IP changes
         updateShowURLsFromLineups()
+    }
+
+    // First confirmed successful lineup fetch means Local Network access is genuinely working —
+    // see TODO.md's "Show Stoppers" entry and hdhr_VCRApp.init()'s Dock-icon heuristic. Persists
+    // so future launches start directly as accessory (no Dock icon) without re-proving it every
+    // time, and switches the currently-running process back immediately if this launch started
+    // as .regular per that heuristic (only matters in "auto" mode — an explicit user override
+    // stays put either way).
+    private func confirmLocalNetworkAccessIfNeeded() {
+        guard !config.Local_network_confirmed else { return }
+        config.Local_network_confirmed = true
+        saveConfig()
+        if config.Dock_icon_mode == "auto" {
+            NSApplication.shared.setActivationPolicy(.accessory)
+        }
     }
 
     private func updateShowURLsFromLineups() {
@@ -1171,6 +1191,21 @@ final class AppState: ObservableObject {
         if lastRefreshHour != currentHour {
             lastRefreshHour = currentHour
             Task { await refreshGuides() }
+        }
+        // While Local Network permission hasn't been confirmed working yet, retry the lineup
+        // fetch on every idle-loop tick instead of only the hourly boundary above — see TODO.md's
+        // "Show Stoppers" entry. The system's permission prompt can be granted at any moment
+        // independent of anything this app does (confirmed: a reboot triggered it once), and
+        // there's no public API to detect that directly; polling on the existing idle cadence
+        // means success is picked up within one tick instead of requiring a manual relaunch or
+        // waiting up to an hour. Stops mattering on its own once
+        // confirmLocalNetworkAccessIfNeeded() flips the flag.
+        if !config.Local_network_confirmed, !devices.isEmpty, !lineupConfirmRetryInFlight {
+            lineupConfirmRetryInFlight = true
+            Task {
+                await fetchAllLineups(for: devices)
+                lineupConfirmRetryInFlight = false
+            }
         }
         // Pass 1: stop all completed recordings before any new ones start.
         // Iterate by show_id, not index — stopRecording awaits (scheduleNextAir's guide fetch

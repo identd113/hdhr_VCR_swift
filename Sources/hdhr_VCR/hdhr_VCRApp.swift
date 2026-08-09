@@ -11,8 +11,28 @@ struct hdhr_VCRApp: App {
     init() {
         glog("=== hdhrVCRplus launched ===")
 
-        // Hide Dock icon — menu bar only.
-        NSApplication.shared.setActivationPolicy(.accessory)
+        // Dock icon visibility — see TODO.md's "Show Stoppers" entry. LSUIElement no longer
+        // forces accessory (no Dock icon) unconditionally at process start (Info.plist), because
+        // a background-only process may never get the system's Local Network permission prompt
+        // surfaced to the user at all — a real, currently-unresolved macOS bug independent of
+        // this app, but this is a plausible low-risk mitigation to try. Until a lineup fetch has
+        // actually succeeded once (config.Local_network_confirmed, set by
+        // AppState.confirmLocalNetworkAccessIfNeeded), "auto" mode starts as a regular foreground
+        // app (Dock icon) so the OS has a normal app to attach the prompt to, then switches back
+        // to accessory once access is confirmed working. A synchronous peek at the persisted
+        // config here, independent of AppState's own (later, async) load — @StateObject's
+        // AppState() hasn't loaded its real config by this point in init().
+        let cfg = ConfigManager().load()?.config
+        let dockMode = cfg?.Dock_icon_mode ?? "auto"
+        let localNetworkConfirmed = cfg?.Local_network_confirmed ?? false
+        let showDock: Bool
+        switch dockMode {
+        case "always": showDock = true
+        case "never":  showDock = false
+        default:       showDock = !localNetworkConfirmed   // "auto"
+        }
+        NSApplication.shared.setActivationPolicy(showDock ? .regular : .accessory)
+
         // Set app icon from bundled app.jpg so it appears in Force Quit and Activity Monitor.
         if let icon = appIconImage {
             NSApplication.shared.applicationIconImage = icon

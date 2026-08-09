@@ -202,8 +202,19 @@ struct SettingsView: View {
         let webServerChanged  = draft.Web_server_enabled  != old.Web_server_enabled
                              || draft.Web_server_port     != old.Web_server_port
         let formatChanged     = draft.Guide_use_xml       != old.Guide_use_xml
+        let dockModeChanged   = draft.Dock_icon_mode      != old.Dock_icon_mode
         state.config = draft
         state.saveConfig()
+        // Apply an explicit Dock-icon override immediately rather than waiting for next launch —
+        // "auto" is left alone here since its own switch-to-accessory point is
+        // AppState.confirmLocalNetworkAccessIfNeeded, not a settings save.
+        if dockModeChanged {
+            switch draft.Dock_icon_mode {
+            case "always": NSApplication.shared.setActivationPolicy(.regular)
+            case "never":  NSApplication.shared.setActivationPolicy(.accessory)
+            default: break
+            }
+        }
         // Commit settings that live outside AppConfig
         defaultSaveDirectory = draftSaveDirectory
         loginItemError = ""
@@ -513,6 +524,13 @@ struct SettingsView: View {
                     }
                 } label: {
                     HStack { Text("Discovery & recording interface"); InfoButton("Binds UDP discovery and curl recordings to a specific interface. VPN tunnels are listed (utun*, tun*, cscotun*, gpd*, etc.) — use one if your HDHomeRun is on a remote network reachable via VPN.") }
+                }
+                Picker(selection: $draft.Dock_icon_mode) {
+                    Text("Auto").tag("auto")
+                    Text("Always").tag("always")
+                    Text("Never").tag("never")
+                } label: {
+                    HStack { Text("Dock icon"); InfoButton("\"Auto\" shows a Dock icon only until the app has successfully reached your tuner once — a workaround for a macOS bug where background-only apps can fail to ever receive the Local Network permission prompt — then hides it. \"Always\"/\"Never\" override this permanently.") }
                 }
             }
 

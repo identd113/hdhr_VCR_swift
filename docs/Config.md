@@ -65,6 +65,8 @@ Signal_quality_alert_notify Bool false   notify + Discord embed when a recording
 Status_light_blink_enabled  Bool false   blink the recording/up-next menu bar status light (6s cycle: 5s lit, 1s off) instead of showing it lit continuously; driven by AppState's own 1Hz timer, independent of the idle loop
 Donation_unlocked       Bool    false   set true once a valid donation-nag unlock code is entered; see docs/DonationNagView.md
 Donation_unlock_code    String  ""      the validated code entered on successful unlock; shown back in Settings → About as registration confirmation
+Dock_icon_mode          String  "auto"  auto | always | never — Settings → Advanced override for the launch-time Dock-icon heuristic (see TODO.md's "Show Stoppers" entry)
+Local_network_confirmed Bool    false   internal, not user-facing; auto-set true on the first successful lineup load, drives "auto" mode's switch back to accessory
 Config_version          String  "2"     format version marker; "2" = ISO8601 dates + "shows" key
 ```
 
