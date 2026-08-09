@@ -96,6 +96,20 @@ Power users managing multiple machines must copy the JSON manually. Export / Imp
 
 ## Distribution
 
+### Release builds are arm64-only, not a universal binary
+
+`deploy_release.sh`/`deploy.sh` both call plain `swift build` (`-c release` for the former) with no
+`--arch` flags, so every shipped build (including v2.0.0) is a single arm64 slice — confirmed via
+`lipo -info` on the built binary. Intel Macs can't run it. Adding an x86_64 slice would mean
+building both architectures (`swift build --arch arm64 --arch x86_64 [-c release]`) and combining
+the two `hdhr_VCR` binaries with `lipo -create` before the existing codesign/notarize steps —
+notarization and stapling both operate fine on a universal binary, so this only touches the build
+step, not signing. Not started; no known demand from an Intel-Mac user yet.
+
+**Key file**: `deploy.sh` / `deploy_release.sh` (build + binary-copy steps).
+
+---
+
 ### Mac App Store distribution requires a sandbox rewrite
 
 Full blocker-by-blocker analysis already lives in **`docs/MAS_COMPLIANCE.md`** — do not duplicate it here, keep this pointer up to date instead. Direct-distribution notarization (Developer ID cert + `notarytool`, see `tools/setup_signing.sh` / `deploy_release.sh`, and `docs/Distribution.md`) does **not** require sandboxing and is the in-progress track as of 2026-08-08. MAS is a separate, larger track: App Sandbox is mandatory for submission, and `docs/MAS_COMPLIANCE.md` tracks the open blockers (curl subprocess spawning — three options weighed: URLSession/XPC-helper/bundled-curl, no decision made yet; VLC dlopen; `Process()` brew installs; security-scoped bookmarks for the recording directory) plus what's already done (Launch at Login via `SMAppService`, Privacy Manifest, narrowed ATS exception).
