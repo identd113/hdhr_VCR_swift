@@ -599,7 +599,7 @@ struct SettingsView: View {
                 }
                 if draft.Web_server_enabled {
                     LabeledContent {
-                        TextField("1980", value: $draft.Web_server_port, format: .number.grouping(.never))
+                        TextField("", value: $draft.Web_server_port, format: .number.grouping(.never))
                             .frame(width: 80)
                             .multilineTextAlignment(.trailing)
                     } label: {

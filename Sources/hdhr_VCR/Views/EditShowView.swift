@@ -110,7 +110,7 @@ struct EditShowView: View {
                 .help("The HDHomeRun guide channel number (e.g. 5.1, 9.2). Change this to redirect the recording to a different channel.")
 
                 LabeledContent("Length (min)") {
-                    TextField("60", value: Binding(
+                    TextField("", value: Binding(
                         get: { show?.show_length ?? 60 },
                         set: { show?.show_length = $0 }), format: .number)
                         .frame(width: 60)
