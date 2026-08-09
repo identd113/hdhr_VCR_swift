@@ -26,4 +26,8 @@ jobs:
       - name: Test
         # Tests/hdhr_VCRTests needs full Xcode (not just Command Line Tools) — GitHub-hosted
         # macOS runners have it preinstalled, so this should just work. See CLAUDE.md.
-        run: swift test
+        # SnapshotTests is skipped: its reference images live in __Snapshots__/, which is
+        # gitignored by design (CLAUDE.md/RECORD_SNAPSHOTS=1) since rendering can differ across
+        # machines/GPUs — there's no baseline for a fresh CI checkout to compare against, so this
+        # suite is meant to be run and reviewed locally, not gated in CI.
+        run: swift test --skip SnapshotTests
