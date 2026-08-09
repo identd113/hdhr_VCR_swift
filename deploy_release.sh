@@ -30,6 +30,10 @@ DIST_DIR="dist"
 # ── Fill these in (unused in --adhoc mode) ──────────────────────────────────
 SIGN_IDENTITY="Developer ID Application: YOUR NAME (XXXXXXXXXX)"
 NOTARY_PROFILE="hdhrVCR-notary"   # name used in store-credentials above
+# Real identity lives in tools/signing_identity.txt (gitignored, written by tools/setup_signing.sh)
+# so this line never needs editing and there's nothing to accidentally commit.
+SIGNING_IDENTITY_FILE="$(cd "$(dirname "$0")" && pwd)/tools/signing_identity.txt"
+[ -f "$SIGNING_IDENTITY_FILE" ] && SIGN_IDENTITY="$(cat "$SIGNING_IDENTITY_FILE")"
 # ─────────────────────────────────────────────────────────────────────────────
 
 SKIP_NOTARIZE=0

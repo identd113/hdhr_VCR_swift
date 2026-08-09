@@ -21,3 +21,7 @@ tools/__pycache__/
 # tools/setup_signing.sh's scratch dir — private key material during cert setup, deleted by the
 # script itself once imported into the keychain, but ignored too in case cleanup is ever skipped.
 /.signing_work/
+# Real Developer ID identity (name + Team ID), written by tools/setup_signing.sh and sourced by
+# deploy_release.sh. Never committed — this repo is public. deploy_release.sh itself always stays
+# on the generic placeholder so there's nothing to accidentally stage/push.
+/tools/signing_identity.txt

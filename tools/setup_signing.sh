@@ -270,16 +270,16 @@ xcrun notarytool store-credentials "hdhrVCR-notary" \
 
 ok "Notarization credentials stored."
 
-# ── Step 7: Patch deploy_release.sh ──────────────────────────────────────────
+# ── Step 7: Write signing identity ────────────────────────────────────────────
 
-step 7 "Patching deploy_release.sh"
+step 7 "Writing signing identity"
 
-# Replace the placeholder SIGN_IDENTITY line
-sed -i '' \
-    "s|SIGN_IDENTITY=\"Developer ID Application: YOUR NAME (XXXXXXXXXX)\"|SIGN_IDENTITY=\"${CERT_NAME}\"|" \
-    "$DEPLOY_RELEASE"
+# Written to a gitignored file rather than patched into deploy_release.sh itself, so the tracked
+# script always stays on the generic placeholder — nothing to accidentally commit/push.
+IDENTITY_FILE="$REPO_ROOT/tools/signing_identity.txt"
+printf '%s' "$CERT_NAME" > "$IDENTITY_FILE"
 
-ok "SIGN_IDENTITY set to: $CERT_NAME"
+ok "SIGN_IDENTITY written to: $IDENTITY_FILE"
 ok "NOTARY_PROFILE is already set to: hdhrVCR-notary"
 
 # ── Step 8: Register bundle ID (optional but good practice) ──────────────────
