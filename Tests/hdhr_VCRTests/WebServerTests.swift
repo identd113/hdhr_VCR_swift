@@ -194,7 +194,7 @@ struct WebServerSmokeTests {
         #expect(status == 200)
         let html = String(data: body, encoding: .utf8) ?? ""
         #expect(html.contains("<!DOCTYPE html>"))
-        #expect(html.contains("hdhrVCR+"))
+        #expect(html.contains("hdhrVCRplus"))
     }
 
     @Test func rootContentTypeIsHTML() async throws {

@@ -83,16 +83,75 @@ private func windowNavTestsOptedIn() -> Bool {
     ProcessInfo.processInfo.environment["RUN_WINDOW_NAV_TESTS"] == "1"
 }
 
+/// Prepended inside every test's `tell process "hdhr_VCR"` block. The donation nag
+/// (`DonationNagView.swift`) opens automatically on every fresh app launch (unless already
+/// unlocked) via a forced silent menu open+close in `hdhr_VCRApp.swift` — and being `.floating`
+/// level, it sits on top as "window 1", which would otherwise break every other test's assumption
+/// that the window it just opened is frontmost. Idempotent (uses `exists`/`try`) so it's a no-op
+/// once the nag has already been dismissed earlier in the same run.
+private let dismissDonationNagSnippet = """
+try
+    click (first button of window "Support hdhrVCRplus" whose description is "close button")
+end try
+repeat 20 times
+    delay 0.1
+    if not (exists window "Support hdhrVCRplus") then exit repeat
+end repeat
+"""
+
 @Suite("Window navigation smoke test (requires running app + Accessibility permission — invoke via --filter, not part of default swift test)", .serialized)
 struct WindowNavigationTests {
+
+    /// Declared first (and this suite runs `.serialized`) so it gets the one-per-launch donation
+    /// nag before every other test's `dismissDonationNagSnippet` clears it. If the nag isn't
+    /// present — already unlocked on this install, or an earlier run in this same launch already
+    /// dismissed it — that's not a failure of this test, just nothing to verify this pass; every
+    /// other test's own dismiss snippet is what actually guarantees a clean slate for them.
+    @Test func donationNagReachableAndCloses() throws {
+        guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+        let script = #"""
+        tell application "System Events"
+            tell process "hdhr_VCR"
+                if not (exists window "Support hdhrVCRplus") then return "NOT_PRESENT"
+                set titleBefore to name of window "Support hdhrVCRplus"
+                try
+                    click (first button of window "Support hdhrVCRplus" whose description is "close button")
+                end try
+                set closedOk to false
+                repeat 20 times
+                    delay 0.1
+                    if not (exists window "Support hdhrVCRplus") then
+                        set closedOk to true
+                        exit repeat
+                    end if
+                end repeat
+                return titleBefore & "|" & closedOk
+            end tell
+        end tell
+        """#
+        guard let result = runAppleScript(script) else {
+            Issue.record("Donation nag script failed to run")
+            return
+        }
+        if result == "NOT_PRESENT" { return }
+        let parts = result.split(separator: "|", maxSplits: 1).map(String.init)
+        #expect(parts.count == 2, "unexpected script output: \(result)")
+        guard parts.count == 2 else { return }
+        #expect(parts[0] == "Support hdhrVCRplus", "opened window titled \(parts[0])")
+        #expect(parts[1] == "true", "donation nag window did not close cleanly")
+    }
 
     @Test func settingsAllTabsReachable() throws {
         guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
         let script = #"""
         tell application "System Events"
             tell process "hdhr_VCR"
+                \#(dismissDonationNagSnippet)
                 click menu item "Settings…" of menu 1 of menu bar item 1 of menu bar 2
-                delay 0.6
+                repeat 20 times
+                    delay 0.25
+                    if (count of windows) > 0 then exit repeat
+                end repeat
                 set resultsStr to ""
                 set rowCount to count of rows of outline 1 of scroll area 1 of group 1 of splitter group 1 of group 1 of window 1
                 repeat with i from 1 to rowCount
@@ -102,11 +161,21 @@ struct WindowNavigationTests {
                     set r to row i of outline 1 of scroll area 1 of group 1 of splitter group 1 of group 1 of window 1
                     set lbl to name of static text 1 of UI element 1 of r
                     set value of attribute "AXSelected" of r to true
-                    delay 0.5
+                    -- Poll until the window title (which tracks the selected tab's own
+                    -- navigationTitle) settles on two consecutive reads, rather than a blind
+                    -- delay — a slower machine just polls a few more times instead of racing
+                    -- a fixed guess (see TODO.md's note on load-related flakiness elsewhere).
                     set actualTitle to "?"
-                    try
-                        set actualTitle to name of window 1
-                    end try
+                    set previousTitle to "?!"
+                    repeat 10 times
+                        delay 0.1
+                        set actualTitle to "?"
+                        try
+                            set actualTitle to name of window 1
+                        end try
+                        if actualTitle is previousTitle then exit repeat
+                        set previousTitle to actualTitle
+                    end repeat
                     set resultsStr to resultsStr & lbl & "|" & actualTitle & linefeed
                 end repeat
                 try
@@ -151,6 +220,7 @@ struct WindowNavigationTests {
         let script = #"""
         tell application "System Events"
             tell process "hdhr_VCR"
+                \#(dismissDonationNagSnippet)
                 set menuEl to menu 1 of menu bar item 1 of menu bar 2
                 set n to count of menu items of menuEl
                 set targetShow to missing value
@@ -246,8 +316,12 @@ struct WindowNavigationTests {
         let script = """
         tell application "System Events"
             tell process "hdhr_VCR"
+                \(dismissDonationNagSnippet)
                 click menu item "\(menuItemName)" of menu 1 of menu bar item 1 of menu bar 2
-                delay 0.7
+                repeat 20 times
+                    delay 0.25
+                    if (count of windows) > 0 then exit repeat
+                end repeat
                 set titleBefore to "?"
                 try
                     set titleBefore to name of window 1
@@ -255,7 +329,10 @@ struct WindowNavigationTests {
                 try
                     click (first button of window 1 whose description is "close button")
                 end try
-                delay 0.3
+                repeat 20 times
+                    delay 0.2
+                    if (count of windows) = 0 then exit repeat
+                end repeat
                 set winCountAfter to count of windows
                 return titleBefore & "|" & winCountAfter
             end tell
