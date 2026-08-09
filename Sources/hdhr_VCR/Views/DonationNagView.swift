@@ -1,13 +1,20 @@
 import SwiftUI
+import CryptoKit
 
 // Soft, honor-system donation nag — not DRM. Shown on app launch and whenever a show is
 // scheduled (native wizard or web guide), gated by AppState.pendingDonationNagTrigger /
 // MenuContent's launch onAppear guard — see docs/DonationNagView.md.
 //
-// The payment link is the developer's own info, identical in every distributed build, so it's
-// a hardcoded constant here. The unlock-code TARGET is NOT — this repo is public, so the actual
-// secret number lives only in AppConfig.Donation_target_checksum (Settings → Advanced), which is
-// stored in this machine's local ~/Library/Application Support/hdhrVCRplus/ config, never in git.
+// The payment link and the unlock-code target are both the developer's own info, identical in
+// every distributed build — hardcoded constants here, same as any other app-wide setting. The
+// target is stored as a SHA256 hash rather than the plain number so it isn't grep-able in a
+// casual read of this (public) repo's source, but it's still baked into every install (unlike an
+// earlier design that stored the raw number in per-install AppConfig — that value could never
+// match for anyone except the developer's own already-configured machine, so nobody who actually
+// tipped could ever unlock their own copy; fixed by going back to a single value shared by every
+// build, just hashed instead of plaintext). This is still honor-system, not real cryptographic
+// protection — anyone determined enough could brute-force the ~91 possible sums against the hash
+// in under a second. See docs/DonationNagView.md.
 struct DonationNagView: View {
 
     @EnvironmentObject var state: AppState
@@ -16,13 +23,12 @@ struct DonationNagView: View {
     private let paypalURL = "https://www.paypal.com/paypalme/MikeWoodfill/10"
 
     // Unlock validation: any hex string (0-9, A-F) of exactly `requiredCodeLength` digits whose
-    // nibble values sum to config.Donation_target_checksum is accepted — lets a fresh valid code
-    // be constructed by hand for each tipper (any digits summing to the target work) without a
-    // generator script or server, while being far less guessable than a single fixed string.
-    // Still honor-system, not cryptographic — see docs/DonationNagView.md. The length alone
-    // (unlike the target) isn't sensitive — knowing it doesn't help without the target too — so
-    // it stays a plain constant here rather than joining the target in AppConfig.
+    // nibble values sum to a target N is accepted when SHA256(String(N)) == targetChecksumHash —
+    // lets a fresh valid code be constructed by hand for each tipper (any digits summing to the
+    // target work) without a generator script or server, while being far less guessable than a
+    // single fixed string. The real target lives only in tools/donation_target.txt (gitignored).
     private let requiredCodeLength = 6
+    private let targetChecksumHash = "31489056e0916d59fe3add79e63f095af3ffb81604691f21cad442a85c7be617"
 
     @State private var enteredCode = ""
     @State private var showMismatch = false
@@ -179,7 +185,10 @@ struct DonationNagView: View {
             guard let current = sum, let value = ch.hexDigitValue else { sum = nil; return }
             sum = current + value
         }
-        guard normalized.count == requiredCodeLength, digitSum == state.config.Donation_target_checksum else {
+        guard normalized.count == requiredCodeLength,
+              let digitSum,
+              sha256Hex(String(digitSum)) == targetChecksumHash
+        else {
             showMismatch = true
             return
         }
@@ -187,6 +196,10 @@ struct DonationNagView: View {
         state.config.Donation_unlock_code = normalized.uppercased()
         state.saveConfig()
         dismiss()
+    }
+
+    private func sha256Hex(_ s: String) -> String {
+        SHA256.hash(data: Data(s.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 }
 

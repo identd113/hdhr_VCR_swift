@@ -31,7 +31,9 @@ than generic system-blue chrome:
 - A full-width blue-gradient capsule "Tip via PayPal" button with a heart icon (custom
   `.buttonStyle(.plain)` + `.background(...).clipShape(Capsule())`, not the default
   `.borderedProminent` — kept PayPal's recognizable blue rather than the app's own orange/red, so
-  the button still reads as trustworthy/branded against the app-colored chrome around it)
+  the button still reads as trustworthy/branded against the app-colored chrome around it). `paypalURL`
+  itself ends in `/10` — PayPal.me's amount-suffix syntax — so the visitor's checkout pre-fills a
+  $10 suggested tip (still editable, not enforced).
 - Divider
 - "Already tipped?" section: a monospaced plain-style text field (rounded-rect quaternary
   background, matching the card aesthetic rather than the default system field look) + a capsule
@@ -69,20 +71,30 @@ timestamp in `AppConfig`, not a design change here.
 
 ## Unlock mechanism
 
-A code is valid when it passes a private validation rule checked against
-`AppConfig.Donation_target_checksum` — many distinct valid codes exist for a given target, so a
-fresh one can be handed to each tipper rather than reusing a single shared string. Still
-honor-system, not cryptographic enforcement. A per-person HMAC-based scheme is already sketched
-(unused) in `Distribution.md` if that's ever wanted instead. The exact rule and a code generator
-are intentionally kept out of this (public) repo — ask the developer directly if you're extending
-this feature and need the details.
+A code is valid when it passes a private validation rule checked against a target number baked
+into the app — many distinct valid codes exist for a given target, so a fresh one can be handed to
+each tipper rather than reusing a single shared string. Still honor-system, not cryptographic
+enforcement. A per-person HMAC-based scheme is already sketched (unused) in `Distribution.md` if
+that's ever wanted instead. The exact rule is intentionally kept out of this (public) repo — ask
+the developer directly if you're extending this feature and need the details.
 
-**The target is deliberately NOT in the source file** — this repo is public, and `Donation_unlocked`/
-`Donation_target_checksum` are real `AppConfig` fields (Settings → Advanced → "Unlock target"),
-persisted only in this machine's local
-`~/Library/Application Support/hdhrVCRplus/hdhr_VCR-{hostname}.json`, which is never part of git.
-`Donation_target_checksum` defaults to `-1`, which the validation rule can never match, so the nag
-simply never unlocks until you set a real value in Settings.
+**The target ships identically in every build, but not as plaintext.** `DonationNagView.swift`
+hardcodes `targetChecksumHash`, a SHA256 hash of the real target number, and `attemptUnlock()`
+hashes the entered code's digit-sum and compares hashes rather than comparing the raw number
+directly — so the actual target isn't grep-able from a casual read of this (public) repo's source,
+while still being the same fixed value compiled into every distributed copy of the app. This is a
+correction of an earlier design that stored the raw target in per-install `AppConfig`
+(`Donation_target_checksum`, since removed) — that kept the number out of git too, but also meant
+every fresh install (including everyone who actually downloaded the app) started unconfigured, so
+nobody except the developer's own already-configured machine could ever unlock it. Hashing a
+single shared constant fixes that while keeping the same "not visible in git" property.
 
-`paypalURL` is the developer's own info, identical in every distributed build, so it's still a
-plain hardcoded constant in `DonationNagView.swift` (fine to commit) — unlike the checksum target.
+`paypalURL` is the developer's own info, identical in every distributed build, so it's a plain
+hardcoded constant in `DonationNagView.swift` same as before — unlike the checksum target, it was
+never sensitive to begin with.
+
+**Generating codes**: no script needed — any `requiredCodeLength` (6) hex digits summing to the
+target are a valid code, simple enough to construct by hand for each tipper. The target itself
+lives in `tools/donation_target.txt` (gitignored — the one plaintext copy of it outside the
+one-way hash baked into the app; back that file up somewhere private, since losing it means
+recovering it only by brute-forcing the hash).

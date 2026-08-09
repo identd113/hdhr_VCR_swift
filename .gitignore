@@ -14,9 +14,10 @@ CLAUDE.md
 Tests/hdhr_VCRTests/__Snapshots__/
 tools/__pycache__/
 /dist/
-# Reveals the donation-nag unlock rule (see docs/DonationNagView.md) — deliberately never
-# committed to this public repo, even though it's harmless without the private target number.
-/tools/generate_donation_code.py
+# The actual private target number (see DonationNagView.swift's targetChecksumHash) — the ONLY
+# copy of this outside a one-way hash. Never committed; back it up somewhere private if this repo
+# checkout is ever lost, or the donation-nag unlock becomes unrecoverable without brute-forcing.
+/tools/donation_target.txt
 # tools/setup_signing.sh's scratch dir — private key material during cert setup, deleted by the
 # script itself once imported into the keychain, but ignored too in case cleanup is ever skipped.
 /.signing_work/
