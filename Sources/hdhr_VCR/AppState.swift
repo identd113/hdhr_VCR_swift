@@ -2981,11 +2981,20 @@ final class AppState: ObservableObject {
               let tuners = try? JSONDecoder().decode([DeviceTunerInfo].self, from: data)
         else { return }
 
-        // Skip @Published writes while the menu is open — same guard as rebuildMenuEntries().
-        // Writing to @Published triggers SwiftUI to re-evaluate the menu body, which dismisses
-        // any open submenu. Signal alerting still runs unconditionally because it posts Discord
-        // notifications and is not display-only. The next idle tick applies @Published updates.
-        if !menuIsOpen {
+        // Write only when the active-tuner *count* actually changed — regardless of menuIsOpen.
+        // Deliberately compares just the count, not the full tuners array/struct: per-tuner fields
+        // like SignalQualityPercent fluctuate on essentially every poll even when nothing about
+        // occupancy changed, so a full-struct comparison would defeat the point (every tick would
+        // look "changed"). A stale "X/Y" menu-header count for as long as the menu happens to be
+        // open (this app's own tuner usage never changes that fast, but an external consumer —
+        // another machine running this app, a TV, any other client hitting the same physical
+        // tuner — can, and the whole point of this count is to reflect that) is worse than the
+        // rare submenu dismiss a genuine count change could cause (see CLAUDE.md's "Menu rebuild
+        // churn" invariant). Signal alerting always runs regardless, further down — not
+        // display-only.
+        let newActiveCount = tuners.filter { $0.VctNumber != nil }.count
+        let oldActiveCount = deviceTunerOccupancy[device.DeviceID]?.filter { $0.VctNumber != nil }.count
+        if newActiveCount != oldActiveCount {
             deviceTunerOccupancy[device.DeviceID] = tuners
 
             let active   = tuners.filter { $0.VctNumber != nil }.count
