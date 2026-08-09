@@ -138,3 +138,111 @@ accuracy regresses right after app launch specifically.
   + sticky-descendant paint bug, `contain-intrinsic-size` two-group requirement) — read as
   hard-won findings, not speculative hedging. Treat these as load-bearing constraints, not
   cleanup targets, if touching vertical-mode CSS later.
+
+## 2026-08-08 — v1.4.6..HEAD review (DonationNagView, FloatingGuideView removal, vertical mode, WindowNavigationTests)
+
+- `Sources/hdhr_VCR/Views/DonationNagView.swift` — clean, well-justified new file: honor-system
+  unlock (`attemptUnlock`) has no force-unwraps beyond `URL(string: paypalURL)!` on a hardcoded
+  literal (fine per this agent's own criteria), `FloatingWindowLevelSetter` is a verbatim
+  re-paste of the identical `private struct` that used to live in the now-deleted
+  `FloatingGuideView.swift` (confirmed via `git show v1.4.6:...FloatingGuideView.swift`) — not
+  copy-paste *divergence* since the old copy no longer exists, but if a third window ever wants
+  floating-level behavior, promote it out of file-private scope into a shared helper rather than
+  a third paste.
+- `docs/DonationNagView.md` explicitly documents "no throttling or snooze" — the nag re-opens on
+  every `addShow` call (native or web) until unlocked, including immediately after "Not now" —
+  confirmed intentional design (not a bug): `TODO.md`-style deferred fix already named in the doc
+  itself ("a cooldown timestamp in `AppConfig`, not a design change here") if it proves too
+  aggressive in practice.
+- `Sources/hdhr_VCR/hdhr_VCRApp.swift`'s `pendingDonationNagTrigger`/`launchDonationNagShown`
+  gating verified correct: `MenuBarExtra`'s `.menu`-style content view stays mounted across
+  open/close (that's *why* `onAppear`/`onDisappear` already double as `menuIsOpen` tracking pre
+  this change), so the `.onChange(of: pendingDonationNagTrigger)` fires even while the menu is
+  closed — required for the web-guide-Record trigger path to work without the user opening the
+  menu bar dropdown first.
+- Verified full removal of `FloatingGuideView`/"Cable Guide" window: zero remaining live
+  references anywhere in `Sources/`, `Resources/`, or non-historical `docs/*.md` (grep swept
+  clean — only `CHANGELOG.md` history entries, `docs/WKWebView_guide_analysis.md`'s explicitly-
+  marked "historical, superseded" doc, and `Tests/hdhr_VCRTests/WindowNavigationTests.swift`'s
+  file-header note about *not* covering the removed window remain, all appropriately historical/
+  prose). No orphaned snapshot reference PNG (`Tests/hdhr_VCRTests/__Snapshots__/` has no
+  `FloatingGuideView*` file) and its `@Test` was removed from `SnapshotTests.swift` in the same
+  commit. Dead client-side "watch" bridge JS (`doWatchInApp`/`doWatchInVLC`, `#sum-watch-app`/
+  `#sum-watch-vlc`) was fully swept from `guide.js`/`guide-shell.html` too — confirmed zero hits.
+- `ISSUES.md`'s 2026-08-08 "Code audit" entries (double gzip pass in `prebuildPageHTML`,
+  `ChannelIconCache.pruneDiskCacheIfNeeded()`'s O(n) full-directory-scan-per-write, verbose-curl/
+  `RotatingLogFile` byte-counter race, `RotatingLogFile`'s phantom-growth-on-failed-write edge
+  case) match exactly what an independent read of the same diff surfaces — already logged as
+  OPEN with accurate root-cause/fix notes, correctly not fixed inline. No new efficiency findings
+  beyond what's already tracked there.
+- Doc-drift gap (real, not yet flagged anywhere): commit `a808bb4` added a "Registered supporter"
+  checkmark badge + unlock-code display to `SettingsView.swift`'s About tab (between the Version
+  text and the History text, `aboutView` ~line 887-903) but never touched `docs/SettingsView.md`'s
+  About section bullet list to describe it — the doc's About list still jumps straight from
+  "Version" to "History text" with no mention of the new registered-supporter block. Reported to
+  the main agent as a finding rather than fixed here (out of this agent's write scope).
+- Second instance of the same gap: `docs/Config.md`'s own documented "Adding a New Field" 3-step
+  checklist (step 1: add to `AppConfig`; the doc's `## AppConfig Fields` code block is meant to be
+  an exhaustive table) was not followed for the three new fields added in this range
+  (`Donation_unlocked`, `Donation_target_checksum`, `Donation_unlock_code`, all in `Models.swift`)
+  — the field table still ends at `Config_version` with no `Donation_*` rows. Also reported as a
+  finding.
+- `CLAUDE.md`'s own "Views:" doc-link list and the `Views/` architecture tree were correctly
+  scrubbed of `FloatingGuideView` on removal, but were never updated to *add*
+  `Views/DonationNagView.swift` / `docs/DonationNagView.md` despite `docs/README.md`'s own table
+  getting the addition — asymmetric thoroughness worth calling out since CLAUDE.md is the
+  project's primary instruction file other agents (including this one) rely on for an accurate
+  file inventory.
+- `Sources/hdhr_VCR/CHANGELOG.md` has zero entries for either donation-nag commit (`6086787` "feat:
+  add donation nag window", `a808bb4` "feat(about): show registered-supporter status…") despite
+  every other commit in this same `v1.4.6..HEAD` range adding one — a ~200-line new user-facing
+  feature (window, 3 new `AppConfig` fields, About-tab status display, app-name standardization)
+  with no changelog trace. Inconsistent with this diff's otherwise meticulous CHANGELOG discipline
+  (see the FloatingGuideView-removal and deploy-script-fix entries, which even log same-session
+  code-audit cleanups).
+- `Tests/hdhr_VCRTests/WindowNavigationTests.swift` — well-scoped opt-in suite (env-var gate +
+  `appRunning()`/`accessibilityTrusted()` guards, all correctly composed so a bare `swift test`
+  never triggers it). One inconsistency worth a look if this suite gets flaky in CI:
+  `editShowOpensAndCloses`'s AppleScript polls with a bounded
+  `repeat 20 times { delay 0.25/0.2; check condition }` loop for both window-open and
+  window-close confirmation, but `settingsAllTabsReachable`/`openAndCloseTopLevelWindow` instead
+  use a single blind `delay 0.5/0.6/0.7/0.3` after each click/selection with no readiness check —
+  a slower machine (the file's own `TODO.md` entry about `WebServerPerfTests` flaking under load
+  average ~4-5 shows this machine does see that) could plausibly open a window slower than the
+  fixed delay, producing a false failure rather than a real regression signal. Same
+  bounded-poll pattern already proven correct elsewhere in this same file would remove the
+  guesswork.
+
+## 2026-08-08 — v2.0.0 final release-gate review (placeholder fix, Donation_unlock_code, RELEASES.md, CHANGELOG tag)
+
+- Verified the `TextField("", value:, format:)` placeholder fix in `Views/SettingsView.swift:590`
+  (`Donation_target_checksum`), `Views/SettingsView.swift:612` (`Web_server_port`), and
+  `Views/EditShowView.swift:113` (`show_length`): all three bindings are non-optional `Int`
+  with a fixed default (`Donation_target_checksum = -1`, `Web_server_port = 1980`,
+  `show_length` via `Binding(get: { show?.show_length ?? 60 }, ...)`) — `TextField(_:value:format:)`
+  only shows its placeholder when the formatted text is empty, which never happens for a
+  non-optional numeric binding. The old `"not set"`/`"1980"`/`"60"` placeholders were dead
+  weight even before the double-render bug; removing them costs no real affordance (the -1
+  "disable unlocking" behavior is explained by the adjacent `InfoButton`, not the placeholder).
+- `AppConfig.Donation_unlock_code` (`Models.swift:380`) — confirmed this stores the user's own
+  locally-entered code (any 6 hex digits whose values sum to the private
+  `Donation_target_checksum` target), not the target itself; many distinct codes satisfy one
+  target, so displaying it back in Settings → About (`SettingsView.swift:893-897`) cannot be
+  reverse-engineered into the private checksum. Grepped the full tree for a literal
+  `Donation_target_checksum = <number>` — zero hits outside `Models.swift`'s own `-1` default;
+  the real per-install value only ever lives in the gitignored local config file.
+- `RELEASES.md`, the `README.md` Installation/Gatekeeper rewrite, and the `docs/MAS_COMPLIANCE.md`
+  banner checked for anything beyond already-intentionally-public info (GitHub repo URL, the
+  developer's own PayPal.me name already present in `DonationNagView.swift`'s hardcoded link) —
+  clean, nothing new disclosed.
+- **Real finding, not yet flagged anywhere**: `deploy_release.sh`'s `SIGN_IDENTITY` line (in the
+  "Fill these in" block near the top) was `"Developer ID Application: YOUR NAME (XXXXXXXXXX)"` in
+  every prior commit back through this script's introduction, and is now, in the current
+  uncommitted working tree, `"Developer ID Application: Mike Woodfill (W2N772J2XY)"` — the
+  developer's real legal name plus their actual Apple Developer Team ID, hardcoded in a script
+  that's tracked in this public repo. The Team ID isn't a novel secret (it's recoverable from any
+  distributed binary via `codesign -dvvv`), but there's no reason for the literal identity string
+  to live in committed source when the placeholder pattern existed specifically so it wouldn't —
+  and this same session already had a near-miss with actual private key material almost landing
+  in git (`b88e711`, `.signing_work/`). Reported to the main agent rather than reverted here (out
+  of this agent's write scope).

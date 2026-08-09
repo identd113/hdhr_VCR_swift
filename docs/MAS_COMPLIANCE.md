@@ -3,12 +3,13 @@
 Status of each requirement for submitting hdhrVCRplus to the Mac App Store.
 
 > **This entire document is about App Store (sandboxed) submission — not plain notarization.**
-> Notarized Developer ID distribution (the ad-hoc-signed release you get from `./deploy_release.sh`)
-> does **not** require the App Sandbox, so none of the blockers below apply to it. `deploy_release.sh`
-> and `tools/setup_signing.sh` already implement full sign + notarize + staple; the only missing piece
-> is a paid Apple Developer Program membership ($99/yr) to generate the Developer ID cert. Everything
-> on this page — subprocess spawning, dlopen, `Process()`, security-scoped bookmarks — is only a
-> problem if the goal is the **Mac App Store** specifically.
+> Notarized Developer ID distribution (the real, notarized release you get from
+> `./deploy_release.sh` with no flags — already working and already shipping since v2.0.0, not the
+> `--adhoc` build) does **not** require the App Sandbox, so none of the blockers below apply to it.
+> `deploy_release.sh` and `tools/setup_signing.sh` already implement full sign + notarize + staple,
+> and the Apple Developer Program membership + Developer ID cert are already set up — nothing is
+> missing for that path. Everything on this page — subprocess spawning, dlopen, `Process()`,
+> security-scoped bookmarks — is only a problem if the goal is the **Mac App Store** specifically.
 
 ---
 

@@ -7,8 +7,11 @@ No subscription. No media server. No cloud account. Just your tuner, your Mac, a
 [![macOS 15+](https://img.shields.io/badge/macOS-15%2B-blue?logo=apple\&logoColor=white)](https://github.com/identd113/hdhr_VCR_swift/releases)
 [![Swift 5.9](https://img.shields.io/badge/Swift-5.9-FA7343?logo=swift\&logoColor=white)](Package.swift)
 [![Latest Release](https://img.shields.io/github/v/release/identd113/hdhr_VCR_swift?label=latest\&color=green)](https://github.com/identd113/hdhr_VCR_swift/releases)
+[![Notarized](https://img.shields.io/badge/Notarized-Developer%20ID-success?logo=apple\&logoColor=white)](RELEASES.md)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 [![Proven since 2016](https://img.shields.io/badge/proven%20since-2016-lightgrey)](https://github.com/identd113/hdhr_VCR-AS)
+
+**[📋 Release Notes](RELEASES.md)** — what's new in each version, with download links.
 
 ---
 
@@ -95,19 +98,13 @@ You already paid for an HDHomeRun tuner, so you  shouldn't have to pay again jus
 
 ---
 
-## What's New in v1.4.5
+## What's New
 
-**Redesigned guide status markers** — the web guide's scheduled/recording/skip/conflict states are now a colored ring + icon badge instead of corner triangles, with more accurate conflict detection: only the tuner slot that's actually lost gets flagged, not every show in an overbooked time window.
+See **[RELEASES.md](RELEASES.md)** for what changed in the current release and every version
+before it, or the → [full day-by-day changelog](Sources/hdhr_VCR/CHANGELOG.md) for implementation-level detail.
 
-**Web guide: a show on a tuner that's no longer detected is now handled explicitly** — the edit modal flags it with a clear warning and offers Cancel/Delete, instead of silently letting you edit a show tied to a tuner that's gone. The guide is also now scrollable on a landscape phone.
-
-**New app icon** — a VHS-cassette design; its label doubles as a menu-bar status light (dim idle / red recording / amber upcoming).
-
-**Duplicate-episode override** — the Add/Edit dialog's Duplicate Episodes row warns when an upcoming airing is already on disk and would be skipped, with a one-shot "Record even if already on disk" toggle to force it through.
-
-Plus another reliability pass: fixed a wrong-episode-info bug on channels that air several different series back-to-back (e.g. a multiplex channel), a stale `show_end` causing nonsensical time ranges on weekly shows, a guide-refresh race that could blank a Discord card's episode info, and — in a dedicated pre-release audit — 7 additional low-severity fixes (a channel-logo cache collision, missing Edit Show Save validation, a recurring show that could save with no recording days selected, a device-discovery race, a display-only tracking leak, and two in-app-player issues).
-
-Everything else (LAN web UI, Discord notifications, per-show bonus time, watching a recording in progress without a second tuner, etc.) is covered above under [Features](#features) — see the → [full changelog](CHANGELOG.md) for the complete release history.
+Everything else (LAN web UI, Discord notifications, per-show bonus time, watching a recording in
+progress without a second tuner, etc.) is covered above under [Features](#features).
 
 ---
 
@@ -125,7 +122,7 @@ Everything else (LAN web UI, Discord notifications, per-show bonus time, watchin
 
 1. Download `hdhrVCRplus-vX.X.X.zip` from the [Releases page](https://github.com/identd113/hdhr_VCR_swift/releases)
 2. Unzip and move `hdhrVCRplus.app` to `/Applications`
-3. Right-click → **Open** on first launch (see [Gatekeeper](#gatekeeper) below)
+3. Open it — the app is notarized by Apple, so there's no "unidentified developer" warning or bypass step needed (see [Notarization and Gatekeeper](#notarization-and-gatekeeper) below)
 
 ### Build from source
 
@@ -149,16 +146,22 @@ swift test           # run tests
 ./deploy_release.sh  # release build + Developer ID sign + notarize
 ```
 
-### Gatekeeper (first launch only) {#gatekeeper}
+### Notarization and Gatekeeper
 
-macOS will block the downloaded app the first time. Do **one** of:
+Every release from v2.0.0 onward is signed with a Developer ID certificate and notarized by Apple
+(the ticket is stapled to the app, so verification works offline too) — macOS accepts it as a
+normal app on first launch, no warning dialog or bypass step required. See
+[RELEASES.md](RELEASES.md) for what changed in each version, or `docs/Distribution.md` for how
+this is built and verified.
+
+Building from source yourself (`./deploy.sh`), or running a release older than v2.0.0? Those
+builds are ad-hoc signed, not notarized, so macOS will show its standard "unidentified developer"
+prompt once. Do **one** of:
 
 - Right-click `hdhrVCRplus.app` → **Open** → click **Open** in the dialog
 - Or run: `xattr -d com.apple.quarantine hdhrVCRplus.app`
 
 macOS remembers the exception — subsequent launches work normally.
-
-> **Why no notarization?** Notarization requires an Apple Developer Program membership ($99/yr). This is a free, open-source project — you can inspect and build the full source yourself.
 
 ---
 

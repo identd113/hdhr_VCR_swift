@@ -93,17 +93,28 @@ Libraries that handle this cleanly:
 
 ## Release Checklist
 
-There is no auto-updater and no appcast. A release is just a signed build
-attached to a GitHub Release that users download manually.
+There is no auto-updater and no appcast. A release is just a signed, notarized build
+attached to a GitHub Release that users download manually. Every release from v2.0.0
+onward follows this full notarized path — the Developer ID cert and notary credential
+are already set up (see `tools/setup_signing.sh`), so this is the normal flow, not an
+aspirational one.
 
-1. `./deploy_release.sh <version>` — builds, Developer-ID signs, notarizes, staples, and sets `CFBundleShortVersionString`/`CFBundleVersion` (needs the Apple Developer cert + a stored notary credential; `--skip-notarize` signs only, for testing).
-2. Zip the stapled app: `ditto -c -k --keepParent hdhrVCRplus.app hdhrVCRplus-v<version>.zip`.
-3. Publish the GitHub Release with notes + the zip:
-   `gh release create v<version> --title "…" --notes-file notes.md hdhrVCRplus-v<version>.zip`
+1. `./deploy_release.sh <version>` — builds, Developer-ID signs, notarizes, staples, and sets `CFBundleShortVersionString`/`CFBundleVersion`. Zips the finished, stapled app itself, no separate manual zip step needed — look for the printed `Artifact: dist/hdhrVCRplus-<version>.zip` line (no `v` prefix in the filename, unlike the git tag). Needs the Apple Developer cert + a stored notary credential; `--skip-notarize` signs only, for testing.
+2. Publish the GitHub Release with notes + that zip:
+   `gh release create v<version> --title "…" --notes-file notes.md dist/hdhrVCRplus-<version>.zip`
    (or, if a draft already exists: `gh release upload v<version> …zip --clobber` then `gh release edit v<version> --draft=false --latest`).
-4. Users download the zip and install manually; existing installs don't self-update.
+3. Users download the zip and install manually; existing installs don't self-update.
 
-**Un-notarized fallback:** if you can't notarize yet, ship an **ad-hoc** build (rebuild via `deploy.sh` after bumping the plist version, then zip as above). Gatekeeper will block it, so put bypass instructions in the release body — on **macOS 15 / 26** that's `xattr -dr com.apple.quarantine …` or **System Settings → Privacy & Security → Open Anyway** (right-click → Open no longer works). Swap in the notarized zip later with `gh release upload v<version> …zip --clobber`.
+**Emergency-only, un-notarized fallback:** if the notary service is down or the cert/credential is
+temporarily unavailable and a release genuinely can't wait, use `./deploy_release.sh <version>
+--adhoc` instead — it's the same script, still sets the real version and zips to `dist/`, just
+skips the Developer ID signing/notarizing steps in favor of an ad-hoc signature. (`./deploy.sh`,
+the everyday dev-loop script, is a different thing — a debug build with no version-stamping or
+release zip at all; don't use it for this.) Gatekeeper will
+block it, so put bypass instructions in the release body — on **macOS 15 / 26** that's
+`xattr -dr com.apple.quarantine …` or **System Settings → Privacy & Security → Open Anyway**
+(right-click → Open no longer works). Swap in the notarized zip as soon as possible with
+`gh release upload v<version> …zip --clobber`.
 
 ---
 

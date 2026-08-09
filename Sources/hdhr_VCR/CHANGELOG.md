@@ -1,5 +1,39 @@
 # hdhrVCRplus Changelog
 
+## 2026-08-08 (donation support, About-tab registration status, naming consistency) — v2.0.0
+
+First notarized public release — Developer ID signed, notarized, and stapled
+(`spctl` confirms "accepted, source=Notarized Developer ID"); previous releases were ad-hoc signed.
+
+- **Feature — added a way to support ongoing development.** A small, dismissible window (in the
+  app's own colors, not a generic system alert) appears on launch and whenever a show is
+  scheduled, with a link to leave a voluntary tip. This is not a paywall — every feature works
+  identically whether you ever see, dismiss, or ignore it. Sending a tip and entering the code
+  you're given in return permanently stops the reminder on that install; Settings → About then
+  shows your registered status and the code back to you for reference.
+- **Fix — the app referred to itself by three different names** ("hdhrVCRplus", "hdhrVCR+",
+  "hdhr_VCR", plus "hdhr VCR" in accessibility labels and Discord messages) depending on which
+  screen you were looking at. Standardized every user-visible occurrence — About tab, the new
+  donation window, VoiceOver labels, Discord embed footers, the web guide's page title/header/
+  network-discovery name — to "hdhrVCRplus".
+- **Fix — some Settings number fields showed their text doubled up** (e.g. the web server port
+  reading "1980  1980") — a placeholder that's redundant once a field always holds a real value
+  could render simultaneously with that value on recent macOS. Removed the redundant placeholders
+  from the affected fields (web server port, recording length in Edit Show).
+- **Tests — window-navigation tests now poll for readiness instead of waiting a fixed guess**
+  before checking a window opened/closed or a tab finished switching, converging immediately on a
+  healthy machine instead of always waiting out the slowest-case delay, and waiting longer
+  automatically on a loaded one instead of risking a false failure.
+- **Tests — window-navigation tests now dismiss the donation nag before asserting on other windows.**
+  The nag opens automatically on every fresh app launch (unless already unlocked); being a
+  `.floating`-level window, it sat on top as "window 1" and broke every other test's assumption
+  that the window it just opened was frontmost. Also added a dedicated test that opens, verifies,
+  and closes the nag window itself via the Accessibility API when a fresh launch's one-per-run nag
+  is actually present.
+- **Tests — `rootReturnsHTML` still asserted the served guide page contained the retired
+  "hdhrVCR+" name**, missed by the app-name-standardization pass above since the page now serves
+  "hdhrVCRplus" like everywhere else — updated the assertion to match.
+
 ## 2026-08-08 (FloatingGuideView removal, web guide channel-column fix, window-navigation tests)
 
 - **Removed — the "Cable Guide" pop-out window (`FloatingGuideView`)** — a standalone browse-only guide window, launched from a pop-out button in the Add Show wizard's guide step. It had no remaining trigger anywhere in the app once `AddShowView`'s guide step grew to embed the full-size web guide directly, making the separate window redundant. Deleted `Views/FloatingGuideView.swift`, `docs/FloatingGuideView.md`, the `Window("Cable Guide", id: "cable-guide")` declaration in `hdhr_VCRApp.swift`, its snapshot test, and all doc/comment cross-references (`AppState.swift`, `GuideViewHelpers.swift`, `GuideStore.swift`, `docs/README.md`, `docs/AppState.md`, `docs/WebServer.md`, `docs/WKWebView_guide_analysis.md`, `.claude/agents/docs-auditor.md`).
