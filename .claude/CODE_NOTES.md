@@ -246,3 +246,30 @@ accuracy regresses right after app launch specifically.
   and this same session already had a near-miss with actual private key material almost landing
   in git (`b88e711`, `.signing_work/`). Reported to the main agent rather than reverted here (out
   of this agent's write scope).
+
+## 2026-08-09 — v2.0.1 pre-release review (v2.0.0..main)
+
+- `AppState.swift:649-666` (`fetchAllLineups`) and `HDHRManager.swift:58-96`
+  (`knownHostsDiscover`, `udpDiscoverAndFetch`) — the Local Network Privacy show-stopper fix
+  converts bare `try?` to `do`/`catch` + `glog(..., level: .warning)` while preserving each
+  function's pre-existing fallback value (`nil` for the two lineup/known-hosts paths, the raw
+  UDP-reply `device` for `udpDiscoverAndFetch`). Verified the fallback values are byte-identical
+  to pre-fix behavior — only the silence was removed, not the error-handling semantics. Clean,
+  minimal, correctly scoped fix; matches the `[Discovery] attempt \(attempt)/\(attempts) failed`
+  idiom already established at `AppState.swift:532`, so no new logging convention introduced.
+- `HDHRManager.swift`'s `mDNSDiscover`/`cloudDiscover` call sites (`discoverDevices`, lines ~27-40)
+  still use bare `try? await ...` and were deliberately left untouched by this fix — confirmed
+  intentional via `TODO.md`'s "macOS Local Network permission block" entry, which explicitly scopes
+  the fix to `fetchAllLineups` + `fetchDeviceInfo`'s two callers and says `fetchLineup` itself needs
+  "no in-function change since its caller handles the error." Not a gap to re-flag; the remaining
+  bare `try?` calls are pre-existing debt, not newly introduced by this diff.
+- `AppState.swift:630` — the comment above `ensureLineupLoaded` ("Guards against silent try?
+  failures in fetchAllLineups") is now slightly stale wording: the `try?` was replaced with
+  `do`/`catch` in this same release, so failures are no longer *silent* (they're logged at
+  `.warning`), even though `lineups[deviceID]` can still end up nil on failure, which is what the
+  comment is actually guarding against. Not worth a standalone fix commit — cosmetic wording drift,
+  flagged here so nobody re-investigates it as a functional bug.
+- CI fix (`.github/workflows/ci.yml`, `swift test` → `swift test --skip SnapshotTests`) confirmed
+  `--skip <regex>` is a real `swift test` flag (checked `swift test --help`) and `SnapshotTests` is
+  the actual struct name in `Tests/hdhr_VCRTests/SnapshotTests.swift:15`, so the regex match is
+  correct, not a typo'd skip that silently does nothing.

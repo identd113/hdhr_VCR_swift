@@ -26,7 +26,7 @@
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>hdhrVCR+ serves a Watch Now page on your local network.</string>
+	<string>hdhrVCRplus needs to reach your HDHomeRun tuner and serve the Watch Now page on your local network.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 </dict>

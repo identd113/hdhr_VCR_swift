@@ -6,6 +6,22 @@ What's new in each version. For day-by-day implementation detail, see
 
 ---
 
+## v2.0.1 (2026-08-09)
+
+### Fixed
+- **Some machines never fully loaded channel data** — macOS's Local Network privacy permission
+  could silently block the app's requests to the tuner. When that happened, the channel list,
+  favorites, and some Watch Now/recording links could end up empty or stale with no visible
+  error. Recording itself was never affected. This is now clearly logged instead of silent, so
+  it's diagnosable if it happens again. If you ever see channels missing at launch, check
+  System Settings → Privacy & Security → Local Network and make sure hdhrVCRplus is allowed.
+- The Transcode picker now notes that not every tuner model supports transcoding — pick None if
+  a recording fails immediately after choosing a different profile.
+
+Full day-by-day detail: [CHANGELOG.md](Sources/hdhr_VCR/CHANGELOG.md)
+
+---
+
 ## v2.0.0 — First Notarized Release (2026-08-08)
 
 **This is the first hdhrVCRplus release signed with a Developer ID certificate and notarized by

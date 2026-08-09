@@ -1,5 +1,29 @@
 # hdhrVCRplus Changelog
 
+## 2026-08-09 (Local Network permission show-stopper, transcode note, repo polish) — v2.0.1
+
+- **Fix — some machines never fully loaded channel data.** macOS's Local Network privacy
+  permission could silently block the app's requests to the tuner (a system-level permission
+  gate, not something the app controls) — when that happened, the channel list, favorites, and
+  some Watch Now/recording links could end up empty or stale with no visible error anywhere.
+  Recording itself was never affected. Failures like this now write a clear line to the app log
+  instead of failing silently, so a repeat of this — or anything with the same shape — is
+  immediately diagnosable instead of looking like unrelated guide/channel problems. If you ever
+  see channels missing at launch, check System Settings → Privacy & Security → Local Network and
+  make sure hdhrVCRplus is allowed.
+- **Note — not every tuner model can transcode.** The Transcode picker (Add/Edit Show, and
+  Settings → Recording's default) now mentions that picking a profile a specific tuner doesn't
+  support will just fail the recording — switch back to None if that happens. No functional
+  change; existing recordings and settings are unaffected either way.
+- **CI** — the automated test run on every push/PR was failing since before v2.0.0 for a reason
+  unrelated to any real bug (its UI-screenshot comparison suite has no baseline images to compare
+  against outside a developer's own machine, by design) — that suite is now correctly skipped in
+  CI so a green check actually means something again.
+- Repo housekeeping: real app icon in place of a placeholder emoji on the project page, a CI
+  status badge, a GitHub Sponsor link matching the existing in-app donation option, and doc
+  corrections (a stale claim about what the web server does, a corrected note about how the
+  favorites-sync failure path already worked).
+
 ## 2026-08-08 (donation support, About-tab registration status, naming consistency) — v2.0.0
 
 First notarized public release — Developer ID signed, notarized, and stapled

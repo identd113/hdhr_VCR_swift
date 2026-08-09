@@ -627,7 +627,7 @@ final class AppState: ObservableObject {
     }
 
     // Coalesces concurrent callers — only the first fetches; others await its Task directly. Guards
-    // against silent try? failures in fetchAllLineups leaving lineups[deviceID] nil.
+    // against a logged-but-still-real fetchAllLineups failure leaving lineups[deviceID] nil.
     func ensureLineupLoaded(for device: HDHRDevice) async {
         let id = device.DeviceID
         guard lineups[id]?.isEmpty ?? true else { return }
