@@ -100,7 +100,7 @@ Systems: [AppState](docs/AppState.md) · [GuideStore](docs/GuideStore.md) · [Re
 
 **Testing recordings** — set `show_next = now+30s`, `show_end = now+2min`; check `show_fail_reason`; enable verbose curl (Settings → Advanced).
 
-**Issue tracking** — bugs found during work → `ISSUES.md` (note commit hash on resolve). Deferred features → `TODO.md`.
+**Issue tracking** — bugs found during work → `ISSUES.md` (note commit hash on resolve, then move the entry to `issues_resolved.md` — `ISSUES.md` holds only what's still open or accepted-as-is). Deferred features → `TODO.md`. Repeated failed technique attempts (independent of any one bug) → `FAILED_APPROACHES.md`.
 
 ---
 
