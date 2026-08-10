@@ -3132,7 +3132,9 @@ final class AppState: ObservableObject {
                     var gotSample = Set<String>()
                     await withTaskGroup(of: Void.self) { group in
                         for entry in batch {
-                            guard let url = URL(string: "\(device.streamBase)/auto/v\(entry.GuideNumber)") else { continue }
+                            // Device-reported lineup URL — same source every other stream URL in the
+                            // app derives from (show_url, Watch Now, etc.) — not a hardcoded port.
+                            guard let urlString = entry.URL, let url = URL(string: urlString) else { continue }
                             group.addTask { _ = try? await URLSession.shared.data(from: url) }
                         }
                         for _ in 0..<3 {

@@ -478,7 +478,6 @@ struct HDHRDevice: Identifiable, Equatable {
     var missedProbes: Int = 0
     var isAvailable: Bool { missedProbes < 3 }
 
-    var streamBase: String { "http://\(LocalIP):5004" }
     var lineupURL:  String { "http://\(LocalIP)/lineup.json" }  // always IP — LineupURL from discover.json may contain mDNS hostname
     var statusURL:  String { "http://\(LocalIP)/status.json" }
 }
