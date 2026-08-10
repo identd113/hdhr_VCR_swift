@@ -235,17 +235,15 @@ accuracy regresses right after app launch specifically.
   banner checked for anything beyond already-intentionally-public info (GitHub repo URL, the
   developer's own PayPal.me name already present in `DonationNagView.swift`'s hardcoded link) —
   clean, nothing new disclosed.
-- **Real finding, not yet flagged anywhere**: `deploy_release.sh`'s `SIGN_IDENTITY` line (in the
-  "Fill these in" block near the top) was `"Developer ID Application: YOUR NAME (XXXXXXXXXX)"` in
-  every prior commit back through this script's introduction, and is now, in the current
-  uncommitted working tree, `"Developer ID Application: Mike Woodfill (W2N772J2XY)"` — the
-  developer's real legal name plus their actual Apple Developer Team ID, hardcoded in a script
-  that's tracked in this public repo. The Team ID isn't a novel secret (it's recoverable from any
-  distributed binary via `codesign -dvvv`), but there's no reason for the literal identity string
-  to live in committed source when the placeholder pattern existed specifically so it wouldn't —
-  and this same session already had a near-miss with actual private key material almost landing
-  in git (`b88e711`, `.signing_work/`). Reported to the main agent rather than reverted here (out
-  of this agent's write scope).
+- **Real finding, since fixed**: `deploy_release.sh`'s `SIGN_IDENTITY` line (in the "Fill these
+  in" block near the top) was `"Developer ID Application: YOUR NAME (XXXXXXXXXX)"` in every prior
+  commit back through this script's introduction, but briefly held the developer's real identity
+  string in an uncommitted working tree at one point. Never actually landed in a commit (verified
+  against full history), but there's no reason for the literal identity string to live in
+  committed source when the placeholder pattern existed specifically so it wouldn't — and this
+  same session already had a near-miss with actual private key material almost landing in git
+  (`b88e711`, `.signing_work/`). Reported to the main agent rather than reverted here (out of this
+  agent's write scope).
 
 ## 2026-08-09 — v2.0.1 pre-release review (v2.0.0..main)
 
