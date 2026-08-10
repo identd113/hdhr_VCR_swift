@@ -350,7 +350,8 @@ struct AddShowView: View {
         show.show_seriesid       = entry.SeriesID ?? ""
         show.show_logo_url       = entry.ImageURL ?? ""
         show.show_genre          = entry.firstGenre ?? ""
-        show.show_bonus_time     = entry.firstGenre?.lowercased().contains("sports") == true && state.config.Sports_padding_enabled
+        // "sport" (not "sports") matches both guide.php's "Sports" and XMLTV's singular "Sport" category tag.
+        show.show_bonus_time     = entry.firstGenre?.lowercased().contains("sport") == true && state.config.Sports_padding_enabled
         show.hdhr_record         = device.DeviceID
         show.show_url            = channel.URL ?? ""
         let comps = Calendar.current.dateComponents([.hour, .minute, .weekday], from: entry.startDate)

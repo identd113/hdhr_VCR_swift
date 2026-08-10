@@ -138,11 +138,38 @@ private let _genreColorMap: [String: Color] = [
     "movie":    Color(hue: 0.75,  saturation: 0.80, brightness: 0.68),
     "talk":     Color(hue: 0.48,  saturation: 0.60, brightness: 0.58),
     "children": Color(hue: 0.875, saturation: 0.60, brightness: 0.62),
-    "kids":     Color(hue: 0.875, saturation: 0.60, brightness: 0.62),
+    // XMLTV's <category> vocabulary is far richer than guide.php's ~9-tag Filter — these hues match
+    // guide.css's --gg-* custom properties (same source, same family of colors as the web guide grid).
+    "crime":    Color(hue: 0.000, saturation: 0.62, brightness: 0.58),
+    "romance":  Color(hue: 0.925, saturation: 0.62, brightness: 0.58),
+    "thriller": Color(hue: 0.661, saturation: 0.62, brightness: 0.58),
+    "action":   Color(hue: 0.033, saturation: 0.62, brightness: 0.58),
+    "mystery":  Color(hue: 0.708, saturation: 0.62, brightness: 0.58),
+    "doc":      Color(hue: 0.561, saturation: 0.62, brightness: 0.58),
+    "science":  Color(hue: 0.522, saturation: 0.62, brightness: 0.58),
+    "nature":   Color(hue: 0.228, saturation: 0.62, brightness: 0.58),
+    "history":  Color(hue: 0.078, saturation: 0.62, brightness: 0.58),
+    "music":    Color(hue: 0.797, saturation: 0.62, brightness: 0.58),
+    "food":     Color(hue: 0.144, saturation: 0.62, brightness: 0.58),
+    "travel":   Color(hue: 0.506, saturation: 0.62, brightness: 0.58),
+    "gameshow": Color(hue: 0.161, saturation: 0.62, brightness: 0.58),
+    "home":     Color(hue: 0.097, saturation: 0.62, brightness: 0.58),
+    "health":   Color(hue: 0.411, saturation: 0.62, brightness: 0.58),
+    "faith":    Color(hue: 0.181, saturation: 0.62, brightness: 0.58),
+]
+
+// Raw genre tag → color-map key. Mirrors WebServer.swift's server-side `ggAlias` (same reasoning:
+// guide.php says "Sports", XMLTV says singular "Sport"; XMLTV's "Documentary"/"Game show" spell out
+// what the color map stores tersely as "doc"/"gameshow").
+private let _genreAlias: [String: String] = [
+    "sport": "sports", "movies": "movie", "sitcom": "comedy",
+    "documentary": "doc", "game show": "gameshow", "animation": "children", "animated": "children",
 ]
 
 func guideEntryColor(for entry: GuideEntry, onAir: Bool) -> Color {
-    let base = _genreColorMap[entry.firstGenre?.lowercased() ?? ""] ?? Color(white: 0.22)
+    let raw  = entry.firstGenre?.lowercased() ?? ""
+    let key  = _genreAlias[raw] ?? raw
+    let base = _genreColorMap[key] ?? Color(white: 0.22)
     return onAir ? base : base.opacity(0.75)
 }
 

@@ -36,9 +36,9 @@ function isVT(){return _vtEligible&&_orientMq.matches;}
 // re-derive themselves — without this listener they'd stay wrong until updateNowLine's next
 // 60s tick or the next refreshGuide() DOM swap re-runs initRowObserver().
 _orientMq.addEventListener('change',function(){updateNowLine();initRowObserver();syncHdrPin();});
-var _gcDk={drama:'hsl(216,48%,35%)',comedy:'hsl(47,48%,35%)',news:'hsl(342,43%,35%)',sports:'hsl(119,48%,31%)',reality:'hsl(25,48%,35%)',movie:'hsl(270,58%,38%)',talk:'hsl(173,43%,34%)',children:'hsl(315,43%,35%)'};
-var _gcLk={drama:'hsl(216,55%,88%)',comedy:'hsl(47,65%,88%)',news:'hsl(342,55%,88%)',sports:'hsl(119,60%,87%)',reality:'hsl(25,65%,88%)',movie:'hsl(270,62%,90%)',talk:'hsl(173,55%,87%)',children:'hsl(315,60%,88%)'};
-function gc(g){var m=isLM()?_gcLk:_gcDk;return m[(g||'').toLowerCase()]||(isLM()?'#d8d8d8':'#424242');}
+var _gcDk={drama:'hsl(216,48%,35%)',comedy:'hsl(47,48%,35%)',news:'hsl(342,43%,35%)',sports:'hsl(119,48%,31%)',reality:'hsl(25,48%,35%)',movie:'hsl(270,58%,38%)',talk:'hsl(173,43%,34%)',children:'hsl(315,43%,35%)',crime:'hsl(0,55%,33%)',romance:'hsl(333,50%,37%)',thriller:'hsl(238,48%,38%)',action:'hsl(12,52%,35%)',mystery:'hsl(255,52%,38%)',doc:'hsl(202,48%,35%)',science:'hsl(188,52%,33%)',nature:'hsl(82,50%,33%)',history:'hsl(28,50%,34%)',music:'hsl(287,52%,37%)',food:'hsl(52,52%,34%)',travel:'hsl(182,48%,33%)',gameshow:'hsl(58,55%,34%)',home:'hsl(35,46%,33%)',health:'hsl(148,50%,32%)',faith:'hsl(65,48%,32%)'};
+var _gcLk={drama:'hsl(216,55%,88%)',comedy:'hsl(47,65%,88%)',news:'hsl(342,55%,88%)',sports:'hsl(119,60%,87%)',reality:'hsl(25,65%,88%)',movie:'hsl(270,62%,90%)',talk:'hsl(173,55%,87%)',children:'hsl(315,60%,88%)',crime:'hsl(0,60%,68%)',romance:'hsl(333,55%,70%)',thriller:'hsl(238,52%,70%)',action:'hsl(12,57%,68%)',mystery:'hsl(255,57%,70%)',doc:'hsl(202,52%,68%)',science:'hsl(188,57%,66%)',nature:'hsl(82,55%,66%)',history:'hsl(28,55%,68%)',music:'hsl(287,57%,70%)',food:'hsl(52,58%,68%)',travel:'hsl(182,52%,66%)',gameshow:'hsl(58,62%,68%)',home:'hsl(35,50%,68%)',health:'hsl(148,55%,66%)',faith:'hsl(65,53%,66%)'};
+function gc(g){var lo=(g||'').toLowerCase();lo=_ggAlias[lo]||lo;var m=isLM()?_gcLk:_gcDk;return m[lo]||(isLM()?'#d8d8d8':'#424242');}
 var _ggAlias={'sitcom':'comedy','movies':'movie','kids':'children','sport':'sports','documentary':'doc','game show':'gameshow','animation':'children','animated':'children'};
 var _ggKnown=['drama','comedy','news','sports','reality','movie','talk','children','crime','romance','thriller','action','mystery','doc','science','nature','history','music','food','travel','gameshow','home','health','faith'];
 function tagBg(f){var lo=f.toLowerCase();var g=_ggAlias[lo]||lo;return _ggKnown.indexOf(g)>=0?'var(--gg-'+g+')':null;}
@@ -237,7 +237,7 @@ function doRecord(){
   document.getElementById('rm-days-lbl').textContent='Day';
   document.getElementById('rm-days-row').style.display='flex';
   document.getElementById('rm-transcode').value=_defaultTranscode;
-  var _isSports=_genre.toLowerCase().indexOf('sports')>=0;
+  var _isSports=_genre.toLowerCase().indexOf('sport')>=0; // matches guide.php's "Sports" and XMLTV's singular "Sport"
   document.getElementById('rm-bonus-row').style.display=_bonusEnabled?'flex':'none';
   document.getElementById('rm-bonus').checked=_bonusEnabled&&_isSports;
   var rbstar=document.getElementById('rm-bonus-star');rbstar.textContent='+'+_bonusMins+'m';if(_bonusEnabled&&_isSports){rbstar.style.display='inline-flex';triggerSb('rm-bonus-star');}else{rbstar.style.display='none';rbstar.classList.remove('sb-anim');}
@@ -398,7 +398,8 @@ function applyGuidePayload(d,selOverride){
   });
   _rows=document.querySelectorAll('.g-row');
   initRowObserver();
-  setDev(curDev);
+  setDev(curDev); // same id — won't self-trigger the rebuild below, since curDev didn't change
+  rebuildGenreFilter(); // new guide data may have introduced/dropped genres even on an unchanged device
   if(gw){gw.scrollLeft=sl;gw.scrollTop=st;}
   syncHdrPin();
   if(prevStart){
@@ -838,8 +839,10 @@ function applyGenreDim(){
   });
 }
 function setDev(id){
-  if(id!==curDev){_genreFilter='';var sel=document.getElementById('genre-sel');if(sel)sel.value='';}
+  var switched=id!==curDev;
+  if(switched){_genreFilter='';var sel=document.getElementById('genre-sel');if(sel)sel.value='';}
   curDev=id;
+  if(switched)rebuildGenreFilter();
   document.querySelectorAll('.d-btn').forEach(function(b){b.classList.toggle('d-sel',b.dataset.dev===id);});
   var seen={};
   _rows.forEach(function(r){
@@ -864,21 +867,30 @@ function toggleFav(evt,btn){
   postJSON('/api/toggle-favorite',{deviceId:row.dataset.dev,guideNumber:row.dataset.ch})
   .catch(function(){}); // handleToggleFavorite already broadcasts favorite_toggled over SSE
 }
-setDev('{{DEFAULT_DEV}}');
-// Build genre filter; add Infomercials option if any inf rows exist
-(function(){
-  var gs=new Set();
-  document.querySelectorAll('.g-prog[data-genre]').forEach(function(p){var g=p.dataset.genre;if(g)gs.add(g);});
-  var hasInf=document.querySelector('.g-prog[data-inf="1"]')!==null;
-  var hasNew=document.querySelector('.g-prog[data-new="1"]')!==null;
-  if(gs.size<2&&!hasInf&&!hasNew)return;
+// Rebuilds the genre filter from whatever's actually on the currently-viewed tuner's guide right
+// now (scoped by data-device to curDev, so switching tuners shows that tuner's own genres — not a
+// stale union from whichever tuner happened to be selected at page load). Re-run after every guide
+// data pull (applyGuidePayload) and every tuner switch (setDev) so the list never goes stale.
+function rebuildGenreFilter(){
   var sel=document.getElementById('genre-sel');
   if(!sel)return;
+  while(sel.options.length>1)sel.remove(1); // keep the static "All genres" placeholder
+  var scope=curDev?'.g-prog[data-genre][data-device="'+curDev+'"]':'.g-prog[data-genre]';
+  var gs=new Set();
+  document.querySelectorAll(scope).forEach(function(p){var g=p.dataset.genre;if(g)gs.add(g);});
+  var infScope=curDev?'.g-prog[data-inf="1"][data-device="'+curDev+'"]':'.g-prog[data-inf="1"]';
+  var newScope=curDev?'.g-prog[data-new="1"][data-device="'+curDev+'"]':'.g-prog[data-new="1"]';
+  var hasInf=document.querySelector(infScope)!==null;
+  var hasNew=document.querySelector(newScope)!==null;
+  var bar=document.getElementById('genre-bar');
+  if(gs.size<2&&!hasInf&&!hasNew){bar.style.display='none';return;}
   Array.from(gs).sort().forEach(function(g){var o=document.createElement('option');o.value=g;o.textContent=g;sel.appendChild(o);});
   if(hasNew){var o=document.createElement('option');o.value='__new';o.textContent='New';sel.appendChild(o);}
   if(hasInf){var o=document.createElement('option');o.value='__inf';o.textContent='Infomercials';sel.appendChild(o);}
-  document.getElementById('genre-bar').style.display='';
-})();
+  bar.style.display='';
+}
+setDev('{{DEFAULT_DEV}}');
+rebuildGenreFilter();
 // scrollToNow + live now-line: recompute position from winStart/winSec every 30 s
 var _winStart={{WIN_START}},_winSec={{WIN_SEC}};
 function nowPct(){return Math.max(0,Math.min(100,(Math.floor(Date.now()/1000)-_winStart)/_winSec*100));}

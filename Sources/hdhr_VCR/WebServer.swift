@@ -1430,7 +1430,11 @@ final class WebServer: @unchecked Sendable {
                         let ad = s.show_air_date.joined(separator: ",")
                         return " data-show-id=\"\(he(s.show_id))\" data-show-type=\"\(showTypeStr(s))\" data-show-paused=\"\(s.show_paused ? 1 : 0)\" data-show-length=\"\(s.show_length)\" data-show-bonus=\"\(s.show_bonus_time ? 1 : 0)\" data-show-transcode=\"\(he(s.show_transcode))\" data-show-seriesid=\"\(he(s.show_seriesid))\" data-show-airdays=\"\(he(ad))\" data-show-failcount=\"\(s.show_fail_count)\" data-show-failreason=\"\(he(s.show_fail_reason))\" data-show-recording=\"\(s.show_recording ? 1 : 0)\""
                     }()
-                    let infDA = (infSIDs.contains(e.SeriesID ?? "") || e.Title == "Paid Programming") ? " data-inf=\"1\"" : ""
+                    // XMLTV tags paid programming explicitly via <category>Shop/Shopping</category> —
+                    // unlike guide.php's ambiguous empty Filter[], this is a reliable signal on its own,
+                    // catching new infomercials the SeriesID blocklist hasn't been taught yet.
+                    let isShopCategory = (e.Filter ?? []).contains { $0.caseInsensitiveCompare("Shop") == .orderedSame || $0.caseInsensitiveCompare("Shopping") == .orderedSame }
+                    let infDA = (infSIDs.contains(e.SeriesID ?? "") || e.Title == "Paid Programming" || isShopCategory) ? " data-inf=\"1\"" : ""
                     blockParts.append("<div class=\"\(cls)\" style=\"--gs:\(pct(cs))%;--gw:\(pct(ce - cs))%\(extraStyle)\" title=\"\(tip)\" \(da)\(showDA)\(infDA)\(newAttr)\(skipAttr) onclick=\"showInfo(this)\"><div class=\"g-pi\">\(titleHTML)\(subH)</div></div>")
                 }
 
