@@ -39,7 +39,7 @@ private func isDiscordHost(_ host: String) -> Bool {
 
 // Sends a single Discord embed to the given webhook URL.
 // Silently no-ops if the URL is blank or not a discord.com/discordapp.com host.
-func sendDiscordEmbed(to webhookURL: String, embed: [String: Any]) {
+func sendDiscordEmbed(to webhookURL: String, embed: [String: Any], session: URLSession = .shared) {
     guard !webhookURL.isEmpty,
           let url = URL(string: webhookURL),
           let host = url.host,
@@ -58,7 +58,7 @@ func sendDiscordEmbed(to webhookURL: String, embed: [String: Any]) {
     discordLog("SEND title=\"\(title)\" (no id captured — fire-and-forget)")
     Task {
         do {
-            let (_, resp) = try await URLSession.shared.data(for: req)
+            let (_, resp) = try await session.data(for: req)
             guard let http = resp as? HTTPURLResponse else {
                 glog("[Discord] unexpected response type", level: .warning)
                 discordLog("SEND title=\"\(title)\" — unexpected response type", level: .warning)
@@ -79,7 +79,7 @@ func sendDiscordEmbed(to webhookURL: String, embed: [String: Any]) {
 }
 
 // POSTs with ?wait=true so Discord echoes the created message. Returns the message ID on success.
-func sendDiscordEmbedCapturing(to webhookURL: String, embed: [String: Any]) async -> String? {
+func sendDiscordEmbedCapturing(to webhookURL: String, embed: [String: Any], session: URLSession = .shared) async -> String? {
     guard !webhookURL.isEmpty,
           var components = URLComponents(string: webhookURL),
           components.host.map(isDiscordHost) == true else { return nil }
@@ -97,7 +97,7 @@ func sendDiscordEmbedCapturing(to webhookURL: String, embed: [String: Any]) asyn
     glog("[Discord] sending embed (capturing ID) to \(url.host ?? webhookURL)")
     discordLog("CREATE title=\"\(title)\"")
     do {
-        let (respData, resp) = try await URLSession.shared.data(for: req)
+        let (respData, resp) = try await session.data(for: req)
         guard let http = resp as? HTTPURLResponse else {
             glog("[Discord] unexpected response type", level: .warning)
             discordLog("CREATE title=\"\(title)\" — unexpected response type", level: .warning)
@@ -126,7 +126,7 @@ func sendDiscordEmbedCapturing(to webhookURL: String, embed: [String: Any]) asyn
 }
 
 // PATCHes an existing webhook message in-place. Fire-and-forget.
-func editDiscordEmbed(webhookURL: String, messageId: String, embed: [String: Any]) {
+func editDiscordEmbed(webhookURL: String, messageId: String, embed: [String: Any], session: URLSession = .shared) {
     guard !webhookURL.isEmpty, !messageId.isEmpty,
           let url = URL(string: "\(webhookURL)/messages/\(messageId)"),
           url.host.map(isDiscordHost) == true else { return }
@@ -143,7 +143,7 @@ func editDiscordEmbed(webhookURL: String, messageId: String, embed: [String: Any
     discordLog("EDIT title=\"\(title)\" msgId=\(messageId)")
     Task {
         do {
-            let (_, resp) = try await URLSession.shared.data(for: req)
+            let (_, resp) = try await session.data(for: req)
             guard let http = resp as? HTTPURLResponse else {
                 glog("[Discord] edit: unexpected response type", level: .warning)
                 discordLog("EDIT title=\"\(title)\" msgId=\(messageId) — unexpected response type", level: .warning)
