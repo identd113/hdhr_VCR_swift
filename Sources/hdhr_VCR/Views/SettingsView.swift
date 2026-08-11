@@ -53,6 +53,12 @@ struct SettingsView: View {
     @AppStorage("defaultSaveDirectory") private var defaultSaveDirectory: String = ""
     @State private var selection: SettingsCategory? = .general
     @State private var draft: AppConfig = AppConfig()
+    // Snapshot of state.config at the moment `draft` was last (re)synced — lets
+    // resyncIfUntouched() below prove "draft still equals what it started as" (safe to silently
+    // refresh from a since-changed state.config) apart from "draft was actually edited" (must not
+    // touch). Without this, draft != state.config is ambiguous between those two very different
+    // cases — see the 2026-08-10 ISSUES.md entry this exists to fix.
+    @State private var draftBaseline: AppConfig = AppConfig()
     // Shadow drafts for settings that live outside AppConfig — applied only on Save
     @State private var draftSaveDirectory: String      = ""
     @State private var draftLaunchAtLogin: Bool        = false
@@ -161,7 +167,7 @@ struct SettingsView: View {
             .padding(.vertical, 10)
         }
         .frame(width: 560, height: 520)
-        .background(WindowCloseInterceptor(isDirty: isDirty, canSave: !webhookNeedsTest && !webPortInvalid, onSave: applyAndSave))
+        .background(WindowCloseInterceptor(isDirty: isDirty, canSave: !webhookNeedsTest && !webPortInvalid, onSave: applyAndSave, onBecomeKey: resyncIfUntouched))
         .onAppear {
             resetDrafts()
             // Clear a stale saved interface: if the named NIC isn't available right now
@@ -180,6 +186,7 @@ struct SettingsView: View {
 
     private func resetDrafts() {
         draft              = state.config
+        draftBaseline      = state.config
         draftSaveDirectory = defaultSaveDirectory
         draftLaunchAtLogin = launchAtLoginRegistered
         loginItemError = ""
@@ -188,6 +195,18 @@ struct SettingsView: View {
     }
 
     private func discardDraft() { resetDrafts() }
+
+    // Called from WindowCloseInterceptor's windowDidBecomeKey — fires on every real refocus of the
+    // Settings window, not just its original creation (see WindowCloseInterceptor's doc comment for
+    // why .onAppear alone isn't enough for a single-instance Window scene). Only silently pulls in
+    // background config changes when `draft` provably hasn't been touched since it was last synced
+    // (draft == draftBaseline) — if the user has actually edited something, draft has already
+    // diverged from draftBaseline and this is a deliberate no-op so real in-progress edits are never
+    // discarded just because the window lost and regained key status.
+    private func resyncIfUntouched() {
+        guard draft == draftBaseline, draft != state.config else { return }
+        resetDrafts()
+    }
 
     private func applyAndSave() {
         let old = state.config
@@ -205,6 +224,10 @@ struct SettingsView: View {
         let dockModeChanged   = draft.Dock_icon_mode      != old.Dock_icon_mode
         state.config = draft
         state.saveConfig()
+        // Keep the baseline in lockstep with what was just saved — otherwise resyncIfUntouched()
+        // would see draft != draftBaseline forever after any save (since draft was never reset to
+        // match) and wrongly treat every future reopen as having a real pending edit to protect.
+        draftBaseline = draft
         // Apply an explicit Dock-icon override immediately rather than waiting for next launch —
         // "auto" is left alone here since its own switch-to-accessory point is
         // AppState.confirmLocalNetworkAccessIfNeeded, not a settings save.
@@ -275,6 +298,12 @@ struct SettingsView: View {
                 }
                 Toggle(isOn: $draft.Status_light_blink_enabled) {
                     HStack { Text("Blink menu bar icon"); InfoButton("Blink the menu bar icon's status light while a recording is in progress or a show is starting soon, instead of showing it lit continuously.") }
+                }
+            }
+
+            Section("Guide") {
+                Toggle(isOn: $draft.Guide_use_xml) {
+                    HStack { Text("Use XMLTV guide format"); InfoButton("XMLTV provides richer genre tags and explicit paid-programming detection. The server controls the window (~2 days); Guide Hours (Guide tab) is ignored. Devices without DeviceAuth always use JSON.") }
                 }
             }
         }
@@ -387,12 +416,6 @@ struct SettingsView: View {
                     Button("Update Guides Now") { state.refreshAll() }
                         .buttonStyle(.borderedProminent)
                     InfoButton("Force-refreshes guide data for all tuners immediately, without waiting for the auto-refresh window.")
-                }
-            }
-
-            Section("Format") {
-                Toggle(isOn: $draft.Guide_use_xml) {
-                    HStack { Text("Use XMLTV guide format"); InfoButton("XMLTV provides richer genre tags and explicit paid-programming detection. The server controls the window (~2 days); Guide Hours is ignored. Devices without DeviceAuth always use JSON.") }
                 }
             }
         }
@@ -1211,6 +1234,17 @@ struct WindowCloseInterceptor: NSViewRepresentable {
     let isDirty: Bool
     let canSave: Bool
     let onSave: () -> Void
+    // Single-instance Window scenes can't duplicate (see MenuContent.swift's open(_:)) — clicking
+    // "Settings…" again while the window is already alive just refocuses it via openWindow(id:)
+    // rather than recreating the view, so SettingsView's own .onAppear (where drafts are normally
+    // synced from state.config) only ever fires once, on true first creation. Any background save
+    // that touches state.config between that first open and a later reopen (this app has several —
+    // idle loop, tuner probing, etc.) then makes `draft` silently stale, which can surface as a
+    // false "Unsaved Settings" prompt on close even though nothing was edited through the UI (see
+    // ISSUES.md's 2026-08-10 entry, found via WindowNavigationTests.swift's repeated-reopen test).
+    // windowDidBecomeKey fires on every real refocus, not just creation — resyncing there closes
+    // the gap .onAppear alone can't cover.
+    let onBecomeKey: () -> Void
 
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
@@ -1224,19 +1258,24 @@ struct WindowCloseInterceptor: NSViewRepresentable {
         context.coordinator.isDirty = isDirty
         context.coordinator.canSave = canSave
         context.coordinator.onSave  = onSave
+        context.coordinator.onBecomeKey = onBecomeKey
     }
 
-    func makeCoordinator() -> Coordinator { Coordinator(isDirty: isDirty, canSave: canSave, onSave: onSave) }
+    func makeCoordinator() -> Coordinator {
+        Coordinator(isDirty: isDirty, canSave: canSave, onSave: onSave, onBecomeKey: onBecomeKey)
+    }
 
     class Coordinator: NSObject, NSWindowDelegate {
         var isDirty: Bool
         var canSave: Bool
         var onSave:  () -> Void
+        var onBecomeKey: () -> Void
 
-        init(isDirty: Bool, canSave: Bool, onSave: @escaping () -> Void) {
+        init(isDirty: Bool, canSave: Bool, onSave: @escaping () -> Void, onBecomeKey: @escaping () -> Void) {
             self.isDirty = isDirty
             self.canSave = canSave
             self.onSave  = onSave
+            self.onBecomeKey = onBecomeKey
         }
 
         func windowShouldClose(_ sender: NSWindow) -> Bool {
@@ -1250,6 +1289,10 @@ struct WindowCloseInterceptor: NSViewRepresentable {
             case .discard: return true
             case .cancel:  return false
             }
+        }
+
+        func windowDidBecomeKey(_ notification: Notification) {
+            onBecomeKey()
         }
     }
 }

@@ -51,16 +51,26 @@ private func runAppleScript(_ script: String) -> String? {
     task.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
     task.arguments = ["-e", script]
     let outPipe = Pipe()
+    let errPipe = Pipe()
     task.standardOutput = outPipe
-    task.standardError = Pipe()   // discarded — failures are reported via the nil return
+    task.standardError = errPipe
     do {
         try task.run()
     } catch {
         return nil
     }
     let data = outPipe.fileHandleForReading.readDataToEndOfFile()
+    let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
     task.waitUntilExit()
-    guard task.terminationStatus == 0 else { return nil }
+    guard task.terminationStatus == 0 else {
+        // A failed script returns nil (every caller already reports its own Issue for that), but
+        // AppleScript's actual error text is worth surfacing on stderr rather than discarding —
+        // the difference between "script failed" and "here's the exact AX path that broke" is the
+        // difference between a one-line grep and re-deriving it by hand (see this file's git
+        // history for how long that took while first building guideSourceToggleDoesNotBreakWindows).
+        FileHandle.standardError.write("osascript error: \(String(data: errData, encoding: .utf8) ?? "?")\n".data(using: .utf8)!)
+        return nil
+    }
     return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
 }
 
@@ -97,6 +107,71 @@ repeat 20 times
     delay 0.1
     if not (exists window "Support hdhrVCRplus") then exit repeat
 end repeat
+"""
+
+/// Real, reproducible finding from building `guideSourceToggleDoesNotBreakWindows`, not a test
+/// artifact: `SettingsView`'s `WindowCloseInterceptor.windowShouldClose` shows an app-modal
+/// "Unsaved Settings" NSAlert (Save/Discard/Cancel) whenever `isDirty` is true when the window
+/// tries to close (`GuideViewHelpers.swift`'s `promptUnsavedChanges`). Repeatedly opening Settings,
+/// clicking through every sidebar tab (touching no form field), and closing was enough to trigger
+/// this at least once per run while building this test — `isDirty` includes `draftSaveDirectory`/
+/// `draftLaunchAtLogin` alongside `draft != state.config`, and at least one of those apparently
+/// doesn't always stay in sync with reality across a close/reopen with nothing actually edited.
+/// Not chased to a root cause here (out of scope for a window-navigation test to fix); logged as a
+/// real product finding in ISSUES.md. This snippet exists so the test survives the alert rather
+/// than mistaking it for the Settings window and crashing on AX paths that don't apply to it — an
+/// app-modal NSAlert greys out the menu bar, so a later phase's `click menu item "Settings…"` is a
+/// no-op while it's showing, and `count of windows` is already satisfied by the alert itself.
+private let dismissUnsavedSettingsAlertSnippet = """
+try
+    if exists (button "Discard" of window 1) then click button "Discard" of window 1
+end try
+"""
+
+/// Shared by `settingsAllTabsReachable` and `guideSourceToggleDoesNotBreakWindows` — assumes the
+/// Settings window is already open and frontmost. Selects every sidebar row in turn and records
+/// "label|resultingWindowTitle" per line, then closes the window. Kept as one script (not split
+/// into "select tab" + "read title" calls) so the row-index re-resolution and title-settle poll —
+/// both required per the comments below — stay atomic with the click that triggers them.
+///
+/// Deliberately ends on a bare `resultsStr` (not `return resultsStr`): `return` inside a top-level
+/// `tell` block exits the *entire* enclosing script immediately, not just this snippet — fine for
+/// settingsAllTabsReachable (which only ever runs this once, as the last thing the script does),
+/// fatal for guideSourceToggleDoesNotBreakWindows (which needs to run it twice with more script
+/// after each). A bare trailing expression becomes AppleScript's implicit `result` for the very
+/// next statement instead, without terminating anything — callers that need it right away must
+/// capture it (`set x to result`) before any other statement can overwrite that implicit value.
+private let captureAllSettingsTabTitlesSnippet = """
+set resultsStr to ""
+set rowCount to count of rows of outline 1 of scroll area 1 of group 1 of splitter group 1 of group 1 of window 1
+repeat with i from 1 to rowCount
+    -- Re-resolved every iteration, not cached: selecting a row rebuilds the
+    -- SwiftUI List's AX tree, which invalidates any reference captured before
+    -- the selection changed.
+    set r to row i of outline 1 of scroll area 1 of group 1 of splitter group 1 of group 1 of window 1
+    set lbl to name of static text 1 of UI element 1 of r
+    set value of attribute "AXSelected" of r to true
+    -- Poll until the window title (which tracks the selected tab's own
+    -- navigationTitle) settles on two consecutive reads, rather than a blind
+    -- delay — a slower machine just polls a few more times instead of racing
+    -- a fixed guess (see TODO.md's note on load-related flakiness elsewhere).
+    set actualTitle to "?"
+    set previousTitle to "?!"
+    repeat 10 times
+        delay 0.1
+        set actualTitle to "?"
+        try
+            set actualTitle to name of window 1
+        end try
+        if actualTitle is previousTitle then exit repeat
+        set previousTitle to actualTitle
+    end repeat
+    set resultsStr to resultsStr & lbl & "|" & actualTitle & linefeed
+end repeat
+try
+    click (first button of window 1 whose description is "close button")
+end try
+resultsStr
 """
 
 @Suite("Window navigation smoke test (requires running app + Accessibility permission — invoke via --filter, not part of default swift test)", .serialized)
@@ -152,36 +227,7 @@ struct WindowNavigationTests {
                     delay 0.25
                     if (count of windows) > 0 then exit repeat
                 end repeat
-                set resultsStr to ""
-                set rowCount to count of rows of outline 1 of scroll area 1 of group 1 of splitter group 1 of group 1 of window 1
-                repeat with i from 1 to rowCount
-                    -- Re-resolved every iteration, not cached: selecting a row rebuilds the
-                    -- SwiftUI List's AX tree, which invalidates any reference captured before
-                    -- the selection changed.
-                    set r to row i of outline 1 of scroll area 1 of group 1 of splitter group 1 of group 1 of window 1
-                    set lbl to name of static text 1 of UI element 1 of r
-                    set value of attribute "AXSelected" of r to true
-                    -- Poll until the window title (which tracks the selected tab's own
-                    -- navigationTitle) settles on two consecutive reads, rather than a blind
-                    -- delay — a slower machine just polls a few more times instead of racing
-                    -- a fixed guess (see TODO.md's note on load-related flakiness elsewhere).
-                    set actualTitle to "?"
-                    set previousTitle to "?!"
-                    repeat 10 times
-                        delay 0.1
-                        set actualTitle to "?"
-                        try
-                            set actualTitle to name of window 1
-                        end try
-                        if actualTitle is previousTitle then exit repeat
-                        set previousTitle to actualTitle
-                    end repeat
-                    set resultsStr to resultsStr & lbl & "|" & actualTitle & linefeed
-                end repeat
-                try
-                    click (first button of window 1 whose description is "close button")
-                end try
-                return resultsStr
+                \#(captureAllSettingsTabTitlesSnippet)
             end tell
         end tell
         """#
@@ -195,6 +241,262 @@ struct WindowNavigationTests {
             let parts = line.split(separator: "|", maxSplits: 1).map(String.init)
             #expect(parts.count == 2 && parts[0] == parts[1],
                 "tab label and resulting window title should match — got \(line)")
+        }
+    }
+
+    /// Flips Guide_use_xml, confirms it doesn't perturb window/tab structure that has nothing to
+    /// do with guide source, then flips it back — added 2026-08-10 alongside the JSON/XMLTV
+    /// consistency work (see docs/HDHRFindings.md's "Consistency check" section for the
+    /// content-level differences already known and accepted; this test is only about window
+    /// chrome, not guide data itself). Any settings tab whose *label* stops matching its own
+    /// *resulting window title* after the toggle — or any tab that goes missing/gains a
+    /// duplicate — indicates the format switch broke something structural, which would be a real,
+    /// unexpected regression worth investigating; a tab's title tracking its own label is the same
+    /// invariant settingsAllTabsReachable checks, just diffed before vs. after the toggle here
+    /// instead of asserted once.
+    @Test func guideSourceToggleDoesNotBreakWindows() throws {
+        guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+
+        // Selects a sidebar row by name and *polls the window title until it actually changes*
+        // instead of a flat delay. Selecting a row rebuilds the SwiftUI List's AX tree (same fact
+        // captureAllSettingsTabTitlesSnippet's own comment documents) — a flat delay can race that
+        // rebuild and the next AX access (finding the checkbox via `entire contents`, in this
+        // test's case) throws "Can't get group 1 of window 1 ... Invalid index (-1719)". Reproduced
+        // this exact failure via manual osascript while debugging a first draft that used a flat
+        // `delay 0.3` here instead of this poll.
+        func selectSettingsTabSnippet(_ tabName: String) -> String {
+            """
+            set rowCount to count of rows of outline 1 of scroll area 1 of group 1 of splitter group 1 of group 1 of window 1
+            repeat with i from 1 to rowCount
+                set r to row i of outline 1 of scroll area 1 of group 1 of splitter group 1 of group 1 of window 1
+                if (name of static text 1 of UI element 1 of r) is "\(tabName)" then
+                    set value of attribute "AXSelected" of r to true
+                    exit repeat
+                end if
+            end repeat
+            repeat 20 times
+                delay 0.1
+                set curTitle to "?"
+                try
+                    set curTitle to name of window 1
+                end try
+                if curTitle is "\(tabName)" then exit repeat
+            end repeat
+            """
+        }
+
+        // Finds the checkbox by role+name-substring via `entire contents` rather than a guessed
+        // AX path — SwiftUI Form/Section nesting under .formStyle(.grouped) doesn't expose a
+        // stable shallow path the way the sidebar outline does (proven necessary via manual
+        // osascript probing while building this test: a direct `checkbox "..." of window 1` path
+        // came back empty, `entire contents` filtered by role found it reliably).
+        //
+        // The whole walk is retried (not just individual element property reads) because
+        // `entire contents` recurses the *entire* window tree in one call — if a SwiftUI re-render
+        // lands mid-walk (observed in practice: the background guide refresh the toggle's own save
+        // kicks off can still be mutating state well after it, especially by the time RESTORE below
+        // runs), System Events throws "Can't get ... Invalid index (-1719)" for the whole
+        // expression, not just the element it was on. A shallow, single-level lookup wouldn't need
+        // this, but no such path was found for this checkbox (see above).
+        func findCheckboxSnippet(assignTo varName: String) -> String {
+            """
+            set \(varName) to missing value
+            repeat 5 times
+                try
+                    set allEls to entire contents of window 1
+                    repeat with e in allEls
+                        try
+                            if role of e is "AXCheckBox" and name of e contains "XMLTV" then
+                                set \(varName) to e
+                                exit repeat
+                            end if
+                        end try
+                    end repeat
+                    exit repeat
+                on error
+                    delay 0.3
+                end try
+            end repeat
+            """
+        }
+
+        let findAndToggleXMLCheckboxSnippet = """
+        \(findCheckboxSnippet(assignTo: "xmlCheckbox"))
+        if xmlCheckbox is missing value then return "NO_TOGGLE_FOUND"
+        set originalValue to value of xmlCheckbox
+        click xmlCheckbox
+        try
+            click button "Save & Close" of window 1
+        end try
+        repeat 20 times
+            delay 0.2
+            if (count of windows) = 0 then exit repeat
+        end repeat
+        """
+
+        // One script start-to-finish (not split into separate runAppleScript calls) so the
+        // restore-to-original-value step at the end always runs regardless of what the before/after
+        // comparison finds — a test that changes a real, persisted user setting must not leave it
+        // flipped if an assertion later fails.
+        let script = #"""
+        tell application "System Events"
+            tell process "hdhr_VCR"
+                \#(dismissDonationNagSnippet)
+
+                -- BEFORE: capture all 8 tab titles with the current guide source
+                try
+                    \#(dismissUnsavedSettingsAlertSnippet)
+                    click menu item "Settings…" of menu 1 of menu bar item 1 of menu bar 2
+                    repeat 20 times
+                        delay 0.25
+                        if (count of windows) > 0 then exit repeat
+                    end repeat
+                    -- Extra settle: window existing (count>0) doesn't guarantee its SwiftUI
+                    -- content's AX subtree has finished populating yet (see debugging notes above).
+                    delay 0.5
+                    \#(captureAllSettingsTabTitlesSnippet)
+                    set beforeResults to result
+                on error errMsg
+                    return "PHASE_BEFORE_ERROR: " & errMsg
+                end try
+
+                -- TOGGLE: reopen Settings, select General, flip + save (closes the window)
+                try
+                    \#(dismissUnsavedSettingsAlertSnippet)
+                    click menu item "Settings…" of menu 1 of menu bar item 1 of menu bar 2
+                    repeat 20 times
+                        delay 0.25
+                        if (count of windows) > 0 then exit repeat
+                    end repeat
+                    -- Extra settle: window existing (count>0) doesn't guarantee its SwiftUI
+                    -- content's AX subtree has finished populating yet (see debugging notes above).
+                    delay 0.5
+                    \#(selectSettingsTabSnippet("General"))
+                    \#(findAndToggleXMLCheckboxSnippet)
+                on error errMsg
+                    return "PHASE_TOGGLE_ERROR: " & errMsg
+                end try
+
+                -- Real network refresh (guide + lineup) triggered by the save — give it a real
+                -- window to complete before reading window state again, not a guess-and-hope delay.
+                delay 4
+
+                -- AFTER: capture all 8 tab titles again with the new guide source active
+                try
+                    \#(dismissUnsavedSettingsAlertSnippet)
+                    click menu item "Settings…" of menu 1 of menu bar item 1 of menu bar 2
+                    repeat 20 times
+                        delay 0.25
+                        if (count of windows) > 0 then exit repeat
+                    end repeat
+                    -- Extra settle: window existing (count>0) doesn't guarantee its SwiftUI
+                    -- content's AX subtree has finished populating yet (see debugging notes above).
+                    delay 0.5
+                    \#(captureAllSettingsTabTitlesSnippet)
+                    set afterResults to result
+                on error errMsg
+                    return "PHASE_AFTER_ERROR: " & errMsg
+                end try
+
+                -- RESTORE: flip back to the original value regardless of what was observed above.
+                -- Retried up to 3x — reliably reproduced (while building this test) as the one
+                -- phase that hits a transient AX "Invalid index" (-1719) that the same settle-poll
+                -- protecting every other phase here doesn't fully eliminate, most likely because
+                -- the background guide refresh the TOGGLE phase's save kicked off can still be
+                -- completing (mutating app/menu state) right around when RESTORE runs — later and
+                -- less predictably timed than the fixed 4s delay before AFTER accounts for. A
+                -- persisted, real user setting must not stay flipped, so this retries rather than
+                -- giving up after one transient failure.
+                -- Reuses findAndToggleXMLCheckboxSnippet verbatim (not separate restore-specific
+                -- logic) — flipping the same checkbox a second time IS the restore, and this exact
+                -- snippet already proved reliable in the TOGGLE phase above; a parallel hand-written
+                -- copy here was the actual source of the flakiness this comment block used to
+                -- describe (kept failing on its own separately-written click/save sequence even
+                -- after the AX-tree-walk and alert-dismissal fixes above stopped the earlier
+                -- failures) — so it's deleted in favor of just calling the proven path again.
+                set restoreOk to false
+                repeat 3 times
+                    try
+                        \#(dismissUnsavedSettingsAlertSnippet)
+                        click menu item "Settings…" of menu 1 of menu bar item 1 of menu bar 2
+                        repeat 20 times
+                            delay 0.25
+                            if (count of windows) > 0 then exit repeat
+                        end repeat
+                        delay 0.5
+                        \#(selectSettingsTabSnippet("General"))
+                        \#(findAndToggleXMLCheckboxSnippet)
+                        set restoreOk to true
+                        exit repeat
+                    on error restoreErrMsg
+                        set lastRestoreErr to restoreErrMsg
+                        try
+                            \#(dismissUnsavedSettingsAlertSnippet)
+                            click (first button of window 1 whose description is "close button")
+                        end try
+                        delay 1
+                    end try
+                end repeat
+                if not restoreOk then return "PHASE_RESTORE_ERROR: gave up after 3 attempts, last error: " & lastRestoreErr
+
+                -- Final safety net: observed once (a passing run, config correctly restored) that a
+                -- Settings window can still be left open here despite findAndToggleXMLCheckboxSnippet's
+                -- own "wait for windows=0" loop reporting no error — belt-and-suspenders close so this
+                -- test never leaves a stray window behind for whatever runs after it.
+                try
+                    if (count of windows) > 0 then
+                        \#(dismissUnsavedSettingsAlertSnippet)
+                        click (first button of window 1 whose description is "close button")
+                    end if
+                end try
+
+                return beforeResults & "===SPLIT===" & afterResults
+            end tell
+        end tell
+        """#
+
+        guard let result = runAppleScript(script), !result.isEmpty else {
+            Issue.record("Guide source toggle script failed to run")
+            return
+        }
+        if result == "NO_TOGGLE_FOUND" {
+            Issue.record("Could not find the 'Use XMLTV guide format' checkbox in General — did it move again?")
+            return
+        }
+        let halves = result.components(separatedBy: "===SPLIT===")
+        #expect(halves.count == 2, "unexpected script output shape: \(result)")
+        guard halves.count == 2 else { return }
+
+        func parsed(_ raw: String) -> [String: String] {
+            var m: [String: String] = [:]
+            for line in raw.split(separator: "\n") {
+                let parts = line.split(separator: "|", maxSplits: 1).map(String.init)
+                guard parts.count == 2 else { continue }
+                m[parts[0]] = parts[1]
+            }
+            return m
+        }
+        let before = parsed(halves[0])
+        let after  = parsed(halves[1])
+
+        #expect(before.count == 8, "expected 8 tabs before toggling, saw \(before.count): \(halves[0])")
+        #expect(after.count == 8,  "expected 8 tabs after toggling, saw \(after.count): \(halves[1])")
+
+        // Every label's own title should still match itself post-toggle (settingsAllTabsReachable's
+        // invariant), AND — the actual point of this test — nothing should have shifted between
+        // the before and after pass just because the guide source changed underneath it.
+        for (label, beforeTitle) in before {
+            #expect(beforeTitle == label,
+                "BEFORE toggle: tab '\(label)' resolved to window title '\(beforeTitle)' — mismatch unrelated to the toggle")
+            guard let afterTitle = after[label] else {
+                Issue.record("Tab '\(label)' was reachable before the guide-source toggle but not after — unexpected window change")
+                continue
+            }
+            #expect(afterTitle == label,
+                "AFTER toggle: tab '\(label)' resolved to window title '\(afterTitle)' — the guide-source switch changed this tab's window title, which should be unrelated")
+        }
+        for label in after.keys where before[label] == nil {
+            Issue.record("Tab '\(label)' appeared only after the guide-source toggle — unexpected new/renamed tab")
         }
     }
 

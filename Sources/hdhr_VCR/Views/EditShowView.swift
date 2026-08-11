@@ -62,7 +62,12 @@ struct EditShowView: View {
             case .cancel:  break
             }
         }
-        .background(WindowCloseInterceptor(isDirty: isDirty, canSave: canSave, onSave: saveWithoutDismiss))
+        // No onBecomeKey use here (unlike SettingsView): isDirty compares two snapshots taken
+        // together (`show` vs `originalShow`), not a snapshot against a live value, so this view
+        // isn't exposed to the same background-drift staleness — see WindowCloseInterceptor's doc
+        // comment. Retargeting to a different show is already handled correctly, independent of
+        // window focus, by the onChange(of: state.editingShowId) below.
+        .background(WindowCloseInterceptor(isDirty: isDirty, canSave: canSave, onSave: saveWithoutDismiss, onBecomeKey: {}))
         .onAppear { loadShow() }
         // The window is a single reusable instance, so onAppear won't fire when it's merely
         // re-focused for a different show — reload whenever the target show id changes.
