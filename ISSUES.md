@@ -10,7 +10,7 @@ Historical record of bugs encountered during development. Used as a "don't repea
 
 ## Open
 
-- **OPEN — `WebServer.swift` `isLocalAddress` treats non-loopback IPv6 as loopback** — the loopback fast-path uses `testIP.hasPrefix("::1")`, which matches any IPv6 address *beginning* "::1" (`::1234:5678`, `::123`, `::1:2:3` — the deprecated IPv4-compatible `::/96` space), granting those sources the loopback bypass past the subnet check entirely. Exploitability is low (those addresses are effectively unroutable from the public internet, and TCP spoofing is impractical), but the check is simply wrong as written. **Fix note**: exact-match `testIP == "::1"` (the IPv4-mapped `::ffff:127.0.0.1` case is already normalized to `127.0.0.1` by the strip above it). One-line fix. Found 2026-08-11 web-server security pass.
+Nothing currently open — see [`issues_resolved.md`](issues_resolved.md) for the fix history.
 
 ---
 

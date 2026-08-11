@@ -467,6 +467,18 @@ Updated `ManagedGuideMatcherTests.swift`'s two now-invalid "matches any device" 
 
 ---
 
+## RESOLVED — `WebServer.swift` `isLocalAddress` treated non-loopback IPv6 as loopback
+
+**File:** `WebServer.swift` (`isLocalAddress`)
+
+**Root cause**: The loopback fast-path used `testIP.hasPrefix("::1")`, which matches any IPv6 address *beginning* "::1" (`::1234:5678`, `::123`, `::1:2:3` — the deprecated IPv4-compatible `::/96` space), granting those sources the loopback bypass past the subnet check entirely. Exploitability was low (those addresses are effectively unroutable from the public internet, and TCP spoofing is impractical), but the check was simply wrong as written.
+
+**Resolution**: Exact-match `testIP == "::1"` instead (the IPv4-mapped `::ffff:127.0.0.1` case is already normalized to `127.0.0.1` by the strip above it). One-line fix. Verified live against the running app: both `127.0.0.1` and `::1` loopback access still return 200 after the change.
+
+**Resolving commit**: `641e036`
+
+---
+
 ## Staleness check, 2026-08-10
 
 Every entry above that only had a prescriptive `**Fix:**` note (rather than a past-tense `**Resolution:**`) was individually re-verified against the current source before filing here — grepped for the described symptom and confirmed the described fix's actual code is present (or, for the FloatingGuideView/CableGuideView group, confirmed the file is gone entirely). Nothing in this file is guessed or assumed still-true from the original write-up.
