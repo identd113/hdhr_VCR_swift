@@ -828,7 +828,13 @@ final class WebServer: @unchecked Sendable {
                 let ch    = String(parts[1]).removingPercentEncoding ?? String(parts[1])
                 let winStart: Int
                 let winSec: Int
-                if parts.count >= 4, let clientStart = Int(parts[2]), let clientSec = Int(parts[3]) {
+                // Clamp to sane ranges before use — a well-formed-but-absurd value (e.g. Int.max)
+                // would overflow the winStart+winSec addition below and trap the whole process.
+                let tenYears = 10 * 365 * 24 * 3600
+                let nowTs = Int(Date().timeIntervalSince1970)
+                if parts.count >= 4, let clientStart = Int(parts[2]), let clientSec = Int(parts[3]),
+                   (nowTs - tenYears)...(nowTs + tenYears) ~= clientStart,
+                   (1...(28 * 3600)) ~= clientSec {
                     (winStart, winSec) = (clientStart, clientSec)
                 } else {
                     (winStart, winSec) = guideWindow(state: state)
@@ -1356,7 +1362,6 @@ final class WebServer: @unchecked Sendable {
                              || (pendingRecChannelsByDevice[device.DeviceID]?.contains(ch.GuideNumber) ?? false)
 
                 var blockParts: [String] = ["<div class=\"g-now-bar\" style=\"--gs:\(nowPct)%\"></div>"]
-                let infSIDs: Set<String> = ["C11809220ENAPZK", "C459763EN3L6D"]
                 var cursor = winStart
                 for e in entries {
                     let gapEnd = min(e.StartTime, winEnd)
@@ -1485,7 +1490,7 @@ final class WebServer: @unchecked Sendable {
                     // unlike guide.php's ambiguous empty Filter[], this is a reliable signal on its own,
                     // catching new infomercials the SeriesID blocklist hasn't been taught yet.
                     let isShopCategory = (e.Filter ?? []).contains { $0.caseInsensitiveCompare("Shop") == .orderedSame || $0.caseInsensitiveCompare("Shopping") == .orderedSame }
-                    let infDA = (infSIDs.contains(e.SeriesID ?? "") || e.Title == "Paid Programming" || isShopCategory) ? " data-inf=\"1\"" : ""
+                    let infDA = (GuideEntry.knownInfomercialSeriesIDs.contains(e.SeriesID ?? "") || e.Title == "Paid Programming" || isShopCategory) ? " data-inf=\"1\"" : ""
                     // role/tabindex/aria-label/onkeydown: the grid has no other accessible way to reach
                     // or identify a show — these divs carry all the real interaction. aria-label reuses
                     // `tip` (already he()-escaped, already "Title · Episode (time) — status") rather than

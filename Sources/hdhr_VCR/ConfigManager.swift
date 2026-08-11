@@ -73,6 +73,9 @@ final class ConfigManager {
         return upgraded
     }
 
+    // Allocated once — ISO8601DateFormatter is thread-safe per Apple docs, and decode runs on one thread anyway.
+    private static let iso8601Formatter = ISO8601DateFormatter()
+
     // Handles both ISO8601 (v2) and legacy string/numeric epoch (v1) date formats.
     private static func makeDecoder() -> JSONDecoder {
         let d = JSONDecoder()
@@ -80,7 +83,7 @@ final class ConfigManager {
             let c = try decoder.singleValueContainer()
             if let str = try? c.decode(String.self) {
                 // v2: ISO8601
-                if let date = ISO8601DateFormatter().date(from: str) { return date }
+                if let date = iso8601Formatter.date(from: str) { return date }
                 // v1: string epoch ("1748613600")
                 if let epoch = Double(str), epoch > 0 { return Date(timeIntervalSince1970: epoch) }
                 // "missing value", "0", empty — throw so try? decodes as nil

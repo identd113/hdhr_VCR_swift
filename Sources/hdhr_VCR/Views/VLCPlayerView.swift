@@ -354,13 +354,7 @@ struct VLCPlayerView: View {
                     posterHidden = false
                     VLCBridge.shared.catchUpToLive()
                 } label: {
-                    Label("Retry", systemImage: "arrow.clockwise")
-                        .font(.callout.bold())
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 10)
-                        .background(.ultraThinMaterial)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                        .foregroundStyle(.white)
+                    overlayButtonLabel("Retry", systemImage: "arrow.clockwise")
                 }
                 .buttonStyle(.plain)
             }
@@ -389,13 +383,7 @@ struct VLCPlayerView: View {
                         posterHidden = false
                         bridge.play(url: url)
                     } label: {
-                        Label("Play Again", systemImage: "arrow.clockwise")
-                            .font(.callout.bold())
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 10)
-                            .background(.ultraThinMaterial)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                            .foregroundStyle(.white)
+                        overlayButtonLabel("Play Again", systemImage: "arrow.clockwise")
                     }
                     .buttonStyle(.plain)
                 }
@@ -403,6 +391,18 @@ struct VLCPlayerView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
+    }
+
+    // Shared styling for the Retry/Play Again overlay buttons above — identical appearance, kept
+    // as one helper so they can't visually drift apart.
+    private func overlayButtonLabel(_ title: String, systemImage: String) -> some View {
+        Label(title, systemImage: systemImage)
+            .font(.callout.bold())
+            .padding(.horizontal, 20)
+            .padding(.vertical, 10)
+            .background(.ultraThinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .foregroundStyle(.white)
     }
 
     // MARK: - Toolbar

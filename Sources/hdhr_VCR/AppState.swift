@@ -188,7 +188,6 @@ final class AppState: ObservableObject {
             failCount += 1
             nextRetry = Date().addingTimeInterval(Self.delays[min(failCount - 1, Self.delays.count - 1)])
         }
-        mutating func recordSuccess() { failCount = 0; nextRetry = .distantPast; notifiedUser = false }
     }
 
     private var idleTimer: Timer?
@@ -1436,7 +1435,6 @@ final class AppState: ObservableObject {
         // discovery, not anything a program's actual air time depends on.
         if now.timeIntervalSince(lastNowAiringScan) > 300 {
             lastNowAiringScan = now
-            let knownInfSIDs: Set<String> = ["C11809220ENAPZK", "C459763EN3L6D"]
             for device in devices {
                 for ch in (lineups[device.DeviceID] ?? []) {
                     let entries = guideStore.entries(deviceId: device.DeviceID, channelNum: ch.GuideNumber)
@@ -1449,7 +1447,7 @@ final class AppState: ObservableObject {
                         if loggedNowAiring.count > 2000 { loggedNowAiring.removeAll(keepingCapacity: true) }
                         loggedNowAiring.insert(key)
                         let sid = e.SeriesID ?? "none"
-                        if !knownInfSIDs.contains(sid) && e.Title != "Paid Programming" {
+                        if !GuideEntry.knownInfomercialSeriesIDs.contains(sid) && e.Title != "Paid Programming" {
                             glog("[NowAiring] \(ch.GuideNumber) \(ch.GuideName) — \(e.Title) SeriesID=\(sid)")
                         }
                     }
@@ -1514,7 +1512,7 @@ final class AppState: ObservableObject {
         }
         // Enforce tuner limit: skip if all slots on this device are already occupied
         if tunersFull(for: show.hdhr_record) {
-            let tunerCount = devices.first(where: { $0.DeviceID == show.hdhr_record })?.TunerCount ?? 0
+            let tunerCount = device.TunerCount ?? 0
             glog("[\(show.show_title)] TUNER FULL \(show.hdhr_record) — skipping start", level: .warning)
             // Fire conflict notification once per show+episode window to avoid per-tick spam.
             let conflictEpoch = show.show_next?.timeIntervalSince1970 ?? 0

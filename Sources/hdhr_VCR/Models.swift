@@ -638,6 +638,11 @@ struct GuideEntry: Codable, Identifiable, Hashable {
         if f.contains("Movie") || f.contains("Movies") { return "Movie" }
         return f.first { $0.lowercased() != "series" }
     }
+
+    // SeriesIDs known to be infomercials but untagged by the guide's own Filter genres — used to
+    // hide/mark them by default. Shared so AppState's diagnostic scan and the web guide's
+    // data-inf marker can't drift apart.
+    static let knownInfomercialSeriesIDs: Set<String> = ["C11809220ENAPZK", "C459763EN3L6D"]
 }
 
 // MARK: - ManagedGuideMatcher
