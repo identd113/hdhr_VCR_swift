@@ -351,6 +351,110 @@ The native `FloatingGuideView.swift` and `CableGuideView.swift` were entirely de
 
 ---
 
+## RESOLVED — Settings could show a false "Unsaved Settings" close-confirmation with nothing actually edited
+
+**File:** `Views/SettingsView.swift` (`isDirty`, `resetDrafts()`, `WindowCloseInterceptor`)
+
+**Symptom**: Reopening Settings, navigating between sidebar tabs only (no field touched), and closing could trigger the app-modal "Unsaved Settings" alert (Save/Discard/Cancel) that's supposed to only appear when a real edit is pending. Found via `WindowNavigationTests.swift`'s `guideSourceToggleDoesNotBreakWindows`, which opens/closes Settings 4 times in one run — reliably reproduced on the 3rd/4th open, never the 1st or 2nd.
+
+**Root cause (confirmed)**: `open(_:)` in `MenuContent.swift` calls `openWindow(id: "settings")` for single-instance `Window` scenes, which — per SwiftUI's documented behavior for that scene type, and this codebase's own comment acknowledging it ("Window scenes can't duplicate") — just refocuses the existing window rather than recreating its view when one is already alive. `SettingsView`'s `.onAppear { resetDrafts() }` therefore only ever fires once, on true first creation, not on later reopens. Any background `saveConfig()` unrelated to Settings (this app has several — idle loop, tuner probing, etc.) occurring between the first open and a later reopen then leaves `draft` silently stale relative to the live `state.config`, so `isDirty`'s `draft != state.config` check reads true even though the user touched nothing.
+
+**Resolution**: Added `windowDidBecomeKey` to `WindowCloseInterceptor`'s `NSWindowDelegate` (fires on every real refocus, not just creation) wired to a new `resyncIfUntouched()`. Naively resyncing on every refocus was considered and rejected — it would silently discard a real in-progress edit if the user simply alt-tabbed away and back while mid-edit. Instead, added a `draftBaseline` snapshot (set alongside `draft` in both `resetDrafts()` and, to stay in lockstep, in `applyAndSave()`): `resyncIfUntouched()` only refreshes `draft` from `state.config` when `draft == draftBaseline` (provably untouched since the last sync) *and* `draft != state.config` (something actually changed to pick up) — the instant a user edits any field, `draft` diverges from `draftBaseline` and this becomes a guaranteed no-op until the user Saves or Discards, exactly matching the existing (unchanged) semantics for real edits. `EditShowView.swift`'s use of the same `WindowCloseInterceptor` doesn't need the new hook — its `isDirty` compares two snapshots taken together (`show` vs `originalShow`), not a snapshot against a live value, so it was never exposed to this class of bug; passes a no-op `onBecomeKey: {}`.
+
+**Verified**: reproduced the failure directly first (4 rounds of open→click-all-8-tabs→close, no field touched — alert appeared by round 3 on the old code), confirmed absent on the same script post-fix (4/4 rounds, no alert). `WindowNavigationTests.swift`'s full 6-test suite passes twice in a row against the real fix (not just the test's own defensive alert-dismissal, which is now expected to rarely/never actually fire).
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+---
+
+## RESOLVED — `ChannelIconCache.pruneDiskCacheIfNeeded()` ran a full directory scan + per-file `stat` after every single disk write
+
+**File:** `ChannelIconCache.swift`
+
+**Root cause**: The actor-isolated prune ran unconditionally after every icon write, listing the whole disk cache directory and calling `resourceValues` (a `stat`) on each file. `AppState.prefetchChannelIcons` fans out one concurrent `Task` per missing icon via `withTaskGroup` on cold start / lineup refresh — since the cache is an actor, every one of those (potentially hundreds, up to the ~2000-file cap) completions serialized through this full O(n) scan, turning a bulk prefetch into effectively O(n²) directory I/O and stalling unrelated cache-hit reads on the same actor during startup.
+
+**Resolution**: Moved the prune call out of `image(for:)`'s per-write path entirely. `pruneDiskCacheIfNeeded()` is now `func` (not `private`) and called once from `AppState.prefetchChannelIcons` after its cold-cache download batch completes, instead of once per file inside the actor. Since `prefetchChannelIcons` itself only runs once per guide load (startup, the hourly `refreshGuides`, and on-demand per-device retries), this ties the directory scan to that natural cadence — a batch of hundreds of icon writes now costs one scan instead of hundreds.
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+---
+
+## RESOLVED — `prebuildPageHTML` ran two full-page HTML builds + two sequential gzip passes on every guide-changing event
+
+**File:** `WebServer.swift` (`prebuildPageHTML`, `@MainActor`)
+
+**Root cause**: Vertical time-axis mode (`fbcbc09`, 2026-08-06) added a second cached page (`cachedVerticalHTML`/`cachedVerticalHTMLGzip` alongside `cachedHTML`/`cachedHTMLGzip`) for `GET /vertical`. It already avoided doubling the expensive shared grid build (1300+ program blocks, computed once and reused), but the two full-page `buildHTML` + `Self.gzip` wraps around it were left sequential — so every rebuild, which fires on every add/delete/pause/resume/edit/favorite-toggle and recording start/stop, now ran a ~30-60ms gzip pass twice, back to back, on `@MainActor`, roughly doubling how long menu/UI responsiveness blocked on each such state change versus before vertical mode existed.
+
+**Resolution**: The two `buildHTML` calls still run serially (they read MainActor-isolated `AppState` synchronously, so they can't safely move off-actor). `Self.gzip`, though, only touches plain `Data` with no actor affinity, so the two compressions now run concurrently via `DispatchQueue.concurrentPerform(iterations: 2)`, writing into a raw `UnsafeMutablePointer<Data?>` (wrapped in a local `@unchecked Sendable` box to satisfy the compiler) since each iteration writes a distinct, non-overlapping slot.
+
+**Follow-up fix, same session**: `/vertical` only matters for portrait-orientation mobile browsers — a much smaller (often zero) slice of traffic than `GET /`. `prebuildPageHTML` was still building+gzip'ing the vertical variant unconditionally on *every* rebuild even on installs that never see it requested. Added a sticky `verticalRouteEverRequested` flag, set by the `/vertical` route handler on its own first hit (which also builds+gzips+caches the page live for that request, so there's no extra cold-start penalty). `prebuildPageHTML` now skips the vertical build/gzip entirely — one pass instead of two, no concurrency needed — until that flag is true, at which point both variants go back to being rebuilt together as before. Updated `docs/WebServer.md`'s "Two independent page caches" section to match.
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+---
+
+## RESOLVED — Verbose curl `-v` logging silently exceeded `RotatingLogFile`'s cap, and a rotation mid-recording could race an open curl file descriptor
+
+**File:** `RecordingManager.swift` (curl's `-v` stderr piped via `posix_spawn`'s `stderrPath`); `Models.swift` (`RotatingLogFile`, new `curlVerboseLogFilePath`/`rotateCurlVerboseLogIfNeeded()`)
+
+**Root cause**: `RotatingLogFile.bytesWritten` only incremented inside `RotatingLogFile.write()`, called by `glog()`. Verbose curl logging piped curl's own `-v` stderr straight into the *same* file (`logFilePath`) via its process spawn config, invisible to that byte counter — so the main log's documented 20MB cap wasn't actually enforced while verbose logging was active. Separately, if a rotation fired (renaming to `.log.1`) while curl's fd was still open and writing to the pre-rotation path, curl kept writing into the now-renamed file until it closed; a *second* rotation before that close could unlink that renamed file out from under curl, losing whatever it wrote in the interim.
+
+**Resolution**: Gave verbose curl logging its own dedicated file, `curlVerboseLogFilePath` (`~/Library/Logs/hdhrVCRplus-curl.log`), completely separate from the main app log — mirroring the Discord log's own separately-capped file, per the issue's own suggested fix. Since curl writes to this path directly via a raw fd with no persistent Swift-side `FileHandle` involved, `RotatingLogFile`'s per-write byte-counting approach doesn't apply; instead `rotateCurlVerboseLogIfNeeded()` stats the file directly and renames it to `.1` (never truncates in place — truncating is what caused the original race back when this shared `logFilePath`) once per verbose recording start, called from `RecordingManager.start()` right before `writeCurlLogHeader`. This is a per-recording-start check rather than per-line — the practical limit given curl's writes happen entirely outside Swift's visibility once spawned — so a single verbose recording whose own `-v` output alone exceeds 5MB won't be caught until the next recording starts; multi-recording unbounded growth (the actual reported risk) is fully fixed. Updated `docs/RecordingManager.md`, `docs/Models.md`, `docs/SettingsView.md`, and CLAUDE.md's "Logs" note to describe the new dedicated file and rotation mechanism.
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+---
+
+## RESOLVED — `RotatingLogFile.write()` advanced `bytesWritten` even when the underlying write silently no-opped
+
+**File:** `Models.swift` (`RotatingLogFile`)
+
+**Root cause**: If `open()` failed to obtain a `FileHandle` (transient permissions issue, full disk, Logs directory briefly unavailable), `handle?.write(data)` was a silent no-op via optional chaining, but `bytesWritten += UInt64(data.count)` ran unconditionally regardless. The counter could then cross `rotateThreshold` and trigger `rotate()` based on phantom growth that never actually reached disk.
+
+**Resolution**: `write()` now guards on `handle` being non-nil before advancing `bytesWritten` — bytes are only counted once the write actually happens.
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+---
+
+## RESOLVED — `seriesAll` shows could match/record on more than one tuner at once (originally a `TODO.md` item, not `ISSUES.md`)
+
+**File:** `Models.swift` (`ManagedGuideMatcher`), `AppState.swift` (`resolveSeriesAir`, `nextGuideEpisode`, `scheduleNextAir`, the scheduled-menu cache builder), `GuideStore.swift` (`currentEntryByTitle`/`nextEntryByTitle`)
+
+**Root cause**: `seriesAll` shows used bare, device-agnostic keys in `ManagedGuideMatcher` (`seriesAllIDs`/`seriesAllTitles`) and passed `deviceId: nil` to every `GuideStore` scheduling lookup — both by design, to let a series "follow" reruns/affiliates onto any tuner. In practice this meant the same recurring series could be picked up and recorded independently on more than one physical HDHomeRun device at once (wasted tuner capacity, duplicate files), and `scheduleNextAir`'s `applyMatch` could silently migrate a show's `hdhr_record` to a completely different device on every reschedule, since nothing pinned the search to the device the show was actually set up on.
+
+**Resolution**: `seriesAll` is now scoped to a single assigned HDHomeRun device — the same one it was set up on (`hdhr_record`) — exactly like `seriesChannel` already was; the only remaining difference between the two states is *channel* scope on that one device (`seriesChannel` locks to one channel, `seriesAll` follows the series across any channel on the same device). `ManagedGuideMatcher`'s `seriesAllIDs`/`seriesAllTitles`/`seriesChKeys`/`seriesChTitles` were merged into unified device-scoped `seriesKeys`/`seriesTitles` (both states now produce identical `"device:SeriesID"`/`"device:title"` keys). Every `AppState` scheduling call site that previously computed `deviceId: isAll ? nil : device` now always passes the device (only the `channelNum` filter stays conditional on `isAll`). `GuideStore.currentEntryByTitle`/`nextEntryByTitle` previously only applied their device/channel filters when *both* were non-nil (a fast-path optimization) — extended to apply each filter independently, since the new device-only, channel-nil combination `seriesAll` now passes would otherwise have silently ignored the device filter entirely and kept scanning every device. Physical tuner ports within one device (e.g. a 4-tuner model) were never individually tracked and still aren't — "device" here always means the whole HDHomeRun unit (`hdhr_record`/`deviceId`), never a specific `tuner0`/`tuner1` slot; a device's own multiple tuners remain pooled, undifferentiated capacity (see CLAUDE.md's "Tuner occupancy" note).
+
+Updated `ManagedGuideMatcherTests.swift`'s two now-invalid "matches any device" tests to their corrected "matches own device, any channel" + new "does not leak to other device" shape; added two more for the `byTitle` tier. Full suite (160 tests) passes. Updated CLAUDE.md, `docs/Models.md`, `docs/WebServer.md` to match.
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+---
+
+## RESOLVED — `recordedEpisodeTags` directory scan could block the whole app, not just the Add/Edit dialog (originally a `TODO.md` item, not `ISSUES.md`)
+
+**File:** `AppState.swift` (`recordedEpisodeTags`, `episodeTag(inFilename:)`, `duplicateEpisodeTag(for:isSeries:baseDir:)`), `Views/ShowFormSection.swift`
+
+**Root cause**: The Add/Edit dialog's duplicate-episode check debounced with a 350ms delay before scanning, but the scan itself (`recordedEpisodeTags` — synchronous `FileManager` calls, two directory levels) ran inline on `@MainActor` with no suspension point to yield control. The debounce reduced how *often* it ran, not the *risk* each run carried — a slow-to-wake external/NAS-backed recording drive could stall the entire app for that one scan, not just the dialog.
+
+**Resolution**: `recordedEpisodeTags`/`episodeTag(inFilename:)` are now `nonisolated` (pure `FileManager`/regex work, no actor-isolated state touched) — existing synchronous callers on `@MainActor` (`buildGuideGridHTML`, the title-based `duplicateEpisodeTag(title:episodeTag:baseDir:)` overload used by `startRecording`'s one-shot check) are unaffected. `duplicateEpisodeTag(for:isSeries:baseDir:)` — the one call site actually flagged (`ShowFormSection`'s live-typing debounce) — is now `async`: its cheap, in-memory guide lookup and config checks stay on `@MainActor`, but the actual disk scan is dispatched to a `Task.detached`, so a slow drive only stalls that one debounced check instead of the whole app.
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+---
+
+## RESOLVED — Duplicate-episode override was a web-guide dead end (originally a `TODO.md` item, not `ISSUES.md`)
+
+**File:** `WebServer.swift` (`handleEdit`, `buildGuideGridHTML`'s `showDA`, `buildTunerShowsHTML`), `Resources/guide.js`, `Resources/guide-shell.html`
+
+**Root cause**: `willSkip` already rendered the green `.g-flag-skip` corner flag + "Already recorded · will skip" tooltip for a managed block the grid knew would be skipped as a duplicate, but `show_ignore_duplicate_once` (the per-show one-shot override) was only settable from the native Add/Edit dialogs — `handleRecord`/`handleEdit` never read or wrote it. A user watching the web guide saw "this won't record" with zero recourse short of switching to the native app.
+
+**Resolution**: Added a "Duplicate Episodes" toggle (`#em-dup-row`/`#em-dup`) to the web guide's Edit modal, mirroring the native dialog's toggle — shown when `Series_subfolder_enabled && Skip_recorded_episodes` (baked into `guide.js` as the `SKIP_DUP_ENABLED` token) and the show is a series type, re-evaluated on every type-picker change via `updateDupVisibility()`. Round-trips via a new `data-show-ignoredup`/`data-ignoredup` attribute (both `showDA` in the grid and `buildTunerShowsHTML`'s per-tuner dropdown rows) → the checkbox → `POST /api/edit`'s new `ignoreDuplicateOnce` field → `handleEdit` → `show.show_ignore_duplicate_once`. Not added to the Record modal (`#rec-modal`) — a brand-new Record can't yet know whether the episode it's about to schedule will land on disk as a duplicate. Verified end-to-end in a real running instance (Chrome automation): opened the edit modal for a live `seriesAll` show, confirmed the toggle appeared, toggled it on, saved, reloaded the page, confirmed `data-show-ignoredup="1"` persisted server-side, then reverted. Also corrected a related stale claim in `docs/ShowFormSection.md` (the Record modal "mirrors these fields minus Folder" — it was also missing Duplicate Episodes, a second, pre-existing omission unrelated to this fix).
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+---
+
 ## Staleness check, 2026-08-10
 
 Every entry above that only had a prescriptive `**Fix:**` note (rather than a past-tense `**Resolution:**`) was individually re-verified against the current source before filing here — grepped for the described symptom and confirmed the described fix's actual code is present (or, for the FloatingGuideView/CableGuideView group, confirmed the file is gone entirely). Nothing in this file is guessed or assumed still-true from the original write-up.

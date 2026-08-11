@@ -848,6 +848,9 @@ final class AppState: ObservableObject {
         }
         glog("[Icons] downloaded \(needed) new icon(s) — \(urls.count) total cached")
         statusMessage = "\(shows.count) show(s) — \(availableDeviceCount) tuner(s) ready"
+        // Only the cold-cache path above writes new files, so this is the point to check the
+        // disk cap — once per prefetch batch, not per file (see pruneDiskCacheIfNeeded's comment).
+        await ChannelIconCache.shared.pruneDiskCacheIfNeeded()
     }
 
     func isGuideLoading(for deviceId: String) -> Bool {
@@ -900,8 +903,10 @@ final class AppState: ObservableObject {
             if let hit = direct.first(where: { abs($0.startDate.timeIntervalSince(schNext)) < 5 * 60 }) {
                 scheduledResult[show.show_id] = hit
             } else if show.show_use_seriesid, !show.show_seriesid.isEmpty {
+                // dev is always the show's assigned tuner — SeriesID(All) differs from
+                // SeriesID(Channel) only in channel scope, not device scope.
                 let ch  = show.show_use_seriesid_all ? nil : show.show_channel
-                let dev = show.show_use_seriesid_all ? nil : show.hdhr_record
+                let dev = show.hdhr_record
                 scheduledResult[show.show_id] = guideStore.nextEpisode(
                     seriesID: show.show_seriesid, channelNum: ch, deviceId: dev,
                     after: schNext.addingTimeInterval(-3600)
@@ -979,8 +984,10 @@ final class AppState: ObservableObject {
 
     func nextGuideEpisode(for show: Show) -> (channel: String, entry: GuideEntry)? {
         guard show.show_use_seriesid, !show.show_seriesid.isEmpty else { return nil }
+        // deviceFilter is always the show's assigned tuner (hdhr_record) — SeriesID(All) differs
+        // from SeriesID(Channel) only in channel scope, not device scope.
         let channelFilter: String? = show.show_use_seriesid_all ? nil : show.show_channel
-        let deviceFilter: String? = show.show_use_seriesid_all ? nil : show.hdhr_record
+        let deviceFilter: String? = show.hdhr_record
         guard let match = guideStore.nextEpisode(seriesID: show.show_seriesid,
                                                  channelNum: channelFilter,
                                                  deviceId: deviceFilter) else { return nil }
@@ -1053,13 +1060,19 @@ final class AppState: ObservableObject {
     }
 
     // Checks currently-airing first so show_next may be in the past — idle loop records the remaining portion.
+    // devFilter is always the device being added from — SeriesID(All) differs from SeriesID(Channel)
+    // only in channel scope (any channel on that device vs. one fixed channel), not device scope;
+    // both are confined to a single assigned tuner (see CLAUDE.md's "Web guide managed markers"
+    // invariant and the seriesAll-scoping fix this is part of).
     func resolveSeriesAir(show: inout Show, device: HDHRDevice, isAll: Bool, channel: LineupEntry) {
         let chFilter  = isAll ? nil : channel.GuideNumber
-        let devFilter = isAll ? nil : device.DeviceID
+        let devFilter = device.DeviceID
         let now       = Date()
 
-        // Helper: apply a SeriesMatch to the show — uses m.deviceId for lineup lookup so
-        // SeriesID(All) works correctly when the episode is on a different device than browsed.
+        // Helper: apply a SeriesMatch to the show — uses m.deviceId for lineup lookup. devFilter
+        // above pins every search to `device.DeviceID`, so m.deviceId is always that same device
+        // for both SeriesID(All) and SeriesID(Channel); this just keeps that assignment explicit
+        // rather than assuming it.
         func apply(_ m: GuideStore.SeriesMatch) {
             // SeriesID is trusted as authoritative by currentEpisode/nextEpisode (a differently
             // formatted display title across affiliates is normal for a genuinely correct match),
@@ -1083,8 +1096,8 @@ final class AppState: ObservableObject {
             apply(m); return
         }
         // Fallback: title match on channelEntryIndex — handles guide entries where SeriesID is
-        // absent. chFilter/devFilter are already nil for SeriesID(All), so this correctly scans
-        // every device/channel in that case rather than being skipped.
+        // absent. chFilter is nil for SeriesID(All) (scans every channel on devFilter's device);
+        // devFilter is always set, so this never scans devices beyond the one being added from.
         if let m = guideStore.currentEntryByTitle(show.show_title, channelNum: chFilter, deviceId: devFilter, at: now) {
             apply(m); return
         }
@@ -1899,8 +1912,15 @@ final class AppState: ObservableObject {
             }
         case .seriesChannel, .seriesAll:
             if let device = devices.first(where: { $0.DeviceID == show.hdhr_record }) {
+                // devFilter is always the show's current assigned tuner — SeriesID(All) differs
+                // from SeriesID(Channel) only in channel scope (any channel on that tuner vs. one
+                // fixed channel), not device scope. Pinning the device here (rather than nil for
+                // SeriesID(All)) is what keeps a show from hopping to a different tuner every
+                // reschedule — applyMatch below always sets hdhr_record = match.deviceId, which
+                // would otherwise silently migrate the show to whichever device happened to have
+                // the next matching episode, risking two tuners recording the same series at once.
                 let chFilter = show.state == .seriesAll ? nil : show.show_channel
-                let devFilter = show.state == .seriesAll ? nil : device.DeviceID
+                let devFilter = device.DeviceID
                 // If guide is stale or absent, reload before searching
                 if !guideStore.isFresh(deviceId: device.DeviceID) {
                     await guideStore.load(for: device, hours: config.GuideHours, useXML: config.Guide_use_xml)
@@ -1911,7 +1931,6 @@ final class AppState: ObservableObject {
                     idx = reIdx
                 }
                 // Check for a currently-airing episode first (e.g. marathon, back-to-back airings).
-                // Use match.deviceId for lineup lookup — SeriesID(All) may resolve to a different device.
                 let now = Date()
                 func applyMatch(_ match: GuideStore.SeriesMatch) {
                     // See resolveSeriesAir's identical check — SeriesID is trusted as authoritative
@@ -1941,8 +1960,8 @@ final class AppState: ObservableObject {
                     applyMatch(match); return
                 }
                 // Fallback: title match — handles guide entries where SeriesID is absent.
-                // chFilter/devFilter are already nil for SeriesID(All), so this correctly scans
-                // every device/channel in that case rather than being skipped.
+                // chFilter is nil for SeriesID(All) (scans every channel on devFilter's device);
+                // devFilter is always set, so this never scans devices beyond the assigned one.
                 if let match = guideStore.currentEntryByTitle(show.show_title, channelNum: chFilter, deviceId: devFilter, at: now) {
                     glog("[\(show.show_title)] NEXT now (title match, on-air) ch=\(match.channelNum)")
                     applyMatch(match); return
@@ -2254,8 +2273,10 @@ final class AppState: ObservableObject {
 
     // "_S02E04_" or " S22E125 " → "S02E04"/"S22E125". Shared by organizeSeriesRecordings (season
     // subfolder placement) and recordedEpisodeTags (duplicate-episode detection) so both parse
-    // recording filenames identically.
-    private func episodeTag(inFilename filename: String) -> String? {
+    // recording filenames identically. nonisolated: touches no actor-isolated state, so it (and
+    // recordedEpisodeTags below) can run off @MainActor when called from a detached task — see
+    // duplicateEpisodeTag(for:isSeries:baseDir:).
+    private nonisolated func episodeTag(inFilename filename: String) -> String? {
         guard let tagRange = filename.range(of: #"[_ ](S\d+(?:E\d+)?)"#, options: [.regularExpression, .caseInsensitive])
         else { return nil }
         return String(filename[tagRange].dropFirst())  // drop leading "_" or " "
@@ -2412,7 +2433,14 @@ final class AppState: ObservableObject {
     /// consistent. Files under
     /// ~1 MB are treated as crashed/zero-byte stubs and ignored, so a prior failed attempt never
     /// masks a real re-record.
-    func recordedEpisodeTags(forTitle safeTitle: String, baseDir: String) -> Set<String> {
+    ///
+    /// `nonisolated` — pure `FileManager` I/O, no actor-isolated state touched. Existing callers
+    /// on `@MainActor` (`buildGuideGridHTML`, the synchronous `duplicateEpisodeTag` overload) are
+    /// unaffected — a nonisolated method still runs inline/synchronously when called from an
+    /// isolated context. What this enables is `duplicateEpisodeTag(for:isSeries:baseDir:)`
+    /// invoking it from a detached background task instead, so a slow-to-wake external/NAS-backed
+    /// recording drive can't block the whole app on @MainActor for that one call site.
+    nonisolated func recordedEpisodeTags(forTitle safeTitle: String, baseDir: String) -> Set<String> {
         let fm = FileManager.default
         let seriesDir = (baseDir as NSString).appendingPathComponent(safeTitle)
         // No recursive enumerator elsewhere in the codebase — walk exactly two levels: the title
@@ -2453,17 +2481,33 @@ final class AppState: ObservableObject {
     }
 
     /// UI convenience: looks up `show`'s next-airing episode tag from the guide and checks it via
-    /// `duplicateEpisodeTag(title:episodeTag:baseDir:)`. Used by the Add/Edit dialog to warn that a
-    /// scheduled recording will be skipped as a duplicate unless `show_ignore_duplicate_once` is set.
-    /// Takes `isSeries`/`baseDir` explicitly rather than reading `show.isSeries`/`show.posixRecordDir`
-    /// because in the Add wizard those `Show` fields aren't written until Save — the caller's live
-    /// `seriesType`/`recordFolder` picker state is the only accurate source before then. Excludes a
-    /// show that's currently recording (its own in-progress file would otherwise flag itself as a
-    /// duplicate), mirroring the `!isEntryRec` exclusion in WebServer's `.g-st-skip` logic.
-    func duplicateEpisodeTag(for show: Show, isSeries: Bool, baseDir: String) -> String? {
-        guard config.Series_subfolder_enabled, isSeries, !show.show_recording,
-              let tag = guideEntryForShow(show)?.EpisodeNumber else { return nil }
-        return duplicateEpisodeTag(title: show.show_title, episodeTag: tag, baseDir: baseDir)
+    /// the same on-disk logic as `duplicateEpisodeTag(title:episodeTag:baseDir:)`. Used by the
+    /// Add/Edit dialog to warn that a scheduled recording will be skipped as a duplicate unless
+    /// `show_ignore_duplicate_once` is set. Takes `isSeries`/`baseDir` explicitly rather than
+    /// reading `show.isSeries`/`show.posixRecordDir` because in the Add wizard those `Show` fields
+    /// aren't written until Save — the caller's live `seriesType`/`recordFolder` picker state is
+    /// the only accurate source before then. Excludes a show that's currently recording (its own
+    /// in-progress file would otherwise flag itself as a duplicate), mirroring the `!isEntryRec`
+    /// exclusion in WebServer's `.g-st-skip` logic.
+    ///
+    /// `async`, unlike the title-based overload above: the guide lookup and config checks below
+    /// are in-memory and stay on @MainActor, but the actual disk scan (`recordedEpisodeTags`,
+    /// `nonisolated`) is dispatched to a detached background task — this is the one call site
+    /// (`ShowFormSection`'s debounced duplicate check, live while the user types in the Add/Edit
+    /// dialog) where a slow-to-wake external/NAS-backed recording drive blocking @MainActor would
+    /// stall the whole app, not just this one field. `startRecording`'s one-shot check keeps using
+    /// the synchronous title-based overload instead — a single check right before a curl launch
+    /// has no live-typing debounce to protect, so there's nothing to gain by detaching it too.
+    func duplicateEpisodeTag(for show: Show, isSeries: Bool, baseDir: String) async -> String? {
+        guard config.Skip_recorded_episodes, config.Series_subfolder_enabled, isSeries, !show.show_recording,
+              let tag = guideEntryForShow(show)?.EpisodeNumber,
+              tag.range(of: #"^S\d+E\d+$"#, options: [.regularExpression, .caseInsensitive]) != nil
+        else { return nil }
+        let safeTitle = show.show_title.replacingOccurrences(of: "/", with: "-")
+        let upper = tag.uppercased()
+        return await Task.detached(priority: .userInitiated) { [weak self] in
+            self?.recordedEpisodeTags(forTitle: safeTitle, baseDir: baseDir).contains(upper) == true ? upper : nil
+        }.value
     }
 
     // Rerun/multiplex channels (e.g. H&I) air many unrelated series back-to-back on one channel

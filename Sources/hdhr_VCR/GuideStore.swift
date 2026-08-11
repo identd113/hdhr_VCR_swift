@@ -353,10 +353,12 @@ final class GuideStore {
     /// `$0.Title == title` would otherwise never match a stripped stored title against a
     /// suffixed guide entry, silently breaking this fallback for exactly the shows it exists for.
     ///
-    /// `channelNum`/`deviceId` default `nil` to scan every device/channel — needed for
-    /// SeriesID(All) shows, which pass `nil` for both to `currentEpisode`/`nextEpisode` too (see
-    /// `AppState.resolveSeriesAir`/`scheduleNextAir`); a version requiring both non-optional would
-    /// silently skip this fallback entirely for SeriesID(All) shows.
+    /// `channelNum`/`deviceId` default `nil` and are applied independently (like
+    /// `currentEpisode`/`nextEpisode`) — needed for SeriesID(All) shows, which pass a fixed
+    /// `deviceId` (their assigned tuner) but `nil` channelNum (any channel on that tuner) to
+    /// `currentEpisode`/`nextEpisode` too (see `AppState.resolveSeriesAir`/`scheduleNextAir`); a
+    /// version requiring both-or-neither would silently ignore deviceId for that case and scan
+    /// every device instead of just the assigned one.
     func currentEntryByTitle(_ title: String, channelNum: String? = nil, deviceId: String? = nil, at date: Date = Date()) -> SeriesMatch? {
         let epoch = Int(date.timeIntervalSince1970)
         if let channelNum, let deviceId {
@@ -367,6 +369,8 @@ final class GuideStore {
         }
         guard let entry = channelEntryIndex.values.flatMap({ $0 }).first(where: {
             $0.StartTime <= epoch && $0.EndTime > epoch && Show.seriesTitle(from: $0.Title) == title
+                && (channelNum == nil || $0.channelNum == channelNum)
+                && (deviceId == nil || $0.deviceId == deviceId)
         }) else { return nil }
         return SeriesMatch(deviceId: entry.deviceId, channelNum: entry.channelNum, entry: entry)
     }
@@ -374,7 +378,7 @@ final class GuideStore {
     /// Next entry with StartTime > after matching `title`, regardless of SeriesID. Fallback for
     /// when the guide omits SeriesID from some airings of a series — see `currentEntryByTitle`'s
     /// doc comment for why `entry.Title` is stripped before comparing and why the filters are
-    /// optional.
+    /// independently optional.
     func nextEntryByTitle(_ title: String, channelNum: String? = nil, deviceId: String? = nil, after: Date = Date()) -> SeriesMatch? {
         let epoch = Int(after.timeIntervalSince1970)
         if let channelNum, let deviceId {
@@ -387,7 +391,9 @@ final class GuideStore {
         // flatMap is not — dictionary iteration order is arbitrary, so picking .first here would
         // pick an arbitrary matching airing rather than the soonest one across all devices/channels.
         guard let entry = channelEntryIndex.values.flatMap({ $0 })
-            .filter({ $0.StartTime > epoch && Show.seriesTitle(from: $0.Title) == title })
+            .filter({ $0.StartTime > epoch && Show.seriesTitle(from: $0.Title) == title
+                && (channelNum == nil || $0.channelNum == channelNum)
+                && (deviceId == nil || $0.deviceId == deviceId) })
             .min(by: { $0.StartTime < $1.StartTime })
         else { return nil }
         return SeriesMatch(deviceId: entry.deviceId, channelNum: entry.channelNum, entry: entry)

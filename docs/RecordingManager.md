@@ -95,9 +95,9 @@ Error codes: 804 Tuner In Use · 805 All Tuners In Use · 806 Tune Failed · 807
 
 Toggle in Settings → Advanced → "Verbose curl logging". When enabled:
 - Adds `-v` to curl args.
-- curl's own stderr is appended directly to `~/Library/Logs/hdhrVCRplus.log` via a raw `posix_spawn` file descriptor (`spawnDetached`'s `stderrPath`) — independent of `glog()`'s queue.
+- curl's own stderr is appended directly to its own dedicated file, `~/Library/Logs/hdhrVCRplus-curl.log` (`curlVerboseLogFilePath`, `Models.swift`), via a raw `posix_spawn` file descriptor (`spawnDetached`'s `stderrPath`) — independent of `glog()`'s queue.
 - Each recording block starts with a timestamp header and the full command line, written via its own ad-hoc `FileHandle` open/append/close in `writeCurlLogHeader`.
-- **Log rotation**: none of its own — `curlLogPath` is the same path as `logFilePath`, so it rides on `glog()`'s shared `RotatingLogFile` cap (see `docs/Models.md`/CLAUDE.md's "Logs" note). A prior in-place truncate-at-5MB here was removed: it raced with `RotatingLogFile`'s persistently-open handle, desyncing its internal byte counter from the file's real (now-zero) size.
+- **Log rotation**: `start()` calls `rotateCurlVerboseLogIfNeeded()` (`Models.swift`) once per verbose recording start, before `writeCurlLogHeader`. It stats the file directly and, if ≥ 5 MB, renames it to `hdhrVCRplus-curl.log.1` (overwriting any existing backup) rather than truncating in place — a prior in-place truncate-at-5MB approach was removed because it raced with `RotatingLogFile`'s persistently-open handle back when this feature shared `logFilePath` with the main app log, desyncing that handle's internal byte counter from the file's real (now-zero) size. Neither race is possible now: this is its own dedicated path, no persistent Swift-side handle is held on it between recordings, and — unlike `RotatingLogFile` — nothing here tracks a running byte count, so there's nothing to desync. The per-recording-start check (rather than per-line) is the practical limit of what's reachable given curl writes directly to the fd, entirely outside Swift's visibility once spawned — a single verbose recording whose own `-v` output alone exceeds 5 MB won't be caught until the *next* recording starts.
 
 ---
 

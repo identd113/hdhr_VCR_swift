@@ -197,6 +197,22 @@ struct WebServerSmokeTests {
         #expect(html.contains("hdhrVCRplus"))
     }
 
+    @Test func verticalReturnsHTML() async throws {
+        guard await serverAvailable() else { return }
+        let (status, body) = try await get("/vertical")
+        #expect(status == 200)
+        let html = String(data: body, encoding: .utf8) ?? ""
+        #expect(html.contains("<!DOCTYPE html>"))
+        #expect(html.contains("hdhrVCRplus"))
+        // /vertical is the one route that ships the vertical time-axis stylesheet and bakes
+        // VT_ELIGIBLE=true — GET / must never carry either (see CLAUDE.md's "Vertical time-axis
+        // mode is per-route, not global" invariant). A real deploy has the template file present,
+        // so this also guards against the includeVerticalCSS-but-template-missing case where
+        // VT_ELIGIBLE would wrongly stay/become true with no matching CSS actually embedded.
+        #expect(html.contains("var _vtEligible=true;"))
+        #expect(html.contains("@media (orientation: portrait)"))
+    }
+
     @Test func rootContentTypeIsHTML() async throws {
         guard await serverAvailable() else { return }
         let url = URL(string: "http://127.0.0.1:1980/")!

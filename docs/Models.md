@@ -130,10 +130,8 @@ Two mutating methods on `Show` consolidate the repeated failure-state field grou
 
 ```swift
 struct ManagedGuideMatcher: Equatable {
-    let seriesAllIDs:    [String: Show]   // bare SeriesID → owner — seriesAll shows (record on any device)
-    let seriesAllTitles: [String: Show]   // bare title → owner — seriesAll shows without a SeriesID
-    let seriesChKeys:    [String: Show]   // "device:SeriesID" → owner — seriesChannel shows (device-scoped)
-    let seriesChTitles:  [String: Show]   // "device:title" → owner — seriesChannel shows without a SeriesID
+    let seriesKeys:      [String: Show]   // "device:SeriesID" → owner — seriesChannel + seriesAll shows (both device-scoped)
+    let seriesTitles:    [String: Show]   // "device:title" → owner — same two states, no SeriesID
     let singleSlotKeys:  [String: Show]   // "device:channel:epoch" → owner — single shows, exact slot
     let datetimeSlotKeys: [String: Show]  // "device:channel:Weekday:HH:MM" → owner — dateTime shows, per allowed day
 
@@ -147,15 +145,17 @@ struct ManagedGuideMatcher: Equatable {
 
 Values are the owning `Show`, not just presence — this is what lets `WebServer.swift` embed a managed block's `data-show-*` edit attributes directly from `owner(for:)` instead of maintaining a second, independently-derived owner lookup (a prior `findManagedShow` helper there did exactly that, and being built differently — no title fallback for series shows — could disagree with the flag about whether a block had a resolvable owner; see `docs/WebServer.md`'s "Managed show data attributes" section).
 
+`seriesChannel` and `seriesAll` shows share `seriesKeys`/`seriesTitles` — both are confined to their assigned tuner (`hdhr_record`), so a series show can never match/mark on more than one tuner at once. The two states differ only in *scheduling* channel scope (which channel(s) on that one tuner `AppState.resolveSeriesAir`/`nextGuideEpisode`/`scheduleNextAir` search for the next episode), not in matching/marking scope here — see CLAUDE.md's "Web guide managed markers are tuner-scoped" invariant. (Previously `seriesAll` used bare, device-agnostic keys and could match/mark on every tuner — fixed alongside the scheduling-side device scoping, see `issues_resolved.md`.)
+
 Matching tiers (in order — `owner(for:)` returns the first match, `isManaged` is `owner(for:) != nil`):
-1. `entry.SeriesID` in `seriesAllIDs` (any device) OR `"device:SeriesID"` in `seriesChKeys` → managed
-2. `entry.Title` in `seriesAllTitles` OR `"device:title"` in `seriesChTitles` → managed
+1. `"device:SeriesID"` in `seriesKeys` → managed
+2. `"device:title"` in `seriesTitles` → managed
 3. `"device:channel:Weekday:HH:MM"` local-time key in `datetimeSlotKeys` → managed (dateTime shows: only on allowed weekdays)
 4. `"device:channel:epoch"` key in `singleSlotKeys` → managed (single shows: exact scheduled slot only)
 
 Tiers 3–4 (the `Calendar.current.dateComponents` call and everything after) are skipped entirely via an early return when both `datetimeSlotKeys` and `singleSlotKeys` are empty — the common case for a guide with only SeriesID-managed shows, and otherwise this ran for every non-managed entry in the grid (the majority of entries) on every rebuild.
 
-All six dictionaries keep the *first* match on a key collision (e.g. two shows sharing a SeriesID, or two shows landing on the identical slot key) rather than trapping or silently overwriting — matching the tolerant dedup a plain `Set` gave before switching from presence-only keys to key→owner maps. `seriesAllIDs`/`seriesAllTitles`/`seriesChKeys`/`seriesChTitles` get this via `Dictionary(_:uniquingKeysWith: { a, _ in a })`; `singleSlotKeys`/`datetimeSlotKeys` are built with a manual loop (`if dict[key] == nil { dict[key] = s }`) since they're populated incrementally per allowed air-day rather than from a single flat mapping, but the collision behavior is the same first-wins semantics.
+All four dictionaries keep the *first* match on a key collision (e.g. two shows sharing a SeriesID on the same device, or two shows landing on the identical slot key) rather than trapping or silently overwriting — matching the tolerant dedup a plain `Set` gave before switching from presence-only keys to key→owner maps. `seriesKeys`/`seriesTitles` get this via `Dictionary(_:uniquingKeysWith: { a, _ in a })`; `singleSlotKeys`/`datetimeSlotKeys` are built with a manual loop (`if dict[key] == nil { dict[key] = s }`) since they're populated incrementally per allowed air-day rather than from a single flat mapping, but the collision behavior is the same first-wins semantics.
 
 `dateTime` shows emit one key per entry in `show_air_date` (e.g. a Wednesday-only show at 4:30 PM local emits only `"device:4.3:Wednesday:16:30"`). A Friday airing of that show at 4:30 PM looks for `"device:4.3:Friday:16:30"` and finds nothing — no yellow diamond. If `show_air_date` is empty, keys are emitted for all 7 days. `single` shows use the epoch so only the specific airing is flagged.
 
@@ -234,4 +234,6 @@ Format: `[2026-05-25T04:01:24Z] [INFO] message`
 
 `logFilePath` is a module-level `let` constant. Writes are dispatched onto a serial `logQueue` (`DispatchQueue`, `.utility` QoS) onto a shared `RotatingLogFile` instance, which keeps a single `FileHandle` open across calls — no open/close overhead per write. Safe to call from any actor or thread. All source files use `glog`; no `print()` calls anywhere.
 
-**Rotation**: `RotatingLogFile` (also in `Models.swift`) caps `logFilePath` at 20 MB — sized off the file's measured real-world rate (~1.2 MB/day, ~11,700 `glog()` lines/day), giving roughly 2.5 weeks live plus 2.5 weeks in a kept prior generation. On hitting the cap it closes the handle, moves the current file to `hdhrVCRplus.log.1` (overwriting any existing one), and reopens fresh at `logFilePath`. `discordLog()` (`DiscordNotifier.swift`) uses the same class against `hdhrVCRplus-discord.log` with its own smaller 5 MB cap (that file runs at ~1% of the main log's volume). `RecordingManager`'s verbose-curl-logging feature also targets `logFilePath` (`curlLogPath == logFilePath`) via a separate raw `posix_spawn` file descriptor for curl's own `-v` stderr, independent of `glog()`'s queue — see `docs/RecordingManager.md`'s "Verbose curl Logging" section for that path's own history with rotation.
+**Rotation**: `RotatingLogFile` (also in `Models.swift`) caps `logFilePath` at 20 MB — sized off the file's measured real-world rate (~1.2 MB/day, ~11,700 `glog()` lines/day), giving roughly 2.5 weeks live plus 2.5 weeks in a kept prior generation. On hitting the cap it closes the handle, moves the current file to `hdhrVCRplus.log.1` (overwriting any existing one), and reopens fresh at `logFilePath`. `bytesWritten` only advances when `handle` is non-nil — i.e. only for bytes that actually made it to disk — so a transient `open()` failure (full disk, brief permissions issue) can't trigger a phantom rotation against a file that never grew. `discordLog()` (`DiscordNotifier.swift`) uses the same class against `hdhrVCRplus-discord.log` with its own smaller 5 MB cap (that file runs at ~1% of the main log's volume).
+
+`RecordingManager`'s verbose-curl-logging feature targets its own separate file, `curlVerboseLogFilePath` (`hdhrVCRplus-curl.log`, 5 MB cap), via a raw `posix_spawn` file descriptor for curl's own `-v` stderr — independent of `glog()`'s queue and of `RotatingLogFile` entirely, since curl's direct-fd writes are invisible to that class's byte counter. Capped instead by `rotateCurlVerboseLogIfNeeded()` (also in `Models.swift`), which stats the file and renames it (not truncates) once per verbose recording start rather than per line — see `docs/RecordingManager.md`'s "Verbose curl Logging" section for the full mechanism and why this file used to (incorrectly) share `logFilePath`.

@@ -23,10 +23,11 @@ function isLM(){return document.documentElement.classList.contains('lm');}
 // normal one. No manual toggle, no persisted preference: isVT() and guide-vertical.css's
 // @media (orientation:portrait) block both key off the same matchMedia query, so CSS layout
 // and this file's scroll/now-line math always agree on which mode is actually on screen.
-// _vtEligible is baked in server-side per route (WebServer.swift's includeVerticalCSS) — true
-// only on GET /vertical. GET / never sends the vertical <style> block at all, so without this
-// flag isVT() would say true (orientation alone) while the CSS never actually transposed
-// anything, desyncing this file's scroll math from what's really on screen.
+// _vtEligible is baked in server-side per route (WebServer.swift's includeVerticalCSS, AND only
+// when the vertical stylesheet template actually loaded) — true only on GET /vertical, and only
+// when the CSS it depends on is really embedded. GET / never sends the vertical <style> block at
+// all, so without this flag isVT() would say true (orientation alone) while the CSS never
+// actually transposed anything, desyncing this file's scroll math from what's really on screen.
 var _vtEligible={{VT_ELIGIBLE}};
 var _orientMq=window.matchMedia('(orientation: portrait)');
 function isVT(){return _vtEligible&&_orientMq.matches;}
@@ -35,7 +36,19 @@ function isVT(){return _vtEligible&&_orientMq.matches;}
 // observer's margin (set once by initRowObserver, keyed to the axis at call time) don't
 // re-derive themselves — without this listener they'd stay wrong until updateNowLine's next
 // 60s tick or the next refreshGuide() DOM swap re-runs initRowObserver().
-_orientMq.addEventListener('change',function(){updateNowLine();initRowObserver();syncHdrPin();});
+// _vtEligible-gated work: only a VT-eligible route (GET /vertical) can actually flip CSS
+// layout on rotation, so only there does gw.scrollTop/scrollLeft's *meaning* invert (rows
+// become columns or vice versa) and only there does initRowObserver's rootMargin (keyed to
+// isVT()) actually change — on GET / it's always the same value, so rebuilding the
+// IntersectionObserver there is pure waste. scrollToNow() replaces the stale, axis-flipped
+// scroll offset with a fresh one for whichever axis is now live, rather than leaving it to be
+// misread under the new layout. updateNowLine()/syncHdrPin() still run unconditionally: the
+// former's "nudge back toward center" check depends on the viewport dimensions a rotation
+// just changed even in horizontal mode, and the latter is a cheap no-op there anyway.
+_orientMq.addEventListener('change',function(){
+  if(_vtEligible){scrollToNow();initRowObserver();}
+  updateNowLine();syncHdrPin();
+});
 var _gcDk={drama:'hsl(216,48%,35%)',comedy:'hsl(47,48%,35%)',news:'hsl(342,43%,35%)',sports:'hsl(119,48%,31%)',reality:'hsl(25,48%,35%)',movie:'hsl(270,58%,38%)',talk:'hsl(173,43%,34%)',children:'hsl(315,43%,35%)',crime:'hsl(0,55%,33%)',romance:'hsl(333,50%,37%)',thriller:'hsl(238,48%,38%)',action:'hsl(12,52%,35%)',mystery:'hsl(255,52%,38%)',doc:'hsl(202,48%,35%)',science:'hsl(188,52%,33%)',nature:'hsl(82,50%,33%)',history:'hsl(28,50%,34%)',music:'hsl(287,52%,37%)',food:'hsl(52,52%,34%)',travel:'hsl(182,48%,33%)',gameshow:'hsl(58,55%,34%)',home:'hsl(35,46%,33%)',health:'hsl(148,50%,32%)',faith:'hsl(65,48%,32%)'};
 var _gcLk={drama:'hsl(216,55%,88%)',comedy:'hsl(47,65%,88%)',news:'hsl(342,55%,88%)',sports:'hsl(119,60%,87%)',reality:'hsl(25,65%,88%)',movie:'hsl(270,62%,90%)',talk:'hsl(173,55%,87%)',children:'hsl(315,60%,88%)',crime:'hsl(0,60%,68%)',romance:'hsl(333,55%,70%)',thriller:'hsl(238,52%,70%)',action:'hsl(12,57%,68%)',mystery:'hsl(255,57%,70%)',doc:'hsl(202,52%,68%)',science:'hsl(188,57%,66%)',nature:'hsl(82,55%,66%)',history:'hsl(28,55%,68%)',music:'hsl(287,57%,70%)',food:'hsl(52,58%,68%)',travel:'hsl(182,52%,66%)',gameshow:'hsl(58,62%,68%)',home:'hsl(35,50%,68%)',health:'hsl(148,55%,66%)',faith:'hsl(65,53%,66%)'};
 function gc(g){var lo=(g||'').toLowerCase();lo=_ggAlias[lo]||lo;var m=isLM()?_gcLk:_gcDk;return m[lo]||(isLM()?'#d8d8d8':'#424242');}
@@ -46,6 +59,7 @@ function heJs(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').rep
 var _bonusMins={{SPORTS_PADDING_MINUTES}};
 var _bonusEnabled={{SPORTS_PADDING_ENABLED}};
 var _sigEnabled={{SIGNAL_QUALITY_ENABLED}};
+var _dupEnabled={{SKIP_DUP_ENABLED}};
 var _defaultTranscode='{{DEFAULT_TRANSCODE}}';
 function triggerSb(id){var el=document.getElementById(id);if(!el)return;el.classList.remove('sb-anim');void el.offsetWidth;el.classList.add('sb-anim');}
 function toggleBonusStar(){var chk=document.getElementById('em-bonus');var star=document.getElementById('em-bonus-star');if(chk.checked){star.textContent='+'+_bonusMins+'m';star.style.display='inline-flex';triggerSb('em-bonus-star');}else{star.style.display='none';star.classList.remove('sb-anim');}}
@@ -424,7 +438,8 @@ function doEditFromGuide(){
     recording:sd.showRecording||'0', length:sd.showLength||'60',
     bonus:sd.showBonus||'0', transcode:sd.showTranscode||'none',
     seriesid:sd.showSeriesid||'', airdays:sd.showAirdays||'',
-    failcount:sd.showFailcount||'0', failreason:sd.showFailreason||''
+    failcount:sd.showFailcount||'0', failreason:sd.showFailreason||'',
+    ignoredup:sd.showIgnoredup||'0'
   }});
 }
 function doDelete(){
@@ -664,6 +679,13 @@ function toggleDay(btn){
   if(btn.classList.contains('sel')&&document.querySelectorAll('#em-days .day-btn.sel').length<=1)return;
   btn.classList.toggle('sel');
 }
+// Mirrors the native Add/Edit dialog's "Record even if already on disk" toggle
+// (show_ignore_duplicate_once) — only meaningful for series types, and only when the
+// server-side settings that make duplicate-skipping possible are both on.
+function updateDupVisibility(){
+  var show=_dupEnabled&&(_editType==='seriesChannel'||_editType==='seriesAll');
+  document.getElementById('em-dup-row').style.display=show?'flex':'none';
+}
 function openEditShow(el){
   var d=el.dataset;
   _editId=d.id;_editPaused=d.paused==='1';_editRec=d.recording==='1';_editType=d.type||'single';
@@ -671,7 +693,7 @@ function openEditShow(el){
   document.getElementById('em-ch-in').value=d.ch||'';
   document.getElementById('em-len-in').value=d.length||'60';
   renderTypeRow('em-type-opts','em-type-desc',_editType,function(v){
-    _editType=v;updateDaysVisibility();
+    _editType=v;updateDaysVisibility();updateDupVisibility();
   });
   var selDays=(d.airdays||'').split(',').filter(Boolean);
   var daysEl=document.getElementById('em-days');daysEl.innerHTML='';
@@ -688,6 +710,8 @@ function openEditShow(el){
   if(d.bonus==='1'){ebstar.style.display='inline-flex';triggerSb('em-bonus-star');}else{ebstar.style.display='none';ebstar.classList.remove('sb-anim');}
   document.getElementById('em-bonus-row').style.display=(!_editRec&&_bonusEnabled)?'flex':'none';
   document.getElementById('em-transcode').value=d.transcode||'none';
+  document.getElementById('em-dup').checked=d.ignoredup==='1';
+  updateDupVisibility();
   var sid=d.seriesid||'';
   var sidRow=document.getElementById('em-sid-row');
   if(sid){document.getElementById('em-sid').textContent=sid;sidRow.style.display='block';}
@@ -745,7 +769,8 @@ function confirmEdit(){
     length:parseInt(document.getElementById('em-len-in').value)||60,
     bonusTime:document.getElementById('em-bonus').checked,
     transcode:document.getElementById('em-transcode').value,
-    airDays:selDays
+    airDays:selDays,
+    ignoreDuplicateOnce:document.getElementById('em-dup').checked
   };
   postJSON('/api/edit',payload)
   .then(function(r){return r.json();})
@@ -824,7 +849,6 @@ function initRowObserver(){
 }
 initRowObserver();
 function applyGenreDim(){
-  document.querySelectorAll('.g-prog.g-prog-dim').forEach(function(p){p.classList.remove('g-prog-dim');});
   var f=_genreFilter.toLowerCase();
   var infMode=f==='__inf';
   var newMode=f==='__new';
@@ -835,7 +859,11 @@ function applyGenreDim(){
     if(newMode){dim=!isNew;}
     else if(infMode){dim=!isInf;}
     else{dim=(f&&(p.dataset.genre||'').toLowerCase()!==f)||isInf;}
-    if(dim)p.classList.add('g-prog-dim');
+    p.classList.toggle('g-prog-dim',dim);
+    // Dimmed cells are pointer-events:none (CSS) already; mirror that for keyboard/screen-reader
+    // reachability too, so a filtered-out show isn't tab-focusable or announced as if it were live.
+    p.tabIndex=dim?-1:0;
+    if(dim)p.setAttribute('aria-hidden','true');else p.removeAttribute('aria-hidden');
   });
 }
 function setDev(id){
@@ -894,12 +922,14 @@ rebuildGenreFilter();
 // scrollToNow + live now-line: recompute position from winStart/winSec every 30 s
 var _winStart={{WIN_START}},_winSec={{WIN_SEC}};
 function nowPct(){return Math.max(0,Math.min(100,(Math.floor(Date.now()/1000)-_winStart)/_winSec*100));}
-// Sticky channel-column width — read live from CSS (--ch-w) rather than hardcoded, since
-// the small-screen breakpoint in guide.css overrides it and .gi's scrollWidth includes it.
-function chW(){return parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ch-w'))||125;}
-// Sticky channel-header height (vertical time-axis mode's counterpart to chW()) — reads
-// --ch-h, which .g-ch/.g-hdr-ch use as their height when isVT() is true.
-function chH(){return parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ch-h'))||52;}
+// Reads a CSS custom property live off <html> rather than hardcoding its value, since
+// breakpoints (guide.css's/guide-vertical.css's small-screen overrides) can change it.
+function cssVar(name,fallback){return parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name))||fallback;}
+// Sticky channel-column width — .gi's scrollWidth includes it.
+function chW(){return cssVar('--ch-w',125);}
+// Sticky channel-header height (vertical time-axis mode's counterpart to chW()) — --ch-h is
+// what .g-ch/.g-hdr-ch use as their height when isVT() is true.
+function chH(){return cssVar('--ch-h',52);}
 function updateNowLine(){
   var p=nowPct(),vt=isVT();
   document.querySelectorAll('.g-now-bar,.g-now-tick').forEach(function(el){
@@ -1097,6 +1127,9 @@ setInterval(updateNowLine,60000);
     }
   }
   gw.addEventListener('scroll',check,{passive:true});
+  // Rotation flips which of gw.scrollTop/scrollLeft check() reads (via isVT()) — the 5s poll
+  // eventually catches up, but resyncing immediately avoids a visibly-stale button in the meantime.
+  _orientMq.addEventListener('change',check);
   setInterval(check,5000);
   check();
 })();
@@ -1122,6 +1155,10 @@ setInterval(updateNowLine,60000);
   }
   gw.addEventListener('scroll',syncThumb,{passive:true});
   window.addEventListener('resize',syncThumb);
+  // Belt-and-suspenders alongside the resize listener above — orientationchange and resize
+  // don't fire in a strictly guaranteed order/timing across browsers, and syncThumb() itself
+  // is idempotent, so an explicit rotation listener removes any doubt about a stale thumb.
+  _orientMq.addEventListener('change',syncThumb);
   syncThumb();
   var _dragX,_dragSL;
   thumb.addEventListener('mousedown',function(e){

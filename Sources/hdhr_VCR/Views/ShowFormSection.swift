@@ -147,15 +147,14 @@ struct ShowFormSection: View {
         }
         .task(id: duplicateCheckKey) {
             // Debounce: .task(id:) cancels the previous task on every id change, i.e. every
-            // keystroke in Title — the disk scan behind duplicateEpisodeTag runs on the main
-            // actor (recordedEpisodeTags does synchronous FileManager calls with no offloading),
-            // which can block the whole app for real wall-clock time if the recording folder is
-            // on a slow-to-wake external drive. Waiting briefly first means a burst of keystrokes
-            // only scans once, after typing pauses, instead of on every character.
+            // keystroke in Title. Waiting briefly first means a burst of keystrokes only scans
+            // once, after typing pauses, instead of on every character. The scan itself (behind
+            // duplicateEpisodeTag) now runs off @MainActor via a detached task, so a slow-to-wake
+            // external drive stalls only this debounced check, not the whole app.
             try? await Task.sleep(for: .milliseconds(350))
             guard !Task.isCancelled else { return }
-            duplicateTag = state.duplicateEpisodeTag(for: show, isSeries: seriesType.isSeries,
-                                                      baseDir: recordFolder?.path ?? "")
+            duplicateTag = await state.duplicateEpisodeTag(for: show, isSeries: seriesType.isSeries,
+                                                            baseDir: recordFolder?.path ?? "")
         }
     }
 }

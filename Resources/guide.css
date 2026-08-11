@@ -82,7 +82,10 @@ html.lm #sum-del.danger{background:#fcd4d4!important;color:#8b0000!important;bor
 html.lm .sum-tag{color:rgba(0,0,0,.7)}
 #sum-grad{background:linear-gradient(to right,rgba(0,0,0,.35),rgba(0,0,0,.05));padding:8px 10px!important;gap:1px!important}
 html.lm #sum-grad{background:linear-gradient(to right,rgba(0,0,0,.04),transparent)}
-#sum-poster{width:72px!important;min-width:72px!important;object-fit:contain!important;background:#888}
+/* height/max-height bound both axes (not just width) — object-fit:contain letterboxes any
+   aspect ratio inside this fixed box instead of stretching the summary bar to fit a tall
+   poster. 16:9 matches the aspect that already rendered correctly here before this fix. */
+#sum-poster{width:72px!important;min-width:72px!important;height:41px!important;max-height:41px!important;object-fit:contain!important;background:#888}
 html.lm #sum-poster{background:#ccc}
 #sum-actions{margin-top:3px!important}
 @media(max-width:600px){
@@ -90,11 +93,11 @@ html.lm #sum-poster{background:#ccc}
   #sum-grad{padding:6px 8px!important}
 }
 @media(min-width:601px)and(max-width:960px){
-  #sum-poster{width:56px!important;min-width:56px!important}
+  #sum-poster{width:56px!important;min-width:56px!important;height:32px!important;max-height:32px!important}
   #sum-syn{display:none!important}
 }
 @media(min-width:961px){
-  #sum-poster{width:260px!important;min-width:260px!important;object-fit:contain!important;align-self:center!important}
+  #sum-poster{width:260px!important;min-width:260px!important;height:146px!important;max-height:146px!important;object-fit:contain!important;align-self:center!important}
 }
 /* Landscape phones (short viewport height, not narrow width — the width brackets above
    don't catch this). #sum is pinned above the scrollable grid on purpose (never part of

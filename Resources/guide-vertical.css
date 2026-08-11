@@ -53,7 +53,11 @@ html .g-now-tick{left:0;right:0;width:auto;top:var(--gs);bottom:auto;height:2px}
    — "130px auto" is invalid (a lone trailing "auto" needs its own length) and browsers resolve
    it to 130px on BOTH axes, which under content-visibility:auto collapses an off-screen
    column's placeholder to 130px tall instead of the real ~GUIDE_MIN_HEIGHT-tall column,
-   causing a squash-then-snap flash as it scrolls into view. Two explicit groups fixes it. */
+   causing a squash-then-snap flash as it scrolls into view. Two explicit groups fixes it.
+   The width group uses var(--ch-w) — matching .g-row's own width below — rather than a second
+   hardcoded number, so it can't drift out of sync with --ch-w's small-screen override (see the
+   max-width:600px block further down): a stale hardcoded width here reintroduces exactly the
+   same squash-then-snap flash this comment describes, just on the width axis instead. */
 /* Explicit width (mirrors .g-hdr's) rather than leaving .g-row to size from its children's
    content — .g-ch below sets width:100%, and a percentage against an indefinite containing
    block resolves unpredictably (observed: some channels' logo/name collapsing to nothing)
@@ -67,7 +71,7 @@ html .g-now-tick{left:0;right:0;width:auto;top:var(--gs);bottom:auto;height:2px}
    ~50+ program blocks — since the single small header cell never needed it. */
 html .g-row{flex-direction:column;width:var(--ch-w);min-width:var(--ch-w);border-bottom:none;border-right:1px solid var(--b0);flex-shrink:0;content-visibility:visible}
 html .g-row:last-child{border-right:none}
-html .g-row>.g-tl{content-visibility:auto;contain-intrinsic-size:auto 130px auto {{GUIDE_MIN_HEIGHT}}px}
+html .g-row>.g-tl{content-visibility:auto;contain-intrinsic-size:auto var(--ch-w) auto {{GUIDE_MIN_HEIGHT}}px}
 html .g-fav-sep{flex-direction:column;border-bottom:none;border-right:1px solid var(--b0);flex-shrink:0;width:12px;min-width:12px}
 /* A rotated "FAVORITES" word (writing-mode:vertical-rl) needs a head-tilt to read and felt
    cramped at this column's width, and a lone star still read as stray clutter at a glance —
@@ -90,12 +94,12 @@ html .g-prog{left:3px;right:3px;width:auto;top:var(--gs);height:var(--gw);bottom
 html #g-hscroll{display:none}
 }
 /* ── Small-phone refinement: vertical mode's channel columns sit side by side (often several
-   at once) rather than horizontal mode's single sticky column, so the same 86px small-screen
+   at once) rather than horizontal mode's single sticky column, so the same 100px small-screen
    --ch-w (guide.css's own @media(max-width:600px) block) that's fine as one column is too
    tight here — channel name/number text could overflow into the neighboring column. Bumped
    up a bit and the text shrunk to match, with an ellipsis fallback for names still too long
    to fit. Scoped to max-width:600px (not just portrait) so portrait tablets — which never hit
-   guide.css's 86px shrink and are already comfortable at the base 125px — are left alone.
+   guide.css's 100px shrink and are already comfortable at the base 125px — are left alone.
    html:root (not bare :root) keeps a specificity margin over guide.css's own :root rule for
    the same variable, rather than relying on source order alone. ── */
 @media (orientation: portrait) and (max-width: 600px) {

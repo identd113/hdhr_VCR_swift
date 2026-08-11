@@ -52,6 +52,12 @@ final class WebServer: @unchecked Sendable {
     // of one shared page toggled by a class/route.
     private var cachedVerticalHTML: Data? = nil
     private var cachedVerticalHTMLGzip: Data? = nil
+    // /vertical only matters for portrait-orientation mobile browsers — a much smaller (often
+    // zero) slice of traffic than GET /. Sticky for the process lifetime once true: set by the
+    // /vertical route handler on its first hit, checked by prebuildPageHTML to decide whether
+    // building/gzip'ing the vertical variant is worth doing on this and future rebuilds, instead
+    // of paying that cost on every guide-changing event for installs that never see it requested.
+    private var verticalRouteEverRequested = false
 
     // App icon rendered once as 72×72 PNG; reused on every /api/icon request.
     private lazy var cachedIconPNG: Data? = {
@@ -138,12 +144,41 @@ final class WebServer: @unchecked Sendable {
         // Computed once (it's the expensive part — 1300+ program blocks) and reused for both
         // variants below, which differ only in their <head>/<style>, not the grid itself.
         let grid = prebuiltGrid ?? buildGuideGridHTML(state: state)
+        // These two still have to run serially — buildHTML reads MainActor-isolated `state`.
         let html = Data(buildHTML(state: state, prebuiltGrid: grid, includeVerticalCSS: false).utf8)
-        cachedHTML     = html
-        cachedHTMLGzip = Self.gzip(html)
+        // Skip building/caching the vertical variant on installs that have never actually hit
+        // /vertical (see verticalRouteEverRequested) — no point paying for it on every rebuild
+        // when nobody's asked for it. The route handler builds it live (and flips the flag) on
+        // its own first hit.
+        guard verticalRouteEverRequested else {
+            cachedHTML = html
+            cachedHTMLGzip = Self.gzip(html)
+            cachedVerticalHTML = nil
+            cachedVerticalHTMLGzip = nil
+            let gzKB = (cachedHTMLGzip?.count ?? 0) / 1024
+            glog("[WebServer] page HTML cached (\(html.count / 1024)KB, \(gzKB)KB gzip'd)")
+            return
+        }
         let vHtml = Data(buildHTML(state: state, prebuiltGrid: grid, includeVerticalCSS: true).utf8)
+        // Self.gzip only touches plain Data, so — unlike the builds above — the two compressions
+        // are independent and can run concurrently instead of doubling this function's blocking
+        // time on @MainActor for every guide-changing broadcast (add/delete/pause/resume/edit/
+        // favorite-toggle/recording start-stop). Each concurrentPerform iteration writes a
+        // distinct, non-overlapping pointer slot, so this is safe despite the raw pointer not
+        // itself being Sendable-checked — wrapped below to state that guarantee explicitly.
+        struct UncheckedSendableBox<T>: @unchecked Sendable { let ptr: UnsafeMutablePointer<T> }
+        let payloads = [html, vHtml]
+        let rawResults = UnsafeMutablePointer<Data?>.allocate(capacity: 2)
+        rawResults.initialize(repeating: nil, count: 2)
+        defer { rawResults.deinitialize(count: 2); rawResults.deallocate() }
+        let box = UncheckedSendableBox(ptr: rawResults)
+        DispatchQueue.concurrentPerform(iterations: 2) { i in
+            box.ptr[i] = Self.gzip(payloads[i])
+        }
+        cachedHTML             = html
+        cachedHTMLGzip         = rawResults[0]
         cachedVerticalHTML     = vHtml
-        cachedVerticalHTMLGzip = Self.gzip(vHtml)
+        cachedVerticalHTMLGzip = rawResults[1]
         let gzKB = (cachedHTMLGzip?.count ?? 0) / 1024
         glog("[WebServer] page HTML cached (\(html.count / 1024)KB, \(gzKB)KB gzip'd)")
     }
@@ -695,7 +730,19 @@ final class WebServer: @unchecked Sendable {
             if let html = cachedVerticalHTML, let gz = cachedVerticalHTMLGzip {
                 return .okPrecompressed(contentType: "text/html; charset=utf-8", raw: html, gzip: gz)
             }
+            // Nothing cached — either the very first hit ever (prebuildPageHTML skips this
+            // variant until verticalRouteEverRequested flips true) or a hit landing in the
+            // window between that flip and the next rebuild. Build+gzip once here, cache it
+            // immediately so subsequent hits before the next rebuild are also served from
+            // cache, and flag that this route has real traffic.
+            verticalRouteEverRequested = true
             let body = Data(buildHTML(state: state, includeVerticalCSS: true).utf8)
+            let gz = Self.gzip(body)
+            cachedVerticalHTML = body
+            cachedVerticalHTMLGzip = gz
+            if let gz {
+                return .okPrecompressed(contentType: "text/html; charset=utf-8", raw: body, gzip: gz)
+            }
             return .ok(contentType: "text/html; charset=utf-8", body: body)
 
         case "/api/ping":
@@ -967,6 +1014,10 @@ final class WebServer: @unchecked Sendable {
         }
         if let bonus = obj["bonusTime"] as? Bool { updated.show_bonus_time = bonus }
         if let transcode = obj["transcode"] as? String { updated.show_transcode = transcode }
+        // Web-guide escape hatch for the "will skip — already on disk" state (see docs/WebServer.md's
+        // "Duplicate-episode override" note) — mirrors the native Add/Edit dialog's
+        // show_ignore_duplicate_once toggle so a duplicate flagged in the browser isn't a dead end.
+        if let ignoreDup = obj["ignoreDuplicateOnce"] as? Bool { updated.show_ignore_duplicate_once = ignoreDup }
         // Recording output directory is deliberately NOT settable from the web UI. This endpoint has
         // no auth beyond LAN-subnet matching, so accepting an arbitrary write path from any LAN host
         // is a security risk (redirecting where recordings land). Directory changes require local app
@@ -1035,7 +1086,7 @@ final class WebServer: @unchecked Sendable {
             let t = showTypeStr(s)
             let ad = s.show_air_date.joined(separator: ",")
             let nextEpoch = s.show_next.map { Int($0.timeIntervalSince1970) } ?? 0
-            let da = "data-dev=\"\(he(s.hdhr_record))\" data-id=\"\(he(s.show_id))\" data-title=\"\(he(s.show_title))\" data-ch=\"\(he(s.show_channel))\" data-type=\"\(t)\" data-paused=\"\(s.show_paused ? 1 : 0)\" data-recording=\"\(recording ? 1 : 0)\" data-next=\"\(nextEpoch)\" data-length=\"\(s.show_length)\" data-bonus=\"\(s.show_bonus_time ? 1 : 0)\" data-transcode=\"\(he(s.show_transcode))\" data-seriesid=\"\(he(s.show_seriesid))\" data-airdays=\"\(he(ad))\" data-failcount=\"\(s.show_fail_count)\" data-failreason=\"\(he(s.show_fail_reason))\""
+            let da = "data-dev=\"\(he(s.hdhr_record))\" data-id=\"\(he(s.show_id))\" data-title=\"\(he(s.show_title))\" data-ch=\"\(he(s.show_channel))\" data-type=\"\(t)\" data-paused=\"\(s.show_paused ? 1 : 0)\" data-recording=\"\(recording ? 1 : 0)\" data-next=\"\(nextEpoch)\" data-length=\"\(s.show_length)\" data-bonus=\"\(s.show_bonus_time ? 1 : 0)\" data-transcode=\"\(he(s.show_transcode))\" data-seriesid=\"\(he(s.show_seriesid))\" data-airdays=\"\(he(ad))\" data-failcount=\"\(s.show_fail_count)\" data-failreason=\"\(he(s.show_fail_reason))\" data-ignoredup=\"\(s.show_ignore_duplicate_once ? 1 : 0)\""
             let endDetail = recording ? s.show_end.map { " · Ends \(state.shortTime($0))" } ?? "" : ""
             let chLine = chDetail.isEmpty
                 ? "Ch \(he(s.show_channel))\(endDetail)"
@@ -1138,7 +1189,7 @@ final class WebServer: @unchecked Sendable {
             var s = "<div class=\"tuner-box\(active ? "" : " tuner-off")\">"
             s += "<div class=\"tuner-row\">"
             if active {
-                s += "<button class=\"d-btn\" data-dev=\"\(he(devId))\" onclick=\"setDev(this.dataset.dev)\">\(label)</button>"
+                s += "<button class=\"d-btn\" data-dev=\"\(he(devId))\" onclick=\"setDev(this.dataset.dev)\" aria-label=\"Switch guide to tuner \(label)\">\(label)</button>"
             } else {
                 s += "<span class=\"d-btn d-btn-off\" title=\"Not detected — recordings assigned here will fail until it returns\">\(label)</span>"
             }
@@ -1428,14 +1479,18 @@ final class WebServer: @unchecked Sendable {
                     let showDA: String = {
                         guard let s = owner else { return "" }
                         let ad = s.show_air_date.joined(separator: ",")
-                        return " data-show-id=\"\(he(s.show_id))\" data-show-type=\"\(showTypeStr(s))\" data-show-paused=\"\(s.show_paused ? 1 : 0)\" data-show-length=\"\(s.show_length)\" data-show-bonus=\"\(s.show_bonus_time ? 1 : 0)\" data-show-transcode=\"\(he(s.show_transcode))\" data-show-seriesid=\"\(he(s.show_seriesid))\" data-show-airdays=\"\(he(ad))\" data-show-failcount=\"\(s.show_fail_count)\" data-show-failreason=\"\(he(s.show_fail_reason))\" data-show-recording=\"\(s.show_recording ? 1 : 0)\""
+                        return " data-show-id=\"\(he(s.show_id))\" data-show-type=\"\(showTypeStr(s))\" data-show-paused=\"\(s.show_paused ? 1 : 0)\" data-show-length=\"\(s.show_length)\" data-show-bonus=\"\(s.show_bonus_time ? 1 : 0)\" data-show-transcode=\"\(he(s.show_transcode))\" data-show-seriesid=\"\(he(s.show_seriesid))\" data-show-airdays=\"\(he(ad))\" data-show-failcount=\"\(s.show_fail_count)\" data-show-failreason=\"\(he(s.show_fail_reason))\" data-show-recording=\"\(s.show_recording ? 1 : 0)\" data-show-ignoredup=\"\(s.show_ignore_duplicate_once ? 1 : 0)\""
                     }()
                     // XMLTV tags paid programming explicitly via <category>Shop/Shopping</category> —
                     // unlike guide.php's ambiguous empty Filter[], this is a reliable signal on its own,
                     // catching new infomercials the SeriesID blocklist hasn't been taught yet.
                     let isShopCategory = (e.Filter ?? []).contains { $0.caseInsensitiveCompare("Shop") == .orderedSame || $0.caseInsensitiveCompare("Shopping") == .orderedSame }
                     let infDA = (infSIDs.contains(e.SeriesID ?? "") || e.Title == "Paid Programming" || isShopCategory) ? " data-inf=\"1\"" : ""
-                    blockParts.append("<div class=\"\(cls)\" style=\"--gs:\(pct(cs))%;--gw:\(pct(ce - cs))%\(extraStyle)\" title=\"\(tip)\" \(da)\(showDA)\(infDA)\(newAttr)\(skipAttr) onclick=\"showInfo(this)\"><div class=\"g-pi\">\(titleHTML)\(subH)</div></div>")
+                    // role/tabindex/aria-label/onkeydown: the grid has no other accessible way to reach
+                    // or identify a show — these divs carry all the real interaction. aria-label reuses
+                    // `tip` (already he()-escaped, already "Title · Episode (time) — status") rather than
+                    // building a second description that could drift from the tooltip's wording.
+                    blockParts.append("<div class=\"\(cls)\" style=\"--gs:\(pct(cs))%;--gw:\(pct(ce - cs))%\(extraStyle)\" title=\"\(tip)\" role=\"button\" tabindex=\"0\" aria-label=\"\(tip)\" \(da)\(showDA)\(infDA)\(newAttr)\(skipAttr) onclick=\"showInfo(this)\" onkeydown=\"if(event.key==='Enter'||event.key===' '){event.preventDefault();showInfo(this);}\"><div class=\"g-pi\">\(titleHTML)\(subH)</div></div>")
                 }
 
                 let gnameAttr = ChannelSignalStore.key(for: ch.GuideName)
@@ -1453,8 +1508,8 @@ final class WebServer: @unchecked Sendable {
                 }()
                 let favAttr = ch.isFavorite ? " data-fav=\"1\"" : ""
                 let favBtn  = ch.isFavorite
-                    ? "<button class=\"g-fav-btn\" data-fav=\"1\" onclick=\"toggleFav(event,this)\" title=\"Remove from favorites\">★</button>"
-                    : "<button class=\"g-fav-btn\" onclick=\"toggleFav(event,this)\" title=\"Add to favorites\">☆</button>"
+                    ? "<button class=\"g-fav-btn\" data-fav=\"1\" onclick=\"toggleFav(event,this)\" title=\"Remove from favorites\" aria-label=\"Remove from favorites\">★</button>"
+                    : "<button class=\"g-fav-btn\" onclick=\"toggleFav(event,this)\" title=\"Add to favorites\" aria-label=\"Add to favorites\">☆</button>"
                 let rowHTML = "<div class=\"g-row\" data-dev=\"\(he(device.DeviceID))\" data-ch=\"\(he(ch.GuideNumber))\" data-gname=\"\(he(gnameAttr))\"\(favAttr)><div class=\"g-ch\">\(logoHTML)<div class=\"g-cl\"><span class=\"g-cn\">\(he(chLabel))\(sigHTML)</span><span class=\"g-cname\">\(he(ch.GuideName))</span></div>\(favBtn)</div><div class=\"g-tl\">\(blockParts.joined())</div></div>"
                 if ch.isFavorite { favRows.append(rowHTML) } else { otherRows.append(rowHTML) }
             }
@@ -1476,11 +1531,12 @@ final class WebServer: @unchecked Sendable {
     @MainActor
     private func buildHTML(state: AppState, prebuiltGrid: String? = nil, includeVerticalCSS: Bool) -> String {
         let (winStart, winSec) = guideWindow(state: state)   // winStart needed for _winStart JS literal
-        let guideMinWidth = max(1200, winSec / 1800 * 100)
+        let halfHourSlots = winSec / 1800
+        let guideMinWidth = max(1200, halfHourSlots * 100)
         // Vertical time-axis mode's per-column timeline height — same shape as guideMinWidth but
         // a smaller px/30min constant, since each column only needs to be tall enough for legible
         // stacked program blocks, not wide enough for side-by-side ones.
-        let guideMinHeight = max(1600, winSec / 1800 * 70)
+        let guideMinHeight = max(1600, halfHourSlots * 70)
         let gridInner   = prebuiltGrid ?? buildGuideGridHTML(state: state)
         // Capture recording shows once — used by recsByDevJS below.
         let recording   = state.recordingShows
@@ -1605,13 +1661,22 @@ final class WebServer: @unchecked Sendable {
             ("SPORTS_PADDING_MINUTES", String(state.config.Sports_padding_minutes)),
             ("SPORTS_PADDING_ENABLED", String(state.config.Sports_padding_enabled)),
             ("SIGNAL_QUALITY_ENABLED", String(state.config.Signal_quality_enabled)),
+            ("SKIP_DUP_ENABLED", String(state.config.Series_subfolder_enabled && state.config.Skip_recorded_episodes)),
             ("DEFAULT_TRANSCODE", validTranscode),
             ("DEFAULT_DEV", jsEscapeForScript(defaultDev)),
             ("WIN_START", String(winStart)),
             ("WIN_SEC", String(winSec)),
             ("APP_VERSION", appVersion),
             ("VER_EXP_TS", String(verExpTs)),
-            ("VT_ELIGIBLE", includeVerticalCSS ? "true" : "false")
+            // Also requires cachedGuideVerticalCSS to have actually loaded — includeVerticalCSS
+            // alone just means "this is the /vertical route," not "the vertical stylesheet is
+            // really embedded." If the template failed to load, verticalStyleBlock above falls
+            // back to an empty comment with no @media(orientation:portrait) rules at all, so
+            // guide.js's isVT() must stay false too — otherwise it'd compute transposed-layout
+            // scroll/now-line math (chH(), swapped IntersectionObserver margin, syncHdrPin) against
+            // a grid CSS never actually transposed, garbling the page instead of degrading to the
+            // plain horizontal layout the missing stylesheet leaves it rendering as.
+            ("VT_ELIGIBLE", (includeVerticalCSS && cachedGuideVerticalCSS != nil) ? "true" : "false")
         ])
         if cachedGuideCSS == nil { glog("[WebServer] guide.css template missing — check Resources/ deploy", level: .warning) }
         if includeVerticalCSS && cachedGuideVerticalCSS == nil { glog("[WebServer] guide-vertical.css template missing — check Resources/ deploy", level: .warning) }

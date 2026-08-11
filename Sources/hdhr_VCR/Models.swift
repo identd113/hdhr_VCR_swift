@@ -30,7 +30,13 @@ final class RotatingLogFile {
     func write(_ line: String) {
         guard let data = line.data(using: .utf8) else { return }
         if handle == nil { open() }
-        handle?.write(data)
+        // Only count bytes that actually reached disk — open() can fail to obtain a FileHandle
+        // (transient permissions issue, full disk, Logs directory briefly unavailable), in which
+        // case `handle` stays nil and this write is a silent no-op. Advancing the counter anyway
+        // would let it cross rotateThreshold on phantom growth and trigger rotate() against a
+        // file that never actually grew.
+        guard let handle else { return }
+        handle.write(data)
         bytesWritten += UInt64(data.count)
         if bytesWritten >= rotateThreshold { rotate() }
     }
@@ -63,6 +69,31 @@ private let logQueue = DispatchQueue(label: "com.hdhr.vcrplus.log", qos: .utilit
 private let logDateFormatter = ISO8601DateFormatter()
 let logFilePath = NSHomeDirectory() + "/Library/Logs/hdhrVCRplus.log"
 private let logFile = RotatingLogFile(path: logFilePath)
+
+// Separate, self-capped file for curl's own `-v` verbose stderr output (Settings → Advanced →
+// Verbose curl logging). curl writes to this path directly via its own posix_spawn file
+// descriptor (RecordingManager.spawnDetached's stderrPath), completely bypassing glog()/
+// RotatingLogFile's byte counter — so pointing it at the main app log (as it previously did)
+// meant that file's documented cap was never actually enforced against curl's own output.
+// Capped and rotated independently here instead, mirroring the Discord log's own
+// separately-capped file. Rotation is by rename (not in-place truncate — an earlier
+// truncate-based approach for this feature raced with a persistently-open FileHandle back when
+// this shared the main log's path; not possible now that this is its own dedicated file with no
+// persistent Swift-side handle held between recordings), checked once per verbose recording
+// start rather than per line, since curl's writes happen entirely outside Swift's visibility
+// once spawned.
+let curlVerboseLogFilePath = NSHomeDirectory() + "/Library/Logs/hdhrVCRplus-curl.log"
+private let curlVerboseLogCapBytes: UInt64 = 5 * 1024 * 1024
+
+func rotateCurlVerboseLogIfNeeded() {
+    let fm = FileManager.default
+    guard let attrs = try? fm.attributesOfItem(atPath: curlVerboseLogFilePath),
+          let size = (attrs[.size] as? NSNumber)?.uint64Value,
+          size >= curlVerboseLogCapBytes else { return }
+    let backupPath = curlVerboseLogFilePath + ".1"
+    try? fm.removeItem(atPath: backupPath)
+    try? fm.moveItem(atPath: curlVerboseLogFilePath, toPath: backupPath)
+}
 
 func glog(_ msg: String, level: LogLevel = .info) {
     switch level {
@@ -612,34 +643,34 @@ struct GuideEntry: Codable, Identifiable, Hashable {
 // MARK: - ManagedGuideMatcher
 
 struct ManagedGuideMatcher: Equatable {
-    // seriesAll shows record on any device — bare SeriesID/title keys, match regardless of device.
+    // seriesChannel and seriesAll shows are both confined to their assigned tuner (hdhr_record) —
+    // the only difference between the two is which channel(s) on that tuner SCHEDULING draws
+    // episodes from (AppState.resolveSeriesAir/nextGuideEpisode/scheduleNextAir: seriesChannel
+    // locks to one channel, seriesAll follows the series across any channel on the same tuner),
+    // not which device they can appear on. So both feed the same device-scoped keys here — keys
+    // are "device:SeriesID" / "device:title". (Previously seriesAll used bare, device-agnostic
+    // keys and could match/mark on every tuner, letting the same series be picked up and recorded
+    // independently on more than one tuner at once — see issues_resolved.md.)
     // Values are the owning Show so callers needing "which show does this entry belong to" (e.g.
     // the web guide's skip-already-recorded check) don't need a second, separately-maintained
     // lookup alongside this one — see owner(for:).
-    let seriesAllIDs:    [String: Show]   // bare SeriesID → owner
-    let seriesAllTitles: [String: Show]   // bare title (no SeriesID) → owner
-    // seriesChannel shows are assigned to a specific device — keys are "device:SeriesID" / "device:title".
-    let seriesChKeys:    [String: Show]   // "device:SeriesID" → owner
-    let seriesChTitles:  [String: Show]   // "device:title" (no SeriesID) → owner
+    let seriesKeys:      [String: Show]   // "device:SeriesID" → owner
+    let seriesTitles:    [String: Show]   // "device:title" (no SeriesID) → owner
     let singleSlotKeys:  [String: Show]   // "device:channel:epoch" → owner
     let datetimeSlotKeys: [String: Show]  // "device:channel:Weekday:HH:MM" → owner
 
     init(activeManagedShows: [Show]) {
         let cal = Calendar.current
         let dayNames = Show.weekdayNames
-        let allShows  = activeManagedShows.filter { $0.state == .seriesAll }
-        let chShows   = activeManagedShows.filter { $0.state == .seriesChannel }
+        let seriesShows = activeManagedShows.filter { $0.state == .seriesAll || $0.state == .seriesChannel }
         // uniquingKeysWith keeps the first match on a key collision (e.g. two shows sharing a
-        // SeriesID) rather than trapping — matches the tolerant dedup a plain Set gave before.
-        seriesAllIDs    = Dictionary(allShows.compactMap { s -> (String, Show)? in
-            s.show_seriesid.isEmpty ? nil : (s.show_seriesid, s)
-        }, uniquingKeysWith: { a, _ in a })
-        seriesAllTitles = Dictionary(allShows.map { ($0.show_title, $0) }, uniquingKeysWith: { a, _ in a })
-        seriesChKeys    = Dictionary(chShows.compactMap { s -> (String, Show)? in
+        // SeriesID on the same device) rather than trapping — matches the tolerant dedup a plain
+        // Set gave before.
+        seriesKeys   = Dictionary(seriesShows.compactMap { s -> (String, Show)? in
             guard !s.show_seriesid.isEmpty else { return nil }
             return ("\(s.hdhr_record):\(s.show_seriesid)", s)
         }, uniquingKeysWith: { a, _ in a })
-        seriesChTitles  = Dictionary(chShows.map { ("\($0.hdhr_record):\($0.show_title)", $0) }, uniquingKeysWith: { a, _ in a })
+        seriesTitles = Dictionary(seriesShows.map { ("\($0.hdhr_record):\($0.show_title)", $0) }, uniquingKeysWith: { a, _ in a })
         // Plain subscript assignment, guarded to keep the first match on a collision — same
         // first-wins tolerance as the uniquingKeysWith dictionaries above, for consistency.
         var single: [String: Show] = [:]
@@ -668,16 +699,11 @@ struct ManagedGuideMatcher: Equatable {
     /// The managed show an entry belongs to, if any — same matching tiers as `isManaged`, but
     /// returns the owning `Show` instead of just whether one exists. Single source of truth for
     /// "is this entry managed, and by which show" — callers that need both no longer maintain a
-    /// second, independently-derived lookup (which risked drifting out of sync with these tiers,
-    /// e.g. a series lookup that isn't device-scoped for seriesChannel shows the way this is).
+    /// second, independently-derived lookup (which risked drifting out of sync with these tiers).
     func owner(for entry: GuideEntry) -> Show? {
         let dev = entry.deviceId
-        if let sid = entry.SeriesID, !sid.isEmpty {
-            if let s = seriesAllIDs[sid] { return s }
-            if let s = seriesChKeys["\(dev):\(sid)"] { return s }
-        }
-        if let s = seriesAllTitles[entry.Title] { return s }
-        if let s = seriesChTitles["\(dev):\(entry.Title)"] { return s }
+        if let sid = entry.SeriesID, !sid.isEmpty, let s = seriesKeys["\(dev):\(sid)"] { return s }
+        if let s = seriesTitles["\(dev):\(entry.Title)"] { return s }
         // Skip the Calendar computation entirely when there are no dateTime/single-slot managed
         // shows to match against — the common case for a guide with only SeriesID shows, and
         // otherwise this runs for every non-managed entry in the grid (most entries).

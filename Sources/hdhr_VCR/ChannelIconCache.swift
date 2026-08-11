@@ -75,7 +75,6 @@ actor ChannelIconCache {
         mem[urlString] = img
         if mem.count > 600 { mem.removeAll() }
         try? data.write(to: diskPath)
-        pruneDiskCacheIfNeeded()
         return img
     }
 
@@ -85,7 +84,13 @@ actor ChannelIconCache {
     // almost never fires. Evicts oldest-by-mtime first when it does.
     private let maxDiskCacheBytes: UInt64 = 150 * 1024 * 1024
 
-    private func pruneDiskCacheIfNeeded() {
+    // Called once per prefetch batch (AppState.prefetchChannelIcons — startup, the hourly guide
+    // refresh, and on-demand per-device retries) rather than after every individual disk write:
+    // a bulk prefetch fans out one concurrent write per missing icon via withTaskGroup (up to the
+    // ~2000-file cap), and since this cache is an actor, checking per-write would serialize every
+    // one of those completions through a full directory scan + per-file stat — O(n²) I/O that
+    // stalls unrelated cache-hit reads on the same actor during startup.
+    func pruneDiskCacheIfNeeded() {
         let fm = FileManager.default
         guard let entries = try? fm.contentsOfDirectory(
             at: dir, includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey]

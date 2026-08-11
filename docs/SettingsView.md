@@ -30,8 +30,9 @@ Selected row highlighted in accent color. Each row carries `accessibilityIdentif
 - Accessibility identifiers: `settings-discard`, `settings-save`, `settings-save-close`
 
 ### Category: General
-One `Section`:
+Two `Section`s:
 - **System**: `Toggle("Launch at Login")`, `Toggle("Blink menu bar icon")`
+- **Guide**: `Toggle("Use XMLTV guide format")` — bound to `draft.Guide_use_xml` (default `false`). Moved here from the Guide tab's former Format section (2026-08-10) so the JSON/XMLTV switch is visible without digging into a dedicated tab. No inline warning; toggling and saving triggers an immediate guide refresh via the XMLTV endpoint.
 
 ### Category: Recording
 Two `Section`s:
@@ -50,15 +51,14 @@ Two `Section`s:
 - Post-recording script: path field + `"Choose…"` button — runs after a recording finishes
 
 ### Category: Guide
-Two `Section`s:
+One `Section`:
 
 **Fetch** section:
 - Guide hours: `Stepper` `"Show next N hours"`, range 1–28
 - Series scan retry: `Stepper` `"Series scan retry: N hr"`, range 1–24
 - `"Update Guides Now"` `.borderedProminent` button
 
-**Format** section:
-- `Toggle("Use XMLTV guide format")` — bound to `draft.Guide_use_xml` (default `false`). No inline warning; toggling and saving triggers an immediate guide refresh via the XMLTV endpoint.
+The JSON/XMLTV format toggle (formerly a "Format" section here) moved to General → Guide, 2026-08-10 — see that section above.
 
 ### Category: Notifications
 **Notifications** section: Up Next minutes `Stepper` (5–120, step 5); Recording alert minutes `Stepper` (1–60). Orange `Label` warning when recording alert fires at or after Up Next.
@@ -144,9 +144,9 @@ Sidebar entries (with SF Symbol icons):
 
 | Category | Icon | Contents |
 |---|---|---|
-| General | `gear` | Launch at Login, Blink menu bar icon |
+| General | `gear` | Launch at Login, Blink menu bar icon, JSON/XMLTV format toggle |
 | Recording | `record.circle` | Folder, transcode, disk, failures, VLC, Bonus Time, Series subfolders, Post-recording script |
-| Guide | `tv` | Guide hours, series scan retry, JSON/XMLTV format toggle |
+| Guide | `tv` | Guide hours, series scan retry |
 | Notifications | `bell.badge` | Up Next timing, Recording alert timing |
 | Advanced | `terminal` | Network interface, logging + verbose curl + config file path, signal quality |
 | Web Server | `globe` | Enable/disable LAN web server, port, access URL |
@@ -232,7 +232,7 @@ Recording Complete embeds additionally include **Format** (file extension, e.g. 
   - Leave on Auto for single-NIC setups.
 - **Dock icon** — `Picker`: Auto (default) / Always / Never, bound to `draft.Dock_icon_mode`. "Auto" starts the app with a Dock icon (`.regular` activation policy) until `AppState.confirmLocalNetworkAccessIfNeeded()` sees a real lineup fetch succeed, then hides it (`.accessory`) — a mitigation for a macOS bug where a background-only (`LSUIElement`) process may never receive the system's Local Network permission prompt at all (see `TODO.md`'s "Show Stoppers" entry). "Always"/"Never" apply immediately on Save (`SettingsView.applyAndSave()`), not just next launch. `AppConfig.Local_network_confirmed` (the flag driving "auto") is internal/not user-facing.
 - **App log** — `"Show App Log in Console"` button. Opens Console.app; logs go to OSLog (subsystem `com.hdhr.vcrplus`) **and** `~/Library/Logs/hdhrVCRplus.log`. A selectable filter hint label appears below the button for copy-paste into Console or Terminal (`log stream --level debug --predicate 'subsystem == "com.hdhr.vcrplus"'`).
-- **Verbose curl logging** — `Toggle`. Adds `-v` to curl args and pipes curl stderr to `~/Library/Logs/hdhrVCRplus.log` (same file as the app log). When enabled, shows the curl log path (selectable text) and a "Show curl log in Finder" button. Log path is `RecordingManager.curlLogPath` (static let). Rotated at 5 MB by `writeCurlLogHeader` before each new recording session.
+- **Verbose curl logging** — `Toggle`. Adds `-v` to curl args and pipes curl stderr to its own dedicated file, `~/Library/Logs/hdhrVCRplus-curl.log` (separate from the app log). When enabled, shows the curl log path (selectable text) and a "Show curl log in Finder" button. Log path is `RecordingManager.curlLogPath` (static let, → `curlVerboseLogFilePath`). Rotated at 5 MB (rename to `.1`, not truncate) by `rotateCurlVerboseLogIfNeeded()`, checked once before each new recording session starts.
 - **Config file path** — read-only display (`state.configManager.configPath`) + "Show config in Finder" button using `NSWorkspace.shared.selectFile(_:inFileViewerRootedAtPath:)`. Merged into the Logging section (was a standalone Config File section).
 
 **Signal Quality section** (always visible in Advanced):

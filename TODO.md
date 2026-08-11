@@ -73,6 +73,16 @@ Watch Now currently only splits entries into Favorites / Others (`content`'s `fa
 
 ---
 
+### Watch Now-from-disk relay could "catch up" faster by front-loading the already-recorded backlog
+
+Watching a currently-recording show via `AppState.watchRecordingInApp` plays it back from disk through the local relay (`/api/watch-recording`, `WebServer.swift`'s `streamGrowingFile`/`pumpGrowingFile`) rather than the live tuner stream. Unlike live TV, the bytes this relay serves up to the current live edge already exist on disk the instant playback starts — there's no reason to wait for them to "arrive" the way a real live stream does. But `VLCBridge.play(url:)` applies a blanket `--network-caching=2000` VLC option (`VLCBridge.swift` ~line 345) to every media load, live tuner stream and disk relay alike, with no distinction — so VLC deliberately buffers 2 seconds before starting playback even when the relay could in principle burst-deliver a much larger already-on-disk backlog instantly over the loopback connection. This likely means the disk-relay path "catches up" to the live edge slower than it has to, since it's paced by a caching setting tuned for smoothing real live-stream jitter, not for a same-machine relay serving data that's already fully present on disk.
+
+Worth investigating: whether `pumpGrowingFile`'s own chunk-by-chunk send loop (200 TS packets, 37.6KB, per `conn.send` completion — no artificial delay of its own) is actually the bottleneck, or whether it's purely VLC's fixed network-caching value holding back startup. If the latter, a lower (or relay-specific) caching value — passed only when playing a `/api/watch-recording` URL, not a live tuner URL — could plausibly cut Watch Now's "catch up to live" latency without touching genuinely live playback's jitter-smoothing behavior.
+
+**Key files**: `VLCBridge.swift` → `play(url:)` (network-caching option, ~line 345); `WebServer.swift` → `streamGrowingFile`/`pumpGrowingFile` (`/api/watch-recording` relay); `AppState.swift` → `watchRecordingInApp`.
+
+---
+
 ## Add Show / Edit Show
 
 ### No time offset picker for DateTime shows
@@ -101,14 +111,6 @@ The season/episode-number half of "skip already-recorded episodes" is **done** (
 
 ---
 
-### `seriesAll` shows should scope to a single tuner
-
-`seriesAll` shows currently use bare (non-device-scoped) keys in `ManagedGuideMatcher` and match/mark on every tuner (see CLAUDE.md's "Web guide managed markers are tuner-scoped" invariant) — but that means the same recurring series can be picked up and recorded independently on more than one tuner at once instead of being confined to one. Should scope to a single tuner like `seriesChannel` shows do. Needs a decision on which tuner "wins" when the series airs on more than one (first-seen? lowest device ID? user-assigned?), and whether that changes matching-for-display (guide markers) as well as matching-for-record, or just the latter.
-
-**Key file**: `Models.swift` → `ManagedGuideMatcher` (seriesAll keying), `AppState.swift` (schedule/matching).
-
----
-
 ## Web Guide
 
 ### No "Recording Now" section pulling active-recording channel rows to the top
@@ -118,12 +120,6 @@ The web Guide already partitions channel rows into Favorites vs. everything else
 Note: this is the shared web guide grid (`WebServer.swift`) rendered both in a browser and embedded via WKWebView in `AddShowView.swift`'s guide step — there is no separate native "cable view" implementation anymore (the old `CableGuideView`, and later the unreachable `FloatingGuideView`/"Cable Guide" window built on top of it, were both removed; fixing it here covers both remaining embeddings at once).
 
 **Key file**: `WebServer.swift` → `buildGuideGridHTML`/`buildHTML` (favRows/otherRows split, `.g-fav-sep` divider, `recChannelsByDevice`).
-
----
-
-### Duplicate-episode override is a web-guide dead end
-
-`willSkip` (`WebServer.swift`) already renders the green `.g-flag-skip` corner flag + "Already recorded · will skip" tooltip for a managed block the guide grid knows will be skipped as a duplicate — but the web UI has no way to act on it. `show_ignore_duplicate_once` (the per-show one-shot override, see `docs/ShowFormSection.md`) is only exposed in the native Add/Edit dialogs; `handleRecord`/`handleEdit` never read or set it, so any show scheduled or edited from the browser is stuck with it `false` and no in-browser escape hatch. A user watching the web guide sees "this won't record" with zero recourse short of switching to the native app. At minimum, clicking a `.g-flag-skip` block could open a lightweight confirm-to-override call. Also note `docs/ShowFormSection.md`'s claim that the web Record modal "mirrors these fields minus Folder" was already stale before this gap (Duplicate Episodes is a second omission beyond Folder) — worth a doc pass if the modal is revisited.
 
 ---
 
@@ -138,6 +134,16 @@ Note: this is the shared web guide grid (`WebServer.swift`) rendered both in a b
 ### No export / import config
 
 Power users managing multiple machines must copy the JSON manually. Export / Import buttons in the Advanced settings section would simplify this.
+
+---
+
+### About tab: highlight the current version's changes, cap the visible changelog at 6 entries
+
+Today `SettingsView.aboutView` renders the *entire* filtered changelog (every section whose version stamp is ≤ the running build, via `Self.parseChangelog`/`MarkdownView`) with no limit and no visual distinction for the current version's own entry — it reads the same as every older one.
+
+Wanted: the current build's changelog section should be visually highlighted (e.g. an accent background/border or a "Current" badge) as the first item, followed by only the last 5 older versions — 6 sections total in the About view. `CHANGELOG.md` itself and `parseChangelog`'s version-filtering behavior (nothing newer than `appVersion` is ever shown) should stay untouched — this is a display cap on `aboutView`, not a change to what's tracked or kept in the file.
+
+**Key files**: `Views/SettingsView.swift` — `aboutView` (rendering), `parseChangelog` (currently returns the *entire* filtered string + `latestVersion`; will need to also split out/limit to the first 6 `## `-delimited sections and identify which one is the current version's).
 
 ---
 
@@ -188,14 +194,6 @@ Flagged in the v2.0.2 pre-release review (`swift-quality-reviewer`). `idleLoop()
 `SettingsView.swift` → `runBrew()` spawns `/opt/homebrew/bin/brew` / `/usr/local/bin/brew` with `install`/`install --cask` to install VLC / hdhomerun_config from the Settings → Maintenance "Tools" section. This is a second class of `Process`-spawning beyond the curl sandbox debt tracked in "Mac App Store distribution requires a sandbox rewrite" above, and isn't covered by that helper-app rewrite either. There's no sandboxed way to invoke Homebrew, so the likely fix is dropping this row entirely in a sandboxed build.
 
 **Key file**: `SettingsView.swift` → `runBrew()`.
-
----
-
-### `recordedEpisodeTags` directory scan can block the whole app, not just the dialog
-
-The Add/Edit dialog's duplicate-episode check debounces with a 350ms delay before scanning, but the scan itself still runs synchronous `FileManager` calls (`contentsOfDirectory` + `attributesOfItem` per file, two directory levels) on `@MainActor` — the debounce reduces frequency, not risk. A slow-to-wake external/NAS-backed recording drive stalls the whole app (not just the dialog) for that one scan. Fix: hop the scan off `@MainActor` (`Task.detached` + `nonisolated` FileManager work), publish the result back. Low real-world severity today (local disks return near-instantly), flagged in the 2026-08-01 pre-release review (`.claude/CODE_NOTES.md`).
-
-**Key file**: `AppState.swift` → `recordedEpisodeTags`; caller `Views/ShowFormSection.swift` (`duplicateCheckKey` `.task(id:)`).
 
 ---
 

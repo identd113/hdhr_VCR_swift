@@ -5,12 +5,16 @@ import Foundation
 // MARK: - ManagedGuideMatcher
 //
 // Covers the tiered matching behind the web guide's gold/green corner flags (CLAUDE.md
-// "Web guide managed markers are tuner-scoped"): seriesAll matches on any device via a bare
-// key, seriesChannel is scoped to "device:key" and must NOT leak onto another device, and
-// dateTime slot keys include weekday so a same-time rerun on a different day of the week
-// isn't mistaken for the managed airing. Zero prior coverage — this is pure, deterministic
-// logic (no MainActor, no I/O), so a regression here (e.g. a dropped device-scope check)
-// would otherwise only surface as a wrongly-flagged tuner in manual guide testing.
+// "Web guide managed markers are tuner-scoped"): seriesAll and seriesChannel are both scoped
+// to "device:key" and must NOT leak onto another device — seriesAll additionally matches any
+// channel on its own device (unlike seriesChannel, which stays pinned to the one channel it
+// was added from), and dateTime slot keys include weekday so a same-time rerun on a different
+// day of the week isn't mistaken for the managed airing. Zero prior coverage — this is pure,
+// deterministic logic (no MainActor, no I/O), so a regression here (e.g. a dropped
+// device-scope check) would otherwise only surface as a wrongly-flagged tuner in manual guide
+// testing. (seriesAll previously used a bare, device-agnostic key and could match/mark on
+// every tuner — fixed alongside the scheduling-side device scoping in AppState, see
+// issues_resolved.md; the two tests below were updated to match the corrected behavior.)
 
 @Suite("ManagedGuideMatcher")
 struct ManagedGuideMatcherTests {
@@ -51,22 +55,38 @@ struct ManagedGuideMatcherTests {
         return s
     }
 
-    // MARK: seriesAll — bare key, matches any device
+    // MARK: seriesAll — "device:key", matches any channel on its own device, never another device
 
-    @Test func seriesAll_bySeriesID_matchesAnyDevice() {
+    @Test func seriesAll_bySeriesID_matchesOwnDeviceAnyChannel() {
+        let show = managedShow(state: true, seriesChannel: false, device: "DEV1", channel: "5.1",
+                                seriesID: "SID123")
+        let matcher = ManagedGuideMatcher(activeManagedShows: [show])
+        let sameDeviceOtherChannel = entry(device: "DEV1", channel: "9.9", start: Self.base, seriesID: "SID123")
+        #expect(matcher.owner(for: sameDeviceOtherChannel)?.show_id == show.show_id)
+    }
+
+    @Test func seriesAll_bySeriesID_doesNotLeakToOtherDevice() {
         let show = managedShow(state: true, seriesChannel: false, device: "DEV1", channel: "5.1",
                                 seriesID: "SID123")
         let matcher = ManagedGuideMatcher(activeManagedShows: [show])
         let onOtherDevice = entry(device: "DEV2", channel: "9.9", start: Self.base, seriesID: "SID123")
-        #expect(matcher.owner(for: onOtherDevice)?.show_id == show.show_id)
+        #expect(matcher.owner(for: onOtherDevice) == nil)
     }
 
-    @Test func seriesAll_byTitle_matchesAnyDevice() {
+    @Test func seriesAll_byTitle_matchesOwnDeviceAnyChannel() {
+        let show = managedShow(state: true, seriesChannel: false, device: "DEV1", channel: "5.1",
+                                title: "Jeopardy!")
+        let matcher = ManagedGuideMatcher(activeManagedShows: [show])
+        let sameDeviceOtherChannel = entry(device: "DEV1", channel: "9.9", start: Self.base, title: "Jeopardy!")
+        #expect(matcher.owner(for: sameDeviceOtherChannel)?.show_id == show.show_id)
+    }
+
+    @Test func seriesAll_byTitle_doesNotLeakToOtherDevice() {
         let show = managedShow(state: true, seriesChannel: false, device: "DEV1", channel: "5.1",
                                 title: "Jeopardy!")
         let matcher = ManagedGuideMatcher(activeManagedShows: [show])
         let onOtherDevice = entry(device: "DEV2", channel: "9.9", start: Self.base, title: "Jeopardy!")
-        #expect(matcher.owner(for: onOtherDevice)?.show_id == show.show_id)
+        #expect(matcher.owner(for: onOtherDevice) == nil)
     }
 
     // MARK: seriesChannel — "device:key", must not leak to another device
