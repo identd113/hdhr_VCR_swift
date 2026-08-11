@@ -323,3 +323,46 @@ accuracy regresses right after app launch specifically.
   strings (`Default_transcode: String = "none"`, matched the same way across `Models.swift`,
   `WebServer.swift`, `AddShowView.swift`, `SettingsView.swift`). Not flagging as new debt — it's
   consistency with the existing convention, not a third divergent copy of a different pattern.
+
+## 2026-08-11 — pre-release review (v2.0.2..HEAD, swift-quality-reviewer)
+- `Sources/hdhr_VCR/Views/GuideViewHelpers.swift:161-167` (`_genreAlias`) is a **third** copy of the
+  genre-alias table that already exists twice — `Resources/guide.js`'s `_ggAlias` and
+  `WebServer.swift:1419-1421`'s `ggAlias` (both pre-existing, both still have `"kids":"children"`).
+  The new Swift copy dropped that one entry (confirmed real: `docs/WebServer.md`'s own `/api/airings`
+  example payload shows `"genre":"Kids"` as a genre `guide.php` actually emits). Net effect: a
+  "Kids"-genre entry rendered through `guideEntryColor(for:onAir:)` (consumers: `WatchNowView.swift:286`,
+  `AddShowView.swift:504`) now falls through to the default gray `Color(white:0.22)` instead of the
+  "children" hue it got before this diff (previously `_genreColorMap` had `"kids"` as a *direct* key,
+  so no aliasing was needed there at all — the alias table is new in this diff, the regression is a
+  side effect of introducing it without copying the sibling tables exactly). No test exercises
+  `guideEntryColor` (zero hits for that name under `Tests/`), so this shipped silently. Reported to
+  the user as a finding, not fixed here (out of scope for this review agent) — worth a real helper
+  (one shared `[String:String]` genre-alias constant reachable from both this file and `WebServer.swift`,
+  since both are now in-process Swift) so a fourth divergence can't happen next time a genre tag is added.
+- `Sources/hdhr_VCR/Views/SettingsView.swift` — the "Use XMLTV guide format" toggle's relocation from
+  Guide→Format to General→Guide shipped inside commit `3bfee29` ("fix(settings): resync draft config on
+  window refocus…"), whose commit message never mentions it. Confirmed via `git show 3bfee29` (only
+  commit in the v2.0.2..HEAD range touching those lines) — the move is real, deliberate, and well
+  documented in `docs/SettingsView.md`'s diff (which explicitly dates it "2026-08-10"), just not
+  disclosed in the commit that shipped it. A UI-relocation is exactly the kind of drive-by change the
+  project's own commit-sequencing convention (features/refactors get their own commit) exists to keep
+  visible in `git log`; low-stakes here since docs kept pace, but flagged so a future `git bisect` on a
+  "why did the XMLTV toggle move" question doesn't dead-end at an unrelated commit title.
+- Commit `2849182` ("fix: scope SeriesID(All)…") bundles ~7 materially distinct changes under one
+  commit (per its own body): SeriesID(All) tuner-scoping bug fix, off-actor duplicate-episode scan,
+  ChannelIconCache prune-batching perf fix, curl-verbose-log file separation, prebuildPageHTML gzip
+  parallelization + lazy vertical-variant build, a **new** web-guide feature (duplicate-episode
+  override toggle + `/api/edit` field), and unrelated accessibility additions (`role="button"`,
+  `aria-label`, `tabindex`, keyboard handler on `.g-prog`/`.d-btn`/`.g-fav-btn`) that aren't mentioned
+  in the commit body at all. The new feature bundled into a "fix:"-titled commit is the sharpest edge
+  of this — violates the project's own "features and refactors go in separate commits (features first)"
+  rule. Retrospective only (already merged, not worth unwinding for a release review) — recorded so the
+  pattern (large multi-purpose "found and fixed in one session" commits) is visible if it recurs.
+- `Sources/hdhr_VCR/WebServer.swift:143-183` (`prebuildPageHTML`'s `DispatchQueue.concurrentPerform`
+  + raw `UnsafeMutablePointer<Data?>` + `UncheckedSendableBox` for the 2-way gzip parallelization) is
+  functionally correct (disjoint-index writes, `defer`-guarded init/deinit/dealloc, only ever invoked
+  from `@MainActor`) and matches a pattern CLAUDE.md itself prescribes for this exact spot ("New cached
+  page variant…" invariant) — not flagging as a new hack. Noting the manual pointer bookkeeping is more
+  verbose than necessary; `Foundation.Data` has been `Sendable` since Swift 5.5, so the same result is
+  reachable with less unsafe surface via `results.withUnsafeMutableBufferPointer { ... }` over a plain
+  `[Data?]` instead of manual `allocate`/`initialize`/`deinitialize`/`deallocate`. Cosmetic, not a bug.

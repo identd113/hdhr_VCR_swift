@@ -162,7 +162,7 @@ private let _genreColorMap: [String: Color] = [
 // guide.php says "Sports", XMLTV says singular "Sport"; XMLTV's "Documentary"/"Game show" spell out
 // what the color map stores tersely as "doc"/"gameshow").
 private let _genreAlias: [String: String] = [
-    "sport": "sports", "movies": "movie", "sitcom": "comedy",
+    "sport": "sports", "movies": "movie", "sitcom": "comedy", "kids": "children",
     "documentary": "doc", "game show": "gameshow", "animation": "children", "animated": "children",
 ]
 
