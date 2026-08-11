@@ -13,6 +13,11 @@
   It's now scoped to the one device it was originally set up on, same as a channel-locked
   `SeriesID` show — the two now differ only in which channels they'll follow on that device, not
   which device.
+- **Improvement — on a multi-tuner device, if a `SeriesID(All)` show has two different episodes
+  airing at the same moment on two channels, the app now prefers whichever one isn't already
+  recorded**, instead of always breaking the tie toward a favorited channel even when that
+  channel's episode is a duplicate you already have. Favorited-channel preference still applies
+  when neither (or both) candidates are already recorded.
 - **Fix — reopening the Settings window while it was already open could show a false "Unsaved
   Settings" warning on close**, even with nothing actually edited. A background save (from the
   idle loop, tuner probing, etc.) between the first open and a later reopen could leave the
