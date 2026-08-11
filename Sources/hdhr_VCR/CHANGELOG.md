@@ -1,5 +1,42 @@
 # hdhrVCRplus Changelog
 
+## 2026-08-11 (SeriesID(All) tuner scoping, guide-detail crash fix, XMLTV genre colors) — v2.0.3
+
+- **Fix — a crafted web-guide request could crash the whole app, ending any in-progress
+  recording.** A LAN request to the guide's lazy-load endpoint with an extreme, absurd time
+  window could overflow an internal calculation and trap the process. Requests like that now
+  fall back to the normal guide window instead of crashing. (Low-risk on a home network, but a
+  real bug regardless of how it could be reached.)
+- **Fix — a `SeriesID(All)` show (one set to follow a series across every channel on a tuner)
+  could match and record on more than one HDHomeRun device at once**, wasting tuner capacity and
+  producing duplicate files, and could silently migrate to a different device on reschedule.
+  It's now scoped to the one device it was originally set up on, same as a channel-locked
+  `SeriesID` show — the two now differ only in which channels they'll follow on that device, not
+  which device.
+- **Fix — reopening the Settings window while it was already open could show a false "Unsaved
+  Settings" warning on close**, even with nothing actually edited. A background save (from the
+  idle loop, tuner probing, etc.) between the first open and a later reopen could leave the
+  window's draft copy stale; it now resyncs whenever the window regains focus, as long as
+  nothing's actually been edited yet.
+- **Fix — XMLTV guide data used different genre spellings than the app expected**, silently
+  breaking Bonus Time auto-detection for Sport-tagged shows (XMLTV says "Sport", the app checked
+  for "Sports") and leaving most XMLTV genres shown in plain gray instead of their proper color.
+  Both are now recognized, and an XMLTV-tagged shopping/infomercial entry is now detected and
+  flagged automatically instead of needing a manual add to the blocklist.
+- **Fix — the passive signal-quality scan assumed every tuner streams on port 5004.** It now
+  reads the actual stream URL from the device's own reported channel lineup, same as every other
+  stream request in the app, so it works correctly on a device using a non-default port.
+- **Fix — a loopback-check bug could (in principle) let a non-loopback IPv6 address bypass the
+  web server's LAN-only access check.** Low real-world risk (those addresses aren't reachable
+  from the public internet), but the check now requires an exact match instead of merely
+  starting with the loopback address.
+- Guide/performance polish: the web guide's icon-cache disk cleanup no longer runs a full
+  directory scan after every single icon download (only once per batch); the vertical (portrait)
+  page variant is no longer built and compressed on every guide update for installs that never
+  use it; verbose curl logging (Settings → Advanced) now writes to its own correctly size-capped
+  file instead of silently sharing the main log's cap; and the web guide gained a per-show
+  "record even if already on disk" override for duplicate episodes, matching the native app.
+
 ## 2026-08-09 (Dock icon until network access confirmed, live tuner count while menu is open) — v2.0.2
 
 - **Fix — a stuck Local Network permission prompt could require quitting and reopening the app.**
