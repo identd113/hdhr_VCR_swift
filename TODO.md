@@ -255,3 +255,11 @@ Failed repeatedly on 2026-08-07 (median 374ms–1451ms vs. a 250ms threshold) ac
 
 ---
 
+### RecordingManager/HDHRManager still low measured test coverage
+
+The 2026-08-11 coverage-guided pass (`swift test --enable-code-coverage` + `xcrun llvm-cov report`) replaced judgment-based gap guessing with real numbers and confirmed the earlier prediction: `RecordingManager.swift` 7.04% line coverage, `HDHRManager.swift` 1.81%, vs. `DiscordNotifier.swift`'s 0% → 37% after that pass added a URLSession-injection seam + `DiscordNotifierTests.swift` (the cheap win — no source restructuring needed beyond a defaulted parameter). The other two need real seams first: `RecordingManager` wraps `curl` via `Process`/`posix_spawn` with no injection point for a fake process (would need a spawn-seam abstraction or a mock-curl shell script swapped in for tests); `HDHRManager` does concurrent known-hosts/mDNS/UDP discovery against real network primitives, though `tools/mock_hdhr.py` already exists for exactly this and might cover the HTTP-reachable parts (mDNS/UDP discovery would still need its own seam). `AppState.swift` (9.56%) and `WebServer.swift` (27.41%) have by far the most raw uncovered lines but are graded lower priority per the plan's "blast radius, not raw percentage" framing — both are heavily orchestration/`@MainActor`-coupled and already exercised indirectly through `GuideStore`/`ManagedGuideMatcher` test suites plus the post-deploy web server smoke/perf suites.
+
+**Key files**: `RecordingManager.swift`, `HDHRManager.swift`.
+
+---
+
