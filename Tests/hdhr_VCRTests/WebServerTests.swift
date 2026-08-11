@@ -2,89 +2,32 @@ import Testing
 import Foundation
 @testable import hdhr_VCR
 
-// MARK: - he() HTML escaping
-
-@Suite("he() HTML entity escaping")
-struct HeEscapingTests {
-
-    @Test func ampersand() {
-        #expect(he("a & b") == "a &amp; b")
-    }
-
-    @Test func lessThan() {
-        #expect(he("<script>") == "&lt;script&gt;")
-    }
-
-    @Test func greaterThan() {
-        #expect(he("a>b") == "a&gt;b")
-    }
-
-    @Test func doubleQuote() {
-        #expect(he("say \"hi\"") == "say &quot;hi&quot;")
-    }
-
-    @Test func multipleEntities() {
-        #expect(he("<a href=\"x&y\">") == "&lt;a href=&quot;x&amp;y&quot;&gt;")
-    }
-
-    @Test func plainText_unchanged() {
-        #expect(he("hello world") == "hello world")
-    }
-
-    // he("") == "" is covered by WebServerHelperTests.he_handlesEmptyString.
-}
+// he() coverage lives in WebServerHelperTests.swift (the canonical suite for the injection
+// boundary) — a per-character suite here duplicated it across files and was folded in.
 
 // MARK: - timeRemaining(until:)
 
 @Suite("timeRemaining(until:) duration formatting")
 struct TimeRemainingTests {
 
-    @Test func endingSoon_zeroSeconds() {
-        let past = Date(timeIntervalSinceNow: 0)
-        #expect(timeRemaining(until: past) == "ending soon")
-    }
-
-    @Test func endingSoon_pastDate() {
-        let past = Date(timeIntervalSinceNow: -60)
-        #expect(timeRemaining(until: past) == "ending soon")
-    }
-
-    @Test func endingSoon_lessThanOneMinute() {
-        let soon = Date(timeIntervalSinceNow: 30)
-        #expect(timeRemaining(until: soon) == "ending soon")
-    }
-
-    // All future dates add 5 s so Int(...) truncation of sub-millisecond execution time
-    // never crosses the boundary being tested.
-    @Test func oneMinute() {
-        let t = Date(timeIntervalSinceNow: 1 * 60 + 5)
-        #expect(timeRemaining(until: t) == "1m left")
-    }
-
-    @Test func fortyFiveMinutes() {
-        let t = Date(timeIntervalSinceNow: 45 * 60 + 5)
-        #expect(timeRemaining(until: t) == "45m left")
-    }
-
-    @Test func oneHourOneMinute() {
-        let t = Date(timeIntervalSinceNow: 61 * 60 + 5)
-        #expect(timeRemaining(until: t) == "1h 1m left")
-    }
-
-    @Test func oneHourThirtyMinutes() {
-        let t = Date(timeIntervalSinceNow: 90 * 60 + 5)
-        #expect(timeRemaining(until: t) == "1h 30m left")
-    }
-
-    @Test func twoHoursNoMinutes() {
-        // 120 minutes + 5 s: clearly ≥ 120m so h=2, m=0 → "2h left".
-        let t = Date(timeIntervalSinceNow: 120 * 60 + 5)
-        #expect(timeRemaining(until: t) == "2h left")
-    }
-
-    @Test func twoHoursFiveMinutes() {
-        let t = Date(timeIntervalSinceNow: 125 * 60 + 5)
-        #expect(timeRemaining(until: t) == "2h 5m left")
+    // One (offset → label) table: every body was identical except the interval and the
+    // expected string. Future rows add 5 s so Int(...) truncation of sub-millisecond
+    // execution time never crosses the boundary being tested; the three ≤ 60 s rows pin
+    // the "ending soon" floor (zero, past, and under-a-minute).
+    @Test(arguments: [
+        (seconds: 0.0,     expected: "ending soon"),
+        (seconds: -60.0,   expected: "ending soon"),
+        (seconds: 30.0,    expected: "ending soon"),
+        (seconds: 65.0,    expected: "1m left"),      // 1 min
+        (seconds: 2705.0,  expected: "45m left"),     // 45 min
+        (seconds: 3665.0,  expected: "1h 1m left"),   // 61 min
+        (seconds: 5405.0,  expected: "1h 30m left"),  // 90 min
+        // 120 min: clearly ≥ 120m so h=2, m=0 → "2h left" (no dangling "0m").
+        (seconds: 7205.0,  expected: "2h left"),
+        (seconds: 7505.0,  expected: "2h 5m left"),   // 125 min
+    ])
+    func formatsRemainingDuration(_ row: (seconds: Double, expected: String)) {
+        #expect(timeRemaining(until: Date(timeIntervalSinceNow: row.seconds)) == row.expected)
     }
 }
 
@@ -283,6 +226,17 @@ struct WebServerSmokeTests {
         #expect(resp?.contains("400") == true)
         let (status, _) = try await get("/api/ping")
         #expect(status == 200, "server crashed on a negative Content-Length")
+    }
+
+    @Test func guideDetailOverflowWindowDoesNotCrash() async throws {
+        guard await serverAvailable() else { return }
+        // An absurd-but-well-formed winStart/winSec used to overflow the winStart+winSec addition
+        // and trap the whole app — a LAN client could kill in-progress recordings with one request.
+        // The route must clamp to the server's own window instead of trapping.
+        let (status, _) = try await get("/api/guide-detail/x/y/9223372036854775807/1")
+        #expect(status == 200, "server crashed on an overflowing guide-detail window")
+        let (pingStatus, _) = try await get("/api/ping")
+        #expect(pingStatus == 200, "server crashed on an overflowing guide-detail window")
     }
 
     @Test func headRequestClosesConnection() async throws {

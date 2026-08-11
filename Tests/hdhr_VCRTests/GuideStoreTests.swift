@@ -446,6 +446,114 @@ struct GuideStoreMockNetworkTests {
         }
     }
 
+    // MARK: - Title-fallback tier (currentEntryByTitle / nextEntryByTitle)
+
+    @Suite("GuideStore title fallback")
+    struct GuideStoreTitleFallbackTests {
+
+        // The fallback matching tier for series whose guide entries omit SeriesID (see the
+        // docs comments on both methods). Three contracts pinned here, each with a real
+        // regression behind it: (1) entry titles are stripped via Show.seriesTitle before
+        // comparing, so a stored series title matches a suffixed per-airing title; (2) the
+        // deviceId filter applies even when channelNum is nil — the SeriesID(All) shape —
+        // instead of silently scanning every device; (3) nextEntryByTitle's cross-channel
+        // scan takes min-by-StartTime, not dictionary-iteration-order .first.
+        private static let titleFallbackJSON = """
+        [
+            {
+                "GuideNumber": "5.1",
+                "GuideName": "KVUE",
+                "Guide": [
+                    {"StartTime": 2000000000, "EndTime": 2000003600, "Title": "South Park S24E116 Trey Parker; Matt Stone"},
+                    {"StartTime": 2000010000, "EndTime": 2000013600, "Title": "South Park S24E117 Guest Name"}
+                ]
+            },
+            {
+                "GuideNumber": "8.1",
+                "GuideName": "KXAN",
+                "Guide": [
+                    {"StartTime": 2000006000, "EndTime": 2000009600, "Title": "South Park S24E120 Someone Else"},
+                    {"StartTime": 2000006000, "EndTime": 2000009600, "Title": "Nightly News"}
+                ]
+            }
+        ]
+        """
+
+        @MainActor private func loadedStore(devices: [HDHRDevice]) async -> GuideStore {
+            let store = GuideStore(session: makeSession())
+            MockURLProtocol.requestHandler = { req in
+                (okResponse(for: req.url!), Self.titleFallbackJSON.data(using: .utf8)!)
+            }
+            for d in devices { await store.load(for: d) }
+            return store
+        }
+
+        @Test @MainActor func current_matchesSuffixedEntryAgainstStrippedTitle() async {
+            let store = await loadedStore(devices: [makeLocalDevice()])
+            let during = Date(timeIntervalSince1970: 2_000_001_000)
+            let match = store.currentEntryByTitle("South Park", at: during)
+            #expect(match?.entry.EndTime == 2_000_003_600)
+            #expect(match?.channelNum == "5.1")
+        }
+
+        @Test @MainActor func current_rawUnstrippedQueryTitle_doesNotMatch() async {
+            // The stored title for a series show is already stripped; querying with a full
+            // suffixed title must NOT match (both sides normalize to series-name-only form,
+            // so a suffixed query normalizes differently than it reads).
+            let store = await loadedStore(devices: [makeLocalDevice()])
+            let during = Date(timeIntervalSince1970: 2_000_001_000)
+            #expect(store.currentEntryByTitle("South Park S24E116 Trey Parker; Matt Stone", at: during) == nil)
+        }
+
+        @Test @MainActor func current_exactTitleWithoutSuffix_stillMatches() async {
+            let store = await loadedStore(devices: [makeLocalDevice()])
+            let during = Date(timeIntervalSince1970: 2_000_007_000)
+            let match = store.currentEntryByTitle("Nightly News", at: during)
+            #expect(match?.channelNum == "8.1")
+        }
+
+        @Test @MainActor func current_deviceIdFilterAppliesWithNilChannel() async {
+            // SeriesID(All) shape: fixed deviceId, nil channelNum. Both devices carry an
+            // airing of the title at `during` — the match must come from the requested
+            // device only, proving the filter isn't dropped when channelNum is nil.
+            let d1 = makeLocalDevice(ip: "1.1.1.1", id: "DEV1")
+            let d2 = makeLocalDevice(ip: "2.2.2.2", id: "DEV2")
+            let store = await loadedStore(devices: [d1, d2])
+            let during = Date(timeIntervalSince1970: 2_000_001_000)
+            let match = store.currentEntryByTitle("South Park", deviceId: "DEV2", at: during)
+            #expect(match?.deviceId == "DEV2")
+        }
+
+        @Test @MainActor func next_crossChannelScan_picksSoonestNotDictionaryOrder() async {
+            // After 5.1's first airing ends, the next "South Park" airings are 8.1 @
+            // 2000006000 and 5.1 @ 2000010000. The scan concatenates per-channel lists in
+            // arbitrary dictionary order — min(by: StartTime) must pick 8.1 regardless.
+            let store = await loadedStore(devices: [makeLocalDevice()])
+            let after = Date(timeIntervalSince1970: 2_000_004_000)
+            let match = store.nextEntryByTitle("South Park", after: after)
+            #expect(match?.entry.StartTime == 2_000_006_000)
+            #expect(match?.channelNum == "8.1")
+        }
+
+        @Test @MainActor func next_fastPathWithBothFilters_staysOnChannel() async {
+            // Both channelNum and deviceId set takes the direct per-channel bucket — the
+            // sooner airing on 8.1 must not leak into a 5.1-scoped query.
+            let device = makeLocalDevice()
+            let store = await loadedStore(devices: [device])
+            let after = Date(timeIntervalSince1970: 2_000_004_000)
+            let match = store.nextEntryByTitle("South Park", channelNum: "5.1",
+                                               deviceId: device.DeviceID, after: after)
+            #expect(match?.entry.StartTime == 2_000_010_000)
+            #expect(match?.channelNum == "5.1")
+        }
+
+        @Test @MainActor func next_unknownTitle_returnsNil() async {
+            let store = await loadedStore(devices: [makeLocalDevice()])
+            #expect(store.nextEntryByTitle("No Such Show",
+                                           after: Date(timeIntervalSince1970: 1_000_000_000)) == nil)
+        }
+    }
+
     // MARK: - isFresh
 
     @Suite("GuideStore freshness")
