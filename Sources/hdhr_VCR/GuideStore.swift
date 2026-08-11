@@ -84,28 +84,7 @@ final class GuideStore {
             return false
         }
 
-        loadingDevices.insert(id)
-        defer { loadingDevices.remove(id) }
-
-        glog("[\(id)] GET \(url.absoluteString)")
-        let t0 = Date()
-        do {
-            let (data, response) = try await session.data(from: url)
-            let ms = Int(Date().timeIntervalSince(t0) * 1000)
-            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-            let levelHttp: LogLevel = status == 200 ? .info : .warning
-            glog("[\(id)] HTTP \(status)  \(data.count) bytes  \(ms)ms", level: levelHttp)
-
-            guard status == 200 else {
-                glog("[\(id)] ERROR: non-200 status, aborting parse", level: .error)
-                return false
-            }
-
-            guard !data.isEmpty else {
-                glog("[\(id)] ERROR: empty response body", level: .error)
-                return false
-            }
-
+        return await fetchAndIndex(id: id, url: url) { data in
             let channels: [GuideChannel]
             do {
                 channels = try JSONDecoder().decode([GuideChannel].self, from: data)
@@ -115,7 +94,7 @@ final class GuideStore {
                 if let full = String(data: data.prefix(2000), encoding: .utf8) {
                     glog("[\(id)] raw response (2000 chars): \(full)", level: .error)
                 }
-                return false
+                return nil
             }
 
             let entryCount = channels.reduce(0) { $0 + ($1.Guide?.count ?? 0) }
@@ -124,15 +103,7 @@ final class GuideStore {
             if entryCount == 0 {
                 glog("[\(id)] WARNING: channels loaded but ALL have 0 guide entries — check GuideHours setting or API response", level: .warning)
             }
-
-            buildIndex(deviceId: id, channels: channels)
-            loadTimestamps[id] = Date()
-            glog("[\(id)] index built and timestamp set — guide ready")
-            return true
-
-        } catch {
-            glog("[\(id)] NETWORK ERROR: \(error)", level: .error)
-            return false
+            return channels
         }
     }
 
@@ -152,6 +123,29 @@ final class GuideStore {
             return false
         }
 
+        return await fetchAndIndex(id: id, url: url) { data in
+            let (channels, parsedOK) = XmltvParser().parse(data)
+            guard parsedOK else {
+                glog("[\(id)] ERROR: XMLTV parse failed/truncated — discarding partial result", level: .error)
+                return nil
+            }
+            let entryCount = channels.reduce(0) { $0 + ($1.Guide?.count ?? 0) }
+            glog("[\(id)] XMLTV parsed \(channels.count) channels, \(entryCount) total guide entries")
+
+            if entryCount == 0 {
+                glog("[\(id)] WARNING: channels loaded but ALL have 0 guide entries", level: .warning)
+            }
+            return channels
+        }
+    }
+
+    /// Shared fetch + parse + index scaffolding for `load()`/`loadXMLTV()` — GET, timing log,
+    /// HTTP-status/empty-body guards, and post-parse indexing are identical between the two;
+    /// only URL building and the parse step (via `parse`) differ. The "already loading"/URL-build
+    /// guards stay in each caller (not here) so their exact glog lines/ordering are unaffected by
+    /// this refactor. `parse` returns nil on failure — it owns its own failure logging, since the
+    /// JSON and XMLTV parse-failure messages intentionally read differently.
+    private func fetchAndIndex(id: String, url: URL, parse: (Data) -> [GuideChannel]?) async -> Bool {
         loadingDevices.insert(id)
         defer { loadingDevices.remove(id) }
 
@@ -168,22 +162,13 @@ final class GuideStore {
                 glog("[\(id)] ERROR: non-200 status, aborting parse", level: .error)
                 return false
             }
+
             guard !data.isEmpty else {
                 glog("[\(id)] ERROR: empty response body", level: .error)
                 return false
             }
 
-            let (channels, parsedOK) = XmltvParser().parse(data)
-            guard parsedOK else {
-                glog("[\(id)] ERROR: XMLTV parse failed/truncated — discarding partial result", level: .error)
-                return false
-            }
-            let entryCount = channels.reduce(0) { $0 + ($1.Guide?.count ?? 0) }
-            glog("[\(id)] XMLTV parsed \(channels.count) channels, \(entryCount) total guide entries")
-
-            if entryCount == 0 {
-                glog("[\(id)] WARNING: channels loaded but ALL have 0 guide entries", level: .warning)
-            }
+            guard let channels = parse(data) else { return false }
 
             buildIndex(deviceId: id, channels: channels)
             loadTimestamps[id] = Date()
