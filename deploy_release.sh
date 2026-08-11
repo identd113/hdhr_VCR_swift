@@ -116,30 +116,40 @@ open(sys.argv[3], 'wb').write(hdr + dirs + blobs)
 PYEOF
 cp Resources/favicon.ico "$APP/Contents/Resources/favicon.ico"
 
-find "$APP" -name "._*" -delete
-find "$APP" -name ".DS_Store" -delete
-xattr -cr "$APP"
+echo "==> Signing…"
+# Sign in /tmp to avoid iCloud Drive re-attaching com.apple.FinderInfo during codesign —
+# codesign --options runtime rejects FinderInfo as "detritus", and iCloud's re-attach race
+# beats even a multi-attempt retry loop against the live in-repo bundle. Same fix deploy.sh
+# already uses (CHANGELOG.md: "iCloud com.apple.FinderInfo race fix"), ported here since this
+# script was still signing in place and hitting the identical failure.
+_TMP_DIR=$(mktemp -d)
+[ -d "$_TMP_DIR" ] || { echo "ERROR: mktemp failed"; exit 1; }
+_TMP_APP="$_TMP_DIR/$APP"
+cp -R "$APP" "$_TMP_APP"
+find "$_TMP_APP" -name "._*" -delete
+find "$_TMP_APP" -name ".DS_Store" -delete
+xattr -cr "$_TMP_APP"
 
 if [ "$ADHOC" -eq 1 ]; then
     echo "==> Signing ad-hoc (no Developer ID cert configured)…"
     codesign --force --options runtime \
              --entitlements "$ENTITLEMENTS" \
              --sign - \
-             "$APP"
+             "$_TMP_APP"
 else
     echo "==> Signing with Hardened Runtime…"
-    _signed=0
-    for _attempt in 1 2 3; do
-        find "$APP" -name "._*" -delete 2>/dev/null || true
-        find "$APP" -print0 | xargs -0 xattr -d com.apple.FinderInfo 2>/dev/null || true
-        codesign --force --options runtime \
-                 --entitlements "$ENTITLEMENTS" \
-                 --sign "$SIGN_IDENTITY" \
-                 "$APP" && _signed=1 && break
-        echo "    Attempt $_attempt failed, retrying…"
-    done
-    [ "$_signed" -eq 1 ] || { echo "ERROR: codesign failed after 3 attempts"; exit 1; }
+    codesign --force --options runtime \
+             --entitlements "$ENTITLEMENTS" \
+             --sign "$SIGN_IDENTITY" \
+             "$_TMP_APP"
 fi
+
+# Overwrite the in-repo bundle with the freshly signed copy.
+rm -rf "$APP"
+cp -R "$_TMP_APP" "$APP"
+rm -rf "$_TMP_DIR"
+touch "$APP"
+xattr -cr "$APP"
 
 echo "==> Verifying signature…"
 # --strict is omitted: iCloud file provider continuously re-attaches com.apple.FinderInfo
