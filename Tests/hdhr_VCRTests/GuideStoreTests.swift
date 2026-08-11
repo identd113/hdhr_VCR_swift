@@ -397,6 +397,84 @@ struct GuideStoreMockNetworkTests {
                                           preferFavorite: { _, ch in ch == "2.4" })
             #expect(match?.channelNum == "2.1", "channelNum filter restricts to 2.1 regardless of favorite status")
         }
+
+        // MARK: - preferUnrecorded tie-break (checked before preferFavorite)
+
+        @Test @MainActor func nextEpisode_preferUnrecorded_picksTheUnrecordedCandidate() async {
+            let store = GuideStore(session: makeSession())
+            let device = makeLocalDevice()
+            MockURLProtocol.requestHandler = { req in
+                (okResponse(for: req.url!), Self.simulcastJSON.data(using: .utf8)!)
+            }
+            await store.load(for: device)
+            let before = Date(timeIntervalSince1970: 1_000_000_000)
+            // 2.1 is "already recorded", 2.4 is not — should pick 2.4 despite being the
+            // insertion-order loser.
+            let match = store.nextEpisode(seriesID: "sim789", after: before,
+                                          preferUnrecorded: { $0.channelNum == "2.4" })
+            #expect(match?.channelNum == "2.4")
+        }
+
+        @Test @MainActor func nextEpisode_preferUnrecorded_takesPriorityOverFavorite() async {
+            let store = GuideStore(session: makeSession())
+            let device = makeLocalDevice()
+            MockURLProtocol.requestHandler = { req in
+                (okResponse(for: req.url!), Self.simulcastJSON.data(using: .utf8)!)
+            }
+            await store.load(for: device)
+            let before = Date(timeIntervalSince1970: 1_000_000_000)
+            // 2.1 is both favorited AND already recorded; 2.4 is neither. Unrecorded must win —
+            // a duplicate on a favorited channel is still a worse pick than a fresh episode
+            // elsewhere.
+            let match = store.nextEpisode(seriesID: "sim789", after: before,
+                                          preferUnrecorded: { $0.channelNum == "2.4" },
+                                          preferFavorite: { _, ch in ch == "2.1" })
+            #expect(match?.channelNum == "2.4", "An unrecorded episode should outrank a favorited-but-duplicate one")
+        }
+
+        @Test @MainActor func nextEpisode_preferUnrecorded_bothRecorded_fallsThroughToFavorite() async {
+            let store = GuideStore(session: makeSession())
+            let device = makeLocalDevice()
+            MockURLProtocol.requestHandler = { req in
+                (okResponse(for: req.url!), Self.simulcastJSON.data(using: .utf8)!)
+            }
+            await store.load(for: device)
+            let before = Date(timeIntervalSince1970: 1_000_000_000)
+            // Both candidates "already recorded" — no distinguishing signal, so this falls
+            // through to the favorite tie-break instead of picking arbitrarily.
+            let match = store.nextEpisode(seriesID: "sim789", after: before,
+                                          preferUnrecorded: { _ in false },
+                                          preferFavorite: { _, ch in ch == "2.4" })
+            #expect(match?.channelNum == "2.4", "Both tied on recorded-status — favorite should still decide")
+        }
+
+        @Test @MainActor func nextEpisode_preferUnrecorded_bothUnrecorded_fallsThroughToFavorite() async {
+            let store = GuideStore(session: makeSession())
+            let device = makeLocalDevice()
+            MockURLProtocol.requestHandler = { req in
+                (okResponse(for: req.url!), Self.simulcastJSON.data(using: .utf8)!)
+            }
+            await store.load(for: device)
+            let before = Date(timeIntervalSince1970: 1_000_000_000)
+            // Neither candidate is recorded — again no distinguishing signal, falls through.
+            let match = store.nextEpisode(seriesID: "sim789", after: before,
+                                          preferUnrecorded: { _ in true },
+                                          preferFavorite: { _, ch in ch == "2.4" })
+            #expect(match?.channelNum == "2.4", "Both tied on recorded-status — favorite should still decide")
+        }
+
+        @Test @MainActor func currentEpisode_preferUnrecorded_picksTheUnrecordedCandidate() async {
+            let store = GuideStore(session: makeSession())
+            let device = makeLocalDevice()
+            MockURLProtocol.requestHandler = { req in
+                (okResponse(for: req.url!), Self.simulcastJSON.data(using: .utf8)!)
+            }
+            await store.load(for: device)
+            let at = Date(timeIntervalSince1970: 2_000_001_000)   // inside [StartTime, EndTime) for both
+            let match = store.currentEpisode(seriesID: "sim789", at: at,
+                                             preferUnrecorded: { $0.channelNum == "2.4" })
+            #expect(match?.channelNum == "2.4")
+        }
     }
 
     // MARK: - Invalidation

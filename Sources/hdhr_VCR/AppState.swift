@@ -1058,6 +1058,23 @@ final class AppState: ObservableObject {
         lineups[deviceId]?.first(where: { $0.GuideNumber == channelNum })?.isFavorite ?? false
     }
 
+    // Higher-priority tie-break than isFavoriteChannel above, for the same SeriesID(All)
+    // same-device/same-time collision — e.g. one multi-tuner HDHomeRun airing two different
+    // episodes of the same series at once. Reuses the exact on-disk check startRecording's own
+    // skip-duplicate logic uses (duplicateEpisodeTag), so this can never disagree with whether
+    // the episode would actually be skipped as a duplicate at record time. Returns nil (no
+    // preference applied) when the user has already overridden duplicate-skipping for this show
+    // via show_ignore_duplicate_once — that flag means "record it anyway," so it shouldn't also
+    // steer which of two candidates gets picked in the first place.
+    private func preferUnrecordedEpisode(for show: Show) -> ((GuideEntry) -> Bool)? {
+        guard !show.show_ignore_duplicate_once else { return nil }
+        let title = show.show_title
+        let baseDir = show.posixRecordDir
+        return { [weak self] entry in
+            self?.duplicateEpisodeTag(title: title, episodeTag: entry.EpisodeNumber ?? "", baseDir: baseDir) == nil
+        }
+    }
+
     // Checks currently-airing first so show_next may be in the past — idle loop records the remaining portion.
     // devFilter is always the device being added from — SeriesID(All) differs from SeriesID(Channel)
     // only in channel scope (any channel on that device vs. one fixed channel), not device scope;
@@ -1091,7 +1108,7 @@ final class AppState: ObservableObject {
             }
         }
 
-        if let m = guideStore.currentEpisode(seriesID: show.show_seriesid, channelNum: chFilter, deviceId: devFilter, at: now, preferFavorite: isFavoriteChannel) {
+        if let m = guideStore.currentEpisode(seriesID: show.show_seriesid, channelNum: chFilter, deviceId: devFilter, at: now, preferUnrecorded: preferUnrecordedEpisode(for: show), preferFavorite: isFavoriteChannel) {
             apply(m); return
         }
         // Fallback: title match on channelEntryIndex — handles guide entries where SeriesID is
@@ -1100,7 +1117,7 @@ final class AppState: ObservableObject {
         if let m = guideStore.currentEntryByTitle(show.show_title, channelNum: chFilter, deviceId: devFilter, at: now) {
             apply(m); return
         }
-        if let m = guideStore.nextEpisode(seriesID: show.show_seriesid, channelNum: chFilter, deviceId: devFilter, after: now, preferFavorite: isFavoriteChannel) {
+        if let m = guideStore.nextEpisode(seriesID: show.show_seriesid, channelNum: chFilter, deviceId: devFilter, after: now, preferUnrecorded: preferUnrecordedEpisode(for: show), preferFavorite: isFavoriteChannel) {
             apply(m); return
         }
         // Fallback: title match for next airing — handles guide entries where SeriesID is absent.
@@ -1946,13 +1963,14 @@ final class AppState: ObservableObject {
                         shows[idx].show_url = url
                     }
                 }
-                if let match = guideStore.currentEpisode(seriesID: show.show_seriesid, channelNum: chFilter, deviceId: devFilter, at: now, preferFavorite: isFavoriteChannel) {
+                if let match = guideStore.currentEpisode(seriesID: show.show_seriesid, channelNum: chFilter, deviceId: devFilter, at: now, preferUnrecorded: preferUnrecordedEpisode(for: show), preferFavorite: isFavoriteChannel) {
                     glog("[\(show.show_title)] NEXT now (on-air) ch=\(match.channelNum) \(match.entry.Title)")
                     applyMatch(match); return
                 }
                 if let match = guideStore.nextEpisode(seriesID: show.show_seriesid,
                                                       channelNum: chFilter,
                                                       deviceId: devFilter,
+                                                      preferUnrecorded: preferUnrecordedEpisode(for: show),
                                                       preferFavorite: isFavoriteChannel) {
                     glog("[\(show.show_title)] NEXT \(shortTime(match.entry.startDate)) ch=\(match.channelNum) \(match.entry.Title)")
                     applyMatch(match); return

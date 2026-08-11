@@ -40,8 +40,8 @@ func load(for device: HDHRDevice, hours: Int, useXML: Bool = false)    // fetch 
 func loadAll(devices: [HDHRDevice], hours: Int, useXML: Bool = false)  // parallel load for all devices
 func channels(deviceId: String) -> [GuideChannel]
 func entries(deviceId: String, channelNum: String, after: Date) -> [GuideEntry]
-func nextEpisode(seriesID: String, channelNum: String?, deviceId: String?, after: Date, preferFavorite: ((String, String) -> Bool)?) -> SeriesMatch?
-func currentEpisode(seriesID: String, channelNum: String?, deviceId: String?, at: Date, preferFavorite: ((String, String) -> Bool)?) -> SeriesMatch?
+func nextEpisode(seriesID: String, channelNum: String?, deviceId: String?, after: Date, preferUnrecorded: ((GuideEntry) -> Bool)?, preferFavorite: ((String, String) -> Bool)?) -> SeriesMatch?
+func currentEpisode(seriesID: String, channelNum: String?, deviceId: String?, at: Date, preferUnrecorded: ((GuideEntry) -> Bool)?, preferFavorite: ((String, String) -> Bool)?) -> SeriesMatch?
 func nextEpisodes(seriesID: String, after: Date, limit: Int) -> [SeriesMatch]
 func currentEntryByTitle(_ title: String, channelNum: String? = nil, deviceId: String? = nil, at: Date = Date()) -> SeriesMatch?  // SeriesID-missing fallback, matches by title instead
 func nextEntryByTitle(_ title: String, channelNum: String? = nil, deviceId: String? = nil, after: Date = Date()) -> SeriesMatch?  // same fallback, for the next airing
@@ -66,11 +66,16 @@ func invalidateAll()
 
 ---
 
-## Favorite-Channel Tie-Break
+## Multi-Channel Tie-Break: Unrecorded, then Favorite
 
-A SeriesID(All) show can have the *same* episode airing on multiple channels of one device at the identical time (simulcast, or a rerun scheduled to overlap). `seriesIndex[seriesID]` is sorted by `StartTime` only (stable sort) — with no `preferFavorite` closure, `.first` on a tie resolves to whichever channel happened to be inserted first while `buildIndex` walked that device's guide-fetch response, which is incidental, not a deliberate preference.
+A SeriesID(All) show can have candidates airing on multiple channels of one device at the identical time — either the *same* episode (simulcast, or a rerun scheduled to overlap) or, on a multi-tuner device, genuinely *different* episodes of the same series airing concurrently on two channels. `seriesIndex[seriesID]` is sorted by `StartTime` only (stable sort) — with neither tie-break closure supplied, `.first` on a tie resolves to whichever channel happened to be inserted first while `buildIndex` walked that device's guide-fetch response, which is incidental, not a deliberate preference.
 
-`nextEpisode`/`currentEpisode` accept an optional `preferFavorite: (deviceId, channelNum) -> Bool` closure. When supplied: `nextEpisode` narrows to the candidates sharing the earliest StartTime as `first` (`prefix(while:)`) and returns the first one the closure marks favorite, falling back to `first` if none are; `currentEpisode` searches all currently-airing candidates the same way (no StartTime narrowing needed — the "currently airing" filter already scopes them to the tie). `AppState.resolveSeriesAir` and `AppState.scheduleNextAir` — the two places that actually decide which channel a SeriesID show records — pass `AppState.isFavoriteChannel(deviceId:channelNum:)` (looks up `LineupEntry.isFavorite` in `lineups`) as this closure. Other `nextEpisode` callers (`nextGuideEpisode(for:)`, the menu's scheduled-entry lookup) are display-only and don't pass it — they don't decide what records, so an incidental tie there doesn't change behavior.
+`nextEpisode`/`currentEpisode` accept two optional tie-break closures, checked in this order:
+
+1. **`preferUnrecorded: (GuideEntry) -> Bool`** — returns `true` for a candidate that is *not* already on disk. Among the tied candidates, if exactly one satisfies this (a genuine distinguishing signal — some are recorded, some aren't), that one wins outright, before favorite status is even considered: a duplicate on a favorited channel still loses to a fresh episode elsewhere. If the closure doesn't distinguish the tied set (all recorded, or all unrecorded — no information either way), this falls through to step 2.
+2. **`preferFavorite: (deviceId, channelNum) -> Bool`** — same as before: `nextEpisode` narrows to the candidates sharing the earliest StartTime as `first` (`prefix(while:)`) and returns the first one the closure marks favorite, falling back to `first` if none are; `currentEpisode` searches all currently-airing candidates the same way (no StartTime narrowing needed — the "currently airing" filter already scopes them to the tie).
+
+`AppState.resolveSeriesAir` and `AppState.scheduleNextAir` — the two places that actually decide which channel a SeriesID show records — pass `AppState.preferUnrecordedEpisode(for:)` (wraps the same on-disk check `duplicateEpisodeTag(title:episodeTag:baseDir:)` uses at record time, so this can never disagree with whether the episode would actually be skipped as a duplicate; returns `nil` — no preference — when `show_ignore_duplicate_once` is set) and `AppState.isFavoriteChannel(deviceId:channelNum:)` (looks up `LineupEntry.isFavorite` in `lineups`) as these two closures. Other `nextEpisode` callers (`nextGuideEpisode(for:)`, the menu's scheduled-entry lookup) are display-only and don't pass either — they don't decide what records, so an incidental tie there doesn't change behavior.
 
 ---
 

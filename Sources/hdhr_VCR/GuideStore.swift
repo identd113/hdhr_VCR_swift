@@ -277,6 +277,7 @@ final class GuideStore {
         channelNum: String? = nil,
         deviceId: String? = nil,
         after: Date = Date(),
+        preferUnrecorded isNotRecorded: ((_ entry: GuideEntry) -> Bool)? = nil,
         preferFavorite isFavorite: ((_ deviceId: String, _ channelNum: String) -> Bool)? = nil
     ) -> SeriesMatch? {
         sortIfNeeded(seriesID)
@@ -287,8 +288,18 @@ final class GuideStore {
                 && (deviceId == nil || m.deviceId == deviceId)
         } ?? []
         guard let first = candidates.first else { return nil }
+        guard isNotRecorded != nil || isFavorite != nil else { return first }
+        let tied = Array(candidates.prefix(while: { $0.entry.StartTime == first.entry.StartTime }))
+        guard tied.count > 1 else { return first }
+        // Prefer a candidate that isn't already recorded — checked before the favorite tie-break
+        // below (an already-recorded duplicate loses even to a non-favorited channel). Only
+        // decisive when it actually distinguishes the tied set: if every candidate is (or isn't)
+        // already recorded, that carries no information and this falls through to favorite/first.
+        if let isNotRecorded {
+            let unrecorded = tied.filter { isNotRecorded($0.entry) }
+            if unrecorded.count == 1 { return unrecorded[0] }
+        }
         guard let isFavorite else { return first }
-        let tied = candidates.prefix(while: { $0.entry.StartTime == first.entry.StartTime })
         return tied.first { isFavorite($0.deviceId, $0.channelNum) } ?? first
     }
 
@@ -309,12 +320,17 @@ final class GuideStore {
     /// Used to detect a partially-airing episode so recording can be scheduled from the beginning.
     ///
     /// Pass `preferFavorite` to break a multi-channel-simulcast tie toward a favorited channel —
-    /// see `nextEpisode(seriesID:channelNum:deviceId:after:preferFavorite:)` for the rationale.
+    /// see `nextEpisode(seriesID:channelNum:deviceId:after:preferUnrecorded:preferFavorite:)` for
+    /// the rationale. `preferUnrecorded` (checked first, same reasoning as `nextEpisode`) applies
+    /// across every currently-airing candidate here, not just a StartTime-tied subset — unlike
+    /// `nextEpisode`, "currently airing" candidates are inherently concurrent regardless of when
+    /// each individually started.
     func currentEpisode(
         seriesID: String,
         channelNum: String? = nil,
         deviceId: String? = nil,
         at date: Date = Date(),
+        preferUnrecorded isNotRecorded: ((_ entry: GuideEntry) -> Bool)? = nil,
         preferFavorite isFavorite: ((_ deviceId: String, _ channelNum: String) -> Bool)? = nil
     ) -> SeriesMatch? {
         sortIfNeeded(seriesID)
@@ -325,6 +341,10 @@ final class GuideStore {
                 && (deviceId == nil || m.deviceId == deviceId)
         } ?? []
         guard let first = candidates.first else { return nil }
+        if let isNotRecorded, candidates.count > 1 {
+            let unrecorded = candidates.filter { isNotRecorded($0.entry) }
+            if unrecorded.count == 1 { return unrecorded[0] }
+        }
         guard let isFavorite else { return first }
         return candidates.first { isFavorite($0.deviceId, $0.channelNum) } ?? first
     }
