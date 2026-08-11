@@ -455,6 +455,18 @@ Updated `ManagedGuideMatcherTests.swift`'s two now-invalid "matches any device" 
 
 ---
 
+## RESOLVED — `WebServer.swift` `/api/guide-detail` Int-overflow crash on hostile window params
+
+**File:** `WebServer.swift` (`/api/guide-detail` route)
+
+**Root cause**: The route parsed client-supplied `{winStart}/{winSec}` path segments with bare `Int(...)` and then computed `winStart + winSec`; a LAN request like `/api/guide-detail/x/y/9223372036854775807/1` overflowed `Int` and trapped, killing the whole app (and any in-progress recordings). The existing fallback-to-server-window path only covered *malformed* segments, not well-formed-but-absurd ones.
+
+**Resolution**: Both values are now clamped to a sane range before use (`winStart` within ±10 years of now, `winSec` in `1...(28*3600)`), falling back to `guideWindow(state:)` otherwise — same shape as the existing malformed-segment fallback. Verified live against the running app (`curl .../guide-detail/x/y/9223372036854775807/1` → 200, server still alive afterward) and added a regression test, `guideDetailOverflowWindowDoesNotCrash` in `WebServerTests.swift`, matching the existing `negativeContentLengthDoesNotCrash` pattern.
+
+**Resolving commit**: `a6d67de`
+
+---
+
 ## Staleness check, 2026-08-10
 
 Every entry above that only had a prescriptive `**Fix:**` note (rather than a past-tense `**Resolution:**`) was individually re-verified against the current source before filing here — grepped for the described symptom and confirmed the described fix's actual code is present (or, for the FloatingGuideView/CableGuideView group, confirmed the file is gone entirely). Nothing in this file is guessed or assumed still-true from the original write-up.

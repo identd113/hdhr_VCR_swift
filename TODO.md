@@ -73,6 +73,18 @@ Watch Now currently only splits entries into Favorites / Others (`content`'s `fa
 
 ---
 
+### No watched/resume tracking across sessions
+
+VLC's own scrub bar handles resume-within-a-single-playback-session, but nothing persists a recording's watched state or last playback position across app restarts or between Watch Now and a later Finder-opened file. Comparable apps (Plex, Channels DVR) track both, letting a library view distinguish "new," "in progress," and "watched." Would need a small persisted per-recording-file record (position + watched flag), keyed by a stable identifier since filenames can be reorganized — 2026-08-11 feature-gap survey, not yet scoped.
+
+---
+
+### No commercial-skip markers
+
+Channels DVR and Plex DVR both run a comskip-style detection pass on completed recordings and let playback jump commercial breaks. This app already does local recording + built-in VLC playback, so the pieces exist, but there's no detection step or marker format today. Bigger lift than the other items here — needs an actual black-frame/silence detection pass (or a bundled comskip binary) plus a playback-side "skip to next marker" UI. 2026-08-11 feature-gap survey, not yet scoped.
+
+---
+
 ### Watch Now-from-disk relay could "catch up" faster by front-loading the already-recorded backlog
 
 Watching a currently-recording show via `AppState.watchRecordingInApp` plays it back from disk through the local relay (`/api/watch-recording`, `WebServer.swift`'s `streamGrowingFile`/`pumpGrowingFile`) rather than the live tuner stream. Unlike live TV, the bytes this relay serves up to the current live edge already exist on disk the instant playback starts — there's no reason to wait for them to "arrive" the way a real live stream does. But `VLCBridge.play(url:)` applies a blanket `--network-caching=2000` VLC option (`VLCBridge.swift` ~line 345) to every media load, live tuner stream and disk relay alike, with no distinction — so VLC deliberately buffers 2 seconds before starting playback even when the relay could in principle burst-deliver a much larger already-on-disk backlog instantly over the loopback connection. This likely means the disk-relay path "catches up" to the live edge slower than it has to, since it's paced by a caching setting tuned for smoothing real live-stream jitter, not for a same-machine relay serving data that's already fully present on disk.
@@ -111,6 +123,24 @@ The season/episode-number half of "skip already-recorded episodes" is **done** (
 
 ---
 
+### No recurring rules beyond SeriesID (keyword/genre auto-record)
+
+`SeriesID`/title-based recording (see `Models.md`'s `ShowState`) only covers "record this specific show." Comparable apps (TiVo's "wishlist," MythTV's keyword-record) let a user set a standing rule like "record anything new tagged Sports" or "record any airing matching this keyword" across the whole guide, not tied to one series. Would build on the existing SeriesID scheduling machinery (`AppState.resolveSeriesAir`/`scheduleNextAir`) but needs a new match dimension (keyword/genre instead of SeriesID) and its own conflict/dedup story. 2026-08-11 feature-gap survey, not yet scoped.
+
+---
+
+### No retention/auto-cleanup rules
+
+Recordings accumulate with no automatic pruning beyond duplicate-skip (`Skip_recorded_episodes`) — nothing deletes old episodes on its own. Comparable apps offer per-show retention like "keep only the last N episodes" or "delete after N days" (and often "delete once watched," which would depend on the watched-tracking item above). Would need a scheduled sweep (idle loop, similar cadence to the hourly guide refresh) comparing `recordedEpisodeTags`-style on-disk state against a per-show retention setting. 2026-08-11 feature-gap survey, not yet scoped.
+
+---
+
+### No reminder-only shows (notify without recording)
+
+Every managed show type records; there's no way to just get notified when something airs without scheduling a recording. TiVo separates "season pass" (record) from "reminder" (notify only) as two different actions on the same show. Would likely reuse the existing notification plumbing (`notify`/Discord embeds) minus the actual `startRecording` call — the guide-matching/scheduling side (`ManagedGuideMatcher`, `resolveSeriesAir`) would need a new non-recording show state to key off. 2026-08-11 feature-gap survey, not yet scoped.
+
+---
+
 ## Web Guide
 
 ### No "Recording Now" section pulling active-recording channel rows to the top
@@ -120,6 +150,18 @@ The web Guide already partitions channel rows into Favorites vs. everything else
 Note: this is the shared web guide grid (`WebServer.swift`) rendered both in a browser and embedded via WKWebView in `AddShowView.swift`'s guide step — there is no separate native "cable view" implementation anymore (the old `CableGuideView`, and later the unreachable `FloatingGuideView`/"Cable Guide" window built on top of it, were both removed; fixing it here covers both remaining embeddings at once).
 
 **Key file**: `WebServer.swift` → `buildGuideGridHTML`/`buildHTML` (favRows/otherRows split, `.g-fav-sep` divider, `recChannelsByDevice`).
+
+---
+
+### No guide search
+
+The web guide has a genre filter (`filterGenre`/`rebuildGenreFilter` in `guide.js`, dims non-matching blocks) but no title/keyword text search — finding "where is Jeopardy airing" today means browsing channel-by-channel or scrolling. Every comparable guide app (Channels DVR, Plex, TiVo) has a search box. Could reuse `GuideStore`'s existing per-channel entry index for a client-side search-as-you-type, or a small new `/api/guide-search` endpoint if the dataset gets too large to ship to the browser wholesale. 2026-08-11 feature-gap survey, not yet scoped.
+
+---
+
+### No recordings library view in the web UI
+
+The web guide covers scheduling *future* recordings; there's no browse/search of *past* recordings (what's already on disk) from a phone or browser — only the native app's Finder-adjacent folder structure. A library view (list/grid of completed recordings, searchable, maybe pairing with the watched/resume-tracking item above) would make the web UI useful after a show airs, not just before. 2026-08-11 feature-gap survey, not yet scoped.
 
 ---
 
