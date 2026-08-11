@@ -1931,7 +1931,9 @@ final class WebServer: @unchecked Sendable {
         // Strip the IPv4-mapped prefix (::ffff:x.x.x.x → x.x.x.x) so the loopback check
         // handles both native IPv4 and IPv4-in-IPv6 connections from localhost.
         let testIP = remoteIP.hasPrefix("::ffff:") ? String(remoteIP.dropFirst(7)) : remoteIP
-        if testIP == "127.0.0.1" || testIP.hasPrefix("::1") { return true }
+        // Exact-match, not hasPrefix — "::1" is loopback, but "::1234:5678"/"::123" (the
+        // deprecated IPv4-compatible ::/96 space) merely begin with "::1" and are not loopback.
+        if testIP == "127.0.0.1" || testIP == "::1" { return true }
 
         var ptr: UnsafeMutablePointer<ifaddrs>? = nil
         guard getifaddrs(&ptr) == 0, let base = ptr else { return false }
