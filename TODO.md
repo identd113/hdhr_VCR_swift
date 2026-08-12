@@ -67,7 +67,7 @@ No direct path to immediately record an in-progress show without going through W
 
 ### No "Recording Now" section separating active recordings
 
-Watch Now currently only splits entries into Favorites / Others (`content`'s `favs`/`others` filter on `channel.isFavorite`). Shows that are actively recording (`managedShow?.show_recording == true`) are mixed into whichever section they'd normally land in, so "what's recording right now" isn't visually distinct from "what's just on air." Add a third partition, above Favorites, for entries whose managed show is currently recording — when the recording ends, the entry falls back into Favorites/Others automatically since the partition is just a filter re-evaluated on every render. Companion to the web Guide's version below — implement together for one consistent story across both surfaces.
+Watch Now currently only splits entries into Favorites / Others (`content`'s `favs`/`others` filter on `channel.isFavorite`). Shows that are actively recording are mixed into whichever section they'd normally land in, so "what's recording right now" isn't visually distinct from "what's just on air." Add a third partition, above Favorites, for entries whose managed show is currently recording — when the recording ends, the entry falls back into Favorites/Others automatically since the partition is just a filter re-evaluated on every render. Companion to the web Guide's version below — implement together for one consistent story across both surfaces. Determine "is this entry's show recording" the same way `ringStateInputs`/`guideRingState` already do (`ManagedGuideMatcher.owner(for: entry)?.show_recording == true`, computed once per render and passed down) — not a fresh per-row lookup; see the 2026-08-12 fix that made `WatchNowRow`'s action row and Edit button switch to this same accurate, device-scoped lookup after the old title-based `managedShow` property was found to occasionally resolve the wrong device's show.
 
 **Key file**: `Views/WatchNowView.swift` → `content` (favs/others filter, ~line 206).
 
@@ -267,7 +267,9 @@ The 2026-08-11 coverage-guided pass (`swift test --enable-code-coverage` + `xcru
 
 Discovered 2026-08-11 while adding a snapshot test for `WatchNowView`'s new status-ring badge
 (`guideRingBadge`, `GuideViewHelpers.swift`): seeding real on-air guide data via
-`GuideStore.buildIndex` (now `internal` for exactly this) correctly got `WatchNowView` into its
+`GuideStore.buildIndex` (temporarily `internal` for exactly this, since reverted back to `private`
+2026-08-12 once this snapshot test was removed and nothing else needed the wider access) correctly
+got `WatchNowView` into its
 `ScrollView { ForEach(...) }` branch — but the rendered `ImageRenderer` output was entirely blank,
 same as an empty view, regardless of how many rows should have been in it. Confirmed this isn't
 specific to the new ring code: `SnapshotTests.swift`'s two pre-existing `WatchNowView` cases never
