@@ -131,6 +131,20 @@ struct WebServerSmokeTests {
         #expect(json?["ok"] as? Bool == true)
     }
 
+    // "version" is load-bearing for guide.js's redeploy-staleness check — must never disappear.
+    // "release"/"buildNumber" are additive Info.plist identity fields; a dev build (this test's
+    // target) leaves them at whatever a prior release build set, so only presence/type is checked
+    // here, not a specific value.
+    @Test func pingIncludesAllThreeVersionIdentifiers() async throws {
+        guard await serverAvailable() else { return }
+        let (status, body) = try await get("/api/ping")
+        #expect(status == 200)
+        let json = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+        #expect((json?["version"] as? String)?.isEmpty == false)
+        #expect(json?["release"] is String)
+        #expect(json?["buildNumber"] is String)
+    }
+
     @Test func rootReturnsHTML() async throws {
         guard await serverAvailable() else { return }
         let (status, body) = try await get("/")

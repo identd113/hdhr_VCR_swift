@@ -746,7 +746,14 @@ final class WebServer: @unchecked Sendable {
             return .ok(contentType: "text/html; charset=utf-8", body: body)
 
         case "/api/ping":
-            let pingBody = Data("{\"ok\":true,\"version\":\"\(appVersion)\"}".utf8)
+            // "version" (the build stamp) is load-bearing — guide.js's checkFreshness() compares
+            // it against the page's baked-in _ver to detect a redeploy and reload. "release"/
+            // "buildNumber" are additive, read-only identity fields (only set by deploy_release.sh;
+            // a dev deploy.sh build leaves them at whatever the last release left behind) — safe to
+            // add without touching the field client code already keys off.
+            let release = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
+            let buildNumber = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
+            let pingBody = Data("{\"ok\":true,\"version\":\"\(appVersion)\",\"release\":\"\(release)\",\"buildNumber\":\"\(buildNumber)\"}".utf8)
             return .ok(contentType: "application/json", body: pingBody)
 
         case "/api/guide-refresh":
