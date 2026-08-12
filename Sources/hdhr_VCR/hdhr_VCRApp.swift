@@ -103,7 +103,10 @@ struct hdhr_VCRApp: App {
         }
         .windowStyle(.titleBar)
         .windowResizability(.contentMinSize)
-        .defaultSize(width: 420, height: 620)
+        // 420 was too narrow once a recording row's action row grew a second stylized button
+        // ("Watch Now!" + "Watch from Beginning" side by side, replacing a single-button pull-down
+        // menu) — "Watch from Beginning" was clipping. Still user-resizable/shrinkable below this.
+        .defaultSize(width: 480, height: 620)
 
         // Donation nag — single instance; opened via openDonationNagIfNeeded() on launch and
         // after a show is added (native or web), see DonationNagView.swift / docs/DonationNagView.md.

@@ -81,7 +81,8 @@ struct WatchNowView: View {
             channel: ch,
             entry: entry,
             posterImage: entry.ImageURL.flatMap { posterCache[$0] },
-            ringState: guideRingState(for: entry, device: device, inputs: ringInputs)
+            ringState: guideRingState(for: entry, device: device, inputs: ringInputs),
+            managedShow: ringInputs.guideMatcher.owner(for: entry)
         )
         .task(id: entry.ImageURL) {
             guard let urlStr = entry.ImageURL,
@@ -307,6 +308,10 @@ struct WatchNowRow: View {
     let entry: GuideEntry
     let posterImage: NSImage?
     let ringState: GuideRingState
+    // Passed down from the parent's already-computed, device+channel-scoped ManagedGuideMatcher
+    // (the same lookup ringState itself is derived from) rather than resolved independently here —
+    // see the removed private managedShow computed property below for why the two must agree.
+    let managedShow: Show?
 
     @State private var showTunerFullAlert = false
 
@@ -323,18 +328,6 @@ struct WatchNowRow: View {
     private var channelLogo: NSImage? {
         state.channelImageURLs["\(device.DeviceID):\(channel.GuideNumber)"]
             .flatMap { state.channelIconImages[$0] }
-    }
-
-    private var managedShow: Show? {
-        if let sid = entry.SeriesID, !sid.isEmpty {
-            return state.managedShowBySeriesID[sid]
-        }
-        // Multiple shows can share a title (e.g. "News" on different channels).
-        // For series shows any match by title is correct; for single-slot shows
-        // narrow to the specific device+channel so the wrong entry doesn't win.
-        return state.managedShowByTitle[entry.Title]?.first {
-            $0.isSeries || ($0.hdhr_record == device.DeviceID && $0.show_channel == channel.GuideNumber)
-        }
     }
 
     var body: some View {
@@ -440,18 +433,24 @@ struct WatchNowRow: View {
                 // of the plain live-tuner Watch button, which would otherwise open a second,
                 // redundant tuner connection for a channel this app is already recording.
                 if let show = managed, show.show_recording {
-                    Menu {
-                        Button(watchFromBeginningLabel(entry.Title)) {
-                            state.watchRecordingInApp(show, fromBeginning: true)
-                        }
-                        .accessibilityLabel(watchFromBeginningLabel(entry.Title))
-                        Button(watchLiveLabel(entry.Title)) {
-                            state.watchRecordingInApp(show)
-                        }
-                        .accessibilityLabel(watchLiveLabel(entry.Title))
+                    // Two separate buttons, not a pull-down menu — matches the menu bar's own
+                    // recording submenu, which offers these as two distinct items rather than
+                    // one nested behind a "Watch" disclosure.
+                    Button {
+                        state.watchRecordingInApp(show)
                     } label: {
-                        Label("Watch", systemImage: "play.tv.fill").font(.caption.bold())
+                        Label("Watch Now!", systemImage: "play.tv.fill").font(.caption.bold())
                     }
+                    .accessibilityLabel(watchLiveLabel(entry.Title))
+                    .buttonStyle(.borderedProminent)
+                    .tint(watchNowBlue)
+                    .controlSize(.small)
+                    Button {
+                        state.watchRecordingInApp(show, fromBeginning: true)
+                    } label: {
+                        Label("Watch from Beginning", systemImage: "backward.end.fill").font(.caption.bold())
+                    }
+                    .accessibilityLabel(watchFromBeginningLabel(entry.Title))
                     .buttonStyle(.borderedProminent)
                     .tint(watchNowBlue)
                     .controlSize(.small)
