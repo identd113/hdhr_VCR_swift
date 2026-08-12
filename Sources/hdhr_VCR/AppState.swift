@@ -61,6 +61,17 @@ final class AppState: ObservableObject {
     // it preemptively on a recording that was never actually a duplicate doesn't silently burn
     // the one-shot before the rerun it was meant for ever airs.
     var duplicateOverrideUsedThisAttempt: Set<String> = []
+    // Episode metadata (episode number/title, synopsis, genre tags, new-episode flag) captured
+    // once when a recording's "Recording Started" card fires, when show.show_next still correctly
+    // points at the airing actually recording. Discord.buildDiscordShowEmbed prefers this snapshot
+    // over a fresh guideEntryForShow(show) lookup for every later card in the same lifecycle
+    // (in-progress, complete, failed) — without it, those cards fire *after* scheduleNextAir has
+    // already advanced show_next to the *next* airing, so the live lookup would silently return
+    // the wrong episode's info or nothing at all (episode/synopsis lines went missing on Recording
+    // Complete cards in practice — found from a real Discord screenshot, 2026-08-12). Cleared
+    // alongside discord_start_msg_id at the same terminal events (see fireDiscordCard's
+    // clearIdAfter) and in deleteShow's show_id-keyed purge.
+    var discordEpisodeSnapshots: [String: DiscordEpisodeSnapshot] = [:]
     // Retained DispatchSource for SIGTERM — saves config before the process exits so
     // show_recording_path and discord_start_msg_id survive pkill during development.
     private var sigtermSource: DispatchSourceSignal?
@@ -1375,6 +1386,9 @@ final class AppState: ObservableObject {
             if show.show_recording, pendingDiscordStart.contains(show.show_id),
                recordingManager.isRunning(showId: show.show_id) {
                 pendingDiscordStart.remove(show.show_id)
+                // Capture now, while show_next still points at the airing actually recording —
+                // see discordEpisodeSnapshots' doc comment.
+                discordEpisodeSnapshots[show.show_id] = discordEpisodeSnapshot(entry: guideEntryForShow(show), show: show)
                 let endsStr = shortTime(shows[i].show_end ?? Date())
                 fireDiscordCard(showId: show.show_id, event: "🔴 Recording Started", color: 0x2ECC71,
                                 enabled: true, extra: [("Ends", endsStr, true)])
@@ -2222,6 +2236,7 @@ final class AppState: ObservableObject {
         // the dict entry doesn't affect an already-started Task, it only stops a future call from
         // chaining behind it (and there won't be one for a deleted show).
         discordCardTasks.removeValue(forKey: show.show_id)
+        discordEpisodeSnapshots.removeValue(forKey: show.show_id)
         saveConfig()
         pushShowUpdate(type: "show_deleted", channel: show.show_channel, device: show.hdhr_record)
     }
@@ -2598,22 +2613,49 @@ final class AppState: ObservableObject {
         return (200..<300).contains(http.statusCode)
     }
 
+    // Raw ingredients derived from a GuideEntry match for a Discord embed's episode-specific
+    // content. See discordEpisodeSnapshots' doc comment for why this is captured once at
+    // "Recording Started" and reused, rather than re-derived fresh for every later card.
+    struct DiscordEpisodeSnapshot {
+        let epNum: String
+        let epTitle: String
+        let synopsis: String
+        let tags: [String]
+        let isNew: Bool
+    }
+
+    private func discordEpisodeSnapshot(entry: GuideEntry?, show: Show) -> DiscordEpisodeSnapshot {
+        DiscordEpisodeSnapshot(
+            epNum:    entry?.EpisodeNumber?.trimmingCharacters(in: .whitespaces) ?? "",
+            epTitle:  entry?.EpisodeTitle?.trimmingCharacters(in: .whitespaces) ?? "",
+            synopsis: entry?.Synopsis ?? "",
+            tags:     entry?.Filter ?? (show.show_genre.isEmpty ? [] : [show.show_genre]),
+            isNew:    entry.map(isNewEpisode) ?? false
+        )
+    }
+
     // Builds the embed dict for a show event. Shared by discordShow and the async capturing path.
     private func buildDiscordShowEmbed(event: String, show: Show, color: Int,
                                        extra: [(name: String, value: String, inline: Bool)]) -> [String: Any] {
-        let entry = guideEntryForShow(show)
+        // Prefer the snapshot captured when this recording's lifecycle started (still accurate)
+        // over a fresh guide lookup — by the time a later card in the same lifecycle (in-progress,
+        // complete, failed) fires, scheduleNextAir may have already moved show.show_next on to the
+        // *next* airing, which would make a live guideEntryForShow(show) silently resolve to the
+        // wrong episode (or nothing at all). No snapshot exists yet for events that fire before a
+        // recording starts (Show Added, Up Next, Recording Soon, Tuner Conflict) — those still
+        // resolve live, which is correct since show_next is accurate at that point.
+        let snapshot = discordEpisodeSnapshots[show.show_id]
+            ?? discordEpisodeSnapshot(entry: guideEntryForShow(show), show: show)
 
         let channel = guideStore.channels(deviceId: show.hdhr_record)
                                 .first { $0.GuideNumber == show.show_channel }
 
-        var descLines: [String] = ["**\(show.show_title)**"]
-        let epNum   = entry?.EpisodeNumber?.trimmingCharacters(in: .whitespaces) ?? ""
-        let epTitle = entry?.EpisodeTitle?.trimmingCharacters(in: .whitespaces) ?? ""
-        if !epNum.isEmpty || !epTitle.isEmpty {
-            descLines.append([epNum, epTitle].filter { !$0.isEmpty }.joined(separator: " · "))
+        var descLines: [String] = ["**\(show.show_title)**\(snapshot.isNew ? "  🆕 NEW" : "")"]
+        if !snapshot.epNum.isEmpty || !snapshot.epTitle.isEmpty {
+            descLines.append([snapshot.epNum, snapshot.epTitle].filter { !$0.isEmpty }.joined(separator: " · "))
         }
-        if let synopsis = entry?.Synopsis, !synopsis.isEmpty {
-            let s = synopsis.count > 200 ? String(synopsis.prefix(200)) + "…" : synopsis
+        if !snapshot.synopsis.isEmpty {
+            let s = snapshot.synopsis.count > 200 ? String(snapshot.synopsis.prefix(200)) + "…" : snapshot.synopsis
             descLines.append(s)
         }
 
@@ -2627,9 +2669,8 @@ final class AppState: ObservableObject {
         }
         for e in extra { fields.append(["name": e.name, "value": e.value, "inline": e.inline]) }
 
-        let tags = entry?.Filter ?? (show.show_genre.isEmpty ? [] : [show.show_genre])
-        if !tags.isEmpty {
-            fields.append(["name": "Tags", "value": tags.map { "`\($0)`" }.joined(separator: " "), "inline": false])
+        if !snapshot.tags.isEmpty {
+            fields.append(["name": "Tags", "value": snapshot.tags.map { "`\($0)`" }.joined(separator: " "), "inline": false])
         }
 
         var authorDict: [String: Any] = ["name": "CH \(show.show_channel)\(channel.map { " · \($0.GuideName)" } ?? "")"]
@@ -2712,8 +2753,13 @@ final class AppState: ObservableObject {
         discordCardTasks[showId] = Task { @MainActor in
             _ = await previous?.value
             await self.discordRecordingCard(showId: showId, event: event, color: color, enabled: enabled, extra: extra)
-            if clearIdAfter, let j = self.shows.firstIndex(where: { $0.show_id == showId }) {
-                self.shows[j].discord_start_msg_id = ""
+            if clearIdAfter {
+                if let j = self.shows.firstIndex(where: { $0.show_id == showId }) {
+                    self.shows[j].discord_start_msg_id = ""
+                }
+                // Same lifecycle boundary as discord_start_msg_id — the next airing's attempt
+                // captures a fresh snapshot when its own "Recording Started" card fires.
+                self.discordEpisodeSnapshots.removeValue(forKey: showId)
             }
             self.saveConfig()
         }

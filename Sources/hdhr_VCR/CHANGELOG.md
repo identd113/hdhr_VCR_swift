@@ -6,6 +6,7 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 
 **Added**
 - Watch Now can now start playback from the very beginning of an in-progress recording, not just ~30 seconds behind live — anything currently recording now shows both **Watch Now!** and **Watch from Beginning** buttons, matching the menu bar's recording list.
+- Discord notifications now show a **🆕 NEW** tag next to the show title for a first-run episode airing today.
 
 **Updated**
 - Watching a show that's already recording no longer opens a second connection to your tuner — it now plays back the copy already being written to disk, the way it should have all along.
@@ -15,6 +16,7 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 - Fixed: the new "in use by another tuner" indicator could incorrectly flag your own live Watch Now session as if it belonged to someone else.
 - Fixed: a recording's pulsing status indicator could fail to start if a show began recording while its row was already on screen.
 - Fixed: Watch Now could show a plain single "Watch" button instead of the "Watch Now!"/"Watch from Beginning" pair for a show that was actually recording, even though its ring correctly showed red/pulsing — a mismatch between which show the ring and the buttons were each looking up.
+- Fixed: a "Recording Complete" Discord notification could be missing its episode number and summary, even when an earlier notification for the same recording (e.g. a tuner conflict warning) showed them correctly — the app was looking up "what's airing now" instead of remembering what actually recorded.
 
 **Info**
 - Reduced background work from this update's new tuner-status tracking and Watch Now's already-recorded lookup, so neither runs more than needed.
