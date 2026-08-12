@@ -1327,6 +1327,17 @@ final class WebServer: @unchecked Sendable {
             return Dictionary(grouping: pending, by: { $0.hdhr_record })
                 .mapValues { Set($0.map { $0.show_channel }) }
         }()
+        // Channels a hardware tuner is actively locked to but this app didn't initiate — e.g. the
+        // "app expects 1, hw shows 2" case (another machine running this app against the same
+        // physical device, or someone just watching live via the HDHomeRun's own app). Excludes our
+        // own recording channels so this never doubles up with .g-st-rec for the same block.
+        let hwOtherChannelsByDevice: [String: Set<String>] = Dictionary(
+            uniqueKeysWithValues: state.devices.map { device in
+                let hwChannels = Set((state.deviceTunerOccupancy[device.DeviceID] ?? []).compactMap { $0.VctNumber })
+                let ours = recChannelsByDevice[device.DeviceID] ?? []
+                return (device.DeviceID, hwChannels.subtracting(ours))
+            }
+        )
         let activeMgd    = state.shows.filter { $0.show_active && !$0.show_paused }
         let guideMatcher = ManagedGuideMatcher(activeManagedShows: activeMgd)
         // Skip-already-recorded: precompute each managed series' on-disk SxxExx tags ONCE (one dir
@@ -1367,6 +1378,7 @@ final class WebServer: @unchecked Sendable {
                     : "<img class=\"g-logo\" src=\"\(he(logoURL))\" loading=\"lazy\" onerror=\"this.style.display='none'\" alt=\"\" style=\"background:#ddd\">"
                 let isRecCh  = (recChannelsByDevice[device.DeviceID]?.contains(ch.GuideNumber) ?? false)
                              || (pendingRecChannelsByDevice[device.DeviceID]?.contains(ch.GuideNumber) ?? false)
+                let isOtherTunerCh = hwOtherChannelsByDevice[device.DeviceID]?.contains(ch.GuideNumber) ?? false
 
                 var blockParts: [String] = ["<div class=\"g-now-bar\" style=\"--gs:\(nowPct)%\"></div>"]
                 var cursor = winStart
@@ -1412,16 +1424,21 @@ final class WebServer: @unchecked Sendable {
                         return state.conflictingShowIDs.contains(s.show_id)
                             && abs(Double(e.StartTime) - sNext.timeIntervalSince1970) < 300
                     } ?? false)
+                    // Lowest-priority marker — a hardware tuner is on this channel right now but not
+                    // for any reason this app tracks (not our recording, not a scheduled/skip/conflict
+                    // state). Yields to all four managed states above; see hwOtherChannelsByDevice.
+                    let isOtherTunerNow = isOtherTunerCh && isNow && !isEntryRec
                     var cls = "g-prog"
                     if isEntryRec      { cls += " g-prog-rec"   }
                     else if isNow      { cls += " g-prog-now"   }
                     else if isMgd      { cls += " g-prog-sched" }
                     // Status ring + badge (independent of the background class above — genre
-                    // colour stays untouched): recording > skip > conflict > scheduled.
+                    // colour stays untouched): recording > skip > conflict > scheduled > other-tuner.
                     cls += isEntryRec              ? " g-st-rec"
                          : (isMgd && willSkip)     ? " g-st-skip"
                          : isConflict              ? " g-st-conflict"
-                         : isMgd                   ? " g-st-sched" : ""
+                         : isMgd                   ? " g-st-sched"
+                         : isOtherTunerNow         ? " g-st-inuse" : ""
                     let ggSkip: Set<String>  = ["series","miniseries","mini-series","mini series","special"]
                     let ggAlias: [String: String] = [
                         "sitcom":"comedy","movies":"movie","kids":"children","sport":"sports",
@@ -1460,6 +1477,7 @@ final class WebServer: @unchecked Sendable {
                             return "  — Conflict: all tuners busy at this time"
                         }
                         if isMgd { return "  — Scheduled to record" }
+                        if isOtherTunerNow { return "  — In use on this device (not by this app)" }
                         return ""
                     }()
                     let tip   = (sub.isEmpty

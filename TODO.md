@@ -53,6 +53,25 @@ Guide data loads fine (`GuideStore.load()` hits `api.hdhomerun.com`, a cloud hos
 
 ## Player / Watch Now
 
+### Check whether WatchNowView should get the web guide's status-ring system
+
+The web guide's program blocks show a 5-state colored ring + badge system (`.g-st-sched` blue ⏱,
+`.g-st-rec` red ⏺, `.g-st-skip` slate ⏭, `.g-st-conflict` orange ⚠, `.g-st-inuse` purple ▶ — see
+`docs/WebServer.md`'s "Status ring + badge"). `WatchNowView`'s native rows (`Views/WatchNowView.swift`)
+have nothing equivalent — just a genre-color background (`guideEntryColor(for:onAir:)`) and a plain
+"🔴 Recording" text badge for this instance's own recordings (`managedShow?.show_recording == true`).
+No skip/conflict/in-use-by-other-tuner indication exists natively at all. User flagged 2026-08-11
+(screenshot of Watch Now next to the web guide) asking whether the native view should carry the same
+circled-ring + color language, for visual consistency between the two guide surfaces. Not scoped or
+implemented — needs a design pass (SwiftUI equivalent of a `box-shadow` ring + corner badge is a
+different mechanism, e.g. `.overlay`/`.background` with a `Circle()`) and a decision on whether all
+five states are worth surfacing here or just a subset (Watch Now is browse-and-watch focused, not a
+full scheduling view — skip/conflict may be less relevant than in the full grid).
+
+**Key files**: `Views/WatchNowView.swift`, `Views/GuideViewHelpers.swift` (`guideEntryColor`), `docs/WatchNowView.md`.
+
+---
+
 ### Elapsed/remaining timer in recording menu doesn't tick
 
 Times shown in `recordingMenu` / `scheduledMenu` are computed when the menu opens and stay static for the duration it's open. NSMenu doesn't auto-refresh its view hierarchy. A real-time display would require redesigning recording detail as a window-based popover.

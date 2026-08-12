@@ -172,7 +172,7 @@ html.lm #sum-poster{background:#ccc}
   .g-pi{padding:2px 5px}
   .g-ti{font-size:.7rem}
   .g-sub{font-size:.58rem}
-  .g-prog.g-st-sched::after,.g-prog.g-st-rec::after,.g-prog.g-st-skip::after,.g-prog.g-st-conflict::after{
+  .g-prog.g-st-sched::after,.g-prog.g-st-rec::after,.g-prog.g-st-skip::after,.g-prog.g-st-conflict::after,.g-prog.g-st-inuse::after{
     top:3px;right:3px;width:15px;height:15px;font-size:9px
   }
   .mac-sheet{padding:14px 16px!important}
@@ -256,18 +256,20 @@ html.lm .g-hdr-btn-now:hover{border-color:#c03030!important;color:#fff!important
 .g-prog.g-sel{border-color:var(--t0)!important;box-shadow:0 0 0 1px rgba(128,128,128,.5);z-index:4}
 /* ── Status ring + badge (scheduled/recording/skip/conflict) — independent of the
    g-prog-rec/-now/-sched background classes above, so genre colour stays untouched ── */
-:root{--vc-sched:#3b93ff;--vc-rec:#ff5a5a;--vc-skip:#8a92a3;--vc-conflict:#ff9500}
+:root{--vc-sched:#3b93ff;--vc-rec:#ff5a5a;--vc-skip:#8a92a3;--vc-conflict:#ff9500;--vc-inuse:#9b59b6}
 @keyframes gRecPulse{0%,100%{opacity:1}50%{opacity:.4}}
 @keyframes gRingPulse{0%,100%{box-shadow:0 0 0 2.5px var(--vc-rec)}50%{box-shadow:0 0 0 2.5px rgba(255,90,90,.5)}}
 .g-prog.g-st-sched{box-shadow:0 0 0 2.5px var(--vc-sched)}
 .g-prog.g-st-rec{box-shadow:0 0 0 2.5px var(--vc-rec);animation:gRingPulse 1.6s ease-in-out infinite}
 .g-prog.g-st-skip{box-shadow:0 0 0 2.5px var(--vc-skip)}
 .g-prog.g-st-conflict{box-shadow:0 0 0 2.5px var(--vc-conflict)}
+.g-prog.g-st-inuse{box-shadow:0 0 0 2.5px var(--vc-inuse)}
 .g-prog.g-sel.g-st-sched{box-shadow:0 0 0 1px rgba(128,128,128,.5),0 0 0 4px var(--vc-sched)}
 .g-prog.g-sel.g-st-rec{box-shadow:0 0 0 1px rgba(128,128,128,.5),0 0 0 4px var(--vc-rec);animation:none}
 .g-prog.g-sel.g-st-skip{box-shadow:0 0 0 1px rgba(128,128,128,.5),0 0 0 4px var(--vc-skip)}
 .g-prog.g-sel.g-st-conflict{box-shadow:0 0 0 1px rgba(128,128,128,.5),0 0 0 4px var(--vc-conflict)}
-.g-prog.g-st-sched::after,.g-prog.g-st-rec::after,.g-prog.g-st-skip::after,.g-prog.g-st-conflict::after{
+.g-prog.g-sel.g-st-inuse{box-shadow:0 0 0 1px rgba(128,128,128,.5),0 0 0 4px var(--vc-inuse)}
+.g-prog.g-st-sched::after,.g-prog.g-st-rec::after,.g-prog.g-st-skip::after,.g-prog.g-st-conflict::after,.g-prog.g-st-inuse::after{
   position:absolute;top:4px;right:4px;width:19px;height:19px;border-radius:50%;
   display:flex;align-items:center;justify-content:center;font-size:11px;line-height:1;
   color:#fff;box-shadow:0 1px 2px rgba(0,0,0,.4);z-index:2
@@ -276,6 +278,7 @@ html.lm .g-hdr-btn-now:hover{border-color:#c03030!important;color:#fff!important
 .g-prog.g-st-rec::after     {content:"⏺\FE0E";background:var(--vc-rec);animation:gRecPulse 1.6s ease-in-out infinite}
 .g-prog.g-st-skip::after    {content:"⏭\FE0E";background:var(--vc-skip)}
 .g-prog.g-st-conflict::after{content:"⚠\FE0E";background:var(--vc-conflict)}
+.g-prog.g-st-inuse::after   {content:"▶\FE0E";background:var(--vc-inuse)}
 @media (prefers-reduced-motion: reduce){
   .g-prog.g-st-rec{animation:none;box-shadow:0 0 0 2.5px var(--vc-rec)}
   .g-prog.g-st-rec::after{animation:none}
