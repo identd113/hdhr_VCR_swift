@@ -985,9 +985,9 @@ struct SettingsView: View {
 
     // MARK: - Changelog parsing
 
-    /// Splits `text` into sections by "## " headings, keeping only those whose
-    /// "(YYMMDD-HHMM)" version stamp is ≤ `appVersion`. Sections with no stamp are
-    /// always kept (they predate version stamping). Returns the filtered text and the
+    /// Splits `text` into sections by "## " headings, keeping only those whose date is
+    /// ≤ `appVersion`'s own build date. Sections with no extractable date (e.g. "## Unreleased",
+    /// or anything predating version stamping) are always kept. Returns the filtered text and the
     /// latest version found (nil if none), so callers can show an update notice.
     private static func parseChangelog(_ text: String) -> (filtered: String, latestVersion: String?) {
         let sep = "\n## "
@@ -1006,16 +1006,18 @@ struct SettingsView: View {
     }
 
     /// Extracts a "(YYMMDD-HHMM)" version stamp from a changelog heading string.
+    // CHANGELOG.md headings (2026-08-12 rewrite) are "vX.Y.Z — YYYY-MM-DD" or bare "Unreleased" —
+    // no longer the older "(YYMMDD-HHMM)" parenthetical this used to look for. Extracts the date
+    // as "YYMMDD" (dropping the century) so it compares correctly against appVersion's own
+    // "YYMMDD-HHMM" build stamp: a date-only prefix always sorts as "not newer" than a same-day
+    // build with a time suffix (Swift String comparison treats a string as less than any longer
+    // string it's a prefix of), so day-level granularity here is sufficient — this only needs to
+    // gate out entries from a clearly *later* calendar date, not order same-day entries by time.
     private static func extractVersion(from heading: String) -> String? {
-        guard let open  = heading.firstIndex(of: "("),
-              let close = heading.firstIndex(of: ")"),
-              open < close else { return nil }
-        let inner = String(heading[heading.index(after: open)..<close])
-        let parts = inner.components(separatedBy: "-")
-        guard parts.count == 2,
-              parts[0].count == 6, parts[0].allSatisfy(\.isNumber),
-              parts[1].count == 4, parts[1].allSatisfy(\.isNumber) else { return nil }
-        return inner
+        guard let dashRange = heading.range(of: " — ") else { return nil }   // "Unreleased" has none
+        let digits = heading[dashRange.upperBound...].filter(\.isNumber)
+        guard digits.count == 8 else { return nil }   // not a recognizable YYYY-MM-DD date
+        return String(digits.dropFirst(2))   // YYYYMMDD -> YYMMDD
     }
 
     private func chooseFolder() {

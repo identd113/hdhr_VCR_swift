@@ -17,6 +17,7 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 - Fixed: a recording's pulsing status indicator could fail to start if a show began recording while its row was already on screen.
 - Fixed: Watch Now could show a plain single "Watch" button instead of the "Watch Now!"/"Watch from Beginning" pair for a show that was actually recording, even though its ring correctly showed red/pulsing — a mismatch between which show the ring and the buttons were each looking up.
 - Fixed: a "Recording Complete" Discord notification could be missing its episode number and summary, even when an earlier notification for the same recording (e.g. a tuner conflict warning) showed them correctly — the app was looking up "what's airing now" instead of remembering what actually recorded.
+- Fixed: the About panel's "hide changelog entries newer than this build" filter stopped working when this changelog was rewritten in end-user-facing format earlier today — it was looking for the old technical header style and silently matched nothing, so nothing ever got filtered. Updated it to read the new format instead.
 
 **Info**
 - Reduced background work from this update's new tuner-status tracking and Watch Now's already-recorded lookup, so neither runs more than needed.
