@@ -53,25 +53,6 @@ Guide data loads fine (`GuideStore.load()` hits `api.hdhomerun.com`, a cloud hos
 
 ## Player / Watch Now
 
-### Check whether WatchNowView should get the web guide's status-ring system
-
-The web guide's program blocks show a 5-state colored ring + badge system (`.g-st-sched` blue ⏱,
-`.g-st-rec` red ⏺, `.g-st-skip` slate ⏭, `.g-st-conflict` orange ⚠, `.g-st-inuse` purple ▶ — see
-`docs/WebServer.md`'s "Status ring + badge"). `WatchNowView`'s native rows (`Views/WatchNowView.swift`)
-have nothing equivalent — just a genre-color background (`guideEntryColor(for:onAir:)`) and a plain
-"🔴 Recording" text badge for this instance's own recordings (`managedShow?.show_recording == true`).
-No skip/conflict/in-use-by-other-tuner indication exists natively at all. User flagged 2026-08-11
-(screenshot of Watch Now next to the web guide) asking whether the native view should carry the same
-circled-ring + color language, for visual consistency between the two guide surfaces. Not scoped or
-implemented — needs a design pass (SwiftUI equivalent of a `box-shadow` ring + corner badge is a
-different mechanism, e.g. `.overlay`/`.background` with a `Circle()`) and a decision on whether all
-five states are worth surfacing here or just a subset (Watch Now is browse-and-watch focused, not a
-full scheduling view — skip/conflict may be less relevant than in the full grid).
-
-**Key files**: `Views/WatchNowView.swift`, `Views/GuideViewHelpers.swift` (`guideEntryColor`), `docs/WatchNowView.md`.
-
----
-
 ### Elapsed/remaining timer in recording menu doesn't tick
 
 Times shown in `recordingMenu` / `scheduledMenu` are computed when the menu opens and stay static for the duration it's open. NSMenu doesn't auto-refresh its view hierarchy. A real-time display would require redesigning recording detail as a window-based popover.
@@ -279,6 +260,30 @@ Failed repeatedly on 2026-08-07 (median 374ms–1451ms vs. a 250ms threshold) ac
 The 2026-08-11 coverage-guided pass (`swift test --enable-code-coverage` + `xcrun llvm-cov report`) replaced judgment-based gap guessing with real numbers and confirmed the earlier prediction: `RecordingManager.swift` 7.04% line coverage, `HDHRManager.swift` 1.81%, vs. `DiscordNotifier.swift`'s 0% → 37% after that pass added a URLSession-injection seam + `DiscordNotifierTests.swift` (the cheap win — no source restructuring needed beyond a defaulted parameter). The other two need real seams first: `RecordingManager` wraps `curl` via `Process`/`posix_spawn` with no injection point for a fake process (would need a spawn-seam abstraction or a mock-curl shell script swapped in for tests); `HDHRManager` does concurrent known-hosts/mDNS/UDP discovery against real network primitives, though `tools/mock_hdhr.py` already exists for exactly this and might cover the HTTP-reachable parts (mDNS/UDP discovery would still need its own seam). `AppState.swift` (9.56%) and `WebServer.swift` (27.41%) have by far the most raw uncovered lines but are graded lower priority per the plan's "blast radius, not raw percentage" framing — both are heavily orchestration/`@MainActor`-coupled and already exercised indirectly through `GuideStore`/`ManagedGuideMatcher` test suites plus the post-deploy web server smoke/perf suites.
 
 **Key files**: `RecordingManager.swift`, `HDHRManager.swift`.
+
+---
+
+### `ImageRenderer`-based snapshot tests can't capture `ScrollView`/`List` content
+
+Discovered 2026-08-11 while adding a snapshot test for `WatchNowView`'s new status-ring badge
+(`guideRingBadge`, `GuideViewHelpers.swift`): seeding real on-air guide data via
+`GuideStore.buildIndex` (now `internal` for exactly this) correctly got `WatchNowView` into its
+`ScrollView { ForEach(...) }` branch — but the rendered `ImageRenderer` output was entirely blank,
+same as an empty view, regardless of how many rows should have been in it. Confirmed this isn't
+specific to the new ring code: `SnapshotTests.swift`'s two pre-existing `WatchNowView` cases never
+actually exercise this branch (`watchNowEmpty` has no devices, `watchNowWithDevice` has a device but
+no guide data — both land in a plain `VStack` fallback, not the `ScrollView`), so this gap in
+`assertSnapshot`/`SnapshotHelper.swift` predates this session and was simply never triggered before.
+`ImageRenderer` is documented to have real limitations with scroll/list containers that expect a
+live `NSScrollView`/hosting-window layout pass it doesn't fully provide off-screen. A blank-vs-blank
+snapshot silently "passes" without proving anything, which is worse than no test — don't add a
+`ScrollView`-containing snapshot test without first confirming content actually renders (check the
+saved reference PNG, don't just trust the test result). Fixing this properly likely means either
+finding an `ImageRenderer` configuration/workaround that forces `ScrollView` layout, or switching
+those specific snapshot targets to a real (even if off-screen) `NSHostingView` + window attachment
+instead of `ImageRenderer`.
+
+**Key files**: `Tests/hdhr_VCRTests/SnapshotHelper.swift`, `SnapshotTests.swift`.
 
 ---
 

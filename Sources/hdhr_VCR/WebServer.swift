@@ -1186,11 +1186,19 @@ final class WebServer: @unchecked Sendable {
     // instead of only updating on the next full page load.
     @MainActor
     private func buildDevBarHTML(state: AppState, devTuners: [String: DevTuners]) -> String {
-        func tunerInfoBtn(_ devId: String, _ dt: DevTuners) -> String {
-            guard dt.total > 0 else { return "" }
-            let cls   = "t-info" + (dt.isFull ? " t-info-full" : "")
+        // Occupancy count, rendered inline inside the .d-btn label rather than as its own
+        // clickable element — a second click on the (already-active) name button opens the
+        // same detail popover this used to open on its own (see handleDevClick in guide.js).
+        // Always emits the #tun-{devId} span (even empty) so the three live-update sites in
+        // guide.js (tuner_update SSE, recording_started/stopped SSE, record-summary POST
+        // response) keep a stable target regardless of whether tuner data has loaded yet.
+        func tunerCountSpan(_ devId: String, _ dt: DevTuners?) -> String {
+            guard let dt, dt.total > 0 else {
+                return "<span id=\"tun-\(he(devId))\" class=\"t-info-inline\"></span>"
+            }
+            let cls   = "t-info-inline" + (dt.isFull ? " t-info-full" : "")
             let label = "\(dt.active)/\(dt.total)\(dt.isFull ? " — FULL" : "")"
-            return "<button id=\"tun-\(he(devId))\" class=\"\(cls)\" data-dev=\"\(he(devId))\" onclick=\"showTunerInfo(this.dataset.dev,this)\" title=\"Click to see active recordings\">\(label)</button>"
+            return "<span id=\"tun-\(he(devId))\" class=\"\(cls)\">\(label)</span>"
         }
 
         let onlineIDs  = Set(state.devices.map { $0.DeviceID })
@@ -1202,7 +1210,8 @@ final class WebServer: @unchecked Sendable {
             var s = "<div class=\"tuner-box\(active ? "" : " tuner-off")\">"
             s += "<div class=\"tuner-row\">"
             if active {
-                s += "<button class=\"d-btn\" data-dev=\"\(he(devId))\" onclick=\"setDev(this.dataset.dev)\" aria-label=\"Switch guide to tuner \(label)\">\(label)</button>"
+                let countSpan = tunerCountSpan(devId, devTuners[devId])
+                s += "<button class=\"d-btn\" data-dev=\"\(he(devId))\" onclick=\"handleDevClick(this.dataset.dev,this)\" aria-label=\"Switch guide to tuner \(label); click again to see tuner details\" title=\"Click to select this tuner; click again for tuner details\">\(label) \(countSpan)</button>"
             } else {
                 s += "<span class=\"d-btn d-btn-off\" title=\"Not detected — recordings assigned here will fail until it returns\">\(label)</span>"
             }
@@ -1210,8 +1219,7 @@ final class WebServer: @unchecked Sendable {
             s += "</div>"
             s += "<div class=\"tdrop\" id=\"tdrop-\(he(devId))\" style=\"display:none\">"
             s += "<div class=\"tdrop-hdr\">"
-            if active, let dt = devTuners[devId] { s += tunerInfoBtn(devId, dt) }
-            else { s += "<span id=\"tun-\(he(devId))\" class=\"t-info t-info-off\">offline</span>" }
+            if !active { s += "<span id=\"tun-\(he(devId))\" class=\"t-info t-info-off\">offline</span>" }
             if let uiURL { s += "<a href=\"\(he(uiURL))\" target=\"_blank\" class=\"d-ui tdrop-ui\" title=\"Open \(label) web UI\">↗ Device web UI</a>" }
             s += "</div>"
             s += "<div class=\"tdrop-body\" id=\"tdrop-body-\(he(devId))\">\(buildTunerShowsHTML(state: state, deviceId: devId))</div>"
@@ -1330,11 +1338,15 @@ final class WebServer: @unchecked Sendable {
         // Channels a hardware tuner is actively locked to but this app didn't initiate — e.g. the
         // "app expects 1, hw shows 2" case (another machine running this app against the same
         // physical device, or someone just watching live via the HDHomeRun's own app). Excludes our
-        // own recording channels so this never doubles up with .g-st-rec for the same block.
+        // own recording channels so this never doubles up with .g-st-rec for the same block, and
+        // excludes this instance's own in-app live Watch channel (state.vlcLiveChannel) — otherwise
+        // clicking Watch on a live channel would immediately flag that same channel as "in use by
+        // another tuner" for the person watching it.
         let hwOtherChannelsByDevice: [String: Set<String>] = Dictionary(
             uniqueKeysWithValues: state.devices.map { device in
                 let hwChannels = Set((state.deviceTunerOccupancy[device.DeviceID] ?? []).compactMap { $0.VctNumber })
-                let ours = recChannelsByDevice[device.DeviceID] ?? []
+                var ours = recChannelsByDevice[device.DeviceID] ?? []
+                if let liveCh = state.vlcLiveChannel(for: device.DeviceID) { ours.insert(liveCh) }
                 return (device.DeviceID, hwChannels.subtracting(ours))
             }
         )
@@ -1602,6 +1614,7 @@ final class WebServer: @unchecked Sendable {
                 var entries: [[String: String]] = []
                 func chName(_ num: String) -> String { channelNameLookup[d.DeviceID]?[num] ?? "" }
                 if let occupancy = state.deviceTunerOccupancy[d.DeviceID], !occupancy.isEmpty {
+                    let liveWatchCh = state.vlcLiveChannel(for: d.DeviceID)
                     for info in occupancy {
                         let matchShow = recording.first {
                             guard $0.hdhr_record == d.DeviceID else { return false }
@@ -1611,17 +1624,39 @@ final class WebServer: @unchecked Sendable {
                             }
                             return $0.show_channel == (info.VctNumber ?? "")
                         }
+                        // This instance's own in-app live Watch, not a recording — excluded from
+                        // `external` below so it isn't mislabeled as "another tuner" in the popover
+                        // for the very person watching it (mirrors hwOtherChannelsByDevice above).
+                        let isOwnLiveWatch = matchShow == nil && info.VctNumber != nil && info.VctNumber == liveWatchCh
+                        // Tuned to a channel but not one of our own recordings or live watch — same
+                        // "app expects 1, hw shows 2" scenario the web guide's .g-st-inuse flags
+                        // (another machine running this app against the same physical device, or
+                        // someone watching live via the HDHomeRun's own app/web UI). Look up the
+                        // real currently-airing entry for that device+channel instead of a generic
+                        // placeholder, matching the detail already shown for our own shows.
                         let title: String = {
                             if let t = matchShow?.show_title, !t.isEmpty { return t }
-                            if let ch = info.VctNumber { return "Live stream ch \(ch)" }
+                            if let ch = info.VctNumber {
+                                let now = Int(Date().timeIntervalSince1970)
+                                if let live = state.guideEntries(deviceId: d.DeviceID, channelNum: ch)
+                                    .first(where: { $0.StartTime <= now && $0.EndTime > now }) {
+                                    return live.Title
+                                }
+                                return "Ch \(ch) (unmanaged)"
+                            }
                             return "Active stream"
                         }()
-                        let ch   = matchShow?.show_channel ?? info.VctNumber ?? "?"
-                        let ip   = matchShow == nil ? (info.TargetIP ?? "") : ""
-                        let idle = matchShow == nil && info.VctNumber == nil ? "1" : ""
-                        let rec    = matchShow != nil ? "1" : ""
-                        let endTs  = matchShow?.show_end.map { String(Int($0.timeIntervalSince1970)) } ?? ""
-                        entries.append(["tuner": info.Resource, "title": title, "ch": ch, "chname": chName(ch), "ip": ip, "idle": idle, "rec": rec, "endTime": endTs])
+                        let ch       = matchShow?.show_channel ?? info.VctNumber ?? "?"
+                        let ip       = matchShow == nil ? (info.TargetIP ?? "") : ""
+                        let idle     = matchShow == nil && info.VctNumber == nil ? "1" : ""
+                        let rec      = matchShow != nil ? "1" : ""
+                        // Tuned (VctNumber present) but not matched to one of our own shows or live
+                        // watch — distinct from `idle` (no VctNumber at all, nothing tuned) so the
+                        // client can label this case explicitly instead of showing a bare title
+                        // indistinguishable from an owned one save for the missing red dot.
+                        let external = (matchShow == nil && info.VctNumber != nil && !isOwnLiveWatch) ? "1" : ""
+                        let endTs    = matchShow?.show_end.map { String(Int($0.timeIntervalSince1970)) } ?? ""
+                        entries.append(["tuner": info.Resource, "title": title, "ch": ch, "chname": chName(ch), "ip": ip, "idle": idle, "rec": rec, "external": external, "endTime": endTs])
                     }
                 } else {
                     for show in recording.filter({ $0.hdhr_record == d.DeviceID }) {

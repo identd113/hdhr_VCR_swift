@@ -9,6 +9,12 @@ struct WatchNowView: View {
     @State private var now = Date()
     // Poster images keyed by ImageURL — persists across refreshes so rows don't flash
     @State private var posterCache: [String: NSImage] = [:]
+    // Skip-already-recorded lookup for the status ring's willSkip state, keyed by show_id — kept
+    // fresh by recordedTagsRefreshLoop() rather than recomputed in ringStateInputs(for:), since
+    // building it does real FileManager directory scanning (recordedEpisodeTags) that would
+    // otherwise re-run on every body re-evaluation triggered by any unrelated AppState publish
+    // while this window is open (state is an unscoped @EnvironmentObject).
+    @State private var recordedTagsCache: [String: Set<String>] = [:]
 
     // Seconds until the next :00 or :30 boundary from the given date.
     private static func nextBoundary(from date: Date = Date()) -> Date {
@@ -46,6 +52,7 @@ struct WatchNowView: View {
         }
         .task(id: selectedDeviceId) { await prefetchPosters() }
         .task { await boundaryRefreshLoop() }
+        .task { await recordedTagsRefreshLoop() }
     }
 
     // favAmber lives in GuideViewHelpers.swift, shared with MenuContent/VLCPlayerView.
@@ -67,13 +74,14 @@ struct WatchNowView: View {
     }
 
     @ViewBuilder
-    private func channelRow(_ pair: (channel: LineupEntry, entry: GuideEntry), device: HDHRDevice) -> some View {
+    private func channelRow(_ pair: (channel: LineupEntry, entry: GuideEntry), device: HDHRDevice, ringInputs: RingStateInputs) -> some View {
         let (ch, entry) = pair
         WatchNowRow(
             device: device,
             channel: ch,
             entry: entry,
-            posterImage: entry.ImageURL.flatMap { posterCache[$0] }
+            posterImage: entry.ImageURL.flatMap { posterCache[$0] },
+            ringState: guideRingState(for: entry, device: device, inputs: ringInputs)
         )
         .task(id: entry.ImageURL) {
             guard let urlStr = entry.ImageURL,
@@ -125,6 +133,30 @@ struct WatchNowView: View {
             if Task.isCancelled { return }
             now = Date()
         }
+    }
+
+    // Runs until the view disappears. Off the render path on purpose — see recordedTagsCache's
+    // doc comment. 10s roughly matches the idle loop's own device-status polling cadence.
+    private func recordedTagsRefreshLoop() async {
+        while !Task.isCancelled {
+            refreshRecordedTags()
+            try? await Task.sleep(for: .seconds(10))
+            if Task.isCancelled { return }
+        }
+    }
+
+    private func refreshRecordedTags() {
+        guard state.config.Series_subfolder_enabled && state.config.Skip_recorded_episodes else {
+            if !recordedTagsCache.isEmpty { recordedTagsCache = [:] }
+            return
+        }
+        let activeMgd = state.shows.filter { $0.show_active && !$0.show_paused }
+        var fresh: [String: Set<String>] = [:]
+        for s in activeMgd where s.isSeries {
+            let safe = s.show_title.replacingOccurrences(of: "/", with: "-")
+            fresh[s.show_id] = state.recordedEpisodeTags(forTitle: safe, baseDir: s.posixRecordDir)
+        }
+        recordedTagsCache = fresh
     }
 
     // Pre-fetches poster images for shows airing at a future date so the cache is warm
@@ -192,21 +224,75 @@ struct WatchNowView: View {
         } else if let device = selectedDevice {
             let favs   = channels.filter { $0.channel.isFavorite }
             let others = channels.filter { !$0.channel.isFavorite }
+            let ringInputs = ringStateInputs(for: device)
 
             ScrollView {
                 VStack(spacing: 0) {
                     if !favs.isEmpty {
                         favTopBorder
                         ForEach(favs, id: \.channel.id) { pair in
-                            channelRow(pair, device: device)
+                            channelRow(pair, device: device, ringInputs: ringInputs)
                         }
                     }
                     ForEach(others, id: \.channel.id) { pair in
-                        channelRow(pair, device: device)
+                        channelRow(pair, device: device, ringInputs: ringInputs)
                     }
                 }
             }
         }
+    }
+
+    // Bundles the lookups needed to resolve each row's GuideRingState — built once per render
+    // (mirrors WebServer.swift's buildGuideGridHTML computing the same shape of data once per grid
+    // build, not once per block) and passed down rather than having each row rebuild a
+    // ManagedGuideMatcher (its init is O(managed shows)) or rescan recordedEpisodeTags.
+    private struct RingStateInputs {
+        let guideMatcher: ManagedGuideMatcher
+        let skipEnabled: Bool
+        let recordedTagsByShow: [String: Set<String>]
+        let hwOtherChannels: Set<String>
+    }
+
+    private func ringStateInputs(for device: HDHRDevice) -> RingStateInputs {
+        let activeMgd    = state.shows.filter { $0.show_active && !$0.show_paused }
+        let guideMatcher = ManagedGuideMatcher(activeManagedShows: activeMgd)
+        let skipEnabled  = state.config.Series_subfolder_enabled && state.config.Skip_recorded_episodes
+        // Backed by recordedTagsRefreshLoop() (off the render path), not scanned here — see
+        // recordedTagsCache's doc comment.
+        let recordedTagsByShow = recordedTagsCache
+        // Channels a hardware tuner is locked to on this device but this app didn't initiate —
+        // same "app expects 1, hw shows 2" scenario the web guide's .g-st-inuse flags. Excludes
+        // this instance's own in-app live Watch channel (state.vlcLiveChannel) too — otherwise the
+        // very row a user clicked Watch on would immediately flag itself as someone else's tuner.
+        let hwChannels = Set((state.deviceTunerOccupancy[device.DeviceID] ?? []).compactMap { $0.VctNumber })
+        var ours = Set(state.recordingShows.filter { $0.hdhr_record == device.DeviceID }.map { $0.show_channel })
+        if let liveCh = state.vlcLiveChannel(for: device.DeviceID) { ours.insert(liveCh) }
+        return RingStateInputs(guideMatcher: guideMatcher, skipEnabled: skipEnabled,
+                               recordedTagsByShow: recordedTagsByShow, hwOtherChannels: hwChannels.subtracting(ours))
+    }
+
+    // Mirrors WebServer.swift's per-block precedence computation (buildGuideGridHTML) exactly,
+    // scoped to the one currently-airing entry WatchNowRow shows (no time-window/isNow check
+    // needed — onAirChannels already filtered to "airing right now").
+    private func guideRingState(for entry: GuideEntry, device: HDHRDevice, inputs: RingStateInputs) -> GuideRingState {
+        let owner       = inputs.guideMatcher.owner(for: entry)
+        let isManaged   = owner != nil
+        let isRecording = owner?.show_recording == true
+        let willSkip: Bool = {
+            guard inputs.skipEnabled, !isRecording, let owner, !owner.show_ignore_duplicate_once,
+                  let ep = entry.EpisodeNumber,
+                  ep.range(of: #"^S\d+E\d+$"#, options: [.regularExpression, .caseInsensitive]) != nil
+            else { return false }
+            return inputs.recordedTagsByShow[owner.show_id]?.contains(ep.uppercased()) == true
+        }()
+        let isConflict = isManaged && !willSkip && !isRecording && (owner.map { s in
+            guard s.hdhr_record == device.DeviceID, let sNext = s.show_next else { return false }
+            return state.conflictingShowIDs.contains(s.show_id)
+                && abs(Double(entry.StartTime) - sNext.timeIntervalSince1970) < 300
+        } ?? false)
+        let isOtherTunerInUse = inputs.hwOtherChannels.contains(entry.channelNum) && !isRecording
+        return resolveGuideRingState(isRecording: isRecording, isManaged: isManaged, willSkip: willSkip,
+                                     isConflict: isConflict, isOtherTunerInUse: isOtherTunerInUse)
     }
 }
 
@@ -220,6 +306,7 @@ struct WatchNowRow: View {
     let channel: LineupEntry
     let entry: GuideEntry
     let posterImage: NSImage?
+    let ringState: GuideRingState
 
     @State private var showTunerFullAlert = false
 
@@ -252,18 +339,9 @@ struct WatchNowRow: View {
 
     var body: some View {
         let managed = managedShow
-        let scheduled: Bool = {
-            guard let show = managed else { return false }
-            if show.isSeries { return true }
-            // Guard explicitly — ?? -1 would spuriously match a guide entry with StartTime == -1.
-            guard let nextDate = show.show_next else { return false }
-            return show.hdhr_record  == device.DeviceID
-                && show.show_channel == channel.GuideNumber
-                && Int(nextDate.timeIntervalSince1970) == entry.StartTime
-        }()
         HStack(alignment: .top, spacing: 10) {
-            posterThumb(isScheduled: scheduled)
-            infoColumn(managed: managed, isScheduled: scheduled)
+            posterThumb()
+            infoColumn(managed: managed)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 14)
@@ -281,7 +359,7 @@ struct WatchNowRow: View {
     }
 
     @ViewBuilder
-    private func posterThumb(isScheduled: Bool) -> some View {
+    private func posterThumb() -> some View {
         ZStack {
             guideEntryColor(for: entry, onAir: true).opacity(0.55)
             if let img = posterImage {
@@ -297,14 +375,12 @@ struct WatchNowRow: View {
         .containerRelativeFrame(.horizontal) { w, _ in min(w * 0.34, 220) }
         .aspectRatio(96.0/68.0, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 6))
+        .guideRingBadge(ringState)
         .accessibilityHidden(true)
-        .overlay(alignment: .topTrailing) {
-            if isScheduled { ManagedFlagView(size: 18) }
-        }
     }
 
     @ViewBuilder
-    private func infoColumn(managed: Show?, isScheduled: Bool) -> some View {
+    private func infoColumn(managed: Show?) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 4) {
                 if let logo = channelLogo {
@@ -322,22 +398,15 @@ struct WatchNowRow: View {
                     SignalBarsView(bucket: signalBucket(guideName: channel.GuideName),
                                    guideName: channel.GuideName)
                 }
-                if managed?.show_recording == true {
-                    Spacer(minLength: 6)
-                    Image(systemName: "record.circle.fill")
-                        .foregroundStyle(.red)
-                        .font(.caption.bold())
-                        .accessibilityHidden(true)
-                    Text("Recording")
-                        .font(.caption.bold())
-                        .foregroundStyle(.red)
-                }
+                // Recording/scheduled/skip/conflict/in-use-by-other-tuner status is now shown via
+                // the poster's ring+badge (guideRingBadge) instead of a separate text badge here —
+                // one consistent visual language for all five states, matching the web guide.
             }
             HStack(spacing: 4) {
                 Text(entry.Title)
                     .font(.subheadline.bold())
                     .lineLimit(1)
-                    .accessibilityLabel(isScheduled ? "\(entry.Title), scheduled" : entry.Title)
+                    .accessibilityLabel(ringState == .none ? entry.Title : "\(entry.Title), \(ringState.tooltipSuffix)")
                 if isNewEpisode(entry) {
                     Text("NEW")
                         .font(.system(size: 8, weight: .heavy))
@@ -367,16 +436,37 @@ struct WatchNowRow: View {
     private func actionRow(managed: Show?) -> some View {
         HStack(spacing: 6) {
             if VLCBridge.shared.isAvailable {
-                Button {
-                    state.watchInApp(url: channel.URL ?? "", title: entry.Title, deviceId: device.DeviceID,
-                                     guideNumber: channel.GuideNumber)
-                } label: {
-                    Label("Watch", systemImage: "play.tv.fill").font(.caption.bold())
+                // A currently-recording show is already on disk — offer beginning-vs-live instead
+                // of the plain live-tuner Watch button, which would otherwise open a second,
+                // redundant tuner connection for a channel this app is already recording.
+                if let show = managed, show.show_recording {
+                    Menu {
+                        Button(watchFromBeginningLabel(entry.Title)) {
+                            state.watchRecordingInApp(show, fromBeginning: true)
+                        }
+                        .accessibilityLabel(watchFromBeginningLabel(entry.Title))
+                        Button(watchLiveLabel(entry.Title)) {
+                            state.watchRecordingInApp(show)
+                        }
+                        .accessibilityLabel(watchLiveLabel(entry.Title))
+                    } label: {
+                        Label("Watch", systemImage: "play.tv.fill").font(.caption.bold())
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(watchNowBlue)
+                    .controlSize(.small)
+                } else {
+                    Button {
+                        state.watchInApp(url: channel.URL ?? "", title: entry.Title, deviceId: device.DeviceID,
+                                         guideNumber: channel.GuideNumber)
+                    } label: {
+                        Label("Watch", systemImage: "play.tv.fill").font(.caption.bold())
+                    }
+                    .accessibilityLabel(watchInAppLabel(entry.Title))
+                    .buttonStyle(.borderedProminent)
+                    .tint(watchNowBlue)
+                    .controlSize(.small)
                 }
-                .accessibilityLabel(watchInAppLabel(entry.Title))
-                .buttonStyle(.borderedProminent)
-                .tint(watchNowBlue)
-                .controlSize(.small)
             }
             if state.config.Watch_in_VLC {
                 Button {

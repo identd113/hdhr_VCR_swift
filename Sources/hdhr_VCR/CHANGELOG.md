@@ -1,5 +1,49 @@
 # hdhrVCRplus Changelog
 
+## 2026-08-11 (Watch Now recording fix, status-ring parity, tuner popover) — unreleased
+
+- **Fix — clicking Watch on a show you're already recording opened a second, redundant live
+  tuner connection**, instead of playing it back from the file already being written to disk.
+  Watch Now's Watch button is now a pull-down when the show is currently recording, offering
+  **"Watch from Beginning"** (starts at the actual beginning of the recording) and **"Watch Now"**
+  (starts ~30 seconds behind live, matching the menu bar's existing behavior) — both relay from
+  disk, neither opens a new tuner connection. The menu bar's own recording list gained the same
+  "Watch from Beginning" option alongside its existing "Watch Now!".
+- **Improvement — Watch Now's rows now show the same colored status ring the web guide uses**
+  (recording / scheduled / already-recorded-will-skip / tuner-conflict / in-use-by-another-tuner),
+  replacing the previous yellow "scheduled" triangle and separate red "Recording" text badge with
+  one consistent visual language shared by both guide surfaces.
+- **Improvement — the tuner popover now shows the real channel and show for a tuner in use by
+  something this app doesn't control** (another machine running this app against the same
+  physical device, or someone watching live via the HDHomeRun's own app), instead of a generic
+  "Live stream ch X" placeholder — matching the detail already shown for this app's own shows,
+  with an explicit "· another tuner" label and a distinct purple indicator dot so it's never
+  confused with one of your own recordings.
+- **Improvement — the web guide's "X/Y tuners — FULL" occupancy detail is easier to find.** It's
+  now folded into each tuner's own name button (e.g. "HDHR-105404BE 2/2 — FULL") instead of a
+  separate badge nested inside the ▾ show-list dropdown — real-world mobile use showed that badge
+  was easy to miss. Click a tuner's name to switch the guide to it as before; click it again (it's
+  already selected) to open the same tuner-detail popover.
+- **Fix — the new in-use-by-another-tuner marker (ring, badge, and popover) could flag your own
+  live Watch session as someone else's tuner.** Clicking Watch on a live (non-recording) channel
+  correctly locks a real hardware tuner, but the marker's "is this someone else's?" check only
+  ever excluded this instance's own *recordings*, not its own in-app live viewing — so the exact
+  channel a user was watching in Watch Now or the web guide could get labeled "in use by another
+  tuner — not by this app." Fixed by tracking which channel the in-app player is live-watching and
+  excluding it, on all three surfaces (web guide ring, tuner popover, Watch Now's ring).
+- **Fix — a recording ring's pulse animation could fail to start** if a row transitioned from a
+  non-recording state to recording while already on screen (e.g. Watch Now left open through a
+  scheduled show's start) — the ring turned red but never pulsed until the row scrolled off and
+  back on screen.
+- **Improvement — throttled a new web-guide push** (added earlier in this batch to keep the tuner
+  popover/ring in sync with hardware-only occupancy changes) so a rapidly flapping external tuner
+  count can't re-trigger a full guide rebuild on every ~10s idle-loop tick indefinitely.
+- **Improvement — moved a recurring directory scan (Skip-already-recorded episode tags) off Watch
+  Now's render path** into a periodic background refresh, so it no longer re-runs on every
+  unrelated app-state update while the window is open.
+- Cleanup: reverted a test-only visibility widening (`GuideStore.buildIndex`) that outlived the
+  test it was added for; removed now-dead CSS rules superseded by the tuner-badge redesign above.
+
 ## 2026-08-11 (SeriesID(All) tuner scoping, guide-detail crash fix, XMLTV genre colors) — v2.0.3
 
 - **Fix — a crafted web-guide request could crash the whole app, ending any in-progress

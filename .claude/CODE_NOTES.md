@@ -366,3 +366,62 @@ accuracy regresses right after app launch specifically.
   verbose than necessary; `Foundation.Data` has been `Sendable` since Swift 5.5, so the same result is
   reachable with less unsafe surface via `results.withUnsafeMutableBufferPointer { ... }` over a plain
   `[Data?]` instead of manual `allocate`/`initialize`/`deinitialize`/`deallocate`. Cosmetic, not a bug.
+
+## 2026-08-11 — GuideRingState / Watch-from-Beginning pass (pre-push review)
+
+- `Sources/hdhr_VCR/Views/GuideViewHelpers.swift:188-201` (`PulseIfRecording`) — `dimmed` only ever
+  gets animated inside `.onAppear`, gated by `guard active else { return }`. Since `WatchNowRow`'s
+  identity is keyed by `channel.id` (`ForEach(favs, id: \.channel.id)` /
+  `WatchNowView.swift`'s `channelRow`), a row that transitions from a non-recording ring state
+  (e.g. `.scheduled`) to `.recording` *without remounting* — plausible any time a user leaves
+  Watch Now open long enough to watch a scheduled show start — will show the correct red ring
+  color (read live from `state.ringColor`) but never start the pulse, because `onAppear` already
+  fired once with `active == false` and won't fire again. Not caught by any test (pure-SwiftUI
+  animation timing, no snapshot covers a live state transition). Confirmed via read, not exercised
+  live. Fix would be `.onChange(of: active)` (re-arm the animation whenever `active` flips true)
+  instead of (or in addition to) `.onAppear`.
+- `Sources/hdhr_VCR/GuideStore.swift:210` — `buildIndex(deviceId:channels:)` was widened
+  `private` → `internal` specifically so a new snapshot test could seed on-air guide data
+  directly. That snapshot test was written, found to render blank under `ImageRenderer`
+  (`ScrollView` limitation, documented in `TODO.md`'s "`ImageRenderer`-based snapshot tests…"
+  entry and `Tests/hdhr_VCRTests/SnapshotTests.swift`'s comment), and removed. `Tests/hdhr_VCRTests/GuideRingStateTests.swift`
+  (the test suite that did ship) only calls `resolveGuideRingState` directly and never touches
+  `GuideStore` at all. Zero-hit grep for `buildIndex(` outside `GuideStore.swift` itself confirms
+  no current caller needs the wider access — the visibility bump is now unjustified scope, worth
+  reverting to `private` next time this file is touched (not urgent enough to revert on its own).
+- `Sources/hdhr_VCR/AppState.swift:3112-3113` — the new `webServer.broadcastGuideChangeEvent(type:
+  "tuner_occupancy_changed", …)` call inside `fetchDeviceStatusUncached` fires on every hardware
+  active-tuner-*count* change, gated only by `!menuIsOpen || cooldownElapsed` — i.e. **unthrottled**
+  whenever the menu bar menu happens to be closed (the common case). `broadcastGuideChangeEvent`
+  unconditionally calls `buildGuideGridHTML` (1300+ program blocks per CLAUDE.md's own estimate)
+  plus `prebuildPageHTML`'s gzip rebuild, regardless of whether any SSE client is even connected.
+  The idle loop polls every device's status roughly every `Idle_timer_interval` (default/min ~5-10s)
+  via `fetchDeviceStatus`. CLAUDE.md's own "Tuner occupancy" invariant explicitly anticipates the
+  scenario that would hit this repeatedly: another machine running this app (or the HDHomeRun's own
+  app) against the *same physical device*, channel-surfing — each channel change flips the hardware
+  active count, re-triggering a full guide-grid rebuild+broadcast on the very next idle tick,
+  indefinitely, with the web UI open or not. Reported as a finding, not fixed (out of scope for this
+  review agent) — a dedicated cooldown for this specific broadcast (independent of
+  `lastMenuOpenTunerWrite`, which only bounds *menu* disruption) would cap the worst case.
+- `Sources/hdhr_VCR/Views/WatchNowView.swift`'s `ringStateInputs(for:)` calls
+  `state.recordedEpisodeTags(forTitle:baseDir:)` (synchronous `FileManager` directory
+  enumeration + per-file `attributesOfItem` stats, `AppState.swift:2459`) directly inside
+  `var body`'s call chain whenever `Series_subfolder_enabled && Skip_recorded_episodes` are both
+  on — once per managed series show, every time `WatchNowView.body` re-evaluates. Since the view
+  holds `@EnvironmentObject var state: AppState` (not scoped to a subset of `@Published`
+  properties), body re-evaluates on *any* AppState publish while the window is open, not just
+  guide-relevant ones. `WebServer.swift`'s `buildGuideGridHTML` has the identical scan (per
+  CLAUDE.md's own "Skip already-recorded episodes" note) but only runs on explicit rebuild
+  triggers (add/edit/delete/etc.), a much lower ceiling than SwiftUI's `body` re-evaluation
+  frequency. Confirmed the ring-state *bundle itself* is correctly computed once per render (not
+  once per row, per the task's specific ask) — the concern is the render frequency, not row-level
+  duplication.
+- `Resources/guide.css:56-59` (bare `.t-info-full`/`.t-info-full:hover` rules, pre-existing
+  selector kept from before this session's `tunerCountSpan` redesign) are now effectively inert:
+  every element that can carry `t-info-full` in the current markup also always carries
+  `t-info-inline` (`WebServer.swift:1197`'s `tunerCountSpan`, and `guide.js`'s `tb=document.getElementById('tun-'+…)`
+  call sites at lines ~365/1045/1095 which only ever target that same span) so the more specific
+  `.t-info-inline.t-info-full` combo rule wins for the properties both define, and the bare rule's
+  unique property (`border-color`) has no visible effect since `.t-info-inline` sets no `border`.
+  Not flagged as a hard finding (still technically reachable by the cascade, just visually inert) —
+  worth deleting next time `guide.css`'s tuner-badge section is touched.

@@ -842,6 +842,12 @@ final class VLCPlayerWindowManager {
 
     /// DeviceID of the tuner currently occupied by the player window; nil when closed.
     private(set) var currentDeviceID: String?
+    /// GuideNumber of the channel `open()` was last called with; nil when closed or when the
+    /// caller didn't pass one (e.g. the watch-recording relay, which occupies no tuner at all —
+    /// see AppState.vlcOccupiesTuner). Lets AppState.vlcLiveChannel(for:) tell "this app is live-
+    /// watching this exact channel" apart from "some other tuner on this device is in use", so the
+    /// in-use-by-other-tuner marker doesn't flag your own live Watch session as someone else's.
+    private(set) var currentChannelNumber: String?
     private weak var appState: AppState?
 
     private init() {}
@@ -868,6 +874,7 @@ final class VLCPlayerWindowManager {
     func open(url: String, title: String, device: HDHRDevice, appState: AppState, channelNumber: String? = nil) {
         self.appState = appState
         currentDeviceID = device.DeviceID
+        currentChannelNumber = channelNumber
         VLCBridge.shared.liveMinRate = Float(appState.config.Player_buffer_min_rate) / 100.0
         VLCBridge.shared.setVolume(0)   // mute before buffering starts; Start click unmutes
         VLCBridge.shared.ensurePlayer() // create fresh player if previous session released it
@@ -962,6 +969,7 @@ final class VLCPlayerWindowManager {
         VLCBridge.shared.stopDeviceChangeMonitoring()
         VLCBridge.shared.releasePlayer() // full teardown — releases mediaPlayer and nils currentURL; Combine auto-clears vlcCurrentURL
         currentDeviceID = nil
+        currentChannelNumber = nil
         window = nil
         // Release the VLC sleep assertion immediately rather than waiting for releaseAllAssertions()
         // inside refreshTunerOccupancy — that path is blocked when a recording is simultaneously active.

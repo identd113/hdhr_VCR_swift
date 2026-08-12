@@ -263,6 +263,7 @@ A persistent SSE endpoint. Browsers connect once on page load via `EventSource('
 | `show_deleted` | `AppState.deleteShow` | `channel`, `device`, `grid`, `sumph`, `tdrop` |
 | `show_updated` | `AppState.updateShow` (self-broadcasts — covers `WebServer.handleEdit` **and** the native Edit Show window), `skipRecording`/`pauseShow`/`resumeShow` | `channel`, `device`, `grid`, `sumph`, `tdrop` |
 | `favorite_toggled` | `WebServer.handleToggleFavorite` | `device`, `guideNumber`, `grid`, `sumph`, `tdrop` |
+| `tuner_occupancy_changed` | `AppState.fetchDeviceStatusUncached` (hardware active-tuner count change) | `device`, `grid`, `sumph`, `tdrop` — same `broadcastGuideChangeEvent` payload shape as the rows above; keeps the tuner popover (`recsByDevJS`) and `.g-st-inuse` ring in sync with a hardware-only occupancy change (e.g. another machine's tuner starting/stopping) that none of the other triggers would catch. Throttled per-device (`lastGuideOccupancyBroadcast`, independent of the menu-open write cooldown) so a rapidly flapping external count can't re-trigger a full grid rebuild every idle-loop tick. |
 | `deviceOffline` | `AppState.probeForNewDevices` (miss #3), via `broadcastDeviceBarEvent` | `deviceId`, `devbar` (HTML) |
 | `deviceOnline` | `AppState.probeForNewDevices` (seen after unavailable, or new device), via `broadcastDeviceBarEvent` | `deviceId`, `devbar` (HTML) |
 | `signal_update` | `AppState.startSignalScan` | `gname` (guideName.lowercased()), `bucket` (raw string: `"good"` / `"fair"` / `"poor"` / `"noData"`) |
@@ -322,7 +323,7 @@ This is a pure extraction — `prebuildPageHTML`/`cachedHTML`/`cachedHTMLGzip`'s
 Page structure (top to bottom):
 
 1. **Top toolbar** (`#toolbar`) — a single horizontal, wrapping row holding (left→right): `h1` title, the per-tuner box list (`#dev-bar`, one `tunerBox` per discovered + offline device), the genre filter (`#genre-bar`, shown when applicable), and — pushed to the far right via `margin-left:auto` — the theme switcher (`#theme-sw`, dark/auto/light). Guide navigation (⊙ Now / ↺ Refresh) lives in the guide corner cell, not the toolbar. There is no global schedule popover — each tuner box has its own ▾ dropdown.
-2. **Tuner popover** (`#t-pop`) — fixed overlay; shown by clicking a tuner badge
+2. **Tuner popover** (`#t-pop`) — fixed overlay; shown by clicking an already-selected tuner's name button a second time (see "Tuner boxes" below)
 3. **Summary panel** (`#sum`) — always visible; selected show details + actions
 4. **Record type modal** (`#rec-modal`) — fixed overlay; appears on Record click
 5. **Edit modal** (`#edit-modal`) — fixed overlay (z-index 201); appears on Edit click or schedule-popover row click
@@ -340,14 +341,19 @@ Page structure (top to bottom):
 `#dev-bar` is a wrapping flex row with one `tunerBox` per discovered device **plus** one per
 offline/absent device (any `show.hdhr_record` not in `state.devices`). Rendered for every
 configuration including a single device. Each box (`.tuner-box`) has a `.tuner-row`:
-**HDHR-XXXXXXXX** name + **↗** device web-UI link + live count badge (`.t-info` → `showTunerInfo`)
-+ **▾** (`.tdrop-btn` → `toggleTunerDrop`), followed by a hidden `#tdrop-{devId}` panel.
+**HDHR-XXXXXXXX** name (with the live `active/total` occupancy count folded into its own label,
+e.g. "HDHR-105404BE 2/2 — FULL") + **▾** (`.tdrop-btn` → `toggleTunerDrop`), followed by a hidden
+`#tdrop-{devId}` panel containing just the **↗** device web-UI link and that tuner's own
+Recording/Up Next/Scheduled/Paused list.
 
 **Active vs inactive.** A tuner is *active* when it's in `state.usableDeviceIDs` (discovered AND
-reachable). Active: name is a `.d-btn` `setDev` filter, badge shows live `n/m`. Inactive
-(unreachable or absent): the box gets `.tuner-off`, the name is a non-clickable
-`.d-btn-off` label, and the badge reads **offline** (`.t-info-off`). The ▾ dropdown works either
-way and lists that tuner's assigned shows.
+reachable). Active: name is a single `.d-btn` button handling both guide-switching and tuner-detail
+lookup (see "One button, two clicks" below); its inline count span (`#tun-{devId}`, class
+`.t-info-inline`, red `.t-info-full` when all slots are occupied) is not itself clickable — there is
+only one interactive target per tuner box, not two. Inactive (unreachable or absent): the box gets
+`.tuner-off`, the name is a non-clickable `.d-btn-off` label, and `tdrop-hdr` shows a plain
+**offline** span (`#tun-{devId}.t-info-off`) since there's no live occupancy data to show. The ▾
+dropdown works either way and lists that tuner's assigned shows.
 
 **Dimming must target `.tuner-row`, not `.tuner-box`.** `.tuner-off` sets `opacity` on `.tuner-row`
 (the name+▾ row) only, *not* on the outer `.tuner-box` that also contains `.tdrop`. `opacity < 1`
@@ -358,15 +364,23 @@ an offline tuner's dropdown would paint *underneath* the summary panel instead o
 active tuner's identical-looking dropdown (no opacity ancestor) rendered fine — a bug that only
 reproduces on an offline/undetected tuner specifically. Keep the opacity scoped to `.tuner-row`.
 
-Clicking an active name calls `setDev(devId)`, filtering guide rows to that device via `data-dev`.
+**One button, two clicks (`handleDevClick(id, btn)`, guide.js).** An active tuner name's `onclick`
+calls `handleDevClick`, not `setDev` directly: if the clicked tuner is not already the selected one
+(`id !== curDev`), it behaves exactly as before — `setDev(id)` filters the guide grid to that
+device. If it's already selected (`id === curDev`) — the common case for a second click on the same
+button — it instead opens the tuner popover (`showTunerInfo(id, btn)`), the hardware-occupancy
+detail view described below. This replaced an earlier layout where that popover's trigger was a
+separate "`active/total`[ — FULL]" badge nested inside the ▾ dropdown's header — real-world mobile
+use showed that badge was too easy to miss (buried a tap deeper than expected), so its function moved
+onto the always-visible name button and its old standalone location was removed.
 
 **Default tuner (no combined view).** With more than one tuner there is no "All" view — the grid
 opens on a single tuner. `buildHTML` computes `defaultDev` = the first device with both a
 non-empty lineup and loaded guide data (fallback: first with a lineup, else `""`), and the
-bootstrap call is `setDev('<defaultDev>')`. Single-device keeps `setDev('')`. Users switch
-tuners via the active device names.
-
-**Tuner badges** (`.t-info` / `.t-info-full`): show `active/total` slots. Red styling when full. Clicking opens the tuner popover.
+bootstrap call is `setDev('<defaultDev>')`. Single-device keeps `setDev('')`. Because the default
+tuner starts out already selected, a user's very first click on a single-tuner setup's name button
+opens the popover directly rather than a no-op reselect — consistent with the "second click while
+already selected" rule above, not a special case.
 
 **Live updates:** the whole `#dev-bar` fragment (built by `buildDevBarHTML(state:)`, the same content `buildHTML` embeds on initial page load) is re-pushed via the `devbar` SSE payload on `deviceOnline`/`deviceOffline` — see SSE section — so a device recovering, going offline, or being newly discovered updates this row live in every open tab.
 
@@ -376,7 +390,9 @@ Both `buildDevBarHTML` and `buildHTML` (which separately needs per-device active
 
 ### Tuner popover (`#t-pop`)
 
-Fixed overlay (z-index 200). Positioned below the clicked tuner badge. Shows:
+Fixed overlay (z-index 200). Positioned below the clicked tuner name button (`handleDevClick`'s
+second-click branch, or directly via `showTunerInfo` from other call sites like the post-record
+tuner-count refresh). Shows:
 - **Header** — `active/total tuners` (+ `— FULL` when all occupied)
 - **Per-active-tuner rows** — see below
 - **`status.json ↗`** link — opens `http://{LocalIP}/status.json` in a new tab
@@ -387,13 +403,13 @@ Fixed overlay (z-index 200). Positioned below the clicked tuner badge. Shows:
 |---|---|
 | Idle (no channel locked) | Tuner label + "Idle" in dim text |
 | Our recording | Tuner label · channel · show title (clickable) · red ● dot · "Ends H:MM AM/PM" |
-| External live stream | Tuner label · channel · guide title (clickable) · episode name · "Ends H:MM" · client IP |
+| Tuned, but not ours (another machine running this app against the same device, or someone watching live via the HDHomeRun's own app/web UI — see CLAUDE.md's "Tuner occupancy" invariant) | Tuner label · channel · "· another tuner" suffix · real currently-airing guide title (clickable) · purple ● dot (`#9b59b6`, matching the guide grid's `.g-st-inuse` ring color) · episode name · "Ends H:MM" · client IP |
 
-**Recording match** (`recsByDevJS` builder): prefers `show_tuner_resource` (case-insensitive); falls back to `show_channel == VctNumber` when the resource header hasn't been captured yet (first ~1.5 s of a new recording).
+**Recording match** (`recsByDevJS` builder): prefers `show_tuner_resource` (case-insensitive); falls back to `show_channel == VctNumber` when the resource header hasn't been captured yet (first ~1.5 s of a new recording). When a tuned channel doesn't match one of our own shows, the title is resolved server-side via `state.guideEntries(deviceId:channelNum:)` (the same currently-airing lookup `WatchNowView`/`buildGuideGridHTML` use) — a real show title, not a generic placeholder; falls back to `"Ch {num} (unmanaged)"` only when there's no guide data at all for that channel. An `external: "1"` flag (distinct from `idle`, which means no channel is locked at all) marks this case explicitly so the client can label it, rather than a user having to infer "not ours" purely from the absence of a red dot.
 
-**Clickable titles — jump to guide:** all non-idle tuner rows have a clickable title (underline dotted, pointer cursor) that calls `goToShow(ch)` — closes the popup, finds the currently-airing `.g-prog` for that channel, scrolls it into view, and calls `showInfo()`. Our own recording rows get this treatment via a synchronous post-render loop. External stream rows (`"Live stream ch X"` title) additionally fire `fetch('/api/now-airing/{devId}/{ch}')` to patch the DOM with the real guide title, episode name, poster thumbnail, and end time.
+**Clickable titles — jump to guide:** all non-idle tuner rows have a clickable title (underline dotted, pointer cursor) that calls `goToShow(ch)` — closes the popup, finds the currently-airing `.g-prog` for that channel, scrolls it into view, and calls `showInfo()`. Our own recording rows get this treatment via a synchronous post-render loop. Rows with `external === "1"` additionally fire `fetch('/api/now-airing/{devId}/{ch}')` to patch the DOM with episode name, poster thumbnail, and end time on top of the title already resolved server-side (keyed off the `external` flag, not string-matching the title text, so this doesn't silently stop firing if the server-side fallback wording ever changes).
 
-**Red recording dot** appears on external streams when `recsByDev` contains a matching `rec=1` entry for the same channel on any device.
+**Red recording dot** appears on our own rows (`rec === "1"`). **Purple dot** (`#9b59b6`) appears on tuned-but-not-ours rows (`external === "1"`) — same color as the guide grid's `.g-st-inuse` ring, so the two surfaces read as one consistent "not managed by this app" signal.
 
 **Inline signal quality:** every non-idle tuner row with a `chname` fires `fetch('/api/signal-stats/{chname}')` and appends a small line — colored dot + bucket label (`Poor`/`Fair`/`Good`) + `{avg}% avg · {last}% last · checked {relTime}`. Colors match the guide-row SVG bars and `bColors` SSE palette. Skipped when the channel has no samples (server returns `{}`). `relTime()` renders the `checked` epoch as `just now` / `Xm ago` / `Xh ago` / `Xd ago` so stale readings are obvious.
 
@@ -414,13 +430,13 @@ Always rendered above the guide grid. Two states:
 **Selected** (`#sum-c`): appears when the user clicks a program block. Layout (left to right):
 - **Poster image** — hidden if no `ImageURL`. Default: 72 px wide, `object-fit: contain`. Tablet (≤ 960 px): 56 px. Desktop (≥ 961 px): 260 px, `align-self: center`. **Progressive loading:** `showInfo()` sets the `<img src>` to the CDN poster URL directly. If the poster fails to load, an `onerror` handler (set in JS each time `showInfo()` runs, not inline) falls back to the channel logo URL; if that also fails, the image is hidden. A `data-pgen` generation counter prevents a slow CDN fetch for an earlier selection from overwriting a later selection's image.
 
-**Short-viewport compaction (`@media(max-height:480px)`)** — a *height*, not width, breakpoint, so it catches landscape phones the width-based tiers above don't (a landscape phone is often wide enough to land in the "tablet" or even "desktop" poster-width tier while still being very short). `#sum` is pinned above the scrollable grid by design (a plain flex item before `.gw-outer`'s `flex:1` region, never inside `.gw`'s own scroll) — on a short screen its *own* height is what starves the grid of room, so below 480px viewport height the poster, genre badge, air-date, and synopsis are all hidden and padding/margin are trimmed, leaving just title/episode + the action buttons. The same bucket also shrinks the toolbar row (`#toolbar` gap/margin, `h1`, per-tuner `.d-btn`/`.tdrop-btn`/`.t-info`, `.genre-sel`, `#theme-sw` buttons) — a landscape phone is exactly the case where `#toolbar`'s `flex-wrap` is most likely to overflow, since the row has to fit `h1` + every tuner box + the genre filter + the theme switcher.
+**Short-viewport compaction (`@media(max-height:480px)`)** — a *height*, not width, breakpoint, so it catches landscape phones the width-based tiers above don't (a landscape phone is often wide enough to land in the "tablet" or even "desktop" poster-width tier while still being very short). `#sum` is pinned above the scrollable grid by design (a plain flex item before `.gw-outer`'s `flex:1` region, never inside `.gw`'s own scroll) — on a short screen its *own* height is what starves the grid of room, so below 480px viewport height the poster, genre badge, air-date, and synopsis are all hidden and padding/margin are trimmed, leaving just title/episode + the action buttons. The same bucket also shrinks the toolbar row (`#toolbar` gap/margin, `h1`, per-tuner `.d-btn`/`.tdrop-btn`/`.t-info`/`.t-info-inline`, `.genre-sel`, `#theme-sw` buttons) — a landscape phone is exactly the case where `#toolbar`'s `flex-wrap` is most likely to overflow, since the row has to fit `h1` + every tuner box + the genre filter + the theme switcher.
 
 **Single-row summary reflow (same `max-height:480px` bucket):** with the poster/genre/date/synopsis hidden, `#sum-grad` (`flex:1`) still stretched to the card's full width — on a landscape phone that's the whole grid width — leaving a vertical stack of just title/episode/actions/channel-row mostly empty on the right while still costing four lines of scarce height. `#sum-grad` switches to `flex-direction:row` instead: `#sum-title` and `#sum-ep` (`min-width:0`, ellipsis, `#sum-ep` gets a CSS `::before` "·" separator since they're no longer on separate lines) share the left side and truncate under pressure; `#sum-ch-row` (the logo+`#sum-ct` channel/time line — carries that id specifically so this rule can target it) follows inline; `#sum-actions` gets `margin-left:auto` to push Record/Edit/Delete/Watch to the row's right edge. The close `✕` button is a sibling of `#sum-grad` inside `#sum-c`, not a child of it, so it's already pinned at the card's true right edge regardless of this reflow — no separate rule needed for it. `order` values (`#sum-title`:1, `#sum-ep`:2, `#sum-ch-row`:3, `#sum-actions`:4) fix the visual order independent of DOM order (the channel-row `<div>` comes after `#sum-actions` in the markup).
 
 **Toolbar wrap grouping:** `#genre-bar` and `#theme-sw` live inside a shared `#toolbar-right` flex wrapper (`margin-left:auto`, its own `flex-wrap:wrap`) rather than each being a bare top-level child of `#toolbar`. `margin-left:auto` on an individual flex item only pushes it to the right edge of *whatever line it lands on* — if `#theme-sw` were still a standalone item and didn't fit after `#genre-bar`, it would wrap onto its own line and that auto-margin would strand it alone on the far right with a mostly-empty row above it. Grouping them means the browser's wrap decision applies to the pair as one unit: both stay adjacent whether they fit on the tuner-box row or wrap down together.
 
-**Phone compaction (`@media(max-width:600px)`)** — a general narrow-viewport pass, distinct from the height-based one above (both can apply at once — a narrow *and* short phone gets both). Shrinks `body` padding, `h1`, the toolbar controls (`.d-btn`/`.tdrop-btn`/`.t-info`/`#theme-sw`/`.genre-sel`), the guide grid (`--ch-w` to 100px, header/tick/logo/channel-name font sizes, `.g-hdr-tl` height, row `min-height` to 44px with `.g-row`'s `contain-intrinsic-size` kept in lockstep, program title/subtitle font sizes, the status-ring badge size), and the record/edit modals (`.mac-sheet` padding, `.em-row`/`.em-lbl`/`.em-input`/`.mac-btn`). Overrides targeting elements with inline base styles in `guide-shell.html` (`.mac-sheet`) need `!important`; class-only targets don't.
+**Phone compaction (`@media(max-width:600px)`)** — a general narrow-viewport pass, distinct from the height-based one above (both can apply at once — a narrow *and* short phone gets both). Shrinks `body` padding, `h1`, the toolbar controls (`.d-btn`/`.tdrop-btn`/`.t-info`/`.t-info-inline`/`#theme-sw`/`.genre-sel`), the guide grid (`--ch-w` to 100px, header/tick/logo/channel-name font sizes, `.g-hdr-tl` height, row `min-height` to 44px with `.g-row`'s `contain-intrinsic-size` kept in lockstep, program title/subtitle font sizes, the status-ring badge size), and the record/edit modals (`.mac-sheet` padding, `.em-row`/`.em-lbl`/`.em-input`/`.mac-btn`). Overrides targeting elements with inline base styles in `guide-shell.html` (`.mac-sheet`) need `!important`; class-only targets don't.
 - **Info column** (flex: 1):
   - Title (bold, 0.92 rem, ellipsis)
   - Genre badge (uppercase pill) — hidden if absent or `"Series"`
@@ -710,7 +726,8 @@ instead pushes a single-device `tdrop`/`tdropDev` in its SSE event and the clien
 | `toggleFav(evt, btn)` | `onclick` on `.g-fav-btn` star buttons; reads `data-dev` / `data-ch` from parent `.g-row`; POSTs `/api/toggle-favorite` — no explicit `refreshGuide()` call, `handleToggleFavorite` already broadcasts `favorite_toggled` over SSE |
 | `toggleTunerDrop(devId)` | Toggles that tuner's `#tdrop-{devId}` dropdown; closes any other open `.tdrop` first. A document-level click handler closes open dropdowns on any click outside a `.tuner-box`. |
 | `devFull(devId)` | Returns true if `tuners[devId].a >= tuners[devId].t` |
-| `showTunerInfo(devId, anchor)` | Opens tuner popover anchored below the clicked badge; renders per-tuner rows immediately from `recsByDev`, then fires async `/api/now-airing` fetches to enrich external stream rows with guide title, episode, poster, and end time |
+| `handleDevClick(id, btn)` | `.d-btn` name button's onclick — `setDev(id)` when switching to a not-yet-selected tuner; `showTunerInfo(id, btn)` when the tuner is already selected (a second click) |
+| `showTunerInfo(devId, anchor)` | Opens tuner popover anchored below the clicked name button; renders per-tuner rows immediately from `recsByDev` (title for a tuned-but-not-ours channel is already resolved server-side, not a placeholder), then fires async `/api/now-airing` fetches for rows with `external==="1"` to add episode, poster, and end time on top of that title |
 | `closeTunerPop()` | Hides tuner popover |
 | `goToShow(ch)` | Closes tuner popover, finds the currently-airing `.g-prog` block for `ch`, scrolls it into view, and calls `showInfo()` to select it |
 | `gc(genre)` | Maps genre → HSL background for summary panel |
@@ -722,9 +739,9 @@ instead pushes a single-device `tdrop`/`tdropDev` in its SSE event and the clien
 
 **Embedded JS data:**
 - `var tuners` — `{deviceId: {t: total, a: active, surl: "http://ip/status.json"}, …}` — tuner counts from fresh `/status.json` fetch
-- `var recsByDev` — `{deviceId: [{tuner, title, ch, chname, ip, idle, rec, endTime}, …], …}` — per-tuner occupancy detail for popover. `ip`: client IP for external streams not matched to our recordings; `idle`: `"1"` when tuner has no channel locked; `rec`: `"1"` when tuner is running one of our recordings; `endTime`: Unix timestamp of recording end (from `show_end`) when `rec==="1"`
+- `var recsByDev` — `{deviceId: [{tuner, title, ch, chname, ip, idle, rec, external, endTime}, …], …}` — per-tuner occupancy detail for popover. `ip`: client IP for external streams not matched to our recordings; `idle`: `"1"` when tuner has no channel locked at all; `rec`: `"1"` when tuner is running one of our recordings; `external`: `"1"` when a channel *is* locked but doesn't match one of our own shows (distinct from `idle` — a channel is actively tuned, just not by us); `endTime`: Unix timestamp of recording end (from `show_end`) when `rec==="1"`
 
-Both variables are serialised via `JSONSerialization` (not string interpolation) and passed through `jsEscapeForScript()` before embedding in the `<script>` block. This replaces `<`, `>`, and `&` with `\uXXXX` escapes so a show title or device ID containing `</script>` cannot terminate the script element. Device filter buttons use `onclick="setDev(this.dataset.dev)"` / `onclick="showTunerInfo(this.dataset.dev,this)"` — the DeviceID is read from the already-HTML-escaped `data-dev` attribute rather than interpolated into a JS string literal.
+Both variables are serialised via `JSONSerialization` (not string interpolation) and passed through `jsEscapeForScript()` before embedding in the `<script>` block. This replaces `<`, `>`, and `&` with `\uXXXX` escapes so a show title or device ID containing `</script>` cannot terminate the script element. Device filter buttons use `onclick="handleDevClick(this.dataset.dev,this)"` (dispatches to `setDev`/`showTunerInfo` — see "One button, two clicks" above) — the DeviceID is read from the already-HTML-escaped `data-dev` attribute rather than interpolated into a JS string literal.
 
 ---
 
@@ -864,7 +881,7 @@ func quit()             // calls webServer.stop()
 
 `broadcastRecordingEvent` is called from `AppState` for `recording_started` and `recording_stopped` — see the SSE "Events pushed" table above for what it builds and embeds (`sumPh`/`tdrop`/`tdropDev`).
 
-`broadcastGuideChangeEvent` is called from `AppState` (`refreshGuides`, `addShow`, `skipRecording`, `pauseShow`, `resumeShow`, `deleteShow`, `updateShow`) and from `WebServer` handlers (`handleToggleFavorite`) after state changes that affect the grid — see "Guide-change fragment push" above for what it builds. `handleDelete`/`handleEdit` do not broadcast themselves; they rely on `deleteShow`'s/`updateShow`'s own broadcast so a web-initiated delete or edit doesn't fire the event twice. `addShow` and `updateShow` broadcasting internally (rather than leaving it to each caller) is what makes this unconditional for every add/edit path, not just the web ones — see the `show_added`/`show_updated` notes above.
+`broadcastGuideChangeEvent` is called from `AppState` (`refreshGuides`, `addShow`, `skipRecording`, `pauseShow`, `resumeShow`, `deleteShow`, `updateShow`, `fetchDeviceStatusUncached` on a throttled hardware tuner-occupancy count change — `tuner_occupancy_changed`) and from `WebServer` handlers (`handleToggleFavorite`) after state changes that affect the grid — see "Guide-change fragment push" above for what it builds. `handleDelete`/`handleEdit` do not broadcast themselves; they rely on `deleteShow`'s/`updateShow`'s own broadcast so a web-initiated delete or edit doesn't fire the event twice. `addShow` and `updateShow` broadcasting internally (rather than leaving it to each caller) is what makes this unconditional for every add/edit path, not just the web ones — see the `show_added`/`show_updated` notes above.
 
 `broadcastDeviceBarEvent` is called from `AppState.probeForNewDevices` for `deviceOnline`/`deviceOffline` (a device recovering after being missed, or a newly-discovered device) — see the SSE events table above for the `devbar` payload it builds and why.
 

@@ -313,6 +313,10 @@ struct MenuContent: View {
                     Label { Text("Watch Now!").foregroundColor(watchNowBlue) }
                           icon: { Image(systemName: "play.tv.fill").foregroundColor(watchNowBlue) }
                 }
+                Button(action: { state.watchRecordingInApp(show, fromBeginning: true) }) {
+                    Label { Text("Watch from Beginning").foregroundColor(watchNowBlue) }
+                          icon: { Image(systemName: "backward.end.fill").foregroundColor(watchNowBlue) }
+                }
             }
             if state.config.Watch_in_VLC {
                 Button(action: { state.watchRecordingInVLC(show) }) {

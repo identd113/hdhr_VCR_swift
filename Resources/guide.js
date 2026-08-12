@@ -498,9 +498,13 @@ function showTunerInfo(devId,anchor){
           +'<span style="font-size:.78rem;color:var(--t4)">Idle</span>'
           +'</div>';
       }
-      var chLabel=hej(r.ch)+(r.chname?' · '+hej(r.chname):'');
+      // "another tuner" suffix + purple dot (matches the guide grid's .g-st-inuse color, #9b59b6)
+      // make explicit that this tuner isn't managed by this app — a bare title with no red dot
+      // was too easy to misread as simply "not currently recording" rather than "not ours at all".
+      var chLabel=hej(r.ch)+(r.chname?' · '+hej(r.chname):'')+(r.external==='1'?' · another tuner':'');
       var ipHtml=r.ip?'<div style="font-size:.67rem;color:var(--t4);padding-left:56px">'+hej(r.ip)+'</div>':'';
       var recDot=r.rec==='1'?'<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#e53935;margin-right:6px;flex-shrink:0;vertical-align:middle"></span>':'';
+      var extDot=r.external==='1'?'<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#9b59b6;margin-right:6px;flex-shrink:0;vertical-align:middle"></span>':'';
       var etHtml='';
       if(r.endTime&&r.rec==='1'){var et=new Date(parseInt(r.endTime,10)*1000);etHtml='<div style="font-size:.72rem;color:var(--t3);padding-left:56px">Ends '+et.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})+'</div>';}
       // Build the element id from the raw tuner name (not hej()-escaped) so it matches the
@@ -512,7 +516,7 @@ function showTunerInfo(devId,anchor){
           +'<span style="font-size:.67rem;color:var(--t4);min-width:48px;flex-shrink:0">'+hej(r.tuner)+'</span>'
           +'<span style="font-size:.78rem;font-weight:600;color:var(--ac);white-space:nowrap">'+chLabel+'</span>'
         +'</div>'
-        +'<div style="font-size:.82rem;color:var(--t0);padding-left:56px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+recDot+hej(r.title)+'</div>'
+        +'<div style="font-size:.82rem;color:var(--t0);padding-left:56px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+recDot+extDot+hej(r.title)+'</div>'
         +etHtml
         +ipHtml
         +'</div>';
@@ -549,10 +553,13 @@ function showTunerInfo(devId,anchor){
           row.appendChild(sig);
         }).catch(function(){});
     });
-    // Async guide enrichment for external streams — runs after innerHTML is set
+    // Async guide enrichment for external (not-ours) streams — runs after innerHTML is set.
+    // Adds episode title + end time on top of the title WebServer.swift's recsByDevJS already
+    // resolved synchronously; keyed off r.external (set server-side whenever a tuned channel
+    // isn't matched to one of our own shows) rather than string-matching the title text, so this
+    // doesn't silently stop firing if the server-side fallback wording ever changes again.
     recs.forEach(function(r){
-      if(r.idle==='1'||!r.ch||r.ch==='?')return;
-      if(!r.title||r.title.indexOf('Live stream')<0)return; // skip our own recordings
+      if(r.external!=='1'||!r.ch||r.ch==='?')return;
       var rid='tnr-'+r.tuner.replace(/\W/g,'');
       fetch('/api/now-airing/'+encodeURIComponent(devId)+'/'+encodeURIComponent(r.ch))
         .then(function(res){return res.json();})
@@ -886,6 +893,15 @@ function setDev(id){
     });
     sep.style.display=hasFav?'':'none';
   });
+}
+// First click on a tuner's name button switches the guide grid to that tuner (setDev);
+// a second click — the tuner is already selected — opens its hardware-occupancy popover
+// instead (formerly a separate "X/Y — FULL" button nested inside the ▾ show-list dropdown,
+// which testing showed users couldn't find). id===curDev is the same "already selected" check
+// setDev itself uses for its switched flag.
+function handleDevClick(id,btn){
+  if(id===curDev){showTunerInfo(id,btn);}
+  else{setDev(id);}
 }
 function filterGenre(g){_genreFilter=g;applyGenreDim();}
 function toggleFav(evt,btn){

@@ -53,10 +53,15 @@ html.lm .d-btn.d-full.d-sel{border-color:#cc3030;color:#8b0000;background:#fcd4d
 .d-ui:hover{color:var(--ac)}
 .t-info{background:var(--s4);border:1px solid var(--b4);color:var(--t3);border-radius:4px;padding:2px 8px;font-size:.72rem;cursor:pointer;transition:border-color .15s,color .15s}
 .t-info:hover{border-color:var(--b5);color:var(--t0)}
-.t-info-full{background:#2a1010;border-color:#883030;color:#ff9090}
-.t-info-full:hover{border-color:#cc4444;color:#ffbbbb}
-html.lm .t-info-full{background:#fce8e8;border-color:#cc3030;color:#8b0000}
-html.lm .t-info-full:hover{border-color:#aa2020;color:#660000}
+/* Occupancy count folded into the .d-btn tuner-name button's own label (not a separate
+   clickable element — a second click on the whole button opens the popover this used to
+   open on its own, see handleDevClick in guide.js). t-info-full is only ever toggled onto the
+   #tun-{devId} span, which always also carries t-info-inline (WebServer.swift's tunerCountSpan,
+   the three "tb=document.getElementById('tun-'+…)" sites in guide.js) — so unlike .t-info above,
+   there's no bare/standalone .t-info-full case to style; only the combined selector below applies. */
+.t-info-inline{margin-left:4px;padding:1px 6px;border-radius:4px;font-size:.72rem;color:var(--t4)}
+.t-info-inline.t-info-full{background:#2a1010;color:#ff9090}
+html.lm .t-info-inline.t-info-full{background:#fce8e8;color:#8b0000}
 /* ── Theme switcher (3-dot segmented control) ── */
 .genre-sel{background:var(--s4);border:1px solid var(--b4);color:var(--t2);border-radius:5px;padding:4px 8px;font-size:.78rem;cursor:pointer}
 html.lm .genre-sel{background:#f0f0f0;border-color:#ccc;color:#333}
@@ -137,6 +142,7 @@ html.lm #sum-poster{background:#ccc}
   h1{font-size:1rem}
   .d-btn,.tdrop-btn{padding:4px 7px;font-size:.7rem}
   .t-info{padding:2px 6px;font-size:.66rem}
+  .t-info-inline{padding:1px 4px;font-size:.62rem;margin-left:3px}
   #theme-sw button{padding:4px 7px;font-size:.75rem}
   .genre-sel{padding:3px 6px;font-size:.72rem}
   /* Grid time-header row (the "8 PM · 9 PM · ..." strip) — every pixel trimmed here is a
@@ -157,6 +163,7 @@ html.lm #sum-poster{background:#ccc}
   :root{--ch-w:100px}
   .d-btn,.tdrop-btn{padding:4px 7px;font-size:.7rem}
   .t-info{padding:2px 6px;font-size:.66rem}
+  .t-info-inline{padding:1px 4px;font-size:.62rem;margin-left:3px}
   #theme-sw button{padding:4px 7px;font-size:.75rem}
   .genre-sel{padding:3px 6px;font-size:.72rem}
   .g-hdr-tl{height:28px}

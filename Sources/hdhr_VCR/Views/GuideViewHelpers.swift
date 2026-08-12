@@ -68,6 +68,9 @@ let timeRangeFormatter: DateFormatter = {
 // Accessibility labels for WatchNowView's Watch/Watch-in-VLC buttons.
 func watchInAppLabel(_ title: String) -> String { "Watch \(title)" }
 func watchInVLCLabel(_ title: String) -> String { "Watch \(title) in VLC" }
+// Accessibility labels for the two choices offered when watching a currently-recording show.
+func watchFromBeginningLabel(_ title: String) -> String { "Watch \(title) from the beginning" }
+func watchLiveLabel(_ title: String) -> String { "Watch \(title) live" }
 
 func guideTimeRange(_ entry: GuideEntry) -> String {
     "\(timeRangeFormatter.string(from: entry.startDate)) – \(timeRangeFormatter.string(from: entry.endDate))"
@@ -111,19 +114,114 @@ func he(_ s: String) -> String {
      .replacingOccurrences(of: "\"", with: "&quot;")
 }
 
-struct ManagedFlagView: View {
-    var size: CGFloat = 20
-    var recording: Bool = false
-    var body: some View {
-        Path { p in
-            p.move(to: .zero)
-            p.addLine(to: CGPoint(x: size, y: 0))
-            p.addLine(to: CGPoint(x: size, y: size))
-            p.closeSubpath()
+// MARK: - Guide ring/badge (native equivalent of the web guide's .g-st-* status ring)
+
+// Colors match the web guide's --vc-* CSS custom properties (WebServer.swift/guide.css) exactly,
+// so the same fact reads the same way on both surfaces. Badge glyphs are the closest SF Symbol
+// equivalent of each web glyph (⏱/⏺/⏭/⚠/▶) rather than the literal Unicode character, since SF
+// Symbols render more reliably at small native sizes than fallback text glyphs do.
+extension GuideRingState {
+    var ringColor: Color? {
+        switch self {
+        case .recording:      return Color(red: 1.0,   green: 0.353, blue: 0.353) // #ff5a5a
+        case .willSkip:       return Color(red: 0.541, green: 0.573, blue: 0.639) // #8a92a3
+        case .conflict:       return Color(red: 1.0,   green: 0.584, blue: 0.0)   // #ff9500
+        case .scheduled:      return Color(red: 0.231, green: 0.576, blue: 1.0)   // #3b93ff
+        case .inUseOtherTuner: return Color(red: 0.608, green: 0.349, blue: 0.714) // #9b59b6
+        case .none:            return nil
         }
-        .fill(recording ? Color(red: 1, green: 0.376, blue: 0.376) : Color.yellow)
-        .frame(width: size, height: size)
-        .accessibilityLabel(recording ? "Recording now" : "Already scheduled")
+    }
+    var badgeSymbol: String? {
+        switch self {
+        case .recording:       return "record.circle.fill"
+        case .willSkip:        return "forward.end.fill"
+        case .conflict:        return "exclamationmark.triangle.fill"
+        case .scheduled:       return "clock.fill"
+        case .inUseOtherTuner: return "play.fill"
+        case .none:             return nil
+        }
+    }
+    // Lowercase-led so callers can concatenate naturally as "\(title), \(suffix)" — matches
+    // WatchNowRow's existing accessibility-label convention (e.g. "\(title), scheduled").
+    var tooltipSuffix: String {
+        switch self {
+        case .recording:       return "recording now"
+        case .willSkip:        return "already recorded, will skip"
+        case .conflict:        return "conflict, all tuners busy at this time"
+        case .scheduled:       return "scheduled to record"
+        case .inUseOtherTuner: return "in use by another tuner, not managed by this app"
+        case .none:             return ""
+        }
+    }
+}
+
+private struct GuideRingBadge: ViewModifier {
+    let state: GuideRingState
+    func body(content: Content) -> some View {
+        content.overlay {
+            if let color = state.ringColor {
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(color, lineWidth: 2)
+                    .modifier(PulseIfRecording(active: state == .recording, color: color))
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            if let color = state.ringColor, let symbol = state.badgeSymbol {
+                Circle()
+                    .fill(color)
+                    .frame(width: 18, height: 18)
+                    .overlay {
+                        Image(systemName: symbol)
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+                    .shadow(color: .black.opacity(0.4), radius: 1, y: 1)
+                    .padding(3)
+                    .modifier(PulseIfRecording(active: state == .recording, color: color))
+            }
+        }
+    }
+}
+
+// Matches the web guide's 1.6s ease-in-out ring/badge pulse (guide.css's gRingPulse/gRecPulse
+// keyframes) for the recording state only — every other state is static, same as the web version.
+private struct PulseIfRecording: ViewModifier {
+    let active: Bool
+    let color: Color
+    @State private var dimmed = false
+    func body(content: Content) -> some View {
+        content
+            .opacity(active && dimmed ? 0.5 : 1)
+            .onAppear { syncAnimation() }
+            // A row's identity (channel.id) is stable across a state transition, so a show that
+            // goes from e.g. scheduled to recording while its row is already on screen only fires
+            // .onAppear once, before `active` ever turned true — without this, the ring picks up
+            // the correct red color but never starts pulsing until the row leaves and re-enters view.
+            .onChange(of: active) { _, _ in syncAnimation() }
+    }
+
+    private func syncAnimation() {
+        if active {
+            withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
+                dimmed = true
+            }
+        } else {
+            // A one-shot animation here replaces (and thereby cancels) any still-running
+            // repeatForever loop from a prior active==true period, rather than leaving it
+            // oscillating in the background with no visible effect.
+            withAnimation(.easeInOut(duration: 0.2)) {
+                dimmed = false
+            }
+        }
+    }
+}
+
+extension View {
+    /// Draws the native equivalent of the web guide's `.g-st-*` status ring + corner badge —
+    /// see `docs/WatchNowView.md`'s Poster thumbnail section and `docs/WebServer.md`'s "Status
+    /// ring + badge" for the shared precedence/color/glyph rationale. No-op for `.none`.
+    func guideRingBadge(_ state: GuideRingState) -> some View {
+        modifier(GuideRingBadge(state: state))
     }
 }
 

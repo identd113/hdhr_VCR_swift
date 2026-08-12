@@ -725,6 +725,32 @@ struct ManagedGuideMatcher: Equatable {
     func isManaged(entry: GuideEntry) -> Bool { owner(for: entry) != nil }
 }
 
+// MARK: - GuideRingState
+
+/// The five mutually-exclusive states a guide program block can be in, shared between the web
+/// guide's HTML status ring/badge (`WebServer.swift`'s `buildGuideGridHTML`) and native
+/// `WatchNowView`'s SwiftUI ring/badge (`GuideViewHelpers.swift`) — kept here, not duplicated in
+/// each renderer, so the two surfaces can't silently drift out of precedence order. Colors/glyphs
+/// live with each renderer (CSS custom properties for the web version, `Color`/SF Symbol for the
+/// native one) since those are presentation details, not shared logic.
+enum GuideRingState: Equatable {
+    case recording, willSkip, conflict, scheduled, inUseOtherTuner, none
+}
+
+/// Resolves which single state applies to a program block, given the same five boolean inputs
+/// both `WebServer.swift` and `WatchNowView` already compute per-block. Precedence — recording >
+/// will-skip > conflict > scheduled > in-use-by-other-tuner — mirrors `WebServer.swift`'s inline
+/// ternary chain exactly; changing the order here changes it for both surfaces at once.
+func resolveGuideRingState(isRecording: Bool, isManaged: Bool, willSkip: Bool,
+                            isConflict: Bool, isOtherTunerInUse: Bool) -> GuideRingState {
+    if isRecording           { return .recording }
+    if isManaged && willSkip { return .willSkip }
+    if isConflict             { return .conflict }
+    if isManaged               { return .scheduled }
+    if isOtherTunerInUse         { return .inUseOtherTuner }
+    return .none
+}
+
 extension GuideEntry {
     var episodeInfoLabel: String? {
         let parts = [EpisodeNumber, EpisodeTitle].compactMap { s -> String? in

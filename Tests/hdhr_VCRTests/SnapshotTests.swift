@@ -68,6 +68,17 @@ struct SnapshotTests {
         assertSnapshot(view, named: "WatchNowView_withDevice", size: CGSize(width: 900, height: 600))
     }
 
+    // NOTE: a snapshot test seeding real on-air guide data (to render an actual WatchNowRow with
+    // the new guideRingBadge) was attempted here and removed — it revealed a pre-existing gap in
+    // this harness, not something the ring feature broke: ImageRenderer renders WatchNowView's
+    // ScrollView branch as entirely blank regardless of content (confirmed by comparing against
+    // watchNowWithDevice's own reference, which never exercises that branch — it only ever hits
+    // the empty-devices or no-guide-data fallback paths, both plain VStacks). A blank-vs-blank
+    // snapshot passes but proves nothing. Ring correctness is covered by GuideRingStateTests.swift
+    // (pure precedence logic) instead; actual visual rendering needs live verification against the
+    // real deployed app, not this harness, until ScrollView/List rendering under ImageRenderer is
+    // solved as its own separate infrastructure project.
+
     // ─── MenuContent ──────────────────────────────────────────────────────────
     // MenuContent is designed for .menu-style MenuBarExtra; its body returns a
     // flat collection of buttons/text/dividers. Wrapping it in a VStack lets

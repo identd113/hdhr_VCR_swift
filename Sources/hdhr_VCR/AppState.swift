@@ -94,6 +94,15 @@ final class AppState: ObservableObject {
     // without this, a rapidly flapping count could re-glitch the open menu on every single tick.
     private var lastMenuOpenTunerWrite: [String: Date] = [:]
     private static let menuOpenTunerWriteCooldown: TimeInterval = 30
+    // deviceId → last time a hardware occupancy-count change was allowed to push a web-guide
+    // rebuild (see fetchDeviceStatusUncached). Independent of lastMenuOpenTunerWrite above — that
+    // one only throttles while the menu is open; this one applies unconditionally, since an
+    // external consumer (another machine, or someone channel-surfing on the HDHomeRun's own app)
+    // flipping the count on consecutive idle-loop ticks would otherwise re-trigger a full guide
+    // grid rebuild + gzip (buildGuideGridHTML/prebuildPageHTML) every ~Idle_timer_interval seconds
+    // indefinitely, menu closed or not.
+    private var lastGuideOccupancyBroadcast: [String: Date] = [:]
+    private static let guideOccupancyBroadcastCooldown: TimeInterval = 15
     @Published var vlcCurrentURL: String = ""               // raw URL (no transcode query) playing in VLCPlayerView
     @Published var channelIconImages: [String: NSImage] = [:]  // ImageURL → NSImage; populated during prefetch for sync menu use
     @Published var signalScanProgress: String? = nil
@@ -2893,7 +2902,12 @@ final class AppState: ObservableObject {
         return max(0, raw - raw % 188)
     }
 
-    func watchRecordingInApp(_ show: Show) {
+    // fromBeginning: false (default) starts ~recordingLiveEdgeBackoffSeconds behind live, matching
+    // the menu bar's existing "Watch Now!" behavior. true starts at byte/second 0, the actual
+    // beginning of the recording — the relay (WebServer.swift's streamGrowingFile/pumpGrowingFile)
+    // already correctly serves a growing file without hitting a premature EOF either way, so this
+    // only changes the starting offset, not the underlying streaming mechanism.
+    func watchRecordingInApp(_ show: Show, fromBeginning: Bool = false) {
         guard VLCBridge.shared.isAvailable else { return }
         guard !show.show_recording_path.isEmpty,
               FileManager.default.fileExists(atPath: show.show_recording_path) else {
@@ -2908,7 +2922,7 @@ final class AppState: ObservableObject {
         }
         let recordingStart = show.show_next ?? Date()
         let elapsed         = recordingElapsedSeconds(show)
-        let startSeconds    = max(0, elapsed - Self.recordingLiveEdgeBackoffSeconds)
+        let startSeconds    = fromBeginning ? 0 : max(0, elapsed - Self.recordingLiveEdgeBackoffSeconds)
         let startOffset     = recordingByteOffset(for: show, atSeconds: startSeconds) ?? 0
         let relayURL = "http://127.0.0.1:\(config.Web_server_port)/api/watch-recording?show=\(show.show_id)&start=\(startOffset)"
         let mgr = VLCPlayerWindowManager.shared
@@ -2916,11 +2930,15 @@ final class AppState: ObservableObject {
         // Compares by show id, not the relay URL — startOffset moves every call (it's derived
         // from live elapsed time), so comparing full URLs would almost never match even when this
         // exact show is already open, causing a needless reconnect (remute + rebuffer) instead of
-        // just focusing the window.
-        let alreadyPlaying = mgr.currentDeviceID == device.DeviceID && VLCBridge.shared.recordingShowId == show.show_id
+        // just focusing the window. Skipped entirely for fromBeginning: true — that's an explicit
+        // "restart from 0" request (like a media player's restart control), which must always
+        // honor a fresh seek even if the same show is already open, not silently just refocus.
+        let alreadyPlaying = !fromBeginning
+            && mgr.currentDeviceID == device.DeviceID && VLCBridge.shared.recordingShowId == show.show_id
         if alreadyPlaying { mgr.focus(); return }
 
-        glog("[Watch] '\(show.show_title)' from disk via local relay, starting ~\(Int(elapsed - startSeconds))s behind live (recording in progress): \(show.show_recording_path)")
+        let positionDesc = fromBeginning ? "from the beginning" : "starting ~\(Int(elapsed - startSeconds))s behind live"
+        glog("[Watch] '\(show.show_title)' from disk via local relay, \(positionDesc) (recording in progress): \(show.show_recording_path)")
         mgr.open(url: relayURL, title: show.show_title, device: device, appState: self)
         // Deferred to the next run-loop turn: mgr.open() synchronously creates the player window,
         // and SwiftUI's first render of its toolbar happens inside that same call — setting the
@@ -3093,6 +3111,22 @@ final class AppState: ObservableObject {
                 lastTunerAudit[device.DeviceID] = auditLine
                 glog("[TunerAudit] \(auditLine)")
             }
+            // Keep the web guide's cached page (tuner popover's recsByDevJS, .g-st-inuse ring) in
+            // sync with a hardware-only occupancy change — e.g. someone else's tuner starting or
+            // stopping, not one of this app's own show lifecycle events, so none of the *other*
+            // broadcastGuideChangeEvent call sites (add/edit/delete/favorite-toggle/recording
+            // start-stop) would otherwise catch it. Without this, that data could sit stale for up
+            // to the hourly refresh despite deviceTunerOccupancy itself updating within one idle
+            // tick — found 2026-08-11 while live-verifying the tuner-popover title fix (Part C).
+            // Throttled independently of the menu-open write above — see lastGuideOccupancyBroadcast.
+            let guideCooldownElapsed = lastGuideOccupancyBroadcast[device.DeviceID].map {
+                Date().timeIntervalSince($0) >= Self.guideOccupancyBroadcastCooldown
+            } ?? true
+            if guideCooldownElapsed {
+                lastGuideOccupancyBroadcast[device.DeviceID] = Date()
+                webServer.broadcastGuideChangeEvent(type: "tuner_occupancy_changed",
+                                                    extra: ["device": device.DeviceID], state: self)
+            }
         }
 
         for show in recordingShows where show.hdhr_record == device.DeviceID {
@@ -3260,6 +3294,16 @@ final class AppState: ObservableObject {
     // avoid (docs/WebServer.md's /api/watch-recording relay).
     func vlcOccupiesTuner(for deviceId: String) -> Bool {
         VLCPlayerWindowManager.shared.currentDeviceID == deviceId && VLCBridge.shared.recordingShowId == nil
+    }
+
+    // Channel this app itself is live-watching on deviceId via the in-app player (not the
+    // no-tuner watch-recording relay — vlcOccupiesTuner already excludes that). Callers computing
+    // "a hardware tuner is locked to a channel this app didn't initiate" (the in-use-by-other-tuner
+    // marker in WebServer.swift's buildGuideGridHTML/recsByDevJS and WatchNowView's ringStateInputs)
+    // must subtract this channel, or a user's own live Watch session gets mislabeled as someone
+    // else's tuner.
+    func vlcLiveChannel(for deviceId: String) -> String? {
+        vlcOccupiesTuner(for: deviceId) ? VLCPlayerWindowManager.shared.currentChannelNumber : nil
     }
 
     // Uses activeTunerCount's hardware-polled status.json count (not just this instance's own
