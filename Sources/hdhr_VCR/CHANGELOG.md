@@ -20,6 +20,7 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 
 **Info**
 - Reduced background work from this update's new tuner-status tracking and Watch Now's already-recorded lookup, so neither runs more than needed.
+- If Add Show's Record button ever silently does nothing when clicked (no confirmation, no error), the app log now records why — previously this left no trace to diagnose after the fact.
 
 ## v2.0.3 — 2026-08-11
 

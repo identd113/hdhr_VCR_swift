@@ -134,11 +134,18 @@ struct AddShowView: View {
                         let guideNumber = data["guideNumber"] as? String,
                         let startTime   = data["startTime"]   as? Int,
                         let endTime     = data["endTime"]     as? Int
-                    else { return }
+                    else {
+                        // A click on the guide's Record button that never advances the wizard,
+                        // with no visible error, is otherwise silent all the way down — this is
+                        // the one native-side signal a future occurrence would leave behind.
+                        glog("[AddShow] guide record message missing/malformed required field(s) — got keys: \(data.keys.sorted())", level: .warning)
+                        return
+                    }
                     let title    = data["title"]    as? String ?? ""
                     let seriesId = data["seriesId"] as? String ?? ""
                     let genre    = data["genre"]    as? String ?? ""
                     let imageURL = data["imageURL"] as? String ?? ""
+                    glog("[AddShow] guide record → '\(title)' ch=\(guideNumber) device=\(deviceId)")
                     applyWebGuideEntry(deviceId: deviceId, guideNumber: guideNumber,
                                        startTime: startTime, endTime: endTime,
                                        title: title, seriesId: seriesId,
@@ -354,6 +361,9 @@ struct AddShowView: View {
         show.show_bonus_time     = entry.firstGenre?.lowercased().contains("sport") == true && state.config.Sports_padding_enabled
         show.hdhr_record         = device.DeviceID
         show.show_url            = channel.URL ?? ""
+        if show.show_url.isEmpty {
+            glog("[AddShow] pending entry '\(entry.Title)' ch=\(channel.GuideNumber) device=\(device.DeviceID) — stream URL not found on the passed-in channel", level: .warning)
+        }
         let comps = Calendar.current.dateComponents([.hour, .minute, .weekday], from: entry.startDate)
         show.show_time = Double(comps.hour ?? 20) + Double(comps.minute ?? 0) / 60.0
         airDays    = [Show.weekdayNames[(comps.weekday ?? 2) - 1]]
@@ -380,6 +390,15 @@ struct AddShowView: View {
         show.hdhr_record     = deviceId
         // Look up the stream URL from the lineup so the recording process has the HDHR URL
         show.show_url = state.lineups[deviceId]?.first(where: { $0.GuideNumber == guideNumber })?.URL ?? ""
+        if show.show_url.isEmpty {
+            // This is the exact condition that leaves the Details step's Record button silently
+            // disabled — the UI shows an orange banner for it, but nothing was logged, so a report
+            // of "clicked Record, nothing happened" was previously undiagnosable after the fact.
+            let lineup = state.lineups[deviceId]
+            let reason = lineup == nil ? "lineup not loaded for this device"
+                                        : "lineup loaded (\(lineup!.count) channels) but none match GuideNumber \(guideNumber)"
+            glog("[AddShow] '\(title)' ch=\(guideNumber) device=\(deviceId) — stream URL not found: \(reason)", level: .warning)
+        }
         // selectedDevice needed for save() — set it if not already set to the matching device
         if selectedDevice == nil || selectedDevice?.DeviceID != deviceId {
             selectedDevice = state.devices.first(where: { $0.DeviceID == deviceId })
@@ -403,7 +422,13 @@ struct AddShowView: View {
     }
 
     private func save() {
-        guard let folder = recordFolder else { return }
+        guard let folder = recordFolder else {
+            // Shouldn't be reachable — recordFolder defaults from config on init and canAdvance
+            // already gates the Record button on it being non-nil — but log it rather than a
+            // silent no-op if it somehow happens anyway.
+            glog("[AddShow] save() aborted — recordFolder was nil for '\(show.show_title)'", level: .warning)
+            return
+        }
         show.show_is_series         = seriesType != .single
         show.show_use_seriesid      = seriesType.isSeries
         show.show_use_seriesid_all  = seriesType == .seriesAll
