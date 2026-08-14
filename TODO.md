@@ -45,6 +45,30 @@ Worth investigating: whether `pumpGrowingFile`'s own chunk-by-chunk send loop (2
 
 ---
 
+### Watch Now takes ~3-5s to start playback after selection
+
+User-reported: selecting a show from Watch Now to start playback takes roughly 3-5 seconds, noticeably longer than it feels like it should for something already on air/on disk. This may well be the same root cause as the entry above ("Watch Now-from-disk relay could 'catch up' faster...") — `VLCBridge.play(url:)`'s blanket `--network-caching=2000` (~line 345) forces VLC to buffer 2s before starting playback on every load, live tuner or disk relay alike, which alone would account for a meaningful chunk of a 3-5s perceived delay. Worth timing an actual repro (tap to first frame) before assuming it's fully explained by that one setting — there may also be real latency in `AppState.watchRecordingInApp`/`playChannel`'s own setup path (device/tuner lookup, relay startup) on top of VLC's fixed caching window.
+
+**Key files**: `VLCBridge.swift` → `play(url:)` (network-caching option, ~line 345); `AppState.swift` → `watchRecordingInApp`; `Views/VLCPlayerView.swift` → `playChannel`.
+
+---
+
+### Watch Now poster tiles have no border
+
+`WatchNowView.swift`'s `posterThumb()` (~line 354-370) clips the poster image to `RoundedRectangle(cornerRadius: 6)` with no stroke/border — tiles blend into each other and the background with nothing but spacing to separate them. Add a subtle `.overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(...))` (or similar) so each tile reads as a distinct card. Should coordinate with `guideRingBadge(ringState)` (applied right after the clipShape) so the new border doesn't visually clash with the existing recording/scheduled/skip status ring.
+
+**Key file**: `Views/WatchNowView.swift` → `posterThumb()` (~line 354).
+
+---
+
+### Live View channel picker should sort favorites to the top, matching Watch Now and the Guide
+
+`VLCPlayerView.swift`'s toolbar channel `Picker` (~line 416-433) lists `recordingChannelEntries` first, then iterates `lineup` in whatever order it's already in — no favorites-first sort. This is inconsistent with `WatchNowView.swift` (`favTopBorder`, ~line 60, plus the favorites-first ordering feeding it) and the web Guide (`favRows`/`otherRows` split, `WebServer.swift` ~line 1200), which both already surface favorited channels first. Fix: sort the `ForEach(lineup, ...)` block the same way (`channel.isFavorite` first, matching `AppState.swift`'s existing `isFavoriteChannel`-based sort used elsewhere, e.g. ~line 168), ideally with a divider or visual break like Watch Now's `favTopBorder` for consistency.
+
+**Key file**: `Views/VLCPlayerView.swift` → `toolbar`'s channel `Picker` (~line 416).
+
+---
+
 ## Recording
 
 ### No reminder-only shows (notify without recording)
@@ -62,6 +86,22 @@ The web Guide already partitions channel rows into Favorites vs. everything else
 Note: this is the shared web guide grid (`WebServer.swift`) rendered both in a browser and embedded via WKWebView in `AddShowView.swift`'s guide step — there is no separate native "cable view" implementation anymore (the old `CableGuideView`, and later the unreachable `FloatingGuideView`/"Cable Guide" window built on top of it, were both removed; fixing it here covers both remaining embeddings at once).
 
 **Key file**: `WebServer.swift` → `buildGuideGridHTML`/`buildHTML` (favRows/otherRows split, `.g-fav-sep` divider, `recChannelsByDevice`).
+
+---
+
+### Double-clicking a guide program block should jump straight to the Record modal
+
+Today, clicking a `.g-prog` block in the main web Guide only calls `showInfo(el)`, which populates the Summary panel (`sum-title`/`sum-genre`/`sum-btn` etc.) — recording still requires a second click on the Summary panel's "Record" button (`doRecord()`, which then opens the `rm-modal` record dialog). User wants a double-click on the guide entry itself to skip straight to `doRecord()`/the record modal, as a power-user shortcut. There's already a precedent for `ondblclick` re-anchoring a modal to a different airing (`rm-air-row` → `switchAiring(idx)`, ~line 296), so wiring `.g-prog`'s `ondblclick` to call `showInfo(el)` then `doRecord()` (or a small combined helper) should be a small, self-contained change. Note `doRecord()` special-cases the in-app `AddShowView` wizard embedding (posts to the `webkit.messageHandlers.record` bridge instead of opening the modal) — a double-click shortcut should go through the same path so it still works correctly from that embedding, not just the standalone browser Guide.
+
+**Key files**: `Resources/guide.js` → `showInfo()` (~line 69), `doRecord()` (~line 219), `.g-prog` rendering (search `WebServer.swift`'s `buildGuideGridHTML`).
+
+---
+
+### Guide program tiles should not be text-selectable; the Summary panel should stay copyable
+
+Clicking a program in the web Guide lets you click-drag to highlight/select the tile's title text (no `user-select: none` on `.g-prog` in `Resources/guide.css`, confirmed — only `cursor:pointer` is set at line 261), which feels like an accidental-selection bug rather than intended behavior for a compact grid tile. The Summary panel that `showInfo()` populates (`#sum-title`, `#sum-genre`, etc.) should be left alone — its text (title, genre tags, channel/time line) should remain normally selectable/copyable, since users may want to copy a show title or airtime out of it. Fix is a scoped CSS rule (`.g-prog{user-select:none}` or similar) that doesn't touch the `#sum-*` summary elements.
+
+**Key files**: `Resources/guide.css` (`.g-prog` rule, ~line 261), `Resources/guide.js` → `showInfo()` (Summary panel population, ~line 69).
 
 ---
 

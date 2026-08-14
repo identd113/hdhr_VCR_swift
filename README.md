@@ -6,6 +6,8 @@
 
 No subscription. No media server. No cloud account. Just your tuner, your Mac, and your shows.
 
+**✅ Notarized by Apple — download, unzip, and open. No Gatekeeper warning, no bypass step.**
+
 [![CI](https://github.com/identd113/hdhr_VCR_swift/actions/workflows/ci.yml/badge.svg)](https://github.com/identd113/hdhr_VCR_swift/actions/workflows/ci.yml)
 [![macOS 15+](https://img.shields.io/badge/macOS-15%2B-blue?logo=apple\&logoColor=white)](https://github.com/identd113/hdhr_VCR_swift/releases)
 [![Swift 5.9](https://img.shields.io/badge/Swift-5.9-FA7343?logo=swift\&logoColor=white)](Package.swift)
