@@ -10,6 +10,19 @@ final class RecordingManager {
 
     static var curlLogPath: String { curlVerboseLogFilePath }
 
+    // Path to the curl binary spawned by start(). Injectable for tests only — every production
+    // call site (AppState's `let recordingManager = RecordingManager()`) gets the default
+    // "/usr/bin/curl", identical to the hardcoded path this replaced. Swapping this for a tiny
+    // test-double shell script lets RecordingManagerTests exercise start()/stop()/isRunning()/
+    // readHDHRResource/readAndClearHDHRError/readAndClearExitStatus through a REAL spawned,
+    // killed, and reaped process — chosen over a spawn-seam closure because it doesn't touch
+    // spawnDetached/posix_spawn at all, only which path gets passed into that unmodified call.
+    private let curlExecutablePath: String
+
+    init(curlExecutablePath: String = "/usr/bin/curl") {
+        self.curlExecutablePath = curlExecutablePath
+    }
+
     // MARK: - Start
 
     func start(showId: String, title: String, url: String, outputPath: String,
@@ -45,7 +58,7 @@ final class RecordingManager {
 
         // Spawn curl directly in its own POSIX session — one PID per recording.
         // Sleep prevention is handled by a fire-and-forget IOKit assertion below.
-        let pid = try spawnDetached(executablePath: "/usr/bin/curl",
+        let pid = try spawnDetached(executablePath: curlExecutablePath,
                                     arguments: curlArgs,
                                     stderrPath: logPath)
         pids[showId] = pid

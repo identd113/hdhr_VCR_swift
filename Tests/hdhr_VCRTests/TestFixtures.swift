@@ -27,6 +27,22 @@ extension LineupEntry {
     }
 }
 
+// MARK: - GuideChannel / GuideEntry
+
+extension GuideChannel {
+    // One channel with a single on-air (or arbitrary window) GuideEntry — enough to drive
+    // AppState.onAirNow()/WatchNowView's ScrollView branch without a real guide.json fetch.
+    static func test(number: String = "5.1", name: String = "KFOO", title: String = "Test Show",
+                      start: Int, end: Int) -> GuideChannel {
+        let json = """
+        {"GuideNumber":"\(number)","GuideName":"\(name)","Guide":[
+            {"StartTime":\(start),"EndTime":\(end),"Title":"\(title)"}
+        ]}
+        """
+        return try! JSONDecoder().decode(GuideChannel.self, from: Data(json.utf8))
+    }
+}
+
 // MARK: - Show
 
 extension Show {

@@ -203,7 +203,10 @@ final class GuideStore {
 
     // MARK: - Indexing
 
-    private func buildIndex(deviceId: String, channels: [GuideChannel]) {
+    // internal (not private) so tests can seed real on-air guide entries directly — needed to
+    // exercise WatchNowView's ScrollView branch, which only appears once onAirNow() finds a
+    // currently-airing entry. See SnapshotTests.swift's watchNowOnAir case.
+    func buildIndex(deviceId: String, channels: [GuideChannel]) {
         // Drop stale entries for this device from series index
         for key in seriesIndex.keys {
             seriesIndex[key]?.removeAll { $0.deviceId == deviceId }

@@ -2,15 +2,27 @@ import Foundation
 import Darwin
 
 final class HDHRManager {
-    // Short-timeout session for discovery; regular session for data transfers
-    private let session: URLSession = {
-        let c = URLSessionConfiguration.default
-        c.timeoutIntervalForRequest  = 2
-        c.timeoutIntervalForResource = 6
-        return URLSession(configuration: c)
-    }()
-    private let dataSession = URLSession.shared
+    // Short-timeout session for discovery; regular session for data transfers.
+    // Both injectable via init (default arg is nil so the exact production URLSessionConfiguration
+    // below is still built normally) — lets tests substitute a URLProtocol-mocked session for the
+    // HTTP-reachable discovery/lineup calls (fetchDeviceInfo, fetchLineup, mDNSDiscover,
+    // cloudDiscover, setFavorite) without touching real network. mDNS/UDP broadcast discovery
+    // still hits real system sockets regardless — no seam for those, see HDHRManagerTests.swift.
+    private let session: URLSession
+    private let dataSession: URLSession
     private let cloudDiscoveryURL = URL(string: "http://discover.hdhomerun.com/discover.json")!
+
+    init(session: URLSession? = nil, dataSession: URLSession = .shared) {
+        if let session {
+            self.session = session
+        } else {
+            let c = URLSessionConfiguration.default
+            c.timeoutIntervalForRequest  = 2
+            c.timeoutIntervalForResource = 6
+            self.session = URLSession(configuration: c)
+        }
+        self.dataSession = dataSession
+    }
 
     // MARK: - Device Discovery
 
@@ -54,7 +66,9 @@ final class HDHRManager {
     }
 
     /// Direct HTTP lookup for device IPs extracted from saved show URLs — fastest path on stable networks.
-    private func knownHostsDiscover(ips: [String]) async -> [HDHRDevice] {
+    /// Internal (not private) so HDHRManagerTests can exercise the concurrent-fetch/merge path
+    /// directly against a mocked session, without paying discoverDevices' ~2s real-UDP wait.
+    func knownHostsDiscover(ips: [String]) async -> [HDHRDevice] {
         guard !ips.isEmpty else { return [] }
         return await withTaskGroup(of: HDHRDevice?.self) { group in
             for ip in ips {
@@ -100,7 +114,8 @@ final class HDHRManager {
     /// Prefers auth already present on another local device (same network = same SiliconDust
     /// account) over the cloud's per-device auth — cloud may return a device-specific token
     /// that doesn't cover the guide subscription (e.g. mock device with test DeviceID).
-    private func supplementDeviceAuth(local: [HDHRDevice], cloud: [HDHRDevice]) -> [HDHRDevice] {
+    /// Internal (not private) — pure function, no I/O, directly unit-testable without any mock.
+    func supplementDeviceAuth(local: [HDHRDevice], cloud: [HDHRDevice]) -> [HDHRDevice] {
         let localAuth = local.compactMap { $0.DeviceAuth }.first
         return local.map { dev in
             guard dev.DeviceAuth == nil else { return dev }
@@ -112,7 +127,8 @@ final class HDHRManager {
     }
 
     /// mDNS discovery via the well-known hdhomerun.local multicast hostname.
-    private func mDNSDiscover() async throws -> [HDHRDevice] {
+    /// Internal (not private) so HDHRManagerTests can exercise it directly against a mocked session.
+    func mDNSDiscover() async throws -> [HDHRDevice] {
         guard let url = URL(string: "http://hdhomerun.local/discover.json") else { throw URLError(.badURL) }
         let (data, _) = try await session.data(from: url)
         // Response may be a single object or an array
@@ -123,13 +139,15 @@ final class HDHRManager {
         return [single]
     }
 
-    private func cloudDiscover() async throws -> [HDHRDevice] {
+    // Internal (not private) so HDHRManagerTests can exercise it directly against a mocked session.
+    func cloudDiscover() async throws -> [HDHRDevice] {
         let (data, _) = try await session.data(from: cloudDiscoveryURL)
         return try JSONDecoder().decode([HDHRDevice].self, from: data)
     }
 
     /// Fetch full device info from the device's own HTTP API.
-    private func fetchDeviceInfo(ip: String) async throws -> HDHRDevice {
+    /// Internal (not private) so HDHRManagerTests can exercise it directly against a mocked session.
+    func fetchDeviceInfo(ip: String) async throws -> HDHRDevice {
         guard let url = URL(string: "http://\(ip)/discover.json") else { throw URLError(.badURL) }
         let (data, _) = try await session.data(from: url)
         return try JSONDecoder().decode(HDHRDevice.self, from: data)

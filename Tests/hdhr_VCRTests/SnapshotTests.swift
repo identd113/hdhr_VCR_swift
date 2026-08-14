@@ -68,16 +68,31 @@ struct SnapshotTests {
         assertSnapshot(view, named: "WatchNowView_withDevice", size: CGSize(width: 900, height: 600))
     }
 
-    // NOTE: a snapshot test seeding real on-air guide data (to render an actual WatchNowRow with
-    // the new guideRingBadge) was attempted here and removed — it revealed a pre-existing gap in
-    // this harness, not something the ring feature broke: ImageRenderer renders WatchNowView's
-    // ScrollView branch as entirely blank regardless of content (confirmed by comparing against
-    // watchNowWithDevice's own reference, which never exercises that branch — it only ever hits
-    // the empty-devices or no-guide-data fallback paths, both plain VStacks). A blank-vs-blank
-    // snapshot passes but proves nothing. Ring correctness is covered by GuideRingStateTests.swift
-    // (pure precedence logic) instead; actual visual rendering needs live verification against the
-    // real deployed app, not this harness, until ScrollView/List rendering under ImageRenderer is
-    // solved as its own separate infrastructure project.
+    @Test("WatchNowView — on-air guide data (ScrollView branch)")
+    @MainActor func watchNowOnAir() {
+        let device = HDHRDevice.test()
+        let now = Date()
+        let start = Int(now.timeIntervalSince1970) - 300
+        let end = Int(now.timeIntervalSince1970) + 1500
+        let guideChannels = [
+            GuideChannel.test(number: "2.1", name: "KFOO", title: "Evening News", start: start, end: end),
+            GuideChannel.test(number: "5.1", name: "KBAR", title: "Quiz Show", start: start, end: end),
+        ]
+        let state = makeTestAppState(
+            devices: [device],
+            lineups: ["FFFFFFFF": [
+                .test(number: "2.1", name: "KFOO", favorite: true),
+                .test(number: "5.1", name: "KBAR"),
+            ]]
+        )
+        // buildIndex is the same private-to-internal seam GuideStore.load() itself calls after a
+        // real fetch — this drives WatchNowView past onAirNow()'s empty check into its ScrollView
+        // branch (its main content path), which the two tests above never reach.
+        state.guideStore.buildIndex(deviceId: device.DeviceID, channels: guideChannels)
+        let view = WatchNowView()
+            .environmentObject(state)
+        assertSnapshot(view, named: "WatchNowView_onAir", size: CGSize(width: 900, height: 600), usesScrollView: true)
+    }
 
     // ─── MenuContent ──────────────────────────────────────────────────────────
     // MenuContent is designed for .menu-style MenuBarExtra; its body returns a

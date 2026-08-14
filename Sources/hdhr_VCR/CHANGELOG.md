@@ -27,6 +27,8 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 **Info**
 - Reduced background work from this update's new tuner-status tracking and Watch Now's already-recorded lookup, so neither runs more than needed.
 - If Add Show's Record button ever silently does nothing when clicked (no confirmation, no error), the app log now records why — previously this left no trace to diagnose after the fact.
+- Added automated test coverage for the tuner-discovery and recording-launch code (`HDHRManager`/`RecordingManager`) — no user-visible change; measured line coverage went from 1.81% to 26.74% and 7.04% to 89.01% respectively.
+- Fixed a gap in the visual-regression test harness where Watch Now's scrolling list rendered as a blank image regardless of content, silently proving nothing — no user-visible change; the harness now captures that view via a real off-screen window instead of the renderer that couldn't handle scrolling content.
 
 ## v2.0.3 — 2026-08-11
 

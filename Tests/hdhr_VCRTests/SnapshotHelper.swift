@@ -17,6 +17,12 @@ func assertSnapshot<V: View>(
     named name: String,
     size: CGSize = CGSize(width: 320, height: 500),
     tolerance: Double = 0.02,
+    // ScrollView/List content renders entirely blank under plain ImageRenderer — it never performs
+    // the live NSScrollView/hosting-window layout pass those containers expect (a documented
+    // ImageRenderer limitation, confirmed by hand against WatchNowView's ScrollView branch: same
+    // pixels as an empty view regardless of row count). Views containing one need the real
+    // NSHostingView + off-screen NSWindow capture path instead — see renderViaHostingWindow below.
+    usesScrollView: Bool = false,
     sourceFile: StaticString = #filePath
 ) {
     let snapshotDir = URL(fileURLWithPath: "\(sourceFile)")
@@ -24,8 +30,9 @@ func assertSnapshot<V: View>(
         .appendingPathComponent("__Snapshots__")
     let refPath = snapshotDir.appendingPathComponent("\(name).png")
 
-    guard let cgImage = render(view, size: size) else {
-        Issue.record("ImageRenderer produced no output for '\(name)'")
+    let cgImageOrNil = usesScrollView ? renderViaHostingWindow(view, size: size) : render(view, size: size)
+    guard let cgImage = cgImageOrNil else {
+        Issue.record("\(usesScrollView ? "renderViaHostingWindow" : "ImageRenderer") produced no output for '\(name)'")
         return
     }
 
@@ -64,6 +71,60 @@ private func render<V: View>(_ view: V, size: CGSize) -> CGImage? {
     )
     renderer.scale = 2.0
     return renderer.cgImage
+}
+
+// ImageRenderer alone (see above) never performs the live layout pass ScrollView/List need — hand
+// verified: forcing a layout pass on a *separate* off-screen NSHostingView/NSWindow first, then
+// still rendering through a plain `ImageRenderer(content:)`, produced the exact same blank result
+// (only the toolbar/divider above the ScrollView painted — confirmed by inspecting the saved PNG).
+// ImageRenderer builds its own independent view graph internally, so layout work done on a
+// different NSHostingView instance never carries over to it. So this bypasses ImageRenderer
+// entirely for ScrollView-containing views: render straight from the real, laid-out NSHostingView
+// via -cacheDisplay(in:to:), the same mechanism AppKit uses to rasterize any live view hierarchy.
+//
+// The window is positioned far off in negative screen coordinates rather than made zero-alpha,
+// since orderFront() below is required either way (see comment on it) — parking a real,
+// order-fronted window off in space keeps it out of any visible display without needing a second
+// mechanism to hide it.
+//
+// Capture goes through -bitmapImageRepForCachingDisplay:/-cacheDisplay(in:to:) — the same
+// mechanism AppKit uses to rasterize any live view hierarchy — rather than manually rendering the
+// view's CALayer into a CGContext at an explicit scale: that alternative was tried and produced a
+// flipped, content-less image (CALayer.render(in:) needs the context pre-flipped to match AppKit's
+// coordinate space, and even flipped it didn't reliably capture the hosted SwiftUI subtree).
+// -cacheDisplay(in:to:) resolves at the window's backingScaleFactor, which is tied to whatever
+// screen the window ends up associated with — 1x in this sandbox (confirmed via
+// NSScreen.main?.backingScaleFactor), so this snapshot's reference may render at a lower pixel
+// density than the other, ImageRenderer-based ones (which fix scale=2.0 in software); harmless,
+// since pixelDifference() resamples both images to a common canvas size before comparing.
+@MainActor
+private func renderViaHostingWindow<V: View>(_ view: V, size: CGSize) -> CGImage? {
+    let hostingView = NSHostingView(rootView: view.frame(width: size.width, height: size.height))
+    hostingView.setFrameSize(size)
+
+    let window = NSWindow(
+        contentRect: CGRect(x: -20000, y: -20000, width: size.width, height: size.height),
+        styleMask: [.borderless],
+        backing: .buffered,
+        defer: false
+    )
+    window.isReleasedWhenClosed = false
+    // Force light appearance so text/materials render the same way ImageRenderer's other snapshot
+    // targets do (they default to light regardless of system setting) — without this, an
+    // off-screen NSWindow inherits the *system's* current appearance, which produced near-white
+    // text on a light background when first tried (confirmed by inspecting the saved PNG).
+    window.appearance = NSAppearance(named: .aqua)
+    window.contentView = hostingView
+    // orderFront (not just setting contentView) is what actually drives SwiftUI's layout engine
+    // to run — a window that's never ordered leaves the hosting view's SwiftUI-side geometry
+    // uncomputed even though its AppKit frame is set, and ScrollView content stays unlaid-out.
+    window.orderFront(nil)
+    hostingView.layoutSubtreeIfNeeded()
+    defer { window.orderOut(nil); window.close() }
+
+    guard let rep = hostingView.bitmapImageRepForCachingDisplay(in: hostingView.bounds) else { return nil }
+    hostingView.cacheDisplay(in: hostingView.bounds, to: rep)
+    return rep.cgImage
 }
 
 private func save(_ image: CGImage, to url: URL) {
