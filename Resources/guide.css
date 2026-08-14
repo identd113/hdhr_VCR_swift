@@ -258,7 +258,10 @@ html.lm .g-hdr-btn-now:hover{border-color:#c03030!important;color:#fff!important
 .g-tl{flex:1;position:relative;min-height:54px;background:repeating-linear-gradient(90deg,transparent,transparent calc(8.3333% - 1px),var(--b0) calc(8.3333% - 1px),var(--b0) 8.3333%)}
 .g-now-bar{position:absolute;left:var(--gs);top:0;bottom:0;width:2px;background:rgba(255,90,90,.75);z-index:1;pointer-events:none}
 .g-gap{position:absolute;left:var(--gs);width:var(--gw);top:0;bottom:0;background:var(--bg);pointer-events:none}
-.g-prog{position:absolute;left:var(--gs);width:var(--gw);top:4px;bottom:4px;border-radius:5px;overflow:hidden;background:var(--pg);border:1px solid var(--pgb);min-width:3px;cursor:pointer}
+/* user-select:none only — scoped to the tile itself so #sum-* (Summary panel) stays copyable;
+   without it, click-dragging (or double-clicking to record, see recordFromDblClick in guide.js)
+   highlights the tile's title text instead of just selecting/recording it. */
+.g-prog{position:absolute;left:var(--gs);width:var(--gw);top:4px;bottom:4px;border-radius:5px;overflow:hidden;background:var(--pg);border:1px solid var(--pgb);min-width:3px;cursor:pointer;user-select:none}
 .g-prog:hover{filter:brightness(1.1);border-color:var(--t5);z-index:3}
 .g-prog.g-sel{border-color:var(--t0)!important;box-shadow:0 0 0 1px rgba(128,128,128,.5);z-index:4}
 /* ── Status ring + badge (scheduled/recording/skip/conflict) — independent of the

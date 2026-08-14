@@ -1532,7 +1532,7 @@ final class WebServer: @unchecked Sendable {
                     // or identify a show — these divs carry all the real interaction. aria-label reuses
                     // `tip` (already he()-escaped, already "Title · Episode (time) — status") rather than
                     // building a second description that could drift from the tooltip's wording.
-                    blockParts.append("<div class=\"\(cls)\" style=\"--gs:\(pct(cs))%;--gw:\(pct(ce - cs))%\(extraStyle)\" title=\"\(tip)\" role=\"button\" tabindex=\"0\" aria-label=\"\(tip)\" \(da)\(showDA)\(infDA)\(newAttr)\(skipAttr) onclick=\"showInfo(this)\" onkeydown=\"if(event.key==='Enter'||event.key===' '){event.preventDefault();showInfo(this);}\"><div class=\"g-pi\">\(titleHTML)\(subH)</div></div>")
+                    blockParts.append("<div class=\"\(cls)\" style=\"--gs:\(pct(cs))%;--gw:\(pct(ce - cs))%\(extraStyle)\" title=\"\(tip)\" role=\"button\" tabindex=\"0\" aria-label=\"\(tip)\" \(da)\(showDA)\(infDA)\(newAttr)\(skipAttr) onclick=\"showInfo(this)\" ondblclick=\"recordFromDblClick(this)\" onkeydown=\"if(event.key==='Enter'||event.key===' '){event.preventDefault();showInfo(this);}\"><div class=\"g-pi\">\(titleHTML)\(subH)</div></div>")
                 }
 
                 let gnameAttr = ChannelSignalStore.key(for: ch.GuideName)

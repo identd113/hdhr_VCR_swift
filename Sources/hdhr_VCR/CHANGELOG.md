@@ -7,10 +7,15 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 **Added**
 - Watch Now can now start playback from the very beginning of an in-progress recording, not just ~30 seconds behind live — anything currently recording now shows both **Watch Now!** and **Watch from Beginning** buttons, matching the menu bar's recording list.
 - Discord notifications now show a **🆕 NEW** tag next to the show title for a first-run episode airing today.
+- Double-clicking a show in the web guide now jumps straight to the Record dialog, instead of needing a click to select it plus a second click on the Summary panel's Record button.
 
 **Updated**
+- Guide tiles in the web guide no longer let you click-and-drag to highlight their title text — that was an unintended side effect of the tile being clickable, not a real feature. The Summary panel's text (title, tags, channel/time) still copies normally.
+- The Live View player's channel picker now lists your favorited channels first, under a "★ Favorites" heading, matching how Watch Now and the web guide already sort favorites to the top.
+- Watch Now now catches up to the live edge much faster when watching a show that's currently recording — playback was pacing itself as if it were a real live TV signal, even though it's actually reading bytes already sitting on disk.
 - Watching a show that's already recording no longer opens a second connection to your tuner — it now plays back the copy already being written to disk, the way it should have all along.
 - Watch Now's list now uses the same colored status indicators as the web guide (recording, scheduled, already-recorded/will skip, tuner conflict, in use by another tuner) instead of a plain yellow triangle and separate "Recording" label.
+- Watch Now's poster tiles now have a subtle border, so each show reads as its own card instead of blending into its neighbors and the background.
 - The web guide's tuner popup now shows the real channel and show name when a tuner is being used by something outside this app (another device on your network, or someone watching via the HDHomeRun's own app) instead of a generic "Live stream" placeholder.
 - The "X/Y tuners — FULL" info is now shown directly on each tuner's name in the web guide instead of tucked inside a dropdown that was easy to miss on mobile — click a tuner's name to switch to it, click again to see tuner details.
 - Fixed: the new "in use by another tuner" indicator could incorrectly flag your own live Watch Now session as if it belonged to someone else.

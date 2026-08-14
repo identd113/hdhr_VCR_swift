@@ -67,6 +67,13 @@ struct VLCPlayerView: View {
         }
     }
 
+    // Favorites-first split for the channel picker below — same stable filter-partition
+    // WatchNowView (favs/others, ~line 226) and the web Guide (favRows/otherRows,
+    // WebServer.swift ~line 1556) already use, so all three surfaces agree on ordering.
+    // Each half stays in `lineup`'s existing ascending-channel-number order.
+    private var favoriteLineup: [LineupEntry] { lineup.filter(\.isFavorite) }
+    private var otherLineup: [LineupEntry] { lineup.filter { !$0.isFavorite } }
+
     // MARK: - "Live" recording entries in the channel picker
     //
     // LineupEntry's Hashable/Equatable (AddShowView.swift) keys solely on GuideNumber, so a
@@ -93,8 +100,11 @@ struct VLCPlayerView: View {
             }
     }
 
-    // Media-key next/prev cycle order — recording rows first, then real channels, matching the
-    // picker's own row order (see toolbar's Picker content).
+    // Media-key next/prev cycle order — recording rows first, then real channels in plain
+    // ascending channel-number order. Deliberately NOT favorites-first like the picker's visual
+    // order below: channel-up/down is a sequential-step gesture (user expects 5.1 → 5.2 → 6.1),
+    // and reordering it to favorites-first would make each press jump unpredictably between a
+    // favorite and its numeric neighbors instead of stepping through the dial in order.
     private var channelCycleOrder: [LineupEntry] { recordingChannelEntries + lineup }
 
     // HDHomeRun raw streams are always MPEG-2/AC-3; any transcode= param means H.264/AAC.
@@ -427,7 +437,17 @@ struct VLCPlayerView: View {
                 ForEach(recordingChannelEntries, id: \.GuideNumber) { entry in
                     Text(entry.GuideName).tag(Optional(entry))
                 }
-                ForEach(lineup, id: \.GuideNumber) { ch in
+                // Favorites-first, matching WatchNowView's favTopBorder split and the web
+                // Guide's favRows/otherRows — a labeled Section reads as the closest
+                // Picker-compatible equivalent to those views' visual "★ Favorites" divider.
+                if !favoriteLineup.isEmpty {
+                    Section("★ Favorites") {
+                        ForEach(favoriteLineup, id: \.GuideNumber) { ch in
+                            Text("\(ch.GuideNumber)  \(ch.GuideName)").tag(Optional(ch))
+                        }
+                    }
+                }
+                ForEach(otherLineup, id: \.GuideNumber) { ch in
                     Text("\(ch.GuideNumber)  \(ch.GuideName)").tag(Optional(ch))
                 }
             }

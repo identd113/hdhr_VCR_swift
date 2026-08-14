@@ -368,6 +368,17 @@ struct WatchNowRow: View {
         .containerRelativeFrame(.horizontal) { w, _ in min(w * 0.34, 220) }
         .aspectRatio(96.0/68.0, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 6))
+        // Quiet card separator so tiles read as distinct cards even with no status ring — applied
+        // *before* guideRingBadge so a present ring (thicker, saturated stroke) paints on top and
+        // stays the dominant edge; this border only reads on its own when ringState == .none.
+        // White-at-low-opacity (not Color.primary) matches DonationNagView's own strokeBorder
+        // convention for a border sitting on top of arbitrary image/color content rather than a
+        // flat adaptive background — poster art varies too widely for a primary-based border to
+        // stay visible in both light and dark mode.
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .strokeBorder(.white.opacity(0.15), lineWidth: 1)
+        )
         .guideRingBadge(ringState)
         .accessibilityHidden(true)
     }

@@ -295,7 +295,9 @@ final class VLCBridge: ObservableObject {
 
     /// Switch to a new stream URL (or start playback if idle).
     /// Stops current media, sets new media on the same player, resumes play.
-    /// Always applies 2s network cache, drops late/corrupt frames, and starts the rate controller.
+    /// Applies a network cache (2s for a live tuner stream, 300ms for the /api/watch-recording
+    /// disk relay — see the network-caching comment below), drops late/corrupt frames, and starts
+    /// the rate controller.
     func play(url: String) {
         // Auto-clear the scrub anchor for any URL that isn't the recording relay — covers every
         // call site that starts a live stream (playChannel, watchInApp) without each of them
@@ -305,7 +307,8 @@ final class VLCBridge: ObservableObject {
         // playing after a reconnect that isn't a scrub (no seekBaseSeconds change needed there).
         // AppState.seekRecording/watchRecordingInApp additionally set seekBaseSeconds afterward
         // via beginRecordingSeek().
-        if url.contains("/api/watch-recording") {
+        let isRecordingRelay = url.contains("/api/watch-recording")
+        if isRecordingRelay {
             recordingReopenedAt = Date()
             minRate = 1.0   // local loopback file read — no network jitter to buffer against
         } else {
@@ -342,7 +345,18 @@ final class VLCBridge: ObservableObject {
         }
         // --no-audio-time-stretch prevents VLC from crashing audio init on MPEG-2 streams
         // where the sample rate is reported as 0 before the first audio frame arrives.
-        for opt in ["--network-caching=2000", "--drop-late-frames", "--avcodec-hurry-up", "--no-audio-time-stretch"] {
+        // network-caching is tuned per source: a real tuner stream needs 2000ms to smooth over
+        // genuine over-the-air/network jitter (bytes arrive only as fast as the broadcast delivers
+        // them), but the /api/watch-recording relay serves bytes that are already sitting on disk
+        // the instant playback starts — pumpGrowingFile (WebServer.swift) reads and sends each
+        // 37.6KB chunk back-to-back over 127.0.0.1 with no artificial pacing of its own, so the
+        // only real latency in that path is local disk I/O + loopback socket overhead, not network
+        // jitter. 300ms is enough to absorb that dispatch-queue/disk-read jitter and give VLC's TS
+        // demuxer a couple of chunks to sync on the PAT/PMT before it starts decoding, without
+        // paying for 1.7s of buffering the relay path doesn't need — this is what lets Watch Now
+        // catch up to the live edge (and start playback) much faster than a live tuner stream.
+        let networkCachingMs = isRecordingRelay ? 300 : 2000
+        for opt in ["--network-caching=\(networkCachingMs)", "--drop-late-frames", "--avcodec-hurry-up", "--no-audio-time-stretch"] {
             opt.withCString { _mediaAddOpt?(media, $0) }
         }
         currentURL        = url

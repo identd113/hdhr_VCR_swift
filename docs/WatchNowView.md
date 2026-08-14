@@ -41,6 +41,7 @@ Width = 34% of scroll-container width, capped at 220pt (`.containerRelativeFrame
 - Background: genre color from `guideEntryColor(for:onAir:true)` at 55% opacity
 - Poster image (`.scaledToFill`) if available from `ChannelIconCache`, or `tv` SF Symbol at 40% white
 - Clip: `RoundedRectangle(cornerRadius: 6)`
+- **Card border**: a quiet `RoundedRectangle(cornerRadius: 6).strokeBorder(.white.opacity(0.15), lineWidth: 1)` overlay so each tile reads as a distinct card against its neighbors and the row background, even with no status ring. Applied *before* the status ring overlay below, so when a ring is present its thicker, saturated stroke paints on top and stays the dominant edge — this border only reads on its own when `ringState == .none`.
 - **Status ring + badge** (`.guideRingBadge(ringState)`, `GuideViewHelpers.swift`) — the native
   equivalent of the web guide's `.g-st-*` status ring (`docs/WebServer.md`'s "Status ring +
   badge"), sharing its five states, precedence, and colors: `.recording` red `#ff5a5a`
