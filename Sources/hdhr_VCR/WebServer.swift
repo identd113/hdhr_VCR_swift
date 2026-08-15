@@ -1795,21 +1795,23 @@ final class WebServer: @unchecked Sendable {
             var isRecording, isScheduled: Bool
         }
 
+        // Same ManagedGuideMatcher the guide grid uses (buildGuideGridHTML) — previously this
+        // endpoint maintained its own parallel isScheduled lookup (managedShowBySeriesID/
+        // managedShowByTitle), which matched a seriesChannel show's SeriesID/title across ANY
+        // channel on its device instead of just the one channel it's locked to. That let a
+        // same-series rerun on a different channel (e.g. a syndicated rebroadcast) report
+        // isScheduled: true here even after the guide grid itself was fixed to exclude it —
+        // the two paths silently disagreeing despite docs/WebServer.md's "the same exclusion
+        // applies... so the two paths agree" claim. Routing through the one shared matcher
+        // instead removes the drift risk entirely. 2026-08-15, see issues_resolved.md.
+        let activeMgd    = state.shows.filter { $0.show_active && !$0.show_paused }
+        let guideMatcher = ManagedGuideMatcher(activeManagedShows: activeMgd)
+
         var entries: [NowEntry] = []
         for device in state.devices {
             for (ch, entry) in state.onAirNow(for: device) {
                 let isRec = state.recordingShows.contains { $0.hdhr_record == device.DeviceID && $0.show_channel == ch.GuideNumber }
-                let isSched: Bool = {
-                    // Match seriesID only for shows that actually record by SeriesID (isSeries).
-                    // dateTime shows store a seriesid from guide data but don't use it for
-                    // matching — including them would badge every airing of a series on any channel.
-                    // Exclude paused shows to match buildHTML's activeMgd filter (!show_paused).
-                    if let sid = entry.SeriesID, !sid.isEmpty,
-                       let s = state.managedShowBySeriesID[sid], s.isSeries, !s.show_paused { return true }
-                    return state.managedShowByTitle[entry.Title]?.first {
-                        !$0.show_paused && ($0.isSeries || ($0.hdhr_record == device.DeviceID && $0.show_channel == ch.GuideNumber))
-                    } != nil
-                }()
+                let isSched = guideMatcher.isManaged(entry: entry)
                 entries.append(NowEntry(
                     deviceId: device.DeviceID,
                     guideNumber: ch.GuideNumber,

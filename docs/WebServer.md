@@ -646,7 +646,7 @@ Precedence: recording > will-skip > conflict > scheduled > in-use-by-other-tuner
 
 **Managed show matching:** `buildHTML` constructs a `ManagedGuideMatcher(activeManagedShows: activeMgd)` to decide which blocks get `.g-st-sched` and the `data-managed="1"` attribute. `activeMgd` is active, non-paused shows only; the same exclusion applies in `/api/now.json`'s `isScheduled` field so the two paths agree.
 
-The four matching tiers (seriesID → title fallback → datetime `device:channel:HH:MM` → single `device:channel:epoch`) are documented in [Models.md — ManagedGuideMatcher](Models.md). `dateTime` shows are matched by local-time slot so every upcoming weekly airing is flagged, not just the one stored in `show_next`.
+The matching tiers (seriesChannel's own-channel seriesID/title → seriesAll's any-channel seriesID/title → datetime `device:channel:HH:MM` → single `device:channel:epoch`) are documented in [Models.md — ManagedGuideMatcher](Models.md) — note that `seriesChannel` and `seriesAll` use different key shapes as of 2026-08-15 (channel-scoped vs. device-only), so a `seriesChannel` show's badge no longer appears on a rerun airing on a different channel. `dateTime` shows are matched by local-time slot so every upcoming weekly airing is flagged, not just the one stored in `show_next`.
 
 **Recording flag scoping:** `isRecCh` is scoped to the current device (`recChannelsByDevice[device.DeviceID]`). A recording on device A does not flag the same channel number on device B.
 

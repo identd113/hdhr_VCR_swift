@@ -487,6 +487,18 @@ Updated `ManagedGuideMatcherTests.swift`'s two now-invalid "matches any device" 
 
 **Resolution**: `pendingRecordingChannels` now excludes a channel whose show has a live (unexpired) `showRetryAfter` entry — a stuck show falls through to whatever's actually true instead (scheduled or conflict), restoring the conflict badge and correct Favorites/Recording bucketing automatically since both downstream renderers already derive from this one function (no separate WebServer.swift/WatchNowView.swift changes needed). Once the backoff itself expires, the show is eligible for its next retry attempt and reads as pending again for that brief window — same behavior as the non-retry case. Added `pendingRecordingChannels_stuckRetryBackoff_isExcluded`/`_expiredRetryBackoff_isIncluded` to the existing `TunerOccupancyTests` suite (29 tests, all passing); verified live against the running app (real in-progress NFL recording, Chrome screenshot of the guide) that the normal recording path still renders correctly post-deploy.
 
+**Resolving commit**: `3741d3b`
+
+---
+
+## RESOLVED — `ManagedGuideMatcher`'s `seriesChannel` badge could appear on a channel it would never actually record from
+
+**File:** `Models.swift` (`ManagedGuideMatcher`), `Tests/hdhr_VCRTests/ManagedGuideMatcherTests.swift`, `CLAUDE.md`, `docs/Models.md`, `docs/WebServer.md`
+
+**Root cause**: `seriesKeys`/`seriesTitles` (the lookup behind the guide's blue "managed" ring + ⏱ badge, `ManagedGuideMatcher.owner(for:)`) were built from **both** `seriesChannel` and `seriesAll` shows alike, keyed only `"deviceId:SeriesID"`/`"deviceId:title"` — device-scoped but not channel-scoped. That matches `seriesAll`'s actual behavior (follows a series across any channel on its tuner, by design) but not `seriesChannel`'s, which `AppState.resolveSeriesAir`/`nextGuideEpisode`/`scheduleNextAir` lock to the one channel the show was added on. The mismatch meant a `seriesChannel` show's badge could appear on a same-SeriesID rerun airing on a *different* channel on the same tuner — found live: a `seriesChannel` "Saturday Night Live" show (locked to channel 11.1) badged a rerun of the same series airing on channel 23.4 (a syndicated rerun station, ROAR), even though the show would never actually record from that channel — 2026-08-15, reported by the user noticing the mismatch and reasoning through the tuner/channel scoping expectation for `seriesChannel` themselves.
+
+**Resolution**: Split `seriesKeys`/`seriesTitles` by type — `seriesAll` keeps the original device-only keys; `seriesChannel` now gets its own `seriesChannelKeys`/`seriesChannelTitles`, keyed `"deviceId:channel:SeriesID"`/`"deviceId:channel:title"`. `owner(for:)` checks the channel-scoped tier first, then falls through to the device-only tier — so `seriesChannel`'s matching scope now exactly mirrors its scheduling scope, and `seriesAll` is unaffected. Added `seriesChannel_bySeriesID_doesNotMatchDifferentChannelSameDevice`/`_byTitle_doesNotMatchDifferentChannelSameDevice` (the exact SNL/ROAR case) to `ManagedGuideMatcherTests` (15 tests, all passing); full suite (264 tests) passes. Updated `CLAUDE.md`'s "Web guide managed markers are tuner-scoped" invariant, `docs/Models.md`'s `ManagedGuideMatcher` section, and `docs/WebServer.md`'s matching-tiers reference to match.
+
 **Resolving commit**: pending (uncommitted at time of writing)
 
 ---

@@ -75,9 +75,6 @@ final class AppState: ObservableObject {
     // Retained DispatchSource for SIGTERM — saves config before the process exits so
     // show_recording_path and discord_start_msg_id survive pkill during development.
     private var sigtermSource: DispatchSourceSignal?
-    // O(1) managed-show lookup for entryMenu — rebuilt alongside menu entries.
-    var managedShowBySeriesID: [String: Show] = [:]
-    var managedShowByTitle:    [String: [Show]] = [:]
     // O(1) channel logo lookup for channelMenu — "deviceId:channelNum" → ImageURL — rebuilt alongside menu entries.
     var channelImageURLs: [String: String] = [:]
     @Published var guideRevision: Int = 0                        // increments each time guide data successfully loads
@@ -934,16 +931,6 @@ final class AppState: ObservableObject {
 
     func rebuildMenuEntries() {
         let now = Date()
-
-        // ── O(1) managed-show lookup dicts (WatchNowView + scheduledMenu) ─────
-        var bySeriesID: [String: Show] = [:]
-        var byTitle:    [String: [Show]] = [:]
-        for show in shows {
-            if !show.show_seriesid.isEmpty { bySeriesID[show.show_seriesid] = show }
-            byTitle[show.show_title, default: []].append(show)
-        }
-        managedShowBySeriesID = bySeriesID
-        managedShowByTitle    = byTitle
 
         // ── Scheduled menu: guide entry + upcoming slots per active show ──────
         // Include recording shows in candidateShows so conflict detection catches them too.

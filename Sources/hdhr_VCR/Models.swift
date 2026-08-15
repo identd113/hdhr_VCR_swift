@@ -648,34 +648,46 @@ struct GuideEntry: Codable, Identifiable, Hashable {
 // MARK: - ManagedGuideMatcher
 
 struct ManagedGuideMatcher: Equatable {
-    // seriesChannel and seriesAll shows are both confined to their assigned tuner (hdhr_record) —
-    // the only difference between the two is which channel(s) on that tuner SCHEDULING draws
-    // episodes from (AppState.resolveSeriesAir/nextGuideEpisode/scheduleNextAir: seriesChannel
-    // locks to one channel, seriesAll follows the series across any channel on the same tuner),
-    // not which device they can appear on. So both feed the same device-scoped keys here — keys
-    // are "device:SeriesID" / "device:title". (Previously seriesAll used bare, device-agnostic
-    // keys and could match/mark on every tuner, letting the same series be picked up and recorded
-    // independently on more than one tuner at once — see issues_resolved.md.)
+    // seriesChannel and seriesAll shows are both confined to their assigned tuner (hdhr_record),
+    // but they differ in channel scope for MATCHING now, not just scheduling: seriesAll follows
+    // the series across any channel on that tuner (reruns/affiliates often shift channels), so it
+    // keeps device-scoped keys ("device:SeriesID" / "device:title"). seriesChannel locks to the
+    // one channel it was added from, so its keys are additionally channel-scoped
+    // ("device:channel:SeriesID" / "device:channel:title") — a guide block for the same series
+    // airing on a *different* channel (e.g. a syndicated rerun on another station) must not get
+    // badged as "managed" here, since resolveSeriesAir/nextGuideEpisode/scheduleNextAir would
+    // never actually schedule/record from that block either. Before 2026-08-15 both types shared
+    // the same device-only keys, so a seriesChannel show's badge (and ⏱ status ring) could appear
+    // on guide blocks it would never record from — see issues_resolved.md. (Before that, seriesAll
+    // used bare, device-agnostic keys and could match/mark on every tuner — also issues_resolved.md.)
     // Values are the owning Show so callers needing "which show does this entry belong to" (e.g.
     // the web guide's skip-already-recorded check) don't need a second, separately-maintained
     // lookup alongside this one — see owner(for:).
-    let seriesKeys:      [String: Show]   // "device:SeriesID" → owner
-    let seriesTitles:    [String: Show]   // "device:title" (no SeriesID) → owner
+    let seriesKeys:          [String: Show]   // "device:SeriesID" → owner (seriesAll only)
+    let seriesTitles:        [String: Show]   // "device:title" (no SeriesID) → owner (seriesAll only)
+    let seriesChannelKeys:   [String: Show]   // "device:channel:SeriesID" → owner (seriesChannel only)
+    let seriesChannelTitles: [String: Show]   // "device:channel:title" (no SeriesID) → owner (seriesChannel only)
     let singleSlotKeys:  [String: Show]   // "device:channel:epoch" → owner
     let datetimeSlotKeys: [String: Show]  // "device:channel:Weekday:HH:MM" → owner
 
     init(activeManagedShows: [Show]) {
         let cal = Calendar.current
         let dayNames = Show.weekdayNames
-        let seriesShows = activeManagedShows.filter { $0.state == .seriesAll || $0.state == .seriesChannel }
+        let seriesAllShows     = activeManagedShows.filter { $0.state == .seriesAll }
+        let seriesChannelShows = activeManagedShows.filter { $0.state == .seriesChannel }
         // uniquingKeysWith keeps the first match on a key collision (e.g. two shows sharing a
         // SeriesID on the same device) rather than trapping — matches the tolerant dedup a plain
         // Set gave before.
-        seriesKeys   = Dictionary(seriesShows.compactMap { s -> (String, Show)? in
+        seriesKeys   = Dictionary(seriesAllShows.compactMap { s -> (String, Show)? in
             guard !s.show_seriesid.isEmpty else { return nil }
             return ("\(s.hdhr_record):\(s.show_seriesid)", s)
         }, uniquingKeysWith: { a, _ in a })
-        seriesTitles = Dictionary(seriesShows.map { ("\($0.hdhr_record):\($0.show_title)", $0) }, uniquingKeysWith: { a, _ in a })
+        seriesTitles = Dictionary(seriesAllShows.map { ("\($0.hdhr_record):\($0.show_title)", $0) }, uniquingKeysWith: { a, _ in a })
+        seriesChannelKeys = Dictionary(seriesChannelShows.compactMap { s -> (String, Show)? in
+            guard !s.show_seriesid.isEmpty else { return nil }
+            return ("\(s.hdhr_record):\(s.show_channel):\(s.show_seriesid)", s)
+        }, uniquingKeysWith: { a, _ in a })
+        seriesChannelTitles = Dictionary(seriesChannelShows.map { ("\($0.hdhr_record):\($0.show_channel):\($0.show_title)", $0) }, uniquingKeysWith: { a, _ in a })
         // Plain subscript assignment, guarded to keep the first match on a collision — same
         // first-wins tolerance as the uniquingKeysWith dictionaries above, for consistency.
         var single: [String: Show] = [:]
@@ -707,7 +719,12 @@ struct ManagedGuideMatcher: Equatable {
     /// second, independently-derived lookup (which risked drifting out of sync with these tiers).
     func owner(for entry: GuideEntry) -> Show? {
         let dev = entry.deviceId
-        if let sid = entry.SeriesID, !sid.isEmpty, let s = seriesKeys["\(dev):\(sid)"] { return s }
+        let ch  = entry.channelNum
+        if let sid = entry.SeriesID, !sid.isEmpty {
+            if let s = seriesChannelKeys["\(dev):\(ch):\(sid)"] { return s }
+            if let s = seriesKeys["\(dev):\(sid)"] { return s }
+        }
+        if let s = seriesChannelTitles["\(dev):\(ch):\(entry.Title)"] { return s }
         if let s = seriesTitles["\(dev):\(entry.Title)"] { return s }
         // Skip the Calendar computation entirely when there are no dateTime/single-slot managed
         // shows to match against — the common case for a guide with only SeriesID shows, and
@@ -717,7 +734,6 @@ struct ManagedGuideMatcher: Equatable {
                     from: Date(timeIntervalSince1970: TimeInterval(entry.StartTime)))
         let hhmm = String(format: "%02d:%02d", c.hour ?? 0, c.minute ?? 0)
         let dayName = Show.weekdayNames[(c.weekday ?? 1) - 1]
-        let ch = entry.channelNum
         if let s = datetimeSlotKeys["\(dev):\(ch):\(dayName):\(hhmm)"] { return s }
         return singleSlotKeys["\(dev):\(ch):\(entry.StartTime)"]
     }

@@ -130,8 +130,10 @@ Two mutating methods on `Show` consolidate the repeated failure-state field grou
 
 ```swift
 struct ManagedGuideMatcher: Equatable {
-    let seriesKeys:      [String: Show]   // "device:SeriesID" → owner — seriesChannel + seriesAll shows (both device-scoped)
-    let seriesTitles:    [String: Show]   // "device:title" → owner — same two states, no SeriesID
+    let seriesKeys:          [String: Show]   // "device:SeriesID" → owner — seriesAll only (device-scoped, any channel)
+    let seriesTitles:        [String: Show]   // "device:title" → owner — seriesAll only, no SeriesID
+    let seriesChannelKeys:   [String: Show]   // "device:channel:SeriesID" → owner — seriesChannel only (device+channel-scoped)
+    let seriesChannelTitles: [String: Show]   // "device:channel:title" → owner — seriesChannel only, no SeriesID
     let singleSlotKeys:  [String: Show]   // "device:channel:epoch" → owner — single shows, exact slot
     let datetimeSlotKeys: [String: Show]  // "device:channel:Weekday:HH:MM" → owner — dateTime shows, per allowed day
 
@@ -145,17 +147,19 @@ struct ManagedGuideMatcher: Equatable {
 
 Values are the owning `Show`, not just presence — this is what lets `WebServer.swift` embed a managed block's `data-show-*` edit attributes directly from `owner(for:)` instead of maintaining a second, independently-derived owner lookup (a prior `findManagedShow` helper there did exactly that, and being built differently — no title fallback for series shows — could disagree with the flag about whether a block had a resolvable owner; see `docs/WebServer.md`'s "Managed show data attributes" section).
 
-`seriesChannel` and `seriesAll` shows share `seriesKeys`/`seriesTitles` — both are confined to their assigned tuner (`hdhr_record`), so a series show can never match/mark on more than one tuner at once. The two states differ only in *scheduling* channel scope (which channel(s) on that one tuner `AppState.resolveSeriesAir`/`nextGuideEpisode`/`scheduleNextAir` search for the next episode), not in matching/marking scope here — see CLAUDE.md's "Web guide managed markers are tuner-scoped" invariant. (Previously `seriesAll` used bare, device-agnostic keys and could match/mark on every tuner — fixed alongside the scheduling-side device scoping, see `issues_resolved.md`.)
+`seriesAll` and `seriesChannel` shows are both confined to their assigned tuner (`hdhr_record`), so a series show can never match/mark on more than one tuner at once — but as of 2026-08-15 they use different key shapes, not just different scheduling logic: `seriesAll` keeps device-only keys (`seriesKeys`/`seriesTitles`) and matches any channel on that tuner, since it's meant to follow the series across channels (reruns/affiliates often shift channels). `seriesChannel` uses device-*and-channel* keys (`seriesChannelKeys`/`seriesChannelTitles`) and matches only the one channel it was added from — a same-series rerun on a different channel on the same tuner does not badge as managed. This now mirrors *scheduling* channel scope exactly (which channel(s) `AppState.resolveSeriesAir`/`nextGuideEpisode`/`scheduleNextAir` search for the next episode) — see CLAUDE.md's "Web guide managed markers are tuner-scoped, and channel-scoped for `seriesChannel`" invariant. (Before this, both types shared the same device-only keys, so a `seriesChannel` show's badge could appear on a channel it would never actually record from — see `issues_resolved.md`. Before that, `seriesAll` used bare, device-agnostic keys and could match/mark on every tuner — also `issues_resolved.md`.)
 
 Matching tiers (in order — `owner(for:)` returns the first match, `isManaged` is `owner(for:) != nil`):
-1. `"device:SeriesID"` in `seriesKeys` → managed
-2. `"device:title"` in `seriesTitles` → managed
-3. `"device:channel:Weekday:HH:MM"` local-time key in `datetimeSlotKeys` → managed (dateTime shows: only on allowed weekdays)
-4. `"device:channel:epoch"` key in `singleSlotKeys` → managed (single shows: exact scheduled slot only)
+1. `"device:channel:SeriesID"` in `seriesChannelKeys` → managed (seriesChannel: own channel only)
+2. `"device:SeriesID"` in `seriesKeys` → managed (seriesAll: any channel on the device)
+3. `"device:channel:title"` in `seriesChannelTitles` → managed (seriesChannel, no SeriesID)
+4. `"device:title"` in `seriesTitles` → managed (seriesAll, no SeriesID)
+5. `"device:channel:Weekday:HH:MM"` local-time key in `datetimeSlotKeys` → managed (dateTime shows: only on allowed weekdays)
+6. `"device:channel:epoch"` key in `singleSlotKeys` → managed (single shows: exact scheduled slot only)
 
-Tiers 3–4 (the `Calendar.current.dateComponents` call and everything after) are skipped entirely via an early return when both `datetimeSlotKeys` and `singleSlotKeys` are empty — the common case for a guide with only SeriesID-managed shows, and otherwise this ran for every non-managed entry in the grid (the majority of entries) on every rebuild.
+Tiers 5–6 (the `Calendar.current.dateComponents` call and everything after) are skipped entirely via an early return when both `datetimeSlotKeys` and `singleSlotKeys` are empty — the common case for a guide with only SeriesID-managed shows, and otherwise this ran for every non-managed entry in the grid (the majority of entries) on every rebuild.
 
-All four dictionaries keep the *first* match on a key collision (e.g. two shows sharing a SeriesID on the same device, or two shows landing on the identical slot key) rather than trapping or silently overwriting — matching the tolerant dedup a plain `Set` gave before switching from presence-only keys to key→owner maps. `seriesKeys`/`seriesTitles` get this via `Dictionary(_:uniquingKeysWith: { a, _ in a })`; `singleSlotKeys`/`datetimeSlotKeys` are built with a manual loop (`if dict[key] == nil { dict[key] = s }`) since they're populated incrementally per allowed air-day rather than from a single flat mapping, but the collision behavior is the same first-wins semantics.
+All six dictionaries keep the *first* match on a key collision (e.g. two shows sharing a SeriesID on the same device, or two shows landing on the identical slot key) rather than trapping or silently overwriting — matching the tolerant dedup a plain `Set` gave before switching from presence-only keys to key→owner maps. `seriesKeys`/`seriesTitles`/`seriesChannelKeys`/`seriesChannelTitles` get this via `Dictionary(_:uniquingKeysWith: { a, _ in a })`; `singleSlotKeys`/`datetimeSlotKeys` are built with a manual loop (`if dict[key] == nil { dict[key] = s }`) since they're populated incrementally per allowed air-day rather than from a single flat mapping, but the collision behavior is the same first-wins semantics.
 
 `dateTime` shows emit one key per entry in `show_air_date` (e.g. a Wednesday-only show at 4:30 PM local emits only `"device:4.3:Wednesday:16:30"`). A Friday airing of that show at 4:30 PM looks for `"device:4.3:Friday:16:30"` and finds nothing — no yellow diamond. If `show_air_date` is empty, keys are emitted for all 7 days. `single` shows use the epoch so only the specific airing is flagged.
 

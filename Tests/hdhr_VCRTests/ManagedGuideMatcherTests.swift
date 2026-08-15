@@ -5,16 +5,20 @@ import Foundation
 // MARK: - ManagedGuideMatcher
 //
 // Covers the tiered matching behind the web guide's gold/green corner flags (CLAUDE.md
-// "Web guide managed markers are tuner-scoped"): seriesAll and seriesChannel are both scoped
-// to "device:key" and must NOT leak onto another device — seriesAll additionally matches any
-// channel on its own device (unlike seriesChannel, which stays pinned to the one channel it
-// was added from), and dateTime slot keys include weekday so a same-time rerun on a different
-// day of the week isn't mistaken for the managed airing. Zero prior coverage — this is pure,
-// deterministic logic (no MainActor, no I/O), so a regression here (e.g. a dropped
-// device-scope check) would otherwise only surface as a wrongly-flagged tuner in manual guide
-// testing. (seriesAll previously used a bare, device-agnostic key and could match/mark on
-// every tuner — fixed alongside the scheduling-side device scoping in AppState, see
-// issues_resolved.md; the two tests below were updated to match the corrected behavior.)
+// "Web guide managed markers are tuner-scoped"): seriesAll matches "device:key" — any channel
+// on its own device, never another device. seriesChannel matches "device:channel:key" — pinned
+// to both its own device AND the one channel it was added from, so a guide block for the same
+// series airing on a *different* channel (e.g. a syndicated rerun on another station) does not
+// get badged as managed. dateTime slot keys include weekday so a same-time rerun on a different
+// day of the week isn't mistaken for the managed airing. Zero prior coverage before this suite
+// was added — this is pure, deterministic logic (no MainActor, no I/O), so a regression here
+// (e.g. a dropped device- or channel-scope check) would otherwise only surface as a wrongly-
+// flagged tuner/channel in manual guide testing. (seriesAll previously used a bare, device-
+// agnostic key and could match/mark on every tuner — fixed alongside the scheduling-side device
+// scoping in AppState; seriesChannel previously shared seriesAll's device-only key instead of
+// its own channel-scoped one, so its badge could appear on channels it would never actually
+// record from — both fixes are in issues_resolved.md, the tests below match the corrected
+// behavior for each.)
 
 @Suite("ManagedGuideMatcher")
 struct ManagedGuideMatcherTests {
@@ -89,9 +93,9 @@ struct ManagedGuideMatcherTests {
         #expect(matcher.owner(for: onOtherDevice) == nil)
     }
 
-    // MARK: seriesChannel — "device:key", must not leak to another device
+    // MARK: seriesChannel — "device:channel:key", must not leak to another device OR another channel
 
-    @Test func seriesChannel_bySeriesID_matchesOwnDevice() {
+    @Test func seriesChannel_bySeriesID_matchesOwnDeviceOwnChannel() {
         let show = managedShow(state: false, seriesChannel: true, device: "DEV1", channel: "5.1",
                                 seriesID: "SID456")
         let matcher = ManagedGuideMatcher(activeManagedShows: [show])
@@ -113,6 +117,25 @@ struct ManagedGuideMatcherTests {
         let matcher = ManagedGuideMatcher(activeManagedShows: [show])
         let otherDevice = entry(device: "DEV2", channel: "5.1", start: Self.base, title: "Local News")
         #expect(matcher.owner(for: otherDevice) == nil)
+    }
+
+    // The SNL/ROAR case: same SeriesID rebroadcast on a syndicated rerun channel on the *same*
+    // tuner must not badge as managed — this show will never actually record from that channel
+    // (resolveSeriesAir/scheduleNextAir are locked to show_channel for a seriesChannel show).
+    @Test func seriesChannel_bySeriesID_doesNotMatchDifferentChannelSameDevice() {
+        let show = managedShow(state: false, seriesChannel: true, device: "DEV1", channel: "11.1",
+                                seriesID: "SID456")
+        let matcher = ManagedGuideMatcher(activeManagedShows: [show])
+        let rerunOnAnotherChannel = entry(device: "DEV1", channel: "23.4", start: Self.base, seriesID: "SID456")
+        #expect(matcher.owner(for: rerunOnAnotherChannel) == nil)
+    }
+
+    @Test func seriesChannel_byTitle_doesNotMatchDifferentChannelSameDevice() {
+        let show = managedShow(state: false, seriesChannel: true, device: "DEV1", channel: "11.1",
+                                title: "Saturday Night Live")
+        let matcher = ManagedGuideMatcher(activeManagedShows: [show])
+        let rerunOnAnotherChannel = entry(device: "DEV1", channel: "23.4", start: Self.base, title: "Saturday Night Live")
+        #expect(matcher.owner(for: rerunOnAnotherChannel) == nil)
     }
 
     // MARK: dateTime — weekday-scoped slot keys
