@@ -136,9 +136,10 @@ struct TunerOccupancyTests {
     // MARK: pendingRecordingChannels
     //
     // The gap between a managed show's recording window opening (show_next <= now) and
-    // show_recording actually flipping true — startup lag, or a missed-start retry backoff (see
-    // ISSUES.md's open entry on this: a stuck retry keeps a channel reading as "recording" for
-    // the whole backoff window, a known, not-yet-fixed tradeoff of this function's definition).
+    // show_recording actually flipping true — ordinary startup lag. A show sitting out a missed-
+    // start retry backoff (showRetryAfter in the future) must NOT read as "recording" here — see
+    // ISSUES.md's resolved entry for the false-positive this used to cause (Recording-section
+    // mis-bucketing + suppressed conflict badge).
 
     @Test func pendingRecordingChannels_windowOpenNotYetRecording_isIncluded() async {
         var show = Show.testActive(title: "About To Start", channel: "5.1")
@@ -184,6 +185,33 @@ struct TunerOccupancyTests {
         show.show_paused = true
         let state = await makeTestAppState(shows: [show], devices: [.test(id: "DEV1", tuners: 2)])
         #expect(await state.pendingRecordingChannels(for: "DEV1").isEmpty)
+    }
+
+    @Test func pendingRecordingChannels_stuckRetryBackoff_isExcluded() async {
+        // A real recordShowFailure has already fired and set showRetryAfter to a future cooldown —
+        // this show isn't capturing anything to disk, so it must fall out of the "recording" set
+        // (letting it resolve to whatever's actually true instead: scheduled or conflict).
+        var show = Show.testActive(title: "Stuck Retrying", channel: "5.1")
+        show.hdhr_record = "DEV1"
+        show.show_next = Date().addingTimeInterval(-300)
+        show.show_end  = Date().addingTimeInterval(1500)
+        let showId = show.show_id
+        let state = await makeTestAppState(shows: [show], devices: [.test(id: "DEV1", tuners: 2)])
+        await MainActor.run { state.showRetryAfter[showId] = Date().addingTimeInterval(60) }
+        #expect(await state.pendingRecordingChannels(for: "DEV1").isEmpty)
+    }
+
+    @Test func pendingRecordingChannels_expiredRetryBackoff_isIncluded() async {
+        // Cooldown has already elapsed — the show is eligible for its next retry attempt, which
+        // is exactly the same "about to start" gap as the non-retry case above.
+        var show = Show.testActive(title: "Retry Elapsed", channel: "5.1")
+        show.hdhr_record = "DEV1"
+        show.show_next = Date().addingTimeInterval(-300)
+        show.show_end  = Date().addingTimeInterval(1500)
+        let showId = show.show_id
+        let state = await makeTestAppState(shows: [show], devices: [.test(id: "DEV1", tuners: 2)])
+        await MainActor.run { state.showRetryAfter[showId] = Date().addingTimeInterval(-1) }
+        #expect(await state.pendingRecordingChannels(for: "DEV1") == ["5.1"])
     }
 
     @Test func pendingRecordingChannels_ignoresOtherDevices() async {

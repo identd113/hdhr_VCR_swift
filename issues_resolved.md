@@ -479,6 +479,18 @@ Updated `ManagedGuideMatcherTests.swift`'s two now-invalid "matches any device" 
 
 ---
 
+## RESOLVED — `AppState.pendingRecordingChannels`/`WebServer.swift`+`WatchNowView.swift`'s "recording" status false-positive during a missed-start retry backoff
+
+**File:** `AppState.swift` (`pendingRecordingChannels`), `Tests/hdhr_VCRTests/TunerOccupancyTests.swift`
+
+**Root cause**: `pendingRecordingChannels(for:)` treated any channel whose managed show had `show_next <= now < show_end` and `show_recording == false` as recording — meant to cover the brief, normal startup lag between a show's scheduled time and `RecordingManager` actually flipping the flag, but it didn't distinguish that from a show that failed to start and is waiting out a `showRetryAfter` retry cooldown (only ever set by `recordShowFailure` after a genuine failure, never during ordinary startup) with `show_next` stuck in the past. This logic predated 2026-08-15 (originally `WebServer.swift`'s `pendingRecChannelsByDevice`, used only for a single guide block's ring badge), but that day's Watch Now/web-guide rework gave the false positive a much bigger megaphone: it pulled the whole channel row into the prominent "Recording"/"● RECORDING" section at the top of both Watch Now and the web guide (previously just a small ring icon), and suppressed a legitimate conflict badge via `buildGuideGridHTML`'s `isConflict`/`WatchNowView`'s `guideRingState`, both of which gate on `!isRecording`.
+
+**Resolution**: `pendingRecordingChannels` now excludes a channel whose show has a live (unexpired) `showRetryAfter` entry — a stuck show falls through to whatever's actually true instead (scheduled or conflict), restoring the conflict badge and correct Favorites/Recording bucketing automatically since both downstream renderers already derive from this one function (no separate WebServer.swift/WatchNowView.swift changes needed). Once the backoff itself expires, the show is eligible for its next retry attempt and reads as pending again for that brief window — same behavior as the non-retry case. Added `pendingRecordingChannels_stuckRetryBackoff_isExcluded`/`_expiredRetryBackoff_isIncluded` to the existing `TunerOccupancyTests` suite (29 tests, all passing); verified live against the running app (real in-progress NFL recording, Chrome screenshot of the guide) that the normal recording path still renders correctly post-deploy.
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+---
+
 ## Staleness check, 2026-08-10
 
 Every entry above that only had a prescriptive `**Fix:**` note (rather than a past-tense `**Resolution:**`) was individually re-verified against the current source before filing here — grepped for the described symptom and confirmed the described fix's actual code is present (or, for the FloatingGuideView/CableGuideView group, confirmed the file is gone entirely). Nothing in this file is guessed or assumed still-true from the original write-up.

@@ -158,17 +158,26 @@ final class AppState: ObservableObject {
         Set(recordingShows.filter { $0.hdhr_record == deviceId }.map { $0.show_channel })
     }
     // Channels whose managed show's recording window has opened (show_next has passed, show_end
-    // hasn't) but show_recording hasn't flipped true yet — startup lag, or a missed-start retry
-    // backoff (see showRetryAfter/"MISSED START" in the idle loop). Treated the same as
-    // activeRecordingChannels for ring/badge purposes, at the cost of reading as "recording" for
-    // the duration of a stuck retry backoff too — a known, pre-existing tradeoff (not introduced
-    // here), same as this function had as WebServer.swift's pendingRecChannelsByDevice before.
+    // hasn't) but show_recording hasn't flipped true yet — the brief, normal startup lag between
+    // a show's scheduled time and RecordingManager actually flipping the flag. Treated the same as
+    // activeRecordingChannels for ring/badge purposes.
+    //
+    // Excludes a show currently sitting out a missed-start retry backoff (showRetryAfter set to a
+    // future date — only happens after a real recordShowFailure, never during ordinary startup
+    // lag): that show isn't capturing anything to disk, so it must NOT read as "recording" here.
+    // Until 2026-08-15 this function (then WebServer.swift's pendingRecChannelsByDevice) treated
+    // the two cases identically, which meant a stuck-in-backoff show sorted into the prominent
+    // Recording section on Watch Now/the web guide and suppressed its own tuner-conflict badge
+    // (buildGuideGridHTML's isConflict / WatchNowView's guideRingState both gate on !isRecording).
+    // Falling through here lets it resolve to whatever's actually true — scheduled or conflict —
+    // instead of a false "recording". See issues_resolved.md for the original find.
     func pendingRecordingChannels(for deviceId: String) -> Set<String> {
         let now = Date()
         return Set(shows.filter {
             $0.show_active && !$0.show_paused && !$0.show_recording &&
             $0.hdhr_record == deviceId &&
-            ($0.show_next ?? .distantFuture) <= now && ($0.show_end ?? .distantPast) > now
+            ($0.show_next ?? .distantFuture) <= now && ($0.show_end ?? .distantPast) > now &&
+            (showRetryAfter[$0.show_id].map { $0 <= now } ?? true)
         }.map { $0.show_channel })
     }
     // Discovered AND reachable — the web guide treats these as "active" tuners.

@@ -45,16 +45,6 @@ Every managed show type records; there's no way to just get notified when someth
 
 ## Web Guide
 
-### No "Recording Now" section pulling active-recording channel rows to the top
-
-The web Guide already partitions channel rows into Favorites vs. everything else (`favRows`/`otherRows`, sorted via `ch.isFavorite` at ~line 1200, joined with a `.g-fav-sep` divider at ~line 1374). Channels with an actively-recording show are mixed in wherever they'd normally sort, so a recording in progress isn't immediately obvious without scanning the whole grid. Add a third partition, above Favorites, for channels where `recChannelsByDevice[device]` contains the channel's `GuideNumber` (already computed per-row as `isRecCh`, ~line 1219) — pull that channel's entire row out of Favorites/Others into a new section with its own divider (e.g. `.g-rec-sep`, red-themed to match `.g-prog-rec`). Since the grid rebuilds on every recording-state change (`broadcastGuideChangeEvent`/`broadcastRecordingEvent`), the channel returns to its normal section automatically once the recording ends — no explicit "un-pin" logic needed. (The equivalent Watch Now version of this was considered and declined 2026-08-12 — not needed there.) Keep for later — not scheduled yet.
-
-Note: this is the shared web guide grid (`WebServer.swift`) rendered both in a browser and embedded via WKWebView in `AddShowView.swift`'s guide step — there is no separate native "cable view" implementation anymore (the old `CableGuideView`, and later the unreachable `FloatingGuideView`/"Cable Guide" window built on top of it, were both removed; fixing it here covers both remaining embeddings at once).
-
-**Key file**: `WebServer.swift` → `buildGuideGridHTML`/`buildHTML` (favRows/otherRows split, `.g-fav-sep` divider, `recChannelsByDevice`).
-
----
-
 ### No guide search
 
 The web guide has a genre filter (`filterGenre`/`rebuildGenreFilter` in `guide.js`, dims non-matching blocks) but no title/keyword text search — finding "where is Jeopardy airing" today means browsing channel-by-channel or scrolling. Every comparable guide app (Channels DVR, Plex, TiVo) has a search box. Could reuse `GuideStore`'s existing per-channel entry index for a client-side search-as-you-type, or a small new `/api/guide-search` endpoint if the dataset gets too large to ship to the browser wholesale. 2026-08-11 feature-gap survey, not yet scoped.
