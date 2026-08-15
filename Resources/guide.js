@@ -114,13 +114,25 @@ function showInfo(el){
     btn.style.display='inline-block';btn.disabled=false;
   }
 }
-// Double-click on a guide tile skips straight to the record modal — same showInfo(el)
-// selection/population step a single click does, immediately followed by doRecord() instead
-// of waiting for a second click on the Summary panel's Record button. Goes through the exact
-// same showInfo()->doRecord() sequence (not a shortcut around it) so doRecord()'s in-app
-// AddShowView wizard bridge special-case (webkit.messageHandlers.record) still fires correctly
-// from this path too. Mirrors the rm-air-row ondblclick->switchAiring(idx) precedent below.
-function recordFromDblClick(el){showInfo(el);doRecord();}
+// Double-click on a guide tile skips straight to the relevant modal — same showInfo(el)
+// selection/population step a single click does, immediately followed by whichever action the
+// Summary panel would otherwise need a second click for, instead of waiting on that click.
+// - Managed (data-managed="1", recording or not) → doEditFromGuide() instead of doRecord() —
+//   re-adding an already-scheduled (or already-recording) show via the Record modal never made
+//   sense there. doEditFromGuide() reads from the same '.g-prog.g-sel' selection showInfo(el)
+//   just set, so this is the exact same data the Summary panel's own Edit button would use for a
+//   scheduled (not recording) show — for a recording show it's a double-click-only shortcut, not
+//   mirroring a visible button, since showInfo() itself only shows "Stop & Delete" there (not an
+//   Edit button) to keep an accidental double-click away from that destructive action.
+// - Unmanaged → doRecord(), the original behavior, through the exact same
+//   showInfo()->doRecord() sequence as before (not a shortcut around it) so doRecord()'s in-app
+//   AddShowView wizard bridge special-case (webkit.messageHandlers.record) still fires
+//   correctly. Mirrors the rm-air-row ondblclick->switchAiring(idx) precedent below.
+function recordFromDblClick(el){
+  showInfo(el);
+  if(el.dataset.managed==='1'){doEditFromGuide();}
+  else{doRecord();}
+}
 // Heavy fields (Synopsis/poster/episode/air date) aren't baked into the initial grid HTML —
 // they're fetched lazily per-row (see fetchRowHeavy/initRowObserver below). renderHeavyFields
 // paints whatever's cached/present immediately (avoids a stale-data flash), then — if the row's
