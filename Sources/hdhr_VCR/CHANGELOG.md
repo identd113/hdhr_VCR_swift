@@ -32,6 +32,7 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 - Fixed: Watch Now could show a plain single "Watch" button instead of the "Watch Now!"/"Watch from Beginning" pair for a show that was actually recording, even though its ring correctly showed red/pulsing — a mismatch between which show the ring and the buttons were each looking up.
 - Fixed: a "Recording Complete" Discord notification could be missing its episode number and summary, even when an earlier notification for the same recording (e.g. a tuner conflict warning) showed them correctly — the app was looking up "what's airing now" instead of remembering what actually recorded.
 - Fixed: a show that failed to start and was waiting to retry could show up as "recording" in Watch Now and the web guide — including sorting into the Recording section and hiding a real tuner-conflict warning — even though nothing was actually being captured.
+- Fixed: in rare cases, switching channels, seeking, or closing the player while watching an in-progress recording could freeze the entire app until it was force-quit. Player teardown no longer runs in a way that can block the rest of the app while it finishes.
 - Fixed: the About panel's "hide changelog entries newer than this build" filter stopped working when this changelog was rewritten in end-user-facing format — it was looking for the old technical header style and silently matched nothing, so nothing ever got filtered. Updated it to read the new format instead.
 
 **Info**
