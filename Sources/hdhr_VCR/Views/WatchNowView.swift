@@ -97,15 +97,16 @@ struct WatchNowView: View {
     }
 
     @ViewBuilder
-    private func channelRow(_ pair: (channel: LineupEntry, entry: GuideEntry), device: HDHRDevice, ringInputs: RingStateInputs) -> some View {
+    private func channelRow(_ pair: (channel: LineupEntry, entry: GuideEntry), device: HDHRDevice,
+                             ringState: GuideRingState, managedShow: Show?) -> some View {
         let (ch, entry) = pair
         WatchNowRow(
             device: device,
             channel: ch,
             entry: entry,
             posterImage: entry.ImageURL.flatMap { posterCache[$0] },
-            ringState: guideRingState(for: entry, device: device, inputs: ringInputs),
-            managedShow: ringInputs.guideMatcher.owner(for: entry)
+            ringState: ringState,
+            managedShow: managedShow
         )
         .task(id: entry.ImageURL) {
             guard let urlStr = entry.ImageURL,
@@ -247,12 +248,7 @@ struct WatchNowView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let device = selectedDevice {
             let ringInputs = ringStateInputs(for: device)
-            // Recording sits above Favorites — pulled out first so a channel that's both
-            // recording and favorited doesn't appear twice.
-            let recording = channels.filter { guideRingState(for: $0.entry, device: device, inputs: ringInputs) == .recording }
-            let recIds    = Set(recording.map(\.channel.id))
-            let favs      = channels.filter { !recIds.contains($0.channel.id) && $0.channel.isFavorite }
-            let others    = channels.filter { !recIds.contains($0.channel.id) && !$0.channel.isFavorite }
+            let (recording, favs, others, rowInfo) = bucketedChannels(channels, device: device, ringInputs: ringInputs)
 
             // LazyVStack, not VStack — a plain VStack forces SwiftUI to lay out every row (poster,
             // buttons, ring badge) up front for the whole channel list before the window can even
@@ -264,21 +260,52 @@ struct WatchNowView: View {
                     if !recording.isEmpty {
                         recTopBorder
                         ForEach(recording, id: \.channel.id) { pair in
-                            channelRow(pair, device: device, ringInputs: ringInputs)
+                            let info = rowInfo[pair.channel.id]!
+                            channelRow(pair, device: device, ringState: info.ringState, managedShow: info.managedShow)
                         }
                     }
                     if !favs.isEmpty {
                         favTopBorder
                         ForEach(favs, id: \.channel.id) { pair in
-                            channelRow(pair, device: device, ringInputs: ringInputs)
+                            let info = rowInfo[pair.channel.id]!
+                            channelRow(pair, device: device, ringState: info.ringState, managedShow: info.managedShow)
                         }
                     }
                     ForEach(others, id: \.channel.id) { pair in
-                        channelRow(pair, device: device, ringInputs: ringInputs)
+                        let info = rowInfo[pair.channel.id]!
+                        channelRow(pair, device: device, ringState: info.ringState, managedShow: info.managedShow)
                     }
                 }
             }
         }
+    }
+
+    // Plain function, not @ViewBuilder — a for loop can't live inside a ViewBuilder body. Ring
+    // state + managed-show owner are resolved once per channel here, then reused directly by
+    // channelRow below via the returned rowInfo dict — previously each was computed a second
+    // time per channel (once here for Recording/Favorites bucketing, again inside channelRow for
+    // the row itself), doubling ManagedGuideMatcher.owner(for:) lookups and the willSkip/
+    // isConflict logic on every render while the window is open.
+    private func bucketedChannels(
+        _ channels: [(channel: LineupEntry, entry: GuideEntry)], device: HDHRDevice, ringInputs: RingStateInputs
+    ) -> (recording: [(channel: LineupEntry, entry: GuideEntry)],
+          favs: [(channel: LineupEntry, entry: GuideEntry)],
+          others: [(channel: LineupEntry, entry: GuideEntry)],
+          rowInfo: [String: (ringState: GuideRingState, managedShow: Show?)]) {
+        var recording: [(channel: LineupEntry, entry: GuideEntry)] = []
+        var favs:      [(channel: LineupEntry, entry: GuideEntry)] = []
+        var others:    [(channel: LineupEntry, entry: GuideEntry)] = []
+        var rowInfo:   [String: (ringState: GuideRingState, managedShow: Show?)] = [:]
+        for pair in channels {
+            let owner = ringInputs.guideMatcher.owner(for: pair.entry)
+            let ringState = guideRingState(for: pair.entry, device: device, owner: owner, inputs: ringInputs)
+            rowInfo[pair.channel.id] = (ringState, owner)
+            // Recording sits above Favorites — a channel that's both only appears once, here.
+            if ringState == .recording { recording.append(pair) }
+            else if pair.channel.isFavorite { favs.append(pair) }
+            else { others.append(pair) }
+        }
+        return (recording, favs, others, rowInfo)
     }
 
     // Bundles the lookups needed to resolve each row's GuideRingState — built once per render
@@ -300,19 +327,10 @@ struct WatchNowView: View {
         // Backed by recordedTagsRefreshLoop() (off the render path), not scanned here — see
         // recordedTagsCache's doc comment.
         let recordedTagsByShow = recordedTagsCache
-        // Channel-scoped, not show-scoped — a show's own show_recording flag doesn't say *which*
-        // channel is actually being captured, and ManagedGuideMatcher.owner(for:) matches any
-        // block sharing the show's SeriesID/title (by design, for seriesAll fan-out across
-        // channels — see WebServer.swift's owner(for:) comment), so a rerun of the same series
-        // airing simultaneously on another channel must not also read as recording. Mirrors
-        // WebServer.swift's recChannelsByDevice/pendingRecChannelsByDevice exactly.
-        var recChannels = Set(state.recordingShows.filter { $0.hdhr_record == device.DeviceID }.map { $0.show_channel })
-        let nowD = Date()
-        let pendingRec = activeMgd.filter {
-            !$0.show_recording && $0.hdhr_record == device.DeviceID &&
-            ($0.show_next ?? .distantFuture) <= nowD && ($0.show_end ?? .distantPast) > nowD
-        }
-        recChannels.formUnion(pendingRec.map { $0.show_channel })
+        // AppState.activeRecordingChannels/pendingRecordingChannels — same shared, channel-scoped
+        // definition the web guide (WebServer.swift) uses, so the two surfaces can't drift apart.
+        let recChannels = state.activeRecordingChannels(for: device.DeviceID)
+            .union(state.pendingRecordingChannels(for: device.DeviceID))
         // Channels a hardware tuner is locked to on this device but this app didn't initiate —
         // same "app expects 1, hw shows 2" scenario the web guide's .g-st-inuse flags. Excludes
         // this instance's own in-app live Watch channel (state.vlcLiveChannel) too — otherwise the
@@ -328,8 +346,10 @@ struct WatchNowView: View {
     // Mirrors WebServer.swift's per-block precedence computation (buildGuideGridHTML) exactly,
     // scoped to the one currently-airing entry WatchNowRow shows (no time-window/isNow check
     // needed — onAirChannels already filtered to "airing right now").
-    private func guideRingState(for entry: GuideEntry, device: HDHRDevice, inputs: RingStateInputs) -> GuideRingState {
-        let owner       = inputs.guideMatcher.owner(for: entry)
+    // Takes an already-resolved `owner` rather than looking it up itself — callers that also
+    // need `owner` for another purpose (e.g. WatchNowRow's managedShow) resolve it once and
+    // share it, instead of a second ManagedGuideMatcher.owner(for:) dictionary lookup per row.
+    private func guideRingState(for entry: GuideEntry, device: HDHRDevice, owner: Show?, inputs: RingStateInputs) -> GuideRingState {
         let isManaged   = owner != nil
         let isRecording = inputs.recChannels.contains(entry.channelNum)
         let willSkip: Bool = {
@@ -393,10 +413,12 @@ struct WatchNowRow: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        // Tile fill = genre color, always — the poster art covers the same color drawn behind it
-        // in posterThumb(), so this is the tile-sized area where genre color actually reads.
-        // Favorite status gets its own indicator (the stripe on the poster) instead of competing
-        // for this background, unlike the web Guide's .g-row[data-fav="1"] wash this replaced.
+        // Tile fill = genre color, always. posterThumb() below only shows a genre-colored
+        // backdrop as a *fallback* when there's no poster image (see its `else` branch) — for the
+        // common case of a loaded poster, no color renders there at all, so this tile-sized area
+        // is the one place genre color reliably reads regardless of poster art. Favorite status
+        // gets its own indicator (the stripe on the poster) instead of competing for this
+        // background, unlike the web Guide's .g-row[data-fav="1"] wash this replaced.
         .background(guideEntryColor(for: entry, onAir: true).opacity(0.16))
         .alert("All Tuners Busy", isPresented: $showTunerFullAlert) {
             Button("OK", role: .cancel) { }

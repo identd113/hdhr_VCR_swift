@@ -145,6 +145,32 @@ final class AppState: ObservableObject {
     var pausedShows: [Show]    { shows.filter { $0.show_active && $0.show_paused } }
     var inactiveShows: [Show]  { shows.filter { !$0.show_active } }
     var unavailableDeviceIDs: Set<String> { Set(devices.filter { !$0.isAvailable }.map { $0.DeviceID }) }
+
+    // Shared source of truth for "which channels on this device read as recording" — used by
+    // WebServer.swift's guide grid (ring badges + the RECORDING section) and WatchNowView's Watch
+    // Now window (ring badges + the Recording section) so the two surfaces can't drift apart.
+    // Channel-scoped, not show-scoped: a show's own show_recording flag doesn't say *which*
+    // channel is actually being captured, and ManagedGuideMatcher.owner(for:) matches any block
+    // sharing a show's SeriesID/title (by design, for seriesAll fan-out across channels) — so a
+    // rerun of the same series airing simultaneously on another channel must not also read as
+    // recording.
+    func activeRecordingChannels(for deviceId: String) -> Set<String> {
+        Set(recordingShows.filter { $0.hdhr_record == deviceId }.map { $0.show_channel })
+    }
+    // Channels whose managed show's recording window has opened (show_next has passed, show_end
+    // hasn't) but show_recording hasn't flipped true yet — startup lag, or a missed-start retry
+    // backoff (see showRetryAfter/"MISSED START" in the idle loop). Treated the same as
+    // activeRecordingChannels for ring/badge purposes, at the cost of reading as "recording" for
+    // the duration of a stuck retry backoff too — a known, pre-existing tradeoff (not introduced
+    // here), same as this function had as WebServer.swift's pendingRecChannelsByDevice before.
+    func pendingRecordingChannels(for deviceId: String) -> Set<String> {
+        let now = Date()
+        return Set(shows.filter {
+            $0.show_active && !$0.show_paused && !$0.show_recording &&
+            $0.hdhr_record == deviceId &&
+            ($0.show_next ?? .distantFuture) <= now && ($0.show_end ?? .distantPast) > now
+        }.map { $0.show_channel })
+    }
     // Discovered AND reachable — the web guide treats these as "active" tuners.
     var usableDeviceIDs: Set<String> { Set(devices.filter { $0.isAvailable }.map { $0.DeviceID }) }
     var unavailableDeviceShows: [Show] {

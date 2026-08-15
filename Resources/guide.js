@@ -892,22 +892,19 @@ function setDev(id){
     else{var ch=r.dataset.ch;if(!seen[ch]){r.style.display='';seen[ch]=true;}else{r.style.display='none';}}
   });
   applyGenreDim();
-  // Show/hide the favorites section header and footer for each device
-  document.querySelectorAll('.g-fav-sep').forEach(function(sep){
-    var dev=sep.dataset.dev;
-    var hasFav=Array.from(_rows).some(function(r){
-      return r.style.display!=='none'&&r.dataset.fav==='1'&&r.dataset.dev===dev;
+  // Show/hide a section header (.g-fav-sep/.g-rec-sep) per device, based on whether any of its
+  // visible rows carry the matching marker attribute (data-fav/data-rec).
+  function toggleSectionSep(selector,attr){
+    document.querySelectorAll(selector).forEach(function(sep){
+      var dev=sep.dataset.dev;
+      var has=Array.from(_rows).some(function(r){
+        return r.style.display!=='none'&&r.dataset[attr]==='1'&&r.dataset.dev===dev;
+      });
+      sep.style.display=has?'':'none';
     });
-    sep.style.display=hasFav?'':'none';
-  });
-  // Same for the Recording section header, mirroring the favorites toggle above.
-  document.querySelectorAll('.g-rec-sep').forEach(function(sep){
-    var dev=sep.dataset.dev;
-    var hasRec=Array.from(_rows).some(function(r){
-      return r.style.display!=='none'&&r.dataset.rec==='1'&&r.dataset.dev===dev;
-    });
-    sep.style.display=hasRec?'':'none';
-  });
+  }
+  toggleSectionSep('.g-fav-sep','fav');
+  toggleSectionSep('.g-rec-sep','rec');
 }
 // First click on a tuner's name button switches the guide grid to that tuner (setDev);
 // a second click — the tuner is already selected — opens its hardware-occupancy popover

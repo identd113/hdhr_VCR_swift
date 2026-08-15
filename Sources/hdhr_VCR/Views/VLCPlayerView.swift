@@ -177,8 +177,8 @@ struct VLCPlayerView: View {
             let cc = MPRemoteCommandCenter.shared()
             cc.stopCommand.isEnabled = true
             cc.stopCommand.addTarget { _ in
-                // Remote stop (media key / Now Playing widget) — calls VLCBridge.stop() which
-                // clears drawableView; window will go black until closed and reopened.
+                // Remote stop (media key / Now Playing widget) — calls VLCBridge.stop(), a soft
+                // stop that leaves drawableView attached so a later play() can resume in place.
                 glog("[VLC] remote stopCommand received")
                 Task { @MainActor in VLCBridge.shared.stop() }
                 return .success

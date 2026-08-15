@@ -1322,19 +1322,14 @@ final class WebServer: @unchecked Sendable {
         let _newTomorrowEnd    = Int(_newTomorrowStart.addingTimeInterval(5 * 3600).timeIntervalSince1970)
 
         // ── Managed show lookups ───────────────────────────────────────────────
-        let recording = state.recordingShows
+        // AppState.activeRecordingChannels/pendingRecordingChannels — same shared definition
+        // WatchNowView's Watch Now window uses, so the two surfaces can't drift apart.
         let recChannelsByDevice: [String: Set<String>] = Dictionary(
-            grouping: recording, by: { $0.hdhr_record }
-        ).mapValues { Set($0.map { $0.show_channel }) }
-        let pendingRecChannelsByDevice: [String: Set<String>] = {
-            let pending = state.shows.filter {
-                $0.show_active && !$0.show_paused && !$0.show_recording &&
-                !$0.hdhr_record.isEmpty &&
-                ($0.show_next ?? .distantFuture) <= nowDate && ($0.show_end ?? .distantPast) > nowDate
-            }
-            return Dictionary(grouping: pending, by: { $0.hdhr_record })
-                .mapValues { Set($0.map { $0.show_channel }) }
-        }()
+            uniqueKeysWithValues: state.devices.map { ($0.DeviceID, state.activeRecordingChannels(for: $0.DeviceID)) }
+        )
+        let pendingRecChannelsByDevice: [String: Set<String>] = Dictionary(
+            uniqueKeysWithValues: state.devices.map { ($0.DeviceID, state.pendingRecordingChannels(for: $0.DeviceID)) }
+        )
         // Channels a hardware tuner is actively locked to but this app didn't initiate — e.g. the
         // "app expects 1, hw shows 2" case (another machine running this app against the same
         // physical device, or someone just watching live via the HDHomeRun's own app). Excludes our
