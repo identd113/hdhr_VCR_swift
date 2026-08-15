@@ -43,6 +43,13 @@ extension GuideChannel {
     }
 }
 
+extension GuideEntry {
+    static func test(title: String = "Test Show", start: Int = Int(Date().timeIntervalSince1970) - 300,
+                      end: Int = Int(Date().timeIntervalSince1970) + 1500) -> GuideEntry {
+        GuideEntry(StartTime: start, EndTime: end, Title: title)
+    }
+}
+
 // MARK: - Show
 
 extension Show {

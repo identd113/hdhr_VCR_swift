@@ -1097,6 +1097,21 @@ final class AppState: ObservableObject {
         addShow(show) // conflict check, "Show Added" notify/Discord, and web broadcast all happen there
     }
 
+    // The tuner-full check + addShowFromGuide call behind the quick-record pulldown
+    // (WatchNowRow's Record button, VLCPlayerView's toolbar Record button — both go through
+    // quickRecordMenu in GuideViewHelpers.swift). Pulled out as its own function specifically so
+    // this logic — the part that can actually have bugs — is unit-testable directly (see
+    // WatchNowViewTests) without going through either caller's UI, since the UI itself is just a
+    // stock SwiftUI Menu with nothing app-specific to verify. Returns false (and adds nothing)
+    // when the device's tuners are full — the caller is expected to show its own "All Tuners
+    // Busy" alert in that case, same as addShowFromGuide's other callers already do inline.
+    @discardableResult
+    func quickRecord(type: ShowState, entry: GuideEntry, device: HDHRDevice, channel: LineupEntry) -> Bool {
+        guard !tunersFull(for: device.DeviceID) else { return false }
+        addShowFromGuide(entry: entry, type: type, device: device, channel: channel)
+        return true
+    }
+
     // Tie-break for SeriesID(All) shows simulcast/rerun on multiple channels of the same device
     // at the identical time — prefer the channel the user has favorited over the arbitrary
     // insertion-order winner GuideStore would otherwise return. See GuideStore.nextEpisode/currentEpisode.

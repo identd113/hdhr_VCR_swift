@@ -627,20 +627,13 @@ struct WatchNowRow: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
             } else {
-                Button {
-                    if state.tunersFull(for: device.DeviceID) {
-                        showTunerFullAlert = true
-                    } else {
-                        state.pendingAddEntry = (device, channel, entry)
-                        state.pendingAddEntryGeneration += 1
-                        NSApp.activate(ignoringOtherApps: true)
-                        if let w = NSApp.windows.first(where: { $0.title == "Add Show" }) {
-                            w.makeKeyAndOrderFront(nil)
-                        } else {
-                            openWindow(id: "add-show")
-                        }
-                    }
-                } label: {
+                // Pull-down of the four recording types, not the Add Show wizard — Watch Now is
+                // a quick-glance surface, and the wizard's extra steps (folder, transcode, etc.)
+                // aren't worth a window here. quickRecordMenu (GuideViewHelpers.swift) is shared
+                // with VLCPlayerView's toolbar Record button, so the two don't duplicate the
+                // Menu-building code or the four description strings.
+                quickRecordMenu(state: state, entry: entry, device: device, channel: channel,
+                                 tunerFullAlert: $showTunerFullAlert) {
                     Label("Record", systemImage: "record.circle").font(.caption.bold())
                 }
                 .accessibilityLabel("Record \(entry.Title)")

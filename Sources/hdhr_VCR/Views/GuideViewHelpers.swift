@@ -15,6 +15,66 @@ let favAmber = Color(NSColor(name: nil) { appearance in
         : NSColor(srgbRed: 0xA0 / 255.0, green: 0x58 / 255.0, blue: 0x00 / 255.0, alpha: 1)
 })
 
+// MARK: - Quick-record menu
+
+// Kept in sync by hand with guide.js's recOpts[].d — same four strings, same order, describing
+// the same four ShowState cases. (Web guide's own Record modal has its own richer UI — folder,
+// transcode, bonus time, other-airings panel — so it doesn't share this; this is specifically
+// the pared-down "just pick a type" version for surfaces with no room for a full form.)
+let recordTypeDescription: [ShowState: String] = [
+    .single:        "Record this airing only",
+    .dateTime:      "Record at this time each week",
+    .seriesChannel: "Record new episodes on this channel",
+    .seriesAll:     "Record new episodes on any channel",
+]
+
+// Four-type pulldown wrapping AppState.quickRecord(type:entry:device:channel:) — which goes
+// straight through addShowFromGuide(...), the same function the web guide's own quick-record
+// path (WebServer.swift's handleRecord) already uses, with every optional left at its default
+// (transcode/bonusTime/airDays) — rather than opening the Add Show wizard. Shared by
+// WatchNowRow's Record button and VLCPlayerView's toolbar Record button so the two don't
+// duplicate the same Menu-building code and description strings.
+//
+// Also exposes the same four picks as accessibility custom actions on the control itself, not
+// just as menu items reachable by opening the popup: (1) a real accessibility win — VoiceOver
+// users get "Record Single"/"Record DateTime"/etc. on the rotor without needing to visually
+// navigate an ephemeral popup — and (2) unlike the popup (a stock SwiftUI Menu, not worth
+// scripting), a custom accessibility action can be invoked directly and reliably via AppleScript/
+// System Events' `perform action`, no NSMenu-tracking flakiness involved, for anyone who does
+// want to drive this via UI automation later.
+@MainActor @ViewBuilder
+func quickRecordMenu<Content: View>(
+    state: AppState, entry: GuideEntry, device: HDHRDevice, channel: LineupEntry,
+    tunerFullAlert: Binding<Bool>, @ViewBuilder label: () -> Content
+) -> some View {
+    Menu {
+        ForEach(ShowState.allCases, id: \.self) { type in
+            Button {
+                if !state.quickRecord(type: type, entry: entry, device: device, channel: channel) {
+                    tunerFullAlert.wrappedValue = true
+                }
+            } label: {
+                Text(type.rawValue)
+                Text(recordTypeDescription[type] ?? "")
+            }
+        }
+    } label: {
+        label()
+    }
+    .accessibilityAction(named: Text(ShowState.single.rawValue)) {
+        if !state.quickRecord(type: .single, entry: entry, device: device, channel: channel) { tunerFullAlert.wrappedValue = true }
+    }
+    .accessibilityAction(named: Text(ShowState.dateTime.rawValue)) {
+        if !state.quickRecord(type: .dateTime, entry: entry, device: device, channel: channel) { tunerFullAlert.wrappedValue = true }
+    }
+    .accessibilityAction(named: Text(ShowState.seriesChannel.rawValue)) {
+        if !state.quickRecord(type: .seriesChannel, entry: entry, device: device, channel: channel) { tunerFullAlert.wrappedValue = true }
+    }
+    .accessibilityAction(named: Text(ShowState.seriesAll.rawValue)) {
+        if !state.quickRecord(type: .seriesAll, entry: entry, device: device, channel: channel) { tunerFullAlert.wrappedValue = true }
+    }
+}
+
 // MARK: - Unsaved-changes alert
 
 // Shared by EditShowView (onExitCommand + onChange(of: state.editingShowId)) and SettingsView's

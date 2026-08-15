@@ -9,6 +9,13 @@ import Foundation
 // max(hardware-polled count, local recordings + VLC). A regression here either double-books a
 // tuner (recording fails) or blocks a legitimate recording that should have a free slot.
 //
+// Also covers activeRecordingChannels/pendingRecordingChannels — a different cut of the same
+// occupancy data (channel-scoped, not count-scoped): "which channels on this device currently
+// read as recording," shared by WebServer.swift's guide grid and WatchNowView's Watch Now window
+// so the two rendering surfaces can't drift apart on the definition (see either function's own
+// doc comment in AppState.swift for why this has to be channel-scoped rather than derived from a
+// show's own show_recording flag).
+//
 // vlcOccupiesTuner(for:) reads VLCPlayerWindowManager.shared.currentDeviceID, a real singleton
 // with a private(set) setter only touched by actually opening a player window — these tests never
 // do that, so it stays nil and vlcOccupiesTuner is always false here. That's an intentional scope
@@ -103,6 +110,90 @@ struct TunerOccupancyTests {
         var s2 = Show.testRecording(title: "B", channel: "7.1"); s2.hdhr_record = "DEV1"
         let state = await makeTestAppState(shows: [s1, s2], devices: [.test(id: "DEV1", tuners: 2)])
         #expect(await state.tunersFull(for: "DEV1") == true)
+    }
+
+    // MARK: activeRecordingChannels
+
+    @Test func activeRecordingChannels_returnsChannelsOfActiveRecordings() async {
+        var show = Show.testRecording(title: "Live Now", channel: "5.1")
+        show.hdhr_record = "DEV1"
+        let state = await makeTestAppState(shows: [show], devices: [.test(id: "DEV1", tuners: 2)])
+        #expect(await state.activeRecordingChannels(for: "DEV1") == ["5.1"])
+    }
+
+    @Test func activeRecordingChannels_noRecordings_isEmpty() async {
+        let state = await makeTestAppState(devices: [.test(id: "DEV1", tuners: 2)])
+        #expect(await state.activeRecordingChannels(for: "DEV1").isEmpty)
+    }
+
+    @Test func activeRecordingChannels_ignoresOtherDevices() async {
+        var show = Show.testRecording(title: "Other Device", channel: "5.1"); show.hdhr_record = "DEV2"
+        let state = await makeTestAppState(shows: [show], devices: [.test(id: "DEV1", tuners: 2), .test(id: "DEV2", tuners: 2)])
+        #expect(await state.activeRecordingChannels(for: "DEV1").isEmpty)
+        #expect(await state.activeRecordingChannels(for: "DEV2") == ["5.1"])
+    }
+
+    // MARK: pendingRecordingChannels
+    //
+    // The gap between a managed show's recording window opening (show_next <= now) and
+    // show_recording actually flipping true — startup lag, or a missed-start retry backoff (see
+    // ISSUES.md's open entry on this: a stuck retry keeps a channel reading as "recording" for
+    // the whole backoff window, a known, not-yet-fixed tradeoff of this function's definition).
+
+    @Test func pendingRecordingChannels_windowOpenNotYetRecording_isIncluded() async {
+        var show = Show.testActive(title: "About To Start", channel: "5.1")
+        show.hdhr_record = "DEV1"
+        show.show_next = Date().addingTimeInterval(-30)   // window opened 30s ago
+        show.show_end  = Date().addingTimeInterval(1770)
+        let state = await makeTestAppState(shows: [show], devices: [.test(id: "DEV1", tuners: 2)])
+        #expect(await state.pendingRecordingChannels(for: "DEV1") == ["5.1"])
+    }
+
+    @Test func pendingRecordingChannels_alreadyRecording_isExcluded() async {
+        // show_recording == true shows up via activeRecordingChannels instead —
+        // pendingRecordingChannels is specifically the gap before that flag flips, not a second
+        // route to the same channel.
+        var show = Show.testRecording(title: "Already Going", channel: "5.1")
+        show.hdhr_record = "DEV1"
+        let state = await makeTestAppState(shows: [show], devices: [.test(id: "DEV1", tuners: 2)])
+        #expect(await state.pendingRecordingChannels(for: "DEV1").isEmpty)
+    }
+
+    @Test func pendingRecordingChannels_windowNotYetOpen_isExcluded() async {
+        // testActive's default show_next is 1 hour in the future.
+        var show = Show.testActive(title: "Later Today", channel: "5.1")
+        show.hdhr_record = "DEV1"
+        let state = await makeTestAppState(shows: [show], devices: [.test(id: "DEV1", tuners: 2)])
+        #expect(await state.pendingRecordingChannels(for: "DEV1").isEmpty)
+    }
+
+    @Test func pendingRecordingChannels_windowAlreadyEnded_isExcluded() async {
+        var show = Show.testActive(title: "Missed It", channel: "5.1")
+        show.hdhr_record = "DEV1"
+        show.show_next = Date().addingTimeInterval(-3600)
+        show.show_end  = Date().addingTimeInterval(-60)
+        let state = await makeTestAppState(shows: [show], devices: [.test(id: "DEV1", tuners: 2)])
+        #expect(await state.pendingRecordingChannels(for: "DEV1").isEmpty)
+    }
+
+    @Test func pendingRecordingChannels_paused_isExcluded() async {
+        var show = Show.testActive(title: "Paused Show", channel: "5.1")
+        show.hdhr_record = "DEV1"
+        show.show_next = Date().addingTimeInterval(-30)
+        show.show_end  = Date().addingTimeInterval(1770)
+        show.show_paused = true
+        let state = await makeTestAppState(shows: [show], devices: [.test(id: "DEV1", tuners: 2)])
+        #expect(await state.pendingRecordingChannels(for: "DEV1").isEmpty)
+    }
+
+    @Test func pendingRecordingChannels_ignoresOtherDevices() async {
+        var show = Show.testActive(title: "Other Device", channel: "5.1")
+        show.hdhr_record = "DEV2"
+        show.show_next = Date().addingTimeInterval(-30)
+        show.show_end  = Date().addingTimeInterval(1770)
+        let state = await makeTestAppState(shows: [show], devices: [.test(id: "DEV1", tuners: 2), .test(id: "DEV2", tuners: 2)])
+        #expect(await state.pendingRecordingChannels(for: "DEV1").isEmpty)
+        #expect(await state.pendingRecordingChannels(for: "DEV2") == ["5.1"])
     }
 
     // MARK: hasConflict / conflictingShows

@@ -53,6 +53,7 @@ struct VLCPlayerView: View {
     @State private var scrubValue: Double = 0     // recording scrub bar — only meaningful while isScrubbing
     @State private var isScrubbing = false
     @State private var videoControlsHovered = false   // shows the recording scrub overlay on hover
+    @State private var showTunerFullAlert = false      // quick-record toolbar button (see toolbar)
 
     private var currentGuideEntry: GuideEntry? {
         guard let ch = selectedChannel else { return nil }
@@ -165,6 +166,12 @@ struct VLCPlayerView: View {
                 guard let url = currentGuideEntry?.ImageURL else { posterNSImage = nil; return }
                 posterNSImage = await ChannelIconCache.shared.image(for: url)
             }
+        }
+        .alert("All Tuners Busy", isPresented: $showTunerFullAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            let count = device.TunerCount.map { "\($0)" } ?? "all"
+            Text("\(currentGuideEntry?.Title ?? "This show") is on now, but \(count) tuner(s) on \(device.DeviceID) are occupied. Free a tuner first, then add this show.")
         }
         .onAppear {
             glog("[VLC] VLCPlayerView.onAppear device=\(device.DeviceID) initialURL=\(initialURL)")
@@ -472,6 +479,24 @@ struct VLCPlayerView: View {
                 } else {
                     playChannel(ch)
                 }
+            }
+
+            // Quick-record: same four-type pulldown as Watch Now's Record button
+            // (WatchNowRow/quickRecordMenu, GuideViewHelpers.swift) — icon-only here since the
+            // toolbar has no room to spare for a labeled button. Hidden while watching a
+            // recording-relay stream (already being captured, see bridge.recordingShowId),
+            // when nothing's currently airing on the selected channel, or when this exact
+            // channel already has an active managed show (avoids offering a redundant add).
+            if bridge.recordingShowId == nil, let ch = selectedChannel, let entry = currentGuideEntry,
+               !state.shows.contains(where: { $0.show_active && $0.hdhr_record == device.DeviceID && $0.show_channel == ch.GuideNumber }) {
+                quickRecordMenu(state: state, entry: entry, device: device, channel: ch,
+                                 tunerFullAlert: $showTunerFullAlert) {
+                    Image(systemName: "record.circle")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.red)
+                .accessibilityLabel("Record \(entry.Title)")
+                .help("Record \(entry.Title)")
             }
 
             Spacer()
