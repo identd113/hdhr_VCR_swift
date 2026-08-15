@@ -1,6 +1,6 @@
 # Release Notes
 
-What's new in each version. For day-by-day implementation detail, see
+What's new in each version. For the fuller list of changes within a version, see
 [CHANGELOG.md](Sources/hdhr_VCR/CHANGELOG.md); for the full download, see the
 [GitHub Releases page](https://github.com/identd113/hdhr_VCR_swift/releases).
 
@@ -20,7 +20,7 @@ What's new in each version. For day-by-day implementation detail, see
   etc.) starts or stops using a tuner, you'll see it right away instead of only after closing and
   reopening the menu.
 
-Full day-by-day detail: [CHANGELOG.md](Sources/hdhr_VCR/CHANGELOG.md)
+Full change list: [CHANGELOG.md](Sources/hdhr_VCR/CHANGELOG.md)
 
 ---
 
@@ -36,7 +36,7 @@ Full day-by-day detail: [CHANGELOG.md](Sources/hdhr_VCR/CHANGELOG.md)
 - The Transcode picker now notes that not every tuner model supports transcoding — pick None if
   a recording fails immediately after choosing a different profile.
 
-Full day-by-day detail: [CHANGELOG.md](Sources/hdhr_VCR/CHANGELOG.md)
+Full change list: [CHANGELOG.md](Sources/hdhr_VCR/CHANGELOG.md)
 
 ---
 
@@ -76,7 +76,7 @@ macOS accepts it as a normal app on first launch, verified offline via a stapled
   header-file tracking. The channel-logo disk cache also now has a 150 MB ceiling (oldest logos
   evicted first) instead of growing without bound.
 
-Full day-by-day detail: [CHANGELOG.md](Sources/hdhr_VCR/CHANGELOG.md)
+Full change list: [CHANGELOG.md](Sources/hdhr_VCR/CHANGELOG.md)
 
 ### Installing
 

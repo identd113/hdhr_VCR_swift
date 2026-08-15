@@ -93,8 +93,9 @@ single shared constant fixes that while keeping the same "not visible in git" pr
 hardcoded constant in `DonationNagView.swift` same as before — unlike the checksum target, it was
 never sensitive to begin with.
 
-**Generating codes**: no script needed — any `requiredCodeLength` (6) hex digits summing to the
-target are a valid code, simple enough to construct by hand for each tipper. The target itself
-lives in `tools/donation_target.txt` (gitignored — the one plaintext copy of it outside the
-one-way hash baked into the app; back that file up somewhere private, since losing it means
-recovering it only by brute-forcing the hash).
+**Generating codes**: no script needed — a fresh valid code can be constructed by hand for each
+tipper from the target number in seconds. The exact construction rule, the target itself, and the
+mechanism's known weakness (quantified — how small the search space actually is) are kept out of
+this public doc on purpose; see `tools/donation_target_notes.md` (gitignored, private) for all
+three. Back that file up somewhere private along with `tools/donation_target.txt` — losing both
+means recovering the target only by brute-forcing the hash.

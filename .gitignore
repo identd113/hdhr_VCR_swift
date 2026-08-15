@@ -1,27 +1,50 @@
+# ── macOS / editor cruft ──────────────────────────────────────────────────
 .DS_Store
+
+# ── Build artifacts ───────────────────────────────────────────────────────
 .build/
 .swiftpm/
 *.o
 *.d
 TestMacro
-CLAUDE.md
-/src
+/dist/
 /hdhrVCRplus.app
-# .claude: track durable project config (agents/, CONVENTIONS.md); ignore local state
+tools/__pycache__/
+
+# ── Test artifacts ────────────────────────────────────────────────────────
+Tests/hdhr_VCRTests/__Snapshots__/
+
+# ── Local-only source, not part of the tracked app ────────────────────────
+/src
+
+# ── Claude Code local state (agents/, CONVENTIONS.md stay tracked) ────────
+CLAUDE.md
 /.claude/settings.local.json
 /.claude/worktrees/
 /.claude/scheduled_tasks.lock
-Tests/hdhr_VCRTests/__Snapshots__/
-tools/__pycache__/
-/dist/
-# The actual private target number (see DonationNagView.swift's targetChecksumHash) — the ONLY
-# copy of this outside a one-way hash. Never committed; back it up somewhere private if this repo
-# checkout is ever lost, or the donation-nag unlock becomes unrecoverable without brute-forcing.
-/tools/donation_target.txt
-# tools/setup_signing.sh's scratch dir — private key material during cert setup, deleted by the
-# script itself once imported into the keychain, but ignored too in case cleanup is ever skipped.
+
+# ── Private / secret material — this repo is public. Each of these has a
+# tracked counterpart that stays generic/hashed/placeholder-only so nothing
+# here can be accidentally staged or reconstructed from what IS committed. ─
+
+# tools/setup_signing.sh's scratch dir — private key material during cert
+# setup, deleted by the script itself once imported into the keychain, but
+# ignored too in case cleanup is ever skipped.
 /.signing_work/
-# Real Developer ID identity (name + Team ID), written by tools/setup_signing.sh and sourced by
-# deploy_release.sh. Never committed — this repo is public. deploy_release.sh itself always stays
-# on the generic placeholder so there's nothing to accidentally stage/push.
+
+# Real Developer ID identity (name + Team ID), written by tools/setup_signing.sh
+# and sourced by deploy_release.sh, which itself always stays on the generic
+# placeholder so there's nothing to accidentally stage/push.
 /tools/signing_identity.txt
+
+# The actual private donation-unlock target number (see DonationNagView.swift's
+# targetChecksumHash) — the ONLY plaintext copy of this outside a one-way hash.
+# Back it up somewhere private; losing it means recovering it only by
+# brute-forcing the hash.
+/tools/donation_target.txt
+
+# Private technical notes on the donation-unlock mechanism's exact construction
+# rule and known weakness (quantified) — DonationNagView.swift/docs/DonationNagView.md
+# intentionally keep the public-facing versions generic; see tools/donation_target.txt's
+# entry above for the target itself.
+/tools/donation_target_notes.md

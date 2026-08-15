@@ -5,11 +5,19 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 ## Unreleased
 
 **Added**
-- Watch Now can now start playback from the very beginning of an in-progress recording, not just ~30 seconds behind live — anything currently recording now shows both **Watch Now!** and **Watch from Beginning** buttons, matching the menu bar's recording list.
+- **Record directly from Watch Now and the streaming player, without opening the Add Show wizard.** Clicking Record now shows a pulldown of the four recording types (a single airing, weekly at this time, this series on this channel, or this series on any channel), each with a one-line description — pick one and it's scheduled immediately. The streaming ("Watch") player also gained a Record button for the first time, next to its channel picker.
+- **Currently-recording shows now sort above Favorites**, in both Watch Now and the web guide, in their own "Recording" section — a show already capturing to disk is a stronger claim on your attention than a merely-favorited channel.
+- The streaming player now turns on closed captions automatically when you mute it, if the channel has them — there's no audio to convey what's being said otherwise. Turning the volume back up leaves them on; you can still turn them off yourself at any time.
+- Watch Now can start playback from the very beginning of an in-progress recording, not just ~30 seconds behind live — anything currently recording shows both **Watch Now!** and **Watch from Beginning** buttons, matching the menu bar's recording list.
 - Discord notifications now show a **🆕 NEW** tag next to the show title for a first-run episode airing today.
-- Double-clicking a show in the web guide now jumps straight to the Record dialog, instead of needing a click to select it plus a second click on the Summary panel's Record button.
 
 **Updated**
+- **Double-clicking a show in the web guide now opens the right screen for its state**: Edit for anything already scheduled or currently recording, Record for anything not yet scheduled. Previously it always tried to open Record, so double-clicking an already-scheduled — or even actively-recording — show tried to re-add it.
+- **Watch Now's tiles are now colored by genre even when a poster image is showing** — that color used to sit behind the poster art, fully hidden by it in the common case. Favorite status moved to its own stripe on the poster's edge instead.
+- Watch Now's window opens noticeably faster with a lot of channels on screen at once.
+- Watch Now's action buttons (Watch, VLC, Edit, Record) now stack one per row instead of crowding onto one line and truncating long labels, and every button now shows a tooltip on hover.
+- Watch Now's tuner switcher (when you have more than one tuner) now sits next to the "Watch Now" title instead of the toolbar's far right.
+- The streaming player's closed-caption picker is now hidden while watching an in-progress recording from disk — switching caption tracks there didn't actually change anything, so the control no longer pretends it does.
 - Guide tiles in the web guide no longer let you click-and-drag to highlight their title text — that was an unintended side effect of the tile being clickable, not a real feature. The Summary panel's text (title, tags, channel/time) still copies normally.
 - The Live View player's channel picker now lists your favorited channels first, under a "★ Favorites" heading, matching how Watch Now and the web guide already sort favorites to the top.
 - Watch Now now catches up to the live edge much faster when watching a show that's currently recording — playback was pacing itself as if it were a real live TV signal, even though it's actually reading bytes already sitting on disk.
@@ -18,16 +26,17 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 - Watch Now's poster tiles now have a subtle border, so each show reads as its own card instead of blending into its neighbors and the background.
 - The web guide's tuner popup now shows the real channel and show name when a tuner is being used by something outside this app (another device on your network, or someone watching via the HDHomeRun's own app) instead of a generic "Live stream" placeholder.
 - The "X/Y tuners — FULL" info is now shown directly on each tuner's name in the web guide instead of tucked inside a dropdown that was easy to miss on mobile — click a tuner's name to switch to it, click again to see tuner details.
+- Fixed: a rerun of a series airing on a different channel than the one actually recording could also show up marked "recording" in Watch Now and the web guide.
 - Fixed: the new "in use by another tuner" indicator could incorrectly flag your own live Watch Now session as if it belonged to someone else.
 - Fixed: a recording's pulsing status indicator could fail to start if a show began recording while its row was already on screen.
 - Fixed: Watch Now could show a plain single "Watch" button instead of the "Watch Now!"/"Watch from Beginning" pair for a show that was actually recording, even though its ring correctly showed red/pulsing — a mismatch between which show the ring and the buttons were each looking up.
 - Fixed: a "Recording Complete" Discord notification could be missing its episode number and summary, even when an earlier notification for the same recording (e.g. a tuner conflict warning) showed them correctly — the app was looking up "what's airing now" instead of remembering what actually recorded.
-- Fixed: the About panel's "hide changelog entries newer than this build" filter stopped working when this changelog was rewritten in end-user-facing format earlier today — it was looking for the old technical header style and silently matched nothing, so nothing ever got filtered. Updated it to read the new format instead.
+- Fixed: the About panel's "hide changelog entries newer than this build" filter stopped working when this changelog was rewritten in end-user-facing format — it was looking for the old technical header style and silently matched nothing, so nothing ever got filtered. Updated it to read the new format instead.
 
 **Info**
 - Reduced background work from this update's new tuner-status tracking and Watch Now's already-recorded lookup, so neither runs more than needed.
 - If Add Show's Record button ever silently does nothing when clicked (no confirmation, no error), the app log now records why — previously this left no trace to diagnose after the fact.
-- Added automated test coverage for the tuner-discovery and recording-launch code (`HDHRManager`/`RecordingManager`) — no user-visible change; measured line coverage went from 1.81% to 26.74% and 7.04% to 89.01% respectively.
+- Added automated test coverage for the tuner-discovery and recording-launch code (`HDHRManager`/`RecordingManager`) and the new quick-record path (`AppState.quickRecord`) — no user-visible change.
 - Fixed a gap in the visual-regression test harness where Watch Now's scrolling list rendered as a blank image regardless of content, silently proving nothing — no user-visible change; the harness now captures that view via a real off-screen window instead of the renderer that couldn't handle scrolling content.
 
 ## v2.0.3 — 2026-08-11

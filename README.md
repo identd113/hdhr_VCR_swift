@@ -107,7 +107,7 @@ You already paid for an HDHomeRun tuner, so you  shouldn't have to pay again jus
 ## What's New
 
 See **[RELEASES.md](RELEASES.md)** for what changed in the current release and every version
-before it, or the → [full day-by-day changelog](Sources/hdhr_VCR/CHANGELOG.md) for implementation-level detail.
+before it, or the → [full changelog](Sources/hdhr_VCR/CHANGELOG.md) for the complete list.
 
 Everything else (LAN web UI, Discord notifications, per-show bonus time, watching a recording in
 progress without a second tuner, etc.) is covered above under [Features](#features).

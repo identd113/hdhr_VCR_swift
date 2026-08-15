@@ -13,8 +13,9 @@ import CryptoKit
 // match for anyone except the developer's own already-configured machine, so nobody who actually
 // tipped could ever unlock their own copy; fixed by going back to a single value shared by every
 // build, just hashed instead of plaintext). This is still honor-system, not real cryptographic
-// protection — anyone determined enough could brute-force the ~91 possible sums against the hash
-// in under a second. See docs/DonationNagView.md.
+// protection against someone willing to read the validation logic below and do the arithmetic —
+// see docs/DonationNagView.md, and tools/donation_target_notes.md (gitignored) for the private
+// specifics of exactly how weak and why that's an accepted tradeoff here.
 struct DonationNagView: View {
 
     @EnvironmentObject var state: AppState
