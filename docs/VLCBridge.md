@@ -116,6 +116,7 @@ Every significant controller event is logged to `hdhrVCRplus.log`:
 
 - **VLC 4.x stats struct** — `VLCStats` mirrors the VLC 3.x `libvlc_media_stats_t` field layout. VLC 4 reorganised the struct; on VLC 4 the corruption/lost-frame counters will read garbage. The version check at init logs a WARNING if major ≥ 4, and the stats return-value check logs a WARNING if the call returns non-1. Both degrade gracefully: auto catch-up stops working but playback is unaffected.
 - **`set_rate` on live streams** — `libvlc_media_player_set_rate` may be silently ignored for non-seekable streams on some VLC versions. After setting rate, `libvlc_media_player_get_rate` is called to verify; a mismatch logs a WARNING. If ignored, the buffer never grows but playback continues normally at 1.0x.
+- **Recording-relay stop/reconnect deadlock (mitigated, not proven via forced reproduction)** — see "Channel Switching (play)" above for the full mechanism. Fixed 2026-08-15 by moving `libvlc_media_player_stop`/`_release` off the MainActor onto `libvlcQueue`. The fix is reasoned from code (the blocking call plus the relay's `@MainActor` poll-hop are a textbook mutual-deadlock shape) and passes the full test suite, but the original failure was never deliberately forced to reproduce — it was caught once, live, via a crash report. If an app-wide hang during recording playback ever recurs, re-open `ISSUES.md`/`issues_resolved.md` rather than assuming this fix is airtight.
 
 ---
 
@@ -135,29 +136,46 @@ _mpSetNSO?(mp, Unmanaged.passUnretained(view).toOpaque())
 
 ## Channel Switching (play)
 
+`play(url:)` keeps a synchronous signature — every call site is unchanged — but as of 2026-08-15 its actual libvlc work is split into a synchronous prefix (runs immediately, on the MainActor) and a deferred tail (runs on `libvlcQueue`, a private serial background queue, then commits back via a `Task { @MainActor in ... }`):
+
 ```swift
 func play(url: String) {
+    // synchronous prefix — MainActor, unchanged in spirit from before
     stopStatsTimer()
     hasError = false; isPlaying = false
     audioTracks = []; spuTracks = []; tracksFetched = false
-    _mpStop?(mp)
-    if let old = currentMedia { _mediaRelease?(old); currentMedia = nil }
-    guard let media = url.withCString({ _mediaNL?(inst, $0) }) else { return }
-    for opt in ["--network-caching=2000", "--drop-late-frames", "--avcodec-hurry-up", "--no-audio-time-stretch"] {
-        opt.withCString { _mediaAddOpt?(media, $0) }
+    currentURL = url                 // updates immediately — beginRecordingSeek depends on this
+    let oldMedia = currentMedia; currentMedia = nil   // claimed now, so a second play() can't double-release it
+
+    // deferred tail — libvlcQueue (serial, off-main)
+    libvlcQueue.async {
+        _mpStop?(mp)                                          // the call that used to block the MainActor
+        if let oldMedia { _mediaRelease?(oldMedia) }
+        guard let media = url.withCString({ _mediaNL?(inst, $0) }) else { return }
+        for opt in ["--network-caching=...", "--drop-late-frames", "--avcodec-hurry-up", "--no-audio-time-stretch"] {
+            opt.withCString { _mediaAddOpt?(media, $0) }
+        }
+        _mpSetMedia?(mp, media)
+        _ = _mpPlay?(mp)
+        _ = _mpSetRate?(mp, minRate)   // verified immediately after; logs WARNING if ignored
+        Task { @MainActor in
+            guard currentURL == url else { _mediaRelease?(media); return }   // superseded — don't leak it
+            currentMedia = media; estimatedLagSec = 0; currentRate = minRate
+            startStatsTimer()
+        }
     }
-    currentURL = url; currentMedia = media
-    estimatedLagSec = 0; currentRate = minRate
-    _mpSetMedia?(mp, media)
-    _ = _mpPlay?(mp)
-    _ = _mpSetRate?(mp, minRate)   // verified immediately after; logs WARNING if ignored
-    startStatsTimer()
 }
 ```
 
-The sequence stop → cancel timer → release old media → add options → set on player → play → set rate → start timer is the correct libvlc pattern. `libvlc_media_add_option` must be called before `libvlc_media_player_set_media` — options set after that call are silently ignored. The `currentMedia` reference is retained because libvlc does not retain the media object after `libvlc_media_player_set_media`.
+**Why the split — `libvlc_media_player_stop` is a blocking call.** `_mpStop?(mp)` is `libvlc_media_player_stop`, which is *synchronous* (superseded by the async `libvlc_media_player_stop_async` in VLC 4+): it blocks the calling thread until VLC's internal input thread fully unwinds. Calling it on the MainActor was the root cause of a real, caught-live deadlock (`issues_resolved.md`, 2026-08-15, ~11 minute app-wide hang): `WebServer.pumpGrowingFile` (the recording-relay's data pump — see `docs/WebServer.md`) needs a `Task { @MainActor in ... }` hop once it catches up to the live edge, just to check `show_recording` before it can send the next chunk. If `_mpStop` ran on the MainActor at the exact instant VLC's own input thread was blocked reading that next chunk, neither side could ever unblock the other. Routing `_mpStop`/`_mpRelease` through `libvlcQueue` instead — shared by `play()`, `stop()`, `releasePlayer()`, and `stopAndClearState()` — keeps the MainActor free to service that exact poll-hop (and anything else) while VLC's teardown runs, breaking the cycle. Because `libvlcQueue` is serial (not concurrent), two overlapping calls for the same player object still execute their native work in strict submission order, matching the old blocking code's effective serialization for free.
 
-`audioTracks`/`spuTracks`/`tracksFetched` are reset here too (not just in `stopAndClearState()`/`releasePlayer()`) — `tickController` only calls `fetchTracks()` when `!tracksFetched`, so without this reset an ordinary channel switch would leave the *previous* channel's track lists showing in the toolbar pickers, and selecting one could call `setAudioTrack`/`setSpuTrack` with an id that doesn't exist on the new stream.
+**Correctness details worth knowing if you touch this again:**
+- `currentURL` is still set synchronously (not deferred to the tail) — `AppState.seekRecording` calls `beginRecordingSeek` immediately after `play()` returns, and that call's staleness guard depends on `currentURL` already reflecting the just-requested URL.
+- `currentMedia` is claimed (captured old value, then nil'd) synchronously, not in the tail — otherwise a second `play()`/`stop()`/`releasePlayer()` landing before the first call's tail runs could also capture the same old pointer and double-release it.
+- The tail's final MainActor commit re-checks `currentURL == url` before writing `currentMedia`/starting the timer — if a newer `play()` call has since changed it, this call was superseded; it releases the media object it just created instead of leaking it, and does not resurrect stale state.
+- The sequence inside the tail — stop → release old media → add options → set on player → play → set rate — is still the correct libvlc pattern; `libvlc_media_add_option` still must be called before `libvlc_media_player_set_media`.
+
+`audioTracks`/`spuTracks`/`tracksFetched` are reset in the synchronous prefix (not just in `stopAndClearState()`/`releasePlayer()`) — `tickController` only calls `fetchTracks()` when `!tracksFetched`, so without this reset an ordinary channel switch would leave the *previous* channel's track lists showing in the toolbar pickers, and selecting one could call `setAudioTrack`/`setSpuTrack` with an id that doesn't exist on the new stream.
 
 ---
 
@@ -206,9 +224,9 @@ static func locateApp() -> URL?                                // resolves insta
 func beginRecordingSeek(showId: String, recordingStart: Date, seekBaseSeconds: Double)  // arms recording-relay seek state; no-ops if currentURL no longer matches showId (stale deferred call)
 func clearRecordingSeek()                                     // clears recording-relay seek state; called by play(url:) for any non-relay URL
 func setDrawable(_ view: NSView)                              // must be called before first play()
-func play(url: String)                                        // stop + switch to new URL; resets rate controller, hasError, isPlaying
-func stop()                                                   // soft/resumable stop: stop + release media; cancels stats timer; clears hasError, isPlaying — deliberately leaves drawableView attached so a later play() renders immediately (used by the remote-Stop key)
-func releasePlayer()                                          // full teardown; releases mediaPlayer; clears hasError, isPlaying, drawableView — window close only; ensurePlayer() must run before the next play()
+func play(url: String)                                        // stop + switch to new URL; resets rate controller, hasError, isPlaying — synchronous call, but the actual libvlc stop/reconnect work runs on libvlcQueue (off the MainActor); see "Channel Switching (play)"
+func stop()                                                   // soft/resumable stop: stop + release media; cancels stats timer; clears hasError, isPlaying — deliberately leaves drawableView attached so a later play() renders immediately (used by the remote-Stop key); native stop work deferred to libvlcQueue
+func releasePlayer()                                          // full teardown; releases mediaPlayer; clears hasError, isPlaying, drawableView — window close only; ensurePlayer() must run before the next play(); native stop/release work deferred to libvlcQueue
 func catchUpToLive()                                          // discard buffer, reconnect at live edge
 func videoNativeSize() -> CGSize?                             // pixel dims from libvlc_video_get_size; nil until decoding
 func setVolume(_ v: Int)                                      // 0–100

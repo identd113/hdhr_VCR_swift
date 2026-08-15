@@ -293,6 +293,27 @@ final class VLCBridge: ObservableObject {
 
     // MARK: - Playback
 
+    // Every call that used to invoke libvlc_media_player_stop (`_mpStop`) directly on the
+    // MainActor now routes through this one serial background queue instead. libvlc_media_player_
+    // stop is a *synchronous, blocking* call (superseded by the async libvlc_media_player_stop_
+    // async in VLC 4+) — it blocks the calling thread until VLC's internal input thread fully
+    // unwinds. For the recording-relay path, that input thread can itself be blocked reading the
+    // next chunk from WebServer.pumpGrowingFile, which — once caught up to the live edge — needs a
+    // `Task { @MainActor in ... }` hop to check show_recording before it can send more bytes. Call
+    // _mpStop synchronously on the MainActor at exactly the wrong instant and neither side can ever
+    // unblock the other: the MainActor is frozen waiting for VLC's input thread to close, and VLC's
+    // input thread is waiting for bytes gated behind that same frozen MainActor. Caught live via a
+    // crash report — an ~11 minute app-wide hang (issues_resolved.md, 2026-08-15).
+    //
+    // Routing every _mpStop/_mpRelease call through this one serial (not concurrent) queue keeps
+    // the MainActor free to service other work — including the relay's own poll-hop — while VLC's
+    // teardown runs, and preserves the same effective ordering the old blocking calls gave for
+    // free: two overlapping play()/stop()/releasePlayer() calls for the same player still execute
+    // their native teardown/reconnect work strictly in call order, since a serial DispatchQueue is
+    // FIFO. libvlc's own public API is documented safe to call from any thread — only this Swift
+    // wrapper's convenience of doing everything on the MainActor was ever a hard requirement.
+    private static let libvlcQueue = DispatchQueue(label: "hdhrVCRplus.vlc.io", qos: .userInitiated)
+
     /// Switch to a new stream URL (or start playback if idle).
     /// Stops current media, sets new media on the same player, resumes play.
     /// Applies a network cache (2s for a live tuner stream, 300ms for the /api/watch-recording
@@ -320,7 +341,7 @@ final class VLCBridge: ObservableObject {
             pendingURL = url
             return
         }
-        guard let inst = vlcInstance, let mp = mediaPlayer else {
+        guard let vlcInst = vlcInstance, let playerMp = mediaPlayer else {
             glog("[VLC] play deferred — vlcInstance=\(vlcInstance != nil ? "ok" : "nil") mediaPlayer=\(mediaPlayer != nil ? "ok" : "nil"), queuing: \(url)", level: .warning)
             pendingURL = url
             return
@@ -337,12 +358,33 @@ final class VLCBridge: ObservableObject {
         audioTracks    = []
         spuTracks      = []
         tracksFetched  = false
-        _mpStop?(mp)
-        if let old = currentMedia { _mediaRelease?(old); currentMedia = nil }
-        guard let media = url.withCString({ _mediaNL?(inst, $0) }) else {
-            glog("[VLC] ERROR: libvlc_media_new_location returned nil for url=\(url)", level: .error)
-            return
-        }
+        // currentURL updates synchronously (matching the old code's timing) — beginRecordingSeek
+        // is called by AppState.seekRecording immediately after this returns and depends on
+        // currentURL already reflecting this exact request to pass its staleness guard; it can't
+        // wait for the background reconnect below to actually finish.
+        currentURL = url
+        // Claimed synchronously, same moment the old blocking _mpStop?(mp) used to run — so a
+        // second play()/stop()/releasePlayer() landing before this call's background work finishes
+        // can't also capture and release the same media pointer (a double-free otherwise).
+        let oldMediaCaptured = currentMedia
+        currentMedia = nil
+
+        // C function pointers are Sendable (@convention(c), no captured state); OpaquePointers
+        // aren't, but these are stable handles this instance already owns exclusively for the
+        // duration of this call — safe to hand to the background queue (same reasoning as
+        // init()'s Task.detached above).
+        let stopFn         = _mpStop
+        let mediaReleaseFn = _mediaRelease
+        let mediaNLFn      = _mediaNL
+        let mediaAddOptFn  = _mediaAddOpt
+        let setMediaFn     = _mpSetMedia
+        let playFn         = _mpPlay
+        let setRateFn      = _mpSetRate
+        let getRateFn      = _mpGetRate
+        nonisolated(unsafe) let mp       = playerMp
+        nonisolated(unsafe) let inst     = vlcInst
+        nonisolated(unsafe) let oldMedia = oldMediaCaptured
+        let targetMinRate = minRate
         // --no-audio-time-stretch prevents VLC from crashing audio init on MPEG-2 streams
         // where the sample rate is reported as 0 before the first audio frame arrives.
         // network-caching is tuned per source: a real tuner stream needs 2000ms to smooth over
@@ -356,28 +398,45 @@ final class VLCBridge: ObservableObject {
         // paying for 1.7s of buffering the relay path doesn't need — this is what lets Watch Now
         // catch up to the live edge (and start playback) much faster than a live tuner stream.
         let networkCachingMs = isRecordingRelay ? 300 : 2000
-        for opt in ["--network-caching=\(networkCachingMs)", "--drop-late-frames", "--avcodec-hurry-up", "--no-audio-time-stretch"] {
-            opt.withCString { _mediaAddOpt?(media, $0) }
-        }
-        currentURL        = url
-        currentMedia      = media
-        estimatedLagSec   = 0.0
-        currentRate       = minRate
-        lastCorrupted     = 0
-        _mpSetMedia?(mp, media)
-        let rc = _mpPlay?(mp) ?? -1
-        if rc != 0 { glog("[VLC] WARNING: libvlc_media_player_play returned \(rc)", level: .warning) }
-        if minRate < 1.0 {
-            _ = _mpSetRate?(mp, minRate)
-            // Verify rate was accepted — live streams may ignore it on some VLC versions.
-            let actual = _mpGetRate?(mp) ?? 1.0
-            if abs(actual - minRate) > 0.01 {
-                glog("[VLC] WARNING: set_rate(\(String(format: "%.2f", minRate))) ignored — actual rate is \(String(format: "%.2f", actual)); buffer will not grow. Playback unaffected.", level: .warning)
-            } else {
-                glog("[VLC] rate set to \(String(format: "%.2f", minRate)) (fill phase)")
+
+        Self.libvlcQueue.async {
+            stopFn?(mp)
+            if let oldMedia { mediaReleaseFn?(oldMedia) }
+            guard let media = url.withCString({ mediaNLFn?(inst, $0) }) else {
+                glog("[VLC] ERROR: libvlc_media_new_location returned nil for url=\(url)", level: .error)
+                return
+            }
+            for opt in ["--network-caching=\(networkCachingMs)", "--drop-late-frames", "--avcodec-hurry-up", "--no-audio-time-stretch"] {
+                opt.withCString { mediaAddOptFn?(media, $0) }
+            }
+            setMediaFn?(mp, media)
+            let rc = playFn?(mp) ?? -1
+            if rc != 0 { glog("[VLC] WARNING: libvlc_media_player_play returned \(rc)", level: .warning) }
+            if targetMinRate < 1.0 {
+                _ = setRateFn?(mp, targetMinRate)
+                // Verify rate was accepted — live streams may ignore it on some VLC versions.
+                let actual = getRateFn?(mp) ?? 1.0
+                if abs(actual - targetMinRate) > 0.01 {
+                    glog("[VLC] WARNING: set_rate(\(String(format: "%.2f", targetMinRate))) ignored — actual rate is \(String(format: "%.2f", actual)); buffer will not grow. Playback unaffected.", level: .warning)
+                } else {
+                    glog("[VLC] rate set to \(String(format: "%.2f", targetMinRate)) (fill phase)")
+                }
+            }
+            nonisolated(unsafe) let mediaForCommit = media
+            Task { @MainActor [weak self] in
+                guard let self, self.currentURL == url else {
+                    // Superseded by a newer play() call before this one's reconnect landed —
+                    // don't leak the native media object we just created for it.
+                    mediaReleaseFn?(mediaForCommit)
+                    return
+                }
+                self.currentMedia    = mediaForCommit
+                self.estimatedLagSec = 0.0
+                self.currentRate     = targetMinRate
+                self.lastCorrupted   = 0
+                self.startStatsTimer()
             }
         }
-        startStatsTimer()
     }
 
     func stop() {
@@ -394,12 +453,20 @@ final class VLCBridge: ObservableObject {
     func releasePlayer() {
         glog("[VLC] releasePlayer — stopping and releasing mediaPlayer, currentURL=\(currentURL ?? "none")")
         stopAndClearState()
-        guard let mp = mediaPlayer else { return }
-        _mpRelease?(mp)
-        mediaPlayer = nil
+        guard let oldMp = mediaPlayer else { return }
+        // Claimed synchronously so a subsequent ensurePlayer() (e.g. a quick reopen) creates a
+        // genuinely fresh player instead of finding this now-being-torn-down one still in place.
+        mediaPlayer      = nil
         retainedDrawable = nil
-        drawableView = nil
-        glog("[VLC] releasePlayer — mediaPlayer released, tuner freed")
+        drawableView     = nil
+        let releaseFn = _mpRelease
+        nonisolated(unsafe) let mp = oldMp
+        // Enqueued after stopAndClearState's own libvlcQueue work below (same serial queue — FIFO
+        // guarantees this mp's stop finishes before its release runs).
+        Self.libvlcQueue.async {
+            releaseFn?(mp)
+            glog("[VLC] releasePlayer — mediaPlayer released, tuner freed")
+        }
     }
 
     /// Shared teardown: stops the stats timer, resets state flags, stops media, releases current media object.
@@ -417,9 +484,17 @@ final class VLCBridge: ObservableObject {
         spuTracks      = []
         tracksFetched  = false
         videoPixelSize = nil
-        guard let mp = mediaPlayer else { return }
-        _mpStop?(mp)
-        if let old = currentMedia { _mediaRelease?(old); currentMedia = nil }
+        guard let playerMp = mediaPlayer else { return }
+        let oldMediaCaptured = currentMedia
+        currentMedia = nil
+        let stopFn         = _mpStop
+        let mediaReleaseFn = _mediaRelease
+        nonisolated(unsafe) let mp       = playerMp
+        nonisolated(unsafe) let oldMedia = oldMediaCaptured
+        Self.libvlcQueue.async {
+            stopFn?(mp)
+            if let oldMedia { mediaReleaseFn?(oldMedia) }
+        }
     }
 
     /// Create a fresh media player from the already-loaded vlcInstance.

@@ -238,7 +238,7 @@ This cleanup list has a regression test (`Tests/hdhr_VCRTests/AppStateDeleteShow
 
 ## Quit (`quit()`)
 
-All three exit branches call `VLCBridge.shared.releasePlayer()` before terminating so the in-app player releases its HDHR tuner immediately:
+All three exit branches call `VLCBridge.shared.releasePlayer()` before terminating so the in-app player starts releasing its HDHR tuner immediately. As of 2026-08-15, `releasePlayer()`'s actual libvlc stop/release calls run on a background queue (`docs/VLCBridge.md`'s `libvlcQueue` — moved off the MainActor to avoid a real deadlock risk), so `NSApplication.terminate(nil)` on the very next line can fire before that native teardown has actually completed. This is an accepted tradeoff, not a bug: process exit force-closes the underlying socket either way, and waiting here would reintroduce the exact blocking-on-libvlc risk this change exists to avoid — quitting while stuck would be worse than quitting slightly before libvlc's own handshake finishes.
 
 - **No recordings** — `releasePlayer()` → `recordingManager.stopAll()` → `NSApplication.terminate(nil)`
 - **Keep Recording & Quit** — `releasePlayer()` → `NSApplication.terminate(nil)` (curl orphaned to launchd; reattach on relaunch via `reattachRecordings()`)
