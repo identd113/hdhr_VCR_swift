@@ -499,7 +499,9 @@ Updated `ManagedGuideMatcherTests.swift`'s two now-invalid "matches any device" 
 
 **Resolution**: Split `seriesKeys`/`seriesTitles` by type — `seriesAll` keeps the original device-only keys; `seriesChannel` now gets its own `seriesChannelKeys`/`seriesChannelTitles`, keyed `"deviceId:channel:SeriesID"`/`"deviceId:channel:title"`. `owner(for:)` checks the channel-scoped tier first, then falls through to the device-only tier — so `seriesChannel`'s matching scope now exactly mirrors its scheduling scope, and `seriesAll` is unaffected. Added `seriesChannel_bySeriesID_doesNotMatchDifferentChannelSameDevice`/`_byTitle_doesNotMatchDifferentChannelSameDevice` (the exact SNL/ROAR case) to `ManagedGuideMatcherTests` (15 tests, all passing); full suite (264 tests) passes. Updated `CLAUDE.md`'s "Web guide managed markers are tuner-scoped" invariant, `docs/Models.md`'s `ManagedGuideMatcher` section, and `docs/WebServer.md`'s matching-tiers reference to match.
 
-**Resolving commit**: pending (uncommitted at time of writing)
+Post-deploy live verification (real SNL/ROAR guide data) turned up a second, independent copy of the same bug: `WebServer.buildNowJSON` (`/api/now.json`'s `isScheduled` field) had never actually used `ManagedGuideMatcher` — it maintained its own parallel lookup (`AppState.managedShowBySeriesID`/`managedShowByTitle`, device-scoped only, same gap) despite `docs/WebServer.md` claiming the two paths agreed. Fixed by routing `buildNowJSON` through the same `ManagedGuideMatcher` the guide grid uses, and deleted `managedShowBySeriesID`/`managedShowByTitle` (and their computation in `rebuildMenuEntries()`) once that was their only remaining reader — confirmed via grep before deleting.
+
+**Resolving commit**: `e752ad6`
 
 ---
 
