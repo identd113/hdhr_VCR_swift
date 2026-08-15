@@ -73,6 +73,29 @@ struct WatchNowView: View {
         }
     }
 
+    // Recording sits above Favorites — a show already recording is a stronger claim on the
+    // user's attention than a merely-favorited channel. Same visual language as favTopBorder,
+    // just in the ring badge's own recording red so it reads as the same "recording" cue as the
+    // dot on each row below it.
+    private var recTopBorder: some View {
+        let color = GuideRingState.recording.ringColor!
+        return VStack(spacing: 0) {
+            Rectangle().fill(color).frame(height: 2)
+            HStack(spacing: 5) {
+                Image(systemName: "record.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(color)
+                Text("Recording")
+                    .font(.caption.bold())
+                    .foregroundStyle(color)
+                Spacer()
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 5)
+            .background(color.opacity(0.16))
+        }
+    }
+
     @ViewBuilder
     private func channelRow(_ pair: (channel: LineupEntry, entry: GuideEntry), device: HDHRDevice, ringInputs: RingStateInputs) -> some View {
         let (ch, entry) = pair
@@ -186,7 +209,6 @@ struct WatchNowView: View {
                 .accessibilityHidden(true)
             Text("Watch Now")
                 .font(.headline)
-            Spacer()
             if state.devices.count > 1 {
                 Picker("Tuner", selection: $selectedDeviceId) {
                     ForEach(state.devices) { d in
@@ -196,6 +218,7 @@ struct WatchNowView: View {
                 .pickerStyle(.segmented)
                 .fixedSize()
             }
+            Spacer()
             Button { now = Date() } label: {
                 Image(systemName: "arrow.clockwise")
             }
@@ -223,12 +246,27 @@ struct WatchNowView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let device = selectedDevice {
-            let favs   = channels.filter { $0.channel.isFavorite }
-            let others = channels.filter { !$0.channel.isFavorite }
             let ringInputs = ringStateInputs(for: device)
+            // Recording sits above Favorites — pulled out first so a channel that's both
+            // recording and favorited doesn't appear twice.
+            let recording = channels.filter { guideRingState(for: $0.entry, device: device, inputs: ringInputs) == .recording }
+            let recIds    = Set(recording.map(\.channel.id))
+            let favs      = channels.filter { !recIds.contains($0.channel.id) && $0.channel.isFavorite }
+            let others    = channels.filter { !recIds.contains($0.channel.id) && !$0.channel.isFavorite }
 
+            // LazyVStack, not VStack — a plain VStack forces SwiftUI to lay out every row (poster,
+            // buttons, ring badge) up front for the whole channel list before the window can even
+            // become key (macOS's _selectFirstKeyView walks the full view graph to find the first
+            // focusable control), which measured as several seconds of layout work with a few dozen
+            // on-air channels. LazyVStack defers off-screen rows so only what's visible gets built.
             ScrollView {
-                VStack(spacing: 0) {
+                LazyVStack(spacing: 0) {
+                    if !recording.isEmpty {
+                        recTopBorder
+                        ForEach(recording, id: \.channel.id) { pair in
+                            channelRow(pair, device: device, ringInputs: ringInputs)
+                        }
+                    }
                     if !favs.isEmpty {
                         favTopBorder
                         ForEach(favs, id: \.channel.id) { pair in
@@ -252,6 +290,7 @@ struct WatchNowView: View {
         let skipEnabled: Bool
         let recordedTagsByShow: [String: Set<String>]
         let hwOtherChannels: Set<String>
+        let recChannels: Set<String>
     }
 
     private func ringStateInputs(for device: HDHRDevice) -> RingStateInputs {
@@ -261,15 +300,29 @@ struct WatchNowView: View {
         // Backed by recordedTagsRefreshLoop() (off the render path), not scanned here — see
         // recordedTagsCache's doc comment.
         let recordedTagsByShow = recordedTagsCache
+        // Channel-scoped, not show-scoped — a show's own show_recording flag doesn't say *which*
+        // channel is actually being captured, and ManagedGuideMatcher.owner(for:) matches any
+        // block sharing the show's SeriesID/title (by design, for seriesAll fan-out across
+        // channels — see WebServer.swift's owner(for:) comment), so a rerun of the same series
+        // airing simultaneously on another channel must not also read as recording. Mirrors
+        // WebServer.swift's recChannelsByDevice/pendingRecChannelsByDevice exactly.
+        var recChannels = Set(state.recordingShows.filter { $0.hdhr_record == device.DeviceID }.map { $0.show_channel })
+        let nowD = Date()
+        let pendingRec = activeMgd.filter {
+            !$0.show_recording && $0.hdhr_record == device.DeviceID &&
+            ($0.show_next ?? .distantFuture) <= nowD && ($0.show_end ?? .distantPast) > nowD
+        }
+        recChannels.formUnion(pendingRec.map { $0.show_channel })
         // Channels a hardware tuner is locked to on this device but this app didn't initiate —
         // same "app expects 1, hw shows 2" scenario the web guide's .g-st-inuse flags. Excludes
         // this instance's own in-app live Watch channel (state.vlcLiveChannel) too — otherwise the
         // very row a user clicked Watch on would immediately flag itself as someone else's tuner.
         let hwChannels = Set((state.deviceTunerOccupancy[device.DeviceID] ?? []).compactMap { $0.VctNumber })
-        var ours = Set(state.recordingShows.filter { $0.hdhr_record == device.DeviceID }.map { $0.show_channel })
+        var ours = recChannels
         if let liveCh = state.vlcLiveChannel(for: device.DeviceID) { ours.insert(liveCh) }
         return RingStateInputs(guideMatcher: guideMatcher, skipEnabled: skipEnabled,
-                               recordedTagsByShow: recordedTagsByShow, hwOtherChannels: hwChannels.subtracting(ours))
+                               recordedTagsByShow: recordedTagsByShow, hwOtherChannels: hwChannels.subtracting(ours),
+                               recChannels: recChannels)
     }
 
     // Mirrors WebServer.swift's per-block precedence computation (buildGuideGridHTML) exactly,
@@ -278,7 +331,7 @@ struct WatchNowView: View {
     private func guideRingState(for entry: GuideEntry, device: HDHRDevice, inputs: RingStateInputs) -> GuideRingState {
         let owner       = inputs.guideMatcher.owner(for: entry)
         let isManaged   = owner != nil
-        let isRecording = owner?.show_recording == true
+        let isRecording = inputs.recChannels.contains(entry.channelNum)
         let willSkip: Bool = {
             guard inputs.skipEnabled, !isRecording, let owner, !owner.show_ignore_duplicate_once,
                   let ep = entry.EpisodeNumber,
@@ -340,9 +393,11 @@ struct WatchNowRow: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        // Matches the web Guide's .g-row[data-fav="1"] row wash — favorited rows are
-        // highlighted throughout, not just under the "★ Favorites" section divider.
-        .background(channel.isFavorite ? favAmber.opacity(0.16) : Color.clear)
+        // Tile fill = genre color, always — the poster art covers the same color drawn behind it
+        // in posterThumb(), so this is the tile-sized area where genre color actually reads.
+        // Favorite status gets its own indicator (the stripe on the poster) instead of competing
+        // for this background, unlike the web Guide's .g-row[data-fav="1"] wash this replaced.
+        .background(guideEntryColor(for: entry, onAir: true).opacity(0.16))
         .alert("All Tuners Busy", isPresented: $showTunerFullAlert) {
             Button("OK", role: .cancel) { }
         } message: {
@@ -354,12 +409,12 @@ struct WatchNowRow: View {
     @ViewBuilder
     private func posterThumb() -> some View {
         ZStack {
-            guideEntryColor(for: entry, onAir: true).opacity(0.55)
             if let img = posterImage {
                 Image(nsImage: img)
                     .resizable()
                     .scaledToFill()
             } else {
+                guideEntryColor(for: entry, onAir: true).opacity(0.55)
                 Image(systemName: "tv")
                     .font(.title2)
                     .foregroundStyle(.white.opacity(0.4))
@@ -368,6 +423,17 @@ struct WatchNowRow: View {
         .containerRelativeFrame(.horizontal) { w, _ in min(w * 0.34, 220) }
         .aspectRatio(96.0/68.0, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 6))
+        // Favorite indicator: an opaque bar sitting on top of the poster art (not a translucent
+        // wash over it, which would desaturate the art) — genre color now lives on the tile
+        // background instead (see the row's own .background above), so this stripe is free to be
+        // favAmber-only rather than competing with a genre cue for the same element.
+        .overlay(alignment: .leading) {
+            if channel.isFavorite {
+                favAmber
+                    .frame(width: 5)
+                    .frame(maxHeight: .infinity)
+            }
+        }
         // Quiet card separator so tiles read as distinct cards even with no status ring — applied
         // *before* guideRingBadge so a present ring (thicker, saturated stroke) paints on top and
         // stays the dominant edge; this border only reads on its own when ringState == .none.
@@ -436,14 +502,33 @@ struct WatchNowRow: View {
         }
     }
 
+    // One button per row, not packed into an HStack — at the poster-thumb's natural width the
+    // recording case's two long-labeled buttons ("Watch Now!" + "Watch from Beginning") plus
+    // VLC/Edit crowded together and truncated ("Wa…"/"Wat…") even split two-per-row. Each button
+    // gets its own row instead.
     @ViewBuilder
     private func actionRow(managed: Show?) -> some View {
-        HStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: 6) {
+            watchButtons(managed: managed)
+            secondaryButtons(managed: managed)
+        }
+    }
+
+    @ViewBuilder
+    private func watchButtons(managed: Show?) -> some View {
+        Group {
             if VLCBridge.shared.isAvailable {
                 // A currently-recording show is already on disk — offer beginning-vs-live instead
                 // of the plain live-tuner Watch button, which would otherwise open a second,
                 // redundant tuner connection for a channel this app is already recording.
-                if let show = managed, show.show_recording {
+                // show.show_channel == channel.GuideNumber matters here: `managed` comes from
+                // ManagedGuideMatcher.owner(for:), which matches any block sharing the show's
+                // SeriesID/title (by design, for seriesAll fan-out across channels) — so without
+                // this check, a rerun of the same series airing simultaneously on a *different*
+                // channel would also offer these relay buttons and hand back the wrong channel's
+                // (the actually-recording one's) file. See guideRingState's isRecording for the
+                // same fix applied to the ring badge.
+                if let show = managed, show.show_recording, show.show_channel == channel.GuideNumber {
                     // Two separate buttons, not a pull-down menu — matches the menu bar's own
                     // recording submenu, which offers these as two distinct items rather than
                     // one nested behind a "Watch" disclosure.
@@ -453,6 +538,11 @@ struct WatchNowRow: View {
                         Label("Watch Now!", systemImage: "play.tv.fill").font(.caption.bold())
                     }
                     .accessibilityLabel(watchLiveLabel(entry.Title))
+                    // Neither of these opens a fresh live tuner stream — both replay the
+                    // in-progress recording file from disk via the relay (docs/WebServer.md's
+                    // "Recording playback relay"), just at a different starting offset. The
+                    // tooltip says so explicitly since "Watch Now!" reads as "watch live" otherwise.
+                    .help("Play the in-progress recording of \(entry.Title) from disk, starting near live")
                     .buttonStyle(.borderedProminent)
                     .tint(watchNowBlue)
                     .controlSize(.small)
@@ -462,6 +552,7 @@ struct WatchNowRow: View {
                         Label("Watch from Beginning", systemImage: "backward.end.fill").font(.caption.bold())
                     }
                     .accessibilityLabel(watchFromBeginningLabel(entry.Title))
+                    .help("Play the in-progress recording of \(entry.Title) from disk, starting at the beginning")
                     .buttonStyle(.borderedProminent)
                     .tint(watchNowBlue)
                     .controlSize(.small)
@@ -473,11 +564,18 @@ struct WatchNowRow: View {
                         Label("Watch", systemImage: "play.tv.fill").font(.caption.bold())
                     }
                     .accessibilityLabel(watchInAppLabel(entry.Title))
+                    .help(watchInAppLabel(entry.Title))
                     .buttonStyle(.borderedProminent)
                     .tint(watchNowBlue)
                     .controlSize(.small)
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func secondaryButtons(managed: Show?) -> some View {
+        Group {
             if state.config.Watch_in_VLC {
                 Button {
                     state.watchInVLC(url: channel.URL ?? "", deviceId: device.DeviceID)
@@ -485,6 +583,7 @@ struct WatchNowRow: View {
                     Label("VLC", systemImage: "arrow.up.forward.app").font(.caption.bold())
                 }
                 .accessibilityLabel(watchInVLCLabel(entry.Title))
+                .help(watchInVLCLabel(entry.Title))
                 .buttonStyle(.borderedProminent)
                 .tint(watchNowOrange)
                 .controlSize(.small)
@@ -502,6 +601,7 @@ struct WatchNowRow: View {
                     Label("Edit", systemImage: "pencil").font(.caption.bold())
                 }
                 .accessibilityLabel("Edit \(entry.Title)")
+                .help("Edit \(entry.Title)")
                 .buttonStyle(.bordered)
                 .controlSize(.small)
             } else {
@@ -522,6 +622,7 @@ struct WatchNowRow: View {
                     Label("Record", systemImage: "record.circle").font(.caption.bold())
                 }
                 .accessibilityLabel("Record \(entry.Title)")
+                .help("Record \(entry.Title)")
                 .buttonStyle(.borderedProminent)
                 .tint(.red)
                 .controlSize(.small)
