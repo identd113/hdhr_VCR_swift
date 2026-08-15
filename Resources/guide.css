@@ -243,6 +243,14 @@ html.lm .g-hdr-btn-now:hover{border-color:#c03030!important;color:#fff!important
 .g-fav-sep{display:flex;border-bottom:1px solid var(--b0)}
 .g-fav-sep .g-ch{min-height:0;padding:3px 8px;background:color-mix(in srgb,var(--fav) 16%,var(--s1));border-right:1px solid var(--b1);color:var(--fav);font-size:.63rem;font-weight:700;letter-spacing:.07em}
 .g-fav-sep .g-tl{min-height:0;background:color-mix(in srgb,var(--fav) 13%,transparent)}
+/* Recording sits above Favorites — a channel already recording is a stronger claim on
+   attention than a merely-favorited one. Same shape as .g-fav-sep, in --vc-rec (the same
+   red as each row's own recording ring, guide.css ~line 269) instead of --fav. */
+.g-rec-sep{display:flex;border-bottom:1px solid var(--b0)}
+.g-rec-sep .g-ch{min-height:0;padding:3px 8px;background:color-mix(in srgb,var(--vc-rec) 16%,var(--s1));border-right:1px solid var(--b1);color:var(--vc-rec);font-size:.63rem;font-weight:700;letter-spacing:.07em}
+.g-rec-sep .g-tl{min-height:0;background:color-mix(in srgb,var(--vc-rec) 13%,transparent)}
+.g-row[data-rec="1"] .g-ch{background:color-mix(in srgb,var(--vc-rec) 16%,var(--s1))}
+.g-row[data-rec="1"] .g-tl{background:repeating-linear-gradient(90deg,color-mix(in srgb,var(--vc-rec) 13%,transparent),color-mix(in srgb,var(--vc-rec) 13%,transparent) calc(8.3333% - 1px),var(--b0) calc(8.3333% - 1px),var(--b0) 8.3333%)}
 .g-row[data-fav="1"] .g-ch{background:color-mix(in srgb,var(--fav) 16%,var(--s1))}
 .g-row[data-fav="1"] .g-tl{background:repeating-linear-gradient(90deg,color-mix(in srgb,var(--fav) 13%,transparent),color-mix(in srgb,var(--fav) 13%,transparent) calc(8.3333% - 1px),var(--b0) calc(8.3333% - 1px),var(--b0) 8.3333%)}
 .g-fav-btn{background:none;border:none;padding:0 2px;cursor:pointer;font-size:.85rem;line-height:1;color:var(--t5);flex-shrink:0;opacity:.5;transition:opacity .15s}

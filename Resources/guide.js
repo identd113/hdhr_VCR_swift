@@ -900,6 +900,14 @@ function setDev(id){
     });
     sep.style.display=hasFav?'':'none';
   });
+  // Same for the Recording section header, mirroring the favorites toggle above.
+  document.querySelectorAll('.g-rec-sep').forEach(function(sep){
+    var dev=sep.dataset.dev;
+    var hasRec=Array.from(_rows).some(function(r){
+      return r.style.display!=='none'&&r.dataset.rec==='1'&&r.dataset.dev===dev;
+    });
+    sep.style.display=hasRec?'':'none';
+  });
 }
 // First click on a tuner's name button switches the guide grid to that tuner (setDev);
 // a second click — the tuner is already selected — opens its hardware-occupancy popover

@@ -1367,12 +1367,20 @@ final class WebServer: @unchecked Sendable {
         var rowParts: [String] = []
 
         for device in state.devices {
+            // Recording outranks favorite — a channel already recording is a stronger claim on
+            // the user's attention than a merely-favorited one, so it sorts (and buckets, below)
+            // ahead of the ★ Favorites section rather than into it.
+            let recSet = (recChannelsByDevice[device.DeviceID] ?? [])
+                .union(pendingRecChannelsByDevice[device.DeviceID] ?? [])
             let sorted = (state.lineups[device.DeviceID] ?? [])
                 .sorted {
+                    let aRec = recSet.contains($0.GuideNumber), bRec = recSet.contains($1.GuideNumber)
+                    if aRec != bRec { return aRec }
                     if $0.isFavorite != $1.isFavorite { return $0.isFavorite }
                     return $0.GuideNumber.channelSortKey < $1.GuideNumber.channelSortKey
                 }
             var seenInDevice = Set<String>()
+            var recRows:   [String] = []
             var favRows:   [String] = []
             var otherRows: [String] = []
             for ch in sorted {
@@ -1552,10 +1560,19 @@ final class WebServer: @unchecked Sendable {
                 let favBtn  = ch.isFavorite
                     ? "<button class=\"g-fav-btn\" data-fav=\"1\" onclick=\"toggleFav(event,this)\" title=\"Remove from favorites\" aria-label=\"Remove from favorites\">★</button>"
                     : "<button class=\"g-fav-btn\" onclick=\"toggleFav(event,this)\" title=\"Add to favorites\" aria-label=\"Add to favorites\">☆</button>"
-                let rowHTML = "<div class=\"g-row\" data-dev=\"\(he(device.DeviceID))\" data-ch=\"\(he(ch.GuideNumber))\" data-gname=\"\(he(gnameAttr))\"\(favAttr)><div class=\"g-ch\">\(logoHTML)<div class=\"g-cl\"><span class=\"g-cn\">\(he(chLabel))\(sigHTML)</span><span class=\"g-cname\">\(he(ch.GuideName))</span></div>\(favBtn)</div><div class=\"g-tl\">\(blockParts.joined())</div></div>"
-                if ch.isFavorite { favRows.append(rowHTML) } else { otherRows.append(rowHTML) }
+                let recAttr = isRecCh ? " data-rec=\"1\"" : ""
+                let rowHTML = "<div class=\"g-row\" data-dev=\"\(he(device.DeviceID))\" data-ch=\"\(he(ch.GuideNumber))\" data-gname=\"\(he(gnameAttr))\"\(favAttr)\(recAttr)><div class=\"g-ch\">\(logoHTML)<div class=\"g-cl\"><span class=\"g-cn\">\(he(chLabel))\(sigHTML)</span><span class=\"g-cname\">\(he(ch.GuideName))</span></div>\(favBtn)</div><div class=\"g-tl\">\(blockParts.joined())</div></div>"
+                // Recording bucket takes priority — a channel that's both recording and favorited
+                // only appears once, up in the Recording section rather than duplicated below.
+                if isRecCh { recRows.append(rowHTML) }
+                else if ch.isFavorite { favRows.append(rowHTML) }
+                else { otherRows.append(rowHTML) }
             }
             let devId = he(device.DeviceID)
+            if !recRows.isEmpty {
+                rowParts.append("<div class=\"g-rec-sep\" data-dev=\"\(devId)\"><div class=\"g-ch\"><span class=\"g-rec-sep-dot\">●</span><span class=\"g-rec-sep-txt\"> RECORDING</span></div><div class=\"g-tl\"></div></div>")
+                rowParts.append(contentsOf: recRows)
+            }
             if !favRows.isEmpty {
                 rowParts.append("<div class=\"g-fav-sep\" data-dev=\"\(devId)\"><div class=\"g-ch\"><span class=\"g-fav-sep-star\">★</span><span class=\"g-fav-sep-txt\"> FAVORITES</span></div><div class=\"g-tl\"></div></div>")
                 rowParts.append(contentsOf: favRows)
