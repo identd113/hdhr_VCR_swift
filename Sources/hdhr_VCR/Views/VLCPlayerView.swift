@@ -217,9 +217,32 @@ struct VLCPlayerView: View {
             selectedAudioTrackId = bridge.audioTracks[0].id
         }
         .onChange(of: bridge.spuTracks.count) { _, count in
-            // Explicitly disable CC on every channel load; some streams auto-enable it.
             guard count > 0 else { return }
-            VLCBridge.shared.setSpuTrack(id: -1)
+            // Muted with captions available (and not a recording-relay session — see the CC
+            // picker's own guard for why toggling has no visible effect there) — auto-enable
+            // instead of the usual force-off below, since there's no audio to convey what's
+            // being said otherwise. selectedSpuTrackId is set (not just the direct VLCBridge
+            // call) so the Picker's own label reflects the auto-selection instead of drifting
+            // from what's actually playing.
+            if volume == 0, bridge.recordingShowId == nil, let first = bridge.spuTracks.first {
+                selectedSpuTrackId = first.id
+                VLCBridge.shared.setSpuTrack(id: first.id)
+            } else {
+                // Explicitly disable CC on every channel load; some streams auto-enable it.
+                selectedSpuTrackId = -1
+                VLCBridge.shared.setSpuTrack(id: -1)
+            }
+        }
+        .onChange(of: volume) { oldValue, newValue in
+            // Rising edge into muted — auto-enable captions the same way the spuTracks-count
+            // handler above does on channel load, for the case where the tracks were already
+            // known and the user mutes mid-playback instead. Skipped if the user already made an
+            // explicit choice (selectedSpuTrackId >= 0, even "Off" was picked on purpose) or this
+            // is a recording-relay session (CC picker is hidden there entirely — see its guard).
+            guard newValue == 0, oldValue > 0, selectedSpuTrackId < 0,
+                  bridge.recordingShowId == nil, let first = bridge.spuTracks.first else { return }
+            selectedSpuTrackId = first.id
+            VLCBridge.shared.setSpuTrack(id: first.id)
         }
         .onDisappear {
             // Safety-net for window close — releasePlayer() is idempotent so calling it here
@@ -573,8 +596,12 @@ struct VLCPlayerView: View {
                 }
             }
 
-            // CC picker — shown only when closed-caption tracks are detected in the stream
-            if !bridge.spuTracks.isEmpty {
+            // CC picker — shown only when closed-caption tracks are detected in the stream, and
+            // never for a recording-relay session (bridge.recordingShowId != nil): switching SPU
+            // tracks while reading the relay's on-disk file back doesn't produce a visible
+            // result, so a pulldown that looks like it does something but doesn't would be worse
+            // than not offering it at all.
+            if !bridge.spuTracks.isEmpty, bridge.recordingShowId == nil {
                 Divider().frame(height: 18)
                 Image(systemName: "captions.bubble")
                     .foregroundStyle(selectedSpuTrackId >= 0 ? .primary : .secondary)
