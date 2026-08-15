@@ -207,8 +207,8 @@ func beginRecordingSeek(showId: String, recordingStart: Date, seekBaseSeconds: D
 func clearRecordingSeek()                                     // clears recording-relay seek state; called by play(url:) for any non-relay URL
 func setDrawable(_ view: NSView)                              // must be called before first play()
 func play(url: String)                                        // stop + switch to new URL; resets rate controller, hasError, isPlaying
-func stop()                                                   // stop + release media; cancels stats timer; clears hasError, isPlaying
-func releasePlayer()                                          // full teardown; releases mediaPlayer; clears hasError, isPlaying
+func stop()                                                   // soft/resumable stop: stop + release media; cancels stats timer; clears hasError, isPlaying — deliberately leaves drawableView attached so a later play() renders immediately (used by the remote-Stop key)
+func releasePlayer()                                          // full teardown; releases mediaPlayer; clears hasError, isPlaying, drawableView — window close only; ensurePlayer() must run before the next play()
 func catchUpToLive()                                          // discard buffer, reconnect at live edge
 func videoNativeSize() -> CGSize?                             // pixel dims from libvlc_video_get_size; nil until decoding
 func setVolume(_ v: Int)                                      // 0–100

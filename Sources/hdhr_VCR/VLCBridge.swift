@@ -381,8 +381,9 @@ final class VLCBridge: ObservableObject {
     }
 
     func stop() {
-        // Lightweight stop used for remote-command Stop key — keeps the player alive for reuse.
-        // drawableView is cleared so a subsequent play() queues as pending; the window goes black.
+        // Soft stop, resumable in place: drawableView is intentionally left attached (see
+        // releasePlayer() below) so a later play() finds a live surface to render into instead
+        // of queuing as pendingURL forever. Used for the remote-command Stop key.
         glog("[VLC] stop called — drawable=\(drawableView != nil ? "had view" : "already nil") currentURL=\(currentURL ?? "none")")
         stopAndClearState()
     }
@@ -397,11 +398,13 @@ final class VLCBridge: ObservableObject {
         _mpRelease?(mp)
         mediaPlayer = nil
         retainedDrawable = nil
+        drawableView = nil
         glog("[VLC] releasePlayer — mediaPlayer released, tuner freed")
     }
 
     /// Shared teardown: stops the stats timer, resets state flags, stops media, releases current media object.
     /// Does NOT release the media player itself — call releasePlayer() for full teardown.
+    /// Deliberately does NOT clear drawableView — see stop()'s doc comment.
     private func stopAndClearState() {
         stopStatsTimer()
         clearRecordingSeek()
@@ -410,7 +413,6 @@ final class VLCBridge: ObservableObject {
         isPlaying      = false
         currentURL     = nil
         pendingURL     = nil
-        drawableView   = nil
         audioTracks    = []
         spuTracks      = []
         tracksFetched  = false
