@@ -20,7 +20,7 @@ A `Divider` separates toolbar from content.
 ### Content area
 `ScrollView` with a `LazyVStack(spacing: 0)` of channel cards — plain `VStack` measured as several seconds of layout work opening the window with a few dozen on-air channels, since macOS's window-key machinery (`_selectFirstKeyView`) walks the full view graph to find the first focusable control before the window can appear; `LazyVStack` keeps off-screen rows out of that graph until scrolled into view. Channels with currently-airing shows for the selected device, ordered:
 1. **Recording** (red `● Recording` section header) — a channel currently recording is a stronger claim on attention than a merely-favorited one, so it's pulled out ahead of Favorites; a channel that's both only appears here, not duplicated below.
-2. **Favorites** (amber `★ Favorites` section header + amber accent bars above and below)
+2. **Favorites** (amber `★ Favorites` section header with a top accent bar — see below for why there's no matching bottom bar)
 3. **All others** (no separator label)
 
 Recording section header (`recTopBorder`): 2pt top bar + caption.bold label in `GuideRingState.recording.ringColor` (`#ff5a5a`, the same red as each row's own recording ring badge, `GuideViewHelpers.swift`) with 16% opacity tint background — same shape as the Favorites header below, just red instead of amber. Bucketing happens in `content`: `guideRingState(for:device:inputs:) == .recording` pulls a channel into this section and excludes it from the favorites/others filters that follow, so there's no duplicate row.

@@ -53,7 +53,7 @@ On success, init creates:
 Every `play(url:)` call applies four media options before starting:
 
 ```swift
-"--network-caching=2000"     // 2s initial prebuffer — near-instant start
+"--network-caching=\(networkCachingMs)"  // 2000ms for a live stream, 300ms for the recording relay — see below
 "--drop-late-frames"         // drop corrupt/late frames rather than showing artifacts
 "--avcodec-hurry-up"         // drop non-essential B-frames under decode pressure
 "--no-audio-time-stretch"    // prevent audio init crash when sample rate is 0 on first MPEG-2 frame
