@@ -220,7 +220,7 @@ final class AppState: ObservableObject {
 
     let configManager: ConfigManager
     let hdhrManager      = HDHRManager()
-    let recordingManager = RecordingManager()
+    let recordingManager: RecordingManager
     let guideStore       = GuideStore()
     let webServer        = WebServer()
     @Published var webServerRunning: Bool    = false
@@ -287,15 +287,25 @@ final class AppState: ObservableObject {
     private static let retryBackoffLoops: [Int] = [2, 3]
     var showRetryAfter: [String: Date] = [:]
     private var failThreshold: Int { config.Fail_count_setting }
-    private let maxDiskPct: Double = 93
+    // var + internal (not private let) is a test seam: diskOK() checks this against the real
+    // filesystem, so a test machine whose real disk happens to be over 93% used would otherwise
+    // fail every startRecording/idleLoop test regardless of the actual behavior under test. Real
+    // app behavior is unchanged — nothing else in the app ever sets this away from the default.
+    var maxDiskPct: Double = 93
     // Set true while the MenuBarExtra menu is open (tracked via MenuContent onAppear/onDisappear).
     // Guards guideByDevice.didSet and idle-loop rebuilds so @Published changes don't redraw the menu.
     var menuIsOpen: Bool = false
 
-    // configManager param is a test seam only — real app startup (hdhr_VCRApp.swift) always uses
-    // the default, which points at the real on-disk config; see ConfigManager.init's own comment.
-    init(configManager: ConfigManager = ConfigManager()) {
+    // configManager/recordingManager params are test seams only — real app startup
+    // (hdhr_VCRApp.swift) always uses the defaults, which point at the real on-disk config and
+    // the real /usr/bin/curl; see ConfigManager.init's and RecordingManager.init's own comments.
+    // recordingManager is Optional (rather than defaulted inline like configManager) because
+    // RecordingManager is @MainActor — a default *parameter value* expression isn't isolated the
+    // same way the enclosing init is, so `= RecordingManager()` directly in the signature fails to
+    // compile; constructing the real instance inside the init body sidesteps that.
+    init(configManager: ConfigManager = ConfigManager(), recordingManager: RecordingManager? = nil) {
         self.configManager = configManager
+        self.recordingManager = recordingManager ?? RecordingManager()
         // Keep vlcCurrentURL in sync with VLCBridge.currentURL so any close path that
         // nils currentURL (releasePlayer → stopAndClearState) automatically clears the
         // "now watching" indicator without every caller needing to do it explicitly.

@@ -21,41 +21,8 @@ import Foundation
 @Suite("RecordingManager")
 struct RecordingManagerTests {
 
-    // Builds a curl test-double: on invocation it writes a minimal HTTP header block to whatever
-    // path follows --dump-header in its argv (same as curl -D would, but instant instead of
-    // waiting on real device I/O), then sleeps for `sleepSeconds` before exiting with `exitCode`.
-    private func writeMockCurlScript(headerLines: [String] = [], sleepSeconds: Double = 30,
-                                      exitCode: Int32 = 0) throws -> String {
-        let path = NSTemporaryDirectory() + "hdhrVCRplus-mockcurl-\(UUID().uuidString).sh"
-        var script = "#!/bin/bash\n"
-        script += "hdr=\"\"\n"
-        script += "args=(\"$@\")\n"
-        script += "for ((i=0; i<${#args[@]}; i++)); do\n"
-        script += "  if [[ \"${args[$i]}\" == \"--dump-header\" ]]; then hdr=\"${args[$((i+1))]}\"; fi\n"
-        script += "done\n"
-        script += "if [[ -n \"$hdr\" ]]; then\n"
-        script += "  {\n    echo \"HTTP/1.1 200 OK\"\n"
-        for line in headerLines {
-            script += "    echo \"\(line)\"\n"
-        }
-        script += "  } > \"$hdr\"\n"
-        script += "fi\n"
-        script += "sleep \(sleepSeconds)\n"
-        script += "exit \(exitCode)\n"
-        try script.write(toFile: path, atomically: true, encoding: .utf8)
-        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: path)
-        return path
-    }
-
-    // Polls `condition` until it returns true or `timeout` elapses — the mock curl script runs as
-    // a real subprocess, so header-file writes and process-exit reaping aren't synchronous with
-    // start()/stop() returning.
-    private func waitUntil(timeout: TimeInterval = 3, _ condition: () -> Bool) async {
-        let deadline = Date().addingTimeInterval(timeout)
-        while !condition() && Date() < deadline {
-            try? await Task.sleep(nanoseconds: 20_000_000) // 20ms
-        }
-    }
+    // writeMockCurlScript/waitUntil moved to TestFixtures.swift 2026-08-15 when
+    // AppStateRecordingEngineTests needed the identical pair — see that file's own MARK comment.
 
     private func cleanup(_ paths: String...) {
         for p in paths { try? FileManager.default.removeItem(atPath: p) }

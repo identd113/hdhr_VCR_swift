@@ -136,8 +136,46 @@ Follow-up to the 2026-08-11 coverage-guided pass. Both files got real injection 
 - **`HDHRManager.swift`: 1.81% → 26.74% line coverage.** Constructor injection (`init(session: URLSession? = nil, dataSession: URLSession = .shared)` — nil still builds the exact original short-timeout `URLSessionConfiguration`) since `session`/`dataSession` were already stored properties rather than per-call params. `fetchDeviceInfo`, `mDNSDiscover`, `cloudDiscover`, `knownHostsDiscover`, `supplementDeviceAuth` were widened from `private` to `internal` (pure visibility change, no behavior change) so `Tests/hdhr_VCRTests/Network/HDHRManagerTests.swift` can exercise them directly against a mocked `URLSession`/`URLProtocol` — success, malformed-JSON, HTTP-error, and network-error cases, plus `setFavorite` and the pure `supplementDeviceAuth` merge logic. **Still genuinely uncovered, and staying that way**: mDNS/UDP broadcast discovery (`udpDiscoverSync`, `subnetBroadcastAddresses`, `udpDiscoverAndFetch`) hits real `getifaddrs`/`socket`/`sendto`/`recvfrom` system calls with no seam — by far the largest remaining chunk of the file's missed lines — and the top-level `discoverDevices(knownHosts:interface:)` orchestrator, which always waits out UDP's ~2s real-broadcast timeout even with mocked HTTP, so it wasn't exercised directly either (would make the test suite slow and network-order-dependent for little unit-level gain over testing its sub-calls directly, which the new tests already do). `tools/mock_hdhr.py` could still support a slower, higher-level integration test of the whole discovery path someday, but wasn't needed for this pass's HTTP-level coverage jump.
 - **`RecordingManager.swift`: 7.04% → 89.01% line coverage.** Chose the "mock-curl-script" alternative over a spawn-seam closure: added an injectable `curlExecutablePath` init parameter (default `"/usr/bin/curl"`, unchanged from the old hardcoded literal) rather than touching `spawnDetached`/`posix_spawn` at all. `Tests/hdhr_VCRTests/Recording/RecordingManagerTests.swift` points it at small per-test generated shell scripts that mimic curl's relevant behavior (write the `--dump-header` file, sleep, exit with a controlled code), then drives `start`/`stop`/`stopAll`/`isRunning`/`reattach`/`readHDHRResource`/`readAndClearHDHRError`/`readAndClearExitStatus`/sleep-assertion methods through a **real** spawned-killed-reaped process — an integration-style test (real subprocess, real timing, small `waitUntil` polling helper) rather than a pure unit test, but it exercises the actual `posix_spawn` code path unmodified. Remaining gap is small: the verbose-curl logging branch (`writeCurlLogHeader`/`rotateCurlVerboseLogIfNeeded`, no test uses `verbose: true`), the orphaned-after-restart `ECHILD`/`kill(pid,0)` branch in `isRunning`, and a few unexercised `hdhrErrorLabel`/`curlExitLabel` switch cases.
 
-`AppState.swift` (still ~9-23% depending on metric) and `WebServer.swift` (still ~14-28%) remain the largest raw-uncovered-line files but stay lower priority per the original plan's "blast radius, not raw percentage" framing — both are heavily orchestration/`@MainActor`-coupled and already exercised indirectly through `GuideStore`/`ManagedGuideMatcher` test suites plus the post-deploy web server smoke/perf suites.
+`WebServer.swift` (still ~14-28%) remains the largest raw-uncovered-line file but stays lower priority per the original plan's "blast radius, not raw percentage" framing — heavily orchestration/`@MainActor`-coupled and already exercised indirectly through `GuideStore`/`ManagedGuideMatcher` test suites plus the post-deploy web server smoke/perf suites. `AppState.swift` was 20.34% at the time this note was written but see the entry below — its core scheduling engine specifically got covered 2026-08-15, moving the file to ~39%.
 
 **Key files**: `RecordingManager.swift`, `HDHRManager.swift`, `Tests/hdhr_VCRTests/Recording/RecordingManagerTests.swift`, `Tests/hdhr_VCRTests/Network/HDHRManagerTests.swift`.
+
+---
+
+### AppState's recording-scheduling engine — covered 2026-08-15; series-scheduling branches still gap
+
+`idleLoop()`/`startRecording(index:)`/`stopRecording(index:natural:)`/`scheduleNextAir(index:)` — the
+code that actually decides when a recording starts, stops, retries after failure, and reschedules —
+had zero coverage despite being the app's central purpose. Blocked by `AppState.recordingManager`
+being a hardcoded `let recordingManager = RecordingManager()` with no injection seam, unlike
+`configManager`. Fixed the same way as the `HDHRManager`/`RecordingManager` seams above: `AppState`
+now takes an optional `recordingManager: RecordingManager? = nil` init parameter (Optional rather
+than a defaulted-inline parameter like `configManager`, because `RecordingManager` is `@MainActor`
+and a default *parameter value* expression isn't isolated the same way the enclosing init is — the
+real instance is constructed inside the init body instead). `Tests/hdhr_VCRTests/Recording/AppStateRecordingEngineTests.swift`
+points it at the same mock-curl-script technique `RecordingManagerTests.swift` already used (now
+shared via `TestFixtures.swift`'s `writeMockCurlScript`/`waitUntil`), driving real launches/stops/
+reschedules through `makeTestAppState`. `AppState.swift`: 20.34% → 39.03% line coverage.
+
+Also found and fixed a real, load-bearing bug in the process: `diskOK(for:)`'s `maxDiskPct: Double = 93`
+was a `private let` — on a dev machine whose real disk happens to be over 93% used (true for the
+machine this was found on), the real app would silently refuse to start every recording, with
+`diskOK`'s own fallback-to-true path never triggering since the filesystem stats read succeeds fine.
+Widened to `var` (test seam, same "widen for testability" precedent as `HDHRManager`'s methods
+above) so tests unrelated to disk-space logic can override it; not a source of the coverage number
+above, but a correctness finding worth knowing about if a user ever reports recordings silently not
+starting on a fairly-full disk.
+
+**Still genuinely uncovered, and staying that way for now**: `scheduleNextAir`'s `.seriesChannel`/
+`.seriesAll` branches and `resolveSeriesAir` depend on a freshly-loaded `GuideStore` (a real network
+fetch via `guideStore.load()` when stale, or state seeded into `guideStore`'s internal cache some
+other way not currently exposed to tests). The underlying lookup methods they call
+(`guideStore.currentEpisode`/`nextEpisode`/`currentEntryByTitle`/`nextEntryByTitle`) already have
+solid direct coverage via `GuideStoreTests`, so the *matching logic* isn't blind — only these two
+functions' own orchestration ("which lookup tier to try, in what order, before giving up and
+retrying later") stays untested. Would need either a network-mock seam on `GuideStore` itself or a
+way to pre-seed its cache directly — a separate, larger effort than this pass.
+
+**Key files**: `AppState.swift`, `Tests/hdhr_VCRTests/Recording/AppStateRecordingEngineTests.swift`, `Tests/hdhr_VCRTests/TestFixtures.swift`.
 
 ---

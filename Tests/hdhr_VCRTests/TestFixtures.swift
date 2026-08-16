@@ -51,6 +51,52 @@ func mockOKResponse(for url: URL, statusCode: Int = 200, headers: [String: Strin
     HTTPURLResponse(url: url, statusCode: statusCode, httpVersion: nil, headerFields: headers)!
 }
 
+// MARK: - Mock curl script
+//
+// Shared by RecordingManagerTests and AppStateRecordingEngineTests — both need to point
+// RecordingManager.init(curlExecutablePath:) at a fake "curl" instead of the real binary.
+// Formerly hand-copied into RecordingManagerTests.swift only; moved here 2026-08-15 when a
+// second file needed the identical helper, same consolidation reasoning as MockURLProtocolBase
+// above. Each call writes a uniquely-named script (UUID in the filename) with its behavior baked
+// in as literal shell text — no shared env vars or global mutable state — so tests stay safe to
+// run concurrently.
+
+// Builds a curl test-double: on invocation it writes a minimal HTTP header block to whatever path
+// follows --dump-header in its argv (same as curl -D would, but instant instead of waiting on
+// real device I/O), then sleeps for `sleepSeconds` before exiting with `exitCode`.
+func writeMockCurlScript(headerLines: [String] = [], sleepSeconds: Double = 30,
+                          exitCode: Int32 = 0) throws -> String {
+    let path = NSTemporaryDirectory() + "hdhrVCRplus-mockcurl-\(UUID().uuidString).sh"
+    var script = "#!/bin/bash\n"
+    script += "hdr=\"\"\n"
+    script += "args=(\"$@\")\n"
+    script += "for ((i=0; i<${#args[@]}; i++)); do\n"
+    script += "  if [[ \"${args[$i]}\" == \"--dump-header\" ]]; then hdr=\"${args[$((i+1))]}\"; fi\n"
+    script += "done\n"
+    script += "if [[ -n \"$hdr\" ]]; then\n"
+    script += "  {\n    echo \"HTTP/1.1 200 OK\"\n"
+    for line in headerLines {
+        script += "    echo \"\(line)\"\n"
+    }
+    script += "  } > \"$hdr\"\n"
+    script += "fi\n"
+    script += "sleep \(sleepSeconds)\n"
+    script += "exit \(exitCode)\n"
+    try script.write(toFile: path, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: path)
+    return path
+}
+
+// Polls `condition` until it returns true or `timeout` elapses — the mock curl script runs as a
+// real subprocess, so header-file writes and process-exit reaping aren't synchronous with
+// start()/stop() returning.
+func waitUntil(timeout: TimeInterval = 3, _ condition: () -> Bool) async {
+    let deadline = Date().addingTimeInterval(timeout)
+    while !condition() && Date() < deadline {
+        try? await Task.sleep(nanoseconds: 20_000_000) // 20ms
+    }
+}
+
 // MARK: - HDHRDevice
 
 extension HDHRDevice {
@@ -145,12 +191,13 @@ extension Show {
 func makeTestAppState(
     shows: [Show] = [],
     devices: [HDHRDevice] = [],
-    lineups: [String: [LineupEntry]] = [:]
+    lineups: [String: [LineupEntry]] = [:],
+    recordingManager: RecordingManager? = nil
 ) -> AppState {
     // Unique per-call temp dir — any test that reaches saveConfig() (e.g. deleteShow) writes here
     // instead of the real ~/Library/Application Support/hdhrVCRplus/ config the deployed app uses.
     let tempConfigDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-    let s = AppState(configManager: ConfigManager(appSupportDir: tempConfigDir))
+    let s = AppState(configManager: ConfigManager(appSupportDir: tempConfigDir), recordingManager: recordingManager)
     // skipStartup must be set before any suspension point so startup()'s guard fires
     // before the Task runs on the main actor. Prevents idleLoop from spinning forever.
     s.skipStartup = true
