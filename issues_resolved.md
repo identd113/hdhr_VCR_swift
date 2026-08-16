@@ -481,7 +481,7 @@ Updated `ManagedGuideMatcherTests.swift`'s two now-invalid "matches any device" 
 
 ## RESOLVED — `AppState.pendingRecordingChannels`/`WebServer.swift`+`WatchNowView.swift`'s "recording" status false-positive during a missed-start retry backoff
 
-**File:** `AppState.swift` (`pendingRecordingChannels`), `Tests/hdhr_VCRTests/TunerOccupancyTests.swift`
+**File:** `AppState.swift` (`pendingRecordingChannels`), `Tests/hdhr_VCRTests/Recording/TunerOccupancyTests.swift`
 
 **Root cause**: `pendingRecordingChannels(for:)` treated any channel whose managed show had `show_next <= now < show_end` and `show_recording == false` as recording — meant to cover the brief, normal startup lag between a show's scheduled time and `RecordingManager` actually flipping the flag, but it didn't distinguish that from a show that failed to start and is waiting out a `showRetryAfter` retry cooldown (only ever set by `recordShowFailure` after a genuine failure, never during ordinary startup) with `show_next` stuck in the past. This logic predated 2026-08-15 (originally `WebServer.swift`'s `pendingRecChannelsByDevice`, used only for a single guide block's ring badge), but that day's Watch Now/web-guide rework gave the false positive a much bigger megaphone: it pulled the whole channel row into the prominent "Recording"/"● RECORDING" section at the top of both Watch Now and the web guide (previously just a small ring icon), and suppressed a legitimate conflict badge via `buildGuideGridHTML`'s `isConflict`/`WatchNowView`'s `guideRingState`, both of which gate on `!isRecording`.
 
@@ -493,7 +493,7 @@ Updated `ManagedGuideMatcherTests.swift`'s two now-invalid "matches any device" 
 
 ## RESOLVED — `ManagedGuideMatcher`'s `seriesChannel` badge could appear on a channel it would never actually record from
 
-**File:** `Models.swift` (`ManagedGuideMatcher`), `Tests/hdhr_VCRTests/ManagedGuideMatcherTests.swift`, `CLAUDE.md`, `docs/Models.md`, `docs/WebServer.md`
+**File:** `Models.swift` (`ManagedGuideMatcher`), `Tests/hdhr_VCRTests/Models/ManagedGuideMatcherTests.swift`, `CLAUDE.md`, `docs/Models.md`, `docs/WebServer.md`
 
 **Root cause**: `seriesKeys`/`seriesTitles` (the lookup behind the guide's blue "managed" ring + ⏱ badge, `ManagedGuideMatcher.owner(for:)`) were built from **both** `seriesChannel` and `seriesAll` shows alike, keyed only `"deviceId:SeriesID"`/`"deviceId:title"` — device-scoped but not channel-scoped. That matches `seriesAll`'s actual behavior (follows a series across any channel on its tuner, by design) but not `seriesChannel`'s, which `AppState.resolveSeriesAir`/`nextGuideEpisode`/`scheduleNextAir` lock to the one channel the show was added on. The mismatch meant a `seriesChannel` show's badge could appear on a same-SeriesID rerun airing on a *different* channel on the same tuner — found live: a `seriesChannel` "Saturday Night Live" show (locked to channel 11.1) badged a rerun of the same series airing on channel 23.4 (a syndicated rerun station, ROAR), even though the show would never actually record from that channel — 2026-08-15, reported by the user noticing the mismatch and reasoning through the tuner/channel scoping expectation for `seriesChannel` themselves.
 

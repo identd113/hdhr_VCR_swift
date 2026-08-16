@@ -19,7 +19,7 @@ macOS `List` with items using `Label(name, systemImage: icon)`. Icons and catego
 - `wrench.and.screwdriver` Maintenance
 - `info.circle` About
 
-Selected row highlighted in accent color. Each row carries `accessibilityIdentifier("settings-tab-\(cat.id...)")` (lowercased, spaces→hyphens) — a stable non-visual handle for UI automation/accessibility tooling (see `Tests/hdhr_VCRTests/WindowNavigationTests.swift`), since the window's title tracks the selected tab's own `.navigationTitle` rather than staying a fixed "Settings".
+Selected row highlighted in accent color. Each row carries `accessibilityIdentifier("settings-tab-\(cat.id...)")` (lowercased, spaces→hyphens) — a stable non-visual handle for UI automation/accessibility tooling (see `Tests/hdhr_VCRTests/Views/WindowNavigationTests.swift`), since the window's title tracks the selected tab's own `.navigationTitle` rather than staying a fixed "Settings".
 
 **Detail area** (right): `Form` with `.grouped` style (rounded-rect sections on macOS). Each category shows its own `Form` with `Section` headers. Navigation title appears at the top of the detail area.
 

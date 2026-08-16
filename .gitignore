@@ -12,7 +12,7 @@ TestMacro
 tools/__pycache__/
 
 # ── Test artifacts ────────────────────────────────────────────────────────
-Tests/hdhr_VCRTests/__Snapshots__/
+Tests/hdhr_VCRTests/Views/__Snapshots__/
 
 # ── Local-only source, not part of the tracked app ────────────────────────
 /src

@@ -9,7 +9,7 @@ import Testing
 //
 // To regenerate all references: RECORD_SNAPSHOTS=1 swift test
 //
-// References live next to this file at Tests/hdhr_VCRTests/__Snapshots__/<name>.png
+// References live next to this file at Tests/hdhr_VCRTests/Views/__Snapshots__/<name>.png
 
 @MainActor
 func assertSnapshot<V: View>(

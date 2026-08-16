@@ -163,9 +163,9 @@ accuracy regresses right after app launch specifically.
 - Verified full removal of `FloatingGuideView`/"Cable Guide" window: zero remaining live
   references anywhere in `Sources/`, `Resources/`, or non-historical `docs/*.md` (grep swept
   clean — only `CHANGELOG.md` history entries, `docs/WKWebView_guide_analysis.md`'s explicitly-
-  marked "historical, superseded" doc, and `Tests/hdhr_VCRTests/WindowNavigationTests.swift`'s
+  marked "historical, superseded" doc, and `Tests/hdhr_VCRTests/Views/WindowNavigationTests.swift`'s
   file-header note about *not* covering the removed window remain, all appropriately historical/
-  prose). No orphaned snapshot reference PNG (`Tests/hdhr_VCRTests/__Snapshots__/` has no
+  prose). No orphaned snapshot reference PNG (`Tests/hdhr_VCRTests/Views/__Snapshots__/` has no
   `FloatingGuideView*` file) and its `@Test` was removed from `SnapshotTests.swift` in the same
   commit. Dead client-side "watch" bridge JS (`doWatchInApp`/`doWatchInVLC`, `#sum-watch-app`/
   `#sum-watch-vlc`) was fully swept from `guide.js`/`guide-shell.html` too — confirmed zero hits.
@@ -200,7 +200,7 @@ accuracy regresses right after app launch specifically.
   with no changelog trace. Inconsistent with this diff's otherwise meticulous CHANGELOG discipline
   (see the FloatingGuideView-removal and deploy-script-fix entries, which even log same-session
   code-audit cleanups).
-- `Tests/hdhr_VCRTests/WindowNavigationTests.swift` — well-scoped opt-in suite (env-var gate +
+- `Tests/hdhr_VCRTests/Views/WindowNavigationTests.swift` — well-scoped opt-in suite (env-var gate +
   `appRunning()`/`accessibilityTrusted()` guards, all correctly composed so a bare `swift test`
   never triggers it). One inconsistency worth a look if this suite gets flaky in CI:
   `editShowOpensAndCloses`'s AppleScript polls with a bounded
@@ -269,7 +269,7 @@ accuracy regresses right after app launch specifically.
   flagged here so nobody re-investigates it as a functional bug.
 - CI fix (`.github/workflows/ci.yml`, `swift test` → `swift test --skip SnapshotTests`) confirmed
   `--skip <regex>` is a real `swift test` flag (checked `swift test --help`) and `SnapshotTests` is
-  the actual struct name in `Tests/hdhr_VCRTests/SnapshotTests.swift:15`, so the regex match is
+  the actual struct name in `Tests/hdhr_VCRTests/Views/SnapshotTests.swift:15`, so the regex match is
   correct, not a typo'd skip that silently does nothing.
 
 ## 2026-08-09 — v2.0.2 pre-release review (v2.0.1..main)
@@ -384,7 +384,7 @@ accuracy regresses right after app launch specifically.
   `private` → `internal` specifically so a new snapshot test could seed on-air guide data
   directly. That snapshot test was written, found to render blank under `ImageRenderer`
   (`ScrollView` limitation, documented in `TODO.md`'s "`ImageRenderer`-based snapshot tests…"
-  entry and `Tests/hdhr_VCRTests/SnapshotTests.swift`'s comment), and removed. `Tests/hdhr_VCRTests/GuideRingStateTests.swift`
+  entry and `Tests/hdhr_VCRTests/Views/SnapshotTests.swift`'s comment), and removed. `Tests/hdhr_VCRTests/Models/GuideRingStateTests.swift`
   (the test suite that did ship) only calls `resolveGuideRingState` directly and never touches
   `GuideStore` at all. Zero-hit grep for `buildIndex(` outside `GuideStore.swift` itself confirms
   no current caller needs the wider access — the visibility bump is now unjustified scope, worth
