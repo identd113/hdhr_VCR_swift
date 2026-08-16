@@ -2,18 +2,29 @@
 """
 mock_hdhr.py — Mock HDHomeRun device for testing hdhr_VCR with multiple tuners.
 
-Appears on 127.0.0.2 as a second device. All API requests are proxied to the
-real device. Only /discover.json has fields swapped (DeviceID, name, URLs) so
-the app treats it as a separate tuner. DeviceAuth is kept from the real device
-so the cloud guide API works identically.
+By default appears on loopback (127.0.0.2) — visible only to processes on this
+same Mac, never to other devices on the LAN. Pass --lan to instead advertise the
+mock at this Mac's own real LAN address, so it's discoverable by anything on the
+network the way a genuine second HDHomeRun would be (another machine, the
+official HDHomeRun apps, etc.) — no new IP is claimed, since this machine already
+legitimately owns that address. Pass --lan-ip to instead alias a distinct address
+(verified free via ping + ARP first) if you specifically want the mock to answer
+at an IP of its own rather than sharing this Mac's.
+
+All API requests are proxied to the real device. Only /discover.json has
+fields swapped (DeviceID, name, URLs) so the app treats it as a separate
+tuner. DeviceAuth is kept from the real device so the cloud guide API works
+identically.
 
 Requirements:
   - Python 3 (ships with macOS)
-  - Must run as root (port 80 + loopback alias setup)
+  - Must run as root (port 80 + interface alias setup)
 
 Usage:
-    sudo python3 tools/mock_hdhr.py              # normal mock (proxies everything)
-    sudo python3 tools/mock_hdhr.py --bad-tuner  # returns 404 for lineup + guide
+    sudo python3 tools/mock_hdhr.py                       # loopback-only (default)
+    sudo python3 tools/mock_hdhr.py --lan                 # LAN-visible, at this Mac's own IP
+    sudo python3 tools/mock_hdhr.py --lan --lan-ip 10.0.2.240  # LAN-visible, distinct pinned IP
+    sudo python3 tools/mock_hdhr.py --bad-tuner            # returns 404 for lineup + guide
     sudo python3 tools/mock_hdhr.py --real-ip 192.168.x.x  # override device IP
 
 Fault-injection flags simulate specific failure modes:
@@ -23,12 +34,14 @@ Fault-injection flags simulate specific failure modes:
 
 /discover.json always responds normally so the device remains discoverable.
 
-Stop with Ctrl+C — the loopback alias is removed automatically on exit.
+Stop with Ctrl+C — the interface alias is removed automatically on exit.
 """
 
 import argparse
+import ipaddress
 import json
 import os
+import re
 import signal
 import socket
 import struct
@@ -41,7 +54,8 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from socketserver import ThreadingMixIn
 
-MOCK_IP        = "127.0.0.2"
+MOCK_IP        = "127.0.0.2"   # overwritten at startup when --lan is passed
+MOCK_INTERFACE = "lo0"         # overwritten at startup when --lan is passed
 CONTROL_PORT   = 80
 DISCOVER_PORT  = 65001
 MOCK_DEVICE_ID = "FFFF0001"
@@ -185,19 +199,62 @@ def unregister_mdns(proc: subprocess.Popen):
     log(f"[mDNS] Unregistered {mdns_hostname(MOCK_DEVICE_ID)}")
 
 
-# ── Loopback alias ────────────────────────────────────────────────────────────
+# ── Interface alias (loopback or real LAN interface) ─────────────────────────
+# Loopback mode (default) aliases 127.0.0.2 onto lo0 — visible only on this Mac.
+# --lan mode aliases a real IP onto the machine's LAN-facing interface instead,
+# so the mock answers ARP/UDP/mDNS on the actual network like a genuine device.
 
-def add_loopback_alias():
-    r = subprocess.run(["ifconfig", "lo0", "alias", MOCK_IP], capture_output=True)
+def add_interface_alias(interface: str, ip: str, prefixlen: int | None = None):
+    cmd = ["ifconfig", interface, "alias", ip]
+    if prefixlen is not None:
+        cmd.append(f"/{prefixlen}")
+    r = subprocess.run(cmd, capture_output=True)
     if r.returncode == 0:
-        log(f"[Setup] Added loopback alias {MOCK_IP}")
+        log(f"[Setup] Added {interface} alias {ip}")
     else:
-        log(f"[Setup] {r.stderr.decode().strip() or f'{MOCK_IP} already configured'}")
+        log(f"[Setup] {r.stderr.decode().strip() or f'{ip} already configured on {interface}'}")
 
 
-def remove_loopback_alias():
-    subprocess.run(["ifconfig", "lo0", "-alias", MOCK_IP], capture_output=True)
-    log(f"[Teardown] Removed loopback alias {MOCK_IP}")
+def remove_interface_alias(interface: str, ip: str):
+    subprocess.run(["ifconfig", interface, "-alias", ip], capture_output=True)
+    log(f"[Teardown] Removed {interface} alias {ip}")
+
+
+# ── LAN interface + free-IP discovery (for --lan) ────────────────────────────
+
+def default_lan_interface() -> str | None:
+    """The interface macOS would route a normal outbound connection through —
+    same interface a real second HDHomeRun would show up on."""
+    r = subprocess.run(["route", "-n", "get", "default"], capture_output=True, text=True)
+    m = re.search(r"interface:\s*(\S+)", r.stdout)
+    return m.group(1) if m else None
+
+
+def interface_ipv4_network(interface: str) -> "tuple[ipaddress.IPv4Address, ipaddress.IPv4Network] | None":
+    """This interface's own IPv4 address and subnet, parsed from `ifconfig`."""
+    r = subprocess.run(["ifconfig", interface], capture_output=True, text=True)
+    m = re.search(r"inet (\d+\.\d+\.\d+\.\d+) netmask (0x[0-9a-fA-F]+)", r.stdout)
+    if not m:
+        return None
+    addr = ipaddress.IPv4Address(m.group(1))
+    mask = ipaddress.IPv4Address(int(m.group(2), 16))
+    net  = ipaddress.IPv4Network(f"{addr}/{mask}", strict=False)
+    return addr, net
+
+
+def ip_appears_free(ip: str) -> bool:
+    """Best-effort liveness check: a real ping reply means definitely in use.
+    Otherwise, check whether the OS still learned a MAC via ARP for it — even a
+    host that silently drops ICMP still answers ARP on the same L2 segment, so
+    a resolved (non-"incomplete") ARP entry also means in use. Only treat the
+    address as free when neither signal found anything."""
+    ping = subprocess.run(["ping", "-c", "1", "-t", "1", ip], capture_output=True)
+    if ping.returncode == 0:
+        return False
+    arp = subprocess.run(["arp", "-n", ip], capture_output=True, text=True)
+    return "incomplete" in arp.stdout or "no entry" in arp.stdout
+
+
 
 
 # ── HTTP control server ───────────────────────────────────────────────────────
@@ -385,24 +442,34 @@ class ControlHandler(BaseHTTPRequestHandler):
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def main():
+    global MOCK_IP, MOCK_INTERFACE
+
     ap = argparse.ArgumentParser(
         description="Mock HDHomeRun — multi-tuner testing for hdhr_VCR",
         epilog=(
             "Examples:\n"
-            "  sudo python3 tools/mock_hdhr.py                              # normal proxy\n"
+            "  sudo python3 tools/mock_hdhr.py                              # loopback-only\n"
+            "  sudo python3 tools/mock_hdhr.py --lan                        # LAN-visible, this Mac's own IP\n"
+            "  sudo python3 tools/mock_hdhr.py --lan --lan-ip 10.0.2.240    # LAN-visible, distinct pinned IP\n"
             "  sudo python3 tools/mock_hdhr.py --bad-lineup                 # lineup → 404\n"
             "  sudo python3 tools/mock_hdhr.py --bad-guide                  # guide → 500\n"
             "  sudo python3 tools/mock_hdhr.py --bad-tuner                  # both\n"
             "  sudo python3 tools/mock_hdhr.py --real-ip 192.168.1.100      # explicit IP\n"
             "  sudo python3 tools/mock_hdhr.py --auth-refresh 300           # refresh DeviceAuth every 5m\n"
             "\n"
-            "The mock advertises itself as device FFFF0001 on 127.0.0.2.\n"
-            "Ctrl+C cleans up the loopback alias and mDNS registration automatically."
+            "The mock advertises itself as device FFFF0001, on 127.0.0.2 (loopback, default) or a\n"
+            "real LAN address (--lan). Ctrl+C cleans up the interface alias and mDNS registration.\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     ap.add_argument("--real-ip", metavar="IP", default=None,
                     help="IP of the real HDHomeRun (auto-discovered if omitted)")
+    ap.add_argument("--lan", action="store_true",
+                    help="Make the mock discoverable on the real LAN instead of loopback-only "
+                         "(defaults to this Mac's own address on the default-route interface)")
+    ap.add_argument("--lan-ip", metavar="IP", default=None,
+                    help="Use this distinct address instead of the Mac's own IP (verified free "
+                         "via ping+ARP first)")
     ap.add_argument("--bad-lineup", action="store_true",
                     help="/lineup.json + /lineup_status.json → 404")
     ap.add_argument("--bad-guide", action="store_true",
@@ -417,15 +484,50 @@ def main():
     bad_guide  = args.bad_guide  or args.bad_tuner
 
     if os.geteuid() != 0:
-        print("Error: must run as root (sudo) to bind port 80 and manage the loopback alias.")
+        print("Error: must run as root (sudo) to bind port 80 and manage the interface alias.")
         flags = []
         if bad_lineup and bad_guide: flags.append("--bad-tuner")
         elif bad_lineup: flags.append("--bad-lineup")
         elif bad_guide:  flags.append("--bad-guide")
         if args.real_ip: flags.append(f"--real-ip {args.real_ip}")
+        if args.lan: flags.append("--lan")
+        if args.lan_ip: flags.append(f"--lan-ip {args.lan_ip}")
         suffix = (" " + " ".join(flags)) if flags else ""
         print(f"\n  sudo python3 {sys.argv[0]}{suffix}")
         sys.exit(1)
+
+    if args.lan_ip and not args.lan:
+        print("Error: --lan-ip requires --lan.")
+        sys.exit(1)
+
+    mock_needs_alias = True   # loopback default: 127.0.0.2 doesn't exist until we add it
+    if args.lan:
+        iface = default_lan_interface()
+        if not iface:
+            print("Error: could not determine the default-route LAN interface for --lan.")
+            sys.exit(1)
+        own_addr, _ = interface_ipv4_network(iface) or (None, None)
+        if args.lan_ip and args.lan_ip != str(own_addr):
+            # Explicit distinct address requested — verify nothing else on the LAN already
+            # answers for it before claiming it as a new alias.
+            if not ip_appears_free(args.lan_ip):
+                print(f"Error: --lan-ip {args.lan_ip} appears to already be in use on the LAN "
+                      f"(it answered a ping or ARP) — pick a different address.")
+                sys.exit(1)
+            MOCK_IP = args.lan_ip
+        elif own_addr:
+            # Default --lan behavior: just reuse the Mac's own LAN address. It's already
+            # legitimately assigned to this interface, so there's nothing to scan for or
+            # collide with, and no alias to add/remove — mDNS/UDP replies are simply sourced
+            # from the address this machine already has.
+            MOCK_IP = str(own_addr)
+            mock_needs_alias = False
+        else:
+            print(f"Error: could not determine {iface}'s own IPv4 address for --lan.")
+            sys.exit(1)
+        MOCK_INTERFACE = iface
+        note = "this Mac's own address, no alias needed" if not mock_needs_alias else "new alias"
+        log(f"[Setup] --lan: using {MOCK_IP} on {MOCK_INTERFACE} ({note})")
 
     real_ip = args.real_ip
     if not real_ip:
@@ -458,7 +560,13 @@ def main():
     ControlHandler.bad_lineup = bad_lineup
     ControlHandler.bad_guide  = bad_guide
 
-    add_loopback_alias()
+    if mock_needs_alias:
+        prefixlen = None
+        if args.lan:
+            info = interface_ipv4_network(MOCK_INTERFACE)
+            if info:
+                prefixlen = info[1].prefixlen
+        add_interface_alias(MOCK_INTERFACE, MOCK_IP, prefixlen)
     mdns_proc = register_mdns(MOCK_DEVICE_ID, friendly, MOCK_IP)
 
     threading.Thread(
@@ -468,7 +576,8 @@ def main():
     def shutdown(sig=None, frame=None):
         print()
         unregister_mdns(mdns_proc)
-        remove_loopback_alias()
+        if mock_needs_alias:
+            remove_interface_alias(MOCK_INTERFACE, MOCK_IP)
         sys.exit(0)
 
     signal.signal(signal.SIGINT,  shutdown)
@@ -480,21 +589,25 @@ def main():
         control_server = ThreadedHTTPServer((MOCK_IP, CONTROL_PORT), ControlHandler)
     except OSError as e:
         print(f"Failed to bind control server {MOCK_IP}:{CONTROL_PORT}: {e}")
-        remove_loopback_alias()
+        if mock_needs_alias:
+            remove_interface_alias(MOCK_INTERFACE, MOCK_IP)
         sys.exit(1)
 
     blocked = sorted((LINEUP_PATHS if bad_lineup else set()) | (GUIDE_PATHS if bad_guide else set()))
     mode    = "normal (proxying all requests)" if not blocked else f"fault injection: {', '.join(blocked)}"
     proxied = "/lineup.json, /guide.json, /status.json, /lineup_status.json (+ all others)"
+    visibility = f"LAN ({MOCK_INTERFACE})" if args.lan else "loopback-only (this Mac only)"
     print(f"\nMock HDHomeRun ready:")
     print(f"  Device ID      : {MOCK_DEVICE_ID}")
     print(f"  Name           : {friendly}")
     print(f"  Mode           : {mode}")
+    print(f"  Visibility     : {visibility}")
     print(f"  Control        : http://{MOCK_IP}:{CONTROL_PORT}/")
     print(f"  Proxying to    : http://{real_ip}/")
     print(f"  Forwarding     : {proxied}")
     print(f"  DeviceAuth     : {'present' if real_info.get('DeviceAuth') else 'absent'} (refresh every {args.auth_refresh}s)")
-    print(f"\nCtrl+C to stop and remove the loopback alias.\n")
+    cleanup_note = f"remove the {MOCK_INTERFACE} alias" if mock_needs_alias else "unregister mDNS"
+    print(f"\nCtrl+C to stop and {cleanup_note}.\n")
 
     control_server.serve_forever()
 
