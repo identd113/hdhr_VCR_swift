@@ -424,4 +424,73 @@ accuracy regresses right after app launch specifically.
   `.t-info-inline.t-info-full` combo rule wins for the properties both define, and the bare rule's
   unique property (`border-color`) has no visible effect since `.t-info-inline` sets no `border`.
   Not flagged as a hard finding (still technically reachable by the cascade, just visually inert) —
-  worth deleting next time `guide.css`'s tuner-badge section is touched.
+  worth deleting next time `guide.css`'s tuner-badge section is touched. (This whole rule pair was
+  since removed in the v2.0.3..main range's dev-bar redesign — `.t-info-full` was folded into
+  `.t-info-inline.t-info-full`, so this specific inert-CSS note is now stale/resolved.)
+
+## 2026-08-15 — v2.0.3..main pre-release review (32 commits: VLC deadlock fix, ManagedGuideMatcher channel-scoping, Watch Now ring-state unification)
+
+- `Sources/hdhr_VCR/VLCBridge.swift:322-450` (`play()`/`stop()`/`releasePlayer()`/`stopAndClearState()`
+  moving blocking `libvlc_media_player_stop`/`_release` onto the new serial `libvlcQueue`) — traced
+  the full interleaving by hand for the "two play() calls land close together" case: `currentURL`/
+  `currentMedia`-claim happen synchronously on MainActor before the queue hop (so the staleness
+  check in the deferred `Task { @MainActor }` commit is decided purely by MainActor-side ordering,
+  independent of how the background queue happens to interleave), and the serial (not concurrent)
+  queue preserves the old code's effective FIFO teardown-then-setup ordering per player object.
+  Reasoned through the "superseded call's `libvlc_media_release` runs directly on MainActor,
+  possibly before the next call's `libvlc_media_player_stop` has even fired" sub-case too — safe
+  because `libvlc_media_player_set_media` internally retains its own reference, so releasing our
+  local extra ref never drops the count to zero while the media is still attached to the player.
+  Verified sound. No test coverage exists for this (nor could easily exist — real libvlc dylib,
+  real threading), so this reasoning is the only check it's had; worth a skeptical re-read again if
+  this code is ever touched, not just trusted because `swift build`/existing tests pass.
+- `Sources/hdhr_VCR/Views/VLCPlayerView.swift:220-244` — **real bug, not yet in ISSUES.md**: the CC
+  auto-enable-on-mute `.onChange(of: volume)` handler guards on `selectedSpuTrackId < 0` to mean
+  "user hasn't made an explicit choice yet," but the Picker's own "Off" option is tagged
+  `Int32(-1)` (`VLCPlayerView.swift:610`) — the exact same value as the untouched default. The
+  handler's own comment claims "Skipped if the user already made an explicit choice (…even 'Off'
+  was picked on purpose)" but the guard direction does the opposite: an explicit "Off" pick leaves
+  `selectedSpuTrackId == -1`, which satisfies `< 0`, so muting after deliberately turning captions
+  off will still silently re-enable them. **Fixed 2026-08-15**, same pre-release pass — added
+  `spuChoiceIsExplicit: Bool`, set only by the Picker's own binding (a wrapped `Binding(get:set:)`,
+  not `$selectedSpuTrackId` directly) so programmatic resets (channel load/switch) don't trip it;
+  see `issues_resolved.md` for the full writeup and `docs/VLCPlayerView.md` for the updated
+  mechanism description. No longer an open finding.
+- `Sources/hdhr_VCR/Models.swift`'s `ManagedGuideMatcher` merge-back-to-4-dicts (sharing
+  `seriesKeys`/`seriesTitles` between `"device:SeriesID"` (seriesAll) and
+  `"device:channel:SeriesID"` (seriesChannel) shapes in the same dictionary) — checked the
+  no-collision claim: `deviceId`/`channelNum`/`show_seriesid`/`show_title` are never
+  colon-containing in this codebase (HDHomeRun device IDs are 8 hex chars, channel numbers are
+  `major.minor` decimal, SeriesIDs are opaque EPG tokens), so a 2-segment and 3-segment
+  colon-joined key can never collide as dictionary keys. `owner(for:)`'s two-step lookup (try
+  channel-scoped shape first, then device-only shape) is correctly ordered and has direct test
+  coverage for the "same SeriesID/title, different channel, same device" case
+  (`ManagedGuideMatcherTests.swift`'s `seriesChannel_bySeriesID_doesNotMatchDifferentChannelSameDevice`/
+  `_byTitle_...`). Verified sound.
+- `Sources/hdhr_VCR/Views/WatchNowView.swift`'s new `recordedTagsCache`/`recordedTagsRefreshLoop()`
+  (unconditional 10s-interval poll calling `state.recordedEpisodeTags`, a synchronous `FileManager`
+  scan) is a direct fix for the exact main-actor-blocking-on-every-render issue flagged in this
+  file's own 2026-08-11 entry above (`ringStateInputs(for:)` used to call `recordedEpisodeTags`
+  straight from `body`). It's a real improvement — bounded to once per 10s instead of once per
+  arbitrary `AppState` publish — but is still blind-interval polling for state that has real
+  triggers elsewhere (a recording starting/stopping, series added/removed/deleted), where the web
+  guide's equivalent scan (`WebServer.swift`'s `buildGuideGridHTML`) only re-runs on those actual
+  events. Also unclear whether `refreshRecordedTags()` actually executes on `@MainActor`: unlike
+  `body`, plain private methods in a `View`-conforming struct aren't automatically MainActor-isolated
+  by protocol inference in current Swift, and `.task {}`'s closure isn't inherently MainActor either
+  — this file's pre-existing `boundaryRefreshLoop()` uses the identical `.task {}` + mutate-`@State`
+  pattern already, so this is consistent with established precedent here, not a new deviation, but
+  worth a definitive check (Instruments thread check, or just add an explicit `@MainActor` to be
+  sure) next time this loop is touched, since `@State` mutation off the main thread is technically
+  unsupported even when it happens to work in practice.
+- Verified `managedShowBySeriesID`/`managedShowByTitle` removal (`AppState.swift`) left no orphaned
+  references anywhere (`grep -rn` across the whole tree: zero hits in `Sources/`/`docs/`), and
+  `ManagedFlagView`'s removal (`GuideViewHelpers.swift`, replaced by `GuideRingState`/
+  `guideRingBadge`) likewise — the one remaining hit (`docs/WatchNowView.md:57`) is deliberate
+  past-tense prose describing what the new ring badge replaced, not a stale live reference.
+- Overall diff scope discipline is unusually clean for a 32-commit range: every hunk traces to its
+  commit's stated purpose, doc updates (`docs/WatchNowView.md`, `docs/WebServer.md`,
+  `docs/VLCBridge.md`) kept pace with each behavioral change in the same commit rather than lagging,
+  and `issues_resolved.md`/`ISSUES.md` were updated alongside the fixes they describe. No drive-by
+  refactors or opportunistic formatting churn found outside what each commit's own message
+  describes.

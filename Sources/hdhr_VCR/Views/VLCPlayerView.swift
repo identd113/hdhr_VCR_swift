@@ -41,6 +41,13 @@ struct VLCPlayerView: View {
     @State private var suppressNextChannelPlay = false
     @State private var selectedAudioTrackId: Int32 = -1  // -1 = not yet loaded; set when audioTracks first appear
     @State private var selectedSpuTrackId:   Int32 = -1  // -1 = CC off (default)
+    // -1 is also the Picker's own "Off" tag, so it can't by itself distinguish "user explicitly
+    // turned captions off" from "no choice made yet" — this tracks that separately. Only ever set
+    // true by the Picker binding below (a real user pick); every programmatic reset of
+    // selectedSpuTrackId (channel load, channel switch) sets this back to false too, so a fresh
+    // channel always gets a fresh auto-enable-on-mute decision instead of inheriting the previous
+    // channel's explicit choice forever.
+    @State private var spuChoiceIsExplicit:  Bool  = false
     @AppStorage("vlcVolume") private var volume: Double = 50
     @State private var systemDevices: [(id: String, name: String)] = []
     @State private var selectedDevice: String = ""
@@ -226,10 +233,12 @@ struct VLCPlayerView: View {
             // from what's actually playing.
             if volume == 0, bridge.recordingShowId == nil, let first = bridge.spuTracks.first {
                 selectedSpuTrackId = first.id
+                spuChoiceIsExplicit = false
                 VLCBridge.shared.setSpuTrack(id: first.id)
             } else {
                 // Explicitly disable CC on every channel load; some streams auto-enable it.
                 selectedSpuTrackId = -1
+                spuChoiceIsExplicit = false
                 VLCBridge.shared.setSpuTrack(id: -1)
             }
         }
@@ -237,9 +246,11 @@ struct VLCPlayerView: View {
             // Rising edge into muted — auto-enable captions the same way the spuTracks-count
             // handler above does on channel load, for the case where the tracks were already
             // known and the user mutes mid-playback instead. Skipped if the user already made an
-            // explicit choice (selectedSpuTrackId >= 0, even "Off" was picked on purpose) or this
-            // is a recording-relay session (CC picker is hidden there entirely — see its guard).
-            guard newValue == 0, oldValue > 0, selectedSpuTrackId < 0,
+            // explicit choice (spuChoiceIsExplicit, even "Off" was picked on purpose — -1 is both
+            // the Picker's "Off" tag and the unset sentinel, so that alone can't tell the two
+            // apart) or this is a recording-relay session (CC picker is hidden there entirely —
+            // see its guard).
+            guard newValue == 0, oldValue > 0, !spuChoiceIsExplicit,
                   bridge.recordingShowId == nil, let first = bridge.spuTracks.first else { return }
             selectedSpuTrackId = first.id
             VLCBridge.shared.setSpuTrack(id: first.id)
@@ -494,6 +505,7 @@ struct VLCPlayerView: View {
                 // id from the previous channel after a synced switch.
                 selectedAudioTrackId = -1
                 selectedSpuTrackId   = -1
+                spuChoiceIsExplicit  = false
                 if suppressNextChannelPlay { suppressNextChannelPlay = false; return }
                 guard let ch else { return }
                 if let showId = showId(fromLiveGuideNumber: ch.GuideNumber) {
@@ -606,7 +618,13 @@ struct VLCPlayerView: View {
                 Image(systemName: "captions.bubble")
                     .foregroundStyle(selectedSpuTrackId >= 0 ? .primary : .secondary)
                     .accessibilityLabel("Closed captions")
-                Picker("Captions", selection: $selectedSpuTrackId) {
+                // A custom binding, not $selectedSpuTrackId directly, so only a real tap here
+                // (never the programmatic resets elsewhere) marks the choice explicit — see
+                // spuChoiceIsExplicit's own doc comment for why -1 alone can't tell them apart.
+                Picker("Captions", selection: Binding(
+                    get: { selectedSpuTrackId },
+                    set: { selectedSpuTrackId = $0; spuChoiceIsExplicit = true }
+                )) {
                     Text("Off").tag(Int32(-1))
                     ForEach(bridge.spuTracks, id: \.id) { track in
                         Text(track.name).tag(track.id)

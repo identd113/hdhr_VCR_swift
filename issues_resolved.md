@@ -517,6 +517,18 @@ Post-deploy live verification (real SNL/ROAR guide data) turned up a second, ind
 
 ---
 
+## RESOLVED — Muting after explicitly turning captions off silently re-enabled them
+
+**File:** `Views/VLCPlayerView.swift`, `docs/VLCPlayerView.md`
+
+**Root cause**: `-1` was overloaded to mean two different things for `selectedSpuTrackId`: "no CC choice ever made" (the initial/reset state) *and* "user explicitly picked 'Off' in the Picker" (its tag value). The auto-enable-captions-on-mute guard (`onChange(of: volume)`, added this cycle) checked `selectedSpuTrackId < 0` to decide whether the user had already made a deliberate choice — but that check can't tell the two `-1` cases apart, so a real "Off" pick looked identical to "never chosen." The very next mute would silently re-enable captions the user had just explicitly turned off, directly contradicting the guard's own comment ("skipped... even 'Off' was picked on purpose"). Found via `swift-quality-reviewer` during pre-release review of `v2.0.3..main` (2026-08-15) — the bug ships with this same range's new captions-auto-enable feature, so it was never live in a prior release.
+
+**Resolution**: Added a separate `spuChoiceIsExplicit: Bool` tracked independently of the `-1` sentinel. Only the Picker's own selection (via a wrapped `Binding(get:set:)`, not `$selectedSpuTrackId` directly) sets it `true` — every programmatic reset of `selectedSpuTrackId` (channel load, channel switch) resets it back to `false` too, so a new channel always gets a fresh auto-enable decision instead of inheriting the previous channel's explicit choice forever. The mute-guard now checks `!spuChoiceIsExplicit` instead of `selectedSpuTrackId < 0`. Verified via `swift build` (clean) and the full test suite (264 tests, no CC-specific automated coverage exists — this is pure SwiftUI `@State` interaction logic, not easily unit-testable without a UI test harness); manually reasoned through the four call sites that touch either variable to confirm the reset/set pairing is exhaustive. `docs/VLCPlayerView.md` updated to describe the new tracking mechanism in place of the buggy one.
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+---
+
 ## Staleness check, 2026-08-10
 
 Every entry above that only had a prescriptive `**Fix:**` note (rather than a past-tense `**Resolution:**`) was individually re-verified against the current source before filing here — grepped for the described symptom and confirmed the described fix's actual code is present (or, for the FloatingGuideView/CableGuideView group, confirmed the file is gone entirely). Nothing in this file is guessed or assumed still-true from the original write-up.
