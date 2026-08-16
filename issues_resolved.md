@@ -513,7 +513,7 @@ Post-deploy live verification (real SNL/ROAR guide data) turned up a second, ind
 
 **Resolution**: The per-device loop now skips a `state.devices` entry when it's both unusable and has zero shows referencing it (`deviceIDsWithShows.contains(d.DeviceID)`) — an unavailable device something still depends on continues to render exactly as before (verified live: the real `FFFF0001` fake-EXTEND test device, which has one show pointing at it, still rendered as `.tuner-off`/`d-btn-off` after the change). The separate, always-shown "offline device never discovered at all" case (`offlineIDs`, referenced by a show but absent from `state.devices` — CLAUDE.md's "Web guide offline devices" invariant) is untouched — it's built from `state.shows.map { $0.hdhr_record }` and so by construction only ever contains devices with a show attached. Full suite (264 tests) passes; the one failure seen mid-session (`guideRefreshLatency_underThreshold`) was the pre-existing documented flaky perf test (`TODO.md`), confirmed unrelated by re-running clean post-deploy.
 
-**Resolving commit**: pending (uncommitted at time of writing)
+**Resolving commit**: `ad6103a` (mock_hdhr.py `--lan` mode itself: `07ac196`)
 
 ---
 
