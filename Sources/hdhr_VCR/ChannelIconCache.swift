@@ -12,8 +12,12 @@ actor ChannelIconCache {
     private var failedURLs: Set<String> = []
     private let dir: URL
 
-    private init() {
-        let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+    // cacheDir is a test seam only — production always passes nil and gets the real
+    // ~/Library/Caches/. Same shape as ConfigManager(appSupportDir:); without this, any test
+    // touching countMissing/image(for:)/pruneDiskCacheIfNeeded would read/write the live user's
+    // icon cache.
+    init(cacheDir: URL? = nil) {
+        let base = cacheDir ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
         dir = base.appendingPathComponent("hdhr_VCR/channel_icons", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     }

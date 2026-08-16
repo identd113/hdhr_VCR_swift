@@ -18,8 +18,11 @@ final class ChannelSignalStore {
     private var savePending: Task<Void, Never>?
     private let filePath: URL
 
-    private init() {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+    // appSupportDir is a test seam only — production always passes nil and gets the real
+    // ~/Library/Application Support/. Same shape as ConfigManager(appSupportDir:); without this,
+    // any test touching record/needsSample/stats would read/write the live user's signal history.
+    init(appSupportDir: URL? = nil) {
+        let base = appSupportDir ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         filePath = base.appendingPathComponent("hdhrVCRplus/channel_signal_history.json")
         try? FileManager.default.createDirectory(at: filePath.deletingLastPathComponent(),
                                                   withIntermediateDirectories: true)
