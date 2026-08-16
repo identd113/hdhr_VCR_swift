@@ -1202,7 +1202,8 @@ final class WebServer: @unchecked Sendable {
         }
 
         let onlineIDs  = Set(state.devices.map { $0.DeviceID })
-        let offlineIDs = Set(state.shows.map { $0.hdhr_record }).subtracting(onlineIDs).filter { !$0.isEmpty }
+        let deviceIDsWithShows = Set(state.shows.map { $0.hdhr_record })
+        let offlineIDs = deviceIDsWithShows.subtracting(onlineIDs).filter { !$0.isEmpty }
         let usableIDs  = state.usableDeviceIDs
 
         func tunerBox(_ devId: String, active: Bool, uiURL: String?) -> String {
@@ -1229,7 +1230,16 @@ final class WebServer: @unchecked Sendable {
         }
 
         var bar = ""
-        for d in state.devices { bar += tunerBox(d.DeviceID, active: usableIDs.contains(d.DeviceID), uiURL: "http://\(d.LocalIP)/") }
+        for d in state.devices {
+            let isUsable = usableIDs.contains(d.DeviceID)
+            // A previously-discovered device that's gone unavailable (isUsable == false) only
+            // gets a box when something still depends on it — nothing to warn about otherwise,
+            // and a permanently-dimmed empty tuner box is just clutter. offlineIDs below (a
+            // device with a show but never discovered at all) is a distinct, always-shown case —
+            // see the "Web guide offline devices" invariant in CLAUDE.md, unaffected by this.
+            guard isUsable || deviceIDsWithShows.contains(d.DeviceID) else { continue }
+            bar += tunerBox(d.DeviceID, active: isUsable, uiURL: "http://\(d.LocalIP)/")
+        }
         for id in offlineIDs.sorted() { bar += tunerBox(id, active: false, uiURL: nil) }
         return bar
     }

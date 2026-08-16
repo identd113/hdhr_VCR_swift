@@ -505,6 +505,18 @@ Post-deploy live verification (real SNL/ROAR guide data) turned up a second, ind
 
 ---
 
+## RESOLVED — Web guide dev-bar showed a permanently-dimmed tuner box for an offline device with nothing scheduled on it
+
+**File:** `WebServer.swift` (`buildDevBarHTML`), `CLAUDE.md`, `docs/WebServer.md`
+
+**Root cause**: `buildDevBarHTML` rendered a `tunerBox` for every entry in `state.devices` unconditionally, dimmed (`.tuner-off`) once the device dropped out of `state.usableDeviceIDs` — regardless of whether any show actually referenced that device (`hdhr_record`). Found live 2026-08-15 while testing `tools/mock_hdhr.py`'s new `--lan` mode: bringing the mock device up and back down left its tuner box sitting in the dev-bar indefinitely, dimmed, with nothing depending on it and nothing useful to warn about.
+
+**Resolution**: The per-device loop now skips a `state.devices` entry when it's both unusable and has zero shows referencing it (`deviceIDsWithShows.contains(d.DeviceID)`) — an unavailable device something still depends on continues to render exactly as before (verified live: the real `FFFF0001` fake-EXTEND test device, which has one show pointing at it, still rendered as `.tuner-off`/`d-btn-off` after the change). The separate, always-shown "offline device never discovered at all" case (`offlineIDs`, referenced by a show but absent from `state.devices` — CLAUDE.md's "Web guide offline devices" invariant) is untouched — it's built from `state.shows.map { $0.hdhr_record }` and so by construction only ever contains devices with a show attached. Full suite (264 tests) passes; the one failure seen mid-session (`guideRefreshLatency_underThreshold`) was the pre-existing documented flaky perf test (`TODO.md`), confirmed unrelated by re-running clean post-deploy.
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+---
+
 ## Staleness check, 2026-08-10
 
 Every entry above that only had a prescriptive `**Fix:**` note (rather than a past-tense `**Resolution:**`) was individually re-verified against the current source before filing here — grepped for the described symptom and confirmed the described fix's actual code is present (or, for the FloatingGuideView/CableGuideView group, confirmed the file is gone entirely). Nothing in this file is guessed or assumed still-true from the original write-up.

@@ -35,6 +35,7 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 - Fixed: in rare cases, switching channels, seeking, or closing the player while watching an in-progress recording could freeze the entire app until it was force-quit. Player teardown no longer runs in a way that can block the rest of the app while it finishes.
 - Fixed: a "record this series on this channel" show could show a blue "scheduled" indicator on a rerun airing on a *different* channel (e.g. a syndicated rebroadcast on another station) — it would never actually record from that channel, so the indicator was misleading. Series shows locked to one channel now only show the indicator on that channel.
 - Fixed: the About panel's "hide changelog entries newer than this build" filter stopped working when this changelog was rewritten in end-user-facing format — it was looking for the old technical header style and silently matched nothing, so nothing ever got filtered. Updated it to read the new format instead.
+- A tuner that goes offline no longer clutters the web guide with a permanently dimmed, empty box once nothing is scheduled on it — it's only shown while at least one show still depends on it, matching what the offline warning is actually for. A tuner with a show still assigned continues to show as before.
 
 **Info**
 - Reduced background work from this update's new tuner-status tracking and Watch Now's already-recorded lookup, so neither runs more than needed.

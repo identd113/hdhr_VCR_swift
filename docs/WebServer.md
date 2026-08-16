@@ -273,7 +273,7 @@ A persistent SSE endpoint. Browsers connect once on page load via `EventSource('
 
 `guide_refreshed`/`show_added`/`show_deleted`/`show_updated`/`favorite_toggled` carry the full `grid`/`sumph`/`tdrop` payload built by `broadcastGuideChangeEvent` → `buildGuideRefreshPayload` (same shape `GET /api/guide-refresh` returns — `tdrop` here is an *object* keyed by device ID, not a single string). This is computed **once per event**, server-side, and pushed to every connected client, instead of each client independently calling `/api/guide-refresh` and rebuilding the grid itself — see "Guide-change fragment push" below.
 
-`deviceOnline`/`deviceOffline` carry a `devbar` HTML fragment built by `broadcastDeviceBarEvent` → `buildDevBarHTML` — the inner content of `#dev-bar` (one tuner box per discovered device + any offline/absent device), factored out of `buildHTML` so it can be pushed standalone. Previously these two events carried no HTML payload at all; the client had no branch for them and fell through to the fetch-based `refreshGuide()` fallback (case 6 below), whose payload never includes `#dev-bar`'s HTML — so a device going online/offline mid-session silently never updated its tuner-box row (online/offline dimming) until the next full page reload.
+`deviceOnline`/`deviceOffline` carry a `devbar` HTML fragment built by `broadcastDeviceBarEvent` → `buildDevBarHTML` — the inner content of `#dev-bar` (one tuner box per usable-or-has-a-show discovered device, plus any offline/absent device with a show — see the `#dev-bar` section further down), factored out of `buildHTML` so it can be pushed standalone. Previously these two events carried no HTML payload at all; the client had no branch for them and fell through to the fetch-based `refreshGuide()` fallback (case 6 below), whose payload never includes `#dev-bar`'s HTML — so a device going online/offline mid-session silently never updated its tuner-box row (online/offline dimming) until the next full page reload.
 
 **Client handling (six cases, checked in order):**
 
@@ -338,9 +338,13 @@ Page structure (top to bottom):
 
 ### Tuner boxes (`#dev-bar` in the toolbar)
 
-`#dev-bar` is a wrapping flex row with one `tunerBox` per discovered device **plus** one per
-offline/absent device (any `show.hdhr_record` not in `state.devices`). Rendered for every
-configuration including a single device. Each box (`.tuner-box`) has a `.tuner-row`:
+`#dev-bar` is a wrapping flex row with one `tunerBox` per discovered device that's either usable
+or still has at least one show referencing it, **plus** one per offline/absent device (any
+`show.hdhr_record` not in `state.devices` — always shown, regardless of shows, per the invariant
+below). A discovered device that's gone unavailable and has zero shows pointing at it (`hdhr_record`
+match) is omitted entirely as of 2026-08-15 — nothing depends on it, so a permanently-dimmed empty
+box would just be clutter; see `CLAUDE.md`'s "Web guide is per-tuner" invariant. Otherwise rendered
+for every configuration including a single device. Each box (`.tuner-box`) has a `.tuner-row`:
 **HDHR-XXXXXXXX** name (with the live `active/total` occupancy count folded into its own label,
 e.g. "HDHR-105404BE 2/2 — FULL") + **▾** (`.tdrop-btn` → `toggleTunerDrop`), followed by a hidden
 `#tdrop-{devId}` panel containing just the **↗** device web-UI link and that tuner's own
