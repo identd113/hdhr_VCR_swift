@@ -14,49 +14,26 @@ import Foundation
 // HDHRManager already stored `session`/`dataSession` as instance properties rather than taking
 // them per-call. supplementDeviceAuth is pure (no I/O) and tested directly, no mock needed.
 //
-// Own mock URLProtocol (not GuideStoreTests' MockURLProtocol or DiscordNotifierTests'
+// Own mock URLProtocol storage (not GuideStoreTests' MockURLProtocol or DiscordNotifierTests'
 // DiscordMockURLProtocol) — `requestHandler` is shared global mutable state, so a dedicated type +
 // `.serialized` suite avoids a cross-file race under Swift Testing's default parallel execution
-// (same reasoning DiscordNotifierTests.swift documents for its own copy).
+// (same reasoning DiscordNotifierTests.swift documents for its own copy). Shared request-replay
+// mechanics live in TestFixtures.swift's `MockURLProtocolBase`.
 
-private final class HDHRMockURLProtocol: URLProtocol {
-    static var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
-
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
-
-    override func startLoading() {
-        guard let handler = Self.requestHandler else {
-            client?.urlProtocol(self, didFailWithError: URLError(.badURL))
-            return
-        }
-        do {
-            let (response, data) = try handler(request)
-            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-            client?.urlProtocol(self, didLoad: data)
-            client?.urlProtocolDidFinishLoading(self)
-        } catch {
-            client?.urlProtocol(self, didFailWithError: error)
-        }
+private final class HDHRMockURLProtocol: MockURLProtocolBase {
+    private static var _handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+    override class var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data))? {
+        get { _handler }
+        set { _handler = newValue }
     }
-
-    override func stopLoading() {}
-}
-
-private func makeHDHRMockSession() -> URLSession {
-    let config = URLSessionConfiguration.ephemeral
-    config.protocolClasses = [HDHRMockURLProtocol.self]
-    return URLSession(configuration: config)
 }
 
 private func makeHDHRManager() -> HDHRManager {
-    let session = makeHDHRMockSession()
+    let session = makeMockSession(HDHRMockURLProtocol.self)
     return HDHRManager(session: session, dataSession: session)
 }
 
-private func hdhrOKResponse(for url: URL) -> HTTPURLResponse {
-    HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!
-}
+private func hdhrOKResponse(for url: URL) -> HTTPURLResponse { mockOKResponse(for: url) }
 
 private func makeDevice(id: String = "AABBCCDD", ip: String = "192.168.1.100", auth: String? = nil) -> HDHRDevice {
     HDHRDevice(DeviceID: id, LocalIP: ip, BaseURL: "http://\(ip)", TunerCount: 2,

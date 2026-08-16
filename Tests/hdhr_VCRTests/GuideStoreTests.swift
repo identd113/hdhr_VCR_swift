@@ -3,38 +3,22 @@ import Foundation
 @testable import hdhr_VCR
 
 // MARK: - Mock URLProtocol
+//
+// Own storage (see HDHRManagerTests/DiscordNotifierTests for why each mocking file needs its
+// own `requestHandler` slot). Shared request-replay mechanics live in TestFixtures.swift's
+// `MockURLProtocolBase`.
 
-final class MockURLProtocol: URLProtocol {
-    static var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
-
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
-
-    override func startLoading() {
-        guard let handler = Self.requestHandler else {
-            client?.urlProtocol(self, didFailWithError: URLError(.badURL))
-            return
-        }
-        do {
-            let (response, data) = try handler(request)
-            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-            client?.urlProtocol(self, didLoad: data)
-            client?.urlProtocolDidFinishLoading(self)
-        } catch {
-            client?.urlProtocol(self, didFailWithError: error)
-        }
+final class MockURLProtocol: MockURLProtocolBase {
+    private static var _handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+    override class var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data))? {
+        get { _handler }
+        set { _handler = newValue }
     }
-
-    override func stopLoading() {}
 }
 
 // MARK: - Helpers
 
-private func makeSession() -> URLSession {
-    let config = URLSessionConfiguration.ephemeral
-    config.protocolClasses = [MockURLProtocol.self]
-    return URLSession(configuration: config)
-}
+private func makeSession() -> URLSession { makeMockSession(MockURLProtocol.self) }
 
 private func makeLocalDevice(ip: String = "192.168.1.100", id: String = "AABBCCDD") -> HDHRDevice {
     HDHRDevice(DeviceID: id, LocalIP: ip, BaseURL: "http://\(ip)", TunerCount: 2,

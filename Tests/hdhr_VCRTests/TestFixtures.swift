@@ -1,6 +1,56 @@
 import Foundation
 @testable import hdhr_VCR
 
+// MARK: - Shared Mock URLProtocol
+//
+// canInit/canonicalRequest/startLoading/stopLoading were identical, hand-copied boilerplate
+// across HDHRManagerTests/DiscordNotifierTests/GuideStoreTests. What must NOT be shared is each
+// file's `requestHandler` *storage* — it's global mutable state, and one shared slot across
+// files would let suites running in parallel (Swift Testing's default) race on which handler
+// serves which request. Each mocking test file instead subclasses this base with its own
+// private `override class var requestHandler` backed by its own private static storage, and
+// marks its network-mocked suite `.serialized` so tests *within* that one file's suite (which do
+// share that one slot) don't race each other either. `recordRequest()` is an optional hook for a
+// subclass that also wants a call counter (see DiscordNotifierTests).
+class MockURLProtocolBase: URLProtocol {
+    class var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data))? {
+        get { nil }
+        set { _ = newValue }  // no-op unless a subclass overrides with real storage
+    }
+    class func recordRequest() {}
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        Self.recordRequest()
+        guard let handler = Self.requestHandler else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badURL))
+            return
+        }
+        do {
+            let (response, data) = try handler(request)
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: data)
+            client?.urlProtocolDidFinishLoading(self)
+        } catch {
+            client?.urlProtocol(self, didFailWithError: error)
+        }
+    }
+
+    override func stopLoading() {}
+}
+
+func makeMockSession(_ protocolClass: MockURLProtocolBase.Type) -> URLSession {
+    let config = URLSessionConfiguration.ephemeral
+    config.protocolClasses = [protocolClass]
+    return URLSession(configuration: config)
+}
+
+func mockOKResponse(for url: URL, statusCode: Int = 200, headers: [String: String]? = nil) -> HTTPURLResponse {
+    HTTPURLResponse(url: url, statusCode: statusCode, httpVersion: nil, headerFields: headers)!
+}
+
 // MARK: - HDHRDevice
 
 extension HDHRDevice {

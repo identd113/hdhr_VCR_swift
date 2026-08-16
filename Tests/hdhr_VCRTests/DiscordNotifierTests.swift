@@ -12,46 +12,26 @@ import Foundation
 // no-op behavior is covered here — the actual send/edit HTTP paths are exercised for free via
 // sendDiscordEmbedCapturing, which is byte-for-byte the same guard/build/send shape.
 //
-// Own mock URLProtocol (not GuideStoreTests' MockURLProtocol) — that type's `requestHandler` is
-// shared global mutable state; reusing it across files risks a cross-file race under Swift
-// Testing's default parallel execution. A dedicated type + a `.serialized` suite here avoids that
-// without depending on GuideStoreTests' own serialization boundary.
+// Own mock URLProtocol storage (not GuideStoreTests' MockURLProtocol) — that type's
+// `requestHandler` is shared global mutable state; reusing it across files risks a cross-file
+// race under Swift Testing's default parallel execution. A dedicated type + a `.serialized`
+// suite here avoids that without depending on GuideStoreTests' own serialization boundary.
+// Shared request-replay mechanics live in TestFixtures.swift's `MockURLProtocolBase`.
 
-private final class DiscordMockURLProtocol: URLProtocol {
-    static var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+private final class DiscordMockURLProtocol: MockURLProtocolBase {
+    private static var _handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
     static var requestCount = 0
 
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
-
-    override func startLoading() {
-        Self.requestCount += 1
-        guard let handler = Self.requestHandler else {
-            client?.urlProtocol(self, didFailWithError: URLError(.badURL))
-            return
-        }
-        do {
-            let (response, data) = try handler(request)
-            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-            client?.urlProtocol(self, didLoad: data)
-            client?.urlProtocolDidFinishLoading(self)
-        } catch {
-            client?.urlProtocol(self, didFailWithError: error)
-        }
+    override class var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data))? {
+        get { _handler }
+        set { _handler = newValue }
     }
-
-    override func stopLoading() {}
+    override class func recordRequest() { requestCount += 1 }
 }
 
-private func makeDiscordMockSession() -> URLSession {
-    let config = URLSessionConfiguration.ephemeral
-    config.protocolClasses = [DiscordMockURLProtocol.self]
-    return URLSession(configuration: config)
-}
+private func makeDiscordMockSession() -> URLSession { makeMockSession(DiscordMockURLProtocol.self) }
 
-private func discordOKResponse(for url: URL) -> HTTPURLResponse {
-    HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!
-}
+private func discordOKResponse(for url: URL) -> HTTPURLResponse { mockOKResponse(for: url) }
 
 @Suite("DiscordNotifier", .serialized)
 struct DiscordNotifierTests {

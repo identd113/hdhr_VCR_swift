@@ -141,3 +141,11 @@ Follow-up to the 2026-08-11 coverage-guided pass. Both files got real injection 
 **Key files**: `RecordingManager.swift`, `HDHRManager.swift`, `Tests/hdhr_VCRTests/RecordingManagerTests.swift`, `Tests/hdhr_VCRTests/HDHRManagerTests.swift`.
 
 ---
+
+### `ChannelSignalStore.swift` — 2.04% line coverage, no injection seam
+
+Found during the 2026-08-15 update-checker test-gap pass (`UpdateChecker.swift` was fixed that session, 0% → 97%; this one was flagged, not fixed). `key(for:)` is well-covered (`ChannelSignalStoreKeyTests.swift`, per CLAUDE.md's "Signal keys" invariant), but the rest of the class — `record`/`needsSample`/`stats`/the private `bucketFor` adaptive-resample logic — has zero coverage. Unlike `HDHRManager`/`DiscordNotifier`/`RecordingManager`, it can't be exercised the same way: it's a `static let shared` singleton with a `private init` that always resolves to the *real* `~/Library/Application Support/hdhrVCRplus/channel_signal_history.json` — no constructor injection seam exists to point a test at a temp path the way `ConfigManager(appSupportDir:)` already does for `AppState` tests (see `TestFixtures.swift`'s `makeTestAppState`). Adding one (an `init(appSupportDir:)` mirroring `ConfigManager`'s own pattern, keeping `static let shared` calling the default) would be a small, low-risk source change, but wasn't made speculatively — flagging here rather than touching a shared singleton's initializer without a concrete need driving it.
+
+**Key file**: `Sources/hdhr_VCR/ChannelSignalStore.swift`.
+
+---

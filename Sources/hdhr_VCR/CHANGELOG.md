@@ -7,6 +7,9 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 **Added**
 - **The app now checks GitHub once a day for a newer release** and shows a link to it in Settings → About and the menu bar dropdown when one exists — no automatic download or install, just a heads-up with a link to grab it yourself. A "Check for Updates" button in Settings → About triggers an immediate check any time. Off switch: Settings → Advanced → "Check for updates automatically".
 
+**Info**
+- Added automated test coverage for the new update-checker (version comparison plus success/error/malformed-response paths) — no user-visible change. Also consolidated three near-identical hand-copied mock-network test helpers into one shared one, used by the new tests and the three existing test files that had each carried their own copy.
+
 ## v2.0.4 — 2026-08-15
 
 **Added**
