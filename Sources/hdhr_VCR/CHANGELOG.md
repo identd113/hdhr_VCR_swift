@@ -4,6 +4,8 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 
 ## Unreleased
 
+## v2.0.4 — 2026-08-15
+
 **Added**
 - **Record directly from Watch Now and the streaming player, without opening the Add Show wizard.** Clicking Record now shows a pulldown of the four recording types (a single airing, weekly at this time, this series on this channel, or this series on any channel), each with a one-line description — pick one and it's scheduled immediately. The streaming ("Watch") player also gained a Record button for the first time, next to its channel picker.
 - **Currently-recording shows now sort above Favorites**, in both Watch Now and the web guide, in their own "Recording" section — a show already capturing to disk is a stronger claim on your attention than a merely-favorited channel.
