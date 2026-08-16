@@ -529,6 +529,18 @@ Post-deploy live verification (real SNL/ROAR guide data) turned up a second, ind
 
 ---
 
+## RESOLVED — `diskOK(for:)` could block recording on a large drive with tens of GB genuinely free
+
+**File:** `Models.swift` (`Min_disk_free_gb` default), `docs/Config.md`
+
+**Root cause**: `diskOK` refuses to record when *either* the drive is over 93% full (`maxDiskPct`, hardcoded) *or* free space drops below `Min_disk_free_gb` (Settings-configurable, defaulted to 10 GB). Found 2026-08-15 while adding test coverage for the recording-scheduling engine, surfaced by the dev machine's own real disk (461 GB, 94% used, 30 GB free) — 30 GB is triple the old 10 GB default, yet the independent 93%-full check still blocked every recording.
+
+**Resolution**: Raised `Min_disk_free_gb`'s default from `10.0` to `30.0` GB (both the struct's stored-property default and the decode fallback for configs that never persisted the key) — explicit user instruction, confirmed via `AskUserQuestion` that this should land as the *existing* setting's new default rather than a second, separate hardcoded floor. Still user-adjustable in Settings → Recording (1–100 GB range, unchanged). Worth knowing: this does **not** by itself change whether a drive over 93% full gets flagged — that check is independent and intentionally unaffected by this change (per the same clarifying question) — so a machine in the exact situation that surfaced this (30 GB free, 94% used) is still correctly flagged, just now for the 93%-full reason alone rather than both. Full suite verified green after the change (`swift test`); `docs/Config.md`'s config-key table updated to the new default.
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+---
+
 ## Staleness check, 2026-08-10
 
 Every entry above that only had a prescriptive `**Fix:**` note (rather than a past-tense `**Resolution:**`) was individually re-verified against the current source before filing here — grepped for the described symptom and confirmed the described fix's actual code is present (or, for the FloatingGuideView/CableGuideView group, confirmed the file is gone entirely). Nothing in this file is guessed or assumed still-true from the original write-up.

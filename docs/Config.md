@@ -30,7 +30,7 @@ GuideHours              Int     24      hours of guide to fetch; also controls r
 Guide_use_xml           Bool    false   use XMLTV endpoint instead of JSON; triggers guide refresh on toggle; devices without DeviceAuth fall back to JSON
 Default_transcode       String  "none"  none | heavy | mobile | internet720
 Fail_count_setting      Int     3       pause show after N consecutive failures
-Min_disk_free_gb        Double  10.0    refuse to record below this free space (GB)
+Min_disk_free_gb        Double  30.0    refuse to record below this free space (GB)
 Idle_timer_interval     Int     10      seconds between idle loop checks (min enforced: 5)
 Series_subfolder_enabled Bool   false   when true, SeriesID recordings are saved to Title/Season XX/ subfolders inside the recording folder; falls back to flat path if no parseable season in guide EpisodeNumber
 Skip_recorded_episodes  Bool    false   when true (needs Series_subfolder_enabled), skip recording a series episode whose SxxExx is already on disk — advances to the next airing without recording or a fail count; only when the guide entry has a full season+episode tag

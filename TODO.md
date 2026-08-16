@@ -157,14 +157,16 @@ points it at the same mock-curl-script technique `RecordingManagerTests.swift` a
 shared via `TestFixtures.swift`'s `writeMockCurlScript`/`waitUntil`), driving real launches/stops/
 reschedules through `makeTestAppState`. `AppState.swift`: 20.34% → 39.03% line coverage.
 
-Also found and fixed a real, load-bearing bug in the process: `diskOK(for:)`'s `maxDiskPct: Double = 93`
+Also found a real, load-bearing bug in the process: `diskOK(for:)`'s `maxDiskPct: Double = 93`
 was a `private let` — on a dev machine whose real disk happens to be over 93% used (true for the
 machine this was found on), the real app would silently refuse to start every recording, with
 `diskOK`'s own fallback-to-true path never triggering since the filesystem stats read succeeds fine.
 Widened to `var` (test seam, same "widen for testability" precedent as `HDHRManager`'s methods
 above) so tests unrelated to disk-space logic can override it; not a source of the coverage number
-above, but a correctness finding worth knowing about if a user ever reports recordings silently not
-starting on a fairly-full disk.
+above, but a correctness finding worth knowing about. Follow-up requested same day: raised
+`Min_disk_free_gb`'s default from 10 GB to 30 GB (see `issues_resolved.md` — the 93%-full check
+itself is unchanged and independent, so a drive in the exact situation that surfaced this is still
+correctly flagged, just for that reason alone now).
 
 **Still genuinely uncovered, and staying that way for now**: `scheduleNextAir`'s `.seriesChannel`/
 `.seriesAll` branches and `resolveSeriesAir` depend on a freshly-loaded `GuideStore` (a real network

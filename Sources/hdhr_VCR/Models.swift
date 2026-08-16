@@ -347,7 +347,7 @@ struct AppConfig: Equatable {
     // Recording
     var Default_transcode: String   = "none"  // none | heavy | mobile | internet720
     var Fail_count_setting: Int     = 3       // deactivate show after N failures
-    var Min_disk_free_gb: Double    = 10.0    // refuse to record below this free space
+    var Min_disk_free_gb: Double    = 30.0    // refuse to record below this free space
     var Idle_timer_interval: Int    = 10      // seconds between idle checks
     var Series_subfolder_enabled: Bool = false  // organize SeriesID recordings into Title/Season XX/ subfolders
     var Skip_recorded_episodes: Bool = false    // skip a series episode already on disk (needs Series_subfolder_enabled + SxxExx guide data)
@@ -427,7 +427,7 @@ extension AppConfig: Codable {
         Guide_use_xml         = (try? c.decode(Bool.self,   forKey: .Guide_use_xml))         ?? false
         Default_transcode     = (try? c.decode(String.self,  forKey: .Default_transcode))     ?? "none"
         Fail_count_setting    = (try? c.decode(Int.self,     forKey: .Fail_count_setting))    ?? 3
-        Min_disk_free_gb      = (try? c.decode(Double.self,  forKey: .Min_disk_free_gb))      ?? 10.0
+        Min_disk_free_gb      = (try? c.decode(Double.self,  forKey: .Min_disk_free_gb))      ?? 30.0
         Idle_timer_interval   = (try? c.decode(Int.self,     forKey: .Idle_timer_interval))   ?? 10
         Series_scan_retry_hours = (try? c.decode(Int.self,   forKey: .Series_scan_retry_hours)) ?? 4
         Hdhr_setup_folder     = (try? c.decode(String.self,  forKey: .Hdhr_setup_folder))     ?? ""
