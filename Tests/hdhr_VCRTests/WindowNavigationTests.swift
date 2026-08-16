@@ -128,19 +128,21 @@ try
 end try
 """
 
-/// Shared by `settingsAllTabsReachable` and `guideSourceToggleDoesNotBreakWindows` — assumes the
-/// Settings window is already open and frontmost. Selects every sidebar row in turn and records
-/// "label|resultingWindowTitle" per line, then closes the window. Kept as one script (not split
-/// into "select tab" + "read title" calls) so the row-index re-resolution and title-settle poll —
-/// both required per the comments below — stay atomic with the click that triggers them.
+/// Used by both phases of `guideSourceToggleDoesNotBreakWindows` — assumes the Settings window is
+/// already open and frontmost. Selects every sidebar row in turn and records
+/// "label|resultingWindowTitle" per line. Kept as one script (not split into "select tab" + "read
+/// title" calls) so the row-index re-resolution and title-settle poll — both required per the
+/// comments below — stay atomic with the click that triggers them.
 ///
-/// Deliberately ends on a bare `resultsStr` (not `return resultsStr`): `return` inside a top-level
-/// `tell` block exits the *entire* enclosing script immediately, not just this snippet — fine for
-/// settingsAllTabsReachable (which only ever runs this once, as the last thing the script does),
-/// fatal for guideSourceToggleDoesNotBreakWindows (which needs to run it twice with more script
-/// after each). A bare trailing expression becomes AppleScript's implicit `result` for the very
-/// next statement instead, without terminating anything — callers that need it right away must
-/// capture it (`set x to result`) before any other statement can overwrite that implicit value.
+/// Deliberately does NOT close the window (2026-08-15: used to, when a since-removed standalone
+/// reachability test called this as the last thing it did) — both remaining call sites
+/// immediately select the General tab and flip the guide-source checkbox right after this scan in
+/// the *same* window session, so closing here would just force an unnecessary reopen a few lines
+/// later. Ends on a bare `resultsStr` (not `return resultsStr`): `return` inside a top-level `tell`
+/// block exits the *entire* enclosing script immediately, not just this snippet. A bare trailing
+/// expression becomes AppleScript's implicit `result` for the very next statement instead, without
+/// terminating anything — callers must capture it (`set x to result`) before any other statement
+/// can overwrite that implicit value.
 private let captureAllSettingsTabTitlesSnippet = """
 set resultsStr to ""
 set rowCount to count of rows of outline 1 of scroll area 1 of group 1 of splitter group 1 of group 1 of window 1
@@ -168,9 +170,6 @@ repeat with i from 1 to rowCount
     end repeat
     set resultsStr to resultsStr & lbl & "|" & actualTitle & linefeed
 end repeat
-try
-    click (first button of window 1 whose description is "close button")
-end try
 resultsStr
 """
 
@@ -216,34 +215,6 @@ struct WindowNavigationTests {
         #expect(parts[1] == "true", "donation nag window did not close cleanly")
     }
 
-    @Test func settingsAllTabsReachable() throws {
-        guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
-        let script = #"""
-        tell application "System Events"
-            tell process "hdhr_VCR"
-                \#(dismissDonationNagSnippet)
-                click menu item "Settings…" of menu 1 of menu bar item 1 of menu bar 2
-                repeat 20 times
-                    delay 0.25
-                    if (count of windows) > 0 then exit repeat
-                end repeat
-                \#(captureAllSettingsTabTitlesSnippet)
-            end tell
-        end tell
-        """#
-        guard let result = runAppleScript(script), !result.isEmpty else {
-            Issue.record("Settings navigation script produced no output — app running but automation failed?")
-            return
-        }
-        let lines = result.split(separator: "\n")
-        #expect(lines.count == 8, "expected 8 sidebar tabs, saw \(lines.count): \(result)")
-        for line in lines {
-            let parts = line.split(separator: "|", maxSplits: 1).map(String.init)
-            #expect(parts.count == 2 && parts[0] == parts[1],
-                "tab label and resulting window title should match — got \(line)")
-        }
-    }
-
     /// Flips Guide_use_xml, confirms it doesn't perturb window/tab structure that has nothing to
     /// do with guide source, then flips it back — added 2026-08-10 alongside the JSON/XMLTV
     /// consistency work (see docs/HDHRFindings.md's "Consistency check" section for the
@@ -251,9 +222,18 @@ struct WindowNavigationTests {
     /// chrome, not guide data itself). Any settings tab whose *label* stops matching its own
     /// *resulting window title* after the toggle — or any tab that goes missing/gains a
     /// duplicate — indicates the format switch broke something structural, which would be a real,
-    /// unexpected regression worth investigating; a tab's title tracking its own label is the same
-    /// invariant settingsAllTabsReachable checks, just diffed before vs. after the toggle here
-    /// instead of asserted once.
+    /// unexpected regression worth investigating.
+    ///
+    /// Also the only place "are all 8 Settings tabs reachable at all" gets checked (formerly a
+    /// separate `settingsAllTabsReachable` test, folded in 2026-08-15) — its BEFORE phase asserts
+    /// exactly that invariant on an untouched config before this test does anything else, so a
+    /// dedicated scan-and-assert pass was pure duplicate work: same script
+    /// (`captureAllSettingsTabTitlesSnippet`), same assertions, on the same running app, just
+    /// without the diff this test does on top. Removing the standalone test cut this suite's real
+    /// on-screen run from 3 full "open Settings, walk every sidebar tab" passes to 2 (~3.8s of the
+    /// suite's ~37s). Trade-off worth knowing: general tab-reachability coverage now lives inside
+    /// a test named for something else — if this test is ever gutted for guide-source-specific
+    /// reasons, take the BEFORE-phase assertions below with it rather than deleting them.
     @Test func guideSourceToggleDoesNotBreakWindows() throws {
         guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
 
@@ -343,7 +323,11 @@ struct WindowNavigationTests {
             tell process "hdhr_VCR"
                 \#(dismissDonationNagSnippet)
 
-                -- BEFORE: capture all 8 tab titles with the current guide source
+                -- BEFORE_AND_TOGGLE: open Settings once, capture all 8 tab titles with the
+                -- current guide source, then — same window session, no reopen — select General
+                -- and flip + save the guide-source checkbox (closes the window). Merged 2026-08-15:
+                -- these were two separate "open Settings, wait, settle" cycles that always ran
+                -- back-to-back with nothing else happening in between.
                 try
                     \#(dismissUnsavedSettingsAlertSnippet)
                     click menu item "Settings…" of menu 1 of menu bar item 1 of menu bar 2
@@ -356,32 +340,21 @@ struct WindowNavigationTests {
                     delay 0.5
                     \#(captureAllSettingsTabTitlesSnippet)
                     set beforeResults to result
-                on error errMsg
-                    return "PHASE_BEFORE_ERROR: " & errMsg
-                end try
-
-                -- TOGGLE: reopen Settings, select General, flip + save (closes the window)
-                try
-                    \#(dismissUnsavedSettingsAlertSnippet)
-                    click menu item "Settings…" of menu 1 of menu bar item 1 of menu bar 2
-                    repeat 20 times
-                        delay 0.25
-                        if (count of windows) > 0 then exit repeat
-                    end repeat
-                    -- Extra settle: window existing (count>0) doesn't guarantee its SwiftUI
-                    -- content's AX subtree has finished populating yet (see debugging notes above).
-                    delay 0.5
                     \#(selectSettingsTabSnippet("General"))
                     \#(findAndToggleXMLCheckboxSnippet)
                 on error errMsg
-                    return "PHASE_TOGGLE_ERROR: " & errMsg
+                    return "PHASE_BEFORE_ERROR: " & errMsg
                 end try
 
                 -- Real network refresh (guide + lineup) triggered by the save — give it a real
                 -- window to complete before reading window state again, not a guess-and-hope delay.
                 delay 4
 
-                -- AFTER: capture all 8 tab titles again with the new guide source active
+                -- AFTER: reopen Settings once, capture all 8 tab titles again with the new guide
+                -- source active. Deliberately left open afterward (captureAllSettingsTabTitlesSnippet
+                -- no longer closes it) — RESTORE right below reuses this same window instead of
+                -- reopening; its own "click menu item Settings…" becomes a near-instant no-op
+                -- (window already frontmost) rather than a real reopen in the common case.
                 try
                     \#(dismissUnsavedSettingsAlertSnippet)
                     click menu item "Settings…" of menu 1 of menu bar item 1 of menu bar 2
@@ -402,14 +375,14 @@ struct WindowNavigationTests {
                 -- Retried up to 3x — reliably reproduced (while building this test) as the one
                 -- phase that hits a transient AX "Invalid index" (-1719) that the same settle-poll
                 -- protecting every other phase here doesn't fully eliminate, most likely because
-                -- the background guide refresh the TOGGLE phase's save kicked off can still be
+                -- the background guide refresh the BEFORE_AND_TOGGLE phase's save kicked off can still be
                 -- completing (mutating app/menu state) right around when RESTORE runs — later and
                 -- less predictably timed than the fixed 4s delay before AFTER accounts for. A
                 -- persisted, real user setting must not stay flipped, so this retries rather than
                 -- giving up after one transient failure.
                 -- Reuses findAndToggleXMLCheckboxSnippet verbatim (not separate restore-specific
                 -- logic) — flipping the same checkbox a second time IS the restore, and this exact
-                -- snippet already proved reliable in the TOGGLE phase above; a parallel hand-written
+                -- snippet already proved reliable in the BEFORE_AND_TOGGLE phase above; a parallel hand-written
                 -- copy here was the actual source of the flakiness this comment block used to
                 -- describe (kept failing on its own separately-written click/save sequence even
                 -- after the AX-tree-walk and alert-dismissal fixes above stopped the earlier
@@ -482,8 +455,9 @@ struct WindowNavigationTests {
         #expect(before.count == 8, "expected 8 tabs before toggling, saw \(before.count): \(halves[0])")
         #expect(after.count == 8,  "expected 8 tabs after toggling, saw \(after.count): \(halves[1])")
 
-        // Every label's own title should still match itself post-toggle (settingsAllTabsReachable's
-        // invariant), AND — the actual point of this test — nothing should have shifted between
+        // Every label's own title should still match itself both before AND after the toggle
+        // (general tab-reachability, not specific to guide source — see this function's doc
+        // comment), AND — the actual point of this test — nothing should have shifted between
         // the before and after pass just because the guide source changed underneath it.
         for (label, beforeTitle) in before {
             #expect(beforeTitle == label,

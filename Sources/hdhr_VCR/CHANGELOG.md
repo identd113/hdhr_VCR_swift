@@ -9,6 +9,7 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 
 **Info**
 - Added automated test coverage for the new update-checker (version comparison plus success/error/malformed-response paths) — no user-visible change. Also consolidated three near-identical hand-copied mock-network test helpers into one shared one, used by the new tests and the three existing test files that had each carried their own copy.
+- Trimmed redundant real-window UI testing: a standalone Settings-tabs-reachable test was fully re-checking what the guide-source-toggle test already verified as its own baseline, so it was folded in rather than run separately; that same test's before/after phases also no longer close and reopen the Settings window between two steps that always ran back-to-back anyway. No coverage lost — no user-visible change.
 
 ## v2.0.4 — 2026-08-15
 
