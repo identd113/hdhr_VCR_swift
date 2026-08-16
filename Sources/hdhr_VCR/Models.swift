@@ -361,6 +361,7 @@ struct AppConfig: Equatable {
 
     var Network_interface: String = ""  // empty = Auto (OS chooses interface)
     var Verbose_curl: Bool = false
+    var Check_for_updates: Bool = true  // periodic GitHub Releases check; see UpdateChecker.swift
     var Watch_in_VLC: Bool = false
     var Watch_in_VLC_initialized: Bool = false  // set true after first auto-detect so user toggles are preserved
     var Player_buffer_min_rate: Int = 93        // adaptive buffer fill-phase floor (90–100); 100 = disabled
@@ -432,6 +433,7 @@ extension AppConfig: Codable {
         Hdhr_setup_folder     = (try? c.decode(String.self,  forKey: .Hdhr_setup_folder))     ?? ""
         Network_interface     = (try? c.decode(String.self,  forKey: .Network_interface))     ?? ""
         Verbose_curl          = (try? c.decode(Bool.self,    forKey: .Verbose_curl))          ?? false
+        Check_for_updates     = (try? c.decode(Bool.self,    forKey: .Check_for_updates))     ?? true
         Watch_in_VLC          = (try? c.decode(Bool.self,    forKey: .Watch_in_VLC))          ?? false
         Watch_in_VLC_initialized = (try? c.decode(Bool.self, forKey: .Watch_in_VLC_initialized)) ?? false
         Player_buffer_min_rate   = (try? c.decode(Int.self,  forKey: .Player_buffer_min_rate))   ?? 93

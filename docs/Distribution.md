@@ -10,7 +10,7 @@ A guide for shipping hdhrVCRplus outside the Mac App Store — notarization, cos
 |------|------|-------|
 | Apple Developer Program | $99/year | Required for Developer ID cert + notarization. Renews annually — if you let it lapse, existing notarized copies still work but you can't ship new versions. |
 | GitHub (hosting + releases) | Free | Public repo with release assets (DMG files) up to 2 GB each. |
-| Auto-update | None | Releases are downloaded manually; no appcast, no updater framework. |
+| Auto-update | Check only | App checks GitHub Releases once a day and shows a link (About tab + menu bar) when a newer version exists (`UpdateChecker.swift`) — no appcast, no updater framework, no download/install automation. Sparkle was tried twice and parked; see git history on commits `1376dc6`/`6e9dca8`/`39f1419`. |
 | Payment processing | ~2.9% + $0.30/transaction | Stripe or Gumroad take a cut; no monthly fee on free tier. |
 
 **Minimum cost to ship: $99/year.**
@@ -46,7 +46,7 @@ The zip is the thing you hand users. Everything else (payment gate) is layered o
 ### Ongoing use
 - App lives in the menu bar (no Dock icon)
 - Launches at login if the user enables it in Settings → General
-- No background update checks — users get new versions by downloading a new zip from GitHub Releases
+- A once-a-day background check (About tab + menu bar link) tells them a newer version exists, but they still download and install the new zip from GitHub Releases manually — nothing auto-downloads or auto-installs
 
 ---
 
@@ -135,7 +135,7 @@ For a first release:
 |----------|---------------|
 | Payment | Gumroad, $10–$15 one-time |
 | Distribution | GitHub Releases (`.zip` of the notarized `.app`) |
-| Auto-update | None — users download new releases manually |
+| Auto-update | Check-only notice (GitHub Releases API) — users still download and install manually |
 | License enforcement | Optional — start without it, add later if needed |
 
 Once you have the Developer ID cert, cutting a release is `deploy_release.sh` → zip → `gh release create` (minutes).

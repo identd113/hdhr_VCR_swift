@@ -86,5 +86,6 @@ Bundle ID `com.hdhr.vcrplus` must be registered in App Store Connect under your 
 | NWBrowser + UDP device discovery | `network.client` entitlement present |
 | `~/Library/Application Support/` config | Standard sandbox-accessible path |
 | Discord webhook | Outbound HTTPS, `network.client` covers it |
+| GitHub Releases update check (`UpdateChecker.swift`) | Outbound HTTPS to `api.github.com`, same `network.client` coverage; read-only, no download/install |
 | Channel icon disk cache | Within sandbox container |
 | Sparkle signature key in Info.plist | Harmless if Sparkle is removed |

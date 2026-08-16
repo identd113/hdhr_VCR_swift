@@ -19,7 +19,7 @@ Clicking the icon opens a native macOS cascading menu (NSMenu style). The menu h
 - One row per detected HDHomeRun device: `"105404BE  1/4"` — DeviceID left-aligned, live-active/total-tuners. Live count comes from polling `status.json` each idle tick (`deviceTunerOccupancy`); falls back to the app's own recording count before the first poll. The "app expects N" count includes both active recordings **and** the VLC player if it is open on that device — recording one show while watching counts as 2. Color: `systemRed` when the device is offline/unreachable (highest priority — the count is also replaced with an em dash, `"105404BE  —"`); else `systemOrange` when the device has lineup/guide warnings; full `labelColor` when recording (no warnings); `secondaryLabelColor` when idle and healthy. If the live count differs from the app's expected count, appends `"  ⚠ app expects N"`. After startup, missing lineup or guide data appends `"  ⚠ no lineup"` or `"  ⚠ no guide"` (or both, comma-separated); an offline device appends `"  ⚠ unavailable"` instead. All warning strings share one comma-separated `"  ⚠ ..."` suffix on the same line.
 - Status message row: `"16 show(s) — 1 tuner(s) ready"` — the tuner count uses `availableDeviceCount`, which excludes any device that has an empty lineup or empty guide data.
 
-Immediately below the header: **Add Show…** button, **Watch Now** button (when devices present), then **Settings…**, then a divider.
+Immediately below the header: **Add Show…** button, **Watch Now** button (when devices present), then **Settings…**, then — only when `state.updateCheckResult` is non-nil — an **"Update Available: vX.Y.Z"** button (`arrow.down.circle.fill` icon) that opens the GitHub release page via `NSWorkspace.shared.open(_:)`, then a divider.
 
 **Watching** section (only visible when VLC player is open, appears directly above Recording Now):
 - Section header: `"Watching"` (single device) or `"Watching · 105404BE"` (shows which device's tuner is in use)
@@ -127,6 +127,7 @@ This is deliberately a real `@Published` property with its own timer rather than
 [Watch Now… — Label("Watch Now…", systemImage: "play.tv.fill"), when devices present]
 Divider
 Settings…
+[Update Available: vX.Y.Z — arrow.down.circle.fill, only when state.updateCheckResult != nil]
 Divider
 [Now Watching — "Ch 5.1  NBC · Show Title", play.tv.fill icon, only when vlcCurrentURL is non-empty]
 Section "Recording Now"              ← only when shows are recording (single tuner)

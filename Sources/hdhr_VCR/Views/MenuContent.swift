@@ -98,6 +98,13 @@ struct MenuContent: View {
         Divider()
 
         Button("Settings…")    { open("settings") }
+        if let update = state.updateCheckResult {
+            Button {
+                NSWorkspace.shared.open(update.releaseURL)
+            } label: {
+                Label("Update Available: v\(update.latestVersion)", systemImage: "arrow.down.circle.fill")
+            }
+        }
         Divider()
 
         // ── Now Watching ──────────────────────────────────────────────────

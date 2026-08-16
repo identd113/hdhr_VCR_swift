@@ -83,6 +83,8 @@ final class AppState: ObservableObject {
     @Published var notifyPermission = false
     private let notificationDelegate = NotificationActionDelegate()
     @Published var isStartingUp: Bool = true
+    @Published var updateCheckResult: UpdateCheckResult?   // non-nil only when a newer GitHub release exists
+    @Published var lastUpdateCheckDate: Date?               // nil = never checked this launch
     // Set to true in tests: startup() returns immediately, preventing idleLoop from running.
     var skipStartup = false
 
@@ -360,6 +362,9 @@ final class AppState: ObservableObject {
         // 4. Notification permission — fire-and-forget; must not block discovery
         Task { await requestNotifyPermission() }
 
+        // 5. GitHub release check — fire-and-forget; re-checks every 24h for the life of the app
+        Task { await updateCheckLoop() }
+
         // 6. Load persisted signal history before first guide fetch
         await ChannelSignalStore.shared.load()
 
@@ -411,6 +416,29 @@ final class AppState: ObservableObject {
             let v = NSHostingView(rootView: MenuJITPlaceholder())
             v.frame = CGRect(x: 0, y: 0, width: 320, height: 600)
             _ = v.fittingSize
+        }
+    }
+
+    // MARK: - Update check
+
+    // CFBundleShortVersionString, not appVersion — only deploy_release.sh stamps it (to the
+    // real semver, matching GitHub's "vX.Y.Z" tags), so it stays fixed at the last real release
+    // across ordinary deploy.sh dev builds instead of jumping around with every build timestamp.
+    private func currentReleaseVersion() -> String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
+    }
+
+    // Always runs when called directly (e.g. a manual "Check Now" button) — Check_for_updates
+    // only gates the automatic periodic loop below, not an explicit user request.
+    func checkForUpdateOnce() async {
+        updateCheckResult = await checkForUpdate(currentVersion: currentReleaseVersion())
+        lastUpdateCheckDate = Date()
+    }
+
+    private func updateCheckLoop() async {
+        while !Task.isCancelled {
+            if config.Check_for_updates { await checkForUpdateOnce() }
+            try? await Task.sleep(nanoseconds: 24 * 3600 * 1_000_000_000)
         }
     }
 
