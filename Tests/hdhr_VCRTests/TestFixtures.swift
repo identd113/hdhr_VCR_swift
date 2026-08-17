@@ -192,12 +192,13 @@ func makeTestAppState(
     shows: [Show] = [],
     devices: [HDHRDevice] = [],
     lineups: [String: [LineupEntry]] = [:],
-    recordingManager: RecordingManager? = nil
+    recordingManager: RecordingManager? = nil,
+    guideStore: GuideStore? = nil
 ) -> AppState {
     // Unique per-call temp dir — any test that reaches saveConfig() (e.g. deleteShow) writes here
     // instead of the real ~/Library/Application Support/hdhrVCRplus/ config the deployed app uses.
     let tempConfigDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-    let s = AppState(configManager: ConfigManager(appSupportDir: tempConfigDir), recordingManager: recordingManager)
+    let s = AppState(configManager: ConfigManager(appSupportDir: tempConfigDir), recordingManager: recordingManager, guideStore: guideStore)
     // skipStartup must be set before any suspension point so startup()'s guard fires
     // before the Task runs on the main actor. Prevents idleLoop from spinning forever.
     s.skipStartup = true

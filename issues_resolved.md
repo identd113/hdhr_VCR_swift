@@ -605,6 +605,75 @@ Eight parallel review passes across every subsystem, the full `docs/*.md` tree, 
 
 ---
 
+# Three medium findings + three test-coverage gaps — 2026-08-16
+
+The three remaining medium-severity findings from the full-codebase audit, plus the three
+test-coverage gaps from the same pass, fixed and added in one session.
+
+## RESOLVED — UDP discovery reply with no DeviceID TLV silently collapsed two tuners into one
+
+**File:** `HDHRManager.swift` (`udpDiscoverSync`)
+
+**Root cause**: `deviceID` defaulted to `UInt32 = 0` and was only overwritten if the reply's TLV payload actually carried tag `0x02`. A reply that omitted or truncated it was recorded as `DeviceID: "00000000"` — indistinguishable from a second such device, so `discoverDevices()`'s DeviceID-based dedup would silently drop the second one, dropping a whole tuner with nothing logged.
+
+**Resolution**: `deviceID` is now `UInt32?`, defaulting to `nil`; after the TLV loop, a reply with no DeviceID (`guard let deviceID else { ...; continue }`) is skipped with a warning logged instead of recorded under a colliding sentinel. `swift build` clean.
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+---
+
+## RESOLVED — `RecordingManager.headerFiles[showId]` leaked if `posix_spawn` failed
+
+**File:** `RecordingManager.swift` (`start()`)
+
+**Root cause**: `headerFiles[showId] = hdrPath` was set unconditionally before the `try spawnDetached(...)` call, which can throw. A persistently-failing spawn (bad executable permissions, out of process slots) would leave that entry orphaned for the life of the app session if the show was then deleted before ever successfully starting — the same shape as the documented "new show_id-keyed tracking table must be cleared in deleteShow" invariant, just one level down inside `RecordingManager` rather than `AppState`.
+
+**Resolution**: The spawn call is now wrapped in its own `do`/`catch`; on failure, `headerFiles.removeValue(forKey: showId)` runs before rethrowing (`pids[showId]` is never set on this path, so there's nothing else to undo). `swift build` clean.
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+---
+
+## RESOLVED — A malformed Discord embed's JSON-encode failure logged nowhere
+
+**File:** `DiscordNotifier.swift` (`sendDiscordEmbed`, `sendDiscordEmbedCapturing`, `editDiscordEmbed`)
+
+**Root cause**: All three send functions did `guard let data = try? JSONSerialization.data(withJSONObject: body) else { return }` before any of the send/failure logging that follows — the one branch with zero trace in either `glog` or `discordLog`, unlike every other failure path in the same functions (bad response type, non-2xx HTTP, network error), which all log to both. This made a malformed embed dict (a caller bug, not a network issue) the hardest failure class to diagnose from the logs `discordLog()` exists specifically to make reviewable.
+
+**Resolution**: `let title = embedTitle(embed)` moved above the JSON-encode guard in all three functions so it's available for the failure log; the guard's `else` branch now logs to both `glog` and `discordLog` before returning/returning nil. `swift build` clean.
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+---
+
+## RESOLVED — Bonus Time (sports-genre default + show_end padding) had zero test coverage
+
+**File:** `Models.swift` (`Show.genreImpliesBonusTime`), `Views/AddShowView.swift`, `Tests/hdhr_VCRTests/Models/ShowTitleHelpersTests.swift`, `Tests/hdhr_VCRTests/Recording/AppStateRecordingEngineTests.swift`
+
+**Root cause of the coverage gap**: the earlier audit finding attributed the sports-genre default to a nonexistent `applyGuideEntry()` function in `AppState.swift`; the real logic turned out to be duplicated across three places — `AddShowView.swift`'s `applyPendingEntry`/`applyWebGuideEntry` (both `private` methods on a SwiftUI View struct, not practically unit-testable as written) and `guide.js`'s client-side `_isSports` check. Only the `Sports_padding_minutes` extension arithmetic in `AppState.startRecording` was both testable and untested.
+
+**Also found in the process**: `applyWebGuideEntry` matched only `"sports"` while `applyPendingEntry` and `guide.js` both matched `"sport"` — silently missing XMLTV's singular `"Sport"` category tag on the web-guide-driven entry path, a real (if narrow) behavioral divergence between the app's two Add-Show entry paths.
+
+**Resolution**: Extracted the genre check into a shared `Show.genreImpliesBonusTime(_:)` static helper (`Models.swift`) using the correct `"sport"` substring match, and pointed both `AddShowView.swift` call sites at it — fixing the drift as a side effect of making the logic testable at all. Added a parameterized test table (`GenreImpliesBonusTimeTests`) pinning the match contract, plus three `AppState.startRecording` tests covering the padding-enabled/padding-disabled/show-opted-out combinations for the arithmetic itself. `guide.js`'s independent copy is unchanged (JS, outside this test suite's reach) but now has two, not three, Swift/JS copies to stay in sync with.
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+---
+
+## RESOLVED — Idle-loop / `scheduleNextAir` stale-index-across-`await` safety had only happy-path coverage
+
+**File:** `AppState.swift` (new `guideStore` injection seam), `Tests/hdhr_VCRTests/Recording/AppStateIdleLoopStaleIndexTests.swift` (new), `Tests/hdhr_VCRTests/TestFixtures.swift`
+
+**Root cause of the coverage gap**: the documented invariant ("re-resolve `shows` by `show_id` after any `await`, never reuse a captured `Int` index") only has a real suspension point to test against for `.seriesChannel`/`.seriesAll` shows — `scheduleNextAir` never `await`s anything for `.single`/`.dateTime` shows, since they have no network dependency. Testing the series-show path needs a mocked guide fetch, which needs `AppState`'s `guideStore` to be injectable — it wasn't (unlike `recordingManager`/`configManager`).
+
+**Resolution**: Added a `guideStore: GuideStore? = nil` init parameter to `AppState` (same optional-injection pattern as `recordingManager`, required for the same reason — both are `@MainActor` types, so a default *parameter value* expression can't construct one inline in the signature) and threaded it through `makeTestAppState`. The new test file mocks `GuideStore`'s `URLSession` and, from inside the mock's `requestHandler` closure — which runs synchronously as part of producing the HTTP response, guaranteeing it lands *during* `scheduleNextAir`'s `await guideStore.load(...)` suspension — mutates `state.shows` via `DispatchQueue.main.sync` (safe to reach the `@MainActor`-isolated property this way since the actor's underlying executor is the main thread, and `scheduleNextAir` is genuinely suspended off of it at that moment). Two tests: one deletes the show mid-fetch and asserts `scheduleNextAir` returns cleanly instead of trapping on the stale index; one inserts a decoy show ahead of it and asserts the eventual guide match is written to the *correct*, re-resolved show rather than clobbering whatever now sits at the original index. Needed `.serialized` on the suite (two tests sharing one mock protocol's static handler slot — same race `GuideStoreTests.swift` already documents and guards against).
+
+**Also fixed in the process**: both new `AppState.startRecording` disk-gate tests above, and — tracing why they and the pre-existing `startRecording_happyPath_marksRecordingAndLaunchesRealProcess`/`idleLoop_startsShowWhoseWindowIsOpen`/`startRecording_launchFailure_recordsFailureWithoutMarkingRecording` tests had been intermittently failing all session (previously assumed pure environment flakiness, confirmed pre-existing via `git stash` earlier) — root-caused to `diskOK`'s independent `Min_disk_free_gb` free-space check: tests set `state.maxDiskPct = 100` to neutralize the percent-full check, but never touched the separate absolute-free-space floor (default 30 GB), so a test machine genuinely below that threshold failed every disk-gated test regardless of `maxDiskPct`. Added `state.config.Min_disk_free_gb = 0` alongside every existing `state.maxDiskPct = 100` in `AppStateRecordingEngineTests.swift`, which also resolved the previously-flaky tests as a side effect — not a coincidence, the same root cause.
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+---
+
 ## Staleness check, 2026-08-10
 
 Every entry above that only had a prescriptive `**Fix:**` note (rather than a past-tense `**Resolution:**`) was individually re-verified against the current source before filing here — grepped for the described symptom and confirmed the described fix's actual code is present (or, for the FloatingGuideView/CableGuideView group, confirmed the file is gone entirely). Nothing in this file is guessed or assumed still-true from the original write-up.

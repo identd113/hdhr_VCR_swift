@@ -221,7 +221,7 @@ final class AppState: ObservableObject {
     let configManager: ConfigManager
     let hdhrManager      = HDHRManager()
     let recordingManager: RecordingManager
-    let guideStore       = GuideStore()
+    let guideStore: GuideStore
     let webServer        = WebServer()
     @Published var webServerRunning: Bool    = false
     @Published var webServerError:   String? = nil
@@ -299,13 +299,17 @@ final class AppState: ObservableObject {
     // configManager/recordingManager params are test seams only — real app startup
     // (hdhr_VCRApp.swift) always uses the defaults, which point at the real on-disk config and
     // the real /usr/bin/curl; see ConfigManager.init's and RecordingManager.init's own comments.
-    // recordingManager is Optional (rather than defaulted inline like configManager) because
-    // RecordingManager is @MainActor — a default *parameter value* expression isn't isolated the
-    // same way the enclosing init is, so `= RecordingManager()` directly in the signature fails to
-    // compile; constructing the real instance inside the init body sidesteps that.
-    init(configManager: ConfigManager = ConfigManager(), recordingManager: RecordingManager? = nil) {
+    // recordingManager/guideStore are Optional (rather than defaulted inline like configManager)
+    // because both are @MainActor — a default *parameter value* expression isn't isolated the same
+    // way the enclosing init is, so `= RecordingManager()`/`= GuideStore()` directly in the
+    // signature fails to compile; constructing the real instances inside the init body sidesteps
+    // that. guideStore injection lets AppStateIdleLoopStaleIndexTests point a .seriesChannel show's
+    // guide-fetch at a mocked URLSession to force a genuine await suspension, the same technique
+    // recordingManager's mock-curl-script seam uses for the process-spawning side.
+    init(configManager: ConfigManager = ConfigManager(), recordingManager: RecordingManager? = nil, guideStore: GuideStore? = nil) {
         self.configManager = configManager
         self.recordingManager = recordingManager ?? RecordingManager()
+        self.guideStore = guideStore ?? GuideStore()
         // Keep vlcCurrentURL in sync with VLCBridge.currentURL so any close path that
         // nils currentURL (releasePlayer → stopAndClearState) automatically clears the
         // "now watching" indicator without every caller needing to do it explicitly.

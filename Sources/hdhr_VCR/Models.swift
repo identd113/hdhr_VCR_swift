@@ -227,6 +227,16 @@ struct Show: Identifiable, Equatable {
         return String(rawTitle[..<range.lowerBound])
     }
 
+    /// Whether a guide entry's genre should default Bonus Time on when a new show is created from
+    /// it — "sport" (not "sports") deliberately matches both guide.php's plural "Sports" and
+    /// XMLTV's singular "Sport" category tag. Shared by AddShowView's two entry paths (native guide
+    /// selection and web-guide pending-entry) and mirrors guide.js's own client-side `_isSports`
+    /// check — previously each of the three had its own copy, and one of them (`applyWebGuideEntry`)
+    /// had drifted to matching only "sports", silently missing XMLTV's singular tag.
+    static func genreImpliesBonusTime(_ genre: String?) -> Bool {
+        genre?.lowercased().contains("sport") == true
+    }
+
     static func blank(channel: String = "", device: String = "") -> Show {
         Show(
             show_id: UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased(),

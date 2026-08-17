@@ -300,7 +300,7 @@ final class HDHRManager {
             let payloadLen = Int(buf[2]) << 8 | Int(buf[3])
             let limit = min(4 + payloadLen, n, bufCapacity)
             var off = 4
-            var deviceID: UInt32 = 0
+            var deviceID: UInt32? = nil
             var deviceAuth: String? = nil
             while off + 2 <= limit {
                 let tag = buf[off], tagLen = Int(buf[off + 1])
@@ -318,6 +318,14 @@ final class HDHRManager {
                     deviceAuth = String(bytes: authBytes, encoding: .utf8)
                 }
                 off += tagLen
+            }
+
+            // A reply with no DeviceID TLV (tag 0x02) used to default to "00000000" — two such
+            // devices would then look identical to discoverDevices()'s DeviceID-based dedup and
+            // silently collapse into one, dropping a whole tuner with nothing logged. Skip instead.
+            guard let deviceID else {
+                glog("UDP reply with no DeviceID TLV — skipped", level: .warning)
+                continue
             }
 
             // Convert source address to IP string

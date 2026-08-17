@@ -357,8 +357,7 @@ struct AddShowView: View {
         show.show_seriesid       = entry.SeriesID ?? ""
         show.show_logo_url       = entry.ImageURL ?? ""
         show.show_genre          = entry.firstGenre ?? ""
-        // "sport" (not "sports") matches both guide.php's "Sports" and XMLTV's singular "Sport" category tag.
-        show.show_bonus_time     = entry.firstGenre?.lowercased().contains("sport") == true && state.config.Sports_padding_enabled
+        show.show_bonus_time     = Show.genreImpliesBonusTime(entry.firstGenre) && state.config.Sports_padding_enabled
         show.hdhr_record         = device.DeviceID
         show.show_url            = channel.URL ?? ""
         if show.show_url.isEmpty {
@@ -386,7 +385,7 @@ struct AddShowView: View {
         show.show_seriesid   = seriesId
         show.show_logo_url   = imageURL
         show.show_genre      = genre
-        show.show_bonus_time = genre.lowercased().contains("sports") && state.config.Sports_padding_enabled
+        show.show_bonus_time = Show.genreImpliesBonusTime(genre) && state.config.Sports_padding_enabled
         show.hdhr_record     = deviceId
         // Look up the stream URL from the lineup so the recording process has the HDHR URL
         show.show_url = state.lineups[deviceId]?.first(where: { $0.GuideNumber == guideNumber })?.URL ?? ""

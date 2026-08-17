@@ -168,30 +168,22 @@ above, but a correctness finding worth knowing about. Follow-up requested same d
 itself is unchanged and independent, so a drive in the exact situation that surfaced this is still
 correctly flagged, just for that reason alone now).
 
-**Still genuinely uncovered, and staying that way for now**: `scheduleNextAir`'s `.seriesChannel`/
-`.seriesAll` branches and `resolveSeriesAir` depend on a freshly-loaded `GuideStore` (a real network
-fetch via `guideStore.load()` when stale, or state seeded into `guideStore`'s internal cache some
-other way not currently exposed to tests). The underlying lookup methods they call
+**Still genuinely uncovered**: `scheduleNextAir`'s `.seriesChannel`/`.seriesAll` branches and
+`resolveSeriesAir` depend on a freshly-loaded `GuideStore`. The underlying lookup methods they call
 (`guideStore.currentEpisode`/`nextEpisode`/`currentEntryByTitle`/`nextEntryByTitle`) already have
 solid direct coverage via `GuideStoreTests`, so the *matching logic* isn't blind — only these two
 functions' own orchestration ("which lookup tier to try, in what order, before giving up and
-retrying later") stays untested. Would need either a network-mock seam on `GuideStore` itself or a
-way to pre-seed its cache directly — a separate, larger effort than this pass.
+retrying later") stays untested. The blocker this note used to describe ("would need a network-mock
+seam on `GuideStore` itself... a separate, larger effort") no longer applies: `AppState` now takes
+an injectable `guideStore` (added 2026-08-16 for `AppStateIdleLoopStaleIndexTests.swift`, mirroring
+the pre-existing `recordingManager` seam), and that file already demonstrates mocking `GuideStore`'s
+`URLSession` end-to-end through a real `scheduleNextAir` call. What's left is purely writing the
+tier-ordering test cases against that existing seam, not building one.
 
-Two more gaps found by the 2026-08-16 full-codebase audit, in the same "central logic, no
-regression net" category as the above: (1) **Bonus Time** — neither the sports-genre default-true
-branch in `applyGuideEntry()` nor the `show_end` padding-minutes arithmetic in `startRecording`
-(gated on `Sports_padding_enabled && show.show_bonus_time`) has any test; `grep -ri bonus Tests/`
-returns nothing. (2) **Idle-loop stale-index-across-`await` safety** — the CLAUDE.md-documented
-invariant ("re-resolve `shows` by `show_id` after any `await`, never reuse a captured `Int` index")
-has only happy-path coverage in `AppStateRecordingEngineTests.swift`; no test deliberately mutates/
-deletes `state.shows` mid-suspension to actually exercise the race the invariant defends against.
-(3) **`deleteShow`'s `discordEpisodeSnapshots` cleanup** — the code correctly clears all eleven
-show_id-keyed side tables (see `docs/AppState.md`'s "Show Delete / Skip" section), but
-`AppStateDeleteShowCleanupTests.swift` only populates and asserts the original ten — added after
-that test was written, so `discordEpisodeSnapshots` isn't exercised by the regression test meant to
-guard exactly this cleanup.
+Three more gaps found by the 2026-08-16 full-codebase audit — Bonus Time (sports-genre default +
+`show_end` padding arithmetic), idle-loop stale-index-across-`await` safety, and `deleteShow`'s
+`discordEpisodeSnapshots` cleanup — were resolved the same day; see `issues_resolved.md`.
 
-**Key files**: `AppState.swift`, `Tests/hdhr_VCRTests/Recording/AppStateRecordingEngineTests.swift`, `Tests/hdhr_VCRTests/AppState/AppStateDeleteShowCleanupTests.swift`, `Tests/hdhr_VCRTests/TestFixtures.swift`.
+**Key files**: `AppState.swift`, `Tests/hdhr_VCRTests/Recording/AppStateRecordingEngineTests.swift`, `Tests/hdhr_VCRTests/Recording/AppStateIdleLoopStaleIndexTests.swift`, `Tests/hdhr_VCRTests/AppState/AppStateDeleteShowCleanupTests.swift`, `Tests/hdhr_VCRTests/TestFixtures.swift`.
 
 ---

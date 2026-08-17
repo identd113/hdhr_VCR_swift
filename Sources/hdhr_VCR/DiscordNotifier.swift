@@ -49,11 +49,18 @@ func sendDiscordEmbed(to webhookURL: String, embed: [String: Any], session: URLS
     req.httpMethod = "POST"
     req.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
+    let title = embedTitle(embed)
     let body: [String: Any] = ["embeds": [embed]]
-    guard let data = try? JSONSerialization.data(withJSONObject: body) else { return }
+    guard let data = try? JSONSerialization.data(withJSONObject: body) else {
+        // Every other failure branch below logs to both glog and discordLog; this guard used to
+        // return silently, making a malformed embed dict (a caller bug, not a network issue) the
+        // one failure class with zero trace in either log.
+        glog("[Discord] embed JSON-encode failed — title=\"\(title)\", not sent", level: .error)
+        discordLog("SEND title=\"\(title)\" FAILED — embed JSON-encode failed", level: .error)
+        return
+    }
     req.httpBody = data
 
-    let title = embedTitle(embed)
     glog("[Discord] sending embed to \(url.host ?? webhookURL)")
     discordLog("SEND title=\"\(title)\" (no id captured — fire-and-forget)")
     Task {
@@ -89,11 +96,15 @@ func sendDiscordEmbedCapturing(to webhookURL: String, embed: [String: Any], sess
     var req = URLRequest(url: url)
     req.httpMethod = "POST"
     req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    let title = embedTitle(embed)
     let body: [String: Any] = ["embeds": [embed]]
-    guard let data = try? JSONSerialization.data(withJSONObject: body) else { return nil }
+    guard let data = try? JSONSerialization.data(withJSONObject: body) else {
+        glog("[Discord] embed JSON-encode failed — title=\"\(title)\", not sent", level: .error)
+        discordLog("CREATE title=\"\(title)\" FAILED — embed JSON-encode failed", level: .error)
+        return nil
+    }
     req.httpBody = data
 
-    let title = embedTitle(embed)
     glog("[Discord] sending embed (capturing ID) to \(url.host ?? webhookURL)")
     discordLog("CREATE title=\"\(title)\"")
     do {
@@ -134,11 +145,15 @@ func editDiscordEmbed(webhookURL: String, messageId: String, embed: [String: Any
     var req = URLRequest(url: url)
     req.httpMethod = "PATCH"
     req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    let title = embedTitle(embed)
     let body: [String: Any] = ["embeds": [embed]]
-    guard let data = try? JSONSerialization.data(withJSONObject: body) else { return }
+    guard let data = try? JSONSerialization.data(withJSONObject: body) else {
+        glog("[Discord] embed JSON-encode failed — title=\"\(title)\", msgId=\(messageId) not edited", level: .error)
+        discordLog("EDIT title=\"\(title)\" msgId=\(messageId) FAILED — embed JSON-encode failed", level: .error)
+        return
+    }
     req.httpBody = data
 
-    let title = embedTitle(embed)
     glog("[Discord] editing message \(messageId)")
     discordLog("EDIT title=\"\(title)\" msgId=\(messageId)")
     Task {

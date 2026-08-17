@@ -58,9 +58,19 @@ final class RecordingManager {
 
         // Spawn curl directly in its own POSIX session — one PID per recording.
         // Sleep prevention is handled by a fire-and-forget IOKit assertion below.
-        let pid = try spawnDetached(executablePath: curlExecutablePath,
+        let pid: Int32
+        do {
+            pid = try spawnDetached(executablePath: curlExecutablePath,
                                     arguments: curlArgs,
                                     stderrPath: logPath)
+        } catch {
+            // headerFiles[showId] was set above (needed in curlArgs before we can spawn) — a
+            // persistently-failing spawn (e.g. EACCES/ENOMEM on curl) would otherwise leave that
+            // entry orphaned for the life of the app session if the show is deleted before ever
+            // successfully starting. pids[showId] is never set on this path, so nothing else to undo.
+            headerFiles.removeValue(forKey: showId)
+            throw error
+        }
         pids[showId] = pid
 
         // Prevent system sleep for the recording duration + 5-min buffer.

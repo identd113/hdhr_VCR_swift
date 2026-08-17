@@ -35,6 +35,28 @@ struct SeriesTitleTests {
     }
 }
 
+@Suite("Show.genreImpliesBonusTime(_:)")
+struct GenreImpliesBonusTimeTests {
+
+    // The sports-genre Bonus Time default had zero coverage (CLAUDE.md/TODO.md, 2026-08-16 audit)
+    // despite being duplicated across three call sites (AddShowView's two entry paths + guide.js's
+    // own client-side check) before being consolidated into this one shared helper — one of the
+    // three (applyWebGuideEntry) had drifted to matching only "sports", silently missing XMLTV's
+    // singular "Sport" category tag. This table pins the contract all three now share.
+    @Test(arguments: [
+        (genre: "Sports",     expected: true),   // guide.php's plural tag
+        (genre: "Sport",      expected: true),   // XMLTV's singular tag — the one that had drifted
+        (genre: "sports",     expected: true),   // case-insensitive
+        (genre: "Sports talk", expected: true),  // substring match
+        (genre: "Comedy",     expected: false),
+        (genre: "",           expected: false),
+        (genre: nil,          expected: false),
+    ])
+    func matchesSportSubstringCaseInsensitively(_ row: (genre: String?, expected: Bool)) {
+        #expect(Show.genreImpliesBonusTime(row.genre) == row.expected)
+    }
+}
+
 @Suite("String.channelSortKey")
 struct ChannelSortKeyTests {
 
