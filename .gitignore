@@ -10,9 +10,17 @@ TestMacro
 /dist/
 /hdhrVCRplus.app
 tools/__pycache__/
+tools/test_scenarios/__pycache__/
 
 # ── Test artifacts ────────────────────────────────────────────────────────
 Tests/hdhr_VCRTests/Views/__Snapshots__/
+
+# tools/run_test_scenarios.sh's regenerated-per-run fixtures/log — build_scenarios.py's own
+# comment: timestamps are relative to "now" at generation time, so a committed copy goes stale
+# immediately. Only the generator script itself is source.
+tools/test_scenarios/generated_guide.json
+tools/test_scenarios/generated_shows.json
+tools/test_scenarios/mock_hdhr.log
 
 # ── Local-only source, not part of the tracked app ────────────────────────
 /src
