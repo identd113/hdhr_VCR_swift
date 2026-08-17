@@ -32,6 +32,23 @@ Fault-injection flags simulate specific failure modes:
   --bad-guide   /guide.json → 500 (no EPG data)
   --bad-tuner   both of the above combined
 
+--guide-file PATH serves that file's exact contents for /guide.json instead of proxying to the
+real device or SiliconDust cloud — full control over what the app sees for scheduling tests
+(custom SeriesIDs, titles, air times), independent of what's actually airing right now. The file
+is re-read on every request, so editing it takes effect on the app's next guide refresh with no
+restart needed. Forces DeviceAuth off on this mock's /discover.json response (even if the real
+device being mirrored has one), since GuideStore only ever fetches a device's own /guide.json —
+never this mock's — when DeviceAuth is present; a cloud/EXTEND-style device's guide always goes
+straight to api.hdhomerun.com instead, bypassing this flag entirely. File format: a JSON array of
+HDHomeRun guide.json channel objects, e.g.:
+  [{"GuideNumber": "5.1", "GuideName": "Test Channel", "Guide": [
+      {"StartTime": 1700000000, "EndTime": 1700003600, "Title": "My Show",
+       "SeriesID": "test123", "EpisodeNumber": "S01E01"}
+  ]}]
+Pair with tools/mock_scenario.py's `plant` subcommand to schedule shows against these exact
+guide entries once the app has loaded them (Settings → Update Guides Now, or wait for the hourly
+auto-refresh).
+
 /discover.json always responds normally so the device remains discoverable.
 
 Stop with Ctrl+C — the interface alias is removed automatically on exit.
@@ -264,6 +281,7 @@ class ControlHandler(BaseHTTPRequestHandler):
     real_info:  dict = {}
     bad_lineup: bool = False
     bad_guide:  bool = False
+    guide_file: str | None = None   # path to a custom guide.json; served as-is instead of proxying
     _info_lock  = threading.Lock()   # guards real_info dict replacement
 
     @classmethod
@@ -299,6 +317,8 @@ class ControlHandler(BaseHTTPRequestHandler):
             self._send_error(404, f"bad-lineup: {path} not available")
         elif self.bad_guide and path in GUIDE_PATHS:
             self._send_error(500, f"bad-guide: {path} not available")
+        elif self.guide_file and path in GUIDE_PATHS:
+            self._serve_guide_file()
         elif path in GUIDE_PATHS:
             self._proxy_guide()
         else:
@@ -326,12 +346,21 @@ class ControlHandler(BaseHTTPRequestHandler):
         d["ModelNumber"]  = d.get("ModelNumber",  "HDHR")       + "-MOCK"
         d["BaseURL"]      = f"http://{hostname}"
         d["LineupURL"]    = f"http://{hostname}/lineup.json"
+        if self.guide_file:
+            # GuideStore.guideURL only ever fetches a device's own /guide.json (this mock's local
+            # endpoint, which --guide-file intercepts below) when DeviceAuth is absent — a device
+            # WITH DeviceAuth has its guide fetched straight from api.hdhomerun.com instead, which
+            # this mock can't intercept. Drop it here so --guide-file actually takes effect even
+            # when mirroring a real EXTEND-capable device.
+            d.pop("DeviceAuth", None)
         if self.bad_lineup and self.bad_guide:
             d["FriendlyName"] += " [BAD]"
         elif self.bad_lineup:
             d["FriendlyName"] += " [NO-LINEUP]"
         elif self.bad_guide:
             d["FriendlyName"] += " [NO-GUIDE]"
+        elif self.guide_file:
+            d["FriendlyName"] += " [GUIDE-FILE]"
         return d
 
     def _proxy_guide(self):
@@ -381,6 +410,29 @@ class ControlHandler(BaseHTTPRequestHandler):
                 self.end_headers()
             except BrokenPipeError:
                 pass
+
+    def _serve_guide_file(self):
+        """Serve --guide-file's contents verbatim for /guide.json. Re-read from disk on every
+        request (not cached at startup) so editing the file takes effect on the app's next guide
+        refresh without needing to restart this mock."""
+        try:
+            with open(self.guide_file, "rb") as f:
+                data = f.read()
+            json.loads(data)  # fail loudly here, not as a confusing parse error inside the app
+        except FileNotFoundError:
+            log(f"[GuideFile] ✗ {self.guide_file} not found")
+            self._send_error(500, f"--guide-file not found: {self.guide_file}")
+            return
+        except json.JSONDecodeError as e:
+            log(f"[GuideFile] ✗ {self.guide_file} is not valid JSON: {e}")
+            self._send_error(500, f"--guide-file is not valid JSON: {e}")
+            return
+        log(f"[GuideFile] → GET /guide.json served from {self.guide_file} ({len(data)} bytes)")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
 
     def _proxy(self, method: str):
         url  = f"http://{self.real_ip}{self.path}"
@@ -456,6 +508,7 @@ def main():
             "  sudo python3 tools/mock_hdhr.py --bad-tuner                  # both\n"
             "  sudo python3 tools/mock_hdhr.py --real-ip 192.168.1.100      # explicit IP\n"
             "  sudo python3 tools/mock_hdhr.py --auth-refresh 300           # refresh DeviceAuth every 5m\n"
+            "  sudo python3 tools/mock_hdhr.py --guide-file my_guide.json   # serve custom EPG data\n"
             "\n"
             "The mock advertises itself as device FFFF0001, on 127.0.0.2 (loopback, default) or a\n"
             "real LAN address (--lan). Ctrl+C cleans up the interface alias and mDNS registration.\n"
@@ -478,10 +531,19 @@ def main():
                     help="Shorthand for --bad-lineup --bad-guide")
     ap.add_argument("--auth-refresh", metavar="SECS", type=int, default=1800,
                     help="How often to re-fetch DeviceAuth from the real device (default: 1800s)")
+    ap.add_argument("--guide-file", metavar="PATH", default=None,
+                    help="Serve this file's contents for /guide.json instead of proxying — full "
+                         "control over guide data for scheduling tests. Re-read on every request. "
+                         "Forces DeviceAuth off on this mock so the app actually fetches from it "
+                         "(see the module docstring for why, and the expected JSON shape).")
     args = ap.parse_args()
 
     bad_lineup = args.bad_lineup or args.bad_tuner
     bad_guide  = args.bad_guide  or args.bad_tuner
+
+    if args.guide_file and not os.path.isfile(args.guide_file):
+        print(f"Error: --guide-file {args.guide_file} does not exist.")
+        sys.exit(1)
 
     if os.geteuid() != 0:
         print("Error: must run as root (sudo) to bind port 80 and manage the interface alias.")
@@ -492,6 +554,7 @@ def main():
         if args.real_ip: flags.append(f"--real-ip {args.real_ip}")
         if args.lan: flags.append("--lan")
         if args.lan_ip: flags.append(f"--lan-ip {args.lan_ip}")
+        if args.guide_file: flags.append(f"--guide-file {args.guide_file}")
         suffix = (" " + " ".join(flags)) if flags else ""
         print(f"\n  sudo python3 {sys.argv[0]}{suffix}")
         sys.exit(1)
@@ -554,11 +617,15 @@ def main():
     if bad_lineup and bad_guide: friendly += " [BAD]"
     elif bad_lineup:             friendly += " [NO-LINEUP]"
     elif bad_guide:              friendly += " [NO-GUIDE]"
+    elif args.guide_file:        friendly += " [GUIDE-FILE]"
 
     ControlHandler.real_ip    = real_ip
     ControlHandler.real_info  = real_info
     ControlHandler.bad_lineup = bad_lineup
     ControlHandler.bad_guide  = bad_guide
+    ControlHandler.guide_file = args.guide_file
+    if args.guide_file:
+        log(f"[Setup] --guide-file: serving {args.guide_file} for /guide.json (DeviceAuth forced off)")
 
     if mock_needs_alias:
         prefixlen = None

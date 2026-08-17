@@ -9,6 +9,7 @@ Subcommands:
   duplicate [--series X]     plant a fake "already recorded" file  -> green skip flag (file-based)
   conflict  [--device X]     schedule overlapping shows on one tuner -> conflict warning
   record-test [--series X]   schedule a now-airing entry, verify it records, then clean up (uses a tuner)
+  plant --file X.json        schedule arbitrary custom shows against already-loaded guide entries
   list                       list mockable upcoming managed airings (for `duplicate`)
   clean                      remove everything this tool created (mock files + [MOCK] shows)
 
@@ -19,7 +20,19 @@ Safety markers so `clean` never touches real data:
 Requires the app running with the web server enabled; `duplicate` also needs Series-subfolders
 and Skip-already-recorded on.
 
-  tools/mock_scenario.py <subcommand> [--series X | --device X] [--port 1980]
+`plant` schedules shows by matching (title, and optionally channel/device) against whatever the
+app's guide currently has loaded — it does NOT talk to a device directly, so pair it with
+tools/mock_hdhr.py's --guide-file to fully control what's actually there (real guide data works
+too, e.g. for testing against a currently-airing show, but timing then isn't under your control).
+File format: a JSON array of show definitions —
+  [{"title": "My Show", "showType": "seriesChannel", "channel": "5.1", "device": "FFFF0001"}]
+`title` is required (substring-matched, case-insensitive, against the loaded guide — the mock's
+own [MOCK] prefix is added automatically, don't include it). `channel`/`device` narrow an
+ambiguous match; omit them to take the earliest matching entry. `showType` is one of
+single/dateTime/seriesChannel/seriesAll (default single). Optional passthrough fields: `airDays`
+(array of weekday names, for dateTime), `transcode`, `bonusTime` (bool).
+
+  tools/mock_scenario.py <subcommand> [--series X | --device X | --file X.json] [--port 1980]
 """
 import argparse
 import glob
@@ -266,6 +279,67 @@ def do_record_test(port, shows, series):
     sys.exit(0 if ok else 1)
 
 
+# ── plant (schedule arbitrary custom shows from a JSON file) ──────────────────
+def do_plant(port, file):
+    try:
+        with open(file) as f:
+            scenario = json.load(f)
+    except FileNotFoundError:
+        sys.exit(f"Scenario file not found: {file}")
+    except json.JSONDecodeError as e:
+        sys.exit(f"Scenario file is not valid JSON: {e}")
+    if not isinstance(scenario, list):
+        sys.exit("Scenario file must be a JSON array of show definitions — see the module docstring.")
+
+    # Union of future and currently-airing blocks — a scenario show can target either. De-duped
+    # since a block airing right now can appear in both queries.
+    seen, blocks = set(), []
+    for b in guide_blocks(port, future_only=True) + guide_blocks(port, airing_now=True):
+        key = (b["device"], b["channel"], b["start"])
+        if key not in seen:
+            seen.add(key)
+            blocks.append(b)
+    if not blocks:
+        sys.exit("No guide entries currently loaded — nothing to match against. "
+                  "See tools/mock_hdhr.py --guide-file, then Update Guides Now in the app.")
+
+    print(f"Planting {len(scenario)} show(s) from {file}:")
+    ok_count = 0
+    for i, want in enumerate(scenario):
+        title = (want.get("title") or "").strip()
+        if not title:
+            print(f"  [{i}] SKIP — missing required \"title\"")
+            continue
+        candidates = [b for b in blocks if title.lower() in b["title"].lower()]
+        if want.get("channel"):
+            candidates = [b for b in candidates if b["channel"] == want["channel"]]
+        if want.get("device"):
+            candidates = [b for b in candidates if b["device"] == want["device"]]
+        if not candidates:
+            print(f"  [{i}] FAIL — no loaded guide entry matches title={title!r}"
+                  + (f" channel={want['channel']}" if want.get("channel") else "")
+                  + (f" device={want['device']}" if want.get("device") else ""))
+            continue
+        blk = sorted(candidates, key=lambda b: b["start"])[0]
+        payload = {
+            "deviceId": blk["device"], "guideNumber": blk["channel"], "startTime": blk["start"],
+            "showType": want.get("showType", "single"),
+            "title": MOCK_PREFIX + blk["title"],
+        }
+        for passthrough in ("airDays", "transcode", "bonusTime"):
+            if passthrough in want:
+                payload[passthrough] = want[passthrough]
+        r = post_json(port, "/api/record", payload)
+        when = time.strftime("%a %-I:%M %p", time.localtime(blk["start"]))
+        status = "ok" if r.get("ok") else f"FAIL ({r.get('error', '?')})"
+        print(f"  [{i}] {status:20} {(MOCK_PREFIX + blk['title'])[:40]:40} ch {blk['channel']:>5}  {when}")
+        if r.get("ok"):
+            ok_count += 1
+    nudge(port)
+    print(f"\n{ok_count}/{len(scenario)} show(s) planted. `clean` to remove them.")
+    sys.exit(0 if ok_count == len(scenario) else 1)
+
+
 # ── clean ─────────────────────────────────────────────────────────────────────
 def cleanup_mock_shows(port, mock_shows):
     for s in mock_shows:
@@ -317,12 +391,16 @@ def nudge(port):
 # ── main ──────────────────────────────────────────────────────────────────────
 def main():
     ap = argparse.ArgumentParser(description="Plant/remove mock app states to demo or test guide + scheduling behavior.")
-    ap.add_argument("cmd", choices=["duplicate", "conflict", "record-test", "list", "clean"],
+    ap.add_argument("cmd", choices=["duplicate", "conflict", "record-test", "plant", "list", "clean"],
                     help="scenario to mock (or list/clean)")
     ap.add_argument("--series", help="restrict to a series whose title contains this text")
     ap.add_argument("--device", help="device id for `conflict` (default: first device in the guide)")
+    ap.add_argument("--file", help="scenario JSON file for `plant` — see the module docstring for the format")
     ap.add_argument("--port", type=int, default=1980, help="web server port (default 1980)")
     args = ap.parse_args()
+
+    if args.cmd == "plant" and not args.file:
+        sys.exit("`plant` requires --file <scenario.json>")
 
     shows = load_shows()
     try:
@@ -334,6 +412,8 @@ def main():
             do_conflict(args.port, shows, args.device)
         elif args.cmd == "record-test":
             do_record_test(args.port, shows, args.series)
+        elif args.cmd == "plant":
+            do_plant(args.port, args.file)
         elif args.cmd == "clean":
             do_clean(args.port, shows)
     except urllib.error.URLError:
