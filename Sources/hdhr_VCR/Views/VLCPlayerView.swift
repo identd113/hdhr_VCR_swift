@@ -250,10 +250,20 @@ struct VLCPlayerView: View {
             // the Picker's "Off" tag and the unset sentinel, so that alone can't tell the two
             // apart) or this is a recording-relay session (CC picker is hidden there entirely —
             // see its guard).
-            guard newValue == 0, oldValue > 0, !spuChoiceIsExplicit,
-                  bridge.recordingShowId == nil, let first = bridge.spuTracks.first else { return }
-            selectedSpuTrackId = first.id
-            VLCBridge.shared.setSpuTrack(id: first.id)
+            if newValue == 0, oldValue > 0, !spuChoiceIsExplicit,
+               bridge.recordingShowId == nil, let first = bridge.spuTracks.first {
+                selectedSpuTrackId = first.id
+                VLCBridge.shared.setSpuTrack(id: first.id)
+                return
+            }
+            // Falling edge out of muted — undo the auto-enable above now that there's audio
+            // again. Only fires if the user never made an explicit CC choice while muted
+            // (spuChoiceIsExplicit); a real Picker pick during that time — including picking
+            // the same track "on" again — is a deliberate choice and must survive unmuting.
+            if newValue > 0, oldValue == 0, !spuChoiceIsExplicit, selectedSpuTrackId != -1 {
+                selectedSpuTrackId = -1
+                VLCBridge.shared.setSpuTrack(id: -1)
+            }
         }
         .onDisappear {
             // Safety-net for window close — releasePlayer() is idempotent so calling it here
