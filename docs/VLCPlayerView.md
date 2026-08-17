@@ -43,7 +43,7 @@ Replaces `PlayerView.swift` (AVKit / `AVPlayer`). AVPlayer cannot decode MPEG-2 
 
 The player opens as a detached `NSWindow` with a SwiftUI toolbar above the video surface. It has a channel picker, volume slider, audio device selector, and a screen/display picker (shown when multiple displays are connected, including AirPlay). The window is reusable — opening it a second time switches the stream rather than creating a new window.
 
-Gate: `VLCBridge.shared.isAvailable` (VLC.app installed at `/Applications/VLC.app`) must be true for "Watch Now!" buttons to appear. No easter egg gate — the player is always accessible when VLC is installed.
+Gate: `VLCBridge.shared.isAvailable` (VLC.app installed anywhere Launch Services can resolve it — see `docs/VLCBridge.md`, not assumed at a fixed path) must be true for "Watch Now!" buttons to appear. No easter egg gate — the player is always accessible when VLC is installed.
 
 ---
 

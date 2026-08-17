@@ -138,9 +138,9 @@ After every 5th tap, `celebCount` increments, re-triggering `keyframeAnimator`. 
 
 ---
 
-## Web Guide Counterpart (`WebServer.swift`)
+## Web Guide Counterpart (`Resources/guide.css` / `guide.js` / `guide-shell.html`)
 
-The web guide (served on `localhost:1980`, shared by external browsers and in-app `WKWebView` windows) has its own CSS/JS re-implementation of this badge — not the SwiftUI `StarburstBadge` type, since the guide is plain HTML/JS. Two style classes in `WebServer.swift`:
+The web guide (served on `localhost:1980`, shared by external browsers and in-app `WKWebView` windows) has its own CSS/JS re-implementation of this badge — not the SwiftUI `StarburstBadge` type, since the guide is plain HTML/JS. Guide CSS/JS/HTML live as real files, not Swift string literals (see `CLAUDE.md`), stitched together by `WebServer.buildHTML()`. Two style classes in `Resources/guide.css`:
 - `.sb-web` — small 28px inline badge (12-point starburst via `clip-path`, orange `#e86e00` fill)
 - `.sb-web-lg` — 56px × 56px, `position:absolute; top:6px; right:44px`, `pointer-events:none`, `font-size:.42rem` — the large corner-badge variant, analogous to the native `StarburstBadge`'s corner overlay
 
@@ -149,7 +149,7 @@ The web guide (served on `localhost:1980`, shared by external browsers and in-ap
 - `#rm-bonus-star` — Record modal (`.mac-sheet`)
 - `#em-bonus-star` — Edit modal (`.mac-sheet`)
 
-All three are toggled via JS (`toggleBonusStar()`, `toggleRmBonusStar()`, and the summary-panel renderer), setting `textContent` to `"+Nm"` and `display:inline-flex`/`none`. Like the native badge, sizing was reduced (from 110px) so it stays inside the corner without covering the panel/modal header or field text underneath. `right` is 44px rather than a smaller corner-hugging value specifically because `#sum-c`'s own `✕` close button (`closeSummary()`) is a flex item flush against that same top-right corner — an 8px right offset put the badge directly on top of it. 44px clears the close button in all three contexts (the two modals have no equivalent top-right control, so the extra left shift just leaves more empty margin there).
+All three are toggled via JS in `Resources/guide.js` (`toggleBonusStar()`, `toggleRmBonusStar()`, and the summary-panel renderer), setting `textContent` to `"+Nm"` and `display:inline-flex`/`none`. Like the native badge, sizing was reduced (from 110px) so it stays inside the corner without covering the panel/modal header or field text underneath. `right` is 44px rather than a smaller corner-hugging value specifically because `#sum-c`'s own `✕` close button (`closeSummary()`) is a flex item flush against that same top-right corner — an 8px right offset put the badge directly on top of it. 44px clears the close button in all three contexts (the two modals have no equivalent top-right control, so the extra left shift just leaves more empty margin there).
 
 ---
 

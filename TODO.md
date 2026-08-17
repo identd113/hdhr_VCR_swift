@@ -186,7 +186,12 @@ returns nothing. (2) **Idle-loop stale-index-across-`await` safety** — the CLA
 invariant ("re-resolve `shows` by `show_id` after any `await`, never reuse a captured `Int` index")
 has only happy-path coverage in `AppStateRecordingEngineTests.swift`; no test deliberately mutates/
 deletes `state.shows` mid-suspension to actually exercise the race the invariant defends against.
+(3) **`deleteShow`'s `discordEpisodeSnapshots` cleanup** — the code correctly clears all eleven
+show_id-keyed side tables (see `docs/AppState.md`'s "Show Delete / Skip" section), but
+`AppStateDeleteShowCleanupTests.swift` only populates and asserts the original ten — added after
+that test was written, so `discordEpisodeSnapshots` isn't exercised by the regression test meant to
+guard exactly this cleanup.
 
-**Key files**: `AppState.swift`, `Tests/hdhr_VCRTests/Recording/AppStateRecordingEngineTests.swift`, `Tests/hdhr_VCRTests/TestFixtures.swift`.
+**Key files**: `AppState.swift`, `Tests/hdhr_VCRTests/Recording/AppStateRecordingEngineTests.swift`, `Tests/hdhr_VCRTests/AppState/AppStateDeleteShowCleanupTests.swift`, `Tests/hdhr_VCRTests/TestFixtures.swift`.
 
 ---

@@ -36,6 +36,7 @@ Series_subfolder_enabled Bool   false   when true, SeriesID recordings are saved
 Skip_recorded_episodes  Bool    false   when true (needs Series_subfolder_enabled), skip recording a series episode whose SxxExx is already on disk — advances to the next airing without recording or a fail count; only when the guide entry has a full season+episode tag
 Post_recording_script   String  ""      POSIX path to a shell script run after each successful recording; $1 = file path; HDHR_PATH, HDHR_TITLE, HDHR_CHANNEL, HDHR_TRANSCODE, HDHR_EPISODE, HDHR_DEVICE, HDHR_SERIES, HDHR_FILESIZE set as env vars; Homebrew paths prepended to PATH; script exits are logged but never block the app
 Series_scan_retry_hours Int     4       hours before re-scanning guide when no episode found
+Check_for_updates       Bool    true    gate the automatic once-a-day background update check (AppState.updateCheckLoop()); manual "Check for Updates" button always runs regardless; see UpdateChecker.swift
 Network_interface       String  ""      bind UDP discovery + curl to NIC; empty = Auto; utun* = VPN
 Verbose_curl            Bool    false   add -v to curl; stderr appended to hdhrVCRplus.log
 Watch_in_VLC            Bool    false   show "Watch in VLC" buttons (only when VLC installed)

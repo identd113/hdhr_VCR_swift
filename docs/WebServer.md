@@ -2,7 +2,7 @@
 
 Serves an interactive guide page and JSON API over HTTP. The page is consumed by two clients: **external browsers** on the local network, and the **in-app WKWebView** in `AddShowView` step 2. Both connect to the same SSE stream and see the same HTML. Enabled via **Settings → Web Server → Enable Web Server**. Default port: **1980**.
 
-The web server is scoped to **scheduling and management** — playback is not supported. There are no streaming routes or media links.
+The web server is primarily scoped to **scheduling and management**, with one narrow exception: `/api/watch-recording` relays a *currently-recording* show's on-disk file as an open-ended HTTP stream, powering the in-app "Watch Now!" relay (see below). It is not a general media server — finished recordings are not reachable through it.
 
 ---
 
@@ -900,7 +900,7 @@ func quit()             // calls webServer.stop()
 
 - **Toggle** — `Web_server_enabled` (default `false`)
 - **Port field** — `Web_server_port` (default `1980`; validated 1025–65534; invalid values block Save)
-- **Access row** — shown when `state.webServerRunning == true`; LAN IP + port as selectable monospaced text with `Open` link; uses `availableNetworkInterfaces()`, skipping `utun` interfaces. Link uses IP directly (`http://x.x.x.x:port`) to avoid browser HTTPS upgrade of `.local` hostnames.
+- **Access row** — shown when `state.config.Web_server_enabled && state.webServerRunning`; LAN IP + port as selectable monospaced text with `Open` link; uses `availableNetworkInterfaces()`, skipping `utun` interfaces. Link uses IP directly (`http://x.x.x.x:port`) to avoid browser HTTPS upgrade of `.local` hostnames.
 - **Error banner** — shown when `state.webServerError` is non-nil
 
 ---

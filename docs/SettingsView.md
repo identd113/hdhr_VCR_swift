@@ -125,8 +125,14 @@ private struct InfoButton: View {
 
 ```swift
 @State private var draft: AppConfig = AppConfig()
-private var isDirty: Bool { draft != state.config }
+private var isDirty: Bool {
+    draft != state.config
+        || draftSaveDirectory != defaultSaveDirectory
+        || draftLaunchAtLogin != launchAtLoginRegistered
+}
 ```
+
+`isDirty` isn't just the `AppConfig` diff — the default save directory and Launch at Login are tracked outside `draft` (they're not `AppConfig` fields) but still need to mark the window dirty when changed, so both get their own OR clause.
 
 - `.onAppear` seeds `draft = state.config`
 - All controls bind to `$draft.*` — not to `state.config` directly
@@ -136,6 +142,8 @@ private var isDirty: Bool { draft != state.config }
 - **Close with unsaved changes** → `WindowCloseInterceptor` intercepts and shows an NSAlert: Save / Discard / Cancel
 
 The Save button turns **orange** when `canSave` is true (`.tint(canSave ? .orange : .accentColor)`). `canSave = isDirty && !webhookNeedsTest && !webPortInvalid` — dirty changes alone don't enable Save if the webhook hasn't been tested or the port is invalid.
+
+**Window-refocus resync** — `WindowCloseInterceptor`'s `onBecomeKey` is wired to `resyncIfUntouched()`, which fires on every real refocus of the Settings window (not just its initial creation — a single-instance `Window` scene's `.onAppear` only runs once for the window's lifetime, so it can't be the resync trigger for a window that's closed-and-reopened via the menu). If the config changed elsewhere (another window, a web-UI edit) while Settings was in the background, and `draft` provably hasn't been touched since it was last synced (`draft == draftBaseline`), `resetDrafts()` silently pulls the change in. If the user has actually edited something, `draft` has already diverged from `draftBaseline` and this is a deliberate no-op — real in-progress edits are never discarded just because the window lost and regained key status.
 
 ---
 
@@ -169,7 +177,7 @@ Sidebar entries (with SF Symbol icons):
 - **Default transcode** — `Picker`: None / Heavy / Mobile / Internet 720. Stored in `draft.Default_transcode`.
 - **Min free disk** — `Stepper` (1–100 GB). Recording is refused when free space is below this threshold (`AppState.diskOK(for:)`).
 - **Pause after N failures** — `Stepper` (1–10). After `Fail_count_setting` consecutive failures, `show_active = false` and the show moves to Paused. Each successful recording start decrements `show_fail_count` by 1.
-- **Watch in VLC** — `Toggle`, only shown when `/Applications/VLC.app` exists. Enables "Watch in VLC" buttons throughout the app. Stored in `draft.Watch_in_VLC`. **Auto-initialized**: on first launch (when `Watch_in_VLC_initialized == false`), the setting is auto-enabled if VLC is installed, then `Watch_in_VLC_initialized` is set to true so subsequent user toggles are never overridden.
+- **Watch in VLC** — `Toggle`, only shown when `VLCBridge.locateApp() != nil` (VLC resolved dynamically via Launch Services bundle-id lookup, not assumed at a fixed path — see `docs/VLCBridge.md`). Enables "Watch in VLC" buttons throughout the app. Stored in `draft.Watch_in_VLC`. **Auto-initialized**: on first launch (when `Watch_in_VLC_initialized == false`), the setting is auto-enabled if VLC is installed, then `Watch_in_VLC_initialized` is set to true so subsequent user toggles are never overridden.
 - **Min buffer rate** — no longer exposed in Settings (removed 2026-07-23; low-utility tuning knob). `Player_buffer_min_rate` still exists in `AppConfig` and still sets the fill-phase floor for the in-app player's 8-second live buffer — it's just fixed at its default (93%) instead of user-adjustable.
 - **Bonus Time** — `Toggle` (on by default). Extends any show's recording past guide end. Sports entries default to enabled via `applyWebGuideEntry()`; any show can override via the per-show toggle. Stored in `draft.Sports_padding_enabled`.
 - **Bonus Time duration** — `Stepper` (10–60 min, step 5, default 30). Only visible when Bonus Time toggle is on. Stored in `draft.Sports_padding_minutes`.
@@ -186,8 +194,7 @@ Sidebar entries (with SF Symbol icons):
 - **Series scan retry** — `Stepper` (1–24 hr). How long to wait before re-scanning the guide for a SeriesID show's next episode when no match was found.
 - **Update Guides Now** — `Button` (always visible). Calls `state.refreshAll()` immediately, invalidating and reloading guide data for all devices. Useful any time fresh data is needed without restarting the app.
 
-**Format section:**
-- **Use XMLTV guide format** — `Toggle` bound to `draft.Guide_use_xml` (default `false` = JSON). When enabled, guide data is fetched from the XMLTV cloud endpoint (`api/xmltv`) instead of `guide.php`. Flipping and saving triggers an immediate `invalidateAll()` + `refreshGuide()`. Devices without `DeviceAuth` fall back to JSON regardless. The `GuideHours` setting is ignored in XMLTV mode (server controls the window, ~2 days on free tier).
+The JSON/XMLTV format toggle (formerly a "Format" section here) moved to General → Guide, 2026-08-10 — see that section above.
 
 ---
 
