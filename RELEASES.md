@@ -6,6 +6,82 @@ What's new in each version. For the fuller list of changes within a version, see
 
 ---
 
+## v2.0.4 (2026-08-15)
+
+### Added
+- **Record directly from Watch Now and the streaming player** — no need to open the Add Show
+  wizard. Click Record for a pulldown of the four recording types (single airing, weekly, series
+  on this channel, series on any channel); the streaming player gained its own Record button.
+- **Currently-recording shows now sort above Favorites**, in their own "Recording" section, in
+  both Watch Now and the web guide.
+- Watch Now can now start playback from the very beginning of an in-progress recording, not just
+  ~30 seconds behind live.
+- The streaming player turns on closed captions automatically when muted, if available, and
+  leaves them on when unmuted.
+- Discord notifications now show a 🆕 NEW tag for a first-run episode airing today.
+
+### Updated
+- Double-clicking a show in the web guide now opens Edit (if scheduled/recording) or Record (if
+  not) — previously it always tried Record, even for already-scheduled shows.
+- Watch Now's tiles, buttons, and tuner switcher got a round of layout polish (genre coloring
+  under posters, one-button-per-row actions with tooltips, faster load with many channels, poster
+  borders).
+- Watch Now and the web guide now share the same colored status indicators (recording, scheduled,
+  will-skip, conflict, in-use-elsewhere).
+- Fixed several status-indicator mismatches: a rerun on a different channel showing as
+  "recording," a stalled retry showing as "recording," a false "in use by another tuner" flag on
+  your own session, and a scheduled-indicator appearing on a channel a series show would never
+  actually record from.
+- Fixed: switching channels, seeking, or closing the player mid-recording-playback could
+  occasionally freeze the whole app.
+- Fixed: a completed recording's Discord notification could be missing its episode number/summary
+  even when an earlier notification for the same show had it.
+- A tuner that goes offline with nothing scheduled on it no longer leaves a permanently dimmed,
+  empty box in the web guide.
+
+Full change list: [CHANGELOG.md](Sources/hdhr_VCR/CHANGELOG.md)
+
+---
+
+## v2.0.3 (2026-08-11)
+
+### Fixed
+- **A crafted web-guide request could crash the whole app, ending any in-progress recording** —
+  an extreme time-window value sent to the guide's lazy-load endpoint could overflow an internal
+  calculation and trap the process. Requests like that now fall back to the normal guide window
+  instead of crashing.
+- **A `SeriesID(All)` show could match and record on more than one HDHomeRun device at once**,
+  wasting tuner capacity and producing duplicate files, and could silently migrate to a different
+  device on reschedule. It's now scoped to the one device it was originally set up on, same as a
+  channel-locked `SeriesID` show.
+- **Reopening the Settings window while it was already open could show a false "Unsaved Settings"
+  warning on close**, even with nothing actually edited. It now resyncs whenever the window
+  regains focus, as long as nothing's actually been edited yet.
+- **XMLTV guide data used different genre spellings than the app expected**, silently breaking
+  Bonus Time auto-detection for Sport-tagged shows and leaving most XMLTV genres shown in plain
+  gray instead of their proper color. Both are now recognized, and XMLTV-tagged shopping/
+  infomercial entries are now detected and flagged automatically.
+- **The passive signal-quality scan assumed every tuner streams on port 5004** — it now reads the
+  actual stream URL from the device's own reported channel lineup, so it works correctly on a
+  device using a non-default port.
+- **A loopback-check bug could, in principle, let a non-loopback IPv6 address bypass the web
+  server's LAN-only access check.** Low real-world risk, but the check now requires an exact
+  match instead of merely starting with the loopback address.
+
+### Updated
+- On a multi-tuner device, if a `SeriesID(All)` show has two different episodes airing at the
+  same moment on two channels, the app now prefers whichever one isn't already recorded, instead
+  of always breaking the tie toward a favorited channel even when that channel's episode is a
+  duplicate you already have.
+- Guide/performance polish: faster icon-cache disk cleanup, the vertical (portrait) page variant
+  is no longer built for installs that never use it, verbose curl logging now has its own
+  correctly size-capped log file, and the web guide gained a per-show "record even if already on
+  disk" override for duplicate episodes.
+
+Full change list: [CHANGELOG.md](Sources/hdhr_VCR/CHANGELOG.md)
+
+---
+
 ## v2.0.2 (2026-08-09)
 
 ### Fixed
