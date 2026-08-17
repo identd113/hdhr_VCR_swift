@@ -435,8 +435,13 @@ final class WebServer: @unchecked Sendable {
             // open/seek) are dispatched to `queue` below so a slow/contended recording volume
             // can't stall the main thread on every watch-recording connection (including every
             // scrub-bar commit, which reconnects through this same path).
+            // show_recording gates this on top of the path check: show_recording_path is set once
+            // when recording starts and is never cleared when it ends, so without this a finished
+            // recording's show_id (visible in plain data-show-id attributes across the served guide
+            // HTML) could be replayed to stream that file indefinitely to any LAN client, long after
+            // the "Watch Now!" relay this route exists for was ever actually live.
             guard let show = state.shows.first(where: { $0.show_id == showId }),
-                  !show.show_recording_path.isEmpty else {
+                  show.show_recording, !show.show_recording_path.isEmpty else {
                 self.send(.notFound("recording not found"), on: conn)
                 return
             }

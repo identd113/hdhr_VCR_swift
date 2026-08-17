@@ -38,6 +38,18 @@ final class GuideStore {
         glog("=== GuideStore initialised ===")
     }
 
+    /// Masks a DeviceAuth query-param value before it reaches any log line. DeviceAuth is a live
+    /// bearer credential for the user's SiliconDust cloud account — logging it in the clear would
+    /// hand it to anyone who tails/shares hdhrVCRplus.log (which the app's own troubleshooting flow
+    /// explicitly asks users to do), and the log's ~2.5-week retention would accumulate every
+    /// rotated token over time.
+    nonisolated private static func redactingDeviceAuth(_ urlString: String) -> String {
+        guard let range = urlString.range(of: "DeviceAuth=") else { return urlString }
+        let valueStart = range.upperBound
+        let valueEnd = urlString[valueStart...].firstIndex(of: "&") ?? urlString.endIndex
+        return urlString.replacingCharacters(in: valueStart..<valueEnd, with: "REDACTED")
+    }
+
     // MARK: - URL building
 
     /// Canonical guide URL for a device. Duration is in hours (the API accepts hours directly).
@@ -73,7 +85,7 @@ final class GuideStore {
             return await loadXMLTV(for: device)
         }
         let id = device.DeviceID
-        glog("[\(id)] load() called — DeviceAuth:\(device.DeviceAuth ?? "nil")  LocalIP:'\(device.LocalIP)'  hours:\(hours)")
+        glog("[\(id)] load() called — DeviceAuth:\(device.DeviceAuth != nil ? "present" : "nil")  LocalIP:'\(device.LocalIP)'  hours:\(hours)")
 
         guard !loadingDevices.contains(id) else {
             glog("[\(id)] already loading — skipped")
@@ -112,7 +124,7 @@ final class GuideStore {
     @discardableResult
     private func loadXMLTV(for device: HDHRDevice) async -> Bool {
         let id = device.DeviceID
-        glog("[\(id)] loadXMLTV() called — DeviceAuth:\(device.DeviceAuth ?? "nil")")
+        glog("[\(id)] loadXMLTV() called — DeviceAuth:\(device.DeviceAuth != nil ? "present" : "nil")")
 
         guard !loadingDevices.contains(id) else {
             glog("[\(id)] already loading — skipped")
@@ -149,7 +161,7 @@ final class GuideStore {
         loadingDevices.insert(id)
         defer { loadingDevices.remove(id) }
 
-        glog("[\(id)] GET \(url.absoluteString)")
+        glog("[\(id)] GET \(Self.redactingDeviceAuth(url.absoluteString))")
         let t0 = Date()
         do {
             let (data, response) = try await session.data(from: url)

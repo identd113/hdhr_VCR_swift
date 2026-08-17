@@ -456,9 +456,7 @@ final class VLCBridge: ObservableObject {
         guard let oldMp = mediaPlayer else { return }
         // Claimed synchronously so a subsequent ensurePlayer() (e.g. a quick reopen) creates a
         // genuinely fresh player instead of finding this now-being-torn-down one still in place.
-        mediaPlayer      = nil
-        retainedDrawable = nil
-        drawableView     = nil
+        mediaPlayer = nil
         let releaseFn = _mpRelease
         nonisolated(unsafe) let mp = oldMp
         // Enqueued after stopAndClearState's own libvlcQueue work below (same serial queue — FIFO
@@ -466,6 +464,18 @@ final class VLCBridge: ObservableObject {
         Self.libvlcQueue.async {
             releaseFn?(mp)
             glog("[VLC] releasePlayer — mediaPlayer released, tuner freed")
+            // retainedDrawable/drawableView must outlive the actual libvlc release: libvlc dispatches
+            // drawable callbacks off the main thread and they can fire briefly after
+            // libvlc_media_player_release returns, so nil'ing these before releaseFn ran (as this used
+            // to do, synchronously, before releaseFn was moved onto this async queue) reopened a
+            // use-after-free window on the exact NSView those in-flight callbacks reference. Clear them
+            // only now that the release is actually done — and only if nothing (e.g. a quick reopen via
+            // ensurePlayer()) has since attached a new mediaPlayer that's legitimately reusing this view.
+            Task { @MainActor [weak self] in
+                guard let self, self.mediaPlayer == nil else { return }
+                self.retainedDrawable = nil
+                self.drawableView     = nil
+            }
         }
     }
 

@@ -178,6 +178,15 @@ functions' own orchestration ("which lookup tier to try, in what order, before g
 retrying later") stays untested. Would need either a network-mock seam on `GuideStore` itself or a
 way to pre-seed its cache directly — a separate, larger effort than this pass.
 
+Two more gaps found by the 2026-08-16 full-codebase audit, in the same "central logic, no
+regression net" category as the above: (1) **Bonus Time** — neither the sports-genre default-true
+branch in `applyGuideEntry()` nor the `show_end` padding-minutes arithmetic in `startRecording`
+(gated on `Sports_padding_enabled && show.show_bonus_time`) has any test; `grep -ri bonus Tests/`
+returns nothing. (2) **Idle-loop stale-index-across-`await` safety** — the CLAUDE.md-documented
+invariant ("re-resolve `shows` by `show_id` after any `await`, never reuse a captured `Int` index")
+has only happy-path coverage in `AppStateRecordingEngineTests.swift`; no test deliberately mutates/
+deletes `state.shows` mid-suspension to actually exercise the race the invariant defends against.
+
 **Key files**: `AppState.swift`, `Tests/hdhr_VCRTests/Recording/AppStateRecordingEngineTests.swift`, `Tests/hdhr_VCRTests/TestFixtures.swift`.
 
 ---

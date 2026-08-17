@@ -541,6 +541,58 @@ Post-deploy live verification (real SNL/ROAR guide data) turned up a second, ind
 
 ---
 
+# Full-codebase audit — 2026-08-16
+
+Eight parallel review passes across every subsystem, the full `docs/*.md` tree, and all fourteen documented invariants (not a diff review — the whole tree treated as the change under review). The four high-severity findings were fixed same-day; three medium findings (`HDHRManager.swift` UDP DeviceID collapse, `RecordingManager.swift` `headerFiles` leak on spawn failure, `DiscordNotifier.swift` silent JSON-encode failure) were left open in `ISSUES.md` — not fixed as part of this pass.
+
+## RESOLVED — `VLCBridge.releasePlayer()`'s use-after-free safety net was un-wired by the earlier async-teardown refactor
+
+**File:** `VLCBridge.swift` (`releasePlayer()`)
+
+**Root cause**: `retainedDrawable`'s whole job is keeping the drawable `NSView` alive until *after* `_mpRelease` drains libvlc's off-main-thread callbacks (doc comment at the property; `docs/VLCBridge.md:300-302`). The 2026-08-15 fix for the `input_Close`/`pthread_join` deadlock (see this file's "recording-relay seek path" entry, `ISSUES.md`) correctly moved the actual `libvlc_media_player_release` call onto `VLCBridge.libvlcQueue.async` — but left `retainedDrawable = nil` / `drawableView = nil` running synchronously *before* that async block was even enqueued. If nothing else retained the view at that instant (the window-close case this code exists for), ARC could free it immediately while libvlc's deferred drawable callbacks were still in flight against it — the deadlock fix reopened the exact use-after-free window it was adjacent to. Found 2026-08-16 during a full-codebase audit; not previously logged.
+
+**Resolution**: Moved both nil-outs into the `libvlcQueue.async` block, after `releaseFn?(mp)` returns, wrapped in `Task { @MainActor [weak self] in ... }`. Guarded on `self.mediaPlayer == nil` before clearing — a quick reopen via `ensurePlayer()` in the interim (which reuses `drawableView` if still set, per its own logic) creates a new `mediaPlayer` and legitimately reattaches the same view, and this guard prevents the now-stale deferred clear from clobbering that newer state. `swift build` clean; full test suite green aside from the two pre-existing, environment-flaky `AppStateRecordingEngineTests` (confirmed pre-existing by reproducing identically against the pre-fix code via `git stash`).
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+---
+
+## RESOLVED — Cloud `DeviceAuth` credential logged in cleartext on every guide fetch
+
+**File:** `GuideStore.swift` (`load`, `loadXMLTV`, `fetchAndIndex`)
+
+**Root cause**: `glog("[\(id)] GET \(url.absoluteString)")` embedded the live `DeviceAuth=` token straight into the logged request URL, and two other lines (`load()`/`loadXMLTV()`'s own entry logs) logged the raw token value directly. Fired on every hourly/manual/startup guide load — not a debug-only path — so a user following the project's own documented troubleshooting flow (`tail`-ing `hdhrVCRplus.log`, or handing it to `log-detective`/a GitHub issue) would unknowingly leak a bearer credential for their SiliconDust cloud account. The log's ~2.5-week retention window meant multiple rotated tokens could accumulate over a long-running session. Found 2026-08-16 during a full-codebase audit.
+
+**Resolution**: Added `GuideStore.redactingDeviceAuth(_:)`, which masks the `DeviceAuth=` query-param value (up to the next `&` or end of string) before a URL reaches `glog`. The two entry-log lines now log `"present"`/`"nil"` instead of the raw token, matching the pattern already used by the existing URL-build-failure error log a few lines away. `swift build` clean.
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+---
+
+## RESOLVED — `/api/watch-recording` could stream a finished recording indefinitely, not just a live one
+
+**File:** `WebServer.swift` (`handleWatchRecording`)
+
+**Root cause**: The handler only checked that `show.show_recording_path` was non-empty, never that the show was still actually recording. `show_recording_path` is set once when a recording starts and is never cleared when it ends, and `show_id` values are visible in plain `data-show-id`/`data-id` attributes throughout the served guide HTML — so any LAN client could replay a finished show's `show_id` against this route and stream the raw file indefinitely, well past the "Watch Now!" live-relay use case `docs/WebServer.md:226-238` documents this route for. Found 2026-08-16 during a full-codebase audit.
+
+**Resolution**: Added `show.show_recording` to the existing guard alongside the non-empty path check. The scrub-bar reconnect path this route also serves (per the function's own doc comment) is unaffected — it only ever reconnects while a recording is genuinely still in progress, i.e. `show_recording == true`. `swift build` clean.
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+---
+
+## RESOLVED — Several `scheduleNextAir` reschedule paths left the web guide showing a stale schedule for up to ~59 minutes
+
+**File:** `AppState.swift` (`stopRecording(index:natural:)`, `idleLoop()`)
+
+**Root cause**: This is the same bug class already fixed once for the SeriesID-reconfirm path (see this file's "no episode found in guide" entry above, which added a `show_updated` broadcast specifically so "an open web guide doesn't show stale schedule info") — but the fix was never carried to the other reschedule call sites. `stopRecording(index:natural:)`'s main success-path reschedule didn't broadcast (its neighboring "OVERRIDE CLEARED" branch two lines away did), nor did its manual-stop `show_paused = true` branch or its empty-file-failure branch; `idleLoop()`'s own direct `scheduleNextAir` calls for auto-resuming a paused show and for advancing a stranded past-due `show_next` also didn't — the idle loop's end-of-tick only called `saveConfig()`/`rebuildMenuEntries()` (menu only, not the web UI). A finished recurring show could sit with the wrong next-airing time/channel shown in any open web guide tab until some unrelated event (another show's add/edit/delete/favorite-toggle, or the top-of-hour refresh) happened to trigger a rebuild. Found 2026-08-16 during a full-codebase audit.
+
+**Resolution**: Added the same `pushShowUpdate(type: "show_updated", ...)` call already used correctly by `skipRecording` and the SeriesID-reconfirm branch to all five gaps — each re-resolving the show by `show_id` after its `await scheduleNextAir(...)` call (rather than reusing a possibly-stale index or pre-reschedule channel/device) so the broadcast reflects any device/channel migration the reschedule itself performed. All five use `rebuildMenu: false`, matching the sibling calls in the same functions — the idle-loop paths already get a menu rebuild from the loop's own end-of-tick `rebuildMenuEntries()` call, so this only adds the missing web-UI push. `swift build` clean; full test suite green aside from the two pre-existing, environment-flaky `AppStateRecordingEngineTests` (confirmed pre-existing via `git stash`).
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+---
+
 ## Staleness check, 2026-08-10
 
 Every entry above that only had a prescriptive `**Fix:**` note (rather than a past-tense `**Resolution:**`) was individually re-verified against the current source before filing here — grepped for the described symptom and confirmed the described fix's actual code is present (or, for the FloatingGuideView/CableGuideView group, confirmed the file is gone entirely). Nothing in this file is guessed or assumed still-true from the original write-up.

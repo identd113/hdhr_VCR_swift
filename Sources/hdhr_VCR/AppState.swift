@@ -1387,6 +1387,13 @@ final class AppState: ObservableObject {
                     showRetryAfter.removeValue(forKey: show.show_id)
                     glog("[\(show.show_title)] auto-resuming — paused window expired, rescheduling")
                     await scheduleNextAir(index: i)
+                    // Re-resolve by show_id — scheduleNextAir's own internal guide-fetch await can
+                    // let `shows` mutate (e.g. an interleaved delete) while this call was suspended.
+                    // Without this broadcast, an open web guide keeps showing the just-expired
+                    // window's stale schedule until some unrelated event rebuilds the page.
+                    if let curIdx = shows.firstIndex(where: { $0.show_id == show.show_id }) {
+                        pushShowUpdate(type: "show_updated", channel: shows[curIdx].show_channel, device: shows[curIdx].hdhr_record, rebuildMenu: false)
+                    }
                     dirty = true
                 } else if nextDate > now, nextDate <= now + 10 {
                     shows[i].show_paused = false
@@ -1498,7 +1505,12 @@ final class AppState: ObservableObject {
             // fires the natural-stop handler above (which requires show_recording == true).
             if !show.show_recording, endDate <= now, nextDate < now {
                 glog("[\(show.show_title)] stranded show_next in past — advancing", level: .warning)
-                await scheduleNextAir(index: i); dirty = true
+                await scheduleNextAir(index: i)
+                // Re-resolve by show_id — see the auto-resume branch above for why.
+                if let curIdx = shows.firstIndex(where: { $0.show_id == show.show_id }) {
+                    pushShowUpdate(type: "show_updated", channel: shows[curIdx].show_channel, device: shows[curIdx].hdhr_record, rebuildMenu: false)
+                }
+                dirty = true
             }
         }
 
@@ -1835,6 +1847,7 @@ final class AppState: ObservableObject {
             conflictNotifiedEpochs.removeValue(forKey: show.show_id)
             missedStartNotifiedEpochs.removeValue(forKey: show.show_id)
             saveConfig()
+            pushShowUpdate(type: "show_updated", channel: show.show_channel, device: show.hdhr_record, rebuildMenu: false)
             return
         }
 
@@ -1870,6 +1883,12 @@ final class AppState: ObservableObject {
                             enabled: config.Discord_on_failed, extra: [("Reason", reason, false)],
                             clearIdAfter: true)
             await scheduleNextAir(index: index)
+            // Re-resolve by show_id — scheduleNextAir's own internal guide-fetch await can let
+            // `shows` mutate (e.g. an interleaved delete) while this call was suspended.
+            if let curIndex = shows.firstIndex(where: { $0.show_id == show.show_id }) {
+                let rescheduled = shows[curIndex]
+                pushShowUpdate(type: "show_updated", channel: rescheduled.show_channel, device: rescheduled.hdhr_record, rebuildMenu: false)
+            }
             return
         }
         if !path.isEmpty {
@@ -1913,6 +1932,11 @@ final class AppState: ObservableObject {
         // parameter is no longer guaranteed valid or to still refer to this show.
         guard let curIndex = shows.firstIndex(where: { $0.show_id == show.show_id }) else { return }
         let completedShow = shows[curIndex]
+        // Reflects the new show_next/show_channel/hdhr_record for any open web guide — without
+        // this, a finished recurring show's tuner dropdown/badges keep showing the just-finished
+        // airing's stale time/channel until some unrelated event (another show's edit, the hourly
+        // refresh) happens to rebuild the page.
+        pushShowUpdate(type: "show_updated", channel: completedShow.show_channel, device: completedShow.hdhr_record, rebuildMenu: false)
         // Route through fireDiscordCard (not the old direct discordShow(editMessageId:) call) so
         // this terminal event is chained behind any in-flight send like every other lifecycle
         // event — otherwise a still-in-flight "Recording Started" CREATE (slow webhook) could
