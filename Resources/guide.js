@@ -897,7 +897,15 @@ function setDev(id){
   if(switched){_genreFilter='';var sel=document.getElementById('genre-sel');if(sel)sel.value='';}
   curDev=id;
   if(switched)rebuildGenreFilter();
-  document.querySelectorAll('.d-btn').forEach(function(b){b.classList.toggle('d-sel',b.dataset.dev===id);});
+  // Empty id means "no specific tuner filter" — only ever passed for a single-online-tuner setup
+  // (see WebServer.swift's defaultDev comment; never happens with >1 tuner). Highlight that one
+  // tuner's box as selected too, instead of leaving every box unhighlighted just because there's
+  // nothing to disambiguate it from. Offline boxes render as a <span> with no data-dev, so they
+  // never match here regardless.
+  var onlineBtns=document.querySelectorAll('.d-btn[data-dev]');
+  document.querySelectorAll('.d-btn').forEach(function(b){
+    b.classList.toggle('d-sel', id ? b.dataset.dev===id : onlineBtns.length===1&&b===onlineBtns[0]);
+  });
   var seen={};
   _rows.forEach(function(r){
     if(id){r.style.display=r.dataset.dev===id?'':'none';}

@@ -593,6 +593,18 @@ Eight parallel review passes across every subsystem, the full `docs/*.md` tree, 
 
 ---
 
+## RESOLVED — Single-tuner setups never showed a "selected" (blue) tuner box on guide load
+
+**File:** `Resources/guide.js` (`setDev`)
+
+**Root cause**: `WebServer.swift`'s `defaultDev` computation is `""` (not a real device ID) whenever there's exactly one device — `setDev('{{DEFAULT_DEV}}')` at bootstrap therefore called `setDev('')`. `setDev`'s `.d-sel` toggle matched `.d-btn` elements by `b.dataset.dev===id`, and every real tuner button's `data-dev` is its actual device ID — never `''` — so no box ever matched and the sole tuner (the overwhelmingly common single-HDHomeRun setup) loaded with nothing visually marked as selected, even though it was already functionally the active filter (per the existing "second click opens the popover" logic, which already assumed the default tuner "starts out already selected"). Reported by the user 2026-08-16: "if a guide view is shown as the default hdhr model, highlight that in blue, like it is selected."
+
+**Resolution**: `setDev`'s `.d-sel` toggle now special-cases the empty-`id` path: when `id` is falsy, it highlights the tuner box instead of matching by `data-dev` — specifically, whichever online `.d-btn[data-dev]` element is the only one present (offline tuners render as a `<span>` with no `data-dev`, so they're never eligible). This only ever applies in the single-online-tuner case, since a real `defaultDev` is used whenever there's more than one device online, so the fallback path is deliberately scoped to exactly that. Verified live against the running app (2 configured devices — one real, one the intentionally-kept fake `FFFF0001` test device that always renders offline — leaving exactly one online `.d-btn` to exercise the same code path): calling `setDev('')` directly in the browser console now applies `.d-sel` to the sole online tuner, confirmed against a side-by-side simulation of the old toggle logic which left both boxes unhighlighted. `node --check` (with `{{TOKEN}}` placeholders stripped) confirms syntax; deployed via `./deploy.sh` (full rebuild + resource copy + relaunch + post-deploy perf suite, all green) before verification. `docs/WebServer.md` updated (the "Default tuner" note and the `setDev(id)` table row) to describe the highlight explicitly instead of only the row-filtering behavior.
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+---
+
 ## Staleness check, 2026-08-10
 
 Every entry above that only had a prescriptive `**Fix:**` note (rather than a past-tense `**Resolution:**`) was individually re-verified against the current source before filing here — grepped for the described symptom and confirmed the described fix's actual code is present (or, for the FloatingGuideView/CableGuideView group, confirmed the file is gone entirely). Nothing in this file is guessed or assumed still-true from the original write-up.

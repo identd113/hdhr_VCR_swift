@@ -384,7 +384,9 @@ non-empty lineup and loaded guide data (fallback: first with a lineup, else `""`
 bootstrap call is `setDev('<defaultDev>')`. Single-device keeps `setDev('')`. Because the default
 tuner starts out already selected, a user's very first click on a single-tuner setup's name button
 opens the popover directly rather than a no-op reselect — consistent with the "second click while
-already selected" rule above, not a special case.
+already selected" rule above, not a special case. `setDev('')`'s `.d-sel` highlight (see the table
+below) is applied to that sole online tuner box too, so it visibly reads as selected on load exactly
+like a multi-tuner default does — not just functionally selected with no visual cue.
 
 **Live updates:** the whole `#dev-bar` fragment (built by `buildDevBarHTML(state:)`, the same content `buildHTML` embeds on initial page load) is re-pushed via the `devbar` SSE payload on `deviceOnline`/`deviceOffline` — see SSE section — so a device recovering, going offline, or being newly discovered updates this row live in every open tab.
 
@@ -726,7 +728,7 @@ instead pushes a single-device `tdrop`/`tdropDev` in its SSE event and the clien
 | `openEditShow(el)` | Populates and opens `#edit-modal` from `el.dataset`; handles both guide blocks and schedule popover rows |
 | `closeEditShow()` | Hides `#edit-modal` |
 | `confirmEdit()` | POSTs `/api/edit`; closes modal on success; no explicit `refreshGuide()` — `handleEdit`'s `updateShow` already broadcasts `show_updated` over SSE |
-| `setDev(id)` | Filters guide rows by `data-dev`; empty string = deduped single-device fallback (multi-tuner bootstraps to a real `defaultDev`, not `''`); uses cached `_rows` NodeList; calls `applyGenreDim()` then shows/hides `.g-fav-sep`/`.g-rec-sep` separators |
+| `setDev(id)` | Filters guide rows by `data-dev`; empty string = deduped single-device fallback (multi-tuner bootstraps to a real `defaultDev`, not `''`); uses cached `_rows` NodeList; calls `applyGenreDim()` then shows/hides `.g-fav-sep`/`.g-rec-sep` separators. Also applies `.d-sel` (blue "selected" highlight) to the matching `.d-btn` — for empty `id`, that's the sole online tuner box (only ever one at that point, since a real `defaultDev` is used whenever there's more than one) rather than none, so single-device setups don't read as nothing-selected |
 | `filterGenre(g)` | Sets `_genreFilter` and calls `applyGenreDim()` |
 | `applyGenreDim()` | Clears all `.g-prog-dim`. In new-episode mode (`__new`): dims non-new programs. In infomercial mode (`__inf`): dims all non-inf programs. In normal mode: dims programs that fail the genre filter OR have `data-inf="1"`. Rows always remain visible. |
 | `scrollToNow()` | Scrolls `.gw` so the now-line sits ~25% from the left of the viewport; corner-cell ⊙ button and page load both call it |
