@@ -494,3 +494,54 @@ accuracy regresses right after app launch specifically.
   and `issues_resolved.md`/`ISSUES.md` were updated alongside the fixes they describe. No drive-by
   refactors or opportunistic formatting churn found outside what each commit's own message
   describes.
+
+## 2026-08-16 — Pre-release craftsmanship pass (AppState.swift, WebServer.swift, VLCBridge.swift, RecordingManager.swift)
+
+- Full-file read of all four (no diff — standalone quality pass). Overall verdict: unusually
+  disciplined for this size (3552/2090/794/319 lines) — every non-obvious line is commented with
+  *why*, not just *what*; re-resolve-by-show_id-after-await is applied consistently everywhere
+  `shows` can mutate across a suspension point; every `show_id`-keyed side table has a matching
+  `deleteShow` purge (spot-checked all of them against the "New show_id-keyed tracking table"
+  invariant — none leak). No dead code found: grepped every maintenance-panel/settings action
+  (`organizeSeriesRecordings`, `refreshAll`, `resetAllFailCounts`, `reactivatePausedShows`,
+  `rediscoverDevices`, `watchInVLC`, `watchRecordingInVLC`, `checkWebhookURL`, `quickRecord`,
+  `seekRecordingToLiveEdge`) and every RecordingManager/VLCBridge private func — all have live
+  call sites.
+- `AppState.swift:3346` — `let statusURL = URL(string: device.statusURL)!` (inside
+  `startSignalScan`'s per-batch polling loop) force-unwraps a URL built from the device's
+  self-reported `LocalIP`. The near-identical construction 160 lines earlier
+  (`fetchDeviceStatusUncached`, `AppState.swift:3184`) safely guards the same
+  `URL(string: device.statusURL)` with `guard let`. `LocalIP` comes from mDNS/UDP discovery, not a
+  hardcoded literal, so in principle a malformed value could crash the signal-scan Task (not the
+  main app — `Task { }`, but still a bad user experience mid-scan). Not fixed (out of scope for
+  this review agent) — trivial to align with the safe pattern next time this function is touched.
+- `WebServer.swift:9` — `final class WebServer: @unchecked Sendable`. The two collections genuinely
+  read/written across queues (`sseConns`, `liveConns`) are correctly `NSLock`-protected. But several
+  other stored properties (`listener`, `stateCallback`, `activePort`, `cachedHTML`/`cachedHTMLGzip`/
+  `cachedVerticalHTML*`, `verticalRouteEverRequested`, `lastTXTDict`) have no lock and rely entirely
+  on an unenforced convention: the cache/state vars are only ever mutated from `@MainActor`-marked
+  methods (`prebuildPageHTML`, `routeOnMain`, `updateTXTRecord`), while `listener`/`stateCallback`/
+  `activePort` are set once in `start()`/`stop()` (called from AppState on the MainActor) and read
+  from the `queue` GCD callbacks (`handleConnection`, `accumulate`, etc.) with no synchronization
+  barrier beyond GCD's own happens-before on enqueue. This has clearly worked in practice (the
+  `@unchecked Sendable` box for the concurrent-gzip pointer trick even documents its own safety
+  reasoning inline), but it's a wider unchecked surface than just the two locked arrays — worth a
+  second look if a future change starts mutating `cachedHTML`/`listener`/etc. from a non-MainActor,
+  non-`start()/stop()` call site, since the compiler will not catch a new race there.
+- `VLCBridge.swift`'s dlopen of `libvlc.dylib`/`libvlccore.dylib` from VLC.app and its hardened-
+  runtime/library-validation implications are already fully documented in
+  `docs/MAS_COMPLIANCE.md` ("VLC in-app player (dlopen)") — confirmed current, not re-flagged here
+  per this agent's own instructions on accepted debt.
+- `RecordingManager.swift` — curl spawning is the one already-accepted MAS blocker
+  (`docs/MAS_COMPLIANCE.md`); no new spawned binaries or new sandbox-hostile patterns introduced.
+  `spawnDetached`'s posix_spawn usage (POSIX_SPAWN_SETSID, explicit fd redirection, no shell
+  interpolation of user data into argv) is clean — arguments are passed as an array, not shell-
+  joined, so there's no injection surface from show titles/paths containing shell metacharacters.
+- Time-based waits audited for the "should this be event-driven instead" question — all found
+  legitimate, not laziness: `AppState.swift:3137`'s 1.5s post-recording-start/stop delay before
+  polling `status.json` (hardware needs real time to reflect a tuner state change — no push
+  notification exists from the device), and `AppState.swift:3356`'s 500ms×3 signal-scan sampling
+  loop (deliberately sampling over time to build a rolling average, not polling for a boolean
+  condition). Both are commented with the actual reason. No `asyncAfter`/`Task.sleep` found that's
+  papering over a real race (the SIGTERM handler's 2s cap on in-flight Discord sends is a genuine
+  bounded-wait-with-timeout pattern, not a guess).
