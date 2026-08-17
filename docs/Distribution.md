@@ -109,10 +109,19 @@ runs, scoped to whatever's landed since the last tag** (`git log <last-tag>..mai
    4. Fix anything the above finds, commit those fixes, and re-run step 3 until clean.
 
 1. `./deploy_release.sh <version>` — builds, Developer-ID signs, notarizes, staples, and sets `CFBundleShortVersionString`/`CFBundleVersion`. Zips the finished, stapled app itself, no separate manual zip step needed — look for the printed `Artifact: dist/hdhrVCRplus-<version>.zip` line (no `v` prefix in the filename, unlike the git tag). Needs the Apple Developer cert + a stored notary credential; `--skip-notarize` signs only, for testing. **Developer ID signing prompts for Touch ID/password on every run** (not just first use) — whoever runs this needs to be physically at the machine (or have real remote screen access) to clear it; it will hang otherwise.
-2. Publish the GitHub Release with notes + that zip:
+2. **Add a `## v<version> (<date>)` entry to [`RELEASES.md`](../RELEASES.md)**, condensed and
+   end-user-facing (see existing entries for the house style) from what actually landed since the
+   last tag (`git log <last-tag>..main` / `Sources/hdhr_VCR/CHANGELOG.md`'s entries for this
+   release). `deploy_release.sh` does **not** touch this file — it only bundles
+   `CHANGELOG.md` into the app for the in-app About screen (see root `CLAUDE.md`'s "Guide page
+   CSS/JS/HTML" note and `SettingsView.swift`'s `changelogText`). Skipping this step is how
+   RELEASES.md fell two versions behind (v2.0.3, v2.0.4) before a manual audit caught it in
+   2026-08-17 — do this before publishing the GitHub Release below, and use the new RELEASES.md
+   section as the basis for that release's notes.
+3. Publish the GitHub Release with notes + that zip:
    `gh release create v<version> --title "…" --notes-file notes.md dist/hdhrVCRplus-<version>.zip`
    (or, if a draft already exists: `gh release upload v<version> …zip --clobber` then `gh release edit v<version> --draft=false --latest`).
-3. Users download the zip and install manually; existing installs don't self-update.
+4. Users download the zip and install manually; existing installs don't self-update.
 
 **Emergency-only, un-notarized fallback:** if the notary service is down or the cert/credential is
 temporarily unavailable and a release genuinely can't wait, use `./deploy_release.sh <version>
