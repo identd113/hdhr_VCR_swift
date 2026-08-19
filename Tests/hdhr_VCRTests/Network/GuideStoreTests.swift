@@ -465,8 +465,13 @@ struct GuideStoreMockNetworkTests {
         // so scheduleNextAir kept re-picking the exact same duplicate every ~10s for the entire
         // broadcast window (observed: 360 duplicate-skip log/Discord entries in one hour for one
         // episode). Narrowing to channelNum "2.1" makes this a single-candidate lookup even though
-        // the fixture has two channels airing the series.
-        @Test @MainActor func currentEpisode_preferUnrecorded_singleCandidateAlreadyRecorded_returnsNil() async {
+        // the fixture has two channels airing the series. Both rows share identical setup and
+        // differ only in whether the sole candidate counts as "recorded" — one table instead of
+        // two near-identical bodies, same style as ShowTitleHelpersTests/AppConfigClampTests.
+        @Test(arguments: [
+            (isAlreadyRecorded: true,  expectedChannel: nil as String?),
+            (isAlreadyRecorded: false, expectedChannel: "2.1"),
+        ]) @MainActor func currentEpisode_preferUnrecorded_singleCandidate(_ row: (isAlreadyRecorded: Bool, expectedChannel: String?)) async {
             let store = GuideStore(session: makeSession())
             let device = makeLocalDevice()
             MockURLProtocol.requestHandler = { req in
@@ -475,8 +480,11 @@ struct GuideStoreMockNetworkTests {
             await store.load(for: device)
             let at = Date(timeIntervalSince1970: 2_000_001_000)   // inside [StartTime, EndTime)
             let match = store.currentEpisode(seriesID: "sim789", channelNum: "2.1", at: at,
-                                             preferUnrecorded: { _ in false })
-            #expect(match == nil, "The only on-air candidate is a known duplicate — must not be re-offered as the match")
+                                             preferUnrecorded: { _ in !row.isAlreadyRecorded })
+            #expect(match?.channelNum == row.expectedChannel,
+                     row.isAlreadyRecorded
+                        ? "The only on-air candidate is a known duplicate — must not be re-offered as the match"
+                        : "A genuinely new on-air episode must still be returned")
         }
 
         // Three channels air the identical SeriesID at the identical StartTime/EndTime — a
@@ -529,18 +537,6 @@ struct GuideStoreMockNetworkTests {
             #expect(match?.channelNum != "2.1", "Must not fall back to the recorded duplicate when unrecorded alternatives exist")
         }
 
-        @Test @MainActor func currentEpisode_preferUnrecorded_singleCandidateNotRecorded_returnsIt() async {
-            let store = GuideStore(session: makeSession())
-            let device = makeLocalDevice()
-            MockURLProtocol.requestHandler = { req in
-                (okResponse(for: req.url!), Self.simulcastJSON.data(using: .utf8)!)
-            }
-            await store.load(for: device)
-            let at = Date(timeIntervalSince1970: 2_000_001_000)
-            let match = store.currentEpisode(seriesID: "sim789", channelNum: "2.1", at: at,
-                                             preferUnrecorded: { _ in true })
-            #expect(match?.channelNum == "2.1", "A genuinely new on-air episode must still be returned")
-        }
     }
 
     // MARK: - Invalidation
