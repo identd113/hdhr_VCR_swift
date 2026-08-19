@@ -53,17 +53,32 @@ The web guide has a genre filter (`filterGenre`/`rebuildGenreFilter` in `guide.j
 
 ## Distribution
 
-### Release builds are arm64-only, not a universal binary
+### Universal binary — build-side change done 2026-08-19, real signed release not yet cut
 
-`deploy_release.sh`/`deploy.sh` both call plain `swift build` (`-c release` for the former) with no
-`--arch` flags, so every shipped build (including v2.0.0) is a single arm64 slice — confirmed via
-`lipo -info` on the built binary. Intel Macs can't run it. Adding an x86_64 slice would mean
-building both architectures (`swift build --arch arm64 --arch x86_64 [-c release]`) and combining
-the two `hdhr_VCR` binaries with `lipo -create` before the existing codesign/notarize steps —
-notarization and stapling both operate fine on a universal binary, so this only touches the build
-step, not signing. Not started; no known demand from an Intel-Mac user yet.
+`deploy_release.sh` now builds `swift build -c release --arch arm64 --arch x86_64` — SwiftPM itself
+combines both slices into one fat Mach-O (no manual `lipo -create` needed, unlike originally
+scoped), output at `.build/apple/Products/Release/hdhr_VCR` instead of the old single-arch
+`.build/release/hdhr_VCR`. Verified: `lipo -info` on the built binary shows both `x86_64 arm64`
+slices; the x86_64 slice launches cleanly under Rosetta from within a real `.app` bundle (a bare
+binary outside one crashes on *both* architectures identically at `UNUserNotificationCenter` —
+needs a real bundle proxy — so that alone isn't an arch-specific signal; had to control for it).
+`deploy.sh` (the fast local dev loop, ad-hoc signed, not shipped) deliberately stays single-arch —
+doubling every local build for Intel coverage nothing local needs isn't worth the iteration-speed
+cost; only what actually ships needed to change.
 
-**Key file**: `deploy.sh` / `deploy_release.sh` (build + binary-copy steps).
+**Not yet done, needs a human**: an actual signed + notarized universal release has never been cut
+— Developer ID codesign needs physical Touch ID presence each run (`tools/setup_signing.sh` /
+`deploy_release.sh` without `--adhoc`), so this could only be build-verified, not released, in an
+unattended session. `--adhoc` mode *would* run start-to-finish without Touch ID (ad-hoc `codesign
+--sign -`, skips notarization), but was deliberately not run here either — it replaces the live
+`hdhrVCRplus.app` bundle in place and stamps a real `CFBundleShortVersionString`/`CFBundleVersion`
+into `Info.plist`, i.e. actually cutting a release artifact, not just verifying the build mechanism.
+Next real release should confirm the universal binary end-to-end: `lipo -info` on the final signed
+artifact, and ideally an actual smoke test on real Intel hardware (Rosetta translation isn't a
+substitute — it proves the x86_64 slice's instructions are valid, not that everything the app does
+behaves identically on real Intel silicon).
+
+**Key file**: `deploy_release.sh` (build + binary-copy steps).
 
 ---
 

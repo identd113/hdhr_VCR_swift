@@ -67,11 +67,20 @@ _PLIST="$APP/Contents/Info.plist"
 echo "    Build stamp:  $APP_VERSION"
 echo "    Release:      $RELEASE_VERSION (CFBundleVersion $_BUILD_NUM)"
 
-echo "==> Building (release)…"
-swift build -c release
+echo "==> Building (release, universal arm64+x86_64)…"
+# --arch passed twice builds both slices and has SwiftPM itself combine them into one fat Mach-O
+# (same mechanism Xcode uses for a universal macOS target) — no manual lipo step needed. Output
+# path moves to .build/apple/Products/Release/ instead of the single-arch .build/release/; verified
+# via `lipo -info` that the result actually carries both slices, and smoke-tested the x86_64 slice
+# launches cleanly under Rosetta from within a real .app bundle (a bare binary outside one crashes
+# on both architectures identically — UNUserNotificationCenter needs a real bundle proxy — so that
+# in isolation isn't an arch-specific signal). codesign/notarize/staple below are unchanged: all
+# three already operate transparently on a universal binary.
+swift build -c release --arch arm64 --arch x86_64
 
 echo "==> Deploying binary…"
-cp .build/release/hdhr_VCR "$BINARY"
+cp .build/apple/Products/Release/hdhr_VCR "$BINARY"
+lipo -info "$BINARY"
 
 echo "==> Deploying resources…"
 mkdir -p "$APP/Contents/Resources"
