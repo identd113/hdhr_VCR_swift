@@ -6,6 +6,8 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 
 **Added**
 - **A show now automatically pauses itself when its assigned tuner isn't detected**, instead of silently sitting there scheduled against a tuner that isn't there (which previously logged a warning on every 10-second tick, forever). The moment that same tuner is seen again — whether it was a real device that dropped offline or one that was never actually reachable — the show automatically un-pauses. This never touches a show you paused yourself, or one paused for repeated recording failures; only a show this mechanism paused gets automatically resumed by it.
+- **Settings → Advanced gained "Export Config…" / "Import Config…" buttons.** Export copies your live config JSON to wherever you choose; Import validates a chosen file before replacing your config (backing up the old one first) — handy for copying your setup to another machine. Import takes effect after restarting the app.
+- **The About tab's changelog now highlights the current version's own entry** in an accent-tinted box at the top, and caps the list to the current version plus the last 5 older ones instead of showing every release ever made.
 
 **Updated**
 - **Fixed a series show getting stuck re-skipping the same already-recorded rerun every ~10 seconds for its entire time slot** (up to an hour of repeated "Recording Skipped — already recorded" notifications and Discord cards for one episode). The scheduler was re-selecting that exact same on-air duplicate as the "next" airing every time it rescheduled after a skip; it now correctly moves on to the actual next distinct episode instead.

@@ -54,6 +54,32 @@ final class ConfigManager {
 
     var configPath: String { configURL.path }
 
+    // Copies the live config file to `url` — used by Settings' Export Config button. Removes an
+    // existing file at `url` first since NSSavePanel's own overwrite confirmation only clears the
+    // user prompt, not the file itself, and copyItem throws if the destination already exists.
+    func exportConfig(to url: URL) throws {
+        if FileManager.default.fileExists(atPath: url.path) {
+            try FileManager.default.removeItem(at: url)
+        }
+        try FileManager.default.copyItem(at: configURL, to: url)
+    }
+
+    // Validates that `url` decodes as a well-formed ConfigFile (same decoder/date-format handling
+    // as load()) before touching anything, then backs up the current config and replaces it —
+    // used by Settings' Import Config button. Deliberately does not update any in-memory AppState
+    // — a currently-recording show's live state (show_recording, discovered devices, tuner
+    // occupancy) can't be safely reconciled against an arbitrary imported file mid-session, so the
+    // caller is expected to prompt for an app restart instead.
+    func importConfig(from url: URL) throws {
+        let data = try Data(contentsOf: url)
+        _ = try Self.makeDecoder().decode(ConfigFile.self, from: data)
+        let backup = configURL.appendingPathExtension("bak")
+        try? FileManager.default.removeItem(at: backup)
+        try? FileManager.default.copyItem(at: configURL, to: backup)
+        try data.write(to: configURL, options: .atomic)
+        glog("[Config] Imported config from \(url.lastPathComponent)")
+    }
+
     // MARK: - Private
 
     private func maybeUpgrade(_ file: ConfigFile) -> ConfigFile {

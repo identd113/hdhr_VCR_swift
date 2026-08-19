@@ -51,24 +51,6 @@ The web guide has a genre filter (`filterGenre`/`rebuildGenreFilter` in `guide.j
 
 ---
 
-## Settings
-
-### No export / import config
-
-Power users managing multiple machines must copy the JSON manually. Export / Import buttons in the Advanced settings section would simplify this.
-
----
-
-### About tab: highlight the current version's changes, cap the visible changelog at 6 entries
-
-Today `SettingsView.aboutView` renders the *entire* filtered changelog (every section whose version stamp is ≤ the running build, via `Self.parseChangelog`/`MarkdownView`) with no limit and no visual distinction for the current version's own entry — it reads the same as every older one.
-
-Wanted: the current build's changelog section should be visually highlighted (e.g. an accent background/border or a "Current" badge) as the first item, followed by only the last 5 older versions — 6 sections total in the About view. `CHANGELOG.md` itself and `parseChangelog`'s version-filtering behavior (nothing newer than `appVersion` is ever shown) should stay untouched — this is a display cap on `aboutView`, not a change to what's tracked or kept in the file.
-
-**Key files**: `Views/SettingsView.swift` — `aboutView` (rendering), `parseChangelog` (currently returns the *entire* filtered string + `latestVersion`; will need to also split out/limit to the first 6 `## `-delimited sections and identify which one is the current version's).
-
----
-
 ## Distribution
 
 ### Release builds are arm64-only, not a universal binary

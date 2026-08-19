@@ -69,6 +69,7 @@ struct SettingsView: View {
     }
     @State private var logoTapCount  = 0
     @State private var changelogHeight: CGFloat = 0
+    @State private var currentChangelogHeight: CGFloat = 0
 
     private static let changelogText: String = {
         guard let url = Bundle.main.url(forResource: "CHANGELOG", withExtension: "md"),
@@ -81,6 +82,7 @@ struct SettingsView: View {
     @State private var maintenanceBusy: Bool = false
     @State private var brewBusy: Bool = false
     @State private var brewStatus: String = ""
+    @State private var configIOStatus: String = ""
 
     // Discord webhook test state
     private enum WebhookTestStatus { case idle, untested, testing, passed, failed }
@@ -596,6 +598,15 @@ struct SettingsView: View {
                     NSWorkspace.shared.selectFile(state.configManager.configPath,
                                                   inFileViewerRootedAtPath: "")
                 }
+                HStack {
+                    Button("Export Config…") { exportConfig() }
+                    Button("Import Config…") { importConfig() }
+                }
+                if !configIOStatus.isEmpty {
+                    Label(configIOStatus, systemImage: configIOStatus.hasPrefix("Error") ? "xmark.circle.fill" : "checkmark.circle.fill")
+                        .foregroundStyle(configIOStatus.hasPrefix("Error") ? .red : .green)
+                        .font(.callout)
+                }
             }
 
             Section("Updates") {
@@ -893,7 +904,9 @@ struct SettingsView: View {
     // MARK: - About
 
     private var aboutView: some View {
-        let (filteredText, _) = Self.parseChangelog(Self.changelogText)
+        let (sections, _) = Self.parseChangelog(Self.changelogText)
+        let currentSection = sections.first
+        let olderSections = sections.dropFirst().joined(separator: "\n\n")
 
         return ScrollView {
             VStack(spacing: 20) {
@@ -983,8 +996,23 @@ struct SettingsView: View {
                 Text("Changelog")
                     .font(.headline)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                MarkdownView(markdown: filteredText, height: $changelogHeight)
-                    .frame(height: max(100, changelogHeight))
+
+                if let currentSection {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label("Current Version", systemImage: "checkmark.seal.fill")
+                            .font(.caption).bold()
+                            .foregroundStyle(.tint)
+                        MarkdownView(markdown: currentSection, height: $currentChangelogHeight)
+                            .frame(height: max(40, currentChangelogHeight))
+                    }
+                    .padding(10)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.accentColor.opacity(0.12)))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.accentColor.opacity(0.4), lineWidth: 1))
+                }
+                if !olderSections.isEmpty {
+                    MarkdownView(markdown: olderSections, height: $changelogHeight)
+                        .frame(height: max(40, changelogHeight))
+                }
             }
             .padding()
         }
@@ -1007,22 +1035,27 @@ struct SettingsView: View {
 
     /// Splits `text` into sections by "## " headings, keeping only those whose date is
     /// ≤ `appVersion`'s own build date. Sections with no extractable date (e.g. "## Unreleased",
-    /// or anything predating version stamping) are always kept. Returns the filtered text and the
-    /// latest version found (nil if none), so callers can show an update notice.
-    private static func parseChangelog(_ text: String) -> (filtered: String, latestVersion: String?) {
+    /// or anything predating version stamping) are always kept. Returns up to `maxSections` kept
+    /// sections — each a complete, independently-renderable "## "-prefixed markdown block, in
+    /// original (newest-first) order — plus the latest version found (nil if none), so callers can
+    /// show an update notice. Capped here (a display concern) rather than in CHANGELOG.md itself or
+    /// the version-filtering logic above, which stay untouched — see TODO.md's About-tab entry.
+    // Widened from `private` for direct test coverage — same "widen for testability" precedent
+    // TODO.md documents for HDHRManager's discovery methods.
+    static func parseChangelog(_ text: String, maxSections: Int = 6) -> (sections: [String], latestVersion: String?) {
         let sep = "\n## "
         let parts = text.components(separatedBy: sep)
-        guard parts.count > 1 else { return (text, nil) }
+        guard parts.count > 1 else { return (text.isEmpty ? [] : [text], nil) }
         var latestVersion: String? = nil
-        var kept = [parts[0]]
+        var kept = [parts[0]]   // already "## "-prefixed — it's the head of the original string
         for part in parts.dropFirst() {
             let heading = String(part.prefix(while: { $0 != "\n" }))
             let ver = extractVersion(from: heading)
             if latestVersion == nil { latestVersion = ver }
             if let ver, ver > appVersion { continue }   // newer than this build — omit
-            kept.append(part)
+            kept.append("## " + part)   // restore the heading marker the split consumed
         }
-        return (kept.joined(separator: sep), latestVersion)
+        return (Array(kept.prefix(maxSections)), latestVersion)
     }
 
     /// Extracts a "(YYMMDD-HHMM)" version stamp from a changelog heading string.
@@ -1038,6 +1071,40 @@ struct SettingsView: View {
         let digits = heading[dashRange.upperBound...].filter(\.isNumber)
         guard digits.count == 8 else { return nil }   // not a recognizable YYYY-MM-DD date
         return String(digits.dropFirst(2))   // YYYYMMDD -> YYMMDD
+    }
+
+    private func exportConfig() {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = (state.configManager.configPath as NSString).lastPathComponent
+        panel.allowedContentTypes = [.json]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try state.configManager.exportConfig(to: url)
+            configIOStatus = "Exported to \(url.lastPathComponent)"
+        } catch {
+            configIOStatus = "Error: \(error.localizedDescription)"
+        }
+    }
+
+    private func importConfig() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.json]
+        panel.message = "Choose a previously exported hdhrVCRplus config JSON file"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try state.configManager.importConfig(from: url)
+            // Deliberately not hot-reloaded into AppState — a currently-recording show's live
+            // state (show_recording, discovered devices, tuner occupancy) can't be safely
+            // reconciled against an arbitrary imported file mid-session (see importConfig's own
+            // comment in ConfigManager.swift). Simplest safe option: write the file, restart to
+            // pick it up — matches how a manually-copied-in config file already had to be applied.
+            configIOStatus = "Imported — restart hdhrVCRplus for the change to take effect"
+        } catch {
+            configIOStatus = "Error: \(error.localizedDescription)"
+        }
     }
 
     private func chooseFolder() {
