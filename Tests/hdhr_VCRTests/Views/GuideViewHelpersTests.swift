@@ -18,56 +18,32 @@ private func entry(genre: String?) -> GuideEntry {
 @Suite("guideEntryColor genre aliasing")
 struct GuideEntryColorTests {
 
-    @Test func kidsAliasesToChildren() {
-        #expect(guideEntryColor(for: entry(genre: "Kids"), onAir: true)
-             == guideEntryColor(for: entry(genre: "Children"), onAir: true))
+    // One (alias genre → target genre) table — every row checks that the alias's color equals
+    // its target's color. Row order/names match the original standalone tests.
+    @Test(arguments: [
+        (alias: "Kids",      target: "Children"),  // kidsAliasesToChildren
+        (alias: "Sport",     target: "Sports"),     // sportAliasesToSports
+        (alias: "Movies",    target: "Movie"),      // moviesAliasesToMovie
+        (alias: "Sitcom",    target: "Comedy"),     // sitcomAliasesToComedy
+        (alias: "Documentary", target: "Doc"),      // documentaryAliasesToDoc
+        (alias: "Game show", target: "Gameshow"),   // gameShowAliasesToGameshow
+        (alias: "Animation", target: "Children"),   // animationAndAnimatedBothAliasToChildren (1/2)
+        (alias: "Animated",  target: "Children"),   // animationAndAnimatedBothAliasToChildren (2/2)
+        (alias: "KIDS",      target: "Children"),   // aliasLookupIsCaseInsensitive
+    ])
+    func aliasMatchesTarget(_ row: (alias: String, target: String)) {
+        #expect(guideEntryColor(for: entry(genre: row.alias), onAir: true)
+             == guideEntryColor(for: entry(genre: row.target), onAir: true))
     }
 
-    @Test func sportAliasesToSports() {
-        #expect(guideEntryColor(for: entry(genre: "Sport"), onAir: true)
-             == guideEntryColor(for: entry(genre: "Sports"), onAir: true))
-    }
-
-    @Test func moviesAliasesToMovie() {
-        #expect(guideEntryColor(for: entry(genre: "Movies"), onAir: true)
-             == guideEntryColor(for: entry(genre: "Movie"), onAir: true))
-    }
-
-    @Test func sitcomAliasesToComedy() {
-        #expect(guideEntryColor(for: entry(genre: "Sitcom"), onAir: true)
-             == guideEntryColor(for: entry(genre: "Comedy"), onAir: true))
-    }
-
-    @Test func documentaryAliasesToDoc() {
-        #expect(guideEntryColor(for: entry(genre: "Documentary"), onAir: true)
-             == guideEntryColor(for: entry(genre: "Doc"), onAir: true))
-    }
-
-    @Test func gameShowAliasesToGameshow() {
-        #expect(guideEntryColor(for: entry(genre: "Game show"), onAir: true)
-             == guideEntryColor(for: entry(genre: "Gameshow"), onAir: true))
-    }
-
-    @Test func animationAndAnimatedBothAliasToChildren() {
-        let animation = guideEntryColor(for: entry(genre: "Animation"), onAir: true)
-        let animated  = guideEntryColor(for: entry(genre: "Animated"), onAir: true)
-        let children  = guideEntryColor(for: entry(genre: "Children"), onAir: true)
-        #expect(animation == children)
-        #expect(animated == children)
-    }
-
-    @Test func aliasLookupIsCaseInsensitive() {
-        #expect(guideEntryColor(for: entry(genre: "KIDS"), onAir: true)
-             == guideEntryColor(for: entry(genre: "Children"), onAir: true))
-    }
-
-    @Test func unknownGenre_fallsBackToDefaultGray() {
-        #expect(guideEntryColor(for: entry(genre: "Nonexistent Genre"), onAir: true)
-             == Color(white: 0.22))
-    }
-
-    @Test func noGenre_fallsBackToDefaultGray() {
-        #expect(guideEntryColor(for: entry(genre: nil), onAir: true) == Color(white: 0.22))
+    // One (genre → falls back to default gray) table — distinct assertion shape from the alias
+    // table above (compares against a fixed color, not another genre's color).
+    @Test(arguments: [
+        "Nonexistent Genre" as String?,  // unknownGenre_fallsBackToDefaultGray
+        nil,                             // noGenre_fallsBackToDefaultGray
+    ])
+    func unrecognizedGenre_fallsBackToDefaultGray(_ genre: String?) {
+        #expect(guideEntryColor(for: entry(genre: genre), onAir: true) == Color(white: 0.22))
     }
 
     @Test func offAir_isDimmedVersionOfOnAirColor() {

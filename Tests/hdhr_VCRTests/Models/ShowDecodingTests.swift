@@ -15,19 +15,16 @@ struct ShowDecodingTests {
         return try JSONDecoder().decode(Show.self, from: Data(json.utf8))
     }
 
-    @Test func repairsTempDirMatchingCustomShowDir() throws {
-        let show = try decode(showDir: "/Volumes/Raid6/DVR Tests", tempDir: "/Volumes/Raid6/DVR Tests")
-        #expect(show.show_temp_dir == Show.localFallbackDir)
-    }
-
-    @Test func leavesGenuinelyDistinctTempDirAlone() throws {
-        let show = try decode(showDir: "/Volumes/Raid6/DVR Tests", tempDir: Show.localFallbackDir)
-        #expect(show.show_temp_dir == Show.localFallbackDir)
-    }
-
-    @Test func leavesEmptyTempDirAlone() throws {
-        let show = try decode(showDir: "/Volumes/Raid6/DVR Tests", tempDir: "")
-        #expect(show.show_temp_dir == "")
+    // One (tempDir → expected show_temp_dir) table — show_dir is fixed at the same custom path
+    // across every row; only the on-disk tempDir value and the expected repaired result vary.
+    @Test(arguments: [
+        ("/Volumes/Raid6/DVR Tests", Show.localFallbackDir),  // repairsTempDirMatchingCustomShowDir
+        (Show.localFallbackDir,      Show.localFallbackDir),  // leavesGenuinelyDistinctTempDirAlone
+        ("",                         ""),                     // leavesEmptyTempDirAlone
+    ] as [(tempDir: String, expected: String)])
+    func tempDirRepair(_ row: (tempDir: String, expected: String)) throws {
+        let show = try decode(showDir: "/Volumes/Raid6/DVR Tests", tempDir: row.tempDir)
+        #expect(show.show_temp_dir == row.expected)
     }
 
     // A "both already Show.localFallbackDir" case was deliberately not added here: the repair

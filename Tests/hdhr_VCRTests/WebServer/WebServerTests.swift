@@ -43,27 +43,17 @@ struct AppConfigWebServerTests {
         return try JSONDecoder().decode(AppConfig.self, from: data)
     }
 
-    @Test func webServer_defaultsWhenAbsent() throws {
-        let cfg = try decode("{}")
-        #expect(cfg.Web_server_enabled == false)
-        #expect(cfg.Web_server_port == 1980)
-    }
-
-    @Test func webServer_enabled_roundTrips() throws {
-        let cfg = try decode(#"{"Web_server_enabled": true, "Web_server_port": 8080}"#)
-        #expect(cfg.Web_server_enabled == true)
-        #expect(cfg.Web_server_port == 8080)
-    }
-
-    @Test func webServer_port_defaultsTo1980WhenKeyAbsent() throws {
-        let cfg = try decode(#"{"Web_server_enabled": true}"#)
-        #expect(cfg.Web_server_port == 1980)
-    }
-
-    @Test func webServer_disabled_defaultsToFalse() throws {
-        let cfg = try decode(#"{"Web_server_port": 2000}"#)
-        #expect(cfg.Web_server_enabled == false)
-        #expect(cfg.Web_server_port == 2000)
+    // One (json → expectedEnabled, expectedPort) table.
+    @Test(arguments: [
+        ("{}", false, 1980),                                                   // defaultsWhenAbsent
+        (#"{"Web_server_enabled": true, "Web_server_port": 8080}"#, true, 8080),  // enabled_roundTrips
+        (#"{"Web_server_enabled": true}"#, true, 1980),                        // port_defaultsTo1980WhenKeyAbsent
+        (#"{"Web_server_port": 2000}"#, false, 2000),                          // disabled_defaultsToFalse
+    ] as [(json: String, expectedEnabled: Bool, expectedPort: Int)])
+    func webServerDecode(_ row: (json: String, expectedEnabled: Bool, expectedPort: Int)) throws {
+        let cfg = try decode(row.json)
+        #expect(cfg.Web_server_enabled == row.expectedEnabled)
+        #expect(cfg.Web_server_port == row.expectedPort)
     }
 
     @Test func webServer_encodes_andDecodes() throws {

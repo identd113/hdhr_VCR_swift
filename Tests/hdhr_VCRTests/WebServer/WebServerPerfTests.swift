@@ -82,16 +82,14 @@ struct WebServerPerfTests {
         #expect(data.count > 100_000, "decoded body suspiciously small — is the guide actually loaded?")
     }
 
-    @Test func pingLatency_underThreshold() async throws {
+    // One (path → under apiCallThreshold) table — both endpoints share the identical assertion
+    // shape and threshold. pageLoad_underThreshold above stays separate: it uses a different
+    // threshold (pageLoadThreshold) and a richer diagnostic message worth keeping intact.
+    @Test(arguments: ["/api/ping", "/api/now.json"])   // pingLatency_underThreshold, nowJsonLatency_underThreshold
+    func apiLatency_underThreshold(_ path: String) async throws {
         guard await serverAvailable() else { return }
-        let median = try await medianLatency("/api/ping")
-        #expect(median < apiCallThreshold)
-    }
-
-    @Test func nowJsonLatency_underThreshold() async throws {
-        guard await serverAvailable() else { return }
-        let median = try await medianLatency("/api/now.json")
-        #expect(median < apiCallThreshold)
+        let median = try await medianLatency(path)
+        #expect(median < apiCallThreshold, "\(path) median \(Int(median * 1000))ms exceeds \(Int(apiCallThreshold * 1000))ms baseline")
     }
 
     @Test func guideDetailLatency_underThreshold() async throws {

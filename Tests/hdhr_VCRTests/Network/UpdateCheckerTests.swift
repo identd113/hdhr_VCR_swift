@@ -31,32 +31,21 @@ private func releaseJSON(tag: String, htmlURL: String = "https://github.com/iden
 
 @Suite("UpdateChecker: isVersion(_:newerThan:)")
 struct IsVersionTests {
-    @Test func strictlyNewerPatch() {
-        #expect(isVersion("2.0.10", newerThan: "2.0.9"))
-    }
-
-    @Test func strictlyNewerMinor_shorterString() {
-        // Missing trailing components are treated as 0, so "2.1" beats "2.0.9".
-        #expect(isVersion("2.1", newerThan: "2.0.9"))
-    }
-
-    @Test func equalVersions_notNewer() {
-        #expect(!isVersion("2.0.4", newerThan: "2.0.4"))
-    }
-
-    @Test func olderVersion_notNewer() {
-        #expect(!isVersion("2.0.3", newerThan: "2.0.4"))
-    }
-
-    @Test func plainStringCompareWouldGetThisWrong() {
+    // One (version, than → expectedNewer) table.
+    @Test(arguments: [
         // "2.0.10" < "2.0.9" as strings, but 10 > 9 numerically — the whole reason for
-        // component-wise comparison instead of a raw string/lexicographic compare.
-        #expect(isVersion("2.0.10", newerThan: "2.0.9"))
-        #expect(!isVersion("2.0.9", newerThan: "2.0.10"))
-    }
-
-    @Test func nonNumericComponent_treatedAsZero() {
-        #expect(!isVersion("2.0.beta", newerThan: "2.0.0"))
+        // component-wise comparison instead of a raw string/lexicographic compare. Also covers
+        // strictlyNewerPatch (identical inputs).
+        (version: "2.0.10",   than: "2.0.9",   expectedNewer: true),   // strictlyNewerPatch / plainStringCompareWouldGetThisWrong (1/2)
+        // Missing trailing components are treated as 0, so "2.1" beats "2.0.9".
+        (version: "2.1",      than: "2.0.9",   expectedNewer: true),   // strictlyNewerMinor_shorterString
+        (version: "2.0.4",    than: "2.0.4",   expectedNewer: false),  // equalVersions_notNewer
+        (version: "2.0.3",    than: "2.0.4",   expectedNewer: false),  // olderVersion_notNewer
+        (version: "2.0.9",    than: "2.0.10",  expectedNewer: false),  // plainStringCompareWouldGetThisWrong (2/2)
+        (version: "2.0.beta", than: "2.0.0",   expectedNewer: false),  // nonNumericComponent_treatedAsZero
+    ])
+    func compare(_ row: (version: String, than: String, expectedNewer: Bool)) {
+        #expect(isVersion(row.version, newerThan: row.than) == row.expectedNewer)
     }
 }
 

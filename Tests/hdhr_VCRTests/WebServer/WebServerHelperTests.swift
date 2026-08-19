@@ -16,46 +16,31 @@ struct WebServerHelperTests {
 
     // MARK: he() — HTML escaping (Views/GuideViewHelpers.swift, used throughout WebServer.swift)
 
-    @Test func he_escapesAllFourSpecialChars() {
-        #expect(he(#"<script>alert("x")&y</script>"#) ==
-                #"&lt;script&gt;alert(&quot;x&quot;)&amp;y&lt;/script&gt;"#)
-    }
-
-    @Test func he_leavesPlainTextUntouched() {
-        #expect(he("Antiques Roadshow S02E04") == "Antiques Roadshow S02E04")
-    }
-
-    @Test func he_handlesEmptyString() {
-        #expect(he("") == "")
-    }
-
-    @Test func he_doesNotDoubleEscape() {
+    // One (input → expected) table.
+    @Test(arguments: [
+        (#"<script>alert("x")&y</script>"#, #"&lt;script&gt;alert(&quot;x&quot;)&amp;y&lt;/script&gt;"#),  // escapesAllFourSpecialChars
+        ("Antiques Roadshow S02E04", "Antiques Roadshow S02E04"),  // leavesPlainTextUntouched
+        ("", ""),                                                  // handlesEmptyString
         // Guards against a future accidental double-call — & must become &amp; exactly once.
-        #expect(he("&") == "&amp;")
-        #expect(he("&amp;") == "&amp;amp;")   // literal input "&amp;" only has its own & escaped
+        ("&", "&amp;"),           // doesNotDoubleEscape (1/2)
+        ("&amp;", "&amp;amp;"),   // doesNotDoubleEscape (2/2) — literal input "&amp;" only has its own & escaped
+    ] as [(input: String, expected: String)])
+    func heEscaping(_ row: (input: String, expected: String)) {
+        #expect(he(row.input) == row.expected)
     }
 
     // MARK: jsEscapeForScript() — <script> breakout guard
 
-    @Test func jsEscape_breaksUpScriptCloseTag() {
+    // One (input → expected) table.
+    @Test(arguments: [
+        ("</script>", "\\u003c/script\\u003e"),                                    // breaksUpScriptCloseTag
+        ("<&>", "\\u003c\\u0026\\u003e"),                                           // allThreeCharsReplaced
+        (#"{"title":"Antiques Roadshow","channel":"5.1"}"#, #"{"title":"Antiques Roadshow","channel":"5.1"}"#),  // plainJSONUntouched
+        ("", ""),                                                                   // emptyString
+    ] as [(input: String, expected: String)])
+    func jsEscape(_ row: (input: String, expected: String)) {
         let ws = WebServer()
-        #expect(ws.jsEscapeForScript("</script>") == "\\u003c/script\\u003e")
-    }
-
-    @Test func jsEscape_allThreeCharsReplaced() {
-        let ws = WebServer()
-        #expect(ws.jsEscapeForScript("<&>") == "\\u003c\\u0026\\u003e")
-    }
-
-    @Test func jsEscape_plainJSONUntouched() {
-        let ws = WebServer()
-        let json = #"{"title":"Antiques Roadshow","channel":"5.1"}"#
-        #expect(ws.jsEscapeForScript(json) == json)
-    }
-
-    @Test func jsEscape_emptyString() {
-        let ws = WebServer()
-        #expect(ws.jsEscapeForScript("") == "")
+        #expect(ws.jsEscapeForScript(row.input) == row.expected)
     }
 
     // MARK: showTypeStr / showStateFromString — round-trip against ShowState
@@ -103,36 +88,23 @@ struct WebServerHelperTests {
 
     // MARK: fillTemplate() — {{TOKEN}} substitution for Resources/guide.{css,js,html}
 
-    @Test func fillTemplate_substitutesAllTokens() {
-        let ws = WebServer()
-        let result = ws.fillTemplate("a={{A}};b={{B}};", [("A", "1"), ("B", "2")])
-        #expect(result == "a=1;b=2;")
-    }
-
-    @Test func fillTemplate_leavesUnrecognizedTokenLiteral() {
-        let ws = WebServer()
+    // One (template, tokens → expected) table.
+    @Test(arguments: [
+        ("a={{A}};b={{B}};", [("A", "1"), ("B", "2")], "a=1;b=2;"),  // substitutesAllTokens
         // A typo'd/renamed token should stay visible as "{{...}}" rather than silently vanish.
-        let result = ws.fillTemplate("x={{TYPO}};", [("A", "1")])
-        #expect(result == "x={{TYPO}};")
-    }
-
-    @Test func fillTemplate_substitutedValueContainingTokenSyntaxIsNotRescanned() {
-        // Regression: a reduce-over-replacingOccurrences implementation rescans its own output,
-        // so a value substituted early (e.g. a user-entered show title landing in recsByDevJS)
-        // that happens to contain literal "{{OTHER_TOKEN}}" text would get corrupted when that
-        // later token is substituted. fillTemplate must do a single pass over the original
-        // template so inserted values are never rescanned.
+        ("x={{TYPO}};", [("A", "1")], "x={{TYPO}};"),  // leavesUnrecognizedTokenLiteral
+        // Regression: a reduce-over-replacingOccurrences implementation rescans its own output, so
+        // a value substituted early (e.g. a user-entered show title landing in recsByDevJS) that
+        // happens to contain literal "{{OTHER_TOKEN}}" text would get corrupted when that later
+        // token is substituted. fillTemplate must do a single pass over the original template so
+        // inserted values are never rescanned.
+        ("first={{FIRST}};second={{SECOND}};",
+         [("FIRST", "Meeting {{SECOND}} Notes"), ("SECOND", "42")],
+         "first=Meeting {{SECOND}} Notes;second=42;"),  // substitutedValueContainingTokenSyntaxIsNotRescanned
+        ("x={{A", [("A", "1")], "x={{A"),  // unterminatedTokenLeftAsLiteral
+    ] as [(template: String, tokens: [(String, String)], expected: String)])
+    func fillTemplate(_ row: (template: String, tokens: [(String, String)], expected: String)) {
         let ws = WebServer()
-        let result = ws.fillTemplate(
-            "first={{FIRST}};second={{SECOND}};",
-            [("FIRST", "Meeting {{SECOND}} Notes"), ("SECOND", "42")]
-        )
-        #expect(result == "first=Meeting {{SECOND}} Notes;second=42;")
-    }
-
-    @Test func fillTemplate_unterminatedTokenLeftAsLiteral() {
-        let ws = WebServer()
-        let result = ws.fillTemplate("x={{A", [("A", "1")])
-        #expect(result == "x={{A")
+        #expect(ws.fillTemplate(row.template, row.tokens) == row.expected)
     }
 }

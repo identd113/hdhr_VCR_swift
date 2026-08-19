@@ -51,25 +51,17 @@ struct XmltvParserStaticHelperTests {
         #expect(XmltvParser.parseDate("not-a-date") == nil)
     }
 
-    @Test func extractGuideName_stripsLCNPrefixAndDropsTrailingAffiliate() {
+    // One (names, lcn → expected) table — every row is a single extractGuideName call + compare.
+    @Test(arguments: [
         // Real-world shape: ["11.1 KAREHD", "NBC"] — last entry is the affiliate, not a channel name.
-        let name = XmltvParser.extractGuideName(["11.1 KAREHD", "NBC"], lcn: "11.1")
-        #expect(name == "KAREHD")
-    }
-
-    @Test func extractGuideName_noLCNMatch_fallsBackToFirstCandidate() {
-        let name = XmltvParser.extractGuideName(["Some Channel", "Affiliate"], lcn: "99.9")
-        #expect(name == "Some Channel")
-    }
-
-    @Test func extractGuideName_singleName_keptAsIs() {
+        (names: ["11.1 KAREHD", "NBC"],       lcn: "11.1" as String?, expected: "KAREHD"),        // stripsLCNPrefixAndDropsTrailingAffiliate
+        (names: ["Some Channel", "Affiliate"], lcn: "99.9",           expected: "Some Channel"),  // noLCNMatch_fallsBackToFirstCandidate
         // count <= 1 means nothing gets dropped as a trailing affiliate.
-        let name = XmltvParser.extractGuideName(["Solo Channel"], lcn: nil)
-        #expect(name == "Solo Channel")
-    }
-
-    @Test func extractGuideName_emptyNames_returnsEmpty() {
-        #expect(XmltvParser.extractGuideName([], lcn: "5.1") == "")
+        (names: ["Solo Channel"],              lcn: nil,              expected: "Solo Channel"),  // singleName_keptAsIs
+        (names: [],                            lcn: "5.1",            expected: ""),              // emptyNames_returnsEmpty
+    ])
+    func extractGuideName(_ row: (names: [String], lcn: String?, expected: String)) {
+        #expect(XmltvParser.extractGuideName(row.names, lcn: row.lcn) == row.expected)
     }
 }
 

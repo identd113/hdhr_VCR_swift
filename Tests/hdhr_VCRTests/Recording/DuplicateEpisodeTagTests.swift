@@ -21,54 +21,23 @@ struct DuplicateEpisodeTagTests {
             .appendingPathComponent("hdhrDupTest-\(UUID().uuidString)")
     }
 
-    @Test func nilWhenSkipRecordedEpisodesDisabled() throws {
+    // One (on-disk file, Skip_recorded_episodes, queried tag → expected) table — every row writes
+    // one file, sets the config flag, queries one tag, and checks the result.
+    @Test(arguments: [
+        (diskFile: "Show_S01E01_5.1_20260101_2000.ts", skipEnabled: false, episodeTag: "S01E01", expected: nil as String?),  // nilWhenSkipRecordedEpisodesDisabled
+        // Even a season-only on-disk file wouldn't help — the regex requires E<n> too.
+        (diskFile: "Show_S01_5.1_20260101_2000.ts",     skipEnabled: true,  episodeTag: "S01",    expected: nil),            // nilForSeasonOnlyTag
+        (diskFile: "Show_S01E01_5.1_20260101_2000.ts",  skipEnabled: true,  episodeTag: "S01E01", expected: "S01E01"),       // returnsUppercasedTagWhenMatchOnDisk
+        (diskFile: "Show_S01E01_5.1_20260101_2000.ts",  skipEnabled: true,  episodeTag: "s01e01", expected: "S01E01"),       // lowercaseInputTagMatchesUppercaseOnDiskTag
+        (diskFile: "Show_S01E01_5.1_20260101_2000.ts",  skipEnabled: true,  episodeTag: "S01E02", expected: nil),            // nilWhenNoMatchingFileOnDisk
+    ])
+    func duplicateCheck(_ row: (diskFile: String, skipEnabled: Bool, episodeTag: String, expected: String?)) throws {
         let base = tempBase()
         defer { try? FileManager.default.removeItem(atPath: base) }
-        try writeFile("\(base)/Show/Season 01", "Show_S01E01_5.1_20260101_2000.ts")
+        try writeFile("\(base)/Show/Season 01", row.diskFile)
 
         let state = makeTestAppState()
-        state.config.Skip_recorded_episodes = false
-        #expect(state.duplicateEpisodeTag(title: "Show", episodeTag: "S01E01", baseDir: base) == nil)
-    }
-
-    @Test func nilForSeasonOnlyTag() throws {
-        let base = tempBase()
-        defer { try? FileManager.default.removeItem(atPath: base) }
-        // Even a season-only on-disk file wouldn't help — the regex below requires E<n> too.
-        try writeFile("\(base)/Show/Season 01", "Show_S01_5.1_20260101_2000.ts")
-
-        let state = makeTestAppState()
-        state.config.Skip_recorded_episodes = true
-        #expect(state.duplicateEpisodeTag(title: "Show", episodeTag: "S01", baseDir: base) == nil)
-    }
-
-    @Test func returnsUppercasedTagWhenMatchOnDisk() throws {
-        let base = tempBase()
-        defer { try? FileManager.default.removeItem(atPath: base) }
-        try writeFile("\(base)/Show/Season 01", "Show_S01E01_5.1_20260101_2000.ts")
-
-        let state = makeTestAppState()
-        state.config.Skip_recorded_episodes = true
-        #expect(state.duplicateEpisodeTag(title: "Show", episodeTag: "S01E01", baseDir: base) == "S01E01")
-    }
-
-    @Test func lowercaseInputTagMatchesUppercaseOnDiskTag() throws {
-        let base = tempBase()
-        defer { try? FileManager.default.removeItem(atPath: base) }
-        try writeFile("\(base)/Show/Season 01", "Show_S01E01_5.1_20260101_2000.ts")
-
-        let state = makeTestAppState()
-        state.config.Skip_recorded_episodes = true
-        #expect(state.duplicateEpisodeTag(title: "Show", episodeTag: "s01e01", baseDir: base) == "S01E01")
-    }
-
-    @Test func nilWhenNoMatchingFileOnDisk() throws {
-        let base = tempBase()
-        defer { try? FileManager.default.removeItem(atPath: base) }
-        try writeFile("\(base)/Show/Season 01", "Show_S01E01_5.1_20260101_2000.ts")
-
-        let state = makeTestAppState()
-        state.config.Skip_recorded_episodes = true
-        #expect(state.duplicateEpisodeTag(title: "Show", episodeTag: "S01E02", baseDir: base) == nil)
+        state.config.Skip_recorded_episodes = row.skipEnabled
+        #expect(state.duplicateEpisodeTag(title: "Show", episodeTag: row.episodeTag, baseDir: base) == row.expected)
     }
 }

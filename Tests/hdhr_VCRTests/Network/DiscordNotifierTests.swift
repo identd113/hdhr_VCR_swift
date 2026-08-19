@@ -38,34 +38,20 @@ struct DiscordNotifierTests {
 
     // MARK: - Guard clauses (no network call should be made)
 
-    @Test func emptyWebhookURL_returnsNilWithoutNetworkCall() async {
+    // One (webhookURL → guarded, no network call) table.
+    @Test(arguments: [
+        "",                            // emptyWebhookURL_returnsNilWithoutNetworkCall
+        "https://evil.com/webhook",    // nonDiscordHost_returnsNilWithoutNetworkCall
+        // isDiscordHost uses hasSuffix("." + domain), not a bare hasSuffix(domain) — guards
+        // against "notdiscord.com" (no "." boundary) being accepted as a discord.com host.
+        "https://notdiscord.com/webhook",  // spoofedHostWithoutDotBoundary_returnsNilWithoutNetworkCall
+    ])
+    func invalidWebhookURL_returnsNilWithoutNetworkCall(_ webhookURL: String) async {
         DiscordMockURLProtocol.requestCount = 0
         DiscordMockURLProtocol.requestHandler = { _ in
             (discordOKResponse(for: URL(string: "https://discord.com")!), Data("{}".utf8))
         }
-        let result = await sendDiscordEmbedCapturing(to: "", embed: ["title": "x"], session: makeDiscordMockSession())
-        #expect(result == nil)
-        #expect(DiscordMockURLProtocol.requestCount == 0)
-    }
-
-    @Test func nonDiscordHost_returnsNilWithoutNetworkCall() async {
-        DiscordMockURLProtocol.requestCount = 0
-        DiscordMockURLProtocol.requestHandler = { _ in
-            (discordOKResponse(for: URL(string: "https://evil.com")!), Data("{}".utf8))
-        }
-        let result = await sendDiscordEmbedCapturing(to: "https://evil.com/webhook", embed: ["title": "x"], session: makeDiscordMockSession())
-        #expect(result == nil)
-        #expect(DiscordMockURLProtocol.requestCount == 0)
-    }
-
-    // isDiscordHost uses hasSuffix("." + domain), not a bare hasSuffix(domain) — guards against
-    // "notdiscord.com" (no "." boundary) being accepted as a discord.com host.
-    @Test func spoofedHostWithoutDotBoundary_returnsNilWithoutNetworkCall() async {
-        DiscordMockURLProtocol.requestCount = 0
-        DiscordMockURLProtocol.requestHandler = { _ in
-            (discordOKResponse(for: URL(string: "https://notdiscord.com")!), Data("{}".utf8))
-        }
-        let result = await sendDiscordEmbedCapturing(to: "https://notdiscord.com/webhook", embed: ["title": "x"], session: makeDiscordMockSession())
+        let result = await sendDiscordEmbedCapturing(to: webhookURL, embed: ["title": "x"], session: makeDiscordMockSession())
         #expect(result == nil)
         #expect(DiscordMockURLProtocol.requestCount == 0)
     }
@@ -101,35 +87,25 @@ struct DiscordNotifierTests {
         #expect(result == "999888777")
     }
 
-    @Test func httpErrorStatus_returnsNil() async {
+    // One (HTTP status code → returns nil) table.
+    @Test(arguments: [500, 429])   // httpErrorStatus_returnsNil, rateLimited429_returnsNil
+    func errorStatusCode_returnsNil(_ statusCode: Int) async {
         DiscordMockURLProtocol.requestHandler = { req in
-            let resp = HTTPURLResponse(url: req.url!, statusCode: 500, httpVersion: nil, headerFields: nil)!
+            let resp = HTTPURLResponse(url: req.url!, statusCode: statusCode, httpVersion: nil, headerFields: nil)!
             return (resp, Data())
         }
         let result = await sendDiscordEmbedCapturing(to: "https://discord.com/api/webhooks/1/token", embed: ["title": "x"], session: makeDiscordMockSession())
         #expect(result == nil)
     }
 
-    @Test func rateLimited429_returnsNil() async {
+    // One (HTTP-200 response body → returns nil because it can't be parsed for an id) table.
+    @Test(arguments: [
+        #"{"content":"no id here"}"#,  // responseMissingIdField_returnsNil
+        "not json at all",             // nonJSONResponseBody_returnsNil
+    ])
+    func unparsableResponseBody_returnsNil(_ responseBody: String) async {
         DiscordMockURLProtocol.requestHandler = { req in
-            let resp = HTTPURLResponse(url: req.url!, statusCode: 429, httpVersion: nil, headerFields: nil)!
-            return (resp, Data())
-        }
-        let result = await sendDiscordEmbedCapturing(to: "https://discord.com/api/webhooks/1/token", embed: ["title": "x"], session: makeDiscordMockSession())
-        #expect(result == nil)
-    }
-
-    @Test func responseMissingIdField_returnsNil() async {
-        DiscordMockURLProtocol.requestHandler = { req in
-            (discordOKResponse(for: req.url!), Data(#"{"content":"no id here"}"#.utf8))
-        }
-        let result = await sendDiscordEmbedCapturing(to: "https://discord.com/api/webhooks/1/token", embed: ["title": "x"], session: makeDiscordMockSession())
-        #expect(result == nil)
-    }
-
-    @Test func nonJSONResponseBody_returnsNil() async {
-        DiscordMockURLProtocol.requestHandler = { req in
-            (discordOKResponse(for: req.url!), Data("not json at all".utf8))
+            (discordOKResponse(for: req.url!), Data(responseBody.utf8))
         }
         let result = await sendDiscordEmbedCapturing(to: "https://discord.com/api/webhooks/1/token", embed: ["title": "x"], session: makeDiscordMockSession())
         #expect(result == nil)

@@ -234,7 +234,12 @@ struct HDHRManagerTests {
 
     // MARK: - setFavorite
 
-    @Test func setFavorite_success_doesNotThrow() async throws {
+    // One (initial Favorite, setFavorite → expected query) table.
+    @Test(arguments: [
+        (initialFavorite: nil, setFavorite: true,  expectedQuery: "favorite=+5.1"),  // success_doesNotThrow
+        (initialFavorite: 1,   setFavorite: false, expectedQuery: "favorite=-5.1"),  // unmark_usesMinusPrefix
+    ] as [(initialFavorite: Int?, setFavorite: Bool, expectedQuery: String)])
+    func setFavorite(_ row: (initialFavorite: Int?, setFavorite: Bool, expectedQuery: String)) async throws {
         var capturedURL: URL?
         HDHRMockURLProtocol.requestHandler = { req in
             capturedURL = req.url
@@ -242,22 +247,9 @@ struct HDHRManagerTests {
         }
         let manager = makeHDHRManager()
         let device = makeDevice(ip: "192.168.1.50")
-        let channel = LineupEntry(GuideNumber: "5.1", GuideName: "KVUE", URL: nil, HD: nil, Favorite: nil)
-        try await manager.setFavorite(device: device, channel: channel, favorite: true)
-        #expect(capturedURL?.query == "favorite=+5.1")
-    }
-
-    @Test func setFavorite_unmark_usesMinusPrefix() async throws {
-        var capturedURL: URL?
-        HDHRMockURLProtocol.requestHandler = { req in
-            capturedURL = req.url
-            return (hdhrOKResponse(for: req.url!), Data())
-        }
-        let manager = makeHDHRManager()
-        let device = makeDevice(ip: "192.168.1.50")
-        let channel = LineupEntry(GuideNumber: "5.1", GuideName: "KVUE", URL: nil, HD: nil, Favorite: 1)
-        try await manager.setFavorite(device: device, channel: channel, favorite: false)
-        #expect(capturedURL?.query == "favorite=-5.1")
+        let channel = LineupEntry(GuideNumber: "5.1", GuideName: "KVUE", URL: nil, HD: nil, Favorite: row.initialFavorite)
+        try await manager.setFavorite(device: device, channel: channel, favorite: row.setFavorite)
+        #expect(capturedURL?.query == row.expectedQuery)
     }
 
     @Test func setFavorite_httpErrorStatus_throws() async {
