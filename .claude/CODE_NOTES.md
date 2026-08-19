@@ -545,3 +545,38 @@ accuracy regresses right after app launch specifically.
   condition). Both are commented with the actual reason. No `asyncAfter`/`Task.sleep` found that's
   papering over a real race (the SIGTERM handler's 2s cap on in-flight Discord sends is a genuine
   bounded-wait-with-timeout pattern, not a guess).
+
+## 2026-08-17 — Full-codebase craftsmanship sweep (remaining files not covered by the 2026-08-15/16 passes: HDHRManager, ConfigManager, GuideStore, Models, ChannelIconCache, ChannelSignalStore, DiscordNotifier, UpdateChecker, XmltvParser, CompatibilityHelpers, all of Views/)
+
+- Confirmed the same unguarded `FileManager.default.urls(for:in:)[0]` force-subscript pattern
+  already accepted for `ConfigManager.swift:35` (Documents-fallback path) also exists at
+  `ChannelIconCache.swift:20` (`.cachesDirectory`) and `ChannelSignalStore.swift:25`
+  (`.applicationSupportDirectory`) — three total instances of the identical hazard class, only one
+  of which was previously catalogued in ISSUES.md. Same risk profile as the original entry
+  (crashes only if the array is ever empty — not realistic today, unsandboxed; a future App
+  Sandbox entitlement gap could trigger it). Not fixed here (out of scope for this review agent);
+  worth broadening the existing ISSUES.md entry to cover all three next time any of them is
+  touched, using the safer `.first ?? <fallback>` pattern `ConfigManager.init` already uses one
+  call site earlier in the same file.
+- Read every remaining source file in full (no diff — standalone sweep) against the usual four
+  lenses (hacky/scope/dead-code/efficiency) plus the notarization/MAS trajectory lens. Verdict:
+  unusually clean, consistent with the two prior 2026-08-15/16 passes over AppState/WebServer/
+  VLCBridge/RecordingManager — no new hacks, no dead code (checked candidate "possibly unused"
+  private funcs across all six largest Views files by grep-count heuristic; every hit was either a
+  protocol-required delegate method or a genuinely cross-file-called symbol, e.g.
+  `VLCPlayerWindowManager.closeIfPlaying`/`.focus()` called from `AppState.swift`), no stray
+  TODO/FIXME/HACK markers, no commented-out code blocks, no `#if false`.
+- `SettingsView.swift`'s `runBrew()` (`Process()` spawning `/opt/homebrew/bin/brew` /
+  `/usr/local/bin/brew` to install VLC/hdhomerun_config from Settings → Maintenance) is a second
+  spawned-binary class beyond curl — already fully catalogued as MAS blocker #4 in
+  `docs/MAS_COMPLIANCE.md` and cross-referenced in `TODO.md`; not re-flagged as new.
+- `GuideStore.swift`, `ChannelIconCache.swift`, `HDHRManager.swift`, `ConfigManager.swift`,
+  `DiscordNotifier.swift`, `XmltvParser.swift` — all read start-to-finish, all clean: every
+  force-unwrap present is on a genuinely-static literal (hardcoded URLs, well-known enum switches
+  with exhaustive non-nil branches), every `Task.sleep`/`asyncAfter` found across `Views/` is
+  either a real debounce with a stated reason (`ShowFormSection.swift:154`'s 350ms duplicate-check
+  debounce, `SettingsView.swift`'s `SignalRing` pulse-animation timing) or pure UI-animation
+  timing, not a disguised synchronization wait. `WatchNowView.swift`'s `boundaryRefreshLoop`/
+  `recordedTagsRefreshLoop` polling (already the subject of a 2026-08-15 CODE_NOTES entry above)
+  is the one still-open "polling where events could exist" item in this whole area — no new
+  instances of that pattern found elsewhere.
