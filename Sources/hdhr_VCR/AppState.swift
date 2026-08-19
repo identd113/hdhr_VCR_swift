@@ -1314,12 +1314,11 @@ final class AppState: ObservableObject {
             // problem (thousands of log lines/day for a show pinned to a tuner that's never coming
             // back) — but the log line is real signal, so auto-pausing intentionally still logs it
             // once, right here, instead of dropping it.
-            for show in activeShows where !show.hdhr_record.isEmpty && !usableDeviceIDs.contains(show.hdhr_record) {
+            let usable = usableDeviceIDs   // hoisted — both loops below would otherwise rebuild this Set from `devices` on every show they check
+            for show in activeShows where !show.hdhr_record.isEmpty && !usable.contains(show.hdhr_record) {
                 guard let i = shows.firstIndex(where: { $0.show_id == show.show_id }) else { continue }
                 glog("[\(show.show_title)] tuner \(show.hdhr_record) not detected — auto-pausing until it's seen again", level: .warning)
-                shows[i].show_paused = true
-                shows[i].show_fail_reason = Self.autoPauseTunerMissingReason
-                pushShowUpdate(type: "show_updated", channel: show.show_channel, device: show.hdhr_record)
+                applyPause(index: i, reason: Self.autoPauseTunerMissingReason)
                 dirty = true
             }
             // Symmetric auto-resume: a show this same mechanism previously auto-paused (identified
@@ -1331,13 +1330,10 @@ final class AppState: ObservableObject {
             // Any show_next staleness from the outage is handled the same way it already is for a
             // manual resume — no special-casing needed here.
             for show in pausedShows where show.show_fail_reason == Self.autoPauseTunerMissingReason
-                                       && !show.hdhr_record.isEmpty && usableDeviceIDs.contains(show.hdhr_record) {
+                                       && !show.hdhr_record.isEmpty && usable.contains(show.hdhr_record) {
                 guard let i = shows.firstIndex(where: { $0.show_id == show.show_id }) else { continue }
                 glog("[\(show.show_title)] tuner \(show.hdhr_record) detected again — auto-resuming")
-                shows[i].show_paused = false
-                shows[i].clearFailures()
-                showRetryAfter.removeValue(forKey: show.show_id)
-                pushShowUpdate(type: "show_updated", channel: show.show_channel, device: show.hdhr_record)
+                applyResume(index: i)
                 dirty = true
             }
 
@@ -2337,17 +2333,34 @@ final class AppState: ObservableObject {
         pendingFavoriteToggles.removeValue(forKey: deviceId)
     }
 
+    // Shared mutation body for every pause/resume path (manual pauseShow/resumeShow below, plus
+    // idleLoop's auto-pause-on-missing-tuner) — one place to update if the side-effect set ever
+    // changes (e.g. clearing a new show_id-keyed tracking dict per CLAUDE.md's rule). Deliberately
+    // excludes saveConfig(): pauseShow/resumeShow call it once immediately per action, while
+    // idleLoop batches it via its own `dirty` flag across a whole tick's worth of shows.
+    private func applyPause(index i: Int, reason: String) {
+        shows[i].show_paused = true
+        shows[i].show_fail_reason = reason
+        pushShowUpdate(type: "show_updated", channel: shows[i].show_channel, device: shows[i].hdhr_record)
+    }
+    private func applyResume(index i: Int) {
+        shows[i].show_paused = false
+        shows[i].clearFailures()
+        showRetryAfter.removeValue(forKey: shows[i].show_id)
+        pushShowUpdate(type: "show_updated", channel: shows[i].show_channel, device: shows[i].hdhr_record)
+    }
+
     func pauseShow(_ show: Show) {
         guard let i = shows.firstIndex(where: { $0.show_id == show.show_id }) else { return }
         glog("[\(show.show_title)] PAUSED manual")
-        shows[i].show_paused = true; shows[i].show_fail_reason = "Manually paused"; saveConfig()
-        pushShowUpdate(type: "show_updated", channel: show.show_channel, device: show.hdhr_record)
+        applyPause(index: i, reason: "Manually paused")
+        saveConfig()
     }
     func resumeShow(_ show: Show) {
         guard let i = shows.firstIndex(where: { $0.show_id == show.show_id }) else { return }
         glog("[\(show.show_title)] RESUMED")
-        shows[i].show_paused = false; shows[i].clearFailures(); showRetryAfter.removeValue(forKey: show.show_id); saveConfig()
-        pushShowUpdate(type: "show_updated", channel: show.show_channel, device: show.hdhr_record)
+        applyResume(index: i)
+        saveConfig()
     }
     func deleteShow(_ show: Show) {
         glog("[Show] Deleted '\(show.show_title)'")

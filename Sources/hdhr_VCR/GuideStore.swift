@@ -367,7 +367,14 @@ final class GuideStore {
             // exact on-air duplicate every ~10s for the rest of its broadcast window instead of
             // falling through to nextEpisode to find the actual next distinct airing.
             if unrecorded.isEmpty { return nil }
-            if candidates.count > 1, unrecorded.count == 1 { return unrecorded[0] }
+            // 2+ unrecorded candidates (a 3-or-more-way simulcast with a mixed recorded/unrecorded
+            // split): the favorite tie-break below must run over `unrecorded`, not `candidates` —
+            // both real callers (resolveSeriesAir, scheduleNextAir) always pass a non-nil
+            // preferFavorite, so falling back to plain `first` here could silently hand back the
+            // recorded duplicate (if it sorts first and nothing is favorited), reintroducing the
+            // exact re-pick loop this whole check exists to prevent.
+            guard let isFavorite else { return unrecorded[0] }
+            return unrecorded.first { isFavorite($0.deviceId, $0.channelNum) } ?? unrecorded[0]
         }
         guard let isFavorite else { return first }
         return candidates.first { isFavorite($0.deviceId, $0.channelNum) } ?? first

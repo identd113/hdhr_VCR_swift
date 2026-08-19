@@ -479,6 +479,56 @@ struct GuideStoreMockNetworkTests {
             #expect(match == nil, "The only on-air candidate is a known duplicate — must not be re-offered as the match")
         }
 
+        // Three channels air the identical SeriesID at the identical StartTime/EndTime — a
+        // 3-or-more-way simulcast, distinct from simulcastJSON's 2-way tie. 2.1 sorts first.
+        private static let tripleSimulcastJSON = """
+        [
+            {
+                "GuideNumber": "2.1",
+                "GuideName": "TPT 2",
+                "Guide": [
+                    {"StartTime": 2000000000, "EndTime": 2000003600, "Title": "Simulcast Show", "SeriesID": "sim789", "EpisodeTitle": "Ep1"}
+                ]
+            },
+            {
+                "GuideNumber": "2.4",
+                "GuideName": "TPTKids",
+                "Guide": [
+                    {"StartTime": 2000000000, "EndTime": 2000003600, "Title": "Simulcast Show", "SeriesID": "sim789", "EpisodeTitle": "Ep1"}
+                ]
+            },
+            {
+                "GuideNumber": "2.7",
+                "GuideName": "TPT Create",
+                "Guide": [
+                    {"StartTime": 2000000000, "EndTime": 2000003600, "Title": "Simulcast Show", "SeriesID": "sim789", "EpisodeTitle": "Ep1"}
+                ]
+            }
+        ]
+        """
+
+        // Regression: with 2+ unrecorded candidates among 3+ simulcast channels, the favorite
+        // tie-break used to run over every candidate (recorded or not) and fall back to plain
+        // `first` when nothing was favorited — silently handing back the recorded duplicate on
+        // 2.1 even though 2.4 and 2.7 were genuinely unrecorded, reintroducing the same tight
+        // reschedule loop for a 3-way simulcast that the single-candidate fix above closed for
+        // the 1-candidate case. Both real callers always pass a non-nil preferFavorite, so this
+        // exercises that exact shape rather than the (never-hit-in-practice) nil-preferFavorite path.
+        @Test @MainActor func currentEpisode_preferUnrecorded_multipleUnrecordedAmongThreeCandidates_neverPicksTheDuplicate() async {
+            let store = GuideStore(session: makeSession())
+            let device = makeLocalDevice()
+            MockURLProtocol.requestHandler = { req in
+                (okResponse(for: req.url!), Self.tripleSimulcastJSON.data(using: .utf8)!)
+            }
+            await store.load(for: device)
+            let at = Date(timeIntervalSince1970: 2_000_001_000)   // inside [StartTime, EndTime) for all three
+            // 2.1 (sorts first) is the recorded duplicate; 2.4 and 2.7 are not; nothing is favorited.
+            let match = store.currentEpisode(seriesID: "sim789", at: at,
+                                             preferUnrecorded: { $0.channelNum != "2.1" },
+                                             preferFavorite: { _, _ in false })
+            #expect(match?.channelNum != "2.1", "Must not fall back to the recorded duplicate when unrecorded alternatives exist")
+        }
+
         @Test @MainActor func currentEpisode_preferUnrecorded_singleCandidateNotRecorded_returnsIt() async {
             let store = GuideStore(session: makeSession())
             let device = makeLocalDevice()
