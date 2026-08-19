@@ -81,13 +81,13 @@ The donation-nag unlock target is no longer Settings-editable — it's a hardcod
 in `DonationNagView.swift` now, not per-install config. See [DonationNagView.md](DonationNagView.md).
 
 ### Category: Maintenance
-Sections: Shows, Guide & Devices, Tools (if Homebrew found).
+Sections: Shows, Guide & Devices.
 
 Each action row: title in medium weight + a small `ⓘ` `InfoButton` (tapping shows the description in a popover) + `"Run"` `.bordered` button on the right (or `ProgressView(.small)` while running).
 
 When a task finishes: green `checkmark.circle.fill` + result message in a separate `Section`.
 
-**Tools section** (Homebrew): brew install rows for VLC and HDHomeRun CLI; result label in green/red.
+**Tools section (Homebrew install rows for VLC/HDHomeRun CLI) — removed 2026-08-19.** `runBrew()`/`brewInstallRow`/`brewPath`/`hdhrCliInstalled` and their `brewBusy`/`brewStatus` state are gone; VLC is still detected for the "Watch in VLC" toggle (`vlcInstalled`, kept — see General below), but there's no longer any install-it-for-me button for either tool, nor a Homebrew dependency in this view at all. Also removes a Mac App Store distribution blocker this was previously flagged as (`docs/MAS_COMPLIANCE.md`) — there was no sandboxed way to invoke Homebrew.
 
 **Developer section** — removed (2026-07-23): it only offered a "Simulate macOS version" picker, which had been dead since `CableGuideView` (its one consumer) was removed.
 
@@ -96,7 +96,7 @@ See the About section description below — app image with signal-pulse tap effe
 
 ## InfoButton pattern
 
-All controls use a label-closure `Form` syntax that embeds a small `ⓘ` **InfoButton** next to the control label. Tapping the button shows a popover (arrow edge `.bottom`, max width 280 pt) with the description string. There are no always-visible caption lines — descriptions are hidden until requested. Applies to all sections including `maintenanceRow` and `brewInstallRow` helpers.
+All controls use a label-closure `Form` syntax that embeds a small `ⓘ` **InfoButton** next to the control label. Tapping the button shows a popover (arrow edge `.bottom`, max width 280 pt) with the description string. There are no always-visible caption lines — descriptions are hidden until requested. Applies to all sections including the `maintenanceRow` helper.
 
 ```swift
 private struct InfoButton: View {
@@ -159,7 +159,7 @@ Sidebar entries (with SF Symbol icons):
 | Notifications | `bell.badge` | Up Next timing, Recording alert timing |
 | Advanced | `terminal` | Network interface, logging + verbose curl + config file path, check for updates, signal quality |
 | Web Server | `globe` | Enable/disable LAN web server, port, access URL |
-| Maintenance | `wrench.and.screwdriver` | Show maintenance, guide/device ops, brew tool installs |
+| Maintenance | `wrench.and.screwdriver` | Show maintenance, guide/device ops |
 | About | `info.circle` | App logo, version, history, GitHub link |
 
 ---
@@ -183,7 +183,7 @@ Sidebar entries (with SF Symbol icons):
 - **Bonus Time duration** — `Stepper` (10–60 min, step 5, default 30). Only visible when Bonus Time toggle is on. Stored in `draft.Sports_padding_minutes`.
 - **Series subfolders** — `Toggle` (off by default). When enabled, SeriesID recordings (`seriesChannel`/`seriesAll`) are saved into `Title/Season XX/` subfolders inside the recording folder, and the episode tag (e.g. `S02E04`) is embedded in the filename before the channel. Falls back to `Title/` when no season is parseable from the guide's `EpisodeNumber`. Flat path used when disabled or for non-SeriesID shows. Stored in `draft.Series_subfolder_enabled`.
 - **Skip already-recorded episodes** — `Toggle` (off by default), `.disabled(!draft.Series_subfolder_enabled)` so it greys out unless Series subfolders is on. When enabled, `startRecording` checks whether a file with the upcoming episode's season+episode (`SxxExx`) already exists in the show's folder tree (via `AppState.recordedEpisodeTags(forTitle:baseDir:)`); if so it logs `SKIP`, optionally posts a Discord card (`Discord_on_duplicate`), and advances to the next airing **without** recording or incrementing `show_fail_count`. Only fires when the upcoming guide entry has a full `S\d+E\d+` tag (season-only/blank tags record as normal). Also drives the web guide's slate "already recorded" status ring+badge (`.g-st-skip`, `docs/WebServer.md`). Stored in `draft.Skip_recorded_episodes`.
-- **Post-recording script** — `LabeledContent` with Choose / Clear buttons (Choose opens an `NSOpenPanel` for files). When set, the selected shell script is run via `/bin/sh scriptPath filePath` after each successful recording (non-zero file size confirmed). The script receives the recording's POSIX file path as `$1` and the following env vars: `HDHR_PATH` (same as `$1`), `HDHR_TITLE`, `HDHR_CHANNEL`, `HDHR_TRANSCODE` (`"none"` if not set), `HDHR_EPISODE` (e.g. `"S02E04"` or `"S03"`; empty if not embedded), `HDHR_DEVICE`, `HDHR_SERIES` (`"1"` for SeriesID shows, `"0"` for dateTime), `HDHR_FILESIZE` (bytes). Homebrew paths (`/opt/homebrew/bin:/usr/local/bin`) are prepended to `PATH` so tools like `comskip` can be referenced by name. Script exits are logged; non-zero exit is logged as a warning. Stored in `draft.Post_recording_script`.
+- **Post-recording script** — `LabeledContent` with Choose / Clear buttons (Choose opens an `NSOpenPanel` for files). When set, the selected shell script is run via `/bin/sh scriptPath filePath` after each successful recording (non-zero file size confirmed). The script receives the recording's POSIX file path as `$1` and the following env vars: `HDHR_PATH` (same as `$1`), `HDHR_TITLE`, `HDHR_CHANNEL`, `HDHR_TRANSCODE` (`"none"` if not set), `HDHR_EPISODE` (e.g. `"S02E04"` or `"S03"`; empty if not embedded), `HDHR_DEVICE`, `HDHR_SERIES` (`"1"` for SeriesID shows, `"0"` for dateTime), `HDHR_FILESIZE` (bytes). `PATH` is whatever the app inherited at launch (no Homebrew-path prepending as of 2026-08-19 — a script referencing a Homebrew-installed tool like `comskip` needs its full path, e.g. `/opt/homebrew/bin/comskip`). Script exits are logged; non-zero exit is logged as a warning. Stored in `draft.Post_recording_script`.
 
 ---
 
@@ -242,7 +242,7 @@ Recording Complete embeds additionally include **Format** (file extension, e.g. 
 - **App log** — `"Show App Log in Console"` button. Opens Console.app; logs go to OSLog (subsystem `com.hdhr.vcrplus`) **and** `~/Library/Logs/hdhrVCRplus.log`. A selectable filter hint label appears below the button for copy-paste into Console or Terminal (`log stream --level debug --predicate 'subsystem == "com.hdhr.vcrplus"'`).
 - **Verbose curl logging** — `Toggle`. Adds `-v` to curl args and pipes curl stderr to its own dedicated file, `~/Library/Logs/hdhrVCRplus-curl.log` (separate from the app log). When enabled, shows the curl log path (selectable text) and a "Show curl log in Finder" button. Log path is `RecordingManager.curlLogPath` (static let, → `curlVerboseLogFilePath`). Rotated at 5 MB (rename to `.1`, not truncate) by `rotateCurlVerboseLogIfNeeded()`, checked once before each new recording session starts.
 - **Config file path** — read-only display (`state.configManager.configPath`) + "Show config in Finder" button using `NSWorkspace.shared.selectFile(_:inFileViewerRootedAtPath:)`. Merged into the Logging section (was a standalone Config File section).
-- **Export/Import Config** — `"Export Config…"` (`NSSavePanel`, defaults to the live config's filename) copies the on-disk config file verbatim via `ConfigManager.exportConfig(to:)`. `"Import Config…"` (`NSOpenPanel`) validates the chosen file actually decodes as a `ConfigFile` (same decoder `load()` uses — malformed JSON is rejected before anything is touched) via `ConfigManager.importConfig(from:)`, backs up the current config to `.bak`, then writes the imported file in its place. Deliberately **not** hot-reloaded into the running `AppState` — a currently-recording show's live state (device discovery, tuner occupancy) can't be safely reconciled against an arbitrary imported file mid-session — so the result label reads `"Imported — restart hdhrVCRplus for the change to take effect"` instead. Both actions show their outcome via a `configIOStatus` label (green checkmark, or red "Error: …" on failure) — same pattern as the Maintenance panel's `brewStatus`.
+- **Export/Import Config** — `"Export Config…"` (`NSSavePanel`, defaults to the live config's filename) copies the on-disk config file verbatim via `ConfigManager.exportConfig(to:)`. `"Import Config…"` (`NSOpenPanel`) validates the chosen file actually decodes as a `ConfigFile` (same decoder `load()` uses — malformed JSON is rejected before anything is touched) via `ConfigManager.importConfig(from:)`, backs up the current config to `.bak`, then writes the imported file in its place. Deliberately **not** hot-reloaded into the running `AppState` — a currently-recording show's live state (device discovery, tuner occupancy) can't be safely reconciled against an arbitrary imported file mid-session — so the result label reads `"Imported — restart hdhrVCRplus for the change to take effect"` instead. Both actions show their outcome via a `configIOStatus` label (green checkmark, or red "Error: …" on failure) — same pattern as the Maintenance panel's `maintenanceStatus`.
 
 **Updates section** (always visible in Advanced):
 - **Check for updates automatically** — `Toggle` bound to `draft.Check_for_updates` (default `true`). When on, `AppState.updateCheckLoop()` (started once at app startup, runs for the app's lifetime) calls `checkForUpdateOnce()` immediately and then every 24h. Read-only network check — never downloads or installs anything, just compares versions and surfaces a link. See `UpdateChecker.swift` and the About tab's Update check bullet above.
@@ -285,10 +285,6 @@ One-tap operations for recovering from stuck states. Each uses `maintenanceRow(_
 - **Rediscover Devices** — calls `state.rediscoverDevices()` (same 3-path mDNS+UDP+known-hosts scan as startup). Reports device count.
 - **Refresh Guide** — calls `state.refreshGuide()` (invalidate + reload all devices). Reports channel count on completion.
 - **Clear Guide Cache** — calls `state.guideStore.invalidateAll()` and clears `state.guideByDevice`. The next time the guide step or floating guide opens, it fetches fresh data.
-
-**Tools section** (only shown when `/usr/local/bin/brew` or `/opt/homebrew/bin/brew` exists):
-- **VLC** — `brew install --cask vlc`. Shown as installed (checkmark) via `VLCBridge.locateApp()` (Launch Services bundle-ID lookup, not a hardcoded path — works for Homebrew cask, `~/Applications`, etc). On successful install, `brewStatus` appends "— restart the app to enable Watch Now": `VLCBridge.shared.isAvailable` (which gates the Watch Now buttons) is captured once via `dlopen` at first access, so a VLC install mid-session doesn't retroactively enable them.
-- **HDHomeRun CLI** — `brew install libhdhomerun`. Shown as installed when `hdhomerun_config` is on PATH. Not called anywhere else in the app — offered purely as a convenience for the user's own terminal use. Brew output is streamed to a `brewStatus` string shown at the bottom of the section.
 
 **Developer section** — removed (2026-07-23). It offered a "Simulate macOS version" picker (`draftSimulatedOS`/`@AppStorage("simulatedMacOSVersion")`) that had been dead since `CableGuideView`, its one consumer, was removed — the picker changed nothing.
 

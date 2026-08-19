@@ -10,6 +10,9 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 - **The About tab's changelog now highlights the current version's own entry** in an accent-tinted box at the top, and caps the list to the current version plus the last 5 older ones instead of showing every release ever made.
 - **Release builds are now universal** (Apple Silicon + Intel), not arm64-only — Intel Macs can run hdhrVCRplus starting with the next release.
 
+**Removed**
+- **Settings → Maintenance no longer offers "Install VLC"/"Install HDHomeRun CLI" via Homebrew.** VLC detection for the "Watch in VLC" toggle is unaffected — only the install-it-for-me buttons are gone. If you don't have VLC yet, install it yourself (e.g. `brew install --cask vlc`) the same way you would any other app.
+
 **Updated**
 - **Fixed a series show getting stuck re-skipping the same already-recorded rerun every ~10 seconds for its entire time slot** (up to an hour of repeated "Recording Skipped — already recorded" notifications and Discord cards for one episode). The scheduler was re-selecting that exact same on-air duplicate as the "next" airing every time it rescheduled after a skip; it now correctly moves on to the actual next distinct episode instead.
 - **A show resuming from pause (manually, or automatically once its tuner is detected again) now properly re-arms its "Up Next"/"Recording Soon" heads-up notifications.** Previously, if a show stayed paused through both notification windows, it could resume having silently missed its pre-recording alert for that airing — the recording itself was never affected, just the notification.

@@ -80,8 +80,6 @@ struct SettingsView: View {
     }()
     @State private var maintenanceStatus: String = ""
     @State private var maintenanceBusy: Bool = false
-    @State private var brewBusy: Bool = false
-    @State private var brewStatus: String = ""
     @State private var configIOStatus: String = ""
 
     // Discord webhook test state
@@ -754,29 +752,6 @@ struct SettingsView: View {
                     return "Guide cache cleared"
                 }
             }
-            if let brew = brewPath {
-                Section("Tools") {
-                    brewInstallRow(
-                        name: "VLC",
-                        description: "Media player used for Watch in VLC — brew install --cask vlc",
-                        installed: vlcInstalled,
-                        brew: brew,
-                        args: ["install", "--cask", "vlc"]
-                    )
-                    brewInstallRow(
-                        name: "HDHomeRun CLI",
-                        description: "hdhomerun_config command-line tool — brew install libhdhomerun",
-                        installed: hdhrCliInstalled,
-                        brew: brew,
-                        args: ["install", "libhdhomerun"]
-                    )
-                    if !brewStatus.isEmpty {
-                        Label(brewStatus, systemImage: brewStatus.hasPrefix("Error") ? "xmark.circle.fill" : "checkmark.circle.fill")
-                            .foregroundStyle(brewStatus.hasPrefix("Error") ? .red : .green)
-                            .font(.callout)
-                    }
-                }
-            }
             if !maintenanceStatus.isEmpty {
                 Section {
                     Label(maintenanceStatus, systemImage: "checkmark.circle.fill")
@@ -816,89 +791,8 @@ struct SettingsView: View {
         .padding(.vertical, 2)
     }
 
-    // MARK: - Brew helpers
-
-    private var brewPath: String? {
-        for path in ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"] {
-            if FileManager.default.isExecutableFile(atPath: path) { return path }
-        }
-        return nil
-    }
-
     private var vlcInstalled: Bool {
         VLCBridge.locateApp() != nil
-    }
-
-    private var hdhrCliInstalled: Bool {
-        for path in ["/opt/homebrew/bin/hdhomerun_config", "/usr/local/bin/hdhomerun_config"] {
-            if FileManager.default.isExecutableFile(atPath: path) { return true }
-        }
-        return false
-    }
-
-    @ViewBuilder
-    private func brewInstallRow(name: String, description: String, installed: Bool,
-                                brew: String, args: [String]) -> some View {
-        HStack(alignment: .center, spacing: 12) {
-            HStack(spacing: 6) {
-                Text(name).fontWeight(.medium)
-                InfoButton(description)
-            }
-            Spacer()
-            if installed {
-                Label("Installed", systemImage: "checkmark.circle.fill")
-                    .font(.caption).foregroundStyle(.green)
-            } else if brewBusy {
-                ProgressView().controlSize(.small)
-            } else {
-                Button("Install") {
-                    brewBusy = true
-                    brewStatus = ""
-                    Task {
-                        do {
-                            try await runBrew(brew, args: args)
-                            await MainActor.run {
-                                // VLCBridge.shared.isAvailable is captured once at first access (app launch)
-                                // via dlopen, so a fresh install won't enable Watch Now until relaunch.
-                                let restartNote = name == "VLC" ? " — restart the app to enable Watch Now" : ""
-                                brewStatus = "\(name) installed\(restartNote)"
-                                brewBusy = false
-                            }
-                        } catch {
-                            await MainActor.run {
-                                brewStatus = "Error: \(error.localizedDescription)"
-                                brewBusy = false
-                            }
-                        }
-                    }
-                }
-                .buttonStyle(.bordered)
-            }
-        }
-        .padding(.vertical, 2)
-    }
-
-    private func runBrew(_ brew: String, args: [String]) async throws {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: brew)
-            process.arguments = args
-            let pipe = Pipe()
-            process.standardOutput = pipe
-            process.standardError = pipe
-            process.terminationHandler = { p in
-                _ = pipe.fileHandleForReading.readDataToEndOfFile()
-                if p.terminationStatus == 0 {
-                    continuation.resume()
-                } else {
-                    continuation.resume(throwing: NSError(
-                        domain: "brew", code: Int(p.terminationStatus),
-                        userInfo: [NSLocalizedDescriptionKey: "brew exited with status \(p.terminationStatus)"]
-                    ))
-                }
-            }
-            do { try process.run() } catch { continuation.resume(throwing: error) }
-        }
     }
 
     // MARK: - About

@@ -19,6 +19,9 @@ Status of each requirement for submitting hdhrVCRplus to the Mac App Store.
 Replaced `~/Library/LaunchAgents/` plist with `SMAppService.mainApp.register()` / `.unregister()`.  
 Requires bundle ID `com.hdhr.vcrplus` (already set in Info.plist).
 
+### 4. `Process()` for brew installs — resolved 2026-08-19
+The brew install UI (`SettingsView.swift`'s `runBrew()`/`brewInstallRow`/Maintenance → Tools section) was removed entirely, not just for MAS — it wasn't pulling its weight generally (VLC is still detected via `NSWorkspace`/`VLCBridge.locateApp()` for the "Watch in VLC" toggle; only the install-it-for-me buttons and the `Process()` spawn of `brew` are gone). This blocker no longer applies to either distribution track.
+
 ### 7. Privacy Manifest
 `Sources/hdhr_VCR/PrivacyInfo.xcprivacy` declares:
 - `NSPrivacyAccessedAPICategoryUserDefaults` (CA92.1) — `@AppStorage` and `UserDefaults.standard`
@@ -51,11 +54,6 @@ Covers all LAN device HTTP URLs (192.168.x.x, 10.x.x.x, 172.16–31.x.x). Guide 
 - Bundle `libvlc.dylib` inside the app (~50 MB+; complex LGPL compliance).
 
 Neither is trivial. AVPlayer cannot replace VLC because it does not support MPEG-2 (the transport format used by most HDHomeRun tuners).
-
-### 4. `Process()` for brew installs
-**What:** `SettingsView.swift` launches brew via `Process()`. Not allowed in sandbox.
-
-**Fix (easy):** Remove the brew install UI; replace with instructions to run the commands manually in Terminal.
 
 ### 5. Arbitrary recording directory path
 **What:** Config stores raw path strings. Sandbox only permits write access to directories the user explicitly selects via NSOpenPanel.

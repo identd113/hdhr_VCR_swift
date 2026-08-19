@@ -2041,9 +2041,6 @@ final class AppState: ObservableObject {
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
         process.arguments = [scriptPath, path]
         var env = ProcessInfo.processInfo.environment
-        // Prepend Homebrew paths so tools like comskip are found without full path.
-        env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:"
-                    + (env["PATH"] ?? "/usr/bin:/bin")
         env["HDHR_PATH"]      = path
         env["HDHR_TITLE"]     = show.show_title
         env["HDHR_CHANNEL"]   = show.show_channel

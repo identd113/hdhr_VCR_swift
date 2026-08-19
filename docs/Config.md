@@ -34,7 +34,7 @@ Min_disk_free_gb        Double  30.0    refuse to record below this free space (
 Idle_timer_interval     Int     10      seconds between idle loop checks (min enforced: 5)
 Series_subfolder_enabled Bool   false   when true, SeriesID recordings are saved to Title/Season XX/ subfolders inside the recording folder; falls back to flat path if no parseable season in guide EpisodeNumber
 Skip_recorded_episodes  Bool    false   when true (needs Series_subfolder_enabled), skip recording a series episode whose SxxExx is already on disk — advances to the next airing without recording or a fail count; only when the guide entry has a full season+episode tag
-Post_recording_script   String  ""      POSIX path to a shell script run after each successful recording; $1 = file path; HDHR_PATH, HDHR_TITLE, HDHR_CHANNEL, HDHR_TRANSCODE, HDHR_EPISODE, HDHR_DEVICE, HDHR_SERIES, HDHR_FILESIZE set as env vars; Homebrew paths prepended to PATH; script exits are logged but never block the app
+Post_recording_script   String  ""      POSIX path to a shell script run after each successful recording; $1 = file path; HDHR_PATH, HDHR_TITLE, HDHR_CHANNEL, HDHR_TRANSCODE, HDHR_EPISODE, HDHR_DEVICE, HDHR_SERIES, HDHR_FILESIZE set as env vars; PATH is whatever the app inherited at launch (no Homebrew-path prepending); script exits are logged but never block the app
 Series_scan_retry_hours Int     4       hours before re-scanning guide when no episode found
 Check_for_updates       Bool    true    gate the automatic once-a-day background update check (AppState.updateCheckLoop()); manual "Check for Updates" button always runs regardless; see UpdateChecker.swift
 Network_interface       String  ""      bind UDP discovery + curl to NIC; empty = Auto; utun* = VPN
