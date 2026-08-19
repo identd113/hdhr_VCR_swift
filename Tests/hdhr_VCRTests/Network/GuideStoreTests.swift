@@ -459,6 +459,38 @@ struct GuideStoreMockNetworkTests {
                                              preferUnrecorded: { $0.channelNum == "2.4" })
             #expect(match?.channelNum == "2.4")
         }
+
+        // Regression for a real-world tight skip/reschedule loop: a single-channel series with its
+        // sole on-air candidate already recorded used to fall back to `first` (the only candidate),
+        // so scheduleNextAir kept re-picking the exact same duplicate every ~10s for the entire
+        // broadcast window (observed: 360 duplicate-skip log/Discord entries in one hour for one
+        // episode). Narrowing to channelNum "2.1" makes this a single-candidate lookup even though
+        // the fixture has two channels airing the series.
+        @Test @MainActor func currentEpisode_preferUnrecorded_singleCandidateAlreadyRecorded_returnsNil() async {
+            let store = GuideStore(session: makeSession())
+            let device = makeLocalDevice()
+            MockURLProtocol.requestHandler = { req in
+                (okResponse(for: req.url!), Self.simulcastJSON.data(using: .utf8)!)
+            }
+            await store.load(for: device)
+            let at = Date(timeIntervalSince1970: 2_000_001_000)   // inside [StartTime, EndTime)
+            let match = store.currentEpisode(seriesID: "sim789", channelNum: "2.1", at: at,
+                                             preferUnrecorded: { _ in false })
+            #expect(match == nil, "The only on-air candidate is a known duplicate — must not be re-offered as the match")
+        }
+
+        @Test @MainActor func currentEpisode_preferUnrecorded_singleCandidateNotRecorded_returnsIt() async {
+            let store = GuideStore(session: makeSession())
+            let device = makeLocalDevice()
+            MockURLProtocol.requestHandler = { req in
+                (okResponse(for: req.url!), Self.simulcastJSON.data(using: .utf8)!)
+            }
+            await store.load(for: device)
+            let at = Date(timeIntervalSince1970: 2_000_001_000)
+            let match = store.currentEpisode(seriesID: "sim789", channelNum: "2.1", at: at,
+                                             preferUnrecorded: { _ in true })
+            #expect(match?.channelNum == "2.1", "A genuinely new on-air episode must still be returned")
+        }
     }
 
     // MARK: - Invalidation

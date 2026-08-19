@@ -674,6 +674,22 @@ test-coverage gaps from the same pass, fixed and added in one session.
 
 ---
 
+# Tight skip/reschedule loop on already-recorded reruns — 2026-08-19
+
+## RESOLVED — `GuideStore.currentEpisode` re-offered a known duplicate as the "on air" match, spinning `scheduleNextAir` in a ~10s retry loop for an episode's entire broadcast window
+
+**File:** `GuideStore.swift` (`currentEpisode`), `Tests/hdhr_VCRTests/Network/GuideStoreTests.swift`
+
+**Reported as:** "we are getting a lot of skipped episodes" — user asked whether this was correct behavior or a stale-cache bug. It was neither a normal rate of skips nor a cache problem; the on-disk duplicate check itself (`recordedEpisodeTags`) does a live, uncached `FileManager` scan on every call.
+
+**Root cause**: found by reading `~/Library/Logs/hdhrVCRplus.log` — two shows ("The Parkers", "Star Trek: The Next Generation") each logged "SKIP — already recorded" for the *same* episode tag exactly once every 10 seconds for a full hour (360 occurrences each, 720 total in one day), each pairing a log line with a Discord "Skipped" card. Traced to `AppState.startRecording`'s duplicate check calling `scheduleNextAir` on every skip, which (for `.seriesChannel`/`.seriesAll`) calls `GuideStore.currentEpisode(...)` first to catch an in-progress airing. `currentEpisode`'s `preferUnrecorded` tie-break only activated when `candidates.count > 1`; for the ordinary single-channel case (exactly one candidate airing right now) it fell through to returning that candidate regardless of whether it was already recorded. Since the episode was still on air, `show_next` got set to a time already in the past, so the 10s idle loop immediately re-attempted `startRecording`, which skipped it again, called `scheduleNextAir` again, and got the exact same still-on-air duplicate back — a self-sustaining loop bounded only by how long that guide entry stayed on the air.
+
+**Resolution**: `currentEpisode` now returns `nil` (not `first`) when every currently-airing candidate is confirmed already-recorded — including the single-candidate case, which previously had "nothing to tie-break against" and skipped the check entirely. This lets `scheduleNextAir` fall through to `nextEpisode`, which finds the actual next distinct future airing instead of re-selecting the stable, known-duplicate one. `nextEpisode`'s own behavior (return `first` even if it's a duplicate, for *future* candidates) is intentionally unchanged — a future entry's duplicate status can still change before it airs, so the real check correctly stays deferred to record time there; only `currentEpisode`'s "airing right now" case is a fact that's already fully known and won't change before the next idle-loop tick. Added `currentEpisode_preferUnrecorded_singleCandidateAlreadyRecorded_returnsNil` and a companion `..._singleCandidateNotRecorded_returnsIt` regression test (narrowing the existing two-channel simulcast fixture to one channel via `channelNum` to get a genuine single-candidate lookup). Full suite (316 tests) passes.
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+---
+
 ## Staleness check, 2026-08-10
 
 Every entry above that only had a prescriptive `**Fix:**` note (rather than a past-tense `**Resolution:**`) was individually re-verified against the current source before filing here — grepped for the described symptom and confirmed the described fix's actual code is present (or, for the FloatingGuideView/CableGuideView group, confirmed the file is gone entirely). Nothing in this file is guessed or assumed still-true from the original write-up.

@@ -356,9 +356,18 @@ final class GuideStore {
                 && (deviceId == nil || m.deviceId == deviceId)
         } ?? []
         guard let first = candidates.first else { return nil }
-        if let isNotRecorded, candidates.count > 1 {
+        if let isNotRecorded {
             let unrecorded = candidates.filter { isNotRecorded($0.entry) }
-            if unrecorded.count == 1 { return unrecorded[0] }
+            // Every currently-airing candidate — including the single-candidate case, where
+            // there's nothing to tie-break against — is already a recorded duplicate. Unlike
+            // nextEpisode's future candidates (whose duplicate status can still change before they
+            // actually air, so picking `first` there just defers the real check to record time),
+            // this is a stable fact known right now: scheduleNextAir calls this again immediately
+            // after startRecording's duplicate skip, so returning `first` here would re-select this
+            // exact on-air duplicate every ~10s for the rest of its broadcast window instead of
+            // falling through to nextEpisode to find the actual next distinct airing.
+            if unrecorded.isEmpty { return nil }
+            if candidates.count > 1, unrecorded.count == 1 { return unrecorded[0] }
         }
         guard let isFavorite else { return first }
         return candidates.first { isFavorite($0.deviceId, $0.channelNum) } ?? first
