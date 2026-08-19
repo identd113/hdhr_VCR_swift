@@ -1428,6 +1428,10 @@ final class AppState: ObservableObject {
                     shows[i].show_paused = false
                     shows[i].clearFailures()
                     showRetryAfter.removeValue(forKey: show.show_id)
+                    // Re-arm the pre-notifications for whatever airing scheduleNextAir resolves
+                    // next — see applyResume's comment / ISSUES.md's 2026-08-19 entry.
+                    shows[i].notify_upnext_time = nil
+                    shows[i].notify_recording_time = nil
                     glog("[\(show.show_title)] auto-resuming — paused window expired, rescheduling")
                     await scheduleNextAir(index: i)
                     // Re-resolve by show_id — scheduleNextAir's own internal guide-fetch await can
@@ -1442,6 +1446,8 @@ final class AppState: ObservableObject {
                     shows[i].show_paused = false
                     shows[i].clearFailures()
                     showRetryAfter.removeValue(forKey: show.show_id)
+                    shows[i].notify_upnext_time = nil
+                    shows[i].notify_recording_time = nil
                     glog("[\(show.show_title)] auto-resuming — next airing imminent")
                     dirty = true
                 }
@@ -2347,6 +2353,14 @@ final class AppState: ObservableObject {
         shows[i].show_paused = false
         shows[i].clearFailures()
         showRetryAfter.removeValue(forKey: shows[i].show_id)
+        // Re-arm the "Up Next"/"Recording Soon" pre-notifications — see ISSUES.md's 2026-08-19
+        // entry. A cooldown timestamp set before the pause (or simply stale after a long pause)
+        // could otherwise wrongly suppress the notification for the airing that's actually next
+        // once this show is active again; clearing both just gives the normal minutesAway-window
+        // check in idleLoop's Pass 2 a clean slate — it still only fires if that window is
+        // genuinely open on some later tick, this doesn't force an immediate notification.
+        shows[i].notify_upnext_time = nil
+        shows[i].notify_recording_time = nil
         pushShowUpdate(type: "show_updated", channel: shows[i].show_channel, device: shows[i].hdhr_record)
     }
 

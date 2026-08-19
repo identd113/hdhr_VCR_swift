@@ -313,6 +313,11 @@ struct AppStateRecordingEngineTests {
         show.show_active = true
         show.show_paused = true
         show.show_fail_reason = "Tuner not detected"   // the exact auto-pause marker
+        // Stale cooldown markers left over from before the outage — must be cleared on resume
+        // (ISSUES.md's 2026-08-19 entry) so they can't wrongly suppress the pre-notification for
+        // whatever airing is actually next once this show is active again.
+        show.notify_upnext_time = Date().addingTimeInterval(3600)
+        show.notify_recording_time = Date().addingTimeInterval(3600)
         // The show's own tuner (FFFFFFFF) is now present — should be auto-resumed this tick.
         let state = makeTestAppState(shows: [show], devices: [makeDevice()])
 
@@ -323,6 +328,54 @@ struct AppStateRecordingEngineTests {
         }
         #expect(updated.show_paused == false)
         #expect(updated.show_fail_reason.isEmpty)
+        #expect(updated.notify_upnext_time == nil)
+        #expect(updated.notify_recording_time == nil)
+    }
+
+    @Test @MainActor func resumeShow_rearmsNotificationCooldowns() {
+        var show = Show.blank(channel: "9.1", device: "FFFFFFFF")
+        show.show_title = "Manually Resumed Show"
+        show.show_active = true
+        show.show_paused = true
+        show.show_fail_reason = "Manually paused"
+        show.notify_upnext_time = Date().addingTimeInterval(3600)
+        show.notify_recording_time = Date().addingTimeInterval(3600)
+        let state = makeTestAppState(shows: [show], devices: [makeDevice()])
+
+        state.resumeShow(show)
+
+        guard let updated = state.shows.first(where: { $0.show_id == show.show_id }) else {
+            Issue.record("show disappeared"); return
+        }
+        #expect(updated.show_paused == false)
+        #expect(updated.notify_upnext_time == nil)
+        #expect(updated.notify_recording_time == nil)
+    }
+
+    // Exercises idleLoop's separate, older "paused window expired" generic auto-resume (Pass 2,
+    // the endDate <= now branch) — distinct from the tuner-detection path above. A .single show
+    // (no series flags) whose show_end is already in the past drives this branch; scheduleNextAir
+    // then immediately deactivates it (the existing, unrelated .single "DONE" behavior), but the
+    // notify cooldowns must already be cleared before that runs.
+    @Test @MainActor func idleLoop_genericWindowExpiredAutoResume_rearmsNotificationCooldowns() async {
+        var show = Show.blank(channel: "9.1", device: "FFFFFFFF")
+        show.show_title = "Window Expired Show"
+        show.show_active = true
+        show.show_paused = true
+        show.show_fail_reason = "Manually paused"
+        show.show_next = Date().addingTimeInterval(-1800)
+        show.show_end  = Date().addingTimeInterval(-60)   // already in the past — triggers endDate <= now
+        show.notify_upnext_time = Date().addingTimeInterval(3600)
+        show.notify_recording_time = Date().addingTimeInterval(3600)
+        let state = makeTestAppState(shows: [show], devices: [makeDevice()])
+
+        await state.idleLoop()
+
+        guard let updated = state.shows.first(where: { $0.show_id == show.show_id }) else {
+            Issue.record("show disappeared"); return
+        }
+        #expect(updated.notify_upnext_time == nil)
+        #expect(updated.notify_recording_time == nil)
     }
 
     @Test @MainActor func idleLoop_neverAutoResumesAManuallyPausedShow() async {

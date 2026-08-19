@@ -690,6 +690,18 @@ test-coverage gaps from the same pass, fixed and added in one session.
 
 ---
 
+## RESOLVED — `resumeShow`/idleLoop's three resume paths didn't re-arm `notify_upnext_time`/`notify_recording_time`
+
+**File:** `AppState.swift` (`applyResume`, and the two inline mutation sites in idleLoop's Pass 2 generic "paused window expired" auto-resume), `Tests/hdhr_VCRTests/Recording/AppStateRecordingEngineTests.swift`
+
+**Root cause**: `notify_upnext_time`/`notify_recording_time` are cooldown markers — set to `now + Notify_upnext`/`Notify_recording` minutes after a pre-recording notification fires, so the same imminent airing doesn't re-notify on every subsequent idle-loop tick while it's still within the window. None of the three places a show transitions from paused back to active (`resumeShow`, idleLoop's tuner-detection auto-resume, and the older generic "paused window expired"/"next airing imminent" auto-resume) ever cleared these markers. A show paused after its "Up Next" notification had already fired, then resumed once the recording-soon window had also passed unnoticed (paused the whole time — Pass 2's notification block is skipped entirely for a paused show), would never get its "Recording Soon" heads-up at all for that occurrence: not because of a stale-cooldown suppression exactly, but because the window during which it *could* fire simply elapsed while paused, with nothing to compensate for it on resume. The recording itself was never affected — only the pre-notification.
+
+**Resolution**: `applyResume` (used by both manual `resumeShow` and idleLoop's tuner-detection auto-resume) now also sets `notify_upnext_time`/`notify_recording_time` to `nil`; the two inline `show_paused = false` sites in idleLoop's older generic auto-resume (not routed through `applyResume`, since that branch also calls `scheduleNextAir`) got the same two lines added directly. This doesn't force an immediate notification — it just clears any stale cooldown so the normal `minutesAway`-window check gets a clean slate the next time it's evaluated, firing only if that window is genuinely open on some later tick. Added three regression tests: `idleLoop_autoResumesShowOnceItsTunerIsDetectedAgain` (extended with cooldown-clearing assertions), `resumeShow_rearmsNotificationCooldowns` (new — `resumeShow` had zero prior test coverage), and `idleLoop_genericWindowExpiredAutoResume_rearmsNotificationCooldowns` (new, exercises the third, previously-untested resume path). Full suite (262 tests) passes.
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+---
+
 ## Staleness check, 2026-08-10
 
 Every entry above that only had a prescriptive `**Fix:**` note (rather than a past-tense `**Resolution:**`) was individually re-verified against the current source before filing here — grepped for the described symptom and confirmed the described fix's actual code is present (or, for the FloatingGuideView/CableGuideView group, confirmed the file is gone entirely). Nothing in this file is guessed or assumed still-true from the original write-up.
