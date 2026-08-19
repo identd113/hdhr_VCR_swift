@@ -287,6 +287,66 @@ struct AppStateRecordingEngineTests {
         #expect(updated.show_active == false)  // .single, successful completion
     }
 
+    // MARK: - idleLoop auto-pause/auto-resume on missing tuner
+
+    @Test @MainActor func idleLoop_autoPausesActiveShowOnUndetectedTuner() async {
+        var show = Show.blank(channel: "9.1", device: "GHOST0001")
+        show.show_title = "Ghost Show"
+        show.show_active = true
+        show.show_next = Date().addingTimeInterval(3600)
+        // A real, present device so the `!devices.isEmpty` guard runs the auto-pause check at all —
+        // GHOST0001 (the show's own tuner) is deliberately absent from this list.
+        let state = makeTestAppState(shows: [show], devices: [makeDevice()])
+
+        await state.idleLoop()
+
+        guard let updated = state.shows.first(where: { $0.show_id == show.show_id }) else {
+            Issue.record("show disappeared"); return
+        }
+        #expect(updated.show_paused == true)
+        #expect(updated.show_fail_reason == "Tuner not detected")
+    }
+
+    @Test @MainActor func idleLoop_autoResumesShowOnceItsTunerIsDetectedAgain() async {
+        var show = Show.blank(channel: "9.1", device: "FFFFFFFF")
+        show.show_title = "Returning Show"
+        show.show_active = true
+        show.show_paused = true
+        show.show_fail_reason = "Tuner not detected"   // the exact auto-pause marker
+        // The show's own tuner (FFFFFFFF) is now present — should be auto-resumed this tick.
+        let state = makeTestAppState(shows: [show], devices: [makeDevice()])
+
+        await state.idleLoop()
+
+        guard let updated = state.shows.first(where: { $0.show_id == show.show_id }) else {
+            Issue.record("show disappeared"); return
+        }
+        #expect(updated.show_paused == false)
+        #expect(updated.show_fail_reason.isEmpty)
+    }
+
+    @Test @MainActor func idleLoop_neverAutoResumesAManuallyPausedShow() async {
+        var show = Show.blank(channel: "9.1", device: "FFFFFFFF")
+        show.show_title = "Deliberately Paused Show"
+        show.show_active = true
+        show.show_paused = true
+        show.show_fail_reason = "Manually paused"   // pauseShow's own marker, not the auto-pause one
+        // Both windows kept safely in the future so the pre-existing, unrelated "paused window
+        // expired" generic recovery (Pass 2 below) can't also resume this show — this test is
+        // specifically isolating the tuner-detection auto-resume's own marker check, not that.
+        show.show_next = Date().addingTimeInterval(3600)
+        show.show_end  = Date().addingTimeInterval(5400)
+        let state = makeTestAppState(shows: [show], devices: [makeDevice()])
+
+        await state.idleLoop()
+
+        guard let updated = state.shows.first(where: { $0.show_id == show.show_id }) else {
+            Issue.record("show disappeared"); return
+        }
+        #expect(updated.show_paused == true, "A user's own pause must never be undone by tuner detection")
+        #expect(updated.show_fail_reason == "Manually paused")
+    }
+
     // MARK: - scheduleNextAir (.single / .dateTime — network-free branches only)
 
     @Test @MainActor func scheduleNextAir_single_deactivatesShow() async {

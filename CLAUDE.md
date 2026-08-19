@@ -100,6 +100,8 @@ Systems: [AppState](docs/AppState.md) · [GuideStore](docs/GuideStore.md) · [Re
 
 **Idle-loop show-array safety** — `idleLoop()` guards against overlapping runs (`idleLoopRunning`). Its passes, plus `scheduleNextAir`/`stopRecording(showId:)`, re-resolve `shows` by `show_id` after any `await` — never reuse a captured `Int` index, since `shows` can mutate (a web-UI delete, another show's own reschedule) while suspended.
 
+**Auto-pause-on-missing-tuner marker** — `idleLoop()` auto-pauses any active show whose `hdhr_record` isn't in `usableDeviceIDs`, and auto-resumes it once that device is usable again, by writing/checking the exact `show_fail_reason` string `"Tuner not detected"` (`AppState.autoPauseTunerMissingReason`). Pass 2's separate, older generic "paused window expired" auto-resume (same function, keyed off `show_end`/`show_next` looking stale rather than tuner state) explicitly skips any show carrying that marker — without that exclusion the two mechanisms fight: the window-expiry pass un-pauses it, the tuner check re-pauses it next tick, forever. Any future pass that iterates `pausedShows` and unconditionally flips `show_paused` must add the same exclusion, or reintroduce that loop.
+
 **Menu rebuild churn** — frequent `@Published` mutations while the NSMenu is open cause rebuild glitches; batch/coalesce assignments (see `prefetchChannelIcons`).
 
 **Testing recordings** — set `show_next = now+30s`, `show_end = now+2min`; check `show_fail_reason`; enable verbose curl (Settings → Advanced).

@@ -2,6 +2,11 @@
 
 Every entry is tagged **Added** (something new), **Updated** (existing behavior changed, improved, or fixed), **Removed** (something taken away), or **Info** (a note — nothing to do, nothing visibly different).
 
+## Unreleased
+
+**Added**
+- **A show now automatically pauses itself when its assigned tuner isn't detected**, instead of silently sitting there scheduled against a tuner that isn't there (which previously logged a warning on every 10-second tick, forever). The moment that same tuner is seen again — whether it was a real device that dropped offline or one that was never actually reachable — the show automatically un-pauses. This never touches a show you paused yourself, or one paused for repeated recording failures; only a show this mechanism paused gets automatically resumed by it.
+
 ## v2.0.4 — 2026-08-15
 
 **Added**

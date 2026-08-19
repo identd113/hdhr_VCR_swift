@@ -285,6 +285,10 @@ final class AppState: ObservableObject {
     // and the show pauses. Mirrors APIBackoff's escalating-delay shape above. Not persisted —
     // resets to "no backoff" on relaunch.
     private static let retryBackoffLoops: [Int] = [2, 3]
+    // show_fail_reason marker written only by the idle loop's auto-pause-on-missing-tuner path
+    // (never by pauseShow's "Manually paused" or recordShowFailure's threshold text) so auto-resume
+    // can identify — and only re-activate — shows it auto-paused itself, never a user's own pause.
+    private static let autoPauseTunerMissingReason = "Tuner not detected"
     var showRetryAfter: [String: Date] = [:]
     private var failThreshold: Int { config.Fail_count_setting }
     // var + internal (not private let) is a test seam: diskOK() checks this against the real
@@ -1301,10 +1305,40 @@ final class AppState: ObservableObject {
                 ensureGuideLoaded(for: device.DeviceID)
             }
 
-            // Warn if any active show is assigned to a device we can no longer see
-            let knownIDs = Set(devices.map { $0.DeviceID })
-            for show in activeShows where !show.hdhr_record.isEmpty && !knownIDs.contains(show.hdhr_record) {
-                glog("[\(show.show_title)] device \(show.hdhr_record) not found — show may miss its recording", level: .warning)
+            // Auto-pause any active show whose assigned tuner isn't currently usable — never
+            // discovered at all, or discovered but confirmed offline (Models.swift's isAvailable,
+            // 3 missed probes) — so it stops being silently retried/logged every tick while that
+            // one tuner is gone. Per-show/per-device: only the shows on the missing tuner pause,
+            // shows on other tuners are untouched. Previously this only logged a warning forever;
+            // see issues_resolved.md's 2026-08-19 "Lyla in the Loop" entry for why that alone was a
+            // problem (thousands of log lines/day for a show pinned to a tuner that's never coming
+            // back) — but the log line is real signal, so auto-pausing intentionally still logs it
+            // once, right here, instead of dropping it.
+            for show in activeShows where !show.hdhr_record.isEmpty && !usableDeviceIDs.contains(show.hdhr_record) {
+                guard let i = shows.firstIndex(where: { $0.show_id == show.show_id }) else { continue }
+                glog("[\(show.show_title)] tuner \(show.hdhr_record) not detected — auto-pausing until it's seen again", level: .warning)
+                shows[i].show_paused = true
+                shows[i].show_fail_reason = Self.autoPauseTunerMissingReason
+                pushShowUpdate(type: "show_updated", channel: show.show_channel, device: show.hdhr_record)
+                dirty = true
+            }
+            // Symmetric auto-resume: a show this same mechanism previously auto-paused (identified
+            // by the exact marker above, never a user's own manual pause or a fail-threshold pause)
+            // gets reactivated the moment its own tuner is usable again. Deliberately just flips
+            // show_paused back like the manual resumeShow path does — NOT scheduleNextAir: for a
+            // .single show that unconditionally marks show_active = false ("DONE — deactivated"),
+            // which would wrongly treat a mere resume as if the recording had already happened.
+            // Any show_next staleness from the outage is handled the same way it already is for a
+            // manual resume — no special-casing needed here.
+            for show in pausedShows where show.show_fail_reason == Self.autoPauseTunerMissingReason
+                                       && !show.hdhr_record.isEmpty && usableDeviceIDs.contains(show.hdhr_record) {
+                guard let i = shows.firstIndex(where: { $0.show_id == show.show_id }) else { continue }
+                glog("[\(show.show_title)] tuner \(show.hdhr_record) detected again — auto-resuming")
+                shows[i].show_paused = false
+                shows[i].clearFailures()
+                showRetryAfter.removeValue(forKey: show.show_id)
+                pushShowUpdate(type: "show_updated", channel: show.show_channel, device: show.hdhr_record)
+                dirty = true
             }
 
             // Probe for newly-connected tuners every 5 minutes.
@@ -1385,6 +1419,15 @@ final class AppState: ObservableObject {
             // happen well after show_next has passed, so expect `endDate <= now` above to be the
             // common resume path in practice.
             if show.show_paused {
+                // A tuner-missing auto-pause (marked above, at the top of this same function) is
+                // resolved exclusively by that same tuner-detection check, never by this generic
+                // recovery — which reacts purely to show_end/show_next looking stale, regardless of
+                // whether the tuner is actually back. Without this exclusion, this block would
+                // un-pause the show the instant its window looked expired, only for the
+                // tuner-detection check to re-pause it again next tick (still absent) — a flip-flop
+                // identical in shape to the tight skip/reschedule loop fixed 2026-08-19 (see
+                // issues_resolved.md's "Lyla in the Loop"-adjacent entry).
+                guard show.show_fail_reason != Self.autoPauseTunerMissingReason else { continue }
                 if endDate <= now {
                     shows[i].show_paused = false
                     shows[i].clearFailures()
