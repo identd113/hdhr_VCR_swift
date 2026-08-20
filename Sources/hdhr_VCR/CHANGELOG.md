@@ -17,6 +17,9 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 - **Fixed a series show getting stuck re-skipping the same already-recorded rerun every ~10 seconds for its entire time slot** (up to an hour of repeated "Recording Skipped — already recorded" notifications and Discord cards for one episode). The scheduler was re-selecting that exact same on-air duplicate as the "next" airing every time it rescheduled after a skip; it now correctly moves on to the actual next distinct episode instead.
 - **A show resuming from pause — manually, automatically once its tuner is detected again, via Settings → Maintenance's "Reactivate Paused Shows," or via the web guide's Edit modal — now properly re-arms its "Up Next"/"Recording Soon" heads-up notifications.** Previously, if a show stayed paused through both notification windows, it could resume having silently missed its pre-recording alert for that airing — the recording itself was never affected, just the notification.
 
+**Info**
+- Tightened file-handle hygiene around recordings: the curl process and the app's log files no longer leave duplicate handles open in spawned child processes — no visible change.
+
 ## v2.0.4 — 2026-08-15
 
 **Added**

@@ -712,7 +712,23 @@ test-coverage gaps from the same pass, fixed and added in one session.
 
 **Resolution**: `reactivatePausedShows()` now clears `notify_upnext_time`/`notify_recording_time` inline inside its existing `if shows[i].show_paused` branch — deliberately *not* routed through `applyResume` itself, since that also fires a per-show `pushShowUpdate` broadcast that this bulk action never had before; adopting it wholesale could mean many broadcasts in one tight loop for a large paused-show list, a new side effect nobody asked for. `WebServer.handleEdit`'s un-pause branch now also clears `updated.notify_upnext_time`/`updated.notify_recording_time`, plus `state.showRetryAfter.removeValue(forKey: updated.show_id)` directly (`showRetryAfter` lives on `AppState`, not `Show`, so it can't be cleared via the local `updated` value the way the notify fields can). Added `reactivatePausedShows_rearmsNotificationCooldowns` regression test; `handleEdit`'s path was verified by build only — no existing test infrastructure exercises `/api/edit` at the HTTP level, and building one from scratch was out of scope for this fix. Full suite (276 tests) passes.
 
-**Resolving commit**: pending (uncommitted at time of writing)
+**Resolving commit**: `47d925f`
+
+---
+
+## RESOLVED — `RecordingManager.spawnDetached`'s curl (and every other spawned/inherited fd holder) inherited the app's entire open-fd table
+
+**File:** `RecordingManager.swift` (`spawnDetached`), `Models.swift` (`RotatingLogFile.open`)
+
+**Found by**: the 2026-08-19 parallel review sweep (logged in `ISSUES.md`), fixed 2026-08-20.
+
+**Root cause**: `spawnDetached`'s `posix_spawnattr_setflags` call set only `POSIX_SPAWN_SETSID` — never `POSIX_SPAWN_CLOEXEC_DEFAULT` — so curl (deliberately `SETSID`'d to survive a force-quit of the parent) inherited every fd open at spawn time: the `NWListener` socket, all three `RotatingLogFile`-backed log handles, and live SSE connections. Only fds 0/1/2 were explicitly redirected via `posix_spawn_file_actions_addopen`. Separately, `RotatingLogFile.open()`'s `FileHandle(forWritingAtPath:)` never marked its own fd `FD_CLOEXEC`, so the same log-fd inheritance also applied to every *other* spawned child, not just curl — including `AppState`'s post-recording script hook (`Process()`-spawned, non-`SETSID`'d, can run arbitrary user-authored `/bin/sh` scripts for however long they take) and `reattachRecordings()`'s `ps` call.
+
+**Failure scenario**: app is force-quit or crashes while a recording is running and the web server has open SSE connections — exactly the scenario `spawnDetached`'s `SETSID` design exists to survive. The orphaned curl process holds duplicate fds to the listener socket/logs/SSE sockets for the rest of the recording (potentially hours); those SSE client sockets don't fully close at the OS level until curl also exits.
+
+**Resolution**: OR'd `POSIX_SPAWN_CLOEXEC_DEFAULT` into `spawnDetached`'s existing `posix_spawnattr_setflags` call — the standard Darwin idiom (all fds close-on-exec except ones explicitly added via `file_actions`, which are actively opened in the child rather than inherited, so the three stdin/stdout/stderr redirects are unaffected). Separately added `fcntl(fh.fileDescriptor, F_SETFD, FD_CLOEXEC)` right after `RotatingLogFile.open()` obtains its handle — this covers all three log files (main, Discord, curl-verbose, per CLAUDE.md) and closes the gap for every spawn path at once (curl, the post-recording script hook, `ps`), not just `spawnDetached`'s own. The `NWListener` socket's raw fd isn't exposed by Network.framework's public API, so it has no equivalent direct fix — it's covered only indirectly, by curl no longer inheriting it via `CLOEXEC_DEFAULT`. Verified via `RecordingManagerTests` (exercises `spawnDetached` through a real spawn/reap cycle against a test-double script) plus a full deploy + web-server perf-test pass; not verified against a live real-device recording (none was in progress at the time, and the flag-only nature of the change didn't warrant standing one up). Full suite (276 tests) passes.
+
+**Resolving commit**: `40f15fa`
 
 ---
 

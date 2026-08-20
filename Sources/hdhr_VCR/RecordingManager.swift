@@ -238,8 +238,13 @@ final class RecordingManager {
         posix_spawnattr_init(&sa)
         defer { posix_spawnattr_destroy(&sa) }
 
-        // New session: decouples from the app's process group and session.
-        posix_spawnattr_setflags(&sa, Int16(POSIX_SPAWN_SETSID))
+        // New session (decouples from the app's process group/session, so curl survives a
+        // force-quit) + close-on-exec default (curl otherwise inherits every fd open at spawn
+        // time — the web server's listener socket, log handles, live SSE connections — and,
+        // being SETSID'd to survive the parent, can hold them open for the rest of a recording
+        // after a force-quit/crash). Only the three fds explicitly wired via file_actions below
+        // stay open across the exec.
+        posix_spawnattr_setflags(&sa, Int16(POSIX_SPAWN_SETSID | POSIX_SPAWN_CLOEXEC_DEFAULT))
 
         "/dev/null".withCString { devNull in
             posix_spawn_file_actions_addopen(&fa, STDIN_FILENO,  devNull, O_RDONLY, 0)

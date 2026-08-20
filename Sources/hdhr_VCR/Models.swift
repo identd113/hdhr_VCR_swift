@@ -46,6 +46,10 @@ final class RotatingLogFile {
         if !fm.fileExists(atPath: path) { fm.createFile(atPath: path, contents: nil) }
         guard let fh = FileHandle(forWritingAtPath: path) else { return }
         _ = try? fh.seekToEnd()
+        // Close-on-exec: FileHandle's own open() doesn't set this, so without it every spawned
+        // child (curl, the post-recording script hook, ps) inherits this fd and can hold it open
+        // for its own lifetime — including detached/long-running children outliving this process.
+        _ = fcntl(fh.fileDescriptor, F_SETFD, FD_CLOEXEC)
         handle = fh
         let attrs = try? fm.attributesOfItem(atPath: path)
         bytesWritten = (attrs?[.size] as? NSNumber)?.uint64Value ?? 0
