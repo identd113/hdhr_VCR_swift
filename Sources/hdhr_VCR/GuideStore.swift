@@ -318,14 +318,23 @@ final class GuideStore {
         return tied.first { isFavorite($0.deviceId, $0.channelNum) } ?? first
     }
 
-    /// Up to `limit` upcoming episodes matching seriesID with StartTime > after.
+    /// Up to `limit` upcoming episodes matching seriesID with StartTime > after, optionally
+    /// constrained by channelNum/deviceId (same filter contract as `nextEpisode`/`currentEpisode`)
+    /// — pass both nil to intentionally span every device/channel carrying this SeriesID (the
+    /// "Other Upcoming Airings" preview's own use case).
     /// The index is already sorted by StartTime so no additional sort is needed.
-    func nextEpisodes(seriesID: String, after: Date = Date(), limit: Int = 4) -> [SeriesMatch] {
+    func nextEpisodes(seriesID: String, channelNum: String? = nil, deviceId: String? = nil, after: Date = Date(), limit: Int = 4) -> [SeriesMatch] {
         sortIfNeeded(seriesID)
         let epoch = Int(after.timeIntervalSince1970)
-        let all = seriesIndex[seriesID]?.filter { $0.entry.StartTime > epoch } ?? []
+        let all = seriesIndex[seriesID]?.filter { m in
+            m.entry.StartTime > epoch
+                && (channelNum == nil || m.channelNum == channelNum)
+                && (deviceId == nil || m.deviceId == deviceId)
+        } ?? []
         // Same airing appears once per device when multiple tuners share a channel lineup;
         // keep only the first occurrence per (channel, StartTime) to avoid duplicate menu rows.
+        // Only matters for the unfiltered (deviceId == nil) cross-device case above — a
+        // device-scoped call can't have more than one match per (channel, StartTime) anyway.
         var seen = Set<String>()
         let deduped = all.filter { seen.insert("\($0.channelNum):\($0.entry.StartTime)").inserted }
         return Array(deduped.prefix(limit))

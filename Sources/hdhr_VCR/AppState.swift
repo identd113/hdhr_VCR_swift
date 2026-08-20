@@ -999,10 +999,13 @@ final class AppState: ObservableObject {
                     after: schNext.addingTimeInterval(-3600)
                 )?.entry
             }
-            // Upcoming slots for SeriesID shows
+            // Upcoming slots for SeriesID shows — device/channel-scoped like scheduledResult
+            // above, so a same-SeriesID airing on a different tuner (e.g. another HDHomeRun with
+            // its own lineup) never shows up in this show's own "Upcoming" preview.
             if show.show_use_seriesid, !show.show_seriesid.isEmpty {
+                let ch = show.show_use_seriesid_all ? nil : show.show_channel
                 upcomingResult[show.show_id] = guideStore.nextEpisodes(
-                    seriesID: show.show_seriesid, after: now, limit: 3
+                    seriesID: show.show_seriesid, channelNum: ch, deviceId: show.hdhr_record, after: now, limit: 3
                 ).map { ($0.channelNum, $0.entry.startDate) }
             }
         }
