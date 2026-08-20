@@ -2473,7 +2473,17 @@ final class AppState: ObservableObject {
 
     func reactivatePausedShows() {
         for i in shows.indices {
-            if shows[i].show_paused { shows[i].show_paused = false }
+            if shows[i].show_paused {
+                shows[i].show_paused = false
+                // Re-arm the "Up Next"/"Recording Soon" pre-notifications — same reasoning as
+                // applyResume (AppState.swift), a gap in this bulk action that fix didn't cover
+                // since this predates it and doesn't route through the shared helper (this loop
+                // touches every paused show at once; applyResume also fires a per-show
+                // pushShowUpdate broadcast, which this bulk action deliberately doesn't adopt —
+                // that could mean many broadcasts in one tight loop for a large paused-show list).
+                shows[i].notify_upnext_time = nil
+                shows[i].notify_recording_time = nil
+            }
             else if !shows[i].show_active { shows[i].show_active = true }
             shows[i].clearFailures()
         }

@@ -352,6 +352,29 @@ struct AppStateRecordingEngineTests {
         #expect(updated.notify_recording_time == nil)
     }
 
+    // Regression: reactivatePausedShows (Settings -> Maintenance's bulk action) predates
+    // applyResume and doesn't route through it, so it needed the same notify-cooldown fix applied
+    // separately — caught by a 2026-08-19 review sweep after the original resumeShow/idleLoop fix.
+    @Test @MainActor func reactivatePausedShows_rearmsNotificationCooldowns() {
+        var show = Show.blank(channel: "9.1", device: "FFFFFFFF")
+        show.show_title = "Bulk Reactivated Show"
+        show.show_active = true
+        show.show_paused = true
+        show.show_fail_reason = "Manually paused"
+        show.notify_upnext_time = Date().addingTimeInterval(3600)
+        show.notify_recording_time = Date().addingTimeInterval(3600)
+        let state = makeTestAppState(shows: [show], devices: [makeDevice()])
+
+        state.reactivatePausedShows()
+
+        guard let updated = state.shows.first(where: { $0.show_id == show.show_id }) else {
+            Issue.record("show disappeared"); return
+        }
+        #expect(updated.show_paused == false)
+        #expect(updated.notify_upnext_time == nil)
+        #expect(updated.notify_recording_time == nil)
+    }
+
     // Exercises idleLoop's separate, older "paused window expired" generic auto-resume (Pass 2,
     // the endDate <= now branch) — distinct from the tuner-detection path above. A .single show
     // (no series flags) whose show_end is already in the past drives this branch; scheduleNextAir

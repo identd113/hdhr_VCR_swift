@@ -1013,7 +1013,20 @@ final class WebServer: @unchecked Sendable {
 
         if let paused = obj["paused"] as? Bool {
             updated.show_paused = paused
-            if paused { updated.show_fail_reason = "Manually paused" } else { updated.clearFailures() }
+            if paused {
+                updated.show_fail_reason = "Manually paused"
+            } else {
+                updated.clearFailures()
+                // Re-arm the "Up Next"/"Recording Soon" pre-notifications and clear any live
+                // retry cooldown — same fix as AppState.applyResume/reactivatePausedShows, a gap
+                // in that fix since this edit path builds a standalone `updated` Show value
+                // (committed via state.updateShow(_:) below) rather than mutating state.shows by
+                // index, so it never routed through the shared helper. showRetryAfter lives on
+                // AppState, not Show, so it's cleared directly here rather than via `updated`.
+                updated.notify_upnext_time = nil
+                updated.notify_recording_time = nil
+                state.showRetryAfter.removeValue(forKey: updated.show_id)
+            }
         }
         if let title = obj["title"] as? String, !title.isEmpty { updated.show_title = title }
         if let ch = obj["channel"] as? String, !ch.isEmpty {

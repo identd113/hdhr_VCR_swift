@@ -698,6 +698,20 @@ test-coverage gaps from the same pass, fixed and added in one session.
 
 **Resolution**: `applyResume` (used by both manual `resumeShow` and idleLoop's tuner-detection auto-resume) now also sets `notify_upnext_time`/`notify_recording_time` to `nil`; the two inline `show_paused = false` sites in idleLoop's older generic auto-resume (not routed through `applyResume`, since that branch also calls `scheduleNextAir`) got the same two lines added directly. This doesn't force an immediate notification — it just clears any stale cooldown so the normal `minutesAway`-window check gets a clean slate the next time it's evaluated, firing only if that window is genuinely open on some later tick. Added three regression tests: `idleLoop_autoResumesShowOnceItsTunerIsDetectedAgain` (extended with cooldown-clearing assertions), `resumeShow_rearmsNotificationCooldowns` (new — `resumeShow` had zero prior test coverage), and `idleLoop_genericWindowExpiredAutoResume_rearmsNotificationCooldowns` (new, exercises the third, previously-untested resume path). Full suite (262 tests) passes.
 
+**Resolving commit**: `85f4f08`
+
+---
+
+## RESOLVED — Two more resume paths missed by the `notify_upnext_time`/`notify_recording_time` re-arm fix above
+
+**File:** `AppState.swift` (`reactivatePausedShows`), `WebServer.swift` (`handleEdit`'s pause toggle), `Tests/hdhr_VCRTests/Recording/AppStateRecordingEngineTests.swift`
+
+**Found by**: a 2026-08-19 time-boxed parallel-agent review sweep, run immediately after the fix above — one of the six agents was specifically tasked with re-auditing `AppState.swift` for anything the same session's own recent changes might have missed, and found that the fix above's resolved entry explicitly enumerates only three resume paths (`resumeShow`, idleLoop's tuner-detection auto-resume, idleLoop's generic "paused window expired" auto-resume) — two more `show_paused = false` sites existed outside that enumeration and were never touched.
+
+**Root cause**: `reactivatePausedShows()` (Settings → Maintenance's bulk "Reactivate Paused Shows" action) predates `applyResume` and doesn't route through it — a plain `for` loop over every show, flipping `show_paused` directly. `WebServer.handleEdit`'s pause-toggle handling (the web guide Edit modal's pause/resume checkbox — the everyday resume path for anyone using the web UI, not the native app) builds a standalone `updated: Show` value that's committed later via `state.updateShow(_:)`, rather than mutating `AppState.shows` by index, so it structurally can't call the index-based `applyResume(index:)` either. Both were real, live gaps: a show paused after its "Up Next" notification, then resumed through either of these two paths, would still silently miss its "Recording Soon" heads-up for the next occurrence — the exact bug the fix above targeted, just via two paths that fix didn't cover.
+
+**Resolution**: `reactivatePausedShows()` now clears `notify_upnext_time`/`notify_recording_time` inline inside its existing `if shows[i].show_paused` branch — deliberately *not* routed through `applyResume` itself, since that also fires a per-show `pushShowUpdate` broadcast that this bulk action never had before; adopting it wholesale could mean many broadcasts in one tight loop for a large paused-show list, a new side effect nobody asked for. `WebServer.handleEdit`'s un-pause branch now also clears `updated.notify_upnext_time`/`updated.notify_recording_time`, plus `state.showRetryAfter.removeValue(forKey: updated.show_id)` directly (`showRetryAfter` lives on `AppState`, not `Show`, so it can't be cleared via the local `updated` value the way the notify fields can). Added `reactivatePausedShows_rearmsNotificationCooldowns` regression test; `handleEdit`'s path was verified by build only — no existing test infrastructure exercises `/api/edit` at the HTTP level, and building one from scratch was out of scope for this fix. Full suite (276 tests) passes.
+
 **Resolving commit**: pending (uncommitted at time of writing)
 
 ---
