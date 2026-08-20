@@ -84,9 +84,22 @@ behaves identically on real Intel silicon).
 
 ### Mac App Store distribution requires a sandbox rewrite
 
-**Flagged 2026-08-12 as worth actively working on next**, not just a background item. Full blocker-by-blocker analysis already lives in **`docs/MAS_COMPLIANCE.md`** — do not duplicate it here, keep this pointer up to date instead. Direct-distribution notarization (Developer ID cert + `notarytool`, see `tools/setup_signing.sh` / `deploy_release.sh`, and `docs/Distribution.md`) does **not** require sandboxing and is the in-progress track as of 2026-08-08. MAS is a separate, larger track: App Sandbox is mandatory for submission, and `docs/MAS_COMPLIANCE.md` tracks the open blockers (curl subprocess spawning — three options weighed: URLSession/XPC-helper/bundled-curl, no decision made yet; VLC dlopen; security-scoped bookmarks for the recording directory) plus what's already done (Launch at Login via `SMAppService`, Privacy Manifest, narrowed ATS exception, and — as of 2026-08-19 — the `Process()` brew-install blocker, resolved by removing that UI entirely rather than reworking it for MAS).
+**Flagged 2026-08-12 as worth actively working on next**, not just a background item. Full blocker-by-blocker analysis already lives in **`docs/MAS_COMPLIANCE.md`** — do not duplicate it here, keep this pointer up to date instead. Direct-distribution notarization (Developer ID cert + `notarytool`, see `tools/setup_signing.sh` / `deploy_release.sh`, and `docs/Distribution.md`) does **not** require sandboxing and is the in-progress track as of 2026-08-08. MAS is a separate, larger track: App Sandbox is mandatory for submission, and `docs/MAS_COMPLIANCE.md` tracks the open blockers (curl subprocess spawning — three options weighed: URLSession/XPC-helper/bundled-curl, no decision made yet; VLC dlopen; security-scoped bookmarks for the recording directory, refined 2026-08-19 into a two-tier plan — see its own entry there) plus what's already done (Launch at Login via `SMAppService`, Privacy Manifest, narrowed ATS exception, and — as of 2026-08-19 — the `Process()` brew-install blocker, resolved by removing that UI entirely rather than reworking it for MAS).
 
 **Not started.** Sequenced after direct-distribution notarization is working (which it now is).
+
+---
+
+### First-run/onboarding flow (mainly for the eventual MAS track)
+
+**2026-08-19 design discussion, not yet scoped as a concrete plan.** Came up while discussing MAS blocker #5 (`docs/MAS_COMPLIANCE.md`) — a MAS install is a genuinely fresh sandbox container even for an existing direct-distribution user on the same Mac, since the two are separate containers with nothing carrying over automatically. Several independent things converge naturally into one first-launch screen:
+
+- **Recording folder picker** — the natural moment to capture the one security-scoped bookmark most users will ever need (default `~/Movies` needs none at all, per blocker #5's refined plan), instead of the user backing into a folder picker mid-Add-Show.
+- **Import Config** — offer to import an existing config (Export/Import Config shipped 2026-08-19, `ConfigManager.importConfig(from:)`) so someone moving from direct-distribution to MAS can restore their whole show list in one step instead of rebuilding every show by hand. This is the biggest lever for making a MAS install not feel like starting over.
+- **Local Network permission** — proactively explain "click Allow when macOS asks" while the app is already in the foreground (it already goes `.regular` activation policy until a lineup fetch succeeds — see the "Local Network permission block" entry above), instead of the user discovering the prompt as a mystery on its own.
+- **VLC pointer** — a one-line "install VLC for in-app playback, e.g. `brew install --cask vlc`" link, now that the auto-install-for-you Homebrew buttons are gone (removed 2026-08-19 — didn't pull its weight, and incidentally resolved a separate MAS blocker).
+
+Real feature, not a small tweak — new UI, new state, ongoing maintenance — and specifically MAS-track-motivated (today's direct-distribution users wouldn't see it unless a lighter first-run was separately wanted for them too, a different and smaller scope). Not started; revisit alongside the MAS work above.
 
 ---
 
