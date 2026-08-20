@@ -69,6 +69,8 @@ The cooldown length escalates with consecutive failures, expressed in idle-loop 
 
 `showRetryAfter` entries are cleared alongside `clearFailures()` at every call site (idle-loop auto-resume, `resumeShow`, `resetAllFailCounts`, `reactivatePausedShows`) and in `deleteShow`, so a manually-cleared or deleted show never carries a stale cooldown.
 
+`reactivatePausedShows()` (Settings → Maintenance's bulk action) also clears `notify_upnext_time`/`notify_recording_time` on every show it un-pauses — same re-arm reasoning as `resumeShow`/`applyResume` below, added 2026-08-20 alongside the identical gap in `WebServer.handleEdit`'s pause-toggle branch (`docs/WebServer.md`'s `/api/edit` field table) after a review sweep found both had been missed by the original fix. Done inline rather than routed through `applyResume` itself, since that helper also fires a per-show `pushShowUpdate` broadcast this bulk loop never had before.
+
 ### Fail-Threshold Pause & Auto-Resume
 
 When `show_fail_count` reaches `Fail_count_setting`, `startRecording` sets `show_paused = true` (or `show_active = false` for single-airing shows) and stops attempting to start it. The idle loop's paused-show handling (top of Pass 2) then decides when to un-pause, via `show_next`/`show_end` compared against `now`:

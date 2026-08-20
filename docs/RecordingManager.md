@@ -32,6 +32,7 @@ Each recording produces **one ps line**: a direct `curl` process in its own POSI
 - curl `--max-time` = `durationSeconds + 120` (2-minute buffer against network stalls).
 - PIDs stored in `pids: [String: Int32]`; liveness checked via `isRunning(showId:)` — see below.
 - `POSIX_SPAWN_SETSID` — curl is spawned in its own POSIX session so it survives an app force-quit and can be reattached on restart.
+- `POSIX_SPAWN_CLOEXEC_DEFAULT` (OR'd into the same `posix_spawnattr_setflags` call) — curl otherwise inherits every fd open at spawn time (the web server's listener socket, log handles, live SSE connections), and — being `SETSID`'d to survive a force-quit — can hold them open for the rest of a recording afterward. Only the three fds explicitly wired via `posix_spawn_file_actions_addopen` (stdin/stdout → `/dev/null`, stderr → the log path) stay open across the exec; every `RotatingLogFile`-backed log (`Models.swift`) also marks its own fd `FD_CLOEXEC` independently, closing the same gap for non-`posix_spawn` children too (`AppState`'s post-recording script hook, `reattachRecordings()`'s `ps` call). See `issues_resolved.md`'s "`RecordingManager.spawnDetached`'s curl ... inherited the app's entire open-fd table" entry.
 - `--dump-header {NSTemporaryDirectory()}hdhrVCRplus-{showId}.headers` captures response headers for tuner resource and error detection (see below).
 
 ## Stop

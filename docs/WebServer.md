@@ -178,7 +178,7 @@ Updates config fields on an existing managed show. All fields except `showId` ar
 |---|---|---|
 | `showId` | String | **Required.** Identifies the show to update |
 | `showType` | String | `"single"` / `"dateTime"` / `"seriesChannel"` / `"seriesAll"` — updates series flags |
-| `paused` | Bool | Pause or unpause; unpausing calls `clearFailures()` |
+| `paused` | Bool | Pause or unpause; unpausing calls `clearFailures()`, clears `showRetryAfter[showId]`, and clears `notify_upnext_time`/`notify_recording_time` (re-arms the "Up Next"/"Recording Soon" pre-notifications — same reasoning as `AppState.applyResume`, since this branch doesn't route through it; see `issues_resolved.md`'s "Two more resume paths missed by the `notify_upnext_time`/`notify_recording_time` re-arm fix" entry) |
 | `title` | String | Show title |
 | `channel` | String | Guide channel number |
 | `length` | Int | Recording length in minutes |
