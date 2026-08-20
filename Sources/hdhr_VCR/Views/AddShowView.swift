@@ -286,6 +286,11 @@ struct AddShowView: View {
         show.show_end      = entry.endDate
         show.show_logo_url = entry.ImageURL ?? show.show_logo_url
         show.show_genre    = entry.firstGenre ?? show.show_genre
+        // Re-anchoring to a different airing can change genre (e.g. a non-sports pick swapped for
+        // an "Other Upcoming Airings" sports broadcast of the same series) — recompute Bonus Time
+        // the same way applyWebGuideEntry/applyPendingEntry do, so it doesn't stay stuck at
+        // whichever value the previously-selected airing implied.
+        show.show_bonus_time = Show.genreImpliesBonusTime(show.show_genre) && state.config.Sports_padding_enabled
         show.hdhr_record   = entry.deviceId
         show.show_url      = state.lineups[entry.deviceId]?.first(where: { $0.GuideNumber == channel })?.URL ?? ""
         let comps = Calendar.current.dateComponents([.hour, .minute, .weekday], from: entry.startDate)

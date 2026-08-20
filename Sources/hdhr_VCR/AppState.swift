@@ -1217,14 +1217,14 @@ final class AppState: ObservableObject {
         // Fallback: title match on channelEntryIndex — handles guide entries where SeriesID is
         // absent. chFilter is nil for SeriesID(All) (scans every channel on devFilter's device);
         // devFilter is always set, so this never scans devices beyond the one being added from.
-        if let m = guideStore.currentEntryByTitle(show.show_title, channelNum: chFilter, deviceId: devFilter, at: now) {
+        if let m = guideStore.currentEntryByTitle(show.show_title, channelNum: chFilter, deviceId: devFilter, at: now, preferUnrecorded: preferUnrecordedEpisode(for: show), preferFavorite: isFavoriteChannel) {
             apply(m); return
         }
         if let m = guideStore.nextEpisode(seriesID: show.show_seriesid, channelNum: chFilter, deviceId: devFilter, after: now, preferUnrecorded: preferUnrecordedEpisode(for: show), preferFavorite: isFavoriteChannel) {
             apply(m); return
         }
         // Fallback: title match for next airing — handles guide entries where SeriesID is absent.
-        if let m = guideStore.nextEntryByTitle(show.show_title, channelNum: chFilter, deviceId: devFilter, after: now) {
+        if let m = guideStore.nextEntryByTitle(show.show_title, channelNum: chFilter, deviceId: devFilter, after: now, preferUnrecorded: preferUnrecordedEpisode(for: show), preferFavorite: isFavoriteChannel) {
             apply(m); return
         }
     }
@@ -2146,11 +2146,11 @@ final class AppState: ObservableObject {
                 // Fallback: title match — handles guide entries where SeriesID is absent.
                 // chFilter is nil for SeriesID(All) (scans every channel on devFilter's device);
                 // devFilter is always set, so this never scans devices beyond the assigned one.
-                if let match = guideStore.currentEntryByTitle(show.show_title, channelNum: chFilter, deviceId: devFilter, at: now) {
+                if let match = guideStore.currentEntryByTitle(show.show_title, channelNum: chFilter, deviceId: devFilter, at: now, preferUnrecorded: preferUnrecordedEpisode(for: show), preferFavorite: isFavoriteChannel) {
                     glog("[\(show.show_title)] NEXT now (title match, on-air) ch=\(match.channelNum)")
                     applyMatch(match); return
                 }
-                if let match = guideStore.nextEntryByTitle(show.show_title, channelNum: chFilter, deviceId: devFilter, after: now) {
+                if let match = guideStore.nextEntryByTitle(show.show_title, channelNum: chFilter, deviceId: devFilter, after: now, preferUnrecorded: preferUnrecordedEpisode(for: show), preferFavorite: isFavoriteChannel) {
                     glog("[\(show.show_title)] NEXT \(shortTime(match.entry.startDate)) ch=\(match.channelNum) (title match)")
                     applyMatch(match); return
                 }

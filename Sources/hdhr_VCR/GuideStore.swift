@@ -395,7 +395,16 @@ final class GuideStore {
     /// `currentEpisode`/`nextEpisode` too (see `AppState.resolveSeriesAir`/`scheduleNextAir`); a
     /// version requiring both-or-neither would silently ignore deviceId for that case and scan
     /// every device instead of just the assigned one.
-    func currentEntryByTitle(_ title: String, channelNum: String? = nil, deviceId: String? = nil, at date: Date = Date()) -> SeriesMatch? {
+    ///
+    /// Pass `preferFavorite`/`preferUnrecorded` to break a multi-channel-simulcast tie the same
+    /// way `currentEpisode`/`nextEpisode` do — without them, the no-channelNum scan below still
+    /// resolves ties deterministically (via `titleFallbackScanKeys`'s lineup order), just not
+    /// toward a favorited/unrecorded channel specifically.
+    func currentEntryByTitle(
+        _ title: String, channelNum: String? = nil, deviceId: String? = nil, at date: Date = Date(),
+        preferUnrecorded isNotRecorded: ((_ entry: GuideEntry) -> Bool)? = nil,
+        preferFavorite isFavorite: ((_ deviceId: String, _ channelNum: String) -> Bool)? = nil
+    ) -> SeriesMatch? {
         let epoch = Int(date.timeIntervalSince1970)
         if let channelNum, let deviceId {
             guard let entry = channelEntryIndex["\(deviceId):\(channelNum)"]?.first(where: {
@@ -403,19 +412,38 @@ final class GuideStore {
             }) else { return nil }
             return SeriesMatch(deviceId: deviceId, channelNum: channelNum, entry: entry)
         }
-        guard let entry = channelEntryIndex.values.flatMap({ $0 }).first(where: {
-            $0.StartTime <= epoch && $0.EndTime > epoch && Show.seriesTitle(from: $0.Title) == title
-                && (channelNum == nil || $0.channelNum == channelNum)
-                && (deviceId == nil || $0.deviceId == deviceId)
-        }) else { return nil }
-        return SeriesMatch(deviceId: entry.deviceId, channelNum: entry.channelNum, entry: entry)
+        let candidates = titleFallbackScanKeys(deviceId: deviceId).flatMap { channelEntryIndex[$0] ?? [] }
+            .filter { $0.StartTime <= epoch && $0.EndTime > epoch && Show.seriesTitle(from: $0.Title) == title
+                && (channelNum == nil || $0.channelNum == channelNum) }
+        guard let first = candidates.first else { return nil }
+        // Same reasoning as currentEpisode: every candidate here is airing right now, so there's
+        // no StartTime-tied subset to narrow to first — preferUnrecorded/preferFavorite apply
+        // across all of `candidates` directly.
+        if let isNotRecorded {
+            let unrecorded = candidates.filter { isNotRecorded($0) }
+            if unrecorded.isEmpty { return nil }
+            guard let isFavorite else {
+                let e = unrecorded[0]; return SeriesMatch(deviceId: e.deviceId, channelNum: e.channelNum, entry: e)
+            }
+            let e = unrecorded.first { isFavorite($0.deviceId, $0.channelNum) } ?? unrecorded[0]
+            return SeriesMatch(deviceId: e.deviceId, channelNum: e.channelNum, entry: e)
+        }
+        guard let isFavorite else {
+            return SeriesMatch(deviceId: first.deviceId, channelNum: first.channelNum, entry: first)
+        }
+        let e = candidates.first { isFavorite($0.deviceId, $0.channelNum) } ?? first
+        return SeriesMatch(deviceId: e.deviceId, channelNum: e.channelNum, entry: e)
     }
 
     /// Next entry with StartTime > after matching `title`, regardless of SeriesID. Fallback for
     /// when the guide omits SeriesID from some airings of a series — see `currentEntryByTitle`'s
-    /// doc comment for why `entry.Title` is stripped before comparing and why the filters are
-    /// independently optional.
-    func nextEntryByTitle(_ title: String, channelNum: String? = nil, deviceId: String? = nil, after: Date = Date()) -> SeriesMatch? {
+    /// doc comment for why `entry.Title` is stripped before comparing, why the filters are
+    /// independently optional, and what `preferFavorite`/`preferUnrecorded` do.
+    func nextEntryByTitle(
+        _ title: String, channelNum: String? = nil, deviceId: String? = nil, after: Date = Date(),
+        preferUnrecorded isNotRecorded: ((_ entry: GuideEntry) -> Bool)? = nil,
+        preferFavorite isFavorite: ((_ deviceId: String, _ channelNum: String) -> Bool)? = nil
+    ) -> SeriesMatch? {
         let epoch = Int(after.timeIntervalSince1970)
         if let channelNum, let deviceId {
             guard let entry = channelEntryIndex["\(deviceId):\(channelNum)"]?.first(where: {
@@ -423,16 +451,45 @@ final class GuideStore {
             }) else { return nil }
             return SeriesMatch(deviceId: deviceId, channelNum: channelNum, entry: entry)
         }
-        // Each per-device-channel list is itself sorted by StartTime, but concatenating them via
-        // flatMap is not — dictionary iteration order is arbitrary, so picking .first here would
-        // pick an arbitrary matching airing rather than the soonest one across all devices/channels.
-        guard let entry = channelEntryIndex.values.flatMap({ $0 })
-            .filter({ $0.StartTime > epoch && Show.seriesTitle(from: $0.Title) == title
-                && (channelNum == nil || $0.channelNum == channelNum)
-                && (deviceId == nil || $0.deviceId == deviceId) })
-            .min(by: { $0.StartTime < $1.StartTime })
-        else { return nil }
-        return SeriesMatch(deviceId: entry.deviceId, channelNum: entry.channelNum, entry: entry)
+        // titleFallbackScanKeys gives a fixed lineup order (not channelEntryIndex's arbitrary
+        // dictionary order), so the stable sort below resolves a multi-channel StartTime tie
+        // (e.g. a simulcast) the same way on every call instead of flipping across guide rebuilds.
+        let candidates = titleFallbackScanKeys(deviceId: deviceId).flatMap { channelEntryIndex[$0] ?? [] }
+            .filter { $0.StartTime > epoch && Show.seriesTitle(from: $0.Title) == title
+                && (channelNum == nil || $0.channelNum == channelNum) }
+            .sorted { $0.StartTime < $1.StartTime }
+        guard let first = candidates.first else { return nil }
+        guard isNotRecorded != nil || isFavorite != nil else {
+            return SeriesMatch(deviceId: first.deviceId, channelNum: first.channelNum, entry: first)
+        }
+        let tied = Array(candidates.prefix(while: { $0.StartTime == first.StartTime }))
+        guard tied.count > 1 else {
+            return SeriesMatch(deviceId: first.deviceId, channelNum: first.channelNum, entry: first)
+        }
+        if let isNotRecorded {
+            let unrecorded = tied.filter { isNotRecorded($0) }
+            if unrecorded.count == 1 {
+                let e = unrecorded[0]; return SeriesMatch(deviceId: e.deviceId, channelNum: e.channelNum, entry: e)
+            }
+        }
+        guard let isFavorite else {
+            return SeriesMatch(deviceId: first.deviceId, channelNum: first.channelNum, entry: first)
+        }
+        let e = tied.first { isFavorite($0.deviceId, $0.channelNum) } ?? first
+        return SeriesMatch(deviceId: e.deviceId, channelNum: e.channelNum, entry: e)
+    }
+
+    /// Deterministic channel scan order for the title-fallback functions above — lineup order
+    /// (mirrors `buildIndex`'s own channel-iteration order, the same source of determinism
+    /// `seriesIndex`'s stable sort relies on), never `channelEntryIndex`'s raw dictionary order,
+    /// which is hash-based and can silently reorder across guide rebuilds.
+    private func titleFallbackScanKeys(deviceId: String?) -> [String] {
+        if let deviceId {
+            return (channelsByDevice[deviceId] ?? []).map { "\(deviceId):\($0.GuideNumber)" }
+        }
+        return channelsByDevice.keys.sorted().flatMap { dev in
+            (channelsByDevice[dev] ?? []).map { "\(dev):\($0.GuideNumber)" }
+        }
     }
 
     // MARK: - State queries

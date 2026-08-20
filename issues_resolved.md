@@ -732,6 +732,38 @@ test-coverage gaps from the same pass, fixed and added in one session.
 
 ---
 
+## RESOLVED — `GuideStore.currentEntryByTitle`/`nextEntryByTitle` picked a non-deterministic channel on a multi-channel tie, and had no favorite/unrecorded tie-break at all
+
+**File:** `GuideStore.swift` (`currentEntryByTitle`, `nextEntryByTitle`, new private `titleFallbackScanKeys`), `AppState.swift` (`resolveSeriesAir`, `scheduleNextAir` call sites), `Tests/hdhr_VCRTests/Network/GuideStoreTests.swift`
+
+**Found by**: the 2026-08-19 review sweep (`ISSUES.md`), fixed 2026-08-20.
+
+**Root cause**: the title-only SeriesID-less fallback tier (used whenever a `seriesAll`/`seriesChannel` show's guide entries lack a SeriesID tag) scanned `channelEntryIndex.values.flatMap({ $0 })` — `channelEntryIndex` is a `[String: [GuideEntry]]` Dictionary, so `.values` iteration order is hash-based and can reorder across `buildIndex` rebuilds (every guide refresh). `currentEntryByTitle` picked `.first(where:)` off that unordered sequence; `nextEntryByTitle` used `.min(by: StartTime)`, deterministic for the *soonest* airing but not for a tie at the same StartTime, since `min(by:)` keeps the first-encountered element on a tie and "first encountered" was itself dictionary-order-dependent. Neither function accepted `preferFavorite`/`preferUnrecorded` at all, unlike `currentEpisode`/`nextEpisode` (hardened for the identical tie scenario this session via `cac5207`/`3b63615`).
+
+**Failure scenario**: a `seriesAll` show without a SeriesID on a given occasion (e.g. "Local News") simulcasts on two channels of its assigned tuner; `resolveSeriesAir`/`scheduleNextAir` write whichever match came back straight into `show_channel`/`hdhr_record`. With no tie-break pinned to anything, different guide reloads could hand back a different channel on different idle-loop reconfirm passes — the show's assigned channel could silently flip between the two over time.
+
+**Resolution**: both functions now scan via a new private `titleFallbackScanKeys(deviceId:)` — lineup order (mirrors `buildIndex`'s own channel-iteration order, the same source of determinism `seriesIndex`'s stable sort already relies on) instead of `channelEntryIndex`'s raw dictionary order — and both gained `preferUnrecorded`/`preferFavorite` parameters with the same tie-break logic as `currentEpisode`/`nextEpisode` (`currentEntryByTitle` applies it across every currently-airing candidate, since all are inherently concurrent; `nextEntryByTitle` narrows to the StartTime-tied prefix first, since future candidates aren't inherently concurrent). The four real call sites (`resolveSeriesAir`'s and `scheduleNextAir`'s title-fallback tiers) now pass `preferUnrecorded: preferUnrecordedEpisode(for: show), preferFavorite: isFavoriteChannel` — previously passed to the neighboring `currentEpisode`/`nextEpisode` calls but not to these. Added 4 regression tests (`current_noPreference_picksLineupOrderWinner`, `current_preferFavorite_picksFavoritedChannel`, `next_preferFavorite_picksFavoritedChannel`, `next_noPreference_picksLineupOrderWinner`) against a new title-only simulcast fixture. Full suite (280 tests) passes; deployed and confirmed the running app still serves guide/API correctly.
+
+**Resolving commit**: `10e91e5`
+
+---
+
+## RESOLVED — `AddShowView.switchToAiring` didn't recompute `show_bonus_time` when re-anchoring to a different airing
+
+**File:** `Views/AddShowView.swift` (`switchToAiring`)
+
+**Found by**: the 2026-08-19 review sweep (`ISSUES.md`), fixed 2026-08-20.
+
+**Root cause**: `switchToAiring` (the handler for double-clicking an "Other Upcoming Airings" row to re-anchor Add Show to a different occurrence of the same series) updated `show.show_genre` but never recomputed `show.show_bonus_time` from it — unlike the two other entry points that set a genre, `applyWebGuideEntry`/`applyPendingEntry`, which both immediately follow with `Show.genreImpliesBonusTime(genre) && state.config.Sports_padding_enabled`.
+
+**Failure scenario**: pick an initial non-sports airing (Bonus Time defaults off), then double-click an "Other Upcoming Airings" row that's a sports broadcast of the same series — genre flips to "Sports" but the Bonus Time toggle silently stays off, so the recording schedules without the sports padding the genre would otherwise default to. Same gap in reverse (sports → non-sports leaves a stale `true`).
+
+**Resolution**: `switchToAiring` now recomputes `show.show_bonus_time = Show.genreImpliesBonusTime(show.show_genre) && state.config.Sports_padding_enabled` right after setting `show_genre`, the same formula the other two entry points use. `switchToAiring` is a private method on a SwiftUI view with no existing unit-test seam (same boundary as `WebServer.handleEdit`'s un-pause branch in the fix two entries above) — verified by build only.
+
+**Resolving commit**: `10e91e5`
+
+---
+
 ## Staleness check, 2026-08-10
 
 Every entry above that only had a prescriptive `**Fix:**` note (rather than a past-tense `**Resolution:**`) was individually re-verified against the current source before filing here — grepped for the described symptom and confirmed the described fix's actual code is present (or, for the FloatingGuideView/CableGuideView group, confirmed the file is gone entirely). Nothing in this file is guessed or assumed still-true from the original write-up.

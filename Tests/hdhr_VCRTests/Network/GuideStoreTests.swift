@@ -692,6 +692,70 @@ struct GuideStoreMockNetworkTests {
             #expect(store.nextEntryByTitle("No Such Show",
                                            after: Date(timeIntervalSince1970: 1_000_000_000)) == nil)
         }
+
+        // MARK: - Multi-channel tie-break (no SeriesID — same shape as GuideStoreFavoriteTieBreakTests'
+        // simulcastJSON, but title-only, since that's the case currentEntryByTitle/nextEntryByTitle
+        // actually run for: a seriesAll show whose guide entries never carry a SeriesID tag).
+        // Two channels air the identical title at the identical StartTime/EndTime; 2.1 is listed
+        // first, so it's the deterministic (lineup-order) winner with no preference given.
+
+        private static let titleSimulcastJSON = """
+        [
+            {
+                "GuideNumber": "2.1",
+                "GuideName": "TPT 2",
+                "Guide": [
+                    {"StartTime": 2000000000, "EndTime": 2000003600, "Title": "Local News"}
+                ]
+            },
+            {
+                "GuideNumber": "2.4",
+                "GuideName": "TPTKids",
+                "Guide": [
+                    {"StartTime": 2000000000, "EndTime": 2000003600, "Title": "Local News"}
+                ]
+            }
+        ]
+        """
+
+        @MainActor private func loadedSimulcastStore(devices: [HDHRDevice]) async -> GuideStore {
+            let store = GuideStore(session: makeSession())
+            MockURLProtocol.requestHandler = { req in
+                (okResponse(for: req.url!), Self.titleSimulcastJSON.data(using: .utf8)!)
+            }
+            for d in devices { await store.load(for: d) }
+            return store
+        }
+
+        @Test @MainActor func current_noPreference_picksLineupOrderWinner() async {
+            let store = await loadedSimulcastStore(devices: [makeLocalDevice()])
+            let at = Date(timeIntervalSince1970: 2_000_001_000)
+            let match = store.currentEntryByTitle("Local News", at: at)
+            #expect(match?.channelNum == "2.1")
+        }
+
+        @Test @MainActor func current_preferFavorite_picksFavoritedChannel() async {
+            let store = await loadedSimulcastStore(devices: [makeLocalDevice()])
+            let at = Date(timeIntervalSince1970: 2_000_001_000)
+            let match = store.currentEntryByTitle("Local News", at: at,
+                                                  preferFavorite: { _, ch in ch == "2.4" })
+            #expect(match?.channelNum == "2.4", "Should break the tie toward the favorited channel")
+        }
+
+        @Test @MainActor func next_preferFavorite_picksFavoritedChannel() async {
+            let store = await loadedSimulcastStore(devices: [makeLocalDevice()])
+            let before = Date(timeIntervalSince1970: 1_000_000_000)
+            let match = store.nextEntryByTitle("Local News", after: before,
+                                               preferFavorite: { _, ch in ch == "2.4" })
+            #expect(match?.channelNum == "2.4", "Should break the tie toward the favorited channel")
+        }
+
+        @Test @MainActor func next_noPreference_picksLineupOrderWinner() async {
+            let store = await loadedSimulcastStore(devices: [makeLocalDevice()])
+            let before = Date(timeIntervalSince1970: 1_000_000_000)
+            let match = store.nextEntryByTitle("Local News", after: before)
+            #expect(match?.channelNum == "2.1")
+        }
     }
 
     // MARK: - isFresh
