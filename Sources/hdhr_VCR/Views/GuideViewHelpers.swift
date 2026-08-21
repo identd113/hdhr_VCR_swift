@@ -47,31 +47,39 @@ func quickRecordMenu<Content: View>(
     state: AppState, entry: GuideEntry, device: HDHRDevice, channel: LineupEntry,
     tunerFullAlert: Binding<Bool>, @ViewBuilder label: () -> Content
 ) -> some View {
-    Menu {
-        ForEach(ShowState.allCases, id: \.self) { type in
-            Button {
-                if !state.quickRecord(type: type, entry: entry, device: device, channel: channel) {
-                    tunerFullAlert.wrappedValue = true
+    // Mirrors the web guide's own withholding of a real Record affordance for paid programming
+    // (data-inf gates the genre-filter's "hide infomercials" mode there); this is the one place
+    // both native surfaces that use this control (WatchNowRow, VLCPlayerView toolbar) can pick it
+    // up for free, per entry.isInfomercial's own doc comment.
+    if entry.isInfomercial {
+        EmptyView()
+    } else {
+        Menu {
+            ForEach(ShowState.allCases, id: \.self) { type in
+                Button {
+                    if !state.quickRecord(type: type, entry: entry, device: device, channel: channel) {
+                        tunerFullAlert.wrappedValue = true
+                    }
+                } label: {
+                    Text(type.rawValue)
+                    Text(recordTypeDescription[type] ?? "")
                 }
-            } label: {
-                Text(type.rawValue)
-                Text(recordTypeDescription[type] ?? "")
             }
+        } label: {
+            label()
         }
-    } label: {
-        label()
-    }
-    .accessibilityAction(named: Text(ShowState.single.rawValue)) {
-        if !state.quickRecord(type: .single, entry: entry, device: device, channel: channel) { tunerFullAlert.wrappedValue = true }
-    }
-    .accessibilityAction(named: Text(ShowState.dateTime.rawValue)) {
-        if !state.quickRecord(type: .dateTime, entry: entry, device: device, channel: channel) { tunerFullAlert.wrappedValue = true }
-    }
-    .accessibilityAction(named: Text(ShowState.seriesChannel.rawValue)) {
-        if !state.quickRecord(type: .seriesChannel, entry: entry, device: device, channel: channel) { tunerFullAlert.wrappedValue = true }
-    }
-    .accessibilityAction(named: Text(ShowState.seriesAll.rawValue)) {
-        if !state.quickRecord(type: .seriesAll, entry: entry, device: device, channel: channel) { tunerFullAlert.wrappedValue = true }
+        .accessibilityAction(named: Text(ShowState.single.rawValue)) {
+            if !state.quickRecord(type: .single, entry: entry, device: device, channel: channel) { tunerFullAlert.wrappedValue = true }
+        }
+        .accessibilityAction(named: Text(ShowState.dateTime.rawValue)) {
+            if !state.quickRecord(type: .dateTime, entry: entry, device: device, channel: channel) { tunerFullAlert.wrappedValue = true }
+        }
+        .accessibilityAction(named: Text(ShowState.seriesChannel.rawValue)) {
+            if !state.quickRecord(type: .seriesChannel, entry: entry, device: device, channel: channel) { tunerFullAlert.wrappedValue = true }
+        }
+        .accessibilityAction(named: Text(ShowState.seriesAll.rawValue)) {
+            if !state.quickRecord(type: .seriesAll, entry: entry, device: device, channel: channel) { tunerFullAlert.wrappedValue = true }
+        }
     }
 }
 

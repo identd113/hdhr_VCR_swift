@@ -659,6 +659,19 @@ struct GuideEntry: Codable, Identifiable, Hashable {
     // hide/mark them by default. Shared so AppState's diagnostic scan and the web guide's
     // data-inf marker can't drift apart.
     static let knownInfomercialSeriesIDs: Set<String> = ["C11809220ENAPZK", "C459763EN3L6D"]
+
+    // Paid-programming detection — the known-untagged SeriesID list above, plus two guide-native
+    // signals: guide.php's "Paid Programming" title placeholder, and XMLTV's explicit Shop/Shopping
+    // <category> tag (a reliable signal on its own, catching infomercials the SeriesID list hasn't
+    // been taught yet). Single source of truth for the web guide's data-inf marker (WebServer.swift)
+    // and any native surface (Watch Now, VLC player toolbar) withholding the Record option.
+    var isInfomercial: Bool {
+        if Self.knownInfomercialSeriesIDs.contains(SeriesID ?? "") { return true }
+        if Title == "Paid Programming" { return true }
+        return (Filter ?? []).contains {
+            $0.caseInsensitiveCompare("Shop") == .orderedSame || $0.caseInsensitiveCompare("Shopping") == .orderedSame
+        }
+    }
 }
 
 // MARK: - ManagedGuideMatcher
