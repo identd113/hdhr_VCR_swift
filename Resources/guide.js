@@ -874,6 +874,25 @@ function initRowObserver(){
   _rows.forEach(function(r){if(r.dataset.dev)_rowObserver.observe(r);});
 }
 initRowObserver();
+// Hover almost always precedes the click that opens the Summary panel (showInfo->
+// renderHeavyFields) by a couple hundred ms — enough for a local fetch to land before the
+// click needs it. Warms the same _heavyCache/fetchRowHeavy dedup path the scroll observer
+// uses, so a row already cached (or already in flight) is a no-op here, not a second fetch.
+// Gated behind a short dwell timer — mouseover fires on every tile the cursor merely passes
+// over en route elsewhere (measured: sweeping across a full ~2600-tile grid fired 100+ fetches
+// instantly), which flooded the MainActor-serialized server and delayed unrelated click actions
+// queued behind that backlog. Only a tile the pointer actually stops on for a beat fetches.
+var _hoverPrefetchTimer=null,_hoverPrefetchEl=null;
+document.addEventListener('mouseover',function(e){
+  var el=e.target.closest&&e.target.closest('.g-prog');
+  if(!el||el===_hoverPrefetchEl)return;
+  _hoverPrefetchEl=el;
+  if(_hoverPrefetchTimer)clearTimeout(_hoverPrefetchTimer);
+  if(applyHeavyFromCache(el))return;
+  _hoverPrefetchTimer=setTimeout(function(){
+    if(_hoverPrefetchEl===el)fetchRowHeavy(el.closest('.g-row'));
+  },150);
+});
 function applyGenreDim(){
   var f=_genreFilter.toLowerCase();
   var infMode=f==='__inf';
