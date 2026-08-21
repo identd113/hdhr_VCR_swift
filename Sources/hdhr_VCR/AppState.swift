@@ -1878,6 +1878,14 @@ final class AppState: ObservableObject {
                 TargetIP: tuners[idx].TargetIP, SignalQualityPercent: tuners[idx].SignalQualityPercent)
         }
         webServer.broadcastRecordingEvent(type: "recording_stopped", channel: show.show_channel, device: show.hdhr_record, state: self)
+        // broadcastRecordingEvent above only patches the ring/tuner-badge fragments in place — the
+        // web guide's Recording section is a physical row bucket decided once at grid-build time
+        // (buildGuideGridHTML), so a channel that just stopped recording stayed stuck at the top
+        // until some *other* guide-changing event happened to rebuild it. Push a real rebuild here
+        // too so the row drops back to Favorites/its normal position immediately. Reported 2026-08-21.
+        webServer.broadcastGuideChangeEvent(type: "recording_stopped",
+                                             extra: ["channel": show.show_channel, "device": show.hdhr_record],
+                                             state: self)
     }
 
     func stopRecording(index: Int, natural: Bool) async {

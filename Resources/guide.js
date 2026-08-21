@@ -950,8 +950,15 @@ function setDev(id){
 // instead (formerly a separate "X/Y — FULL" button nested inside the ▾ show-list dropdown,
 // which testing showed users couldn't find). id===curDev is the same "already selected" check
 // setDev itself uses for its switched flag.
+// Single-online-tuner setups bootstrap with setDev('') (see WebServer.swift's defaultDev), so
+// curDev starts out '' while the button's own id is the real device ID — id===curDev alone
+// would never match on that very first click, forcing a spurious extra click before the popover
+// ever opened even though the tuner already reads as selected (.d-sel, applied by this same
+// onlineBtns.length===1 rule in setDev above). Recognize that case as "already selected" too.
 function handleDevClick(id,btn){
-  if(id===curDev){showTunerInfo(id,btn);}
+  var onlineBtns=document.querySelectorAll('.d-btn[data-dev]');
+  var alreadySel=(id===curDev)||(curDev===''&&onlineBtns.length===1&&btn===onlineBtns[0]);
+  if(alreadySel){showTunerInfo(id,btn);}
   else{setDev(id);}
 }
 function filterGenre(g){_genreFilter=g;applyGenreDim();}
