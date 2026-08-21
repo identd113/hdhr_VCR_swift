@@ -764,6 +764,46 @@ test-coverage gaps from the same pass, fixed and added in one session.
 
 ---
 
+# Live session fixes — 2026-08-21
+
+Three bugs reported/found during a single interactive session, fixed and verified in place (build + full test suite + live browser reproduction where applicable) before moving to the next.
+
+## RESOLVED — Web guide's hover-prefetch fired 100+ concurrent fetches from a single mouse sweep, delaying unrelated clicks
+
+**File:** `Resources/guide.js` (`mouseover` listener added this same session, immediately after being added)
+
+**Root cause**: a delegated `document`-level `mouseover` listener, added to warm the Summary panel's lazy-loaded fields (`fetchRowHeavy`) before a click needs them, fired on every `.g-prog` tile the cursor entered — including tiles merely passed over en route elsewhere, since `mouseover` fires per element-boundary crossing, not per intentional hover. Measured: dispatching synthetic `mouseover` across all `.g-prog` tiles in a real ~2600-tile guide triggered 103 concurrent `fetch()` calls to `/api/guide-detail` instantly.
+
+**Failure scenario**: any normal mouse movement across the grid (e.g. moving from the top nav down to click a tile) crossed many rows, each firing a real network request. The resulting request pile-up backed up the MainActor-serialized `WebServer`, so unrelated click-driven requests (record, edit, tuner popover) queued behind it and felt delayed — reported by the user as "everything is delayed when clicking, seemed faster recently."
+
+**Resolution**: gated the listener behind a ~150ms dwell timer (`_hoverPrefetchTimer`/`_hoverPrefetchEl`) — a fetch only fires if the pointer stays on the same tile past the timer; a new tile hovered before that clears the pending timer without fetching. Verified live: the same full-grid sweep now fires zero immediate fetches (down from 103); a genuine hover-and-pause still fires exactly one after the dwell period.
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+## RESOLVED — Web guide's selected tuner card needed two clicks to open its popover on a single-online-tuner setup
+
+**File:** `Resources/guide.js` (`handleDevClick`)
+
+**Root cause**: a single-online-tuner setup bootstraps with `setDev('')` (`WebServer.swift`'s `defaultDev` is forced to `""` whenever there's exactly one online device), so `curDev` starts out `''`. `handleDevClick`'s "already selected, open the popover" check was `id === curDev` — but the clicked button's `id` is always its real device ID, never `''`, so that check could never match on the very first click even though the tuner already read as visually selected (`.d-sel`). The first click silently no-op'd (a same-device `setDev(id)` reselect, which set `curDev` to the real ID); only the *second* click then matched and opened the popover.
+
+**Failure scenario**: reported by the user 2026-08-21: "when i click the tuner card at the top, it doesnt open the tuner float menu as it used to." Reproduced live in a browser session against the actual single-real-tuner setup (a second configured device is the always-offline `FFFF0001` test fixture, so only one `.d-btn[data-dev]` button exists) — first click did nothing, second opened the popover.
+
+**Resolution**: `handleDevClick` now also treats `curDev === '' && ` this is the sole online tuner button as "already selected" — the exact same `onlineBtns.length===1` rule `setDev` already uses for the `.d-sel` visual highlight, so the click behavior now matches what's on screen. Multi-tuner setups were never affected (their bootstrap `defaultDev` is always a real device ID). Verified live via a real DOM `.click()` dispatch on a freshly-loaded page — popover opened on the first click.
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+## RESOLVED — A channel stayed in the web guide's "Recording" section after its recording ended
+
+**File:** `AppState.swift` (`teardownRecordingState`)
+
+**Root cause**: the Recording/Favorites/Other row buckets (`buildGuideGridHTML`) are decided once, at grid-build time. Recording start/stop only ever pushed a lightweight fragment patch (`broadcastRecordingEvent` — ring color + tuner badge, patched onto the existing DOM in place); nothing rebuilt or re-swapped the grid itself, so a channel's row never physically moved between sections until some *unrelated* guide-changing event (an edit, another show starting, the hourly refresh) happened to trigger a full rebuild.
+
+**Failure scenario**: reported by the user 2026-08-21: a channel whose recording had already ended stayed visually pinned at the top of the guide's Recording section, misleadingly, until something else refreshed the grid.
+
+**Resolution**: `teardownRecordingState` (the single choke point for every stop path — natural end, manual stop, tuner-missing auto-pause, app-quit cleanup) now also fires `broadcastGuideChangeEvent` right after the existing `broadcastRecordingEvent` call, pushing a real full-grid rebuild through the same well-tested `applyGuidePayload` path used by add/edit/delete/pause/resume/favorite-toggle (preserves scroll position and the current Summary-panel selection). Scoped to the *stop* side only, matching what was reported — starting a recording still doesn't move the row into the Recording section immediately, only the ring color updates in place, and stays that way until the next full rebuild. Deliberately not deduped against the fragment patch's own grid-cache rebuild (two grid builds per stop event) — simpler and safer than merging the two broadcast paths, and stop events are infrequent enough that the extra cost is negligible.
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
 ## Staleness check, 2026-08-10
 
 Every entry above that only had a prescriptive `**Fix:**` note (rather than a past-tense `**Resolution:**`) was individually re-verified against the current source before filing here — grepped for the described symptom and confirmed the described fix's actual code is present (or, for the FloatingGuideView/CableGuideView group, confirmed the file is gone entirely). Nothing in this file is guessed or assumed still-true from the original write-up.
