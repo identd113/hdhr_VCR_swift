@@ -70,6 +70,44 @@ struct AppStateRecordingEngineTests {
         manager.stop(showId: show.show_id)
     }
 
+    @Test @MainActor func startRecording_metadataSidecarEnabled_writesNfoFileAlongsideRecording() async throws {
+        let scriptPath = try writeMockCurlScript(sleepSeconds: 30)
+        defer { try? FileManager.default.removeItem(atPath: scriptPath) }
+        let manager = RecordingManager(curlExecutablePath: scriptPath)
+        let show = makeShow(recordDir: tempRecordDir(), next: Date().addingTimeInterval(-5), end: Date().addingTimeInterval(1800))
+        let state = makeTestAppState(shows: [show], devices: [makeDevice()], recordingManager: manager)
+        state.maxDiskPct = 100
+        state.config.Min_disk_free_gb = 0
+        state.config.Write_metadata_sidecar = true
+
+        await state.startRecording(index: 0)
+
+        // No GuideStore data loaded in this fixture, so writeMetadataSidecar's entry is nil —
+        // exercises the graceful-degradation path (title-only .nfo, no season/episode/synopsis).
+        let nfoPath = (state.shows[0].show_recording_path as NSString).deletingPathExtension + ".nfo"
+        #expect(FileManager.default.fileExists(atPath: nfoPath))
+        let xml = try String(contentsOfFile: nfoPath, encoding: .utf8)
+        #expect(xml.contains("<showtitle>Test Show</showtitle>"))
+        manager.stop(showId: show.show_id)
+    }
+
+    @Test @MainActor func startRecording_metadataSidecarDisabled_writesNoNfoFile() async throws {
+        let scriptPath = try writeMockCurlScript(sleepSeconds: 30)
+        defer { try? FileManager.default.removeItem(atPath: scriptPath) }
+        let manager = RecordingManager(curlExecutablePath: scriptPath)
+        let show = makeShow(recordDir: tempRecordDir(), next: Date().addingTimeInterval(-5), end: Date().addingTimeInterval(1800))
+        let state = makeTestAppState(shows: [show], devices: [makeDevice()], recordingManager: manager)
+        state.maxDiskPct = 100
+        state.config.Min_disk_free_gb = 0
+        state.config.Write_metadata_sidecar = false  // default
+
+        await state.startRecording(index: 0)
+
+        let nfoPath = (state.shows[0].show_recording_path as NSString).deletingPathExtension + ".nfo"
+        #expect(!FileManager.default.fileExists(atPath: nfoPath))
+        manager.stop(showId: show.show_id)
+    }
+
     @Test @MainActor func startRecording_launchFailure_recordsFailureWithoutMarkingRecording() async throws {
         // Nonexistent executable path — RecordingManager.start's posix_spawn throws.
         let manager = RecordingManager(curlExecutablePath: "/no/such/binary-\(UUID().uuidString)")

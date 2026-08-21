@@ -1746,11 +1746,14 @@ final class AppState: ObservableObject {
                             extra: [("Reason", "Disk over \(Int(maxDiskPct))% — free up space", false)])
             return
         }
+        // Fetched once and shared by the series-subfolder episode tag below and the metadata
+        // sidecar (if enabled) — both want the same guide entry, not two separate lookups.
+        let guideEntry = guideEntryForShow(show)
         var seriesSubfolder: String? = nil
         var episodeTag: String? = nil
         if config.Series_subfolder_enabled && show.isSeries {
             let safeTitle = show.show_title.replacingOccurrences(of: "/", with: "-")
-            let epNum = guideEntryForShow(show)?.EpisodeNumber
+            let epNum = guideEntry?.EpisodeNumber
             episodeTag = epNum
             if let epNum, let season = seasonNumber(from: epNum) {
                 seriesSubfolder = "\(safeTitle)/Season \(String(format: "%02d", season))"
@@ -1820,6 +1823,7 @@ final class AppState: ObservableObject {
         }
         shows[index].show_recording = true; shows[index].show_recording_path = path
         failedThisAttempt.remove(show.show_id) // fresh attempt — any earlier FAIL no longer describes "this" recording
+        if config.Write_metadata_sidecar { writeMetadataSidecar(path: path, show: show, entry: guideEntry) }
         webServer.broadcastRecordingEvent(type: "recording_started", channel: shows[index].show_channel, device: shows[index].hdhr_record, state: self)
         refreshTunerOccupancy()
         // Stamp notify_recording_time so the "Recording Soon" pre-notification won't re-fire
@@ -2655,6 +2659,63 @@ final class AppState: ObservableObject {
         guard let range = epString.range(of: #"^S(\d+)(?:E\d+)?$"#, options: [.regularExpression, .caseInsensitive]) else { return nil }
         let sub = epString[range].dropFirst()   // drop leading "S"
         return Int(sub.prefix(while: { $0.isNumber }))
+    }
+
+    // Companion to seasonNumber(from:) — same anchored-then-scan style, requires a full S##E## tag
+    // (unlike seasonNumber, which also accepts a bare "S01").
+    private func episodeNumber(from epString: String) -> Int? {
+        guard epString.range(of: #"^S\d+E(\d+)$"#, options: [.regularExpression, .caseInsensitive]) != nil,
+              let eRange = epString.range(of: "E", options: [.caseInsensitive])
+        else { return nil }
+        return Int(epString[eRange.upperBound...].prefix(while: { $0.isNumber }))
+    }
+
+    // ISO date (Kodi's <aired> format) from a guide OriginalAirdate epoch. Fixed to UTC — the epoch
+    // represents a calendar date with no meaningful time-of-day, so formatting in the local zone
+    // could roll it to the wrong day depending on the user's offset.
+    private static let nfoAirDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.timeZone = TimeZone(identifier: "UTC")
+        return f
+    }()
+
+    // Writes a Kodi-style <episodedetails> .nfo alongside a recording (same directory/basename,
+    // ".nfo" extension) when Settings → Recording's "Write metadata sidecar" is on. The guide's
+    // synopsis/season-episode/air-date/genre are already fetched for scheduling and then normally
+    // discarded — this is the one place that data gets persisted anywhere past the recording
+    // itself, so a downstream media server (Kodi natively; others via their own NFO readers) can
+    // show real episode info instead of just the filename. Best-effort: a write failure is logged,
+    // never treated as a recording failure.
+    private func writeMetadataSidecar(path: String, show: Show, entry: GuideEntry?) {
+        func xmlEscape(_ s: String) -> String {
+            s.replacingOccurrences(of: "&", with: "&amp;")
+             .replacingOccurrences(of: "<", with: "&lt;")
+             .replacingOccurrences(of: ">", with: "&gt;")
+             .replacingOccurrences(of: "\"", with: "&quot;")
+             .replacingOccurrences(of: "'", with: "&apos;")
+        }
+        let nfoPath = (path as NSString).deletingPathExtension + ".nfo"
+        let episodeTitle = entry?.EpisodeTitle.flatMap { $0.isEmpty ? nil : $0 }
+        let season = entry?.EpisodeNumber.flatMap(seasonNumber(from:)) ?? -1
+        let episode = entry?.EpisodeNumber.flatMap(episodeNumber(from:)) ?? -1
+        let aired = entry?.OriginalAirdate.map { Self.nfoAirDateFormatter.string(from: Date(timeIntervalSince1970: TimeInterval($0))) }
+        let genre = entry?.firstGenre
+        var xml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<episodedetails>\n"
+        xml += "  <title>\(xmlEscape(episodeTitle ?? show.show_title))</title>\n"
+        xml += "  <showtitle>\(xmlEscape(show.show_title))</showtitle>\n"
+        xml += "  <season>\(season)</season>\n"
+        xml += "  <episode>\(episode)</episode>\n"
+        if let aired { xml += "  <aired>\(aired)</aired>\n" }
+        if let syn = entry?.Synopsis, !syn.isEmpty { xml += "  <plot>\(xmlEscape(syn))</plot>\n" }
+        if let genre, !genre.isEmpty { xml += "  <genre>\(xmlEscape(genre))</genre>\n" }
+        if let entry { xml += "  <runtime>\(entry.durationMinutes)</runtime>\n" }
+        xml += "</episodedetails>\n"
+        do {
+            try xml.write(toFile: nfoPath, atomically: true, encoding: .utf8)
+        } catch {
+            glog("[\(show.show_title)] metadata sidecar write failed for \(nfoPath): \(error)", level: .warning)
+        }
     }
 
     /// Uppercased SxxExx (or bare SxxE-less) episode tags already recorded on disk for a series,

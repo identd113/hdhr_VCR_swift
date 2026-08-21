@@ -366,6 +366,7 @@ struct AppConfig: Equatable {
     var Series_subfolder_enabled: Bool = false  // organize SeriesID recordings into Title/Season XX/ subfolders
     var Skip_recorded_episodes: Bool = false    // skip a series episode already on disk (needs Series_subfolder_enabled + SxxExx guide data)
     var Post_recording_script: String = ""      // POSIX path to script run after each successful recording
+    var Write_metadata_sidecar: Bool = false    // write a Kodi-style .nfo alongside each recording (guide synopsis/season/episode/air date)
 
     // Series
     var Series_scan_retry_hours: Int = 4     // hours to wait before retrying guide scan
@@ -477,6 +478,7 @@ extension AppConfig: Codable {
         Series_subfolder_enabled    = (try? c.decode(Bool.self,   forKey: .Series_subfolder_enabled))    ?? false
         Skip_recorded_episodes      = (try? c.decode(Bool.self,   forKey: .Skip_recorded_episodes))      ?? false
         Post_recording_script       = (try? c.decode(String.self, forKey: .Post_recording_script))       ?? ""
+        Write_metadata_sidecar      = (try? c.decode(Bool.self,   forKey: .Write_metadata_sidecar))       ?? false
         Donation_unlocked           = (try? c.decode(Bool.self,   forKey: .Donation_unlocked))            ?? false
         Donation_unlock_code        = (try? c.decode(String.self, forKey: .Donation_unlock_code))          ?? ""
         Dock_icon_mode              = (try? c.decode(String.self, forKey: .Dock_icon_mode))                ?? "auto"

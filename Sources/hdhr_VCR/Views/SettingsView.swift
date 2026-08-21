@@ -370,6 +370,10 @@ struct SettingsView: View {
                 }
                 .disabled(!draft.Series_subfolder_enabled)
 
+                Toggle(isOn: $draft.Write_metadata_sidecar) {
+                    HStack { Text("Write metadata sidecar"); InfoButton("Saves a Kodi-style .nfo file alongside each recording (same folder, same name) with the guide's synopsis, season/episode, air date, and genre — lets a media server show real episode info instead of just the filename.") }
+                }
+
                 LabeledContent {
                     HStack {
                         Text(draft.Post_recording_script.isEmpty
