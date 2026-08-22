@@ -540,7 +540,7 @@ final class WebServer: @unchecked Sendable {
         }
         let header = "HTTP/1.1 200 OK\r\nContent-Type: video/mp2t\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\n\r\n"
         glog("[WebServer] watch-recording OPEN show=\(showId) path=\(path) startOffset=\(initialBytes)")
-        queue.async {
+        queue.async { [weak self] in
             conn.send(content: Data(header.utf8), completion: .contentProcessed({ [weak self] err in
                 guard let self, err == nil else {
                     self?.fileIOQueue.async { handle.closeFile() }
