@@ -107,6 +107,18 @@
     </div>
   </div>
 </div>
+<div id="del-confirm-modal" onclick="if(event.target===this)cancelDeleteConfirm()" style="display:none;position:fixed;inset:0;background:var(--mat-backdrop);z-index:202;align-items:center;justify-content:center;padding:20px">
+  <div class="mac-sheet" style="padding:20px 22px;width:340px;max-width:calc(100vw - 32px);position:relative;text-align:center">
+    <img id="dc-poster" src="" alt="" style="width:96px;height:96px;object-fit:cover;border-radius:8px;margin:0 auto 14px;display:none;background:#888">
+    <div id="dc-title" style="font-weight:600;font-size:.98rem;color:var(--t0);margin-bottom:6px"></div>
+    <div id="dc-type" style="font-size:.76rem;color:var(--t3);margin-bottom:4px"></div>
+    <div id="dc-warn" style="font-size:.76rem;color:var(--t3);margin-bottom:16px"></div>
+    <div style="display:flex;justify-content:center;gap:8px">
+      <button onclick="cancelDeleteConfirm()" class="mac-btn mac-btn-plain">Cancel</button>
+      <button id="dc-confirm-btn" onclick="confirmDeleteConfirm()" class="mac-btn mac-btn-destructive">Delete</button>
+    </div>
+  </div>
+</div>
 <div class="gw-outer"><div class="gw"><div class="gi">
 {{GRID_INNER}}
 </div></div><div id="g-hscroll"><div id="g-hscroll-thumb"></div></div></div>

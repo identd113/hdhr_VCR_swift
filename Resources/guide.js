@@ -1,6 +1,7 @@
 {{TUNER_JS}}
 {{RECS_BY_DEV_JS}}
 var _d='',_n='',_s=0,_e=0,_ser='',_genre='',_title='',_poster='',_logo='',_chname='';
+var _delConfirmAction=null;   // pending action for #del-confirm-modal, set by showDeleteConfirm()
 function hej(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 // Shared POST helper — every mutating action (record/edit/delete/toggle-favorite) posts
 // JSON and gets JSON back; callers still handle their own response/error logic (which
@@ -458,10 +459,47 @@ function doEditFromGuide(){
     bonus:sd.showBonus||'0', transcode:sd.showTranscode||'none',
     seriesid:sd.showSeriesid||'', airdays:sd.showAirdays||'',
     failcount:sd.showFailcount||'0', failreason:sd.showFailreason||'',
-    ignoredup:sd.showIgnoredup||'0'
+    ignoredup:sd.showIgnoredup||'0', poster:sd.poster||'', logo:sd.logo||''
   }});
 }
+// Recording-type short labels, keyed by ShowState.rawValue — reuses the same recOpts table
+// the Record/Edit modals' Type row renders from, so the confirm dialog can never disagree
+// with what those modals call each type.
+function typeLabel(t){
+  var o=recOpts.filter(function(x){return x.v===t;})[0];
+  return o?o.t:(t||'Single');
+}
+function showDeleteConfirm(title,poster,typeStr,isRec,onConfirm){
+  var pi=document.getElementById('dc-poster');
+  if(poster){pi.onerror=function(){pi.style.display='none';};pi.src=poster;pi.style.display='block';}
+  else{pi.style.display='none';}
+  document.getElementById('dc-title').textContent='Delete "'+(title||'this show')+'"?';
+  document.getElementById('dc-type').textContent='Type: '+typeLabel(typeStr);
+  document.getElementById('dc-warn').textContent=isRec
+    ?'This will stop the active recording. This cannot be undone.'
+    :'This cannot be undone.';
+  document.getElementById('dc-confirm-btn').textContent=isRec?'Stop & Delete':'Delete';
+  _delConfirmAction=onConfirm;
+  document.getElementById('del-confirm-modal').style.display='flex';
+}
+function cancelDeleteConfirm(){
+  document.getElementById('del-confirm-modal').style.display='none';
+  _delConfirmAction=null;
+}
+function confirmDeleteConfirm(){
+  var fn=_delConfirmAction;
+  cancelDeleteConfirm();
+  if(fn)fn();
+}
 function doDelete(){
+  var sel=document.querySelector('.g-prog.g-sel');
+  var title=document.getElementById('sum-title').textContent||'';
+  var poster=_poster||_logo||'';
+  var type=sel?sel.dataset.showType:'';
+  var isRec=sel?sel.dataset.recording==='1':false;
+  showDeleteConfirm(title,poster,type,isRec,performSummaryDelete);
+}
+function performSummaryDelete(){
   var del=document.getElementById('sum-del');
   var _delLabel=del.textContent;
   del.disabled=true;del.textContent='Deleting…';
@@ -691,7 +729,7 @@ document.addEventListener('click',function(e){
   }
 });
 // ── Edit show modal ──
-var _editId='',_editPaused=false,_editRec=false,_editType='single';
+var _editId='',_editPaused=false,_editRec=false,_editType='single',_editPoster='';
 var _dayNames=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 var _dayShort=['Su','M','Tu','W','Th','F','Sa'];
 function updateDaysVisibility(){
@@ -714,7 +752,7 @@ function updateDupVisibility(){
 }
 function openEditShow(el){
   var d=el.dataset;
-  _editId=d.id;_editPaused=d.paused==='1';_editRec=d.recording==='1';_editType=d.type||'single';
+  _editId=d.id;_editPaused=d.paused==='1';_editRec=d.recording==='1';_editType=d.type||'single';_editPoster=d.poster||d.logo||'';
   document.getElementById('em-title-in').value=d.title||'';
   document.getElementById('em-ch-in').value=d.ch||'';
   document.getElementById('em-len-in').value=d.length||'60';
@@ -807,6 +845,10 @@ function confirmEdit(){
   }).catch(function(){btn.disabled=false;btn.textContent='Save';});
 }
 function doEditDelete(){
+  var title=document.getElementById('em-title-in').value||'';
+  showDeleteConfirm(title,_editPoster,_editType,_editRec,performEditDelete);
+}
+function performEditDelete(){
   var btn=document.getElementById('em-del');
   var lbl=btn.textContent;
   btn.disabled=true;btn.textContent='Deleting…';

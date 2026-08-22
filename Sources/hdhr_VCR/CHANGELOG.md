@@ -2,6 +2,11 @@
 
 Every entry is tagged **Added** (something new), **Updated** (existing behavior changed, improved, or fixed), **Removed** (something taken away), or **Info** (a note — nothing to do, nothing visibly different).
 
+## Unreleased
+
+**Added**
+- **The web guide now asks you to confirm before deleting a show**, showing its poster, title, and recording type (Single/DateTime/SeriesID(Channel)/SeriesID(All)) — previously clicking Delete (or Stop & Delete) removed the show immediately with no confirmation. Matches the native menu bar app's existing poster-and-title confirmation, plus shows the recording type the native alert doesn't.
+
 ## v2.0.5 — 2026-08-22
 
 **Added**

@@ -224,6 +224,21 @@ On **Save**: `confirmEdit()` POSTs `/api/edit` and closes modal on success. A `s
 
 ---
 
+## Delete confirmation modal (`#del-confirm-modal`)
+
+`position: fixed` overlay (z-index 202 — above `#edit-modal`'s 201, since it can be opened from within it). Shared by both delete entry points — the Summary panel's Delete/Stop & Delete button (`doDelete()`) and the Edit modal's Delete/Stop & Delete button (`doEditDelete()`) — neither posts to `/api/delete` directly anymore; both call `showDeleteConfirm(title, poster, typeStr, isRec, onConfirm)` first, which populates and shows this modal and stashes `onConfirm` (`performSummaryDelete`/`performEditDelete` respectively — the functions that actually do the POST, previously the entire body of `doDelete()`/`doEditDelete()`) in the module-level `_delConfirmAction` var. Native precedent: `AppState.confirmAndDeleteShow(_:then:)` (see `docs/AppState.md`) already does the equivalent poster-fetch-then-`NSAlert` confirmation for the menu bar UI — this brings the web guide to parity, plus the recording-type line the native alert doesn't show.
+
+**Contents:**
+- Poster image (`#dc-poster`) — `poster` argument (Summary panel: `_poster||_logo`; Edit modal: `_editPoster`, itself `d.poster||d.logo||''` captured by `openEditShow()`); hidden entirely if empty or on load error, never left as a broken-image icon
+- `Delete "<title>"?` (falls back to `"this show"` if title is somehow empty)
+- `Type: <label>` — `typeLabel(typeStr)` looks `typeStr` (a `ShowState` raw value) up in the same `recOpts` table the Record/Edit modals' own Type row renders from, so this can never disagree with what those modals call each type
+- A warning line — `"This will stop the active recording. This cannot be undone."` when `isRec`, else just `"This cannot be undone."`
+- Cancel / Delete buttons — the confirm button is relabeled **"Stop & Delete"** when `isRec`, matching the triggering button's own label
+
+`cancelDeleteConfirm()` hides the modal and clears `_delConfirmAction` (also wired to a backdrop click, matching the other modals). `confirmDeleteConfirm()` (the confirm button) invokes and clears `_delConfirmAction` — the actual delete (POST + UI update) only ever runs from there, never from the triggering button's own click handler.
+
+---
+
 ## Recording playback relay — `/api/watch-recording?show={id}&start={byteOffset}`
 
 Lets `AppState.watchRecordingInApp(_:)` (`MenuContent`'s "Watch Now!" on an actively-recording show) play the in-progress recording without opening a second tuner. VLC's plain `file://` access module snapshots a file's length at open time and won't read past it even though curl keeps appending — so a direct `file://` URL onto a growing recording stalls/ends once playback catches up. This endpoint reframes the file as an open-ended HTTP response instead: no `Content-Length`, connection held open, bytes drip-fed as they land on disk — the same shape as the real HDHomeRun tuner stream, which VLC already handles.
@@ -746,9 +761,15 @@ instead pushes a single-device `tdrop`/`tdropDev` in its SSE event and the clien
 | `confirmRecord()` | Collects `airDays` from `#rm-days`, `transcode` from `#rm-transcode`, and the trimmed title from `#rm-title-in` (included only if edited); POSTs `/api/record`; on success: `.g-prog-rec` + `.g-st-rec` (red, pulsing) if `recStarted`, `.g-prog-sched` + `.g-st-sched` (blue) otherwise. Delete button becomes **"Stop & Delete"** (+ `danger` class) when `recStarted`, stays **"Remove"** otherwise. Updates tuner badge `#tun-{devId}` in place. No explicit `refreshGuide()` — `/api/record`'s broadcast SSE event covers the summary panel/dataset update. |
 | `updateDaysVisibility()` | Shows `#em-days-row` for `single` and `dateTime` types (label "Day"/"Days"); hides for series types |
 | `toggleDay(btn)` | Toggles a day-button selection in the edit modal; prevents deselecting the last selected day |
-| `doDelete()` | POSTs `/api/delete`; removes status/color classes from block, restores Record button; no explicit `refreshGuide()` — `deleteShow()` already broadcasts `show_deleted` over SSE |
-| `doEditFromGuide()` | Reads `data-show-*` attrs from selected `.g-prog` block; calls `openEditShow()` |
-| `openEditShow(el)` | Populates and opens `#edit-modal` from `el.dataset`; handles both guide blocks and schedule popover rows |
+| `doDelete()` | Gathers title/poster/type from the selected `.g-prog` block and calls `showDeleteConfirm(...)` with `performSummaryDelete` as the confirm action — does not POST directly. |
+| `performSummaryDelete()` | The actual delete: POSTs `/api/delete`; removes status/color classes from block, restores Record button; no explicit `refreshGuide()` — `deleteShow()` already broadcasts `show_deleted` over SSE |
+| `doEditDelete()` | Gathers title/`_editPoster`/`_editType` and calls `showDeleteConfirm(...)` with `performEditDelete` as the confirm action — does not POST directly. |
+| `performEditDelete()` | The actual delete: POSTs `/api/delete` with `showId:_editId`; closes the edit modal on success |
+| `showDeleteConfirm(title,poster,typeStr,isRec,onConfirm)` | Populates and opens `#del-confirm-modal` (poster image, `Delete "<title>"?`, `Type: <label>` via `typeLabel()`, and — when `isRec` — a "will stop the active recording" warning with the confirm button relabeled "Stop & Delete"); stores `onConfirm` in `_delConfirmAction` for `confirmDeleteConfirm()` to invoke. Shared by both `doDelete()` (Summary panel) and `doEditDelete()` (Edit modal), so the two delete entry points can never drift out of sync on what the confirmation shows. |
+| `cancelDeleteConfirm()` / `confirmDeleteConfirm()` | Hide `#del-confirm-modal`; the latter invokes and clears `_delConfirmAction` |
+| `typeLabel(t)` | Looks up a `ShowState` raw value in the same `recOpts` table the Record/Edit modals' Type row renders from, returning its short label (`t`, e.g. `"SeriesID(Channel)"`) — reuses that table specifically so the confirm dialog can never disagree with what those modals call each type. |
+| `doEditFromGuide()` | Reads `data-show-*` attrs (including `poster`/`logo`) from selected `.g-prog` block; calls `openEditShow()` |
+| `openEditShow(el)` | Populates and opens `#edit-modal` from `el.dataset`, including `_editPoster=d.poster||d.logo||''` (used by `doEditDelete()`'s confirm dialog); handles both guide blocks and schedule popover rows |
 | `closeEditShow()` | Hides `#edit-modal` |
 | `confirmEdit()` | POSTs `/api/edit`; closes modal on success; no explicit `refreshGuide()` — `handleEdit`'s `updateShow` already broadcasts `show_updated` over SSE |
 | `setDev(id)` | Filters guide rows by `data-dev`; empty string = deduped single-device fallback (multi-tuner bootstraps to a real `defaultDev`, not `''`); uses cached `_rows` NodeList; calls `applyGenreDim()` then shows/hides `.g-fav-sep`/`.g-rec-sep` separators. Also applies `.d-sel` (blue "selected" highlight) to the matching `.d-btn` — for empty `id`, that's the sole online tuner box (only ever one at that point, since a real `defaultDev` is used whenever there's more than one) rather than none, so single-device setups don't read as nothing-selected |
