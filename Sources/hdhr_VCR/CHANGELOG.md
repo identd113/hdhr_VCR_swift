@@ -4,6 +4,8 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 
 ## Unreleased
 
+## v2.0.5 — 2026-08-22
+
 **Added**
 - **New Settings → Recording → Post-Processing option: "Write metadata sidecar."** When enabled, each recording gets a matching Kodi-style `.nfo` file (same folder, same name) with the guide's episode title, season/episode, air date, synopsis, genre, and runtime — metadata that was otherwise fetched once for scheduling and then thrown away. Useful if your recordings get picked up by a media server afterward. Off by default; a write failure is logged but never affects the recording itself.
 - **A show now automatically pauses itself when its assigned tuner isn't detected**, instead of silently sitting there scheduled against a tuner that isn't there (which previously logged a warning on every 10-second tick, forever). The moment that same tuner is seen again — whether it was a real device that dropped offline or one that was never actually reachable — the show automatically un-pauses. This never touches a show you paused yourself, or one paused for repeated recording failures; only a show this mechanism paused gets automatically resumed by it.

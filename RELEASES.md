@@ -6,6 +6,55 @@ What's new in each version. For the fuller list of changes within a version, see
 
 ---
 
+## v2.0.5 (2026-08-22)
+
+### Added
+- **Metadata sidecar (.nfo) files for recordings** — Settings → Recording → Post-Processing gains
+  "Write metadata sidecar," writing a Kodi-style `.nfo` with episode title, season/episode, air
+  date, synopsis, genre, and runtime next to each recording. Off by default.
+- **Shows auto-pause when their tuner isn't detected, and auto-resume once it reappears** — instead
+  of silently sitting scheduled against a tuner that isn't there. Never touches a show you paused
+  yourself.
+- **Release builds are now universal** (Apple Silicon + Intel) — Intel Macs can run hdhrVCRplus
+  starting with this release.
+- **In-app player: true fullscreen (Esc to exit), arrow-key seeking (15s back / 30s forward), and
+  labeled toolbar buttons.**
+- Settings → Advanced gained Export/Import Config buttons for copying your setup to another
+  machine.
+
+### Removed
+- Settings → Maintenance no longer offers "Install VLC"/"Install HDHomeRun CLI" via Homebrew —
+  VLC detection is unaffected, just the install-it-for-me buttons.
+
+### Updated
+- **Watch Now and the VLC player no longer offer Record for paid programming** (infomercials, home
+  shopping), matching the web guide's existing behavior.
+- **Fixed a series show getting stuck re-skipping the same already-recorded rerun every ~10
+  seconds** for its entire time slot, spamming duplicate notifications.
+- **Fixed: a recording interrupted partway through (crash, forced restart, reboot) could be
+  permanently mistaken for a complete recording** with "Skip already-recorded episodes" on — the
+  completeness check now compares against that series' own real recorded file sizes instead of a
+  flat guess, so a truncated file is correctly retried next time it airs.
+- **Fixed: watching an in-progress recording never showed its poster image or synopsis** in the
+  player overlay.
+- **Fixed: an already-recorded duplicate being skipped showed a false "Recording now" ring** on the
+  web guide and Watch Now for its entire time slot.
+- Hardened the LAN web server so a slow/stalled recording drive can no longer freeze guide loads or
+  live updates for other devices on the network.
+- The web guide's Summary panel now often has poster/synopsis ready the instant you click a tile,
+  thanks to a hover-triggered prefetch.
+- A "record all airings" series show without SeriesID data (e.g. some local news) no longer
+  silently flips between simulcast channels on different guide reloads.
+- Assorted smaller fixes: the menu bar's series "Upcoming" preview no longer shows an airing on a
+  tuner the show would never actually record from; a resumed-from-pause show properly re-arms its
+  heads-up notifications; a completed recording now drops out of the guide's "Recording" section
+  immediately instead of waiting for the next unrelated refresh; a single-tuner setup's tuner popover
+  now opens on the first click.
+
+Full change list: [CHANGELOG.md](Sources/hdhr_VCR/CHANGELOG.md)
+
+---
+
 ## v2.0.4 (2026-08-15)
 
 ### Added
