@@ -16,7 +16,13 @@ No subscription. No media server. No cloud account. Just your tuner, your Mac, a
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 [![Proven since 2016](https://img.shields.io/badge/proven%20since-2016-lightgrey)](https://github.com/identd113/hdhr_VCR-AS)
 
-**⬇️ [Download v2.0.5](https://github.com/identd113/hdhr_VCR_swift/releases/download/v2.0.5/hdhrVCRplus-2.0.5.zip)** — universal binary (Apple Silicon + Intel), metadata sidecar (.nfo) recordings, auto-pause on missing tuner, true fullscreen player. **[📋 Release Notes](RELEASES.md)** for the full list, every version.
+### 📦 Latest: [v2.0.5](https://github.com/identd113/hdhr_VCR_swift/releases/download/v2.0.5/hdhrVCRplus-2.0.5.zip)
+- Universal binary — now runs natively on Apple Silicon and Intel Macs
+- Metadata sidecar (.nfo) files for recordings
+- Shows auto-pause when their tuner isn't detected, auto-resume once it reappears
+- True fullscreen player, arrow-key seeking, labeled toolbar buttons
+
+**[📋 Release Notes](RELEASES.md)** — what's new in each version, with download links.
 
 ---
 
