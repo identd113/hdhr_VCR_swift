@@ -226,7 +226,7 @@ func clearRecordingSeek()                                     // clears recordin
 func setDrawable(_ view: NSView)                              // must be called before first play()
 func play(url: String)                                        // stop + switch to new URL; resets rate controller, hasError, isPlaying — synchronous call, but the actual libvlc stop/reconnect work runs on libvlcQueue (off the MainActor); see "Channel Switching (play)"
 func stop()                                                   // soft/resumable stop: stop + release media; cancels stats timer; clears hasError, isPlaying — deliberately leaves drawableView attached so a later play() renders immediately (used by the remote-Stop key); native stop work deferred to libvlcQueue
-func releasePlayer()                                          // full teardown; releases mediaPlayer; clears hasError, isPlaying, drawableView — window close only; ensurePlayer() must run before the next play(); native stop/release work deferred to libvlcQueue
+func releasePlayer()                                          // full teardown; releases mediaPlayer; clears hasError, isPlaying — window close only; ensurePlayer() must run before the next play(); native stop/release work deferred to libvlcQueue; retainedDrawable/drawableView are cleared separately, asynchronously, only after the libvlc release actually completes (see "retainedDrawable" below)
 func catchUpToLive()                                          // discard buffer, reconnect at live edge
 func videoNativeSize() -> CGSize?                             // pixel dims from libvlc_video_get_size; nil until decoding
 func setVolume(_ v: Int)                                      // 0–100
@@ -299,7 +299,7 @@ At most one URL is queued (last write wins). This is sufficient because `VLCPlay
 
 ## `retainedDrawable`
 
-`retainedDrawable: NSView?` holds a strong reference to the drawable `NSView` after `releasePlayer()` is called. libvlc dispatches video/drawable callbacks off the main thread; those callbacks can fire briefly after `libvlc_media_player_release` returns. If the NSView is deallocated while a callback is in flight, the result is a use-after-free crash. `retainedDrawable` keeps the view alive until the next `setDrawable` call (which replaces it) or until `ensurePlayer()` is called and attaches the same view to the new player.
+`retainedDrawable: NSView?` holds a strong reference to the drawable `NSView` after `releasePlayer()` is called. libvlc dispatches video/drawable callbacks off the main thread; those callbacks can fire briefly after `libvlc_media_player_release` returns. If the NSView is deallocated while a callback is in flight, the result is a use-after-free crash. `retainedDrawable`/`drawableView` are cleared by `releasePlayer()` itself only once the actual `libvlc_media_player_release` call on `libvlcQueue` has completed — not synchronously when `releasePlayer()` returns — and only if `mediaPlayer` is still nil at that point, so a fast reopen (`ensurePlayer()` attaching a new player to the same view before the async clear runs) isn't undone by a stale clear racing in afterward. Absent that reopen race, the view is otherwise kept alive until the next `setDrawable` call, which replaces it directly.
 
 ---
 

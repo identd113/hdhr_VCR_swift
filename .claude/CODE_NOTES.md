@@ -580,3 +580,52 @@ accuracy regresses right after app launch specifically.
   `recordedTagsRefreshLoop` polling (already the subject of a 2026-08-15 CODE_NOTES entry above)
   is the one still-open "polling where events could exist" item in this whole area — no new
   instances of that pattern found elsewhere.
+
+## 2026-08-22 — v2.0.5 pre-release full-diff review (v2.0.4..main, 62 commits)
+
+- Reviewed `git diff v2.0.4..main` (AppState/WebServer/GuideStore/VLCPlayerView/VLCBridge/
+  SettingsView/UpdateChecker/RecordingManager/HDHRManager/ChannelIconCache/DiscordNotifier/
+  ConfigManager/Models/guide.js) end to end plus a `swift build` of every touched file (clean, zero
+  warnings). Verdict: no hacks, no scope creep, no dead code, no new efficiency regressions — one
+  of the cleanest multi-commit ranges reviewed so far. Every non-trivial change carries a
+  load-bearing WHY comment; several are genuine bug fixes with real repro evidence cited inline
+  (VLCBridge.swift's `releasePlayer` use-after-free window on `retainedDrawable`/`drawableView`,
+  HDHRManager.swift's UDP-reply DeviceID-TLV-collapsing-duplicate-devices fix, AppState.swift's
+  truncated-recording-passing-as-"already recorded" floor found via a real 25-min-into-60
+  tuner-reboot case on 2026-08-22).
+- `Sources/hdhr_VCR/VLCBridge.swift` `releasePlayer()`: fixed a genuine use-after-free — previously
+  nilled `retainedDrawable`/`drawableView` synchronously before the async `libvlcQueue.async`
+  release ran, while libvlc can still dispatch drawable callbacks off-main after
+  `libvlc_media_player_release` returns. Now deferred into a `Task { @MainActor }` inside the
+  release completion, guarded by `self.mediaPlayer == nil` so a quick `ensurePlayer()` reopen that
+  legitimately reused the view in the meantime isn't torn down out from under it. Worth remembering
+  as the canonical example of "why teardown order matters here" if this file is touched again.
+- `Sources/hdhr_VCR/RecordingManager.swift:58-70` (spawn failure) and `Sources/hdhr_VCR/Models.swift`
+  (`RotatingLogFile` `FD_CLOEXEC`) / `RecordingManager.swift`'s `POSIX_SPAWN_CLOEXEC_DEFAULT`: this
+  release's fd-hygiene pass (commit a3b9174) is thorough — every spawned-child fd-inheritance path
+  (curl, log handles, the web server's listener socket) is now closed-on-exec by default, with only
+  the three explicitly-wired fds (stdin/stdout/stderr via `posix_spawn_file_actions`) surviving
+  exec. No gaps found on re-check.
+- Commit 23f4e28 ("remove: Homebrew install UI and PATH-prepend, per user request") deleted
+  `SettingsView.swift`'s `runBrew()`/`brewInstallRow` (spawned `/opt/homebrew/bin/brew` or
+  `/usr/local/bin/brew` to install VLC/hdhomerun_config) — this was previously catalogued in this
+  same notes file (2026-08-16 entry) as MAS blocker #4 / a second spawned-binary class beyond curl.
+  It is now gone; `docs/MAS_COMPLIANCE.md`/`TODO.md` should be checked next time either is read to
+  confirm that blocker entry was also removed there (not verified in this pass — out of scope for
+  a code-quality review, flagged for the docs-auditor angle instead).
+- `Sources/hdhr_VCR/ChannelIconCache.swift:25` / `Sources/hdhr_VCR/ChannelSignalStore.swift:25` —
+  the `.urls(for:in:)[0]` array-indexing hazard already catalogued in this file's earlier
+  (pre-2026-08-22) entry is still present unchanged; this range's own test-seam additions
+  (`init(cacheDir:)`/`init(appSupportDir:)`) touched the same lines but only added an `?? real-path`
+  test override, not a fix for the `[0]` vs `ConfigManager.swift:13`'s safer `.first ?? fallback`
+  pattern. Still accepted debt, still worth folding into the existing ISSUES.md entry next time
+  either file is touched for an unrelated reason.
+- `Sources/hdhr_VCR/Views/VLCPlayerView.swift`'s new fullscreen key monitor
+  (`VLCPlayerWindowManager.installKeyMonitor`) hardcodes NSEvent keyCodes 123/124 (arrow
+  left/right) and 53 (escape) with only inline comments identifying them, rather than named
+  constants — minor style nit, not flagged as a real issue since the comments are clear and this
+  is the only place in the codebase doing raw keyCode matching (no established constant to reuse).
+- `Sources/hdhr_VCR/Views/VLCPlayerView.swift`'s `fullScreenTopInset: CGFloat = 32` (native
+  title-bar reveal strip height estimate) is explicitly flagged by its own comment as an untuned
+  guess ("macOS doesn't expose the real strip height") — worth a follow-up glance after real visual
+  testing on the actual notarized build, not urgent.
