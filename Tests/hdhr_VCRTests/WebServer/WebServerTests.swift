@@ -5,6 +5,69 @@ import Foundation
 // he() coverage lives in WebServerHelperTests.swift (the canonical suite for the injection
 // boundary) — a per-character suite here duplicated it across files and was folded in.
 
+// MARK: - tdropDeviceIDs(state:) — ISSUES.md: tdrop SSE payload previously omitted
+// offline/undiscovered devices, so their dropdown went stale until a manual reload.
+
+@Suite("tdropDeviceIDs — offline/undiscovered device coverage")
+struct TdropDeviceIDsTests {
+
+    private func device(_ id: String, missedProbes: Int = 0) -> HDHRDevice {
+        var d = HDHRDevice(DeviceID: id, LocalIP: "10.0.0.1", BaseURL: "http://10.0.0.1",
+                            TunerCount: 2, FirmwareVersion: nil, DeviceAuth: nil)
+        d.missedProbes = missedProbes
+        return d
+    }
+
+    @MainActor
+    @Test func includesUsableDevice() {
+        let state = makeTestAppState(devices: [device("AAAAAAAA")])
+        let ids = WebServer().tdropDeviceIDs(state: state)
+        #expect(ids.contains("AAAAAAAA"))
+    }
+
+    // A device discovered but gone unreachable (missedProbes >= 3, so isAvailable == false)
+    // must still get a tdrop entry if a show references it — buildDevBarHTML renders a real
+    // dropdown box for it, so the SSE payload must cover it too.
+    @MainActor
+    @Test func includesOfflineDeviceWithShow() {
+        let offline = device("BBBBBBBB", missedProbes: 5)
+        let show = Show.blank(channel: "5.1", device: "BBBBBBBB")
+        let state = makeTestAppState(shows: [show], devices: [offline])
+        let ids = WebServer().tdropDeviceIDs(state: state)
+        #expect(ids.contains("BBBBBBBB"))
+    }
+
+    // A device never discovered at all (absent from state.devices) but referenced by a show —
+    // the "never comes back online to trigger a rebuild" case this fix specifically targets.
+    @MainActor
+    @Test func includesUndiscoveredDeviceWithShow() {
+        let show = Show.blank(channel: "9.1", device: "CCCCCCCC")
+        let state = makeTestAppState(shows: [show], devices: [])
+        let ids = WebServer().tdropDeviceIDs(state: state)
+        #expect(ids.contains("CCCCCCCC"))
+    }
+
+    // An offline/undiscovered device with no show referencing it gets no tuner box at all
+    // (buildDevBarHTML skips it — nothing to warn about), so no tdrop entry either.
+    @MainActor
+    @Test func excludesOfflineDeviceWithNoShow() {
+        let offline = device("DDDDDDDD", missedProbes: 5)
+        let state = makeTestAppState(devices: [offline])
+        let ids = WebServer().tdropDeviceIDs(state: state)
+        #expect(!ids.contains("DDDDDDDD"))
+    }
+
+    // A show with an empty hdhr_record (never assigned a tuner) must not leak an empty-string
+    // key into the payload.
+    @MainActor
+    @Test func ignoresEmptyDeviceIDFromUnassignedShow() {
+        let show = Show.blank(channel: "1.1", device: "")
+        let state = makeTestAppState(shows: [show], devices: [])
+        let ids = WebServer().tdropDeviceIDs(state: state)
+        #expect(!ids.contains(""))
+    }
+}
+
 // MARK: - timeRemaining(until:)
 
 @Suite("timeRemaining(until:) duration formatting")

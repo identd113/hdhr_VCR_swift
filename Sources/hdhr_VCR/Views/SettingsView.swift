@@ -411,7 +411,7 @@ struct SettingsView: View {
                 // of what's requested (confirmed in docs/HDHRFindings.md) — a higher setting would
                 // look accepted but never actually fetch further out, with no error surfaced.
                 Stepper(value: $draft.GuideHours, in: 1...28) {
-                    HStack { Text("Show next \(draft.GuideHours) hours"); InfoButton("How far ahead guide data is fetched and how long before it auto-refreshes. Longer windows let you schedule further out. Capped at 28h — the cloud guide API silently truncates single-call requests beyond ~29h.") }
+                    HStack { Text("Show next \(draft.GuideHours) hours"); InfoButton("How far ahead guide data is fetched. Longer windows let you schedule further out. Capped at 28h — the cloud guide API silently truncates single-call requests beyond ~29h. The guide itself always re-fetches every hour regardless of this setting, to roll the window forward and pick up any schedule changes.") }
                 }
                 Stepper(value: $draft.Series_scan_retry_hours, in: 1...24) {
                     HStack { Text("Series scan retry: \(draft.Series_scan_retry_hours) hr"); InfoButton("How long to wait before re-checking the guide when a series show has no matching air time yet.") }

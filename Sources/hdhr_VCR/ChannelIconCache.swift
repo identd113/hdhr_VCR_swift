@@ -11,6 +11,11 @@ actor ChannelIconCache {
     private var mem: [String: NSImage] = [:]
     private var failedURLs: Set<String> = []
     private let dir: URL
+    // De-dupes concurrent callers requesting the same cold URL — without this, several views
+    // referencing the same not-yet-cached icon (e.g. multiple shows sharing a station logo) could
+    // each miss the mem/disk cache checks below (this actor yields at the network await) and
+    // independently download + disk-write the same file.
+    private var inFlight: [String: Task<NSImage?, Never>] = [:]
 
     // cacheDir is a test seam only — production always passes nil and gets the real
     // ~/Library/Caches/. Same shape as ConfigManager(appSupportDir:); without this, any test
@@ -59,6 +64,18 @@ actor ChannelIconCache {
         if let hit = mem[urlString] { return hit }
         if failedURLs.contains(urlString) { return nil }
 
+        // A second (or third...) concurrent caller for the same cold URL awaits the same in-flight
+        // fetch instead of starting its own — see `inFlight`'s declaration for why.
+        if let existing = inFlight[urlString] {
+            return await existing.value
+        }
+        let task = Task<NSImage?, Never> { await self.fetchAndCache(urlString) }
+        inFlight[urlString] = task
+        defer { inFlight.removeValue(forKey: urlString) }
+        return await task.value
+    }
+
+    private func fetchAndCache(_ urlString: String) async -> NSImage? {
         let diskPath = dir.appendingPathComponent(cacheFileName(for: urlString))
 
         if let data = try? Data(contentsOf: diskPath),

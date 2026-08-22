@@ -807,3 +807,129 @@ Three bugs reported/found during a single interactive session, fixed and verifie
 ## Staleness check, 2026-08-10
 
 Every entry above that only had a prescriptive `**Fix:**` note (rather than a past-tense `**Resolution:**`) was individually re-verified against the current source before filing here — grepped for the described symptom and confirmed the described fix's actual code is present (or, for the FloatingGuideView/CableGuideView group, confirmed the file is gone entirely). Nothing in this file is guessed or assumed still-true from the original write-up.
+
+---
+
+## RESOLVED — A skip-eligible episode showed a false "Recording now" ring for its entire time slot
+
+**File:** `AppState.swift` — `pendingRecordingChannels(for:)`
+
+**Root cause**: `pendingRecordingChannels` treats any show with `show_next ≤ now < show_end` and `show_recording == false` as "about to start" (meant for the brief, normal startup lag between a show's scheduled time and `RecordingManager` actually flipping the flag). But when `Skip_recorded_episodes` is on and the on-air episode is already on disk, `startRecording` deliberately never flips `show_recording` — it logs `SKIP` and calls `scheduleNextAir`, which (since `GuideStore` checks the currently-airing episode first) just resolves back to the same still-airing episode, repeating every idle tick for the rest of that airing's window. The show sat in the "about to start" window indefinitely, misread as "recording" by both the web guide and Watch Now (both consume this same function) instead of showing the skip badge. Menu bar and tuner count were unaffected — they read the real `show_recording`/`recordingShows`, not this function.
+
+**Reported**: live, via a screenshot showing "Star Trek: The Next Generation" ringed red as "Recording now" in the web guide and Watch Now while the menu bar correctly listed it under Scheduled and the tuner count read 0/2 — confirmed against the log (`SKIP S05E14 — already recorded` repeating every ~10s tick for the full 8:00–9:00 PM window).
+
+**Resolution**: Added `willSkipCurrentAiring(_:)`, mirroring the exact skip-eligibility guard `startRecording` and `duplicateEpisodeTag(for:isSeries:baseDir:)` already use, and excluded it from `pendingRecordingChannels`. Verified live — the same episode now renders the slate `.g-st-skip` ring/badge instead of the false recording ring.
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+## RESOLVED — `ChannelIconCache.image(for:)` could double-download the same icon URL under concurrent requests
+
+**File:** `ChannelIconCache.swift` — `image(for:)`
+
+**Root cause**: flagged in ISSUES.md by the 2026-08-19 review sweep — the actor checked `mem`/`failedURLs`/on-disk cache all *before* its only `await` (`URLSession.shared.data(from:)`), and since the type is an `actor`, that await point makes the method reentrant: two overlapping calls for the same URL could both pass the miss checks before either wrote a result, each independently downloading and disk-writing the identical file.
+
+**Resolution**: turned out to already be fixed by an earlier pass this same day (part of a broader `WebServer`/`AppState` performance sweep, unrelated to this specific ISSUES.md entry at the time) — an `inFlight: [String: Task<NSImage?, Never>]` dict now de-dupes concurrent callers: a second caller for a URL already being fetched awaits the same in-flight `Task` instead of starting its own. Confirmed by reading the current code (`ChannelIconCache.swift:18,68-74`) that the fix fully closes the described race. No further code change needed here — just moving this entry out of the open-issues list to reflect reality.
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+## RESOLVED — Web guide's per-tuner dropdown could go permanently stale for offline/undiscovered devices
+
+**File:** `WebServer.swift` — `buildGuideRefreshPayload`, new `tdropDeviceIDs(state:)`
+
+**Root cause**: flagged by the 2026-08-19 review sweep — `buildGuideRefreshPayload` only built a `tdrop` (per-tuner dropdown) SSE payload entry for `state.usableDeviceIDs` (discovered *and* reachable), but `buildDevBarHTML` renders a real dropdown DOM element for two more categories per CLAUDE.md's "Web guide offline devices" invariant: a previously-discovered device gone unreachable, and a device referenced by some show's `hdhr_record` that was never discovered at all. `guide.js`'s `applyGuidePayload` only updates a dropdown whose device key is present in the pushed payload — never clears or flags a missing one — so either category's dropdown went stale after any edit/delete/pause/resume broadcast, permanently for a never-discovered device (it has no "come back online" moment to trigger a full rebuild).
+
+**Resolution**: added `tdropDeviceIDs(state:)`, unioning `state.usableDeviceIDs` with every show's `hdhr_record` (matching the device set `buildDevBarHTML` actually renders boxes for), and switched `buildGuideRefreshPayload`'s tdrop-building loop to iterate that instead of `usableDeviceIDs` alone. Build + full test suite pass.
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+## RESOLVED — The whole LAN web server ran on one serial queue, so a stalled disk read could freeze it for every client
+
+**File:** `WebServer.swift` — new `fileIOQueue`; `handleWatchRecording`, `streamGrowingFile`, `pumpGrowingFile`, new `handleGrowingFileChunk`
+
+**Root cause**: flagged by the 2026-08-19 review sweep — the single serial `queue` backed *everything*: accepting connections, all other clients' request/response I/O, SSE keepalives, and the Watch Now relay's synchronous `FileHandle`/`handle.readData(ofLength:)` disk reads. A slow/contended external or network-mounted recording volume stalling that read froze the entire web server — no guide loads, no `/api/record`/`/api/edit`, no SSE keepalives — for every other LAN client, not just the one streaming connection. Same architectural class as the already-fixed `RecordingManager.stop()` blocking-`waitpid` bug.
+
+**Resolution**: added a dedicated `fileIOQueue` (serial, `.utility`) for exactly the blocking file operations — `FileHandle` open/seek/`attributesOfItem`, `readData(ofLength:)`, `closeFile()` — while every actual `NWConnection` interaction (`send`) stays on the original `queue`. `pumpGrowingFile` now dispatches its read to `fileIOQueue`, then hops the result back to `queue` via the new `handleGrowingFileChunk` to continue the existing send/wait/recurse logic unchanged. `fileIOQueue` is itself serial, so concurrent Watch Now sessions' disk reads still queue relative to each other (fine — avoids disk thrashing) but no longer contend with the network queue at all, closing the freeze. Build + full test suite pass.
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+## RESOLVED — `GuideStore.buildIndex` never pruned `channelEntryIndex` for a channel dropped from a device's lineup
+
+**File:** `GuideStore.swift` — `buildIndex(deviceId:channels:)`
+
+**Root cause**: flagged by the 2026-08-19 review sweep (lower confidence/severity, self-limiting) — `buildIndex` explicitly dropped a device's stale `seriesIndex` entries before rebuilding, but only *overwrote* `channelEntryIndex` keys present in the new fetch, leaving a dropped channel's old `"device:channel"` entry lingering with stale data instead of being cleared — visible for up to the last fetch's `GuideHours` window (max ~28h) after the channel actually vanished.
+
+**Resolution**: added a prune step mirroring the existing `seriesIndex` one — computes the fresh fetch's channel-number set, then removes any existing `channelEntryIndex` key for this device whose channel isn't in that set. Added `entries_channelDroppedFromLineup_isPrunedNotStale` (`Tests/hdhr_VCRTests/Network/GuideStoreTests.swift`): loads a 2-channel guide, confirms both channels' entries exist, reloads the same device with one channel dropped, confirms the dropped channel's entries are gone and the remaining channel's are untouched. Build + full test suite pass.
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+## RESOLVED — `VLCPlayerWindowManager.open()` reused the player window across devices without updating the hosted view
+
+**File:** `Views/VLCPlayerView.swift` — `VLCPlayerWindowManager.open()`, new `hostingView` property
+
+**Root cause**: flagged by the 2026-08-19 review sweep — `VLCPlayerView` takes `device`/`initialURL` as immutable `let`s, set only when the hosting `NSHostingView` is first created. `open()`'s "already open" reuse path updated the window title and called `VLCBridge.shared.play(url:)` with the new stream, but never touched the already-hosted view's `device` — even though `AppState.watchInApp` explicitly supports switching devices on an already-open window. With 2+ tuners, opening Watch Now on Tuner A then switching to a Tuner B channel without closing the player window correctly switched playback, but left the visible channel picker/lineup/recording-relay rows/quick-record target/tuner-status poll all still referencing Tuner A — picking any channel afterward could play or schedule against the wrong tuner.
+
+**Resolution**: `VLCPlayerWindowManager` now keeps a typed `hostingView: NSHostingView<AnyView>?` reference. `open()` captures `deviceChanged = currentDeviceID != device.DeviceID` before overwriting `currentDeviceID`; on a reuse where the device actually changed, it swaps `hostingView.rootView` to a freshly-constructed `VLCPlayerView(device:initialURL:)` tagged `.id(device.DeviceID)` — the `.id()` forces SwiftUI to treat it as a genuinely new view identity (not an in-place property update), so `@State` resets and `.onAppear` re-fires the same setup a truly fresh window's first appearance does (audio devices, media-key targets, channel-picker pre-selection). A same-device reuse (the common case — just switching channels/streams) skips this entirely, relying on the existing `onChange(of: state.vlcCurrentURL)` re-sync path unchanged. `hostingView` is cleared in `playerWindowDidClose()` alongside `window`. Corrected `docs/VLCPlayerView.md`'s stale "device is fixed at window-open time, there is no device switching" claim, which directly contradicted this fix. Build + full test suite pass; no dedicated unit test (this is AppKit/NSWindow-level UI code with no existing seam for it in this test suite, matching TODO.md's note on why `WebServer.swift`/window-manager code is generally hard to unit test here) — a manual/live check is still worth doing next time the app is open with 2+ tuners.
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+## RESOLVED — Watching an in-progress recording never showed its poster/synopsis
+
+**File:** `Views/VLCPlayerView.swift` — `currentGuideEntry`
+
+**Root cause**: `AppState.watchRecordingInApp` (called identically by the menu bar's "Recording Now" submenu and by `WatchNowView`'s own "Watch Now!" button — both funnel through the exact same function with the exact same arguments) plays the recording via the local relay URL. `VLCPlayerView`'s channel picker represents that as a synthetic `LineupEntry` with `GuideNumber = "live:<showId>"` (`recordingChannelEntries`, so the picker can show/cycle recording rows the same way it does real channels) — `syncChannel(to:)` correctly resolves and selects this synthetic entry (confirmed live in the log: `syncChannel matched recording Live 11.1  The Tonight Show...`). But `currentGuideEntry` — the computed property the poster image and synopsis overlay both read — looked up `state.guideEntries(deviceId:channelNum:)` using that same synthetic `"live:<showId>"` string directly. Real guide data is keyed by actual channel numbers (`"11.1"`, etc.), so that lookup always missed, `currentGuideEntry` was always `nil` for the whole time a recording played, and the poster overlay stayed on its generic placeholder.
+
+**Reported**: live, after the user watched a recording via the menu bar and noticed the poster/summary panel was blank, unlike watching a live channel.
+
+**Resolution**: `currentGuideEntry` now checks whether `selectedChannel.GuideNumber` is one of these synthetic recording ids (`showId(fromLiveGuideNumber:)`, an existing helper in the same file) and, if so, resolves it back to the actual show's `show_channel` via `state.recordingShows` before doing the guide lookup — falling through to the original `ch.GuideNumber` unchanged for a normal live channel. Confirmed the fix compiles and the full 284-test suite passes; deployed.
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+## RESOLVED — Holding the new arrow-key seek caused repeated playback drops instead of a smooth rewind/skip
+
+**File:** `Views/VLCPlayerView.swift` — `VLCPlayerWindowManager.installKeyMonitor(for:)`
+
+**Root cause**: shipped the same day as the arrow-key seek feature itself. The key monitor committed a full `seekRecordingRelative(_:)` (a real recording-relay reconnect — new file handle, new HTTP connection, VLC re-buffers) on every `keyDown` event. macOS's key-repeat fires a `keyDown` roughly every 100-300ms while a key stays held, so holding left/right didn't scrub smoothly — it hammered the relay with that many reconnect-and-rebuffer cycles per second.
+
+**Reported**: user noticed "it would drop off every 5-6 seconds for 2 seconds" while recording/watching and asked to check the logs. Found a burst of 6 relay reconnects within a ~2-second window, each landing ~15s earlier than the last — exactly the left-arrow step size, confirming this was the arrow-key feature (likely being test-driven by holding the key) rather than a signal or network issue. `ChannelSignalStore`'s own SNQ history for the channel stayed flat at 98-100 throughout, ruling out a real tuner/reception problem.
+
+**Resolution**: the monitor now watches both `.keyDown` and `.keyUp`. `keyDown` only accumulates the delta into a new `pendingSeekDelta` instance var; the actual reconnect fires once, on `keyUp`, with the accumulated total. Mirrors the scrub-bar slider's own release-based commit (`onEditingChanged`) — accumulate locally while "held," commit once on release. `pendingSeekDelta` is also reset in `playerWindowDidClose()` in case a window closes mid-hold before a matching `keyUp` arrives. Full test suite (285 tests) passes; deployed.
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+## RESOLVED — Player toolbar stayed visible in fullscreen, competing with macOS's own menu-bar reveal
+
+**File:** `Views/VLCPlayerView.swift` — `body`, `WindowCloseObserver`
+
+**Root cause**: the toolbar had no notion of fullscreen state at all — it was just a normal, always-visible top `VStack` row, so entering true fullscreen (shipped the same day) left it permanently rendered at the top of the screen. macOS's own top-of-screen hover-reveal menu bar occupies that exact same real estate in fullscreen, so the two visually competed.
+
+**Reported**: live, the same day fullscreen shipped — "when full screen, the bar at the top disappears if I hover over it. It should disappear when full screen, but appear when cursor is brought up to that area."
+
+**Resolution**: `WindowCloseObserver` gained `windowDidEnterFullScreen`/`windowDidExitFullScreen` (posts a new `.vlcFullScreenChanged` notification with the state), observed by a new `@State isFullScreen` in `VLCPlayerView`. In windowed mode the toolbar is unchanged — a normal top row. In fullscreen, it moves into the video `ZStack` as a top-pinned overlay whose opacity is gated on `toolbarHovered`, set via `.onHover` on the toolbar itself (not the wrapping positioning `VStack`, so only hovering near the top reveals it, not anywhere over the video) — the same "opacity alone doesn't disable hit-testing on a hidden view" trick the recording scrub bar overlay already used at the bottom edge. Full test suite (293 tests) passes; deployed.
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+## LIKELY RESOLVED, NOT VISUALLY CONFIRMED — Fullscreen toolbar revealed but appeared empty
+
+**File:** `Views/VLCPlayerView.swift` — fullscreen toolbar overlay (`body`), new `fullScreenTopInset`
+
+**Root cause (reasoned, not directly observed)**: reported immediately after the fullscreen hover-reveal toolbar shipped — hovering near the top in fullscreen revealed *a* bar, but it looked empty. True `NSWindow` fullscreen still auto-reveals the window's own native title bar (traffic lights + title) as a system-drawn overlay when the cursor nears the top, and that overlay draws above app content — the toolbar, placed right at the video `ZStack`'s own top edge (y=0), most likely rendered underneath that native strip rather than actually being empty.
+
+**Resolution**: added `Self.fullScreenTopInset` (`32pt`) applied as top padding on the toolbar overlay's wrapping `VStack`, pushing both its visible position and its `.onHover` catch zone down far enough to clear the native strip instead of sitting behind it.
+
+**Not yet confirmed**: this environment has no way to screenshot the real running app's native windows, so this fix is reasoned from how AppKit's fullscreen title-bar reveal is known to behave, not verified against what was actually seen. The `32pt` offset is an estimate (macOS doesn't expose the reveal strip's real height as an API) and may need adjusting once actually looked at. Full test suite (293 tests) passes; deployed.
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+## RESOLVED — An interrupted recording could be permanently mistaken for a completed one
+
+**File:** `AppState.swift` — `recordedEpisodeTags(forTitle:baseDir:expectedMinutes:)`, `duplicateEpisodeTag(title:episodeTag:baseDir:expectedMinutes:)`
+
+**Root cause**: curl writes straight to the final `Title_SxxExx_channel_date.ts` filename from the first byte (`Show.outputPath`) — there's no rename-on-completion marker, so a file truncated by a crash/forced-restart/reboot mid-recording is indistinguishable *by name* from a finished one. The skip-already-recorded feature's on-disk scan only filtered out files under a flat ~1 MB as "crashed/zero-byte stubs" — a real HDHomeRun TS stream runs tens of MB per minute, so any interruption past the first several seconds sailed straight past that floor. With `Skip_recorded_episodes` + `Series_subfolder_enabled` on, the next attempt at that same `SxxExx` would see the truncated file, log `SKIP — already recorded`, and move on via `scheduleNextAir` — the truncated file was never replaced or retried.
+
+**Reported**: surfaced while investigating the "false recording ring" bug above — noticed the real on-disk file backing that investigation (`S05E14`, 779,661 KB) was legitimately complete, which raised the question of what happens when a file *isn't*.
+
+**Resolution**: `recordedEpisodeTags` gained an `expectedMinutes: Int = 0` parameter (default preserves the old flat-floor behavior for existing tests/callers with no duration handy). When a real duration is passed, the floor becomes `expectedMinutes * (~1.5 Mbps, a safe minimum even for the lowest-bitrate ATSC subchannel this app has recorded against, converted to bytes/minute) * 0.8` — the 20% fuzz applied only below the assumed-bitrate floor, since only the lower bound matters (a genuinely low-bitrate SD/subchannel recording must still pass). `expectedMinutes` is the show's own `show_length`, threaded through from all four real call sites (`startRecording`, the new `willSkipCurrentAiring`, `preferUnrecordedEpisode`'s closure, `WebServer.buildGuideGridHTML`'s `recordedTagsByShow`, `WatchNowView.refreshRecordedTags`, and `duplicateEpisodeTag(for:isSeries:baseDir:)`) — every episode of a series is assumed the same length, since a per-file guide lookup isn't available for old episodes. Full test suite (282 tests) passes unmodified, including the two suites (`RecordedEpisodeTagsTests`, `DuplicateEpisodeTagTests`) that directly exercise the old flat-floor behavior via the new parameter's default.
+
+**Follow-up (same day)**: the truncated file itself was still left sitting on disk under its original recording extension once `startRecording` decided to record over it — indistinguishable from a real recording to any media server pointed at the folder. `recordedEpisodeTags` gained a `renameTruncatedTag: String? = nil` parameter — when set (only `startRecording`'s call passes it, right before writing the fresh file), any file found below the size floor whose tag matches gets renamed in place to `.partial` (same directory walk already computing size/tag per file, no separate scan) instead of just being left uncounted. Nothing is deleted. Added two tests (`renameTruncatedTagRenamesOnlyTheMatchingBelowFloorFile`, `renameTruncatedTagLeavesAboveFloorFilesAlone`) confirming only the matching below-floor file is touched. Full suite (284 tests) passes.
+
+**Resolving commit**: pending (uncommitted at time of writing)

@@ -73,6 +73,32 @@ private let sampleGuideJSON = """
 ]
 """
 
+// Same device, only channel 5.1 (8.1 dropped from the lineup) — used to verify buildIndex prunes
+// channelEntryIndex for a vanished channel, not just seriesIndex.
+private let sampleGuideJSONChannelDropped = """
+[
+    {
+        "GuideNumber": "5.1",
+        "GuideName": "KVUE",
+        "Guide": [
+            {
+                "StartTime": 2000000000,
+                "EndTime":   2000003600,
+                "Title": "Local News",
+                "Synopsis": "Evening headlines"
+            },
+            {
+                "StartTime": 2000003600,
+                "EndTime":   2000007200,
+                "Title": "The Daily Show",
+                "SeriesID": "ds456",
+                "EpisodeTitle": "Episode A"
+            }
+        ]
+    }
+]
+"""
+
 // MARK: - URL building (stateless — no MockURLProtocol, can run concurrently)
 
 @Suite("GuideStore URL building")
@@ -220,6 +246,29 @@ struct GuideStoreMockNetworkTests {
             await store.load(for: device)
             let entries = store.entries(deviceId: device.DeviceID, channelNum: "99.9")
             #expect(entries.isEmpty)
+        }
+
+        // buildIndex must prune channelEntryIndex for a channel dropped from a device's lineup
+        // between fetches, not just leave the stale entry sitting there — mirrors the existing
+        // seriesIndex pruning. First load has 5.1+8.1; second (same device) has only 5.1.
+        @Test @MainActor func entries_channelDroppedFromLineup_isPrunedNotStale() async {
+            let store = GuideStore(session: makeSession())
+            let device = makeLocalDevice()
+            let before = Date(timeIntervalSince1970: 1_000_000_000)
+
+            MockURLProtocol.requestHandler = { req in
+                (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!)
+            }
+            await store.load(for: device)
+            #expect(store.entries(deviceId: device.DeviceID, channelNum: "8.1", after: before).count == 1)
+
+            MockURLProtocol.requestHandler = { req in
+                (okResponse(for: req.url!), sampleGuideJSONChannelDropped.data(using: .utf8)!)
+            }
+            await store.load(for: device)
+            #expect(store.entries(deviceId: device.DeviceID, channelNum: "8.1", after: before).isEmpty)
+            // 5.1 (still in the lineup) must be unaffected by the prune.
+            #expect(store.entries(deviceId: device.DeviceID, channelNum: "5.1", after: before).count == 2)
         }
     }
 

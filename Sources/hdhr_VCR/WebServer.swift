@@ -23,6 +23,16 @@ final class WebServer: @unchecked Sendable {
     private var stateCallback: ((String?) -> Void)?   // nil'd by stop() to silence spurious callbacks
     private var activePort: Int = 1980
     private let queue = DispatchQueue(label: "hdhrVCRplus.webserver", qos: .utility)
+    // Every NWConnection is started with `queue` (see handleConnection), so it backs everything —
+    // accepting connections, every other connection's request/response I/O, SSE keepalives — not
+    // just requests. The Watch Now recording relay's disk reads (handleWatchRecording →
+    // streamGrowingFile → pumpGrowingFile) are the one place this file does *blocking* synchronous
+    // I/O (FileHandle open/seek/readData) against a real filesystem that can stall (a slow/
+    // contended external or network-mounted recording volume) — routing that through `queue` would
+    // freeze the entire web server for every other LAN client for as long as the stall lasts, not
+    // just the one streaming connection. `fileIOQueue` isolates exactly that blocking work; actual
+    // NWConnection sends still happen on `queue`, same as everywhere else in this file.
+    private let fileIOQueue = DispatchQueue(label: "hdhrVCRplus.webserver.fileio", qos: .utility)
     private weak var appState: AppState?
 
     // SSE: open connections waiting for push events
@@ -43,6 +53,11 @@ final class WebServer: @unchecked Sendable {
     // ~1.5MB raw, and libcompression's DEFLATE pass over that costs ~30-60ms; recomputing it per
     // GET / (this page is fetched far more often than the guide actually changes) is pure waste.
     private var cachedHTMLGzip: Data? = nil
+    // The raw .gi innerHTML (buildGuideGridHTML's output) that fed the cache above — kept
+    // separately so GET /api/guide-refresh can reuse it instead of paying for another full
+    // buildGuideGridHTML pass on every hit; nil only before the first prebuildPageHTML ever runs,
+    // same as cachedHTML's own live-build fallback below.
+    private var cachedGridHTML: String? = nil
 
     // Separate cache for GET /vertical — identical grid/data, but with the vertical time-axis
     // <style> block included (see buildHTML(includeVerticalCSS:)) so portrait can transpose the
@@ -144,6 +159,7 @@ final class WebServer: @unchecked Sendable {
         // Computed once (it's the expensive part — 1300+ program blocks) and reused for both
         // variants below, which differ only in their <head>/<style>, not the grid itself.
         let grid = prebuiltGrid ?? buildGuideGridHTML(state: state)
+        cachedGridHTML = grid
         // These two still have to run serially — buildHTML reads MainActor-isolated `state`.
         let html = Data(buildHTML(state: state, prebuiltGrid: grid, includeVerticalCSS: false).utf8)
         // Skip building/caching the vertical variant on installs that have never actually hit
@@ -306,8 +322,16 @@ final class WebServer: @unchecked Sendable {
     // Push a recording state-change event with pre-built HTML fragments so connected clients
     // can update #sum-ph, the affected tuner's ▾ dropdown (#tdrop-{device}), and the guide
     // row recording dot without a full page fetch.
+    // `prebuiltGrid` lets a caller that's already building the grid for a paired
+    // broadcastGuideChangeEvent call (see broadcastRecordingStopped) hand it in here too, so the
+    // cache-refresh below reuses it instead of paying for buildGuideGridHTML a second time.
+    // `refreshPageCache` lets a caller that's about to immediately follow up with its own full
+    // rebuild (deleteShow, via broadcastRecordingStopped's alsoRebuildGrid: false) skip this
+    // cache refresh entirely, since the upcoming rebuild will already reflect the post-teardown
+    // state — this event's fragment fields are still broadcast either way.
     @MainActor
-    func broadcastRecordingEvent(type: String, channel: String, device: String, state: AppState) {
+    func broadcastRecordingEvent(type: String, channel: String, device: String, state: AppState,
+                                  prebuiltGrid: String? = nil, refreshPageCache: Bool = true) {
         // activeTunerCount folds in the in-app VLC stream + externally-used tuners (status.json),
         // so the pushed badge matches the page render instead of undercounting to recordings alone.
         let active = state.activeTunerCount(for: device)
@@ -326,7 +350,31 @@ final class WebServer: @unchecked Sendable {
         // full-page HTML (served to any *new* page load — a fresh tab, hard refresh, or reopening
         // the native Guide window) was previously only rebuilt on the hourly guide refresh, so a
         // just-started recording wouldn't show its marker until then. Keep it in sync here too.
-        prebuildPageHTML(state: state)
+        guard refreshPageCache else { return }
+        prebuildPageHTML(state: state, prebuiltGrid: prebuiltGrid)
+    }
+
+    // Combines the fragment-patch broadcast above with the full-grid broadcastGuideChangeEvent
+    // teardownRecordingState also needs (see its call site) — builds the grid once and shares it
+    // between both instead of each independently calling buildGuideGridHTML, which used to cost
+    // two full grid+gzip passes (1300+ program blocks each) for every recording stop.
+    // `alsoRebuildGrid: false` (deleteShow's use, when the show being torn down is about to be
+    // removed and re-broadcast anyway) skips the guide-change broadcast and its cache refresh
+    // entirely — that imminent follow-up rebuild will already reflect the post-teardown state, so
+    // this intermediate one would just be overwritten before any client could act on it.
+    @MainActor
+    func broadcastRecordingStopped(channel: String, device: String, state: AppState, alsoRebuildGrid: Bool = true) {
+        guard alsoRebuildGrid else {
+            broadcastRecordingEvent(type: "recording_stopped", channel: channel, device: device,
+                                     state: state, refreshPageCache: false)
+            return
+        }
+        let grid = buildGuideGridHTML(state: state)
+        broadcastRecordingEvent(type: "recording_stopped", channel: channel, device: device,
+                                 state: state, prebuiltGrid: grid)
+        broadcastGuideChangeEvent(type: "recording_stopped",
+                                   extra: ["channel": channel, "device": device],
+                                   state: state, prebuiltGrid: grid)
     }
 
     // Full grid + summary + per-tuner dropdown fragments — same shape /api/guide-refresh
@@ -334,12 +382,26 @@ final class WebServer: @unchecked Sendable {
     // a state change happens once server-side, not once per fetch. `prebuiltGrid` lets a
     // caller that already built the grid for another purpose (see
     // refreshPageAndBroadcastGuideChange) reuse it instead of rebuilding it a second time.
+    // Every device ID buildDevBarHTML renders a tuner box (and therefore a #tdrop-{id} dropdown
+    // element) for: usable (discovered + reachable) devices, plus any device referenced by a
+    // show's hdhr_record even when it's unusable or was never discovered at all — see CLAUDE.md's
+    // "Web guide offline devices" invariant. guide.js's applyGuidePayload only updates a dropdown
+    // whose device key is present in the pushed tdrop payload (never clears/flags a missing one),
+    // so buildGuideRefreshPayload must cover this same set — not just usableDeviceIDs — or an
+    // offline/undiscovered device's dropdown goes stale after an edit/delete/pause/resume and can
+    // never self-heal (a never-discovered device has no "come back online" moment to trigger a
+    // full rebuild).
+    @MainActor
+    func tdropDeviceIDs(state: AppState) -> Set<String> {
+        state.usableDeviceIDs.union(state.shows.map(\.hdhr_record).filter { !$0.isEmpty })
+    }
+
     @MainActor
     private func buildGuideRefreshPayload(state: AppState, prebuiltGrid: String? = nil) -> [String: Any] {
         let grid = prebuiltGrid ?? buildGuideGridHTML(state: state)
         let sumph = buildSumPhHTML(state: state)
         var tdropBodies: [String: String] = [:]
-        for dev in state.usableDeviceIDs {
+        for dev in tdropDeviceIDs(state: state) {
             tdropBodies[dev] = buildTunerShowsHTML(state: state, deviceId: dev)
         }
         return ["grid": grid, "sumph": sumph, "tdrop": tdropBodies]
@@ -432,9 +494,11 @@ final class WebServer: @unchecked Sendable {
         Task { @MainActor in
             // Only the show_id lookup and property read happen on the MainActor — both in-memory,
             // no I/O. The fileExists check and all of streamGrowingFile's disk I/O (FileHandle
-            // open/seek) are dispatched to `queue` below so a slow/contended recording volume
-            // can't stall the main thread on every watch-recording connection (including every
-            // scrub-bar commit, which reconnects through this same path).
+            // open/seek) are dispatched to `fileIOQueue` below (not `queue`, which every other
+            // client's request/response and SSE keepalive also runs on) so a slow/contended
+            // recording volume can't stall the main thread — or the rest of the web server — on
+            // every watch-recording connection (including every scrub-bar commit, which
+            // reconnects through this same path).
             // show_recording gates this on top of the path check: show_recording_path is set once
             // when recording starts and is never cleared when it ends, so without this a finished
             // recording's show_id (visible in plain data-show-id attributes across the served guide
@@ -446,9 +510,9 @@ final class WebServer: @unchecked Sendable {
                 return
             }
             let path = show.show_recording_path
-            self.queue.async {
+            self.fileIOQueue.async {
                 guard FileManager.default.fileExists(atPath: path) else {
-                    self.send(.notFound("recording not found"), on: conn)
+                    self.queue.async { self.send(.notFound("recording not found"), on: conn) }
                     return
                 }
                 self.streamGrowingFile(path: path, showId: showId, startOffset: startOffset, conn: conn)
@@ -456,9 +520,12 @@ final class WebServer: @unchecked Sendable {
         }
     }
 
+    // Called on fileIOQueue (see handleWatchRecording) — FileHandle open/seek/attributesOfItem
+    // can all block on a slow/contended volume, same reasoning as the read loop in
+    // pumpGrowingFile below. Hops back to `queue` only for the actual NWConnection send.
     private func streamGrowingFile(path: String, showId: String, startOffset: Int, conn: NWConnection) {
         guard let handle = FileHandle(forReadingAtPath: path) else {
-            send(.notFound("could not open recording file"), on: conn)
+            queue.async { self.send(.notFound("could not open recording file"), on: conn) }
             return
         }
         var initialBytes = 0
@@ -473,23 +540,30 @@ final class WebServer: @unchecked Sendable {
         }
         let header = "HTTP/1.1 200 OK\r\nContent-Type: video/mp2t\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\n\r\n"
         glog("[WebServer] watch-recording OPEN show=\(showId) path=\(path) startOffset=\(initialBytes)")
-        conn.send(content: Data(header.utf8), completion: .contentProcessed({ [weak self] err in
-            guard let self, err == nil else {
-                handle.closeFile()
-                glog("[WebServer] watch-recording header send failed show=\(showId): \(String(describing: err))", level: .warning)
-                return
-            }
-            self.pumpGrowingFile(handle: handle, showId: showId, conn: conn,
-                                  bytesSent: initialBytes, waitStreak: 0, waitStartedAt: nil)
-        }))
+        queue.async {
+            conn.send(content: Data(header.utf8), completion: .contentProcessed({ [weak self] err in
+                guard let self, err == nil else {
+                    self?.fileIOQueue.async { handle.closeFile() }
+                    glog("[WebServer] watch-recording header send failed show=\(showId): \(String(describing: err))", level: .warning)
+                    return
+                }
+                self.pumpGrowingFile(handle: handle, showId: showId, conn: conn,
+                                      bytesSent: initialBytes, waitStreak: 0, waitStartedAt: nil)
+            }))
+        }
     }
 
     // 200 MPEG-TS packets (188 bytes each) per read — keeps TS packet alignment without
     // materially affecting latency.
     private static let watchRecordingChunkSize = 188 * 200
 
-    // Recurses via queue.async / queue.asyncAfter rather than looping in place, so each step
-    // yields back to the network queue between file reads and socket sends.
+    // Runs on `queue` (called from streamGrowingFile's send completion, or its own recursive
+    // re-entry points below — both always on `queue`). Only the conn.state check and orchestration
+    // happen here; the actual blocking handle.readData(ofLength:) is dispatched to fileIOQueue via
+    // handleGrowingFileChunk's continuation, so a stalled/contended recording volume only stalls
+    // this one relay connection, never the whole web server. Recurses via fileIOQueue.async (read)
+    // → queue.async (send) rather than looping in place, so each step yields back to both queues
+    // between file reads and socket sends.
     private func pumpGrowingFile(handle: FileHandle, showId: String, conn: NWConnection,
                                   bytesSent: Int, waitStreak: Int, waitStartedAt: Date?) {
         // Checked once per recursion (covers both the "have data" and "waiting" paths below) —
@@ -499,12 +573,26 @@ final class WebServer: @unchecked Sendable {
         switch conn.state {
         case .cancelled, .failed:
             glog("[WebServer] watch-recording show=\(showId) connection no longer alive at \(bytesSent) bytes — stopping")
-            handle.closeFile()
+            fileIOQueue.async { handle.closeFile() }
             return
         default:
             break
         }
-        let chunk = handle.readData(ofLength: Self.watchRecordingChunkSize)
+        fileIOQueue.async { [weak self] in
+            guard let self else { return }
+            let chunk = handle.readData(ofLength: Self.watchRecordingChunkSize)
+            self.queue.async {
+                self.handleGrowingFileChunk(chunk, handle: handle, showId: showId, conn: conn,
+                                             bytesSent: bytesSent, waitStreak: waitStreak, waitStartedAt: waitStartedAt)
+            }
+        }
+    }
+
+    // The continuation of pumpGrowingFile once a chunk (or an empty read, meaning "caught up to
+    // EOF for now") comes back from fileIOQueue — always runs on `queue`, same as the rest of this
+    // file's connection handling.
+    private func handleGrowingFileChunk(_ chunk: Data, handle: FileHandle, showId: String, conn: NWConnection,
+                                         bytesSent: Int, waitStreak: Int, waitStartedAt: Date?) {
         guard !chunk.isEmpty else {
             // Caught up to what curl has written so far — poll until either more data lands or
             // the recording finishes, instead of ending the stream the moment we hit today's EOF.
@@ -522,7 +610,7 @@ final class WebServer: @unchecked Sendable {
                     }
                 } else {
                     glog("[WebServer] watch-recording show=\(showId) recording finished, drained \(bytesSent) bytes — closing stream")
-                    handle.closeFile()
+                    self.fileIOQueue.async { handle.closeFile() }
                     conn.cancel()
                 }
             }
@@ -537,7 +625,7 @@ final class WebServer: @unchecked Sendable {
         }
         conn.send(content: chunk, completion: .contentProcessed({ [weak self] err in
             guard let self, err == nil else {
-                handle.closeFile()
+                self?.fileIOQueue.async { handle.closeFile() }
                 glog("[WebServer] watch-recording show=\(showId) client disconnected after \(newTotal) bytes: \(String(describing: err))")
                 return
             }
@@ -762,7 +850,12 @@ final class WebServer: @unchecked Sendable {
             return .ok(contentType: "application/json", body: pingBody)
 
         case "/api/guide-refresh":
-            return jsonResponse(buildGuideRefreshPayload(state: state))
+            // Reuses the grid built by the most recent guide-changing broadcast (kept fresh by
+            // prebuildPageHTML, called from every one of those) instead of paying for another
+            // full buildGuideGridHTML pass here — this route is only ever a fallback for an SSE
+            // event type that didn't already carry the grid inline (see guide.js's refreshGuide),
+            // so nothing between that broadcast and this request could have changed it.
+            return jsonResponse(buildGuideRefreshPayload(state: state, prebuiltGrid: cachedGridHTML))
 
         case "/api/now.json":
             let data = buildNowJSON(state: state)
@@ -1383,7 +1476,8 @@ final class WebServer: @unchecked Sendable {
         if skipEnabled {
             for s in activeMgd where s.isSeries {
                 let safe = s.show_title.replacingOccurrences(of: "/", with: "-")
-                recordedTagsByShow[s.show_id] = state.recordedEpisodeTags(forTitle: safe, baseDir: s.posixRecordDir)
+                recordedTagsByShow[s.show_id] = state.recordedEpisodeTags(forTitle: safe, baseDir: s.posixRecordDir,
+                                                                            expectedMinutes: s.show_length)
             }
         }
         // ── Guide grid rows ────────────────────────────────────────────────────

@@ -225,6 +225,19 @@ final class GuideStore {
         }
         seriesIndex = seriesIndex.filter { !$1.isEmpty }
 
+        // Drop this device's channelEntryIndex keys for channels no longer in the fresh fetch —
+        // same idea as the seriesIndex prune above. Without this, a channel dropped from a
+        // device's lineup between fetches left its old "device:channel" entry lingering with
+        // stale data instead of being cleared, for up to the last fetch's GuideHours window.
+        let freshChannelNumbers = Set(channels.map(\.GuideNumber))
+        let devicePrefix = "\(deviceId):"
+        for key in channelEntryIndex.keys where key.hasPrefix(devicePrefix) {
+            let channelNum = String(key.dropFirst(devicePrefix.count))
+            if !freshChannelNumbers.contains(channelNum) {
+                channelEntryIndex.removeValue(forKey: key)
+            }
+        }
+
         glog("[\(deviceId)] buildIndex: \(channels.count) channels")
 
         // Sort each channel's Guide in-place so consumers read pre-sorted data.
@@ -461,17 +474,21 @@ final class GuideStore {
             return SeriesMatch(deviceId: deviceId, channelNum: channelNum, entry: entry)
         }
         // titleFallbackScanKeys gives a fixed lineup order (not channelEntryIndex's arbitrary
-        // dictionary order), so the stable sort below resolves a multi-channel StartTime tie
-        // (e.g. a simulcast) the same way on every call instead of flipping across guide rebuilds.
+        // dictionary order), so picking the *first* minimal-StartTime candidate below resolves a
+        // multi-channel StartTime tie (e.g. a simulcast) the same way on every call instead of
+        // flipping across guide rebuilds — min(by:) returns the first-encountered minimum on a
+        // tie, matching what the old full sort + prefix(while:) produced, in one O(n) pass instead
+        // of an O(n log n) sort + materialize.
         let candidates = titleFallbackScanKeys(deviceId: deviceId).flatMap { channelEntryIndex[$0] ?? [] }
             .filter { $0.StartTime > epoch && Show.seriesTitle(from: $0.Title) == title
                 && (channelNum == nil || $0.channelNum == channelNum) }
-            .sorted { $0.StartTime < $1.StartTime }
-        guard let first = candidates.first else { return nil }
+        guard let first = candidates.min(by: { $0.StartTime < $1.StartTime }) else { return nil }
         guard isNotRecorded != nil || isFavorite != nil else {
             return SeriesMatch(deviceId: first.deviceId, channelNum: first.channelNum, entry: first)
         }
-        let tied = Array(candidates.prefix(while: { $0.StartTime == first.StartTime }))
+        // filter (order-preserving) over the unsorted candidates gives the same relative order as
+        // the old sorted+prefix(while:) did for the tied subset.
+        let tied = candidates.filter { $0.StartTime == first.StartTime }
         guard tied.count > 1 else {
             return SeriesMatch(deviceId: first.deviceId, channelNum: first.channelNum, entry: first)
         }

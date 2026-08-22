@@ -170,14 +170,39 @@ final class AppState: ObservableObject {
     // (buildGuideGridHTML's isConflict / WatchNowView's guideRingState both gate on !isRecording).
     // Falling through here lets it resolve to whatever's actually true — scheduled or conflict —
     // instead of a false "recording". See issues_resolved.md for the original find.
+    //
+    // Also excludes a show whose currently-airing episode will be skipped as an already-recorded
+    // duplicate (willSkipCurrentAiring below, added 2026-08-21) — same reasoning as the retry-
+    // backoff exclusion above: show_recording never flips true there either, deliberately, so it
+    // must resolve to the skip badge instead of a false "recording".
     func pendingRecordingChannels(for deviceId: String) -> Set<String> {
         let now = Date()
         return Set(shows.filter {
             $0.show_active && !$0.show_paused && !$0.show_recording &&
             $0.hdhr_record == deviceId &&
             ($0.show_next ?? .distantFuture) <= now && ($0.show_end ?? .distantPast) > now &&
-            (showRetryAfter[$0.show_id].map { $0 <= now } ?? true)
+            (showRetryAfter[$0.show_id].map { $0 <= now } ?? true) &&
+            !willSkipCurrentAiring($0)
         }.map { $0.show_channel })
+    }
+    // A show whose currently-airing episode will be skipped as an already-recorded duplicate (see
+    // startRecording's own SKIP branch) sits in its show_next...show_end window indefinitely —
+    // show_recording never flips true, since it's deliberately never started — which is the same
+    // shape pendingRecordingChannels above otherwise reads as "about to start" startup lag. Without
+    // this exclusion, a skip-eligible airing reads as "recording" on the web guide and Watch Now
+    // (both consume pendingRecordingChannels) for its entire window instead of showing the skip
+    // badge. Mirrors the exact guard `duplicateEpisodeTag(for:isSeries:baseDir:)` uses for the
+    // Add/Edit dialog's live duplicate warning, just synchronous — this is a per-grid-rebuild hot
+    // path, not a live-typing debounce, so there's nothing to gain by detaching the disk scan here
+    // the way that UI helper does. Reported 2026-08-21.
+    private func willSkipCurrentAiring(_ show: Show) -> Bool {
+        guard config.Skip_recorded_episodes, config.Series_subfolder_enabled, show.isSeries,
+              !show.show_ignore_duplicate_once,
+              let tag = guideEntryForShow(show)?.EpisodeNumber,
+              tag.range(of: #"^S\d+E\d+$"#, options: [.regularExpression, .caseInsensitive]) != nil
+        else { return false }
+        return duplicateEpisodeTag(title: show.show_title, episodeTag: tag, baseDir: show.posixRecordDir,
+                                    expectedMinutes: show.show_length) != nil
     }
     // Discovered AND reachable — the web guide treats these as "active" tuners.
     var usableDeviceIDs: Set<String> { Set(devices.filter { $0.isAvailable }.map { $0.DeviceID }) }
@@ -1176,8 +1201,10 @@ final class AppState: ObservableObject {
         guard !show.show_ignore_duplicate_once else { return nil }
         let title = show.show_title
         let baseDir = show.posixRecordDir
+        let expectedMinutes = show.show_length
         return { [weak self] entry in
-            self?.duplicateEpisodeTag(title: title, episodeTag: entry.EpisodeNumber ?? "", baseDir: baseDir) == nil
+            self?.duplicateEpisodeTag(title: title, episodeTag: entry.EpisodeNumber ?? "", baseDir: baseDir,
+                                       expectedMinutes: expectedMinutes) == nil
         }
     }
 
@@ -1286,6 +1313,16 @@ final class AppState: ObservableObject {
     // without this guard, two overlapping idleLoop() runs could both act on `shows` at once.
     private var idleLoopRunning = false
 
+    // Fast path for idleLoop's per-iteration show_id re-resolution below: `shows` usually hasn't
+    // mutated since `hint` was captured (no interleaved add/delete landed during the loop's last
+    // await), so checking that one index first turns the common case from an O(n) linear scan
+    // into O(1) — never trusts the hint blindly, so it's exactly as safe as the plain
+    // `firstIndex(where:)` it replaces, just faster when the hint still holds.
+    private func resolveShowIndex(_ showId: String, hint: Int) -> Int? {
+        if hint < shows.count, shows[hint].show_id == showId { return hint }
+        return shows.firstIndex(where: { $0.show_id == showId })
+    }
+
     func idleLoop() async {
         guard !idleLoopRunning else { return }
         idleLoopRunning = true
@@ -1318,11 +1355,17 @@ final class AppState: ObservableObject {
             // back) — but the log line is real signal, so auto-pausing intentionally still logs it
             // once, right here, instead of dropping it.
             let usable = usableDeviceIDs   // hoisted — both loops below would otherwise rebuild this Set from `devices` on every show they check
+            // Neither loop below awaits between iterations, so several shows can flip pause state
+            // back-to-back within this one tick — applyPause/applyResume defer their broadcast
+            // (broadcast: false) and a single combined pushShowUpdate after both loops sends one
+            // full guide-grid rebuild for the whole batch instead of one per show.
+            var tunerAvailabilityBroadcast: (channel: String, device: String)? = nil
             for show in activeShows where !show.hdhr_record.isEmpty && !usable.contains(show.hdhr_record) {
                 guard let i = shows.firstIndex(where: { $0.show_id == show.show_id }) else { continue }
                 glog("[\(show.show_title)] tuner \(show.hdhr_record) not detected — auto-pausing until it's seen again", level: .warning)
-                applyPause(index: i, reason: Self.autoPauseTunerMissingReason)
+                applyPause(index: i, reason: Self.autoPauseTunerMissingReason, broadcast: false)
                 dirty = true
+                tunerAvailabilityBroadcast = (shows[i].show_channel, shows[i].hdhr_record)
             }
             // Symmetric auto-resume: a show this same mechanism previously auto-paused (identified
             // by the exact marker above, never a user's own manual pause or a fail-threshold pause)
@@ -1336,8 +1379,12 @@ final class AppState: ObservableObject {
                                        && !show.hdhr_record.isEmpty && usable.contains(show.hdhr_record) {
                 guard let i = shows.firstIndex(where: { $0.show_id == show.show_id }) else { continue }
                 glog("[\(show.show_title)] tuner \(show.hdhr_record) detected again — auto-resuming")
-                applyResume(index: i)
+                applyResume(index: i, broadcast: false)
                 dirty = true
+                tunerAvailabilityBroadcast = (shows[i].show_channel, shows[i].hdhr_record)
+            }
+            if let (channel, device) = tunerAvailabilityBroadcast {
+                pushShowUpdate(type: "show_updated", channel: channel, device: device)
             }
 
             // Probe for newly-connected tuners every 5 minutes.
@@ -1380,13 +1427,13 @@ final class AppState: ObservableObject {
         // delete, another overlapping tick if the reentrancy guard above is ever bypassed). An
         // index captured before the loop started could be out of range or point at a different
         // show by the time it's used; re-resolving by show_id each iteration is always safe.
-        let stopIds = shows.indices.compactMap { i -> String? in
+        let stopEntries = shows.indices.compactMap { i -> (id: String, hint: Int)? in
             guard shows[i].show_active, shows[i].show_recording,
                   let end = shows[i].show_end, end <= now else { return nil }
-            return shows[i].show_id
+            return (shows[i].show_id, i)
         }
-        for showId in stopIds {
-            guard let i = shows.firstIndex(where: { $0.show_id == showId }),
+        for (showId, hint) in stopEntries {
+            guard let i = resolveShowIndex(showId, hint: hint),
                   shows[i].show_active, shows[i].show_recording,
                   let end = shows[i].show_end, end <= now else { continue }
             await stopRecording(index: i, natural: true)
@@ -1396,8 +1443,8 @@ final class AppState: ObservableObject {
         // Pass 2: per-show housekeeping — notifications, fail detection, stranded advance.
         // Same show_id re-resolution as Pass 1 above, for the same reason (this loop also awaits
         // scheduleNextAir at two points below).
-        for showId in shows.map({ $0.show_id }) {
-            guard let i = shows.firstIndex(where: { $0.show_id == showId }) else { continue }
+        for (hint, showId) in shows.map({ $0.show_id }).enumerated() {
+            guard let i = resolveShowIndex(showId, hint: hint) else { continue }
             let show = shows[i]
             guard show.show_active else { continue }
             let nextDate = show.show_next ?? .distantFuture
@@ -1772,7 +1819,8 @@ final class AppState: ObservableObject {
         // genuinely non-duplicate success to be misread as "this is the one that used the override".
         duplicateOverrideUsedThisAttempt.remove(show.show_id)
         if let tag = episodeTag,
-           duplicateEpisodeTag(title: show.show_title, episodeTag: tag, baseDir: show.posixRecordDir) != nil {
+           duplicateEpisodeTag(title: show.show_title, episodeTag: tag, baseDir: show.posixRecordDir,
+                                expectedMinutes: show.show_length) != nil {
             if show.show_ignore_duplicate_once {
                 duplicateOverrideUsedThisAttempt.insert(show.show_id)
             } else {
@@ -1784,6 +1832,12 @@ final class AppState: ObservableObject {
                 await scheduleNextAir(index: index)   // like a completed airing — no fail-count change
                 return
             }
+        } else if let tag = episodeTag, config.Skip_recorded_episodes,
+                  tag.range(of: #"^S\d+E\d+$"#, options: [.regularExpression, .caseInsensitive]) != nil {
+            // Get any truncated leftover for this tag out of the way before recording over it.
+            _ = recordedEpisodeTags(forTitle: show.show_title.replacingOccurrences(of: "/", with: "-"),
+                                     baseDir: show.posixRecordDir, expectedMinutes: show.show_length,
+                                     renameTruncatedTag: tag)
         }
         let path = show.outputPath(date: show.show_next ?? Date(), subfolder: seriesSubfolder, episodeTag: episodeTag)
         let recordDir = (path as NSString).deletingLastPathComponent
@@ -1823,7 +1877,14 @@ final class AppState: ObservableObject {
         }
         shows[index].show_recording = true; shows[index].show_recording_path = path
         failedThisAttempt.remove(show.show_id) // fresh attempt — any earlier FAIL no longer describes "this" recording
-        if config.Write_metadata_sidecar { writeMetadataSidecar(path: path, show: show, entry: guideEntry) }
+        // Fire-and-forget off @MainActor — nothing after this reads the sidecar file, and its own
+        // doc comment already treats a write failure as best-effort/non-fatal, so there's nothing
+        // for the caller to await.
+        if config.Write_metadata_sidecar {
+            Task.detached(priority: .utility) { [weak self] in
+                self?.writeMetadataSidecar(path: path, show: show, entry: guideEntry)
+            }
+        }
         webServer.broadcastRecordingEvent(type: "recording_started", channel: shows[index].show_channel, device: shows[index].hdhr_record, state: self)
         refreshTunerOccupancy()
         // Stamp notify_recording_time so the "Recording Soon" pre-notification won't re-fire
@@ -1864,7 +1925,7 @@ final class AppState: ObservableObject {
         pushShowUpdate(type: "show_updated", channel: channel, device: device, rebuildMenu: false)
     }
 
-    private func teardownRecordingState(index: Int) {
+    private func teardownRecordingState(index: Int, alsoRebuildGrid: Bool = true) {
         let show = shows[index]
         recordingManager.stop(showId: show.show_id)
         tunerStatus.removeValue(forKey: show.show_id)
@@ -1881,15 +1942,16 @@ final class AppState: ObservableObject {
                 Resource: tuners[idx].Resource, VctNumber: nil,
                 TargetIP: tuners[idx].TargetIP, SignalQualityPercent: tuners[idx].SignalQualityPercent)
         }
-        webServer.broadcastRecordingEvent(type: "recording_stopped", channel: show.show_channel, device: show.hdhr_record, state: self)
-        // broadcastRecordingEvent above only patches the ring/tuner-badge fragments in place — the
+        // broadcastRecordingEvent alone only patches the ring/tuner-badge fragments in place — the
         // web guide's Recording section is a physical row bucket decided once at grid-build time
         // (buildGuideGridHTML), so a channel that just stopped recording stayed stuck at the top
-        // until some *other* guide-changing event happened to rebuild it. Push a real rebuild here
-        // too so the row drops back to Favorites/its normal position immediately. Reported 2026-08-21.
-        webServer.broadcastGuideChangeEvent(type: "recording_stopped",
-                                             extra: ["channel": show.show_channel, "device": show.hdhr_record],
-                                             state: self)
+        // until some *other* guide-changing event happened to rebuild it. broadcastRecordingStopped
+        // pairs that fragment patch with a real grid rebuild (sharing one buildGuideGridHTML pass
+        // between them) so the row drops back to Favorites/its normal position immediately.
+        // Reported 2026-08-21. alsoRebuildGrid: false (deleteShow's use) skips that grid rebuild
+        // when the caller is about to remove the show and broadcast its own rebuild anyway.
+        webServer.broadcastRecordingStopped(channel: show.show_channel, device: show.hdhr_record,
+                                             state: self, alsoRebuildGrid: alsoRebuildGrid)
     }
 
     func stopRecording(index: Int, natural: Bool) async {
@@ -2293,7 +2355,14 @@ final class AppState: ObservableObject {
             // broadcast above fired immediately with pre-reschedule data, so on a type change
             // (e.g. seriesChannel → seriesAll) web guide viewers would otherwise keep seeing
             // stale schedule info until an unrelated event happened to trigger another push.
-            if let updated = self.shows.first(where: { $0.show_id == show.show_id }) {
+            // Skipped when scheduleNextAir left the show completely unchanged from what the
+            // broadcast above already sent (the common case — most edits don't move show_next/
+            // channel) since a second full grid rebuild would then be byte-for-byte identical to
+            // the first and pure waste. Show's full Equatable conformance is used rather than
+            // comparing individual fields so nothing scheduleNextAir might touch (show_next,
+            // show_end, show_channel, hdhr_record, show_url, show_genre, or the no-air-days
+            // pause path's show_paused/show_fail_reason) can be missed here.
+            if let updated = self.shows.first(where: { $0.show_id == show.show_id }), updated != show {
                 self.pushShowUpdate(type: "show_updated", channel: updated.show_channel, device: updated.hdhr_record)
             }
         }
@@ -2356,12 +2425,18 @@ final class AppState: ObservableObject {
     // changes (e.g. clearing a new show_id-keyed tracking dict per CLAUDE.md's rule). Deliberately
     // excludes saveConfig(): pauseShow/resumeShow call it once immediately per action, while
     // idleLoop batches it via its own `dirty` flag across a whole tick's worth of shows.
-    private func applyPause(index i: Int, reason: String) {
+    // `broadcast` lets idleLoop's auto-pause/auto-resume loops (no await between iterations, so
+    // several shows can be mutated back-to-back within one tick) defer the broadcast and send one
+    // combined pushShowUpdate after the whole batch instead of one full guide-grid rebuild per
+    // show. Manual pauseShow/resumeShow keep the default (immediate, single-show feedback).
+    private func applyPause(index i: Int, reason: String, broadcast: Bool = true) {
         shows[i].show_paused = true
         shows[i].show_fail_reason = reason
-        pushShowUpdate(type: "show_updated", channel: shows[i].show_channel, device: shows[i].hdhr_record)
+        if broadcast {
+            pushShowUpdate(type: "show_updated", channel: shows[i].show_channel, device: shows[i].hdhr_record)
+        }
     }
-    private func applyResume(index i: Int) {
+    private func applyResume(index i: Int, broadcast: Bool = true) {
         shows[i].show_paused = false
         shows[i].clearFailures()
         showRetryAfter.removeValue(forKey: shows[i].show_id)
@@ -2373,7 +2448,9 @@ final class AppState: ObservableObject {
         // genuinely open on some later tick, this doesn't force an immediate notification.
         shows[i].notify_upnext_time = nil
         shows[i].notify_recording_time = nil
-        pushShowUpdate(type: "show_updated", channel: shows[i].show_channel, device: shows[i].hdhr_record)
+        if broadcast {
+            pushShowUpdate(type: "show_updated", channel: shows[i].show_channel, device: shows[i].hdhr_record)
+        }
     }
 
     func pauseShow(_ show: Show) {
@@ -2395,7 +2472,10 @@ final class AppState: ObservableObject {
         // a bare recordingManager.stop() skipped all of that, leaving the web UI showing a
         // recording tuner for up to one idle-tick until the next hardware poll self-corrected.
         if let i = shows.firstIndex(where: { $0.show_id == show.show_id }), shows[i].show_recording {
-            teardownRecordingState(index: i)
+            // alsoRebuildGrid: false — the pushShowUpdate below rebuilds the grid again anyway
+            // once the show is actually removed, so teardown's own intermediate rebuild (still
+            // showing the about-to-be-deleted show, just no longer recording) would be pure waste.
+            teardownRecordingState(index: i, alsoRebuildGrid: false)
         } else {
             recordingManager.stop(showId: show.show_id)
         }
@@ -2654,7 +2734,9 @@ final class AppState: ObservableObject {
     }()
 
     // Finds the guide entry matching show_next for a given show, used to enrich Discord embeds.
-    private func seasonNumber(from epString: String) -> Int? {
+    // nonisolated — pure string parsing, no actor-isolated state touched; lets writeMetadataSidecar
+    // (which calls this) run from a detached background task too.
+    private nonisolated func seasonNumber(from epString: String) -> Int? {
         // Single case-insensitive pattern handles both S01E05 and bare S01; anchored to prevent mid-string false matches.
         guard let range = epString.range(of: #"^S(\d+)(?:E\d+)?$"#, options: [.regularExpression, .caseInsensitive]) else { return nil }
         let sub = epString[range].dropFirst()   // drop leading "S"
@@ -2662,8 +2744,8 @@ final class AppState: ObservableObject {
     }
 
     // Companion to seasonNumber(from:) — same anchored-then-scan style, requires a full S##E## tag
-    // (unlike seasonNumber, which also accepts a bare "S01").
-    private func episodeNumber(from epString: String) -> Int? {
+    // (unlike seasonNumber, which also accepts a bare "S01"). nonisolated for the same reason.
+    private nonisolated func episodeNumber(from epString: String) -> Int? {
         guard epString.range(of: #"^S\d+E(\d+)$"#, options: [.regularExpression, .caseInsensitive]) != nil,
               let eRange = epString.range(of: "E", options: [.caseInsensitive])
         else { return nil }
@@ -2672,13 +2754,18 @@ final class AppState: ObservableObject {
 
     // ISO date (Kodi's <aired> format) from a guide OriginalAirdate epoch. Fixed to UTC — the epoch
     // represents a calendar date with no meaningful time-of-day, so formatting in the local zone
-    // could roll it to the wrong day depending on the user's offset.
-    private static let nfoAirDateFormatter: DateFormatter = {
+    // could roll it to the wrong day depending on the user's offset. Built fresh per call rather
+    // than cached as a static — writeMetadataSidecar (this helper's one caller) is `nonisolated`
+    // and can run concurrently from more than one detached task at once (two shows starting close
+    // together), and DateFormatter isn't guaranteed safe for truly concurrent use from multiple
+    // threads; a per-call instance sidesteps that instead of relying on a shared MainActor-isolated
+    // static that a nonisolated function couldn't reference anyway.
+    private nonisolated func nfoAirDate(_ epoch: Int) -> String {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
         f.timeZone = TimeZone(identifier: "UTC")
-        return f
-    }()
+        return f.string(from: Date(timeIntervalSince1970: TimeInterval(epoch)))
+    }
 
     // Writes a Kodi-style <episodedetails> .nfo alongside a recording (same directory/basename,
     // ".nfo" extension) when Settings → Recording's "Write metadata sidecar" is on. The guide's
@@ -2687,7 +2774,13 @@ final class AppState: ObservableObject {
     // itself, so a downstream media server (Kodi natively; others via their own NFO readers) can
     // show real episode info instead of just the filename. Best-effort: a write failure is logged,
     // never treated as a recording failure.
-    private func writeMetadataSidecar(path: String, show: Show, entry: GuideEntry?) {
+    //
+    // nonisolated — touches no actor-isolated state (path/show/entry are all passed in by value),
+    // so the caller can dispatch it to a detached background task the same way
+    // duplicateEpisodeTag(for:isSeries:baseDir:) does for recordedEpisodeTags — startRecording's
+    // hot path used to block @MainActor on this synchronous file write, which on a slow-to-wake
+    // NAS/external recording drive could stall the whole app right as a recording is starting.
+    private nonisolated func writeMetadataSidecar(path: String, show: Show, entry: GuideEntry?) {
         func xmlEscape(_ s: String) -> String {
             s.replacingOccurrences(of: "&", with: "&amp;")
              .replacingOccurrences(of: "<", with: "&lt;")
@@ -2699,7 +2792,7 @@ final class AppState: ObservableObject {
         let episodeTitle = entry?.EpisodeTitle.flatMap { $0.isEmpty ? nil : $0 }
         let season = entry?.EpisodeNumber.flatMap(seasonNumber(from:)) ?? -1
         let episode = entry?.EpisodeNumber.flatMap(episodeNumber(from:)) ?? -1
-        let aired = entry?.OriginalAirdate.map { Self.nfoAirDateFormatter.string(from: Date(timeIntervalSince1970: TimeInterval($0))) }
+        let aired = entry?.OriginalAirdate.map(nfoAirDate)
         let genre = entry?.firstGenre
         var xml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<episodedetails>\n"
         xml += "  <title>\(xmlEscape(episodeTitle ?? show.show_title))</title>\n"
@@ -2722,9 +2815,26 @@ final class AppState: ObservableObject {
     /// scanning `<baseDir>/<safeTitle>` (flat files) plus each `Season NN` subfolder. Used by the
     /// skip-already-recorded feature (record-time skip + the web-guide SKIP pill). Reuses the same
     /// filename tag parsing (`episodeTag(inFilename:)`) as `organizeSeriesRecordings` so both stay
-    /// consistent. Files under
-    /// ~1 MB are treated as crashed/zero-byte stubs and ignored, so a prior failed attempt never
-    /// masks a real re-record.
+    /// consistent.
+    ///
+    /// A file must reach `minBytes` (see below) to count — otherwise a recording truncated by a
+    /// crash/restart mid-episode (curl writes straight to the final filename, no rename-on-
+    /// completion marker, so a truncated file is indistinguishable by name from a finished one)
+    /// would read as "already recorded" forever and never get retried. `expectedMinutes` (the
+    /// show's own `show_length` — every episode of a series is assumed the same length, since a
+    /// per-file guide lookup isn't available for old episodes) turns that into a duration-aware
+    /// floor: `expectedMinutes * minBytesPerMinuteFloor`, then 20% *below* that (only the lower
+    /// bound matters — a genuinely low-bitrate SD/subchannel recording must still pass) so a
+    /// borderline-legitimate file isn't mistaken for a truncated one. `expectedMinutes == 0`
+    /// (default — callers with no duration handy, and existing tests) falls back to the flat
+    /// ~1 MB-total floor this always had, unchanged. **`minBytes` is then raised further** to 80%
+    /// of the largest file this exact series has ever actually produced, if that's stricter — real
+    /// per-series bitrate varies far more than one assumed constant can track, so this alone missed
+    /// a substantially-recorded-but-still-incomplete file (found 2026-08-22: a tuner reboot cut a
+    /// recording off 25 minutes into a 60-minute show, leaving a 1.37 GB file against a ~3.4 GB
+    /// normal episode for that same series — comfortably above the assumed-bitrate floor, comfortably
+    /// below 80% of its own siblings). A series with no sibling yet (or whose only sibling(s) are
+    /// themselves truncated) falls back to the duration floor alone, unchanged.
     ///
     /// `nonisolated` — pure `FileManager` I/O, no actor-isolated state touched. Existing callers
     /// on `@MainActor` (`buildGuideGridHTML`, the synchronous `duplicateEpisodeTag` overload) are
@@ -2732,7 +2842,12 @@ final class AppState: ObservableObject {
     /// isolated context. What this enables is `duplicateEpisodeTag(for:isSeries:baseDir:)`
     /// invoking it from a detached background task instead, so a slow-to-wake external/NAS-backed
     /// recording drive can't block the whole app on @MainActor for that one call site.
-    nonisolated func recordedEpisodeTags(forTitle safeTitle: String, baseDir: String) -> Set<String> {
+    ///
+    /// `renameTruncatedTag` — when set, a below-`minBytes` file matching that tag is renamed to
+    /// `.partial` instead of just being skipped (not deleted). Used by `startRecording` to clear a
+    /// truncated leftover before recording over the same tag.
+    nonisolated func recordedEpisodeTags(forTitle safeTitle: String, baseDir: String, expectedMinutes: Int = 0,
+                                          renameTruncatedTag: String? = nil) -> Set<String> {
         let fm = FileManager.default
         let seriesDir = (baseDir as NSString).appendingPathComponent(safeTitle)
         // No recursive enumerator elsewhere in the codebase — walk exactly two levels: the title
@@ -2745,16 +2860,45 @@ final class AppState: ObservableObject {
                 if fm.fileExists(atPath: sub, isDirectory: &isDir), isDir.boolValue { dirs.append(sub) }
             }
         }
-        var tags = Set<String>()
+        // Single pass to collect every candidate's tag/size/path — needed before any pass/fail
+        // decision, since the floor below depends on the largest size seen across all of them.
+        var candidates: [(tag: String, size: Int, path: String)] = []
         for dir in dirs {
             guard let files = try? fm.contentsOfDirectory(atPath: dir) else { continue }
             for filename in files where Show.isRecordingFile(filename) {
                 guard let tag = episodeTag(inFilename: filename) else { continue }
                 let full = (dir as NSString).appendingPathComponent(filename)
                 let size = ((try? fm.attributesOfItem(atPath: full))?[.size] as? Int) ?? 0
-                if size < 1_000_000 { continue }   // ignore failed/stub files
-                tags.insert(tag.uppercased())
+                candidates.append((tag.uppercased(), size, full))
             }
+        }
+        // ~1.5 Mbps — a safe floor even for the lowest-bitrate ATSC subchannel this app has
+        // actually recorded against (well under typical HD bitrates), converted to bytes/minute.
+        // Only ever a fallback now (see below) — real per-series bitrate varies far more than a
+        // single assumed constant can track (confirmed 2026-08-22: a real series here runs
+        // ~7.6 Mbps, 5x this floor), so this alone let a substantially-recorded-but-still-
+        // incomplete file (a tuner reboot 25 minutes into a 60-minute show, not just an
+        // instant-fail stub) pass as "already recorded."
+        let minBytesPerMinuteFloor = 1_500_000.0 / 8 * 60
+        let durationFloor = max(1_000_000, Int(Double(expectedMinutes) * minBytesPerMinuteFloor * 0.8))
+        // Real evidence beats a guess once it exists: 80% of the largest file this series has
+        // actually produced is a channel-accurate floor no fixed bitrate constant can match, and
+        // it only ever raises the floor above durationFloor, never below it — a series with no
+        // sibling yet (or whose only sibling(s) are themselves truncated) falls back to
+        // durationFloor untouched, same behavior as before this pass.
+        let maxSiblingSize = candidates.map(\.size).max() ?? 0
+        let minBytes = max(durationFloor, Int(Double(maxSiblingSize) * 0.8))
+        let renameTarget = renameTruncatedTag?.uppercased()
+        var tags = Set<String>()
+        for c in candidates {
+            if c.size < minBytes {
+                if let renameTarget, c.tag == renameTarget {
+                    let renamed = (c.path as NSString).deletingPathExtension + ".partial"
+                    try? fm.moveItem(atPath: c.path, toPath: renamed)
+                }
+                continue   // ignore failed/stub/truncated files
+            }
+            tags.insert(c.tag)
         }
         return tags
     }
@@ -2763,13 +2907,15 @@ final class AppState: ObservableObject {
     /// tag, the skip-already-recorded feature is on, and a matching file already exists on disk for
     /// `title` — nil otherwise. Shared by the record-time skip in `startRecording` and the Add/Edit
     /// dialog's "already on disk" warning so both reflect the exact same on-disk check.
-    func duplicateEpisodeTag(title: String, episodeTag: String, baseDir: String) -> String? {
+    /// `expectedMinutes` — see `recordedEpisodeTags`'s doc comment; defaults to 0 (flat ~1 MB floor)
+    /// for callers with no duration handy.
+    func duplicateEpisodeTag(title: String, episodeTag: String, baseDir: String, expectedMinutes: Int = 0) -> String? {
         guard config.Skip_recorded_episodes,
               episodeTag.range(of: #"^S\d+E\d+$"#, options: [.regularExpression, .caseInsensitive]) != nil
         else { return nil }
         let safeTitle = title.replacingOccurrences(of: "/", with: "-")
         let upper = episodeTag.uppercased()
-        return recordedEpisodeTags(forTitle: safeTitle, baseDir: baseDir).contains(upper) ? upper : nil
+        return recordedEpisodeTags(forTitle: safeTitle, baseDir: baseDir, expectedMinutes: expectedMinutes).contains(upper) ? upper : nil
     }
 
     /// UI convenience: looks up `show`'s next-airing episode tag from the guide and checks it via
@@ -2797,8 +2943,9 @@ final class AppState: ObservableObject {
         else { return nil }
         let safeTitle = show.show_title.replacingOccurrences(of: "/", with: "-")
         let upper = tag.uppercased()
+        let expectedMinutes = show.show_length
         return await Task.detached(priority: .userInitiated) { [weak self] in
-            self?.recordedEpisodeTags(forTitle: safeTitle, baseDir: baseDir).contains(upper) == true ? upper : nil
+            self?.recordedEpisodeTags(forTitle: safeTitle, baseDir: baseDir, expectedMinutes: expectedMinutes).contains(upper) == true ? upper : nil
         }.value
     }
 
@@ -3427,6 +3574,11 @@ final class AppState: ObservableObject {
             }
         }
 
+        // vstatus fetch jobs collected below and run concurrently after this loop, rather than
+        // one-at-a-time inline — a device recording several shows at once used to pay N sequential
+        // round-trips here, which tunerAvailable (Watch Now/VLC) awaits synchronously before
+        // opening a stream, adding latency proportional to how many shows happen to be recording.
+        var vstatusJobs: [(showId: String, url: URL)] = []
         for show in recordingShows where show.hdhr_record == device.DeviceID {
             // Prefer exact tuner from the X-HDHomeRun-Resource response header (captured at stream start).
             // Fall back to VctNumber channel match, then any locked tuner.
@@ -3459,29 +3611,41 @@ final class AppState: ObservableObject {
             // vstatus: additional detail (lock type, bitrate) for the menu signal display.
             // Optional — EXTEND returns 404 here; collection above already ran.
             // tunerStatus is @Published — skip the fetch entirely while menu is open.
-            guard !menuIsOpen else { continue }
-            guard let vsURL = URL(string: "http://\(device.LocalIP)/tuner\(idx)/vstatus"),
-                  let (vsData, _) = try? await URLSession.shared.data(from: vsURL),
-                  let text = String(data: vsData, encoding: .utf8)
-            else { continue }
+            guard !menuIsOpen, let vsURL = URL(string: "http://\(device.LocalIP)/tuner\(idx)/vstatus") else { continue }
+            vstatusJobs.append((show.show_id, vsURL))
+        }
 
-            var kv: [String: String] = [:]
-            for token in text.split(separator: " ") {
-                let parts = token.split(separator: "=", maxSplits: 1)
-                if parts.count == 2 { kv[String(parts[0])] = String(parts[1]) }
+        guard !vstatusJobs.isEmpty else { return }
+        await withTaskGroup(of: (String, String?).self) { group in
+            for job in vstatusJobs {
+                group.addTask {
+                    guard let (vsData, _) = try? await URLSession.shared.data(from: job.url),
+                          let text = String(data: vsData, encoding: .utf8)
+                    else { return (job.showId, nil) }
+                    return (job.showId, text)
+                }
             }
-            let lock = kv["lock"] ?? "none"
-            guard lock != "none" else { continue }
-            // The vstatus fetch above suspends on a real network await — a web-UI delete landing
-            // during that window already ran deleteShow's tunerStatus cleanup for this show_id;
-            // writing here afterward would silently re-add a display-only leak that nothing will
-            // ever clear again (the show is gone, so deleteShow never runs on it a second time).
-            guard shows.contains(where: { $0.show_id == show.show_id }) else { continue }
-            tunerStatus[show.show_id] = TunerStatus(
-                signalStrength: Int(kv["ss"]  ?? "0") ?? 0,
-                lockType:       lock,
-                bitrateMbps:    Double(kv["bps"] ?? "0").map { $0 / 1_000_000 } ?? 0
-            )
+            for await (showId, text) in group {
+                guard let text else { continue }
+                var kv: [String: String] = [:]
+                for token in text.split(separator: " ") {
+                    let parts = token.split(separator: "=", maxSplits: 1)
+                    if parts.count == 2 { kv[String(parts[0])] = String(parts[1]) }
+                }
+                let lock = kv["lock"] ?? "none"
+                guard lock != "none" else { continue }
+                // Each vstatus fetch suspends on a real network await — a web-UI delete landing
+                // during that window already ran deleteShow's tunerStatus cleanup for this
+                // show_id; writing here afterward would silently re-add a display-only leak that
+                // nothing will ever clear again (the show is gone, so deleteShow never runs on it
+                // a second time).
+                guard shows.contains(where: { $0.show_id == showId }) else { continue }
+                tunerStatus[showId] = TunerStatus(
+                    signalStrength: Int(kv["ss"]  ?? "0") ?? 0,
+                    lockType:       lock,
+                    bitrateMbps:    Double(kv["bps"] ?? "0").map { $0 / 1_000_000 } ?? 0
+                )
+            }
         }
     }
 

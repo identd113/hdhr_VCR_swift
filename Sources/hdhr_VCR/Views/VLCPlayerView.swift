@@ -5,6 +5,11 @@ import MediaPlayer
 private extension Notification.Name {
     static let vlcChannelNext = Notification.Name("vlcChannelNext")
     static let vlcChannelPrev = Notification.Name("vlcChannelPrev")
+    // userInfo["isFullScreen"]: Bool — posted by WindowCloseObserver's NSWindowDelegate fullscreen
+    // callbacks, for any entry/exit path (green-button hover, Cmd+Ctrl+F, or our own Esc handler's
+    // toggleFullScreen(nil) call) alike, since they all funnel through the same NSWindow delegate
+    // methods regardless of trigger.
+    static let vlcFullScreenChanged = Notification.Name("vlcFullScreenChanged")
 }
 
 // ── VLCVideoSurface ───────────────────────────────────────────────────────────
@@ -61,11 +66,20 @@ struct VLCPlayerView: View {
     @State private var isScrubbing = false
     @State private var videoControlsHovered = false   // shows the recording scrub overlay on hover
     @State private var showTunerFullAlert = false      // quick-record toolbar button (see toolbar)
+    @State private var isFullScreen = false      // driven by WindowCloseObserver's NSWindowDelegate callbacks
+    @State private var toolbarHovered = false     // reveals the toolbar overlay while isFullScreen (see body)
 
     private var currentGuideEntry: GuideEntry? {
         guard let ch = selectedChannel else { return nil }
         let now = Date()
-        return state.guideEntries(deviceId: device.DeviceID, channelNum: ch.GuideNumber)
+        // A recording-relay selection's GuideNumber is the synthetic "live:showId" placeholder
+        // recordingChannelEntries makes for the channel picker — not a real channel number the
+        // guide is keyed by, so it never matches below on its own. Resolve it back to the show's
+        // actual channel first so poster/synopsis still resolve while watching a recording.
+        let channelNum = showId(fromLiveGuideNumber: ch.GuideNumber)
+            .flatMap { id in state.recordingShows.first { $0.show_id == id }?.show_channel }
+            ?? ch.GuideNumber
+        return state.guideEntries(deviceId: device.DeviceID, channelNum: channelNum)
             .first { $0.startDate <= now && $0.endDate > now }
     }
 
@@ -81,6 +95,12 @@ struct VLCPlayerView: View {
     // Each half stays in `lineup`'s existing ascending-channel-number order.
     private var favoriteLineup: [LineupEntry] { lineup.filter(\.isFavorite) }
     private var otherLineup: [LineupEntry] { lineup.filter { !$0.isFavorite } }
+
+    // Rough estimate of the native fullscreen title-bar reveal strip's height (traffic lights +
+    // title, drawn by AppKit above app content when the cursor nears the top of a true-fullscreen
+    // window) — see body's isFullScreen toolbar overlay for why this exists. Not an exact value;
+    // macOS doesn't expose the real strip height, so this may need tuning after an actual look.
+    private static let fullScreenTopInset: CGFloat = 32
 
     // MARK: - "Live" recording entries in the channel picker
     //
@@ -127,7 +147,15 @@ struct VLCPlayerView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            toolbar
+            // Windowed mode: toolbar is a normal, always-visible top row, same as always. In true
+            // fullscreen it moves into the ZStack below instead (see the isFullScreen block there)
+            // — a floating hover-reveal overlay, not a row that would permanently claim space from
+            // an otherwise-immersive video. Reported 2026-08-22: with the toolbar left as an
+            // always-visible top row in fullscreen, it visually competed with macOS's own
+            // top-of-screen hover-reveal menu bar for the same real estate.
+            if !isFullScreen {
+                toolbar
+            }
             ZStack {
                 VLCVideoSurface()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -163,12 +191,52 @@ struct VLCPlayerView: View {
                     }
                     .transition(.opacity)
                 }
+                if isFullScreen {
+                    // Top-pinned floating overlay, hover-revealed — same "hidden-but-still-
+                    // hoverable via opacity, not hit-testing" trick as the recording scrub bar
+                    // above, just mirrored to the top edge.
+                    //
+                    // fullScreenTopInset: true NSWindow fullscreen still auto-reveals the window's
+                    // own native title bar (traffic lights + title) as a system-drawn overlay when
+                    // the cursor nears the very top — that overlay draws above app content, so a
+                    // toolbar placed right at y=0 renders *underneath* it instead of being visible.
+                    // Reported 2026-08-22: the revealed bar showed as empty — this was that native
+                    // strip covering our own toolbar, not a rendering bug. Offsetting our toolbar
+                    // down by roughly a title-bar's height clears it (still an estimate — macOS
+                    // doesn't expose the reveal strip's exact height).
+                    //
+                    // Hover zone must cover that top inset too, not just where the toolbar itself
+                    // draws pixels — reported 2026-08-22 (round two): with .onHover scoped to
+                    // `toolbar` alone, the offset pushed the toolbar's hoverable rect down with it,
+                    // so hovering at the actual top edge (where the native reveal also triggers,
+                    // and where a user naturally checks) hit nothing. `.contentShape(Rectangle())`
+                    // makes the *whole* topInset+toolbar band hit-testable, including the empty
+                    // padding above the toolbar, so hovering anywhere in that band reveals it — the
+                    // outer `Spacer()` below stays outside this hover-scoped group entirely, so
+                    // hovering the rest of the video still does nothing (unlike a naive `.onHover`
+                    // on the whole VStack, which would reveal the toolbar from anywhere on screen).
+                    VStack(spacing: 0) {
+                        VStack(spacing: 0) {
+                            Color.clear.frame(height: Self.fullScreenTopInset)
+                            toolbar
+                        }
+                        .contentShape(Rectangle())
+                        .onHover { toolbarHovered = $0 }
+                        .opacity(toolbarHovered ? 1 : 0)
+                        .animation(.easeInOut(duration: 0.2), value: toolbarHovered)
+                        Spacer()
+                    }
+                    .transition(.opacity)
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .animation(.easeOut(duration: 0.35), value: posterHidden)
             .animation(.easeOut(duration: 0.35), value: bridge.hasError)
             .animation(.easeOut(duration: 0.35), value: bridge.hasEnded)
             .animation(.easeInOut(duration: 0.2), value: bridge.recordingShowId)
+            .onReceive(NotificationCenter.default.publisher(for: .vlcFullScreenChanged)) { note in
+                isFullScreen = (note.userInfo?["isFullScreen"] as? Bool) ?? false
+            }
             .task(id: currentGuideEntry?.ImageURL) {
                 guard let url = currentGuideEntry?.ImageURL else { posterNSImage = nil; return }
                 posterNSImage = await ChannelIconCache.shared.image(for: url)
@@ -536,7 +604,7 @@ struct VLCPlayerView: View {
                !state.shows.contains(where: { $0.show_active && $0.hdhr_record == device.DeviceID && $0.show_channel == ch.GuideNumber }) {
                 quickRecordMenu(state: state, entry: entry, device: device, channel: ch,
                                  tunerFullAlert: $showTunerFullAlert) {
-                    Image(systemName: "record.circle")
+                    Label("Record", systemImage: "record.circle")
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.red)
@@ -554,14 +622,14 @@ struct VLCPlayerView: View {
                     bufferMonitor
                         .padding(.trailing, 5)
                     Divider().frame(height: 14)
-                    catchUpButton
+                    catchUpButton(showLabel: false)
                         .padding(.leading, 5)
                 }
                 .padding(.horizontal, 7)
                 .padding(.vertical, 4)
                 .background(.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
             } else {
-                catchUpButton
+                catchUpButton(showLabel: true)
             }
 
             // Native resolution: resize window to 1:1 physical pixels.
@@ -569,7 +637,7 @@ struct VLCPlayerView: View {
             Button {
                 VLCPlayerWindowManager.shared.sizeToNativeVideo()
             } label: {
-                Image(systemName: "aspectratio")
+                Label("Native", systemImage: "aspectratio")
                     .foregroundStyle(notAtNative ? AnyShapeStyle(Color.accentColor) : canResize ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tertiary))
                     .shadow(color: notAtNative ? Color.accentColor.opacity(0.6) : .clear, radius: 5)
             }
@@ -675,11 +743,11 @@ struct VLCPlayerView: View {
                         }
                     }
                 } label: {
-                    Image(systemName: "airplayvideo")
+                    Label("Display", systemImage: "airplayvideo")
                         .foregroundStyle(.secondary)
                 }
                 .menuStyle(.borderlessButton)
-                .frame(maxWidth: 24)
+                .frame(maxWidth: 80)
                 .help("Move to display")
                 .accessibilityLabel("Select display")
             }
@@ -738,7 +806,9 @@ struct VLCPlayerView: View {
 
     // MARK: - Buffer monitor
 
-    private var catchUpButton: some View {
+    // showLabel: false inside the compact buffer-monitor pill (no room for text there — the pill's
+    // own hover popover already covers detail); true standalone, where there's space for a label.
+    private func catchUpButton(showLabel: Bool) -> some View {
         // For a recording-relay session, VLCBridge.catchUpToLive() alone just replays the current
         // URL verbatim — reconnecting at the same stale &start= byte offset, doing nothing toward
         // "live". AppState.seekRecordingToLiveEdge computes a fresh near-live-edge offset instead.
@@ -749,8 +819,14 @@ struct VLCPlayerView: View {
                 VLCBridge.shared.catchUpToLive()
             }
         } label: {
-            Image(systemName: "forward.end.circle")
-                .foregroundStyle(.secondary)
+            Group {
+                if showLabel {
+                    Label(bridge.recordingShowId != nil ? "Live Edge" : "Catch Up", systemImage: "forward.end.circle")
+                } else {
+                    Image(systemName: "forward.end.circle")
+                }
+            }
+            .foregroundStyle(.secondary)
         }
         .buttonStyle(.plain)
         .help(bridge.recordingShowId != nil
@@ -938,6 +1014,12 @@ struct VLCPlayerView: View {
 final class VLCPlayerWindowManager {
     static let shared = VLCPlayerWindowManager()
     private var window: NSWindow?
+    // Typed reference to the hosted content so open()'s reuse branch can swap rootView when the
+    // device changes (see open()'s deviceChanged handling) — window.contentView alone is only
+    // NSView, with no rootView setter. AnyView-erased rather than NSHostingView<VLCPlayerView>
+    // because the actual rootView type is VLCPlayerView wrapped in .environmentObject()/.id()
+    // modifiers (an unspellable-by-hand generic), not VLCPlayerView itself.
+    private var hostingView: NSHostingView<AnyView>?
     private var closeObserver: WindowCloseObserver?  // strong ref — NSWindow.delegate is weak
 
     /// DeviceID of the tuner currently occupied by the player window; nil when closed.
@@ -949,6 +1031,12 @@ final class VLCPlayerWindowManager {
     /// in-use-by-other-tuner marker doesn't flag your own live Watch session as someone else's.
     private(set) var currentChannelNumber: String?
     private weak var appState: AppState?
+    // Local NSEvent monitor for arrow-key seek + Esc-to-exit-fullscreen — installed once per real
+    // window (created in `open()`'s new-window branch), torn down in `playerWindowDidClose()`.
+    private var keyMonitor: Any?
+    // Accumulates arrow-key presses between keyDown and keyUp — see installKeyMonitor's doc
+    // comment for why this can't just commit a reconnect on every keyDown.
+    private var pendingSeekDelta: Double = 0
 
     private init() {}
 
@@ -973,6 +1061,12 @@ final class VLCPlayerWindowManager {
     /// If the window is already showing, the stream is switched immediately.
     func open(url: String, title: String, device: HDHRDevice, appState: AppState, channelNumber: String? = nil) {
         self.appState = appState
+        // Captured before currentDeviceID is overwritten below — this is the one signal that
+        // distinguishes "same device, just switching channels/streams" (the common case; the
+        // existing view's own onChange(of: state.vlcCurrentURL) already re-syncs the picker for
+        // that) from "reusing the window across devices" (ISSUES.md: previously left the hosted
+        // view's device/lineup/recording-relay rows silently pointing at the old tuner).
+        let deviceChanged = currentDeviceID != device.DeviceID
         currentDeviceID = device.DeviceID
         currentChannelNumber = channelNumber
         VLCBridge.shared.liveMinRate = Float(appState.config.Player_buffer_min_rate) / 100.0
@@ -983,24 +1077,51 @@ final class VLCPlayerWindowManager {
         if let win = window {
             glog("[VLC] WindowManager.open — reusing existing window, title=\(title)")
             win.title = title
+            if deviceChanged {
+                // The hosted NSHostingView is reused across opens (see "Singleton NSWindow" below)
+                // rather than recreated, so VLCPlayerView's own `let device`/`initialURL` would
+                // otherwise stay frozen at whatever device first opened this window. Swapping
+                // rootView to a freshly-constructed VLCPlayerView fixes that; .id(device.DeviceID)
+                // forces SwiftUI to treat it as a genuinely new view identity (not an in-place
+                // property update) so @State resets and .onAppear actually re-fires for the new
+                // device — re-syncing audio devices, media-key targets, and the channel picker,
+                // the same setup a truly fresh window's first appearance already does.
+                glog("[VLC] WindowManager.open — device changed on reuse, swapping hosted view to device=\(device.DeviceID)")
+                hostingView?.rootView = AnyView(
+                    VLCPlayerView(device: device, initialURL: url)
+                        .environmentObject(appState)
+                        .id(device.DeviceID)
+                )
+            }
             win.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
         }
         glog("[VLC] WindowManager.open — creating new window, device=\(device.DeviceID) url=\(url)")
 
-        let playerView = VLCPlayerView(device: device, initialURL: url)
-            .environmentObject(appState)
+        let playerView = AnyView(
+            VLCPlayerView(device: device, initialURL: url)
+                .environmentObject(appState)
+                .id(device.DeviceID)
+        )
 
         let win = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 960, height: 600),
+            contentRect: NSRect(x: 0, y: 0, width: 1080, height: 600),
             styleMask: [.titled, .closable, .resizable, .miniaturizable],
             backing: .buffered,
             defer: false
         )
         win.title = title
-        win.contentView = NSHostingView(rootView: playerView)
+        let hosting = NSHostingView(rootView: playerView)
+        win.contentView = hosting
+        self.hostingView = hosting
         win.isReleasedWhenClosed = false   // retain for reuse on next open()
+        // Opts into the native macOS fullscreen: hovering the green traffic-light button shows the
+        // expand-arrows icon, and both it and Cmd+Ctrl+F now enter true fullscreen (a separate
+        // Space, not just a maximized window) — standard AppKit behavior, no other code needed to
+        // enter. Exiting via Esc, though, AppKit does NOT bind that itself; installKeyMonitor below
+        // adds it explicitly.
+        win.collectionBehavior.insert(.fullScreenPrimary)
         let observer = WindowCloseObserver(manager: self)
         closeObserver = observer
         win.delegate = observer
@@ -1008,6 +1129,64 @@ final class VLCPlayerWindowManager {
         win.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         self.window = win
+        installKeyMonitor(for: win)
+    }
+
+    // Arrow-key seek (recording playback only) + Esc to exit fullscreen. A local monitor rather
+    // than a SwiftUI .onKeyPress so it isn't at the mercy of which toolbar control currently has
+    // focus, and scoped to this exact window (`event.window === win`) so it can never fire for a
+    // keystroke intended for some other window (e.g. Settings) that happens to be key at the time.
+    //
+    // Arrow keys accumulate into `pendingSeekDelta` on keyDown and only actually commit (one
+    // relay reconnect, via seekRecordingRelative) on keyUp — matching the scrub-bar slider's own
+    // release-based commit (`onEditingChanged`, VLCPlayerView.swift). Without this, macOS's normal
+    // key-repeat fires a keyDown roughly every 100-300ms while a key is held, and committing on
+    // every one of those meant holding the key hammered the relay with a full reconnect-and-
+    // rebuffer that many times a second — felt like repeated playback drops rather than a smooth
+    // rewind/skip. Found live 2026-08-22: a burst of 6 reconnects in ~2 seconds, each landing
+    // ~15s earlier than the last (exactly this feature's left-arrow step), while testing it.
+    private func installKeyMonitor(for win: NSWindow) {
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self, weak win] event in
+            guard let self, let win, event.window === win else { return event }
+            switch (event.type, event.keyCode) {
+            case (.keyDown, 123), (.keyDown, 124):
+                // Only meaningful for an on-disk recording — a live broadcast has nothing to seek
+                // into, so this no-ops there (and leaves pendingSeekDelta untouched at 0, so a
+                // stray keyUp right after switching to a live channel mid-hold has nothing to
+                // commit either).
+                guard VLCBridge.shared.recordingShowId != nil else { return event }
+                self.pendingSeekDelta += event.keyCode == 123 ? -15 : 30
+                return nil
+            case (.keyUp, 123), (.keyUp, 124):
+                guard self.pendingSeekDelta != 0 else { return event }
+                self.seekRecordingRelative(self.pendingSeekDelta)
+                self.pendingSeekDelta = 0
+                return nil
+            case (.keyDown, 53):   // escape — only consumed while actually in fullscreen, so a
+                                    // plain Esc elsewhere (e.g. dismissing a popover) still works.
+                guard win.styleMask.contains(.fullScreen) else { return event }
+                win.toggleFullScreen(nil)
+                return nil
+            default:
+                return event
+            }
+        }
+    }
+
+    // Skips the currently-playing recording by `delta` seconds (right arrow: +30, left: -15 per
+    // keypress — a bigger forward skip than back, since catching up past a distraction is more
+    // common than needing a deep rewind; a held key accumulates multiple steps into one `delta`
+    // via pendingSeekDelta above before this ever runs). Reuses the exact same commit path the
+    // scrub-bar drag already uses (AppState.seekRecording), just computing the target from a
+    // relative delta instead of an absolute slider position.
+    private func seekRecordingRelative(_ delta: Double) {
+        guard let showId = VLCBridge.shared.recordingShowId,
+              let startDate = VLCBridge.shared.recordingStartDate,
+              let appState else { return }
+        let elapsed = max(1, Date().timeIntervalSince(startDate))
+        let current = min(VLCBridge.shared.recordingPlaybackSeconds, elapsed)
+        let target  = max(0, min(current + delta, elapsed))
+        appState.seekRecording(showId: showId, toSeconds: target)
     }
 
     /// Move the player window to the centre of the given screen (handles AirPlay displays).
@@ -1068,9 +1247,13 @@ final class VLCPlayerWindowManager {
         // so without this the CoreAudio callback fires into a partially torn-down view.
         VLCBridge.shared.stopDeviceChangeMonitoring()
         VLCBridge.shared.releasePlayer() // full teardown — releases mediaPlayer and nils currentURL; Combine auto-clears vlcCurrentURL
+        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
+        keyMonitor = nil
+        pendingSeekDelta = 0   // in case the window closed mid-hold, before a matching keyUp arrived
         currentDeviceID = nil
         currentChannelNumber = nil
         window = nil
+        hostingView = nil
         // Release the VLC sleep assertion immediately rather than waiting for releaseAllAssertions()
         // inside refreshTunerOccupancy — that path is blocked when a recording is simultaneously active.
         appState?.recordingManager.releaseAssertion(id: "vlc")
@@ -1083,6 +1266,15 @@ private final class WindowCloseObserver: NSObject, NSWindowDelegate {
     weak var manager: VLCPlayerWindowManager?
     init(manager: VLCPlayerWindowManager) { self.manager = manager }
     func windowWillClose(_ notification: Notification) { manager?.playerWindowDidClose() }
+    // Lets VLCPlayerView hide its own toolbar by default in true fullscreen (see body's ZStack) —
+    // without this, our toolbar and macOS's own top-of-screen hover-reveal menu bar compete for
+    // the same real estate, since both sit at the top edge of a fullscreen window/space.
+    func windowDidEnterFullScreen(_ notification: Notification) {
+        NotificationCenter.default.post(name: .vlcFullScreenChanged, object: nil, userInfo: ["isFullScreen": true])
+    }
+    func windowDidExitFullScreen(_ notification: Notification) {
+        NotificationCenter.default.post(name: .vlcFullScreenChanged, object: nil, userInfo: ["isFullScreen": false])
+    }
 }
 
 private extension NSScreen {

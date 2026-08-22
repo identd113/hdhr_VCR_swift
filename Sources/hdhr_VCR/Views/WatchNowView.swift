@@ -179,7 +179,8 @@ struct WatchNowView: View {
         var fresh: [String: Set<String>] = [:]
         for s in activeMgd where s.isSeries {
             let safe = s.show_title.replacingOccurrences(of: "/", with: "-")
-            fresh[s.show_id] = state.recordedEpisodeTags(forTitle: safe, baseDir: s.posixRecordDir)
+            fresh[s.show_id] = state.recordedEpisodeTags(forTitle: safe, baseDir: s.posixRecordDir,
+                                                          expectedMinutes: s.show_length)
         }
         recordedTagsCache = fresh
     }

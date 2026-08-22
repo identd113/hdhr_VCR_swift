@@ -488,6 +488,93 @@ struct WindowNavigationTests {
         #expect(windowCountAfter == 0)
     }
 
+    /// Confirms the Watch Now window's per-channel row action buttons (Watch/Watch from
+    /// Beginning/VLC/Edit/Record — WatchNowView.swift's `watchButtons`/`secondaryButtons`) are
+    /// actually reachable via the Accessibility API, without ever clicking one — clicking "Watch"
+    /// opens the VLC player, a separate window/tuner-consuming surface deliberately out of scope
+    /// here (see file header: this suite only pops the app's own SwiftUI windows, not VLC).
+    ///
+    /// Real finding from building this test, worth preserving: every one of these buttons already
+    /// carries a correct `.accessibilityLabel(...)` in WatchNowView.swift (`watchLiveLabel`,
+    /// `"Record \(entry.Title)"`, etc.) — but System Events' `name of` and `description of` come
+    /// back `missing value` for all of them regardless, on this SwiftUI/AppKit bridge. What DOES
+    /// come through reliably is `help of` — every one of these buttons also carries a `.help(...)`
+    /// modifier (sometimes identical text to its accessibilityLabel, sometimes a fuller sentence —
+    /// e.g. the recording-relay "Watch Now!" button's help is "Play the in-progress recording of
+    /// {title} from disk, starting near live", not `watchLiveLabel`'s shorter accessibilityLabel
+    /// text) — and that's what actually surfaces to `System Events`. So this test (and any future
+    /// one targeting these specific buttons) matches on `help`, not `name`/`description` the way
+    /// the Settings checkbox test above does — that control is a plain-text `AXCheckBox`, a
+    /// different case from these compound icon+`Label` `.buttonStyle(.plain)`-family buttons.
+    @Test func watchNowRowButtonsAreAccessible() throws {
+        guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+        let script = #"""
+        tell application "System Events"
+            tell process "hdhr_VCR"
+                \#(dismissDonationNagSnippet)
+                click menu item "Watch Now…" of menu 1 of menu bar item 1 of menu bar 2
+                repeat 20 times
+                    delay 0.25
+                    if (count of windows) > 0 then exit repeat
+                end repeat
+                -- Extra settle beyond "window exists": the channel list's own AX subtree (row
+                -- buttons, per-row text) populates after the window itself does — same lesson
+                -- captureAllSettingsTabTitlesSnippet's comment documents for Settings' outline.
+                delay 1.5
+                set watchCount to 0
+                set recordCount to 0
+                set editCount to 0
+                try
+                    set allEls to entire contents of window "Watch Now"
+                    repeat with e in allEls
+                        try
+                            if role of e is "AXButton" then
+                                set h to "?"
+                                try
+                                    set h to (help of e) as string
+                                end try
+                                if h starts with "Watch " or h starts with "Play the in-progress recording" then
+                                    set watchCount to watchCount + 1
+                                end if
+                                if h starts with "Record " then set recordCount to recordCount + 1
+                                if h starts with "Edit " then set editCount to editCount + 1
+                            end if
+                        end try
+                    end repeat
+                on error errMsg
+                    return "ERROR: " & errMsg
+                end try
+                try
+                    click (first button of window "Watch Now" whose description is "close button")
+                end try
+                repeat 20 times
+                    delay 0.2
+                    if (count of windows) = 0 then exit repeat
+                end repeat
+                return (watchCount as string) & "|" & (recordCount as string) & "|" & (editCount as string)
+            end tell
+        end tell
+        """#
+        guard let result = runAppleScript(script) else {
+            Issue.record("Watch Now row-button accessibility script failed to run")
+            return
+        }
+        if result.hasPrefix("ERROR:") {
+            Issue.record("Watch Now row-button scan failed: \(result)")
+            return
+        }
+        let parts = result.split(separator: "|").compactMap { Int($0) }
+        #expect(parts.count == 3, "unexpected script output: \(result)")
+        guard parts.count == 3 else { return }
+        let (watchCount, recordCount, editCount) = (parts[0], parts[1], parts[2])
+        // At least one watch-type button should always be reachable — an empty schedule can still
+        // legitimately have zero Record/Edit buttons (no managed shows to edit, though "Record" is
+        // offered on every unmanaged channel so it'd be unusual for the lineup to be that empty
+        // too), but every visible row always offers *some* way to watch it.
+        #expect(watchCount > 0, "no accessible 'Watch' button found — did WatchNowView's help text change, or did the row-button AX bridging regress?")
+        _ = recordCount; _ = editCount   // observed for debugging visibility only; not asserted on
+    }
+
     /// See the file header's "Hard-won lesson" — every lookup here matches by exact item name,
     /// never by position, after an index-based first draft nearly triggered a real delete on a
     /// live recording.
