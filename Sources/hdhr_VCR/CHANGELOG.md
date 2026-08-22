@@ -2,8 +2,6 @@
 
 Every entry is tagged **Added** (something new), **Updated** (existing behavior changed, improved, or fixed), **Removed** (something taken away), or **Info** (a note — nothing to do, nothing visibly different).
 
-## Unreleased
-
 ## v2.0.5 — 2026-08-22
 
 **Added**
