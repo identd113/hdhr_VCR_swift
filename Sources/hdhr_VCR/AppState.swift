@@ -1092,8 +1092,8 @@ final class AppState: ObservableObject {
         webServer.broadcastGuideChangeEvent(type: type, extra: ["channel": channel, "device": device], state: self)
     }
 
-    func upcomingGuideEpisodes(seriesID: String, after: Date = Date(), limit: Int = 4) -> [(channel: String, entry: GuideEntry)] {
-        guideStore.nextEpisodes(seriesID: seriesID, after: after, limit: limit)
+    func upcomingGuideEpisodes(seriesID: String, channelNum: String? = nil, after: Date = Date(), limit: Int = 4) -> [(channel: String, entry: GuideEntry)] {
+        guideStore.nextEpisodes(seriesID: seriesID, channelNum: channelNum, after: after, limit: limit)
             .map { ($0.channelNum, $0.entry) }
     }
 

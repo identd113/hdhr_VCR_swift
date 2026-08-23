@@ -154,7 +154,7 @@ The web server is stopped explicitly in all three `quit()` exit branches before 
 | `guideEntries(deviceId:channelNum:)` | Delegates to `guideStore.entries()` |
 | `handleGuideLoadFailure(deviceId:)` | Private. Records backoff failure + sends notify/Discord embed on first failure per streak; subsequent retries are silent. Called from `refreshGuides` and `ensureGuideLoaded`. |
 | `nextGuideEpisode(for show:)` | Delegates to `guideStore.nextEpisode()`; respects channel/device filters |
-| `upcomingGuideEpisodes(seriesID:after:limit:)` | Up to `limit` upcoming `(channel, entry)` tuples across all devices |
+| `upcomingGuideEpisodes(seriesID:channelNum:after:limit:)` | Up to `limit` upcoming `(channel, entry)` tuples, optionally filtered to one channel (`channelNum`, default `nil` = every channel); always spans every device. Used by `AddShowView`'s "Other Upcoming Airings" panel (`docs/AddShowView.md`, passes `channelNum` for SeriesID(Channel)) and `WebServer`'s `GET /api/airings/{seriesId}` (`docs/WebServer.md`, always unfiltered — the web Record modal filters client-side instead, in `renderAirings()`) |
 | `nextDateTimeOccurrences(for:after:count:)` | Returns up to `count` DateTime occurrences after `after`. Pass `after: Date()` to include today's airing (menu display); pass `after: startOfTomorrow` to skip today (rescheduling after a completed recording). Uses modulo arithmetic over air-day indices. |
 | `nextDateTime(for:)` | One-liner wrapper — calls `nextDateTimeOccurrences(for:after:startOfTomorrow, count:1).first`. Always skips today so a completed recording never re-schedules to the same day. |
 

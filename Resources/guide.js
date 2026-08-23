@@ -347,7 +347,13 @@ function doRecord(){
     _rmType=(v==='seriesID')?((_rmType==='seriesChannel'||_rmType==='seriesAll')?_rmType:'seriesChannel'):v;
     var isSeries=_rmType==='seriesChannel'||_rmType==='seriesAll';
     document.getElementById('rm-scope-row').style.display=isSeries?'flex':'none';
-    if(isSeries)renderScopeRow('rm-scope',_rmType,function(sv){_rmType=sv;});
+    if(isSeries)renderScopeRow('rm-scope',_rmType,function(sv){
+      _rmType=sv;
+      // Channel/All scope changes which airings this show could actually catch — re-filter the
+      // already-cached list (renderAirings itself applies the channel filter for 'seriesChannel')
+      // rather than re-fetching, since /api/airings/{seriesId} always returns every channel.
+      renderAirings(_airCache[_ser]||[]);
+    });
     var sid=document.getElementById('rm-sid');
     if(isSeries&&_ser){document.getElementById('rm-sid-val').textContent=_ser;sid.style.display='flex';}
     else{sid.style.display='none';}
@@ -391,11 +397,16 @@ function switchAiring(idx){
   renderAirings(_airCache[_ser]||[]);
 }
 function renderAirings(list){
+  // seriesChannel only ever records from the currently-selected channel (_n) — filter the
+  // preview to it so it doesn't list airings this show could never actually catch. seriesAll
+  // can record from any channel on the assigned device, so stays unfiltered. Device is
+  // deliberately never filtered either way — see the exclusion filter below.
+  var scoped=(_rmType==='seriesChannel')?list.filter(function(a){return String(a.ch)===_n;}):list;
   // Excludes by device too, not just channel+time — two tuners sharing one antenna report
   // the same channel number with identical airings, so channel+time alone would wrongly
   // hide the *other* device's copy of the just-selected airing, even though double-clicking
   // it is exactly how you'd steer the recording to that other tuner instead.
-  var filtered=list.filter(function(a){return !(String(a.ch)===_n&&+a.start===_s&&String(a.device)===_d);});
+  var filtered=scoped.filter(function(a){return !(String(a.ch)===_n&&+a.start===_s&&String(a.device)===_d);});
   _airCurrent=filtered;
   var panel=document.getElementById('rm-airings');
   var listEl=document.getElementById('rm-airings-list');

@@ -210,14 +210,16 @@ struct AddShowView: View {
     @State private var otherAiringsCache: [(channel: String, entry: GuideEntry)] = []
 
     private struct OtherAiringsKey: Equatable {
-        var seriesId: String, isSeries: Bool, channel: String, next: Date?, guideGeneration: Int
+        var seriesId: String, isSeries: Bool, channelScoped: Bool, channel: String, next: Date?, guideGeneration: Int
     }
     private var otherAiringsKey: OtherAiringsKey {
         // guideGeneration included so the ~hourly background guide refresh forces a recompute even
         // when none of this show's own fields changed — otherwise the wizard could keep showing a
         // stale "Other Upcoming Airings" list (a moved/cancelled/newly-visible airing) for as long
-        // as it's left open across that refresh.
+        // as it's left open across that refresh. channelScoped included so toggling the Scope
+        // picker (Channel/All) recomputes the list immediately, not just a channel/type change.
         OtherAiringsKey(seriesId: show.show_seriesid, isSeries: seriesType.isSeries,
+                        channelScoped: seriesType == .seriesChannel,
                         channel: show.show_channel, next: show.show_next,
                         guideGeneration: state.guideGeneration)
     }
@@ -229,11 +231,14 @@ struct AddShowView: View {
     private func computeOtherAirings() -> [(channel: String, entry: GuideEntry)] {
         guard seriesType.isSeries, !show.show_seriesid.isEmpty else { return [] }
         let selectedStart = show.show_next.map { Int($0.timeIntervalSince1970) }
-        // Excludes by deviceId too, not just channel+time — two tuners sharing one antenna report
-        // the same channel number with identical airings, so channel+time alone would wrongly hide
-        // the *other* device's copy of the just-selected airing, even though double-clicking it is
-        // exactly how you'd steer the recording to that other tuner instead.
-        return state.upcomingGuideEpisodes(seriesID: show.show_seriesid)
+        // SeriesID(Channel) only ever records from the one channel it's locked to — filtering the
+        // preview to that channel keeps it from listing airings this show could never actually
+        // catch. SeriesID(All) can record from any channel on the assigned device, so stays
+        // unfiltered. Device is deliberately never filtered either way — a cross-device airing is
+        // still shown so double-clicking it can re-anchor the show to that other tuner (see the
+        // exclusion filter below and switchToAiring()).
+        let channelFilter = (seriesType == .seriesChannel) ? show.show_channel : nil
+        return state.upcomingGuideEpisodes(seriesID: show.show_seriesid, channelNum: channelFilter)
             .filter { !($0.channel == show.show_channel && $0.entry.StartTime == selectedStart
                         && $0.entry.deviceId == show.hdhr_record) }
     }
