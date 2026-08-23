@@ -441,6 +441,12 @@ struct AddShowView: View {
         show.show_is_series         = seriesType != .single
         show.show_use_seriesid      = seriesType.isSeries
         show.show_use_seriesid_all  = seriesType == .seriesAll
+        // ShowFormSection hides the New Only toggle for .single, but the binding itself keeps
+        // whatever was last checked — clear it here so a stale true from a DateTime/Series pick
+        // can't silently ride along on a show whose UI no longer exposes the field at all.
+        if seriesType == .single {
+            show.show_new_only = false
+        }
         // Step 2's guide selection sets show_title straight from the raw guide entry (which can
         // carry an episode-specific suffix, e.g. " S24E116 Trey Parker; Matt Stone; Alison Brie") —
         // strip it now that the show is confirmed as a SeriesID type, matching addShowFromGuide's

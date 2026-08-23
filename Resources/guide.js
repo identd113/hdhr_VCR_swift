@@ -202,6 +202,13 @@ function topOptFor(type){ return (type==='seriesChannel'||type==='seriesAll')?'s
 // real show type ('single'/'dateTime'/'seriesChannel'/'seriesAll'); `onSelect` is called with
 // the clicked top-level value ('single'/'dateTime'/'seriesID') — the caller resolves 'seriesID'
 // to a concrete type (defaulting to 'seriesChannel', or preserving the current scope).
+// Resolves the collapsed 'seriesID' Type segment to a concrete show type: whichever concrete
+// series type is already selected (a same-value re-tap preserves scope), defaulting to
+// 'seriesChannel' the first time in. Shared by the Record and Edit modals' renderTypeRow
+// onSelect callbacks so the "preserve current scope on re-tap" rule can't drift between them.
+function resolveSeriesTypePick(v,current){
+  return (v==='seriesID')?((current==='seriesChannel'||current==='seriesAll')?current:'seriesChannel'):v;
+}
 function renderTypeRow(containerId,descId,selected,onSelect){
   var container=document.getElementById(containerId);
   var descEl=document.getElementById(descId);
@@ -342,9 +349,7 @@ function doRecord(){
   document.getElementById('rm-tuner').style.display=(isLive&&devFull(_d))?'block':'none';
   renderRmSignal();
   renderTypeRow('rm-opts','rm-type-desc','single',function(v){
-    // 'seriesID' (the collapsed Type segment) resolves to whichever concrete series type is
-    // already selected (a same-value re-tap), defaulting to 'seriesChannel' the first time in.
-    _rmType=(v==='seriesID')?((_rmType==='seriesChannel'||_rmType==='seriesAll')?_rmType:'seriesChannel'):v;
+    _rmType=resolveSeriesTypePick(v,_rmType);
     var isSeries=_rmType==='seriesChannel'||_rmType==='seriesAll';
     document.getElementById('rm-scope-row').style.display=isSeries?'flex':'none';
     if(isSeries)renderScopeRow('rm-scope',_rmType,function(sv){
@@ -366,6 +371,9 @@ function doRecord(){
     } else {
       document.getElementById('rm-days-row').style.display='none';
     }
+    // Clear the checkbox itself, not just the row's visibility — otherwise a check left on from
+    // a DateTime/Series pick before switching back to Single silently rides along in the payload.
+    if(_rmType==='single')document.getElementById('rm-new').checked=false;
     document.getElementById('rm-new-row').style.display=(_rmType==='single')?'none':'flex';
     if(isSeries&&_ser){loadAirings(_ser,_myGen);}
     else{document.getElementById('rm-airings').style.display='none';}
@@ -573,7 +581,15 @@ function doDelete(){
   var title=document.getElementById('sum-title').textContent||'';
   var poster=_poster||_logo||'';
   var type=sel?sel.dataset.showType:'';
-  var isRec=sel?sel.dataset.recording==='1':false;
+  // dataset.showRecording (data-show-recording) is the Show struct's own show_recording flag —
+  // the same authoritative source the Edit modal's delete confirm uses (_editRec). Prefer it over
+  // dataset.recording, a different, channel-occupancy-derived flag (isEntryRec) that can briefly
+  // disagree with it right as a recording starts/stops, and made the two delete confirms
+  // inconsistent. showRecording is only emitted for a managed (owner-matched) entry though — an
+  // entry occupying a recording channel without a managed-show match (rare: a manually-started
+  // single recording whose title doesn't match the guide's current airing) has no showRecording
+  // attribute at all, so fall back to the occupancy flag rather than silently reading as "not recording".
+  var isRec=sel?(sel.dataset.showRecording!==undefined?sel.dataset.showRecording==='1':sel.dataset.recording==='1'):false;
   showDeleteConfirm(title,poster,type,isRec,performSummaryDelete);
 }
 function performSummaryDelete(){
@@ -830,6 +846,9 @@ function updateDupVisibility(){
 // Mirrors the native Add/Edit dialog's "Skip reruns" toggle (show_new_only) — every type
 // except single; unlike Duplicate Episodes above, not gated by any server-side setting.
 function updateNewOnlyVisibility(){
+  // Clear the checkbox itself, not just the row's visibility — otherwise a check left on from
+  // a DateTime/Series pick before switching back to Single silently rides along in the payload.
+  if(_editType==='single')document.getElementById('em-new').checked=false;
   document.getElementById('em-new-row').style.display=(_editType==='single')?'none':'flex';
 }
 // Hidden for seriesAll — that scope floats across every channel the tuner receives, so a
@@ -854,9 +873,7 @@ function openEditShow(el){
   document.getElementById('em-len-in').value=d.length||'60';
   _editChname=d.chname||'';renderEmSignal();
   renderTypeRow('em-type-opts','em-type-desc',_editType,function(v){
-    // 'seriesID' resolves to whichever concrete series type is already selected (a
-    // same-value re-tap), defaulting to 'seriesChannel' the first time in.
-    _editType=(v==='seriesID')?((_editType==='seriesChannel'||_editType==='seriesAll')?_editType:'seriesChannel'):v;
+    _editType=resolveSeriesTypePick(v,_editType);
     updateDaysVisibility();updateDupVisibility();updateNewOnlyVisibility();updateScopeUI();
   });
   updateScopeUI();

@@ -18,8 +18,13 @@ struct EditShowView: View {
     // device's lineup isn't currently known (e.g. its tuner is offline/undetected — see the web
     // guide's "tuner not detected" handling), membership can't be checked, so only the non-empty
     // check applies rather than blocking every edit to a show on a temporarily offline tuner.
+    // seriesAll is exempt from the channel check entirely — its Channel field is hidden in the
+    // form (that scope floats across every channel the tuner receives, so there's nothing for the
+    // user to fix), so gating Save on it here would dead-lock: no visible field, disabled button.
     private var canSave: Bool {
-        guard let s = show, !s.show_title.isEmpty, !s.show_channel.isEmpty else { return false }
+        guard let s = show, !s.show_title.isEmpty else { return false }
+        guard seriesType != .seriesAll else { return true }
+        guard !s.show_channel.isEmpty else { return false }
         guard let lineup = state.lineups[s.hdhr_record], !lineup.isEmpty else { return true }
         return lineup.contains { $0.GuideNumber == s.show_channel }
     }
@@ -189,6 +194,12 @@ struct EditShowView: View {
         show?.show_is_series        = seriesType != .single
         show?.show_use_seriesid     = seriesType.isSeries
         show?.show_use_seriesid_all = seriesType == .seriesAll
+        // ShowFormSection hides the New Only toggle for .single, but the binding itself keeps
+        // whatever was last checked — clear it here so a stale true from a DateTime/Series pick
+        // can't silently ride along on a show whose UI no longer exposes the field at all.
+        if seriesType == .single {
+            show?.show_new_only = false
+        }
         if seriesType.isSeries {
             airDays = Set(weekdays)
             // A Single show promoted to SeriesID may still carry a raw, episode-specific title

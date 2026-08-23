@@ -1812,6 +1812,10 @@ final class AppState: ObservableObject {
         if show.show_new_only, show.state != .single, let guideEntry, !isNewEpisode(guideEntry) {
             glog("[\(show.show_title)] SKIP — not a new episode (New Only)")
             notify("Recording Skipped", body: show.show_title, subtitle: "Not a new episode")
+            // Intentionally shares Discord_on_duplicate with the "already recorded" skip below —
+            // both are "this instance was skipped as an unwanted rerun" events, and SettingsView's
+            // combined "Problems" toggle already describes and controls them together. There's no
+            // New-Only-specific setting to route this to instead.
             fireDiscordCard(showId: show.show_id, event: "🔁 Skipped — rerun (New Only)",
                             color: 0x95A5A6, enabled: config.Discord_on_duplicate,
                             extra: [("Reason", "Not flagged as new by the guide", false)])

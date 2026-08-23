@@ -399,7 +399,7 @@ struct AppConfig: Equatable {
     var Discord_on_failed:   Bool    = true    // Recording Failed
     var Discord_on_paused:   Bool    = true    // Show Paused (max fails / no air days)
     var Discord_on_skipped:  Bool    = true    // Skipped — disk full
-    var Discord_on_duplicate: Bool   = true    // Skipped — already recorded
+    var Discord_on_duplicate: Bool   = true    // Skipped — already recorded, or (combined) not a new episode (New Only)
     var Discord_on_conflict: Bool    = true    // Tuner Conflict
     var Discord_on_guide_error: Bool = true    // Guide Load Failed
     var Discord_on_upnext:    Bool   = false   // Up Next reminder

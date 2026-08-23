@@ -540,7 +540,10 @@ final class WebServer: @unchecked Sendable {
         }
         let header = "HTTP/1.1 200 OK\r\nContent-Type: video/mp2t\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\n\r\n"
         glog("[WebServer] watch-recording OPEN show=\(showId) path=\(path) startOffset=\(initialBytes)")
-        queue.async { [weak self] in
+        // No [weak self] on the outer closure — it only calls conn.send(...); self is referenced
+        // solely inside the nested .contentProcessed completion handler, which already declares
+        // its own weak capture.
+        queue.async {
             conn.send(content: Data(header.utf8), completion: .contentProcessed({ [weak self] err in
                 guard let self, err == nil else {
                     self?.fileIOQueue.async { handle.closeFile() }
@@ -1208,6 +1211,14 @@ final class WebServer: @unchecked Sendable {
     // Recording / Up Next / Scheduled / Paused shows. Empty → a friendly note.
     @MainActor
     private func buildTunerShowsHTML(state: AppState, deviceId: String) -> String {
+        // Every row below is filtered through mine(), i.e. s.hdhr_record == deviceId — so one
+        // channel-number → name dict for this device, built once, covers every row's lookup in
+        // O(1) instead of each row re-scanning the whole lineup array. This function runs on
+        // @MainActor via prebuildPageHTML on every add/delete/pause/resume/edit/favorite-toggle
+        // and recording start/stop (see CLAUDE.md), so avoiding an O(n) scan per row matters.
+        let chNameLookup = Dictionary(
+            (state.lineups[deviceId] ?? []).map { ($0.GuideNumber, $0.GuideName) },
+            uniquingKeysWith: { first, _ in first })
         // Common row builder — embeds all data needed by openEditShow() JS.
         // chDetail: optional suffix appended to the Ch line (e.g. a relative-time span).
         func showRow(_ s: Show, recording: Bool = false, prefix: String = "", chDetail: String = "") -> String {
@@ -1217,8 +1228,14 @@ final class WebServer: @unchecked Sendable {
             // GuideName (not the channel number) — the key /api/signal-stats expects, for the edit
             // modal's Signal row. Absent (empty attr) when the channel isn't in this device's
             // current lineup; renderEmSignal() already no-ops on an empty chname.
-            let chGuideName = state.lineups[s.hdhr_record]?.first(where: { $0.GuideNumber == s.show_channel })?.GuideName ?? ""
-            let da = "data-dev=\"\(he(s.hdhr_record))\" data-id=\"\(he(s.show_id))\" data-title=\"\(he(s.show_title))\" data-ch=\"\(he(s.show_channel))\" data-chname=\"\(he(chGuideName))\" data-type=\"\(t)\" data-paused=\"\(s.show_paused ? 1 : 0)\" data-recording=\"\(recording ? 1 : 0)\" data-next=\"\(nextEpoch)\" data-length=\"\(s.show_length)\" data-bonus=\"\(s.show_bonus_time ? 1 : 0)\" data-transcode=\"\(he(s.show_transcode))\" data-seriesid=\"\(he(s.show_seriesid))\" data-airdays=\"\(he(ad))\" data-failcount=\"\(s.show_fail_count)\" data-failreason=\"\(he(s.show_fail_reason))\" data-ignoredup=\"\(s.show_ignore_duplicate_once ? 1 : 0)\" data-newonly=\"\(s.show_new_only ? 1 : 0)\""
+            let chGuideName = chNameLookup[s.show_channel] ?? ""
+            // data-poster: this show's own guide-entry image (set at add time — see
+            // AppState.show_logo_url), the same "poster" concept doEditFromGuide() forwards from
+            // the grid's lazily-fetched heavy fields. openEditShow(this) is called directly on this
+            // row (WebServer.swift's sp-row onclick) rather than through that grid path, so without
+            // this attribute the delete-confirmation dialog opened from the tuner dropdown always
+            // showed no image at all.
+            let da = "data-dev=\"\(he(s.hdhr_record))\" data-id=\"\(he(s.show_id))\" data-title=\"\(he(s.show_title))\" data-ch=\"\(he(s.show_channel))\" data-chname=\"\(he(chGuideName))\" data-type=\"\(t)\" data-paused=\"\(s.show_paused ? 1 : 0)\" data-recording=\"\(recording ? 1 : 0)\" data-next=\"\(nextEpoch)\" data-length=\"\(s.show_length)\" data-bonus=\"\(s.show_bonus_time ? 1 : 0)\" data-transcode=\"\(he(s.show_transcode))\" data-seriesid=\"\(he(s.show_seriesid))\" data-airdays=\"\(he(ad))\" data-failcount=\"\(s.show_fail_count)\" data-failreason=\"\(he(s.show_fail_reason))\" data-ignoredup=\"\(s.show_ignore_duplicate_once ? 1 : 0)\" data-newonly=\"\(s.show_new_only ? 1 : 0)\" data-poster=\"\(he(s.show_logo_url))\""
             let endDetail = recording ? s.show_end.map { " · Ends \(state.shortTime($0))" } ?? "" : ""
             let chLine = chDetail.isEmpty
                 ? "Ch \(he(s.show_channel))\(endDetail)"

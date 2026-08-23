@@ -516,7 +516,7 @@ struct SettingsView: View {
                                 "Up Next and Recording Soon heads-up notifications.",
                                 fields: [\.Discord_on_upnext, \.Discord_on_soon])
                     groupToggle("Problems",
-                                "Skipped (disk full), skipped (already recorded), tuner conflict, and guide load failures.",
+                                "Skipped (disk full), skipped (already recorded or not a new episode), tuner conflict, and guide load failures.",
                                 fields: [\.Discord_on_skipped, \.Discord_on_duplicate, \.Discord_on_conflict, \.Discord_on_guide_error])
                     groupToggle("Other",
                                 "Show added, and progress updates every 5 minutes while recording.",

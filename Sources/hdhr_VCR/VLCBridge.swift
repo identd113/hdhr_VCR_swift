@@ -399,7 +399,10 @@ final class VLCBridge: ObservableObject {
         // catch up to the live edge (and start playback) much faster than a live tuner stream.
         let networkCachingMs = isRecordingRelay ? 300 : 2000
 
-        Self.libvlcQueue.async { [weak self] in
+        // No [weak self] here — this closure only touches pre-extracted nonisolated(unsafe) lets
+        // (mp, inst, media, etc.); self is only referenced inside the nested Task below, which
+        // already declares its own weak capture.
+        Self.libvlcQueue.async {
             stopFn?(mp)
             if let oldMedia { mediaReleaseFn?(oldMedia) }
             guard let media = url.withCString({ mediaNLFn?(inst, $0) }) else {
@@ -461,7 +464,10 @@ final class VLCBridge: ObservableObject {
         nonisolated(unsafe) let mp = oldMp
         // Enqueued after stopAndClearState's own libvlcQueue work below (same serial queue — FIFO
         // guarantees this mp's stop finishes before its release runs).
-        Self.libvlcQueue.async { [weak self] in
+        // No [weak self] here — this closure only touches pre-extracted nonisolated(unsafe) lets
+        // (releaseFn, mp); self is only referenced inside the nested Task below, which already
+        // declares its own weak capture.
+        Self.libvlcQueue.async {
             releaseFn?(mp)
             glog("[VLC] releasePlayer — mediaPlayer released, tuner freed")
             // retainedDrawable/drawableView must outlive the actual libvlc release: libvlc dispatches
