@@ -63,7 +63,7 @@ You already paid for an HDHomeRun tuner, so you  shouldn't have to pay again jus
 
 | Add Show — Details | Edit Show |
 |--------------------|-----------|
-| ![Add Show details step with title, type, days, transcode, bonus time, and folder](docs/screenshots/addshow_details.png) | ![Edit Show window with starburst bonus time badge](docs/screenshots/edit_show.png) |
+| ![Add Show details step with SeriesID type, Channel/All scope, New Only, and Other Upcoming Airings](docs/screenshots/addshow_details.png) | ![Edit Show window with SeriesID scope, New Only, and starburst bonus time badge](docs/screenshots/edit_show.png) |
 
 ![Settings general panel](docs/screenshots/settings_general.png)
 
