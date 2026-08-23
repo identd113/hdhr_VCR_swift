@@ -66,7 +66,8 @@ Dark/light theme is synced via JS in `webView(_:didFinish:)`.
 Form fields, in fixed source order (`ShowFormSection.swift`) — only presence toggles per `Type`, the order itself never changes. Fields common to every `Type` come first; the type-conditional fields (Day(s) for Single/DateTime, New Only for every non-Single type, Duplicate Episodes for the series types) are pushed toward the bottom, immediately before Folder:
 - **Title** — `TextField` pre-populated from the web guide entry
 - **Signal** — bars for the selected channel + a weak-signal warning when its signal is poor (only when `Signal_quality_enabled` and the channel has signal history); shared via `ShowFormSection`
-- **Type** — segmented `Picker` for `ShowState.allCases`
+- **Type** — segmented `Picker` over 3 collapsed choices, Single/DateTime/SeriesID (`.seriesChannel`/`.seriesAll` render as one "SeriesID" segment) — see `docs/ShowFormSection.md`'s "Type/Scope split"
+- **Scope** — shown only when the series type is selected; a 2-segment Channel/All `Picker` that sets `show_use_seriesid_all`. See `docs/ShowFormSection.md`.
 - **Transcode** — `Picker`: None / Heavy / Mobile / Internet 720
 - **Bonus Time** — toggle, shown when `Sports_padding_enabled`; see "Bonus Time starburst" below
 - **Days** — weekday toggle buttons (shown for `.single` and `.dateTime` only, mutually exclusive with New Only/Duplicate Episodes — the three never appear together since Days is Single/DateTime-only and the other two are non-Single). Single enforces single-day selection and labels the row "Day " (with a trailing space, padded to match "Days" width so the weekday buttons stay aligned between the two Types); dateTime allows any combination and labels it "Days"

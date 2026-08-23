@@ -7,6 +7,9 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 **Added**
 - **New "New Only" toggle when adding or editing a DateTime, SeriesID(Channel), or SeriesID(All) show** ("Skip reruns"), in both the native app and the web guide's Record/Edit modals. When on, an airing the guide doesn't flag as new (today/tonight's original air date) is skipped at record time and the show advances to its next scheduled airing instead — independent of "Skip already-recorded episodes," which only catches an exact episode already on disk, not a rerun the app has never captured. Not available for Single recordings, which always record one specific known airing regardless of rerun status.
 - **The web guide's Edit modal now shows signal quality bars and a weak-signal warning** for the show's channel, matching what the Record modal already had — previously this was Record-only, so editing an existing show gave no indication its channel had weak reception.
+
+**Updated**
+- **The SeriesID(Channel)/SeriesID(All) recording type is now one "SeriesID" option with a Channel/All scope toggle underneath it**, in both the native Add/Edit dialogs and the web guide's Record/Edit modals — instead of two separate, easy-to-conflate top-level Type choices. Picking Channel or All works exactly as before; this only changes how you get there. The native/web Edit views also now hide the Channel field entirely when All is selected, since an All-scoped show isn't locked to one channel.
 - **The web guide now asks you to confirm before deleting a show**, showing its poster, title, and recording type (Single/DateTime/SeriesID(Channel)/SeriesID(All)) — previously clicking Delete (or Stop & Delete) removed the show immediately with no confirmation. Matches the native menu bar app's existing poster-and-title confirmation, plus shows the recording type the native alert doesn't.
 
 ## v2.0.5 — 2026-08-22

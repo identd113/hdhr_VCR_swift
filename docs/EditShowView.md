@@ -9,8 +9,8 @@ Fixed **480×520**. Standard macOS window chrome. Title: `"Edit Show"`. While lo
 White/system background. `VStack` with 16pt spacing, 16pt padding on all sides:
 
 - **`"Edit Show"`** title in `.title2`
-- **`ShowFormSection`** — shared form fields (title field, signal row, type picker, transcode picker, Bonus Time toggle, days toggles, New Only toggle, duplicate-episodes toggle, folder row) — see `ShowFormSection.md`. The signal row shows bars + a weak-signal warning for the show's channel when `Signal_quality_enabled`. New Only (shown for every `Type` except `.single`) is a "Skip reruns" toggle (`show_new_only`) — skips a rerun airing at record time and advances to the next scheduled one. The duplicate-episodes row (only when Series subfolders + Skip already-recorded episodes are on, and the show is a series) shows an orange "already on disk — will be skipped" warning plus a "Record even if already on disk" override toggle (`show_ignore_duplicate_once`).
-- **`LabeledContent("Channel")`** — `TextField` with placeholder `"e.g. 5.4"`, 80pt wide. Tooltip: guide channel number format and redirect use.
+- **`ShowFormSection`** — shared form fields (title field, signal row, type picker, scope picker, transcode picker, Bonus Time toggle, days toggles, New Only toggle, duplicate-episodes toggle, folder row) — see `ShowFormSection.md`. The signal row shows bars + a weak-signal warning for the show's channel when `Signal_quality_enabled`. The type picker collapses `.seriesChannel`/`.seriesAll` into one "SeriesID" segment; picking it reveals a Scope row (Channel/All) right below — see `ShowFormSection.md`'s "Type/Scope split". New Only (shown for every `Type` except `.single`) is a "Skip reruns" toggle (`show_new_only`) — skips a rerun airing at record time and advances to the next scheduled one. The duplicate-episodes row (only when Series subfolders + Skip already-recorded episodes are on, and the show is a series) shows an orange "already on disk — will be skipped" warning plus a "Record even if already on disk" override toggle (`show_ignore_duplicate_once`).
+- **`LabeledContent("Channel")`** — `TextField` with placeholder `"e.g. 5.4"`, 80pt wide. Tooltip: guide channel number format and redirect use. **Hidden when the scope is All** (`seriesType == .seriesAll`) — that scope floats across every channel the tuner receives, so a fixed channel number would misleadingly imply a lock `resolveSeriesAir`/`scheduleNextAir` don't actually honor. Not part of `ShowFormSection` (it's `EditShowView`'s own field, below it), so this hide check lives in `EditShowView` directly.
 - **`LabeledContent("Length (min)")`** — numeric `TextField`, 60pt wide, placeholder `"60"`. Tooltip: set from guide end time; Bonus Time adds extra minutes past guide end.
 - **Failures row** (only when `show_fail_count > 0`): `LabeledContent("Failures")` — orange text `"3 — Output file missing"` + blue `"Reset"` button
 - **SeriesID row**: `LabeledContent("SeriesID")` — secondary-color text, `"none"` if empty. Tooltip: HDHomeRun series identifier used for smart cross-channel matching.
@@ -40,7 +40,8 @@ ScrollView {
   VStack {
     Title (editable TextField)
     Signal (bars + weak-signal warning — only when Signal_quality_enabled and channel has data)
-    Type (segmented Picker: Single / DateTime / SeriesID(Channel) / SeriesID(All))
+    Type (segmented Picker: Single / DateTime / SeriesID — SeriesID collapses .seriesChannel/.seriesAll)
+    Scope (2-segment Picker: Channel / All — only when Type is SeriesID)
     Transcode (Picker: None / Heavy / Mobile / Internet 720)
     Bonus Time (toggle — only when Sports_padding_enabled)
     Day / Days (toggle buttons — only for Single and DateTime)
@@ -48,7 +49,7 @@ ScrollView {
     Duplicate Episodes (override toggle + warning — only when Series subfolders + Skip
                          already-recorded episodes are on, and the show is a series)
     Folder (display last path component + Change… button)
-    Channel (editable TextField, width 80)
+    Channel (editable TextField, width 80 — hidden when Scope is All)
     Length in minutes (TextField + .number format)
     Failures (orange text + Reset button — only shown when show_fail_count > 0)
     SeriesID (read-only Text, "none" if empty)

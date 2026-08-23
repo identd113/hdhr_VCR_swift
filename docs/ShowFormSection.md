@@ -16,8 +16,12 @@ Signal       — SignalBarsView for the selected channel + a "weak signal" warni
                channel's bucket is .poor. Only when state.config.Signal_quality_enabled and the
                channel has signal history (bucket != .noData). Reuses signalBucket(guideName:) via
                state.lineups[show.hdhr_record] → GuideName. Appears in both Add and Edit.
-Type         — Segmented Picker (ShowState.allCases): Single | DateTime | SeriesID(Channel) | SeriesID(All)
-               Tooltip: explains each mode
+Type         — Segmented Picker over 3 collapsed top-level choices: Single | DateTime | SeriesID
+               (private TopType enum, computed from/written back to seriesType via the `topType`
+               Binding — see "Type/Scope split" below). Tooltip: explains each mode.
+Scope        — Only when seriesType.isSeries. A 2-segment Picker — Channel | All — bound to a
+               derived Bool (seriesType == .seriesAll) that writes seriesType as .seriesChannel/
+               .seriesAll. See "Type/Scope split" below.
 Transcode    — Picker: None | Heavy | Mobile | Internet 720
                Tooltip: None keeps raw MPEG; others transcode for size/device; notes that not all
                tuner models support transcoding and to fall back to None if a recording fails
@@ -56,6 +60,16 @@ Folder       — Last path component of recordFolder + a button (label from fold
 Only shown when `state.config.Sports_padding_enabled`. The label reads `"+N min past guide end"` where N is `state.config.Sports_padding_minutes`. The toggle sets `show.show_bonus_time`. The `withAnimation(.spring(...))` wrapper on the setter makes the `StarburstBadge` in the parent's ZStack animate in/out when the toggle changes.
 
 ---
+
+## Type/Scope split
+
+As of 2026-08-23, the Type picker shows only 3 segments — `ShowState`'s 4 real cases (`.single`/`.dateTime`/`.seriesChannel`/`.seriesAll`) are still exactly what `seriesType`/`Show` carry (unchanged everywhere else: `ManagedGuideMatcher`, scheduling, Discord labels, docs), but `.seriesChannel`/`.seriesAll` collapse into one visible "SeriesID" segment. A private `TopType` enum (`.single`/`.dateTime`/`.seriesID`) and a computed `topType: Binding<TopType>` sit between the Picker and `seriesType`: the getter maps either series case to `.seriesID`; the setter maps `.single`/`.dateTime` straight through, and maps `.seriesID` to `.seriesChannel` *only* if `seriesType` wasn't already a series type (so re-tapping an already-selected SeriesID segment doesn't reset an existing Channel/All choice back to Channel).
+
+Picking SeriesID reveals a second row, **Scope**, directly below Type — a 2-segment Picker (Channel | All) bound to a derived `Binding<Bool>` (`seriesType == .seriesAll`) that writes `.seriesChannel`/`.seriesAll` back to `seriesType` on toggle.
+
+Because the Scope Picker's own selection is a derived `Bool`, not `seriesType` itself, `.onChange(of: seriesType) { onSeriesTypeChange() }` is attached once at the outer `Group` level (not on the Type Picker) — that's the one place guaranteed to see every real `seriesType` mutation regardless of which of the two Pickers caused it.
+
+`EditShowView`'s own Channel field (`LabeledContent("Channel")`, below `ShowFormSection` — not part of this shared component) is hidden when `seriesType == .seriesAll`: that scope floats across every channel the tuner receives, so a fixed channel number would misleadingly imply a lock that `resolveSeriesAir`/`scheduleNextAir` don't actually honor (they rewrite `show_channel` on their own as the matching episode moves). `AddShowView` has no equivalent field to hide — channel context there comes from the guide entry picked in Step 1, not an editable field. The web guide's Record modal (`docs/WebServer.md`) keeps its read-only `Ch X · Name · time` line visible regardless of scope (it names the specific airing being added from, not a lock); its Edit modal hides its editable Channel field the same way `EditShowView` does.
 
 ## Duplicate Episodes Toggle
 

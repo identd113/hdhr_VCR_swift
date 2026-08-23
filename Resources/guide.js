@@ -178,24 +178,39 @@ function closeSummary(){
 // t = short label, matching native ShowState.rawValue exactly (native is the layout
 // baseline both modals mirror) — shown on the button itself. d = longer description,
 // shown on a single line below the button row for whichever option is selected.
+// Full 4-way labels — kept as-is (not collapsed) since typeLabel() below still needs the
+// precise "SeriesID(Channel)"/"SeriesID(All)" text for the delete-confirm dialog.
 var recOpts=[
   {v:'single',        t:'Single',            d:'Record this airing only'},
   {v:'dateTime',      t:'DateTime',          d:'Record at this time each week'},
   {v:'seriesChannel', t:'SeriesID(Channel)', d:'Record new episodes on this channel'},
   {v:'seriesAll',     t:'SeriesID(All)',     d:'Record new episodes on any channel'}
 ];
+// Collapsed set for the Type row itself: seriesChannel/seriesAll render as one "SeriesID"
+// segment, with the Channel/All choice moved to the separate Scope row (renderScopeRow)
+// below — mirrors the native Add/Edit dialog's Type/Scope picker split (ShowFormSection.swift).
+var topOpts=[
+  {v:'single',   t:'Single',   d:'Record this airing only'},
+  {v:'dateTime', t:'DateTime', d:'Record at this time each week'},
+  {v:'seriesID', t:'SeriesID', d:'Record new episodes automatically — pick Channel or All scope below'}
+];
+function topOptFor(type){ return (type==='seriesChannel'||type==='seriesAll')?'seriesID':type; }
 // Renders the Type row as compact buttons (native's segmented Type picker equivalent)
 // plus one description line for whichever option is selected — puts every option along
 // the top like the native wizard, with the rest of the form below, instead of the old
-// one-card-per-row stacked layout. Shared by the Record and Edit modals.
+// one-card-per-row stacked layout. Shared by the Record and Edit modals. `selected` is the
+// real show type ('single'/'dateTime'/'seriesChannel'/'seriesAll'); `onSelect` is called with
+// the clicked top-level value ('single'/'dateTime'/'seriesID') — the caller resolves 'seriesID'
+// to a concrete type (defaulting to 'seriesChannel', or preserving the current scope).
 function renderTypeRow(containerId,descId,selected,onSelect){
   var container=document.getElementById(containerId);
   var descEl=document.getElementById(descId);
   container.innerHTML='';
-  recOpts.forEach(function(o){
+  var selTop=topOptFor(selected);
+  topOpts.forEach(function(o){
     var btn=document.createElement('button');
     btn.type='button';
-    btn.className='rm-type-btn'+(o.v===selected?' sel':'');
+    btn.className='rm-type-btn'+(o.v===selTop?' sel':'');
     btn.textContent=o.t;
     btn.onclick=function(){
       Array.from(container.querySelectorAll('.rm-type-btn')).forEach(function(b){b.classList.remove('sel');});
@@ -205,8 +220,27 @@ function renderTypeRow(containerId,descId,selected,onSelect){
     };
     container.appendChild(btn);
   });
-  var initial=recOpts.filter(function(o){return o.v===selected;})[0]||recOpts[0];
+  var initial=topOpts.filter(function(o){return o.v===selTop;})[0]||topOpts[0];
   descEl.textContent=initial.d;
+}
+// Renders the Channel/All Scope row — only meaningful (and only ever shown) while the Type
+// row's collapsed SeriesID segment is selected. `selected` is 'seriesChannel'/'seriesAll';
+// `onSelect` is called with whichever of those two was clicked.
+function renderScopeRow(containerId,selected,onSelect){
+  var container=document.getElementById(containerId);
+  container.innerHTML='';
+  [{v:'seriesChannel',t:'Channel'},{v:'seriesAll',t:'All'}].forEach(function(o){
+    var btn=document.createElement('button');
+    btn.type='button';
+    btn.className='rm-type-btn'+(o.v===selected?' sel':'');
+    btn.textContent=o.t;
+    btn.onclick=function(){
+      Array.from(container.querySelectorAll('.rm-type-btn')).forEach(function(b){b.classList.remove('sel');});
+      btn.classList.add('sel');
+      onSelect(o.v);
+    };
+    container.appendChild(btn);
+  });
 }
 // 3-bar signal SVG (same geometry/palette as the guide-row bars). bucket: poor|fair|good.
 function _sigBarsSvg(bucket){
@@ -296,6 +330,7 @@ function doRecord(){
   document.getElementById('rm-days-row').style.display='flex';
   document.getElementById('rm-new-row').style.display='none';
   document.getElementById('rm-new').checked=false;
+  document.getElementById('rm-scope-row').style.display='none';
   document.getElementById('rm-transcode').value=_defaultTranscode;
   var _isSports=_genre.toLowerCase().indexOf('sport')>=0; // matches guide.php's "Sports" and XMLTV's singular "Sport"
   document.getElementById('rm-bonus-row').style.display=_bonusEnabled?'flex':'none';
@@ -307,21 +342,25 @@ function doRecord(){
   document.getElementById('rm-tuner').style.display=(isLive&&devFull(_d))?'block':'none';
   renderRmSignal();
   renderTypeRow('rm-opts','rm-type-desc','single',function(v){
-    _rmType=v;
-    var isSeries=v==='seriesChannel'||v==='seriesAll';
+    // 'seriesID' (the collapsed Type segment) resolves to whichever concrete series type is
+    // already selected (a same-value re-tap), defaulting to 'seriesChannel' the first time in.
+    _rmType=(v==='seriesID')?((_rmType==='seriesChannel'||_rmType==='seriesAll')?_rmType:'seriesChannel'):v;
+    var isSeries=_rmType==='seriesChannel'||_rmType==='seriesAll';
+    document.getElementById('rm-scope-row').style.display=isSeries?'flex':'none';
+    if(isSeries)renderScopeRow('rm-scope',_rmType,function(sv){_rmType=sv;});
     var sid=document.getElementById('rm-sid');
     if(isSeries&&_ser){document.getElementById('rm-sid-val').textContent=_ser;sid.style.display='flex';}
     else{sid.style.display='none';}
-    if(v==='single'||v==='dateTime'){
-      document.getElementById('rm-days-lbl').textContent=(v==='single')?'Day':'Days';
+    if(_rmType==='single'||_rmType==='dateTime'){
+      document.getElementById('rm-days-lbl').textContent=(_rmType==='single')?'Day':'Days';
       document.getElementById('rm-days-row').style.display='flex';
-      if(v==='single'){
+      if(_rmType==='single'){
         Array.from(rmDaysEl.querySelectorAll('.day-btn')).forEach(function(b,i){b.classList.toggle('sel',i===_entryDow);});
       }
     } else {
       document.getElementById('rm-days-row').style.display='none';
     }
-    document.getElementById('rm-new-row').style.display=(v==='single')?'none':'flex';
+    document.getElementById('rm-new-row').style.display=(_rmType==='single')?'none':'flex';
     if(isSeries&&_ser){loadAirings(_ser,_myGen);}
     else{document.getElementById('rm-airings').style.display='none';}
   });
@@ -782,6 +821,20 @@ function updateDupVisibility(){
 function updateNewOnlyVisibility(){
   document.getElementById('em-new-row').style.display=(_editType==='single')?'none':'flex';
 }
+// Hidden for seriesAll — that scope floats across every channel the tuner receives, so a
+// fixed channel field would misleadingly imply a lock that doesn't exist (mirrors
+// EditShowView.swift's identical hide rule for its own Channel field).
+function updateChannelRowVisibility(){
+  document.getElementById('em-ch-row').style.display=(_editType==='seriesAll')?'none':'flex';
+}
+// Shows/hides the Channel/All Scope row for the collapsed SeriesID Type segment, and
+// (re)renders its two buttons — mirrors ShowFormSection.swift's Scope Picker.
+function updateScopeUI(){
+  var isSeries=(_editType==='seriesChannel'||_editType==='seriesAll');
+  document.getElementById('em-scope-row').style.display=isSeries?'flex':'none';
+  if(isSeries)renderScopeRow('em-scope',_editType,function(sv){_editType=sv;updateChannelRowVisibility();});
+  updateChannelRowVisibility();
+}
 function openEditShow(el){
   var d=el.dataset;
   _editId=d.id;_editPaused=d.paused==='1';_editRec=d.recording==='1';_editType=d.type||'single';_editPoster=d.poster||d.logo||'';
@@ -790,8 +843,12 @@ function openEditShow(el){
   document.getElementById('em-len-in').value=d.length||'60';
   _editChname=d.chname||'';renderEmSignal();
   renderTypeRow('em-type-opts','em-type-desc',_editType,function(v){
-    _editType=v;updateDaysVisibility();updateDupVisibility();updateNewOnlyVisibility();
+    // 'seriesID' resolves to whichever concrete series type is already selected (a
+    // same-value re-tap), defaulting to 'seriesChannel' the first time in.
+    _editType=(v==='seriesID')?((_editType==='seriesChannel'||_editType==='seriesAll')?_editType:'seriesChannel'):v;
+    updateDaysVisibility();updateDupVisibility();updateNewOnlyVisibility();updateScopeUI();
   });
+  updateScopeUI();
   var selDays=(d.airdays||'').split(',').filter(Boolean);
   var daysEl=document.getElementById('em-days');daysEl.innerHTML='';
   _dayNames.forEach(function(day,i){

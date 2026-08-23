@@ -106,13 +106,20 @@ struct EditShowView: View {
                     onChooseFolder: { chooseFolder() }
                 )
 
-                LabeledContent("Channel") {
-                    TextField("e.g. 5.4", text: Binding(
-                        get: { show?.show_channel ?? "" },
-                        set: { show?.show_channel = $0 }))
-                        .frame(width: 80)
+                // Hidden for SeriesID(All) — that scope floats across every channel the tuner
+                // receives, so a fixed channel number here would misleadingly imply a lock that
+                // doesn't exist (resolveSeriesAir/scheduleNextAir rewrite show_channel on their
+                // own as the matching episode moves). Single/DateTime/SeriesID(Channel) are all
+                // genuinely locked to one channel, so the field stays for those.
+                if seriesType != .seriesAll {
+                    LabeledContent("Channel") {
+                        TextField("e.g. 5.4", text: Binding(
+                            get: { show?.show_channel ?? "" },
+                            set: { show?.show_channel = $0 }))
+                            .frame(width: 80)
+                    }
+                    .help("The HDHomeRun guide channel number (e.g. 5.1, 9.2). Change this to redirect the recording to a different channel.")
                 }
-                .help("The HDHomeRun guide channel number (e.g. 5.1, 9.2). Change this to redirect the recording to a different channel.")
 
                 LabeledContent("Length (min)") {
                     TextField("", value: Binding(

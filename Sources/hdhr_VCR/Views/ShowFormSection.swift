@@ -14,6 +14,36 @@ struct ShowFormSection: View {
 
     private let weekdays = Show.weekdayNames
 
+    // Collapses ShowState's 4 real cases to 3 top-level picker segments — seriesChannel and
+    // seriesAll render as one "SeriesID" segment, with the Channel/All choice moved to the
+    // separate Scope picker below. The underlying `seriesType`/`Show` fields are untouched:
+    // this is presentation-only, so ManagedGuideMatcher/scheduling/Discord/docs — everything
+    // keyed off the real 4-way ShowState — sees no change.
+    private enum TopType: String, CaseIterable {
+        case single = "Single", dateTime = "DateTime", seriesID = "SeriesID"
+    }
+    private var topType: Binding<TopType> {
+        Binding(
+            get: {
+                switch seriesType {
+                case .single: return .single
+                case .dateTime: return .dateTime
+                case .seriesChannel, .seriesAll: return .seriesID
+                }
+            },
+            set: { newValue in
+                switch newValue {
+                case .single: seriesType = .single
+                case .dateTime: seriesType = .dateTime
+                // Picking SeriesID fresh from Single/DateTime defaults to Channel scope;
+                // re-picking it while already a series type (a same-value tap) preserves
+                // whichever scope was already selected instead of resetting it.
+                case .seriesID: if !seriesType.isSeries { seriesType = .seriesChannel }
+                }
+            }
+        )
+    }
+
     // Cached result of the (disk-scanning) duplicate-episode check — recomputed via .task(id:)
     // below only when an input it actually depends on changes, rather than on every unrelated
     // body re-render (e.g. toggling Bonus Time no longer re-scans the series' folder). A title
@@ -65,12 +95,25 @@ struct ShowFormSection: View {
             }
 
             LabeledContent("Type") {
-                Picker("", selection: $seriesType) {
-                    ForEach(ShowState.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                Picker("", selection: topType) {
+                    ForEach(TopType.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }
                 .pickerStyle(.segmented)
-                .onChange(of: seriesType) { onSeriesTypeChange() }
-                .help("Single: one recording on a specific date and time. DateTime: repeats weekly on selected days. Series Channel: records new episodes on this channel via SeriesID matching. Series All: records new episodes on any channel.")
+                .help("Single: one recording on a specific date and time. DateTime: repeats weekly on selected days. SeriesID: records new episodes automatically via SeriesID matching — pick Channel or All scope below.")
+            }
+
+            if seriesType.isSeries {
+                LabeledContent("Scope") {
+                    Picker("", selection: Binding(
+                        get: { seriesType == .seriesAll },
+                        set: { isAll in seriesType = isAll ? .seriesAll : .seriesChannel }
+                    )) {
+                        Text("Channel").tag(false)
+                        Text("All").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                }
+                .help("Channel: records new episodes only on the channel you picked. All: records new episodes on any channel this tuner receives.")
             }
 
             LabeledContent("Transcode") {
@@ -152,6 +195,10 @@ struct ShowFormSection: View {
                 }
             }
         }
+        // Attached at the Group level (not on the Type Picker itself) so it also fires when the
+        // Scope picker changes seriesType — that Picker's own selection is a derived Bool, not
+        // seriesType directly, so an onChange on it wouldn't see the real ShowState value change.
+        .onChange(of: seriesType) { onSeriesTypeChange() }
         .task(id: duplicateCheckKey) {
             // Debounce: .task(id:) cancels the previous task on every id change, i.e. every
             // keystroke in Title. Waiting briefly first means a burst of keystrokes only scans

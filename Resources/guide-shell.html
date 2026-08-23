@@ -65,6 +65,7 @@
       </div>
     </div>
     <div class="em-row"><div class="em-lbl">Type</div><div class="em-content"><div id="rm-opts" class="rm-type-row"></div><div id="rm-type-desc" class="rm-type-desc"></div></div></div>
+    <div id="rm-scope-row" class="em-row" style="display:none"><div class="em-lbl">Scope</div><div id="rm-scope" class="rm-type-row"></div></div>
     <div class="em-row"><div class="em-lbl">Transcode</div><select id="rm-transcode" class="em-input"><option value="none">None (copy stream)</option><option value="heavy">Heavy (H.264 CRF 18)</option><option value="mobile">Mobile (480p H.264)</option><option value="internet720">Internet 720 (720p H.264)</option></select></div>
     <div id="rm-bonus-row" class="em-row"><div class="em-lbl">Bonus Time</div><label class="em-check"><input type="checkbox" class="mac-check" id="rm-bonus" onchange="toggleRmBonusStar()"><span>+{{SPORTS_PADDING_MINUTES}} min past guide end</span></label></div>
     <div id="rm-days-row" class="em-row" style="display:none"><div class="em-lbl" id="rm-days-lbl">Days</div><div class="em-days" id="rm-days"></div></div>
@@ -89,11 +90,12 @@
     <div class="em-row"><div class="em-lbl">Title</div><input id="em-title-in" class="em-input" type="text" placeholder="Show title"></div>
     <div id="em-sig-row" class="em-row" style="display:none"><div class="em-lbl">Signal</div><div class="em-content"><div id="em-sig" style="min-height:12px"></div></div></div>
     <div class="em-row"><div class="em-lbl">Type</div><div class="em-content"><div id="em-type-opts" class="rm-type-row"></div><div id="em-type-desc" class="rm-type-desc"></div></div></div>
+    <div id="em-scope-row" class="em-row" style="display:none"><div class="em-lbl">Scope</div><div id="em-scope" class="rm-type-row"></div></div>
     <div class="em-row"><div class="em-lbl">Transcode</div><select id="em-transcode" class="em-input"><option value="none">None (copy stream)</option><option value="heavy">Heavy (H.264 CRF 18)</option><option value="mobile">Mobile (480p H.264)</option><option value="internet720">Internet 720 (720p H.264)</option></select></div>
     <div id="em-bonus-row" class="em-row"><div class="em-lbl">Bonus Time</div><label class="em-check"><input type="checkbox" class="mac-check" id="em-bonus" onchange="toggleBonusStar()"><span>Extend recording past guide end</span></label></div>
     <div id="em-days-row" class="em-row" style="display:none"><div class="em-lbl" id="em-days-lbl">Days</div><div class="em-days" id="em-days"></div></div>
     <div id="em-new-row" class="em-row" style="display:none"><div class="em-lbl">New Only</div><label class="em-check"><input type="checkbox" class="mac-check" id="em-new"><span>Skip reruns</span></label></div>
-    <div class="em-row"><div class="em-lbl">Channel</div><input id="em-ch-in" class="em-input em-input-sm" type="text" placeholder="e.g. 5.4"></div>
+    <div id="em-ch-row" class="em-row"><div class="em-lbl">Channel</div><input id="em-ch-in" class="em-input em-input-sm" type="text" placeholder="e.g. 5.4"></div>
     <div class="em-row"><div class="em-lbl">Length (min)</div><input id="em-len-in" class="em-input em-input-sm" type="number" min="1" max="1440" placeholder="60"></div>
     <div id="em-fail-row" class="em-row" style="display:none"><div class="em-lbl">Failures</div><div class="em-fail-content"><span id="em-fail-txt"></span><button id="em-reset" onclick="doEditReset()" class="em-fail-reset">Reset</button></div></div>
     <div id="em-sid-row" class="em-row" style="display:none"><div class="em-lbl">SeriesID</div><div id="em-sid" class="em-sid"></div></div>
