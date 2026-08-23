@@ -25,6 +25,13 @@ Transcode    — Picker: None | Heavy | Mobile | Internet 720
 Bonus Time   — Toggle (only when state.config.Sports_padding_enabled); bound to show.show_bonus_time
 Day/Days     — Weekday toggle buttons (only for .single and .dateTime)
                Tooltip: single-day vs. multi-day selection intent
+New Only     — Only when seriesType != .single. A "Skip reruns" toggle bound to show.show_new_only —
+               at record time, skips an airing the guide doesn't mark as new (isNewEpisode, keyed off
+               OriginalAirdate) and advances to the next scheduled airing, same as a duplicate skip.
+               Independent of the Duplicate Episodes toggle below: this catches any rerun the app has
+               never recorded, not just an exact SxxExx already on disk. No live-typing preview banner
+               (unlike Duplicate Episodes) — whether the current guide entry counts as new can only be
+               checked at record time.
 Duplicate    — Only when state.config.Series_subfolder_enabled && state.config.Skip_recorded_episodes
 Episodes       && seriesType.isSeries. A "Record even if already on disk" toggle bound to
                show.show_ignore_duplicate_once (per-show override of the global skip-already-recorded

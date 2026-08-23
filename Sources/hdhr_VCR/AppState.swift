@@ -1111,13 +1111,16 @@ final class AppState: ObservableObject {
 
     // MARK: - Add show from guide entry (called by menu)
 
-    func addShowFromGuide(entry: GuideEntry, type: ShowState, device: HDHRDevice, channel: LineupEntry, airDays: [String]? = nil, transcode: String? = nil, bonusTime: Bool = false, titleOverride: String? = nil) {
+    func addShowFromGuide(entry: GuideEntry, type: ShowState, device: HDHRDevice, channel: LineupEntry, airDays: [String]? = nil, transcode: String? = nil, bonusTime: Bool = false, titleOverride: String? = nil, newOnly: Bool = false) {
         // Use the default directory automatically; user can override per-show via Edit.
         let folder = defaultSaveDir
 
         var show = Show.blank(channel: channel.GuideNumber, device: device.DeviceID)
         show.show_transcode  = transcode ?? config.Default_transcode
         show.show_bonus_time = bonusTime
+        // Meaningless for .single (set below in the switch) — startRecording's own check also
+        // guards on show.state != .single, so a stray true here for a Single show is a no-op.
+        show.show_new_only   = newOnly
         // For SeriesID types, strip any episode-specific suffix (e.g. " S24E116 Trey Parker…")
         // so the show is named after the series, not a single airing.
         let rawTitle = entry.Title
@@ -1796,6 +1799,25 @@ final class AppState: ObservableObject {
         // Fetched once and shared by the series-subfolder episode tag below and the metadata
         // sidecar (if enabled) — both want the same guide entry, not two separate lookups.
         let guideEntry = guideEntryForShow(show)
+        // New Only: skip this instance unless the guide's OriginalAirdate marks it as airing
+        // today/tonight (isNewEpisode) — a per-show filter, independent of Skip_recorded_episodes
+        // (that only catches an exact SxxExx already on disk; a rerun the app has never captured
+        // sails right through it). Never applies to .single — one specific known airing, "new" is
+        // meaningless there — so guard on show.state even though the UI already hides the toggle
+        // for that type, in case a stale flag survives a type change. Fails open (records anyway)
+        // when the guide has no entry for this exact slot — DateTime shows never re-confirm
+        // against the guide before this point (unlike show_use_seriesid's live re-check above), so
+        // a guide gap here would otherwise silently drop a legitimate recording rather than an
+        // actual rerun.
+        if show.show_new_only, show.state != .single, let guideEntry, !isNewEpisode(guideEntry) {
+            glog("[\(show.show_title)] SKIP — not a new episode (New Only)")
+            notify("Recording Skipped", body: show.show_title, subtitle: "Not a new episode")
+            fireDiscordCard(showId: show.show_id, event: "🔁 Skipped — rerun (New Only)",
+                            color: 0x95A5A6, enabled: config.Discord_on_duplicate,
+                            extra: [("Reason", "Not flagged as new by the guide", false)])
+            await scheduleNextAir(index: index)
+            return
+        }
         var seriesSubfolder: String? = nil
         var episodeTag: String? = nil
         if config.Series_subfolder_enabled && show.isSeries {

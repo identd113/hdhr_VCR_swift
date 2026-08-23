@@ -150,6 +150,7 @@ struct Show: Identifiable, Equatable {
     var discord_start_msg_id: String = ""   // message ID of the "Recording Started" embed; "" = none
     var show_tuner_resource: String  = ""   // e.g. "tuner0" — from X-HDHomeRun-Resource response header
     var show_ignore_duplicate_once: Bool  = false // per-show override: record even if Skip_recorded_episodes would skip it as already on disk
+    var show_new_only: Bool  = false // skip an airing unless the guide's OriginalAirdate marks it as new (see isNewEpisode); meaningless for .single (one specific known airing), never checked there
 
     var state: ShowState {
         if !show_is_series { return .single }
@@ -290,7 +291,7 @@ extension Show: Codable {
         case show_transcode, show_recording, show_last
         case notify_upnext_time, notify_recording_time
         case show_dir, show_temp_dir, show_recording_path, show_genre, show_bonus_time
-        case discord_start_msg_id, show_tuner_resource, show_ignore_duplicate_once
+        case discord_start_msg_id, show_tuner_resource, show_ignore_duplicate_once, show_new_only
     }
 
     init(from decoder: Decoder) throws {
@@ -344,6 +345,7 @@ extension Show: Codable {
         discord_start_msg_id = (try? c.decode(String.self, forKey: .discord_start_msg_id)) ?? ""
         show_tuner_resource  = (try? c.decode(String.self, forKey: .show_tuner_resource))  ?? ""
         show_ignore_duplicate_once = (try? c.decode(Bool.self, forKey: .show_ignore_duplicate_once)) ?? false
+        show_new_only = (try? c.decode(Bool.self, forKey: .show_new_only)) ?? false
     }
 }
 

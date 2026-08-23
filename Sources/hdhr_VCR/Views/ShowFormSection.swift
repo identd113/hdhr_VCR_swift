@@ -123,6 +123,13 @@ struct ShowFormSection: View {
                       : "All days of the week this show airs — select every applicable day.")
             }
 
+            if seriesType != .single {
+                LabeledContent("New Only") {
+                    Toggle("Skip reruns", isOn: $show.show_new_only)
+                }
+                .help("Only record an airing the guide marks as new (today/tonight's original air date). A rerun the app hasn't recorded before is skipped and the show advances to its next scheduled airing — independent of \"Skip already-recorded episodes,\" which only catches an exact episode already on disk. Not available for Single, which always records one specific known airing.")
+            }
+
             if state.config.Series_subfolder_enabled, state.config.Skip_recorded_episodes, seriesType.isSeries {
                 if !show.show_ignore_duplicate_once, let tag = duplicateTag {
                     Label("Episode \(tag) is already on disk — this recording will be skipped.",

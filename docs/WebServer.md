@@ -171,7 +171,8 @@ Updates config fields on an existing managed show. All fields except `showId` ar
   "transcode":     "none",
   "airDays":       ["Monday","Wednesday","Friday"],
   "resetFailures": true,
-  "ignoreDuplicateOnce": false
+  "ignoreDuplicateOnce": false,
+  "newOnly": false
 }
 ```
 
@@ -188,6 +189,7 @@ Updates config fields on an existing managed show. All fields except `showId` ar
 | `airDays` | [String] | Air day list (used for `dateTime` shows) |
 | `resetFailures` | Bool | Clears `show_fail_count`/`show_fail_reason` and sets `show_active = true` |
 | `ignoreDuplicateOnce` | Bool | `show_ignore_duplicate_once` — the "Duplicate Episodes" override (see "Duplicate-episode override" above) |
+| `newOnly` | Bool | `show_new_only` — the "New Only" / "Skip reruns" toggle (`docs/ShowFormSection.md`); checked at record time regardless of type, but only meaningful (and only shown in the UI) for non-`single` types |
 
 **Recording directory is not web-settable:** this endpoint has no auth beyond LAN-subnet matching, so it deliberately does **not** accept a `saveDir` (or any output-path) field — allowing a LAN host to redirect where recordings land is a security risk. Any `saveDir` in the request body is ignored; `show_dir`/`show_temp_dir` can only be changed with local app access.
 
@@ -206,10 +208,12 @@ Promoting a show to a `seriesId` type (`seriesChannel`/`seriesAll`) when it prev
 
 **Contents (top to bottom)** — ordered to match the native Edit Show field order (`ShowFormSection.swift` fields first, then `EditShowView`'s own Channel/Length/SeriesID fields, which sit near the bottom of the native form too):
 - Title (editable input, `#em-title-in`)
+- **Signal row** (`#em-sig-row`) — bars (`#em-sig`) + weak-signal warning banner (`#em-sig-warn`), mirroring the Record modal's `#rm-sig`/`#rm-sig-warn`. Hidden by default and only shown once `renderEmSignal()`'s fetch resolves a non-`noData` bucket — unlike the Record modal (where the bars sit inside the Title row's content column with nothing to hide), Edit's Signal is its own row, so it stays hidden entirely rather than showing an empty "Signal" label when the feature is off or there's no data yet. Keyed by `_editChname`, a dedicated var (not the shared `_chname` the Record modal/grid selection use) since Edit can be opened from the tuner dropdown, which never touches `_chname`. `_editChname` is populated from `data-chname` — added to the tuner-dropdown row's data attributes (`buildTunerShowsHTML`, resolved from `state.lineups[hdhr_record]`'s matching `GuideNumber`) and already present on the grid block's own `data-chname` for the `doEditFromGuide()` path.
 - **Type selector** — same compact button row + description line as the Record modal (`#em-type-opts`/`#em-type-desc`, built by the shared `renderTypeRow()` helper — see the Record modal's Type row entry above for the full mechanism). Selecting a button updates the module-level `_editType` var directly (read by `confirmEdit()`), not a `:checked` DOM query.
 - Transcode selector
 - **Bonus Time toggle** (`#em-bonus-row`) — hidden entirely when `config.Sports_padding_enabled` is `false` (parity with the Record modal), and always hidden while the show is recording
 - **Air Days row** — visible for **`single` and `dateTime`** types (parity with the Record modal); 7 Su–Sa toggle buttons, label reads "Day" for `single` / "Days" for `dateTime`. Hidden for series types. At least one day must remain selected.
+- **New Only toggle** (`#em-new-row`/`#em-new`) — "Skip reruns", mirrors the native dialog's `show_new_only` toggle (`docs/ShowFormSection.md`). Visible for every type except `single`; re-evaluated on every type-picker change via `updateNewOnlyVisibility()`. Unlike Duplicate Episodes below, not gated by any server-side config flag.
 - Channel + Length fields (minutes) — web-only editable fields (native `EditShowView` shows these too, in the same relative position after the shared `ShowFormSection` block)
 - **Reset Failures link** — shown when `failcount > 0`; sets `resetFailures: true` in payload
 - **SeriesID row** — visible for series types; web-only display (native shows it even further down, after Stream URL)
@@ -515,6 +519,7 @@ Mirrors the native Add Show wizard's Details step (`ShowFormSection`) minus the 
 - **Transcode row** — `em-lbl` "Transcode" label + `<select id="rm-transcode">` with the same 4 options as the edit modal. Defaults to `config.Default_transcode` (allowlist-sanitized server-side) each time the modal opens, not a hardcoded `"none"`.
 - **Bonus Time row** (`#rm-bonus-row`, `em-row` style) — hidden entirely when `config.Sports_padding_enabled` is `false`; `em-lbl` "Bonus Time" label + `.mac-check` checkbox (native's default Toggle style outside a List/Form is a checkbox, not a switch) with adjacent text `+{Sports_padding_minutes} min past guide end`. Auto-checked for Sports-genre entries only when bonus is enabled.
 - **Days row** (`#rm-days-row`, `em-row` style) — visible for `single` (label "Day") and `dateTime` (label "Days"); hidden for series types. Pre-checked to the guide entry's day of week. For `single`, clicking a day moves the selection to it (clicking the already-selected day clears it — matches the native wizard's single-day Toggle semantics exactly, including allowing zero selected). For `dateTime`, days multi-toggle with at least one required (last-day deselect is blocked). Switching Type back to `single` collapses the selection back to the guide entry's weekday.
+- **New Only row** (`#rm-new-row`, `em-row` style) — a "Skip reruns" `.mac-check` checkbox (`#rm-new`), mirroring the native dialog's `show_new_only` toggle (`docs/ShowFormSection.md`). Visible for every Type except `single`, re-evaluated on every type-picker click; unlike Duplicate Episodes below, not gated by any server-side config flag. Unchecked by default each time the modal opens.
 - **SeriesID row** (`#rm-sid`, `em-row` style) — visible when a series type is selected; value in `em-sid` monospace style. Web-only (no native equivalent in Add Show), placed after the fields common to every Type.
 - **Other Upcoming Airings row** (`#rm-airings`, `em-row` style) — visible when a series type is selected *and* `GET /api/airings/{seriesId}` returns at least one airing after excluding the one just selected. Each `.rm-air-row` (mirrors the tuner dropdown's `.sp-row` list styling) has: a genre-color accent bar (`gc(a.genre)`, same mapping as the guide grid), the channel logo (`.rm-air-logo`, 18px, hidden via `onerror` if it fails to load), and a two/three-line info column — bold day+time, secondary `Ch N · Name`, and episode info when the guide has it. Rows are separated by a bottom border (`.rm-air-row`), not full card backgrounds — same list language as `.sp-row`; hover tints the row and the cursor becomes a pointer as a click affordance. Fetched once per series per modal-open and cached client-side (`_airCache`); a generation counter (`_airGen`) discards a response that arrives after the modal was reopened for a different program. Web-only (native `AddShowView` shows the equivalent panel below the whole form, not inline).
 - **Double-click a row to switch the modal to that airing** (`switchAiring(idx)`) — re-anchors `_d`/`_n`/`_s`/`_e`/`_genre`/`_title` to the clicked airing (looked up from `_airCurrent`, the last-rendered filtered array), updates the title input and the `Ch N · Name · time` line, re-checks the tuner-full warning for the (possibly different) device, and re-renders the airings list from the same `_airCache` entry — which now excludes the newly-selected airing and re-includes whichever one was previously selected. Selected Type/Transcode/Bonus are left untouched. Native parity: `AddShowView.switchToAiring(channel:entry:)`.
@@ -524,7 +529,7 @@ Mirrors the native Add Show wizard's Details step (`ShowFormSection`) minus the 
 
 **Config staleness:** `_defaultTranscode`, `_bonusEnabled`, and the bonus row's minutes label are baked into the served HTML at page-generation time (same as `_bonusMins`) — a config change in Settings takes effect on the next guide load (page refresh or the hourly `guide_refreshed` reload), not immediately.
 
-On **Schedule**: `confirmRecord()` collects selected air days from `#rm-days .day-btn.sel`, the transcode value from `#rm-transcode`, and the trimmed title from `#rm-title-in` (included in the POST only if it differs from the original guide title — see `title` field above), then POSTs to `/api/record`. The transcode value is applied to the new show (overriding the config default). On success:
+On **Schedule**: `confirmRecord()` collects selected air days from `#rm-days .day-btn.sel`, the transcode value from `#rm-transcode`, the trimmed title from `#rm-title-in` (included in the POST only if it differs from the original guide title — see `title` field above), and `#rm-new`'s checked state as `newOnly`, then POSTs to `/api/record`. The transcode value is applied to the new show (overriding the config default). On success:
 - Guide block gains `.g-prog-rec` + `.g-st-rec` (red ring, pulsing ⏺ badge) if `recStarted` is true (show currently airing); otherwise `.g-prog-sched` + `.g-st-sched` (blue ring, ⏱ badge).
 - Summary note shows "● Recording now", "⚠ Queued — all tuners busy", or "★ Scheduled — next idle loop pick-up".
 - The summary delete button becomes **"Stop & Delete"** (+ `danger` class) when `recStarted`; stays **"Remove"** otherwise.
@@ -712,12 +717,15 @@ The matching tiers (seriesChannel's own-channel seriesID/title → seriesAll's a
 | `data-show-failreason` | `show.show_fail_reason` |
 | `data-show-recording` | `1` if recording, `0` otherwise |
 | `data-show-ignoredup` | `1` / `0` — `show.show_ignore_duplicate_once`, the web guide's "Duplicate Episodes" toggle (see "Duplicate-episode override" below) |
+| `data-show-newonly` | `1` / `0` — `show.show_new_only`, the web guide's "New Only" toggle |
 
 `owner(for:)` uses the exact same tiered lookup the flag itself is derived from (SeriesID → title fallback → dateTime slot → single slot — see Models.md), so the flag and the embedded edit attributes can never disagree about which show a block belongs to. This replaced an earlier, separately-maintained `findManagedShow(e, ch)` lookup that only checked SeriesID for series shows (no title fallback) — meaning a series entry whose guide data happened to lack a SeriesID could get flagged managed (via the title-fallback tier the boolean flag already used) but resolve to no owner at all, leaving the Edit button unable to pre-fill from the guide for that block. `owner(for:)` closes that gap: since it shares the identical tiers, a title-fallback match now always populates the same `data-show-*` attributes.
 
 If no match is found at all (e.g. a series show whose guide entry has no SeriesID *and* no title match), the block still gets `data-managed="1"` and the `.g-st-sched` ring/badge but no `data-show-*` edit attrs — the Edit button will not be pre-filled from the guide for that block.
 
 **Duplicate-episode override:** `willSkip` (above) renders the green `.g-flag-skip` corner flag + "Already recorded · will skip" tooltip for a managed block the grid knows will be skipped as a duplicate, but that alone was previously a dead end in the browser — `show_ignore_duplicate_once` (the per-show one-shot override, `docs/ShowFormSection.md`) was only settable from the native Add/Edit dialogs. The edit modal's "Duplicate Episodes" row (`em-dup-row`/`em-dup` in `guide-shell.html`) closes that gap: shown whenever `SKIP_DUP_ENABLED` (a JS token baked from `state.config.Series_subfolder_enabled && state.config.Skip_recorded_episodes`) is true and the show's type is `seriesChannel`/`seriesAll` (`updateDupVisibility()` in `guide.js`, re-checked on every type-picker change), it round-trips `data-show-ignoredup` → the checkbox → `POST /api/edit`'s `ignoreDuplicateOnce` field → `handleEdit` → `show.show_ignore_duplicate_once`. Not wired into the Record modal (`#rec-modal`) — see `docs/ShowFormSection.md`'s note on why a brand-new Record can't know this yet.
+
+**New Only:** unlike Duplicate Episodes, `show_new_only` needs no on-disk state to evaluate — it only reads the guide entry already in hand — so it's wired into **both** modals: the Record modal's `#rm-new-row`/`#rm-new` (visible for every type except `single`, unchecked by default) round-trips through `POST /api/record`'s `newOnly` field → `AppState.addShowFromGuide(newOnly:)`; the Edit modal's `#em-new-row`/`#em-new` round-trips `data-show-newonly` → the checkbox → `POST /api/edit`'s `newOnly` field → `handleEdit` → `show.show_new_only`, the same shape as Duplicate Episodes above.
 
 ---
 

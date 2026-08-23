@@ -1023,7 +1023,8 @@ final class WebServer: @unchecked Sendable {
         let transcode = obj["transcode"] as? String
         let bonusTime = obj["bonusTime"] as? Bool ?? false
         let title     = (obj["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-        state.addShowFromGuide(entry: entry, type: showType, device: device, channel: ch, airDays: airDays, transcode: transcode, bonusTime: bonusTime, titleOverride: title)
+        let newOnly   = obj["newOnly"] as? Bool ?? false
+        state.addShowFromGuide(entry: entry, type: showType, device: device, channel: ch, airDays: airDays, transcode: transcode, bonusTime: bonusTime, titleOverride: title, newOnly: newOnly)
         let effectiveTitle = (title?.isEmpty == false) ? title! : entry.Title
         return json(["ok": true, "title": effectiveTitle, "tunerFull": tunerFull,
                      "recStarted": recStarted, "tunerActive": newActive, "tunerTotal": total])
@@ -1142,6 +1143,9 @@ final class WebServer: @unchecked Sendable {
         // "Duplicate-episode override" note) — mirrors the native Add/Edit dialog's
         // show_ignore_duplicate_once toggle so a duplicate flagged in the browser isn't a dead end.
         if let ignoreDup = obj["ignoreDuplicateOnce"] as? Bool { updated.show_ignore_duplicate_once = ignoreDup }
+        // Web-guide mirror of the native Add/Edit dialog's "New Only" toggle (show_new_only) —
+        // see docs/ShowFormSection.md.
+        if let newOnly = obj["newOnly"] as? Bool { updated.show_new_only = newOnly }
         // Recording output directory is deliberately NOT settable from the web UI. This endpoint has
         // no auth beyond LAN-subnet matching, so accepting an arbitrary write path from any LAN host
         // is a security risk (redirecting where recordings land). Directory changes require local app
@@ -1210,7 +1214,11 @@ final class WebServer: @unchecked Sendable {
             let t = showTypeStr(s)
             let ad = s.show_air_date.joined(separator: ",")
             let nextEpoch = s.show_next.map { Int($0.timeIntervalSince1970) } ?? 0
-            let da = "data-dev=\"\(he(s.hdhr_record))\" data-id=\"\(he(s.show_id))\" data-title=\"\(he(s.show_title))\" data-ch=\"\(he(s.show_channel))\" data-type=\"\(t)\" data-paused=\"\(s.show_paused ? 1 : 0)\" data-recording=\"\(recording ? 1 : 0)\" data-next=\"\(nextEpoch)\" data-length=\"\(s.show_length)\" data-bonus=\"\(s.show_bonus_time ? 1 : 0)\" data-transcode=\"\(he(s.show_transcode))\" data-seriesid=\"\(he(s.show_seriesid))\" data-airdays=\"\(he(ad))\" data-failcount=\"\(s.show_fail_count)\" data-failreason=\"\(he(s.show_fail_reason))\" data-ignoredup=\"\(s.show_ignore_duplicate_once ? 1 : 0)\""
+            // GuideName (not the channel number) — the key /api/signal-stats expects, for the edit
+            // modal's Signal row. Absent (empty attr) when the channel isn't in this device's
+            // current lineup; renderEmSignal() already no-ops on an empty chname.
+            let chGuideName = state.lineups[s.hdhr_record]?.first(where: { $0.GuideNumber == s.show_channel })?.GuideName ?? ""
+            let da = "data-dev=\"\(he(s.hdhr_record))\" data-id=\"\(he(s.show_id))\" data-title=\"\(he(s.show_title))\" data-ch=\"\(he(s.show_channel))\" data-chname=\"\(he(chGuideName))\" data-type=\"\(t)\" data-paused=\"\(s.show_paused ? 1 : 0)\" data-recording=\"\(recording ? 1 : 0)\" data-next=\"\(nextEpoch)\" data-length=\"\(s.show_length)\" data-bonus=\"\(s.show_bonus_time ? 1 : 0)\" data-transcode=\"\(he(s.show_transcode))\" data-seriesid=\"\(he(s.show_seriesid))\" data-airdays=\"\(he(ad))\" data-failcount=\"\(s.show_fail_count)\" data-failreason=\"\(he(s.show_fail_reason))\" data-ignoredup=\"\(s.show_ignore_duplicate_once ? 1 : 0)\" data-newonly=\"\(s.show_new_only ? 1 : 0)\""
             let endDetail = recording ? s.show_end.map { " · Ends \(state.shortTime($0))" } ?? "" : ""
             let chLine = chDetail.isEmpty
                 ? "Ch \(he(s.show_channel))\(endDetail)"
@@ -1646,7 +1654,7 @@ final class WebServer: @unchecked Sendable {
                     let showDA: String = {
                         guard let s = owner else { return "" }
                         let ad = s.show_air_date.joined(separator: ",")
-                        return " data-show-id=\"\(he(s.show_id))\" data-show-type=\"\(showTypeStr(s))\" data-show-paused=\"\(s.show_paused ? 1 : 0)\" data-show-length=\"\(s.show_length)\" data-show-bonus=\"\(s.show_bonus_time ? 1 : 0)\" data-show-transcode=\"\(he(s.show_transcode))\" data-show-seriesid=\"\(he(s.show_seriesid))\" data-show-airdays=\"\(he(ad))\" data-show-failcount=\"\(s.show_fail_count)\" data-show-failreason=\"\(he(s.show_fail_reason))\" data-show-recording=\"\(s.show_recording ? 1 : 0)\" data-show-ignoredup=\"\(s.show_ignore_duplicate_once ? 1 : 0)\""
+                        return " data-show-id=\"\(he(s.show_id))\" data-show-type=\"\(showTypeStr(s))\" data-show-paused=\"\(s.show_paused ? 1 : 0)\" data-show-length=\"\(s.show_length)\" data-show-bonus=\"\(s.show_bonus_time ? 1 : 0)\" data-show-transcode=\"\(he(s.show_transcode))\" data-show-seriesid=\"\(he(s.show_seriesid))\" data-show-airdays=\"\(he(ad))\" data-show-failcount=\"\(s.show_fail_count)\" data-show-failreason=\"\(he(s.show_fail_reason))\" data-show-recording=\"\(s.show_recording ? 1 : 0)\" data-show-ignoredup=\"\(s.show_ignore_duplicate_once ? 1 : 0)\" data-show-newonly=\"\(s.show_new_only ? 1 : 0)\""
                     }()
                     let infDA = e.isInfomercial ? " data-inf=\"1\"" : ""
                     // role/tabindex/aria-label/onkeydown: the grid has no other accessible way to reach

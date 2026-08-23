@@ -236,6 +236,30 @@ function renderRmSignal(){
     if(warn)warn.style.display=(b==='poor')?'block':'none';
   }).catch(function(){});
 }
+// Same as renderRmSignal() above, for the edit modal — separate _editChname (not the shared
+// _chname the Record modal/grid selection uses) since Edit can be opened from the tuner
+// dropdown, which never touches _chname at all. Also toggles #em-sig-row's visibility (the
+// Record modal's #rm-sig has no row of its own to hide — it's nested inside the Title row —
+// but Edit's Signal row would otherwise show an empty label for every show when disabled/no-data).
+var _editChname='';
+function renderEmSignal(){
+  var row=document.getElementById('em-sig-row');
+  var sig=document.getElementById('em-sig');
+  var warn=document.getElementById('em-sig-warn');
+  if(sig)sig.innerHTML='';
+  if(warn)warn.style.display='none';
+  if(row)row.style.display='none';
+  if(!_sigEnabled||!_editChname)return;
+  var name=_editChname;
+  fetch('/api/signal-stats/'+encodeURIComponent(name)).then(function(r){return r.json();}).then(function(d){
+    if(_editChname!==name)return;
+    var b=d&&d.bucket;
+    if(!b||b==='noData')return;
+    if(sig)sig.innerHTML=_sigBarsSvg(b);
+    if(warn)warn.style.display=(b==='poor')?'block':'none';
+    if(row)row.style.display='flex';
+  }).catch(function(){});
+}
 function doRecord(){
   // In-app WKWebView (AddShowView wizard): send entry data to Swift instead of showing the record modal.
   // Swift intercepts this, calls applyWebGuideEntry(), and advances to the Details step.
@@ -270,6 +294,8 @@ function doRecord(){
   });
   document.getElementById('rm-days-lbl').textContent='Day';
   document.getElementById('rm-days-row').style.display='flex';
+  document.getElementById('rm-new-row').style.display='none';
+  document.getElementById('rm-new').checked=false;
   document.getElementById('rm-transcode').value=_defaultTranscode;
   var _isSports=_genre.toLowerCase().indexOf('sport')>=0; // matches guide.php's "Sports" and XMLTV's singular "Sport"
   document.getElementById('rm-bonus-row').style.display=_bonusEnabled?'flex':'none';
@@ -295,6 +321,7 @@ function doRecord(){
     } else {
       document.getElementById('rm-days-row').style.display='none';
     }
+    document.getElementById('rm-new-row').style.display=(v==='single')?'none':'flex';
     if(isSeries&&_ser){loadAirings(_ser,_myGen);}
     else{document.getElementById('rm-airings').style.display='none';}
   });
@@ -359,7 +386,7 @@ function confirmRecord(){
   var airDays=Array.from(document.querySelectorAll('#rm-days .day-btn.sel')).map(function(b){return b.dataset.day;});
   var transcode=document.getElementById('rm-transcode').value;
   var editedTitle=document.getElementById('rm-title-in').value.trim();
-  var payload={deviceId:_d,guideNumber:_n,startTime:_s,endTime:_e,showType:type,airDays:airDays,transcode:transcode,bonusTime:document.getElementById('rm-bonus').checked};
+  var payload={deviceId:_d,guideNumber:_n,startTime:_s,endTime:_e,showType:type,airDays:airDays,transcode:transcode,bonusTime:document.getElementById('rm-bonus').checked,newOnly:document.getElementById('rm-new').checked};
   if(editedTitle&&editedTitle!==_title)payload.title=editedTitle;
   cancelRecord();
   var btn=document.getElementById('sum-btn');
@@ -453,13 +480,13 @@ function doEditFromGuide(){
   if(!sel||!sel.dataset.showId)return;
   var sd=sel.dataset;
   openEditShow({dataset:{
-    id:sd.showId, title:sd.title, ch:sd.num,
+    id:sd.showId, title:sd.title, ch:sd.num, chname:sd.chname,
     type:sd.showType||'single', paused:sd.showPaused||'0',
     recording:sd.showRecording||'0', length:sd.showLength||'60',
     bonus:sd.showBonus||'0', transcode:sd.showTranscode||'none',
     seriesid:sd.showSeriesid||'', airdays:sd.showAirdays||'',
     failcount:sd.showFailcount||'0', failreason:sd.showFailreason||'',
-    ignoredup:sd.showIgnoredup||'0', poster:sd.poster||'', logo:sd.logo||''
+    ignoredup:sd.showIgnoredup||'0', newonly:sd.showNewonly||'0', poster:sd.poster||'', logo:sd.logo||''
   }});
 }
 // Recording-type short labels, keyed by ShowState.rawValue — reuses the same recOpts table
@@ -750,14 +777,20 @@ function updateDupVisibility(){
   var show=_dupEnabled&&(_editType==='seriesChannel'||_editType==='seriesAll');
   document.getElementById('em-dup-row').style.display=show?'flex':'none';
 }
+// Mirrors the native Add/Edit dialog's "Skip reruns" toggle (show_new_only) — every type
+// except single; unlike Duplicate Episodes above, not gated by any server-side setting.
+function updateNewOnlyVisibility(){
+  document.getElementById('em-new-row').style.display=(_editType==='single')?'none':'flex';
+}
 function openEditShow(el){
   var d=el.dataset;
   _editId=d.id;_editPaused=d.paused==='1';_editRec=d.recording==='1';_editType=d.type||'single';_editPoster=d.poster||d.logo||'';
   document.getElementById('em-title-in').value=d.title||'';
   document.getElementById('em-ch-in').value=d.ch||'';
   document.getElementById('em-len-in').value=d.length||'60';
+  _editChname=d.chname||'';renderEmSignal();
   renderTypeRow('em-type-opts','em-type-desc',_editType,function(v){
-    _editType=v;updateDaysVisibility();updateDupVisibility();
+    _editType=v;updateDaysVisibility();updateDupVisibility();updateNewOnlyVisibility();
   });
   var selDays=(d.airdays||'').split(',').filter(Boolean);
   var daysEl=document.getElementById('em-days');daysEl.innerHTML='';
@@ -776,6 +809,8 @@ function openEditShow(el){
   document.getElementById('em-transcode').value=d.transcode||'none';
   document.getElementById('em-dup').checked=d.ignoredup==='1';
   updateDupVisibility();
+  document.getElementById('em-new').checked=d.newonly==='1';
+  updateNewOnlyVisibility();
   var sid=d.seriesid||'';
   var sidRow=document.getElementById('em-sid-row');
   if(sid){document.getElementById('em-sid').textContent=sid;sidRow.style.display='block';}
@@ -834,7 +869,8 @@ function confirmEdit(){
     bonusTime:document.getElementById('em-bonus').checked,
     transcode:document.getElementById('em-transcode').value,
     airDays:selDays,
-    ignoreDuplicateOnce:document.getElementById('em-dup').checked
+    ignoreDuplicateOnce:document.getElementById('em-dup').checked,
+    newOnly:document.getElementById('em-new').checked
   };
   postJSON('/api/edit',payload)
   .then(function(r){return r.json();})

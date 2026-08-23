@@ -63,14 +63,15 @@ Dark/light theme is synced via JS in `webView(_:didFinish:)`.
 
 `ScrollView` containing the form fields, with a `StarburstBadge` floating at the bottom-right via `.overlay(alignment: .bottomTrailing)` on the outer `Group { switch step }` — outside and above the `ScrollView`.
 
-Form fields, in fixed source order (`ShowFormSection.swift`) — only presence toggles per `Type`, the order itself never changes. Fields common to every `Type` come first; the one field unique to the selected `Type` (Day(s) for Single/DateTime, Duplicate Episodes for the series types) is pushed to the bottom, immediately before Folder:
+Form fields, in fixed source order (`ShowFormSection.swift`) — only presence toggles per `Type`, the order itself never changes. Fields common to every `Type` come first; the type-conditional fields (Day(s) for Single/DateTime, New Only for every non-Single type, Duplicate Episodes for the series types) are pushed toward the bottom, immediately before Folder:
 - **Title** — `TextField` pre-populated from the web guide entry
 - **Signal** — bars for the selected channel + a weak-signal warning when its signal is poor (only when `Signal_quality_enabled` and the channel has signal history); shared via `ShowFormSection`
 - **Type** — segmented `Picker` for `ShowState.allCases`
 - **Transcode** — `Picker`: None / Heavy / Mobile / Internet 720
 - **Bonus Time** — toggle, shown when `Sports_padding_enabled`; see "Bonus Time starburst" below
-- **Days** — weekday toggle buttons (shown for `.single` and `.dateTime` only, mutually exclusive with Duplicate Episodes). Single enforces single-day selection and labels the row "Day " (with a trailing space, padded to match "Days" width so the weekday buttons stay aligned between the two Types); dateTime allows any combination and labels it "Days"
-- **Duplicate Episodes** — shown only when Series subfolders + Skip already-recorded episodes are both on and the show is a series (`.seriesChannel`/`.seriesAll`), mutually exclusive with Days; an orange "already on disk — will be skipped" warning plus a "Record even if already on disk" toggle (`show_ignore_duplicate_once`); shared via `ShowFormSection`
+- **Days** — weekday toggle buttons (shown for `.single` and `.dateTime` only, mutually exclusive with New Only/Duplicate Episodes — the three never appear together since Days is Single/DateTime-only and the other two are non-Single). Single enforces single-day selection and labels the row "Day " (with a trailing space, padded to match "Days" width so the weekday buttons stay aligned between the two Types); dateTime allows any combination and labels it "Days"
+- **New Only** — shown for every `Type` except `.single` (`.dateTime`/`.seriesChannel`/`.seriesAll`); a "Skip reruns" toggle (`show_new_only`) — at record time, skips an airing the guide doesn't mark as new and advances to the next scheduled one. No live preview banner (unlike Duplicate Episodes) since "is this airing new" can only be checked against the guide entry actually resolved at record time. See `docs/ShowFormSection.md`.
+- **Duplicate Episodes** — shown only when Series subfolders + Skip already-recorded episodes are both on and the show is a series (`.seriesChannel`/`.seriesAll`); an orange "already on disk — will be skipped" warning plus a "Record even if already on disk" toggle (`show_ignore_duplicate_once`); shared via `ShowFormSection`
 - **Folder** — always last; display + Choose… button; writes to `UserDefaults["defaultSaveDirectory"]`
 
 **Bonus Time starburst**: when `show.show_bonus_time == true && state.config.Sports_padding_enabled`, a `StarburstBadge` floats at the bottom-right corner showing "+N min". Sports entries auto-enable Bonus Time.
