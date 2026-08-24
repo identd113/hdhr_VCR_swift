@@ -81,6 +81,8 @@ struct SettingsView: View {
     @State private var maintenanceStatus: String = ""
     @State private var maintenanceBusy: Bool = false
     @State private var configIOStatus: String = ""
+    @State private var guideRefreshInProgress: Bool = false
+    @State private var updateCheckInProgress: Bool = false
 
     // Discord webhook test state
     private enum WebhookTestStatus { case idle, untested, testing, passed, failed }
@@ -417,8 +419,18 @@ struct SettingsView: View {
                     HStack { Text("Series scan retry: \(draft.Series_scan_retry_hours) hr"); InfoButton("How long to wait before re-checking the guide when a series show has no matching air time yet.") }
                 }
                 HStack {
-                    Button("Update Guides Now") { state.refreshAll() }
+                    if guideRefreshInProgress {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Button("Update Guides Now") {
+                            guideRefreshInProgress = true
+                            Task { @MainActor in
+                                await state.refreshAll()
+                                guideRefreshInProgress = false
+                            }
+                        }
                         .buttonStyle(.borderedProminent)
+                    }
                     InfoButton("Force-refreshes guide data for all tuners immediately, without waiting for the auto-refresh window.")
                 }
             }
@@ -842,8 +854,18 @@ struct SettingsView: View {
                         Text("Up to date (checked \(last, style: .relative) ago)")
                             .font(.caption).foregroundStyle(.secondary)
                     }
-                    Button("Check for Updates") { Task { await state.checkForUpdateOnce() } }
+                    if updateCheckInProgress {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Button("Check for Updates") {
+                            updateCheckInProgress = true
+                            Task { @MainActor in
+                                await state.checkForUpdateOnce()
+                                updateCheckInProgress = false
+                            }
+                        }
                         .font(.caption)
+                    }
                 }
 
                 if state.config.Donation_unlocked {

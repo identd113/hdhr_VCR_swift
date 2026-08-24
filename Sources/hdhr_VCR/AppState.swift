@@ -2715,7 +2715,10 @@ final class AppState: ObservableObject {
 
     // MARK: - Utilities
 
-    func refreshAll() {
+    // async (not fire-and-forget) so SettingsView's "Update Guides Now" button can await it and
+    // show a spinner for the duration — the only call site, so safe to change without touching
+    // anything else.
+    func refreshAll() async {
         glog("[Guide] refreshAll() — triggering discovery + refreshGuides()")
         guideByDevice = [:]
         // Discovery first (updates device IPs), then refreshGuides() reloads. guideByDevice is
@@ -2723,7 +2726,8 @@ final class AppState: ObservableObject {
         // place until fresh data lands) because this is a user-initiated "Update Guides Now" action
         // (SettingsView) — an immediate visual clear is expected here, unlike the silent automatic
         // hourly refresh. The idle loop checks hour boundaries, so concurrent calls are naturally throttled.
-        Task { await discoverDevices(); await refreshGuides() }
+        await discoverDevices()
+        await refreshGuides()
     }
 
     func diskOK(for show: Show) -> Bool {
