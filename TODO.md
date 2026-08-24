@@ -129,14 +129,6 @@ As of the 2026-08-01 pre-release review, `broadcastGuideChangeEvent` is called f
 
 ---
 
-### Re-check `guideRefreshLatency_underThreshold` under a quiet machine
-
-Failed repeatedly on 2026-08-07 (median 374ms–1451ms vs. a 250ms threshold) across several `swift test --filter WebServerPerfTests` runs, but `WebServer.swift`/`buildGuideGridHTML` had zero diff that session — the failures tracked a concurrently high system load average (~4-5, a Virtualization VM at 23%+ CPU, a CrashPlan backup, other Claude sessions running) rather than any code change; even the trivial `pingLatency`/`pageLoad` tests briefly ballooned to 4.5s each on the same runs. Never confirmed clean on a quiet machine before the session ended. Re-run the suite next time the machine is idle — if it still fails at a normal load average, treat it as a real regression and bisect; if it passes, this was pure noise and needs no code change.
-
-**Key file**: `Tests/hdhr_VCRTests/WebServer/WebServerPerfTests.swift` → `guideRefreshLatency_underThreshold`.
-
----
-
 ### RecordingManager/HDHRManager test coverage — seams added 2026-08-13, HDHRManager still has a real gap
 
 Follow-up to the 2026-08-11 coverage-guided pass. Both files got real injection seams this session, same idea as `DiscordNotifier.swift`'s `session: URLSession = .shared` defaulted parameter (0% → 37%):
