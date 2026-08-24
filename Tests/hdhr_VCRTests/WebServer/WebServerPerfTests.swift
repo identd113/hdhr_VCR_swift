@@ -20,6 +20,11 @@ import Foundation
 private let pageLoadThreshold: TimeInterval = 0.050   // GET / warm-cache baseline is ~1-5ms
 private let apiCallThreshold: TimeInterval  = 0.050   // small JSON endpoints are ~1-5ms too
 private let refreshThreshold: TimeInterval  = 0.250   // /api/guide-refresh rebuilds live, not cached
+// Looser still than refreshThreshold — this measures a normal client's wait right behind a
+// MainActor-blocking rebuild triggered by something else entirely (see
+// apiLatency_staysResponsive_duringGuideChangeBurst below), not the rebuild's own cost.
+private let heavyLoadPingThreshold: TimeInterval = 0.500
+private let heavyBurstCount = 10   // even — see that test's own comment on why this must stay even
 private let sampleCount = 5
 
 private func serverAvailable(port: Int = 1980) async -> Bool {
@@ -119,5 +124,52 @@ struct WebServerPerfTests {
         let median = try await medianLatency("/api/guide-refresh", samples: 3)
         #expect(median < refreshThreshold,
             "guide-refresh median \(Int(median * 1000))ms — this rebuilds the grid live so some slack is expected, but this suggests a real O(n) regression in buildGuideGridHTML")
+    }
+
+    // Reported live: the web guide feels laggy while the app is doing something "heavy" —
+    // ISSUES.md's open entry on this. The prime suspect, already flagged separately in TODO.md
+    // ("Watch for UI hitches from broadcastGuideChangeEvent's wider call-site fan-out"), is that
+    // 9+ show-lifecycle events (add/edit/delete/pause/resume/favorite-toggle/etc.) each trigger a
+    // full `@MainActor` rebuild (buildGuideGridHTML + buildDevBarHTML + gzip'd prebuildPageHTML)
+    // — previously only the hourly refresh and recording start/stop paid that cost. This measures
+    // whether *unrelated* traffic (a normal client loading the guide) stays responsive while that
+    // rebuild fires repeatedly back-to-back, without needing a real recording (which would tie up
+    // a tuner and write a file) or any new mocking — POST /api/toggle-favorite on a real channel
+    // is the cheapest real trigger of the same broadcastGuideChangeEvent path, and toggling it an
+    // even number of times leaves the channel's favorite state exactly as found.
+    @Test func apiLatency_staysResponsive_duringGuideChangeBurst() async throws {
+        guard await serverAvailable() else { return }
+        let (status, body) = try await get("/api/now.json")
+        #expect(status == 200)
+        guard let arr = try? JSONSerialization.jsonObject(with: body) as? [[String: Any]],
+              let first = arr.first,
+              let devId = first["deviceId"] as? String,
+              let num   = first["guideNumber"] as? String else {
+            return   // no live guide data in this environment — nothing to measure
+        }
+
+        func toggleFavorite() async throws {
+            var req = URLRequest(url: URL(string: "http://127.0.0.1:1980/api/toggle-favorite")!)
+            req.httpMethod = "POST"
+            req.httpBody = try JSONSerialization.data(withJSONObject: ["deviceId": devId, "guideNumber": num])
+            _ = try await URLSession.shared.data(for: req)
+        }
+
+        // Interleaved, not concurrent: each toggle fires the full rebuild, then the very next
+        // request measures how long a normal client would wait right behind it — the worst-case
+        // gap a real user would actually feel, not just the rebuild's own isolated cost.
+        var pingTimes: [TimeInterval] = []
+        for _ in 0..<heavyBurstCount {
+            try await toggleFavorite()
+            let (pingStatus, _, elapsed) = try await timedGet("/api/ping")
+            #expect(pingStatus == 200)
+            pingTimes.append(elapsed)
+        }
+
+        pingTimes.sort()
+        let median = pingTimes[pingTimes.count / 2]
+        let worst  = pingTimes.last ?? 0
+        #expect(median < heavyLoadPingThreshold,
+            "/api/ping median \(Int(median * 1000))ms right after a favorite-toggle rebuild (worst \(Int(worst * 1000))ms) — suggests broadcastGuideChangeEvent's MainActor rebuild is blocking normal traffic longer than expected")
     }
 }

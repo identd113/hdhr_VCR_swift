@@ -117,6 +117,8 @@ Added to `deploy_release.sh` on 2026-08-07 by copying `deploy.sh`'s existing ~13
 
 As of the 2026-08-01 pre-release review, `broadcastGuideChangeEvent` is called from 9+ show-lifecycle sites (add/update/pause/resume/delete/favorite-toggle/duplicate-override-clear), each triggering a full page rebuild (`buildGuideGridHTML` + `buildDevBarHTML` + gzip'd `prebuildPageHTML`) on the main actor — previously only the hourly refresh and recording start/stop paid this cost. With `Series_subfolder_enabled && Skip_recorded_episodes` both on, each rebuild also re-scans every managed series' recording folder. Deliberate tradeoff for guide freshness on new tab loads, and show mutations are human-paced so likely fine — but if a large recording library with many managed series shows UI hitches on Add/Edit/Delete/favorite-toggle, this rebuild fan-out is the first place to look.
 
+**2026-08-24**: a live "web guide feels laggy while the app is busy" report named this entry as the prime suspect — see `ISSUES.md`'s open entry on it. A regression test now exists (`WebServerPerfTests.swift` → `apiLatency_staysResponsive_duringGuideChangeBurst()`, POSTs `/api/toggle-favorite` in a burst and measures `/api/ping` latency right behind each one) and passed comfortably, so this specific fan-out wasn't caught red-handed as the cause — root cause of the original report is still open.
+
 **Key file**: `WebServer.swift` → `broadcastGuideChangeEvent`.
 
 ---
