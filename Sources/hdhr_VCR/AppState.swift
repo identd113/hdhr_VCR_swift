@@ -276,6 +276,13 @@ final class AppState: ObservableObject {
     // own guard) since this fires on every idle tick, not just the hourly boundary, and a
     // permission-blocked fetch is exactly the kind of call that could plausibly hang past one tick.
     private var lineupConfirmRetryInFlight = false
+    // Escalating retry delay for the same fast lineup-only retry (reuses APIBackoff's 1min→5min→
+    // 15min→30min→1hour ladder) — a permission that's genuinely denied is indistinguishable from
+    // "still pending" (no public API tells us which), so without this a permanent denial would
+    // otherwise retry forever at the full idle-tick cadence. Never explicitly reset: once
+    // Local_network_confirmed flips true the guard below stops this branch from running again for
+    // the rest of the session, so a stale backoff state can never block a real recovery.
+    private var lineupConfirmBackoff = APIBackoff()
     private var lastDeviceProbe: Date     = .distantPast
     private var nextQuickProbe: Date?     = nil   // set when any device misses a probe; cleared when all are seen
     // idleLoop() launches probeForNewDevices() as a detached `Task { }`, not awaited — its own
@@ -1416,12 +1423,20 @@ final class AppState: ObservableObject {
         // there's no public API to detect that directly; polling on the existing idle cadence
         // means success is picked up within one tick instead of requiring a manual relaunch or
         // waiting up to an hour. Stops mattering on its own once
-        // confirmLocalNetworkAccessIfNeeded() flips the flag.
-        if !config.Local_network_confirmed, !devices.isEmpty, !lineupConfirmRetryInFlight {
+        // confirmLocalNetworkAccessIfNeeded() flips the flag. `lineupConfirmBackoff` escalates the
+        // retry delay across repeated failures (still fast for the first few attempts — a grant
+        // within the first minute or two is picked up at close to full cadence — tapering to the
+        // same 1-hour ceiling as guideApiBackoff) so a permanently-denied permission doesn't poll
+        // at the full idle-tick cadence forever.
+        if !config.Local_network_confirmed, !devices.isEmpty, !lineupConfirmRetryInFlight,
+           !lineupConfirmBackoff.isBackedOff {
             lineupConfirmRetryInFlight = true
             Task {
                 await fetchAllLineups(for: devices)
                 lineupConfirmRetryInFlight = false
+                if !config.Local_network_confirmed {
+                    lineupConfirmBackoff.recordFailure()
+                }
             }
         }
         // Pass 1: stop all completed recordings before any new ones start.

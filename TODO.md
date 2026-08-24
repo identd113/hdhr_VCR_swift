@@ -113,14 +113,6 @@ Added to `deploy_release.sh` on 2026-08-07 by copying `deploy.sh`'s existing ~13
 
 ---
 
-### Local Network fast-retry has no backoff for a permanent denial
-
-Flagged in the v2.0.2 pre-release review (`swift-quality-reviewer`). `idleLoop()`'s fast-retry (see "Accepted — not our bug / not scheduled" above — retries `fetchAllLineups` every tick while `Local_network_confirmed` is false) is correctly bounded to eventually stop once access is confirmed working, but if permission is genuinely denied (indistinguishable from "still pending" per this project's own research into the underlying macOS bug), it retries forever at the full idle-tick cadence (default 10s) with no backoff or attempt cap. Low real-world cost today (a LAN GET to a device already polled every tick anyway for tuner status), but worth an exponential backoff or a cap-then-fall-back-to-hourly if this needs revisiting.
-
-**Key file**: `AppState.swift` → `idleLoop` (fast-retry branch).
-
----
-
 ### Watch for UI hitches from `broadcastGuideChangeEvent`'s wider call-site fan-out
 
 As of the 2026-08-01 pre-release review, `broadcastGuideChangeEvent` is called from 9+ show-lifecycle sites (add/update/pause/resume/delete/favorite-toggle/duplicate-override-clear), each triggering a full page rebuild (`buildGuideGridHTML` + `buildDevBarHTML` + gzip'd `prebuildPageHTML`) on the main actor — previously only the hourly refresh and recording start/stop paid this cost. With `Series_subfolder_enabled && Skip_recorded_episodes` both on, each rebuild also re-scans every managed series' recording folder. Deliberate tradeoff for guide freshness on new tab loads, and show mutations are human-paced so likely fine — but if a large recording library with many managed series shows UI hitches on Add/Edit/Delete/favorite-toggle, this rebuild fan-out is the first place to look.
@@ -142,7 +134,7 @@ Follow-up to the 2026-08-11 coverage-guided pass. Both files got real injection 
 
 ---
 
-### AppState's recording-scheduling engine — covered 2026-08-15; series-scheduling branches still gap
+### AppState's recording-scheduling engine — covered 2026-08-15; `resolveSeriesAir` still gap
 
 `idleLoop()`/`startRecording(index:)`/`stopRecording(index:natural:)`/`scheduleNextAir(index:)` — the
 code that actually decides when a recording starts, stops, retries after failure, and reschedules —
@@ -168,22 +160,23 @@ above, but a correctness finding worth knowing about. Follow-up requested same d
 itself is unchanged and independent, so a drive in the exact situation that surfaced this is still
 correctly flagged, just for that reason alone now).
 
-**Still genuinely uncovered**: `scheduleNextAir`'s `.seriesChannel`/`.seriesAll` branches and
-`resolveSeriesAir` depend on a freshly-loaded `GuideStore`. The underlying lookup methods they call
-(`guideStore.currentEpisode`/`nextEpisode`/`currentEntryByTitle`/`nextEntryByTitle`) already have
-solid direct coverage via `GuideStoreTests`, so the *matching logic* isn't blind — only these two
-functions' own orchestration ("which lookup tier to try, in what order, before giving up and
-retrying later") stays untested. The blocker this note used to describe ("would need a network-mock
-seam on `GuideStore` itself... a separate, larger effort") no longer applies: `AppState` now takes
-an injectable `guideStore` (added 2026-08-16 for `AppStateIdleLoopStaleIndexTests.swift`, mirroring
-the pre-existing `recordingManager` seam), and that file already demonstrates mocking `GuideStore`'s
-`URLSession` end-to-end through a real `scheduleNextAir` call. What's left is purely writing the
-tier-ordering test cases against that existing seam, not building one.
+**`scheduleNextAir`'s tier-ordering covered 2026-08-24**: `Tests/hdhr_VCRTests/Recording/AppStateSeriesSchedulingTests.swift`
+now exercises the `.seriesChannel`/`.seriesAll` branch's own orchestration directly — which of the
+four lookup tiers (`currentEpisode` → `nextEpisode` → `currentEntryByTitle` → `nextEntryByTitle` →
+no-match retry-bump) wins when more than one could match, that `seriesChannel` never follows a
+same-series match onto a different channel while `seriesAll` does (and updates `show_channel` when
+it does), and that a no-match tick re-syncs `show_end` off the bumped `show_next` rather than
+leaving it stale. Pre-loads the mocked `GuideStore` via a direct `guideStore.load(for:)` call before
+constructing `AppState` (so `isFresh` is already true and `scheduleNextAir` never re-enters its own
+guide-fetch branch), a simpler variant of the request-handler-timed-to-an-`await` technique
+`AppStateIdleLoopStaleIndexTests.swift` uses. **Still uncovered**: `resolveSeriesAir` (a separate
+function, called from the Add Show flow via `applyGuideEntry`, not from `scheduleNextAir`) has
+similar tier-matching logic of its own that these tests don't exercise.
 
 Three more gaps found by the 2026-08-16 full-codebase audit — Bonus Time (sports-genre default +
 `show_end` padding arithmetic), idle-loop stale-index-across-`await` safety, and `deleteShow`'s
 `discordEpisodeSnapshots` cleanup — were resolved the same day; see `issues_resolved.md`.
 
-**Key files**: `AppState.swift`, `Tests/hdhr_VCRTests/Recording/AppStateRecordingEngineTests.swift`, `Tests/hdhr_VCRTests/Recording/AppStateIdleLoopStaleIndexTests.swift`, `Tests/hdhr_VCRTests/AppState/AppStateDeleteShowCleanupTests.swift`, `Tests/hdhr_VCRTests/TestFixtures.swift`.
+**Key files**: `AppState.swift`, `Tests/hdhr_VCRTests/Recording/AppStateRecordingEngineTests.swift`, `Tests/hdhr_VCRTests/Recording/AppStateIdleLoopStaleIndexTests.swift`, `Tests/hdhr_VCRTests/Recording/AppStateSeriesSchedulingTests.swift`, `Tests/hdhr_VCRTests/AppState/AppStateDeleteShowCleanupTests.swift`, `Tests/hdhr_VCRTests/TestFixtures.swift`.
 
 ---
