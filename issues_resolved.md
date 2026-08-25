@@ -978,4 +978,4 @@ A second, independent overflow source in the same area: real-world guide data oc
 
 Full `swift build` and test suite pass; every fix verified against a real pty (widths 40–286, heights 9–58) rather than eyeballed. Deployed and confirmed live throughout.
 
-**Resolving commit**: pending (uncommitted at time of writing)
+**Resolving commit**: `b7dc59f`
