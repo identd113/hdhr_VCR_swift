@@ -216,6 +216,16 @@ html.lm #g-hscroll-thumb{background:rgba(0,0,0,.18)}
 html.lm #g-hscroll-thumb:hover,html.lm #g-hscroll-thumb.g-dragging{background:rgba(0,0,0,.38)}
 .gw{overflow:auto;flex:1;background:var(--bg)}
 .gi{min-width:{{GUIDE_MIN_WIDTH}}px}
+/* Pull-to-refresh (touch only) — sits behind .gw (opaque background), revealed as .gw is
+   translated down during a pull. .gw is the only scrollable element on the page (body itself
+   is overflow:hidden — see the top of this file), so this can never collide with a browser's
+   own page-level pull-to-reload gesture. See guide.js for the touch handling. */
+.pull-refresh{position:absolute;top:0;left:0;right:0;height:56px;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:1}
+.pull-spin{width:22px;height:22px;border-radius:50%;border:2.5px solid var(--b1);border-top-color:var(--t2);opacity:0}
+.pull-spin.visible{opacity:.9}
+.pull-spin.spinning{animation:pull-spin .7s linear infinite}
+@keyframes pull-spin{to{transform:rotate(360deg)}}
+.gw.pull-snap{transition:transform .2s ease}
 .g-hdr{display:flex;position:-webkit-sticky;position:sticky;top:0;z-index:10;background:var(--s2);border-bottom:1px solid var(--b2)}
 .g-hdr-ch{width:var(--ch-w);min-width:var(--ch-w);position:-webkit-sticky;position:sticky;left:0;z-index:11;background:var(--s2);border-right:1px solid var(--b2);padding:4px 6px;display:flex;align-items:center;justify-content:space-between}
 .g-hdr-ch-lbl{font-size:.65rem;color:var(--t4);text-transform:uppercase;letter-spacing:.07em}

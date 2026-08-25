@@ -529,7 +529,9 @@ function applyGuidePayload(d,selOverride){
   }
 }
 function refreshGuide(selOverride){
-  fetch('/api/guide-refresh').then(function(r){return r.json();}).then(function(d){
+  // Returns the fetch chain (existing callers all ignore the return value) so pull-to-refresh
+  // can wait for the real completion instead of guessing with a timeout.
+  return fetch('/api/guide-refresh').then(function(r){return r.json();}).then(function(d){
     applyGuidePayload(d,selOverride);
   }).catch(function(){});
 }
@@ -1423,4 +1425,56 @@ setInterval(updateNowLine,60000);
     e.preventDefault();
     gw.scrollLeft+=e.deltaY*1.5;
   },{passive:false});
+})();
+
+// Pull-to-refresh (touch only). .gw persists across refreshGuide()'s own DOM swaps (only .gi's
+// innerHTML is replaced), so these listeners are attached once and never need re-wiring.
+// Deliberately calls refreshGuide() — the same in-place AJAX path the SSE fallback already uses
+// — instead of a native page reload: applyGuidePayload() preserves scroll position and
+// re-selects whatever program was already selected, so pulling to refresh keeps you looking at
+// the same part of the grid instead of jumping to "now" the way a fresh page load's auto-select-
+// on-load + scrollToNow() would.
+(function(){
+  var PULL_TRIGGER=32, PULL_MAX=72, PULL_DAMPING=0.5;
+  var gw=document.querySelector('.gw'), spin=document.querySelector('.pull-spin');
+  if(!gw||!spin)return;
+  var startY=0,startX=0,dist=0,pulling=false,refreshing=false;
+  function resetPull(animated){
+    if(animated)gw.classList.add('pull-snap');
+    gw.style.transform='';
+    spin.classList.remove('visible','spinning');
+    dist=0;pulling=false;
+    if(animated)setTimeout(function(){gw.classList.remove('pull-snap');},200);
+  }
+  gw.addEventListener('touchstart',function(e){
+    if(refreshing||e.touches.length!==1||gw.scrollTop>0){startY=-1;return;}
+    startY=e.touches[0].clientY;startX=e.touches[0].clientX;
+  },{passive:true});
+  gw.addEventListener('touchmove',function(e){
+    if(startY<0||refreshing)return;
+    var dy=e.touches[0].clientY-startY, dx=Math.abs(e.touches[0].clientX-startX);
+    // Bail on an upward drag, a mostly-horizontal gesture (channel-row/time-axis panning), or
+    // having scrolled away from the top mid-gesture — only a clean pull-down-from-top continues.
+    if(dy<=0||dx>dy||gw.scrollTop>0){ if(pulling)resetPull(false); startY=-1; return; }
+    pulling=true;
+    e.preventDefault(); // suppress the rubber-band bounce while actively driving the pull ourselves
+    dist=Math.min(PULL_MAX,dy*PULL_DAMPING);
+    gw.style.transform='translateY('+dist+'px)';
+    spin.classList.toggle('visible',dist>8);
+    spin.style.transform='rotate('+(dist/PULL_MAX*360)+'deg)';
+  },{passive:false});
+  gw.addEventListener('touchend',function(){
+    startY=-1;
+    if(!pulling)return;
+    if(dist<PULL_TRIGGER){resetPull(true);return;}
+    refreshing=true;
+    gw.classList.add('pull-snap');
+    gw.style.transform='translateY(40px)';
+    spin.classList.add('spinning');
+    var minDelay=new Promise(function(res){setTimeout(res,400);}); // perceptible even on a fast LAN
+    Promise.all([refreshGuide(),minDelay]).then(function(){
+      refreshing=false;
+      resetPull(true);
+    });
+  },{passive:true});
 })();
