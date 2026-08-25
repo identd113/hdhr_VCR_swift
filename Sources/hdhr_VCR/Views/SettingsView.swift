@@ -698,6 +698,19 @@ struct SettingsView: View {
                         Link("Open", destination: URL(string: urlStr)!)
                     }
                 }
+
+                // hdhr_guide (docs/TUIGuide.md) only works while the web server it's showing
+                // above is actually running — same gate as the Access section, so this row can
+                // never point someone at a tool that will just fail to connect.
+                let guidePath = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/hdhr_guide").path
+                Section("Terminal Guide") {
+                    Text(guidePath)
+                        .font(.system(.body, design: .monospaced))
+                        .textSelection(.enabled)
+                    Text("Run from Terminal to browse the guide and schedule recordings without a browser.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             if let err = state.webServerError {

@@ -51,6 +51,52 @@ The web guide has a genre filter (`filterGenre`/`rebuildGenreFilter` in `guide.j
 
 ---
 
+## Terminal Guide (hdhr_guide)
+
+Feature-gap survey against the web guide/native app, 2026-08-25, after the initial build + several
+rounds of visual/UX fixes (`docs/TUIGuide.md`). Ordered roughly by how much it'd actually help.
+
+### No channel jump/search — arrow-key-only navigation doesn't scale past ~20 channels
+
+Reaching a channel near the bottom of a real lineup (100+ channels is common) means holding ↓ dozens
+of times — confirmed painfully directly while testing the recording-status fix (channel 21.11 needed
+61 presses from the top). The web guide has no search either (see "No guide search" above), but it
+at least has a mouse/scrollbar; a keyboard-only TUI without a jump mechanism is worse off by
+comparison, not on par. Two independent, both-worth-having options: (1) type-ahead — start typing a
+channel number/name, jump to the first match, `Esc` clears (same idiom as `less`/`vim`'s `/`); (2) a
+"jump to next managed entry" key (`n`/`N`) that skips the selection straight to the next
+scheduled/recording tile anywhere in the list, without needing to know which channel it's on first —
+directly useful once "no overview list" below exists, since that's how you'd act on what it shows you.
+
+### No overview of everything scheduled/recording on this tuner
+
+The web guide's summary panel and per-tuner dropdown (`buildTunerShowsHTML`, `docs/WebServer.md`)
+list every Recording/Up Next/Scheduled/Paused show for a tuner in one place — `hdhr_guide` has no
+equivalent. Auditing what's scheduled today means scrolling the entire channel list looking for blue
+tiles. `/api/guide.json` already carries enough (`isScheduled`/`isRecording`/`scheduledShowId` per
+entry) to build this without a new endpoint — just needs client-side aggregation across all
+channels' entries into a separate list screen (a natural companion to the type-ahead/jump-to-next
+idea above).
+
+### No skip-already-recorded (duplicate) indicator
+
+The web guide's slate `.g-st-skip` ring/⏭ badge (`buildGuideGridHTML`'s `willSkip` computation,
+`CLAUDE.md`) tells you a managed block will be silently skipped as an on-disk duplicate — this isn't
+in `/api/guide.json` at all yet (`buildGuideJSON` doesn't run the `recordedEpisodeTags` scan
+`buildGuideGridHTML` does), so `hdhr_guide` has no way to show it even client-side. Meaningfully
+heavier than the other items here: needs a new per-managed-series directory scan added to
+`buildGuideJSON` itself, not just a new field threaded through existing data. Worth doing eventually
+for parity, but the smallest-effort/highest-value items above should come first.
+
+### Already-documented, still open (`docs/TUIGuide.md`'s "Known limitations")
+
+Carried here for visibility alongside the rest of this survey, not re-describing them: no
+`Web_server_port` override (hardcoded `127.0.0.1:1980`), no `/api/events` SSE subscription (up to
+~20s staleness between actions), and no offline/undetected-device listing in the `Tab` tuner
+roster (the web guide's "never silently omit them" invariant isn't mirrored here yet).
+
+---
+
 ## Distribution
 
 ### Universal binary — build-side change done 2026-08-19, real signed release not yet cut

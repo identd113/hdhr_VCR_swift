@@ -11,6 +11,11 @@ let package = Package(
             path: "Sources/hdhr_VCR",
             resources: [.copy("CHANGELOG.md"), .copy("PrivacyInfo.xcprivacy")]
         ),
+        .executableTarget(
+            name: "hdhr_guide",
+            dependencies: [],
+            path: "Sources/hdhr_guide"
+        ),
         .testTarget(
             name: "hdhr_VCRTests",
             dependencies: ["hdhr_VCR"],

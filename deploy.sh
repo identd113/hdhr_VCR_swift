@@ -45,6 +45,14 @@ echo "==> Deploying binary…"
 mkdir -p "$APP/Contents/MacOS"
 cp .build/debug/hdhr_VCR "$BINARY"
 
+echo "==> Deploying CLI helper…"
+# hdhr_guide (docs/TUIGuide.md) — bundled terminal guide client. Lives in Contents/Helpers/, not
+# Contents/MacOS/, since it's not an app entry point; signed individually below (inside-out, before
+# the whole-bundle codesign) since a loose executable outside the bundle's main-executable slot
+# needs its own signature — the outer codesign call doesn't reach into Contents/Helpers/.
+mkdir -p "$APP/Contents/Helpers"
+cp .build/debug/hdhr_guide "$APP/Contents/Helpers/hdhr_guide"
+
 echo "==> Deploying resources…"
 mkdir -p "$APP/Contents/Resources"
 cp Resources/app.jpg "$APP/Contents/Resources/app.jpg"
@@ -101,6 +109,13 @@ cp -R "$APP" "$_TMP_APP"
 find "$_TMP_APP" -name "._*" -delete
 find "$_TMP_APP" -name ".DS_Store" -delete
 xattr -cr "$_TMP_APP"
+
+# Sign the CLI helper first (inside-out order) — it's a loose executable outside the bundle's
+# main-executable slot, so the whole-bundle codesign call below never reaches it; unsigned, it
+# would fail notarization/Gatekeeper independently of the rest of the app being fine.
+codesign --force --options runtime \
+         --entitlements hdhrVCRplus.entitlements \
+         --sign - "$_TMP_APP/Contents/Helpers/hdhr_guide"
 
 # Ad-hoc identity (-) for local dev; --options runtime enables Hardened Runtime so the
 # binary behaves identically to a notarized release build.  Entitlements grant

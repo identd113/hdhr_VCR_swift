@@ -864,6 +864,9 @@ final class WebServer: @unchecked Sendable {
             let data = buildNowJSON(state: state)
             return .ok(contentType: "application/json", body: data)
 
+        case "/api/guide.json":
+            return .ok(contentType: "application/json", body: buildGuideJSON(state: state, deviceId: nil))
+
         case "/api/signal":
             var out: [String: String] = [:]
             for (key, bucket) in ChannelSignalStore.shared.buckets { out[key] = bucket.rawValue }
@@ -884,6 +887,13 @@ final class WebServer: @unchecked Sendable {
             return .notFound("icon not found")
 
         default:
+            if path.hasPrefix("/api/guide.json/") {
+                // /api/guide.json/{deviceId} — explicit-device variant of GET /api/guide.json,
+                // used by hdhr_guide's Tab (switch tuner) action once it already knows the ID.
+                let devId = String(path.dropFirst("/api/guide.json/".count)).removingPercentEncoding
+                    ?? String(path.dropFirst("/api/guide.json/".count))
+                return .ok(contentType: "application/json", body: buildGuideJSON(state: state, deviceId: devId))
+            }
             if path.hasPrefix("/api/now-airing/") {
                 // /api/now-airing/{devId}/{channelNum} — returns currently-airing guide entry as JSON
                 let tail  = path.dropFirst("/api/now-airing/".count)
@@ -1975,6 +1985,102 @@ final class WebServer: @unchecked Sendable {
         let enc = JSONEncoder()
         enc.outputFormatting = .prettyPrinted
         return (try? enc.encode(entries)) ?? Data("[]".utf8)
+    }
+
+    // Structured (non-HTML) guide data for one tuner, powering hdhr_guide (Contents/Helpers/) —
+    // the bundled terminal client. `deviceId` nil picks the first usable device, mirroring the
+    // web guide's own defaultDev choice (guide.js). Reuses the same window/entries/matcher/tuner-
+    // count pieces buildGuideGridHTML and buildNowJSON already use, just widened from "on-air only"
+    // to "every entry in the window" — see docs/WebServer.md's /api/guide.json section.
+    @MainActor
+    // Internal, not private, so WebServerTests can call it directly with synthetic AppState —
+    // same testability pattern as tdropDeviceIDs(state:).
+    func buildGuideJSON(state: AppState, deviceId: String?) -> Data {
+        struct DeviceSummary: Encodable { var deviceId: String; var active, total: Int }
+        struct GuideChannel: Encodable {
+            var guideNumber, guideName: String
+            var hd, favorite: Bool
+            var entries: [GuideEntryJSON]
+        }
+        struct GuideEntryJSON: Encodable {
+            var title: String
+            var episodeTitle, episodeNumber, synopsis, seriesId, genre: String?
+            var tags: [String]?
+            var startTime, endTime: Int
+            var isRecording, isScheduled: Bool
+            var scheduledShowId: String?   // owner(for:)'s Show.show_id when isScheduled — lets a
+                                            // client offer "delete this recording" via POST
+                                            // /api/delete without a second lookup round-trip
+        }
+        struct GuidePayload: Encodable {
+            var deviceId: String
+            var winStart, winSec: Int
+            var devices: [DeviceSummary]
+            var channels: [GuideChannel]
+        }
+
+        let devTuners = Self.computeDevTuners(state: state)
+        let devices = state.devices.map { DeviceSummary(deviceId: $0.DeviceID,
+            active: devTuners[$0.DeviceID]?.active ?? 0, total: devTuners[$0.DeviceID]?.total ?? 0) }
+
+        guard let device = (deviceId.flatMap { id in state.devices.first { $0.DeviceID == id } })
+            ?? state.devices.first(where: { state.usableDeviceIDs.contains($0.DeviceID) })
+            ?? state.devices.first else {
+            let empty = GuidePayload(deviceId: "", winStart: 0, winSec: 0, devices: devices, channels: [])
+            return (try? JSONEncoder().encode(empty)) ?? Data("{}".utf8)
+        }
+
+        let (winStart, winSec) = guideWindow(state: state)
+        let winEnd = winStart + winSec
+
+        let activeMgd    = state.shows.filter { $0.show_active && !$0.show_paused }
+        let guideMatcher = ManagedGuideMatcher(activeManagedShows: activeMgd)
+
+        // Channel-level "is something recording here" (same shared definitions buildGuideGridHTML's
+        // ring/badge and the Watch Now section use — see their own comments) is not by itself
+        // enough to flag a single entry: applied to every entry in the window, it marked every
+        // guide slot on a recording channel as isRecording — past showings and ones that haven't
+        // aired yet included, not just the one actually being captured. Must also require the
+        // entry's own time span to cover *now* (`isNow`, same test buildGuideGridHTML's own
+        // `isEntryRec` uses) — see issues_resolved.md.
+        let nowTs = Int(Date().timeIntervalSince1970)
+        let recChannels = state.activeRecordingChannels(for: device.DeviceID)
+            .union(state.pendingRecordingChannels(for: device.DeviceID))
+
+        let channelList = (state.lineups[device.DeviceID] ?? []).sorted {
+            $0.GuideNumber.channelSortKey < $1.GuideNumber.channelSortKey
+        }
+        let channels: [GuideChannel] = channelList.map { ch in
+            let isRecCh = recChannels.contains(ch.GuideNumber)
+            let entries = entriesInWindow(state: state, deviceId: device.DeviceID, channelNum: ch.GuideNumber,
+                winStart: winStart, winEnd: winEnd).map { entry -> GuideEntryJSON in
+                let isNow = entry.StartTime <= nowTs && entry.EndTime > nowTs
+                let isRec = isRecCh && isNow
+                // One owner(for:) lookup, not isManaged(entry:) + a second owner(for:) — both do
+                // the same key-matching work, so calling both here would double it per entry.
+                let owner = guideMatcher.owner(for: entry)
+                return GuideEntryJSON(
+                    title: entry.Title,
+                    episodeTitle: entry.EpisodeTitle,
+                    episodeNumber: entry.EpisodeNumber,
+                    synopsis: entry.Synopsis,
+                    seriesId: entry.SeriesID,
+                    genre: entry.firstGenre,
+                    tags: entry.Filter,
+                    startTime: entry.StartTime,
+                    endTime: entry.EndTime,
+                    isRecording: isRec,
+                    isScheduled: owner != nil,
+                    scheduledShowId: owner?.show_id
+                )
+            }
+            return GuideChannel(guideNumber: ch.GuideNumber, guideName: ch.GuideName,
+                hd: (ch.HD ?? 0) != 0, favorite: ch.isFavorite, entries: entries)
+        }
+
+        let payload = GuidePayload(deviceId: device.DeviceID, winStart: winStart, winSec: winSec,
+            devices: devices, channels: channels)
+        return (try? JSONEncoder().encode(payload)) ?? Data("{}".utf8)
     }
 
     // MARK: - mDNS TXT update

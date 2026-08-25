@@ -82,6 +82,13 @@ echo "==> Deploying binary…"
 cp .build/apple/Products/Release/hdhr_VCR "$BINARY"
 lipo -info "$BINARY"
 
+echo "==> Deploying CLI helper…"
+# hdhr_guide (docs/TUIGuide.md) — bundled terminal guide client, universal like the main binary
+# (same `swift build` invocation above already built both). Signed individually below, inside-out,
+# before the whole-bundle codesign — see deploy.sh's matching step for why.
+mkdir -p "$APP/Contents/Helpers"
+cp .build/apple/Products/Release/hdhr_guide "$APP/Contents/Helpers/hdhr_guide"
+
 echo "==> Deploying resources…"
 mkdir -p "$APP/Contents/Resources"
 cp Resources/app.jpg "$APP/Contents/Resources/app.jpg"
@@ -138,6 +145,17 @@ cp -R "$APP" "$_TMP_APP"
 find "$_TMP_APP" -name "._*" -delete
 find "$_TMP_APP" -name ".DS_Store" -delete
 xattr -cr "$_TMP_APP"
+
+# Sign the CLI helper first (inside-out order) — it's a loose executable outside the bundle's
+# main-executable slot, so neither codesign call below (no --deep) reaches into Contents/Helpers/;
+# left unsigned, it would fail notarization on its own even though the rest of the app is fine.
+if [ "$ADHOC" -eq 1 ]; then
+    codesign --force --options runtime --entitlements "$ENTITLEMENTS" --sign - \
+             "$_TMP_APP/Contents/Helpers/hdhr_guide"
+else
+    codesign --force --options runtime --entitlements "$ENTITLEMENTS" --sign "$SIGN_IDENTITY" \
+             "$_TMP_APP/Contents/Helpers/hdhr_guide"
+fi
 
 if [ "$ADHOC" -eq 1 ]; then
     echo "==> Signing ad-hoc (no Developer ID cert configured)…"

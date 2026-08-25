@@ -91,3 +91,4 @@ Bundle ID `com.hdhr.vcrplus` must be registered in App Store Connect under your 
 | GitHub Releases update check (`UpdateChecker.swift`) | Outbound HTTPS to `api.github.com`, same `network.client` coverage; read-only, no download/install |
 | Channel icon disk cache | Within sandbox container |
 | Sparkle signature key in Info.plist | Harmless if Sparkle is removed |
+| `hdhr_guide` bundled CLI (`Contents/Helpers/`, `docs/TUIGuide.md`) | A second executable inside the bundle, but unlike the curl/VLC cases above it never spawns a subprocess and never dlopens anything — it's a plain `URLSession` HTTP client talking only to the app's own local web server (`network.client`, already granted). Sandboxed apps may execute binaries within their own bundle, so this pattern is fine as-is for a future MAS build too. |

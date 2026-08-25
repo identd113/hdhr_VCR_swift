@@ -37,6 +37,7 @@ func refreshPageAndBroadcastGuideChange(type:state:)  // @MainActor — thin wra
 | GET | `/api/events` | SSE stream — kept open; server pushes JSON events on state changes |
 | GET | `/api/guide-refresh` | JSON `{grid, sumph, tdrop}` — full rebuilt guide grid + summary panel + per-device tuner-dropdown fragments (same shape an SSE guide-change event carries). Used by the client's manual **↺** refresh button and as the SSE `onmessage` fallback for an unrecognized event shape |
 | GET | `/api/now.json` | JSON array of on-air entries (see schema below) |
+| GET | `/api/guide.json` (or `/api/guide.json/{deviceId}`) | JSON `{deviceId, winStart, winSec, devices, channels}` — structured (non-HTML) guide data for one tuner's full window, every entry not just on-air (see schema below). Powers `hdhr_guide`, the bundled terminal client — see `docs/TUIGuide.md`. No deviceId segment picks the first usable device, mirroring the web guide's own `defaultDev` choice |
 | GET | `/api/signal` | JSON object `{guideName: "good"|"fair"|"poor"|"noData"}` — snapshot of `ChannelSignalStore.shared.buckets` keyed by `guideName.lowercased()` |
 | POST | `/api/record` | Schedule a recording |
 | POST | `/api/signal-scan` | Trigger a signal strength scan. Optional body `{"force":true}` rescans all channels regardless of freshness. Returns `{"status":"started","force":bool}`. |
@@ -827,6 +828,40 @@ struct NowEntry: Encodable {
 ```
 
 Encoded with `JSONEncoder` `.prettyPrinted`.
+
+---
+
+## JSON schema — `/api/guide.json`
+
+```swift
+struct GuidePayload: Encodable {
+    var deviceId: String
+    var winStart, winSec: Int          // same window buildGuideGridHTML uses (guideWindow(state:))
+    var devices: [DeviceSummary]       // every discovered device, for a client's own tuner switcher
+    var channels: [GuideChannel]       // this device's lineup, channelSortKey-sorted
+}
+struct DeviceSummary: Encodable { var deviceId: String; var active, total: Int }
+struct GuideChannel: Encodable {
+    var guideNumber, guideName: String
+    var hd, favorite: Bool
+    var entries: [GuideEntryJSON]      // every entry in [winStart, winStart+winSec), not just on-air
+}
+struct GuideEntryJSON: Encodable {
+    var title: String
+    var episodeTitle, episodeNumber, synopsis, seriesId, genre: String?
+    var tags: [String]?                // raw GuideEntry.Filter genre tags, e.g. ["Kids","Series"] —
+                                        // `genre` above is the single derived firstGenre used for
+                                        // color; `tags` is the unreduced list, for display
+    var startTime, endTime: Int        // Unix timestamps
+    var isRecording, isScheduled: Bool
+    var scheduledShowId: String?       // ManagedGuideMatcher.owner(for:)'s Show.show_id when
+                                        // isScheduled — lets a client delete/stop this recording
+                                        // via POST /api/delete (`{"showId": ...}`) without a
+                                        // second lookup
+}
+```
+
+Encoded compact (no `.prettyPrinted`) — unlike `/api/now.json`, this carries every entry across the whole guide window for one device, not just on-air ones, so the payload is meaningfully larger per request. `isScheduled` comes from the same `ManagedGuideMatcher` `/api/now.json` and `buildGuideGridHTML` already share (see that struct's own comments) — never reintroduce a parallel lookup here.
 
 ---
 
