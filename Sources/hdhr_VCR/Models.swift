@@ -237,7 +237,10 @@ struct Show: Identifiable, Equatable {
     /// XMLTV's singular "Sport" category tag. Shared by AddShowView's two entry paths (native guide
     /// selection and web-guide pending-entry) and mirrors guide.js's own client-side `_isSports`
     /// check — previously each of the three had its own copy, and one of them (`applyWebGuideEntry`)
-    /// had drifted to matching only "sports", silently missing XMLTV's singular tag.
+    /// had drifted to matching only "sports", silently missing XMLTV's singular tag. A 4th copy
+    /// exists in `Sources/hdhr_guide/main.swift`'s `genreImpliesBonusTime(_:)` — cannot import this
+    /// module there (`hdhr_VCR` is an executable, not a library) — keep it in sync with this check
+    /// by hand if this matching logic ever changes.
     static func genreImpliesBonusTime(_ genre: String?) -> Bool {
         genre?.lowercased().contains("sport") == true
     }
@@ -411,6 +414,16 @@ struct AppConfig: Equatable {
     // Web server
     var Web_server_enabled: Bool = false
     var Web_server_port:    Int  = 1980
+    // Sub-switch under Web_server_enabled — the bundled hdhr_guide terminal client (Sources/hdhr_guide/)
+    // refuses to run when this is false, even though the LAN web server itself (and every browser
+    // client using it) is unaffected. This is a courtesy/discoverability gate, not a security
+    // boundary: hdhr_guide talks to the same already-unauthenticated /api/guide.json, /api/record,
+    // etc. any browser on the LAN can already reach once Web_server_enabled is on (CLAUDE.md's "No
+    // auth beyond LAN-subnet matching" invariant) — it adds no endpoint of its own, so someone could
+    // still reach the same data with curl regardless of this flag. It exists for someone who wants
+    // the web guide shared with the household but doesn't want the terminal client itself advertised
+    // or usable, not to keep the data more private than the web server already makes it.
+    var Terminal_guide_enabled: Bool = true
 
     // Signal quality
     var Signal_quality_enabled:      Bool = false  // show signal bars in guide + web UI
@@ -474,6 +487,7 @@ extension AppConfig: Codable {
         Discord_enabled         = (try? c.decode(Bool.self,   forKey: .Discord_enabled))         ?? !Discord_webhook_url.isEmpty
         Web_server_enabled      = (try? c.decode(Bool.self,   forKey: .Web_server_enabled))      ?? false
         Web_server_port         = (try? c.decode(Int.self,    forKey: .Web_server_port))         ?? 1980
+        Terminal_guide_enabled  = (try? c.decode(Bool.self,   forKey: .Terminal_guide_enabled))  ?? true
         Signal_quality_enabled      = (try? c.decode(Bool.self, forKey: .Signal_quality_enabled))      ?? false
         Signal_quality_alert_notify = (try? c.decode(Bool.self, forKey: .Signal_quality_alert_notify)) ?? false
         Status_light_blink_enabled  = (try? c.decode(Bool.self, forKey: .Status_light_blink_enabled))  ?? false

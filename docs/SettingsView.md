@@ -15,7 +15,7 @@ macOS `List` with items using `Label(name, systemImage: icon)`. Icons and catego
 - `tv` Guide
 - `bell.badge` Notifications
 - `terminal` Advanced
-- `globe` Web Server
+- `globe` Sharing
 - `wrench.and.screwdriver` Maintenance
 - `info.circle` About
 
@@ -158,7 +158,7 @@ Sidebar entries (with SF Symbol icons):
 | Guide | `tv` | Guide hours, series scan retry |
 | Notifications | `bell.badge` | Up Next timing, Recording alert timing |
 | Advanced | `terminal` | Network interface, logging + verbose curl + config file path, check for updates, signal quality |
-| Web Server | `globe` | Enable/disable LAN web server, port, access URL |
+| Sharing | `globe` | Enable/disable LAN web server, port, access URL |
 | Maintenance | `wrench.and.screwdriver` | Show maintenance, guide/device ops |
 | About | `info.circle` | App logo, version, history, GitHub link |
 
@@ -259,12 +259,20 @@ Recording Complete embeds additionally include **Format** (file extension, e.g. 
 
 ---
 
-### Web Server
+### Sharing
 
-- **Enable Web Server** — `Toggle` bound to `draft.Web_server_enabled`. Off by default. Warning label: *"Local network access only. No authentication. Do not expose this port to the internet."*
+(Settings section — the underlying `Web_server_enabled`/`Web_server_port` config keys and `WebServer.swift`/`webServerRunning`/`webServerError`/`setupWebServer()` Swift symbols are unchanged; only this section's own user-facing label was renamed from "Web Server" to "Sharing".)
+
+- **Enable Sharing** — `Toggle` bound to `draft.Web_server_enabled`. Off by default. Warning label: *"Local network access only. No authentication. Do not expose this port to the internet."*
 - **Port** — `TextField` (value binding, `.number.grouping(.never)` format to suppress the thousands comma), shown when enabled. Validated 1025–65534. Invalid values show an orange warning and block the Save button and `WindowCloseInterceptor`. Saving restarts the `NWListener` and re-registers mDNS at the new port immediately — no app restart needed.
 - **Access row** — shown only when `state.config.Web_server_enabled && state.webServerRunning`. Displays `http://{ip}:{port}` as selectable monospaced text with an **Open** `Link`. IP is resolved by `availableNetworkInterfaces()` filtering out `utun*` VPN interfaces; falls back to `"localhost"`. The link uses the device's IP directly (not an mDNS `.local` hostname) to prevent browser HTTPS upgrades.
-- **Terminal Guide row** — same visibility gate as Access (the tool only works while the web server it's showing is actually running). Displays the bundled `hdhr_guide` CLI's path (`Bundle.main.bundleURL` + `Contents/Helpers/hdhr_guide`, so it's correct wherever the user actually put the app) as selectable monospaced text, plus a one-line caption. See `docs/TUIGuide.md`.
+- **Terminal Guide section** — same visibility gate as Access. Contains its own **Enable Terminal
+  Guide** `Toggle` bound to `draft.Terminal_guide_enabled` (defaults `true`) — a sub-switch under
+  Sharing: `hdhr_guide` (`Sources/hdhr_guide/`) reads it back via `/api/guide.json`'s
+  `terminalGuideEnabled` field and refuses to run when off. Courtesy/discoverability only, not a
+  security boundary — the same JSON endpoint is already reachable to any LAN browser once Sharing
+  is on, regardless of this flag (see `docs/TUIGuide.md`). The binary path (selectable monospaced
+  text) and its one-line caption are only shown while this sub-toggle is on.
 - **Error banner** — shown when `state.webServerError` is non-nil (port in use, OS cancellation, etc.).
 
 Saving with changed `Web_server_enabled` or `Web_server_port` calls `state.setupWebServer()` immediately to start, restart, or stop the listener.

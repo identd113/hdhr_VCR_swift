@@ -82,20 +82,25 @@ enum Terminal {
     }
 
     // Reads one logical key. Disambiguates a bare Escape from an arrow-key escape sequence by
-    // giving a follow-up byte a window (this is the standard technique — a real arrow sequence's
-    // second/third bytes arrive effectively instantly after the ESC, a human pressing Escape
-    // alone does not send anything more) — 40ms, not the original 10ms: any transmission jitter
-    // (SSH latency, a loaded system, some terminal multiplexers) delaying the 2nd/3rd byte past
-    // the window makes a real arrow-key press silently register as a bare Escape, which does
-    // nothing in the normal-mode key handler — a plausible match for "the arrow key does nothing."
+    // giving the 2nd byte a window (this is the standard technique — a real arrow sequence's
+    // bytes arrive effectively instantly after the ESC, a human pressing Escape alone does not
+    // send anything more) — 80ms, not the original 10ms (bumped from an earlier 40ms): any
+    // transmission jitter (SSH latency, a loaded system, some terminal multiplexers — or,
+    // confirmed on a real report, a multi-hop chain like browser → Raspberry Pi → SSH → this Mac,
+    // which stacks jitter from every hop) delaying that byte past the window makes a real
+    // arrow-key press silently register as a bare Escape, which does nothing in the normal-mode
+    // key handler — a plausible match for "the arrow key does nothing." A bare Escape press
+    // itself is only ever used to cancel out of the record-summary screen, so the extra 40ms of
+    // worst-case latency there is not something a human would ever notice. The 3rd byte gets its
+    // own, much longer window below, for a different reason — see the comment at that guard.
     static func readKey() -> Key? {
         var byte: UInt8 = 0
         guard read(STDIN_FILENO, &byte, 1) == 1 else { return nil }
         DebugLog.log("read byte 0x\(String(byte, radix: 16))")
 
         if byte == 0x1B {
-            guard pollStdin(timeoutMs: 40) else {
-                DebugLog.log("  ESC: no follow-up byte within 40ms -> .escape")
+            guard pollStdin(timeoutMs: 80) else {
+                DebugLog.log("  ESC: no follow-up byte within 80ms -> .escape")
                 return .escape
             }
             var b2: UInt8 = 0
@@ -113,6 +118,28 @@ enum Terminal {
             DebugLog.log("  b2 = 0x\(String(b2, radix: 16)) ('\(Character(UnicodeScalar(b2)))')")
             guard b2 == UInt8(ascii: "[") || b2 == UInt8(ascii: "O") else {
                 DebugLog.log("  b2 is neither '[' nor 'O' -> .escape (unrecognized sequence)")
+                return .escape
+            }
+            // Polled, not read() directly — b2's own arrival proves the sequence started, but says
+            // nothing about whether the *rest* of it has landed yet: on a laggy/multi-hop link a
+            // 3-byte sequence can be split across more than one packet at any boundary. Reading b3
+            // unconditionally here used to block indefinitely — no poll, no timeout — whenever
+            // that 3rd byte hadn't arrived yet, freezing the entire render loop (no redraws at
+            // all, however long the network took) until it finally showed up.
+            //
+            // A much longer window than b2's 80ms — 1000ms — and deliberately so: unlike the ESC
+            // byte alone, b2 being exactly "[" or "O" is not something a human ever types by hand,
+            // so once we're here there is no more ambiguity left to resolve by timing out early.
+            // This wait is purely "how long do we let the network take," not "is this really a
+            // sequence," so there is no real cost to being generous. It still matters: giving up
+            // here does not un-read b2 (there is no way to push bytes back onto stdin), so a
+            // too-eager timeout would leave the eventual b3 byte to be picked up by the *next*
+            // readKey() call and misread as an unrelated fresh keypress (e.g. a stray "A"/"B"/"C"/
+            // "D") — a subtler version of the exact bug this polling was added to fix, just
+            // trading a frozen screen for a phantom keystroke instead of avoiding both. 1000ms
+            // makes that residual case vanishingly rare without reintroducing an unbounded block.
+            guard pollStdin(timeoutMs: 1000) else {
+                DebugLog.log("  ESC: b2 arrived but b3 didn't within 1000ms -> .escape")
                 return .escape
             }
             var b3: UInt8 = 0
@@ -151,10 +178,22 @@ func wordWrap(_ text: String, width: Int) -> [String] {
     var lines: [String] = []
     var current = ""
     for word in text.split(separator: " ") {
-        let candidate = current.isEmpty ? String(word) : current + " " + word
+        var remaining = Substring(word)
+        // A single word longer than the wrap width by itself (a long URL, a hyphen-less compound
+        // token — real synopsis data, not app-controlled) is hard-broken into width-sized chunks
+        // rather than emitted whole — otherwise it produced a line wider than `width` regardless
+        // of the width passed in, the same overflow-then-terminal-wraps bug class the rest of this
+        // app's width handling exists to prevent (callers here truncate/clamp every other line to
+        // `cols`, but never re-checked what this function handed back).
+        while remaining.count > width {
+            if !current.isEmpty { lines.append(current); current = "" }
+            lines.append(String(remaining.prefix(width)))
+            remaining = remaining.dropFirst(width)
+        }
+        let candidate = current.isEmpty ? String(remaining) : current + " " + remaining
         if candidate.count > width, !current.isEmpty {
             lines.append(current)
-            current = String(word)
+            current = String(remaining)
         } else {
             current = candidate
         }
@@ -163,9 +202,18 @@ func wordWrap(_ text: String, width: Int) -> [String] {
     return lines
 }
 
+// Truncation marker is a plain ASCII "." rather than "…" — the ellipsis glyph (like every
+// box-drawing/marker glyph this app used to rely on) is Unicode "Ambiguous width": most terminals
+// with a Western locale render it in 1 column, matching the 1-column budget this function assumes,
+// but anything in the chain that renders ambiguous-width glyphs as 2 columns instead (confirmed:
+// a web-terminal-in-the-middle setup — browser → Raspberry Pi → SSH → this Mac) silently adds an
+// extra column per occurrence, which is exactly what kept causing lines to wrap even after the
+// character-count math itself was verified correct. ASCII has no ambiguous-width case anywhere,
+// on any terminal, so swapping every such glyph app-wide for an ASCII stand-in removes the whole
+// bug class rather than chasing it terminal-by-terminal.
 func truncate(_ s: String, _ width: Int) -> String {
     guard width > 0 else { return "" }
     guard s.count > width else { return s }
     guard width > 1 else { return String(s.prefix(width)) }
-    return String(s.prefix(width - 1)) + "…"
+    return String(s.prefix(width - 1)) + "."
 }

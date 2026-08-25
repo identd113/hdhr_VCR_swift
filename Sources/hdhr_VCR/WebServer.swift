@@ -2017,6 +2017,21 @@ final class WebServer: @unchecked Sendable {
             var winStart, winSec: Int
             var devices: [DeviceSummary]
             var channels: [GuideChannel]
+            // Mirrors guide.js's own SPORTS_PADDING_ENABLED template token (baked into the HTML
+            // page at render time) so a non-HTML client like hdhr_guide (Sources/hdhr_guide/) can
+            // gate its own sports-genre auto-Bonus-Time detection the same way the web Record
+            // modal and native Add Show wizard already do (AddShowView.swift's
+            // `genreImpliesBonusTime && Sports_padding_enabled` pattern) instead of always
+            // defaulting to the setting being on.
+            var sportsPaddingEnabled: Bool
+            // `Terminal_guide_enabled` (state.config) — hdhr_guide checks this at startup and
+            // refuses to run when false (main.swift). This endpoint is shared with the browser
+            // guide, which has no equivalent gate of its own, so this can only be a courtesy
+            // client-side check, not an enforced one: the JSON itself is unaffected by this flag
+            // either way (same as every other field here) — a caller that ignores the field would
+            // see it regardless, exactly like curling any other web guide endpoint directly
+            // already can (CLAUDE.md's "No auth beyond LAN-subnet matching" invariant).
+            var terminalGuideEnabled: Bool
         }
 
         let devTuners = Self.computeDevTuners(state: state)
@@ -2026,7 +2041,9 @@ final class WebServer: @unchecked Sendable {
         guard let device = (deviceId.flatMap { id in state.devices.first { $0.DeviceID == id } })
             ?? state.devices.first(where: { state.usableDeviceIDs.contains($0.DeviceID) })
             ?? state.devices.first else {
-            let empty = GuidePayload(deviceId: "", winStart: 0, winSec: 0, devices: devices, channels: [])
+            let empty = GuidePayload(deviceId: "", winStart: 0, winSec: 0, devices: devices, channels: [],
+                sportsPaddingEnabled: state.config.Sports_padding_enabled,
+                terminalGuideEnabled: state.config.Terminal_guide_enabled)
             return (try? JSONEncoder().encode(empty)) ?? Data("{}".utf8)
         }
 
@@ -2087,7 +2104,8 @@ final class WebServer: @unchecked Sendable {
         }
 
         let payload = GuidePayload(deviceId: device.DeviceID, winStart: winStart, winSec: winSec,
-            devices: devices, channels: channels)
+            devices: devices, channels: channels, sportsPaddingEnabled: state.config.Sports_padding_enabled,
+            terminalGuideEnabled: state.config.Terminal_guide_enabled)
         return (try? JSONEncoder().encode(payload)) ?? Data("{}".utf8)
     }
 

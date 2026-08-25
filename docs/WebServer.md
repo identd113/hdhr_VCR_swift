@@ -1,6 +1,6 @@
 # WebServer.swift — Built-in LAN Web Server
 
-Serves an interactive guide page and JSON API over HTTP. The page is consumed by two clients: **external browsers** on the local network, and the **in-app WKWebView** in `AddShowView` step 2. Both connect to the same SSE stream and see the same HTML. Enabled via **Settings → Web Server → Enable Web Server**. Default port: **1980**.
+Serves an interactive guide page and JSON API over HTTP. The page is consumed by two clients: **external browsers** on the local network, and the **in-app WKWebView** in `AddShowView` step 2. Both connect to the same SSE stream and see the same HTML. Enabled via **Settings → Sharing → Enable Sharing** (the Settings section's user-facing label — the underlying `Web_server_enabled` config key and `WebServer.swift` itself are unchanged). Default port: **1980**.
 
 The web server is primarily scoped to **scheduling and management**, with one narrow exception: `/api/watch-recording` relays a *currently-recording* show's on-disk file as an open-ended HTTP stream, powering the in-app "Watch Now!" relay (see below). It is not a general media server — finished recordings are not reachable through it.
 
@@ -37,7 +37,7 @@ func refreshPageAndBroadcastGuideChange(type:state:)  // @MainActor — thin wra
 | GET | `/api/events` | SSE stream — kept open; server pushes JSON events on state changes |
 | GET | `/api/guide-refresh` | JSON `{grid, sumph, tdrop}` — full rebuilt guide grid + summary panel + per-device tuner-dropdown fragments (same shape an SSE guide-change event carries). Used by the client's manual **↺** refresh button and as the SSE `onmessage` fallback for an unrecognized event shape |
 | GET | `/api/now.json` | JSON array of on-air entries (see schema below) |
-| GET | `/api/guide.json` (or `/api/guide.json/{deviceId}`) | JSON `{deviceId, winStart, winSec, devices, channels}` — structured (non-HTML) guide data for one tuner's full window, every entry not just on-air (see schema below). Powers `hdhr_guide`, the bundled terminal client — see `docs/TUIGuide.md`. No deviceId segment picks the first usable device, mirroring the web guide's own `defaultDev` choice |
+| GET | `/api/guide.json` (or `/api/guide.json/{deviceId}`) | JSON `{deviceId, winStart, winSec, devices, channels, sportsPaddingEnabled, terminalGuideEnabled}` — structured (non-HTML) guide data for one tuner's full window, every entry not just on-air (see schema below). No deviceId segment picks the first usable device, mirroring the web guide's own `defaultDev` choice. `sportsPaddingEnabled` mirrors `Sports_padding_enabled` (`state.config`) — the same value guide.js's HTML-baked `SPORTS_PADDING_ENABLED` template token carries, exposed here so a non-HTML JSON client (`hdhr_guide`, `Sources/hdhr_guide/`) can gate its own sports-genre auto-Bonus-Time detection on it too, matching every other client's `genreImpliesBonusTime && Sports_padding_enabled` pattern instead of always assuming the setting is on. `terminalGuideEnabled` mirrors `Terminal_guide_enabled` (state.config, Settings → Sharing → Terminal Guide's own sub-toggle) — `hdhr_guide` checks it right after its first fetch and exits if false; a courtesy gate only, since this same JSON is unaffected by the flag and already reachable to any LAN caller once `Web_server_enabled` is on |
 | GET | `/api/signal` | JSON object `{guideName: "good"|"fair"|"poor"|"noData"}` — snapshot of `ChannelSignalStore.shared.buckets` keyed by `guideName.lowercased()` |
 | POST | `/api/record` | Schedule a recording |
 | POST | `/api/signal-scan` | Trigger a signal strength scan. Optional body `{"force":true}` rescans all channels regardless of freshness. Returns `{"status":"started","force":bool}`. |
@@ -994,7 +994,7 @@ func quit()             // calls webServer.stop()
 
 ---
 
-## Settings (SettingsView — Web Server category)
+## Settings (SettingsView — Sharing category)
 
 - **Toggle** — `Web_server_enabled` (default `false`)
 - **Port field** — `Web_server_port` (default `1980`; validated 1025–65534; invalid values block Save)

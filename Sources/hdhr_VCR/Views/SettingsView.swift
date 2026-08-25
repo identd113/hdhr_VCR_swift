@@ -30,7 +30,7 @@ private enum SettingsCategory: String, CaseIterable, Identifiable {
     case guide         = "Guide"
     case notifications = "Notifications"
     case advanced      = "Advanced"
-    case webServer     = "Web Server"
+    case sharing       = "Sharing"
     case maintenance   = "Maintenance"
     case about         = "About"
 
@@ -41,7 +41,7 @@ private enum SettingsCategory: String, CaseIterable, Identifiable {
         case .guide:         return "tv"
         case .notifications: return "bell.badge"
         case .advanced:      return "terminal"
-        case .webServer:     return "globe"
+        case .sharing:       return "globe"
         case .maintenance:   return "wrench.and.screwdriver"
         case .about:         return "info.circle"
         }
@@ -279,7 +279,7 @@ struct SettingsView: View {
         case .guide:         guideView
         case .notifications: notificationsView
         case .advanced:      advancedView
-        case .webServer:     webServerView
+        case .sharing:       sharingView
         case .maintenance:   maintenanceView
         case .about:         aboutView
         }
@@ -651,13 +651,13 @@ struct SettingsView: View {
         .navigationTitle("Advanced")
     }
 
-    // MARK: - Web Server
+    // MARK: - Sharing
 
-    private var webServerView: some View {
+    private var sharingView: some View {
         Form {
-            Section("Web Server") {
+            Section("Sharing") {
                 Toggle(isOn: $draft.Web_server_enabled) {
-                    HStack { Text("Enable Web Server"); InfoButton("Serve the cable guide and recording controls as a web page on your local network — accessible from any browser on any device. Local network only; no authentication. Do not expose this port to the internet.") }
+                    HStack { Text("Enable Sharing"); InfoButton("Serve the cable guide and recording controls as a web page on your local network — accessible from any browser on any device. Local network only; no authentication. Do not expose this port to the internet.") }
                 }
                 if draft.Web_server_enabled {
                     LabeledContent {
@@ -701,15 +701,24 @@ struct SettingsView: View {
 
                 // hdhr_guide (docs/TUIGuide.md) only works while the web server it's showing
                 // above is actually running — same gate as the Access section, so this row can
-                // never point someone at a tool that will just fail to connect.
+                // never point someone at a tool that will just fail to connect. Terminal_guide_enabled
+                // is a separate sub-switch under that: the binary itself checks it (via
+                // /api/guide.json's terminalGuideEnabled field) and refuses to run when off, letting
+                // someone share the web guide with the household without also advertising/allowing
+                // the terminal client, without needing a second AppState code path.
                 let guidePath = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/hdhr_guide").path
                 Section("Terminal Guide") {
-                    Text(guidePath)
-                        .font(.system(.body, design: .monospaced))
-                        .textSelection(.enabled)
-                    Text("Run from Terminal to browse the guide and schedule recordings without a browser.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    Toggle(isOn: $draft.Terminal_guide_enabled) {
+                        HStack { Text("Enable Terminal Guide"); InfoButton("Lets the bundled command-line client (path below) connect. On by default. Turning this off has no security effect — the same data is already reachable from any browser on the network whenever Sharing is on — it only hides/disables the terminal client specifically.") }
+                    }
+                    if draft.Terminal_guide_enabled {
+                        Text(guidePath)
+                            .font(.system(.body, design: .monospaced))
+                            .textSelection(.enabled)
+                        Text("Run from Terminal to browse the guide and schedule recordings without a browser.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
 
@@ -721,7 +730,7 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .navigationTitle("Web Server")
+        .navigationTitle("Sharing")
     }
 
     // MARK: - Maintenance

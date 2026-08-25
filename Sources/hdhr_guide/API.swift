@@ -33,6 +33,33 @@ struct GuidePayload: Decodable {
     let winStart, winSec: Int
     let devices: [DeviceSummary]
     let channels: [GuideChannelDTO]
+    // Mirrors guide.js's own SPORTS_PADDING_ENABLED template token — lets confirmRecord() (main.swift)
+    // gate its sports-genre auto-Bonus-Time detection on the same setting the web Record modal and
+    // native Add Show wizard already gate on, instead of always assuming it's on. Defaults true only
+    // as a decode fallback for an old server that predates this field — matches Sports_padding_enabled's
+    // own default (Models.swift) — not a statement about what's actually configured.
+    let sportsPaddingEnabled: Bool
+    // Mirrors Terminal_guide_enabled (state.config) — main.swift checks this right after the first
+    // successful fetch and exits if false. A courtesy/discoverability gate only, not a security
+    // boundary — see the field's own doc comment in WebServer.swift's buildGuideJSON. Defaults true
+    // as a decode fallback for an old server that predates this field, matching
+    // Terminal_guide_enabled's own default (Models.swift).
+    let terminalGuideEnabled: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case deviceId, winStart, winSec, devices, channels, sportsPaddingEnabled, terminalGuideEnabled
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        deviceId = try c.decode(String.self, forKey: .deviceId)
+        winStart = try c.decode(Int.self, forKey: .winStart)
+        winSec = try c.decode(Int.self, forKey: .winSec)
+        devices = try c.decode([DeviceSummary].self, forKey: .devices)
+        channels = try c.decode([GuideChannelDTO].self, forKey: .channels)
+        sportsPaddingEnabled = (try? c.decode(Bool.self, forKey: .sportsPaddingEnabled)) ?? true
+        terminalGuideEnabled = (try? c.decode(Bool.self, forKey: .terminalGuideEnabled)) ?? true
+    }
 }
 
 struct RecordResponse: Decodable {
@@ -127,6 +154,21 @@ enum API {
     // Blocking request — the TUI's own render loop only calls this from user-triggered actions
     // or its own periodic poll tick, never while awaiting other I/O, so a synchronous wait keeps
     // the whole client single-threaded with no async/await plumbing needed for a two-endpoint tool.
+    //
+    // Waited for in short slices, not one single blocking wait for the full timeout: Ctrl-C sets
+    // `interrupted` (main.swift) from a signal handler, but nothing was checking it while a
+    // request was in flight, so quitting during a slow/hung web server could take up to
+    // `timeoutInterval + 1` seconds (up to 9s on the record/delete/favorite endpoints) with the
+    // whole render loop frozen and no redraws. Slicing the wait into 100ms checks makes Ctrl-C
+    // responsive within about that long even mid-request, without needing to restructure this
+    // into full async/await.
+    //
+    // `result` is only read on the `.success` branch, never after `.timedOut` or an interrupted
+    // early return — reading it in those cases would race the background completion handler's own
+    // `result = data` write with no synchronization between the two threads (a genuine data race:
+    // `sem.wait` returning `.timedOut` at the same instant the completion handler runs has no
+    // happens-before relationship to that write). Only `.success` is guaranteed ordered after it,
+    // since that's exactly what `sem.signal()`/`sem.wait()` synchronizes.
     private static func syncData(_ req: URLRequest) -> Data? {
         var result: Data?
         let sem = DispatchSemaphore(value: 0)
@@ -134,7 +176,11 @@ enum API {
             result = data
             sem.signal()
         }.resume()
-        _ = sem.wait(timeout: .now() + req.timeoutInterval + 1)
-        return result
+        let deadline = Date().addingTimeInterval(req.timeoutInterval + 1)
+        while Date() < deadline {
+            if interrupted { return nil }
+            if sem.wait(timeout: .now() + 0.1) == .success { return result }
+        }
+        return nil
     }
 }
