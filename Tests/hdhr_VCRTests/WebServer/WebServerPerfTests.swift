@@ -163,11 +163,16 @@ struct WebServerPerfTests {
             return   // no live guide data in this environment — nothing to measure
         }
 
-        func toggleFavorite() async throws {
+        // Returns success/failure instead of throwing — this hits the real running app on a real
+        // channel, and the "even count restores original state" plan below only holds if every
+        // toggle is accounted for, including a failed one (a thrown request would otherwise abort
+        // the loop mid-burst and leave the channel's favorite state permanently flipped).
+        func toggleFavorite() async -> Bool {
             var req = URLRequest(url: URL(string: "http://127.0.0.1:1980/api/toggle-favorite")!)
             req.httpMethod = "POST"
-            req.httpBody = try JSONSerialization.data(withJSONObject: ["deviceId": devId, "guideNumber": num])
-            _ = try await URLSession.shared.data(for: req)
+            req.httpBody = try? JSONSerialization.data(withJSONObject: ["deviceId": devId, "guideNumber": num])
+            guard let (_, resp) = try? await URLSession.shared.data(for: req) else { return false }
+            return (resp as? HTTPURLResponse)?.statusCode == 200
         }
 
         // A few held-open SSE connections — the ingredient the first version of this test was
@@ -190,14 +195,26 @@ struct WebServerPerfTests {
         // Interleaved, not concurrent: each toggle fires the full rebuild + SSE fan-out, then the
         // very next request measures how long a normal client would wait right behind it — the
         // worst-case gap a real user would actually feel, not just the rebuild's own isolated cost.
+        // Neither call throws (see toggleFavorite above and the try? below) — a network hiccup
+        // under this test's own self-induced load just drops that one ping sample instead of
+        // aborting the loop and skipping the favorite-state restoration after it.
+        var successfulToggles = 0
         var pingTimes: [TimeInterval] = []
         for _ in 0..<heavyBurstCount {
-            try await toggleFavorite()
-            let (pingStatus, _, elapsed) = try await timedGet("/api/ping")
-            #expect(pingStatus == 200)
-            pingTimes.append(elapsed)
+            if await toggleFavorite() { successfulToggles += 1 }
+            if let (pingStatus, _, elapsed) = try? await timedGet("/api/ping") {
+                #expect(pingStatus == 200)
+                pingTimes.append(elapsed)
+            }
         }
 
+        // Restore the channel's original favorite state — every successful toggle flips it, so an
+        // odd count means one more real toggle is needed to cancel the imbalance out.
+        if successfulToggles % 2 != 0 {
+            _ = await toggleFavorite()
+        }
+
+        guard !pingTimes.isEmpty else { return }   // couldn't measure anything this run — nothing to assert
         pingTimes.sort()
         let median = pingTimes[pingTimes.count / 2]
         let worst  = pingTimes.last ?? 0

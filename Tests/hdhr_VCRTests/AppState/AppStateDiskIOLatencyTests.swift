@@ -26,6 +26,20 @@ import Foundation
 // scratch config directory, instead of trying to mock "CrashPlan is running." Deliberately no new
 // test infrastructure: reuses makeTestAppState's existing temp-config-dir convention and a plain
 // background Task, no subprocess, no new dependency.
+//
+// UPDATE 2026-08-24, same day: the actual root cause of the live report was found and confirmed
+// elsewhere (WebServerPerfTests.swift's apiLatency_staysResponsive_duringGuideChangeBurst, once
+// corrected to actually open SSE connections) — broadcastGuideChangeEvent's SSE payload size, not
+// disk I/O. This test's own measurement already showed synthetic disk pressure barely moves
+// saveConfig()'s latency on a fast SSD (~1ms either way). `ConfigManager.save`'s MainActor-
+// blocking write is still a legitimate, independently-scoped finding (see TODO.md), just not the
+// fix for that report — so this stays opt-in like WindowNavigationTests.swift's
+// RUN_WINDOW_NAV_TESTS convention, rather than burning real disk I/O (3 concurrent 20MB
+// write+fsync+remove loops) on every ordinary `swift test` run to guard a demoted theory:
+//   RUN_DISK_IO_TESTS=1 swift test --filter AppStateDiskIOLatencyTests
+private func diskIOTestsOptedIn() -> Bool {
+    ProcessInfo.processInfo.environment["RUN_DISK_IO_TESTS"] == "1"
+}
 
 @Suite("AppState saveConfig latency under disk pressure")
 struct AppStateDiskIOLatencyTests {
@@ -58,12 +72,24 @@ struct AppStateDiskIOLatencyTests {
                 })
             }
         }
-        func stop() {
-            tasks.forEach { $0.cancel() }   // each task removes its own scratch file on exit
+        // Synchronous — safe to call from `defer` as a cancellation-request backstop even if the
+        // test throws or returns early. Doesn't wait for the writers to actually stop; call
+        // waitUntilStopped() on the normal path for that.
+        func cancel() {
+            tasks.forEach { $0.cancel() }
+        }
+        // Awaits every writer's current write+fsync+removeItem cycle actually finishing (checked
+        // only at the top of each loop iteration) before returning — without this, a writer can
+        // still be mid-cycle when the test function returns, and since this suite isn't
+        // .serialized against other test files, that leftover I/O can bleed into whatever runs
+        // immediately after in a concurrently-scheduled suite.
+        func waitUntilStopped() async {
+            for task in tasks { await task.value }
         }
     }
 
     @Test @MainActor func saveConfig_staysResponsive_underConcurrentDiskWrites() async throws {
+        guard diskIOTestsOptedIn() else { return }
         let state = makeTestAppState(shows: [Show.testActive(), Show.testPaused()])
         let configDir = URL(fileURLWithPath: state.configManager.configPath).deletingLastPathComponent()
 
@@ -77,7 +103,7 @@ struct AppStateDiskIOLatencyTests {
 
         let pressure = DiskPressure(dir: configDir)
         pressure.start()
-        defer { pressure.stop() }
+        defer { pressure.cancel() }   // backstop if something below throws/returns early
         // Let the pressure Task actually ramp up before measuring against it.
         try await Task.sleep(nanoseconds: 200_000_000)
 
@@ -87,6 +113,9 @@ struct AppStateDiskIOLatencyTests {
             state.saveConfig()
             underPressure.append(Date().timeIntervalSince(start))
         }
+
+        pressure.cancel()
+        await pressure.waitUntilStopped()   // don't let writers bleed into whatever runs next
 
         baseline.sort(); underPressure.sort()
         let baselineMedian = baseline[baseline.count / 2]

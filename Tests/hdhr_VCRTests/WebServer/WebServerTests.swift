@@ -173,7 +173,14 @@ private func rawRequest(_ request: String, port: UInt16 = 1980, timeout: Double 
     return n > 0 ? String(decoding: buf[0..<n], as: UTF8.self) : ""
 }
 
-@Suite("Post-deploy: web server smoke tests (requires running app on :1980)")
+// .serialized for the same reason WebServerPerfTests.swift's suite is — all of these hit the one
+// shared live server too, so their 5s-timeout requests can otherwise raced by that file's
+// apiLatency_staysResponsive_duringGuideChangeBurst, which deliberately generates load severe
+// enough to have timed out one of these requests live during development. Serializing each suite
+// internally doesn't fully guarantee ordering *between* the two different @Suite types (Swift
+// Testing still runs distinct suites concurrently with each other by default) — this narrows the
+// gap, it doesn't close it.
+@Suite("Post-deploy: web server smoke tests (requires running app on :1980)", .serialized)
 struct WebServerSmokeTests {
 
     @Test func pingReturnsOk() async throws {

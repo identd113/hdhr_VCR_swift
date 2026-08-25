@@ -419,18 +419,8 @@ struct SettingsView: View {
                     HStack { Text("Series scan retry: \(draft.Series_scan_retry_hours) hr"); InfoButton("How long to wait before re-checking the guide when a series show has no matching air time yet.") }
                 }
                 HStack {
-                    if guideRefreshInProgress {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Button("Update Guides Now") {
-                            guideRefreshInProgress = true
-                            Task { @MainActor in
-                                await state.refreshAll()
-                                guideRefreshInProgress = false
-                            }
-                        }
+                    busyButton("Update Guides Now", isBusy: $guideRefreshInProgress) { await state.refreshAll() }
                         .buttonStyle(.borderedProminent)
-                    }
                     InfoButton("Force-refreshes guide data for all tuners immediately, without waiting for the auto-refresh window.")
                 }
             }
@@ -780,6 +770,32 @@ struct SettingsView: View {
         .navigationTitle("Maintenance")
     }
 
+    // Shared "swap for a spinner while a plain async action with no result runs" skeleton — the
+    // Guide tab's "Update Guides Now" and the About tab's "Check for Updates" buttons both used to
+    // hand-copy this same if-busy-then-ProgressView-else-Button block independently. Deliberately
+    // separate from maintenanceRow below rather than folding all three into one: maintenanceRow's
+    // shape (title + description + a status string shown after) fits a dedicated settings row,
+    // not a bare button sitting inline next to a Stepper/InfoButton the way these two do — forcing
+    // them through the same helper would need optional title/description/status params that don't
+    // apply here, which is more indirection than the two callers actually save. `.buttonStyle`/
+    // `.font` etc. are left for the caller to chain onto the result — applying to the ProgressView
+    // branch too while busy is harmless (SwiftUI ignores buttonStyle on a non-Button, and
+    // ProgressView's macOS `.small` circular style has no visible text for `.font` to affect).
+    @ViewBuilder
+    private func busyButton(_ label: String, isBusy: Binding<Bool>, action: @escaping () async -> Void) -> some View {
+        if isBusy.wrappedValue {
+            ProgressView().controlSize(.small)
+        } else {
+            Button(label) {
+                isBusy.wrappedValue = true
+                Task { @MainActor in
+                    await action()
+                    isBusy.wrappedValue = false
+                }
+            }
+        }
+    }
+
     @ViewBuilder
     private func maintenanceRow(_ title: String, _ description: String,
                                  action: @escaping () async throws -> String) -> some View {
@@ -854,18 +870,8 @@ struct SettingsView: View {
                         Text("Up to date (checked \(last, style: .relative) ago)")
                             .font(.caption).foregroundStyle(.secondary)
                     }
-                    if updateCheckInProgress {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Button("Check for Updates") {
-                            updateCheckInProgress = true
-                            Task { @MainActor in
-                                await state.checkForUpdateOnce()
-                                updateCheckInProgress = false
-                            }
-                        }
+                    busyButton("Check for Updates", isBusy: $updateCheckInProgress) { await state.checkForUpdateOnce() }
                         .font(.caption)
-                    }
                 }
 
                 if state.config.Donation_unlocked {

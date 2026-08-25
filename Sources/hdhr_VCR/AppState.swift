@@ -478,9 +478,18 @@ final class AppState: ObservableObject {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
     }
 
+    // Guards against a second overlapping call — same reasoning as refreshAllInFlight above:
+    // SettingsView's updateCheckInProgress @State resets if the Settings window is closed and
+    // reopened mid-check, which would otherwise let this race the 24h background loop below or
+    // another manual click.
+    private var updateCheckInFlight = false
+
     // Always runs when called directly (e.g. a manual "Check Now" button) — Check_for_updates
     // only gates the automatic periodic loop below, not an explicit user request.
     func checkForUpdateOnce() async {
+        guard !updateCheckInFlight else { return }
+        updateCheckInFlight = true
+        defer { updateCheckInFlight = false }
         updateCheckResult = await checkForUpdate(currentVersion: currentReleaseVersion())
         lastUpdateCheckDate = Date()
     }
@@ -1421,13 +1430,16 @@ final class AppState: ObservableObject {
         // "Show Stoppers" entry. The system's permission prompt can be granted at any moment
         // independent of anything this app does (confirmed: a reboot triggered it once), and
         // there's no public API to detect that directly; polling on the existing idle cadence
-        // means success is picked up within one tick instead of requiring a manual relaunch or
-        // waiting up to an hour. Stops mattering on its own once
-        // confirmLocalNetworkAccessIfNeeded() flips the flag. `lineupConfirmBackoff` escalates the
-        // retry delay across repeated failures (still fast for the first few attempts — a grant
-        // within the first minute or two is picked up at close to full cadence — tapering to the
-        // same 1-hour ceiling as guideApiBackoff) so a permanently-denied permission doesn't poll
-        // at the full idle-tick cadence forever.
+        // means a grant landing while still on the fast cadence is picked up within one tick,
+        // instead of requiring a manual relaunch or waiting up to an hour. Stops mattering on its
+        // own once confirmLocalNetworkAccessIfNeeded() flips the flag. `lineupConfirmBackoff`
+        // escalates the retry delay across repeated failures (still fast for the first few
+        // attempts, tapering to the same 1-hour ceiling as guideApiBackoff) so a permanently-
+        // denied permission doesn't poll at the full idle-tick cadence forever — same tradeoff
+        // guideApiBackoff already accepts elsewhere: it can't distinguish "permission genuinely
+        // denied" from "device rebooting/LAN blip for a few minutes," so a transient failure
+        // streak right before a real grant can delay picking it up by up to whatever tier the
+        // backoff had climbed to, not always within one tick.
         if !config.Local_network_confirmed, !devices.isEmpty, !lineupConfirmRetryInFlight,
            !lineupConfirmBackoff.isBackedOff {
             lineupConfirmRetryInFlight = true
@@ -2715,10 +2727,21 @@ final class AppState: ObservableObject {
 
     // MARK: - Utilities
 
+    // Guards against a second overlapping call — SettingsView's own guideRefreshInProgress
+    // @State only guards its one button, and resets to false if the single-instance Settings
+    // window is closed and reopened mid-refresh (SwiftUI recreates the view, same gap
+    // EditShowView already has elsewhere), which would otherwise let a second refreshAll() race
+    // the first: clobbering guideByDevice mid-flight and racing discoverDevices' `devices = found`
+    // write (discoverDevices has no guard of its own, unlike refreshGuides' guideRefreshInFlight).
+    private var refreshAllInFlight = false
+
     // async (not fire-and-forget) so SettingsView's "Update Guides Now" button can await it and
     // show a spinner for the duration — the only call site, so safe to change without touching
     // anything else.
     func refreshAll() async {
+        guard !refreshAllInFlight else { return }
+        refreshAllInFlight = true
+        defer { refreshAllInFlight = false }
         glog("[Guide] refreshAll() — triggering discovery + refreshGuides()")
         guideByDevice = [:]
         // Discovery first (updates device IPs), then refreshGuides() reloads. guideByDevice is
