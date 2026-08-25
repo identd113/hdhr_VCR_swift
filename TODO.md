@@ -105,6 +105,16 @@ Real feature, not a small tweak — new UI, new state, ongoing maintenance — a
 
 ## Code Quality
 
+### `ConfigManager.save`'s disk write runs synchronously on the MainActor — 26 call sites
+
+Scoped 2026-08-24, following up on the "web guide feels laggy" report in `ISSUES.md` (see that entry for the full investigation). `AppState.saveConfig()` → `ConfigManager.save(_:)` does three blocking filesystem calls (remove old `.bak`, copy current config to it, atomic-write the new one) directly on `@MainActor`, called from 26 sites in `AppState.swift` covering essentially every show mutation. `WebServer` hops onto that same actor for nearly every request touching `AppState`, so a slow disk write here stalls every web request queued behind it. Same bug shape as two already-fixed call sites — `writeMetadataSidecar`/`recordedEpisodeTags` (`AppState.swift`, ~line 2826) are deliberately `nonisolated` so a slow-to-wake NAS/external drive can't block the whole app — but `ConfigManager.save` never got the same treatment, and it's the most frequently hit of the three by far.
+
+**Fix shape** (mirror the existing pattern, not invented fresh): mark `ConfigManager.save`'s file I/O `nonisolated` (it already takes its data by value — `ConfigFile`, not `self`-derived state — so this should be mechanical), then have `AppState.saveConfig()` dispatch it to a detached background `Task` instead of calling it inline. **Not mechanical, though** — needs real review before doing it: `saveConfig()` is called from 26 sites, and at least some (e.g. inside `handleRecord`/`handleEdit`/`handleDelete`'s web-request handlers) may be relying on the save completing *before* the HTTP response is sent — making it fire-and-forget could let a client see "ok":true for a change that hasn't actually hit disk yet (harmless for a crash immediately after, since the in-memory state is already correct and the next save would catch it, but worth confirming that's actually an acceptable tradeoff before shipping it, not assuming it away).
+
+**Key files**: `ConfigManager.swift` (`save(_:)`), `AppState.swift` (`saveConfig()` and its 26 call sites), `Tests/hdhr_VCRTests/AppState/AppStateDiskIOLatencyTests.swift` (the regression test to re-check against once this lands).
+
+---
+
 ### `deploy.sh`/`deploy_release.sh`'s favicon-generation heredoc is duplicated verbatim
 
 Added to `deploy_release.sh` on 2026-08-07 by copying `deploy.sh`'s existing ~13-line inline `python3` heredoc that builds `favicon.ico` from the iconset's 16×16/32×32 PNGs, rather than factoring it into one shared script. Matches this codebase's existing pattern of keeping the two deploy scripts independently self-contained (the "Deploying resources" `cp` block is duplicated the same way), so not urgent — but a future fix to the ICO-writing logic (wrong byte order, a malformed header, adding more sizes) has to be found and applied in both places, and it's easy to fix one and forget the other.
