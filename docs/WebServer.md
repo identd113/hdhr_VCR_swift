@@ -838,7 +838,7 @@ struct GuidePayload: Encodable {
     var deviceId: String
     var winStart, winSec: Int          // same window buildGuideGridHTML uses (guideWindow(state:))
     var devices: [DeviceSummary]       // every discovered device, for a client's own tuner switcher
-    var channels: [GuideChannel]       // this device's lineup, channelSortKey-sorted
+    var channels: [GuideChannel]       // this device's lineup, Recording → Favorite → channelSortKey
 }
 struct DeviceSummary: Encodable { var deviceId: String; var active, total: Int }
 struct GuideChannel: Encodable {
@@ -862,6 +862,8 @@ struct GuideEntryJSON: Encodable {
 ```
 
 Encoded compact (no `.prettyPrinted`) — unlike `/api/now.json`, this carries every entry across the whole guide window for one device, not just on-air ones, so the payload is meaningfully larger per request. `isScheduled` comes from the same `ManagedGuideMatcher` `/api/now.json` and `buildGuideGridHTML` already share (see that struct's own comments) — never reintroduce a parallel lookup here.
+
+**Channel order is Recording → Favorite → `channelSortKey`**, the same three-tier precedence `buildGuideGridHTML`'s "Recording section"/"Favorites section" use — a single `.sorted(by:)` over the whole lineup, not three concatenated filtered lists, so a channel that's both recording and favorited sorts under Recording only; there's no way for the same channel to appear twice.
 
 ---
 

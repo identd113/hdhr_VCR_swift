@@ -39,13 +39,32 @@ current one.
 
 - **Header row 1:** `HDHR-{deviceId}` + `active/total` tuner count + the Tab hint (dimmed) + the
   current wall-clock time (`clockFormatter`, `"EEE h:mm a"`, re-read every redraw)
-- **Header row 2 — selected program:** the selected channel + program spelled out in full (title,
-  episode, start–end time), not truncated — the grid cell for it below often is (`"Sesame S…"`),
-  so this line is always the unambiguous answer to "what's selected right now." Reads `visibleEntries(ch)`
-  the same as navigation, so it never shows a program that's actually outside the 8-hour cap.
-- **Header row 3:** hour labels above their column (only at `:00`, half-hour columns blank)
-- **Body:** one row per channel, sorted by `channelSortKey` (same numeric-aware channel order the
-  web guide uses). The gutter is 5 fixed-width columns, each reserving its slot whether active or
+- **Summary panel (`buildSummaryLines(maxLines:cols:)`):** the selected channel + program, spelled
+  out in full — the grid cell for it below is often truncated (`"Sesame S…"`), so this panel is
+  always the unambiguous answer to "what's selected right now." Height scales with terminal size —
+  `summaryLines = max(1, min(8, (rows - 16) / 3))`, reaching the 8-line cap around a 40-row
+  terminal — rather than a fixed line, so a tall terminal gets real detail (like the web guide's
+  `#sum` panel: episode, genre, tags, status, synopsis) while a short one still shows just
+  channel/time + title. Content is added in fixed priority order — channel+time+duration, title
+  (badge + status-colored), episode (`episodeNumber · episodeTitle`), genre+tags+status — and any
+  leftover lines are filled with word-wrapped synopsis; unused room becomes blank padding lines
+  rather than stretching earlier content, since `buildSummaryLines` always returns *exactly*
+  `maxLines` lines (never fewer) to keep the layout's line-count budget below exact, and every
+  line is `truncate()`-clamped to `cols` for the same reason the footer hint is (a wrapped line
+  here would silently add an extra screen line, the same bug class as the footer overflow fixed
+  earlier). Reads `currentEntry()` the same as navigation, so it's always in sync with whatever's
+  actually selected. Genre and tags render as small color chips (`genreBackground`),
+  not plain text — the same tile-background color the grid uses for that genre, so "Kids" reads in
+  the same color here as a Kids tile does below, not an independent text-color pick. Genre comes
+  first, then any tags not already equal to it (case-insensitive — they commonly overlap, since
+  genre is just tags' own first non-generic entry); a chip that would overflow `cols` is dropped
+  entirely rather than cut in half mid-color-code.
+- **Hour ruler:** hour labels above their column (only at `:00`, half-hour columns blank)
+- **Body:** one row per channel, ordered Recording → Favorite → `channelSortKey` (same three-tier
+  precedence as the web guide's own Recording/Favorites/rest sections, `buildGuideJSON` in
+  `WebServer.swift`) — a single sort over the whole lineup, so a channel that's both recording and
+  favorited sorts under Recording only, never appearing in more than one place. The gutter is 5
+  fixed-width columns, each reserving its slot whether active or
   not so the channel number always starts at the same character position on every row: selection
   marker (`▶`), favorite star (`★`, `favoriteColor` — the same amber `--fav`/`favAmber` value the
   web guide and native app use, not an independent pick), the channel number+name, then a signal
@@ -73,12 +92,15 @@ current one.
 - **Footer:** keybinding hint + a status/error line, colored green/red/yellow by outcome
   (✓/✗/⚠ prefix)
 
-**Time window is capped at `maxVisibleHours` (8, `main.swift`)** — `visibleEntries(_:)` filters
-every channel's entries to `startTime < winStart + 8h` before selection, paging (`[`/`]`), or
-rendering ever sees them, and `visibleCols()` additionally caps the column count itself so a wide
-terminal can't stretch past the cap on its own. The server still returns the full ~28h guide
-window (`/api/guide.json` is unchanged) — this is a client-side navigation limit only, not a
-smaller fetch, so raising it later is a one-constant change.
+**No client-side time cap** — selection and paging range over the server's own full guide window
+(`payload.winSec`, `maxSlot()` in `main.swift`), same as the web guide. An earlier 8-hour cap here
+(`visibleEntries(_:)` filtering to `startTime < winStart + 8h`, `visibleCols()` additionally
+clamped to it) caused a real, confirmed bug on a terminal wide enough to fit all 8 hours in one
+screen: `visibleCols()`'s own cap meant `vc` could never exceed the 8h ceiling, so
+`pageTime`'s `cap = maxSlot() - vc` bottomed out at exactly 0 — paging could never advance a
+single column past the cap, regardless of how much later guide data the server actually had.
+Confirmed via `DebugLog.swift`'s output on the reporter's own terminal (`vc=16 cap=0` — 16
+half-hour slots is exactly 8 hours) before being removed. See "Debug log" below.
 
 ## Coloring
 
@@ -122,8 +144,9 @@ Overwrite-in-place only holds if the frame's line count never exceeds the termin
 one line too many forces the terminal itself to scroll, and since every redraw starts by homing
 the cursor to what is *currently* row 1 (not row 1 of the original, unscrolled buffer), a
 scrolling viewport makes the top of the screen appear to jump on every keypress even with no
-`\u{1B}[2J` in sight. `render()`'s `topFixedLines`/`bottomFixedLines`/`boxLines` constants are an
-exact count of every fixed (non-body) line the function emits — they previously undercounted by
+`\u{1B}[2J` in sight. `render()`'s `topFixedLines` (`3 + summaryLines` — the summary panel's
+height is the one variable piece, everything else is fixed) / `bottomFixedLines` / `boxLines` are
+an exact count of every non-body line the function emits — they previously undercounted by
 3 (the "┬" gutter rule up top, and the "┴" rule + blank line at the bottom weren't included in the
 old `headerRows`/`footerRows` estimate), so every frame rendered 3 lines taller than the terminal
 and scrolled on every single redraw. Verified via a real pty at a fixed size: frame line count must
@@ -177,11 +200,18 @@ message a queued show and a confirmed one previously got.
 
 ## Keybindings
 
+Mouse/trackpad scroll wheel also moves the selected channel row, same as `↑`/`↓` — `Terminal.enterRawScreen()`
+sends `\u{1B}[?1007h` ("alternate scroll mode"), which tells the terminal itself to translate a
+scroll gesture into plain arrow-key bytes while the alternate screen buffer is active, rather than
+trying to scroll a scrollback buffer that doesn't apply here. No mouse-report protocol parsing on
+this end at all — the terminal does the translation, so this only works in terminals that support
+the mode (most do: iTerm2, Terminal.app, xterm, VTE-based ones).
+
 | Key | Action |
 |---|---|
 | `↑` / `↓` | Move the selected channel row |
-| `←` / `→` | Move the selected program within that channel |
-| `[` / `]` | Page the visible time window by one screen-width |
+| `←` / `→` | Move the selected program within that channel — at the first/last entry (within the 8h cap), pages the shared timeline viewport instead of stopping, so holding the key scrolls continuously across the whole grid to later/earlier times (`moveEntry(_:)`, `main.swift`) |
+| `[` / `]` | Page the visible time window by one screen-width directly, without needing to reach a channel's edge first |
 | `f` | Toggle favorite for the selected channel (`POST /api/toggle-favorite`, same endpoint the web guide's star buttons use) |
 | `Tab` | Switch to the next tuner |
 | `Enter` | Open the recording summary screen for the selected program |
@@ -189,6 +219,26 @@ message a queued show and a confirmed one previously got.
 | `d` (already-managed entry) | Remove the scheduled recording, or Stop & Delete if it's currently recording |
 | `Esc` (on the summary screen) | Cancel without changes, back to the grid |
 | `q` / `Ctrl-C` | Quit — restores the terminal (leaves raw mode + the alternate screen buffer) before exiting either way |
+
+## Debug log
+
+`DebugLog.swift` writes to `~/Library/Logs/hdhrVCRplus-guide-debug.log` — separate from
+`hdhr_VCR`'s own `glog()`/`RotatingLogFile` (a different module; not worth importing `hdhr_VCR`,
+an executable not a library, just for this) and truncated at launch past 2MB rather than using
+`RotatingLogFile`'s full generation-rotation scheme, since this is meant for a short debugging
+session, not unbounded-runtime logging. Printing to stdout isn't an option — it would corrupt the
+alternate-screen display — so this goes to its own file, tailable from a second terminal
+(`tail -f ~/Library/Logs/hdhrVCRplus-guide-debug.log`) while the app runs in the first.
+
+Logs every raw byte `Terminal.readKey()` reads (hex), the escape-sequence disambiguation outcome
+(which byte failed to match and why, or which arrow it resolved to), every `handle(_:)` call with
+the current `mode`, and `moveEntry(_:)`/`pageTime(_:)`'s state transitions (`selEntry`/`colStart`
+before → after, or why they no-opped). Added when "the right arrow doesn't scroll to later shows"
+couldn't be reproduced through direct pty testing (the mechanism worked reliably — 5/5 in a row —
+with the standard `\u{1B}[C` sequence on a narrow terminal). The reporter's own log showed the
+real cause on the first read: `pageTime(1): vc=16 cap=0 colStart 0 -> 0`, repeated on every
+keypress — the 8-hour cap bug described above. Left in place (not removed once the bug was found)
+since it's cheap and generically useful for the next thing that doesn't behave as expected.
 
 ## Known limitations
 

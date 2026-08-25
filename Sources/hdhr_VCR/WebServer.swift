@@ -2047,8 +2047,16 @@ final class WebServer: @unchecked Sendable {
         let recChannels = state.activeRecordingChannels(for: device.DeviceID)
             .union(state.pendingRecordingChannels(for: device.DeviceID))
 
-        let channelList = (state.lineups[device.DeviceID] ?? []).sorted {
-            $0.GuideNumber.channelSortKey < $1.GuideNumber.channelSortKey
+        // Recording first, then Favorite, then plain channelSortKey — same precedence as the web
+        // guide's own Recording/Favorites/rest sections (buildGuideGridHTML's "Recording section"/
+        // "Favorites section"). A total order over three tiers naturally puts every channel in
+        // exactly one bucket — a channel that's both recording and favorited sorts under
+        // Recording only, never appearing twice, matching the web guide's own dedup rule.
+        let channelList = (state.lineups[device.DeviceID] ?? []).sorted { a, b in
+            let aRec = recChannels.contains(a.GuideNumber), bRec = recChannels.contains(b.GuideNumber)
+            if aRec != bRec { return aRec }
+            if a.isFavorite != b.isFavorite { return a.isFavorite }
+            return a.GuideNumber.channelSortKey < b.GuideNumber.channelSortKey
         }
         let channels: [GuideChannel] = channelList.map { ch in
             let isRecCh = recChannels.contains(ch.GuideNumber)

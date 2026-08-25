@@ -22,12 +22,19 @@ enum Terminal {
         raw.c_lflag &= ~UInt(ICANON | ECHO)
         tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw)
         rawModeActive = true
-        write("\u{1B}[?1049h\u{1B}[?25l")   // alternate screen buffer, hide cursor
+        // ?1049h: alternate screen buffer. ?25l: hide cursor. ?1007h: "alternate scroll mode" —
+        // while the alt screen is active, the terminal itself translates a mouse/trackpad scroll
+        // gesture into plain \u{1B}[A/\u{1B}[B (the same bytes an arrow-key press sends) instead
+        // of trying to scroll a scrollback buffer that doesn't apply here. Without this, arrow
+        // keys work but the natural first thing anyone reaches for — the scroll wheel/trackpad —
+        // does nothing, since we never parse a mouse-report protocol ourselves; this makes the
+        // terminal do that translation for us, no protocol parsing needed on our end at all.
+        write("\u{1B}[?1049h\u{1B}[?25l\u{1B}[?1007h")
     }
 
     static func leaveRawScreen() {
         guard rawModeActive else { return }
-        write("\u{1B}[?25h\u{1B}[?1049l")   // show cursor, restore normal screen buffer
+        write("\u{1B}[?1007l\u{1B}[?25h\u{1B}[?1049l")   // restore normal scroll, cursor, screen buffer
         tcsetattr(STDIN_FILENO, TCSAFLUSH, &saved)
         rawModeActive = false
     }
@@ -75,25 +82,53 @@ enum Terminal {
     }
 
     // Reads one logical key. Disambiguates a bare Escape from an arrow-key escape sequence by
-    // giving a follow-up byte a short window (this is the standard technique — a real arrow
-    // sequence's second/third bytes arrive effectively instantly after the ESC, a human pressing
-    // Escape alone does not send anything more).
+    // giving a follow-up byte a window (this is the standard technique — a real arrow sequence's
+    // second/third bytes arrive effectively instantly after the ESC, a human pressing Escape
+    // alone does not send anything more) — 40ms, not the original 10ms: any transmission jitter
+    // (SSH latency, a loaded system, some terminal multiplexers) delaying the 2nd/3rd byte past
+    // the window makes a real arrow-key press silently register as a bare Escape, which does
+    // nothing in the normal-mode key handler — a plausible match for "the arrow key does nothing."
     static func readKey() -> Key? {
         var byte: UInt8 = 0
         guard read(STDIN_FILENO, &byte, 1) == 1 else { return nil }
+        DebugLog.log("read byte 0x\(String(byte, radix: 16))")
 
         if byte == 0x1B {
-            guard pollStdin(timeoutMs: 10) else { return .escape }
+            guard pollStdin(timeoutMs: 40) else {
+                DebugLog.log("  ESC: no follow-up byte within 40ms -> .escape")
+                return .escape
+            }
             var b2: UInt8 = 0
-            guard read(STDIN_FILENO, &b2, 1) == 1, b2 == UInt8(ascii: "[") else { return .escape }
+            // "[" (CSI) is the normal-mode arrow sequence, but "O" (SS3) is what a terminal sends
+            // for the exact same physical arrow key while in "application cursor key" mode
+            // (DECCKM) — a state this app never requests, but one a previous full-screen program
+            // in the same terminal session (vim, less, an earlier crashed curses app) can leave
+            // set, since it's a terminal-wide mode, not scoped to whichever program asked for it.
+            // Accepting both means arrow keys work regardless of whatever mode the terminal
+            // happened to be left in before this app started.
+            guard read(STDIN_FILENO, &b2, 1) == 1 else {
+                DebugLog.log("  ESC: follow-up byte announced ready but read() failed -> .escape")
+                return .escape
+            }
+            DebugLog.log("  b2 = 0x\(String(b2, radix: 16)) ('\(Character(UnicodeScalar(b2)))')")
+            guard b2 == UInt8(ascii: "[") || b2 == UInt8(ascii: "O") else {
+                DebugLog.log("  b2 is neither '[' nor 'O' -> .escape (unrecognized sequence)")
+                return .escape
+            }
             var b3: UInt8 = 0
-            guard read(STDIN_FILENO, &b3, 1) == 1 else { return .escape }
+            guard read(STDIN_FILENO, &b3, 1) == 1 else {
+                DebugLog.log("  b3 read failed -> .escape")
+                return .escape
+            }
+            DebugLog.log("  b3 = 0x\(String(b3, radix: 16)) ('\(Character(UnicodeScalar(b3)))')")
             switch b3 {
-            case UInt8(ascii: "A"): return .up
-            case UInt8(ascii: "B"): return .down
-            case UInt8(ascii: "C"): return .right
-            case UInt8(ascii: "D"): return .left
-            default: return .escape
+            case UInt8(ascii: "A"): DebugLog.log("  -> .up"); return .up
+            case UInt8(ascii: "B"): DebugLog.log("  -> .down"); return .down
+            case UInt8(ascii: "C"): DebugLog.log("  -> .right"); return .right
+            case UInt8(ascii: "D"): DebugLog.log("  -> .left"); return .left
+            default:
+                DebugLog.log("  b3 unrecognized -> .escape")
+                return .escape
             }
         }
         if byte == 0x0D || byte == 0x0A { return .enter }

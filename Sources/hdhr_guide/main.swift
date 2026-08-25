@@ -1,6 +1,8 @@
 import Darwin
 import Foundation
 
+DebugLog.log("=== hdhr_guide started (pid \(getpid())) ===")
+
 // hdhr_guide — bundled terminal client for the guide (Contents/Helpers/hdhr_guide). Talks only
 // to hdhrVCRplus's own LAN web server over plain HTTP (localhost:1980, hardcoded — matches
 // Web_server_port's default; a custom port isn't supported yet, see docs/TUIGuide.md), never
@@ -61,9 +63,6 @@ func genreImpliesBonusTime(_ genre: String?) -> Bool {
 let channelColWidth = 20
 let slotWidth = 14
 let secondsPerSlot = 1800
-let maxVisibleHours = 8   // cap how far paging/selection can go — keeps the grid focused instead
-                           // of scrolling through the full ~28h guide window; server still sends
-                           // the whole window, this is a client-side navigation cap only
 
 enum Mode { case normal, recordSummary }
 
@@ -95,8 +94,8 @@ let pollInterval: TimeInterval = 20
 
 func visibleCols() -> Int {
     let (cols, _) = Terminal.size()
-    // Capped at maxSlot() too — on a wide enough terminal, (cols - gutter) / slotWidth alone
-    // could exceed 8 hours' worth of columns.
+    // Capped at maxSlot() too — a terminal wide enough to fit the whole guide window shouldn't
+    // report more columns than there's actually data for.
     return max(1, min((cols - channelColWidth) / slotWidth, maxSlot()))
 }
 
@@ -105,14 +104,14 @@ func currentChannel() -> GuideChannelDTO? {
     return payload.channels[selRow]
 }
 
-// Entries within the maxVisibleHours cap — the single filter every selection/navigation/render
-// path reads through, so "8 hours max" can't silently drift between them.
-func visibleEntries(_ ch: GuideChannelDTO) -> [GuideEntryDTO] {
-    let cutoff = payload.winStart + maxVisibleHours * 3600
-    return ch.entries.filter { $0.startTime < cutoff }
-}
+// No client-side time cap — an earlier 8-hour limit here made paging permanently stick at 0 on
+// any terminal wide enough to fit all 8 hours in one screen (visibleCols() clamped to that same
+// cap, so `maxSlot() - vc` bottomed out at exactly 0: there was nowhere left to page to, ever,
+// regardless of how many later hours the server actually had). Paging/selection now range over
+// the server's own full window instead, same as the web guide.
+func visibleEntries(_ ch: GuideChannelDTO) -> [GuideEntryDTO] { ch.entries }
 
-func maxSlot() -> Int { min(payload.winSec, maxVisibleHours * 3600) / secondsPerSlot }
+func maxSlot() -> Int { payload.winSec / secondsPerSlot }
 
 func ensureEntryVisible() {
     guard let ch = currentChannel() else { return }
@@ -133,17 +132,36 @@ func moveRow(_ delta: Int) {
 }
 
 func moveEntry(_ delta: Int) {
-    guard let ch = currentChannel() else { return }
+    guard let ch = currentChannel() else {
+        DebugLog.log("moveEntry(\(delta)): no current channel — no-op")
+        return
+    }
     let count = visibleEntries(ch).count
-    guard count > 0 else { return }
-    selEntry = max(0, min(count - 1, selEntry + delta))
+    guard count > 0 else {
+        DebugLog.log("moveEntry(\(delta)): channel \(ch.guideNumber) has 0 visible entries — no-op")
+        return
+    }
+    let newIndex = selEntry + delta
+    guard newIndex >= 0 && newIndex < count else {
+        // Already at this channel's first/last entry — page the shared timeline viewport instead
+        // of doing nothing, so holding →/← scrolls continuously across the whole grid (through
+        // the server's full guide window, not an artificially narrower one) instead of stopping
+        // dead at wherever this one channel's own schedule happens to end.
+        DebugLog.log("moveEntry(\(delta)): selEntry=\(selEntry) count=\(count) newIndex=\(newIndex) out of range — paging timeline instead")
+        pageTime(delta > 0 ? 1 : -1)
+        return
+    }
+    DebugLog.log("moveEntry(\(delta)): selEntry \(selEntry) -> \(newIndex) on \(ch.guideNumber)")
+    selEntry = newIndex
     ensureEntryVisible()
 }
 
 func pageTime(_ dir: Int) {
     let vc = visibleCols()
     let cap = max(0, maxSlot() - vc)
+    let before = colStart
     colStart = max(0, min(cap, colStart + dir * vc))
+    DebugLog.log("pageTime(\(dir)): vc=\(vc) cap=\(cap) colStart \(before) -> \(colStart)")
 }
 
 func switchDevice() {
@@ -225,6 +243,7 @@ func confirmDelete() {
 }
 
 func handle(_ key: Key) {
+    DebugLog.log("handle(\(key)) mode=\(mode)")
     if mode == .recordSummary {
         let isScheduled = currentEntry()?.entry.isScheduled ?? false
         switch key {
@@ -313,26 +332,116 @@ func renderSummaryScreen() {
     Terminal.writeFrame(out)
 }
 
+// Adaptive summary panel above the grid — a compact version of the Enter-summary screen's field
+// layout (title/episode/genre-tags-status/synopsis), scaled by terminal height rather than a
+// fixed 1 line, so a tall terminal gets real detail (like the web guide's #sum panel) while a
+// short one still gets the essentials. Always returns exactly `maxLines` lines (padded with ""
+// when there's less content than room, never fewer) — render()'s line-count budget depends on
+// this being exact, the same discipline topFixedLines/bottomFixedLines/boxLines already require.
+// Every line is truncated to fit `cols` for the same reason the footer hint text is capped
+// (Terminal.writeFrame's per-line \u{1B}[K stops a *shorter* line from leaving stale trailing
+// content, but can't stop a *longer* one from wrapping and silently adding an extra screen line).
+func buildSummaryLines(maxLines: Int, cols: Int) -> [String] {
+    guard maxLines > 0 else { return [] }
+    let bold = "\u{1B}[1m", dim = "\u{1B}[2m", reset = "\u{1B}[0m"
+    let budget = max(4, cols - 2)   // reserves ~2 cols for each line's own leading marker/indent
+
+    func pad0(_ out: [String]) -> [String] {
+        var out = out
+        while out.count < maxLines { out.append("") }
+        return Array(out.prefix(maxLines))
+    }
+
+    guard let ch = currentChannel() else { return pad0([dim + "No channel selected" + reset]) }
+    guard let (_, e) = currentEntry() else {
+        return pad0([dim + "\u{25B6} \(ch.guideNumber) \(ch.guideName) — nothing in the guide right now" + reset])
+    }
+
+    let badge = e.isRecording ? recordingBadge + "\u{1B}[0m" : (e.isScheduled ? scheduledBadge + "\u{1B}[0m" : "")
+    let titleColor = e.isRecording ? recordingColor : (e.isScheduled ? scheduledColor : bold)
+    let range = "\(timeFormatter.string(from: e.startDate))–\(timeFormatter.string(from: e.endDate))"
+    let mins = max(0, (e.endTime - e.startTime) / 60)
+
+    var lines: [String] = []
+    // 1: channel + time/duration
+    lines.append("\u{25B6} " + bold + truncate("\(ch.guideNumber) \(ch.guideName)   \(range)  (\(mins) min)", budget) + reset)
+    // 2: badge + title
+    lines.append("  " + badge + titleColor + truncate(e.title, budget) + reset)
+    // 3: episode, if any
+    let epLabel = [e.episodeNumber, e.episodeTitle].compactMap { ($0?.isEmpty == false) ? $0 : nil }.joined(separator: " · ")
+    if !epLabel.isEmpty { lines.append("  " + dim + truncate(epLabel, budget) + reset) }
+    // 4: genre + tags as color chips (each tinted with that same tag's own tile-background color
+    // via genreBackground — so "Kids" reads in the same color here as a Kids-genre tile does in
+    // the grid, not an arbitrary text color) + status. Genre first, then any tags not already
+    // equal to it (they commonly overlap — genre is just tags' first non-generic entry).
+    var chipLabels: [String] = []
+    if let g = e.genre, !g.isEmpty { chipLabels.append(g) }
+    for t in e.tags ?? [] where !chipLabels.contains(where: { $0.caseInsensitiveCompare(t) == .orderedSame }) {
+        chipLabels.append(t)
+    }
+    if !chipLabels.isEmpty || e.isRecording || e.isScheduled {
+        var metaLine = "  "
+        var used = 2   // plain-text visible width used so far — tracked separately from
+                        // `metaLine` itself, which carries ANSI codes truncate() can't measure
+        for label in chipLabels {
+            let chipText = " \(label) "
+            guard used + chipText.count + 1 <= budget else { break }   // drop chips that don't
+                                                                        // fit rather than cut one
+                                                                        // in half mid-ANSI-code
+            let bg = genreBackground(label)
+            metaLine += (bg.isEmpty ? dim + chipText + reset : bg + "\u{1B}[97m" + chipText + reset) + " "
+            used += chipText.count + 1
+        }
+        let statusText = e.isRecording ? "Recording now" : (e.isScheduled ? "Scheduled" : nil)
+        if let statusText, used + statusText.count <= budget {
+            let statusColor = e.isRecording ? recordingColor : scheduledColor
+            metaLine += statusColor + statusText + reset
+        }
+        lines.append(metaLine)
+    }
+
+    var out = Array(lines.prefix(maxLines))
+    let remaining = maxLines - out.count
+    if remaining > 0, let syn = e.synopsis, !syn.isEmpty {
+        for wrapped in wordWrap(syn, width: budget).prefix(remaining) {
+            out.append("  " + dim + wrapped + reset)
+        }
+    }
+    return pad0(out)
+}
+
 func render() {
     if mode == .recordSummary { renderSummaryScreen(); return }
 
-    let (_, rows) = Terminal.size()
+    let (cols, rows) = Terminal.size()
     let vc = visibleCols()
     // Every fixed (non-body) line this function emits, counted exactly — undercounting this by
     // even one line means the frame renders taller than the terminal, which forces a scroll, and
     // since every redraw starts with a bare cursor-home (Terminal.writeFrame), a scrolling
     // viewport makes the top of the screen appear to jump/flash on every keypress instead of
-    // staying put. topFixedLines: the HDHR/clock line, the selected-program line, the hour-label
-    // ruler, and the "┬" gutter rule. bottomFixedLines: the "┴" gutter rule, the blank line after
-    // it, the keybinding-hint line, and the status line. boxLines: the selected tile's top+bottom
-    // border — always drawn, since the selected row is always within the visible range.
-    let topFixedLines = 4
+    // staying put. topFixedLines: the HDHR/clock line, the summary panel (adaptive, see
+    // buildSummaryLines), the hour-label ruler, and the "┬" gutter rule. bottomFixedLines: the
+    // "┴" gutter rule, the blank line after it, the keybinding-hint line, and the status line.
+    // boxLines: the selected tile's top+bottom border — always drawn, since the selected row is
+    // always within the visible range.
+    //
+    // summaryLines scales with terminal height (capped 1...8) rather than a fixed count, so a
+    // tall terminal gets real detail (episode/genre/tags/synopsis, like the web guide's #sum
+    // panel) while a short one still shows just the essentials — (rows-16)/3 reaches the 8-line
+    // cap around a 40-row terminal, a common "large window" size, not an extreme one.
+    let summaryLines = max(1, min(8, (rows - 16) / 3))
+    let topFixedLines = 3 + summaryLines
     let bottomFixedLines = 4
     let boxLines = 2
     let visibleRows = max(1, rows - topFixedLines - bottomFixedLines - boxLines)
 
     if selRow < rowScroll { rowScroll = selRow }
     if selRow >= rowScroll + visibleRows { rowScroll = selRow - visibleRows + 1 }
+    // selRow - visibleRows + 1 above goes negative whenever visibleRows exceeds selRow+1 (a
+    // small lineup, or a very tall terminal) — an unclamped negative rowScroll would make
+    // `rowScroll..<max(rowScroll, endRow)` below index payload.channels with a negative
+    // subscript and trap.
+    rowScroll = max(0, min(rowScroll, max(0, payload.channels.count - visibleRows)))
 
     let bold = "\u{1B}[1m", dim = "\u{1B}[2m", reset = "\u{1B}[0m"
 
@@ -353,23 +462,11 @@ func render() {
         + dim + "  ·  \(countStr)  ·  Tab: switch tuner" + reset
         + "  ·  " + bold + clockFormatter.string(from: Date()) + reset + "\n"
 
-    // Selected channel + program, spelled out in full — the grid cell for it is often truncated
-    // ("Sesame S…"), so this is the one place that always shows the whole title unambiguously.
-    if let ch = currentChannel() {
-        let entries = visibleEntries(ch)
-        if selEntry < entries.count {
-            let e = entries[selEntry]
-            let badge = e.isRecording ? recordingBadge + "\u{1B}[0m" : (e.isScheduled ? scheduledBadge + "\u{1B}[0m" : "")
-            let titleColor = e.isRecording ? recordingColor : (e.isScheduled ? scheduledColor : bold)
-            let epi = e.episodeTitle.map { " — \($0)" } ?? ""
-            let range = "\(timeFormatter.string(from: e.startDate))–\(timeFormatter.string(from: e.endDate))"
-            out += "\u{25B6} " + bold + "\(ch.guideNumber) \(ch.guideName)" + reset + "  " + badge
-                + titleColor + e.title + reset + epi + "  " + dim + range + reset + "\n"
-        } else {
-            out += dim + "\u{25B6} \(ch.guideNumber) \(ch.guideName) — nothing in the guide right now" + reset + "\n"
-        }
-    } else {
-        out += dim + "No channel selected" + reset + "\n"
+    // Selected channel + program, spelled out in full and expanded to `summaryLines` — the grid
+    // cell for it is often truncated ("Sesame S…"), so this panel is the one place that always
+    // shows the whole title (and, given the room, episode/genre/tags/synopsis) unambiguously.
+    for line in buildSummaryLines(maxLines: summaryLines, cols: cols) {
+        out += line + "\n"
     }
 
     var timeLine = String(repeating: " ", count: channelColWidth - 1) + "│"
