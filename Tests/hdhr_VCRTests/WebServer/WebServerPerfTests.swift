@@ -23,8 +23,9 @@ private let refreshThreshold: TimeInterval  = 0.250   // /api/guide-refresh rebu
 // Looser still than refreshThreshold — this measures a normal client's wait right behind a
 // MainActor-blocking rebuild triggered by something else entirely (see
 // apiLatency_staysResponsive_duringGuideChangeBurst below), not the rebuild's own cost.
-private let heavyLoadPingThreshold: TimeInterval = 0.500
+private let heavyLoadPingThreshold: TimeInterval = 0.750   // measured baseline (4 SSE conns) ~350-460ms
 private let heavyBurstCount = 10   // even — see that test's own comment on why this must stay even
+private let sseConnectionCount = 4   // a couple of open guide tabs/windows — see the test's own comment
 private let sampleCount = 5
 
 private func serverAvailable(port: Int = 1980) async -> Bool {
@@ -64,7 +65,13 @@ private func medianLatency(_ path: String, port: Int = 1980, samples: Int = samp
     return times[times.count / 2]
 }
 
-@Suite("Post-deploy: web server performance baseline (requires running app on :1980)")
+// .serialized: every test hits the one shared live server, so running them concurrently (Swift
+// Testing's default) contaminates each other's latency numbers — apiLatency_staysResponsive_
+// duringGuideChangeBurst deliberately generates real background load (held-open SSE connections
+// + a broadcast burst) that's severe enough to time out an unrelated sibling test's requests if
+// they overlap (caught live: apiLatency_underThreshold's /api/now.json hit its 5s timeout while
+// racing this one).
+@Suite("Post-deploy: web server performance baseline (requires running app on :1980)", .serialized)
 struct WebServerPerfTests {
 
     @Test func pageLoad_underThreshold() async throws {
@@ -126,17 +133,25 @@ struct WebServerPerfTests {
             "guide-refresh median \(Int(median * 1000))ms — this rebuilds the grid live so some slack is expected, but this suggests a real O(n) regression in buildGuideGridHTML")
     }
 
-    // Reported live: the web guide feels laggy while the app is doing something "heavy" —
-    // ISSUES.md's open entry on this. The prime suspect, already flagged separately in TODO.md
-    // ("Watch for UI hitches from broadcastGuideChangeEvent's wider call-site fan-out"), is that
-    // 9+ show-lifecycle events (add/edit/delete/pause/resume/favorite-toggle/etc.) each trigger a
-    // full `@MainActor` rebuild (buildGuideGridHTML + buildDevBarHTML + gzip'd prebuildPageHTML)
-    // — previously only the hourly refresh and recording start/stop paid that cost. This measures
-    // whether *unrelated* traffic (a normal client loading the guide) stays responsive while that
-    // rebuild fires repeatedly back-to-back, without needing a real recording (which would tie up
-    // a tuner and write a file) or any new mocking — POST /api/toggle-favorite on a real channel
-    // is the cheapest real trigger of the same broadcastGuideChangeEvent path, and toggling it an
-    // even number of times leaves the channel's favorite state exactly as found.
+    // Reported live: the web guide feels laggy while the app is doing something "heavy," and
+    // specifically feels like slow *connecting* rather than a slow response once loaded. Root-
+    // caused 2026-08-24 (see ISSUES.md's entry for the full trail — disk I/O pressure alone was
+    // ruled out first): `broadcastGuideChangeEvent` (fired by 9+ show-lifecycle events —
+    // add/edit/delete/pause/resume/favorite-toggle/etc.) embeds the *entire* guide grid HTML,
+    // uncompressed, in the SSE event JSON — measured at ~2.2MB for one broadcast on this app's
+    // real guide — and pushes that to every connected SSE client (every open web guide tab/
+    // window). `NWListener`/every `NWConnection` share one serial `DispatchQueue` (`queue`, see
+    // its own doc comment above `WebServer.stop()`), so those large sends compete directly with
+    // accepting brand-new connections and every other connection's I/O — which is exactly why it
+    // *feels* like connecting is slow: the TCP handshake itself stays instant, but nothing gets
+    // read from the new connection's socket until the queue works through the SSE backlog first.
+    // First attempt at this test (no SSE connections open) missed this entirely and passed
+    // comfortably — the real trigger needs at least one open SSE connection, the same thing any
+    // real browser tab on the guide page holds open for live updates.
+    //
+    // POST /api/toggle-favorite on a real channel is the cheapest real trigger of the same
+    // broadcastGuideChangeEvent path (doesn't tie up a tuner or write a file, and an even count
+    // leaves the channel's favorite state exactly as found).
     @Test func apiLatency_staysResponsive_duringGuideChangeBurst() async throws {
         guard await serverAvailable() else { return }
         let (status, body) = try await get("/api/now.json")
@@ -155,9 +170,26 @@ struct WebServerPerfTests {
             _ = try await URLSession.shared.data(for: req)
         }
 
-        // Interleaved, not concurrent: each toggle fires the full rebuild, then the very next
-        // request measures how long a normal client would wait right behind it — the worst-case
-        // gap a real user would actually feel, not just the rebuild's own isolated cost.
+        // A few held-open SSE connections — the ingredient the first version of this test was
+        // missing. `bytes(for:)` streams rather than waiting for a response that never completes;
+        // the loop just discards chunks to keep the connection alive and registered server-side.
+        // Cancelling the Task is enough to tear the connection down at the end.
+        func openSSEConnection() -> Task<Void, Never> {
+            Task {
+                guard let url = URL(string: "http://127.0.0.1:1980/api/events") else { return }
+                guard let (bytes, _) = try? await URLSession.shared.bytes(for: URLRequest(url: url, timeoutInterval: 30)) else { return }
+                do {
+                    for try await _ in bytes where !Task.isCancelled {}
+                } catch { }
+            }
+        }
+        let sseTasks = (0..<sseConnectionCount).map { _ in openSSEConnection() }
+        defer { sseTasks.forEach { $0.cancel() } }
+        try await Task.sleep(nanoseconds: 300_000_000)   // let the connections actually register
+
+        // Interleaved, not concurrent: each toggle fires the full rebuild + SSE fan-out, then the
+        // very next request measures how long a normal client would wait right behind it — the
+        // worst-case gap a real user would actually feel, not just the rebuild's own isolated cost.
         var pingTimes: [TimeInterval] = []
         for _ in 0..<heavyBurstCount {
             try await toggleFavorite()
