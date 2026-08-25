@@ -701,6 +701,35 @@ struct GuideStoreMockNetworkTests {
             #expect(match?.channelNum == "8.1")
         }
 
+        // seriesChannel's shape: both channelNum and deviceId set, which used to take a separate
+        // fast-path branch that returned the sole on-channel match unconditionally, ignoring
+        // preferUnrecorded entirely (unlike this same function's own no-channel/multi-channel scan
+        // below, and unlike currentEpisode's equivalent single-candidate check). Caught live
+        // 2026-08-24: a seriesChannel show with no SeriesID in the guide (so it fell to this
+        // title-fallback tier) got stuck re-selecting the same already-recorded on-air rerun every
+        // ~10s for its whole broadcast window — scheduleNextAir calls this again immediately after
+        // startRecording's duplicate skip, so returning the duplicate here every time meant
+        // show_next never actually advanced, spamming a "Skipped — already recorded" Discord card
+        // on every idle tick instead of falling through to nextEntryByTitle once, correctly.
+        @Test @MainActor func current_singleChannelFastPath_excludesAlreadyRecordedDuplicate() async {
+            let device = makeLocalDevice()
+            let store = await loadedStore(devices: [device])
+            let during = Date(timeIntervalSince1970: 2_000_001_000)
+            let match = store.currentEntryByTitle("South Park", channelNum: "5.1", deviceId: device.DeviceID,
+                                                   at: during, preferUnrecorded: { _ in false })
+            #expect(match == nil)
+        }
+
+        @Test @MainActor func current_singleChannelFastPath_stillMatchesWhenNotADuplicate() async {
+            // Companion to the above — confirms the fix didn't just make this branch always nil.
+            let device = makeLocalDevice()
+            let store = await loadedStore(devices: [device])
+            let during = Date(timeIntervalSince1970: 2_000_001_000)
+            let match = store.currentEntryByTitle("South Park", channelNum: "5.1", deviceId: device.DeviceID,
+                                                   at: during, preferUnrecorded: { _ in true })
+            #expect(match?.entry.EndTime == 2_000_003_600)
+        }
+
         @Test @MainActor func current_deviceIdFilterAppliesWithNilChannel() async {
             // SeriesID(All) shape: fixed deviceId, nil channelNum. Both devices carry an
             // airing of the title at `during` — the match must come from the requested

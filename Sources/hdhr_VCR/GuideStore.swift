@@ -429,10 +429,24 @@ final class GuideStore {
     ) -> SeriesMatch? {
         let epoch = Int(date.timeIntervalSince1970)
         if let channelNum, let deviceId {
-            guard let entry = channelEntryIndex["\(deviceId):\(channelNum)"]?.first(where: {
+            let candidates = (channelEntryIndex["\(deviceId):\(channelNum)"] ?? []).filter {
                 $0.StartTime <= epoch && $0.EndTime > epoch && Show.seriesTitle(from: $0.Title) == title
-            }) else { return nil }
-            return SeriesMatch(deviceId: deviceId, channelNum: channelNum, entry: entry)
+            }
+            guard !candidates.isEmpty else { return nil }
+            // Same reasoning as currentEpisode's own single-candidate check (see its comment) —
+            // a currently-airing duplicate on the one channel a seriesChannel show is pinned to is
+            // a stable fact right now, not a tie to break: scheduleNextAir calls this again
+            // immediately after startRecording's duplicate skip, so returning it unconditionally
+            // (as this single-channel fast path used to, unlike the multi-channel scan below,
+            // which already applied this filter) would re-select the exact same on-air duplicate
+            // every ~10s for the rest of its broadcast window instead of falling through to
+            // nextEntryByTitle to find the actual next distinct airing. Caught live 2026-08-24 —
+            // see ISSUES.md.
+            if let isNotRecorded {
+                guard let entry = candidates.first(where: isNotRecorded) else { return nil }
+                return SeriesMatch(deviceId: deviceId, channelNum: channelNum, entry: entry)
+            }
+            return SeriesMatch(deviceId: deviceId, channelNum: channelNum, entry: candidates[0])
         }
         let candidates = titleFallbackScanKeys(deviceId: deviceId).flatMap { channelEntryIndex[$0] ?? [] }
             .filter { $0.StartTime <= epoch && $0.EndTime > epoch && Show.seriesTitle(from: $0.Title) == title
