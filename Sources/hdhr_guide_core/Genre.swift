@@ -40,7 +40,7 @@ private func hslToRGB(_ h: Double, _ s: Double, _ l: Double) -> (UInt8, UInt8, U
 // 24-bit ANSI background escape for a genre name, or "" when unrecognized/nil — an empty guide
 // slot or an unmapped genre just gets the terminal's own default background, same as the web
 // guide's ungenred rows.
-func genreBackground(_ genre: String?) -> String {
+public func genreBackground(_ genre: String?) -> String {
     guard let genre, !genre.isEmpty else { return "" }
     let key = genreAlias[genre.lowercased()] ?? genre.lowercased()
     guard let hsl = genreHSL[key] else { return "" }

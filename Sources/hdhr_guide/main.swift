@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import hdhr_guide_core
 
 DebugLog.log("=== hdhr_guide started (pid \(getpid())) ===")
 
@@ -56,13 +57,9 @@ func signalColor(_ bucket: String?) -> String {
     }
 }
 
-// Mirrors Show.genreImpliesBonusTime (Models.swift) — "sport" not "sports" matches both guide.php's
-// plural "Sports" and XMLTV's singular "Sport" tag. Duplicated rather than imported (hdhr_VCR is an
-// executable, not a library) — without this, a sports show scheduled from the TUI silently never
-// gets Bonus Time, unlike the native wizard and the web Record modal's own checkbox.
-func genreImpliesBonusTime(_ genre: String?) -> Bool {
-    genre?.lowercased().contains("sport") == true
-}
+// genreImpliesBonusTime/computeVisibleCols/entryIndex(nearestTo:in:)/layoutRowBlocks moved to
+// Sources/hdhr_guide_core/GuideLogic.swift (imported above) so they're unit-testable — see that
+// file's header comment.
 
 let channelColWidth = 20
 let slotWidth = 14
@@ -73,6 +70,14 @@ enum Mode { case normal, recordSummary }
 var interrupted = false
 signal(SIGINT) { _ in interrupted = true }
 signal(SIGTERM) { _ in interrupted = true }
+
+// The terminal sends SIGWINCH on every resize. A signal handler can only safely set a flag (no
+// arbitrary Swift code, same reason the SIGINT/SIGTERM handlers above just set `interrupted`
+// rather than calling anything directly) — the main loop checks it and redraws. Without this,
+// render() only re-reads the new size on the next keypress or the 20s poll tick, so a resize
+// could sit unreflected (a stale, possibly now too-small-or-too-large frame) for up to that long.
+var resized = false
+signal(SIGWINCH) { _ in resized = true }
 
 guard let initial = API.fetchGuide(device: nil) else {
     print("hdhr_guide: can't reach the web server at 127.0.0.1:1980.")
@@ -108,7 +113,7 @@ func visibleCols() -> Int {
     let (cols, _) = Terminal.size()
     // Capped at maxSlot() too — a terminal wide enough to fit the whole guide window shouldn't
     // report more columns than there's actually data for.
-    return max(1, min((cols - channelColWidth) / slotWidth, maxSlot()))
+    return computeVisibleCols(cols: cols, channelColWidth: channelColWidth, slotWidth: slotWidth, maxSlot: maxSlot())
 }
 
 func currentChannel() -> GuideChannelDTO? {
@@ -148,21 +153,6 @@ func currentAnchorTime() -> Int {
     return payload.winStart + colStart * secondsPerSlot
 }
 
-// Index of whichever entry on `ch` was airing at `anchorTime`, or — if this channel has a gap in
-// its schedule right at that time — whichever entry starts closest to it. nil channel/entries
-// (e.g. right after a device switch resets the payload) fall back to entry 0, same as before.
-func entryIndex(nearestTo anchorTime: Int, in ch: GuideChannelDTO?) -> Int {
-    guard let ch else { return 0 }
-    let entries = visibleEntries(ch)
-    guard !entries.isEmpty else { return 0 }
-    if let idx = entries.firstIndex(where: { $0.startTime <= anchorTime && $0.endTime > anchorTime }) {
-        return idx
-    }
-    return entries.indices.min(by: {
-        abs(entries[$0].startTime - anchorTime) < abs(entries[$1].startTime - anchorTime)
-    }) ?? 0
-}
-
 func moveRow(_ delta: Int) {
     guard !payload.channels.isEmpty else { return }
     // Anchor on the time being viewed *before* moving the selection, not after — switching rows
@@ -175,7 +165,11 @@ func moveRow(_ delta: Int) {
     // channels, never a jump back to the start of the guide window.
     let anchorTime = currentAnchorTime()
     selRow = max(0, min(payload.channels.count - 1, selRow + delta))
-    selEntry = entryIndex(nearestTo: anchorTime, in: currentChannel())
+    // Routed through visibleEntries(_:), not `.entries` directly — every other read site in this
+    // file does, and visibleEntries is where any future filtering/sorting of a channel's entries
+    // would live (see its own comment); bypassing it here would silently desync anchor-time
+    // channel-switch selection from what render() actually draws if that function ever grows one.
+    selEntry = entryIndex(nearestTo: anchorTime, in: currentChannel().map(visibleEntries) ?? [])
     ensureEntryVisible()
 }
 
@@ -639,27 +633,14 @@ func render() {
 
         // Phase 1: lay out every visible block left to right — either a real program (Some) or a
         // blank guide gap (None). No longer needs a lookahead at the next block — the box lives
-        // entirely inside the selected block's own span now, not on a shared separator.
-        var blocks: [(span: Int, entry: (offset: Int, element: GuideEntryDTO)?)] = []
-        var cursorCol = 0
-        for (idx, e) in visibleEntries(ch).enumerated() {
-            let startSlot = (e.startTime - payload.winStart) / secondsPerSlot
-            let endSlot = max(startSlot + 1, (e.endTime - payload.winStart + secondsPerSlot - 1) / secondsPerSlot)
-            // Clamped to `colStart + cursorCol`, not just `colStart` — real-world guide data can
-            // carry overlapping/duplicate entries for one channel (a live-feed quirk, confirmed
-            // seen on this device: two back-to-back "Jerry Springer" listings whose slot ranges
-            // actually overlapped by a slot), and without this an overlapping entry rendered
-            // starting *before* the previous block had finished, pushing `cursorCol` past `vc` —
-            // the row's total content then ran wider than the terminal and wrapped.
-            let visStart = max(startSlot, colStart, colStart + cursorCol)
-            let visEnd = min(endSlot, colStart + vc)
-            guard visEnd > visStart else { continue }
-            let gapCols = max(0, (visStart - colStart) - cursorCol)
-            if gapCols > 0 { blocks.append((gapCols, nil)); cursorCol += gapCols }
-            let spanCols = visEnd - visStart
-            blocks.append((spanCols, (idx, e)))
-            cursorCol += spanCols
-        }
+        // entirely inside the selected block's own span now, not on a shared separator. The actual
+        // layout math (including the overlap clamp — see its own comment in
+        // Sources/hdhr_guide_core/GuideLogic.swift) lives there now, unit-tested; this just maps
+        // its plain-data result onto this row's actual GuideEntryDTO values.
+        let rowEntries = visibleEntries(ch)
+        let blocks: [(span: Int, entry: (offset: Int, element: GuideEntryDTO)?)] =
+            layoutRowBlocks(entries: rowEntries, winStart: payload.winStart, colStart: colStart, vc: vc, secondsPerSlot: secondsPerSlot)
+                .map { rb in (rb.span, rb.entryOffset.map { (offset: $0, element: rowEntries[$0]) }) }
 
         func isSelected(_ block: (span: Int, entry: (offset: Int, element: GuideEntryDTO)?)) -> Bool {
             r == selRow && block.entry?.offset == selEntry
@@ -761,6 +742,10 @@ Terminal.enterRawScreen()
 render()
 
 while !interrupted {
+    if resized {
+        resized = false
+        render()
+    }
     if Terminal.pollStdin(timeoutMs: 300) {
         if let key = Terminal.readKey() {
             handle(key)

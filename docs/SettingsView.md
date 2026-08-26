@@ -272,7 +272,13 @@ Recording Complete embeds additionally include **Format** (file extension, e.g. 
   `terminalGuideEnabled` field and refuses to run when off. Courtesy/discoverability only, not a
   security boundary — the same JSON endpoint is already reachable to any LAN browser once Sharing
   is on, regardless of this flag (see `docs/TUIGuide.md`). The binary path (selectable monospaced
-  text) and its one-line caption are only shown while this sub-toggle is on.
+  text), an **Open in Terminal** button, and the section's one-line caption are only shown while
+  this sub-toggle is on. The button (`openInTerminal(_:)`) opens a new Terminal window and runs
+  `hdhr_guide` in it directly, via `NSWorkspace.open(_:withApplicationAt:configuration:)` passed
+  the binary's own URL — not a spawned `Process()`/AppleScript, so it needs no new entitlement
+  even under a future App Sandbox (`docs/MAS_COMPLIANCE.md`). Handing an executable's URL to
+  Terminal.app this way makes Terminal run it directly (verified live), the same mechanism
+  Finder's "New Terminal at Folder" service uses for a folder URL.
 - **Error banner** — shown when `state.webServerError` is non-nil (port in use, OS cancellation, etc.).
 
 Saving with changed `Web_server_enabled` or `Web_server_port` calls `state.setupWebServer()` immediately to start, restart, or stop the listener.

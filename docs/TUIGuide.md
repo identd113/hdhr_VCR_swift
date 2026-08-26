@@ -1,9 +1,25 @@
 # hdhr_guide — bundled terminal guide client
 
 Binary: `hdhrVCRplus.app/Contents/Helpers/hdhr_guide`. Source: `Sources/hdhr_guide/`
-(`main.swift`, `Terminal.swift`, `API.swift`) — a separate SPM executable target, not part of the
-`hdhr_VCR` module. Run it directly from a terminal; there is no menu bar entry point that launches
-it (it's a standalone CLI, not a window).
+(`main.swift`, `Terminal.swift`, `API.swift`, `DebugLog.swift`) — a separate SPM executable
+target, not part of the `hdhr_VCR` module. Run it directly from a terminal; there is no menu bar
+entry point that launches it (it's a standalone CLI, not a window).
+
+**Pure logic lives in a separate library target, `Sources/hdhr_guide_core/`, specifically so it's
+unit-testable** — a `main.swift`-based executable target can't be `@testable import`ed, so before
+this split nothing in `hdhr_guide` had any automated test coverage at all; every fix described
+below was verified by hand against a real pty, not by `swift test`. `hdhr_guide` (terminal I/O,
+global mutable UI state, network calls) depends on `hdhr_guide_core`; `hdhr_guide_core` has no
+dependency back the other way. Tested by `Tests/hdhr_guide_coreTests/` (50 tests as of this
+writing — `StringLayoutTests`, `GenreTests`, `GuideDTOsTests`, `GuideLogicTests`), which `swift
+test` runs alongside the rest of the project's suite.
+
+| File | Contents |
+|---|---|
+| `StringLayout.swift` | `pad`/`truncate`/`wordWrap` — fixed-width text layout, no terminal I/O |
+| `Genre.swift` | `genreBackground(_:)` — the genre-tint palette, mirrors `guide.js`'s `_gcDk` |
+| `GuideDTOs.swift` | `GuidePayload`/`GuideChannelDTO`/`GuideEntryDTO`/etc. — the `/api/guide.json` response shape, each with an explicit `public init(from decoder:)` (Decodable's synthesized initializer stays `internal` even on a `public` type, so relying on synthesis here would make these types undecodable from the executable target) |
+| `GuideLogic.swift` | `genreImpliesBonusTime`, `computeVisibleCols`, `entryIndex(nearestTo:in:)`, `layoutRowBlocks` — the pure math behind Bonus Time auto-detection, the horizontal column budget, anchor-time channel switching, and the row block layout (including the overlap clamp) |
 
 ## What it is
 
@@ -189,6 +205,14 @@ badge/color pairing is applied to the title in the "selected program" header lin
 screen's title banner, so it's consistent everywhere the title appears.
 
 ## Redraw model
+
+**Resizing the terminal redraws immediately** — a `SIGWINCH` handler (`main.swift`, installed
+next to the existing `SIGINT`/`SIGTERM` ones) sets a `resized` flag, checked at the top of the
+main loop before the next `pollStdin` wait; the loop calls `render()` right away when it's set,
+rather than waiting for the next keypress or the 20s poll tick to happen to re-read the new size.
+Like the `SIGINT`/`SIGTERM` handlers, it only sets a flag — a signal handler can't safely call
+arbitrary Swift code (`render()` included) directly. Verified via a real pty: resizing mid-session
+and sending `SIGWINCH` updates the header's own `{cols}x{rows}` readout with no keypress needed.
 
 Every redraw (a keypress, a poll tick) goes through `Terminal.writeFrame(_:)`, not a full-screen
 clear — it homes the cursor (`\u{1B}[H`), overwrites each line in place with a trailing
@@ -381,12 +405,14 @@ covered above. Fixed, low-code (no architecture change):
   of a guaranteed-to-overflow one.
 
 **Deliberately left as a known tradeoff, not fixed** — would require an actual refactor rather than
-a small change: `genreImpliesBonusTime(_:)` (`main.swift`) is a 4th independent copy of
-`Show.genreImpliesBonusTime`'s matching logic (see that function's own doc comment in
-`Models.swift` for the other three, and its own history of drift). Consolidating it would mean
-extracting a shared library target `hdhr_VCR` and `hdhr_guide` could both depend on — `hdhr_VCR` is
-currently an executable target, not a library, specifically to avoid that kind of split. Worth
-doing if this logic needs to change again; not on its own.
+a small change: `genreImpliesBonusTime(_:)` (now `Sources/hdhr_guide_core/GuideLogic.swift` — moved
+there along with the rest of this file's testable logic, see the top of this doc, but not
+consolidated with its counterpart) is a 4th independent copy of `Show.genreImpliesBonusTime`'s
+matching logic (see that function's own doc comment in `Models.swift` for the other three, and its
+own history of drift). Consolidating it would mean `hdhr_VCR` and `hdhr_guide_core` sharing a
+target, which `hdhr_VCR` being an executable rather than a library still rules out — the
+`hdhr_guide_core` split fixed hdhr_guide's *own* lack of test coverage, but doesn't reach across
+that boundary. Worth doing if this logic needs to change again; not on its own.
 
 ## Known limitations
 

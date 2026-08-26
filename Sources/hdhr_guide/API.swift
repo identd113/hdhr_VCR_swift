@@ -1,86 +1,11 @@
 import Foundation
+import hdhr_guide_core
 
-// Mirrors the Encodable payload WebServer.swift's buildGuideJSON()/handleRecord() produce —
-// see docs/WebServer.md's /api/guide.json and POST /api/record sections. Kept as local DTOs
-// rather than importing the hdhr_VCR module: that target is an executable, not a library, and
-// this is a thin two-endpoint JSON client — not worth splitting shared model types out for.
-
-struct DeviceSummary: Decodable {
-    let deviceId: String
-    let active, total: Int
-}
-
-struct GuideEntryDTO: Decodable {
-    let title: String
-    let episodeTitle, episodeNumber, synopsis, seriesId, genre: String?
-    let tags: [String]?
-    let startTime, endTime: Int
-    let isRecording, isScheduled: Bool
-    let scheduledShowId: String?
-
-    var startDate: Date { Date(timeIntervalSince1970: TimeInterval(startTime)) }
-    var endDate: Date { Date(timeIntervalSince1970: TimeInterval(endTime)) }
-}
-
-struct GuideChannelDTO: Decodable {
-    let guideNumber, guideName: String
-    let hd, favorite: Bool
-    let entries: [GuideEntryDTO]
-}
-
-struct GuidePayload: Decodable {
-    let deviceId: String
-    let winStart, winSec: Int
-    let devices: [DeviceSummary]
-    let channels: [GuideChannelDTO]
-    // Mirrors guide.js's own SPORTS_PADDING_ENABLED template token — lets confirmRecord() (main.swift)
-    // gate its sports-genre auto-Bonus-Time detection on the same setting the web Record modal and
-    // native Add Show wizard already gate on, instead of always assuming it's on. Defaults true only
-    // as a decode fallback for an old server that predates this field — matches Sports_padding_enabled's
-    // own default (Models.swift) — not a statement about what's actually configured.
-    let sportsPaddingEnabled: Bool
-    // Mirrors Terminal_guide_enabled (state.config) — main.swift checks this right after the first
-    // successful fetch and exits if false. A courtesy/discoverability gate only, not a security
-    // boundary — see the field's own doc comment in WebServer.swift's buildGuideJSON. Defaults true
-    // as a decode fallback for an old server that predates this field, matching
-    // Terminal_guide_enabled's own default (Models.swift).
-    let terminalGuideEnabled: Bool
-
-    enum CodingKeys: String, CodingKey {
-        case deviceId, winStart, winSec, devices, channels, sportsPaddingEnabled, terminalGuideEnabled
-    }
-
-    init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        deviceId = try c.decode(String.self, forKey: .deviceId)
-        winStart = try c.decode(Int.self, forKey: .winStart)
-        winSec = try c.decode(Int.self, forKey: .winSec)
-        devices = try c.decode([DeviceSummary].self, forKey: .devices)
-        channels = try c.decode([GuideChannelDTO].self, forKey: .channels)
-        sportsPaddingEnabled = (try? c.decode(Bool.self, forKey: .sportsPaddingEnabled)) ?? true
-        terminalGuideEnabled = (try? c.decode(Bool.self, forKey: .terminalGuideEnabled)) ?? true
-    }
-}
-
-struct RecordResponse: Decodable {
-    let ok: Bool
-    let error: String?
-    let title: String?
-    let tunerFull: Bool?
-    let recStarted: Bool?
-}
-
-struct DeleteResponse: Decodable {
-    let ok: Bool
-    let error: String?
-    let title: String?
-}
-
-struct ToggleFavoriteResponse: Decodable {
-    let ok: Bool
-    let error: String?
-    let isFavorite: Bool?
-}
+// DTOs (DeviceSummary, GuideEntryDTO, GuideChannelDTO, GuidePayload, RecordResponse,
+// DeleteResponse, ToggleFavoriteResponse) moved to Sources/hdhr_guide_core/GuideDTOs.swift
+// (imported above) so they're unit-testable — see that file's header comment. Mirrors the
+// Encodable payload WebServer.swift's buildGuideJSON()/handleRecord() produce — see
+// docs/WebServer.md's /api/guide.json and POST /api/record sections.
 
 enum API {
     static let baseURL = "http://127.0.0.1:1980"

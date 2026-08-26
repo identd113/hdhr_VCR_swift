@@ -8,7 +8,10 @@ import Compression
 // local interface subnets — no data is read or sent to non-LAN callers.
 final class WebServer: @unchecked Sendable {
 
-    private enum WebResponse {
+    // Not `private` — handleRecord(state:body:) below returns this and is itself exercised
+    // directly by RecordFlowTests.swift (in-process, not through the private route(_:_:_:)
+    // dispatcher), which needs to pattern-match the result.
+    enum WebResponse {
         case ok(contentType: String, body: Data)
         // Like .ok, but the gzip encoding was already computed ahead of time (e.g. cachedHTMLGzip,
         // refreshed only when the guide reloads) — avoids paying the DEFLATE cost on every request
@@ -1005,7 +1008,11 @@ final class WebServer: @unchecked Sendable {
     }
 
     @MainActor
-    private func handleRecord(state: AppState, body: Data?) -> WebResponse {
+    // Not `private` — exercised directly (not just through the private `route(_:_:_:)` dispatcher)
+    // by RecordFlowTests.swift, which posts hdhr_guide's exact request shape in-process rather than
+    // hitting the real running server over HTTP (the way the "Post-deploy" smoke tests do, which
+    // would mutate a real deployed app's actual show list on every `swift test` run).
+    func handleRecord(state: AppState, body: Data?) -> WebResponse {
         let json = jsonResponse
         guard let obj       = parseJSONBody(body),
               let deviceId  = obj["deviceId"]    as? String,

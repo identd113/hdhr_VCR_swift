@@ -63,6 +63,7 @@ struct SettingsView: View {
     @State private var draftSaveDirectory: String      = ""
     @State private var draftLaunchAtLogin: Bool        = false
     @State private var loginItemError: String          = ""
+    @State private var terminalGuideOpenError: String  = ""
 
     private var launchAtLoginRegistered: Bool {
         SMAppService.mainApp.status == .enabled
@@ -706,18 +707,42 @@ struct SettingsView: View {
                 // /api/guide.json's terminalGuideEnabled field) and refuses to run when off, letting
                 // someone share the web guide with the household without also advertising/allowing
                 // the terminal client, without needing a second AppState code path.
-                let guidePath = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/hdhr_guide").path
+                let guideURL = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/hdhr_guide")
+                // Checked once per body render (cheap: a single stat call), not cached — deploy.sh
+                // always copies this file, so it's only ever missing via an unsupported dev flow
+                // (plain `swift build` + direct binary, no .app bundle) or a corrupted install; in
+                // either case the button should say so rather than silently no-op on click.
+                let guideExists = FileManager.default.fileExists(atPath: guideURL.path)
                 Section("Terminal Guide") {
                     Toggle(isOn: $draft.Terminal_guide_enabled) {
                         HStack { Text("Enable Terminal Guide"); InfoButton("Lets the bundled command-line client (path below) connect. On by default. Turning this off has no security effect — the same data is already reachable from any browser on the network whenever Sharing is on — it only hides/disables the terminal client specifically.") }
                     }
                     if draft.Terminal_guide_enabled {
-                        Text(guidePath)
+                        Text(guideURL.path)
                             .font(.system(.body, design: .monospaced))
                             .textSelection(.enabled)
-                        Text("Run from Terminal to browse the guide and schedule recordings without a browser.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        if guideExists {
+                            Button {
+                                terminalGuideOpenError = ""
+                                openInTerminal(guideURL) { errorMessage in
+                                    terminalGuideOpenError = errorMessage
+                                }
+                            } label: {
+                                Label("Open in Terminal", systemImage: "terminal")
+                            }
+                            if !terminalGuideOpenError.isEmpty {
+                                Label(terminalGuideOpenError, systemImage: "exclamationmark.triangle.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(.red)
+                            }
+                            Text("Opens Terminal and starts the guide directly.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Label("Not found at this path — reinstall or rebuild the app.", systemImage: "exclamationmark.triangle.fill")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
                     }
                 }
             }
@@ -731,6 +756,34 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .navigationTitle("Sharing")
+    }
+
+    // Opens a new Terminal window and runs `executable` in it directly, via
+    // NSWorkspace.open(_:withApplicationAt:configuration:) — not Process()/NSTask spawning
+    // `/usr/bin/open` or Terminal itself, and not an AppleScript/Apple Events "do script" command
+    // (which would need the com.apple.security.automation.apple-events entitlement plus a
+    // user-facing automation-permission prompt). Handing an executable file's URL to Terminal.app
+    // through NSWorkspace makes Terminal run it directly in a fresh window (verified live — the
+    // same behavior double-clicking a .command file gets), the same LaunchServices-driven
+    // mechanism Finder's "New Terminal at Folder" service uses for a folder URL. Since it's
+    // LaunchServices doing the launch, not this process forking a child, it needs no new
+    // entitlement even under a hypothetical future App Sandbox (docs/MAS_COMPLIANCE.md), unlike
+    // this app's existing curl-spawning path for recording, which already is one.
+    // `onFailure` surfaces a user-facing message next to the button (sharingView) in addition to
+    // the glog() line — a launch failure here used to be visible only in the log file, leaving a
+    // click that silently did nothing with no indication why.
+    private func openInTerminal(_ executable: URL, onFailure: @escaping (String) -> Void) {
+        guard let terminalURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Terminal") else {
+            let msg = "Terminal.app not found."
+            glog("openInTerminal: \(msg)")
+            onFailure(msg)
+            return
+        }
+        NSWorkspace.shared.open([executable], withApplicationAt: terminalURL, configuration: NSWorkspace.OpenConfiguration()) { _, error in
+            guard let error else { return }
+            glog("openInTerminal: failed to open \(executable.path) in Terminal: \(error)")
+            DispatchQueue.main.async { onFailure(error.localizedDescription) }
+        }
     }
 
     // MARK: - Maintenance

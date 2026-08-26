@@ -238,9 +238,9 @@ struct Show: Identifiable, Equatable {
     /// selection and web-guide pending-entry) and mirrors guide.js's own client-side `_isSports`
     /// check — previously each of the three had its own copy, and one of them (`applyWebGuideEntry`)
     /// had drifted to matching only "sports", silently missing XMLTV's singular tag. A 4th copy
-    /// exists in `Sources/hdhr_guide/main.swift`'s `genreImpliesBonusTime(_:)` — cannot import this
-    /// module there (`hdhr_VCR` is an executable, not a library) — keep it in sync with this check
-    /// by hand if this matching logic ever changes.
+    /// exists in `Sources/hdhr_guide_core/GuideLogic.swift`'s `genreImpliesBonusTime(_:)` — cannot
+    /// import this module there (`hdhr_VCR` is an executable, not a library) — keep it in sync
+    /// with this check by hand if this matching logic ever changes.
     static func genreImpliesBonusTime(_ genre: String?) -> Bool {
         genre?.lowercased().contains("sport") == true
     }
