@@ -55,6 +55,13 @@ fi
 echo "==> Stopping running instance…"
 pkill -x hdhr_VCR 2>/dev/null && echo "    Stopped." || echo "    Not running."
 
+# macOS occasionally leaves a "hdhrVCRplus 2.app"/"3.app"/etc. duplicate in the repo root when a
+# bundle-replace below races a lingering handle on the just-stopped process — observed
+# accumulating repeatedly across a single session's worth of deploys (see docs/Distribution.md's
+# Release Checklist). Untracked either way, but left alone they're pure clutter that keeps growing
+# every run; clean them before this run adds its own.
+find . -maxdepth 1 -name "hdhrVCRplus [0-9]*.app" -exec rm -rf {} +
+
 echo "==> Generating version…"
 APP_VERSION="$(date +%y%m%d-%H%M)"
 printf 'let appVersion = "%s"\n' "$APP_VERSION" > Sources/hdhr_VCR/Version.swift

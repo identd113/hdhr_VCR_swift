@@ -121,7 +121,23 @@ runs, scoped to whatever's landed since the last tag** (`git log <last-tag>..mai
 3. Publish the GitHub Release with notes + that zip:
    `gh release create v<version> --title "…" --notes-file notes.md dist/hdhrVCRplus-<version>.zip`
    (or, if a draft already exists: `gh release upload v<version> …zip --clobber` then `gh release edit v<version> --draft=false --latest`).
-4. Users download the zip and install manually; existing installs don't self-update.
+4. **Update `README.md`'s "📦 Latest" section** — the version number + download link (both hardcoded,
+   `hdhrVCRplus-<version>.zip` under `/releases/download/v<version>/`) and its 3-4 bullet highlights,
+   condensed even further than the `RELEASES.md` entry those bullets come from (see existing
+   entries for the house style — this is the punchiest, most-condensed tier of the three release-note
+   surfaces: `CHANGELOG.md` full detail → `RELEASES.md` condensed → README 3-4 bullets). The
+   `[![Latest Release]` shields.io badge near the top is dynamic (queries the GitHub API), so it
+   updates itself — only this hardcoded section needs a manual edit. Easy to forget since nothing
+   breaks if it's skipped, just goes stale (this is a real, not hypothetical, gap: only fixed for
+   v2.1.0 after being asked to explicitly, not caught by the checklist itself).
+5. Users download the zip and install manually; existing installs don't self-update.
+
+**Housekeeping, not a checklist step**: both deploy scripts now clean up any stray
+`hdhrVCRplus 2.app`/`3.app`/etc. duplicate the repo root accumulates on their own, right after
+stopping the running instance — macOS occasionally creates one of these mid-run when the
+bundle-replace step races a lingering handle on the process `pkill` just stopped. Untracked either
+way (git never sees them), but left alone they just keep piling up across a session's worth of
+deploys; automatic now, nothing to remember here.
 
 **Emergency-only, un-notarized fallback:** if the notary service is down or the cert/credential is
 temporarily unavailable and a release genuinely can't wait, use `./deploy_release.sh <version>

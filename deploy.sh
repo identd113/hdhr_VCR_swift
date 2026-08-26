@@ -32,6 +32,13 @@ echo "    Xcode Command Line Tools: OK"
 echo "==> Stopping running instance…"
 pkill -x hdhr_VCR 2>/dev/null && echo "    Stopped." || echo "    Not running."
 
+# macOS occasionally leaves a "hdhrVCRplus 2.app"/"3.app"/etc. duplicate in the repo root when a
+# bundle-replace below races a lingering handle on the just-stopped process — observed
+# accumulating repeatedly across a single session's worth of deploys (see docs/Distribution.md's
+# Release Checklist). Untracked either way, but left alone they're pure clutter that keeps growing
+# every run; clean them before this run adds its own.
+find . -maxdepth 1 -name "hdhrVCRplus [0-9]*.app" -exec rm -rf {} +
+
 echo "==> Generating version…"
 # Stamp the build time as YYMMDD-HHMM (e.g. "260521-2011") so About tab always shows when this build was made
 APP_VERSION="$(date +%y%m%d-%H%M)"
