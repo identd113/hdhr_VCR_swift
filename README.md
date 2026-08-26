@@ -30,6 +30,14 @@ HDHomeRun software; that part isn't something this app can opt out of.
 
 ![Cable TV-style guide grid with show summary panel](docs/screenshots/guide.png)
 
+The full LAN web guide — channels down the side, time across the top, tiles color-coded by genre.
+The vertical red line is a live "now" indicator that creeps across the grid in real time. Favorited
+channels get pulled into their own **★ FAVORITES** row up top so they're never buried in a big
+lineup, green **NEW** badges flag episodes the guide hasn't marked as reruns, and the per-channel
+signal bars in the gutter (fed by real tuner SNQ samples) tell you at a glance which channels are
+solid before you schedule off them. The top bar switches between tuners and genre filters without
+leaving the page.
+
 ---
 
 ## Why hdhrVCRplus?
@@ -55,17 +63,7 @@ You already paid for an HDHomeRun tuner, so you  shouldn't have to pay again jus
 
 ## Screenshots
 
-### Cable guide
-
-*(pictured at the top of this page ↑)*
-
-The full LAN web guide — channels down the side, time across the top, tiles color-coded by genre.
-The vertical red line is a live "now" indicator that creeps across the grid in real time. Favorited
-channels get pulled into their own **★ FAVORITES** row up top so they're never buried in a big
-lineup, green **NEW** badges flag episodes the guide hasn't marked as reruns, and the per-channel
-signal bars in the gutter (fed by real tuner SNQ samples) tell you at a glance which channels are
-solid before you schedule off them. The top bar switches between tuners and genre filters without
-leaving the page.
+The cable guide itself is pictured at the top of this page — the rest of the app's screens below.
 
 ### Menu bar
 
