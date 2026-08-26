@@ -76,6 +76,8 @@ You already paid for an HDHomeRun tuner, so you  shouldn't have to pay again jus
 - **Menu bar only** — no Dock icon, no full-screen window. One click to see everything; it disappears when you click away.
 - **Fully automated** — scheduling, recording, tuner management, and failure recovery all happen silently in the background.
 - **Survives restarts** — reattaches to in-progress recordings after a crash or relaunch. Shows that fail too often are automatically paused.
+- **Auto-pause when a tuner goes missing, auto-resume when it's back** — a show scheduled on a tuner that stops responding pauses itself instead of quietly failing over and over; picks back up the moment the tuner reappears. Never touches a show you paused yourself.
+- **Universal binary** — runs natively on both Apple Silicon and Intel Macs, no Rosetta.
 
 ### Scheduling
 
@@ -83,12 +85,15 @@ You already paid for an HDHomeRun tuner, so you  shouldn't have to pay again jus
 - **Four recording modes** — one-off, weekly repeat, or series-based (see [Recording Modes](#recording-modes) below)
 - **Per-show bonus time** — add extra padding to individual shows (great for sports)
 - **Skip already-recorded episodes** — a series won't grab the same episode twice on a rerun or simulcast. Before recording, it checks whether that season/episode is already on disk and quietly advances to the next airing if so (Settings → Post-Processing; requires Series subfolders)
+- **New Only** — a separate toggle that skips airings the guide itself doesn't flag as a new episode (today/tonight's original air date), independent of what's already on disk — catches a rerun the app has never recorded at all, which "Skip already-recorded" can't
 - **Signal quality at scheduling** — Add Show, Edit Show, and the web guide's Record form show a channel's signal bars, with a weak-signal warning, before you commit to recording it
+- **Metadata sidecar files** — writes a Kodi-style `.nfo` alongside each recording with episode title, season/episode, air date, synopsis, genre, and runtime (Settings → Post-Processing, off by default)
 
 ### Watching
 
 - **Watch Now! (in-app player)** — stream live TV in a built-in VLC-powered window with a channel picker, volume, and audio output controls. Checks tuner availability before opening so you're never silently blocked.
 - **Watch a recording in progress — for free** — click "Watch Now!" on a show that's currently recording and it plays straight from disk instead of opening a second tuner. Hover over the video for a scrub bar to jump anywhere already recorded, and switch between simultaneous recordings right from the channel picker.
+- **True fullscreen** — Esc to exit, arrow-key seeking (15s back / 30s forward), and a labeled toolbar that hides itself until you move the cursor to the top of the screen.
 - **Live tuner status** — the menu header shows exactly how many tuners are in use and by what, at a glance
 
 ### Notifications
@@ -98,7 +103,7 @@ You already paid for an HDHomeRun tuner, so you  shouldn't have to pay again jus
 
 ### Remote access
 
-- **LAN web UI** — built-in web server (port 1980) serves the same cable guide grid, with per-tuner Recording/Up Next/Scheduled lists, accessible from any browser on your network. No port forwarding needed; subnet-guarded. (Viewing is Mac-only via the in-app VLC player.)
+- **LAN web UI** — built-in web server (port 1980) serves the same cable guide grid, with per-tuner Recording/Up Next/Scheduled lists, accessible from any browser on your network. No port forwarding needed; subnet-guarded. Pull down at the top of the grid to refresh in place, no page reload. (Viewing is Mac-only via the in-app VLC player.)
 - **Portrait phone layout at `/vertical`** — visit `http://<mac-ip>:1980/vertical` on your phone for a calendar-style guide: channels become side-by-side columns, time reads top-to-bottom. Responds live to how you're holding the phone, no toggle to remember; the plain root URL always stays the standard horizontal grid regardless of device, if you'd rather bookmark that instead.
 - **Terminal Guide** — a full-screen terminal client for browsing the guide and scheduling recordings without a browser, bundled with the app (`hdhrVCRplus.app/Contents/Helpers/hdhr_guide`). Run it over SSH from anywhere on your network, or click "Open in Terminal" in Settings → Sharing. Same schedule/delete/favorite actions as the web guide, all from a keyboard.
 
@@ -108,6 +113,7 @@ You already paid for an HDHomeRun tuner, so you  shouldn't have to pay again jus
 - **EXTEND support** — uses SiliconDust's cloud guide API for HDTC-2US devices
 - **Transcode options** — none, heavy, mobile, or internet720 — all written as `.ts`, the tuner's actual wire format (transcoding re-encodes the video only; the container never changes)
 - **Sleep prevention** — holds an IOKit power assertion so recordings survive display sleep
+- **Export/Import Config** — copy your whole setup (every setting, all scheduled shows, Discord webhook) to another Mac in one file, from Settings → Advanced. Tuners themselves are always rediscovered fresh on the new machine, not carried over.
 
 ---
 
