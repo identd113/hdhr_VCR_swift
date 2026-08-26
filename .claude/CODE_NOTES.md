@@ -629,3 +629,33 @@ accuracy regresses right after app launch specifically.
   title-bar reveal strip height estimate) is explicitly flagged by its own comment as an untuned
   guess ("macOS doesn't expose the real strip height") — worth a follow-up glance after real visual
   testing on the actual notarized build, not urgent.
+
+## 2026-08-25 — v2.0.5..HEAD release review (hdhr_guide TUI, SeriesID Type/Scope consolidation, New Only, pull-to-refresh)
+
+- `Sources/hdhr_guide/API.swift:87-111` `syncData(_:)` uses a `DispatchSemaphore` to bridge
+  URLSession's async completion to a blocking call, polled in 100ms slices against `interrupted`.
+  This is an async→sync escape hatch by the letter of the rule, but it's justified and narrow:
+  `hdhr_guide` is a single-threaded terminal client with no other concurrent I/O to interleave with
+  (documented inline), and the slicing exists specifically so Ctrl-C stays responsive mid-request.
+  Not flagged as a hack needing fixing — correctly scoped, well-reasoned, self-documenting.
+- `Sources/hdhr_guide/DebugLog.swift` writes a timestamped line to `~/Library/Logs/hdhrVCRplus-guide-debug.log`
+  unconditionally on every keypress/render-path event (21 call sites in `main.swift`/`Terminal.swift`)
+  — not gated behind an env var or flag, unlike `RUN_WINDOW_NAV_TESTS`/`RUN_DISK_IO_TESTS` elsewhere
+  in this codebase. Bounded (2MB truncation at launch) so not an efficiency problem, and
+  `docs/TUIGuide.md` documents it as an intentional standing diagnostic (a `tail -f` companion
+  file), not leftover debug spam from one investigation — verified this is deliberate, not dead
+  code to flag.
+- `Sources/hdhr_VCR/Models.swift:239-243` `genreImpliesBonusTime`'s doc comment already
+  self-discloses a 4th independent copy of the "sport" genre-matching string logic in
+  `Sources/hdhr_guide_core/GuideLogic.swift` (can't import `hdhr_VCR`, an executable target, from
+  there) — this is the accepted-debt pattern CLAUDE.md already calls out for `VLCBridge`'s 2-copy
+  case, now genuinely a 3rd/4th copy (`guide.js`'s `_isSports`, `AddShowView.swift`,
+  `GuideLogic.swift`). Not re-flagging per the reviewer brief's guidance on a documented 3rd copy,
+  but worth folding into a shared TODO note if a 5th ever appears.
+- `Sources/hdhr_VCR/CHANGELOG.md`'s Unreleased section documents the new "Enable Terminal Guide"
+  sub-switch (line ~8) but never announces the headline feature it's a sub-switch *of* — the bundled
+  `hdhr_guide` terminal client itself (new Settings → Sharing row, path display, "Open in Terminal"
+  button) has no top-level CHANGELOG entry of its own before the release checklist runs. A reader
+  encountering "Enable Terminal Guide" cold has no CHANGELOG context for what that terminal client
+  even is. Flagged to the parent agent as a pre-release gap, not something this reviewer can fix
+  (CHANGELOG.md is off-limits to write from this role).

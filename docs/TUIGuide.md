@@ -418,9 +418,12 @@ that boundary. Worth doing if this logic needs to change again; not on its own.
 
 - Fixed `127.0.0.1:1980` — doesn't read `Web_server_port` from config
 - Polling only, no `/api/events` SSE subscription — up to ~20s of staleness between actions
-- No offline/undetected-device listing (the web guide's "never silently omit them" invariant for
-  a device referenced by a show but not currently discovered isn't mirrored here yet — `Tab` only
-  cycles devices the server currently reports as online)
+- Offline/undetected devices *are* now listed (`/api/guide.json`'s `devices` field unions in any
+  device referenced by a show's `hdhr_record` but never discovered — mirrors `buildDevBarHTML`'s
+  own union, CLAUDE.md's "Web guide offline devices" invariant) — `Tab` will cycle to one, but
+  since it was never discovered there's no lineup/guide data for it, so it just shows an empty
+  grid rather than anything useful about what's actually stuck there. Real parity needs the
+  "no overview of everything scheduled/recording on this tuner" gap below closed first.
 - A terminal narrower than 34 columns shows a "too narrow" message instead of the grid — the fixed
   20-column channel gutter isn't adaptive (see "Robustness fixes" above)
 

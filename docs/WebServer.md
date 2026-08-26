@@ -837,8 +837,16 @@ Encoded with `JSONEncoder` `.prettyPrinted`.
 struct GuidePayload: Encodable {
     var deviceId: String
     var winStart, winSec: Int          // same window buildGuideGridHTML uses (guideWindow(state:))
-    var devices: [DeviceSummary]       // every discovered device, for a client's own tuner switcher
+    var devices: [DeviceSummary]       // every discovered device, PLUS any device referenced by a
+                                        // show's hdhr_record but never discovered at all (offline,
+                                        // active 0/total 0) — CLAUDE.md's "Web guide offline
+                                        // devices" invariant, mirroring buildDevBarHTML's own union
     var channels: [GuideChannel]       // this device's lineup, Recording → Favorite → channelSortKey
+    var sportsPaddingEnabled: Bool     // mirrors Sports_padding_enabled (state.config) — lets a
+                                        // non-HTML client gate sports-genre auto-Bonus-Time
+                                        // detection on it, see docs/TUIGuide.md
+    var terminalGuideEnabled: Bool     // mirrors Terminal_guide_enabled (state.config) — courtesy
+                                        // gate hdhr_guide checks at startup, see docs/TUIGuide.md
 }
 struct DeviceSummary: Encodable { var deviceId: String; var active, total: Int }
 struct GuideChannel: Encodable {

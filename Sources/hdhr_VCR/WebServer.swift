@@ -2042,8 +2042,34 @@ final class WebServer: @unchecked Sendable {
         }
 
         let devTuners = Self.computeDevTuners(state: state)
+        // Unioned with any device referenced by a show's hdhr_record but not currently discovered
+        // at all — mirrors buildDevBarHTML's own offlineIDs (CLAUDE.md's "Web guide offline
+        // devices" invariant: "Never silently omit them"). Without this, hdhr_guide's Tab/
+        // switchDevice() (which only ever iterates this list, Sources/hdhr_guide/main.swift) had
+        // no way to even see, let alone manage, a show stuck on a tuner that's gone fully
+        // undetected — the web guide's own dev bar already surfaces this case correctly via a
+        // dashed "not detected" box. An offline device was never discovered, so it has no real
+        // tuner-occupancy data — active/total both report 0, same as devTuners' own missing-key
+        // fallback for any device already in state.devices.
+        let onlineIDs = Set(state.devices.map { $0.DeviceID })
+        let offlineIDs = Set(state.shows.map { $0.hdhr_record }).subtracting(onlineIDs).filter { !$0.isEmpty }
         let devices = state.devices.map { DeviceSummary(deviceId: $0.DeviceID,
             active: devTuners[$0.DeviceID]?.active ?? 0, total: devTuners[$0.DeviceID]?.total ?? 0) }
+            + offlineIDs.sorted().map { DeviceSummary(deviceId: $0, active: 0, total: 0) }
+
+        // An explicitly-requested offline device (present in `offlineIDs`, above) is handled here
+        // rather than falling through to the "device not found" fallbacks below it — those exist
+        // for a genuinely *unknown* id and silently substitute a different device's guide, which
+        // would be actively misleading for an offline one: the caller asked to see what's stuck on
+        // HDHR-XXXX specifically, not have that swapped for some other tuner's data with no
+        // indication it happened. There is no lineup/guide data for a device that was never
+        // discovered, so this is necessarily just an empty channel list under its own correct id.
+        if let deviceId, offlineIDs.contains(deviceId) {
+            let payload = GuidePayload(deviceId: deviceId, winStart: 0, winSec: 0, devices: devices, channels: [],
+                sportsPaddingEnabled: state.config.Sports_padding_enabled,
+                terminalGuideEnabled: state.config.Terminal_guide_enabled)
+            return (try? JSONEncoder().encode(payload)) ?? Data("{}".utf8)
+        }
 
         guard let device = (deviceId.flatMap { id in state.devices.first { $0.DeviceID == id } })
             ?? state.devices.first(where: { state.usableDeviceIDs.contains($0.DeviceID) })
