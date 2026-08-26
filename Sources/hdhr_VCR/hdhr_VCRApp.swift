@@ -1,7 +1,17 @@
 import SwiftUI
 
+// Runs the /Applications relocation check (AppRelocator.swift) once AppKit has fully finished
+// launching — an NSAlert shown from App.init() (before the run loop is up) is unreliable, so this
+// waits for the one lifecycle point SwiftUI's App protocol doesn't otherwise expose.
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        AppRelocator.relocateToApplicationsIfNeeded()
+    }
+}
+
 @main
 struct hdhr_VCRApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var appState = AppState()
     @Environment(\.openWindow) private var openWindow
     // Guards the launch-time donation nag so it fires exactly once per run, not on every

@@ -38,10 +38,17 @@ The zip is the thing you hand users. Everything else (payment gate) is layered o
 ### First install
 1. User downloads `hdhrVCRplus.dmg` from your GitHub Releases page or website
 2. Opens the DMG — sees the app icon and an alias to `/Applications`
-3. Drags the app to Applications
+3. Drags the app to Applications (or skips this — see below)
 4. Double-clicks to launch
 5. macOS shows a one-time "downloaded from the internet" confirmation — they click **Open**
 6. No "unidentified developer" warning because the app is notarized
+
+If a user launches the app directly from the DMG or an unzipped Downloads folder instead of
+dragging it to Applications first, `AppRelocator.swift` catches this on launch: an alert offers to
+copy the app into `/Applications`, trash the original (skipped for a Gatekeeper-translocated
+source — nothing real to trash there), and relaunch from the new location. Release builds only
+(`#if DEBUG`) — `./deploy.sh`'s dev workflow always runs the app in place from the repo root and is
+unaffected.
 
 ### Ongoing use
 - App lives in the menu bar (no Dock icon)
