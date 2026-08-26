@@ -4,7 +4,9 @@
 
 **Free, open-source DVR for your HDHomeRun — lives in your Mac menu bar, records in the background.**
 
-No subscription. No media server. No cloud account. Just your tuner, your Mac, and your shows.
+No subscription. No media server. No account to create. Just your tuner, your Mac, and your shows —
+though your HDHomeRun still pulls its program guide from SiliconDust's free cloud service, like any
+HDHomeRun software; that part isn't something this app can opt out of.
 
 **✅ Notarized by Apple — download, unzip, and open. No Gatekeeper warning, no bypass step.**
 

@@ -362,6 +362,56 @@ Multiple live rounds against the real device (105404BE, fresh `DeviceAuth` pulle
 
 **Conclusion:** this is a hard server-side limitation, not a gap in how we're calling it. If historical guide data is ever needed, the only viable approach is **local archiving** — have `GuideStore` persist its own periodic `guide.php`/`xmltv` pulls over time — not a request parameter, since none exists.
 
+### Backdating retest — five new angles, all dead ends, 2026-08-26
+
+Re-opened specifically to try angles the 2026-08-10 sweep above didn't cover — not a re-run of the
+same param-name sweep. Same device (105404BE), fresh `DeviceAuth` pulled live from `/discover.json`.
+Result is unchanged: **still no way to backdate `xmltv`.**
+
+1. **TCN content negotiation** — `xmltv`'s response headers include `TCN: choice` (Apache
+   Transparent Content Negotiation is active on the resource). Sent `Negotiate: vlist` to list
+   variants: server returned `HTTP 300` with exactly one variant —
+   `Alternates: {"xmltv.php" 1 {type application/x-httpd-cgi}}`. Confirms `xmltv` is a plain
+   Apache CGI script (`xmltv.php`) behind nginx caching, not a parameterized API with hidden
+   alternate-window resources. `HEAD`/`OPTIONS` both echo the same single-variant headers. Dead end.
+2. **`guide.php` output-format switch** — since `guide.php` already has *real* `Start`-based
+   backdating, tested whether it has an undocumented flag to emit XMLTV-shaped/richer output while
+   keeping that real `Start` support: `Format=xmltv`, `Format=xml`, `Output=xml`, `Output=xmltv`,
+   `Type=xmltv`, `V=xmltv`, `V=2`, and an `Accept: application/xml` request header. Every one
+   returned `HTTP 200` with a byte-identical response to the plain call (same `Start`/`Duration`,
+   no extra param) — `Content-Type` stayed `application/json` regardless of the `Accept` header.
+   No format switch exists; `guide.php` unconditionally emits JSON. Dead end.
+3. **POST instead of GET** — `xmltv` requires `DeviceAuth` in the query string specifically; a
+   `POST` with `DeviceAuth` only in a form-encoded or JSON body (not the query string) returns
+   `403 Forbidden`. A `POST` with `DeviceAuth` in the query string *and* backdate params
+   (`Start`/`Duration`) in a JSON body returns `200` with a response byte-identical to the GET
+   baseline (`3966236` bytes) — the body is silently ignored entirely; behaves exactly like GET.
+   Dead end.
+4. **Custom request headers** — tried `X-HDHomeRun-DeviceAuth`, `X-HDHomeRun-Start`,
+   `X-HDHomeRun-Window` (modeled on the `X-HDHomeRun-Resource`/`X-HDHomeRun-Error` response headers
+   documented elsewhere in this doc), `X-Requested-With`, `X-Forwarded-For` — every one returned a
+   byte-identical `3966236`-byte response to baseline. (`Range: bytes=0-1000` correctly returned a
+   `1001`-byte partial response — confirms `Accept-Ranges: bytes` isn't a lie, but a byte range of
+   the same fixed document isn't a different window.) Dead end.
+5. **Alternative auth (`Email=` + `DeviceIDs=`)** — flagged as untested in the 2026-08-10 sweep.
+   Discovered a real, previously-undocumented endpoint while probing this:
+   **`GET https://api.hdhomerun.com/api/account?DeviceAuth=<auth>`** → `HTTP 200`,
+   `{"AccountEmail": null, "AccountDeviceIDs": ["105404BE"]}` (403 without `DeviceAuth`). This
+   device's `AccountEmail` is `null` — **it isn't linked to any SiliconDust account**, which is
+   exactly what "free tier, no DVR subscription" means in practice: there's no account email to
+   pair with `Email=`+`DeviceIDs=` auth at all for this device, so the alt-auth path can't be
+   positively exercised here. `Email=test@example.com&DeviceIDs=105404BE` (an unlinked/bogus email)
+   returns `403 Forbidden`, as expected for an email with no relationship to the device — this
+   doesn't confirm or rule out whether alt-auth would behave differently on a *linked* account, only
+   that it can't be tested without one. Genuinely inconclusive, not a dead end — revisit if this
+   device (or another) is ever linked to an account, ideally one with an active DVR subscription so
+   the tier-difference question from 2026-08-10 could also finally be tested instead of assumed.
+
+**Conclusion unchanged:** `xmltv`'s server-side window (no backdating, ~48h forward on this
+account) is fixed by the origin regardless of transport (GET/POST), headers, content negotiation,
+or `guide.php`-style format params. The only unresolved thread is account-linked alt-auth,
+which needs credentials this device doesn't have — not something further guessing can resolve.
+
 ---
 
 ## Known Open Source Implementations (for reference)
@@ -392,6 +442,7 @@ Primary documentation sources: `info.hdhomerun.com/info/http_api`, `info.hdhomer
 | Endpoint | Why it could help |
 |---|---|
 | `/lineup_status.json` | Reports `ScanInProgress`, `ScanPossible`, `Source`. Would let the app distinguish "device is mid-rescan" from "guide/lineup fetch failed" — currently an empty lineup just logs a generic warning (`GuideStore.swift`). |
+| `api.hdhomerun.com/api/account?DeviceAuth=<auth>` | Undocumented, discovered 2026-08-26 while probing alt-auth for the XMLTV backdating question (see "Backdating retest" above). Returns `{"AccountEmail": <string or null>, "AccountDeviceIDs": [...]}` — `403` without `DeviceAuth`. A non-`null` `AccountEmail` is a real, live way to tell whether a device is linked to a SiliconDust account (and by extension, whether a DVR subscription is even possible) instead of assuming "free tier" — useful context for any future Settings/About surface, or for finally testing whether a paid DVR subscription changes `xmltv`'s window. |
 | `guide.php` `Start` chaining | Pagination to fetch beyond the ~29h single-call cap (see Guide API section). Only needed if GuideHours > ~28 is ever required. |
 | `api.hdhomerun.com/api/episodes` | Full ~17-day airing schedule for one SeriesID — proper fix for series scheduling beyond the guide window, plus `ProgramID` for repeat-skipping (see Guide API section for field differences and caveats). |
 | `api.hdhomerun.com/api/episodes?V=2` | V=2 changes response shape: top-level object with `Series`, `RecordingRules`, `Channels`, `Teams`, `Episodes`. Adds `ProgramID`, `First` flag (new episode vs repeat), and team names for sports. `First` flag enables repeat-skipping without comparing titles. |
