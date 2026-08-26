@@ -29,6 +29,12 @@ LAN web server over plain HTTP (`127.0.0.1:1980`, hardcoded — a custom `Web_se
 supported yet), the same way `AppState.watchRecordingInApp`'s relay URL does. See "MAS Compliance"
 below for why bundling a second executable here doesn't add a sandbox blocker.
 
+## Screenshots
+
+![Full-screen channel grid with genre-tinted tiles, selection box, summary panel, and signal-dot gutter](screenshots/tui_guide_grid.png)
+
+![Recording summary screen with the four scheduling scope options](screenshots/tui_guide_schedule.png)
+
 **Prerequisite:** `Web_server_enabled` defaults to `false` (`Models.swift`). hdhrVCRplus must be
 running with **Settings → Sharing** enabled (the Settings section's own label — the underlying
 `Web_server_enabled` config key is unchanged), or `hdhr_guide` prints an actionable message and

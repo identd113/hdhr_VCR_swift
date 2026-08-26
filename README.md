@@ -55,19 +55,74 @@ You already paid for an HDHomeRun tuner, so you  shouldn't have to pay again jus
 
 ## Screenshots
 
-| Menu bar | Recording in progress |
-|----------|-----------------------|
+### Cable guide
+
+*(pictured at the top of this page ↑)*
+
+The full LAN web guide — channels down the side, time across the top, tiles color-coded by genre.
+The vertical red line is a live "now" indicator that creeps across the grid in real time. Favorited
+channels get pulled into their own **★ FAVORITES** row up top so they're never buried in a big
+lineup, green **NEW** badges flag episodes the guide hasn't marked as reruns, and the per-channel
+signal bars in the gutter (fed by real tuner SNQ samples) tell you at a glance which channels are
+solid before you schedule off them. The top bar switches between tuners and genre filters without
+leaving the page.
+
+### Menu bar
+
+| Idle | Recording |
+|------|-----------|
 | ![Menu bar dropdown showing tuner status, scheduled shows, and Next Up section](docs/screenshots/menu.png) | ![Recording active, shown with a red dot under a Recording Now section](docs/screenshots/recording.png) |
 
-| Recording submenu | Scheduled show |
-|-------------------|----------------|
+Click the menu bar icon and everything scheduled is right there — no window to open. **Up Next**
+always shows what's about to record, **Scheduled** lists everything else queued up, and the moment a
+recording actually starts, it jumps into its own pulsing-red **Recording Now** section at the top so
+you don't have to go hunting through the list to check status.
+
+### Managing a show
+
+| Recording submenu | Scheduled series |
+|--------------------|-------------------|
 | ![Recording submenu showing start time, length, Watch Now!, Skip, Delete, and Edit](docs/screenshots/recording_submenu.png) | ![Scheduled show submenu showing type, channel, upcoming airings, and Edit/Pause/Delete](docs/screenshots/scheduled_submenu_series.png) |
+
+Click any show in the menu for its own submenu. A show that's actively recording gets **Watch
+Now!** (stream what's already on disk, live, without touching the tuner) and **Show Recording in
+Finder**; a scheduled series shows its **Upcoming** airings — every future date/time it's about to
+record — plus one-click **Pause**/**Delete**, right from the menu bar.
+
+### Add / Edit show
 
 | Add Show — Details | Edit Show |
 |--------------------|-----------|
 | ![Add Show details step with SeriesID type, Channel/All scope, New Only, and Other Upcoming Airings](docs/screenshots/addshow_details.png) | ![Edit Show window with SeriesID scope, New Only, and starburst bonus time badge](docs/screenshots/edit_show.png) |
 
+Scheduling by **SeriesID** (not just title matching) means reruns and retitled episodes still get
+caught — the **Channel / All** toggle decides whether that series only records on the channel you
+picked it from or follows it anywhere on the tuner, and **Other Upcoming Airings** shows every other
+time it's on before you commit. Toggle **Bonus Time** on Edit and an animated starburst badge
+(`+30 min`) pins itself to the corner — a Sports show gets this on by default, since live events run
+long.
+
+### Settings
+
 ![Settings general panel](docs/screenshots/settings_general.png)
+
+A standard macOS settings window (General/Recording/Guide/Notifications/Advanced/Web
+Server/Maintenance/About) — Launch at Login, menu bar icon blinking, and the guide format used to
+pull program data all live here.
+
+### Terminal Guide
+
+| Channel grid | Schedule recording |
+|--------------|---------------------|
+| ![Full-screen channel grid with genre-tinted tiles, selection box, summary panel, and signal-dot gutter](docs/screenshots/tui_guide_grid.png) | ![Recording summary screen with the four scheduling scope options](docs/screenshots/tui_guide_schedule.png) |
+
+The whole cable guide, in a terminal — SSH in from anywhere on your network and schedule recordings
+without a browser. The selected tile gets a full white box drawn right onto its genre color, a
+per-channel signal dot in the gutter mirrors the web guide's own bars, and hitting `Enter` drops into
+a dedicated recording screen with the same four scope options (Once / Weekly / Series-this-channel /
+Series-any-channel) as the web and native pickers. Every glyph is plain ASCII on purpose — no
+box-drawing characters that render one column too wide on some remote terminals — so it looks right
+whether you're on Terminal.app or three hops away over SSH.
 
 ---
 
