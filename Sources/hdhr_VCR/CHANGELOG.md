@@ -2,7 +2,7 @@
 
 Every entry is tagged **Added** (something new), **Updated** (existing behavior changed, improved, or fixed), **Removed** (something taken away), or **Info** (a note — nothing to do, nothing visibly different).
 
-## Unreleased
+## v2.1.0 — 2026-08-25
 
 **Added**
 - **New: Terminal Guide** — a full-screen terminal client for browsing the guide and scheduling recordings without a browser, bundled at `hdhrVCRplus.app/Contents/Helpers/hdhr_guide`. Run it from Terminal on this Mac (or over SSH) while Settings → Sharing is on — Settings → Sharing → Terminal Guide has an **Open in Terminal** button that launches it directly. A new "Enable Terminal Guide" sub-switch under Sharing (on by default) lets you share the web guide with your household while keeping the terminal client off specifically.
@@ -19,6 +19,7 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 - **Fixed: a SeriesID(Channel) show whose guide entries don't carry a SeriesID (some local/syndicated reruns) could get stuck re-detecting the same already-recorded episode as "already recorded, skip" every ~10 seconds for its entire broadcast window** — spamming a "Recording Skipped" Discord card and log warning on every tick instead of quietly moving on to the actual next episode, the way it already worked correctly when the guide did include SeriesID.
 - **Fixed: editing a SeriesID(All) show could get permanently stuck at Save** if its channel had been cleared before switching scope to All — the Channel field hides for All scope, but Save silently still required one.
 - **Fixed: the delete-confirmation dialog could show a blank poster** when opened from a tuner's dropdown list, and could briefly disagree about whether a show was actually recording.
+- **Fixed: a tuner that went completely undetected while a show was still scheduled on it could disappear entirely from Terminal Guide's tuner list** — it now shows up (as offline, same as the web guide already did) instead of silently vanishing, so a stuck show is at least visible.
 
 ## v2.0.5 — 2026-08-22
 

@@ -6,6 +6,37 @@ What's new in each version. For the fuller list of changes within a version, see
 
 ---
 
+## v2.1.0 (2026-08-25)
+
+### Added
+- **Terminal Guide** — a full-screen terminal client for browsing the guide and scheduling
+  recordings without a browser, bundled with the app. Enable and open it from Settings → Sharing.
+- **Pull-to-refresh on the web guide** — drag down at the top of the grid to refresh in place
+  instead of reloading the page.
+- **"New Only" recording option** — skip reruns the guide doesn't flag as a new episode, for
+  DateTime and SeriesID shows.
+- **Signal quality now shown in the web guide's Edit modal**, matching what the Record modal
+  already had.
+
+### Updated
+- **SeriesID(Channel)/SeriesID(All) are now one "SeriesID" option with a Channel/All scope
+  toggle**, instead of two separate, easy-to-conflate top-level choices.
+- **The web guide now asks you to confirm before deleting a show**, showing its poster and title.
+- Settings' "Web Server" section is now called "Sharing" — same setting, new label.
+- **Fixed: a SeriesID(Channel) show without SeriesID guide data could get stuck re-skipping the
+  same already-recorded episode every ~10 seconds** for its whole broadcast window.
+- **Fixed: editing a SeriesID(All) show could get permanently stuck at Save** if its channel had
+  been cleared before switching to All.
+- A few smaller fixes: "Update Guides Now"/"Check for Updates" show a spinner while running; the
+  Local Network permission retry backs off over time instead of polling forever; the
+  delete-confirmation dialog could show a blank poster or briefly disagree about recording status;
+  a tuner that goes fully undetected while a show is still scheduled on it now shows up (as
+  offline) in Terminal Guide instead of disappearing.
+
+Full change list: [CHANGELOG.md](Sources/hdhr_VCR/CHANGELOG.md)
+
+---
+
 ## v2.0.5 (2026-08-22)
 
 ### Added
