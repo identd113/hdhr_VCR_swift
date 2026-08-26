@@ -5,8 +5,9 @@
 **Free, open-source DVR for your HDHomeRun — lives in your Mac menu bar, records in the background.**
 
 No subscription. No media server. No account to create. Just your tuner, your Mac, and your shows —
-though your HDHomeRun still pulls its program guide from SiliconDust's free cloud service, like any
-HDHomeRun software; that part isn't something this app can opt out of.
+though guide data still ultimately comes from SiliconDust's free cloud service (via the tuner itself
+for over-the-air devices, direct from the app for EXTEND/cable ones); that part isn't something this
+app can opt out of.
 
 **✅ Notarized by Apple — download, unzip, and open. No Gatekeeper warning, no bypass step.**
 
@@ -42,7 +43,7 @@ leaving the page.
 
 ## Why hdhrVCRplus?
 
-You already paid for an HDHomeRun tuner, so you  shouldn't have to pay again just to record TV.
+You already paid for an HDHomeRun tuner, so you shouldn't have to pay again just to record TV.
 
 | | hdhrVCRplus | SiliconDust DVR Service | Plex DVR | Channels DVR | EyeTV |
 |---|---|---|---|---|---|
@@ -195,7 +196,7 @@ progress without a second tuner, etc.) is covered above under [Features](#featur
 ### Download a release (easiest)
 
 1. Download `hdhrVCRplus-vX.X.X.zip` from the [Releases page](https://github.com/identd113/hdhr_VCR_swift/releases)
-2. Unzip and move `hdhrVCRplus.app` to `/Applications`
+2. Unzip and move `hdhrVCRplus.app` to `/Applications` (skip this and it'll offer to move itself there on first launch instead)
 3. Open it — the app is notarized by Apple, so there's no "unidentified developer" warning or bypass step needed (see [Notarization and Gatekeeper](#notarization-and-gatekeeper) below)
 
 ### Build from source
