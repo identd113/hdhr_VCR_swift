@@ -414,6 +414,63 @@ which needs credentials this device doesn't have — not something further guess
 
 ---
 
+## Broader Endpoint Sweep — Local Device + Cloud — 2026-08-26
+
+Systematic sweep for anything not already covered above. Same device (105404BE, HDTC-2US EXTEND,
+LocalIP `10.0.2.101`), fresh `DeviceAuth`. Recorded here so a future session doesn't re-guess the
+same dead names.
+
+**Local device — new finds:**
+
+- **`/log.html` — real, previously undocumented.** A plain-text system log (wrapped in HTML
+  `<pre>`) with device-level tuning/streaming history: `Tuner: tuner0 tuning <ch> (<modulation>)`,
+  `streaming http to <ip>:<port>`, and the stream-end *reason* — `requested time reached` (a
+  `?duration=` cutoff) vs `remote closed` (client disconnected) vs others. This is a genuine gap in
+  what the app currently has visibility into: `RecordingManager` knows *its own* curl process
+  exited, but not why the *device* thinks the stream ended, from the device's own perspective. Could
+  help diagnose recordings that end early for a reason the app-side curl log doesn't capture. Found
+  via the root page (`/`)'s own nav links, linked from `/system.html`.
+- **`/system.html`, `/tuners.html`, `/lineup.html`** — human-facing config pages (same family as
+  the already-documented `/transcode.html`), reachable from `/`'s own nav. `/tuners.html` supports
+  `?page=tuner0`/`?page=tuner1` for per-tuner detail. No JSON/data payloads beyond what
+  `/status.json`, `/lineup.json`, `/tunerN/vstatus` already give — HTML only, not useful as an API
+  source, but `/log.html` (linked from `/system.html`) was worth the click.
+- **`/tunerN/vstatus` confirmed `404` on this EXTEND** — matches the existing code comment at
+  `AppState.swift:3663` ("including EXTEND (which returns 404 for /tunerN/vstatus)"), not previously
+  called out in this doc's own `/tunerN/vstatus` table row. `/tuner0/status` and `/tuner0/debug`
+  (guessed alternate paths) are also both `404` — `vstatus` really is the only per-tuner status path
+  this model exposes, and it isn't implemented on EXTEND at all.
+- Everything else guessed (`/channel_map.json`, `/device.xml`, `/description.xml`,
+  `/hdhomerun.xml`, `/recordings.json`, `/storage.json`, `/settings.json`, `/variables.html`,
+  `/update.html`, `/diagnostics.html`) — clean `404`, don't exist on this model/firmware.
+
+**Cloud (`api.hdhomerun.com`) — new finds:**
+
+- **`api/lineup` (and `api/lineup.php`) — routed but hard-blocked, `403` unconditionally.** Unlike
+  every guessed-nonexistent path below (plain `404`), this one is different: `403 Forbidden` with
+  or without `DeviceAuth`, with or without extra params (`DeviceID=`, trailing slash) — identical
+  13-byte plain-text body every time. A `404`-vs-`403` distinction like this means the path is
+  real/routed at the reverse-proxy level but deliberately walled off (likely reserved/internal —
+  the real lineup API is the per-device local `/lineup.json`, not a cloud equivalent). Not usable,
+  but worth recording so the distinct `403` doesn't get mistaken for "almost working" in a future
+  session.
+- **`my.hdhomerun.com/api/devices` — also routed, also `403`.** Same signature as `api/lineup`
+  above; `my.hdhomerun.com/` itself responds `308` (redirect). This domain is the account web
+  portal — its API surface (if any) almost certainly needs a logged-in session cookie, not
+  `DeviceAuth`, so `DeviceAuth` alone can't get further here.
+- **`www.silicondust.com/ext/hdhomerun/instructions?DeviceID=<id>`** (the link the local device's
+  own root page points to for "get help") — `302` redirect to a human support page. Not an API.
+- Everything else guessed — `api/discover`, `api/devices`, `api/recordings`, `api/deviceauth`,
+  `api/channels.php`, `api/version`, `api/relay`, `api/remote`, `api/watch`, `api/livetv`,
+  `api/storage`, `api/heartbeat`, `api/ping`, `api/whoami`, `api/genres`, `api/categories`,
+  `api/teams`, `api/networks`, `api/affiliates`, `api/posters`, plus (from the prior sweep)
+  `api/dvr`, `api/account` (subscription-style names already covered — `api/account` itself is real,
+  see the Backdating retest section above), `api/subscription`, `api/entitlement`, `api/settings`,
+  `api/preferences`, `api/recordingrules`, `api/epg`, `api/channels` — all clean `404`, genuinely
+  don't exist.
+
+---
+
 ## Known Open Source Implementations (for reference)
 
 - **libhdhomerun** (github.com/Silicondust/libhdhomerun) — official C library; canonical source for control protocol details
@@ -432,7 +489,7 @@ Primary documentation sources: `info.hdhomerun.com/info/http_api`, `info.hdhomer
 | `/discover.json` | Device info: DeviceID, LocalIP, TunerCount, DeviceAuth |
 | `/lineup.json` | Channel lineup: GuideNumber, GuideName, URL per channel |
 | `/status.json` | Active tuner occupancy: Resource, VctNumber, TargetIP |
-| `/tunerN/vstatus` | Per-tuner signal: ss, snq, lock, bps (key-value text) |
+| `/tunerN/vstatus` | Per-tuner signal: ss, snq, lock, bps (key-value text). Not implemented on EXTEND — `404` (confirmed 2026-08-26; already handled in `AppState.swift`). |
 | `/lineup.post?favorite=±N` | Mark/unmark channel favorite |
 | `api.hdhomerun.com/api/guide.php` | Cloud guide data (DeviceAuth gated); optional `Start=<epoch>` shifts window start; `Duration` in hours from Start (capped ~29h per call) |
 | `api.hdhomerun.com/api/xmltv` | Cloud guide as XMLTV XML (DeviceAuth gated); no Start/Duration — server controls the window; enabled by `Guide_use_xml = true` |
@@ -442,6 +499,7 @@ Primary documentation sources: `info.hdhomerun.com/info/http_api`, `info.hdhomer
 | Endpoint | Why it could help |
 |---|---|
 | `/lineup_status.json` | Reports `ScanInProgress`, `ScanPossible`, `Source`. Would let the app distinguish "device is mid-rescan" from "guide/lineup fetch failed" — currently an empty lineup just logs a generic warning (`GuideStore.swift`). |
+| `/log.html` | Discovered 2026-08-26 (see "Broader Endpoint Sweep" above). Plain-text device-side tuning/streaming log, including the *device's own* reason a stream ended (`requested time reached` vs `remote closed`) — something `RecordingManager`'s own curl-exit tracking can't see. Would need scrape-and-diff (no JSON form), so only worth it if app-side recording-failure diagnosis genuinely needs the device's perspective on why a stream dropped. |
 | `api.hdhomerun.com/api/account?DeviceAuth=<auth>` | Undocumented, discovered 2026-08-26 while probing alt-auth for the XMLTV backdating question (see "Backdating retest" above). Returns `{"AccountEmail": <string or null>, "AccountDeviceIDs": [...]}` — `403` without `DeviceAuth`. A non-`null` `AccountEmail` is a real, live way to tell whether a device is linked to a SiliconDust account (and by extension, whether a DVR subscription is even possible) instead of assuming "free tier" — useful context for any future Settings/About surface, or for finally testing whether a paid DVR subscription changes `xmltv`'s window. |
 | `guide.php` `Start` chaining | Pagination to fetch beyond the ~29h single-call cap (see Guide API section). Only needed if GuideHours > ~28 is ever required. |
 | `api.hdhomerun.com/api/episodes` | Full ~17-day airing schedule for one SeriesID — proper fix for series scheduling beyond the guide window, plus `ProgramID` for repeat-skipping (see Guide API section for field differences and caveats). |
