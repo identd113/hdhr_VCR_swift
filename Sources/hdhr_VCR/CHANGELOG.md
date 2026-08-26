@@ -5,7 +5,8 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 ## Unreleased
 
 **Added**
-- **New "Enable Terminal Guide" sub-switch under Settings → Sharing** (defaults on), nested under the Sharing toggle — turns off the bundled `hdhr_guide` command-line client specifically without affecting the web guide any browser on the network can already reach while Sharing is on. Courtesy/discoverability switch, not a security boundary — the same data is already reachable either way.
+- **New: Terminal Guide** — a full-screen terminal client for browsing the guide and scheduling recordings without a browser, bundled at `hdhrVCRplus.app/Contents/Helpers/hdhr_guide`. Run it from Terminal on this Mac (or over SSH) while Settings → Sharing is on — Settings → Sharing → Terminal Guide has an **Open in Terminal** button that launches it directly. A new "Enable Terminal Guide" sub-switch under Sharing (on by default) lets you share the web guide with your household while keeping the terminal client off specifically.
+- **Pull-to-refresh on the web guide** — drag down while scrolled to the top of the grid to refresh in place, preserving your scroll position and selection, instead of requiring a manual page reload.
 - **New "New Only" toggle when adding or editing a DateTime, SeriesID(Channel), or SeriesID(All) show** ("Skip reruns"), in both the native app and the web guide's Record/Edit modals. When on, an airing the guide doesn't flag as new (today/tonight's original air date) is skipped at record time and the show advances to its next scheduled airing instead — independent of "Skip already-recorded episodes," which only catches an exact episode already on disk, not a rerun the app has never captured. Not available for Single recordings, which always record one specific known airing regardless of rerun status.
 - **The web guide's Edit modal now shows signal quality bars and a weak-signal warning** for the show's channel, matching what the Record modal already had — previously this was Record-only, so editing an existing show gave no indication its channel had weak reception.
 
@@ -16,6 +17,8 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 - The background retry that runs while Local Network permission hasn't yet been confirmed working now backs off over time instead of polling at full speed forever — still fast enough that a normal grant (via the system prompt, or a reboot) is picked up within a minute or two, but no longer hammers the network indefinitely if permission turns out to be permanently denied.
 - **Settings' "Update Guides Now" and "Check for Updates" buttons now show a spinner while they run**, instead of giving no feedback until the result (or a page reload) appeared — matching the loading indicator the Maintenance tab's actions and the Discord webhook "Test" button already had.
 - **Fixed: a SeriesID(Channel) show whose guide entries don't carry a SeriesID (some local/syndicated reruns) could get stuck re-detecting the same already-recorded episode as "already recorded, skip" every ~10 seconds for its entire broadcast window** — spamming a "Recording Skipped" Discord card and log warning on every tick instead of quietly moving on to the actual next episode, the way it already worked correctly when the guide did include SeriesID.
+- **Fixed: editing a SeriesID(All) show could get permanently stuck at Save** if its channel had been cleared before switching scope to All — the Channel field hides for All scope, but Save silently still required one.
+- **Fixed: the delete-confirmation dialog could show a blank poster** when opened from a tuner's dropdown list, and could briefly disagree about whether a show was actually recording.
 
 ## v2.0.5 — 2026-08-22
 
