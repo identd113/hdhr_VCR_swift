@@ -100,6 +100,7 @@ You already paid for an HDHomeRun tuner, so you  shouldn't have to pay again jus
 
 - **LAN web UI** — built-in web server (port 1980) serves the same cable guide grid, with per-tuner Recording/Up Next/Scheduled lists, accessible from any browser on your network. No port forwarding needed; subnet-guarded. (Viewing is Mac-only via the in-app VLC player.)
 - **Portrait phone layout at `/vertical`** — visit `http://<mac-ip>:1980/vertical` on your phone for a calendar-style guide: channels become side-by-side columns, time reads top-to-bottom. Responds live to how you're holding the phone, no toggle to remember; the plain root URL always stays the standard horizontal grid regardless of device, if you'd rather bookmark that instead.
+- **Terminal Guide** — a full-screen terminal client for browsing the guide and scheduling recordings without a browser, bundled with the app (`hdhrVCRplus.app/Contents/Helpers/hdhr_guide`). Run it over SSH from anywhere on your network, or click "Open in Terminal" in Settings → Sharing. Same schedule/delete/favorite actions as the web guide, all from a keyboard.
 
 ### Multi-device & formats
 
