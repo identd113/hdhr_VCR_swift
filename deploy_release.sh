@@ -76,17 +76,22 @@ echo "    Release:      $RELEASE_VERSION (CFBundleVersion $_BUILD_NUM)"
 
 echo "==> Building (release, universal arm64+x86_64)…"
 # --arch passed twice builds both slices and has SwiftPM itself combine them into one fat Mach-O
-# (same mechanism Xcode uses for a universal macOS target) — no manual lipo step needed. Output
-# path moves to .build/apple/Products/Release/ instead of the single-arch .build/release/; verified
+# (same mechanism Xcode uses for a universal macOS target) — no manual lipo step needed. Verified
 # via `lipo -info` that the result actually carries both slices, and smoke-tested the x86_64 slice
 # launches cleanly under Rosetta from within a real .app bundle (a bare binary outside one crashes
 # on both architectures identically — UNUserNotificationCenter needs a real bundle proxy — so that
 # in isolation isn't an arch-specific signal). codesign/notarize/staple below are unchanged: all
 # three already operate transparently on a universal binary.
 swift build -c release --arch arm64 --arch x86_64
+# Resolved via --show-bin-path (same flags as the build above) instead of a hardcoded
+# .build/apple/Products/Release/ — that path was specific to the classic SwiftPM "native" build
+# system; the newer default "swiftbuild" engine (Xcode 26+) puts the same output under
+# .build/out/Products/Release/ instead. Asking the tool avoids re-breaking this every time the
+# active toolchain's build-system default or output layout changes again.
+BIN_PATH="$(swift build --show-bin-path -c release --arch arm64 --arch x86_64)"
 
 echo "==> Deploying binary…"
-cp .build/apple/Products/Release/hdhr_VCR "$BINARY"
+cp "$BIN_PATH/hdhr_VCR" "$BINARY"
 lipo -info "$BINARY"
 
 echo "==> Deploying CLI helper…"
@@ -94,7 +99,7 @@ echo "==> Deploying CLI helper…"
 # (same `swift build` invocation above already built both). Signed individually below, inside-out,
 # before the whole-bundle codesign — see deploy.sh's matching step for why.
 mkdir -p "$APP/Contents/Helpers"
-cp .build/apple/Products/Release/hdhr_guide "$APP/Contents/Helpers/hdhr_guide"
+cp "$BIN_PATH/hdhr_guide" "$APP/Contents/Helpers/hdhr_guide"
 
 echo "==> Deploying resources…"
 mkdir -p "$APP/Contents/Resources"

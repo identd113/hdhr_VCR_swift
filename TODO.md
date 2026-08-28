@@ -55,11 +55,15 @@ See `docs/TUIGuide.md`'s "Deferred ideas" section for open feature gaps and know
 
 `deploy_release.sh` now builds `swift build -c release --arch arm64 --arch x86_64` — SwiftPM itself
 combines both slices into one fat Mach-O (no manual `lipo -create` needed, unlike originally
-scoped), output at `.build/apple/Products/Release/hdhr_VCR` instead of the old single-arch
-`.build/release/hdhr_VCR`. Verified: `lipo -info` on the built binary shows both `x86_64 arm64`
-slices; the x86_64 slice launches cleanly under Rosetta from within a real `.app` bundle (a bare
-binary outside one crashes on *both* architectures identically at `UNUserNotificationCenter` —
-needs a real bundle proxy — so that alone isn't an arch-specific signal; had to control for it).
+scoped). Output path is resolved via `swift build --show-bin-path` (same flags) rather than
+hardcoded — it moved once already, from the old single-arch `.build/release/hdhr_VCR` to
+`.build/apple/Products/Release/hdhr_VCR` under the classic SwiftPM "native" build system, then
+again to `.build/out/Products/Release/hdhr_VCR` once Xcode 26+'s newer "swiftbuild" engine became
+the default (2026-08-28) — asking the tool avoids a third hardcoded-path breakage next time this
+changes. Verified: `lipo -info` on the built binary shows both `x86_64 arm64` slices; the x86_64
+slice launches cleanly under Rosetta from within a real `.app` bundle (a bare binary outside one
+crashes on *both* architectures identically at `UNUserNotificationCenter` — needs a real bundle
+proxy — so that alone isn't an arch-specific signal; had to control for it).
 `deploy.sh` (the fast local dev loop, ad-hoc signed, not shipped) deliberately stays single-arch —
 doubling every local build for Intel coverage nothing local needs isn't worth the iteration-speed
 cost; only what actually ships needed to change.

@@ -2,7 +2,11 @@
 .DS_Store
 
 # ── Build artifacts ───────────────────────────────────────────────────────
-.build/
+# No trailing slash on .build: a trailing-slash pattern only matches a real directory, not a
+# symlink named .build — and .build is a symlink here, redirected to ~/Library/Caches outside
+# iCloud Drive's Desktop & Documents sync (its File Provider tagging broke codesign under the
+# newer swiftbuild build system's .xctest bundle output — see git log for the fix).
+.build
 .swiftpm/
 *.o
 *.d
