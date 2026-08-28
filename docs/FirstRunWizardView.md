@@ -3,15 +3,37 @@
 ## Visual Appearance
 
 ### Overall window
-Fixed **480×460**, hidden title bar (traffic lights only, no title text) — same "modern floating
-panel" look as `DonationNagView`, since this is a focused onboarding flow rather than a
-document-style window. Unlike `AddShowView`'s two very differently-sized steps, both screens here
-are similarly-shaped settings forms, so the window never resizes between them — only the content
-slides.
+**Redesigned 2026-08-28** — the original version was a bare `VStack`/`Form` in a fixed 480×460
+frame with no material/corner treatment at all: it looked like an undressed Settings dialog
+floating with hard square corners, not a "floating panel" despite the doc's original claim. It now
+actually shares `DonationNagView`'s exact chrome, not just the same *intent*: `.background(.thickMaterial)`,
+`.clipShape(RoundedRectangle(cornerRadius: 20))`, a faint white `.strokeBorder` overlay, and the
+same drop shadow (`.shadow(color: .black.opacity(0.4), radius: 28, y: 14)`) — hidden title bar
+(traffic lights only, no title text), same as before.
 
-**Top of window**: 2 small 8pt circles — identical visual pattern to `AddShowView`'s step
-indicator. Filled accent-color circle = current step; hollow gray circle = other step. Below the
-circles: a `Divider`.
+**Width only is fixed (460pt)** — height is deliberately *not* declared, so the window sizes to
+its content's own ideal height instead of stretching a shorter step's `Form` to fill an
+arbitrary, too-tall frame (the old fixed 460 height left a large dead gray gap below Step 1's four
+rows once the Form's own list background was accounted for — confirmed via a live screenshot
+during the redesign, not just inferred from code). In practice `.windowResizability(.contentSize)`
+measures once at window presentation against whichever step renders first, so the window still
+effectively holds one height across the Next/Back transition (Step 2 has fewer rows than Step 1,
+so it shows a bit of extra bottom space when reached) — a content-driven version of the original
+"never resizes between them" property, not a hardcoded guess. Each `Form` also gets
+`.scrollContentBackground(.hidden)` (lets the panel's own `.thickMaterial` show through instead of
+the Form's own opaque grouped-list card, so the two don't read as a card nested inside a panel) and
+`.fixedSize(horizontal: false, vertical: true)` (List-backed Forms otherwise claim more vertical
+space than their rows need even without an outer fixed height).
+
+**Header band** (new): the app icon (`appIconImage`, `Sources/hdhr_VCR/AppIcon.swift` — the same
+global already used by `DonationNagView`/`SettingsView`/the menu bar icon) at 36×36 in a rounded
+rect, next to "Welcome to hdhrVCRplus" (`.headline`) and a one-line subtitle, giving the window the
+same "unmistakably this app's own chrome" identity `DonationNagView`'s header comment already
+argues for — the old version had no branding/identification at all. The step-progress dots sit
+directly below this, inside the same header `VStack` — still 2 small 8pt circles, filled
+accent-color = current step, hollow gray = other step (same visual pattern as `AddShowView`'s step
+indicator), just with real padding around them now instead of being crammed directly under the
+traffic lights.
 
 **Step content slides horizontally** — Next moves the new screen in from the right while the old
 one exits to the left; Back mirrors it. This is a real content transition
@@ -26,6 +48,30 @@ onboarding flow, not a resumable/cancelable form. Only Finish commits the field 
 other way just marks the wizard as seen and discards whatever was typed.
 
 ### Step 1 — Recording Defaults
+**Network status row** (new 2026-08-28, top of Step 1, own `Section`): a status line —
+`ProgressView` "Looking for your HDHomeRun tuner…" while checking, green
+`checkmark.circle.fill` "Tuner found on your network" once confirmed, or orange
+`exclamationmark.triangle.fill` "No tuner found yet" with an "Open Privacy Settings" button if
+nothing was found. Exists because `AppState`'s own launch-time discovery
+(`hdhr_VCRApp`'s `Task{startup()}`) already runs — and already triggers macOS's one-time Local
+Network permission alert — completely uncoordinated with anything on screen; a user could miss a
+dialog that appeared and vanished before this wizard even rendered. `checkNetworkAccessIfNeeded()`
+(`.task` on the wizard's outer body, guarded by `hasCheckedNetwork` so it runs once per wizard-open
+— reset alongside `hasLoadedInitialValues` in the same `onChange(of: First_run_wizard_shown)` reset
+block, so reopening via Settings' "Reset First-Run Setup" re-checks too) skips straight to
+`.confirmed` if `state.config.Local_network_confirmed` is already `true`; otherwise it calls
+`state.rediscoverDevices()` (same call `SettingsView`'s "Rediscover Devices" button uses) and, for
+every device found, `state.ensureLineupLoaded(for:)` — discovering a device's presence isn't proof
+of confirmed access on its own; `AppState.confirmLocalNetworkAccessIfNeeded()` only fires on an
+actual successful lineup fetch (a real HTTP round trip), so this forces that within the wizard's
+visible lifetime instead of waiting on the idle loop's own schedule. The "Open Privacy Settings"
+button (`openPrivacySettings()`) opens `x-apple.systempreferences:com.apple.preference.security` —
+**deliberately the bare Privacy & Security pane, not a Local-Network-specific deep link**: the
+`?Privacy_LocalNetwork` anchor pattern many apps use was tested live on this macOS version during
+development and did not land on the Local Network row, only the general pane (same fallback either
+with or without the anchor) — button copy/detail text ask the user to navigate the last step
+(Privacy & Security → Local Network) themselves rather than promising a jump that doesn't happen.
+
 Save folder (`NSOpenPanel` picker, same control shape as `SettingsView`'s Recording tab), default
 transcode profile, min free disk (GB), and failure threshold — each with an `InfoButton` popover
 explaining what it does, reusing wording from the equivalent `SettingsView` rows.
@@ -34,8 +80,10 @@ explaining what it does, reusing wording from the equivalent `SettingsView` rows
 Up Next / Recording Soon lead-time minutes, same `Stepper` controls and warning banner (shown when
 the recording alert would fire at or after Up Next) as `SettingsView`'s Notifications tab.
 
-**Nav bar** (bottom): Back (step 2 only) and Next/Finish, right-aligned, Next/Finish
-`.borderedProminent`. A `Divider` above.
+**Nav bar** (bottom): Back (step 2 only, `.plain` style, `.secondary` foreground — a quiet
+secondary action) and Next/Finish, right-aligned, Next/Finish `.borderedProminent`. A `Divider`
+above (`opacity(0.5)`, same softened-divider treatment used below the header, so the dividers read
+as subtle separators against the material background rather than harsh full-contrast lines).
 
 ## Intent
 
