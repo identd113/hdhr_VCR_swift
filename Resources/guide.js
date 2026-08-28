@@ -1435,9 +1435,19 @@ document.addEventListener('keydown',function(e){
 // typed self-clears after 5s (armSearchStrayTimer, called via onSearchInput below) so an
 // incidental keystroke aimed at the guide doesn't leave the search box parked open.
 document.addEventListener('keydown',function(e){
-  if(_searchShow||anyGuideModalOpen())return;
+  // Cheapest checks first — plain property reads, no DOM — since the overwhelming majority of
+  // keydowns in normal guide use (arrow-key episode cycling, Tab, Escape, modified shortcuts)
+  // fail one of these and should never reach anyGuideModalOpen()'s 3 DOM lookups below.
+  if(_searchShow)return;
   if(e.metaKey||e.ctrlKey||e.altKey)return; // leave real shortcuts (Cmd+R, etc.) alone
-  if(e.key.length!==1)return; // printable characters only — not Tab/Shift/F-keys/etc.
+  // Space is excluded even though it's technically a printable character: every .g-prog block is
+  // role="button" tabindex="0" with its own onkeydown activating on Space (WebServer.swift's
+  // buildGuideGridHTML), and native <button>s (the theme switcher, tuner ▾, etc.) activate on
+  // Space's keyup gated on this keydown's default not being prevented — hijacking it here would
+  // both mis-fire a spurious search AND (via our own preventDefault below) silently break Space
+  // as a keyboard-activation key everywhere else in the guide.
+  if(e.key.length!==1||e.key===' ')return; // printable characters only — not Tab/Shift/F-keys/etc.
+  if(anyGuideModalOpen())return;
   var inp=document.getElementById('search-in');
   if(!inp||document.activeElement===inp)return; // already open — let the input's own handler run
   var ae=document.activeElement;

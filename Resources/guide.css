@@ -93,10 +93,14 @@ html.lm .genre-sel{background:#f0f0f0;border-color:#ccc;color:#333}
 /* Chip mode (a show is selected) — readOnly, styled to read as a filled pill rather than an
    editable field, so it's clear typing won't do anything until Escape/✕ clears it. */
 #search-in[readonly]{color:var(--ac);border-color:var(--ac);background:var(--acb);cursor:default}
+/* max-width, not width — the glyph's real rendered width (6px padding + the "ⓘ" character at
+   .9rem) was never measured and a guessed fixed width risks clipping it under overflow:hidden.
+   40px is just a generous ceiling this content will never actually reach, so the expanded state
+   always renders at the button's own natural intrinsic width. */
 #search-info-btn{background:none;border:none;color:var(--t4);font-size:.9rem;cursor:pointer;line-height:1;
-  width:0;padding:0;opacity:0;overflow:hidden;pointer-events:none;transition:opacity .15s ease,width .2s ease,padding .2s ease}
+  max-width:0;padding:0;opacity:0;overflow:hidden;pointer-events:none;transition:opacity .15s ease,max-width .2s ease,padding .2s ease}
 #search-bar:hover #search-info-btn,#search-bar:focus-within #search-info-btn,#search-bar.has-filter #search-info-btn{
-  width:14px;padding:0 0 0 6px;opacity:1;pointer-events:auto}
+  max-width:40px;padding:0 0 0 6px;opacity:1;pointer-events:auto}
 #search-info-btn:hover{color:var(--ac)}
 #search-clear{background:none;border:none;color:var(--t4);font-size:.78rem;cursor:pointer;padding:0 0 0 6px;line-height:1}
 #search-clear:hover{color:var(--t0)}
