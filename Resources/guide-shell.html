@@ -10,6 +10,22 @@
     <div id="genre-bar" style="display:none">
       <select id="genre-sel" onchange="filterGenre(this.value)" class="genre-sel"><option value="">All genres</option></select>
     </div>
+    <div id="search-bar">
+      <input type="text" id="search-in" autocomplete="off" role="combobox" aria-expanded="false"
+             aria-autocomplete="list" aria-controls="search-drop" aria-label="Search shows"
+             placeholder="Search shows…"
+             oninput="onSearchInput()" onkeydown="onSearchKeydown(event)">
+      <button id="search-info-btn" type="button" title="Search help" aria-label="Search help" aria-haspopup="true" aria-expanded="false" onclick="toggleSearchHelp(event)">ⓘ</button>
+      <button id="search-clear" type="button" title="Clear search" aria-label="Clear search" style="display:none" onclick="clearSearchFilter()">✕</button>
+      <div id="search-drop" role="listbox" aria-label="Search results" style="display:none"></div>
+      <div id="search-help" role="tooltip" style="display:none">
+        <div>Type <b>3+ letters</b> of a show's title to search this tuner's guide.</div>
+        <div><b>↑ / ↓</b> move through matches — <b>Enter</b> selects.</div>
+        <div>Selecting a show dims everything else and jumps to it.</div>
+        <div><b>← / →</b> jump between that show's other airings.</div>
+        <div><b>Esc</b> or <b>✕</b> clears the search.</div>
+      </div>
+    </div>
     <div id="theme-sw">
       <button data-m="dark"  onclick="setTheme('dark')"  title="Dark">◗</button>
       <button data-m="auto"  onclick="setTheme('auto')"  title="Auto (system)">◐</button>

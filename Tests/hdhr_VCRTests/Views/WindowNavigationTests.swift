@@ -481,6 +481,127 @@ struct WindowNavigationTests {
         #expect(windowCountAfter == 0)
     }
 
+    /// Confirms the web guide's search box (`Resources/guide-shell.html`'s `#search-in`, added
+    /// 2026-08-28) is actually reachable via the Accessibility API from inside the Add Show
+    /// wizard's embedded `WKWebView` (`AddShowView.swift`'s `AddShowWebView`, loading
+    /// `localhost:{Web_server_port}`) — the first test in this file to walk into web content
+    /// rather than a native SwiftUI AX tree, so its own AX role/shape assumptions are unverified
+    /// until this actually runs live. Also exercises real typing (System Events `keystroke`, not a
+    /// synthetic JS event) and confirms it can't accidentally land in "a show got selected" state.
+    ///
+    /// Deliberately does NOT try to select an actual result and assert on the resulting dim/chip
+    /// behavior — that needs a real matching show in whatever guide data happens to be loaded on
+    /// the machine running this test, which (unlike everything else in this suite) is real,
+    /// time-varying, live device/guide state this test has no control over. Typed query here is a
+    /// long random-looking string specifically chosen to never match a real title, so the
+    /// assertions below hold regardless of what's actually in the guide (or even whether any
+    /// device/guide data is loaded at all — searchDeviceId() just no-ops the fetch in that case).
+    /// Testing the full search→select→dim→cycle flow deterministically would need a fixture guide
+    /// via `tools/mock_hdhr.py --guide-file` wired into a real running app instance — a bigger lift
+    /// than this lightweight window-nav smoke test, left as a follow-up if deeper coverage is wanted.
+    ///
+    /// Performance risk worth knowing going in: every other AX walk in this file (`entire contents
+    /// of window ...`) targets a small, bounded native SwiftUI window. The Add Show window's guide
+    /// step can render a very large grid (thousands of `.g-prog` blocks, per guide.js's own
+    /// "~2600-tile grid" comment) — `entire contents` recursing that whole tree may be meaningfully
+    /// slower than every other use of this pattern here, or could time out. Not something that
+    /// could be verified without a live run.
+    @Test func addShowGuideSearchBoxIsAccessibleAndTypingDoesNotAutoSelect() throws {
+        guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+        let script = #"""
+        tell application "System Events"
+            tell process "hdhr_VCR"
+                \#(dismissDonationNagSnippet)
+                click menu item "Add Show…" of menu 1 of menu bar item 1 of menu bar 2
+                repeat 20 times
+                    delay 0.25
+                    if (count of windows) > 0 then exit repeat
+                end repeat
+                -- The WKWebView's own page load (fetch guide.json, render the grid) finishes well
+                -- after the window/WKWebView AX node itself first appears — same "window exists !=
+                -- content ready" lesson every other content-walking test in this file documents.
+                delay 3
+
+                -- Locate the search input by ARIA role + accessible name (aria-label="Search
+                -- shows"), not a guessed AX path — this is the first time this test file has ever
+                -- walked into WKWebView content, so no known-good shallow path exists the way it
+                -- does for the native SwiftUI windows elsewhere here. Retried like the Settings
+                -- checkbox lookup above: the guide grid can still be mutating its own AX subtree
+                -- shortly after first appearing.
+                set searchBox to missing value
+                repeat 5 times
+                    try
+                        set allEls to entire contents of window "Add Show"
+                        repeat with e in allEls
+                            try
+                                if (role of e is "AXTextField" or role of e is "AXComboBox") then
+                                    set d to "?"
+                                    try
+                                        set d to (description of e) as string
+                                    end try
+                                    if d contains "Search shows" then
+                                        set searchBox to e
+                                        exit repeat
+                                    end if
+                                end if
+                            end try
+                        end repeat
+                        if searchBox is not missing value then exit repeat
+                    on error
+                        delay 0.5
+                    end try
+                end repeat
+                if searchBox is missing value then
+                    try
+                        click (first button of window "Add Show" whose description is "close button")
+                    end try
+                    return "NO_SEARCH_BOX_FOUND"
+                end if
+
+                click searchBox
+                -- Long, random-looking, guaranteed-not-to-match-a-real-title query.
+                keystroke "zzqxvbnkjhgqwerty0987"
+                delay 1.0 -- debounce (~200ms) plus a real /api/guide-search round trip
+
+                set valAfter to "?"
+                try
+                    set valAfter to (value of searchBox) as string
+                end try
+                set roAfter to "false"
+                try
+                    if (value of attribute "AXReadOnly" of searchBox) then set roAfter to "true"
+                end try
+
+                try
+                    click (first button of window "Add Show" whose description is "close button")
+                end try
+                repeat 20 times
+                    delay 0.2
+                    if (count of windows) = 0 then exit repeat
+                end repeat
+
+                return valAfter & "|" & roAfter
+            end tell
+        end tell
+        """#
+        guard let result = runAppleScript(script) else {
+            Issue.record("Add Show guide-search script failed to run")
+            return
+        }
+        if result == "NO_SEARCH_BOX_FOUND" {
+            Issue.record("Could not find the web guide's search input inside the Add Show WKWebView via the Accessibility API — either this test's AX role/description assumptions are wrong (first time this file has walked into WKWebView content, unverified until run live) or the search box regressed/lost its aria-label. Needs a live, sighted RUN_WINDOW_NAV_TESTS=1 run to tell which.")
+            return
+        }
+        let parts = result.split(separator: "|", maxSplits: 1).map(String.init)
+        #expect(parts.count == 2, "unexpected script output: \(result)")
+        guard parts.count == 2 else { return }
+        let (value, readOnly) = (parts[0], parts[1])
+        #expect(value.contains("zzqxvbnkjhgqwerty0987"),
+            "search input's value changed unexpectedly after typing — got '\(value)'")
+        #expect(readOnly == "false",
+            "search input became read-only (chip/selected mode) after typing a query that should never match a real show")
+    }
+
     @Test func watchNowOpensAndCloses() throws {
         guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
         let (title, windowCountAfter) = try openAndCloseTopLevelWindow(menuItemName: "Watch Now…")

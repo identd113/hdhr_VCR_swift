@@ -65,6 +65,29 @@ html.lm .t-info-inline.t-info-full{background:#fce8e8;color:#8b0000}
 /* ── Theme switcher (3-dot segmented control) ── */
 .genre-sel{background:var(--s4);border:1px solid var(--b4);color:var(--t2);border-radius:5px;padding:4px 8px;font-size:.78rem;cursor:pointer}
 html.lm .genre-sel{background:#f0f0f0;border-color:#ccc;color:#333}
+/* ── Show search ── */
+#search-bar{position:relative;display:flex;align-items:center}
+#search-in{background:var(--s4);border:1px solid var(--b4);color:var(--t2);border-radius:5px;padding:4px 8px;font-size:.78rem;width:170px}
+#search-in::placeholder{color:var(--t5)}
+#search-in:focus{outline:none;border-color:var(--ac)}
+/* Chip mode (a show is selected) — readOnly, styled to read as a filled pill rather than an
+   editable field, so it's clear typing won't do anything until Escape/✕ clears it. */
+#search-in[readonly]{color:var(--ac);border-color:var(--ac);background:var(--acb);cursor:default}
+#search-info-btn{background:none;border:none;color:var(--t4);font-size:.9rem;cursor:pointer;padding:0 0 0 6px;line-height:1}
+#search-info-btn:hover{color:var(--ac)}
+#search-clear{background:none;border:none;color:var(--t4);font-size:.78rem;cursor:pointer;padding:0 0 0 6px;line-height:1}
+#search-clear:hover{color:var(--t0)}
+#search-drop{position:absolute;top:100%;right:0;margin-top:4px;min-width:260px;max-width:340px;max-height:60vh;overflow-y:auto;background:var(--s3);border:1px solid var(--b5);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.6);z-index:150;padding:4px}
+#search-help{position:absolute;top:100%;right:0;margin-top:4px;width:250px;background:var(--s3);border:1px solid var(--b5);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.6);z-index:150;padding:10px 12px;font-size:.74rem;color:var(--t2);line-height:1.5}
+#search-help div+div{margin-top:5px}
+#search-help b{color:var(--t0)}
+.search-row{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer}
+.search-row:hover,.search-row.search-hi{background:var(--acb)}
+.search-row img,.search-row-noart{width:36px;height:24px;border-radius:3px;object-fit:cover;flex-shrink:0;background:var(--s1)}
+.search-row-txt{min-width:0;overflow:hidden}
+.search-row-title{font-size:.8rem;color:var(--t0);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.search-row-sub{font-size:.7rem;color:var(--t4);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.search-empty{padding:10px 8px;font-size:.78rem;color:var(--t4)}
 #theme-sw{display:flex;background:var(--s4);border:1px solid var(--b4);border-radius:6px;overflow:hidden;flex-shrink:0}
 #theme-sw button{background:none;border:none;border-right:1px solid var(--b4);padding:5px 9px;cursor:pointer;color:var(--t4);font-size:.8rem;line-height:1;transition:background .12s,color .12s}
 #theme-sw button:last-child{border-right:none}
@@ -145,6 +168,7 @@ html.lm #sum-poster{background:#ccc}
   .t-info-inline{padding:1px 4px;font-size:.62rem;margin-left:3px}
   #theme-sw button{padding:4px 7px;font-size:.75rem}
   .genre-sel{padding:3px 6px;font-size:.72rem}
+  #search-in{width:110px;padding:3px 6px;font-size:.72rem}
   /* Grid time-header row (the "8 PM · 9 PM · ..." strip) — every pixel trimmed here is a
      pixel handed back to .gw's scrollable area, which is the whole point of this bucket. */
   .g-hdr-tl{height:24px}
@@ -166,6 +190,7 @@ html.lm #sum-poster{background:#ccc}
   .t-info-inline{padding:1px 4px;font-size:.62rem;margin-left:3px}
   #theme-sw button{padding:4px 7px;font-size:.75rem}
   .genre-sel{padding:3px 6px;font-size:.72rem}
+  #search-in{width:110px;padding:3px 6px;font-size:.72rem}
   .g-hdr-tl{height:28px}
   .g-hdr-ch-lbl{font-size:.58rem}
   .g-hdr-btn{padding:1px 4px;font-size:.72rem}

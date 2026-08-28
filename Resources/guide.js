@@ -822,6 +822,8 @@ document.addEventListener('click',function(e){
   } else {
     document.querySelectorAll('.tdrop').forEach(function(x){x.style.display='none';});
   }
+  var sBar=e.target.closest&&e.target.closest('#search-bar');
+  if(!sBar){closeSearchDrop();closeSearchHelp();}
 });
 // ── Edit show modal ──
 var _editId='',_editPaused=false,_editRec=false,_editType='single',_editPoster='';
@@ -984,6 +986,15 @@ function performEditDelete(){
 }
 var curDev='';
 var _genreFilter='';
+// Show-search state: _searchShow is null (no filter active) or {title, seriesId, airings, airingKeys, idx}
+// once a dropdown result has been picked. _searchResults/_searchHi track the still-open dropdown's
+// last fetch and arrow-key highlight; _searchReqId guards against an in-flight fetch for an older
+// query landing after a newer one (fast typing can fire several overlapping requests).
+var _searchShow=null;
+var _searchResults=[];
+var _searchHi=-1;
+var _searchDebounce=null;
+var _searchReqId=0;
 var _rows=document.querySelectorAll('.g-row');
 // Heavy per-program data (synopsis/poster/date/episode), lazy-loaded per row on scroll-into-view
 // via /api/guide-detail. Cached by "device:channel:start" so it survives refreshGuide() DOM swaps
@@ -1058,7 +1069,12 @@ document.addEventListener('mouseover',function(e){
     if(_hoverPrefetchEl===el)fetchRowHeavy(el.closest('.g-row'));
   },150);
 });
-function applyGenreDim(){
+// Single shared dim pass for both filter types (genre select, show search) — they're mutually
+// exclusive (selecting one clears the other, see filterGenre/selectSearchShow/clearSearchFilter),
+// so at most one of the two branches below is ever live at a time. Keeping them in one function
+// means every existing call site (setDev, on every tuner switch and after every guide refresh via
+// applyGuidePayload's setDev(curDev)) reapplies whichever filter is active without new wiring.
+function applyFilterDim(){
   var f=_genreFilter.toLowerCase();
   var infMode=f==='__inf';
   var newMode=f==='__new';
@@ -1066,7 +1082,13 @@ function applyGenreDim(){
     var isInf=p.dataset.inf==='1';
     var isNew=p.dataset.new==='1';
     var dim;
-    if(newMode){dim=!isNew;}
+    if(_searchShow){
+      // Exact (device,channel,start) identity match against the server-computed airing set —
+      // no client-side title/SeriesID re-derivation, so this can't drift from what
+      // /api/guide-search already decided belongs to the selected show.
+      dim=!_searchShow.airingKeys.has(p.dataset.device+':'+p.dataset.num+':'+p.dataset.start);
+    }
+    else if(newMode){dim=!isNew;}
     else if(infMode){dim=!isInf;}
     else{dim=(f&&(p.dataset.genre||'').toLowerCase()!==f)||isInf;}
     p.classList.toggle('g-prog-dim',dim);
@@ -1078,7 +1100,9 @@ function applyGenreDim(){
 }
 function setDev(id){
   var switched=id!==curDev;
-  if(switched){_genreFilter='';var sel=document.getElementById('genre-sel');if(sel)sel.value='';}
+  // Both filters are scoped to "the tuner you're viewing" (search explicitly, genre because
+  // rebuildGenreFilter only offers genres seen on curDev) — a switch invalidates either.
+  if(switched){_genreFilter='';var sel=document.getElementById('genre-sel');if(sel)sel.value='';clearSearchFilter();}
   curDev=id;
   if(switched)rebuildGenreFilter();
   // Empty id means "no specific tuner filter" — only ever passed for a single-online-tuner setup
@@ -1095,7 +1119,7 @@ function setDev(id){
     if(id){r.style.display=r.dataset.dev===id?'':'none';}
     else{var ch=r.dataset.ch;if(!seen[ch]){r.style.display='';seen[ch]=true;}else{r.style.display='none';}}
   });
-  applyGenreDim();
+  applyFilterDim();
   // Show/hide a section header (.g-fav-sep/.g-rec-sep) per device, based on whether any of its
   // visible rows carry the matching marker attribute (data-fav/data-rec).
   function toggleSectionSep(selector,attr){
@@ -1126,7 +1150,201 @@ function handleDevClick(id,btn){
   if(alreadySel){showTunerInfo(id,btn);}
   else{setDev(id);}
 }
-function filterGenre(g){_genreFilter=g;applyGenreDim();}
+function filterGenre(g){
+  _genreFilter=g;
+  // Mutually exclusive with show search — picking a genre while a show filter is active clears it.
+  if(g&&_searchShow)clearSearchFilter();
+  applyFilterDim();
+}
+// ── Show search ──
+// Single-online-tuner setups bootstrap with curDev==='' (see setDev's own comment above) — the
+// search endpoint needs a real device id, so fall back to the lone online tuner button's id the
+// same way handleDevClick does.
+function searchDeviceId(){
+  if(curDev)return curDev;
+  var b=document.querySelectorAll('.d-btn[data-dev]');
+  return b.length===1?b[0].dataset.dev:'';
+}
+function closeSearchDrop(){
+  var d=document.getElementById('search-drop');
+  if(d){d.style.display='none';d.innerHTML='';}
+  _searchHi=-1;
+  var inp=document.getElementById('search-in');
+  if(inp)inp.setAttribute('aria-expanded','false');
+}
+// ⓘ help popover — same on/off toggle + outside-click-closes pattern as the tuner ▾ dropdowns
+// and the search results dropdown, just a static explainer instead of live data.
+function toggleSearchHelp(evt){
+  evt.stopPropagation(); // otherwise this same click would immediately re-close it, below
+  var p=document.getElementById('search-help');
+  var btn=document.getElementById('search-info-btn');
+  var willOpen=p.style.display==='none';
+  closeSearchDrop(); // mutually exclusive with the results dropdown — no room for both
+  p.style.display=willOpen?'block':'none';
+  if(btn)btn.setAttribute('aria-expanded',willOpen?'true':'false');
+}
+function closeSearchHelp(){
+  var p=document.getElementById('search-help');
+  if(p)p.style.display='none';
+  var btn=document.getElementById('search-info-btn');
+  if(btn)btn.setAttribute('aria-expanded','false');
+}
+function onSearchInput(){
+  closeSearchHelp(); // typing again means they're past reading the ⓘ explainer
+  var inp=document.getElementById('search-in');
+  var q=inp.value.trim();
+  if(_searchDebounce)clearTimeout(_searchDebounce);
+  if(q.length<3){
+    _searchReqId++; // invalidate any in-flight fetch so it can't repaint a dropdown after the fact
+    closeSearchDrop();_searchResults=[];
+    return;
+  }
+  _searchDebounce=setTimeout(function(){runSearch(q);},200);
+}
+function runSearch(q){
+  var dev=searchDeviceId();
+  if(!dev)return;
+  var reqId=++_searchReqId;
+  fetch('/api/guide-search/'+encodeURIComponent(dev)+'/'+encodeURIComponent(q))
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if(reqId!==_searchReqId)return; // superseded by a newer query/backspace since this fetch started
+      _searchResults=d.shows||[];
+      renderSearchDrop();
+    })
+    .catch(function(){});
+}
+function renderSearchDrop(){
+  var d=document.getElementById('search-drop');
+  var inp=document.getElementById('search-in');
+  if(!d)return;
+  _searchHi=-1;
+  if(_searchResults.length===0){
+    d.innerHTML='<div class="search-empty">No matches</div>';
+  } else {
+    d.innerHTML=_searchResults.map(function(s,i){
+      var next=s.airings[0];
+      var sub=s.airings.length>1?(s.airings.length+' airings'):(next?hej(next.chName):'');
+      var img=s.poster?'<img src="'+hej(s.poster)+'" loading="lazy" onerror="this.style.display=\'none\'">'
+                       :'<div class="search-row-noart"></div>';
+      return '<div class="search-row" role="option" aria-selected="false" data-idx="'+i+'" onclick="selectSearchShow(_searchResults['+i+'])">'
+        +img+'<div class="search-row-txt"><div class="search-row-title">'+hej(s.title)+'</div><div class="search-row-sub">'+sub+'</div></div>'
+        +'</div>';
+    }).join('');
+  }
+  d.style.display='block';
+  if(inp)inp.setAttribute('aria-expanded','true');
+}
+function highlightSearchRow(idx){
+  var rows=document.querySelectorAll('#search-drop .search-row');
+  rows.forEach(function(r,i){
+    var hi=i===idx;
+    r.classList.toggle('search-hi',hi);
+    r.setAttribute('aria-selected',hi?'true':'false');
+  });
+  if(idx>=0&&rows[idx])rows[idx].scrollIntoView({block:'nearest'});
+}
+function onSearchKeydown(event){
+  if(_searchShow){
+    // Chip mode (a show is already selected): Escape/Backspace/Delete clears back to an editable,
+    // empty search box. Left/Right episode-cycling is handled globally (see the document-level
+    // listener below) so it keeps working after focus leaves the input — e.g. after clicking a
+    // dropdown row, which blurs it — not just while the input itself is focused.
+    if(event.key==='Escape'||event.key==='Backspace'||event.key==='Delete'){event.preventDefault();clearSearchFilter();}
+    return;
+  }
+  var d=document.getElementById('search-drop');
+  var open=d&&d.style.display!=='none'&&_searchResults.length>0;
+  if(event.key==='ArrowDown'){
+    if(!open)return;
+    event.preventDefault();
+    _searchHi=(_searchHi+1)%_searchResults.length;
+    highlightSearchRow(_searchHi);
+  } else if(event.key==='ArrowUp'){
+    if(!open)return;
+    event.preventDefault();
+    _searchHi=(_searchHi-1+_searchResults.length)%_searchResults.length;
+    highlightSearchRow(_searchHi);
+  } else if(event.key==='Enter'){
+    if(!open)return;
+    event.preventDefault();
+    selectSearchShow(_searchResults[_searchHi>=0?_searchHi:0]);
+  } else if(event.key==='Escape'){
+    var help=document.getElementById('search-help');
+    var helpOpen=help&&help.style.display!=='none';
+    if(open||helpOpen){event.preventDefault();closeSearchDrop();closeSearchHelp();}
+  }
+}
+function selectSearchShow(show){
+  if(!show)return;
+  closeSearchDrop();
+  var airingKeys=new Set(show.airings.map(function(a){return a.device+':'+a.ch+':'+a.start;}));
+  _searchShow={title:show.title,seriesId:show.seriesId,airings:show.airings,airingKeys:airingKeys,idx:0};
+  // Mutually exclusive with the genre filter.
+  _genreFilter='';
+  var gsel=document.getElementById('genre-sel');
+  if(gsel)gsel.value='';
+  var inp=document.getElementById('search-in');
+  if(inp)inp.readOnly=true;
+  var clr=document.getElementById('search-clear');
+  if(clr)clr.style.display='';
+  applyFilterDim();
+  jumpToSearchAiring();
+  updateSearchCounter();
+}
+function clearSearchFilter(){
+  if(!_searchShow)return;
+  _searchShow=null;
+  var inp=document.getElementById('search-in');
+  if(inp){inp.readOnly=false;inp.value='';}
+  var clr=document.getElementById('search-clear');
+  if(clr)clr.style.display='none';
+  closeSearchDrop();
+  applyFilterDim();
+}
+function updateSearchCounter(){
+  var inp=document.getElementById('search-in');
+  if(!inp||!_searchShow)return;
+  var n=_searchShow.airings.length;
+  inp.value=_searchShow.title+(n>1?' ('+(_searchShow.idx+1)+'/'+n+')':'');
+}
+function jumpToSearchAiring(){
+  if(!_searchShow)return;
+  var a=_searchShow.airings[_searchShow.idx];
+  if(!a)return;
+  var p=document.querySelector('.g-prog[data-device="'+a.device+'"][data-num="'+a.ch+'"][data-start="'+a.start+'"]');
+  if(p){p.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});showInfo(p);}
+}
+function cycleSearchEpisode(delta){
+  if(!_searchShow)return;
+  var next=_searchShow.idx+delta;
+  if(next<0||next>=_searchShow.airings.length)return; // clamp — no wraparound past a real boundary
+  _searchShow.idx=next;
+  jumpToSearchAiring();
+  updateSearchCounter();
+}
+// Global Left/Right episode-cycling while a show search filter is active — not scoped to
+// #search-in's own focus, since selecting a dropdown result with the mouse blurs the input
+// (mousedown on the non-focusable .search-row moves focus to <body>) and arrow keys should still
+// work afterward without clicking back into the search box. Skips when a modal is open or focus
+// is genuinely inside an editable text field (a Record/Edit modal's title input) so it can't
+// steal caret-movement keys from those — #search-in itself is readOnly in chip mode, so it's
+// exempted from that check rather than blocking its own bubbled keydown.
+function anyGuideModalOpen(){
+  return ['rec-modal','edit-modal','del-confirm-modal'].some(function(id){
+    var el=document.getElementById(id);
+    return el&&el.style.display!=='none';
+  });
+}
+document.addEventListener('keydown',function(e){
+  if(!_searchShow)return;
+  if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight')return;
+  var ae=document.activeElement;
+  var editable=ae&&(ae.tagName==='INPUT'||ae.tagName==='TEXTAREA')&&ae.id!=='search-in'&&!ae.readOnly;
+  if(editable||anyGuideModalOpen())return;
+  e.preventDefault();
+  cycleSearchEpisode(e.key==='ArrowRight'?1:-1);
+});
 function toggleFav(evt,btn){
   evt.stopPropagation();
   var row=btn.closest('.g-row');
