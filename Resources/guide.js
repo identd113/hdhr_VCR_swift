@@ -1019,6 +1019,12 @@ var _searchResults=[];
 var _searchHi=-1;
 var _searchDebounce=null;
 var _searchReqId=0;
+// Errant-keystroke guard: #search-bar is collapsed to just its ⌕ icon until hovered/focused (see
+// guide.css), so a single stray key typed at the guide (see the document-level keydown listener
+// below) pops it open. If exactly one character sits there with nothing further typed for 5s,
+// treat it as an accidental keystroke rather than an abandoned search and clear+collapse it back
+// — re-armed on every keystroke via onSearchInput(), cleared once length!=1 or a filter is picked.
+var _searchStrayTimer=null;
 var _rows=document.querySelectorAll('.g-row');
 // Heavy per-program data (synopsis/poster/date/episode), lazy-loaded per row on scroll-into-view
 // via /api/guide-detail. Cached by "device:channel:start" so it survives refreshGuide() DOM swaps
@@ -1189,6 +1195,47 @@ function searchDeviceId(){
   var b=document.querySelectorAll('.d-btn[data-dev]');
   return b.length===1?b[0].dataset.dev:'';
 }
+// #search-icon-btn's onclick — a click/Enter/Space activation without a lingering hover (e.g.
+// keyboard Tab+Enter) needs an explicit push into focus; :focus-within (guide.css) then keeps the
+// box expanded from there exactly like a mouse hover does.
+function expandSearch(){
+  var inp=document.getElementById('search-in');
+  if(inp)inp.focus();
+}
+// (Re)arms the 5s errant-keystroke clear whenever exactly one character is in the box; cancels
+// any pending timer otherwise (more was typed, it was cleared, or a filter was picked). Re-checks
+// the length/filter state at fire time, not just at arm time, since a lot can happen in 5s.
+function armSearchStrayTimer(){
+  if(_searchStrayTimer){clearTimeout(_searchStrayTimer);_searchStrayTimer=null;}
+  if(_searchShow)return;
+  var inp=document.getElementById('search-in');
+  if(!inp||inp.value.length!==1)return;
+  _searchStrayTimer=setTimeout(function(){
+    _searchStrayTimer=null;
+    if(_searchShow||inp.value.length!==1)return; // something real happened since arming
+    inp.value='';
+    onSearchInput();
+    inp.blur(); // releases :focus-within so the collapsed icon-only state returns (guide.css)
+  },5000);
+}
+// #search-icon-btn's own disclosure state — distinct from #search-in's aria-expanded, which
+// already means "the results dropdown is open" (a combobox's own ARIA pattern; see
+// renderSearchDrop/closeSearchDrop). :hover/:focus-within drive the box's actual CSS
+// expand/collapse (guide.css) directly with no JS involved; this just mirrors that same
+// condition onto the icon button's aria-expanded for assistive tech, via the live pseudo-class
+// query rather than duplicating hover/focus state in a second place that could drift out of sync.
+function syncSearchIconAria(){
+  var bar=document.getElementById('search-bar');
+  var btn=document.getElementById('search-icon-btn');
+  if(!bar||!btn)return;
+  var open=bar.classList.contains('has-filter')||bar.matches(':hover')||bar.matches(':focus-within');
+  btn.setAttribute('aria-expanded',open?'true':'false');
+}
+(function(){
+  var bar=document.getElementById('search-bar');
+  if(!bar)return;
+  ['mouseenter','mouseleave','focusin','focusout'].forEach(function(ev){bar.addEventListener(ev,syncSearchIconAria);});
+})();
 function closeSearchDrop(){
   var d=document.getElementById('search-drop');
   if(d){d.style.display='none';d.innerHTML='';}
@@ -1215,6 +1262,7 @@ function closeSearchHelp(){
 }
 function onSearchInput(){
   closeSearchHelp(); // typing again means they're past reading the ⓘ explainer
+  armSearchStrayTimer();
   var inp=document.getElementById('search-in');
   var q=inp.value.trim();
   if(_searchDebounce)clearTimeout(_searchDebounce);
@@ -1301,6 +1349,7 @@ function onSearchKeydown(event){
 }
 function selectSearchShow(show){
   if(!show)return;
+  if(_searchStrayTimer){clearTimeout(_searchStrayTimer);_searchStrayTimer=null;}
   closeSearchDrop();
   var airingKeys=new Set(show.airings.map(function(a){return a.device+':'+a.ch+':'+a.start;}));
   _searchShow={title:show.title,seriesId:show.seriesId,airings:show.airings,airingKeys:airingKeys,idx:0};
@@ -1312,6 +1361,12 @@ function selectSearchShow(show){
   if(inp)inp.readOnly=true;
   var clr=document.getElementById('search-clear');
   if(clr)clr.style.display='';
+  // A selected show must stay expanded (showing its chip) even after the mouse leaves and the
+  // click that picked it blurs the input — :hover/:focus-within (guide.css) can't cover that, so
+  // this is the one case that needs an explicit class.
+  var bar=document.getElementById('search-bar');
+  if(bar)bar.classList.add('has-filter');
+  syncSearchIconAria();
   applyFilterDim();
   jumpToSearchAiring();
   updateSearchCounter();
@@ -1323,6 +1378,9 @@ function clearSearchFilter(){
   if(inp){inp.readOnly=false;inp.value='';}
   var clr=document.getElementById('search-clear');
   if(clr)clr.style.display='none';
+  var bar=document.getElementById('search-bar');
+  if(bar)bar.classList.remove('has-filter');
+  syncSearchIconAria();
   closeSearchDrop();
   applyFilterDim();
 }
@@ -1368,6 +1426,30 @@ document.addEventListener('keydown',function(e){
   if(editable||anyGuideModalOpen())return;
   e.preventDefault();
   cycleSearchEpisode(e.key==='ArrowRight'?1:-1);
+});
+// Type-to-search: #search-bar is collapsed to its ⌕ icon (guide.css) until hovered/focused, but a
+// user shouldn't have to reach for the mouse first — typing a plain character anywhere in the
+// guide (nothing else focused/editable, no modal open, no filter chip already active) pops the
+// box open, focuses it, and seeds it with the very key that was pressed, same as if they'd
+// clicked in and typed it themselves. A single stray key left sitting there with nothing further
+// typed self-clears after 5s (armSearchStrayTimer, called via onSearchInput below) so an
+// incidental keystroke aimed at the guide doesn't leave the search box parked open.
+document.addEventListener('keydown',function(e){
+  if(_searchShow||anyGuideModalOpen())return;
+  if(e.metaKey||e.ctrlKey||e.altKey)return; // leave real shortcuts (Cmd+R, etc.) alone
+  if(e.key.length!==1)return; // printable characters only — not Tab/Shift/F-keys/etc.
+  var inp=document.getElementById('search-in');
+  if(!inp||document.activeElement===inp)return; // already open — let the input's own handler run
+  var ae=document.activeElement;
+  // SELECT included even though it's not "editable" text — a focused <select> (e.g. #genre-sel)
+  // has its own native type-to-jump-to-option behavior that this listener would otherwise break.
+  var editable=ae&&(ae.tagName==='INPUT'||ae.tagName==='TEXTAREA'||ae.tagName==='SELECT'||ae.isContentEditable);
+  if(editable)return; // don't steal keystrokes aimed at a genuinely different form control
+  e.preventDefault(); // also stops Firefox's own "quick find" from opening on '/' or "'"
+  inp.value=e.key;
+  inp.focus();
+  inp.setSelectionRange(inp.value.length,inp.value.length); // caret after the seeded key, not before it
+  onSearchInput();
 });
 function toggleFav(evt,btn){
   evt.stopPropagation();

@@ -66,14 +66,37 @@ html.lm .t-info-inline.t-info-full{background:#fce8e8;color:#8b0000}
 .genre-sel{background:var(--s4);border:1px solid var(--b4);color:var(--t2);border-radius:5px;padding:4px 8px;font-size:.78rem;cursor:pointer}
 html.lm .genre-sel{background:#f0f0f0;border-color:#ccc;color:#333}
 /* ── Show search ── */
-#search-bar{position:relative;display:flex;align-items:center}
-#search-in{background:var(--s4);border:1px solid var(--b4);color:var(--t2);border-radius:5px;padding:4px 8px;font-size:.78rem;width:170px}
+/* Collapsed by default — just the ⌕ icon button; the input/info-btn expand on hover, on focus
+   (click or Tab), or once a filter chip is active (.has-filter, set by selectSearchShow/
+   clearSearchFilter in guide.js — the one case that must stay expanded even after the mouse
+   leaves and the input blurs, e.g. right after clicking a dropdown result). :hover and
+   :focus-within cover the other two triggers without any JS bookkeeping. Widths/opacity
+   transition on the same cubic-bezier(.22,1,.36,1) overshoot curve StarburstBadge's web
+   equivalent (.sb-anim, see @keyframes sbPop below) already uses, so the expand reads as the
+   same "flourish" language as the rest of the guide rather than a plain linear resize. */
+#search-bar{position:relative;display:flex;align-items:center;padding:2px 3px;border-radius:7px;transition:background .15s ease}
+#search-bar:hover,#search-bar:focus-within,#search-bar.has-filter{background:var(--s4)}
+#search-icon-btn{background:none;border:none;color:var(--t3);font-size:.85rem;cursor:pointer;padding:4px 5px;line-height:1;border-radius:5px;flex-shrink:0}
+#search-bar:hover #search-icon-btn,#search-bar:focus-within #search-icon-btn,#search-bar.has-filter #search-icon-btn{color:var(--ac)}
+/* Re-fires on every fresh hover/focus-within/has-filter transition (CSS restarts a named
+   animation each time the rule newly matches) — a small pop on the icon itself the moment the
+   box starts expanding, not just a resize. */
+@keyframes searchIconPop{0%{transform:scale(1)}35%{transform:scale(1.3)}60%{transform:scale(.92)}100%{transform:scale(1)}}
+#search-bar:hover #search-icon-btn,#search-bar:focus-within #search-icon-btn,#search-bar.has-filter #search-icon-btn{animation:searchIconPop .35s cubic-bezier(.22,1,.36,1)}
+#search-in{background:var(--s4);border:1px solid transparent;color:var(--t2);border-radius:5px;font-size:.78rem;
+  width:0;padding:4px 0;margin-left:0;opacity:0;pointer-events:none;
+  transition:width .3s cubic-bezier(.22,1,.36,1),padding .3s cubic-bezier(.22,1,.36,1),margin-left .3s cubic-bezier(.22,1,.36,1),opacity .18s ease,border-color .15s ease}
+#search-bar:hover #search-in,#search-bar:focus-within #search-in,#search-bar.has-filter #search-in{
+  width:170px;padding:4px 8px;margin-left:4px;opacity:1;pointer-events:auto;border-color:var(--b4)}
 #search-in::placeholder{color:var(--t5)}
 #search-in:focus{outline:none;border-color:var(--ac)}
 /* Chip mode (a show is selected) — readOnly, styled to read as a filled pill rather than an
    editable field, so it's clear typing won't do anything until Escape/✕ clears it. */
 #search-in[readonly]{color:var(--ac);border-color:var(--ac);background:var(--acb);cursor:default}
-#search-info-btn{background:none;border:none;color:var(--t4);font-size:.9rem;cursor:pointer;padding:0 0 0 6px;line-height:1}
+#search-info-btn{background:none;border:none;color:var(--t4);font-size:.9rem;cursor:pointer;line-height:1;
+  width:0;padding:0;opacity:0;overflow:hidden;pointer-events:none;transition:opacity .15s ease,width .2s ease,padding .2s ease}
+#search-bar:hover #search-info-btn,#search-bar:focus-within #search-info-btn,#search-bar.has-filter #search-info-btn{
+  width:14px;padding:0 0 0 6px;opacity:1;pointer-events:auto}
 #search-info-btn:hover{color:var(--ac)}
 #search-clear{background:none;border:none;color:var(--t4);font-size:.78rem;cursor:pointer;padding:0 0 0 6px;line-height:1}
 #search-clear:hover{color:var(--t0)}
@@ -168,7 +191,12 @@ html.lm #sum-poster{background:#ccc}
   .t-info-inline{padding:1px 4px;font-size:.62rem;margin-left:3px}
   #theme-sw button{padding:4px 7px;font-size:.75rem}
   .genre-sel{padding:3px 6px;font-size:.72rem}
-  #search-in{width:110px;padding:3px 6px;font-size:.72rem}
+  /* font-size applies even while collapsed (harmless — width:0 hides it); width/padding must
+     match the base file's expanded-state compound selector or they'd lose the specificity fight
+     to it (two ID-scoped ancestor combinators there vs. one bare ID here) and this breakpoint's
+     override would silently never apply. */
+  #search-in{font-size:.72rem}
+  #search-bar:hover #search-in,#search-bar:focus-within #search-in,#search-bar.has-filter #search-in{width:110px;padding:3px 6px}
   /* Grid time-header row (the "8 PM · 9 PM · ..." strip) — every pixel trimmed here is a
      pixel handed back to .gw's scrollable area, which is the whole point of this bucket. */
   .g-hdr-tl{height:24px}
@@ -190,7 +218,12 @@ html.lm #sum-poster{background:#ccc}
   .t-info-inline{padding:1px 4px;font-size:.62rem;margin-left:3px}
   #theme-sw button{padding:4px 7px;font-size:.75rem}
   .genre-sel{padding:3px 6px;font-size:.72rem}
-  #search-in{width:110px;padding:3px 6px;font-size:.72rem}
+  /* font-size applies even while collapsed (harmless — width:0 hides it); width/padding must
+     match the base file's expanded-state compound selector or they'd lose the specificity fight
+     to it (two ID-scoped ancestor combinators there vs. one bare ID here) and this breakpoint's
+     override would silently never apply. */
+  #search-in{font-size:.72rem}
+  #search-bar:hover #search-in,#search-bar:focus-within #search-in,#search-bar.has-filter #search-in{width:110px;padding:3px 6px}
   .g-hdr-tl{height:28px}
   .g-hdr-ch-lbl{font-size:.58rem}
   .g-hdr-btn{padding:1px 4px;font-size:.72rem}

@@ -11,6 +11,7 @@
       <select id="genre-sel" onchange="filterGenre(this.value)" class="genre-sel"><option value="">All genres</option></select>
     </div>
     <div id="search-bar">
+      <button id="search-icon-btn" type="button" title="Search shows" aria-label="Search shows" aria-expanded="false" onclick="expandSearch()">⌕</button>
       <input type="text" id="search-in" autocomplete="off" role="combobox" aria-expanded="false"
              aria-autocomplete="list" aria-controls="search-drop" aria-label="Search shows"
              placeholder="Search shows…"
