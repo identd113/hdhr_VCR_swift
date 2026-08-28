@@ -51,8 +51,4 @@ CLAUDE.md
 # brute-forcing the hash.
 /tools/donation_target.txt
 
-# Private technical notes on the donation-unlock mechanism's exact construction
-# rule and known weakness (quantified) — DonationNagView.swift/docs/DonationNagView.md
-# intentionally keep the public-facing versions generic; see tools/donation_target.txt's
-# entry above for the target itself.
-/tools/donation_target_notes.md
+/tools/gitignored/

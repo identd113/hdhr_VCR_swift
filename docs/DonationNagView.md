@@ -96,6 +96,6 @@ never sensitive to begin with.
 **Generating codes**: no script needed — a fresh valid code can be constructed by hand for each
 tipper from the target number in seconds. The exact construction rule, the target itself, and the
 mechanism's known weakness (quantified — how small the search space actually is) are kept out of
-this public doc on purpose; see `tools/donation_target_notes.md` (gitignored, private) for all
-three. Back that file up somewhere private along with `tools/donation_target.txt` — losing both
-means recovering the target only by brute-forcing the hash.
+this public doc on purpose; see the developer's own private, untracked notes for all three. Back
+those up somewhere private along with `tools/donation_target.txt` — losing both means recovering
+the target only by brute-forcing the hash.
