@@ -1911,12 +1911,22 @@ final class AppState: ObservableObject {
         // Always persist endDate so the idle-loop natural-stop check and notifications use it
         shows[index].show_end = endDate
         let remainingSecs = max(60, Int(endDate.timeIntervalSince(Date())))
-        glog("[\(show.show_title)] START ch=\(show.show_channel) dur=\(remainingSecs)s transcode=\(show.show_transcode) → \(path)")
+        // Force "none" on a device that doesn't support server-side transcoding, regardless of what
+        // show_transcode holds — never even attempt an unsupported profile (it would just fail with
+        // X-HDHomeRun-Error 802 "Unknown Transcode Profile" and burn a fail-count retry for nothing).
+        // show_transcode itself is left untouched so the picker still reflects the user's actual
+        // choice — e.g. after moving the show to a transcode-capable tuner, or once ModelNumber
+        // becomes known for a device that was only ever UDP-discovered.
+        let effectiveTranscode = device.supportsTranscode ? show.show_transcode : "none"
+        if effectiveTranscode != show.show_transcode {
+            glog("[\(show.show_title)] device \(device.DeviceID) (ModelNumber \(device.ModelNumber ?? "unknown")) doesn't support transcoding — forcing none instead of \(show.show_transcode)", level: .warning)
+        }
+        glog("[\(show.show_title)] START ch=\(show.show_channel) dur=\(remainingSecs)s transcode=\(effectiveTranscode) → \(path)")
         do {
             try recordingManager.start(showId: show.show_id, title: show.show_title,
                                        url: show.show_url,
                                        outputPath: path, durationSeconds: remainingSecs,
-                                       transcode: show.show_transcode, showEnd: endDate,
+                                       transcode: effectiveTranscode, showEnd: endDate,
                                        verbose: config.Verbose_curl,
                                        networkInterface: config.Network_interface)
         } catch {

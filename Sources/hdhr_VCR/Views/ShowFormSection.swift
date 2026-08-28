@@ -74,6 +74,14 @@ struct ShowFormSection: View {
         return (gn, signalBucket(guideName: gn))
     }
 
+    // Defaults to true (no warning) when the device isn't resolvable yet — e.g. before a tuner has
+    // been picked in the Add wizard — unlike AppState.startRecording's opposite conservative default
+    // (unknown ModelNumber ⇒ force None): a false positive here would wrongly warn about a device
+    // that was simply never selected, where the same "unknown" case at record time must stay safe.
+    private var selectedDeviceSupportsTranscode: Bool {
+        state.devices.first(where: { $0.DeviceID == show.hdhr_record })?.supportsTranscode ?? true
+    }
+
     var body: some View {
         Group {
             LabeledContent("Title") {
@@ -124,6 +132,15 @@ struct ShowFormSection: View {
                     Text("Internet 720").tag("internet720")
                 }
                 .help("None keeps the raw MPEG stream (recommended). Heavy, Mobile, and Internet 720 transcode the stream to reduce file size or target a specific playback device. Not all tuner models support transcoding — if a recording fails immediately after picking one, switch back to None.")
+            }
+
+            if show.show_transcode != "none", !selectedDeviceSupportsTranscode {
+                Label("This tuner doesn't support transcoding — the Transcode setting above will be ignored and recorded as None.",
+                      systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(.white)
+                    .padding(10)
+                    .background(Color.orange.cornerRadius(8))
+                    .font(.callout)
             }
 
             if state.config.Sports_padding_enabled {

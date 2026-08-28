@@ -70,6 +70,62 @@ struct AppStateRecordingEngineTests {
         manager.stop(showId: show.show_id)
     }
 
+    // Device support is gated on HDHRDevice.supportsTranscode (ModelNumber's "HDTC" prefix) —
+    // startRecording must never hand curl a transcode profile the tuner will just reject with
+    // X-HDHomeRun-Error 802 "Unknown Transcode Profile" (docs/HDHRFindings.md). makeDevice() (no
+    // modelNumber) is the conservative "unsupported" case by construction; a second device with an
+    // "HDTC"-prefixed ModelNumber covers the positive case in the same test so a future change
+    // can't satisfy one assertion by breaking the other (e.g. forcing "none" unconditionally).
+    @Test @MainActor func startRecording_unsupportedDevice_forcesTranscodeNone_supportedDeviceKeepsChoice() async throws {
+        let argsLogUnsupported = NSTemporaryDirectory() + "hdhrVCRplus-test-argslog-\(UUID().uuidString).txt"
+        let argsLogSupported   = NSTemporaryDirectory() + "hdhrVCRplus-test-argslog-\(UUID().uuidString).txt"
+        defer {
+            try? FileManager.default.removeItem(atPath: argsLogUnsupported)
+            try? FileManager.default.removeItem(atPath: argsLogSupported)
+        }
+        let scriptUnsupported = try writeMockCurlScript(sleepSeconds: 30, argsLogPath: argsLogUnsupported)
+        let scriptSupported   = try writeMockCurlScript(sleepSeconds: 30, argsLogPath: argsLogSupported)
+        defer {
+            try? FileManager.default.removeItem(atPath: scriptUnsupported)
+            try? FileManager.default.removeItem(atPath: scriptSupported)
+        }
+
+        let unsupportedDevice = HDHRDevice.test(id: "FFFFFFFF", tuners: 4)  // no ModelNumber
+        let supportedDevice   = HDHRDevice.test(id: "AAAAAAAA", tuners: 4, modelNumber: "HDTC-2US")
+
+        var showUnsupported = makeShow(recordDir: tempRecordDir(), next: Date().addingTimeInterval(-5), end: Date().addingTimeInterval(1800))
+        showUnsupported.show_transcode = "heavy"
+        // show_id is randomized by Show.blank() (called via makeShow) — no explicit uniquing needed
+        // to keep this show's --dump-header temp path from colliding with showUnsupported's.
+        var showSupported = makeShow(recordDir: tempRecordDir(), next: Date().addingTimeInterval(-5), end: Date().addingTimeInterval(1800))
+        showSupported.hdhr_record = "AAAAAAAA"
+        showSupported.show_transcode = "heavy"
+
+        let managerUnsupported = RecordingManager(curlExecutablePath: scriptUnsupported)
+        let stateUnsupported = makeTestAppState(shows: [showUnsupported], devices: [unsupportedDevice], recordingManager: managerUnsupported)
+        stateUnsupported.maxDiskPct = 100
+        stateUnsupported.config.Min_disk_free_gb = 0
+        await stateUnsupported.startRecording(index: 0)
+        // Generous timeout — under a loaded test run (many suites spawning real subprocesses in
+        // parallel), the mock curl script can take longer than waitUntil's 3s default just to get
+        // scheduled and write its args log.
+        await waitUntil(timeout: 8) { FileManager.default.fileExists(atPath: argsLogUnsupported) }
+        let argsUnsupported = (try? String(contentsOfFile: argsLogUnsupported, encoding: .utf8)) ?? ""
+        #expect(argsUnsupported.contains("transcode=none"))
+        #expect(!argsUnsupported.contains("transcode=heavy"))
+        managerUnsupported.stop(showId: showUnsupported.show_id)
+
+        let managerSupported = RecordingManager(curlExecutablePath: scriptSupported)
+        let stateSupported = makeTestAppState(shows: [showSupported], devices: [supportedDevice], recordingManager: managerSupported)
+        stateSupported.maxDiskPct = 100
+        stateSupported.config.Min_disk_free_gb = 0
+        await stateSupported.startRecording(index: 0)
+        await waitUntil(timeout: 8) { FileManager.default.fileExists(atPath: argsLogSupported) }
+        let argsSupported = (try? String(contentsOfFile: argsLogSupported, encoding: .utf8)) ?? ""
+        #expect(argsSupported.contains("transcode=heavy"))
+        managerSupported.stop(showId: showSupported.show_id)
+    }
+
     @Test @MainActor func startRecording_metadataSidecarEnabled_writesNfoFileAlongsideRecording() async throws {
         let scriptPath = try writeMockCurlScript(sleepSeconds: 30)
         defer { try? FileManager.default.removeItem(atPath: scriptPath) }

@@ -25,7 +25,17 @@ Scope        — Only when seriesType.isSeries. A 2-segment Picker — Channel |
 Transcode    — Picker: None | Heavy | Mobile | Internet 720
                Tooltip: None keeps raw MPEG; others transcode for size/device; notes that not all
                tuner models support transcoding and to fall back to None if a recording fails
-               immediately (app has no per-device capability detection to warn proactively)
+               immediately. Below the picker, an orange warning banner (added 2026-08-28, same
+               style as the Signal and Duplicate Episodes banners) appears whenever
+               show.show_transcode != "none" and the selected device's HDHRDevice.supportsTranscode
+               is false — "This tuner doesn't support transcoding — the Transcode setting above
+               will be ignored and recorded as None." Informational only: the actual enforcement
+               happens unconditionally in AppState.startRecording regardless of whether this banner
+               was ever seen — see CLAUDE.md's "Transcode capability gate" invariant. The device
+               lookup (selectedDeviceSupportsTranscode) defaults to *true* (no warning) when
+               show.hdhr_record doesn't resolve to a known device — the opposite of
+               startRecording's own conservative default — since a device simply not yet picked in
+               the Add wizard shouldn't read as "detected unsupported."
 Bonus Time   — Toggle (only when state.config.Sports_padding_enabled); bound to show.show_bonus_time
 Day/Days     — Weekday toggle buttons (only for .single and .dateTime)
                Tooltip: single-day vs. multi-day selection intent

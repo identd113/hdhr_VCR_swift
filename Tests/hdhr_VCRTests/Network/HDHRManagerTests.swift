@@ -59,6 +59,40 @@ struct HDHRManagerTests {
         #expect(device.TunerCount == 2)
     }
 
+    @Test func fetchDeviceInfo_withModelNumber_decodesAndComputesSupportsTranscode() async throws {
+        HDHRMockURLProtocol.requestHandler = { req in
+            let json = """
+            {"DeviceID":"105404BE","LocalIP":"10.0.2.101","TunerCount":2,"FirmwareVersion":"20230629","ModelNumber":"HDTC-2US"}
+            """
+            return (hdhrOKResponse(for: req.url!), Data(json.utf8))
+        }
+        let manager = makeHDHRManager()
+        let device = try await manager.fetchDeviceInfo(ip: "10.0.2.101")
+        #expect(device.ModelNumber == "HDTC-2US")
+        #expect(device.supportsTranscode)
+    }
+
+    // MARK: - HDHRDevice.supportsTranscode
+    //
+    // The real per-device capability field only exists on the CGNAT-unsafe cloud discover
+    // endpoint (docs/HDHRFindings.md's "Transcode capability" section) — never called. ModelNumber's
+    // "HDTC" prefix is the safe local proxy AppState.startRecording gates on before ever attempting
+    // a non-"none" transcode profile.
+
+    @Test func supportsTranscode_hdtcPrefixedModel_isTrue() {
+        #expect(HDHRDevice.test(modelNumber: "HDTC-2US").supportsTranscode)
+    }
+
+    @Test func supportsTranscode_nonHdtcModel_isFalse() {
+        #expect(!HDHRDevice.test(modelNumber: "HDHR5-4US").supportsTranscode)
+    }
+
+    @Test func supportsTranscode_unknownModelNumber_isFalseByDefault() {
+        // nil ModelNumber (e.g. a UDP-only-discovered device) is the conservative default — treated
+        // as unsupported rather than assumed capable, so a recording never attempts an unverified profile.
+        #expect(!HDHRDevice.test(modelNumber: nil).supportsTranscode)
+    }
+
     @Test func fetchDeviceInfo_malformedJSON_throws() async {
         HDHRMockURLProtocol.requestHandler = { req in
             (hdhrOKResponse(for: req.url!), Data("not json".utf8))

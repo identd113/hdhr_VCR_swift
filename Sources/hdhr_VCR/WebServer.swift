@@ -1820,7 +1820,12 @@ final class WebServer: @unchecked Sendable {
             var dict: [String: Any] = [:]
             for d in state.devices {
                 guard let dt = devTuners[d.DeviceID] else { continue }
-                dict[d.DeviceID] = ["t": dt.total, "a": dt.active, "surl": "http://\(d.LocalIP)/status.json"]
+                // "nt" (noTranscode) mirrors AppState.startRecording's own device.supportsTranscode
+                // check — lets the Record modal warn proactively instead of only after a failed
+                // recording. 1/0 rather than a bool so jsEscapeForScript's string round-trip can't
+                // turn `false` into the truthy string `"false"` client-side.
+                dict[d.DeviceID] = ["t": dt.total, "a": dt.active, "surl": "http://\(d.LocalIP)/status.json",
+                                     "nt": d.supportsTranscode ? 0 : 1]
             }
             guard let data = try? JSONSerialization.data(withJSONObject: dict),
                   let str  = String(data: data, encoding: .utf8) else { return "var tuners={};" }

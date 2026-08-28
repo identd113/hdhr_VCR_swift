@@ -67,6 +67,7 @@ function toggleBonusStar(){var chk=document.getElementById('em-bonus');var star=
 function ft(d){var h=d.getHours(),m=d.getMinutes(),ap=h>=12?'PM':'AM';h=h%12||12;return h+(m?':'+(m<10?'0':'')+m:'')+' '+ap;}
 function so(id,v){var e=document.getElementById(id);if(v){e.textContent=v;e.style.display='block';}else{e.style.display='none';}}
 function devFull(devId){var t=tuners[devId];return t&&t.t>0&&t.a>=t.t;}
+function noTranscode(devId){var t=tuners[devId];return !!(t&&t.nt);}
 function showInfo(el){
   var d=el.dataset;
   // Mark the selection before renderHeavyFields() runs — paintHeavyFields() gates its
@@ -339,6 +340,7 @@ function doRecord(){
   document.getElementById('rm-new').checked=false;
   document.getElementById('rm-scope-row').style.display='none';
   document.getElementById('rm-transcode').value=_defaultTranscode;
+  updateNoTranscodeWarn();
   var _isSports=_genre.toLowerCase().indexOf('sport')>=0; // matches guide.php's "Sports" and XMLTV's singular "Sport"
   document.getElementById('rm-bonus-row').style.display=_bonusEnabled?'flex':'none';
   document.getElementById('rm-bonus').checked=_bonusEnabled&&_isSports;
@@ -401,8 +403,18 @@ function switchAiring(idx){
   var nowTs=Math.floor(Date.now()/1000);
   var isLive=(_s<=nowTs&&_e>nowTs);
   document.getElementById('rm-tuner').style.display=(isLive&&devFull(_d))?'block':'none';
+  updateNoTranscodeWarn(); // _d may have changed to a different tuner
   renderRmSignal();
   renderAirings(_airCache[_ser]||[]);
+}
+// Warns when the currently-picked Transcode profile would be silently forced to None at record
+// time — mirrors AppState.startRecording's own device.supportsTranscode override (see
+// docs/HDHRFindings.md's "Transcode capability" section), so the modal can say so proactively
+// instead of only after a failed recording. Re-run whenever the picker or the device changes.
+function updateNoTranscodeWarn(){
+  var sel=document.getElementById('rm-transcode');
+  var show=sel&&sel.value!=='none'&&noTranscode(_d);
+  document.getElementById('rm-no-transcode').style.display=show?'block':'none';
 }
 function renderAirings(list){
   // seriesChannel only ever records from the currently-selected channel (_n) — filter the

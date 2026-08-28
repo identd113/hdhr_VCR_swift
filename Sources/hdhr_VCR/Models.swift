@@ -543,6 +543,7 @@ struct HDHRDevice: Identifiable, Equatable {
     var TunerCount: Int?
     var FirmwareVersion: String?
     var DeviceAuth: String?   // used to call SiliconDust cloud guide API (EXTEND and similar)
+    var ModelNumber: String?  // e.g. "HDTC-2US" — absent on a UDP-discovered device (no ModelNumber TLV read)
 
     // Runtime-only: incremented each probe cycle when the device is not seen; reset when seen.
     // Not persisted — resets to 0 (available) on every launch.
@@ -551,11 +552,18 @@ struct HDHRDevice: Identifiable, Equatable {
 
     var lineupURL:  String { "http://\(LocalIP)/lineup.json" }  // always IP — LineupURL from discover.json may contain mDNS hostname
     var statusURL:  String { "http://\(LocalIP)/status.json" }
+
+    // The real per-device capability field only lives on the CGNAT-unsafe cloud discover endpoint
+    // (see docs/HDHRFindings.md's "Transcode capability" section) — never call it. ModelNumber's
+    // "HDTC" prefix is the safe, local-only proxy (EXTEND/PLUS-tier devices). Unknown ModelNumber
+    // (nil — e.g. a UDP-only-discovered device) is treated as unsupported, the conservative default:
+    // a recording that never attempts an unsupported profile beats one that fails and has to retry.
+    var supportsTranscode: Bool { (ModelNumber ?? "").hasPrefix("HDTC") }
 }
 
 extension HDHRDevice: Codable {
     enum CodingKeys: String, CodingKey {
-        case DeviceID, LocalIP, BaseURL, TunerCount, FirmwareVersion, DeviceAuth
+        case DeviceID, LocalIP, BaseURL, TunerCount, FirmwareVersion, DeviceAuth, ModelNumber
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -564,6 +572,7 @@ extension HDHRDevice: Codable {
         TunerCount      = try? c.decode(Int.self,    forKey: .TunerCount)
         FirmwareVersion = try? c.decode(String.self, forKey: .FirmwareVersion)
         DeviceAuth      = try? c.decode(String.self, forKey: .DeviceAuth)
+        ModelNumber     = try? c.decode(String.self, forKey: .ModelNumber)
         // Cloud response includes LocalIP directly; mDNS/device response omits it — extract host from BaseURL
         if let ip = try? c.decode(String.self, forKey: .LocalIP) {
             LocalIP = ip

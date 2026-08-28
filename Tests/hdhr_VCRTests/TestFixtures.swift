@@ -64,12 +64,19 @@ func mockOKResponse(for url: URL, statusCode: Int = 200, headers: [String: Strin
 // Builds a curl test-double: on invocation it writes a minimal HTTP header block to whatever path
 // follows --dump-header in its argv (same as curl -D would, but instant instead of waiting on
 // real device I/O), then sleeps for `sleepSeconds` before exiting with `exitCode`.
+// `argsLogPath`, when set, has the script dump its full argv there before doing anything else —
+// lets a test assert on exactly what RecordingManager.start(...) invoked curl with (e.g. the
+// `transcode=` value baked into the stream URL), same instant-instead-of-real-I/O tradeoff as the
+// header-file write below.
 func writeMockCurlScript(headerLines: [String] = [], sleepSeconds: Double = 30,
-                          exitCode: Int32 = 0) throws -> String {
+                          exitCode: Int32 = 0, argsLogPath: String? = nil) throws -> String {
     let path = NSTemporaryDirectory() + "hdhrVCRplus-mockcurl-\(UUID().uuidString).sh"
     var script = "#!/bin/bash\n"
     script += "hdr=\"\"\n"
     script += "args=(\"$@\")\n"
+    if let argsLogPath {
+        script += "printf '%s\\n' \"$@\" > \"\(argsLogPath)\"\n"
+    }
     script += "for ((i=0; i<${#args[@]}; i++)); do\n"
     script += "  if [[ \"${args[$i]}\" == \"--dump-header\" ]]; then hdr=\"${args[$((i+1))]}\"; fi\n"
     script += "done\n"
@@ -101,9 +108,13 @@ func waitUntil(timeout: TimeInterval = 3, _ condition: () -> Bool) async {
 
 extension HDHRDevice {
     // JSON-decoded so the custom Codable init handles field setup correctly.
-    static func test(id: String = "FFFFFFFF", ip: String = "192.168.1.100", tuners: Int = 4) -> HDHRDevice {
+    // modelNumber: nil (the default) mirrors a real device whose ModelNumber wasn't parsed — e.g.
+    // UDP-only discovery — and so is conservatively supportsTranscode == false, same as production.
+    static func test(id: String = "FFFFFFFF", ip: String = "192.168.1.100", tuners: Int = 4,
+                      modelNumber: String? = nil) -> HDHRDevice {
+        let modelJSON = modelNumber.map { ",\"ModelNumber\":\"\($0)\"" } ?? ""
         let json = """
-        {"DeviceID":"\(id)","LocalIP":"\(ip)","TunerCount":\(tuners),"FirmwareVersion":"20240101"}
+        {"DeviceID":"\(id)","LocalIP":"\(ip)","TunerCount":\(tuners),"FirmwareVersion":"20240101"\(modelJSON)}
         """
         return try! JSONDecoder().decode(HDHRDevice.self, from: Data(json.utf8))
     }

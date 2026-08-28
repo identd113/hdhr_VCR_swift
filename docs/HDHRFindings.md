@@ -182,6 +182,17 @@ risk, live-confirmed to match on this device; (2) reactive `X-HDHomeRun-Error` d
 recording attempt (what the app already surfaces via `hdhrErrorLabel`). The cloud `Transcode` field
 is deliberately excluded from this list — it exists, but is not safe to call.
 
+**Signal (1) is now implemented (2026-08-28):** `HDHRDevice.supportsTranscode` (`Models.swift`)
+is the `ModelNumber`-`"HDTC"`-prefix check described above, gating `AppState.startRecording` —
+a show's actual recording always forces `transcode=none` on a device this returns `false` for,
+regardless of what `show_transcode`/`Default_transcode` say, so an unsupported profile is never
+attempted (see CLAUDE.md's "Transcode capability gate" invariant). Both the native Add/Edit form
+(`ShowFormSection`, `docs/ShowFormSection.md`) and the web guide's Record modal
+(`docs/WebServer.md`'s "No-transcode warning") surface this proactively as a UI warning before the
+user ever hits signal (2) reactively. `hdhrErrorLabel` itself is unchanged — code 802 ("Unknown
+Transcode Profile") still isn't in its named-case switch, falling through to the generic `"Device
+error 802"` string — but that path should now be rare in practice rather than the primary defense.
+
 <details>
 <summary>Original (incorrect) 2026-08-09 finding, kept for context</summary>
 
