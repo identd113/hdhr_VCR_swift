@@ -139,7 +139,51 @@ hdhr_VCR passes the user's `Default_transcode` config value directly. VLC handle
 
 Because the recorder writes the HTTP body verbatim (`curl -o`, no remux), the correct extension for **both** profiles is a TS one — the app uses `.ts` (`Show.outputPath`), matching the `video/mp2t` MIME the disk relay serves and the `.ts` convention used by Plex/Emby/Jellyfin/MythTV/TVHeadend. `.mkv`/`.mp4` would require an actual remux step the app doesn't do. Regression-locked by `TranscodeStreamFormatTests` (real PAT+PMT fixtures). *(History: before 2026-07 the app wrote `.m2ts` for `none` and `.mkv` for transcoded — both container mislabels; those extensions remain recognized by the recording-file scans for backward compatibility.)*
 
-### Transcode capability: no runtime discovery API exists
+### Transcode capability: `Transcode` field exists, but only on a CGNAT-unsafe cloud endpoint (corrected 2026-08-27)
+
+**Superseded finding, kept below for context — the "no endpoint exists" conclusion was wrong.**
+It was reached by checking only local-device endpoints; a real field exists, but on a *cloud*
+endpoint that's unsafe to use (see below) and was never tried in the original investigation.
+Corrected here rather than deleted, per this repo's own docs-are-source-of-truth convention (stale
+entries get flagged and fixed, not silently dropped).
+
+**`GET https://ipv4-api.hdhomerun.com/discover`** — SiliconDust's cloud discovery API. No auth, no
+params — it identifies "your" device purely by the **public IPv4 address the request comes from**.
+Live-tested 2026-08-27 against a real EXTEND (HDTC-2US, DeviceID 105404BE):
+
+```json
+[{"DeviceID":"105404BE","LocalIP":"10.0.2.101","Transcode":1,"BaseURL":"http://10.0.2.101","DiscoverURL":"http://10.0.2.101/discover.json","LineupURL":"http://10.0.2.101/lineup.json"}]
+```
+
+A literal **`"Transcode": 1`** field, straight from SiliconDust's own cloud inventory of the
+device — not inferred from `ModelNumber`, not a curated UI list. Found by reading the old
+AppleScript app's (`identd113/hdhr_VCR`) git history: its `HDHRDeviceDiscovery` handler called this
+exact endpoint and read `Transcode of item i of hdhr_device_discovery` directly (commit `a152b54`,
+2024-09-07).
+
+**Do not use this endpoint — it's unsafe under CGNAT, not just occasionally unreliable.**
+Public-IP-keyed lookup with no auth means that under carrier-grade NAT (very common — many cable,
+DSL, and most cellular ISPs share one public IPv4 across many unrelated households), a call to this
+endpoint can return **a different household's device** as if it were yours, silently and with no
+way to detect the mismatch client-side. This is exactly why the AppleScript app dropped it: commit
+`0dd177d` (2025-12-08) silently replaced this call with local `http://hdhomerun.local/discover.json`
+and added the `ModelNumber` `"HDTC"`-prefix heuristic specifically to recover the `Transcode`
+signal the cloud endpoint used to provide, without going back through it. No commit message
+explains why, but the timing and same-purpose swap-in point squarely at this. The field is real,
+but the endpoint that carries it should be treated as **not usable for anything**, not just
+transcode capability — a wrong answer sourced from a stranger's device is worse than no answer.
+
+Only one real device available to test either way (an EXTEND, `Transcode: 1`) — the negative case
+(a non-transcoding device correctly reporting `Transcode: 0`) is unverified regardless.
+
+**Practical takeaway:** two safe signals available, in order of preference: (1) `ModelNumber`'s
+`"HDTC"` prefix from local `/discover.json` — a heuristic, but local/per-device with no shared-IP
+risk, live-confirmed to match on this device; (2) reactive `X-HDHomeRun-Error` detection after a
+recording attempt (what the app already surfaces via `hdhrErrorLabel`). The cloud `Transcode` field
+is deliberately excluded from this list — it exists, but is not safe to call.
+
+<details>
+<summary>Original (incorrect) 2026-08-09 finding, kept for context</summary>
 
 SiliconDust's official **HDHomeRun HTTP Development Guide** (`hdhomerun_http_development.pdf`, 20140407 — cited above as one of this file's primary sources) states plainly: `transcode=<profile>` is a **"PLUS models only"** feature — support is a hardware/model-tier fact, not something negotiated per-request. The doc defines only `heavy`, `mobile`, `internet720`, `internet480`, `internet360`, `internet240` as profiles (`none` isn't a formal profile — it's just omitting the parameter). Its only documented error responses for the streaming endpoint are bare HTTP status codes — `404 Not Found` (unknown channel), `503 Service Unavailable` (busy / tune timeout / unauthorized content-protected channel) — **no mention of the `X-HDHomeRun-Error` header or numeric codes like 802** ("Unknown Transcode Profile," see the table above); that mechanism is newer/undocumented in this primary source.
 
@@ -148,7 +192,9 @@ SiliconDust's official **HDHomeRun HTTP Development Guide** (`hdhomerun_http_dev
 - `/discover.json`, `/lineup.json`, and `/lineup_status.json` carry no transcode-capability field of any kind.
 - `?transcode=<any of the 4 app-offered profiles>` all returned `200 OK` immediately even before checking whether they'd actually work — a device rejecting an unsupported profile doesn't fail at the HTTP-status level, consistent with the 802-via-header behavior documented above, not the *statically-known* "PLUS models only" gate this doc describes.
 
-**Practical takeaway:** the only two signals available for "does this device support transcoding" are (1) knowing the model is a PLUS-tier device (would need a hardcoded model list built from `/discover.json`'s `ModelNumber`/`FriendlyName` — not currently tracked anywhere in this app) or (2) reactively detecting failure via `X-HDHomeRun-Error` after attempting a recording (what the app already surfaces via `hdhrErrorLabel`). Whether `/transcode.html`'s mere presence (200 vs 404) reliably distinguishes PLUS from non-PLUS models is untested — no non-PLUS device was available to check the negative case.
+Practical takeaway at the time: the only two signals available were thought to be (1) a hardcoded PLUS-tier model list (not built) or (2) reactive `X-HDHomeRun-Error` detection. Both still valid as fallbacks — just not the only options, per above.
+
+</details>
 
 ---
 
