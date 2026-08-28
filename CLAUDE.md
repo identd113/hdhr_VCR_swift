@@ -58,7 +58,7 @@ Views/
 
 **`docs/*.md` are the source of truth for visual layout and style.** Read the matching doc before editing any view; cross-check after. If doc contradicts code, stop and flag — never silently reconcile. Any visual removal requires explicit approval.
 
-Views: [MenuContent](docs/MenuContent.md) · [AddShowView](docs/AddShowView.md) · [EditShowView](docs/EditShowView.md) · [SettingsView](docs/SettingsView.md) · [StarburstBadge](docs/StarburstBadge.md) · [DonationNagView](docs/DonationNagView.md) · [WatchNowView](docs/WatchNowView.md) · [VLCPlayerView](docs/VLCPlayerView.md) · [VLCBridge](docs/VLCBridge.md) · [ShowFormSection](docs/ShowFormSection.md) · [PlayerView](docs/PlayerView.md) (historical) · [TUIGuide](docs/TUIGuide.md) (bundled terminal client, not a SwiftUI view)
+Views: [MenuContent](docs/MenuContent.md) · [AddShowView](docs/AddShowView.md) · [FirstRunWizardView](docs/FirstRunWizardView.md) · [EditShowView](docs/EditShowView.md) · [SettingsView](docs/SettingsView.md) · [StarburstBadge](docs/StarburstBadge.md) · [DonationNagView](docs/DonationNagView.md) · [WatchNowView](docs/WatchNowView.md) · [VLCPlayerView](docs/VLCPlayerView.md) · [VLCBridge](docs/VLCBridge.md) · [ShowFormSection](docs/ShowFormSection.md) · [PlayerView](docs/PlayerView.md) (historical) · [TUIGuide](docs/TUIGuide.md) (bundled terminal client, not a SwiftUI view)
 
 Systems: [AppState](docs/AppState.md) · [GuideStore](docs/GuideStore.md) · [RecordingManager](docs/RecordingManager.md) · [Models](docs/Models.md) · [Config](docs/Config.md) · [WebServer](docs/WebServer.md) · [ChannelSignalStore](docs/ChannelSignalStore.md) · [HDHRFindings](docs/HDHRFindings.md) (live-tested device/API behavior) · [WKWebView_guide_analysis](docs/WKWebView_guide_analysis.md) (historical)
 

@@ -659,3 +659,38 @@ accuracy regresses right after app launch specifically.
   encountering "Enable Terminal Guide" cold has no CHANGELOG context for what that terminal client
   even is. Flagged to the parent agent as a pre-release gap, not something this reviewer can fix
   (CHANGELOG.md is off-limits to write from this role).
+
+## 2026-08-27 — FirstRunWizardView.swift (new feature review)
+
+- The transcode-profile tag list `["none","heavy","mobile","internet720"]` is now hardcoded in a
+  4th independent place (`Sources/hdhr_VCR/Views/FirstRunWizardView.swift:132-136`), joining
+  `WebServer.swift:1892`, `SettingsView.swift:314-318`, and `ShowFormSection.swift:122-124`. Not
+  flagged as a blocking finding for this diff (matches the existing accepted-copy pattern precedent
+  set for `VLCBridge`'s route string), but 3→4 copies is exactly the threshold CLAUDE.md's own
+  "flag any THIRD copy" guidance is written to catch — worth factoring into a shared
+  `CaseIterable` enum (e.g. in `Models.swift` next to `Show.show_transcode`'s own comment listing
+  the same 4 values) before a 5th copy appears.
+- **Correction to an earlier pass's claim in this same review**: this reviewer initially asserted
+  `AppState.loadConfig()` runs synchronously inside `AppState.init()` with "no load race." That's
+  wrong — `AppState.init()` (`AppState.swift:355`) calls `Task { await startup() }`, an *unawaited*
+  Task; `startup()` (`AppState.swift:360-393`) is what actually calls `loadConfig()`, as its first
+  step, but only once that Task gets scheduled — after `init()` has already returned. A follow-up
+  `/code-review` pass caught this and had it independently verified: `appState.config` genuinely
+  can still read `AppConfig()`'s bare defaults at the moment the launch `.onAppear` in
+  `hdhr_VCRApp.swift` first fires, exactly the same race the Dock-icon-visibility logic in that
+  same `init()` already works around via its own synchronous `ConfigManager().load()` peek. Fixed
+  by giving the wizard/nag launch-guard checks their own `@State private var needsFirstRunWizard`,
+  seeded from that same synchronous peek rather than from live `appState.config` — see
+  `hdhr_VCRApp.swift`'s `needsFirstRunWizard` and `docs/FirstRunWizardView.md`'s "Auto-open-on-
+  launch" section. Left here as a reminder that "read the code" isn't the same as "traced the
+  actual async call chain" — this file's own async Task dispatch was one hop away from the line
+  actually being checked.
+- `FirstRunWizardView`'s `hasFinished`/`hasLoadedInitialValues` `@State` guards, combined with the
+  `.onChange(of: state.config.First_run_wizard_shown)` reset at
+  `FirstRunWizardView.swift:87-94`, correctly defend against the same SwiftUI single-instance
+  `Window` state-retention-across-close quirk that `DonationNagView.swift`'s own `.onAppear` reset
+  was added for (see `docs/DonationNagView.md:17-18`) — the wizard's reset is keyed off the config
+  flag transition itself rather than `.onAppear`, which is more robust here since the flag flip
+  (Settings → Maintenance → "Reset First-Run Setup") is the only way the wizard ever reopens after
+  a first dismissal, and it fires regardless of whether the window view instance was still alive
+  or fully recreated.

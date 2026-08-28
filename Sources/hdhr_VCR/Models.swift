@@ -439,6 +439,11 @@ struct AppConfig: Equatable {
     // Dock icon (Local Network permission mitigation — see TODO.md's "Show Stoppers" entry)
     var Dock_icon_mode: String = "auto"  // auto | always | never — user override for the launch-time Dock-icon heuristic
     var Local_network_confirmed: Bool = false  // internal, auto-set true on the first successful lineup load; drives "auto" mode's switch back to accessory
+
+    // First-run setup wizard (FirstRunWizardView.swift) — set true once the wizard has been shown/
+    // dismissed (Finish, Escape, or window close all count). "Reset First-Run Setup" in Settings →
+    // Maintenance clears it again and reopens the wizard immediately.
+    var First_run_wizard_shown: Bool = false
 }
 
 extension AppConfig: Codable {
@@ -499,6 +504,7 @@ extension AppConfig: Codable {
         Donation_unlock_code        = (try? c.decode(String.self, forKey: .Donation_unlock_code))          ?? ""
         Dock_icon_mode              = (try? c.decode(String.self, forKey: .Dock_icon_mode))                ?? "auto"
         Local_network_confirmed     = (try? c.decode(Bool.self,   forKey: .Local_network_confirmed))       ?? false
+        First_run_wizard_shown      = (try? c.decode(Bool.self,   forKey: .First_run_wizard_shown))        ?? false
     }
 }
 

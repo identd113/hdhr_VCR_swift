@@ -98,8 +98,10 @@ See the About section description below — app image with signal-pulse tap effe
 
 All controls use a label-closure `Form` syntax that embeds a small `ⓘ` **InfoButton** next to the control label. Tapping the button shows a popover (arrow edge `.bottom`, max width 280 pt) with the description string. There are no always-visible caption lines — descriptions are hidden until requested. Applies to all sections including the `maintenanceRow` helper.
 
+`InfoButton` lives in its own file, `Views/InfoButton.swift` — not `private` to `SettingsView.swift` — since `FirstRunWizardView.swift` (`docs/FirstRunWizardView.md`) reuses the identical control for its own field descriptions:
+
 ```swift
-private struct InfoButton: View {
+struct InfoButton: View {
     let text: String
     @State private var isPresented = false
     var body: some View {
@@ -290,6 +292,12 @@ See [WebServer.md](WebServer.md) for full route and feature documentation.
 ### Maintenance
 
 One-tap operations for recovering from stuck states. Each uses `maintenanceRow(_:_:action:)` — a helper that takes a title string, a description string, and an async closure that returns a result string. The result is shown in a green `Label` at the bottom of the section after completion.
+
+**Setup section:**
+- **Reset First-Run Setup** — clears `state.config.First_run_wizard_shown` and immediately calls
+  `openWindow(id: "first-run-wizard")` to reopen `FirstRunWizardView` (`docs/FirstRunWizardView.md`),
+  prefilled with whatever's currently configured — a "review what's set" re-run, not a
+  reset-to-factory-defaults action. Result: `"First-run setup wizard reopened"`.
 
 **Shows section:**
 - **Reactivate Paused Shows** — calls `state.reactivatePausedShows()`, setting `show_active = true` on all inactive shows, resetting their fail counts, and (for shows that were paused, not just inactive) clearing `notify_upnext_time`/`notify_recording_time` so the "Up Next"/"Recording Soon" pre-notifications re-arm for whatever airing comes next — same reasoning as `AppState.applyResume`, done inline here rather than routed through that helper since it also fires a per-show broadcast this bulk action doesn't. Result: count of shows reactivated.

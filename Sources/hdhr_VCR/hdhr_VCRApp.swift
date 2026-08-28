@@ -17,6 +17,18 @@ struct hdhr_VCRApp: App {
     // Guards the launch-time donation nag so it fires exactly once per run, not on every
     // real menu open (the onAppear below also fires on every user menu-open, not just launch).
     @State private var launchDonationNagShown = false
+    // Same guard, for the first-run setup wizard — checked first so a genuinely first launch
+    // shows the wizard before the donation nag (see openDonationNagIfNeeded()'s own guard below).
+    @State private var launchFirstRunWizardShown = false
+    // Whether the wizard still needs to run, decided once from the synchronous config peek below
+    // (NOT from appState.config — see that peek's own comment for why: AppState's real config load
+    // is an unawaited async Task, so appState.config could still read AppConfig()'s bare-default
+    // false at the exact moment the launch onAppear fires, even for a returning user whose real
+    // persisted flag is true, which would reopen the wizard on every single launch for them). Kept
+    // in sync afterward by the onChange(of: appState.config.First_run_wizard_shown) below, once
+    // that value is guaranteed live — openDonationNagIfNeeded() reads this, not the live config, so
+    // its own suppression guard is race-free at every call site, not just the launch-time one.
+    @State private var needsFirstRunWizard: Bool
 
     init() {
         glog("=== hdhrVCRplus launched ===")
@@ -35,6 +47,7 @@ struct hdhr_VCRApp: App {
         let cfg = ConfigManager().load()?.config
         let dockMode = cfg?.Dock_icon_mode ?? "auto"
         let localNetworkConfirmed = cfg?.Local_network_confirmed ?? false
+        _needsFirstRunWizard = State(initialValue: !(cfg?.First_run_wizard_shown ?? false))
         let showDock: Bool
         switch dockMode {
         case "always": showDock = true
@@ -60,7 +73,14 @@ struct hdhr_VCRApp: App {
                     // This onAppear also fires on the app's forced silent open+close at launch
                     // (see statusLabel's comment below), which is what makes it a reliable,
                     // race-free launch hook — but it also fires on every real user menu-open, so
-                    // the local flag confines the donation nag to firing once per run.
+                    // the local flags confine the wizard/nag to firing once per run each. The
+                    // wizard check runs first so a genuinely first launch shows it before the
+                    // donation nag (which stays suppressed until the wizard is dismissed — see
+                    // openDonationNagIfNeeded()'s own guard).
+                    if !launchFirstRunWizardShown {
+                        launchFirstRunWizardShown = true
+                        openFirstRunWizardIfNeeded()
+                    }
                     if !launchDonationNagShown {
                         launchDonationNagShown = true
                         openDonationNagIfNeeded()
@@ -73,6 +93,15 @@ struct hdhr_VCRApp: App {
                     appState.rebuildMenuEntries()
                 }
                 .onChange(of: appState.pendingDonationNagTrigger) { _, _ in openDonationNagIfNeeded() }
+                // The launch-time call above no-ops until the wizard is dismissed (its own guard),
+                // and the launch onAppear only fires once — so re-check right when the wizard's
+                // flag flips true, the same way pendingDonationNagTrigger re-checks after a show add.
+                .onChange(of: appState.config.First_run_wizard_shown) { _, shown in
+                    if shown {
+                        needsFirstRunWizard = false
+                        openDonationNagIfNeeded()
+                    }
+                }
         } label: {
             statusLabel
         }
@@ -129,15 +158,41 @@ struct hdhr_VCRApp: App {
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
+
+        // First-run setup wizard — single instance; auto-opens once on a fresh install (or after
+        // an upgrade from a version predating this feature) via openFirstRunWizardIfNeeded()
+        // below, and suppresses the donation nag until dismissed (see openDonationNagIfNeeded()'s
+        // own guard). Also reopened on demand from Settings → Maintenance → "Reset First-Run
+        // Setup". hiddenTitleBar matches the donation nag's own "modern floating panel" look —
+        // fitting for a focused onboarding flow rather than a document-style window.
+        Window("Welcome to hdhrVCRplus", id: "first-run-wizard") {
+            FirstRunWizardView()
+                .environmentObject(appState)
+        }
+        .windowStyle(.hiddenTitleBar)
+        .windowResizability(.contentSize)
     }
 
     // No-op once Donation_unlocked is set. openWindow(id:) on an already-open single-instance
     // Window scene just re-focuses it (Window scenes can't duplicate — see docs/MenuContent.md's
     // "No duplicate windows" note), so this is safe to call repeatedly without checking first.
     private func openDonationNagIfNeeded() {
+        // Wait for the first-run wizard to be dismissed first, so the two windows never compete
+        // for focus on a brand-new install — see the onChange(of: First_run_wizard_shown) above,
+        // which re-checks this (and flips needsFirstRunWizard false) the moment the wizard flips
+        // it. Reads needsFirstRunWizard, not the live appState.config.First_run_wizard_shown —
+        // see that property's own comment for why the live value isn't safe to read here.
+        guard !needsFirstRunWizard else { return }
         guard !appState.config.Donation_unlocked else { return }
         NSApplication.shared.activate(ignoringOtherApps: true)
         openWindow(id: "donation-nag")
+    }
+
+    // No-op once needsFirstRunWizard is false. Same shape as openDonationNagIfNeeded() above.
+    private func openFirstRunWizardIfNeeded() {
+        guard needsFirstRunWizard else { return }
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        openWindow(id: "first-run-wizard")
     }
 
     // Silently open+close the menu so SwiftUI builds the view graph while the icon is still dimmed.

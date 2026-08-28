@@ -2,27 +2,6 @@ import SwiftUI
 import AppKit
 import ServiceManagement
 
-private struct InfoButton: View {
-    let text: String
-    @State private var isPresented = false
-    init(_ text: String) { self.text = text }
-    var body: some View {
-        Button { isPresented.toggle() } label: {
-            Image(systemName: "info.circle")
-                .font(.callout)
-                .foregroundStyle(.tertiary)
-        }
-        .buttonStyle(.plain)
-        .popover(isPresented: $isPresented, arrowEdge: .bottom) {
-            Text(text)
-                .font(.callout)
-                .padding(12)
-                .frame(maxWidth: 280)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-}
-
 private enum SettingsCategory: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     case general       = "General"
@@ -50,6 +29,7 @@ private enum SettingsCategory: String, CaseIterable, Identifiable {
 
 struct SettingsView: View {
     @EnvironmentObject var state: AppState
+    @Environment(\.openWindow) private var openWindow
     @AppStorage("defaultSaveDirectory") private var defaultSaveDirectory: String = ""
     @State private var selection: SettingsCategory? = .general
     @State private var draft: AppConfig = AppConfig()
@@ -790,6 +770,15 @@ struct SettingsView: View {
 
     private var maintenanceView: some View {
         Form {
+            Section("Setup") {
+                maintenanceRow("Reset First-Run Setup",
+                               "Run to clear the setup wizard's completed flag and walk through it again, prefilled with your current settings") {
+                    state.config.First_run_wizard_shown = false
+                    state.saveConfig()
+                    openWindow(id: "first-run-wizard")
+                    return "First-run setup wizard reopened"
+                }
+            }
             Section("Shows") {
                 maintenanceRow("Reactivate Paused Shows",
                                "Run after fixing what caused failures — restores all shows paused by repeated errors") {
