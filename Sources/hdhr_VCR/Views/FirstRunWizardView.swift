@@ -16,12 +16,32 @@ struct FirstRunWizardView: View {
     // only inside finish(), same as every other field.
     @State private var saveFolder: String = ""
 
-    enum Step: Int { case recordingDefaults, notificationTiming }
+    enum Step: Int { case intro, recordingDefaults, notificationTiming }
+    // Resting default is .recordingDefaults, NOT .intro — the splash is only ever entered
+    // deliberately (see the .onAppear/.onChange below), so every "step starts at
+    // .recordingDefaults" assumption elsewhere (sizing, header, nav bar) stays true by default,
+    // and reduce-motion users never instantiate IntroSplashOverlay at all.
     @State private var step: Step = .recordingDefaults
     // Tracks slide direction: true = animating forward (Next), false = animating backward (Back).
     // Set immediately before the withAnimation block that changes `step`, in the same action
     // closure, so the transition the next render picks up already reflects the right direction.
     @State private var goingForward = true
+
+    // Guards the one-time intro splash so it plays exactly once per wizard-open (reset alongside
+    // hasLoadedInitialValues/hasCheckedNetwork below). Reduce Motion skips the splash entirely — a
+    // different code path, not a faster version of the same one.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var hasPlayedIntro = false
+    // Finish-flourish: a one-shot glow pulse behind the header icon (keyframeAnimator, triggered
+    // by incrementing this counter) + button-label morph, same visual language as DonationNagView's
+    // own appear-glow. A trigger counter — not a plain "flourishing" Bool — because the glow must
+    // start AND end hidden with a visible pulse in between; a two-state withAnimation toggle can
+    // only tween between its two endpoints; it can't rest at "hidden" both before and after while
+    // also being visible mid-flourish. This also means there's nothing to reset in
+    // resetForFreshRun() below — the animator's own initialValue is always the at-rest (hidden)
+    // state until the next trigger fires.
+    @State private var finishGlowTrigger = 0
+    @State private var finishTask: Task<Void, Never>?
 
     @State private var transcode: String = "none"
     @State private var minFreeDiskGB: Double = 30.0
@@ -45,14 +65,40 @@ struct FirstRunWizardView: View {
     @State private var networkStatus: NetworkStatus = .checking
     @State private var hasCheckedNetwork = false
 
+    // Presentational device-aware view of the tri-state above, for TunerDiscoveryCard — this is
+    // the only thing that changed about network detection; checkNetworkAccessIfNeeded()'s actual
+    // discovery/confirmation logic below is untouched. Falls back to a deviceless .foundSingle
+    // (identity line just doesn't render) if `confirmed` is true but state.devices hasn't
+    // populated yet (e.g. Local_network_confirmed was already persisted from a prior session and
+    // AppState's own startup() discovery hasn't finished this launch) — still an honest "found"
+    // state, just without device details available yet.
+    private var discoveryStatus: TunerDiscoveryStatus {
+        switch networkStatus {
+        case .checking: return TunerDiscoveryStatus(kind: .checking)
+        case .notFound: return TunerDiscoveryStatus(kind: .notFound)
+        case .confirmed:
+            let counts = Dictionary(uniqueKeysWithValues: state.devices.map {
+                ($0.DeviceID, state.lineups[$0.DeviceID]?.count ?? 0)
+            })
+            return TunerDiscoveryStatus(kind: state.devices.count > 1 ? .foundMultiple : .foundSingle,
+                                         devices: state.devices, channelCounts: counts)
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            header
-
-            Divider().opacity(0.5)
+            if step != .intro {
+                header
+                Divider().opacity(0.5)
+            }
 
             ZStack {
                 switch step {
+                case .intro:
+                    // Real content is the .overlay below (needs to render unclipped past this
+                    // VStack's own bounds) — this branch exists only so the switch stays
+                    // exhaustive and reserves no space of its own.
+                    Color.clear
                 case .recordingDefaults:
                     recordingDefaultsScreen
                         .transition(slideTransition)
@@ -65,34 +111,35 @@ struct FirstRunWizardView: View {
             }
             .clipped()
 
-            Divider().opacity(0.5)
-            HStack {
-                if step == .notificationTiming {
-                    Button("Back") { goBack() }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
-                        .accessibilityIdentifier("wizard-back")
+            if step != .intro {
+                Divider().opacity(0.5)
+                HStack {
+                    if step == .notificationTiming {
+                        Button("Back") { goBack() }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("wizard-back")
+                    }
+                    Spacer()
+                    if step == .recordingDefaults {
+                        Button("Next") { goNext() }
+                            .buttonStyle(.borderedProminent)
+                            .accessibilityIdentifier("wizard-next")
+                    } else {
+                        finishButton
+                    }
                 }
-                Spacer()
-                if step == .recordingDefaults {
-                    Button("Next") { goNext() }
-                        .buttonStyle(.borderedProminent)
-                        .accessibilityIdentifier("wizard-next")
-                } else {
-                    Button("Finish") { finish() }
-                        .buttonStyle(.borderedProminent)
-                        .accessibilityIdentifier("wizard-finish")
-                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 14)
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 14)
         }
-        // Width only — height is deliberately NOT fixed (unlike the old 480×460), so the window
-        // hugs each step's actual content instead of stretching the shorter step's Form to fill a
-        // taller-than-needed frame (that mismatch used to leave a large dead gray gap below Step
-        // 1's four rows). Same "fix width, let height follow content" choice DonationNagView
-        // already makes for the same reason (frame(width: 400) there, no height).
-        .frame(width: 460)
+        // Width only normally — height follows content (see the old comment this replaces: the
+        // old fixed 460×460 left a dead gap below Step 1's rows). During .intro the frame grows to
+        // a fixed 640×480 "stage" so the splash's tiles have real room to fan out and fly off
+        // before the panel shrinks back down on hand-off — animated in the same withAnimation
+        // transaction as the step change (goNext()/goBack() already animate step this way; the
+        // intro hand-off in finishIntro() below does the same).
+        .frame(width: step == .intro ? 640 : 460, height: step == .intro ? 480 : nil)
         // Same floating-panel chrome as DonationNagView — thickMaterial + 20pt rounded corners +
         // a faint border + drop shadow — so this reads as the same "app's own chrome" rather than
         // a bare Settings-style dialog in a hiddenTitleBar window with no material treatment.
@@ -103,24 +150,43 @@ struct FirstRunWizardView: View {
                 .strokeBorder(.white.opacity(0.12), lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.4), radius: 28, y: 14)
-        .onAppear { loadCurrentValuesIfNeeded() }
+        // Splash tiles live in a SECOND overlay, attached after the shadow/clip chain above rather
+        // than inside the clipped VStack — .overlay content is unclipped by default, so tiles can
+        // fly past the panel's own rounded-rect edges within the 640×480 stage. See
+        // docs/FirstRunWizardView.md's "Intro Splash" section.
+        .overlay {
+            if step == .intro {
+                IntroSplashOverlay(onFinished: finishIntro)
+            }
+        }
+        .onAppear {
+            // This single-instance Window's @State persists across even a FULL close (Escape/red
+            // button → dismiss()) — reopening later via openWindow(id:) still refires onAppear
+            // (a genuine close→open transition), but with stale flags from the previous run, not
+            // freshly-initialized ones. state.config.First_run_wizard_shown being false is the
+            // reliable "this appearance needs a fresh run" signal (true first launch OR a reopen
+            // after a full close) — the onChange below only catches the OTHER case (Settings'
+            // reset firing while this window is already open/visible in the background, per
+            // hdhr_VCRApp.swift's own comment on why openWindow(id:) doesn't refire onAppear
+            // there). Both paths call the same reset; doing it twice in some edge case is harmless.
+            if !state.config.First_run_wizard_shown {
+                resetForFreshRun()
+            }
+            loadCurrentValuesIfNeeded()
+            playIntroIfNeeded()
+        }
         .task { await checkNetworkAccessIfNeeded() }
-        // The wizard window is single-instance — if Settings' "Reset First-Run Setup" reopens it
-        // while it's already alive in the background, openWindow(id:) just refocuses it without
-        // re-running onAppear (see hdhr_VCRApp.swift's own comment on this), so re-load fresh
-        // values whenever the flag transitions true → false (i.e. a reset just happened).
         .onChange(of: state.config.First_run_wizard_shown) { oldValue, newValue in
             if oldValue && !newValue {
-                hasLoadedInitialValues = false
-                hasFinished = false
-                hasCheckedNetwork = false
-                step = .recordingDefaults
+                resetForFreshRun()
                 loadCurrentValuesIfNeeded()
+                playIntroIfNeeded()
                 Task { await checkNetworkAccessIfNeeded() }
             }
         }
         .onExitCommand { dismiss() }
         .onDisappear {
+            finishTask?.cancel()
             // Closing by any means (Finish, Escape, red-close-button) counts as "dismissed" —
             // otherwise the wizard reappears every launch and the donation nag stays suppressed
             // forever. finish() already saved, so only the fallback case needs to save here.
@@ -128,6 +194,34 @@ struct FirstRunWizardView: View {
             state.config.First_run_wizard_shown = true
             state.saveConfig()
         }
+    }
+
+    // MARK: - Intro splash
+
+    // Shared by both onAppear and onChange above — see onAppear's own comment for why both call
+    // sites are needed (they cover complementary reopen scenarios).
+    private func resetForFreshRun() {
+        hasLoadedInitialValues = false
+        hasFinished = false
+        hasCheckedNetwork = false
+        hasPlayedIntro = false
+        step = .recordingDefaults
+    }
+
+    // Entered deliberately (never the resting default — see `step`'s own comment). Reduce Motion
+    // skips straight past: a different code path, not a faster version of the same one.
+    private func playIntroIfNeeded() {
+        guard !hasPlayedIntro, !reduceMotion else { return }
+        hasPlayedIntro = true
+        withAnimation(.easeInOut(duration: 0.3)) { step = .intro }
+    }
+
+    // Splash's own hand-off — identical shape to goNext(): same withAnimation, same target step,
+    // so the panel's shrink-back-down and Step 1's slide-in ride the one transition mechanism the
+    // whole wizard already uses, not a second bespoke one.
+    private func finishIntro() {
+        goingForward = true
+        withAnimation(.easeInOut(duration: 0.25)) { step = .recordingDefaults }
     }
 
     // MARK: - Header
@@ -139,15 +233,37 @@ struct FirstRunWizardView: View {
         VStack(spacing: 12) {
             HStack(spacing: 10) {
                 if let icon = appIconImage {
-                    Image(nsImage: icon)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 36, height: 36)
-                        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                .strokeBorder(.white.opacity(0.2), lineWidth: 1)
-                        )
+                    ZStack {
+                        // Finish-flourish glow — same RadialGradient DonationNagView's own header
+                        // uses on appear, reused here on completion instead: a small, consistent
+                        // "something nice just happened" language for this app's chrome. At rest
+                        // (before finishGlowTrigger ever fires) this renders at its keyframe
+                        // initialValue — hidden (opacity 0) — so nothing shows behind the icon
+                        // during Steps 1/2; finish() increments the trigger to pop it in and fade
+                        // it back out again.
+                        Circle()
+                            .fill(RadialGradient(colors: [.orange.opacity(0.55), .clear],
+                                                  center: .center, startRadius: 1, endRadius: 26))
+                            .frame(width: 52, height: 52)
+                            .keyframeAnimator(initialValue: FinishGlowValues(), trigger: finishGlowTrigger) { view, v in
+                                view.scaleEffect(v.scale).opacity(v.opacity)
+                            } keyframes: { _ in
+                                KeyframeTrack(\.scale) { CubicKeyframe(1.3, duration: 0.35) }
+                                KeyframeTrack(\.opacity) {
+                                    LinearKeyframe(0.9, duration: 0.05)
+                                    LinearKeyframe(0.0, duration: 0.3)
+                                }
+                            }
+                        Image(nsImage: icon)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 36, height: 36)
+                            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                    .strokeBorder(.white.opacity(0.2), lineWidth: 1)
+                            )
+                    }
                 }
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Welcome to hdhrVCRplus").font(.headline)
@@ -168,6 +284,7 @@ struct FirstRunWizardView: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel({
                 switch step {
+                case .intro:              return ""   // header isn't rendered during .intro
                 case .recordingDefaults:  return "Step 1 of 2: Recording Defaults"
                 case .notificationTiming: return "Step 2 of 2: Notification Timing"
                 }
@@ -183,24 +300,7 @@ struct FirstRunWizardView: View {
     private var recordingDefaultsScreen: some View {
         Form {
             Section {
-                HStack(alignment: .top, spacing: 10) {
-                    networkStatusIcon.frame(width: 18)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(networkStatusTitle).font(.subheadline).bold()
-                        Text(networkStatusDetail)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    Spacer(minLength: 0)
-                    if networkStatus == .notFound {
-                        Button("Open Privacy Settings") { openPrivacySettings() }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                            .accessibilityIdentifier("wizard-open-privacy-settings")
-                    }
-                }
-                .padding(.vertical, 2)
+                TunerDiscoveryCard(status: discoveryStatus, onOpenPrivacySettings: openPrivacySettings)
             }
 
             Section {
@@ -264,6 +364,23 @@ struct FirstRunWizardView: View {
         .scrollContentBackground(.hidden)
     }
 
+    // Label morphs Finish → checkmark during the flourish delay (finish()'s finishTask) instead
+    // of just disappearing with the window — a small, cheap "yes, that worked" confirmation.
+    private var finishButton: some View {
+        Button(action: finish) {
+            if hasFinished {
+                Image(systemName: "checkmark")
+                    .transition(.scale.combined(with: .opacity))
+            } else {
+                Text("Finish")
+            }
+        }
+        .buttonStyle(.borderedProminent)
+        .disabled(hasFinished)
+        .accessibilityIdentifier("wizard-finish")
+        .animation(.easeOut(duration: 0.18), value: hasFinished)
+    }
+
     // MARK: - Navigation
 
     private var slideTransition: AnyTransition {
@@ -317,36 +434,6 @@ struct FirstRunWizardView: View {
         networkStatus = state.config.Local_network_confirmed ? .confirmed : .notFound
     }
 
-    @ViewBuilder private var networkStatusIcon: some View {
-        switch networkStatus {
-        case .checking:
-            ProgressView().controlSize(.small)
-        case .confirmed:
-            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-        case .notFound:
-            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-        }
-    }
-
-    private var networkStatusTitle: String {
-        switch networkStatus {
-        case .checking:  return "Looking for your HDHomeRun tuner…"
-        case .confirmed: return "Tuner found on your network"
-        case .notFound:  return "No tuner found yet"
-        }
-    }
-
-    private var networkStatusDetail: String {
-        switch networkStatus {
-        case .checking:
-            return "If macOS asks for Local Network permission, click Allow — hdhrVCRplus needs it to find your tuner."
-        case .confirmed:
-            return "Local Network access is confirmed working."
-        case .notFound:
-            return "If macOS asked for Local Network permission and you clicked Don't Allow, open Privacy & Security below and turn it on for hdhrVCRplus under Local Network. Otherwise, make sure your HDHomeRun is powered on and on the same network."
-        }
-    }
-
     // The `?Privacy_LocalNetwork` anchor that's supposed to deep-link straight to the Local
     // Network row (the pattern many apps use) was tested live during development and did NOT
     // land there on this macOS version — it only opens the general Privacy & Security pane, same
@@ -373,6 +460,7 @@ struct FirstRunWizardView: View {
     }
 
     private func finish() {
+        guard !hasFinished else { return }   // no-op on a double-click during the flourish delay
         hasFinished = true
         UserDefaults.standard.set(saveFolder, forKey: "defaultSaveDirectory")
         state.config.Default_transcode      = transcode
@@ -382,7 +470,15 @@ struct FirstRunWizardView: View {
         state.config.Notify_recording       = recordingSoonMinutes
         state.config.First_run_wizard_shown = true
         state.saveConfig()
-        dismiss()
+        // Flourish, then dismiss — 380ms total, well under a ~500-700ms ceiling. .onExitCommand
+        // and the red-close-button both call dismiss() directly and immediately regardless of
+        // this pending task, so Escape mid-flourish still works exactly as before.
+        finishGlowTrigger += 1
+        finishTask = Task {
+            try? await Task.sleep(for: .milliseconds(380))
+            guard !Task.isCancelled else { return }
+            dismiss()
+        }
     }
 
     private var saveFolderLabel: String {
@@ -396,5 +492,18 @@ struct FirstRunWizardView: View {
         panel.allowsMultipleSelection = false
         panel.directoryURL = state.defaultSaveDir
         if panel.runModal() == .OK, let url = panel.url { saveFolder = url.path }
+    }
+}
+
+// File-scope per StarburstBadge.swift's own note: @KeyframesBuilder type inference fails on a
+// type nested inside the view. Starts hidden (opacity 0) — the finish-flourish keyframeAnimator's
+// own initialValue/rest state — and is driven from there by finishGlowTrigger.
+private struct FinishGlowValues: Animatable {
+    var scale: CGFloat = 0.7
+    var opacity: Double = 0
+
+    var animatableData: AnimatablePair<CGFloat, Double> {
+        get { AnimatablePair(scale, opacity) }
+        set { scale = newValue.first; opacity = newValue.second }
     }
 }
