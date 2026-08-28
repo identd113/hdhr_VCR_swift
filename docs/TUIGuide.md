@@ -438,9 +438,12 @@ that boundary. Worth doing if this logic needs to change again; not on its own.
 **No channel jump/search — arrow-key-only navigation doesn't scale past ~20 channels.** Reaching a
 channel near the bottom of a real lineup (100+ channels is common) means holding ↓ dozens of times
 — confirmed painfully directly while testing the recording-status fix (channel 21.11 needed 61
-presses from the top). The web guide has no search either (see its own "No guide search" gap), but
-it at least has a mouse/scrollbar; a keyboard-only TUI without a jump mechanism is worse off by
-comparison, not on par. Two independent, both-worth-having options: (1) type-ahead — start typing a
+presses from the top). The web guide gained a type-ahead show-search box in `#toolbar` (2026-08-28,
+`docs/WebServer.md`'s "Show search" section) — arrow-key dropdown nav, ← / → episode cycling — but
+that finds a *show by title*, not a channel by number/name, and doesn't help this TUI's own
+channel-jump gap at all; the TUI also has no mouse/scrollbar to fall back on the way the web guide
+does, so a keyboard-only jump mechanism here is still worth having on its own merits, not superseded
+by the web guide's search. Two independent, both-worth-having options: (1) type-ahead — start typing a
 channel number/name, jump to the first match, `Esc` clears (same idiom as `less`/`vim`'s `/`); (2) a
 "jump to next managed entry" key (`n`/`N`) that skips the selection straight to the next
 scheduled/recording tile anywhere in the list, without needing to know which channel it's on first —

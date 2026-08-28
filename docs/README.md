@@ -7,7 +7,7 @@ Doc per view/system: intent, architecture, key behaviors. Source of truth for vi
 | File | Source | Purpose |
 |---|---|---|
 | [MenuContent.md](MenuContent.md) | `Views/MenuContent.swift` | Menu bar dropdown — recording, scheduling, add show |
-| [AddShowView.md](AddShowView.md) | `Views/AddShowView.swift` | 3-step wizard: Device → Web Guide → Details |
+| [AddShowView.md](AddShowView.md) | `Views/AddShowView.swift` | 2-step wizard: Web Guide → Details (the native device-selection step was removed — the tuner is chosen inside the web guide) |
 | [EditShowView.md](EditShowView.md) | `Views/EditShowView.swift` | Form for editing an existing scheduled show |
 | [SettingsView.md](SettingsView.md) | `Views/SettingsView.swift` | App settings — draft/save pattern, all config knobs |
 | [StarburstBadge.md](StarburstBadge.md) | `Views/StarburstBadge.swift` | Animated starburst badge for Bonus Time |

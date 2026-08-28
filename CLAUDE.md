@@ -44,7 +44,7 @@ ChannelIconCache.swift     Actor: async disk-backed cache for channel logos
 ChannelSignalStore.swift   Actor-like @MainActor store: per-channel SNQ history + stats
 Views/
   MenuContent.swift        Menu bar dropdown (entire UI)
-  AddShowView.swift        3-step Add Show wizard
+  AddShowView.swift        2-step Add Show wizard (Web Guide → Details)
   EditShowView.swift       Edit existing show
   SettingsView.swift       NavigationSplitView settings window
   StarburstBadge.swift     Animated starburst badge for Bonus Time

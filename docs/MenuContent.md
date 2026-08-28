@@ -257,7 +257,7 @@ A `Button` with `Label("Watch Now…", systemImage: "play.tv.fill")` in a blue t
 
 ## Add Show — `Button`
 
-A plain `Button` with `Label("Add Show…", systemImage: "plus")`. Opens the `"add-show"` `Window` (`AddShowView`) — a 3-step wizard. The old cascading menu (device → channel → guide entries) was removed; that browsing path is now covered by **Watch Now**.
+A plain `Button` with `Label("Add Show…", systemImage: "plus")`. Opens the `"add-show"` `Window` (`AddShowView`) — a 2-step wizard (Web Guide → Details; the native device-selection step was removed, the tuner is chosen inside the web guide — see `docs/AddShowView.md`). The old cascading menu (device → channel → guide entries) was removed; that browsing path is now covered by **Watch Now**.
 
 ---
 

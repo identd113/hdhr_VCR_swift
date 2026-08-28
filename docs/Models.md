@@ -169,6 +169,20 @@ Paused shows are excluded from `activeManagedShows` by all callers — the yello
 
 - `lineupURL` — always `"http://{LocalIP}/lineup.json"`. The `LineupURL` field from discover.json is not stored (may contain `hdhomerun.local` which fails on unreliable networks).
 - `statusURL` — `"http://{LocalIP}/status.json"` — live tuner status endpoint.
+- `supportsTranscode` (added 2026-08-28) — `(ModelNumber ?? "").hasPrefix("HDTC")`. The real per-device
+  `Transcode` capability field only exists on a CGNAT-unsafe cloud endpoint (`docs/HDHRFindings.md`'s
+  "Transcode capability" section) — never called. `ModelNumber`'s `"HDTC"` prefix (EXTEND/PLUS-tier
+  devices) is the safe local proxy `AppState.startRecording` gates on before ever attempting a
+  non-`"none"` transcode profile. Nil `ModelNumber` (e.g. a UDP-only-discovered device — the UDP
+  discovery reply has no `ModelNumber` TLV, so `HDHRManager.swift`'s manual `HDHRDevice(...)`
+  construction there leaves it at its default `nil`) is treated as unsupported — the conservative
+  default, since a recording that never attempts an unverified profile beats one that fails and
+  retries.
+
+`ModelNumber: String?` (e.g. `"HDTC-2US"`) is decoded like every other optional field here (`try?`
+in `HDHRDevice`'s custom `init(from:)`) from all three JSON-decoding discovery paths in
+`HDHRManager.swift` (`fetchDeviceInfo`, `mDNSDiscover`, `cloudDiscover`) — only the manual UDP-reply
+construction doesn't populate it, per above.
 
 ## HDHRDevice Availability Tracking
 

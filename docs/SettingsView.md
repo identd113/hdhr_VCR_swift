@@ -408,7 +408,7 @@ A `.json.bak` backup is written before each save. The config format is shared wi
 
 ## What Still Needs Doing
 
-- **No per-show overrides** — all recording settings (transcode, Bonus Time, fail threshold) apply globally. A useful future feature would be per-show overrides: "this show always transcodes to Mobile" or "this show gets 60 minutes of Bonus Time."
+- **No per-show fail-threshold override** — `Fail_count_setting` (deactivate/pause after N consecutive failures) applies globally only; there's no `show_fail_threshold`-style field to give one show a different tolerance. Transcode and Bonus Time are *not* in this gap — both are already per-show (`show_transcode`, `show_bonus_time`), editable per show in the Add/Edit forms (`ShowFormSection.swift`) with `Default_transcode`/`Sports_padding_enabled` only supplying the initial default. (This entry previously claimed all three applied globally only — corrected 2026-08-28; only the fail-threshold half of that claim was ever accurate.)
 
 - **Bonus Time label clarity** — the stepper says "Bonus Time: 30 min" with no inline context. The `.help()` tooltip explains it, but a visible note like "(past guide end)" in the label itself would clarify without requiring hover.
 

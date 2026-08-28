@@ -42,7 +42,8 @@ ScrollView {
     Signal (bars + weak-signal warning — only when Signal_quality_enabled and channel has data)
     Type (segmented Picker: Single / DateTime / SeriesID — SeriesID collapses .seriesChannel/.seriesAll)
     Scope (2-segment Picker: Channel / All — only when Type is SeriesID)
-    Transcode (Picker: None / Heavy / Mobile / Internet 720)
+    Transcode (Picker: None / Heavy / Mobile / Internet 720 — orange warning below when the
+              device doesn't support transcoding and the profile isn't None)
     Bonus Time (toggle — only when Sports_padding_enabled)
     Day / Days (toggle buttons — only for Single and DateTime)
     New Only (Skip reruns toggle — every Type except Single)

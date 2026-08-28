@@ -34,8 +34,9 @@ The vertical red line is a live "now" indicator that creeps across the grid in r
 channels get pulled into their own **★ FAVORITES** row up top so they're never buried in a big
 lineup, green **NEW** badges flag episodes the guide hasn't marked as reruns, and the per-channel
 signal bars in the gutter (fed by real tuner SNQ samples) tell you at a glance which channels are
-solid before you schedule off them. The top bar switches between tuners and genre filters without
-leaving the page.
+solid before you schedule off them. The top bar switches between tuners and genre filters, and a
+type-ahead search box finds a show by name — arrow keys through the results, then left/right to
+step through its other airings — all without leaving the page.
 
 ---
 
@@ -254,11 +255,10 @@ Config is saved automatically at:
 
 ## Adding Shows
 
-**Menu bar icon → Add Show…** opens a 3-step wizard:
+**Menu bar icon → Add Show…** opens a 2-step wizard:
 
-1. **Select Tuner** — choose device (skipped with only one tuner)
-2. **Guide** — browse the cable grid; click to select, double-click to advance
-3. **Details** — recording type, air days, transcode, save folder
+1. **Guide** — the same web guide grid served to LAN browsers, embedded in-window; pick a tuner from its device bar, click a show to select, then Record to advance
+2. **Details** — recording type, air days, transcode, save folder
 
 ---
 

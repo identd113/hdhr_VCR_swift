@@ -43,14 +43,6 @@ Every managed show type records; there's no way to just get notified when someth
 
 ---
 
-## Web Guide
-
-### No guide search
-
-The web guide has a genre filter (`filterGenre`/`rebuildGenreFilter` in `guide.js`, dims non-matching blocks) but no title/keyword text search — finding "where is Jeopardy airing" today means browsing channel-by-channel or scrolling. Every comparable guide app (Channels DVR, Plex, TiVo) has a search box. Could reuse `GuideStore`'s existing per-channel entry index for a client-side search-as-you-type, or a small new `/api/guide-search` endpoint if the dataset gets too large to ship to the browser wholesale. 2026-08-11 feature-gap survey, not yet scoped.
-
----
-
 ## Terminal Guide
 
 See `docs/TUIGuide.md`'s "Deferred ideas" section for open feature gaps and known limitations.
