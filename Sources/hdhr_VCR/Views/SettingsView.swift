@@ -299,34 +299,15 @@ struct SettingsView: View {
     private var recordingView: some View {
         Form {
             Section("Recording") {
-                LabeledContent {
-                    HStack {
-                        Text(saveDirLabel).foregroundStyle(.secondary)
-                        Button("Choose…") { chooseFolder() }
-                        if !draftSaveDirectory.isEmpty {
-                            Button("Reset") { draftSaveDirectory = "" }.foregroundStyle(.secondary)
-                        }
-                    }
-                } label: {
-                    HStack { Text("Default folder"); InfoButton("Where recordings are saved. Falls back to ~/Movies/hdhr_videos when not set.") }
-                }
-
-                Picker(selection: $draft.Default_transcode) {
-                    Text("None").tag("none")
-                    Text("Heavy").tag("heavy")
-                    Text("Mobile").tag("mobile")
-                    Text("Internet 720").tag("internet720")
-                } label: {
-                    HStack { Text("Default transcode"); InfoButton("Applied to all new shows. None records the raw MPEG-2 stream — best quality, no re-encoding overhead. Not all tuner models support transcoding — if a recording fails immediately after picking a profile, switch back to None.") }
-                }
-
-                Stepper(value: $draft.Min_disk_free_gb, in: 1...100, step: 1) {
-                    HStack { Text("Min free disk: \(draft.Min_disk_free_gb, specifier: "%.0f") GB"); InfoButton("Recordings are skipped when free space on the save drive drops below this threshold.") }
-                }
-
-                Stepper(value: $draft.Fail_count_setting, in: 1...10) {
-                    HStack { Text("Pause after \(draft.Fail_count_setting) failure(s)"); InfoButton("A show is automatically paused after this many consecutive failures. Restore it via Maintenance → Reactivate Paused Shows.") }
-                }
+                RecordingDefaultsFields(
+                    folderLabel: saveDirLabel,
+                    onChooseFolder: { chooseFolder() },
+                    onResetFolder: draftSaveDirectory.isEmpty ? nil : { draftSaveDirectory = "" },
+                    transcode: $draft.Default_transcode,
+                    minFreeDiskGB: $draft.Min_disk_free_gb,
+                    failThreshold: $draft.Fail_count_setting,
+                    idPrefix: "settings-recording"
+                )
 
                 if vlcInstalled {
                     Toggle(isOn: $draft.Watch_in_VLC) {

@@ -74,12 +74,16 @@ struct ShowFormSection: View {
         return (gn, signalBucket(guideName: gn))
     }
 
-    // Defaults to true (no warning) when the device isn't resolvable yet — e.g. before a tuner has
-    // been picked in the Add wizard — unlike AppState.startRecording's opposite conservative default
-    // (unknown ModelNumber ⇒ force None): a false positive here would wrongly warn about a device
-    // that was simply never selected, where the same "unknown" case at record time must stay safe.
+    // Defaults to true (no warning) only when no tuner has been picked yet at all (hdhr_record
+    // empty — e.g. before a tuner is selected in the Add wizard): a false positive there would
+    // wrongly warn about a device that was simply never selected. Once hdhr_record is set but
+    // doesn't resolve to a known device — the documented "Web guide offline devices" case, a show
+    // assigned to a real tuner that just isn't currently detected — falls back to false (warn),
+    // matching AppState.startRecording's own conservative "unknown ⇒ force None" posture instead of
+    // silently hiding a warning for a device whose actual capability genuinely isn't known.
     private var selectedDeviceSupportsTranscode: Bool {
-        state.devices.first(where: { $0.DeviceID == show.hdhr_record })?.supportsTranscode ?? true
+        guard !show.hdhr_record.isEmpty else { return true }
+        return state.devices.first(where: { $0.DeviceID == show.hdhr_record })?.supportsTranscode ?? false
     }
 
     var body: some View {
@@ -141,6 +145,7 @@ struct ShowFormSection: View {
                     .padding(10)
                     .background(Color.orange.cornerRadius(8))
                     .font(.callout)
+                    .accessibilityIdentifier("show-form-no-transcode-warning")
             }
 
             if state.config.Sports_padding_enabled {

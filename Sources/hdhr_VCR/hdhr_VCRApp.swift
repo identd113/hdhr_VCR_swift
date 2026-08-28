@@ -96,9 +96,14 @@ struct hdhr_VCRApp: App {
                 // The launch-time call above no-ops until the wizard is dismissed (its own guard),
                 // and the launch onAppear only fires once — so re-check right when the wizard's
                 // flag flips true, the same way pendingDonationNagTrigger re-checks after a show add.
+                // Also handles the reverse transition (true → false): Settings → Maintenance →
+                // "Reset First-Run Setup" flips this back to false and reopens the wizard directly
+                // (not through openFirstRunWizardIfNeeded()'s own guard) — without re-arming
+                // needsFirstRunWizard here too, openDonationNagIfNeeded()'s guard would stay stale
+                // from the original run and let the nag pop up alongside the reopened wizard.
                 .onChange(of: appState.config.First_run_wizard_shown) { _, shown in
+                    needsFirstRunWizard = !shown
                     if shown {
-                        needsFirstRunWizard = false
                         openDonationNagIfNeeded()
                     }
                 }
@@ -173,26 +178,31 @@ struct hdhr_VCRApp: App {
         .windowResizability(.contentSize)
     }
 
-    // No-op once Donation_unlocked is set. openWindow(id:) on an already-open single-instance
-    // Window scene just re-focuses it (Window scenes can't duplicate — see docs/MenuContent.md's
-    // "No duplicate windows" note), so this is safe to call repeatedly without checking first.
+    // Shared by both launch-gate functions below: bring the app forward and (re)focus a
+    // single-instance Window. openWindow(id:) on one that's already open just re-focuses it
+    // (Window scenes can't duplicate — see docs/MenuContent.md's "No duplicate windows" note), so
+    // this is safe to call repeatedly without checking first.
+    private func activateAndOpen(windowId: String) {
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        openWindow(id: windowId)
+    }
+
+    // No-op once Donation_unlocked is set.
     private func openDonationNagIfNeeded() {
         // Wait for the first-run wizard to be dismissed first, so the two windows never compete
         // for focus on a brand-new install — see the onChange(of: First_run_wizard_shown) above,
-        // which re-checks this (and flips needsFirstRunWizard false) the moment the wizard flips
-        // it. Reads needsFirstRunWizard, not the live appState.config.First_run_wizard_shown —
-        // see that property's own comment for why the live value isn't safe to read here.
+        // which keeps this guard in sync with both directions of that flag. Reads
+        // needsFirstRunWizard, not the live appState.config.First_run_wizard_shown — see that
+        // property's own comment for why the live value isn't safe to read here.
         guard !needsFirstRunWizard else { return }
         guard !appState.config.Donation_unlocked else { return }
-        NSApplication.shared.activate(ignoringOtherApps: true)
-        openWindow(id: "donation-nag")
+        activateAndOpen(windowId: "donation-nag")
     }
 
     // No-op once needsFirstRunWizard is false. Same shape as openDonationNagIfNeeded() above.
     private func openFirstRunWizardIfNeeded() {
         guard needsFirstRunWizard else { return }
-        NSApplication.shared.activate(ignoringOtherApps: true)
-        openWindow(id: "first-run-wizard")
+        activateAndOpen(windowId: "first-run-wizard")
     }
 
     // Silently open+close the menu so SwiftUI builds the view graph while the icon is still dimmed.

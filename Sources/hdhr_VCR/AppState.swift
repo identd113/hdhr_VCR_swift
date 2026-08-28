@@ -712,6 +712,11 @@ final class AppState: ObservableObject {
                 // so the app shows "no active tuner" even while both tuners are recording.
                 if fresh.TunerCount != nil { devices[i].TunerCount = fresh.TunerCount }
                 if fresh.FirmwareVersion != nil { devices[i].FirmwareVersion = fresh.FirmwareVersion }
+                // Same "UDP-only startup" gap as TunerCount above — a device whose HTTP server was
+                // briefly down at launch caches with ModelNumber == nil (supportsTranscode == false,
+                // per Models.swift), and without re-applying it here it stays nil for the whole
+                // session even once HTTP comes up, permanently forcing transcode=none for that device.
+                if fresh.ModelNumber != nil { devices[i].ModelNumber = fresh.ModelNumber }
                 if wasUnavailable {
                     glog("[DeviceProbe] \(devices[i].DeviceID) is back online")
                     webServer.broadcastDeviceBarEvent(type: "deviceOnline", deviceId: devices[i].DeviceID, state: self)

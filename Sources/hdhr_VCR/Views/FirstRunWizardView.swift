@@ -71,14 +71,17 @@ struct FirstRunWizardView: View {
                     Button("Back") { goBack() }
                         .buttonStyle(.plain)
                         .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("wizard-back")
                 }
                 Spacer()
                 if step == .recordingDefaults {
                     Button("Next") { goNext() }
                         .buttonStyle(.borderedProminent)
+                        .accessibilityIdentifier("wizard-next")
                 } else {
                     Button("Finish") { finish() }
                         .buttonStyle(.borderedProminent)
+                        .accessibilityIdentifier("wizard-finish")
                 }
             }
             .padding(.horizontal, 20)
@@ -194,6 +197,7 @@ struct FirstRunWizardView: View {
                         Button("Open Privacy Settings") { openPrivacySettings() }
                             .buttonStyle(.bordered)
                             .controlSize(.small)
+                            .accessibilityIdentifier("wizard-open-privacy-settings")
                     }
                 }
                 .padding(.vertical, 2)
@@ -209,34 +213,15 @@ struct FirstRunWizardView: View {
             }
 
             Section {
-                LabeledContent {
-                    HStack {
-                        Text(saveFolderLabel).foregroundStyle(.secondary)
-                        Button("Choose…") { chooseFolder() }
-                        if !saveFolder.isEmpty {
-                            Button("Reset") { saveFolder = "" }.foregroundStyle(.secondary)
-                        }
-                    }
-                } label: {
-                    HStack { Text("Default folder"); InfoButton("Where recordings are saved. Falls back to ~/Movies/hdhr_videos when not set.") }
-                }
-
-                Picker(selection: $transcode) {
-                    Text("None").tag("none")
-                    Text("Heavy").tag("heavy")
-                    Text("Mobile").tag("mobile")
-                    Text("Internet 720").tag("internet720")
-                } label: {
-                    HStack { Text("Default transcode"); InfoButton("Applied to all new shows. None records the raw MPEG-2 stream — best quality, no re-encoding overhead. Not all tuner models support transcoding — if a recording fails immediately after picking a profile, switch back to None.") }
-                }
-
-                Stepper(value: $minFreeDiskGB, in: 1...100, step: 1) {
-                    HStack { Text("Min free disk: \(minFreeDiskGB, specifier: "%.0f") GB"); InfoButton("Recordings are skipped when free space on the save drive drops below this threshold.") }
-                }
-
-                Stepper(value: $failThreshold, in: 1...10) {
-                    HStack { Text("Pause after \(failThreshold) failure(s)"); InfoButton("A show is automatically paused after this many consecutive failures. Restore it via Maintenance → Reactivate Paused Shows.") }
-                }
+                RecordingDefaultsFields(
+                    folderLabel: saveFolderLabel,
+                    onChooseFolder: { chooseFolder() },
+                    onResetFolder: saveFolder.isEmpty ? nil : { saveFolder = "" },
+                    transcode: $transcode,
+                    minFreeDiskGB: $minFreeDiskGB,
+                    failThreshold: $failThreshold,
+                    idPrefix: "wizard-recording"
+                )
             }
         }
         .formStyle(.grouped)
@@ -321,9 +306,13 @@ struct FirstRunWizardView: View {
         // Discovering a device's presence (mDNS/UDP) isn't itself proof of confirmed access —
         // AppState.confirmLocalNetworkAccessIfNeeded() only fires on an actual successful lineup
         // fetch (a real HTTP round trip to the device), so force that too rather than waiting for
-        // the idle loop to eventually get to it on its own schedule.
-        for device in state.devices {
-            await state.ensureLineupLoaded(for: device)
+        // the idle loop to eventually get to it on its own schedule. Concurrent, not sequential —
+        // each device's fetch is independent, so a multi-tuner household shouldn't wait
+        // N × latency here when max(latency) gets the same result.
+        await withTaskGroup(of: Void.self) { group in
+            for device in state.devices {
+                group.addTask { await state.ensureLineupLoaded(for: device) }
+            }
         }
         networkStatus = state.config.Local_network_confirmed ? .confirmed : .notFound
     }

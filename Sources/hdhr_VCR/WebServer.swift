@@ -457,7 +457,11 @@ final class WebServer: @unchecked Sendable {
         var counts: [String: Any] = [:]
         for device in state.devices {
             let active = state.activeTunerCount(for: device.DeviceID)
-            counts[device.DeviceID] = ["a": active, "t": device.TunerCount ?? 0]
+            // "nt" mirrors the initial page-load embed's own field (tunerJS, below) — without it, a
+            // device the client only learns about via this SSE path (not yet in its local `tuners`
+            // cache) renders the Record/Edit modal's no-transcode warning as permanently off for
+            // that device until the next full page reload rebuilds `tuners` from scratch.
+            counts[device.DeviceID] = ["a": active, "t": device.TunerCount ?? 0, "nt": device.supportsTranscode ? 0 : 1]
         }
         guard !counts.isEmpty else { return }
         broadcastEvent(["type": "tuner_update", "counts": counts])
@@ -789,7 +793,82 @@ final class WebServer: @unchecked Sendable {
     // MARK: - Routing
 
     private func route(method: String, path: String, body: Data?) async -> WebResponse {
+        // Special-cased ahead of routeOnMain's giant @MainActor switch: the actual scan+group+sort
+        // work here is pure computation over a snapshot, not UI/state-mutation, so it runs off-actor
+        // instead of holding up the MainActor (idle loop, menu rebuild, guide rebuild, etc.) for
+        // every debounced keystroke from guide.js's search box — see handleGuideSearch's own comment.
+        if method == "GET", path.hasPrefix("/api/guide-search/") {
+            return await handleGuideSearch(path: path)
+        }
         return await MainActor.run { routeOnMain(method: method, path: path, body: body) }
+    }
+
+    // /api/guide-search/{deviceId}/{query} — shows on this one device's guide (search is
+    // current-tuner-only, mirroring the genre filter's per-tuner scope) whose title contains the
+    // search term, grouped by SeriesID (falling back to a normalized title, same key shape
+    // GuideStore.currentEntryByTitle/ManagedGuideMatcher.owner already use) so a rerun without a
+    // SeriesID still collapses into one show instead of one row per airing. Powers guide.js's
+    // search-box dropdown (title+poster) and its episode-cycling (each group's `airings`, sorted by
+    // start, is the exact ordered list cycleSearchEpisode walks).
+    //
+    // Only the snapshot step below touches @MainActor state (a plain array/dict copy — no
+    // lowercasing, filtering, or sorting) — the actual per-keystroke scan cost (lowercasing every
+    // entry's title, filtering, grouping, sorting) runs on this function's own (non-MainActor) task
+    // instead, so a dense lineup's search doesn't add blocking work to the same thread CLAUDE.md
+    // already flags as hot-path sensitive (menu rebuild, idle loop, guide rebuild).
+    private func handleGuideSearch(path: String) async -> WebResponse {
+        let tail  = path.dropFirst("/api/guide-search/".count)
+        let parts = tail.split(separator: "/", maxSplits: 1)
+        guard parts.count == 2 else { return .notFound("bad params") }
+        let devId = String(parts[0]).removingPercentEncoding ?? String(parts[0])
+        let q = (String(parts[1]).removingPercentEncoding ?? String(parts[1]))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        // Defense-in-depth floor below the client's own 3-char threshold — never trust the
+        // caller (this LAN API has no auth beyond subnet matching, per CLAUDE.md).
+        guard q.count >= 2 else { return jsonResponse(["shows": [] as [Any]]) }
+
+        struct ChannelSnapshot { let num: String; let name: String; let entries: [GuideEntry] }
+        let snapshot: [ChannelSnapshot] = await MainActor.run { () -> [ChannelSnapshot] in
+            guard let state = appState else { return [] }
+            let (winStart, winSec) = guideWindow(state: state)
+            let winEnd = winStart + winSec
+            return (state.guideStore.channelsByDevice[devId] ?? []).map { ch in
+                ChannelSnapshot(num: ch.GuideNumber, name: ch.GuideName,
+                                 entries: entriesInWindow(state: state, deviceId: devId, channelNum: ch.GuideNumber,
+                                                           winStart: winStart, winEnd: winEnd))
+            }
+        }
+
+        let qLower = q.lowercased()
+        struct Group {
+            var title: String
+            var seriesId: String?
+            var poster: String?
+            var airings: [[String: Any]] = []
+        }
+        var groups: [String: Group] = [:]
+
+        for ch in snapshot {
+            for e in ch.entries where e.Title.lowercased().contains(qLower) {
+                let key = e.SeriesID ?? Show.seriesTitle(from: e.Title).lowercased()
+                var g = groups[key] ?? Group(title: Show.seriesTitle(from: e.Title),
+                                              seriesId: e.SeriesID, poster: e.ImageURL)
+                if g.poster == nil { g.poster = e.ImageURL }
+                g.airings.append(["start": e.StartTime, "end": e.EndTime, "device": devId,
+                                   "ch": ch.num, "chName": ch.name,
+                                   "ep": e.episodeInfoLabel ?? "", "genre": e.firstGenre ?? ""])
+                groups[key] = g
+            }
+        }
+
+        let shows: [[String: Any]] = groups.values
+            .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+            .prefix(25)
+            .map { g in
+                let airings = g.airings.sorted { ($0["start"] as? Int ?? 0) < ($1["start"] as? Int ?? 0) }
+                return ["title": g.title, "seriesId": g.seriesId ?? "", "poster": g.poster ?? "", "airings": airings]
+            }
+        return jsonResponse(["shows": shows])
     }
 
     @MainActor
@@ -931,61 +1010,6 @@ final class WebServer: @unchecked Sendable {
                             "chLogo": logoURL, "title": pair.entry.Title]
                 }
                 return jsonResponse(["airings": items])
-            }
-            if path.hasPrefix("/api/guide-search/") {
-                // /api/guide-search/{deviceId}/{query} — shows on this one device's guide (search
-                // is current-tuner-only, mirroring the genre filter's per-tuner scope) whose title
-                // contains the search term, grouped by SeriesID (falling back to a normalized
-                // title, same key shape GuideStore.currentEntryByTitle/ManagedGuideMatcher.owner
-                // already use) so a rerun without a SeriesID still collapses into one show instead
-                // of one row per airing. Powers guide.js's search-box dropdown (title+poster) and
-                // its episode-cycling (each group's `airings`, sorted by start, is the exact
-                // ordered list cycleSearchEpisode walks).
-                let tail  = path.dropFirst("/api/guide-search/".count)
-                let parts = tail.split(separator: "/", maxSplits: 1)
-                guard parts.count == 2 else { return .notFound("bad params") }
-                let devId = String(parts[0]).removingPercentEncoding ?? String(parts[0])
-                let q = (String(parts[1]).removingPercentEncoding ?? String(parts[1]))
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                // Defense-in-depth floor below the client's own 3-char threshold — never trust the
-                // caller (this LAN API has no auth beyond subnet matching, per CLAUDE.md).
-                guard q.count >= 2 else { return jsonResponse(["shows": [] as [Any]]) }
-
-                let (winStart, winSec) = guideWindow(state: state)
-                let winEnd  = winStart + winSec
-                let qLower  = q.lowercased()
-
-                struct Group {
-                    var title: String
-                    var seriesId: String?
-                    var poster: String?
-                    var airings: [[String: Any]] = []
-                }
-                var groups: [String: Group] = [:]
-
-                for ch in state.guideStore.channelsByDevice[devId] ?? [] {
-                    let entries = entriesInWindow(state: state, deviceId: devId, channelNum: ch.GuideNumber,
-                                                   winStart: winStart, winEnd: winEnd)
-                    for e in entries where e.Title.lowercased().contains(qLower) {
-                        let key = e.SeriesID ?? Show.seriesTitle(from: e.Title).lowercased()
-                        var g = groups[key] ?? Group(title: Show.seriesTitle(from: e.Title),
-                                                      seriesId: e.SeriesID, poster: e.ImageURL)
-                        if g.poster == nil { g.poster = e.ImageURL }
-                        g.airings.append(["start": e.StartTime, "end": e.EndTime, "device": devId,
-                                           "ch": ch.GuideNumber, "chName": ch.GuideName,
-                                           "ep": e.episodeInfoLabel ?? "", "genre": e.firstGenre ?? ""])
-                        groups[key] = g
-                    }
-                }
-
-                let shows: [[String: Any]] = groups.values
-                    .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
-                    .prefix(25)
-                    .map { g in
-                        let airings = g.airings.sorted { ($0["start"] as? Int ?? 0) < ($1["start"] as? Int ?? 0) }
-                        return ["title": g.title, "seriesId": g.seriesId ?? "", "poster": g.poster ?? "", "airings": airings]
-                    }
-                return jsonResponse(["shows": shows])
             }
             if path.hasPrefix("/api/guide-detail/") {
                 // /api/guide-detail/{devId}/{channelNum}/{winStart}/{winSec} — heavy fields

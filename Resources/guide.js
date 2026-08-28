@@ -2,7 +2,10 @@
 {{RECS_BY_DEV_JS}}
 var _d='',_n='',_s=0,_e=0,_ser='',_genre='',_title='',_poster='',_logo='',_chname='';
 var _delConfirmAction=null;   // pending action for #del-confirm-modal, set by showDeleteConfirm()
-function hej(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+// Escapes '"' too (not just &<>) — needed by any call site that interpolates the result into an
+// HTML attribute (e.g. the search dropdown's <img src="...">), not just text content. Safe for
+// existing text-content call sites too: &quot; decodes back to a literal '"' there as well.
+function hej(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 // Shared POST helper — every mutating action (record/edit/delete/toggle-favorite) posts
 // JSON and gets JSON back; callers still handle their own response/error logic (which
 // differs enough per action — e.g. confirmRecord's r.text() fallback on a non-JSON error
@@ -415,6 +418,14 @@ function updateNoTranscodeWarn(){
   var sel=document.getElementById('rm-transcode');
   var show=sel&&sel.value!=='none'&&noTranscode(_d);
   document.getElementById('rm-no-transcode').style.display=show?'block':'none';
+}
+// Same warning, for the Edit modal (#em-no-transcode) — mirrors updateNoTranscodeWarn() above but
+// keyed off _editDev (the show's already-assigned tuner) rather than the guide's currently-selected
+// one, since editing an existing show never changes which tuner it's on.
+function updateEmNoTranscodeWarn(){
+  var sel=document.getElementById('em-transcode');
+  var show=sel&&sel.value!=='none'&&noTranscode(_editDev);
+  document.getElementById('em-no-transcode').style.display=show?'block':'none';
 }
 function renderAirings(list){
   // seriesChannel only ever records from the currently-selected channel (_n) — filter the
@@ -838,7 +849,7 @@ document.addEventListener('click',function(e){
   if(!sBar){closeSearchDrop();closeSearchHelp();}
 });
 // ── Edit show modal ──
-var _editId='',_editPaused=false,_editRec=false,_editType='single',_editPoster='';
+var _editId='',_editPaused=false,_editRec=false,_editType='single',_editPoster='',_editDev='';
 var _dayNames=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 var _dayShort=['Su','M','Tu','W','Th','F','Sa'];
 function updateDaysVisibility(){
@@ -883,7 +894,7 @@ function updateScopeUI(){
 }
 function openEditShow(el){
   var d=el.dataset;
-  _editId=d.id;_editPaused=d.paused==='1';_editRec=d.recording==='1';_editType=d.type||'single';_editPoster=d.poster||d.logo||'';
+  _editId=d.id;_editPaused=d.paused==='1';_editRec=d.recording==='1';_editType=d.type||'single';_editPoster=d.poster||d.logo||'';_editDev=d.dev||'';
   document.getElementById('em-title-in').value=d.title||'';
   document.getElementById('em-ch-in').value=d.ch||'';
   document.getElementById('em-len-in').value=d.length||'60';
@@ -908,6 +919,7 @@ function openEditShow(el){
   if(d.bonus==='1'){ebstar.style.display='inline-flex';triggerSb('em-bonus-star');}else{ebstar.style.display='none';ebstar.classList.remove('sb-anim');}
   document.getElementById('em-bonus-row').style.display=(!_editRec&&_bonusEnabled)?'flex':'none';
   document.getElementById('em-transcode').value=d.transcode||'none';
+  updateEmNoTranscodeWarn();
   document.getElementById('em-dup').checked=d.ignoredup==='1';
   updateDupVisibility();
   document.getElementById('em-new').checked=d.newonly==='1';
@@ -1492,8 +1504,10 @@ setInterval(updateNowLine,60000);
       if(!d||!d.type)return;
       if(d.type==='tuner_update'&&d.counts){
         Object.keys(d.counts).forEach(function(dev){
-          var a=d.counts[dev].a,t=d.counts[dev].t;
-          if(tuners[dev])tuners[dev].a=a;else tuners[dev]={t:t,a:a,surl:''};
+          var c=d.counts[dev],a=c.a,t=c.t;
+          // Refresh "nt" on an existing entry too (not just the fresh-entry fallback) — cheap, and
+          // keeps it from ever silently going stale relative to what the server just sent.
+          if(tuners[dev]){tuners[dev].a=a;tuners[dev].nt=c.nt;}else{tuners[dev]={t:t,a:a,surl:'',nt:c.nt};}
           var tb=document.getElementById('tun-'+dev);
           if(tb&&t>0){var full=a>=t;tb.textContent=a+'/'+t+(full?' — FULL':'');if(full)tb.classList.add('t-info-full');else tb.classList.remove('t-info-full');}
         });
