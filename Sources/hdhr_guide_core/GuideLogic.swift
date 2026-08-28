@@ -83,3 +83,74 @@ public func layoutRowBlocks(entries: [GuideEntryDTO], winStart: Int, colStart: I
     }
     return blocks
 }
+
+// ── Search / channel-jump (a limited, offline counterpart to the web guide's own type-ahead show
+// search — see docs/TUIGuide.md's "Deferred ideas" entry this fulfills, and its "Search / channel
+// jump" section for the full design rationale) ──
+
+// First channel (in `channels`' own already-sorted display order) whose guideNumber starts with
+// `prefix` — the live jump target for "#5.1"-style channel-number entry in main.swift's `.search`
+// mode. Live per keystroke (unlike searchShows below): typing "#5" jumps as soon as it's
+// unambiguous, "#5.1" narrows further, with no Enter needed to confirm — a channel number is a
+// single unambiguous target, not a list to choose from.
+public func firstChannelIndex(matchingNumberPrefix prefix: String, in channels: [GuideChannelDTO]) -> Int? {
+    guard !prefix.isEmpty else { return nil }
+    return channels.firstIndex { $0.guideNumber.hasPrefix(prefix) }
+}
+
+// One search-result row: a show (grouped by seriesId, or by lowercased title when seriesId is
+// nil — the same "no ID -> fall back to title" shape Show.seriesTitle(from:) uses in the main
+// app, duplicated rather than imported since hdhr_guide_core can't depend on the hdhr_VCR
+// executable target, the same accepted tradeoff genreImpliesBonusTime above already makes) and
+// the (channelIndex, entryIndex) of its single jump target.
+public struct SearchResult: Equatable {
+    public let title: String
+    public let channelIndex: Int
+    public let entryIndex: Int
+    public let airingCount: Int
+
+    public init(title: String, channelIndex: Int, entryIndex: Int, airingCount: Int) {
+        self.title = title
+        self.channelIndex = channelIndex
+        self.entryIndex = entryIndex
+        self.airingCount = airingCount
+    }
+}
+
+// Case-insensitive substring match against every already-loaded channel's entries — no network
+// call, unlike the web guide's `/api/guide-search`: everything this needs is already sitting in
+// `payload` (the same full guide window already displayed, "No client-side time cap" per
+// docs/TUIGuide.md), so there's nothing to debounce or request-id-guard against a stale in-flight
+// fetch the way the web version has to.
+//
+// Grouped by show (see SearchResult's own doc comment) rather than one row per raw entry, so a
+// show with many reruns collapses into one line instead of crowding the small, `limit`-capped
+// list — the same reason the web guide's own /api/guide-search groups by SeriesID. Each group's
+// jump target is its chronologically EARLIEST airing in the loaded window, mirroring the web
+// guide's `airings sorted by start` / `jumpToSearchAiring` landing on `airings[0]`. Deliberately
+// narrower than the web version: no per-result episode cycling (←/→ between a show's other
+// airings) — picking a result jumps to that one airing; from there the grid's own ←/→ already
+// covers moving between a channel's other programs. Sorted by title, capped at `limit`.
+public func searchShows(query: String, in channels: [GuideChannelDTO], limit: Int) -> [SearchResult] {
+    let q = query.lowercased()
+    guard !q.isEmpty else { return [] }
+
+    struct Group { var title: String; var channelIndex: Int; var entryIndex: Int; var startTime: Int; var count: Int }
+    var groups: [String: Group] = [:]
+    for (ci, ch) in channels.enumerated() {
+        for (ei, e) in ch.entries.enumerated() where e.title.lowercased().contains(q) {
+            let key = e.seriesId ?? e.title.lowercased()
+            if var g = groups[key] {
+                g.count += 1
+                if e.startTime < g.startTime { g.channelIndex = ci; g.entryIndex = ei; g.startTime = e.startTime }
+                groups[key] = g
+            } else {
+                groups[key] = Group(title: e.title, channelIndex: ci, entryIndex: ei, startTime: e.startTime, count: 1)
+            }
+        }
+    }
+    return groups.values
+        .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+        .prefix(limit)
+        .map { SearchResult(title: $0.title, channelIndex: $0.channelIndex, entryIndex: $0.entryIndex, airingCount: $0.count) }
+}

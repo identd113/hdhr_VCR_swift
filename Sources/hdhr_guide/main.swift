@@ -65,7 +65,7 @@ let channelColWidth = 20
 let slotWidth = 14
 let secondsPerSlot = 1800
 
-enum Mode { case normal, recordSummary }
+enum Mode { case normal, recordSummary, search }
 
 var interrupted = false
 signal(SIGINT) { _ in interrupted = true }
@@ -108,6 +108,30 @@ var mode: Mode = .normal
 var statusMsg = "Loaded \(payload.channels.count) channels on HDHR-\(payload.deviceId.uppercased())."
 var lastPoll = Date()
 let pollInterval: TimeInterval = 20
+
+// Search / channel-jump (Mode.search — see GuideLogic.swift's own "Search / channel-jump" section
+// header for the full design). `searchQuery` is everything typed since `/` was pressed, the `#`
+// prefix included when present — `isChannelJumpQuery` below is the single place that decides which
+// of the two sub-modes a query is, so main.swift's handle()/render() never re-derive that check
+// independently and risk drifting apart on what counts as "channel mode" vs "show mode."
+var searchQuery = ""
+var searchResults: [SearchResult] = []
+var searchHi = -1
+// Last time searchQuery changed — armSearchStrayTimer's TUI counterpart (Resources/guide.js) but
+// needs no timer/thread of its own: the main loop already wakes on a ~300ms cadence even with no
+// key pressed (Terminal.pollStdin(timeoutMs: 300) below), so the idle check just compares against
+// this on every iteration, the same way `lastPoll`/`pollInterval` already drive the 20s guide poll.
+var lastSearchKeyTime = Date()
+let searchStrayTimeout: TimeInterval = 5
+// 3, matching the web guide's own "Type 3+ letters" convention (docs/WebServer.md's Show search
+// section / the web help popover text) — no reason to pick a different number just because this
+// search runs locally instead of over the network.
+let searchMinChars = 3
+// Small and fixed, not scaled to terminal height — this is a "limited" TUI counterpart to the web
+// guide's own capped-at-25 /api/guide-search results, and renderSearchResultsScreen() doesn't need
+// (or want) this list competing for space the way the main grid's summary panel does.
+let searchResultLimit = 8
+func isChannelJumpQuery(_ q: String) -> Bool { q.hasPrefix("#") }
 
 func visibleCols() -> Int {
     let (cols, _) = Terminal.size()
@@ -153,7 +177,12 @@ func currentAnchorTime() -> Int {
     return payload.winStart + colStart * secondsPerSlot
 }
 
-func moveRow(_ delta: Int) {
+// Shared tail of "change selRow, keep the same time anchor" — moveRow's own relative ±1 case and
+// jumpToChannel's (below) direct-index case are otherwise identical, so the anchor-preserving
+// logic (deliberately hard-won — see moveRow's own comment on what it fixes) lives here exactly
+// once rather than being reimplemented a second time with subtly different behavior for the
+// search/channel-jump feature.
+func selectRow(_ newRow: Int) {
     guard !payload.channels.isEmpty else { return }
     // Anchor on the time being viewed *before* moving the selection, not after — switching rows
     // should feel like scrolling a column of channels past a fixed point in time, not resetting
@@ -164,13 +193,71 @@ func moveRow(_ delta: Int) {
     // all, and any shift that does happen is at most the small schedule-alignment gap between
     // channels, never a jump back to the start of the guide window.
     let anchorTime = currentAnchorTime()
-    selRow = max(0, min(payload.channels.count - 1, selRow + delta))
+    selRow = max(0, min(payload.channels.count - 1, newRow))
     // Routed through visibleEntries(_:), not `.entries` directly — every other read site in this
     // file does, and visibleEntries is where any future filtering/sorting of a channel's entries
     // would live (see its own comment); bypassing it here would silently desync anchor-time
     // channel-switch selection from what render() actually draws if that function ever grows one.
     selEntry = entryIndex(nearestTo: anchorTime, in: currentChannel().map(visibleEntries) ?? [])
     ensureEntryVisible()
+}
+
+func moveRow(_ delta: Int) { selectRow(selRow + delta) }
+
+// Live channel-jump target for a "#5.1"-style search query (searchQuery with the leading "#"
+// stripped) — called from handle(_:)'s .search branch on every keystroke, same "no Enter needed"
+// immediacy as moveRow's own arrow-key jumps. No-op (stays wherever the selection already was) if
+// nothing matches yet, e.g. mid-typing "#13" before the ".1" that disambiguates it.
+func jumpToChannel(matchingNumberPrefix prefix: String) {
+    guard let idx = firstChannelIndex(matchingNumberPrefix: prefix, in: payload.channels) else { return }
+    selectRow(idx)
+}
+
+func beginSearch() {
+    mode = .search
+    searchQuery = ""
+    searchResults = []
+    searchHi = -1
+    lastSearchKeyTime = Date()
+}
+
+func cancelSearch() {
+    mode = .normal
+    searchQuery = ""
+    searchResults = []
+    searchHi = -1
+}
+
+// Re-run on every keystroke inside .search mode (handle(_:)'s .char branch below) — cheap enough
+// (searchShows is a single local pass over already-loaded data, no network) that there's no
+// reason to debounce it the way the web guide's own onSearchInput()/runSearch() have to.
+func updateSearchResults() {
+    if isChannelJumpQuery(searchQuery) {
+        jumpToChannel(matchingNumberPrefix: String(searchQuery.dropFirst()))
+        searchResults = []
+        searchHi = -1
+    } else if searchQuery.count >= searchMinChars {
+        searchResults = searchShows(query: searchQuery, in: payload.channels, limit: searchResultLimit)
+        searchHi = searchResults.isEmpty ? -1 : 0
+    } else {
+        searchResults = []
+        searchHi = -1
+    }
+}
+
+// Enter picks the highlighted result (search mode) — moves the grid selection there and returns
+// to the normal grid with it now highlighted, same as the web guide's own selectSearchShow
+// (scrolls + showInfo, doesn't itself open a modal); Enter again on the grid opens the recording
+// summary screen if the user wants it, same as picking any other program by hand. Sets selRow/
+// selEntry directly rather than going through selectRow(_:) — that helper's whole job is
+// preserving the *current* time anchor across a relative move, which doesn't apply here: a result
+// already names the exact (channelIndex, entryIndex) to land on.
+func jumpToSearchResult(_ result: SearchResult) {
+    guard result.channelIndex >= 0, result.channelIndex < payload.channels.count else { cancelSearch(); return }
+    selRow = result.channelIndex
+    selEntry = result.entryIndex
+    ensureEntryVisible()
+    cancelSearch()
 }
 
 func moveEntry(_ delta: Int) {
@@ -301,6 +388,39 @@ func handle(_ key: Key) {
         }
         return
     }
+    // Search / channel-jump — entered via "/" below (the same idiom less/vim use, per
+    // docs/TUIGuide.md's original "Deferred ideas" entry for this feature), not by typing any
+    // arbitrary character: "f"/"F" (favorite) and "q" (quit) are already live single-key commands
+    // in .normal mode below, so unconditionally hijacking every keystroke the way the web guide's
+    // type-to-search does would silently break them. An explicit entry key sidesteps that
+    // collision entirely instead of trying to carve out exceptions for it.
+    if mode == .search {
+        switch key {
+        case .escape:
+            cancelSearch()
+        case .backspace:
+            if searchQuery.isEmpty { cancelSearch() } else {
+                searchQuery.removeLast()
+                lastSearchKeyTime = Date()
+                updateSearchResults()
+            }
+        case .up:
+            if !searchResults.isEmpty { searchHi = (searchHi - 1 + searchResults.count) % searchResults.count }
+        case .down:
+            if !searchResults.isEmpty { searchHi = (searchHi + 1) % searchResults.count }
+        case .enter:
+            // Channel-jump mode already jumped live on every keystroke (updateSearchResults ->
+            // jumpToChannel) — Enter here just confirms and closes, there's no list to pick from.
+            if isChannelJumpQuery(searchQuery) { cancelSearch() }
+            else if searchHi >= 0, searchHi < searchResults.count { jumpToSearchResult(searchResults[searchHi]) }
+        case .char(let c):
+            searchQuery.append(c)
+            lastSearchKeyTime = Date()
+            updateSearchResults()
+        default: break
+        }
+        return
+    }
     switch key {
     case .up: moveRow(-1)
     case .down: moveRow(1)
@@ -309,6 +429,7 @@ func handle(_ key: Key) {
     case .char("["): pageTime(-1)
     case .char("]"): pageTime(1)
     case .char("f"), .char("F"): toggleFavorite()
+    case .char("/"): beginSearch()
     case .tab: switchDevice()
     case .enter:
         if currentEntry() != nil { mode = .recordSummary }
@@ -388,6 +509,53 @@ func renderSummaryScreen() {
     }
     out += dim + "[Esc] Cancel" + reset
 
+    Terminal.writeFrame(out)
+}
+
+// Full-screen takeover for a show-search query with enough characters to have real results (see
+// render()'s own comment on why channel-jump mode and a too-short query stay on the normal grid
+// instead) — mirrors renderSummaryScreen()'s "replace the grid entirely" shape rather than
+// squeezing a dropdown into the footer, since there's no floating-panel concept in this ASCII
+// grid. searchResults' cached (channelIndex, entryIndex) pairs are re-resolved against the live
+// `payload` here, not snapshotted, for the same reason buildSummaryLines() reads currentEntry()
+// fresh every redraw — status/genre coloring should reflect whatever's true right now. The main
+// loop's poll skip while mode == .search (see its own comment there) is what keeps those indices
+// actually valid against `payload` in the first place; the bounds guards below are just the same
+// defensive floor render()'s own rowScroll clamp already applies elsewhere in this file.
+func renderSearchResultsScreen() {
+    let bold = "\u{1B}[1m", dim = "\u{1B}[2m", reset = "\u{1B}[0m"
+    let (cols, rows) = Terminal.size()
+    var out = ""
+
+    out += bold + truncate("Search: \(searchQuery)", cols) + reset + "\n\n"
+
+    if searchResults.isEmpty {
+        out += dim + truncate("No matches.", cols) + reset + "\n"
+    } else {
+        // Not the main grid's exact-row-count discipline — Terminal.writeFrame's trailing
+        // \u{1B}[J already blanks anything a shorter frame leaves behind (renderSummaryScreen
+        // relies on the same thing) — just a sane cap so an unusually long result list can't
+        // scroll an unusually short terminal.
+        let maxListRows = max(1, rows - 6)
+        for (i, r) in searchResults.prefix(maxListRows).enumerated() {
+            guard r.channelIndex < payload.channels.count else { continue }
+            let ch = payload.channels[r.channelIndex]
+            guard r.entryIndex < ch.entries.count else { continue }
+            let e = ch.entries[r.entryIndex]
+            // Same "badge + recolored title" status language as the grid/summary panel — a search
+            // hit that's already recording/scheduled shouldn't look identical to a plain one.
+            let statusColor = e.isRecording ? recordingColor : (e.isScheduled ? scheduledColor : "\u{1B}[97m")
+            let badge = e.isRecording ? recordingBadge : (e.isScheduled ? scheduledBadge : "")
+            let airings = r.airingCount > 1 ? " (\(r.airingCount) airings)" : ""
+            let detail = "\(ch.guideNumber) \(ch.guideName)  \(timeFormatter.string(from: e.startDate))"
+            let marker = i == searchHi ? "> " : "  "
+            let rowStyle = i == searchHi ? bold : ""
+            let text = truncate("\(r.title)\(airings) - \(detail)", max(4, cols - marker.count))
+            out += rowStyle + marker + badge + statusColor + text + reset + "\n"
+        }
+    }
+
+    out += "\n" + dim + truncate("^v select   Enter jump   Esc cancel", cols) + reset
     Terminal.writeFrame(out)
 }
 
@@ -479,6 +647,21 @@ func buildSummaryLines(maxLines: Int, cols: Int) -> [String] {
 
 func render() {
     if mode == .recordSummary { renderSummaryScreen(); return }
+    // Channel-jump mode ("#5.1") deliberately falls through to the normal grid below instead of a
+    // dedicated screen — the live feedback IS the grid scrolling to the new selection as you type;
+    // there's no separate "list" content to show. A show-search query still under searchMinChars
+    // also falls through, for a different reason: at that length there's nothing meaningful to
+    // report yet (not even a confident "no matches," the way the web guide's own runSearch() only
+    // fires past its own 3-char floor) — a dedicated screen here would flash on and off on every
+    // keystroke on the way to 3 chars rather than appearing once, purposefully. Once the query
+    // reaches searchMinChars, the results screen takes over unconditionally, matches or not
+    // (renderSearchResultsScreen prints "No matches." for a real, confident zero — same as the web
+    // guide's own #search-drop does for a 3+-char query with no hits), the same way recordSummary's
+    // own full takeover doesn't wait for anything either once Enter is pressed.
+    if mode == .search, !isChannelJumpQuery(searchQuery), searchQuery.count >= searchMinChars {
+        renderSearchResultsScreen()
+        return
+    }
 
     let (cols, rows) = Terminal.size()
     // visibleCols()'s own `max(1, ...)` floor forces at least 1 grid column even when there isn't
@@ -728,7 +911,18 @@ func render() {
     // narrower terminal a longer line here would wrap and silently break the exact line-count
     // budget above (an extra wrapped line is exactly the scroll-flash bug that budget exists to
     // prevent).
-    let hint = "^v channel  <> show  [] page  f fav  Enter record  Tab tuner  q quit"
+    //
+    // Overridden while mode == .search and we're still on the normal grid (channel-jump mode, or a
+    // too-short show query — see this function's own top comment on why those two cases don't get
+    // renderSearchResultsScreen's dedicated screen) so the query typed so far is visible somewhere:
+    // there's no floating search box to show it in, unlike the web guide.
+    let hint: String
+    if mode == .search {
+        let need = isChannelJumpQuery(searchQuery) ? "" : "  (\(searchMinChars)+ to search)"
+        hint = "/\(searchQuery)_  [Esc] cancel\(need)"
+    } else {
+        hint = "^v channel  <> show  [] page  f fav  / search  Enter record  Tab tuner  q quit"
+    }
     out += dim + truncate(hint, cols) + reset + "\n"
     // statusMsg embeds the show's own title (e.g. "✓ Scheduled: <title>") — unbounded length,
     // unlike the hint line above — so it needs the same clamp, not just a short fixed string.
@@ -744,6 +938,16 @@ render()
 while !interrupted {
     if resized {
         resized = false
+        render()
+    }
+    // Errant-keystroke guard, the TUI counterpart of guide.js's armSearchStrayTimer — needs no
+    // timer/thread of its own: this loop already wakes on a ~300ms cadence even with no key
+    // pressed (Terminal.pollStdin(timeoutMs: 300) right below), the same way lastPoll/pollInterval
+    // already drive the 20s guide refresh, so checking elapsed time here costs nothing extra. Only
+    // fires on exactly one typed character, same as the web version — more than that reads as a
+    // clearly intentional query, not a stray key aimed at the grid underneath.
+    if mode == .search, searchQuery.count == 1, Date().timeIntervalSince(lastSearchKeyTime) >= searchStrayTimeout {
+        cancelSearch()
         render()
     }
     if Terminal.pollStdin(timeoutMs: 300) {
@@ -770,15 +974,19 @@ while !interrupted {
             render()
         }
     }
-    // Skipped (both the fetch and lastPoll itself) while the record/manage confirmation screen is
-    // up — renderSummaryScreen()/handle(_:) rely on selRow/selEntry staying valid against whatever
-    // `payload` they were opened against ("it's safe to re-resolve the same entry here" — see that
-    // comment), which a mid-air payload swap could quietly break: currentEntry() could start
-    // returning a different program than the one on screen, or nil (leaving an empty frame stuck
-    // in this mode with only Esc still working). Not updating lastPoll means the next eligible
-    // tick fires as soon as this screen closes, rather than the poll going stale for however long
-    // someone sat on the screen.
-    if mode != .recordSummary, Date().timeIntervalSince(lastPoll) >= pollInterval {
+    // Skipped (both the fetch and lastPoll itself) while the record/manage confirmation screen or
+    // search is up — renderSummaryScreen()/handle(_:) rely on selRow/selEntry staying valid against
+    // whatever `payload` they were opened against ("it's safe to re-resolve the same entry here" —
+    // see that comment), which a mid-air payload swap could quietly break: currentEntry() could
+    // start returning a different program than the one on screen, or nil (leaving an empty frame
+    // stuck in this mode with only Esc still working). .search has the same hazard one level
+    // removed — searchResults caches (channelIndex, entryIndex) pairs into payload.channels, whose
+    // sort order (Recording -> Favorite -> channelSortKey) can reorder on any poll if so much as one
+    // channel's recording/favorite status changed, silently pointing a cached result at the wrong
+    // channel by the time Enter picks it. Not updating lastPoll means the next eligible tick fires
+    // as soon as either mode closes, rather than the poll going stale for however long someone sat
+    // there.
+    if mode != .recordSummary, mode != .search, Date().timeIntervalSince(lastPoll) >= pollInterval {
         if let fresh = API.fetchGuide(device: currentDeviceId) {
             payload = fresh
             signalMap = API.fetchSignal() ?? signalMap

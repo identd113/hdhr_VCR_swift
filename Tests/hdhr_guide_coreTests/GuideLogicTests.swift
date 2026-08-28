@@ -142,3 +142,97 @@ struct LayoutRowBlocksTests {
         #expect(layoutRowBlocks(entries: [], winStart: 0, colStart: 0, vc: 5, secondsPerSlot: 1800) == [])
     }
 }
+
+@Suite("firstChannelIndex(matchingNumberPrefix:in:) — TUI channel-number jump")
+struct FirstChannelIndexTests {
+    private func ch(_ num: String) -> GuideChannelDTO { GuideChannelDTO(guideNumber: num, guideName: num) }
+
+    @Test func matchesExactChannelNumber() {
+        let channels = [ch("2.1"), ch("5.1"), ch("13.1")]
+        #expect(firstChannelIndex(matchingNumberPrefix: "5.1", in: channels) == 1)
+    }
+
+    @Test func matchesByPrefixBeforeFullNumberIsTyped() {
+        // "#5" alone should already resolve to 5.1 — live per-keystroke jump, not waiting for ".1".
+        let channels = [ch("2.1"), ch("5.1"), ch("13.1")]
+        #expect(firstChannelIndex(matchingNumberPrefix: "5", in: channels) == 1)
+    }
+
+    @Test func firstMatchWinsWhenPrefixIsAmbiguous() {
+        let channels = [ch("5.1"), ch("5.2")]
+        #expect(firstChannelIndex(matchingNumberPrefix: "5", in: channels) == 0)
+    }
+
+    @Test func noMatchReturnsNil() {
+        #expect(firstChannelIndex(matchingNumberPrefix: "9", in: [ch("2.1"), ch("5.1")]) == nil)
+    }
+
+    @Test func emptyPrefixReturnsNil() {
+        #expect(firstChannelIndex(matchingNumberPrefix: "", in: [ch("2.1")]) == nil)
+    }
+}
+
+@Suite("searchShows(query:in:limit:) — TUI type-ahead show search")
+struct SearchShowsTests {
+    private func entry(_ title: String, seriesId: String? = nil, _ start: Int, _ end: Int) -> GuideEntryDTO {
+        GuideEntryDTO(title: title, seriesId: seriesId, startTime: start, endTime: end)
+    }
+
+    @Test func matchesSubstringCaseInsensitively() {
+        let channels = [GuideChannelDTO(guideNumber: "2.1", guideName: "KOMO", entries: [entry("Seinfeld", 0, 1800)])]
+        let results = searchShows(query: "SEIN", in: channels, limit: 10)
+        #expect(results.map(\.title) == ["Seinfeld"])
+    }
+
+    @Test func groupsRerunsSharingASeriesIdIntoOneResult() {
+        let channels = [
+            GuideChannelDTO(guideNumber: "2.1", guideName: "A", entries: [
+                entry("Seinfeld", seriesId: "S1", 3600, 5400),
+                entry("Seinfeld", seriesId: "S1", 0, 1800),   // earlier airing — should win as the jump target
+            ]),
+            GuideChannelDTO(guideNumber: "5.1", guideName: "B", entries: [
+                entry("Seinfeld", seriesId: "S1", 7200, 9000),
+            ]),
+        ]
+        let results = searchShows(query: "sein", in: channels, limit: 10)
+        #expect(results.count == 1)
+        #expect(results[0].airingCount == 3)
+        #expect(results[0].channelIndex == 0)
+        #expect(results[0].entryIndex == 1)   // the 0-1800 airing, not the 3600-5400 one
+    }
+
+    @Test func groupsByLowercasedTitleWhenSeriesIdIsMissing() {
+        let channels = [GuideChannelDTO(guideNumber: "2.1", guideName: "A", entries: [
+            entry("Local News", 0, 1800),
+            entry("Local News", 1800, 3600),
+        ])]
+        let results = searchShows(query: "news", in: channels, limit: 10)
+        #expect(results.count == 1)
+        #expect(results[0].airingCount == 2)
+    }
+
+    @Test func distinctShowsDoNotMerge() {
+        let channels = [GuideChannelDTO(guideNumber: "2.1", guideName: "A", entries: [
+            entry("Seinfeld", seriesId: "S1", 0, 1800),
+            entry("Sein Language", seriesId: "S2", 1800, 3600),
+        ])]
+        let results = searchShows(query: "sein", in: channels, limit: 10)
+        #expect(results.map(\.title).sorted() == ["Sein Language", "Seinfeld"])
+    }
+
+    @Test func resultsAreCappedAtLimit() {
+        let entries = (0..<5).map { entry("Show \($0)", seriesId: "S\($0)", $0 * 1800, $0 * 1800 + 1800) }
+        let channels = [GuideChannelDTO(guideNumber: "2.1", guideName: "A", entries: entries)]
+        #expect(searchShows(query: "show", in: channels, limit: 2).count == 2)
+    }
+
+    @Test func emptyQueryReturnsNoResults() {
+        let channels = [GuideChannelDTO(guideNumber: "2.1", guideName: "A", entries: [entry("Seinfeld", 0, 1800)])]
+        #expect(searchShows(query: "", in: channels, limit: 10) == [])
+    }
+
+    @Test func noMatchReturnsEmpty() {
+        let channels = [GuideChannelDTO(guideNumber: "2.1", guideName: "A", entries: [entry("Seinfeld", 0, 1800)])]
+        #expect(searchShows(query: "xyz", in: channels, limit: 10) == [])
+    }
+}

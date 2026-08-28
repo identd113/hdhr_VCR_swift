@@ -348,12 +348,90 @@ Table entries below name the physical keys; the footer's own on-screen hint spel
 | `←` / `→` | Move the selected program within that channel — at the first/last entry, pages the shared timeline viewport instead of stopping, so holding the key scrolls continuously across the whole grid to later/earlier times (`moveEntry(_:)`, `main.swift`) |
 | `[` / `]` | Page the visible time window by one screen-width directly, without needing to reach a channel's edge first |
 | `f` | Toggle favorite for the selected channel (`POST /api/toggle-favorite`, same endpoint the web guide's star buttons use) |
+| `/` | Enter search / channel-jump mode (`#5.1` jumps to a channel number; anything else searches show titles) — see "Search / channel-jump" below |
 | `Tab` | Switch to the next tuner |
 | `Enter` | Open the recording summary screen for the selected program |
 | `1`–`4` (unmanaged entry) | Once / Weekly / Series (this channel) / Series (any channel on this tuner) — POSTs immediately with server-side defaults (e.g. weekly's day-of-week defaults to the entry's own weekday, same as the web Record modal). No transcode/title override in this client — use the web guide or native UI afterward for anything non-default |
 | `d` (already-managed entry) | Remove the scheduled recording, or Stop & Delete if it's currently recording |
 | `Esc` (on the summary screen) | Cancel without changes, back to the grid |
 | `q` / `Ctrl-C` | Quit — restores the terminal (leaves raw mode + the alternate screen buffer) before exiting either way |
+
+## Search / channel-jump (`Mode.search`)
+
+Fulfills the "No channel jump/search" item that used to sit under "Deferred ideas" below — a
+**limited, offline** counterpart to the web guide's own type-ahead show search
+(`docs/WebServer.md`'s "Show search"), not a port of it: this searches show titles across
+already-loaded channels/entries with no network call at all, and adds a **channel-number** jump
+the web guide has no equivalent of (its own search finds a show by title; it doesn't help "jump to
+channel 63," which is this TUI's actual navigation gap — see the deferred-idea writeup this
+replaces, further down).
+
+`/` (`beginSearch()`, `main.swift`) enters the mode from `.normal` — deliberately not "typing any
+character starts it" the way the web guide's own type-to-search works: `f`/`F` (favorite) and `q`
+(quit) are already live single-key commands here, so hijacking every keystroke would silently
+break them. `/` is otherwise unbound, and matches the `less`/`vim` idiom the original deferred-idea
+note called out. Once in, every printed character is appended to `searchQuery` and
+`updateSearchResults()` (`main.swift`) re-evaluates it live — `isChannelJumpQuery(_:)` (a leading
+`#`) is the one place that decides which of the two sub-modes below a query is:
+
+- **Channel jump (`#…`)** — `firstChannelIndex(matchingNumberPrefix:in:)`
+  (`Sources/hdhr_guide_core/GuideLogic.swift`, unit-tested) finds the first channel (in the
+  already-sorted display order) whose `guideNumber` starts with the digits/dots typed after `#`,
+  and `jumpToChannel(matchingNumberPrefix:)` moves the selection there **live, on every
+  keystroke** — "#5" jumps as soon as it's unambiguous, "#5.1" narrows further, no `Enter` needed.
+  Stays on the normal grid the whole time (`render()`'s own guard skips
+  `renderSearchResultsScreen()` for this case) — the grid scrolling to the new selection *is* the
+  feedback; there's no separate list to show. The footer hint line is overridden to show what's
+  typed so far (`/#5.1_  [Esc] cancel`) since there's no floating search box to show it in, unlike
+  the web guide.
+- **Show search (anything else)** — once `searchQuery` reaches `searchMinChars` (3, matching the
+  web guide's own "Type 3+ letters" convention), `searchShows(query:in:limit:)` (same file) does a
+  single local pass over every already-loaded channel's entries — case-insensitive substring match
+  against `title`, grouped by `seriesId` (or the lowercased title when absent, the same "no ID ->
+  title" fallback shape `Show.seriesTitle(from:)` uses in the main app, duplicated rather than
+  imported for the same module-boundary reason `genreImpliesBonusTime` already is — see "Robustness
+  fixes"/"Deliberately left as a known tradeoff" further down) so a rerun airing many times
+  collapses into one result instead of crowding out other matches. Each group's jump target is its
+  chronologically **earliest** airing in the loaded window (mirrors the web guide's own `airings
+  sorted by start` / `jumpToSearchAiring` landing on `airings[0]`) — sorted by title, capped at
+  `searchResultLimit` (8, small and fixed, not scaled to terminal height). `renderSearchResultsScreen()`
+  takes over the whole screen (same "replace the grid entirely" shape `renderSummaryScreen()` uses
+  for `Enter`, since there's no floating-dropdown concept in this ASCII grid) unconditionally once
+  `searchQuery` reaches `searchMinChars` — **matches or not**: a real, confident zero prints "No
+  matches." on that same full screen, the same way the web guide's own `#search-drop` shows "No
+  matches" for a 3+-character query with no hits, rather than silently doing nothing. A query still
+  under 3 characters stays on the normal grid instead, not because there might be zero results, but
+  because there's nothing meaningful to report yet at all — showing/hiding a results screen on every
+  keystroke on the way to 3 characters would flash on and off rather than appearing once,
+  purposefully, matching the web guide's own `runSearch()` not firing before its own 3-char floor.
+
+**Deliberately narrower than the web guide's version**, matching the "limited" scope this was
+asked for: no per-result episode cycling (`←`/`→` between a show's other airings, the web guide's
+own `cycleSearchEpisode`) — picking a result jumps to its one (earliest) airing, and the grid's own
+`←`/`→` already covers moving between a channel's other programs from there. No debouncing or
+stale-request guarding either (`_searchReqId` in `guide.js`) — nothing to guard against when the
+search is a synchronous local pass over data already in memory, not a network round trip.
+
+**Keys while `.search` is active**: `↑`/`↓` move the highlighted result (show-search mode with a
+results screen showing; no-op otherwise — channel-jump mode has no list to navigate). `Enter`
+picks the highlighted result and returns to the normal grid with it now selected (channel-jump
+mode: just confirms and closes, since it already jumped live). `Backspace` edits the query
+(closes the mode entirely if the query's already empty). `Esc` cancels back to the grid unconditionally,
+discarding the query.
+
+**Errant-keystroke guard** — the TUI counterpart of `guide.js`'s `armSearchStrayTimer`, but needs
+no timer/thread of its own: the main loop already wakes on a ~300ms cadence even with no key
+pressed (`Terminal.pollStdin(timeoutMs: 300)`), the same mechanism `lastPoll`/`pollInterval`
+already use to drive the 20s guide refresh, so checking "5s since `searchQuery` last changed, and
+it's still exactly one character" costs nothing extra — no `setTimeout` equivalent needed. Fires
+only at exactly one typed character, same as the web version: more than that reads as a clearly
+intentional query, not a stray key aimed at the grid underneath.
+
+**The 20s background poll now also skips itself while `mode == .search`** (previously only
+`.recordSummary` did) — `searchResults` caches `(channelIndex, entryIndex)` pairs into
+`payload.channels`, whose sort order (`Recording -> Favorite -> channelSortKey`) can reorder on any
+poll if even one channel's recording/favorite status changed, which would silently point a cached
+result at the wrong channel by the time `Enter` picks it.
 
 ## Debug log
 
@@ -435,19 +513,14 @@ that boundary. Worth doing if this logic needs to change again; not on its own.
 
 ## Deferred ideas
 
-**No channel jump/search — arrow-key-only navigation doesn't scale past ~20 channels.** Reaching a
-channel near the bottom of a real lineup (100+ channels is common) means holding ↓ dozens of times
-— confirmed painfully directly while testing the recording-status fix (channel 21.11 needed 61
-presses from the top). The web guide gained a type-ahead show-search box in `#toolbar` (2026-08-28,
-`docs/WebServer.md`'s "Show search" section) — arrow-key dropdown nav, ← / → episode cycling — but
-that finds a *show by title*, not a channel by number/name, and doesn't help this TUI's own
-channel-jump gap at all; the TUI also has no mouse/scrollbar to fall back on the way the web guide
-does, so a keyboard-only jump mechanism here is still worth having on its own merits, not superseded
-by the web guide's search. Two independent, both-worth-having options: (1) type-ahead — start typing a
-channel number/name, jump to the first match, `Esc` clears (same idiom as `less`/`vim`'s `/`); (2) a
-"jump to next managed entry" key (`n`/`N`) that skips the selection straight to the next
-scheduled/recording tile anywhere in the list, without needing to know which channel it's on first —
-directly useful once the overview list below exists, since that's how you'd act on what it shows you.
+**No channel jump/search — DONE** (channel-number jump + show-title search, see "Search /
+channel-jump" above; entered via `/`, the `less`/`vim` idiom this note originally called for). Left
+over from this, still deferred: a **"jump to next managed entry" key** (`n`/`N`) that skips the
+selection straight to the next scheduled/recording tile anywhere in the list, without needing to
+know which channel it's on first — directly useful once the overview list below exists, since
+that's how you'd act on what it shows you. This is a genuinely separate idea from the search feature
+above, not a smaller version of it: `/`-search finds something by name/number you already have in
+mind, `n`/`N` would page through what's *already marked* with no query at all.
 
 **No overview of everything scheduled/recording on this tuner.** The web guide's summary panel and
 per-tuner dropdown (`buildTunerShowsHTML`, `docs/WebServer.md`) list every Recording/Up
