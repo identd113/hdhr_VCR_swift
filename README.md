@@ -16,6 +16,7 @@ the program guide is free too, courtesy of SiliconDust, the same way it's always
 [![Notarized](https://img.shields.io/badge/Notarized-Developer%20ID-success?logo=apple\&logoColor=white)](RELEASES.md)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 [![Proven since 2016](https://img.shields.io/badge/proven%20since-2016-lightgrey)](https://github.com/identd113/hdhr_VCR-AS)
+[![Discord](https://img.shields.io/badge/Discord-Join%20chat-5865F2?logo=discord&logoColor=white)](https://discord.gg/UMp57Nmgbd)
 
 ### 📦 Latest: [v2.1.0](https://github.com/identd113/hdhr_VCR_swift/releases/download/v2.1.0/hdhrVCRplus-2.1.0.zip)
 - New: Terminal Guide — browse the guide and schedule recordings from the terminal, no browser needed
@@ -323,6 +324,7 @@ Contributions are welcome — see [CONTRIBUTING.md](.github/CONTRIBUTING.md) to 
 - **[ISSUES.md](ISSUES.md)** — known issues and resolved-bug history
 - **[TODO.md](TODO.md)** — deferred features and improvements
 - **[MAS_COMPLIANCE.md](docs/MAS_COMPLIANCE.md)** — Mac App Store sandboxing compliance status, for anyone looking at that distribution path
+- **[Discord](https://discord.gg/UMp57Nmgbd)** — chat with other users, ask questions, or get help
 
 ---
 
