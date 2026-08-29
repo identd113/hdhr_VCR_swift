@@ -1456,6 +1456,18 @@ document.addEventListener('keydown',function(e){
   var editable=ae&&(ae.tagName==='INPUT'||ae.tagName==='TEXTAREA'||ae.tagName==='SELECT'||ae.isContentEditable);
   if(editable)return; // don't steal keystrokes aimed at a genuinely different form control
   e.preventDefault(); // also stops Firefox's own "quick find" from opening on '/' or "'"
+  // "/" is the dedicated "open search" key (matching hdhr_guide's own Mode.search entry point,
+  // docs/TUIGuide.md's "Search / channel-jump") — it opens/focuses the box but isn't itself typed
+  // into it, unlike every other printable character below. Resets any leftover uncommitted text
+  // first, so "/" always hands you a fresh, empty, focused box rather than resuming whatever was
+  // typed and abandoned last time — the same "always starts clean" behavior beginSearch() gives
+  // the TUI.
+  if(e.key==='/'){
+    inp.value='';
+    inp.focus();
+    onSearchInput();
+    return;
+  }
   inp.value=e.key;
   inp.focus();
   inp.setSelectionRange(inp.value.length,inp.value.length); // caret after the seeded key, not before it
