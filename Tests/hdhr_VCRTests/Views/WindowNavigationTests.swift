@@ -520,16 +520,16 @@ struct WindowNavigationTests {
                 -- The WKWebView's own page load (fetch guide.json, render the grid) finishes well
                 -- after the window/WKWebView AX node itself first appears — same "window exists !=
                 -- content ready" lesson every other content-walking test in this file documents.
-                delay 3
-
-                -- Locate the search input by ARIA role + accessible name (aria-label="Search
-                -- shows"), not a guessed AX path — this is the first time this test file has ever
-                -- walked into WKWebView content, so no known-good shallow path exists the way it
-                -- does for the native SwiftUI windows elsewhere here. Retried like the Settings
-                -- checkbox lookup above: the guide grid can still be mutating its own AX subtree
-                -- shortly after first appearing.
+                -- Polled (not a flat delay) so this exits the instant the search box actually
+                -- exists rather than always waiting a fixed worst-case duration — a fixed `delay 3`
+                -- here used to hold the window open that long even when the page loaded in a
+                -- fraction of that, on every single run. Same 20×0.25s = 5s outer ceiling as every
+                -- other poll-loop in this file, delayed on *every* iteration (not just on error, an
+                -- earlier version of this loop's own mistake — a successful walk that simply hadn't
+                -- found the box yet retried with no delay at all between attempts, so the loop
+                -- alone provided no real wait against a still-loading page).
                 set searchBox to missing value
-                repeat 5 times
+                repeat 20 times
                     try
                         set allEls to entire contents of window "Add Show"
                         repeat with e in allEls
@@ -546,10 +546,9 @@ struct WindowNavigationTests {
                                 end if
                             end try
                         end repeat
-                        if searchBox is not missing value then exit repeat
-                    on error
-                        delay 0.5
                     end try
+                    if searchBox is not missing value then exit repeat
+                    delay 0.25
                 end repeat
                 if searchBox is missing value then
                     try
@@ -641,30 +640,42 @@ struct WindowNavigationTests {
                 -- Extra settle beyond "window exists": the channel list's own AX subtree (row
                 -- buttons, per-row text) populates after the window itself does — same lesson
                 -- captureAllSettingsTabTitlesSnippet's comment documents for Settings' outline.
-                delay 1.5
+                -- Polled (exits the instant a Watch button actually shows up, the same success
+                -- condition asserted below) rather than a flat `delay 1.5` that held the window
+                -- open that long even on a run where the list was already populated well before it.
                 set watchCount to 0
                 set recordCount to 0
                 set editCount to 0
-                try
-                    set allEls to entire contents of window "Watch Now"
-                    repeat with e in allEls
-                        try
-                            if role of e is "AXButton" then
-                                set h to "?"
-                                try
-                                    set h to (help of e) as string
-                                end try
-                                if h starts with "Watch " or h starts with "Play the in-progress recording" then
-                                    set watchCount to watchCount + 1
+                repeat 20 times
+                    set watchCount to 0
+                    set recordCount to 0
+                    set editCount to 0
+                    -- Bare try/end try (swallow and retry via the outer loop), not try/on-error/
+                    -- return — same fix as addShowGuideSearchBoxIsAccessibleAndTypingDoesNotAutoSelect's
+                    -- own loop above: a transient exception here (AX subtree not yet populated, the
+                    -- exact race this poll exists to tolerate) used to `return "ERROR: ..."` on the
+                    -- very first iteration, aborting the whole script instead of ever reaching a retry.
+                    try
+                        set allEls to entire contents of window "Watch Now"
+                        repeat with e in allEls
+                            try
+                                if role of e is "AXButton" then
+                                    set h to "?"
+                                    try
+                                        set h to (help of e) as string
+                                    end try
+                                    if h starts with "Watch " or h starts with "Play the in-progress recording" then
+                                        set watchCount to watchCount + 1
+                                    end if
+                                    if h starts with "Record " then set recordCount to recordCount + 1
+                                    if h starts with "Edit " then set editCount to editCount + 1
                                 end if
-                                if h starts with "Record " then set recordCount to recordCount + 1
-                                if h starts with "Edit " then set editCount to editCount + 1
-                            end if
-                        end try
-                    end repeat
-                on error errMsg
-                    return "ERROR: " & errMsg
-                end try
+                            end try
+                        end repeat
+                    end try
+                    if watchCount > 0 then exit repeat
+                    delay 0.25
+                end repeat
                 try
                     click (first button of window "Watch Now" whose description is "close button")
                 end try
