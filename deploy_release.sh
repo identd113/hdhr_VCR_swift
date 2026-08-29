@@ -5,9 +5,10 @@
 #   ./deploy_release.sh <version> --skip-notarize  # Developer ID sign only (for testing the signing step)
 #   ./deploy_release.sh <version> --adhoc          # ad-hoc sign, no notarization — for shipping a
 #                                                   # release before a Developer ID cert is set up.
-#                                                   # Produces a distributable zip, but Gatekeeper
-#                                                   # will warn "unidentified developer" on first
-#                                                   # launch until a real notarized build replaces it.
+#                                                   # Produces a distributable DMG (see tools/build_dmg.sh),
+#                                                   # but Gatekeeper will warn "unidentified developer"
+#                                                   # on first launch until a real notarized build
+#                                                   # replaces it.
 #
 # <version> is the semantic version string, e.g.: 1.3.0
 #
@@ -25,7 +26,6 @@ APP="hdhrVCRplus.app"
 BINARY="$APP/Contents/MacOS/hdhr_VCR"
 ENTITLEMENTS="hdhrVCRplus.entitlements"
 BUNDLE_ID="com.hdhr.vcrplus"
-DIST_DIR="dist"
 
 # ── Fill these in (unused in --adhoc mode) ──────────────────────────────────
 SIGN_IDENTITY="Developer ID Application: YOUR NAME (XXXXXXXXXX)"
@@ -200,20 +200,17 @@ codesign --verify --deep --verbose=2 "$APP"
 spctl --assess --type execute --verbose "$APP" 2>&1 || true   # will say "rejected" until notarized — that's expected (ad-hoc/unnotarized always does)
 
 if [ "$SKIP_NOTARIZE" -eq 1 ]; then
-    mkdir -p "$DIST_DIR"
-    ZIP_PATH="$DIST_DIR/hdhrVCRplus-${RELEASE_VERSION}.zip"
-    echo "==> Zipping for distribution…"
-    ditto -c -k --keepParent "$APP" "$ZIP_PATH"
+    echo "==> Building installer DMG…"
+    "$(dirname "$0")/tools/build_dmg.sh" "$RELEASE_VERSION" "$APP"
     if [ "$ADHOC" -eq 1 ]; then
         echo "==> Skipping notarization (ad-hoc build — no Developer ID cert configured)."
         echo "    NOTE: recipients will see an 'unidentified developer' Gatekeeper warning on"
         echo "    first launch — right-click > Open, or run 'xattr -cr hdhrVCRplus.app' after"
-        echo "    unzipping. Re-release with real Developer ID signing + notarization once a"
+        echo "    mounting. Re-release with real Developer ID signing + notarization once a"
         echo "    cert is available (tools/setup_signing.sh, then this script without --adhoc)."
     else
         echo "==> Skipping notarization (--skip-notarize)."
     fi
-    echo "    Artifact: $ZIP_PATH"
     echo "==> Launching $APP…"
     open "$APP"
     echo "==> Done."
@@ -235,11 +232,12 @@ xcrun stapler staple "$APP"
 echo "==> Final Gatekeeper check…"
 spctl --assess --type execute --verbose "$APP"
 
-mkdir -p "$DIST_DIR"
-FINAL_ZIP="$DIST_DIR/hdhrVCRplus-${RELEASE_VERSION}.zip"
-echo "==> Zipping notarized build for distribution…"
-ditto -c -k --keepParent "$APP" "$FINAL_ZIP"
-echo "    Artifact: $FINAL_ZIP"
+echo "==> Building installer DMG…"
+# The .app's own notarization ticket (just stapled above) is what Gatekeeper actually checks when
+# it's launched — same as the old zip artifact, the DMG container itself carries no separate
+# ticket of its own and needs none for a normal (non-airgapped) install. See docs/Distribution.md's
+# "DMG assembly" section for why this is a strict improvement over the zip, not just a reskin.
+"$(dirname "$0")/tools/build_dmg.sh" "$RELEASE_VERSION" "$APP"
 
 touch "$APP"
 echo "==> Launching $APP…"

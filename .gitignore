@@ -26,6 +26,12 @@ tools/test_scenarios/generated_guide.json
 tools/test_scenarios/generated_shows.json
 tools/test_scenarios/mock_hdhr.log
 
+# tools/build_dmg.sh's own regenerated-per-run output (rendered icon/background PNGs, the Read Me
+# manual rebuilt fresh from docs/screenshots/ every run) — same "committed copy goes stale
+# immediately" reasoning as the test-scenario fixtures above. Only the .svg sources and the build
+# scripts themselves are tracked.
+tools/dmg_assets/generated/
+
 # ── Local-only source, not part of the tracked app ────────────────────────
 /src
 

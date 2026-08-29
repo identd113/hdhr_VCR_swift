@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 64 64">
+  <!-- Original, modern-flat homage to the classic Mac "Read Me" newspaper-page icon layout —
+       masthead rules, a bold headline banner, and a body row with text columns flanking a
+       checkerboard "photo" placeholder — designed on a 64x64 grid, an original recreation of
+       that composition rather than a reproduction of any specific Apple artwork/pixel art. -->
+
+  <!-- drop shadow -->
+  <rect x="9" y="9" width="52" height="52" rx="4" fill="#000000" opacity="0.16"/>
+
+  <!-- page -->
+  <rect x="6" y="6" width="52" height="52" rx="4" fill="#ffffff" stroke="#000000" stroke-width="2.2"/>
+
+  <!-- masthead rules -->
+  <rect x="10" y="10.5" width="44" height="2.4" rx="1.2" fill="#000000"/>
+  <rect x="10" y="14" width="44" height="1.3" rx="0.6" fill="#000000"/>
+
+  <!-- headline banner -->
+  <rect x="10" y="18" width="44" height="9" rx="1.6" fill="#e8720c"/>
+  <text x="32" y="25.1" text-anchor="middle" font-family="Helvetica, Arial, sans-serif"
+        font-weight="bold" font-size="6.6" fill="#ffffff" letter-spacing="0.3">EXTRA</text>
+
+  <!-- left text column -->
+  <rect x="10" y="30.5" width="9.5" height="2" rx="1" fill="#2b2b2b"/>
+  <rect x="10" y="34" width="9.5" height="2" rx="1" fill="#2b2b2b"/>
+  <rect x="10" y="37.5" width="9.5" height="2" rx="1" fill="#2b2b2b"/>
+  <rect x="10" y="41" width="9.5" height="2" rx="1" fill="#2b2b2b"/>
+  <rect x="10" y="44.5" width="9.5" height="2" rx="1" fill="#2b2b2b"/>
+
+  <!-- right text column -->
+  <rect x="44.5" y="30.5" width="9.5" height="2" rx="1" fill="#2b2b2b"/>
+  <rect x="44.5" y="34" width="9.5" height="2" rx="1" fill="#2b2b2b"/>
+  <rect x="44.5" y="37.5" width="9.5" height="2" rx="1" fill="#2b2b2b"/>
+  <rect x="44.5" y="41" width="9.5" height="2" rx="1" fill="#2b2b2b"/>
+  <rect x="44.5" y="44.5" width="9.5" height="2" rx="1" fill="#2b2b2b"/>
+
+  <!-- checkerboard "photo" placeholder -->
+  <g>
+    <rect x="22" y="30.5" width="20" height="16" fill="#ffffff" stroke="#000000" stroke-width="1.6"/>
+    <!-- 4x4 checker grid, 5 units per cell -->
+    <rect x="22" y="30.5" width="5" height="4" fill="#000000"/>
+    <rect x="32" y="30.5" width="5" height="4" fill="#000000"/>
+    <rect x="27" y="34.5" width="5" height="4" fill="#000000"/>
+    <rect x="37" y="34.5" width="5" height="4" fill="#000000"/>
+    <rect x="22" y="38.5" width="5" height="4" fill="#000000"/>
+    <rect x="32" y="38.5" width="5" height="4" fill="#000000"/>
+    <rect x="27" y="42.5" width="5" height="4" fill="#000000"/>
+    <rect x="37" y="42.5" width="5" height="4" fill="#000000"/>
+  </g>
+
+  <!-- caption line under the photo -->
+  <rect x="22" y="48.5" width="20" height="1.6" rx="0.8" fill="#8a8a8a"/>
+</svg>
