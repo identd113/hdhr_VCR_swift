@@ -296,6 +296,11 @@ struct SettingsView: View {
                 Toggle(isOn: $draft.Guide_use_xml) {
                     HStack { Text("Use XMLTV guide format"); InfoButton("XMLTV provides richer genre tags and explicit paid-programming detection. The server controls the window (~2 days); Guide Hours (Guide tab) is ignored. Devices without DeviceAuth always use JSON.") }
                 }
+                if draft.Guide_use_xml {
+                    CaveatBanner(text: "XMLTV ignores the Guide Hours setting (the server always sends ~2 days), and any device without DeviceAuth falls back to JSON regardless of this toggle.",
+                                 systemImage: "exclamationmark.triangle")
+                        .accessibilityIdentifier("settings-guide-xmltv-warning")
+                }
             }
         }
         .formStyle(.grouped)

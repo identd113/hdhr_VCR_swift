@@ -194,11 +194,7 @@ struct AddShowView: View {
                 Text("Recording Details").font(.title2)
 
                 if show.show_url.isEmpty {
-                    Label("Stream URL not found — lineup may not be loaded yet. Go back and reselect the channel.", systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.white)
-                        .padding(10)
-                        .background(Color.orange.cornerRadius(8))
-                        .font(.callout)
+                    CaveatBanner(text: "Stream URL not found — lineup may not be loaded yet. Go back and reselect the channel.")
                 }
 
                 ShowFormSection(

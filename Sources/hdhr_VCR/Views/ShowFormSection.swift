@@ -94,12 +94,8 @@ struct ShowFormSection: View {
 
             if let sig = channelSignal, sig.bucket != .noData {
                 if sig.bucket == .poor {
-                    Label("Weak signal on this channel — recordings may drop out or fail.",
-                          systemImage: "antenna.radiowaves.left.and.right.slash")
-                        .foregroundStyle(.white)
-                        .padding(10)
-                        .background(Color.orange.cornerRadius(8))
-                        .font(.callout)
+                    CaveatBanner(text: "Weak signal on this channel — recordings may drop out or fail.",
+                                 systemImage: "antenna.radiowaves.left.and.right.slash")
                 }
                 LabeledContent("Signal") {
                     SignalBarsView(bucket: sig.bucket, guideName: sig.name)
@@ -139,12 +135,8 @@ struct ShowFormSection: View {
             }
 
             if show.show_transcode != "none", !selectedDeviceSupportsTranscode {
-                Label("This tuner doesn't support transcoding — the Transcode setting above will be ignored and recorded as None.",
-                      systemImage: "exclamationmark.triangle")
-                    .foregroundStyle(.white)
-                    .padding(10)
-                    .background(Color.orange.cornerRadius(8))
-                    .font(.callout)
+                CaveatBanner(text: "This tuner doesn't support transcoding — the Transcode setting above will be ignored and recorded as None.",
+                             systemImage: "exclamationmark.triangle")
                     .accessibilityIdentifier("show-form-no-transcode-warning")
             }
 
@@ -197,12 +189,8 @@ struct ShowFormSection: View {
 
             if state.config.Series_subfolder_enabled, state.config.Skip_recorded_episodes, seriesType.isSeries {
                 if !show.show_ignore_duplicate_once, let tag = duplicateTag {
-                    Label("Episode \(tag) is already on disk — this recording will be skipped.",
-                          systemImage: "tray.full")
-                        .foregroundStyle(.white)
-                        .padding(10)
-                        .background(Color.orange.cornerRadius(8))
-                        .font(.callout)
+                    CaveatBanner(text: "Episode \(tag) is already on disk — this recording will be skipped.",
+                                 systemImage: "tray.full")
                 }
                 LabeledContent("Duplicate Episodes") {
                     Toggle("Record even if already on disk", isOn: $show.show_ignore_duplicate_once)
