@@ -391,33 +391,60 @@ note called out. Once in, every printed character is appended to `searchQuery` a
   title" fallback shape `Show.seriesTitle(from:)` uses in the main app, duplicated rather than
   imported for the same module-boundary reason `genreImpliesBonusTime` already is — see "Robustness
   fixes"/"Deliberately left as a known tradeoff" further down) so a rerun airing many times
-  collapses into one result instead of crowding out other matches. Each group's jump target is its
-  chronologically **earliest** airing in the loaded window (mirrors the web guide's own `airings
-  sorted by start` / `jumpToSearchAiring` landing on `airings[0]`) — sorted by title, capped at
-  `searchResultLimit` (8, small and fixed, not scaled to terminal height). `renderSearchResultsScreen()`
-  takes over the whole screen (same "replace the grid entirely" shape `renderSummaryScreen()` uses
-  for `Enter`, since there's no floating-dropdown concept in this ASCII grid) unconditionally once
-  `searchQuery` reaches `searchMinChars` — **matches or not**: a real, confident zero prints "No
-  matches." on that same full screen, the same way the web guide's own `#search-drop` shows "No
-  matches" for a 3+-character query with no hits, rather than silently doing nothing. A query still
-  under 3 characters stays on the normal grid instead, not because there might be zero results, but
-  because there's nothing meaningful to report yet at all — showing/hiding a results screen on every
-  keystroke on the way to 3 characters would flash on and off rather than appearing once,
-  purposefully, matching the web guide's own `runSearch()` not firing before its own 3-char floor.
+  collapses into one result instead of crowding out other matches. Each `SearchResult` carries
+  *every* one of its airings in the loaded window, sorted earliest-first — not just one jump
+  target — sorted by title, capped at `searchResultLimit` (8, small and fixed, not scaled to
+  terminal height). Stays on the normal grid the whole time, same as channel-jump above — **there
+  is no separate full-screen results takeover.** Two things happen at once instead, both driven off
+  the same `searchResults`:
+  - The **summary panel** (normally "what's selected in the grid," see `buildSummaryLines()`
+    above) becomes the show selector — one line per matching show (title, airing position/count,
+    channel, time), the ↑/↓-selected one marked with `>` and bold, capped at whatever the panel's
+    own adaptive height (`maxLines`) allows. This is the one place all the matches are listed
+    together, since they can be scattered across different channels/times — some possibly outside
+    the grid's currently-visible time window.
+  - Every grid entry that ISN'T the representative airing of a current match renders dim
+    (`isShowSearchFiltering()`/the `matchKeys` set, `render()` in `main.swift`) — the same "fade,
+    don't hide" philosophy `CLAUDE.md`'s "Web guide rows are never hidden" invariant documents for
+    the web guide's own `.g-prog-dim` — while each match's representative airing keeps its normal
+    genre/status coloring, so you can also see *when* it actually airs relative to everything else.
 
-**Deliberately narrower than the web guide's version**, matching the "limited" scope this was
-asked for: no per-result episode cycling (`←`/`→` between a show's other airings, the web guide's
-own `cycleSearchEpisode`) — picking a result jumps to its one (earliest) airing, and the grid's own
-`←`/`→` already covers moving between a channel's other programs from there. No debouncing or
-stale-request guarding either (`_searchReqId` in `guide.js`) — nothing to guard against when the
-search is a synchronous local pass over data already in memory, not a network round trip.
+  `updateSearchResults()` auto-focuses the first show's earliest airing the moment the query
+  reaches `searchMinChars` (`focusCurrentSearchAiring()`), so there's no separate "select from the
+  list" step before both of the above are already showing a real result. A confident zero (3+
+  characters, no matches) shows `"No matches for "...""` in the summary panel and leaves the grid
+  fully undimmed instead — dimming *everything* would just look like a rendering glitch, not a
+  filter — plus a terser note in the footer (mirroring the web guide's own `#search-drop` for the
+  same case). A query still under 3 characters leaves both alone, not because there might be zero
+  results, but because there's nothing meaningful to report yet at all, matching the web guide's
+  own `runSearch()` not firing before its own 3-char floor.
 
-**Keys while `.search` is active**: `↑`/`↓` move the highlighted result (show-search mode with a
-results screen showing; no-op otherwise — channel-jump mode has no list to navigate). `Enter`
-picks the highlighted result and returns to the normal grid with it now selected (channel-jump
-mode: just confirms and closes, since it already jumped live). `Backspace` edits the query
-(closes the mode entirely if the query's already empty). `Esc` cancels back to the grid unconditionally,
-discarding the query.
+**Same two-axis model as the web guide's dropdown-select-then-cycle flow, collapsed onto one key
+set instead of a dropdown + a follow-up cycle**: `↑`/`↓` pick a different **show** from the results
+(`searchHi`); `←`/`→` cycle through *that show's* own **airings** (`searchAiringHi`, into its
+`SearchResult.airings`) — the representative tile shown for every other, non-selected match is
+always its own earliest airing (its own cycle position only starts mattering once it becomes the
+`↑`/`↓`-selected one). Both clamp at their ends rather than wrapping, the same convention the web
+guide's own episode-cycling uses.
+
+**Switching shows resumes at the nearest showing, not always the new show's earliest** — if you've
+cycled `←`/`→` partway into one show's later airings and then press `↑`/`↓`, the newly-selected
+show starts at whichever of *its* airings (`nearestAiringIndex(to:in:)`,
+`Sources/hdhr_guide_core/GuideLogic.swift`, unit-tested) is closest in time to the airing you were
+just looking at, not always its own airing 0. `searchShowAnchorTime` holds that moment fixed across
+a whole *run* of consecutive `↑`/`↓` presses — the same "sticky anchor" shape (and for the
+identical reason) as the grid's own `verticalAnchorTime`: re-deriving the anchor from wherever each
+hop lands, instead of holding it, is exactly what let a chain of channel switches drift the grid's
+time window backward before that fix — any explicit `←`/`→` (an intentional airing pick) clears it,
+since that already names an exact new moment on its own.
+
+**Keys while `.search` is active**: `↑`/`↓` move to the previous/next show (no-op for a
+channel-jump query, which has no result list at all). `←`/`→` cycle the selected show's own
+airings. `Enter` commits wherever the above (or the initial auto-focus) left the selection and
+returns to the normal grid — for a channel-jump query it just confirms and closes, since that
+already jumped live. `Backspace` edits the query (closes the mode entirely if the query's already
+empty). `Esc` clears the filter and returns to the normal grid unconditionally, discarding the
+query and un-dimming everything.
 
 **Errant-keystroke guard** — the TUI counterpart of `guide.js`'s `armSearchStrayTimer`, but needs
 no timer/thread of its own: the main loop already wakes on a ~300ms cadence even with no key

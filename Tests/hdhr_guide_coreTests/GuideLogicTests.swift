@@ -71,6 +71,63 @@ struct EntryIndexTests {
     }
 }
 
+// Regression for a real bug found manually testing the TUI before a release (2026-08-28): pressing
+// ↓ 10 times in a row on a live guide drifted the visible time window backward from ~2 AM to
+// ~10 PM. main.swift's selectRow(_:) can't be @testable imported (executable target — see this
+// package's own doc comment on the hdhr_guide/hdhr_guide_core split), so this simulates its
+// pre-fix and post-fix anchor-chaining strategies directly against entryIndex(nearestTo:in:), the
+// same primitive selectRow calls, to lock in which one main.swift now uses.
+@Suite("Vertical navigation anchor stability — backward time drift regression")
+struct VerticalAnchorDriftTests {
+    private func entry(_ title: String, _ start: Int, _ end: Int) -> GuideEntryDTO {
+        GuideEntryDTO(title: title, startTime: start, endTime: end)
+    }
+
+    // A run of channels whose current program each started progressively earlier than the last —
+    // realistic (a channel airing a 90-minute movie reads as "started earlier" than one airing a
+    // 30-minute sitcom, purely by how guide schedules happen to line up), not a contrived worst case.
+    private var driftingChannels: [[GuideEntryDTO]] {
+        [
+            [entry("A", 6300, 7500)],    // 1:45–2:05 AM — contains the 2:00 AM anchor
+            [entry("B", 5820, 10800)],   // 1:37–3:00 AM
+            [entry("C", 3960, 10800)],   // 1:06–3:00 AM
+            [entry("D", 3900, 10920)],   // 1:05–3:02 AM
+            [entry("E", 2220, 4320)],    // 12:37–1:12 AM
+        ]
+    }
+
+    @Test func reAnchoringOnEachHopsOwnPickDriftsBackwardAcrossChannels() {
+        let anchorAtStart = 7200   // 2:00 AM
+        var anchor = anchorAtStart
+        var lastStart = anchorAtStart
+        for entries in driftingChannels {
+            // The bug: re-derive the anchor from wherever this hop just landed (mirrors the old
+            // currentAnchorTime(), which read back entries[selEntry].startTime) instead of holding
+            // steady — so a channel whose nearest match started earlier permanently drags the
+            // tracked time backward for every channel after it.
+            let idx = entryIndex(nearestTo: anchor, in: entries)
+            lastStart = entries[idx].startTime
+            anchor = lastStart
+        }
+        // 5 individually-"correct" hops compound into over 80 minutes of backward drift from where
+        // the user actually started.
+        #expect(lastStart < anchorAtStart - 1800)
+    }
+
+    @Test func stickyAnchorHeldAcrossTheWholeRunNeverChanges() {
+        let anchorAtStart = 7200
+        var stickyAnchor: Int? = nil
+        for entries in driftingChannels {
+            // The fix: seed the anchor once per run and never overwrite it from the entry a hop
+            // landed on — every channel is evaluated against the same original moment in time.
+            let anchor = stickyAnchor ?? anchorAtStart
+            stickyAnchor = anchor
+            _ = entryIndex(nearestTo: anchor, in: entries)
+        }
+        #expect(stickyAnchor == anchorAtStart)
+    }
+}
+
 @Suite("layoutRowBlocks — overlapping guide entries don't overflow the row")
 struct LayoutRowBlocksTests {
     private func entry(_ title: String, _ start: Int, _ end: Int) -> GuideEntryDTO {
@@ -196,9 +253,12 @@ struct SearchShowsTests {
         ]
         let results = searchShows(query: "sein", in: channels, limit: 10)
         #expect(results.count == 1)
-        #expect(results[0].airingCount == 3)
-        #expect(results[0].channelIndex == 0)
-        #expect(results[0].entryIndex == 1)   // the 0-1800 airing, not the 3600-5400 one
+        #expect(results[0].airings.count == 3)
+        // Sorted earliest-first regardless of discovery order (the 3600-5400 airing was appended
+        // to the group before the earlier 0-1800 one was found on the same channel).
+        #expect(results[0].airings.map(\.startTime) == [0, 3600, 7200])
+        #expect(results[0].airings[0].channelIndex == 0)
+        #expect(results[0].airings[0].entryIndex == 1)   // the 0-1800 airing, not the 3600-5400 one
     }
 
     @Test func groupsByLowercasedTitleWhenSeriesIdIsMissing() {
@@ -208,7 +268,7 @@ struct SearchShowsTests {
         ])]
         let results = searchShows(query: "news", in: channels, limit: 10)
         #expect(results.count == 1)
-        #expect(results[0].airingCount == 2)
+        #expect(results[0].airings.count == 2)
     }
 
     @Test func distinctShowsDoNotMerge() {
@@ -234,5 +294,43 @@ struct SearchShowsTests {
     @Test func noMatchReturnsEmpty() {
         let channels = [GuideChannelDTO(guideNumber: "2.1", guideName: "A", entries: [entry("Seinfeld", 0, 1800)])]
         #expect(searchShows(query: "xyz", in: channels, limit: 10) == [])
+    }
+}
+
+// Regression coverage for "resume at the nearest showing when switching shows mid-cycle" —
+// requested after the ↑/↓ (pick a show) / ←/→ (cycle that show's airings) redesign: if you've
+// arrowed through one show's later airings and then switch to a different show, the new show
+// should start at whichever of *its* airings is closest to the moment you were just looking at,
+// not always jump back to its own earliest airing.
+@Suite("nearestAiringIndex(to:in:) — resume at the nearest showing on show switch")
+struct NearestAiringIndexTests {
+    private func airing(_ channelIndex: Int, _ start: Int) -> SearchResult.Airing {
+        SearchResult.Airing(channelIndex: channelIndex, entryIndex: 0, startTime: start)
+    }
+
+    @Test func picksTheClosestAiringByAbsoluteTime() {
+        let airings = [airing(0, 0), airing(1, 3600), airing(2, 7200)]
+        #expect(nearestAiringIndex(to: 3000, in: airings) == 1)
+    }
+
+    @Test func exactMatchWins() {
+        let airings = [airing(0, 0), airing(1, 3600)]
+        #expect(nearestAiringIndex(to: 3600, in: airings) == 1)
+    }
+
+    @Test func tiesResolveToTheEarlierIndex() {
+        // 1800 is exactly equidistant from 0 and 3600 — `min(by:)` keeps the first element on a
+        // tie, so this locks in "earlier wins" as the actual tie-break rather than leaving it to
+        // whatever min(by:) happens to do.
+        let airings = [airing(0, 0), airing(1, 3600)]
+        #expect(nearestAiringIndex(to: 1800, in: airings) == 0)
+    }
+
+    @Test func singleAiringAlwaysWins() {
+        #expect(nearestAiringIndex(to: 99999, in: [airing(0, 0)]) == 0)
+    }
+
+    @Test func emptyAiringsReturnsZero() {
+        #expect(nearestAiringIndex(to: 100, in: []) == 0)
     }
 }

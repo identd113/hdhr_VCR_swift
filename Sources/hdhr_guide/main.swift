@@ -104,6 +104,17 @@ var selRow = 0
 var rowScroll = 0
 var selEntry = 0
 var colStart = 0
+// The time being tracked across a *run* of consecutive vertical moves (selectRow's own anchor
+// parameter) — nil between runs, so the first ↑/↓ in a new run seeds it from the actual current
+// selection. Deliberately NOT recomputed from the entry each move lands on: without this,
+// currentAnchorTime() (which reads back the just-selected entry's own start time) composes across
+// a chain of moveRow calls, and any channel whose nearest-matching entry started earlier than the
+// anchor (a long block, or a gap-fallback pick) permanently drags the tracked time backward for
+// every subsequent row — 10 real ↓ presses through a live guide drifted the visible window from
+// 2 AM back to 10 PM this way. Reset on any *explicit* selection change (an actual ←/→ page, or a
+// direct jump) so the next vertical run starts fresh from wherever the user just deliberately put
+// the cursor, instead of re-anchoring on a run that's already three channels stale.
+var verticalAnchorTime: Int? = nil
 var mode: Mode = .normal
 var statusMsg = "Loaded \(payload.channels.count) channels on HDHR-\(payload.deviceId.uppercased())."
 var lastPoll = Date()
@@ -116,7 +127,16 @@ let pollInterval: TimeInterval = 20
 // independently and risk drifting apart on what counts as "channel mode" vs "show mode."
 var searchQuery = ""
 var searchResults: [SearchResult] = []
-var searchHi = -1
+var searchHi = -1        // which show (index into searchResults) — moved by ↑/↓
+var searchAiringHi = 0   // which of that show's airings (index into searchResults[searchHi].airings) — moved by ←/→
+// Held across a run of consecutive ↑/↓ show-switches, same "sticky anchor" shape as the grid's own
+// verticalAnchorTime (main.swift) and for the identical reason: re-deriving the anchor from
+// wherever each hop lands (nearestAiringIndex's own pick) would let a chain of switches drift the
+// tracked time across many shows, instead of every switch consistently resuming near the one
+// moment actually being looked at. nil between runs — seeded from the current airing's own start
+// time on the first ↑/↓ in a new run, cleared by any ←/→ (an explicit airing pick) or a fresh
+// search, since those name an exact moment on their own.
+var searchShowAnchorTime: Int? = nil
 // Last time searchQuery changed — armSearchStrayTimer's TUI counterpart (Resources/guide.js) but
 // needs no timer/thread of its own: the main loop already wakes on a ~300ms cadence even with no
 // key pressed (Terminal.pollStdin(timeoutMs: 300) below), so the idle check just compares against
@@ -192,7 +212,8 @@ func selectRow(_ newRow: Int) {
     // at or near the currently visible anchor) — so in the common case colStart doesn't move at
     // all, and any shift that does happen is at most the small schedule-alignment gap between
     // channels, never a jump back to the start of the guide window.
-    let anchorTime = currentAnchorTime()
+    let anchorTime = verticalAnchorTime ?? currentAnchorTime()
+    verticalAnchorTime = anchorTime
     selRow = max(0, min(payload.channels.count - 1, newRow))
     // Routed through visibleEntries(_:), not `.entries` directly — every other read site in this
     // file does, and visibleEntries is where any future filtering/sorting of a channel's entries
@@ -218,6 +239,8 @@ func beginSearch() {
     searchQuery = ""
     searchResults = []
     searchHi = -1
+    searchAiringHi = 0
+    searchShowAnchorTime = nil
     lastSearchKeyTime = Date()
 }
 
@@ -226,12 +249,19 @@ func cancelSearch() {
     searchQuery = ""
     searchResults = []
     searchHi = -1
+    searchAiringHi = 0
+    searchShowAnchorTime = nil
 }
 
 // Re-run on every keystroke inside .search mode (handle(_:)'s .char branch below) — cheap enough
 // (searchShows is a single local pass over already-loaded data, no network) that there's no
-// reason to debounce it the way the web guide's own onSearchInput()/runSearch() have to.
+// reason to debounce it the way the web guide's own onSearchInput()/runSearch() have to. A
+// non-empty result set auto-focuses its first show's earliest airing immediately (render()'s dim
+// pass then spots every match, undimmed, and the selection box lands on this one) — there's no
+// separate dropdown/list stage to Enter into first, unlike the web guide's own two-stage flow.
 func updateSearchResults() {
+    searchAiringHi = 0
+    searchShowAnchorTime = nil
     if isChannelJumpQuery(searchQuery) {
         jumpToChannel(matchingNumberPrefix: String(searchQuery.dropFirst()))
         searchResults = []
@@ -239,25 +269,40 @@ func updateSearchResults() {
     } else if searchQuery.count >= searchMinChars {
         searchResults = searchShows(query: searchQuery, in: payload.channels, limit: searchResultLimit)
         searchHi = searchResults.isEmpty ? -1 : 0
+        if searchHi >= 0 { focusCurrentSearchAiring() }
     } else {
         searchResults = []
         searchHi = -1
     }
 }
 
-// Enter picks the highlighted result (search mode) — moves the grid selection there and returns
-// to the normal grid with it now highlighted, same as the web guide's own selectSearchShow
-// (scrolls + showInfo, doesn't itself open a modal); Enter again on the grid opens the recording
-// summary screen if the user wants it, same as picking any other program by hand. Sets selRow/
-// selEntry directly rather than going through selectRow(_:) — that helper's whole job is
-// preserving the *current* time anchor across a relative move, which doesn't apply here: a result
-// already names the exact (channelIndex, entryIndex) to land on.
-func jumpToSearchResult(_ result: SearchResult) {
-    guard result.channelIndex >= 0, result.channelIndex < payload.channels.count else { cancelSearch(); return }
-    selRow = result.channelIndex
-    selEntry = result.entryIndex
+// Jumps the grid selection to wherever searchHi/searchAiringHi currently point, without leaving
+// .search mode — used to auto-focus a fresh query's first match, and by ↑/↓/←/→ (handle(_:)'s
+// .search branch) as they move either index. Sets selRow/selEntry directly rather than going
+// through selectRow(_:) — that helper's whole job is preserving the *current* time anchor across a
+// relative move, which doesn't apply here: searchHi/searchAiringHi already name the exact
+// (channelIndex, entryIndex) to land on.
+func focusCurrentSearchAiring() {
+    guard searchHi >= 0, searchHi < searchResults.count else { return }
+    let airings = searchResults[searchHi].airings
+    guard searchAiringHi >= 0, searchAiringHi < airings.count else { return }
+    let a = airings[searchAiringHi]
+    guard a.channelIndex >= 0, a.channelIndex < payload.channels.count else { return }
+    selRow = a.channelIndex
+    selEntry = a.entryIndex
+    verticalAnchorTime = nil
     ensureEntryVisible()
+}
+
+// Enter on a filtered show is "record this" — the same one-key intent Enter already has on the
+// plain grid — not just "close the filter and leave me looking at it": jumps to wherever ↑/↓/←/→
+// (or the initial auto-focus) left the selection, clears the query/dim, and opens the recording
+// summary screen directly (same `mode = .recordSummary` guard `handle(_:)`'s plain-grid Enter case
+// uses) instead of requiring a second Enter press once back on the grid.
+func commitSearchSelection() {
+    focusCurrentSearchAiring()
     cancelSearch()
+    if currentEntry() != nil { mode = .recordSummary }
 }
 
 func moveEntry(_ delta: Int) {
@@ -282,6 +327,7 @@ func moveEntry(_ delta: Int) {
     }
     DebugLog.log("moveEntry(\(delta)): selEntry \(selEntry) -> \(newIndex) on \(ch.guideNumber)")
     selEntry = newIndex
+    verticalAnchorTime = nil
     ensureEntryVisible()
 }
 
@@ -302,6 +348,7 @@ func switchDevice() {
     payload = fresh
     currentDeviceId = next
     selRow = 0; selEntry = 0; colStart = 0
+    verticalAnchorTime = nil
     statusMsg = "Switched to HDHR-\(next.uppercased())."
 }
 
@@ -404,15 +451,55 @@ func handle(_ key: Key) {
                 lastSearchKeyTime = Date()
                 updateSearchResults()
             }
+        // ↑/↓ pick a different show from the results list; ←/→ cycle through *that* show's own
+        // airings — the same two-axis model the web guide's dropdown-select-then-cycle flow uses,
+        // just collapsed onto two axes of one key set instead of a dropdown + a follow-up cycle.
+        // No-op for a channel-jump query (that mode has no result list at all — it already jumps
+        // live on every keystroke). Both clamp at their ends rather than wrapping, same convention
+        // the web guide's own episode-cycling uses.
         case .up:
-            if !searchResults.isEmpty { searchHi = (searchHi - 1 + searchResults.count) % searchResults.count }
+            if !isChannelJumpQuery(searchQuery), !searchResults.isEmpty, searchHi > 0 {
+                // Anchor on the airing being looked at *before* switching shows, not after —
+                // switching shows should feel like scrolling a column of shows past a fixed point
+                // in time, the same reasoning selectRow(_:) documents for the grid's own ↑/↓. Held
+                // across a run of consecutive ↑/↓ (searchShowAnchorTime), not re-derived from
+                // wherever each hop lands, for the identical reason: re-anchoring on each pick's
+                // own start time would let a chain of switches drift the tracked moment across
+                // many shows instead of every switch consistently resuming near the same one.
+                let currentAirings = searchResults[searchHi].airings
+                let anchor = searchShowAnchorTime ?? currentAirings[min(searchAiringHi, currentAirings.count - 1)].startTime
+                searchShowAnchorTime = anchor
+                searchHi -= 1
+                searchAiringHi = nearestAiringIndex(to: anchor, in: searchResults[searchHi].airings)
+                focusCurrentSearchAiring()
+            }
         case .down:
-            if !searchResults.isEmpty { searchHi = (searchHi + 1) % searchResults.count }
+            if !isChannelJumpQuery(searchQuery), !searchResults.isEmpty, searchHi < searchResults.count - 1 {
+                let currentAirings = searchResults[searchHi].airings
+                let anchor = searchShowAnchorTime ?? currentAirings[min(searchAiringHi, currentAirings.count - 1)].startTime
+                searchShowAnchorTime = anchor
+                searchHi += 1
+                searchAiringHi = nearestAiringIndex(to: anchor, in: searchResults[searchHi].airings)
+                focusCurrentSearchAiring()
+            }
+        case .left:
+            if !isChannelJumpQuery(searchQuery), searchHi >= 0, searchHi < searchResults.count, searchAiringHi > 0 {
+                searchAiringHi -= 1
+                searchShowAnchorTime = nil   // an explicit airing pick breaks the ↑/↓ anchor run
+                focusCurrentSearchAiring()
+            }
+        case .right:
+            if !isChannelJumpQuery(searchQuery), searchHi >= 0, searchHi < searchResults.count,
+               searchAiringHi < searchResults[searchHi].airings.count - 1 {
+                searchAiringHi += 1
+                searchShowAnchorTime = nil
+                focusCurrentSearchAiring()
+            }
         case .enter:
             // Channel-jump mode already jumped live on every keystroke (updateSearchResults ->
             // jumpToChannel) — Enter here just confirms and closes, there's no list to pick from.
             if isChannelJumpQuery(searchQuery) { cancelSearch() }
-            else if searchHi >= 0, searchHi < searchResults.count { jumpToSearchResult(searchResults[searchHi]) }
+            else if searchHi >= 0 { commitSearchSelection() }
         case .char(let c):
             searchQuery.append(c)
             lastSearchKeyTime = Date()
@@ -512,53 +599,6 @@ func renderSummaryScreen() {
     Terminal.writeFrame(out)
 }
 
-// Full-screen takeover for a show-search query with enough characters to have real results (see
-// render()'s own comment on why channel-jump mode and a too-short query stay on the normal grid
-// instead) — mirrors renderSummaryScreen()'s "replace the grid entirely" shape rather than
-// squeezing a dropdown into the footer, since there's no floating-panel concept in this ASCII
-// grid. searchResults' cached (channelIndex, entryIndex) pairs are re-resolved against the live
-// `payload` here, not snapshotted, for the same reason buildSummaryLines() reads currentEntry()
-// fresh every redraw — status/genre coloring should reflect whatever's true right now. The main
-// loop's poll skip while mode == .search (see its own comment there) is what keeps those indices
-// actually valid against `payload` in the first place; the bounds guards below are just the same
-// defensive floor render()'s own rowScroll clamp already applies elsewhere in this file.
-func renderSearchResultsScreen() {
-    let bold = "\u{1B}[1m", dim = "\u{1B}[2m", reset = "\u{1B}[0m"
-    let (cols, rows) = Terminal.size()
-    var out = ""
-
-    out += bold + truncate("Search: \(searchQuery)", cols) + reset + "\n\n"
-
-    if searchResults.isEmpty {
-        out += dim + truncate("No matches.", cols) + reset + "\n"
-    } else {
-        // Not the main grid's exact-row-count discipline — Terminal.writeFrame's trailing
-        // \u{1B}[J already blanks anything a shorter frame leaves behind (renderSummaryScreen
-        // relies on the same thing) — just a sane cap so an unusually long result list can't
-        // scroll an unusually short terminal.
-        let maxListRows = max(1, rows - 6)
-        for (i, r) in searchResults.prefix(maxListRows).enumerated() {
-            guard r.channelIndex < payload.channels.count else { continue }
-            let ch = payload.channels[r.channelIndex]
-            guard r.entryIndex < ch.entries.count else { continue }
-            let e = ch.entries[r.entryIndex]
-            // Same "badge + recolored title" status language as the grid/summary panel — a search
-            // hit that's already recording/scheduled shouldn't look identical to a plain one.
-            let statusColor = e.isRecording ? recordingColor : (e.isScheduled ? scheduledColor : "\u{1B}[97m")
-            let badge = e.isRecording ? recordingBadge : (e.isScheduled ? scheduledBadge : "")
-            let airings = r.airingCount > 1 ? " (\(r.airingCount) airings)" : ""
-            let detail = "\(ch.guideNumber) \(ch.guideName)  \(timeFormatter.string(from: e.startDate))"
-            let marker = i == searchHi ? "> " : "  "
-            let rowStyle = i == searchHi ? bold : ""
-            let text = truncate("\(r.title)\(airings) - \(detail)", max(4, cols - marker.count))
-            out += rowStyle + marker + badge + statusColor + text + reset + "\n"
-        }
-    }
-
-    out += "\n" + dim + truncate("^v select   Enter jump   Esc cancel", cols) + reset
-    Terminal.writeFrame(out)
-}
-
 // Adaptive summary panel above the grid — a compact version of the Enter-summary screen's field
 // layout (title/episode/genre-tags-status/synopsis), scaled by terminal height rather than a
 // fixed 1 line, so a tall terminal gets real detail (like the web guide's #sum panel) while a
@@ -577,6 +617,47 @@ func buildSummaryLines(maxLines: Int, cols: Int) -> [String] {
         var out = out
         while out.count < maxLines { out.append("") }
         return Array(out.prefix(maxLines))
+    }
+
+    // Show-search "show selector" — while a text search filter is active, this panel becomes the
+    // list of matching shows (title + channel/time, current pick marked) instead of the normal
+    // "what's selected in the grid" detail below. The whole point of a filter is seeing what
+    // matched, and those matches can be scattered across different channels/times (some possibly
+    // outside the grid's currently-visible time window) — a compact list here is the one place
+    // that reliably shows all of them together, the same role the old full-screen results takeover
+    // played before render()'s dim pass replaced it. ←/→ (handle(_:)'s .search branch) moves
+    // searchHi and jumps the grid selection to match; the grid's own dimming (render()'s
+    // `matchKeys`) is the same underlying data, just drawn a second way.
+    if isShowSearchFiltering() {
+        if searchResults.isEmpty {
+            return pad0([dim + truncate("No matches for \"\(searchQuery)\"", budget) + reset])
+        }
+        var lines: [String] = []
+        for (i, r) in searchResults.prefix(maxLines).enumerated() {
+            // The ↑/↓-selected show shows wherever ←/→ has cycled it to (with its position in that
+            // show's own airings, "(2/3 airings)"); every other show shows its earliest airing with
+            // a plain count — its own cycle position only matters once it becomes the selected show.
+            let isActive = i == searchHi
+            let airingIdx = isActive ? min(searchAiringHi, r.airings.count - 1) : 0
+            let a = r.airings[airingIdx]
+            guard a.channelIndex < payload.channels.count else { continue }
+            let sch = payload.channels[a.channelIndex]
+            guard a.entryIndex < sch.entries.count else { continue }
+            let e = sch.entries[a.entryIndex]
+            // Same "badge + recolored title" status language as the grid itself — a match that's
+            // already recording/scheduled shouldn't look identical to a plain one here either.
+            let statusColor = e.isRecording ? recordingColor : (e.isScheduled ? scheduledColor : "\u{1B}[97m")
+            let badge = e.isRecording ? recordingBadge : (e.isScheduled ? scheduledBadge : "")
+            let airingsLabel = r.airings.count > 1
+                ? (isActive ? " (\(airingIdx + 1)/\(r.airings.count) airings)" : " (\(r.airings.count) airings)")
+                : ""
+            let detail = "\(sch.guideNumber) \(sch.guideName)  \(timeFormatter.string(from: e.startDate))"
+            let marker = isActive ? "> " : "  "
+            let rowStyle = isActive ? bold : ""
+            let text = truncate("\(r.title)\(airingsLabel) - \(detail)", max(4, budget - marker.count))
+            lines.append(rowStyle + marker + badge + statusColor + text + reset)
+        }
+        return pad0(lines)
     }
 
     guard let ch = currentChannel() else { return pad0([dim + truncate("No channel selected", budget) + reset]) }
@@ -645,23 +726,18 @@ func buildSummaryLines(maxLines: Int, cols: Int) -> [String] {
     return pad0(out)
 }
 
+// True once a show-search query is long enough to have real (possibly zero) results — the point
+// at which the grid below starts dimming non-matches instead of showing every entry at full
+// brightness. A channel-jump query ("#5.1") never filters the grid this way — that mode's own live
+// feedback is the selection jumping as you type, not a dim/undim pass — and a query still under
+// searchMinChars has nothing meaningful to report yet (not even a confident "no matches," the way
+// the web guide's own runSearch() only fires past its own 3-char floor).
+func isShowSearchFiltering() -> Bool {
+    mode == .search && !isChannelJumpQuery(searchQuery) && searchQuery.count >= searchMinChars
+}
+
 func render() {
     if mode == .recordSummary { renderSummaryScreen(); return }
-    // Channel-jump mode ("#5.1") deliberately falls through to the normal grid below instead of a
-    // dedicated screen — the live feedback IS the grid scrolling to the new selection as you type;
-    // there's no separate "list" content to show. A show-search query still under searchMinChars
-    // also falls through, for a different reason: at that length there's nothing meaningful to
-    // report yet (not even a confident "no matches," the way the web guide's own runSearch() only
-    // fires past its own 3-char floor) — a dedicated screen here would flash on and off on every
-    // keystroke on the way to 3 chars rather than appearing once, purposefully. Once the query
-    // reaches searchMinChars, the results screen takes over unconditionally, matches or not
-    // (renderSearchResultsScreen prints "No matches." for a real, confident zero — same as the web
-    // guide's own #search-drop does for a 3+-char query with no hits), the same way recordSummary's
-    // own full takeover doesn't wait for anything either once Enter is pressed.
-    if mode == .search, !isChannelJumpQuery(searchQuery), searchQuery.count >= searchMinChars {
-        renderSearchResultsScreen()
-        return
-    }
 
     let (cols, rows) = Terminal.size()
     // visibleCols()'s own `max(1, ...)` floor forces at least 1 grid column even when there isn't
@@ -807,6 +883,22 @@ func render() {
         return s + String(right) + reset
     }
 
+    // Show-search dim filter — every match (searchResults' own (channelIndex, entryIndex) pairs,
+    // possibly several across different channels/times) stays at full brightness; everything else
+    // in the grid dims, the same "fade, don't hide" philosophy CLAUDE.md's "Web guide rows are
+    // never hidden" invariant already documents for the web guide's own .g-prog-dim. Only kicks in
+    // once there's at least one real match — an empty result set leaves the grid undimmed (dimming
+    // *everything* would just look like a rendering glitch, not a filter) and is called out in the
+    // footer hint below instead.
+    let filtering = isShowSearchFiltering() && !searchResults.isEmpty
+    // One key per show — the ↑/↓-selected show's own ←/→-cycled airing, everyone else's earliest
+    // (their own cycle position only matters once they become the selected show; until then their
+    // earliest airing is the representative match).
+    let matchKeys: Set<String> = filtering ? Set(searchResults.enumerated().map { i, r in
+        let a = r.airings[i == searchHi ? min(searchAiringHi, r.airings.count - 1) : 0]
+        return "\(a.channelIndex)-\(a.entryIndex)"
+    }) : []
+
     let endRow = min(payload.channels.count, rowScroll + visibleRows)
     for r in rowScroll..<max(rowScroll, endRow) {
         let ch = payload.channels[r]
@@ -867,32 +959,41 @@ func render() {
             let isSel = isSelected(block)
             let labelWidth = block.span * slotWidth - 1   // trailing char is the plain separator below
 
-            if let (_, e) = block.entry {
-                // Status is shown two ways at once — a badge glyph (mirroring the web guide's own
-                // "ring + badge over genre tint" model, CLAUDE.md's "Status ring + badge") *and*
-                // the whole title recolored, not just a 1-glyph icon, so a scheduled/recording
-                // show reads as obviously different at a glance, not something you have to spot.
-                let bg = genreBackground(e.genre)
-                var used = 0
-                let statusColor: String
-                var badge = ""
-                if e.isRecording {
-                    statusColor = recordingColor
-                    badge = recordingBadge; used += 2
-                } else if e.isScheduled {
-                    statusColor = scheduledColor
-                    badge = scheduledBadge; used += 2
+            if let (offset, e) = block.entry {
+                if filtering && !matchKeys.contains("\(r)-\(offset)") {
+                    // Dimmed out — not one of the current search matches. Plain dim text, no genre
+                    // background/badge/status color, so it reads as clearly de-emphasized rather
+                    // than just a slightly-darker version of its usual tile.
+                    let title = pad(truncate(e.title, labelWidth), labelWidth)
+                    line += dim + title + reset
                 } else {
-                    statusColor = "\u{1B}[97m"
-                }
-                if isSel { used += 2 }   // the embedded "||" below
+                    // Status is shown two ways at once — a badge glyph (mirroring the web guide's
+                    // own "ring + badge over genre tint" model, CLAUDE.md's "Status ring + badge")
+                    // *and* the whole title recolored, not just a 1-glyph icon, so a
+                    // scheduled/recording show reads as obviously different at a glance, not
+                    // something you have to spot.
+                    let bg = genreBackground(e.genre)
+                    var used = 0
+                    let statusColor: String
+                    var badge = ""
+                    if e.isRecording {
+                        statusColor = recordingColor
+                        badge = recordingBadge; used += 2
+                    } else if e.isScheduled {
+                        statusColor = scheduledColor
+                        badge = scheduledBadge; used += 2
+                    } else {
+                        statusColor = "\u{1B}[97m"
+                    }
+                    if isSel { used += 2 }   // the embedded "||" below
 
-                let titleWidth = max(0, labelWidth - used)
-                let title = pad(truncate(e.title, titleWidth), titleWidth)
-                if isSel {
-                    line += bg + badge + outline + "|" + statusColor + title + outline + "|" + reset
-                } else {
-                    line += bg + badge + statusColor + title + reset
+                    let titleWidth = max(0, labelWidth - used)
+                    let title = pad(truncate(e.title, titleWidth), titleWidth)
+                    if isSel {
+                        line += bg + badge + outline + "|" + statusColor + title + outline + "|" + reset
+                    } else {
+                        line += bg + badge + statusColor + title + reset
+                    }
                 }
             } else {
                 line += String(repeating: " ", count: labelWidth)
@@ -918,8 +1019,17 @@ func render() {
     // there's no floating search box to show it in, unlike the web guide.
     let hint: String
     if mode == .search {
-        let need = isChannelJumpQuery(searchQuery) ? "" : "  (\(searchMinChars)+ to search)"
-        hint = "/\(searchQuery)_  [Esc] cancel\(need)"
+        if isChannelJumpQuery(searchQuery) {
+            hint = "/\(searchQuery)_  [Esc] cancel"
+        } else if searchQuery.count < searchMinChars {
+            hint = "/\(searchQuery)_  [Esc] cancel  (\(searchMinChars)+ to search)"
+        } else if searchResults.isEmpty {
+            hint = "/\(searchQuery)_  No matches  [Esc] clear"
+        } else {
+            let r = searchResults[max(0, min(searchHi, searchResults.count - 1))]
+            let airingPart = r.airings.count > 1 ? "  <> airing \(min(searchAiringHi, r.airings.count - 1) + 1)/\(r.airings.count)" : ""
+            hint = "/\(searchQuery)_  ^v show \(searchHi + 1)/\(searchResults.count)\(airingPart)  Enter/Esc clear"
+        }
     } else {
         hint = "^v channel  <> show  [] page  f fav  / search  Enter record  Tab tuner  q quit"
     }

@@ -102,18 +102,28 @@ public func firstChannelIndex(matchingNumberPrefix prefix: String, in channels: 
 // nil — the same "no ID -> fall back to title" shape Show.seriesTitle(from:) uses in the main
 // app, duplicated rather than imported since hdhr_guide_core can't depend on the hdhr_VCR
 // executable target, the same accepted tradeoff genreImpliesBonusTime above already makes) and
-// the (channelIndex, entryIndex) of its single jump target.
+// every one of its airings in the loaded window, sorted chronologically — main.swift's ↑/↓ picks
+// which show (searchHi into the results array), ←/→ cycles which of *this* show's airings
+// (searchAiringHi into `airings`), mirroring the web guide's own two-axis show/episode model.
 public struct SearchResult: Equatable {
-    public let title: String
-    public let channelIndex: Int
-    public let entryIndex: Int
-    public let airingCount: Int
+    public struct Airing: Equatable {
+        public let channelIndex: Int
+        public let entryIndex: Int
+        public let startTime: Int
 
-    public init(title: String, channelIndex: Int, entryIndex: Int, airingCount: Int) {
+        public init(channelIndex: Int, entryIndex: Int, startTime: Int) {
+            self.channelIndex = channelIndex
+            self.entryIndex = entryIndex
+            self.startTime = startTime
+        }
+    }
+
+    public let title: String
+    public let airings: [Airing]   // always non-empty, sorted by startTime ascending
+
+    public init(title: String, airings: [Airing]) {
         self.title = title
-        self.channelIndex = channelIndex
-        self.entryIndex = entryIndex
-        self.airingCount = airingCount
+        self.airings = airings
     }
 }
 
@@ -125,32 +135,42 @@ public struct SearchResult: Equatable {
 //
 // Grouped by show (see SearchResult's own doc comment) rather than one row per raw entry, so a
 // show with many reruns collapses into one line instead of crowding the small, `limit`-capped
-// list — the same reason the web guide's own /api/guide-search groups by SeriesID. Each group's
-// jump target is its chronologically EARLIEST airing in the loaded window, mirroring the web
-// guide's `airings sorted by start` / `jumpToSearchAiring` landing on `airings[0]`. Deliberately
-// narrower than the web version: no per-result episode cycling (←/→ between a show's other
-// airings) — picking a result jumps to that one airing; from there the grid's own ←/→ already
-// covers moving between a channel's other programs. Sorted by title, capped at `limit`.
+// list — the same reason the web guide's own /api/guide-search groups by SeriesID. Sorted by
+// title, capped at `limit`; each result's own `airings` are sorted by start time, earliest first.
 public func searchShows(query: String, in channels: [GuideChannelDTO], limit: Int) -> [SearchResult] {
     let q = query.lowercased()
     guard !q.isEmpty else { return [] }
 
-    struct Group { var title: String; var channelIndex: Int; var entryIndex: Int; var startTime: Int; var count: Int }
+    struct Group { var title: String; var airings: [SearchResult.Airing] }
     var groups: [String: Group] = [:]
     for (ci, ch) in channels.enumerated() {
         for (ei, e) in ch.entries.enumerated() where e.title.lowercased().contains(q) {
             let key = e.seriesId ?? e.title.lowercased()
+            let airing = SearchResult.Airing(channelIndex: ci, entryIndex: ei, startTime: e.startTime)
             if var g = groups[key] {
-                g.count += 1
-                if e.startTime < g.startTime { g.channelIndex = ci; g.entryIndex = ei; g.startTime = e.startTime }
+                g.airings.append(airing)
                 groups[key] = g
             } else {
-                groups[key] = Group(title: e.title, channelIndex: ci, entryIndex: ei, startTime: e.startTime, count: 1)
+                groups[key] = Group(title: e.title, airings: [airing])
             }
         }
     }
     return groups.values
         .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
         .prefix(limit)
-        .map { SearchResult(title: $0.title, channelIndex: $0.channelIndex, entryIndex: $0.entryIndex, airingCount: $0.count) }
+        .map { SearchResult(title: $0.title, airings: $0.airings.sorted { $0.startTime < $1.startTime }) }
+}
+
+// Picks whichever of one show's airings is closest in time to `anchorTime` — used when switching
+// from one search result to another (↑/↓) while mid-cycle through the previous show's airings
+// (←/→), so the newly-selected show starts at whatever showing is nearest to the moment just being
+// looked at, rather than always resetting to its own earliest airing. Same "nearest by absolute
+// distance" fallback shape as entryIndex(nearestTo:in:) above, simplified: airings are discrete
+// points in time (not spans to check "contains" against — cycling between two different
+// showings of the same show, not the guide entries themselves).
+public func nearestAiringIndex(to anchorTime: Int, in airings: [SearchResult.Airing]) -> Int {
+    guard !airings.isEmpty else { return 0 }
+    return airings.indices.min(by: {
+        abs(airings[$0].startTime - anchorTime) < abs(airings[$1].startTime - anchorTime)
+    }) ?? 0
 }
