@@ -201,6 +201,25 @@ struct SnapshotTests {
         assertSnapshot(view, named: "ShowFormSection_series", size: CGSize(width: 500, height: 380))
     }
 
+    // Neither test above ever exercises the transcode-mismatch CaveatBanner: both use
+    // makeTestAppState()'s default empty `devices`, so `state.hdhr_record`'s assigned tuner never
+    // resolves — but the banner also requires `show.show_transcode != "none"`, and Show.blank()
+    // defaults to "none", which the other two tests never override. This is the gap that let the
+    // CaveatBanner-vs-old-Label-style visual change (see docs/SettingsView.md's XMLTV warning
+    // note for the same component) go unverified by any snapshot.
+    @Test("ShowFormSection — transcode-mismatch warning shown")
+    @MainActor func showFormSectionTranscodeMismatchWarning() {
+        let state = makeTestAppState()
+        let view = ShowFormSectionPreview(
+            showTitle: "The Tonight Show",
+            seriesType: .single,
+            airDays: ["Friday"],
+            transcode: "heavy"
+        )
+        .environmentObject(state)
+        assertSnapshot(view, named: "ShowFormSection_transcodeMismatch", size: CGSize(width: 500, height: 460))
+    }
+
     // ─── VLCPlayerView ────────────────────────────────────────────────────────
     // The video surface (NSViewRepresentable) renders as a black NSView — no VLC
     // needed. onAppear hooks (audio device discovery, Now Playing setup) don't fire.
@@ -246,6 +265,10 @@ private struct ShowFormSectionPreview: View {
     let showTitle: String
     let seriesType: ShowState
     let airDays: Set<String>
+    // Defaults to "none" (never triggers the transcode-mismatch CaveatBanner, matching every
+    // pre-existing snapshot's behavior) — showFormSectionTranscodeMismatchWarning below is the
+    // only caller that passes something else.
+    let transcode: String
 
     @State private var show: Show        = Show.blank(channel: "5.1", device: "FFFFFFFF")
     @State private var st:   ShowState   = .single
@@ -253,10 +276,11 @@ private struct ShowFormSectionPreview: View {
     @State private var folder: URL?      = FileManager.default.homeDirectoryForCurrentUser
                                                .appendingPathComponent("Documents/hdhr_videos")
 
-    init(showTitle: String, seriesType: ShowState, airDays: Set<String>) {
+    init(showTitle: String, seriesType: ShowState, airDays: Set<String>, transcode: String = "none") {
         self.showTitle  = showTitle
         self.seriesType = seriesType
         self.airDays    = airDays
+        self.transcode  = transcode
     }
 
     var body: some View {
@@ -267,6 +291,7 @@ private struct ShowFormSectionPreview: View {
                 show: .constant({
                     var s = Show.blank(channel: "5.1", device: "FFFFFFFF")
                     s.show_title = showTitle
+                    s.show_transcode = transcode
                     return s
                 }()),
                 seriesType: .constant(seriesType),

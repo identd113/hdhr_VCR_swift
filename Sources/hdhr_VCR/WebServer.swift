@@ -798,7 +798,7 @@ final class WebServer: @unchecked Sendable {
         // instead of holding up the MainActor (idle loop, menu rebuild, guide rebuild, etc.) for
         // every debounced keystroke from guide.js's search box — see handleGuideSearch's own comment.
         if method == "GET", path.hasPrefix("/api/guide-search/") {
-            return await handleGuideSearch(path: path)
+            return await handleGuideSearch(path: path, state: appState)
         }
         return await MainActor.run { routeOnMain(method: method, path: path, body: body) }
     }
@@ -816,7 +816,9 @@ final class WebServer: @unchecked Sendable {
     // entry's title, filtering, grouping, sorting) runs on this function's own (non-MainActor) task
     // instead, so a dense lineup's search doesn't add blocking work to the same thread CLAUDE.md
     // already flags as hot-path sensitive (menu rebuild, idle loop, guide rebuild).
-    private func handleGuideSearch(path: String) async -> WebResponse {
+    // `state` is an explicit parameter (not read from `self.appState`) so this is directly
+    // callable from a test with a fake AppState — same testability shape as handleRecord(state:body:).
+    func handleGuideSearch(path: String, state: AppState?) async -> WebResponse {
         let tail  = path.dropFirst("/api/guide-search/".count)
         let parts = tail.split(separator: "/", maxSplits: 1)
         guard parts.count == 2 else { return .notFound("bad params") }
@@ -829,7 +831,7 @@ final class WebServer: @unchecked Sendable {
 
         struct ChannelSnapshot { let num: String; let name: String; let entries: [GuideEntry] }
         let snapshot: [ChannelSnapshot] = await MainActor.run { () -> [ChannelSnapshot] in
-            guard let state = appState else { return [] }
+            guard let state else { return [] }
             let (winStart, winSec) = guideWindow(state: state)
             let winEnd = winStart + winSec
             return (state.guideStore.channelsByDevice[devId] ?? []).map { ch in
