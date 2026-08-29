@@ -95,7 +95,15 @@ struct AddShowView: View {
                 }
             }
         })
-        .onExitCommand { dismiss() }
+        // Esc backs out one screen at a time rather than always closing the whole wizard — from
+        // Details it returns to the Guide (goBack(), the same transition the Back button uses),
+        // and only actually dismisses the window once already on Guide (step 1).
+        .onExitCommand {
+            switch step {
+            case .details: goBack()
+            case .guide: dismiss()
+            }
+        }
         .onAppear {
             show.show_transcode = state.config.Default_transcode
             // Acquire the internal web server for this wizard instance on EVERY entry path — the

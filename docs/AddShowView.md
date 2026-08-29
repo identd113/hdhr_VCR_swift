@@ -3,7 +3,7 @@
 ## Visual Appearance
 
 ### Overall window
-Fixed **560×540** for the details step; expands to resizable **min 1100×720** for the guide step. The guide-step size is **remembered across reopens and app restarts** — persisted in `UserDefaults` via `@AppStorage("addShowGuideWidth"/"addShowGuideHeight")` (defaults 1450×820), fed as the guide-step ideal width/height on open. A background `GeometryReader` (pure SwiftUI, no AppKit) reads the window-content size and writes it back on resize via `onChange`; sizes narrower than 1000 (the details step) are ignored so they never overwrite the saved guide size. The window animates between sizes with a 0.2s ease-in-out. Escape closes the window from any step.
+Fixed **560×540** for the details step; expands to resizable **min 1100×720** for the guide step. The guide-step size is **remembered across reopens and app restarts** — persisted in `UserDefaults` via `@AppStorage("addShowGuideWidth"/"addShowGuideHeight")` (defaults 1450×820), fed as the guide-step ideal width/height on open. A background `GeometryReader` (pure SwiftUI, no AppKit) reads the window-content size and writes it back on resize via `onChange`; sizes narrower than 1000 (the details step) are ignored so they never overwrite the saved guide size. The window animates between sizes with a 0.2s ease-in-out. Escape backs out one step at a time (Details → Guide, same transition `goBack()`/the Back button use) and only closes the window once already on the Guide step (step 1) — see "Navigation" below.
 
 **Top of window (all steps)**: 2 small 8pt circles in a row, left-padded under the top edge — progress indicator. Filled accent-color circle = current step; hollow gray circle = other step. `guide` and `details` steps only — `ForEach([Step.guide, .details])` always produces exactly 2 dots. Below the circles: a `Divider`.
 
@@ -39,7 +39,7 @@ Window size: **560×540** for the details step; **resizable** (min 1100×720) fo
 enum Step { case guide, details }
 ```
 
-A progress indicator (2 dots, filled vs hollow) tracks position across the `guide` and `details` steps. The guide step hides the nav bar entirely; navigation is via the Record button in the web guide summary panel. **Escape key** dismisses the window from any step (`.onExitCommand { dismiss() }`).
+A progress indicator (2 dots, filled vs hollow) tracks position across the `guide` and `details` steps. The guide step hides the nav bar entirely; navigation is via the Record button in the web guide summary panel. **Escape key** backs out one step at a time, matching the Back button rather than always closing the window: from `.details` it calls the same `goBack()` that button uses (→ `.guide`); only from `.guide` (step 1, nothing left to back out of) does it call `dismiss()`. `WatchNowView`, by contrast, is a single standard window with no step model and no `onExitCommand` of its own — this back-out-one-step behavior is specific to this multi-step wizard.
 
 ### Step 1 — Guide
 
