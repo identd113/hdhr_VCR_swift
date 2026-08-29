@@ -6,6 +6,39 @@ What's new in each version. For the fuller list of changes within a version, see
 
 ---
 
+## v2.2.0 (2026-08-28)
+
+### Added
+- **First-Run Wizard** — walks new (or upgrading) users through picking a recordings folder and
+  confirming their HDHomeRun tuner(s) are found, including a Local Network permission check with
+  a direct link to Privacy Settings if it's not granted yet. Re-run anytime from
+  Settings → Maintenance → "Reset First-Run Setup."
+- **Type-ahead show search in the web guide** — a toolbar search box (type 3+ characters, or
+  press "/") finds a show on the current tuner, with arrow-key navigation and episode cycling.
+- **Terminal Guide search / channel-jump** — press "/" to jump to a channel number or search
+  loaded guide entries, fully offline.
+- **Proactive transcode-compatibility warnings** in Add/Record and Edit, so an unsupported
+  transcode profile is flagged before recording instead of only after it fails.
+- **Release builds now ship as a DMG** with a custom Read Me and background, and offer to move
+  themselves to /Applications if launched from elsewhere.
+
+### Updated
+- **Fixed a security issue**: a guide entry's poster image could be crafted to inject content into
+  the web guide's search results dropdown. Patched during a routine pre-release review.
+- **Esc in Add Show now backs out one step at a time** instead of always closing the wizard.
+- **Fixed: Space could misfire the web guide's type-to-search** instead of activating guide
+  controls as normal.
+- **Fixed: a tuner that was briefly unreachable at startup could get permanently stuck marked as
+  "doesn't support transcoding"** even after coming back online.
+- **Fixed: resetting First-Run Setup could pop the donation reminder up alongside it.**
+- A few smaller fixes: the web guide's Edit modal now shows the same transcode warning the Record
+  modal already had; live tuner updates now carry transcode-support status without needing a
+  reload; the guide search endpoint no longer blocks the app on every keystroke.
+
+Full change list: [CHANGELOG.md](Sources/hdhr_VCR/CHANGELOG.md)
+
+---
+
 ## v2.1.0 (2026-08-25)
 
 ### Added

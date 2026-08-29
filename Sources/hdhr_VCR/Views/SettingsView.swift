@@ -961,9 +961,6 @@ struct SettingsView: View {
                     Link("View on GitHub",
                          destination: URL(string: "https://github.com/identd113/hdhr_VCR_swift")!)
                         .buttonStyle(.bordered)
-                    Link("Join Discord",
-                         destination: URL(string: "https://discord.gg/UMp57Nmgbd")!)
-                        .buttonStyle(.bordered)
                     Spacer()
                 }
 

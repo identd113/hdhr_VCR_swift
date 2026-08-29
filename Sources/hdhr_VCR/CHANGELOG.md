@@ -2,6 +2,29 @@
 
 Every entry is tagged **Added** (something new), **Updated** (existing behavior changed, improved, or fixed), **Removed** (something taken away), or **Info** (a note — nothing to do, nothing visibly different).
 
+## v2.2.0 — 2026-08-28
+
+**Added**
+- **New: First-Run Wizard.** Opens automatically the first time you launch a fresh install (or upgrade from an older version), walking through picking a recordings folder and confirming your HDHomeRun tuner(s) are found — with an animated intro splash (skipped under Reduce Motion), a floating-panel look matching the rest of the app, and a card that names each tuner it finds along with its channel count. If macOS's Local Network permission hasn't been granted yet, the wizard actively checks for it and offers an "Open Privacy Settings" button rather than leaving you to guess why nothing was found. Re-run it anytime from Settings → Maintenance → "Reset First-Run Setup."
+- **New: type-ahead show search in the web guide.** A search icon in the toolbar expands into a box — type 3+ characters (or just start typing anywhere in the guide, or press "/") to find a show on the current tuner. Arrow keys navigate the results, Enter or a click jumps to the first airing and dims the rest of the grid, and Left/Right then cycles through that show's other airings. An ⓘ button explains the controls; a lone stray keystroke left untouched for 5 seconds self-clears.
+- **New: Terminal Guide search / channel-jump.** Press "/" to enter search mode: a `#5.1`-style query live-jumps the grid to that channel number as you type; anything else (3+ characters) searches every already-loaded channel's entries. Matches show in a list above the grid, with everything else dimmed — Up/Down picks a different show, Left/Right cycles through that show's other airings (switching shows resumes at whichever airing is closest to wherever you'd cycled to, not always the earliest), and Enter opens the recording prompt directly for whatever's currently selected. Fully offline — no network calls, unlike the web guide's search.
+- **Proactive transcode-compatibility warnings.** The Add/Record and Edit screens (native and web guide) now warn up front when your selected transcode profile isn't supported by the assigned tuner and will be silently recorded as "none" instead — previously you'd only find out after a failed recording.
+- **Release builds now ship as a DMG instead of a zip**, with a custom classic-Mac-styled Read Me and background. If you launch the app straight from the DMG or your Downloads folder instead of dragging it to Applications first, it now offers to move itself there and relaunch.
+
+**Updated**
+- **Fixed: a guide entry's poster image could be crafted to break out of its HTML attribute in the search results dropdown and inject arbitrary content.** Found and patched during a routine pre-release code review; no evidence of it being exploited.
+- **Esc in Add Show now backs out one step at a time** (Details → Guide) instead of always closing the whole wizard — it only closes the window once you're back on the first step, matching how Terminal Guide's and the web guide's own search already back out.
+- **Fixed: typing Space while the web guide's type-to-search was active could hijack Space's existing role as a keyboard-activation key** for guide blocks and buttons elsewhere on the page. Space no longer triggers search.
+- **Fixed: a tuner whose HTTP server was briefly unreachable when the app started could get permanently stuck showing as "doesn't support transcoding,"** even after it came back online — the periodic recheck now refreshes that along with everything else it already rechecks.
+- **Fixed: resetting First-Run Setup from Settings could let the donation reminder window pop up at the same time as the reopened wizard.**
+- **Fixed: repeatedly pressing ↓/↑ in Terminal Guide could drift the visible time window backward**, away from whatever moment you'd scrolled to — found during manual pre-release testing (10 presses could drift the view back by several hours on a busy guide). Moving up/down through channels now consistently holds the same point in time until you deliberately move left/right or jump elsewhere.
+- The web guide's Edit modal now shows the same transcode-mismatch warning the Record modal already had, and a device's "no transcode" status is now included in live tuner updates too — previously that only appeared correctly after a full page reload.
+- The web guide's search endpoint no longer blocks the app while it filters results on every keystroke; the First-Run Wizard's network check now checks all tuners at once instead of one at a time.
+- A minor visual clipping issue on the guide search's info-button label was fixed.
+
+**Info**
+- Confirmed compatible with the macOS 27 / Xcode 27 beta toolchain (build tooling changes only — no user-visible change).
+
 ## v2.1.0 — 2026-08-25
 
 **Added**
