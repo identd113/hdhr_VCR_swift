@@ -10,21 +10,25 @@ What's new in each version. For the fuller list of changes within a version, see
 
 ### Added
 - **First-Run Wizard** — walks new (or upgrading) users through picking a recordings folder and
-  confirming their HDHomeRun tuner(s) are found, including a Local Network permission check with
-  a direct link to Privacy Settings if it's not granted yet. Re-run anytime from
-  Settings → Maintenance → "Reset First-Run Setup."
+  confirming their HDHomeRun tuner(s) are found, with a short animated intro, including a Local
+  Network permission check with a direct link to Privacy Settings if it's not granted yet. Re-run
+  anytime from Settings → Maintenance → "Reset First-Run Setup."
 - **Type-ahead show search in the web guide** — a toolbar search box (type 3+ characters, or
   press "/") finds a show on the current tuner, with arrow-key navigation and episode cycling.
 - **Terminal Guide search / channel-jump** — press "/" to jump to a channel number or search
-  loaded guide entries, fully offline.
+  loaded guide entries, arrow through results, and hit Enter to schedule a recording — fully
+  offline.
 - **Proactive transcode-compatibility warnings** in Add/Record and Edit, so an unsupported
   transcode profile is flagged before recording instead of only after it fails.
 - **Release builds now ship as a DMG** with a custom Read Me and background, and offer to move
   themselves to /Applications if launched from elsewhere.
 
 ### Updated
-- **Fixed a security issue**: a guide entry's poster image could be crafted to inject content into
-  the web guide's search results dropdown. Patched during a routine pre-release review.
+- **Security fix**: a guide entry's poster image could be crafted to inject content into the web
+  guide's search results. No evidence it was ever exploited.
+- **Fixed: repeatedly pressing ↓/↑ in Terminal Guide could drift the visible time window away
+  from wherever you'd scrolled to.** Moving between channels now holds your place in time until
+  you deliberately move elsewhere.
 - **Esc in Add Show now backs out one step at a time** instead of always closing the wizard.
 - **Fixed: Space could misfire the web guide's type-to-search** instead of activating guide
   controls as normal.
@@ -33,7 +37,8 @@ What's new in each version. For the fuller list of changes within a version, see
 - **Fixed: resetting First-Run Setup could pop the donation reminder up alongside it.**
 - A few smaller fixes: the web guide's Edit modal now shows the same transcode warning the Record
   modal already had; live tuner updates now carry transcode-support status without needing a
-  reload; the guide search endpoint no longer blocks the app on every keystroke.
+  reload; typing in the guide search box no longer momentarily freezes the app; the First-Run
+  Wizard checks all your tuners at once instead of one by one, so setup finishes faster.
 
 Full change list: [CHANGELOG.md](Sources/hdhr_VCR/CHANGELOG.md)
 
