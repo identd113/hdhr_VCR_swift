@@ -309,6 +309,9 @@ final class AppState: ObservableObject {
     private var fetchStatusTasks: [String: Task<Void, Never>] = [:]
     // Tracks in-flight lineup fetches so concurrent callers await the same Task instead of polling
     private var loadingLineupTasks: [String: Task<Void, Never>] = [:]
+    // Coalesces concurrent fetchAllGuides() callers onto one in-flight Task — see that function's
+    // own comment.
+    private var fetchAllGuidesTask: Task<Void, Never>?
     // Per-device exponential backoff after guide API failures (replaces flat guideLoadFailTimes).
     private var guideApiBackoff: [String: APIBackoff] = [:]
     // Per-show cooldown after a recording failure, expressed in idle-loop ticks (scales with
@@ -861,8 +864,24 @@ final class AppState: ObservableObject {
 
     // MARK: - Guide cache
 
+    // Coalesces concurrent callers — only the first actually fetches; others await its Task
+    // directly instead of each firing their own guide.php round trip. Needed because this has three
+    // independent call sites (startup(), idleLoop()'s no-devices-yet retry, and
+    // FirstRunWizardView.prefetchIntroArtIfNeeded()) that can all observe an empty guideByDevice at
+    // once on a slow/cold launch — mirrors ensureLineupLoaded's loadingLineupTasks idiom above.
     func fetchAllGuides() async {
         guard !devices.isEmpty else { return }
+        if let existing = fetchAllGuidesTask {
+            await existing.value
+            return
+        }
+        let task = Task { await self.performFetchAllGuides() }
+        fetchAllGuidesTask = task
+        defer { fetchAllGuidesTask = nil }
+        await task.value
+    }
+
+    private func performFetchAllGuides() async {
         statusMessage = "Loading guide…"
         let results = await guideStore.loadAll(devices: devices, hours: config.GuideHours, useXML: config.Guide_use_xml)
         guideByDevice = guideStore.channelsByDevice
