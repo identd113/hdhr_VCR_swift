@@ -64,6 +64,7 @@ struct FirstRunWizardView: View {
     private enum NetworkStatus { case checking, confirmed, notFound }
     @State private var networkStatus: NetworkStatus = .checking
     @State private var hasCheckedNetwork = false
+    @State private var hasPrefetchedIntroArt = false
 
     // Presentational device-aware view of the tri-state above, for TunerDiscoveryCard — this is
     // the only thing that changed about network detection; checkNetworkAccessIfNeeded()'s actual
@@ -176,12 +177,14 @@ struct FirstRunWizardView: View {
             playIntroIfNeeded()
         }
         .task { await checkNetworkAccessIfNeeded() }
+        .task { await prefetchIntroArtIfNeeded() }
         .onChange(of: state.config.First_run_wizard_shown) { oldValue, newValue in
             if oldValue && !newValue {
                 resetForFreshRun()
                 loadCurrentValuesIfNeeded()
                 playIntroIfNeeded()
                 Task { await checkNetworkAccessIfNeeded() }
+                Task { await prefetchIntroArtIfNeeded() }
             }
         }
         .onExitCommand { dismiss() }
@@ -204,6 +207,7 @@ struct FirstRunWizardView: View {
         hasLoadedInitialValues = false
         hasFinished = false
         hasCheckedNetwork = false
+        hasPrefetchedIntroArt = false
         hasPlayedIntro = false
         step = .recordingDefaults
     }
@@ -222,6 +226,18 @@ struct FirstRunWizardView: View {
     private func finishIntro() {
         goingForward = true
         withAnimation(.easeInOut(duration: 0.25)) { step = .recordingDefaults }
+    }
+
+    // Double-click the header logo (Step 1/2 only — the intro has no header of its own) to replay
+    // the splash on demand. Deliberately does NOT go through playIntroIfNeeded()'s own
+    // !hasPlayedIntro guard — that guard exists to stop it firing a *second* time automatically,
+    // not to block an explicit, repeatable user request for one; hasPlayedIntro itself is left
+    // untouched so a later automatic reopen (e.g. via Settings → Maintenance → "Reset First-Run
+    // Setup", which calls resetForFreshRun() separately) still behaves exactly as documented
+    // there. Still respects Reduce Motion, same as every other path into `.intro`.
+    private func replayIntro() {
+        guard !reduceMotion else { return }
+        withAnimation(.easeInOut(duration: 0.3)) { step = .intro }
     }
 
     // MARK: - Header
@@ -263,6 +279,9 @@ struct FirstRunWizardView: View {
                                 RoundedRectangle(cornerRadius: 9, style: .continuous)
                                     .strokeBorder(.white.opacity(0.2), lineWidth: 1)
                             )
+                            .onTapGesture(count: 2) { replayIntro() }
+                            .help("Double-click to replay the intro animation")
+                            .accessibilityIdentifier("wizard-header-logo-replay-intro")
                     }
                 }
                 VStack(alignment: .leading, spacing: 1) {
@@ -432,6 +451,63 @@ struct FirstRunWizardView: View {
             }
         }
         networkStatus = state.config.Local_network_confirmed ? .confirmed : .notFound
+    }
+
+    // While the intro splash plays (it runs from a separate `.task`, concurrently with
+    // checkNetworkAccessIfNeeded() above — see that function's own comment on why calling into
+    // discovery/lineup loading this way is safe), warm the image cache for a handful of channels'
+    // show posters plus their channel logos — favorites first, since those are what the
+    // user is most likely to land on in Watch Now or the guide right after finishing setup. Doesn't
+    // do its own device discovery (avoiding a second concurrent network scan for the same thing
+    // checkNetworkAccessIfNeeded() is already doing) — just waits briefly for `state.devices` to be
+    // populated by whichever of that function or AppState's own launch-time `startup()` gets there
+    // first. Purely best-effort with no UI binding of its own: nothing here is displayed by this
+    // view, so a slow network, an empty lineup, or Reduce Motion cutting the wait short all just
+    // mean less got warmed, never an error state.
+    private func prefetchIntroArtIfNeeded() async {
+        guard !hasPrefetchedIntroArt else { return }
+        hasPrefetchedIntroArt = true
+        for _ in 0..<20 where state.devices.isEmpty {
+            try? await Task.sleep(for: .milliseconds(200))
+        }
+        guard !state.devices.isEmpty else { return }
+        await withTaskGroup(of: Void.self) { group in
+            for device in state.devices {
+                group.addTask { await state.ensureLineupLoaded(for: device) }
+            }
+        }
+        // Only call if some device still has no guide data — fetchAllGuides() itself coalesces a
+        // concurrent call from startup()'s own launch-time fetch onto the same in-flight Task
+        // (see that function's own comment), so this check is purely to skip the call entirely
+        // once a prior run of this same function already populated every device.
+        if state.devices.contains(where: { (state.guideByDevice[$0.DeviceID] ?? []).isEmpty }) {
+            await state.fetchAllGuides()
+        }
+        // state.onAirNow(for:) — the same lookup `/api/now.json` and the menu's own "on now" list
+        // use — already does exactly the favorite-first sort this wants (its own sort puts
+        // `channel.isFavorite` first, ties broken by channel number) and already resolves each
+        // channel's actual current `GuideEntry` the correct way (`guideEntries(deviceId:channelNum:)`,
+        // GuideStore's own per-channel/time-range index). `GuideChannel.Guide` on `guideByDevice`
+        // itself is never populated — the per-program data lives only in that separate index — so
+        // reading `channel.Guide` directly here (an earlier version of this function did) silently
+        // found nothing on every real device; `onAirNow` is the correct accessor other call sites
+        // already use for exactly this reason. `.prefix(10)` caps this at "a few posters," not a
+        // fetch of the whole on-air lineup.
+        var posterURLs: Set<String> = []
+        for device in state.devices {
+            for (_, entry) in state.onAirNow(for: device).prefix(10) {
+                if let url = entry.ImageURL, !url.isEmpty {
+                    posterURLs.insert(url)
+                }
+            }
+        }
+        guard !posterURLs.isEmpty else { return }
+        await withTaskGroup(of: Void.self) { group in
+            for url in posterURLs {
+                group.addTask { _ = await ChannelIconCache.shared.image(for: url) }
+            }
+        }
+        glog("[Wizard] intro prefetch warmed \(posterURLs.count) show poster(s) across \(state.devices.count) device(s)")
     }
 
     // The `?Privacy_LocalNetwork` anchor that's supposed to deep-link straight to the Local
