@@ -7,7 +7,7 @@
 No subscription. No media server. No account to create. Just your tuner, your Mac, and your shows —
 the program guide is free too, courtesy of SiliconDust, the same way it's always been for HDHomeRun.
 
-**✅ Notarized by Apple — download, unzip, and open. No Gatekeeper warning, no bypass step.**
+**✅ Notarized by Apple — download, open the disk image, drag to Applications. No Gatekeeper warning, no bypass step.**
 
 [![CI](https://github.com/identd113/hdhr_VCR_swift/actions/workflows/ci.yml/badge.svg)](https://github.com/identd113/hdhr_VCR_swift/actions/workflows/ci.yml)
 [![macOS 15+](https://img.shields.io/badge/macOS-15%2B-blue?logo=apple\&logoColor=white)](https://github.com/identd113/hdhr_VCR_swift/releases)
@@ -194,8 +194,8 @@ progress without a second tuner, etc.) is covered above under [Features](#featur
 
 ### Download a release (easiest)
 
-1. Download `hdhrVCRplus-vX.X.X.zip` from the [Releases page](https://github.com/identd113/hdhr_VCR_swift/releases)
-2. Unzip and move `hdhrVCRplus.app` to `/Applications` (skip this and it'll offer to move itself there on first launch instead)
+1. Download `hdhrVCRplus-vX.X.X.dmg` from the [Releases page](https://github.com/identd113/hdhr_VCR_swift/releases)
+2. Open it and drag `hdhrVCRplus.app` to the `Applications` alias (skip this and it'll offer to move itself there on first launch instead)
 3. Open it — the app is notarized by Apple, so there's no "unidentified developer" warning or bypass step needed (see [Notarization and Gatekeeper](#notarization-and-gatekeeper) below)
 
 ### Build from source

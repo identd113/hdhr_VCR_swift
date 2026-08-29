@@ -24,6 +24,7 @@ if [ ! -d "$APP_PATH" ]; then
     exit 1
 fi
 command -v create-dmg >/dev/null || { echo "ERROR: create-dmg not installed — run: brew install create-dmg"; exit 1; }
+python3 -c "import PIL" 2>/dev/null || { echo "ERROR: Pillow not installed — run: pip3 install Pillow"; exit 1; }
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ASSETS="$REPO_ROOT/tools/dmg_assets"
@@ -38,12 +39,16 @@ mkdir -p "$GEN"
 echo "==> Rendering Read Me icon…"
 # readme_icon.svg is itself square (1:1), so — unlike the background below — the square canvas
 # qlmanage's thumbnail renderer always produces needs no cropping back to a different aspect ratio.
+# Rendered straight into $GEN (gitignored), never $ASSETS (tracked, holds only the hand-authored
+# .svg sources) — qlmanage names its output <input-basename>.png in whatever -o dir is given, so
+# rendering into the tracked dir and rm -f'ing it after each size would leave a stray renderer
+# output sitting next to the source art if the script ever died between those two steps.
 ICONSET="$GEN/readme_icon.iconset"
 mkdir -p "$ICONSET"
 for SZ in 16 32 64 128 256 512 1024; do
-    rm -f "$ASSETS/readme_icon.svg.png"
-    qlmanage -t -s "$SZ" -o "$ASSETS" "$ASSETS/readme_icon.svg" >/dev/null 2>&1
-    mv "$ASSETS/readme_icon.svg.png" "$GEN/size_${SZ}.png"
+    rm -f "$GEN/readme_icon.svg.png"
+    qlmanage -t -s "$SZ" -o "$GEN" "$ASSETS/readme_icon.svg" >/dev/null 2>&1
+    mv "$GEN/readme_icon.svg.png" "$GEN/size_${SZ}.png"
 done
 cp "$GEN/size_16.png"   "$ICONSET/icon_16x16.png"
 cp "$GEN/size_32.png"   "$ICONSET/icon_16x16@2x.png"
@@ -64,9 +69,10 @@ echo "==> Applying Read Me icon…"
 swift "$REPO_ROOT/tools/apply_finder_icon.swift" "$GEN/readme.icns" "$GEN/Read Me.rtfd"
 
 echo "==> Rendering DMG background…"
-rm -f "$ASSETS/dmg_background.svg.png"
-qlmanage -t -s 1320 -o "$ASSETS" "$ASSETS/dmg_background.svg" >/dev/null 2>&1
-python3 - "$ASSETS/dmg_background.svg.png" "$GEN/dmg_background.png" <<'PYEOF'
+# Same $GEN-not-$ASSETS reasoning as the icon render above.
+rm -f "$GEN/dmg_background.svg.png"
+qlmanage -t -s 1320 -o "$GEN" "$ASSETS/dmg_background.svg" >/dev/null 2>&1
+python3 - "$GEN/dmg_background.svg.png" "$GEN/dmg_background.png" <<'PYEOF'
 import sys
 from PIL import Image
 im = Image.open(sys.argv[1])
@@ -76,11 +82,15 @@ im = Image.open(sys.argv[1])
 crop = im.crop((0, 0, 1320, 1000))
 crop.resize((660, 500), Image.LANCZOS).save(sys.argv[2])
 PYEOF
-rm -f "$ASSETS/dmg_background.svg.png"
+rm -f "$GEN/dmg_background.svg.png"
 
 echo "==> Staging DMG contents…"
 STAGE="$(mktemp -d)/dmg-stage"
 mkdir -p "$STAGE"
+# Otherwise leaves a full copy of the (potentially universal-binary, VLCKit-framework-carrying)
+# signed .app sitting under $TMPDIR indefinitely — harmless in the sense that macOS eventually
+# reclaims $TMPDIR on its own schedule, but cheap enough to just clean up immediately instead.
+trap 'rm -rf "$(dirname "$STAGE")"' EXIT
 # ditto, not cp -R — cp -R does not reliably preserve the custom-icon extended attribute on a
 # bundle/folder (confirmed directly: an earlier cp -R silently dropped it), so the icon is
 # re-applied fresh at the actual staged path below rather than trusting either copy to carry it.

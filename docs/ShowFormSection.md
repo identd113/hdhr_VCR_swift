@@ -32,10 +32,14 @@ Transcode    — Picker: None | Heavy | Mobile | Internet 720
                will be ignored and recorded as None." Informational only: the actual enforcement
                happens unconditionally in AppState.startRecording regardless of whether this banner
                was ever seen — see CLAUDE.md's "Transcode capability gate" invariant. The device
-               lookup (selectedDeviceSupportsTranscode) defaults to *true* (no warning) when
-               show.hdhr_record doesn't resolve to a known device — the opposite of
-               startRecording's own conservative default — since a device simply not yet picked in
-               the Add wizard shouldn't read as "detected unsupported."
+               lookup (selectedDeviceSupportsTranscode) defaults to *true* (no warning) only when
+               no tuner has been picked at all (hdhr_record empty — before a tuner is selected in
+               the Add wizard, which shouldn't read as "detected unsupported"). Once hdhr_record is
+               set but doesn't resolve to a known device (the "Web guide offline devices" case — a
+               show assigned to a real tuner that just isn't currently detected), it falls back to
+               *false* (warn) — matching, not opposing, startRecording's own conservative
+               "unknown ⇒ force None" posture. (Fixed 2026-08-28, commit 919a045 — an earlier
+               version of this code defaulted true for both cases.)
 Bonus Time   — Toggle (only when state.config.Sports_padding_enabled); bound to show.show_bonus_time
 Day/Days     — Weekday toggle buttons (only for .single and .dateTime)
                Tooltip: single-day vs. multi-day selection intent

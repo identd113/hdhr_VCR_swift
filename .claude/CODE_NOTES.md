@@ -694,3 +694,50 @@ accuracy regresses right after app launch specifically.
   (Settings → Maintenance → "Reset First-Run Setup") is the only way the wizard ever reopens after
   a first dismissal, and it fires regardless of whether the window view instance was still alive
   or fully recreated.
+
+## 2026-08-28 — pre-release pass over b901958..HEAD (wizard chrome, transcode gating, guide search, TUI search)
+
+- Verified the 919a045 fix commit's 10 findings (XSS quote-escape in `hej()`, em-modal transcode
+  warning, `ModelNumber` refresh in device re-probe, wizard/nag guard bidirectionality, SSE `nt`
+  flag, off-actor `/api/guide-search`, concurrent lineup fetch in the wizard's network check,
+  `RecordingDefaultsFields` extraction, `activateAndOpen` extraction, `selectedDeviceSupportsTranscode`
+  default) are all still intact as of `HEAD` — none were partially reverted or re-broken by the
+  three commits that landed after it (`a78ac58`, `fff10a8`+`9d3c04d`+`8e98623`, `09b0ea8`). No
+  re-flag needed on any of the 10.
+- Transcode-tag list `["none","heavy","mobile","internet720"]` is still duplicated in 3 native Swift
+  spots after 919a045's `RecordingDefaultsFields` extraction reduced it from 4: `ShowFormSection.swift`
+  (its own picker, intentionally separate since it has per-show copy `RecordingDefaultsFields` doesn't),
+  `RecordingDefaultsFields.swift` (shared by Settings + wizard), and `WebServer.swift:1976`'s
+  `validTranscode` array — plus two literal `<option>` copies in `guide-shell.html` (`#rm-transcode`/
+  `#em-transcode`). Not blocking for this pass (each copy currently serves a genuinely different
+  layer: native picker, native defaults form, server-side validation, client HTML), but worth a
+  `CaseIterable` enum in `Models.swift` before a 6th copy appears.
+- `FirstRunIntroSplash.swift`'s `FirstRunSplashContent.collect(state:count:)` polls
+  `state.guideByDevice` every 100ms (bounded to ~900ms total) waiting for `ensureGuideLoaded` — a
+  fire-and-forget `Task` with no completion signal — to populate poster URLs, rather than observing
+  `guideByDevice`'s own `@Published` publisher. Judged acceptable here specifically because it's a
+  one-time, hard-bounded (900ms), purely cosmetic splash with a placeholder fallback either way —
+  not a correctness-affecting race — but it's the one spot in this diff that matches the "polling
+  where an event exists" pattern CLAUDE.md's own review guidance calls out. If this pattern is
+  copied elsewhere for something less decorative, prefer awaiting `state.$guideByDevice` directly.
+- `deploy_release.sh` now invokes `swift build -c release --arch arm64 --arch x86_64` once for the
+  real build and a second time (`--show-bin-path`, same flags) purely to resolve the output
+  directory — the flag list is duplicated across the two lines rather than stored once in a
+  variable. `--show-bin-path` doesn't trigger a rebuild so there's no perf cost, but the two flag
+  lists can drift if one is edited without the other. Minor, build-tooling only, not blocking.
+
+## 2026-08-28 — DMG release tooling (09b0ea8..HEAD: build_dmg.sh, build_readme_manual.swift, apply_finder_icon.swift)
+
+- `tools/apply_finder_icon.swift` is deliberately invoked twice per `build_dmg.sh` run — once on
+  `$GEN/Read Me.rtfd` and again on `$STAGE/Read Me.rtfd` after `ditto` — per the script's own
+  comment, because an earlier `cp -R` was empirically observed to silently drop the custom-icon
+  xattr, so neither copy is trusted to carry it without re-applying at the final staged path. Since
+  the switch to `ditto` (which normally does preserve xattrs), the first application may now be
+  redundant work, but it's cheap (one more `swift` script-mode invocation, one-off release tooling)
+  and the defensive intent is explicit in the comment — not flagging as a bug, just noting why two
+  calls exist if a future edit is tempted to remove one.
+
+(Three other findings from this same pass — `qlmanage` rendering into the tracked `tools/dmg_assets/`
+dir instead of the gitignored `generated/` subfolder, no upfront Pillow dependency check, and no
+`trap` cleanup on the `mktemp` staging dir — were fixed directly in `tools/build_dmg.sh` rather than
+left here; re-ran the script end-to-end afterward to confirm all three fixes actually work.)

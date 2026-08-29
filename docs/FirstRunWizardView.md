@@ -146,9 +146,11 @@ device-aware replacement for the original plain network-status row. Four states:
   clauses are each independently omitted when not yet known (`nil TunerCount`, or no lineup fetched
   for that device yet) — never rendered as a false "0".
 - **Found (multiple devices)**: headline becomes "N HDHomeRun devices found"; a compact per-device
-  list (`● HDHR-XXXXXXXX · N tuners`) replaces the single identity line — not a card grid, since
-  Step 1's `Form` is already vertically tight and a grid there would overpower the actual
-  recording-defaults content.
+  list replaces the single identity line — each row reuses the exact same `identityLine(for:)`
+  helper the single-device case uses (`"● HDHR-XXXXXXXX · N tuners · M channels ready"`, the
+  channel-count clause included whenever known), not a shortened two-part format — not a card grid
+  either, since Step 1's `Form` is already vertically tight and a grid there would overpower the
+  actual recording-defaults content.
 - **Not found**: unchanged copy/behavior (the "Open Privacy Settings" button below) — deliberately
   no new animation on this state; whimsy belongs in progress/success states, not failure states.
 
