@@ -136,7 +136,17 @@ struct AddShowView: View {
     private var guideStep: some View {
         Group {
             if state.webServerRunning {
-                AddShowWebView(port: state.config.Web_server_port) { data in
+                AddShowWebView(port: state.config.Web_server_port,
+                               appearanceMode: state.config.Appearance_mode,
+                               onAppearanceChanged: { mode in
+                                   // The embedded guide's own theme switcher is "this app's own
+                                   // setting" here (unlike a real LAN browser hitting the same
+                                   // guide.js, which has no such bridge to call at all) — so a
+                                   // click on it updates the same global Appearance_mode Settings
+                                   // → General shows, not just this one window's own display.
+                                   state.config.Appearance_mode = mode
+                                   state.saveConfig()
+                               }) { data in
                     guard
                         let deviceId    = data["deviceId"]    as? String,
                         let guideNumber = data["guideNumber"] as? String,
@@ -485,34 +495,81 @@ struct AddShowView: View {
 // WKWebView wrapper for the web guide in the Add Show wizard.
 // Posts a WKScriptMessage on "record" when the user clicks Record in the web guide.
 // The onRecord callback receives the entry data and advances the wizard to the details step.
+//
+// Also two-way syncs Settings → General's Appearance setting with this specific embedded
+// instance: native pushes appearanceMode down (on load, and live via updateNSView whenever
+// Settings changes it while this window is already open) via a guide.js function
+// (applyNativeTheme) that never posts back, and the guide's OWN theme-switcher buttons (a genuine
+// user click, guide.js's setTheme) post the new choice back up through a second script-message
+// handler — kept as two separate JS entry points specifically so pushing a theme down can never
+// loop back and silently overwrite Appearance_mode itself (e.g. "auto" resolving to a concrete
+// "dark" on load must never get echoed back as if the user had explicitly chosen "dark").
+// A real browser hitting the same guide.js over the LAN has no `window.webkit` object at all, so
+// its own theme clicks silently no-op past the try/catch instead of reaching this bridge —
+// exactly the isolation CLAUDE.md/Settings' own Appearance InfoButton copy promises.
 private struct AddShowWebView: NSViewRepresentable {
     let port: Int
+    let appearanceMode: String   // "auto" | "dark" | "light" — mirrors AppConfig.Appearance_mode
+    let onAppearanceChanged: (String) -> Void
     let onRecord: ([String: Any]) -> Void
 
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.userContentController.add(context.coordinator, name: "record")
+        config.userContentController.add(context.coordinator, name: "appearanceChanged")
         let wv = WKWebView(frame: .zero, configuration: config)
         wv.navigationDelegate = context.coordinator
         wv.load(URLRequest(url: URL(string: "http://localhost:\(port)/")!))
         return wv
     }
 
-    func updateNSView(_ nsView: WKWebView, context: Context) {}
+    // didFinish only fires on navigation — without this, a Settings change made while this
+    // window is already open and sitting on the guide step wouldn't be reflected until the next
+    // reload/reopen. Guarded on an actual change: updateNSView runs on *every* SwiftUI re-render
+    // of this view, not just ones where appearanceMode itself changed (AddShowView observes
+    // AppState, whose @Published churn — idle loop, guide refreshes — re-renders it often), so an
+    // unconditional evaluateJavaScript here was spamming applyNativeTheme far more often than
+    // intended: harmless in isolation, but a real, reproducible interference with the web guide's
+    // own live search-box typing (WindowNavigationTests.swift's
+    // addShowGuideSearchBoxIsAccessibleAndTypingDoesNotAutoSelect caught this — see its own
+    // history for the repro) once it was firing on effectively every tick.
+    func updateNSView(_ nsView: WKWebView, context: Context) {
+        guard context.coordinator.appearanceMode != appearanceMode else { return }
+        context.coordinator.appearanceMode = appearanceMode
+        context.coordinator.pushAppearance(to: nsView)
+    }
 
     static func dismantleNSView(_ nsView: WKWebView, coordinator: Coordinator) {
         nsView.configuration.userContentController.removeScriptMessageHandler(forName: "record")
+        nsView.configuration.userContentController.removeScriptMessageHandler(forName: "appearanceChanged")
     }
 
-    func makeCoordinator() -> Coordinator { Coordinator(onRecord: onRecord) }
+    func makeCoordinator() -> Coordinator {
+        Coordinator(appearanceMode: appearanceMode, onRecord: onRecord, onAppearanceChanged: onAppearanceChanged)
+    }
 
     class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
+        var appearanceMode: String
         let onRecord: ([String: Any]) -> Void
-        init(onRecord: @escaping ([String: Any]) -> Void) { self.onRecord = onRecord }
+        let onAppearanceChanged: (String) -> Void
+
+        init(appearanceMode: String, onRecord: @escaping ([String: Any]) -> Void,
+             onAppearanceChanged: @escaping (String) -> Void) {
+            self.appearanceMode = appearanceMode
+            self.onRecord = onRecord
+            self.onAppearanceChanged = onAppearanceChanged
+        }
 
         func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
-            guard message.name == "record", let body = message.body as? [String: Any] else { return }
-            DispatchQueue.main.async { self.onRecord(body) }
+            switch message.name {
+            case "record":
+                guard let body = message.body as? [String: Any] else { return }
+                DispatchQueue.main.async { self.onRecord(body) }
+            case "appearanceChanged":
+                guard let mode = message.body as? String, ["auto", "dark", "light"].contains(mode) else { return }
+                DispatchQueue.main.async { self.onAppearanceChanged(mode) }
+            default: break
+            }
         }
 
         func webView(_ wv: WKWebView, decidePolicyFor action: WKNavigationAction,
@@ -521,9 +578,24 @@ private struct AddShowWebView: NSViewRepresentable {
         }
 
         func webView(_ wv: WKWebView, didFinish _: WKNavigation!) {
-            let isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            pushAppearance(to: wv)
+        }
+
+        // "auto" resolves against the current system appearance here (same as this file's
+        // pre-existing behavior before Appearance_mode existed) rather than passing "auto"
+        // through to guide.js's own media-query-based auto — the two would usually agree, but
+        // resolving on the native side keeps a single source of truth for what "auto" means
+        // across every one of this app's own windows, this embedded guide included.
+        func pushAppearance(to wv: WKWebView) {
+            let isDark: Bool
+            switch appearanceMode {
+            case "dark": isDark = true
+            case "light": isDark = false
+            default: isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            }
+            let theme = isDark ? "dark" : "light"
             wv.evaluateJavaScript(
-                "localStorage.setItem('theme','\(isDark ? "dark" : "light")');if(typeof setTheme==='function')setTheme('\(isDark ? "dark" : "light")');",
+                "if (typeof applyNativeTheme === 'function') applyNativeTheme('\(theme)');",
                 completionHandler: nil
             )
         }

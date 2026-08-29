@@ -200,6 +200,7 @@ struct SettingsView: View {
         if draft.GuideHours          != old.GuideHours          { glog("[Settings] GuideHours: \(old.GuideHours) → \(draft.GuideHours)") }
         if draft.Default_transcode   != old.Default_transcode   { glog("[Settings] DefaultTranscode: '\(old.Default_transcode)' → '\(draft.Default_transcode)'") }
         if draft.Guide_use_xml       != old.Guide_use_xml       { glog("[Settings] GuideUseXml: \(old.Guide_use_xml) → \(draft.Guide_use_xml)") }
+        if draft.Appearance_mode     != old.Appearance_mode     { glog("[Settings] AppearanceMode: '\(old.Appearance_mode)' → '\(draft.Appearance_mode)'") }
         let interfaceChanged  = draft.Network_interface   != old.Network_interface
         let webServerChanged  = draft.Web_server_enabled  != old.Web_server_enabled
                              || draft.Web_server_port     != old.Web_server_port
@@ -281,6 +282,13 @@ struct SettingsView: View {
                 }
                 Toggle(isOn: $draft.Status_light_blink_enabled) {
                     HStack { Text("Blink menu bar icon"); InfoButton("Blink the menu bar icon's status light while a recording is in progress or a show is starting soon, instead of showing it lit continuously.") }
+                }
+                Picker(selection: $draft.Appearance_mode) {
+                    Text("Auto").tag("auto")
+                    Text("Light").tag("light")
+                    Text("Dark").tag("dark")
+                } label: {
+                    HStack { Text("Appearance"); InfoButton("Controls the look of this app's own windows, and the web guide when it's shown inside one of them (e.g. Add Show). \"Auto\" follows macOS. A browser connecting to Sharing over your network keeps its own independent light/dark choice — this setting has no effect on it.") }
                 }
             }
 

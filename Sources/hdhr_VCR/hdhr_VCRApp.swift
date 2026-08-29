@@ -118,6 +118,7 @@ struct hdhr_VCRApp: App {
         Window("Add Show", id: "add-show") {
             AddShowView()
                 .environmentObject(appState)
+                .preferredColorScheme(resolvedColorScheme)
         }
         .windowStyle(.titleBar)
         .windowResizability(.contentSize)
@@ -126,6 +127,7 @@ struct hdhr_VCRApp: App {
         Window("Edit Show", id: "edit-show") {
             EditShowView()
                 .environmentObject(appState)
+                .preferredColorScheme(resolvedColorScheme)
         }
         .windowStyle(.titleBar)
         .windowResizability(.contentSize)
@@ -135,6 +137,7 @@ struct hdhr_VCRApp: App {
         Window("Settings", id: "settings") {
             SettingsView()
                 .environmentObject(appState)
+                .preferredColorScheme(resolvedColorScheme)
         }
         .windowStyle(.titleBar)
         .windowResizability(.contentSize)
@@ -144,6 +147,7 @@ struct hdhr_VCRApp: App {
         Window("Watch Now", id: "watch-now") {
             WatchNowView()
                 .environmentObject(appState)
+                .preferredColorScheme(resolvedColorScheme)
         }
         .windowStyle(.titleBar)
         .windowResizability(.contentMinSize)
@@ -160,6 +164,7 @@ struct hdhr_VCRApp: App {
         Window("Support hdhrVCRplus", id: "donation-nag") {
             DonationNagView()
                 .environmentObject(appState)
+                .preferredColorScheme(resolvedColorScheme)
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
@@ -173,9 +178,23 @@ struct hdhr_VCRApp: App {
         Window("Welcome to hdhrVCRplus", id: "first-run-wizard") {
             FirstRunWizardView()
                 .environmentObject(appState)
+                .preferredColorScheme(resolvedColorScheme)
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
+    }
+
+    // nil ("auto") lets each window follow the system appearance the normal SwiftUI way — only
+    // "dark"/"light" actually override it. Read live off appState.config, so every window scene
+    // above re-renders the instant Settings → General's Appearance picker (or an in-app embedded
+    // web guide's own theme switcher, via AddShowWebView's native bridge) changes it — no separate
+    // propagation step needed beyond what @Published already gives every one of these views.
+    private var resolvedColorScheme: ColorScheme? {
+        switch appState.config.Appearance_mode {
+        case "dark": return .dark
+        case "light": return .light
+        default: return nil
+        }
     }
 
     // Shared by both launch-gate functions below: bring the app forward and (re)focus a

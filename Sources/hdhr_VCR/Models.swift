@@ -440,6 +440,13 @@ struct AppConfig: Equatable {
     var Dock_icon_mode: String = "auto"  // auto | always | never — user override for the launch-time Dock-icon heuristic
     var Local_network_confirmed: Bool = false  // internal, auto-set true on the first successful lineup load; drives "auto" mode's switch back to accessory
 
+    // Appearance — auto | dark | light. Applied via .preferredColorScheme to every native window
+    // (hdhr_VCRApp.swift) and to the web guide when it's loaded inside one of this app's own
+    // windows (AddShowView's embedded WKWebView) — NOT to a browser connecting over the LAN, which
+    // always keeps its own independent light/dark choice (its own localStorage, on its own device);
+    // there is no server-side channel for it to read or write this setting at all.
+    var Appearance_mode: String = "auto"
+
     // First-run setup wizard (FirstRunWizardView.swift) — set true once the wizard has been shown/
     // dismissed (Finish, Escape, or window close all count). "Reset First-Run Setup" in Settings →
     // Maintenance clears it again and reopens the wizard immediately.
@@ -505,6 +512,7 @@ extension AppConfig: Codable {
         Dock_icon_mode              = (try? c.decode(String.self, forKey: .Dock_icon_mode))                ?? "auto"
         Local_network_confirmed     = (try? c.decode(Bool.self,   forKey: .Local_network_confirmed))       ?? false
         First_run_wizard_shown      = (try? c.decode(Bool.self,   forKey: .First_run_wizard_shown))        ?? false
+        Appearance_mode             = (try? c.decode(String.self, forKey: .Appearance_mode))               ?? "auto"
     }
 }
 

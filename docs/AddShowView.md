@@ -43,7 +43,7 @@ A progress indicator (2 dots, filled vs hollow) tracks position across the `guid
 
 ### Step 1 — Guide
 
-`AddShowWebView: NSViewRepresentable` wraps a `WKWebView` loaded with `http://localhost:{port}/`. A `WKScriptMessageHandler` named `"record"` is registered; when the user clicks Record in the web summary panel, JS posts the entry data to this handler. The coordinator calls `onRecord([String: Any])` on the main queue.
+`AddShowWebView: NSViewRepresentable` wraps a `WKWebView` loaded with `http://localhost:{port}/`. Two `WKScriptMessageHandler`s are registered: `"record"` (user clicks Record in the web summary panel — JS posts the entry data, the coordinator calls `onRecord([String: Any])` on the main queue) and `"appearanceChanged"` (see "Appearance sync" below).
 
 `onRecord` in `guideStep` calls `applyWebGuideEntry(...)`, which populates all `show` fields and sets `selectedDevice`, then sets `step = .details`.
 
@@ -55,9 +55,9 @@ A progress indicator (2 dots, filled vs hollow) tracks position across the `guid
 
 External navigation is blocked — the `WKNavigationDelegate` only allows `localhost` URLs.
 
-Dark/light theme is synced via JS in `webView(_:didFinish:)`.
+**Appearance sync** (Settings → General → Appearance, `AppConfig.Appearance_mode`): two-way, but only for this embedded instance — a browser hitting the same guide over the LAN keeps its own independent theme (see `docs/WebServer.md`'s "Dark mode" section for why that isolation is automatic rather than something this code has to enforce). Native → web: `pushAppearance(to:)` resolves `"auto"` against `NSApp.effectiveAppearance` (`"dark"`/`"light"` apply directly) and calls `guide.js`'s `applyNativeTheme(theme)` — from `webView(_:didFinish:)` on every load, and from `updateNSView` whenever `appearanceMode` changes while this window is already open on the guide step (so a Settings change takes effect immediately, not just on next reload). Web → native: the guide's own theme-switcher buttons call `guide.js`'s `setTheme(m)`, which (unlike `applyNativeTheme`) also does `window.webkit.messageHandlers.appearanceChanged.postMessage(m)` — the `"appearanceChanged"` handler's `onAppearanceChanged(String)` callback sets `state.config.Appearance_mode` and saves. `applyNativeTheme`/`setTheme` are deliberately two separate JS entry points, not one — a native-pushed theme must never round-trip back through the message handler and get treated as a fresh user choice (a resolved `"auto"` silently overwriting itself as a concrete `"dark"` in Settings, just because a page loaded, would be a real bug).
 
-`dismantleNSView` removes the `"record"` message handler to prevent a retain cycle.
+`dismantleNSView` removes both message handlers to prevent a retain cycle.
 
 ### Step 2 — Details
 
