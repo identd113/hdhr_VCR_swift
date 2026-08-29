@@ -18,7 +18,19 @@ var _mq=window.matchMedia('(prefers-color-scheme:light)');
 var _themeMode='dark';
 function applyLM(on){document.documentElement.classList.toggle('lm',on);document.querySelectorAll('#theme-sw button').forEach(function(b){b.classList.toggle('th-sel',b.dataset.m===_themeMode);});}
 function refreshSumTheme(){var sel=document.querySelector('.g-prog.g-sel');if(sel)showInfo(sel);}
-function setTheme(m){_themeMode=m;try{localStorage.setItem('theme',m);}catch(e){}applyLM(m==='light'||(m==='auto'&&_mq.matches));refreshSumTheme();}
+// Split from setTheme() below so a native-pushed theme (AddShowView's embedded WKWebView calling
+// this directly, never setTheme itself) can never loop back through the native bridge and get
+// echoed back as if the user had clicked a theme button themselves — see AddShowView.swift's
+// AddShowWebView doc comment for why that distinction matters (a resolved "auto" must never get
+// silently rewritten to a concrete "dark"/"light" choice in Settings just because a page loaded).
+function applyNativeTheme(m){_themeMode=m;try{localStorage.setItem('theme',m);}catch(e){}applyLM(m==='light'||(m==='auto'&&_mq.matches));refreshSumTheme();}
+// The theme-switcher buttons' own onclick — a genuine user choice, so (unlike applyNativeTheme
+// above) this also tells the native app about it when running inside its own embedded WKWebView.
+// window.webkit only exists inside a WKWebView at all, and messageHandlers.appearanceChanged only
+// exists on the one instance that registered it (AddShowView's guide step) — a real browser
+// connecting over the LAN has neither, so this silently no-ops there via the catch, exactly the
+// "a web connection only affects its own instance" isolation this needs.
+function setTheme(m){applyNativeTheme(m);try{window.webkit.messageHandlers.appearanceChanged.postMessage(m);}catch(e){}}
 _mq.addEventListener('change',function(e){if(_themeMode==='auto'){applyLM(e.matches);refreshSumTheme();}});
 (function(){try{_themeMode=localStorage.getItem('theme')||'dark';}catch(e){}applyLM(_themeMode==='light'||(_themeMode==='auto'&&_mq.matches));})();
 function isLM(){return document.documentElement.classList.contains('lm');}
