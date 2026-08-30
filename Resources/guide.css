@@ -323,6 +323,13 @@ html.lm .g-hdr-btn-now:hover{border-color:#c03030!important;color:#fff!important
 .g-rec-sep .g-tl{min-height:0;background:color-mix(in srgb,var(--vc-rec) 13%,transparent)}
 .g-row[data-rec="1"] .g-ch{background:color-mix(in srgb,var(--vc-rec) 16%,var(--s1))}
 .g-row[data-rec="1"] .g-tl{background:repeating-linear-gradient(90deg,color-mix(in srgb,var(--vc-rec) 13%,transparent),color-mix(in srgb,var(--vc-rec) 13%,transparent) calc(8.3333% - 1px),var(--b0) calc(8.3333% - 1px),var(--b0) 8.3333%)}
+/* The 16% background tint above reads as a muddy olive/brown rather than a clear "this is
+   recording" signal, especially against a channel logo's own colors — the row's own program
+   block gets a bold ring + pulsing dot (.g-prog.g-st-rec below) but the channel label carried
+   none of that visual weight. Coloring the channel number/name text itself red (same --vc-rec
+   the ring/badge and .g-rec-sep header already use) gives the station label the same
+   unambiguous "recording" signal as the section header above it, not just a faint background. */
+.g-row[data-rec="1"] .g-cn,.g-row[data-rec="1"] .g-cname{color:var(--vc-rec)}
 .g-row[data-fav="1"] .g-ch{background:color-mix(in srgb,var(--fav) 16%,var(--s1))}
 .g-row[data-fav="1"] .g-tl{background:repeating-linear-gradient(90deg,color-mix(in srgb,var(--fav) 13%,transparent),color-mix(in srgb,var(--fav) 13%,transparent) calc(8.3333% - 1px),var(--b0) calc(8.3333% - 1px),var(--b0) 8.3333%)}
 .g-fav-btn{background:none;border:none;padding:0 2px;cursor:pointer;font-size:.85rem;line-height:1;color:var(--t5);flex-shrink:0;opacity:.5;transition:opacity .15s}

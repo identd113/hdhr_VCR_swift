@@ -112,8 +112,14 @@ final class RecordingManager {
               let content = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
         for line in content.components(separatedBy: "\n") {
             guard line.lowercased().hasPrefix("x-hdhomerun-resource:") else { continue }
+            // .whitespaces does NOT include \r/\n (that's .whitespacesAndNewlines) — this file's
+            // lines are CRLF (a raw HTTP header dump), split on "\n" alone, so every line keeps
+            // its trailing \r. That left a literal "tuner0\r" in show_tuner_resource, which never
+            // exact-matched status.json's clean "tuner0" (WebServer.swift's tuner-popover
+            // matching) — every one of this app's own recordings was mislabeled "another tuner"
+            // instead of being recognized as its own.
             let value = line.dropFirst("x-hdhomerun-resource:".count)
-                           .trimmingCharacters(in: .whitespaces).lowercased()
+                           .trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             return value.isEmpty ? nil : value
         }
         return nil
@@ -128,8 +134,12 @@ final class RecordingManager {
         for line in content.components(separatedBy: "\n") {
             let lower = line.lowercased()
             guard lower.hasPrefix("x-hdhomerun-error:") else { continue }
+            // .whitespaces alone leaves this file's CRLF-derived trailing \r in place (see
+            // readHDHRResource's own comment above) — hdhrErrorLabel does an exact string switch,
+            // so a stray "804\r" never matched any real case and always fell through to the
+            // generic "Device error 804\r" label.
             let code = line.dropFirst("x-hdhomerun-error:".count)
-                          .trimmingCharacters(in: .whitespaces)
+                          .trimmingCharacters(in: .whitespacesAndNewlines)
             return hdhrErrorLabel(code)
         }
         return nil

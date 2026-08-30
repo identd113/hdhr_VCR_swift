@@ -80,10 +80,16 @@ func writeMockCurlScript(headerLines: [String] = [], sleepSeconds: Double = 30,
     script += "for ((i=0; i<${#args[@]}; i++)); do\n"
     script += "  if [[ \"${args[$i]}\" == \"--dump-header\" ]]; then hdr=\"${args[$((i+1))]}\"; fi\n"
     script += "done\n"
+    // printf '...\r\n' (not echo, which only appends \n) — a real HTTP response's headers are
+    // CRLF-terminated, and curl's --dump-header writes them exactly as received off the wire.
+    // RecordingManager's own header parsing was trimming with .whitespaces (which doesn't include
+    // \r) instead of .whitespacesAndNewlines, silently leaving a trailing \r on every parsed value
+    // — a real bug (show_tuner_resource ending up as "tuner0\r", never matching a clean "tuner0"
+    // elsewhere) this echo-based \n-only mock could never have caught.
     script += "if [[ -n \"$hdr\" ]]; then\n"
-    script += "  {\n    echo \"HTTP/1.1 200 OK\"\n"
+    script += "  {\n    printf '%s\\r\\n' \"HTTP/1.1 200 OK\"\n"
     for line in headerLines {
-        script += "    echo \"\(line)\"\n"
+        script += "    printf '%s\\r\\n' \"\(line)\"\n"
     }
     script += "  } > \"$hdr\"\n"
     script += "fi\n"
