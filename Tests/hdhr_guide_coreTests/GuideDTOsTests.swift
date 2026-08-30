@@ -68,6 +68,31 @@ struct GuideDTOsTests {
         #expect(entry.endDate.timeIntervalSince1970 == 3000)
     }
 
+    @Test func decodesIsSkippedWhenPresent() throws {
+        let payload = try decode("""
+        {"deviceId":"AABBCCDD","winStart":1000,"winSec":86400,"devices":[],"channels":[
+         {"guideNumber":"5.1","guideName":"KVUE","hd":true,"favorite":false,
+          "entries":[{"title":"The Office","startTime":2000,"endTime":3000,
+                      "isRecording":false,"isScheduled":true,"isSkipped":true}]}]}
+        """)
+        let entry = try #require(payload.channels.first?.entries.first)
+        #expect(entry.isSkipped == true)
+    }
+
+    // Added after the field was first shipped, same reasoning as the sportsPaddingEnabled/
+    // terminalGuideEnabled defaults above — an old server simply never reports a duplicate as
+    // skippable, so this must default to `false`, not fail the whole entry's decode.
+    @Test func missingIsSkippedDefaultsFalse() throws {
+        let payload = try decode("""
+        {"deviceId":"AABBCCDD","winStart":1000,"winSec":86400,"devices":[],"channels":[
+         {"guideNumber":"5.1","guideName":"KVUE","hd":true,"favorite":false,
+          "entries":[{"title":"The Office","startTime":2000,"endTime":3000,
+                      "isRecording":false,"isScheduled":true}]}]}
+        """)
+        let entry = try #require(payload.channels.first?.entries.first)
+        #expect(entry.isSkipped == false)
+    }
+
     @Test func missingRequiredFieldThrows() {
         // "deviceId" is required, not decode-fallback — a payload missing it is a real server bug,
         // not a version-skew case, so this should fail to decode rather than silently default.

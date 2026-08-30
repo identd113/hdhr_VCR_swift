@@ -557,11 +557,17 @@ what's scheduled today means scrolling the entire channel list looking for blue 
 to build this without a new endpoint — just needs client-side aggregation across all channels'
 entries into a separate list screen (a natural companion to the type-ahead/jump-to-next idea above).
 
-**No skip-already-recorded (duplicate) indicator.** The web guide's slate `.g-st-skip` ring/⏭ badge
-(`buildGuideGridHTML`'s `willSkip` computation, `CLAUDE.md`) tells you a managed block will be
-silently skipped as an on-disk duplicate — this isn't in `/api/guide.json` at all yet
-(`buildGuideJSON` doesn't run the `recordedEpisodeTags` scan `buildGuideGridHTML` does), so
-`hdhr_guide` has no way to show it even client-side. Meaningfully heavier than the other items here:
-needs a new per-managed-series directory scan added to `buildGuideJSON` itself, not just a new field
-threaded through existing data. Worth doing eventually for parity, but the smallest-effort/
-highest-value items above should come first.
+**No skip-already-recorded (duplicate) indicator — DONE.** `/api/guide.json`'s `GuideEntryJSON` now
+carries `isSkipped` (`WebServer.swift`'s `buildGuideJSON`), computed with the same one-scan-per-
+series `recordedEpisodeTags` precompute and the same `willSkip` guard shape (Series subfolders +
+Skip already-recorded episodes both on, episode tag matches `^S\d+E\d+$`, not the airing currently
+recording, `show_ignore_duplicate_once` not armed) that `buildGuideGridHTML`'s slate `.g-st-skip`
+ring/⏭ badge already uses — kept as an independent precompute rather than shared code, since the two
+build from different intermediate row structures and this is the only field either needs from it.
+`GuideEntryDTO` (`hdhr_guide_core/GuideDTOs.swift`) decodes it with a `false` fallback for an old
+server that predates the field, same idiom as `GuidePayload`'s `sportsPaddingEnabled`/
+`terminalGuideEnabled`. `hdhr_guide` shows it with the same "o"-glyph-plus-recolor language as
+recording/scheduled (slate, matching `guide.css`'s `--vc-skip` RGB exactly), at the same precedence
+web guide uses — recording beats skip beats scheduled — across every place those two already render
+(grid tiles, the adaptive summary panel, the Enter-to-schedule/manage summary screen, and the
+type-ahead search results list).

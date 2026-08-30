@@ -34,6 +34,12 @@ public struct GuideEntryDTO: Decodable {
     public let startTime, endTime: Int
     public let isRecording, isScheduled: Bool
     public let scheduledShowId: String?
+    // Mirrors buildGuideGridHTML's willSkip / the web guide's slate .g-st-skip ring+badge — true
+    // when this managed airing will be silently skipped at record time as an on-disk duplicate.
+    // Decoded with a `false` fallback (not `try c.decode`) as a compatibility default for an old
+    // server that predates this field, same idiom as GuidePayload's sportsPaddingEnabled/
+    // terminalGuideEnabled below — an old server simply never reports a duplicate as skippable.
+    public let isSkipped: Bool
 
     public var startDate: Date { Date(timeIntervalSince1970: TimeInterval(startTime)) }
     public var endDate: Date { Date(timeIntervalSince1970: TimeInterval(endTime)) }
@@ -52,6 +58,7 @@ public struct GuideEntryDTO: Decodable {
         isRecording = try c.decode(Bool.self, forKey: .isRecording)
         isScheduled = try c.decode(Bool.self, forKey: .isScheduled)
         scheduledShowId = try c.decodeIfPresent(String.self, forKey: .scheduledShowId)
+        isSkipped = (try? c.decode(Bool.self, forKey: .isSkipped)) ?? false
     }
 
     // `internal`, not `public`, and deliberately so: this exists only for hdhr_guide_coreTests
@@ -64,7 +71,8 @@ public struct GuideEntryDTO: Decodable {
     init(title: String, episodeTitle: String? = nil, episodeNumber: String? = nil,
                 synopsis: String? = nil, seriesId: String? = nil, genre: String? = nil,
                 tags: [String]? = nil, startTime: Int, endTime: Int,
-                isRecording: Bool = false, isScheduled: Bool = false, scheduledShowId: String? = nil) {
+                isRecording: Bool = false, isScheduled: Bool = false, scheduledShowId: String? = nil,
+                isSkipped: Bool = false) {
         self.title = title
         self.episodeTitle = episodeTitle
         self.episodeNumber = episodeNumber
@@ -77,11 +85,12 @@ public struct GuideEntryDTO: Decodable {
         self.isRecording = isRecording
         self.isScheduled = isScheduled
         self.scheduledShowId = scheduledShowId
+        self.isSkipped = isSkipped
     }
 
     enum CodingKeys: String, CodingKey {
         case title, episodeTitle, episodeNumber, synopsis, seriesId, genre, tags
-        case startTime, endTime, isRecording, isScheduled, scheduledShowId
+        case startTime, endTime, isRecording, isScheduled, scheduledShowId, isSkipped
     }
 }
 

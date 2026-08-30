@@ -896,10 +896,15 @@ struct GuideEntryJSON: Encodable {
                                         // isScheduled — lets a client delete/stop this recording
                                         // via POST /api/delete (`{"showId": ...}`) without a
                                         // second lookup
+    var isSkipped: Bool                // mirrors buildGuideGridHTML's willSkip / the web guide's
+                                        // slate .g-st-skip ring+⏭ badge — true when this managed
+                                        // airing will be silently skipped at record time as an
+                                        // on-disk duplicate. Always false unless isScheduled; never
+                                        // true together with isRecording. See docs/TUIGuide.md.
 }
 ```
 
-Encoded compact (no `.prettyPrinted`) — unlike `/api/now.json`, this carries every entry across the whole guide window for one device, not just on-air ones, so the payload is meaningfully larger per request. `isScheduled` comes from the same `ManagedGuideMatcher` `/api/now.json` and `buildGuideGridHTML` already share (see that struct's own comments) — never reintroduce a parallel lookup here.
+Encoded compact (no `.prettyPrinted`) — unlike `/api/now.json`, this carries every entry across the whole guide window for one device, not just on-air ones, so the payload is meaningfully larger per request. `isScheduled` comes from the same `ManagedGuideMatcher` `/api/now.json` and `buildGuideGridHTML` already share (see that struct's own comments) — never reintroduce a parallel lookup here. `isSkipped` is computed independently of `buildGuideGridHTML`'s own `willSkip` (a separate one-scan-per-managed-series `recordedEpisodeTags` precompute, same guard shape) rather than sharing code with it — the two build from different intermediate row structures, and this is the only field either needs from the other's computation.
 
 **Channel order is Recording → Favorite → `channelSortKey`**, the same three-tier precedence `buildGuideGridHTML`'s "Recording section"/"Favorites section" use — a single `.sorted(by:)` over the whole lineup, not three concatenated filtered lists, so a channel that's both recording and favorited sorts under Recording only; there's no way for the same channel to appear twice.
 

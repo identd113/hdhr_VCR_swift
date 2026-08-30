@@ -41,6 +41,11 @@ let recordingColor  = "\u{1B}[1;91m"
 let recordingBadge  = "\u{1B}[91mo "
 let scheduledColor  = "\u{1B}[1;38;2;59;147;255m"
 let scheduledBadge  = "\u{1B}[38;2;59;147;255mo "
+// Same slate RGB as guide.css's --vc-skip (#8a92a3) — the web guide's "already recorded, will
+// skip" ring/badge color. Same "o" glyph as recording/scheduled above, not a distinct symbol —
+// color alone carries the meaning here too, per this file's own ASCII/ambiguous-width rule.
+let skipColor       = "\u{1B}[1;38;2;138;146;163m"
+let skipBadge       = "\u{1B}[38;2;138;146;163mo "
 
 // favAmber dark-mode value (GuideViewHelpers.swift/guide.css's --fav, "#e8a000") — same amber the
 // web guide and native app use for favorites, not an independent pick.
@@ -537,7 +542,7 @@ func renderSummaryScreen() {
     guard let (ch, e) = currentEntry() else { Terminal.writeFrame(out); return }
 
     let bg = genreBackground(e.genre)
-    let titleColor = e.isRecording ? recordingColor : (e.isScheduled ? scheduledColor : "\u{1B}[97m")
+    let titleColor = e.isRecording ? recordingColor : (e.isSkipped ? skipColor : (e.isScheduled ? scheduledColor : "\u{1B}[97m"))
     out += bold + truncate(e.isScheduled ? "Manage Recording" : "Schedule Recording", max(4, cols)) + reset + "\n\n"
     // titleBudget accounts for the leading/trailing space the banner adds around the title itself.
     let titleBudget = max(4, cols - 2)
@@ -545,8 +550,8 @@ func renderSummaryScreen() {
 
     let range = "\(timeFormatter.string(from: e.startDate)) - \(timeFormatter.string(from: e.endDate))"
     let mins = max(0, (e.endTime - e.startTime) / 60)
-    let statusText = e.isRecording ? "Recording now" : (e.isScheduled ? "Already scheduled" : "Not scheduled")
-    let statusColor = e.isRecording ? recordingColor : (e.isScheduled ? scheduledColor : "")
+    let statusText = e.isRecording ? "Recording now" : (e.isSkipped ? "Already recorded - will skip" : (e.isScheduled ? "Already scheduled" : "Not scheduled"))
+    let statusColor = e.isRecording ? recordingColor : (e.isSkipped ? skipColor : (e.isScheduled ? scheduledColor : ""))
     // Field values are plain text (no embedded ANSI) so truncate() can measure them directly — the
     // 10-col label pad is fixed, so the value's own budget is whatever's left of `cols`. Status is
     // colored *after* truncation (fieldColored below), not before — truncate() counts raw
@@ -646,8 +651,8 @@ func buildSummaryLines(maxLines: Int, cols: Int) -> [String] {
             let e = sch.entries[a.entryIndex]
             // Same "badge + recolored title" status language as the grid itself — a match that's
             // already recording/scheduled shouldn't look identical to a plain one here either.
-            let statusColor = e.isRecording ? recordingColor : (e.isScheduled ? scheduledColor : "\u{1B}[97m")
-            let badge = e.isRecording ? recordingBadge : (e.isScheduled ? scheduledBadge : "")
+            let statusColor = e.isRecording ? recordingColor : (e.isSkipped ? skipColor : (e.isScheduled ? scheduledColor : "\u{1B}[97m"))
+            let badge = e.isRecording ? recordingBadge : (e.isSkipped ? skipBadge : (e.isScheduled ? scheduledBadge : ""))
             let airingsLabel = r.airings.count > 1
                 ? (isActive ? " (\(airingIdx + 1)/\(r.airings.count) airings)" : " (\(r.airings.count) airings)")
                 : ""
@@ -666,8 +671,8 @@ func buildSummaryLines(maxLines: Int, cols: Int) -> [String] {
         return pad0([dim + truncate(msg, budget) + reset])
     }
 
-    let badge = e.isRecording ? recordingBadge + "\u{1B}[0m" : (e.isScheduled ? scheduledBadge + "\u{1B}[0m" : "")
-    let titleColor = e.isRecording ? recordingColor : (e.isScheduled ? scheduledColor : bold)
+    let badge = e.isRecording ? recordingBadge + "\u{1B}[0m" : (e.isSkipped ? skipBadge + "\u{1B}[0m" : (e.isScheduled ? scheduledBadge + "\u{1B}[0m" : ""))
+    let titleColor = e.isRecording ? recordingColor : (e.isSkipped ? skipColor : (e.isScheduled ? scheduledColor : bold))
     let range = "\(timeFormatter.string(from: e.startDate))-\(timeFormatter.string(from: e.endDate))"
     let mins = max(0, (e.endTime - e.startTime) / 60)
 
@@ -708,9 +713,9 @@ func buildSummaryLines(maxLines: Int, cols: Int) -> [String] {
             metaLine += (bg.isEmpty ? dim + chipText + reset : bg + "\u{1B}[97m" + chipText + reset) + " "
             used += chipText.count + 1
         }
-        let statusText = e.isRecording ? "Recording now" : (e.isScheduled ? "Scheduled" : nil)
+        let statusText = e.isRecording ? "Recording now" : (e.isSkipped ? "Will skip (dup)" : (e.isScheduled ? "Scheduled" : nil))
         if let statusText, used + statusText.count <= budget {
-            let statusColor = e.isRecording ? recordingColor : scheduledColor
+            let statusColor = e.isRecording ? recordingColor : (e.isSkipped ? skipColor : scheduledColor)
             metaLine += statusColor + statusText + reset
         }
         lines.append(metaLine)
@@ -979,6 +984,9 @@ func render() {
                     if e.isRecording {
                         statusColor = recordingColor
                         badge = recordingBadge; used += 2
+                    } else if e.isSkipped {
+                        statusColor = skipColor
+                        badge = skipBadge; used += 2
                     } else if e.isScheduled {
                         statusColor = scheduledColor
                         badge = scheduledBadge; used += 2

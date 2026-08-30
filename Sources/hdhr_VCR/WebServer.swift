@@ -2104,6 +2104,11 @@ final class WebServer: @unchecked Sendable {
             var scheduledShowId: String?   // owner(for:)'s Show.show_id when isScheduled — lets a
                                             // client offer "delete this recording" via POST
                                             // /api/delete without a second lookup round-trip
+            // Mirrors buildGuideGridHTML's willSkip / the web guide's slate .g-st-skip ring+badge:
+            // true when this managed airing will be silently skipped at record time because the
+            // episode is already on disk (Series subfolders + Skip already-recorded episodes both
+            // on). Always false when isRecording (see willSkip below) or when isScheduled is false.
+            var isSkipped: Bool
         }
         struct GuidePayload: Encodable {
             var deviceId: String
@@ -2171,6 +2176,18 @@ final class WebServer: @unchecked Sendable {
 
         let activeMgd    = state.shows.filter { $0.show_active && !$0.show_paused }
         let guideMatcher = ManagedGuideMatcher(activeManagedShows: activeMgd)
+        // Skip-already-recorded: same one-scan-per-series precompute as buildGuideGridHTML's own
+        // (see that function's comment) — kept independent rather than shared, since the two build
+        // from different intermediate row structures and this is the only field either needs from it.
+        let skipEnabled = state.config.Series_subfolder_enabled && state.config.Skip_recorded_episodes
+        var recordedTagsByShow: [String: Set<String>] = [:]
+        if skipEnabled {
+            for s in activeMgd where s.isSeries {
+                let safe = s.show_title.replacingOccurrences(of: "/", with: "-")
+                recordedTagsByShow[s.show_id] = state.recordedEpisodeTags(forTitle: safe, baseDir: s.posixRecordDir,
+                                                                            expectedMinutes: s.show_length)
+            }
+        }
 
         // Channel-level "is something recording here" (same shared definitions buildGuideGridHTML's
         // ring/badge and the Watch Now section use — see their own comments) is not by itself
@@ -2203,6 +2220,16 @@ final class WebServer: @unchecked Sendable {
                 // One owner(for:) lookup, not isManaged(entry:) + a second owner(for:) — both do
                 // the same key-matching work, so calling both here would double it per entry.
                 let owner = guideMatcher.owner(for: entry)
+                // Same guard shape as buildGuideGridHTML's willSkip: excludes the airing that's
+                // recording right now (its own in-progress file would otherwise flag itself as a
+                // duplicate) and a show with "ignore duplicate once" armed for its next airing.
+                let willSkip: Bool = {
+                    guard skipEnabled, !isRec, let owner, !owner.show_ignore_duplicate_once,
+                          let ep = entry.EpisodeNumber,
+                          ep.range(of: #"^S\d+E\d+$"#, options: [.regularExpression, .caseInsensitive]) != nil
+                    else { return false }
+                    return recordedTagsByShow[owner.show_id]?.contains(ep.uppercased()) == true
+                }()
                 return GuideEntryJSON(
                     title: entry.Title,
                     episodeTitle: entry.EpisodeTitle,
@@ -2215,7 +2242,8 @@ final class WebServer: @unchecked Sendable {
                     endTime: entry.EndTime,
                     isRecording: isRec,
                     isScheduled: owner != nil,
-                    scheduledShowId: owner?.show_id
+                    scheduledShowId: owner?.show_id,
+                    isSkipped: willSkip
                 )
             }
             return GuideChannel(guideNumber: ch.GuideNumber, guideName: ch.GuideName,
