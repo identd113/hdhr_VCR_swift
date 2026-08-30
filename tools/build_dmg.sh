@@ -106,6 +106,17 @@ echo "==> Building DMG…"
 # Icon positions are chosen to match tools/dmg_assets/dmg_background.svg's own arrow/text
 # layout — edit them together if either one's coordinates change. Window is 660x500 to match the
 # background exactly; icon-size 96 leaves a clean gap on both sides of the arrow at these positions.
+#
+# SKIP_FINDER_STYLING=1 passes create-dmg's own --skip-jenkins through — it skips the window-
+# layout/background AppleScript step entirely (per create-dmg's own help text: "useful in Sandbox
+# and non-GUI environments"). Needed whenever whatever's running this hasn't been granted macOS
+# Automation permission to control Finder (System Settings → Privacy & Security → Automation) —
+# without it, create-dmg's AppleScript step hangs on the unanswerable permission prompt until it
+# times out ("AppleEvent timed out (-1712)"), aborting before ever producing the final DMG. The
+# resulting disk image is still fully functional (app + Applications alias + Read Me), just with
+# Finder's default icon-grid window instead of the custom background/layout — cosmetic only.
+CREATE_DMG_EXTRA_ARGS=()
+[ "$SKIP_FINDER_STYLING" = "1" ] && CREATE_DMG_EXTRA_ARGS+=(--skip-jenkins)
 create-dmg \
     --volname "hdhrVCRplus" \
     --volicon "$APP_PATH/Contents/Resources/AppIcon.icns" \
@@ -118,6 +129,7 @@ create-dmg \
     --app-drop-link 490 170 \
     --icon "Read Me.rtfd" 330 370 \
     --hide-extension "$APP_NAME" \
+    "${CREATE_DMG_EXTRA_ARGS[@]}" \
     "$DMG_PATH" \
     "$STAGE"
 

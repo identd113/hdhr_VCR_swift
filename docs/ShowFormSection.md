@@ -12,8 +12,9 @@ The web guide's Record modal (`#rec-modal` in `WebServer.swift`, see `docs/WebSe
 
 ```
 Title        — TextField bound to show.show_title
-Signal       — SignalBarsView for the selected channel + a "weak signal" warning banner when the
-               channel's bucket is .poor. Only when state.config.Signal_quality_enabled and the
+Signal       — SignalBarsView for the selected channel + a "weak signal" CaveatBanner (shared
+               soft-tinted warning component, Views/CaveatBanner.swift — see its own note below)
+               when the channel's bucket is .poor. Only when state.config.Signal_quality_enabled and the
                channel has signal history (bucket != .noData). Reuses signalBucket(guideName:) via
                state.lineups[show.hdhr_record] → GuideName. Appears in both Add and Edit.
 Type         — Segmented Picker over 3 collapsed top-level choices: Single | DateTime | SeriesID
@@ -25,8 +26,9 @@ Scope        — Only when seriesType.isSeries. A 2-segment Picker — Channel |
 Transcode    — Picker: None | Heavy | Mobile | Internet 720
                Tooltip: None keeps raw MPEG; others transcode for size/device; notes that not all
                tuner models support transcoding and to fall back to None if a recording fails
-               immediately. Below the picker, an orange warning banner (added 2026-08-28, same
-               style as the Signal and Duplicate Episodes banners) appears whenever
+               immediately. Below the picker, a CaveatBanner (added 2026-08-28, same shared
+               component the Signal and Duplicate Episodes banners below use — see that
+               component's own note below) appears whenever
                show.show_transcode != "none" and the selected device's HDHRDevice.supportsTranscode
                is false — "This tuner doesn't support transcoding — the Transcode setting above
                will be ignored and recorded as None." Informational only: the actual enforcement
@@ -53,11 +55,18 @@ New Only     — Only when seriesType != .single. A "Skip reruns" toggle bound t
 Duplicate    — Only when state.config.Series_subfolder_enabled && state.config.Skip_recorded_episodes
 Episodes       && seriesType.isSeries. A "Record even if already on disk" toggle bound to
                show.show_ignore_duplicate_once (per-show override of the global skip-already-recorded
-               setting), plus an orange warning banner — shown only while the override is off and
+               setting), plus a CaveatBanner — shown only while the override is off and
                state.duplicateEpisodeTag(for: show) resolves a tag — reading "Episode SxxExx is
                already on disk — this recording will be skipped."
 Folder       — Last path component of recordFolder + a button (label from folderButtonLabel param)
 ```
+
+**CaveatBanner** (`Views/CaveatBanner.swift`, added 2026-08-28) — a shared, soft orange-tinted
+warning component (`Label` + `.orange.opacity(0.12)` background, not the old solid orange fill +
+white text) replacing what used to be four separately hand-copied inline banners across this file,
+`AddShowView.swift`, and `SettingsView.swift` — the solid-fill style read as too heavy/alarming in
+light mode. Takes a `tint` parameter (default `.orange`) so a future differently-toned banner (info,
+success) can reuse it instead of duplicating the pattern again.
 
 ---
 

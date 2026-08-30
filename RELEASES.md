@@ -6,13 +6,16 @@ What's new in each version. For the fuller list of changes within a version, see
 
 ---
 
-## v2.2.0 (2026-08-28)
+## v2.2.0 (2026-08-29)
 
 ### Added
 - **First-Run Wizard** — walks new (or upgrading) users through picking a recordings folder and
-  confirming their HDHomeRun tuner(s) are found, with a short animated intro, including a Local
-  Network permission check with a direct link to Privacy Settings if it's not granted yet. Re-run
-  anytime from Settings → Maintenance → "Reset First-Run Setup."
+  confirming their HDHomeRun tuner(s) are found, with a short animated intro (double-click the
+  header logo to replay it), including a Local Network permission check with a direct link to
+  Privacy Settings if it's not granted yet. Re-run anytime from Settings → Maintenance →
+  "Reset First-Run Setup."
+- **Appearance setting** — Settings → General gains an Auto/Light/Dark picker for this app's own
+  windows, two-way synced with the web guide when it's shown inside the Add Show wizard.
 - **Type-ahead show search in the web guide** — a toolbar search box (type 3+ characters, or
   press "/") finds a show on the current tuner, with arrow-key navigation and episode cycling.
 - **Terminal Guide search / channel-jump** — press "/" to jump to a channel number or search
@@ -26,6 +29,14 @@ What's new in each version. For the fuller list of changes within a version, see
 ### Updated
 - **Security fix**: a guide entry's poster image could be crafted to inject content into the web
   guide's search results. No evidence it was ever exploited.
+- **Fixed: the web guide could mislabel one of your own in-progress recordings as being on
+  "another tuner."** A leftover character from reading the tuner's status kept it from
+  recognizing its own recording.
+- **Fixed: a recording channel's station label didn't always read as clearly "recording"** in the
+  web guide — it now turns red along with the rest of the recording indicator.
+- **Fixed: an ⓘ info tooltip could pop open oversized with its text shoved to the bottom**,
+  instead of sizing tightly around the text; also fixed the Maintenance tab's info icons sitting
+  closer to their labels than every other tab's.
 - **Fixed: repeatedly pressing ↓/↑ in Terminal Guide could drift the visible time window away
   from wherever you'd scrolled to.** Moving between channels now holds your place in time until
   you deliberately move elsewhere.
@@ -38,7 +49,8 @@ What's new in each version. For the fuller list of changes within a version, see
 - A few smaller fixes: the web guide's Edit modal now shows the same transcode warning the Record
   modal already had; live tuner updates now carry transcode-support status without needing a
   reload; typing in the guide search box no longer momentarily freezes the app; the First-Run
-  Wizard checks all your tuners at once instead of one by one, so setup finishes faster.
+  Wizard checks all your tuners at once instead of one by one, so setup finishes faster; warning
+  banners throughout the app now use a softer, less alarming style.
 
 Full change list: [CHANGELOG.md](Sources/hdhr_VCR/CHANGELOG.md)
 

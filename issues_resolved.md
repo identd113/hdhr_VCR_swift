@@ -979,3 +979,29 @@ A second, independent overflow source in the same area: real-world guide data oc
 Full `swift build` and test suite pass; every fix verified against a real pty (widths 40–286, heights 9–58) rather than eyeballed. Deployed and confirmed live throughout.
 
 **Resolving commit**: `b7dc59f`
+
+## RESOLVED — Web guide mislabeled the app's own in-progress recordings as "from another tuner"
+
+**File:** `RecordingManager.swift` — `readHDHRResource(showId:)`, `readAndClearHDHRError(showId:)`
+
+**Root cause**: both functions parse `curl --dump-header`'s raw HTTP header dump by splitting on `"\n"` then trimming each line with `.trimmingCharacters(in: .whitespaces)` — which does **not** strip `\r`/`\n` (that's `.whitespacesAndNewlines`). Real HTTP headers are CRLF-terminated, so splitting on `"\n"` alone leaves every line's trailing `\r` intact, and the `.whitespaces` trim never removed it. `readHDHRResource` therefore captured `show_tuner_resource` as e.g. `"tuner0\r"` instead of `"tuner0"` — confirmed directly in the running app's persisted config. `WebServer.swift`'s tuner-popover matching (`$0.show_tuner_resource.lowercased() == info.Resource.lowercased()`) compares that against `status.json`'s clean `"tuner0"`, which never exact-matched, so `matchShow` came back `nil` for the app's own real recordings and the popover fell through to labeling them `"· another tuner"` — the same `.whitespaces` bug also broke `readAndClearHDHRError`'s `hdhrErrorLabel(_:)` switch, so a device error code like `"805"` arrived as `"805\r"` and never matched any of its `case` statements either, silently degrading every real device error to the generic `"Device error 805\r"` fallback.
+
+**Reported**: 2026-08-29, live — a screenshot showing the tuner popover labeling two shows the app was actively recording (confirmed via their own running curl processes) as "· another tuner."
+
+**Resolution**: both trims switched to `.trimmingCharacters(in: .whitespacesAndNewlines)`. `writeMockCurlScript` (the shared test-double for a recording curl process) was updated to write CRLF line endings via `printf '%s\r\n'` instead of `echo` (`\n`-only) — the previous mock could never have caught this since it never produced a `\r` in the first place. Verified live: reverting the trim made the updated `RecordingManagerTests` fail exactly as expected (`"tuner0\n"` literally containing the stray `\r`, and the error label falling through to `"Device error 805"`), then confirmed fixed both via the passing tests and directly against the running server's own `recsByDev` JSON (`"external":""` for both currently-recording shows, previously `"1"`) — deployed live while both recordings were still in progress (curl runs independent of the app process and reattaches on restart) with zero interruption.
+
+**Resolving commit**: `a5cfb81`
+
+## RESOLVED — Web guide's recording indicators too weak to read as "recording" at a glance
+
+**Files:** `Resources/guide.css`; `Sources/hdhr_VCR/Views/InfoButton.swift`
+
+**Reported**: 2026-08-29, live — two screenshots comparing how a currently-recording channel actually looked in the web guide.
+
+**Root cause (channel label)**: `.g-row[data-rec="1"] .g-ch{background:color-mix(in srgb,var(--vc-rec) 16%,var(--s1))}` only tints the channel-label cell's *background* at 16% opacity — a subtle wash that read as muddy olive/brown against some channel logos' own colors, especially compared to the row's own program block, which gets a bold pulsing ring + "⏺" badge (`.g-prog.g-st-rec`) for the same state. The channel number/station name text itself carried none of that visual weight.
+
+**Root cause (unrelated bug found in the same investigation, InfoButton popover)**: `InfoButton.swift`'s popover content used `.frame(maxWidth: 280)` — a flexible frame with no determinate width until something else constrains it. A `.popover`'s content has no real parent to supply one, so `NSHostingController`'s `preferredContentSize` negotiation got an ambiguous answer and fell back to an oversized box, with the much-smaller actual text bottom-anchored inside it — reported as "the tooltip window is very large and the text is shifted to the bottom." Also found and fixed in the same pass: `SettingsView.swift`'s `maintenanceRow()` hardcoded `HStack(spacing: 6)` between a row's label and its `InfoButton` — the only one of 33 such call sites in the app to override the default `HStack` spacing, visibly pulling the Maintenance tab's info icons closer to their labels than every other tab's.
+
+**Resolution**: `guide.css` now also colors the channel number/name text (`.g-cn`/`.g-cname`) with `--vc-rec` for a recording row — the same red the ring/badge and the "● RECORDING" section header already use, giving the station label the same unambiguous signal instead of just a faint background. `InfoButton`'s popover switched to a fixed `.frame(width: 280)` so `.fixedSize(horizontal: false, vertical: true)` has one concrete width to measure the ideal height against. `maintenanceRow()`'s spacing override was removed. Added `WindowNavigationTests.infoButtonSpacingIsConsistentAcrossTabs`, measuring the real on-screen gap between a label and its `InfoButton` in both General and Maintenance and asserting they match.
+
+**Resolving commit**: `0368458` (InfoButton/spacing), `a5cfb81` (channel-label red)

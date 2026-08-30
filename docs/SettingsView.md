@@ -96,7 +96,7 @@ See the About section description below — app image with signal-pulse tap effe
 
 ## InfoButton pattern
 
-All controls use a label-closure `Form` syntax that embeds a small `ⓘ` **InfoButton** next to the control label. Tapping the button shows a popover (arrow edge `.bottom`, max width 280 pt) with the description string. There are no always-visible caption lines — descriptions are hidden until requested. Applies to all sections including the `maintenanceRow` helper.
+All controls use a label-closure `Form` syntax that embeds a small `ⓘ` **InfoButton** next to the control label. Tapping the button shows a popover (arrow edge `.bottom`, fixed width 280 pt) with the description string. There are no always-visible caption lines — descriptions are hidden until requested. Applies to all sections including the `maintenanceRow` helper — that helper's label+InfoButton `HStack` no longer overrides the default spacing (a since-fixed 2026-08-29 bug had it hardcoded to `spacing: 6`, pulling Maintenance's info icons closer to their labels than every other tab's).
 
 `InfoButton` lives in its own file, `Views/InfoButton.swift` — not `private` to `SettingsView.swift` — since `FirstRunWizardView.swift` (`docs/FirstRunWizardView.md`) reuses the identical control for its own field descriptions:
 
@@ -110,12 +110,14 @@ struct InfoButton: View {
         }
         .buttonStyle(.plain)
         .popover(isPresented: $isPresented, arrowEdge: .bottom) {
-            Text(text).font(.callout).padding(12).frame(maxWidth: 280)
+            Text(text).font(.callout).foregroundStyle(.primary).padding(12).frame(width: 280)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
 }
 ```
+
+**Fixed width, not max width** (2026-08-29): `.frame(maxWidth: 280)` is a flexible frame with no determinate width until something constrains it — a popover's content has no real parent to supply one, so `NSHostingController`'s size negotiation fell back to an oversized box with the actual text bottom-anchored inside it. A fixed `.frame(width: 280)` gives `.fixedSize(horizontal: false, vertical: true)` one concrete width to measure the ideal height against, sizing the popover tightly around the text. `.foregroundStyle(.primary)` is likewise deliberate, not the popover's own default — `NSPopover`'s content view doesn't reliably pick up the presenting window's appearance in every configuration this app runs in.
 
 ## Intent
 

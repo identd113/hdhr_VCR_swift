@@ -311,8 +311,11 @@ device-aware replacement for the original plain network-status row. Four states:
 
 **Background art prefetch during the splash** (`prefetchIntroArtIfNeeded()`, its own `.task`
 alongside `checkNetworkAccessIfNeeded()`'s) — while the intro splash is on screen, the wizard also
-warms `ChannelIconCache` for a handful of channels' current-show posters (`GuideEntry.ImageURL`)
-plus their channel logos, favorite channels first. Doesn't run its own device-discovery scan
+warms `ChannelIconCache` for a handful of channels' current-show posters (`GuideEntry.ImageURL`),
+favorite channels first — channel *logos* aren't fetched by this function itself; any logo warming
+that happens is `AppState.performFetchAllGuides()`'s own unrelated `prefetchChannelIcons(_:)` call
+(not favorite-first, and only reached if `fetchAllGuides()` actually runs below). Doesn't run its
+own device-discovery scan
 (`checkNetworkAccessIfNeeded()`'s is already doing that concurrently, from a separate `.task`) — it
 briefly polls `state.devices` (200ms × up to 20, ~4s ceiling, comfortably inside the ~5.35s splash)
 waiting for either that function or `AppState`'s own launch-time `startup()` to populate it, then
@@ -330,7 +333,7 @@ device despite running without error. Purely best-effort with no UI binding — 
 displays the result, so a slow network or an empty lineup just means less got warmed, never an error
 state; the
 payoff is instant
-posters/logos whichever screen the user reaches once the wizard hands off (Watch Now, the guide,
+posters whichever screen the user reaches once the wizard hands off (Watch Now, the guide,
 etc.), not anything visible during the splash itself.
 
 Save folder (`NSOpenPanel` picker, same control shape as `SettingsView`'s Recording tab), default
@@ -481,7 +484,7 @@ so a reset (via either path) always replays the intro splash and shows fresh val
 | `finish()` | Commits all fields to `state.config`, sets `First_run_wizard_shown = true`, saves, triggers the finish-flourish, dismisses after a 380ms delay |
 | `chooseFolder()` | `NSOpenPanel` directory picker, same shape as `SettingsView.chooseFolder()` |
 | `TunerDiscoveryCard`'s `discoveryStatus` (on `FirstRunWizardView`) | Derives the card's device-aware `TunerDiscoveryStatus` from the existing checking/confirmed/notFound tri-state + `state.devices`/`state.lineups` |
-| `prefetchIntroArtIfNeeded()` | Warms `ChannelIconCache` for a few channels' posters/logos (favorites first) while the intro splash plays — see "Background art prefetch during the splash" under Step 1 |
+| `prefetchIntroArtIfNeeded()` | Warms `ChannelIconCache` for a few channels' current-show posters (favorites first) while the intro splash plays — see "Background art prefetch during the splash" under Step 1 |
 | `FirstRunSplashContent.symbols` | The fixed six-glyph tile content set — see "Tile content" above |
 
 ## What Still Needs Doing

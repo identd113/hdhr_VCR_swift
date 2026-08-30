@@ -39,15 +39,15 @@ The show to edit is identified by `state.editingShowId` (set by `MenuContent` be
 ScrollView {
   VStack {
     Title (editable TextField)
-    Signal (bars + weak-signal warning — only when Signal_quality_enabled and channel has data)
+    Signal (bars + weak-signal CaveatBanner — only when Signal_quality_enabled and channel has data)
     Type (segmented Picker: Single / DateTime / SeriesID — SeriesID collapses .seriesChannel/.seriesAll)
     Scope (2-segment Picker: Channel / All — only when Type is SeriesID)
-    Transcode (Picker: None / Heavy / Mobile / Internet 720 — orange warning below when the
+    Transcode (Picker: None / Heavy / Mobile / Internet 720 — CaveatBanner below when the
               device doesn't support transcoding and the profile isn't None)
     Bonus Time (toggle — only when Sports_padding_enabled)
     Day / Days (toggle buttons — only for Single and DateTime)
     New Only (Skip reruns toggle — every Type except Single)
-    Duplicate Episodes (override toggle + warning — only when Series subfolders + Skip
+    Duplicate Episodes (override toggle + CaveatBanner — only when Series subfolders + Skip
                          already-recorded episodes are on, and the show is a series)
     Folder (display last path component + Change… button)
     Channel (editable TextField, width 80 — hidden when Scope is All)
