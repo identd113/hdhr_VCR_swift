@@ -2483,7 +2483,7 @@ final class AppState: ObservableObject {
         Task {
             do {
                 try await hdhrManager.setFavorite(device: device, channel: channel, favorite: newFav)
-                glog("[Favorite] ch \(chNum) \(arrow) — POST 200 OK")
+                glog("[Favorite] ch \(chNum) \(arrow) — POST OK")
             } catch {
                 glog("[Favorite] ch \(chNum) \(arrow) — POST failed (\(error)), reverting", level: .error)
                 if var entries = lineups[deviceId],

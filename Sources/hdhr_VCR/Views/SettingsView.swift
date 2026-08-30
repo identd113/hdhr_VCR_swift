@@ -329,7 +329,7 @@ struct SettingsView: View {
                 }
 
                 Toggle(isOn: $draft.Sports_padding_enabled) {
-                    HStack { Text("Bonus Time"); InfoButton("Records extra time past the guide end. Sports shows default to on — covers live events that run over.") }
+                    HStack { Text("Bonus Time"); InfoButton("Lets recordings extend past the guide's listed end time. Sports shows opt into this by default — covers live events that run long.") }
                 }
                 if draft.Sports_padding_enabled {
                     Stepper("Bonus Time: \(draft.Sports_padding_minutes) min",

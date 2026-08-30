@@ -43,7 +43,7 @@ struct RecordingDefaultsFields: View {
                 Text("Mobile").tag("mobile")
                 Text("Internet 720").tag("internet720")
             } label: {
-                HStack { Text("Default transcode"); InfoButton("Applied to all new shows. None records the raw MPEG-2 stream — best quality, no re-encoding overhead. Not all tuner models support transcoding — if a recording fails immediately after picking a profile, switch back to None.") }
+                HStack { Text("Default transcode"); InfoButton("Applied to all new shows. None records the raw MPEG-2 stream — best quality, no re-encoding overhead. Not all tuner models support transcoding — on an unsupported tuner this is silently ignored and recorded as None, with no error.") }
             }
             .accessibilityIdentifier("\(idPrefix)-default-transcode")
 

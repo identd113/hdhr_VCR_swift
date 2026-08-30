@@ -741,3 +741,19 @@ accuracy regresses right after app launch specifically.
 dir instead of the gitignored `generated/` subfolder, no upfront Pillow dependency check, and no
 `trap` cleanup on the `mktemp` staging dir — were fixed directly in `tools/build_dmg.sh` rather than
 left here; re-ran the script end-to-end afterward to confirm all three fixes actually work.)
+
+## 2026-08-30 — CRLF header-trim fix (a5cfb81) scope verification
+
+- Verified `RecordingManager.swift`'s two `X-HDHomeRun-Resource`/`X-HDHomeRun-Error` parsers
+  (`readHDHRResource`, `readAndClearHDHRError`, ~line 108-146) were the *only* two places reading
+  the curl `--dump-header` (CRLF) file — grepped `dump-header`/`headerFiles`/`X-HDHomeRun` across
+  `Sources/hdhr_VCR/*.swift`, no third copy exists. `AppState.swift:594`'s
+  `.trimmingCharacters(in: .whitespaces)` (in `reattachRecordings()`) parses `ps -Axo` output, not
+  a CRLF header dump — `ps` lines aren't CRLF-terminated, so `.whitespaces` there is correct as-is,
+  not the same bug class. `WebServer.swift:720/724` splits on `"\r\n"` first (not `"\n"`), so no
+  trailing `\r` ever reaches its own `.whitespaces` trim — also not the same bug. No other
+  dump-header-style parser needs the `.whitespacesAndNewlines` fix.
+- `glog("[Rec] ... tuner resource: \(resource)")` (`AppState.swift:3585`) logs the value right
+  after `readHDHRResource()` captures it — now clean post-fix, and the fix's own inline comments
+  correctly describe the bug in past tense. No stale/misleading log messages found adjacent to
+  this diff.
