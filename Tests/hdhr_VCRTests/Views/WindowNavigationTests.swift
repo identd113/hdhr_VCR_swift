@@ -474,6 +474,142 @@ struct WindowNavigationTests {
         }
     }
 
+    /// Every `ⓘ` InfoButton sits next to a label via a plain `HStack { Text(...); InfoButton(...) }`
+    /// with no explicit spacing — except SettingsView's `maintenanceRow()`, found (by code
+    /// inspection, not live) to hardcode `spacing: 6`, visibly pulling the Maintenance tab's info
+    /// icons closer to their labels than every other tab's. This measures the real on-screen gap
+    /// (a label's right edge to its InfoButton's left edge) for one row in General and one in
+    /// Maintenance and asserts they match within a small tolerance — a genuine layout regression
+    /// test: it failed against the `spacing: 6` override before that was removed in the same
+    /// change that added this test, and would fail again if a tab-specific override crept back in.
+    @Test func infoButtonSpacingIsConsistentAcrossTabs() throws {
+        guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+
+        // Same shape as guideSourceToggleDoesNotBreakWindows' own copy above — not shared at file
+        // scope, so each test's local tweaks (if any) can't affect the other.
+        func selectSettingsTabSnippet(_ tabName: String) -> String {
+            """
+            set rowCount to count of rows of outline 1 of scroll area 1 of group 1 of splitter group 1 of group 1 of window 1
+            repeat with i from 1 to rowCount
+                set r to row i of outline 1 of scroll area 1 of group 1 of splitter group 1 of group 1 of window 1
+                if (name of static text 1 of UI element 1 of r) is "\(tabName)" then
+                    set value of attribute "AXSelected" of r to true
+                    exit repeat
+                end if
+            end repeat
+            repeat 20 times
+                delay 0.1
+                set curTitle to "?"
+                try
+                    set curTitle to name of window 1
+                end try
+                if curTitle is "\(tabName)" then exit repeat
+            end repeat
+            """
+        }
+
+        // Finds a plain-text label by exact name, then the nearest AXButton sitting on the same
+        // row and to its right (within 60pt — generous enough to clear normal icon spacing, tight
+        // enough to exclude a far-right action button like Maintenance's own "Run") — that's its
+        // InfoButton. Returns the gap between the label's right edge and the button's left edge in
+        // `varName`, or -1 if either wasn't found. Retried like findCheckboxSnippet above: a
+        // SwiftUI re-render mid-walk throws "Invalid index" for the whole entire-contents
+        // expression, not just the element it was on.
+        func labelToInfoButtonGapSnippet(labelName: String, assignTo varName: String) -> String {
+            """
+            set \(varName) to -1
+            repeat 5 times
+                try
+                    set allEls to entire contents of window 1
+                    set lbl to missing value
+                    repeat with e in allEls
+                        try
+                            if role of e is "AXStaticText" and name of e is "\(labelName)" then
+                                set lbl to e
+                                exit repeat
+                            end if
+                        end try
+                    end repeat
+                    if lbl is not missing value then
+                        set lblPos to position of lbl
+                        set lblSize to size of lbl
+                        set lblRight to (item 1 of lblPos) + (item 1 of lblSize)
+                        set lblY to item 2 of lblPos
+                        set bestGap to missing value
+                        repeat with e in allEls
+                            try
+                                if role of e is "AXButton" then
+                                    set bPos to position of e
+                                    set bx to item 1 of bPos
+                                    set by to item 2 of bPos
+                                    if (bx > lblRight) and ((bx - lblRight) < 60) and ((by - lblY) > -6) and ((by - lblY) < 6) then
+                                        if bestGap is missing value or (bx - lblRight) < bestGap then set bestGap to (bx - lblRight)
+                                    end if
+                                end if
+                            end try
+                        end repeat
+                        if bestGap is not missing value then set \(varName) to bestGap
+                    end if
+                    exit repeat
+                on error
+                    delay 0.3
+                end try
+            end repeat
+            """
+        }
+
+        let script = #"""
+        tell application "System Events"
+            tell process "hdhr_VCR"
+                \#(dismissDonationNagSnippet)
+                try
+                    \#(dismissUnsavedSettingsAlertSnippet)
+                    click menu item "Settings…" of menu 1 of menu bar item 1 of menu bar 2
+                    repeat 20 times
+                        delay 0.25
+                        if (count of windows) > 0 then exit repeat
+                    end repeat
+                    delay 0.5
+                    \#(selectSettingsTabSnippet("General"))
+                    \#(labelToInfoButtonGapSnippet(labelName: "Launch at Login", assignTo: "generalGap"))
+                    \#(selectSettingsTabSnippet("Maintenance"))
+                    \#(labelToInfoButtonGapSnippet(labelName: "Reset Fail Counts", assignTo: "maintenanceGap"))
+                    try
+                        click (first button of window 1 whose description is "close button")
+                    end try
+                    \#(dismissUnsavedSettingsAlertSnippet)
+                    repeat 20 times
+                        delay 0.2
+                        if (count of windows) = 0 then exit repeat
+                    end repeat
+                    return (generalGap as string) & "|" & (maintenanceGap as string)
+                on error errMsg
+                    return "ERROR: " & errMsg
+                end try
+            end tell
+        end tell
+        """#
+        guard let result = runAppleScript(script) else {
+            Issue.record("InfoButton spacing script failed to run")
+            return
+        }
+        if result.hasPrefix("ERROR:") {
+            Issue.record("InfoButton spacing scan failed: \(result)")
+            return
+        }
+        let parts = result.split(separator: "|").compactMap { Double($0) }
+        guard parts.count == 2 else {
+            Issue.record("Could not parse both rows' InfoButton gap — did a label move? Raw: \(result)")
+            return
+        }
+        let (generalGap, maintenanceGap) = (parts[0], parts[1])
+        #expect(generalGap >= 0, "could not find 'Launch at Login' or its InfoButton in General — did the row move or lose its InfoButton?")
+        #expect(maintenanceGap >= 0, "could not find 'Reset Fail Counts' or its InfoButton in Maintenance — did the row move or lose its InfoButton?")
+        guard generalGap >= 0, maintenanceGap >= 0 else { return }
+        #expect(abs(generalGap - maintenanceGap) < 3,
+            "InfoButton sits \(maintenanceGap)pt from its label in Maintenance vs \(generalGap)pt in General — a tab-specific spacing override crept in")
+    }
+
     @Test func addShowOpensAndCloses() throws {
         guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
         let (title, windowCountAfter) = try openAndCloseTopLevelWindow(menuItemName: "Add Show…")

@@ -858,7 +858,11 @@ struct SettingsView: View {
     private func maintenanceRow(_ title: String, _ description: String,
                                  action: @escaping () async throws -> String) -> some View {
         HStack(alignment: .center, spacing: 12) {
-            HStack(spacing: 6) {
+            // No explicit spacing — matches every other Text+InfoButton pairing in the app
+            // (SettingsView's other rows, RecordingDefaultsFields, FirstRunWizardView), which all
+            // rely on HStack's default. This row used to hardcode `spacing: 6`, pulling the
+            // Maintenance tab's info icons visibly closer to their labels than everywhere else.
+            HStack {
                 Text(title).fontWeight(.medium)
                 InfoButton(description)
             }

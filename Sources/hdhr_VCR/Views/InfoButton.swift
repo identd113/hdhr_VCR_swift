@@ -21,11 +21,22 @@ struct InfoButton: View {
             // broke the popover's own automatic content-size calculation instead, ballooning it
             // into a mostly-empty box hundreds of points tall; `.popover`'s default background
             // already adapts correctly on its own, it was only the text color that needed pinning.
+            //
+            // `.frame(width:)` — a FIXED width, not `maxWidth` — for the same "don't break the
+            // size calculation" reason: a flexible `maxWidth` frame has no determinate width until
+            // something else constrains it, and a popover's content has no real parent to supply
+            // one, so NSHostingController's preferredContentSize negotiation gets an ambiguous
+            // answer and falls back to an oversized box again — reported live as "the tooltip
+            // window is very large and the text is shifted to the bottom" (the actual, much
+            // smaller text ends up bottom-anchored inside that oversized fallback box). A fixed
+            // width gives `.fixedSize(horizontal: false, vertical: true)` below a single concrete
+            // width to measure the ideal *height* against, which is what actually lets the
+            // popover size itself tightly around the real content.
             Text(text)
                 .font(.callout)
                 .foregroundStyle(.primary)
                 .padding(12)
-                .frame(maxWidth: 280)
+                .frame(width: 280)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
