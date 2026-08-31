@@ -361,10 +361,13 @@ Table entries below name the physical keys; the footer's own on-screen hint spel
 Fulfills the "No channel jump/search" item that used to sit under "Deferred ideas" below — a
 **limited, offline** counterpart to the web guide's own type-ahead show search
 (`docs/WebServer.md`'s "Show search"), not a port of it: this searches show titles across
-already-loaded channels/entries with no network call at all, and adds a **channel-number** jump
-the web guide has no equivalent of (its own search finds a show by title; it doesn't help "jump to
-channel 63," which is this TUI's actual navigation gap — see the deferred-idea writeup this
-replaces, further down).
+already-loaded channels/entries with no network call at all. The web guide gained its own matching
+`#5.1`-style channel jump on 2026-08-31 (`docs/WebServer.md`'s "Channel jump") once this TUI's
+version had already shipped and proven the syntax — both now support the identical `#5.1` query
+shape and "first prefix match wins" rule, so a habit learned on one client transfers directly to
+the other. What's still genuinely different is the **show-search** half: this TUI's is a local,
+offline substring scan with no result list beyond the grid itself dimming to the matches; the web
+guide's is a server-backed `/api/guide-search` fetch rendering a dropdown with poster art.
 
 `/` (`beginSearch()`, `main.swift`) enters the mode from `.normal` — deliberately not "typing any
 character starts it" the way the web guide's own type-to-search works: `f`/`F` (favorite) and `q`

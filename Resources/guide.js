@@ -1284,12 +1284,31 @@ function closeSearchHelp(){
   var btn=document.getElementById('search-info-btn');
   if(btn)btn.setAttribute('aria-expanded','false');
 }
+// "#5.1"-style query — jump the grid to the first *currently visible* row (respecting setDev's
+// per-device show/hide, same scope the genre filter/show search already use) whose channel number
+// starts with the digits after "#", live on every keystroke with no Enter needed. Mirrors
+// hdhr_guide's own channel-jump (docs/TUIGuide.md's "Search / channel-jump") — same "first prefix
+// match wins" rule, not a stricter "only when unambiguous" one. No-op (stays put) if nothing
+// currently visible matches yet, e.g. mid-typing "#13" before the ".1" that disambiguates it.
+function jumpToChannelPrefix(prefix){
+  if(!prefix)return;
+  var row=Array.prototype.find.call(_rows,function(r){
+    return r.style.display!=='none'&&r.dataset.ch&&r.dataset.ch.indexOf(prefix)===0;
+  });
+  if(row)row.scrollIntoView({behavior:'smooth',block:'nearest',inline:'nearest'});
+}
 function onSearchInput(){
   closeSearchHelp(); // typing again means they're past reading the ⓘ explainer
   armSearchStrayTimer();
   var inp=document.getElementById('search-in');
   var q=inp.value.trim();
   if(_searchDebounce)clearTimeout(_searchDebounce);
+  if(q.charAt(0)==='#'){
+    _searchReqId++; // same invalidation as the length<3 case below — no show-search fetch applies here
+    closeSearchDrop();_searchResults=[];
+    jumpToChannelPrefix(q.slice(1));
+    return;
+  }
   if(q.length<3){
     _searchReqId++; // invalidate any in-flight fetch so it can't repaint a dropdown after the fact
     closeSearchDrop();_searchResults=[];
