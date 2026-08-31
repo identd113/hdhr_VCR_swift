@@ -342,9 +342,8 @@ extension Show: Codable {
             : decodedTempDir
         show_recording_path = (try? c.decode(String.self, forKey: .show_recording_path)) ?? ""
         show_genre          = (try? c.decode(String.self, forKey: .show_genre)) ?? ""
-        // "sport" (not "sports") matches both guide.php's "Sports" and XMLTV's singular "Sport" category tag.
         show_bonus_time     = (try? c.decode(Bool.self,   forKey: .show_bonus_time))
-            ?? show_genre.lowercased().contains("sport")
+            ?? Show.genreImpliesBonusTime(show_genre)
         discord_start_msg_id = (try? c.decode(String.self, forKey: .discord_start_msg_id)) ?? ""
         show_tuner_resource  = (try? c.decode(String.self, forKey: .show_tuner_resource))  ?? ""
         show_ignore_duplicate_once = (try? c.decode(Bool.self, forKey: .show_ignore_duplicate_once)) ?? false
