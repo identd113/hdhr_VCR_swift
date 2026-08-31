@@ -174,9 +174,9 @@ final class AppState: ObservableObject {
     // a show's scheduled time and RecordingManager actually flipping the flag. Treated the same as
     // activeRecordingChannels for ring/badge purposes.
     //
-    // Excludes a show currently sitting out a missed-start retry backoff (showRetryAfter set to a
-    // future date — only happens after a real recordShowFailure, never during ordinary startup
-    // lag): that show isn't capturing anything to disk, so it must NOT read as "recording" here.
+    // Excludes a show currently sitting out a missed-start retry backoff (showRuntime[id]?.retryAfter
+    // set to a future date — only happens after a real recordShowFailure, never during ordinary
+    // startup lag): that show isn't capturing anything to disk, so it must NOT read as "recording" here.
     // Until 2026-08-15 this function (then WebServer.swift's pendingRecChannelsByDevice) treated
     // the two cases identically, which meant a stuck-in-backoff show sorted into the prominent
     // Recording section on Watch Now/the web guide and suppressed its own tuner-conflict badge
@@ -1656,7 +1656,7 @@ final class AppState: ObservableObject {
             // recording (show_recording = false, live) but does not `continue`, so `show` here is a
             // stale snapshot still reading show_recording == true with discord_start_msg_id set —
             // without the liveness check this would post a bogus "In Progress" edit for a just-died
-            // recording, bypassing the discordCardTasks serialization chain.
+            // recording, bypassing the showRuntime[showId]?.discordCardTask serialization chain.
             if show.show_recording, recordingManager.isRunning(showId: show.show_id),
                !show.discord_start_msg_id.isEmpty,
                config.Discord_on_progress, config.Discord_enabled, !config.Discord_webhook_url.isEmpty {
@@ -2581,7 +2581,7 @@ final class AppState: ObservableObject {
     func deleteShow(_ show: Show) {
         glog("[Show] Deleted '\(show.show_title)'")
         // Route through the full teardown (tuner-occupancy clear, recording_stopped broadcast,
-        // tunerStatus/signalDropoutTicks cleanup) when deleting a show that's actively recording —
+        // tunerStatus/showRuntime signal-dropout cleanup) when deleting a show that's actively recording —
         // a bare recordingManager.stop() skipped all of that, leaving the web UI showing a
         // recording tuner for up to one idle-tick until the next hardware poll self-corrected.
         if let i = shows.firstIndex(where: { $0.show_id == show.show_id }), shows[i].show_recording {
@@ -2668,7 +2668,12 @@ final class AppState: ObservableObject {
 
     func resetAllFailCounts() {
         for i in shows.indices { shows[i].clearFailures() }
-        for id in showRuntime.keys { showRuntime[id]?.retryAfter = nil }
+        // Array(...) first, not `for id in showRuntime.keys` directly — the Keys view holds a
+        // reference to showRuntime's own backing storage, so mutating through the dict while
+        // iterating that view forces one full copy-on-write copy on the very first mutation.
+        // Materializing the keys into a plain Array first leaves showRuntime uniquely referenced,
+        // so each subscript mutation below happens in place.
+        for id in Array(showRuntime.keys) { showRuntime[id]?.retryAfter = nil }
         saveConfig()
     }
 
@@ -2688,7 +2693,8 @@ final class AppState: ObservableObject {
             else if !shows[i].show_active { shows[i].show_active = true }
             shows[i].clearFailures()
         }
-        for id in showRuntime.keys { showRuntime[id]?.retryAfter = nil }
+        // Array(...) first — see resetAllFailCounts's identical line for why.
+        for id in Array(showRuntime.keys) { showRuntime[id]?.retryAfter = nil }
         saveConfig()
     }
 
@@ -3134,8 +3140,8 @@ final class AppState: ObservableObject {
     }
 
     // Raw ingredients derived from a GuideEntry match for a Discord embed's episode-specific
-    // content. See discordEpisodeSnapshots' doc comment for why this is captured once at
-    // "Recording Started" and reused, rather than re-derived fresh for every later card.
+    // content. See ShowRuntimeState.discordEpisodeSnapshot's doc comment for why this is captured
+    // once at "Recording Started" and reused, rather than re-derived fresh for every later card.
     struct DiscordEpisodeSnapshot {
         let epNum: String
         let epTitle: String

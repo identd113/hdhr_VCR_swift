@@ -137,7 +137,7 @@ struct TunerOccupancyTests {
     //
     // The gap between a managed show's recording window opening (show_next <= now) and
     // show_recording actually flipping true — ordinary startup lag. A show sitting out a missed-
-    // start retry backoff (showRetryAfter in the future) must NOT read as "recording" here — see
+    // start retry backoff (showRuntime[id]?.retryAfter in the future) must NOT read as "recording" here — see
     // ISSUES.md's resolved entry for the false-positive this used to cause (Recording-section
     // mis-bucketing + suppressed conflict badge).
 
@@ -188,7 +188,7 @@ struct TunerOccupancyTests {
     }
 
     @Test func pendingRecordingChannels_stuckRetryBackoff_isExcluded() async {
-        // A real recordShowFailure has already fired and set showRetryAfter to a future cooldown —
+        // A real recordShowFailure has already fired and set showRuntime[id]?.retryAfter to a future cooldown —
         // this show isn't capturing anything to disk, so it must fall out of the "recording" set
         // (letting it resolve to whatever's actually true instead: scheduled or conflict).
         var show = Show.testActive(title: "Stuck Retrying", channel: "5.1")

@@ -757,3 +757,62 @@ left here; re-ran the script end-to-end afterward to confirm all three fixes act
   after `readHDHRResource()` captures it — now clean post-fix, and the fix's own inline comments
   correctly describe the bug in past tense. No stale/misleading log messages found adjacent to
   this diff.
+
+## 2026-08-30 — 5f4355d ShowRuntimeState consolidation (efficiency-focused review)
+
+- Verified the trickiest migration by hand: `rebuildMenuEntries`'s `affectedIds` full-replace loop
+  (`AppState.swift:1136-1143`) correctly reproduces the old `conflictingShowIDs = newConflicts`
+  plain-Set-reassignment semantics for every id that had *any* footprint in `showRuntime` (not just
+  current candidateShows) — a show that drops out of `candidateShows` (e.g. gets paused) while still
+  flagged `isConflicting`/`conflictBeatenByFavorite` from a prior pass is correctly swept into
+  `affectedIds` via the `showRuntime.filter{...}.keys` term and reset to false, matching what the old
+  full Set reassignment did implicitly. No correctness gap found.
+- Verified `fireDiscordCard`'s chaining (`AppState.swift:3272-3273`, using
+  `showRuntime[showId]?.discordCardTask` / `showRuntime[showId, default:].discordCardTask =`)
+  preserves the exact prior `discordCardTasks[showId]` behavior — `previous` is captured before the
+  new Task overwrites the dict entry, so the chain (`await previous?.value` inside the new Task) is
+  unchanged. Correct.
+- Genuine but very minor efficiency regression, not worth fixing on its own: `rebuildMenuEntries`
+  (`AppState.swift:1136`) now does `showRuntime.filter{...}.keys` — an O(showRuntime.count) scan
+  plus two `Set.union` allocations — every idle tick when the menu is closed (~every
+  `Idle_timer_interval`, default 10s), replacing what was a single O(1)-ish `Set` reassignment
+  pre-refactor. Necessary for correctness (see bullet above), and `showRuntime.count` is bounded by
+  the user's own show count (tens, not thousands) — not a real hot-path concern at this app's scale,
+  same reasoning as the pre-existing 2026-07-31 `conflictBeatenByFavorite` O(N²) note in this file.
+- **Fixed same day**: `resetAllFailCounts`/`reactivatePausedShows`'s `for id in showRuntime.keys { showRuntime[id]?.retryAfter = nil }`
+  (`AppState.swift:2671`, `2691` at review time) forced one avoidable full copy-on-write copy of
+  `showRuntime`'s backing store per call — the live `.keys` view keeps a reference to the same
+  storage `showRuntime` itself uses, so the first in-loop mutation finds two owners and copies.
+  Switched both to `for id in Array(showRuntime.keys) { ... }` — materializing the keys into a plain
+  `Array` first drops the aliasing, so `showRuntime` is uniquely referenced again and every
+  subscript mutation happens in place. Both call sites are rare, user-triggered actions (Settings
+  buttons), not idle-loop hot paths, so this was a correctness-neutral cleanup, not a felt fix.
+- One real, if small, hoist opportunity matching the review's specific ask: `AppState.swift:1642-1648`
+  (idle loop's "first confirmation curl is alive" branch) touches `showRuntime[show.show_id]` three
+  separate times in one block (a guard-read, a `pendingDiscordStart = false` write, and a
+  `discordEpisodeSnapshot = ...` write) where hoisting to `var rt = showRuntime[id] ?? ShowRuntimeState()`,
+  mutating both fields locally, then one `showRuntime[id] = rt` write-back would cut it to two
+  dictionary touches. Fires once per recording-start confirmation (not per-tick, per-show), so
+  real-world cost is negligible — flagged only because it's the one place in the diff with 3+ raw
+  dictionary touches in a single block; every other multi-touch site in the diff (e.g.
+  `AppState.swift:1611-1612`, `2010-2011`, `2103-2104`, `2148-2149`) is already a minimal
+  read-then-write pair that a hoist wouldn't reduce further (Dictionary's `subscript(_:default:)` and
+  optional-chained `dict[k]?.field =` both already use Swift's `_modify` accessor, so a single
+  compound expression is already one hash lookup, not two — the "redundant lookup" risk the review
+  was checking for is largely pre-empted by the stdlib itself, not a pattern this diff introduced).
+- **Fixed same day**: stale in-code comments across `AppState.swift` (4 sites: `discordCardTasks`/
+  `discordEpisodeSnapshots`/`showRetryAfter`/`signalDropoutTicks` referenced by their pre-refactor
+  names) and `Tests/hdhr_VCRTests/Recording/TunerOccupancyTests.swift` (2 sites) all updated to
+  point at `showRuntime`/`ShowRuntimeState` instead. Comment-only, no functional effect either way.
+- Scope: the commit message's claim of "Also fixes a same-file, same-target duplicate…Models.swift's
+  decode-fallback bonus-time check" is *not* actually in this commit's diff (`git show 5f4355d --stat`
+  has no `Models.swift` entry) — that fix landed separately as `c384a0e`, immediately adjacent in
+  history. Not scope creep in `5f4355d` itself, just a commit-message cross-reference to sibling
+  work; worth knowing if `git log --grep`/`git blame` searches for that fix land on the wrong commit.
+- `ShowRuntimeState` (`AppState.swift:36-81`) has no internal `Array`/`Dictionary` fields that would
+  make its dictionary-value-type COW copies expensive — `DiscordEpisodeSnapshot.tags: [String]` is
+  the only collection anywhere in the struct's transitive shape, and it's `nil` for the overwhelming
+  majority of entries (only set briefly per-recording). Confirmed the value-semantics concern the
+  review asked about (#3, "is CoW overhead a real hot-path issue") is not — every
+  read-mutate-write cycle in the diff copies at most a handful of scalars/`Optional<Date>`/
+  `Optional<Task>`, not a large collection.
