@@ -347,7 +347,7 @@ struct MenuContent: View {
     private func scheduledMenu(_ show: Show, showChannel: Bool = false) -> some View {
         // Pre-computed in AppState.rebuildMenuEntries() every idle tick and after guide loads —
         // avoids O(series entries) scan per show per menu open.
-        let conflict  = state.conflictingShowIDs.contains(show.show_id)
+        let conflict  = state.showRuntime[show.show_id]?.isConflicting == true
         let prefix    = conflict ? "⚠️ " : ""
         let schEntry  = state.menuScheduledEntry[show.show_id]
         let schEp     = schEntry.flatMap { $0.episodeInfoLabel }
@@ -363,7 +363,7 @@ struct MenuContent: View {
 
             menuInfo("\(show.state.rawValue) · Channel \(show.show_channel)", font: .footnote)
             if conflict {
-                let conflictMsg = state.conflictBeatenByFavorite.contains(show.show_id)
+                let conflictMsg = state.showRuntime[show.show_id]?.conflictBeatenByFavorite == true
                     ? "⚠️ Conflict — a favorited channel has priority for this tuner"
                     : "⚠️ Conflict — all tuners busy at this time"
                 menuInfo(conflictMsg, font: .footnote, secondary: true)

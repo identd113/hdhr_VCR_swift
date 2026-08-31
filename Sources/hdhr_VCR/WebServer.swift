@@ -1216,11 +1216,11 @@ final class WebServer: @unchecked Sendable {
                 // retry cooldown — same fix as AppState.applyResume/reactivatePausedShows, a gap
                 // in that fix since this edit path builds a standalone `updated` Show value
                 // (committed via state.updateShow(_:) below) rather than mutating state.shows by
-                // index, so it never routed through the shared helper. showRetryAfter lives on
-                // AppState, not Show, so it's cleared directly here rather than via `updated`.
+                // index, so it never routed through the shared helper. The retry cooldown lives on
+                // AppState.showRuntime, not Show, so it's cleared directly here rather than via `updated`.
                 updated.notify_upnext_time = nil
                 updated.notify_recording_time = nil
-                state.showRetryAfter.removeValue(forKey: updated.show_id)
+                state.showRuntime[updated.show_id]?.retryAfter = nil
             }
         }
         if let title = obj["title"] as? String, !title.isEmpty { updated.show_title = title }
@@ -1672,16 +1672,16 @@ final class WebServer: @unchecked Sendable {
                         else { return false }
                         return recordedTagsByShow[owner.show_id]?.contains(ep.uppercased()) == true
                     }()
-                    // Scheduled but can't get a tuner — see AppState.conflictingShowIDs (a
-                    // per-device greedy tuner-slot simulation, not a live scan here).
-                    // conflictingShowIDs is computed against a show's single show_next/hdhr_record,
+                    // Scheduled but can't get a tuner — see AppState.showRuntime's isConflicting
+                    // field (a per-device greedy tuner-slot simulation, not a live scan here).
+                    // isConflicting is computed against a show's single show_next/hdhr_record,
                     // but owner(for:) matches ANY block sharing the show's SeriesID/title (by design,
                     // for seriesAll fan-out) — so guard on device + a 5-min window around show_next
                     // (same tolerance rebuildMenuEntries uses for its own guide-entry match) to avoid
                     // flagging every rerun/simulcast of a show whose *next* airing conflicts.
                     let isConflict = isMgd && !willSkip && !isEntryRec && (owner.map { s in
                         guard s.hdhr_record == device.DeviceID, let sNext = s.show_next else { return false }
-                        return state.conflictingShowIDs.contains(s.show_id)
+                        return state.showRuntime[s.show_id]?.isConflicting == true
                             && abs(Double(e.StartTime) - sNext.timeIntervalSince1970) < 300
                     } ?? false)
                     // Lowest-priority marker — a hardware tuner is on this channel right now but not
@@ -1731,7 +1731,7 @@ final class WebServer: @unchecked Sendable {
                         if isEntryRec { return "  — Recording now" }
                         if isMgd && willSkip { return "  — Already recorded · will skip" }
                         if isConflict {
-                            if let owner, state.conflictBeatenByFavorite.contains(owner.show_id) {
+                            if let owner, state.showRuntime[owner.show_id]?.conflictBeatenByFavorite == true {
                                 return "  — Conflict: a favorited channel has priority for this tuner"
                             }
                             return "  — Conflict: all tuners busy at this time"

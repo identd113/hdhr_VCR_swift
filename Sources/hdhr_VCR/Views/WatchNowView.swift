@@ -362,7 +362,7 @@ struct WatchNowView: View {
         }()
         let isConflict = isManaged && !willSkip && !isRecording && (owner.map { s in
             guard s.hdhr_record == device.DeviceID, let sNext = s.show_next else { return false }
-            return state.conflictingShowIDs.contains(s.show_id)
+            return state.showRuntime[s.show_id]?.isConflicting == true
                 && abs(Double(entry.StartTime) - sNext.timeIntervalSince1970) < 300
         } ?? false)
         let isOtherTunerInUse = inputs.hwOtherChannels.contains(entry.channelNum) && !isRecording

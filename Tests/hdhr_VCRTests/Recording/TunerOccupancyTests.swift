@@ -197,7 +197,7 @@ struct TunerOccupancyTests {
         show.show_end  = Date().addingTimeInterval(1500)
         let showId = show.show_id
         let state = await makeTestAppState(shows: [show], devices: [.test(id: "DEV1", tuners: 2)])
-        await MainActor.run { state.showRetryAfter[showId] = Date().addingTimeInterval(60) }
+        await MainActor.run { state.showRuntime[showId, default: AppState.ShowRuntimeState()].retryAfter = Date().addingTimeInterval(60) }
         #expect(await state.pendingRecordingChannels(for: "DEV1").isEmpty)
     }
 
@@ -210,7 +210,7 @@ struct TunerOccupancyTests {
         show.show_end  = Date().addingTimeInterval(1500)
         let showId = show.show_id
         let state = await makeTestAppState(shows: [show], devices: [.test(id: "DEV1", tuners: 2)])
-        await MainActor.run { state.showRetryAfter[showId] = Date().addingTimeInterval(-1) }
+        await MainActor.run { state.showRuntime[showId, default: AppState.ShowRuntimeState()].retryAfter = Date().addingTimeInterval(-1) }
         #expect(await state.pendingRecordingChannels(for: "DEV1") == ["5.1"])
     }
 

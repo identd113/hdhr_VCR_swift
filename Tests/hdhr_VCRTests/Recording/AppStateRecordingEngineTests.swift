@@ -304,7 +304,7 @@ struct AppStateRecordingEngineTests {
         #expect(updated.show_recording == false)
         #expect(updated.show_fail_count == 1)
         #expect(updated.show_fail_reason.contains("missing or empty"))
-        #expect(state.showRetryAfter[show.show_id] != nil)
+        #expect(state.showRuntime[show.show_id]?.retryAfter != nil)
     }
 
     @Test @MainActor func stopRecording_manual_pausesWithoutRescheduling() async throws {

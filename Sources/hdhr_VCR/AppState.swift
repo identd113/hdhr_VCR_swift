@@ -22,56 +22,70 @@ final class AppState: ObservableObject {
     @Published var menuScheduledEntry: [String: GuideEntry] = [:]
     // Pre-computed upcoming slots for SeriesID shows — avoids O(series) nextEpisodes scan per open.
     @Published var menuUpcomingSlots: [String: [(channel: String, date: Date)]] = [:]
-    // Pre-computed set of show IDs that will actually lose a tuner — rebuilt alongside menu
-    // entries. Only the loser(s) of an over-capacity cluster are included, not every member.
-    var conflictingShowIDs: Set<String> = []
-    // Subset of conflictingShowIDs where the loss is specifically to a favorited competitor —
-    // lets the UI say "a favorited channel has priority" instead of a generic busy message.
-    var conflictBeatenByFavorite: Set<String> = []
-    // Tracks which shows have already fired a runtime conflict notification.
-    // Value = show_next epoch (TimeInterval) for which the notification was sent;
-    // clears on reschedule so a new time slot can notify again.
-    // Not `private`: deleteShow's cleanup test reads this directly (@testable import doesn't
-    // reach true `private`) rather than via a hand-duplicated shadow list that could itself
-    // drift out of sync with deleteShow's own cleanup.
-    var conflictNotifiedEpochs: [String: TimeInterval] = [:]
+    // Consolidates the show_id-keyed "what's currently going on with this show" tracking that
+    // used to live as 12 independent Set<String>/[String: X] dictionaries — see ISSUES.md's
+    // "AppState as a god-object" entry. One dictionary keyed by show_id, so deleteShow's cleanup
+    // is a single removal instead of a checklist a future feature has to remember to extend.
+    // tunerStatus deliberately stays outside this as its own @Published dict below — it's the
+    // one field of the old set that drives SwiftUI updates; folding it in here would make every
+    // other field's mutation (e.g. signalDropoutTicks, ticked every idle-loop pass) also fire
+    // objectWillChange, reintroducing the "Menu rebuild churn" class of bug this project already
+    // hardened against elsewhere. Not `private`: deleteShow's cleanup test reads this directly
+    // (@testable import doesn't reach true `private`) rather than via a hand-duplicated shadow
+    // list that could itself drift out of sync with deleteShow's own cleanup.
+    struct ShowRuntimeState {
+        // Pre-computed each idle tick (rebuildMenuEntries) — whether this show will actually
+        // lose a tuner to a higher-priority competitor. Was: conflictingShowIDs (Set<String>).
+        var isConflicting = false
+        // Whether the conflict above is specifically to a favorited competitor — lets the UI say
+        // "a favorited channel has priority" instead of a generic busy message. Was:
+        // conflictBeatenByFavorite (Set<String>).
+        var conflictBeatenByFavorite = false
+        // show_next epoch (TimeInterval) for which a runtime conflict notification was already
+        // sent; nil'd on reschedule so a new time slot can notify again. Was:
+        // conflictNotifiedEpochs[showId].
+        var conflictNotifiedEpoch: TimeInterval?
+        // Same pattern, for MISSED START warnings. Was: missedStartNotifiedEpochs[showId].
+        var missedStartNotifiedEpoch: TimeInterval?
+        // Set when this show's recording was interrupted by an app quit and will be relaunched
+        // this session — suppresses the duplicate Discord "Recording Started" on the first
+        // relaunch after startup. Was: suppressStartDiscord (Set<String>).
+        var suppressStartDiscord = false
+        // Set when this show's "Recording Started" embed is deferred until the first idle-loop
+        // tick confirms the curl process is still alive. Was: pendingDiscordStart (Set<String>).
+        var pendingDiscordStart = false
+        // Set when this show recorded at least one mid-recording FAIL event during the *current*
+        // attempt; cleared when a fresh attempt starts. stopRecording's empty-output-file check
+        // consumes this to decide whether show_fail_reason still describes this attempt or is
+        // stale detail from an earlier, resolved one — show_fail_count alone can't tell the
+        // difference since a success only decrements it. Was: failedThisAttempt (Set<String>).
+        var failedThisAttempt = false
+        // Per-attempt marker: set in startRecording only when show_ignore_duplicate_once actually
+        // suppressed a real duplicate-skip for the airing being recorded right now. Was:
+        // duplicateOverrideUsedThisAttempt (Set<String>).
+        var duplicateOverrideUsedThisAttempt = false
+        // Episode metadata captured once when a recording's "Recording Started" card fires, while
+        // show.show_next still correctly points at the airing actually recording — see
+        // buildDiscordShowEmbed's own comment for why later cards prefer this over a fresh live
+        // lookup. Was: discordEpisodeSnapshots[showId].
+        var discordEpisodeSnapshot: DiscordEpisodeSnapshot?
+        // Consecutive low-SNQ idle-loop ticks for this show's active recording. Was:
+        // signalDropoutTicks[showId].
+        var signalDropoutTicks = 0
+        // Cooldown deadline set by recordShowFailure — the idle loop's readyIndices filter won't
+        // retry this show again until this passes. Was: showRetryAfter[showId].
+        var retryAfter: Date?
+        // Per-show serialization for lifecycle-card sends — see fireDiscordCard's own comment for
+        // why this chains rather than locks. Was: discordCardTasks[showId].
+        var discordCardTask: Task<Void, Never>?
+    }
+    var showRuntime: [String: ShowRuntimeState] = [:]
     // "channelNum:startTime" keys for guide entries already logged as now-airing without a genre tag.
     private var loggedNowAiring: Set<String> = []
     // Last time the NowAiring diagnostic scan (below) ran — gates it to a coarse cadence since
     // it's a full device×channel guide walk purely for discovering untagged infomercial
     // SeriesIDs, not anything requiring sub-minute freshness.
     private var lastNowAiringScan: Date = .distantPast
-    // Same pattern as conflictNotifiedEpochs, for MISSED START warnings.
-    var missedStartNotifiedEpochs: [String: TimeInterval] = [:]
-    // Shows whose recording was interrupted by an app quit and will be relaunched this session.
-    // Suppresses the duplicate Discord "Recording Started" on the first relaunch after startup.
-    var suppressStartDiscord: Set<String> = []
-    // Shows whose "Recording Started" embed is deferred until the first idle-loop tick confirms
-    // the curl process is still alive — prevents a Discord ping for a recording that fails instantly.
-    var pendingDiscordStart: Set<String> = []
-    // Shows that recorded at least one mid-recording FAIL event during the *current* recording
-    // attempt (inserted in the idle-loop FAIL branch, cleared when a fresh attempt starts).
-    // stopRecording's empty-output-file check consumes this to decide whether show_fail_reason
-    // still describes this attempt or is stale detail left over from an earlier, resolved one —
-    // show_fail_count alone can't tell the difference since a success only decrements it.
-    var failedThisAttempt: Set<String> = []
-    // Per-attempt marker: set in startRecording only when show_ignore_duplicate_once actually
-    // suppressed a real duplicate-skip for the airing being recorded right now. stopRecording's
-    // natural-success path consumes this to decide whether to clear the override — so enabling
-    // it preemptively on a recording that was never actually a duplicate doesn't silently burn
-    // the one-shot before the rerun it was meant for ever airs.
-    var duplicateOverrideUsedThisAttempt: Set<String> = []
-    // Episode metadata (episode number/title, synopsis, genre tags, new-episode flag) captured
-    // once when a recording's "Recording Started" card fires, when show.show_next still correctly
-    // points at the airing actually recording. Discord.buildDiscordShowEmbed prefers this snapshot
-    // over a fresh guideEntryForShow(show) lookup for every later card in the same lifecycle
-    // (in-progress, complete, failed) — without it, those cards fire *after* scheduleNextAir has
-    // already advanced show_next to the *next* airing, so the live lookup would silently return
-    // the wrong episode's info or nothing at all (episode/synopsis lines went missing on Recording
-    // Complete cards in practice — found from a real Discord screenshot, 2026-08-12). Cleared
-    // alongside discord_start_msg_id at the same terminal events (see fireDiscordCard's
-    // clearIdAfter) and in deleteShow's show_id-keyed purge.
-    var discordEpisodeSnapshots: [String: DiscordEpisodeSnapshot] = [:]
     // Retained DispatchSource for SIGTERM — saves config before the process exits so
     // show_recording_path and discord_start_msg_id survive pkill during development.
     private var sigtermSource: DispatchSourceSignal?
@@ -118,7 +132,6 @@ final class AppState: ObservableObject {
     @Published var signalScanProgress: String? = nil
 
     private var signalScanTask:     Task<Void, Never>? = nil
-    var signalDropoutTicks: [String: Int] = [:]               // showId → consecutive low-snq ticks
 
     // Tracks optimistically-toggled favorite state: [deviceId: [GuideNumber: expectedBool]]
     // Cleared per-device after the next lineup reload; mismatches are logged as warnings.
@@ -181,7 +194,7 @@ final class AppState: ObservableObject {
             $0.show_active && !$0.show_paused && !$0.show_recording &&
             $0.hdhr_record == deviceId &&
             ($0.show_next ?? .distantFuture) <= now && ($0.show_end ?? .distantPast) > now &&
-            (showRetryAfter[$0.show_id].map { $0 <= now } ?? true) &&
+            (showRuntime[$0.show_id]?.retryAfter.map { $0 <= now } ?? true) &&
             !willSkipCurrentAiring($0)
         }.map { $0.show_channel })
     }
@@ -324,7 +337,6 @@ final class AppState: ObservableObject {
     // (never by pauseShow's "Manually paused" or recordShowFailure's threshold text) so auto-resume
     // can identify — and only re-activate — shows it auto-paused itself, never a user's own pause.
     private static let autoPauseTunerMissingReason = "Tuner not detected"
-    var showRetryAfter: [String: Date] = [:]
     private var failThreshold: Int { config.Fail_count_setting }
     // var + internal (not private let) is a test seam: diskOK() checks this against the real
     // filesystem, so a test machine whose real disk happens to be over 93% used would otherwise
@@ -376,7 +388,7 @@ final class AppState: ObservableObject {
                 // reattachRecordings() later mistakes for an unfinished recording, posting a
                 // bogus recovery embed on next launch. Skipped entirely when nothing is
                 // pending (the overwhelmingly common case), so a normal deploy isn't slowed.
-                let pending = Array(self.discordCardTasks.values)
+                let pending = self.showRuntime.values.compactMap { $0.discordCardTask }
                 if !pending.isEmpty {
                     await withTaskGroup(of: Void.self) { group in
                         group.addTask { try? await Task.sleep(nanoseconds: 2_000_000_000) } // 2s cap
@@ -636,7 +648,7 @@ final class AppState: ObservableObject {
             shows[i].discord_start_msg_id = ""
             // Suppress the duplicate "Recording Started" Discord embed when the idle loop
             // relaunches this show — the "Interrupted" embed already tells the story.
-            suppressStartDiscord.insert(show.show_id)
+            showRuntime[show.show_id, default: ShowRuntimeState()].suppressStartDiscord = true
             needsSave = true
 
             glog("[Startup] Recovering Discord embed for '\(show.show_title)' — file size \(fileSize / 1024)KB")
@@ -1118,8 +1130,17 @@ final class AppState: ObservableObject {
                 }
             }
         }
-        conflictingShowIDs = newConflicts
-        conflictBeatenByFavorite = newBeatenByFavorite
+        // Full-replace semantics (was: conflictingShowIDs = newConflicts, a plain Set
+        // reassignment) — touch only ids whose flags actually change: either currently flagged
+        // (needs clearing if it dropped out of this pass' conflict set) or newly flagged.
+        let affectedIds = Set(showRuntime.filter { $0.value.isConflicting || $0.value.conflictBeatenByFavorite }.keys)
+            .union(newConflicts).union(newBeatenByFavorite)
+        for id in affectedIds {
+            var rt = showRuntime[id] ?? ShowRuntimeState()
+            rt.isConflicting = newConflicts.contains(id)
+            rt.conflictBeatenByFavorite = newBeatenByFavorite.contains(id)
+            showRuntime[id] = rt
+        }
     }
 
     // Refreshes the menu cache (gated on menuIsOpen to avoid the documented menu-rebuild-churn
@@ -1531,7 +1552,7 @@ final class AppState: ObservableObject {
                 if endDate <= now {
                     shows[i].show_paused = false
                     shows[i].clearFailures()
-                    showRetryAfter.removeValue(forKey: show.show_id)
+                    showRuntime[show.show_id]?.retryAfter = nil
                     // Re-arm the pre-notifications for whatever airing scheduleNextAir resolves
                     // next — see applyResume's comment / ISSUES.md's 2026-08-19 entry.
                     shows[i].notify_upnext_time = nil
@@ -1549,7 +1570,7 @@ final class AppState: ObservableObject {
                 } else if nextDate > now, nextDate <= now + 10 {
                     shows[i].show_paused = false
                     shows[i].clearFailures()
-                    showRetryAfter.removeValue(forKey: show.show_id)
+                    showRuntime[show.show_id]?.retryAfter = nil
                     shows[i].notify_upnext_time = nil
                     shows[i].notify_recording_time = nil
                     glog("[\(show.show_title)] auto-resuming — next airing imminent")
@@ -1587,14 +1608,14 @@ final class AppState: ObservableObject {
             // Fires once per "showId-epoch" key so retrying shows don't spam the log every tick.
             if !show.show_recording, nextDate < now - 30, endDate > now {
                 let missedEpoch = show.show_next?.timeIntervalSince1970 ?? 0
-                if missedStartNotifiedEpochs[show.show_id] != missedEpoch {
-                    missedStartNotifiedEpochs[show.show_id] = missedEpoch
+                if showRuntime[show.show_id]?.missedStartNotifiedEpoch != missedEpoch {
+                    showRuntime[show.show_id, default: ShowRuntimeState()].missedStartNotifiedEpoch = missedEpoch
                     glog("[\(show.show_title)] MISSED START — window open since \(shortTime(show.show_next)), still not recording", level: .warning)
                 }
             }
 
             if show.show_recording, endDate > now, !recordingManager.isRunning(showId: show.show_id) {
-                pendingDiscordStart.remove(show.show_id) // never confirmed; skip the start embed
+                showRuntime[show.show_id]?.pendingDiscordStart = false // never confirmed; skip the start embed
                 // readAndClearHDHRError must run before teardownRecordingState — teardown calls
                 // stop() which clears the header file entry, losing the error before we can read it.
                 let hdhrReason = recordingManager.readAndClearHDHRError(showId: show.show_id)
@@ -1602,7 +1623,7 @@ final class AppState: ObservableObject {
                 teardownRecordingState(index: i) // kills pid (harmless), releases assertion, clears caches
                 let failReason = hdhrReason ?? exitReason ?? "curl exited unexpectedly"
                 recordShowFailure(index: i, reason: failReason)
-                failedThisAttempt.insert(show.show_id) // consumed by stopRecording's empty-file check
+                showRuntime[show.show_id, default: ShowRuntimeState()].failedThisAttempt = true // consumed by stopRecording's empty-file check
                 glog("[\(show.show_title)] FAIL \(failReason) — fail_count=\(shows[i].show_fail_count)", level: .error)
                 // Only notify on persistent failures (2+ in a row) to avoid spamming user during transient retries.
                 // Show will be paused and notified if fail_count reaches the threshold.
@@ -1618,12 +1639,13 @@ final class AppState: ObservableObject {
             }
 
             // First idle-loop confirmation: curl is alive — now send the deferred "Recording Started" embed
-            if show.show_recording, pendingDiscordStart.contains(show.show_id),
+            if show.show_recording, showRuntime[show.show_id]?.pendingDiscordStart == true,
                recordingManager.isRunning(showId: show.show_id) {
-                pendingDiscordStart.remove(show.show_id)
+                showRuntime[show.show_id]?.pendingDiscordStart = false
                 // Capture now, while show_next still points at the airing actually recording —
-                // see discordEpisodeSnapshots' doc comment.
-                discordEpisodeSnapshots[show.show_id] = discordEpisodeSnapshot(entry: guideEntryForShow(show), show: show)
+                // see ShowRuntimeState's discordEpisodeSnapshot doc comment.
+                showRuntime[show.show_id, default: ShowRuntimeState()].discordEpisodeSnapshot =
+                    discordEpisodeSnapshot(entry: guideEntryForShow(show), show: show)
                 let endsStr = shortTime(shows[i].show_end ?? Date())
                 fireDiscordCard(showId: show.show_id, event: "🔴 Recording Started", color: 0x2ECC71,
                                 enabled: true, extra: [("Ends", endsStr, true)])
@@ -1674,7 +1696,7 @@ final class AppState: ObservableObject {
             guard s.show_active, !s.show_recording, !s.show_paused,
                   let next = s.show_next, let end = s.show_end else { return false }
             guard next <= now + 10 && end > now else { return false }
-            if let retryAfter = showRetryAfter[s.show_id], now < retryAfter { return false }
+            if let retryAfter = showRuntime[s.show_id]?.retryAfter, now < retryAfter { return false }
             return true
         }.sorted { isFavoriteChannel(shows[$0]) && !isFavoriteChannel(shows[$1]) }
         if !readyIndices.isEmpty { dirty = true }
@@ -1690,7 +1712,7 @@ final class AppState: ObservableObject {
             let s = shows[i]
             guard s.show_active, !s.show_recording, !s.show_paused,
                   let next = s.show_next, let end = s.show_end, next <= now + 10, end > now else { continue }
-            if let retryAfter = showRetryAfter[s.show_id], now < retryAfter { continue }
+            if let retryAfter = showRuntime[s.show_id]?.retryAfter, now < retryAfter { continue }
             await startRecording(index: i)
         }
 
@@ -1744,7 +1766,8 @@ final class AppState: ObservableObject {
     private func recordShowFailure(index: Int, reason: String) {
         shows[index].recordFailure(reason: reason)
         let loops = Self.retryBackoffLoops[min(shows[index].show_fail_count - 1, Self.retryBackoffLoops.count - 1)]
-        showRetryAfter[shows[index].show_id] = Date().addingTimeInterval(Double(loops) * Double(config.Idle_timer_interval))
+        showRuntime[shows[index].show_id, default: ShowRuntimeState()].retryAfter =
+            Date().addingTimeInterval(Double(loops) * Double(config.Idle_timer_interval))
     }
 
     func startRecording(index: Int) async {
@@ -1796,8 +1819,8 @@ final class AppState: ObservableObject {
             glog("[\(show.show_title)] TUNER FULL \(show.hdhr_record) — skipping start", level: .warning)
             // Fire conflict notification once per show+episode window to avoid per-tick spam.
             let conflictEpoch = show.show_next?.timeIntervalSince1970 ?? 0
-            if conflictNotifiedEpochs[show.show_id] != conflictEpoch {
-                conflictNotifiedEpochs[show.show_id] = conflictEpoch
+            if showRuntime[show.show_id]?.conflictNotifiedEpoch != conflictEpoch {
+                showRuntime[show.show_id, default: ShowRuntimeState()].conflictNotifiedEpoch = conflictEpoch
                 notify("Tuner Conflict", body: show.show_title,
                        subtitle: "All tuners on \(show.hdhr_record) are busy")
                 discordShow("⚠️ Tuner Conflict", show: show, color: 0xF1C40F,
@@ -1834,8 +1857,8 @@ final class AppState: ObservableObject {
                             enabled: config.Discord_on_paused,
                             extra: [("Reason", "Failed \(failThreshold)× (\(lastReason)) — will retry next airing", false)],
                             clearIdAfter: true)
-            conflictNotifiedEpochs.removeValue(forKey: show.show_id)
-            missedStartNotifiedEpochs.removeValue(forKey: show.show_id)
+            showRuntime[show.show_id]?.conflictNotifiedEpoch = nil
+            showRuntime[show.show_id]?.missedStartNotifiedEpoch = nil
             return
         }
         guard diskOK(for: show) else {
@@ -1894,12 +1917,12 @@ final class AppState: ObservableObject {
         // Reset first — fresh attempt — so a marker left over from an earlier attempt on this same
         // show that never reached stopRecording (e.g. LAUNCH ERROR below) can't cause a later,
         // genuinely non-duplicate success to be misread as "this is the one that used the override".
-        duplicateOverrideUsedThisAttempt.remove(show.show_id)
+        showRuntime[show.show_id]?.duplicateOverrideUsedThisAttempt = false
         if let tag = episodeTag,
            duplicateEpisodeTag(title: show.show_title, episodeTag: tag, baseDir: show.posixRecordDir,
                                 expectedMinutes: show.show_length) != nil {
             if show.show_ignore_duplicate_once {
-                duplicateOverrideUsedThisAttempt.insert(show.show_id)
+                showRuntime[show.show_id, default: ShowRuntimeState()].duplicateOverrideUsedThisAttempt = true
             } else {
                 glog("[\(show.show_title)] SKIP \(tag) — already recorded")
                 notify("Recording Skipped", body: show.show_title, subtitle: "\(tag) already recorded")
@@ -1963,7 +1986,7 @@ final class AppState: ObservableObject {
             return
         }
         shows[index].show_recording = true; shows[index].show_recording_path = path
-        failedThisAttempt.remove(show.show_id) // fresh attempt — any earlier FAIL no longer describes "this" recording
+        showRuntime[show.show_id]?.failedThisAttempt = false // fresh attempt — any earlier FAIL no longer describes "this" recording
         // Fire-and-forget off @MainActor — nothing after this reads the sidecar file, and its own
         // doc comment already treats a write failure as best-effort/non-fatal, so there's nothing
         // for the caller to await.
@@ -1984,24 +2007,25 @@ final class AppState: ObservableObject {
         // Capture message ID so completion/failure can edit this embed in-place.
         // Skip the Discord embed on the first relaunch after a quit-interrupted recording —
         // the startup "Recording Interrupted" embed already covered this session.
-        let resumedAfterQuit = suppressStartDiscord.remove(show.show_id) != nil
+        let resumedAfterQuit = showRuntime[show.show_id]?.suppressStartDiscord == true
+        showRuntime[show.show_id]?.suppressStartDiscord = false
         // Defer the "Recording Started" embed until the first idle-loop tick confirms the process
         // is still alive — avoids a Discord ping for a recording that fails in the first few seconds.
         if !resumedAfterQuit, config.Discord_on_start, config.Discord_enabled, !config.Discord_webhook_url.isEmpty {
-            pendingDiscordStart.insert(show.show_id)
+            showRuntime[show.show_id, default: ShowRuntimeState()].pendingDiscordStart = true
         }
     }
 
     func skipRecording(showId: String) async {
         guard let i = shows.firstIndex(where: { $0.show_id == showId }) else { return }
         glog("[\(shows[i].show_title)] SKIP — paused until next airing")
-        pendingDiscordStart.remove(showId)
+        showRuntime[showId]?.pendingDiscordStart = false
         recordingManager.stop(showId: showId)
         VLCPlayerWindowManager.shared.closeIfPlaying(showId: shows[i].show_id, url: shows[i].show_url)
         tunerStatus.removeValue(forKey: showId)
         // Clear signalDropoutTicks too, matching teardownRecordingState — skip doesn't route
         // through teardown, so otherwise a dropout tick count would linger past the skip.
-        signalDropoutTicks.removeValue(forKey: showId)
+        showRuntime[showId]?.signalDropoutTicks = 0
         shows[i].show_recording = false
         shows[i].show_last = Date()
         shows[i].show_paused = true
@@ -2016,7 +2040,7 @@ final class AppState: ObservableObject {
         let show = shows[index]
         recordingManager.stop(showId: show.show_id)
         tunerStatus.removeValue(forKey: show.show_id)
-        signalDropoutTicks.removeValue(forKey: show.show_id)
+        showRuntime[show.show_id]?.signalDropoutTicks = 0
         shows[index].show_recording = false
         shows[index].show_tuner_resource = ""
         // Optimistically clear this tuner's hardware-reported lock so the immediate broadcast
@@ -2054,11 +2078,11 @@ final class AppState: ObservableObject {
 
         if !natural {
             glog("[\(show.show_title)] STOP manual")
-            pendingDiscordStart.remove(show.show_id) // embed not yet sent; discard pending
+            showRuntime[show.show_id]?.pendingDiscordStart = false // embed not yet sent; discard pending
             shows[index].show_paused = true
             shows[index].show_fail_reason = "Manually stopped"
-            conflictNotifiedEpochs.removeValue(forKey: show.show_id)
-            missedStartNotifiedEpochs.removeValue(forKey: show.show_id)
+            showRuntime[show.show_id]?.conflictNotifiedEpoch = nil
+            showRuntime[show.show_id]?.missedStartNotifiedEpoch = nil
             saveConfig()
             pushShowUpdate(type: "show_updated", channel: show.show_channel, device: show.hdhr_record, rebuildMenu: false)
             return
@@ -2076,7 +2100,8 @@ final class AppState: ObservableObject {
             // tell "this attempt already failed" from "count hasn't fully decayed from an
             // unrelated failure several episodes ago," since a success only decrements the count
             // without clearing the reason.
-            let hadFailThisAttempt = failedThisAttempt.remove(show.show_id) != nil
+            let hadFailThisAttempt = showRuntime[show.show_id]?.failedThisAttempt == true
+            showRuntime[show.show_id]?.failedThisAttempt = false
             let underlying = hdhrReason ?? (hadFailThisAttempt ? show.show_fail_reason : nil)
             let emptyFileDetail = "output file missing or empty"
             let reason: String
@@ -2120,7 +2145,8 @@ final class AppState: ObservableObject {
                 // on the flag being on — otherwise turning it on ahead of time and having it "spend
                 // itself" on some unrelated, non-duplicate recording would leave the real rerun
                 // un-protected later.
-                if duplicateOverrideUsedThisAttempt.remove(show.show_id) != nil {
+                if showRuntime[show.show_id]?.duplicateOverrideUsedThisAttempt == true {
+                    showRuntime[show.show_id]?.duplicateOverrideUsedThisAttempt = false
                     shows[index].show_ignore_duplicate_once = false
                     glog("[\(show.show_title)] OVERRIDE CLEARED — duplicate-recording override used up")
                     // Flips the exact flag WebServer's willSkip reads for the green/gold corner
@@ -2237,8 +2263,8 @@ final class AppState: ObservableObject {
         var idx = index
         // Keys are "showId-epoch" — once show_next advances the old key is stale.
         // Remove on every reschedule so the set doesn't accumulate indefinitely.
-        conflictNotifiedEpochs.removeValue(forKey: show.show_id)
-        missedStartNotifiedEpochs.removeValue(forKey: show.show_id)
+        showRuntime[show.show_id]?.conflictNotifiedEpoch = nil
+        showRuntime[show.show_id]?.missedStartNotifiedEpoch = nil
         switch show.state {
         case .single:
             glog("[\(show.show_title)] DONE single — deactivated")
@@ -2526,7 +2552,7 @@ final class AppState: ObservableObject {
     private func applyResume(index i: Int, broadcast: Bool = true) {
         shows[i].show_paused = false
         shows[i].clearFailures()
-        showRetryAfter.removeValue(forKey: shows[i].show_id)
+        showRuntime[shows[i].show_id]?.retryAfter = nil
         // Re-arm the "Up Next"/"Recording Soon" pre-notifications — see ISSUES.md's 2026-08-19
         // entry. A cooldown timestamp set before the pause (or simply stale after a long pause)
         // could otherwise wrongly suppress the notification for the airing that's actually next
@@ -2570,25 +2596,18 @@ final class AppState: ObservableObject {
         shows.removeAll { $0.show_id == show.show_id }
         // Purge every show_id-keyed side table — show_id is never reused, so leaving entries
         // behind here would grow these dictionaries/sets without bound over a long-running
-        // session as shows are added and deleted over time.
-        showRetryAfter.removeValue(forKey: show.show_id)
-        conflictNotifiedEpochs.removeValue(forKey: show.show_id)
-        missedStartNotifiedEpochs.removeValue(forKey: show.show_id)
-        pendingDiscordStart.remove(show.show_id)
-        failedThisAttempt.remove(show.show_id)
-        duplicateOverrideUsedThisAttempt.remove(show.show_id)
-        suppressStartDiscord.remove(show.show_id)
-        // Clear unconditionally (not just via teardownRecordingState) — a non-recording delete
+        // session as shows are added and deleted over time. One removal now instead of a
+        // dictionary-by-dictionary checklist (see ShowRuntimeState's own doc comment).
+        // Safe to drop unconditionally even if a discordCardTask send for this show is still
+        // running — removing the dict entry doesn't affect an already-started Task, it only stops
+        // a future call from chaining behind it (and there won't be one for a deleted show).
+        showRuntime.removeValue(forKey: show.show_id)
+        // Cleared unconditionally (not just via teardownRecordingState) — a non-recording delete
         // takes the else branch above and skips teardown, so without this a show that was skipped
-        // mid-dropout (skipRecording leaves signalDropoutTicks set) then deleted would leak these
-        // show_id-keyed entries for the session. Harmless if teardown already removed them.
+        // mid-dropout (skipRecording leaves tunerStatus set) then deleted would leak this
+        // show_id-keyed entry for the session. Harmless if teardown already removed it. tunerStatus
+        // stays its own dict (not folded into showRuntime — see that struct's doc comment).
         tunerStatus.removeValue(forKey: show.show_id)
-        signalDropoutTicks.removeValue(forKey: show.show_id)
-        // Safe to drop unconditionally even if a send for this show is still running — removing
-        // the dict entry doesn't affect an already-started Task, it only stops a future call from
-        // chaining behind it (and there won't be one for a deleted show).
-        discordCardTasks.removeValue(forKey: show.show_id)
-        discordEpisodeSnapshots.removeValue(forKey: show.show_id)
         saveConfig()
         pushShowUpdate(type: "show_deleted", channel: show.show_channel, device: show.hdhr_record)
     }
@@ -2649,7 +2668,7 @@ final class AppState: ObservableObject {
 
     func resetAllFailCounts() {
         for i in shows.indices { shows[i].clearFailures() }
-        showRetryAfter.removeAll()
+        for id in showRuntime.keys { showRuntime[id]?.retryAfter = nil }
         saveConfig()
     }
 
@@ -2669,7 +2688,7 @@ final class AppState: ObservableObject {
             else if !shows[i].show_active { shows[i].show_active = true }
             shows[i].clearFailures()
         }
-        showRetryAfter.removeAll()
+        for id in showRuntime.keys { showRuntime[id]?.retryAfter = nil }
         saveConfig()
     }
 
@@ -3145,7 +3164,7 @@ final class AppState: ObservableObject {
         // wrong episode (or nothing at all). No snapshot exists yet for events that fire before a
         // recording starts (Show Added, Up Next, Recording Soon, Tuner Conflict) — those still
         // resolve live, which is correct since show_next is accurate at that point.
-        let snapshot = discordEpisodeSnapshots[show.show_id]
+        let snapshot = showRuntime[show.show_id]?.discordEpisodeSnapshot
             ?? discordEpisodeSnapshot(entry: guideEntryForShow(show), show: show)
 
         let channel = guideStore.channels(deviceId: show.hdhr_record)
@@ -3230,28 +3249,28 @@ final class AppState: ObservableObject {
         }
     }
 
-    // Per-show serialization for lifecycle-card sends: each new call for a show_id chains behind
-    // whatever call is already running for that same show_id, so at most one discordRecordingCard
-    // is ever actually in flight per show. Without this, two events racing for the same show —
-    // e.g. a "Recording Started" confirmation firing while a fail-threshold "Paused" card from
-    // the previous attempt is still awaiting a slow webhook's CREATE round trip — could both
-    // observe discord_start_msg_id empty, each capture their own new message id, and the loser's
-    // card becomes a permanent orphan (or a later id-clear stomps a card a concurrent send just
-    // made). Mirrors ensureLineupLoaded's Task-caching idiom (loadingLineupTasks) rather than a
-    // busy-poll: no latency floor waiting for a lock, and clearing a stale dict entry (deleteShow)
-    // can never race a still-running send, since nothing here treats presence-in-dict as a lock.
-    var discordCardTasks: [String: Task<Void, Never>] = [:]
-
     /// Fires a Discord lifecycle card update from a detached, per-show-chained Task so a slow/hung
     /// webhook can't stall the idle loop's per-tick show processing. Pass `clearIdAfter: true` for
     /// terminal events (paused, empty-output-file failure) so the next airing's attempt starts a
     /// fresh card — safe to clear unconditionally here because the chain guarantees this is the
     /// only send touching `discord_start_msg_id` for this show at that moment.
+    ///
+    /// Chained (via `showRuntime[showId].discordCardTask`) rather than locked: each new call for a
+    /// show_id chains behind whatever call is already running for that same show_id, so at most
+    /// one `discordRecordingCard` is ever actually in flight per show. Without this, two events
+    /// racing for the same show — e.g. a "Recording Started" confirmation firing while a
+    /// fail-threshold "Paused" card from the previous attempt is still awaiting a slow webhook's
+    /// CREATE round trip — could both observe `discord_start_msg_id` empty, each capture their own
+    /// new message id, and the loser's card becomes a permanent orphan (or a later id-clear stomps
+    /// a card a concurrent send just made). Mirrors `ensureLineupLoaded`'s Task-caching idiom
+    /// (`loadingLineupTasks`) rather than a busy-poll: no latency floor waiting for a lock, and
+    /// clearing a stale entry (`deleteShow`) can never race a still-running send, since nothing
+    /// here treats presence-in-`showRuntime` as a lock.
     private func fireDiscordCard(showId: String, event: String, color: Int, enabled: Bool,
                                  extra: [(name: String, value: String, inline: Bool)] = [],
                                  clearIdAfter: Bool = false) {
-        let previous = discordCardTasks[showId]
-        discordCardTasks[showId] = Task { @MainActor in
+        let previous = showRuntime[showId]?.discordCardTask
+        showRuntime[showId, default: ShowRuntimeState()].discordCardTask = Task { @MainActor in
             _ = await previous?.value
             await self.discordRecordingCard(showId: showId, event: event, color: color, enabled: enabled, extra: extra)
             if clearIdAfter {
@@ -3260,7 +3279,7 @@ final class AppState: ObservableObject {
                 }
                 // Same lifecycle boundary as discord_start_msg_id — the next airing's attempt
                 // captures a fresh snapshot when its own "Recording Started" card fires.
-                self.discordEpisodeSnapshots.removeValue(forKey: showId)
+                self.showRuntime[showId]?.discordEpisodeSnapshot = nil
             }
             self.saveConfig()
         }
@@ -3701,12 +3720,12 @@ final class AppState: ObservableObject {
                 ChannelSignalStore.shared.record(guideName: entry.GuideName, snq: statusSnq)
             }
             if statusSnq < 30 {
-                let ticks = (signalDropoutTicks[show.show_id] ?? 0) + 1
-                signalDropoutTicks[show.show_id] = ticks
+                let ticks = (showRuntime[show.show_id]?.signalDropoutTicks ?? 0) + 1
+                showRuntime[show.show_id, default: ShowRuntimeState()].signalDropoutTicks = ticks
                 if ticks == 2 { sendSignalAlert(show: show, snq: statusSnq, isRecovery: false) }
             } else {
-                let wasDown = (signalDropoutTicks[show.show_id] ?? 0) >= 2
-                signalDropoutTicks[show.show_id] = 0
+                let wasDown = (showRuntime[show.show_id]?.signalDropoutTicks ?? 0) >= 2
+                showRuntime[show.show_id]?.signalDropoutTicks = 0
                 if wasDown { sendSignalAlert(show: show, snq: statusSnq, isRecovery: true) }
             }
 
