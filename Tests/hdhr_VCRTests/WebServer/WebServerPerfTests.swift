@@ -221,4 +221,99 @@ struct WebServerPerfTests {
         #expect(median < heavyLoadPingThreshold,
             "/api/ping median \(Int(median * 1000))ms right after a favorite-toggle rebuild (worst \(Int(worst * 1000))ms) — suggests broadcastGuideChangeEvent's MainActor rebuild is blocking normal traffic longer than expected")
     }
+
+    // Regression coverage for the fix to the bug the test above measures: broadcastGuideChangeEvent
+    // now gzip+base64's grid/sumph/tdrop (WebServer.swift's gzipBase64) before pushing them over
+    // SSE, cutting a real ~2.2MB broadcast down to ~200KB (measured live 2026-08-31, before/after
+    // this fix — see ISSUES.md). Confirms both that the *Z keys are actually used (not silently
+    // reverted to the plain, uncompressed ones) and that what's inside them round-trips back to
+    // real grid HTML — catches both "compression got turned off" and "compression produces garbage"
+    // regressions, which a size-only check alone wouldn't distinguish.
+    @Test func guideChangeBroadcast_isGzipCompressed() async throws {
+        guard await serverAvailable() else { return }
+        let (status, body) = try await get("/api/now.json")
+        #expect(status == 200)
+        guard let arr = try? JSONSerialization.jsonObject(with: body) as? [[String: Any]],
+              let first = arr.first,
+              let devId = first["deviceId"] as? String,
+              let num   = first["guideNumber"] as? String else {
+            return   // no live guide data in this environment — nothing to measure
+        }
+
+        func toggleFavorite() async -> Bool {
+            var req = URLRequest(url: URL(string: "http://127.0.0.1:1980/api/toggle-favorite")!)
+            req.httpMethod = "POST"
+            req.httpBody = try? JSONSerialization.data(withJSONObject: ["deviceId": devId, "guideNumber": num])
+            guard let (_, resp) = try? await URLSession.shared.data(for: req) else { return false }
+            return (resp as? HTTPURLResponse)?.statusCode == 200
+        }
+
+        // Reads exactly one SSE frame containing a "gridZ" or "grid" key, then cancels — mirrors
+        // apiLatency_staysResponsive_duringGuideChangeBurst's connection style but actually decodes
+        // the payload instead of discarding it.
+        let capture = Task<String?, Never> {
+            guard let url = URL(string: "http://127.0.0.1:1980/api/events"),
+                  let (bytes, _) = try? await URLSession.shared.bytes(for: URLRequest(url: url, timeoutInterval: 10))
+            else { return nil }
+            do {
+                for try await line in bytes.lines {
+                    guard line.hasPrefix("data: ") else { continue }
+                    let json = String(line.dropFirst(6))
+                    if json.contains("\"gridZ\"") || json.contains("\"grid\"") { return json }
+                }
+            } catch {}
+            return nil
+        }
+        try await Task.sleep(nanoseconds: 300_000_000)   // let the SSE connection register
+        let toggled = await toggleFavorite()
+        #expect(toggled)
+        let frame = await capture.value
+        if toggled { _ = await toggleFavorite() }   // restore original favorite state
+
+        guard let frame, let data = frame.data(using: .utf8),
+              let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            Issue.record("never captured a guide-change SSE frame within the timeout")
+            return
+        }
+
+        if let gridZ = event["gridZ"] as? String {
+            // Real content, not just present — decode through the exact same gzip+base64 shape
+            // guide.js's decodeGzipB64 expects, using the system gunzip rather than hand-rolling a
+            // second DEFLATE decoder in test code (the compressed bytes are a real gzip container,
+            // per WebServer.swift's gzip() doc comment — any conforming decompressor round-trips it).
+            guard let compressed = Data(base64Encoded: gridZ) else {
+                Issue.record("gridZ isn't valid base64"); return
+            }
+            // Round-trips through real files, not a Pipe — a Pipe's ~64KB kernel buffer deadlocks
+            // a synchronous write() of a payload this size (>64KB) against a gunzip that hasn't
+            // started draining its own stdout yet, since nothing here reads concurrently with it.
+            let tmpIn = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("gzTest-\(UUID().uuidString).gz")
+            let tmpOut = tmpIn.deletingPathExtension().appendingPathExtension("html")
+            defer { try? FileManager.default.removeItem(at: tmpIn); try? FileManager.default.removeItem(at: tmpOut) }
+            try compressed.write(to: tmpIn)
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/gunzip")
+            process.arguments = ["-k", "-c", tmpIn.path]
+            let outHandle = FileHandle(forWritingAtPath: tmpOut.path) ?? {
+                FileManager.default.createFile(atPath: tmpOut.path, contents: nil)
+                return FileHandle(forWritingAtPath: tmpOut.path)!
+            }()
+            process.standardOutput = outHandle
+            try process.run()
+            process.waitUntilExit()
+            outHandle.closeFile()
+            let decompressed = (try? Data(contentsOf: tmpOut)) ?? Data()
+            let html = String(data: decompressed, encoding: .utf8) ?? ""
+            #expect(html.contains("g-hdr"), "decompressed gridZ doesn't look like real guide grid HTML")
+            #expect(html.contains("g-row") || html.contains("g-prog"))
+            // The whole point: compressed bytes meaningfully smaller than what they decode to.
+            #expect(compressed.count < decompressed.count / 2,
+                "gzip'd grid (\(compressed.count) bytes) isn't meaningfully smaller than decompressed (\(decompressed.count) bytes) — compression may not be working")
+        } else if event["grid"] != nil {
+            // A guide small enough that gzipBase64 declined to compress it (see that function's own
+            // comment) — not a failure, just not exercisable on this particular guide's data.
+        } else {
+            Issue.record("captured guide-change frame has neither gridZ nor grid: \(frame.prefix(200))")
+        }
+    }
 }

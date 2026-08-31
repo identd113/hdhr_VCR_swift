@@ -420,7 +420,45 @@ final class WebServer: @unchecked Sendable {
         let grid = prebuiltGrid ?? buildGuideGridHTML(state: state)
         var event = extra
         event["type"] = type
-        for (k, v) in buildGuideRefreshPayload(state: state, prebuiltGrid: grid) { event[k] = v }
+        let payload = buildGuideRefreshPayload(state: state, prebuiltGrid: grid)
+        // Compress the HTML fragments before pushing over SSE, unlike buildGuideRefreshPayload's
+        // other caller (GET /api/guide-refresh, ~line 945 below) — that's a normal .ok response,
+        // already transparently gzip'd/decompressed by fetch() at the transport level (see send(_:
+        // on:)); broadcastEvent's raw conn.send() has no such layer, and this grid alone runs
+        // ~2.2MB uncompressed on a real guide, pushed to every open tab on every guide-changing
+        // event (ISSUES.md's "web guide feels laggy" finding). New *Z-suffixed keys, not a
+        // recompressed version of grid/sumph/tdrop under the same names, so guide.js can tell which
+        // shape it got; falls back to the plain key when gzipBase64 declines (e.g. too small to
+        // shrink, or base64 inflation would erase the savings) rather than sending a
+        // guaranteed-larger copy.
+        //
+        // gzipBase64 only touches plain Data/String (same reasoning as prebuildPageHTML's own
+        // concurrentPerform use for cachedHTMLGzip/cachedVerticalHTMLGzip), so the grid, sumph, and
+        // every tuner's tdrop fragment compress independently — run them concurrently instead of
+        // stacking N+2 sequential DEFLATE passes on @MainActor for every guide-changing event
+        // (CLAUDE.md's "New cached page variant" note: don't let fragment/variant count multiply
+        // MainActor blocking time).
+        let sumph = payload["sumph"] as? String ?? ""
+        let tdrop = payload["tdrop"] as? [String: String] ?? [:]
+        let tdropDevices = Array(tdrop.keys)
+        let jobs = [grid, sumph] + tdropDevices.map { tdrop[$0]! }
+        struct UncheckedSendableBox<T>: @unchecked Sendable { let ptr: UnsafeMutablePointer<T> }
+        let rawResults = UnsafeMutablePointer<String?>.allocate(capacity: jobs.count)
+        rawResults.initialize(repeating: nil, count: jobs.count)
+        defer { rawResults.deinitialize(count: jobs.count); rawResults.deallocate() }
+        let box = UncheckedSendableBox(ptr: rawResults)
+        DispatchQueue.concurrentPerform(iterations: jobs.count) { i in
+            box.ptr[i] = Self.gzipBase64(jobs[i])
+        }
+
+        if let gz = rawResults[0] { event["gridZ"] = gz } else { event["grid"] = grid }
+        if let gz = rawResults[1] { event["sumphZ"] = gz } else { event["sumph"] = sumph }
+        var tdropZ: [String: String] = [:], tdropPlain: [String: String] = [:]
+        for (i, dev) in tdropDevices.enumerated() {
+            if let gz = rawResults[2 + i] { tdropZ[dev] = gz } else { tdropPlain[dev] = tdrop[dev]! }
+        }
+        if !tdropZ.isEmpty    { event["tdropZ"] = tdropZ }
+        if !tdropPlain.isEmpty { event["tdrop"] = tdropPlain }
         broadcastEvent(event)
         // Keep the cached full-page HTML (served to any new page load) in sync with every
         // guide-changing event, not just the hourly refresh — see broadcastRecordingEvent for
@@ -2372,6 +2410,21 @@ final class WebServer: @unchecked Sendable {
     }
 
     // MARK: - gzip
+
+    // gzip + base64, for embedding compressed HTML inside a JSON string field (broadcastEvent's SSE
+    // frames are plain UTF-8 text — "data: {...}\n\n" — so raw gzip bytes can't go in directly).
+    // Used only for the SSE guide-change broadcast (see broadcastGuideChangeEvent); nil (falls back
+    // to the plain-text field) whenever the underlying gzip() does, e.g. an input too small to
+    // shrink, OR whenever base64 (~4/3 the raw gzip size — what's actually sent, unlike every other
+    // optional-gzip call site in this file which ships raw gzip bytes) would end up no smaller than
+    // the plain text it's replacing — matching this function's own contract of never forcing a
+    // guaranteed-larger encoded copy of a payload.
+    private static func gzipBase64(_ s: String) -> String? {
+        guard let gz = gzip(Data(s.utf8)) else { return nil }
+        let b64 = gz.base64EncodedString()
+        guard b64.utf8.count < s.utf8.count else { return nil }
+        return b64
+    }
 
     // Wraps libcompression's raw DEFLATE output in a gzip container
     // (10-byte header + CRC-32 + input-size trailer). Returns nil if

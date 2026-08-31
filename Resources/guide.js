@@ -530,6 +530,18 @@ function confirmRecord(){
     var note=document.getElementById('sum-note');note.textContent=msg;note.style.color=isLM()?'#cc2020':'#ff8080';note.style.display='inline';
   });
 }
+// Decodes one gzip+base64'd string back to plain text — counterpart to WebServer.swift's
+// gzipBase64(_:), used only for the SSE guide-change broadcast's *Z-suffixed fields (see that
+// function's own comment for why: unlike GET /api/guide-refresh, a plain HTTP response the browser
+// already transparently gzip-decodes via fetch(), the persistent SSE connection has no such layer).
+// Returns a Promise<string>; requires DecompressionStream (broadly supported since ~2023 — Chrome/
+// Edge 80+, Safari 16.4+, Firefox 113+), checked by the one call site below before this is ever called.
+function decodeGzipB64(b64){
+  var bin=atob(b64),bytes=new Uint8Array(bin.length);
+  for(var i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
+  var stream=new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+  return new Response(stream).text();
+}
 // Applies a {grid,sumph,tdrop} payload to the DOM — shared by refreshGuide()'s fetch
 // response and the SSE-pushed guide-change events (which carry the same shape so a
 // rebuild triggered by a state change happens once server-side, not once per open tab).
@@ -1643,6 +1655,27 @@ setInterval(updateNowLine,60000);
           if(sig){sig.replaceWith(tmp.firstChild);}
           else{var cn=row.querySelector('.g-cn');if(cn)cn.appendChild(tmp.firstChild);}
         });
+      } else if(d.gridZ||d.sumphZ||d.tdropZ){
+        // Compressed guide-change event — broadcastGuideChangeEvent gzip+base64's whatever of
+        // grid/sumph/tdrop actually shrank (see its own comment in WebServer.swift), falling back
+        // per-field to the plain key when it didn't, so any mix of *Z/plain keys can appear
+        // together. Decode whichever *Z keys are present, fall back to the plain d.grid/d.sumph
+        // string when its *Z sibling is absent, then hand the reassembled plain {grid,sumph,tdrop}
+        // shape to the same applyGuidePayload the plain branch below uses. Falls back to a full
+        // refreshGuide() fetch (a normal HTTP response, decompressed by fetch() at the transport
+        // level regardless of this browser's DecompressionStream support) when that API is missing,
+        // rather than silently doing nothing until the next reload.
+        if(!window.DecompressionStream){refreshGuide();return;}
+        var tdropZKeys=Object.keys(d.tdropZ||{});
+        Promise.all([
+          d.gridZ ? decodeGzipB64(d.gridZ) : Promise.resolve(d.grid||''),
+          d.sumphZ ? decodeGzipB64(d.sumphZ) : Promise.resolve(d.sumph||''),
+          Promise.all(tdropZKeys.map(function(k){return decodeGzipB64(d.tdropZ[k]);}))
+        ]).then(function(res){
+          var tdrop=Object.assign({},d.tdrop||{});
+          tdropZKeys.forEach(function(k,i){tdrop[k]=res[2][i];});
+          applyGuidePayload({grid:res[0],sumph:res[1],tdrop:tdrop});
+        }).catch(function(){});
       } else if(d.grid){
         // Guide-change event (guide_refreshed/show_added/show_updated/show_deleted/
         // favorite_toggled) — server already rebuilt the grid once for everyone; apply
