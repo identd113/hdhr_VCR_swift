@@ -38,7 +38,7 @@ struct GuideJSONRecordingTests {
         """
         let session = makeMockSession(GuideJSONMockURLProtocol.self)
         GuideJSONMockURLProtocol.requestHandler = { req in
-            (HTTPResponse(url: req.url!), guideJSON.data(using: .utf8)!)
+            (mockOKResponse(for: req.url!), guideJSON.data(using: .utf8)!)
         }
         let guideStore = GuideStore(session: session)
         await guideStore.load(for: device)
@@ -124,8 +124,4 @@ struct GuideJSONOfflineDeviceTests {
         #expect(devices.count == 1)
         #expect(devices.first?["deviceId"] as? String == "AABBCCDD")
     }
-}
-
-private func HTTPResponse(url: URL) -> HTTPURLResponse {
-    HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!
 }

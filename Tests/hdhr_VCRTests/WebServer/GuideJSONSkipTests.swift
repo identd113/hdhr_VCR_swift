@@ -48,7 +48,7 @@ struct GuideJSONSkipTests {
         """
         let session = makeMockSession(GuideJSONSkipMockURLProtocol.self)
         GuideJSONSkipMockURLProtocol.requestHandler = { req in
-            (HTTPResponse(url: req.url!), guideJSON.data(using: .utf8)!)
+            (mockOKResponse(for: req.url!), guideJSON.data(using: .utf8)!)
         }
         let guideStore = GuideStore(session: session)
         await guideStore.load(for: device)
@@ -120,8 +120,4 @@ struct GuideJSONSkipTests {
         let entry = try await fetchEntry(base: base, skipEnabled: true)
         #expect(entry["isSkipped"] as? Bool == false)
     }
-}
-
-private func HTTPResponse(url: URL) -> HTTPURLResponse {
-    HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!
 }

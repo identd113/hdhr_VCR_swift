@@ -39,7 +39,7 @@ struct GuideJSONNewEpisodeTests {
         """
         let session = makeMockSession(GuideJSONNewEpisodeMockURLProtocol.self)
         GuideJSONNewEpisodeMockURLProtocol.requestHandler = { req in
-            (HTTPResponse(url: req.url!), guideJSON.data(using: .utf8)!)
+            (mockOKResponse(for: req.url!), guideJSON.data(using: .utf8)!)
         }
         let guideStore = GuideStore(session: session)
         await guideStore.load(for: device)
@@ -56,8 +56,4 @@ struct GuideJSONNewEpisodeTests {
         #expect(new["isNew"] as? Bool == true)
         #expect(old["isNew"] as? Bool == false, "an entry with no OriginalAirdate at all must never be flagged new")
     }
-}
-
-private func HTTPResponse(url: URL) -> HTTPURLResponse {
-    HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!
 }
