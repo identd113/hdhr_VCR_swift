@@ -992,15 +992,18 @@ func render() {
                     // something you have to spot.
                     let bg = genreBackground(e.genre)
                     let (statusColor, badge) = statusColorAndBadge(e, fallbackColor: "\u{1B}[97m")
+                    // Same green as guide.css's .g-new-tag (#27ae60) — the web guide's "NEW" title pill.
+                    let newBadge = e.isNew ? "\u{1B}[38;2;39;174;96mNEW \u{1B}[0m" : ""
                     var used = badge.isEmpty ? 0 : 2
+                    if e.isNew { used += 4 }
                     if isSel { used += 2 }   // the embedded "||" below
 
                     let titleWidth = max(0, labelWidth - used)
                     let title = pad(truncate(e.title, titleWidth), titleWidth)
                     if isSel {
-                        line += bg + badge + outline + "|" + statusColor + title + outline + "|" + reset
+                        line += bg + badge + newBadge + outline + "|" + statusColor + title + outline + "|" + reset
                     } else {
-                        line += bg + badge + statusColor + title + reset
+                        line += bg + badge + newBadge + statusColor + title + reset
                     }
                 }
             } else {

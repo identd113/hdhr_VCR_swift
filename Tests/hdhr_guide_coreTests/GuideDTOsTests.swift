@@ -93,6 +93,31 @@ struct GuideDTOsTests {
         #expect(entry.isSkipped == false)
     }
 
+    @Test func decodesIsNewWhenPresent() throws {
+        let payload = try decode("""
+        {"deviceId":"AABBCCDD","winStart":1000,"winSec":86400,"devices":[],"channels":[
+         {"guideNumber":"5.1","guideName":"KVUE","hd":true,"favorite":false,
+          "entries":[{"title":"Brand New Episode","startTime":2000,"endTime":3000,
+                      "isRecording":false,"isScheduled":false,"isNew":true}]}]}
+        """)
+        let entry = try #require(payload.channels.first?.entries.first)
+        #expect(entry.isNew == true)
+    }
+
+    // Added after the field was first shipped, same reasoning as isSkipped's own default above —
+    // an old server simply never reports an entry as new, so this must default to `false`, not
+    // fail the whole entry's decode.
+    @Test func missingIsNewDefaultsFalse() throws {
+        let payload = try decode("""
+        {"deviceId":"AABBCCDD","winStart":1000,"winSec":86400,"devices":[],"channels":[
+         {"guideNumber":"5.1","guideName":"KVUE","hd":true,"favorite":false,
+          "entries":[{"title":"Old Rerun","startTime":2000,"endTime":3000,
+                      "isRecording":false,"isScheduled":false}]}]}
+        """)
+        let entry = try #require(payload.channels.first?.entries.first)
+        #expect(entry.isNew == false)
+    }
+
     @Test func missingRequiredFieldThrows() {
         // "deviceId" is required, not decode-fallback — a payload missing it is a real server bug,
         // not a version-skew case, so this should fail to decode rather than silently default.

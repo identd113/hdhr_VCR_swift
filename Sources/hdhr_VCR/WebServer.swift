@@ -1575,6 +1575,30 @@ final class WebServer: @unchecked Sendable {
             .filter { $0.StartTime < winEnd }
     }
 
+    // New-episode detection: OriginalAirdate falls on local "today", or on local "tomorrow" for an
+    // entry airing in the early-morning tomorrow slot (a late-night show whose air date is already
+    // tomorrow by midnight). Anchors computed once per call, reused per entry via the returned
+    // closure — shared by buildGuideGridHTML (the .g-new-tag title pill) and buildGuideJSON's
+    // isNew field so the two can't compute this differently.
+    @MainActor
+    private func newEpisodeTest(now: Date = Date()) -> (GuideEntry) -> Bool {
+        var utcCal = Calendar(identifier: .gregorian)
+        utcCal.timeZone = TimeZone(identifier: "UTC")!
+        let localCal       = Calendar.current
+        let todayComps     = localCal.dateComponents([.year, .month, .day], from: now)
+        let tomorrowStart  = localCal.startOfDay(for: localCal.date(byAdding: .day, value: 1, to: now)!)
+        let tomorrowComps  = localCal.dateComponents([.year, .month, .day], from: tomorrowStart)
+        let tomorrowMidUTC = Int(tomorrowStart.timeIntervalSince1970)
+        let tomorrowEnd    = Int(tomorrowStart.addingTimeInterval(5 * 3600).timeIntervalSince1970)
+        return { entry in
+            guard let oad = entry.OriginalAirdate else { return false }
+            let oadComps = utcCal.dateComponents([.year, .month, .day], from: Date(timeIntervalSince1970: TimeInterval(oad)))
+            if oadComps == todayComps { return true }
+            if oadComps == tomorrowComps && entry.StartTime >= tomorrowMidUTC && entry.StartTime < tomorrowEnd { return true }
+            return false
+        }
+    }
+
     // Skip-already-recorded: each managed series' on-disk SxxExx tags, one dir scan per series —
     // shared by buildGuideGridHTML (via cachedRecordedTagsByShow) and buildGuideJSON's willSkip
     // gating so the two can't compute this differently.
@@ -1612,16 +1636,9 @@ final class WebServer: @unchecked Sendable {
             return "<div class=\"g-tick\" style=\"--gs:\(pct(ts - winStart))%\">\(lbl)</div>"
         }.joined() + "<div class=\"g-now-tick\" style=\"--gs:\(nowPct)%\"></div>"
 
-        // ── New-episode detection anchors (computed once, reused per entry in the grid loop) ──
-        let nowDate = Date()
-        var _newUTCCal = Calendar(identifier: .gregorian)
-        _newUTCCal.timeZone = TimeZone(identifier: "UTC")!
-        let _newLocalCal       = Calendar.current
-        let _newTodayComps     = _newLocalCal.dateComponents([.year, .month, .day], from: nowDate)
-        let _newTomorrowStart  = _newLocalCal.startOfDay(for: _newLocalCal.date(byAdding: .day, value: 1, to: nowDate)!)
-        let _newTomorrowComps  = _newLocalCal.dateComponents([.year, .month, .day], from: _newTomorrowStart)
-        let _newTomorrowMidUTC = Int(_newTomorrowStart.timeIntervalSince1970)
-        let _newTomorrowEnd    = Int(_newTomorrowStart.addingTimeInterval(5 * 3600).timeIntervalSince1970)
+        // New-episode detection (computed once, reused per entry in the grid loop) — see
+        // newEpisodeTest's own comment.
+        let isNewTest = newEpisodeTest()
 
         // ── Managed show lookups ───────────────────────────────────────────────
         // AppState.activeRecordingChannels/pendingRecordingChannels — same shared definition
@@ -1800,15 +1817,7 @@ final class WebServer: @unchecked Sendable {
                     let subH  = sub.isEmpty ? "" : "<span class=\"g-sub\">\(he(sub))</span>"
 
                     let filtersAttr = (e.Filter ?? []).joined(separator: ",")
-                    let isNew: Bool = {
-                        guard let oad = e.OriginalAirdate else { return false }
-                        let oadC = _newUTCCal.dateComponents([.year, .month, .day],
-                                       from: Date(timeIntervalSince1970: TimeInterval(oad)))
-                        if oadC == _newTodayComps { return true }
-                        if oadC == _newTomorrowComps &&
-                           e.StartTime >= _newTomorrowMidUTC && e.StartTime < _newTomorrowEnd { return true }
-                        return false
-                    }()
+                    let isNew = isNewTest(e)
                     let newAttr     = isNew ? " data-new=\"1\"" : ""
                     // Skip state is shown by a distinct corner flag (below), not a title pill.
                     let skipAttr    = willSkip ? " data-skip=\"1\"" : ""
@@ -2163,6 +2172,9 @@ final class WebServer: @unchecked Sendable {
             // episode is already on disk (Series subfolders + Skip already-recorded episodes both
             // on). Always false when isRecording (see willSkip below) or when isScheduled is false.
             var isSkipped: Bool
+            // Mirrors buildGuideGridHTML's isNew / the web guide's .g-new-tag title pill — see
+            // newEpisodeTest's own comment.
+            var isNew: Bool
         }
         struct GuidePayload: Encodable {
             var deviceId: String
@@ -2248,6 +2260,7 @@ final class WebServer: @unchecked Sendable {
         // entry's own time span to cover *now* (`isNow`, same test buildGuideGridHTML's own
         // `isEntryRec` uses) — see issues_resolved.md.
         let nowTs = Int(Date().timeIntervalSince1970)
+        let isNewTest = newEpisodeTest()
         let recChannels = state.activeRecordingChannels(for: device.DeviceID)
             .union(state.pendingRecordingChannels(for: device.DeviceID))
 
@@ -2294,7 +2307,8 @@ final class WebServer: @unchecked Sendable {
                     isRecording: isRec,
                     isScheduled: owner != nil,
                     scheduledShowId: owner?.show_id,
-                    isSkipped: willSkip
+                    isSkipped: willSkip,
+                    isNew: isNewTest(entry)
                 )
             }
             return GuideChannel(guideNumber: ch.GuideNumber, guideName: ch.GuideName,

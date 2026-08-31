@@ -558,16 +558,29 @@ to build this without a new endpoint — just needs client-side aggregation acro
 entries into a separate list screen (a natural companion to the type-ahead/jump-to-next idea above).
 
 **No skip-already-recorded (duplicate) indicator — DONE.** `/api/guide.json`'s `GuideEntryJSON` now
-carries `isSkipped` (`WebServer.swift`'s `buildGuideJSON`), computed with the same one-scan-per-
-series `recordedEpisodeTags` precompute and the same `willSkip` guard shape (Series subfolders +
+carries `isSkipped` (`WebServer.swift`'s `buildGuideJSON`), computed via the same shared
+`computeRecordedTagsByShow` precompute and the same `willSkip` guard shape (Series subfolders +
 Skip already-recorded episodes both on, episode tag matches `^S\d+E\d+$`, not the airing currently
 recording, `show_ignore_duplicate_once` not armed) that `buildGuideGridHTML`'s slate `.g-st-skip`
-ring/⏭ badge already uses — kept as an independent precompute rather than shared code, since the two
-build from different intermediate row structures and this is the only field either needs from it.
-`GuideEntryDTO` (`hdhr_guide_core/GuideDTOs.swift`) decodes it with a `false` fallback for an old
-server that predates the field, same idiom as `GuidePayload`'s `sportsPaddingEnabled`/
-`terminalGuideEnabled`. `hdhr_guide` shows it with the same "o"-glyph-plus-recolor language as
-recording/scheduled (slate, matching `guide.css`'s `--vc-skip` RGB exactly), at the same precedence
-web guide uses — recording beats skip beats scheduled — across every place those two already render
-(grid tiles, the adaptive summary panel, the Enter-to-schedule/manage summary screen, and the
-type-ahead search results list).
+ring/⏭ badge uses — the two share the actual scan (and its cache) rather than each recomputing it,
+so they can't drift apart. `GuideEntryDTO` (`hdhr_guide_core/GuideDTOs.swift`) decodes it with a
+`false` fallback for an old server that predates the field, same idiom as `GuidePayload`'s
+`sportsPaddingEnabled`/`terminalGuideEnabled`. `hdhr_guide` shows it with the same
+"o"-glyph-plus-recolor language as recording/scheduled (slate, matching `guide.css`'s `--vc-skip`
+RGB exactly), at the same precedence web guide uses — recording beats skip beats scheduled — across
+every place those two already render (grid tiles, the adaptive summary panel, the
+Enter-to-schedule/manage summary screen, and the type-ahead search results list) via one shared
+`statusColorAndBadge(_:fallbackColor:)` helper (`main.swift`).
+
+**No NEW-episode indicator — DONE.** `/api/guide.json`'s `GuideEntryJSON` now carries `isNew`
+(`WebServer.swift`'s `buildGuideJSON`), computed via the same shared `newEpisodeTest()` closure
+factory `buildGuideGridHTML`'s green `.g-new-tag` title pill uses (`OriginalAirdate` falls on local
+"today", or the early-morning "tomorrow" slot for a late-night show) — not the simpler, uncached
+`isNewEpisode(_:)` in `GuideViewHelpers.swift` that `AppState`'s New-Only scheduling check and
+`WatchNowView`'s badge use elsewhere, which recomputes its calendar anchors on every call; a
+1300+-entry grid/JSON pass needs those anchors computed once and reused, the same reason
+`willSkip`'s scan is precomputed rather than looked up per entry. `GuideEntryDTO` decodes it with a
+`false` fallback, same idiom as `isSkipped`. `hdhr_guide` shows it only in the grid tiles (not yet
+the summary panel/search results/full-screen record view) — a green `NEW ` prefix ahead of the
+title, budgeted into the title-truncation width the same way the status badge already is, colored to
+match `guide.css`'s `.g-new-tag` background (`#27ae60`).

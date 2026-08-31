@@ -44,6 +44,9 @@ public struct GuideEntryDTO: Decodable {
     // re-checking isScheduled themselves, so this type enforces the invariant at the decode
     // boundary rather than trusting the server to never send the two out of sync.
     public let isSkipped: Bool
+    // Mirrors buildGuideGridHTML's isNew / the web guide's green .g-new-tag title pill. Decoded
+    // with a `false` fallback, same idiom as isSkipped above, for an old server predating this field.
+    public let isNew: Bool
 
     public var startDate: Date { Date(timeIntervalSince1970: TimeInterval(startTime)) }
     public var endDate: Date { Date(timeIntervalSince1970: TimeInterval(endTime)) }
@@ -63,6 +66,7 @@ public struct GuideEntryDTO: Decodable {
         isScheduled = try c.decode(Bool.self, forKey: .isScheduled)
         scheduledShowId = try c.decodeIfPresent(String.self, forKey: .scheduledShowId)
         isSkipped = isScheduled && ((try? c.decode(Bool.self, forKey: .isSkipped)) ?? false)
+        isNew = (try? c.decode(Bool.self, forKey: .isNew)) ?? false
     }
 
     // `internal`, not `public`, and deliberately so: this exists only for hdhr_guide_coreTests
@@ -76,7 +80,7 @@ public struct GuideEntryDTO: Decodable {
                 synopsis: String? = nil, seriesId: String? = nil, genre: String? = nil,
                 tags: [String]? = nil, startTime: Int, endTime: Int,
                 isRecording: Bool = false, isScheduled: Bool = false, scheduledShowId: String? = nil,
-                isSkipped: Bool = false) {
+                isSkipped: Bool = false, isNew: Bool = false) {
         self.title = title
         self.episodeTitle = episodeTitle
         self.episodeNumber = episodeNumber
@@ -90,11 +94,12 @@ public struct GuideEntryDTO: Decodable {
         self.isScheduled = isScheduled
         self.scheduledShowId = scheduledShowId
         self.isSkipped = isScheduled && isSkipped
+        self.isNew = isNew
     }
 
     enum CodingKeys: String, CodingKey {
         case title, episodeTitle, episodeNumber, synopsis, seriesId, genre, tags
-        case startTime, endTime, isRecording, isScheduled, scheduledShowId, isSkipped
+        case startTime, endTime, isRecording, isScheduled, scheduledShowId, isSkipped, isNew
     }
 }
 

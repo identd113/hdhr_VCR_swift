@@ -902,10 +902,14 @@ struct GuideEntryJSON: Encodable {
                                         // airing will be silently skipped at record time as an
                                         // on-disk duplicate. Always false unless isScheduled; never
                                         // true together with isRecording. See docs/TUIGuide.md.
+    var isNew: Bool                    // mirrors buildGuideGridHTML's isNew / the web guide's green
+                                        // .g-new-tag title pill — OriginalAirdate falls on local
+                                        // "today" (or the early-morning "tomorrow" slot for a
+                                        // late-night show). See docs/TUIGuide.md.
 }
 ```
 
-Encoded compact (no `.prettyPrinted`) — unlike `/api/now.json`, this carries every entry across the whole guide window for one device, not just on-air ones, so the payload is meaningfully larger per request. `isScheduled` comes from the same `ManagedGuideMatcher` `/api/now.json` and `buildGuideGridHTML` already share (see that struct's own comments) — never reintroduce a parallel lookup here. `isSkipped` is computed independently of `buildGuideGridHTML`'s own `willSkip` (a separate one-scan-per-managed-series `recordedEpisodeTags` precompute, same guard shape) rather than sharing code with it — the two build from different intermediate row structures, and this is the only field either needs from the other's computation.
+Encoded compact (no `.prettyPrinted`) — unlike `/api/now.json`, this carries every entry across the whole guide window for one device, not just on-air ones, so the payload is meaningfully larger per request. `isScheduled` comes from the same `ManagedGuideMatcher` `/api/now.json` and `buildGuideGridHTML` already share (see that struct's own comments) — never reintroduce a parallel lookup here. `isSkipped` and `isNew` both call the same shared functions `buildGuideGridHTML`'s own `willSkip`/`isNew` use (`computeRecordedTagsByShow`/`newEpisodeTest`, see those functions' own comments) rather than recomputing this independently — `computeRecordedTagsByShow`'s per-series disk scan is additionally cached across requests (`cachedRecordedTagsByShow`, refreshed on the same guide-changing events as the HTML grid); `newEpisodeTest`'s calendar-anchor computation is cheap enough to just call fresh per request.
 
 **Channel order is Recording → Favorite → `channelSortKey`**, the same three-tier precedence `buildGuideGridHTML`'s "Recording section"/"Favorites section" use — a single `.sorted(by:)` over the whole lineup, not three concatenated filtered lists, so a channel that's both recording and favorited sorts under Recording only; there's no way for the same channel to appear twice.
 
