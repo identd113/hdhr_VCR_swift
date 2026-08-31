@@ -39,6 +39,10 @@ public struct GuideEntryDTO: Decodable {
     // Decoded with a `false` fallback (not `try c.decode`) as a compatibility default for an old
     // server that predates this field, same idiom as GuidePayload's sportsPaddingEnabled/
     // terminalGuideEnabled below — an old server simply never reports a duplicate as skippable.
+    // Forced false whenever isScheduled is false (see init(from:)) — main.swift's delete/record
+    // keybinding gating and status-tier rendering both assume "skipped implies scheduled" without
+    // re-checking isScheduled themselves, so this type enforces the invariant at the decode
+    // boundary rather than trusting the server to never send the two out of sync.
     public let isSkipped: Bool
 
     public var startDate: Date { Date(timeIntervalSince1970: TimeInterval(startTime)) }
@@ -58,7 +62,7 @@ public struct GuideEntryDTO: Decodable {
         isRecording = try c.decode(Bool.self, forKey: .isRecording)
         isScheduled = try c.decode(Bool.self, forKey: .isScheduled)
         scheduledShowId = try c.decodeIfPresent(String.self, forKey: .scheduledShowId)
-        isSkipped = (try? c.decode(Bool.self, forKey: .isSkipped)) ?? false
+        isSkipped = isScheduled && ((try? c.decode(Bool.self, forKey: .isSkipped)) ?? false)
     }
 
     // `internal`, not `public`, and deliberately so: this exists only for hdhr_guide_coreTests
@@ -85,7 +89,7 @@ public struct GuideEntryDTO: Decodable {
         self.isRecording = isRecording
         self.isScheduled = isScheduled
         self.scheduledShowId = scheduledShowId
-        self.isSkipped = isSkipped
+        self.isSkipped = isScheduled && isSkipped
     }
 
     enum CodingKeys: String, CodingKey {

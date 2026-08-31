@@ -47,6 +47,18 @@ let scheduledBadge  = "\u{1B}[38;2;59;147;255mo "
 let skipColor       = "\u{1B}[1;38;2;138;146;163m"
 let skipBadge       = "\u{1B}[38;2;138;146;163mo "
 
+// Single source of truth for the isRecording > isSkipped > isScheduled tier ordering used
+// everywhere an entry's status color/badge is rendered (grid, summary screen, search results,
+// info panel) — was hand-duplicated as an identical 3-way ternary at each call site, risking a
+// future tier/order change landing in some but not all of them. badge is "" for the unscheduled
+// fallback, matching every call site's own no-badge behavior for a plain entry.
+func statusColorAndBadge(_ e: GuideEntryDTO, fallbackColor: String) -> (color: String, badge: String) {
+    if e.isRecording { return (recordingColor, recordingBadge) }
+    if e.isSkipped   { return (skipColor, skipBadge) }
+    if e.isScheduled { return (scheduledColor, scheduledBadge) }
+    return (fallbackColor, "")
+}
+
 // favAmber dark-mode value (GuideViewHelpers.swift/guide.css's --fav, "#e8a000") — same amber the
 // web guide and native app use for favorites, not an independent pick.
 let favoriteColor = "\u{1B}[38;2;232;160;0m"
@@ -542,7 +554,7 @@ func renderSummaryScreen() {
     guard let (ch, e) = currentEntry() else { Terminal.writeFrame(out); return }
 
     let bg = genreBackground(e.genre)
-    let titleColor = e.isRecording ? recordingColor : (e.isSkipped ? skipColor : (e.isScheduled ? scheduledColor : "\u{1B}[97m"))
+    let titleColor = statusColorAndBadge(e, fallbackColor: "\u{1B}[97m").color
     out += bold + truncate(e.isScheduled ? "Manage Recording" : "Schedule Recording", max(4, cols)) + reset + "\n\n"
     // titleBudget accounts for the leading/trailing space the banner adds around the title itself.
     let titleBudget = max(4, cols - 2)
@@ -551,7 +563,7 @@ func renderSummaryScreen() {
     let range = "\(timeFormatter.string(from: e.startDate)) - \(timeFormatter.string(from: e.endDate))"
     let mins = max(0, (e.endTime - e.startTime) / 60)
     let statusText = e.isRecording ? "Recording now" : (e.isSkipped ? "Already recorded - will skip" : (e.isScheduled ? "Already scheduled" : "Not scheduled"))
-    let statusColor = e.isRecording ? recordingColor : (e.isSkipped ? skipColor : (e.isScheduled ? scheduledColor : ""))
+    let statusColor = statusColorAndBadge(e, fallbackColor: "").color
     // Field values are plain text (no embedded ANSI) so truncate() can measure them directly — the
     // 10-col label pad is fixed, so the value's own budget is whatever's left of `cols`. Status is
     // colored *after* truncation (fieldColored below), not before — truncate() counts raw
@@ -651,8 +663,7 @@ func buildSummaryLines(maxLines: Int, cols: Int) -> [String] {
             let e = sch.entries[a.entryIndex]
             // Same "badge + recolored title" status language as the grid itself — a match that's
             // already recording/scheduled shouldn't look identical to a plain one here either.
-            let statusColor = e.isRecording ? recordingColor : (e.isSkipped ? skipColor : (e.isScheduled ? scheduledColor : "\u{1B}[97m"))
-            let badge = e.isRecording ? recordingBadge : (e.isSkipped ? skipBadge : (e.isScheduled ? scheduledBadge : ""))
+            let (statusColor, badge) = statusColorAndBadge(e, fallbackColor: "\u{1B}[97m")
             let airingsLabel = r.airings.count > 1
                 ? (isActive ? " (\(airingIdx + 1)/\(r.airings.count) airings)" : " (\(r.airings.count) airings)")
                 : ""
@@ -671,8 +682,8 @@ func buildSummaryLines(maxLines: Int, cols: Int) -> [String] {
         return pad0([dim + truncate(msg, budget) + reset])
     }
 
-    let badge = e.isRecording ? recordingBadge + "\u{1B}[0m" : (e.isSkipped ? skipBadge + "\u{1B}[0m" : (e.isScheduled ? scheduledBadge + "\u{1B}[0m" : ""))
-    let titleColor = e.isRecording ? recordingColor : (e.isSkipped ? skipColor : (e.isScheduled ? scheduledColor : bold))
+    let (titleColor, badgeRaw) = statusColorAndBadge(e, fallbackColor: bold)
+    let badge = badgeRaw.isEmpty ? "" : badgeRaw + "\u{1B}[0m"
     let range = "\(timeFormatter.string(from: e.startDate))-\(timeFormatter.string(from: e.endDate))"
     let mins = max(0, (e.endTime - e.startTime) / 60)
 
@@ -715,7 +726,9 @@ func buildSummaryLines(maxLines: Int, cols: Int) -> [String] {
         }
         let statusText = e.isRecording ? "Recording now" : (e.isSkipped ? "Will skip (dup)" : (e.isScheduled ? "Scheduled" : nil))
         if let statusText, used + statusText.count <= budget {
-            let statusColor = e.isRecording ? recordingColor : (e.isSkipped ? skipColor : scheduledColor)
+            // fallbackColor is unreachable here — statusText is nil unless one of the three
+            // tiers is true, so this always resolves to recordingColor/skipColor/scheduledColor.
+            let statusColor = statusColorAndBadge(e, fallbackColor: "").color
             metaLine += statusColor + statusText + reset
         }
         lines.append(metaLine)
@@ -978,21 +991,8 @@ func render() {
                     // scheduled/recording show reads as obviously different at a glance, not
                     // something you have to spot.
                     let bg = genreBackground(e.genre)
-                    var used = 0
-                    let statusColor: String
-                    var badge = ""
-                    if e.isRecording {
-                        statusColor = recordingColor
-                        badge = recordingBadge; used += 2
-                    } else if e.isSkipped {
-                        statusColor = skipColor
-                        badge = skipBadge; used += 2
-                    } else if e.isScheduled {
-                        statusColor = scheduledColor
-                        badge = scheduledBadge; used += 2
-                    } else {
-                        statusColor = "\u{1B}[97m"
-                    }
+                    let (statusColor, badge) = statusColorAndBadge(e, fallbackColor: "\u{1B}[97m")
+                    var used = badge.isEmpty ? 0 : 2
                     if isSel { used += 2 }   // the embedded "||" below
 
                     let titleWidth = max(0, labelWidth - used)

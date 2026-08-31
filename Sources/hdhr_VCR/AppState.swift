@@ -79,6 +79,12 @@ final class AppState: ObservableObject {
         // why this chains rather than locks. Was: discordCardTasks[showId].
         var discordCardTask: Task<Void, Never>?
     }
+    // Two write idioms coexist at call sites throughout this file: `showRuntime[id]?.field = v`
+    // (no-op when `id` has no entry yet) and `showRuntime[id, default: ShowRuntimeState()].field
+    // = v` (creates one). The `?.` form is only safe when `v` equals that field's zero/default
+    // value — i.e. it's clearing something that, absent an entry, was already implicitly at that
+    // value. A field whose "cleared" state is non-default must always use the `default:` form, or
+    // the write silently does nothing for a show with no prior runtime entry.
     var showRuntime: [String: ShowRuntimeState] = [:]
     // "channelNum:startTime" keys for guide entries already logged as now-airing without a genre tag.
     private var loggedNowAiring: Set<String> = []
@@ -309,7 +315,8 @@ final class AppState: ObservableObject {
     // dead) stops re-arming the 60s quick-probe cadence (see probeForNewDevices) and falls back to
     // the normal 5-min cadence, so a device whose HTTP server is permanently unreachable (rather
     // than just slow to start) doesn't pin the fast cadence for the rest of the session. Stores the
-    // deadline itself (not the start time), matching showRetryAfter/nextQuickProbe's shape. Cleared
+    // deadline itself (not the start time), matching showRuntime[id]?.retryAfter/nextQuickProbe's
+    // shape. Cleared
     // once TunerCount is restored or the device becomes unavailable.
     private var tunerCountFallbackAt: [String: Date] = [:]
     private var guideRefreshInFlight: Bool = false
@@ -2602,11 +2609,12 @@ final class AppState: ObservableObject {
         // running — removing the dict entry doesn't affect an already-started Task, it only stops
         // a future call from chaining behind it (and there won't be one for a deleted show).
         showRuntime.removeValue(forKey: show.show_id)
-        // Cleared unconditionally (not just via teardownRecordingState) — a non-recording delete
-        // takes the else branch above and skips teardown, so without this a show that was skipped
-        // mid-dropout (skipRecording leaves tunerStatus set) then deleted would leak this
-        // show_id-keyed entry for the session. Harmless if teardown already removed it. tunerStatus
-        // stays its own dict (not folded into showRuntime — see that struct's doc comment).
+        // Cleared unconditionally (not just via teardownRecordingState) rather than trusting that
+        // whichever path preceded this delete (teardown, skipRecording, or neither) already
+        // cleared it — both of those do clear it themselves, but this is the one place that must
+        // be correct regardless of which one ran, or none. A no-op if it's already gone.
+        // tunerStatus stays its own dict (not folded into showRuntime — see that struct's doc
+        // comment).
         tunerStatus.removeValue(forKey: show.show_id)
         saveConfig()
         pushShowUpdate(type: "show_deleted", channel: show.show_channel, device: show.hdhr_record)
@@ -2666,14 +2674,19 @@ final class AppState: ObservableObject {
         await discoverDevices(knownHosts: knownHostsFromShows(), attempts: 5)
     }
 
+    // Array(...) first, not `for id in showRuntime.keys` directly — the Keys view holds a
+    // reference to showRuntime's own backing storage, so mutating through the dict while
+    // iterating that view forces one full copy-on-write copy on the very first mutation.
+    // Materializing the keys into a plain Array first leaves showRuntime uniquely referenced, so
+    // each subscript mutation below happens in place. Shared by resetAllFailCounts and
+    // reactivatePausedShows so a future change to this pattern only needs to happen once.
+    private func clearAllRetryAfters() {
+        for id in Array(showRuntime.keys) { showRuntime[id]?.retryAfter = nil }
+    }
+
     func resetAllFailCounts() {
         for i in shows.indices { shows[i].clearFailures() }
-        // Array(...) first, not `for id in showRuntime.keys` directly — the Keys view holds a
-        // reference to showRuntime's own backing storage, so mutating through the dict while
-        // iterating that view forces one full copy-on-write copy on the very first mutation.
-        // Materializing the keys into a plain Array first leaves showRuntime uniquely referenced,
-        // so each subscript mutation below happens in place.
-        for id in Array(showRuntime.keys) { showRuntime[id]?.retryAfter = nil }
+        clearAllRetryAfters()
         saveConfig()
     }
 
@@ -2693,8 +2706,7 @@ final class AppState: ObservableObject {
             else if !shows[i].show_active { shows[i].show_active = true }
             shows[i].clearFailures()
         }
-        // Array(...) first — see resetAllFailCounts's identical line for why.
-        for id in Array(showRuntime.keys) { showRuntime[id]?.retryAfter = nil }
+        clearAllRetryAfters()
         saveConfig()
     }
 

@@ -61,6 +61,11 @@ final class WebServer: @unchecked Sendable {
     // buildGuideGridHTML pass on every hit; nil only before the first prebuildPageHTML ever runs,
     // same as cachedHTML's own live-build fallback below.
     private var cachedGridHTML: String? = nil
+    // Skip-already-recorded per-series on-disk tag scan (see computeRecordedTagsByShow) computed
+    // alongside cachedGridHTML above — buildGuideJSON reuses it instead of repeating the disk scan
+    // on every /api/guide.json hit (hdhr_guide polls this every 20s). nil only before the first
+    // prebuildPageHTML ever runs, same lifecycle/staleness window as cachedGridHTML itself.
+    private var cachedRecordedTagsByShow: [String: Set<String>]? = nil
 
     // Separate cache for GET /vertical — identical grid/data, but with the vertical time-axis
     // <style> block included (see buildHTML(includeVerticalCSS:)) so portrait can transpose the
@@ -1570,6 +1575,21 @@ final class WebServer: @unchecked Sendable {
             .filter { $0.StartTime < winEnd }
     }
 
+    // Skip-already-recorded: each managed series' on-disk SxxExx tags, one dir scan per series —
+    // shared by buildGuideGridHTML (via cachedRecordedTagsByShow) and buildGuideJSON's willSkip
+    // gating so the two can't compute this differently.
+    @MainActor
+    private func computeRecordedTagsByShow(state: AppState, activeMgd: [Show], skipEnabled: Bool) -> [String: Set<String>] {
+        guard skipEnabled else { return [:] }
+        var result: [String: Set<String>] = [:]
+        for s in activeMgd where s.isSeries {
+            let safe = s.show_title.replacingOccurrences(of: "/", with: "-")
+            result[s.show_id] = state.recordedEpisodeTags(forTitle: safe, baseDir: s.posixRecordDir,
+                                                            expectedMinutes: s.show_length)
+        }
+        return result
+    }
+
     // Builds the .gi innerHTML (g-hdr + per-channel rows) used by both buildHTML() and /api/guide-refresh.
     // Self-contained: all dependencies come from `state` or module-level globals (he, hourFmt, etc.).
     @MainActor
@@ -1633,14 +1653,10 @@ final class WebServer: @unchecked Sendable {
         // scan per series, off the per-block hot path) so a guide block whose episode we already
         // have can show a green "already recorded" corner flag instead of the gold "will record" one.
         let skipEnabled = state.config.Series_subfolder_enabled && state.config.Skip_recorded_episodes
-        var recordedTagsByShow: [String: Set<String>] = [:]
-        if skipEnabled {
-            for s in activeMgd where s.isSeries {
-                let safe = s.show_title.replacingOccurrences(of: "/", with: "-")
-                recordedTagsByShow[s.show_id] = state.recordedEpisodeTags(forTitle: safe, baseDir: s.posixRecordDir,
-                                                                            expectedMinutes: s.show_length)
-            }
-        }
+        let recordedTagsByShow = computeRecordedTagsByShow(state: state, activeMgd: activeMgd, skipEnabled: skipEnabled)
+        // Reused by buildGuideJSON (see cachedRecordedTagsByShow's own comment) instead of it
+        // repeating this same disk scan on every /api/guide.json request.
+        cachedRecordedTagsByShow = recordedTagsByShow
         // ── Guide grid rows ────────────────────────────────────────────────────
         var rowParts: [String] = []
 
@@ -2214,18 +2230,15 @@ final class WebServer: @unchecked Sendable {
 
         let activeMgd    = state.shows.filter { $0.show_active && !$0.show_paused }
         let guideMatcher = ManagedGuideMatcher(activeManagedShows: activeMgd)
-        // Skip-already-recorded: same one-scan-per-series precompute as buildGuideGridHTML's own
-        // (see that function's comment) — kept independent rather than shared, since the two build
-        // from different intermediate row structures and this is the only field either needs from it.
+        // Skip-already-recorded: reuse the scan buildGuideGridHTML's own most recent pass already
+        // did (cachedRecordedTagsByShow, refreshed on the same guide-changing events as the HTML
+        // grid) instead of repeating a disk scan per series on every /api/guide.json hit — this
+        // endpoint has no HTML-style cache of its own and is polled every ~20s by hdhr_guide.
+        // Falls back to computing fresh only when nothing has warmed the cache yet (before the
+        // first prebuildPageHTML, or a direct unit-test call with no prebuild step).
         let skipEnabled = state.config.Series_subfolder_enabled && state.config.Skip_recorded_episodes
-        var recordedTagsByShow: [String: Set<String>] = [:]
-        if skipEnabled {
-            for s in activeMgd where s.isSeries {
-                let safe = s.show_title.replacingOccurrences(of: "/", with: "-")
-                recordedTagsByShow[s.show_id] = state.recordedEpisodeTags(forTitle: safe, baseDir: s.posixRecordDir,
-                                                                            expectedMinutes: s.show_length)
-            }
-        }
+        let recordedTagsByShow = cachedRecordedTagsByShow
+            ?? computeRecordedTagsByShow(state: state, activeMgd: activeMgd, skipEnabled: skipEnabled)
 
         // Channel-level "is something recording here" (same shared definitions buildGuideGridHTML's
         // ring/badge and the Watch Now section use — see their own comments) is not by itself
