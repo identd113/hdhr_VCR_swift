@@ -541,8 +541,12 @@ struct WindowNavigationTests {
                                 if role of e is "AXButton" then
                                     set bPos to position of e
                                     set bx to item 1 of bPos
-                                    set by to item 2 of bPos
-                                    if (bx > lblRight) and ((bx - lblRight) < 60) and ((by - lblY) > -6) and ((by - lblY) < 6) then
+                                    -- Not named "by" — that's a reserved parameter keyword of the
+                                    -- Standard Suite's "move ... by ..." verb, in scope inside this
+                                    -- tell block; using it as a plain variable name breaks the
+                                    -- AppleScript parser ("Expected expression but found "by"").
+                                    set bYpos to item 2 of bPos
+                                    if (bx > lblRight) and ((bx - lblRight) < 60) and ((bYpos - lblY) > -6) and ((bYpos - lblY) < 6) then
                                         if bestGap is missing value or (bx - lblRight) < bestGap then set bestGap to (bx - lblRight)
                                     end if
                                 end if
