@@ -206,6 +206,15 @@ struct SettingsView: View {
                              || draft.Web_server_port     != old.Web_server_port
         let formatChanged     = draft.Guide_use_xml       != old.Guide_use_xml
         let dockModeChanged   = draft.Dock_icon_mode      != old.Dock_icon_mode
+        // WebServer.buildGuideJSON caches its skip-already-recorded on-disk scan
+        // (cachedRecordedTagsByShow, warmed by buildGuideGridHTML) rather than repeating it on
+        // every /api/guide.json poll — see that property's own comment. Toggling either setting
+        // changes what buildGuideJSON's willSkip should compute from, but the cache itself only
+        // refreshes on a guide-changing event/hourly refresh, none of which this save triggers on
+        // its own — without an explicit rebuild here, hdhr_guide (TUI) could keep showing/omitting
+        // the "already recorded" skip badge based on the pre-toggle state for up to an hour.
+        let skipConfigChanged = draft.Skip_recorded_episodes  != old.Skip_recorded_episodes
+                             || draft.Series_subfolder_enabled != old.Series_subfolder_enabled
         state.config = draft
         state.saveConfig()
         // Keep the baseline in lockstep with what was just saved — otherwise resyncIfUntouched()
@@ -250,6 +259,11 @@ struct SettingsView: View {
             state.guideStore.invalidateAll()
             state.guideByDevice = [:]
             Task { @MainActor in await state.refreshGuide() }
+        }
+        // formatChanged already forces a full refetch-and-rebuild above, which naturally rewarms
+        // this cache too — only need the lightweight local rebuild here when that didn't already fire.
+        if skipConfigChanged && !formatChanged && !interfaceChanged {
+            state.webServer.refreshPageAndBroadcastGuideChange(type: "guide_refreshed", state: state)
         }
     }
 

@@ -32,8 +32,8 @@ struct GuideJSONSkipTests {
     }
 
     @MainActor
-    private func fetchEntry(base: String, skipEnabled: Bool, subfolderEnabled: Bool = true,
-                             ignoreDuplicateOnce: Bool = false) async throws -> [String: Any] {
+    private func makeFixtureState(base: String, skipEnabled: Bool, subfolderEnabled: Bool = true,
+                                   ignoreDuplicateOnce: Bool = false) async -> AppState {
         let device = HDHRDevice(DeviceID: "AABBCCDD", LocalIP: "192.168.1.50",
                                  BaseURL: "http://192.168.1.50", TunerCount: 2,
                                  FirmwareVersion: nil, DeviceAuth: nil)
@@ -71,8 +71,18 @@ struct GuideJSONSkipTests {
                                       lineups: ["AABBCCDD": lineup], guideStore: guideStore)
         state.config.Series_subfolder_enabled = subfolderEnabled
         state.config.Skip_recorded_episodes = skipEnabled
+        return state
+    }
 
-        let data = WebServer().buildGuideJSON(state: state, deviceId: "AABBCCDD")
+    @MainActor
+    private func fetchEntry(base: String, skipEnabled: Bool, subfolderEnabled: Bool = true,
+                             ignoreDuplicateOnce: Bool = false) async throws -> [String: Any] {
+        let state = await makeFixtureState(base: base, skipEnabled: skipEnabled,
+                                            subfolderEnabled: subfolderEnabled, ignoreDuplicateOnce: ignoreDuplicateOnce)
+        return try firstEntry(from: WebServer().buildGuideJSON(state: state, deviceId: "AABBCCDD"))
+    }
+
+    private func firstEntry(from data: Data) throws -> [String: Any] {
         let payload = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
         let channels = try #require(payload["channels"] as? [[String: Any]])
         let entries = try #require(channels.first?["entries"] as? [[String: Any]])
@@ -119,5 +129,40 @@ struct GuideJSONSkipTests {
 
         let entry = try await fetchEntry(base: base, skipEnabled: true)
         #expect(entry["isSkipped"] as? Bool == false)
+    }
+
+    // Regression coverage for a staleness bug found in review (ba21c1e's cache-sharing): buildGuideJSON
+    // reuses cachedRecordedTagsByShow (warmed by buildGuideGridHTML/prebuildPageHTML) instead of
+    // scanning disk on every call — but nothing rewarms that cache just because
+    // Skip_recorded_episodes flips on. SettingsView.applyAndSave now explicitly calls
+    // webServer.refreshPageAndBroadcastGuideChange(...) when either skip-related setting changes
+    // (see that function's own comment) specifically to close this gap. This test exercises the
+    // mechanism the fix relies on directly, since SettingsView itself isn't unit-testable here.
+    @MainActor
+    @Test func cacheWarmedWhileSkipDisabled_reflectsNewOnDiskFileAfterExplicitRebuild() async throws {
+        let base = tempBase()
+        defer { try? FileManager.default.removeItem(atPath: base) }
+        try writeFile("\(base)/The Office/Season 01", "The Office_S01E01_5.1_20260101_2000.ts")
+
+        let state = await makeFixtureState(base: base, skipEnabled: false)
+        let webServer = WebServer()
+
+        // Warm the cache while skip is off — computeRecordedTagsByShow's own early-out means the
+        // warmed cache is empty ([:]) even though a matching file exists on disk.
+        webServer.prebuildPageHTML(state: state)
+
+        // Flip the setting — same as a user checking the box in Settings — but without yet calling
+        // the rebuild SettingsView.applyAndSave now triggers. The cache is still the stale, empty
+        // one from above, so this must NOT yet reflect the real on-disk file.
+        state.config.Skip_recorded_episodes = true
+        let staleEntry = try firstEntry(from: webServer.buildGuideJSON(state: state, deviceId: "AABBCCDD"))
+        #expect(staleEntry["isSkipped"] as? Bool == false,
+            "sanity check: without an explicit rebuild, the stale empty cache should still suppress isSkipped")
+
+        // The actual fix: SettingsView.applyAndSave's new skipConfigChanged branch calls exactly this.
+        webServer.refreshPageAndBroadcastGuideChange(type: "guide_refreshed", state: state)
+        let freshEntry = try firstEntry(from: webServer.buildGuideJSON(state: state, deviceId: "AABBCCDD"))
+        #expect(freshEntry["isSkipped"] as? Bool == true,
+            "refreshPageAndBroadcastGuideChange should rewarm cachedRecordedTagsByShow so the now-enabled setting takes effect immediately")
     }
 }

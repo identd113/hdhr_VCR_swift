@@ -462,8 +462,13 @@ final class WebServer: @unchecked Sendable {
         for (i, dev) in tdropDevices.enumerated() {
             if let gz = rawResults[2 + i] { tdropZ[dev] = gz } else { tdropPlain[dev] = tdrop[dev]! }
         }
-        if !tdropZ.isEmpty    { event["tdropZ"] = tdropZ }
-        if !tdropPlain.isEmpty { event["tdrop"] = tdropPlain }
+        // Always present, even {} — guide.js's plain-grid path (applyGuidePayload, reached when
+        // every field declined compression) does Object.keys(d.tdrop) unconditionally, matching
+        // buildGuideRefreshPayload's own pre-gzip contract of always including this key. Only ever
+        // omitted before this fix when tdropDeviceIDs(state:) was empty (no devices/shows at all —
+        // a fresh install before discovery), which silently produced a TypeError client-side.
+        event["tdrop"] = tdropPlain
+        if !tdropZ.isEmpty { event["tdropZ"] = tdropZ }
         broadcastEvent(event)
         // Keep the cached full-page HTML (served to any new page load) in sync with every
         // guide-changing event, not just the hourly refresh — see broadcastRecordingEvent for
