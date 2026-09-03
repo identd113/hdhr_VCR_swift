@@ -296,7 +296,9 @@ struct AddShowView: View {
     // schedule the wrong day's recurrence.
     private func switchToAiring(channel: String, entry: GuideEntry) {
         if selectedDevice?.DeviceID != entry.deviceId {
-            selectedDevice = state.devices.first(where: { $0.DeviceID == entry.deviceId })
+            // recordableDevices — a virtual relay device (VirtualTunerService.swift) should never
+            // become selectedDevice, same reasoning as the sibling lookup in applyWebGuideEntry below.
+            selectedDevice = state.recordableDevices.first(where: { $0.DeviceID == entry.deviceId })
         }
         show.show_title    = entry.Title
         show.show_channel  = channel
@@ -424,7 +426,9 @@ struct AddShowView: View {
         }
         // selectedDevice needed for save() — set it if not already set to the matching device
         if selectedDevice == nil || selectedDevice?.DeviceID != deviceId {
-            selectedDevice = state.devices.first(where: { $0.DeviceID == deviceId })
+            // recordableDevices — a virtual relay device is watch-only (addShow/updateShow reject
+            // it anyway), so it should never become selectedDevice in the first place.
+            selectedDevice = state.recordableDevices.first(where: { $0.DeviceID == deviceId })
         }
         let comps = Calendar.current.dateComponents([.hour, .minute, .weekday], from: startDate)
         show.show_time = Double(comps.hour ?? 20) + Double(comps.minute ?? 0) / 60.0

@@ -229,10 +229,19 @@ final class AppState: ObservableObject {
     // build from this, not raw `devices` — a discovered virtual relay device (this instance's own
     // is already excluded from `devices` entirely via self-exclusion, but a *different* instance's
     // relay is not, by design) is watch-only and has no real lineup/guide data, so listing it
-    // alongside real tuners lets a user pick it as if it were one. Single-device backstop checks
-    // (addShow/updateShow/handleRecord/vlcOccupiesTuner) check one already-known device's own
-    // isVirtualRelay flag directly instead of filtering a list, and stay separate from this.
+    // alongside real tuners lets a user pick it as if it were one.
     var recordableDevices: [HDHRDevice] { devices.filter { !$0.isVirtualRelay } }
+
+    // Single-device backstop check, for a caller that only has a deviceId (not yet a resolved
+    // HDHRDevice) — addShow/updateShow/vlcOccupiesTuner funnel through this instead of each
+    // hand-rolling `devices.first(where: { $0.DeviceID == id })?.isVirtualRelay == true`, which two
+    // prior post-shipment audits (see CLAUDE.md's Virtual tuner relay guardrails) already found
+    // missed at other call sites. A caller that already holds a resolved HDHRDevice (handleRecord,
+    // handleToggleFavorite) should just read device.isVirtualRelay directly instead of re-looking it
+    // up here by id.
+    func isVirtualRelayDevice(_ deviceId: String) -> Bool {
+        devices.first(where: { $0.DeviceID == deviceId })?.isVirtualRelay == true
+    }
     var unavailableDeviceShows: [Show] {
         guard !unavailableDeviceIDs.isEmpty else { return [] }
         return shows.filter { $0.show_active && unavailableDeviceIDs.contains($0.hdhr_record) }
@@ -294,8 +303,32 @@ final class AppState: ObservableObject {
     // it only flips true once the *first* call's async bind actually completes, so the second call's
     // own `!webServerRunning` guard would still pass. See reconcileWebServerState's own doc comment.
     private var webServerStarting = false
-    private var recordingRelayActive = false   // true while watchRecordingInApp holds an internal-web-server claim
-    private var virtualTunerWebServerClaimActive = false   // true while updateVirtualTunerPresence holds an internal-web-server claim
+    // The port the currently-running listener is actually bound to, set once applyWebServerState
+    // sees a successful bind. Compared against config.Web_server_port in reconcileWebServerState so
+    // a Settings port change while already running triggers a stop+restart instead of being silently
+    // ignored — webServerRunning alone can't distinguish "running on the right port" from "running on
+    // a now-stale port".
+    private var boundWebServerPort: Int?
+
+    // One-shot idempotent claim on the internal web server (ensureWebServerRunning/
+    // releaseInternalWebServer) — wraps the guard+claim/release triplet so a new claim owner
+    // doesn't have to hand-roll it. claim()/release() are no-ops when already in the matching
+    // state, so a caller never needs its own `if !active` guard around them.
+    private struct WebServerClaimFlag {
+        private var active = false
+        mutating func claim(_ start: () -> Void) {
+            guard !active else { return }
+            active = true
+            start()
+        }
+        mutating func release(_ stop: () -> Void) {
+            guard active else { return }
+            active = false
+            stop()
+        }
+    }
+    private var recordingRelayClaim = WebServerClaimFlag()      // held while watchRecordingInApp's relay session is open
+    private var virtualTunerWebServerClaim = WebServerClaimFlag()  // held while updateVirtualTunerPresence's relay is advertised
 
     // Exponential backoff for repeated guide API failures per device.
     // Delays: 1 min → 5 min → 15 min → 30 min → 1 hour (capped).
@@ -472,7 +505,10 @@ final class AppState: ObservableObject {
         glog("[Startup] discovered \(devices.count) device(s)")
         // Prime deviceTunerOccupancy immediately after discovery so the first web page load
         // has accurate tuner counts instead of the empty dict it would otherwise start with.
-        for device in devices { Task { await fetchDeviceStatus(for: device) } }
+        // recordableDevices (not devices) — a discovered virtual relay device (another instance's
+        // rebroadcast) has no real /status.json occupancy of its own to poll; polling it anyway
+        // pollutes deviceTunerOccupancy with data about another machine's recording activity.
+        for device in recordableDevices { Task { await fetchDeviceStatus(for: device) } }
         for d in devices {
             glog("[Startup]   \(d.DeviceID)  LocalIP='\(d.LocalIP)'  DeviceAuth=\(d.DeviceAuth ?? "nil")")
         }
@@ -606,6 +642,12 @@ final class AppState: ObservableObject {
     private func reconcileWebServerState() {
         let wantRunning = config.Web_server_enabled || internalWebServerUseCount > 0
         if wantRunning {
+            // Already running, but on a stale port (a Settings change since the last successful
+            // bind) — stop first so the guard below falls through to a fresh start() on the new port.
+            if webServerRunning, boundWebServerPort != config.Web_server_port {
+                webServer.stop()
+                webServerRunning = false
+            }
             guard !webServerRunning, !webServerStarting else { return }
             webServerStarting = true
             webServerError = nil
@@ -617,6 +659,7 @@ final class AppState: ObservableObject {
             webServer.stop()
             webServerStarting = false
             webServerRunning = false
+            boundWebServerPort = nil
         }
     }
 
@@ -624,7 +667,10 @@ final class AppState: ObservableObject {
         webServerStarting = false
         webServerRunning = (errorMsg == nil)
         webServerError   = errorMsg
-        if errorMsg == nil { webServer.updateTXTRecord() }
+        if errorMsg == nil {
+            boundWebServerPort = config.Web_server_port
+            webServer.updateTXTRecord()
+        }
     }
 
     // .local hostnames excluded — mDNS resolution happens in mDNSDiscover(), no benefit adding them here.
@@ -780,10 +826,7 @@ final class AppState: ObservableObject {
             // something else holds an internal-use claim (setupWebServer's own comment) — without
             // this claim, a UDP client would discover a relay whose BaseURL has nothing listening
             // on it whenever Sharing is off and no guide window/Watch-Now relay happens to be open.
-            if !virtualTunerWebServerClaimActive {
-                virtualTunerWebServerClaimActive = true
-                ensureWebServerRunning()
-            }
+            virtualTunerWebServerClaim.claim { ensureWebServerRunning() }
             virtualTuner.start(deviceID: id, baseURL: baseURL, tunerCount: tunerCount) { [weak self] bound in
                 guard !bound else { return }
                 // UDP bind lost (port 65001 already in use) — back the ID out so WebServer's
@@ -795,20 +838,14 @@ final class AppState: ObservableObject {
                     guard let self, self.activeVirtualTunerDeviceID == id else { return }
                     glog("[VirtualTuner] bind failed — clearing activeVirtualTunerDeviceID so HTTP routes stop advertising it", level: .warning)
                     self.activeVirtualTunerDeviceID = nil
-                    if self.virtualTunerWebServerClaimActive {
-                        self.virtualTunerWebServerClaimActive = false
-                        self.releaseInternalWebServer()
-                    }
+                    self.virtualTunerWebServerClaim.release { self.releaseInternalWebServer() }
                 }
             }
         } else {
             guard activeVirtualTunerDeviceID != nil else { return }
             virtualTuner.stop()
             activeVirtualTunerDeviceID = nil
-            if virtualTunerWebServerClaimActive {
-                virtualTunerWebServerClaimActive = false
-                releaseInternalWebServer()
-            }
+            virtualTunerWebServerClaim.release { releaseInternalWebServer() }
         }
     }
 
@@ -1878,7 +1915,11 @@ final class AppState: ObservableObject {
 
         // One /status.json fetch per device covers both menu-header occupancy counts and
         // per-recording vstatus — avoids O(tunerCount) separate HTTP calls per recording.
-        for device in devices {
+        // recordableDevices — see performFetchAllGuides's own comment on why polling excludes a
+        // discovered virtual relay: it has no real occupancy of its own, and a count "change" there
+        // is really just another instance's recording activity, which would otherwise trigger this
+        // instance's own broadcastGuideChangeEvent below for no reason.
+        for device in recordableDevices {
             Task { await fetchDeviceStatus(for: device) }
         }
 
@@ -2586,7 +2627,7 @@ final class AppState: ObservableObject {
         // in-progress recording" plan's Guardrails). This is the one function every show-creation
         // path funnels through (see the comment just below), so it's the one place this can be
         // enforced with certainty regardless of how a caller assembled the Show.
-        if devices.first(where: { $0.DeviceID == show.hdhr_record })?.isVirtualRelay == true {
+        if isVirtualRelayDevice(show.hdhr_record) {
             glog("[Show] Refused '\(show.show_title)' — \(show.hdhr_record) is a virtual relay tuner (watch-only)", level: .warning)
             return
         }
@@ -2633,7 +2674,7 @@ final class AppState: ObservableObject {
         guard let i = shows.firstIndex(where: { $0.show_id == show.show_id }) else { return }
         // Same hard backstop as addShow — an edit can reassign hdhr_record (e.g. seriesChannel →
         // a different device), so this needs the identical check, not just a check on creation.
-        if devices.first(where: { $0.DeviceID == show.hdhr_record })?.isVirtualRelay == true {
+        if isVirtualRelayDevice(show.hdhr_record) {
             glog("[Show] Refused edit of '\(show.show_title)' — \(show.hdhr_record) is a virtual relay tuner (watch-only)", level: .warning)
             return
         }
@@ -3705,10 +3746,7 @@ final class AppState: ObservableObject {
         // either if the real device somehow isn't found.
         let device = recordableDevices.first { $0.DeviceID == show.hdhr_record } ?? recordableDevices.first
         guard let device else { return }
-        if !recordingRelayActive {
-            recordingRelayActive = true
-            ensureWebServerRunning()
-        }
+        recordingRelayClaim.claim { ensureWebServerRunning() }
         let recordingStart = show.show_next ?? Date()
         let elapsed         = recordingElapsedSeconds(show)
         let startSeconds    = fromBeginning ? 0 : max(0, elapsed - Self.recordingLiveEdgeBackoffSeconds)
@@ -3744,9 +3782,7 @@ final class AppState: ObservableObject {
     /// VLCPlayerWindowManager.playerWindowDidClose() on every player window close, a no-op unless
     /// this session actually used the recording relay.
     func releaseRecordingRelayIfNeeded() {
-        guard recordingRelayActive else { return }
-        recordingRelayActive = false
-        releaseInternalWebServer()
+        recordingRelayClaim.release { releaseInternalWebServer() }
     }
 
     /// Scrubs the in-progress-recording player (VLCPlayerView's scrub bar) to an approximate point
@@ -3804,7 +3840,8 @@ final class AppState: ObservableObject {
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 1_500_000_000)   // 1.5s — let device register the change
             captureResourceHeaders()
-            for device in devices { await fetchDeviceStatus(for: device) }
+            // recordableDevices — same reasoning as the idle-loop poll above.
+            for device in recordableDevices { await fetchDeviceStatus(for: device) }
             releaseAssertionsIfIdle()
         }
     }
@@ -4115,7 +4152,7 @@ final class AppState: ObservableObject {
         // live-tuner watch would; without this check that would otherwise read as this (fake)
         // device having a tuner in use, defeating the whole point of the relay (unlimited
         // concurrent viewers, none of them costing a tuner slot).
-        guard devices.first(where: { $0.DeviceID == deviceId })?.isVirtualRelay != true else { return false }
+        guard !isVirtualRelayDevice(deviceId) else { return false }
         return VLCPlayerWindowManager.shared.currentDeviceID == deviceId && VLCBridge.shared.recordingShowId == nil
     }
 

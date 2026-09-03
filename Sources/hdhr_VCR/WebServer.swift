@@ -1629,6 +1629,12 @@ final class WebServer: @unchecked Sendable {
         guard let device = state.devices.first(where: { $0.DeviceID == deviceId }),
               let ch     = state.lineups[deviceId]?.first(where: { $0.GuideNumber == guideNum })
         else { return json(["ok": false, "error": "Device or channel not found"]) }
+        // Same virtual-relay backstop as handleRecord above — a discovered relay's fabricated
+        // lineup entries must not be forwarded to hdhrManager.setFavorite against a device that
+        // isn't real.
+        guard !device.isVirtualRelay else {
+            return json(["ok": false, "error": "This tuner is a temporary recording relay and has no favorites of its own."])
+        }
 
         let newFav = !ch.isFavorite   // ch is a struct copy; capture before toggleFavorite mutates lineups
         state.toggleFavorite(device: device, channel: ch)
@@ -1752,7 +1758,10 @@ final class WebServer: @unchecked Sendable {
     @MainActor
     static func computeDevTuners(state: AppState, logDiagnostics: Bool = false) -> [String: DevTuners] {
         var devTuners: [String: DevTuners] = [:]
-        for d in state.devices {
+        // recordableDevices (not state.devices) — a discovered virtual relay device has no real
+        // tuner slots to count; feeding it into the client-side `tuners` JS map (tunerJS below,
+        // buildHTML) would embed a phantom entry keyed on a device that's watch-only by design.
+        for d in state.recordableDevices {
             let total = d.TunerCount ?? 0
             let occupancy = state.deviceTunerOccupancy[d.DeviceID]
             // Use activeTunerCount = max(hardware occupancy, this app's recordings + VLC stream) so
@@ -1936,12 +1945,30 @@ final class WebServer: @unchecked Sendable {
         return result
     }
 
+    // Shared by buildGuideGridHTML's willSkip and buildGuideJSON's willSkip — a managed airing is
+    // skipped when skip-already-recorded is on, this isn't the entry currently recording (which
+    // would otherwise flag its own in-progress file as a duplicate), the owning show doesn't have
+    // "ignore duplicate once" armed, and the episode's SxxExx tag is already on disk for that show.
+    // One function so a future tweak to the skip rule can't apply to one builder and not the other.
+    private func isSkippedAiring(skipEnabled: Bool, isRecordingNow: Bool, owner: Show?,
+                                  episodeNumber: String?, recordedTagsByShow: [String: Set<String>]) -> Bool {
+        guard skipEnabled, !isRecordingNow, let owner, !owner.show_ignore_duplicate_once,
+              let ep = episodeNumber,
+              ep.range(of: #"^S\d+E\d+$"#, options: [.regularExpression, .caseInsensitive]) != nil
+        else { return false }
+        return recordedTagsByShow[owner.show_id]?.contains(ep.uppercased()) == true
+    }
+
     // Builds the .gi innerHTML (g-hdr + per-channel rows) used by both buildHTML() and /api/guide-refresh.
     // Self-contained: all dependencies come from `state` or module-level globals (he, hourFmt, etc.).
     @MainActor
     // Internal, not private — VirtualTunerWebRoutesTests calls this directly with synthetic
     // AppState, same testability pattern as the other builders in this file.
     func buildGuideGridHTML(state: AppState) -> String {
+        // Hoisted once — state.recordableDevices re-filters `devices` on every access, and this
+        // function (which runs on @MainActor on every add/delete/pause/resume/edit/favorite-toggle
+        // and recording start/stop, per CLAUDE.md) reads it several times below.
+        let recordableDevices = state.recordableDevices
 
         // ── Time window ────────────────────────────────────────────────────────
         let nowTs = Int(Date().timeIntervalSince1970)
@@ -1968,10 +1995,10 @@ final class WebServer: @unchecked Sendable {
         // AppState.activeRecordingChannels/pendingRecordingChannels — same shared definition
         // WatchNowView's Watch Now window uses, so the two surfaces can't drift apart.
         let recChannelsByDevice: [String: Set<String>] = Dictionary(
-            uniqueKeysWithValues: state.recordableDevices.map { ($0.DeviceID, state.activeRecordingChannels(for: $0.DeviceID)) }
+            uniqueKeysWithValues: recordableDevices.map { ($0.DeviceID, state.activeRecordingChannels(for: $0.DeviceID)) }
         )
         let pendingRecChannelsByDevice: [String: Set<String>] = Dictionary(
-            uniqueKeysWithValues: state.recordableDevices.map { ($0.DeviceID, state.pendingRecordingChannels(for: $0.DeviceID)) }
+            uniqueKeysWithValues: recordableDevices.map { ($0.DeviceID, state.pendingRecordingChannels(for: $0.DeviceID)) }
         )
         // Channels a hardware tuner is actively locked to but this app didn't initiate — e.g. the
         // "app expects 1, hw shows 2" case (another machine running this app against the same
@@ -1981,7 +2008,7 @@ final class WebServer: @unchecked Sendable {
         // clicking Watch on a live channel would immediately flag that same channel as "in use by
         // another tuner" for the person watching it.
         let hwOtherChannelsByDevice: [String: Set<String>] = Dictionary(
-            uniqueKeysWithValues: state.recordableDevices.map { device in
+            uniqueKeysWithValues: recordableDevices.map { device in
                 let hwChannels = Set((state.deviceTunerOccupancy[device.DeviceID] ?? []).compactMap { $0.VctNumber })
                 var ours = recChannelsByDevice[device.DeviceID] ?? []
                 if let liveCh = state.vlcLiveChannel(for: device.DeviceID) { ours.insert(liveCh) }
@@ -2008,7 +2035,7 @@ final class WebServer: @unchecked Sendable {
         // notion of "this is a fake device" — so an unfiltered loop here could let the relay's own
         // synthetic row silently win that dedup and eclipse the user's real channel row in the
         // rendered grid, making their own channel unschedulable from the guide.
-        for device in state.recordableDevices {
+        for device in recordableDevices {
             // Recording outranks favorite — a channel already recording is a stronger claim on
             // the user's attention than a merely-favorited one, so it sorts (and buckets, below)
             // ahead of the ★ Favorites section rather than into it.
@@ -2065,15 +2092,8 @@ final class WebServer: @unchecked Sendable {
                     let owner = guideMatcher.owner(for: e)
                     let isMgd = owner != nil
                     // Will this managed airing be skipped because the episode is already on disk?
-                    // Exclude the airing that is recording right now — its own in-progress file is on
-                    // disk, so it would otherwise flag itself as a duplicate.
-                    let willSkip: Bool = {
-                        guard skipEnabled, !isEntryRec, let owner, !owner.show_ignore_duplicate_once,
-                              let ep = e.EpisodeNumber,
-                              ep.range(of: #"^S\d+E\d+$"#, options: [.regularExpression, .caseInsensitive]) != nil
-                        else { return false }
-                        return recordedTagsByShow[owner.show_id]?.contains(ep.uppercased()) == true
-                    }()
+                    let willSkip = isSkippedAiring(skipEnabled: skipEnabled, isRecordingNow: isEntryRec,
+                        owner: owner, episodeNumber: e.EpisodeNumber, recordedTagsByShow: recordedTagsByShow)
                     // Scheduled but can't get a tuner — see AppState.showRuntime's isConflicting
                     // field (a per-device greedy tuner-slot simulation, not a live scan here).
                     // isConflicting is computed against a show's single show_next/hdhr_record,
@@ -2238,13 +2258,16 @@ final class WebServer: @unchecked Sendable {
         // ever had special characters in its ID or IP.
         let tunerJS: String = {
             var dict: [String: Any] = [:]
-            for d in state.devices {
+            // recordableDevices — same reasoning as computeDevTuners above.
+            for d in state.recordableDevices {
                 guard let dt = devTuners[d.DeviceID] else { continue }
                 // "nt" (noTranscode) mirrors AppState.startRecording's own device.supportsTranscode
                 // check — lets the Record modal warn proactively instead of only after a failed
                 // recording. 1/0 rather than a bool so jsEscapeForScript's string round-trip can't
                 // turn `false` into the truthy string `"false"` client-side.
-                dict[d.DeviceID] = ["t": dt.total, "a": dt.active, "surl": "http://\(d.LocalIP)/status.json",
+                // statusURL (not a manual "http://\(LocalIP)/status.json") — includes the device's
+                // actual port, which a plain LocalIP-only URL silently drops.
+                dict[d.DeviceID] = ["t": dt.total, "a": dt.active, "surl": d.statusURL,
                                      "nt": d.supportsTranscode ? 0 : 1]
             }
             guard let data = try? JSONSerialization.data(withJSONObject: dict),
@@ -2252,8 +2275,10 @@ final class WebServer: @unchecked Sendable {
             return "var tuners=\(jsEscapeForScript(str));"
         }()
         // Pre-compute channel-number → name lookup per device (captured by the closure below).
+        // recordableDevices — a virtual relay device's lineup is synthetic (its own recording's
+        // channel only), not something guide.js's device picker should ever resolve names against.
         let channelNameLookup: [String: [String: String]] = Dictionary(
-            uniqueKeysWithValues: state.devices.map { d in
+            uniqueKeysWithValues: state.recordableDevices.map { d in
                 let map = Dictionary(
                     (state.lineups[d.DeviceID] ?? []).map { ($0.GuideNumber, $0.GuideName) },
                     uniquingKeysWith: { first, _ in first })
@@ -2262,7 +2287,8 @@ final class WebServer: @unchecked Sendable {
 
         let recsByDevJS: String = {
             var devMap: [String: [[String: String]]] = [:]
-            for d in state.devices {
+            // recordableDevices — same reasoning as tunerJS above.
+            for d in state.recordableDevices {
                 var entries: [[String: String]] = []
                 func chName(_ num: String) -> String { channelNameLookup[d.DeviceID]?[num] ?? "" }
                 if let occupancy = state.deviceTunerOccupancy[d.DeviceID], !occupancy.isEmpty {
@@ -2508,7 +2534,11 @@ final class WebServer: @unchecked Sendable {
 
     @MainActor
     func buildVirtualTunerDiscoverJSON(state: AppState, deviceID: String) -> [String: Any] {
-        let base = virtualTunerBaseURL(preferredInterface: state.config.Network_interface)
+        // Resolved once — virtualTunerBaseURL's own lanIPAddress lookup enumerates network
+        // interfaces (availableNetworkInterfaces/getifaddrs), so a second direct lanIPAddress call
+        // just for LocalIP below would pay that syscall pass twice per request.
+        let ip   = lanIPAddress(preferredInterface: state.config.Network_interface) ?? "127.0.0.1"
+        let base = "http://\(ip):\(activePort)"
         let recordingShows = state.shows.filter { $0.show_recording }
         let tunerCount = recordingShows.count
         // Named after the real unit it's relaying from ("<original FriendlyName>-Relay") rather than
@@ -2527,7 +2557,7 @@ final class WebServer: @unchecked Sendable {
             "BaseURL": base,
             "LineupURL": "\(base)/lineup.json",
             "TunerCount": tunerCount,
-            "LocalIP": lanIPAddress(preferredInterface: state.config.Network_interface) ?? "127.0.0.1",
+            "LocalIP": ip,
             // Non-standard — a real HDHomeRun client ignores an unknown field; this app's own
             // HDHRDevice decoder recognizes it (see that type's isVirtualRelay doc comment).
             VirtualTunerService.virtualRelayMarkerKey: true,
@@ -2712,16 +2742,9 @@ final class WebServer: @unchecked Sendable {
                 // One owner(for:) lookup, not isManaged(entry:) + a second owner(for:) — both do
                 // the same key-matching work, so calling both here would double it per entry.
                 let owner = guideMatcher.owner(for: entry)
-                // Same guard shape as buildGuideGridHTML's willSkip: excludes the airing that's
-                // recording right now (its own in-progress file would otherwise flag itself as a
-                // duplicate) and a show with "ignore duplicate once" armed for its next airing.
-                let willSkip: Bool = {
-                    guard skipEnabled, !isRec, let owner, !owner.show_ignore_duplicate_once,
-                          let ep = entry.EpisodeNumber,
-                          ep.range(of: #"^S\d+E\d+$"#, options: [.regularExpression, .caseInsensitive]) != nil
-                    else { return false }
-                    return recordedTagsByShow[owner.show_id]?.contains(ep.uppercased()) == true
-                }()
+                // Same isSkippedAiring shared by buildGuideGridHTML's willSkip above.
+                let willSkip = isSkippedAiring(skipEnabled: skipEnabled, isRecordingNow: isRec,
+                    owner: owner, episodeNumber: entry.EpisodeNumber, recordedTagsByShow: recordedTagsByShow)
                 return GuideEntryJSON(
                     title: entry.Title,
                     episodeTitle: entry.EpisodeTitle,
