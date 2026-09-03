@@ -97,7 +97,11 @@ final class HDHRManager {
             for device in raw {
                 group.addTask {
                     do {
-                        return try await self.fetchDeviceInfo(ip: device.LocalIP)
+                        // device.BaseURL carries the reply's own 0x2A TLV when present (parsed in
+                        // udpDiscoverSync) — needed to reach a virtual-tuner relay on its actual
+                        // Web_server_port instead of guessing 80. A real device's BaseURL is also
+                        // always implicitly port 80, so this is a no-op for real hardware.
+                        return try await self.fetchDeviceInfo(ip: device.LocalIP, baseURL: device.BaseURL)
                     } catch {
                         glog("[Discovery] fetchDeviceInfo(\(device.LocalIP)) failed: \(error)", level: .warning)
                         return device
@@ -145,10 +149,15 @@ final class HDHRManager {
         return try JSONDecoder().decode([HDHRDevice].self, from: data)
     }
 
-    /// Fetch full device info from the device's own HTTP API.
+    /// Fetch full device info from the device's own HTTP API. `baseURL`, when given, supplies the
+    /// port (e.g. a virtual-tuner relay's non-standard Web_server_port) — falls back to the plain
+    /// `ip` on implicit port 80 when nil or unparseable, which is correct for a real device (always
+    /// port 80) and for every existing caller that doesn't have a BaseURL to offer.
     /// Internal (not private) so HDHRManagerTests can exercise it directly against a mocked session.
-    func fetchDeviceInfo(ip: String) async throws -> HDHRDevice {
-        guard let url = URL(string: "http://\(ip)/discover.json") else { throw URLError(.badURL) }
+    func fetchDeviceInfo(ip: String, baseURL: String? = nil) async throws -> HDHRDevice {
+        let url = baseURL.flatMap { URL(string: $0)?.appendingPathComponent("discover.json") }
+            ?? URL(string: "http://\(ip)/discover.json")
+        guard let url else { throw URLError(.badURL) }
         let (data, _) = try await session.data(from: url)
         return try JSONDecoder().decode(HDHRDevice.self, from: data)
     }
@@ -196,6 +205,36 @@ final class HDHRManager {
             results.append(addr | ~mask)
         }
         return results
+    }
+
+    // Shared by the DeviceAuth (0x2B) and BaseURL (0x2A) TLV cases in the reply-parsing loop below
+    // — both are null-terminated ASCII strings in the wire format, so both need the identical
+    // trailing-NUL trim before decoding. `off`/`tagLen` bounds are the caller's responsibility
+    // (already checked against `limit` before either call site reaches this).
+    private static func decodeNulTerminatedTLVString(_ buf: [UInt8], off: Int, tagLen: Int) -> String? {
+        var bytes = Array(buf[off..<off+tagLen])
+        if bytes.last == 0 { bytes.removeLast() }
+        return String(bytes: bytes, encoding: .utf8)
+    }
+
+    // Only the UDP reply's own PORT is ever trusted, never its host — `sourceIP` (the packet's
+    // actual source address, read from the kernel-verified UDP header, never attacker-controlled)
+    // is always what's used instead. Without this check, any host on the LAN broadcast domain could
+    // reply with a DeviceID + a BaseURL TLV pointing at a completely different, attacker-controlled
+    // host; fetchDeviceInfo would fetch discover.json from there instead of the real sender, and if
+    // that response omits LocalIP, HDHRDevice's decoder derives LocalIP from BaseURL's host too —
+    // registering a "tuner" that permanently polls an attacker's server. A legitimate reply's
+    // BaseURL host always matches its own source IP (true for both a real device and this app's own
+    // virtual-tuner relay), so this rejects nothing legitimate while closing the spoofing window.
+    // Internal (not private), pure — no I/O — so HDHRManagerTests can exercise it directly.
+    static func verifiedReplyBaseURL(_ replyBaseURL: String?, sourceIP: String) -> String {
+        if let replyBaseURL, let parsed = URL(string: replyBaseURL), parsed.host == sourceIP {
+            return replyBaseURL
+        }
+        if let replyBaseURL {
+            glog("UDP reply from \(sourceIP) carried a BaseURL host mismatch (\(replyBaseURL)) — ignored, falling back to the verified source IP", level: .warning)
+        }
+        return "http://\(sourceIP)"
     }
 
     private static func udpDiscoverSync(interface: String = "") -> [HDHRDevice] {
@@ -302,6 +341,7 @@ final class HDHRManager {
             var off = 4
             var deviceID: UInt32? = nil
             var deviceAuth: String? = nil
+            var replyBaseURL: String? = nil
             while off + 2 <= limit {
                 let tag = buf[off], tagLen = Int(buf[off + 1])
                 off += 2
@@ -311,11 +351,22 @@ final class HDHRManager {
                              | UInt32(buf[off+2]) << 8  | UInt32(buf[off+3])
                 } else if tag == 0x2B, tagLen > 0 {
                     // DeviceAuth token (EXTEND and similar) — lets the cloud guide API work when the
-                    // device's HTTP server is asleep/unreachable. TLV strings are null-terminated, so
-                    // drop a trailing NUL before decoding. Bounds already checked above (off+tagLen<=limit).
-                    var authBytes = Array(buf[off..<off+tagLen])
-                    if authBytes.last == 0 { authBytes.removeLast() }
-                    deviceAuth = String(bytes: authBytes, encoding: .utf8)
+                    // device's HTTP server is asleep/unreachable. Bounds already checked above
+                    // (off+tagLen<=limit).
+                    deviceAuth = decodeNulTerminatedTLVString(buf, off: off, tagLen: tagLen)
+                } else if tag == 0x2A, tagLen > 0 {
+                    // BaseURL — a real device's is always implicitly port 80 (the fallback below
+                    // covers that case fine without even reading this), but hdhrVCRplus's own
+                    // virtual-tuner relay (VirtualTunerService.swift) serves its JSON routes on
+                    // Web_server_port (default 1980, not 80), and this is the only place that port
+                    // is carried on the wire. Without parsing it here, fetchDeviceInfo's follow-up
+                    // GET below always guessed port 80 and silently failed against any relay not
+                    // coincidentally running on 80 — another hdhrVCRplus instance's relay was never
+                    // actually discoverable despite self-exclusion/isVirtualRelay filtering being
+                    // otherwise fully wired up. Found 2026-09-03 while setting up a live two-instance
+                    // demo. Only the reply's own port ever ends up trusted, not its host — see the
+                    // BaseURL-vs-source-IP check below, right after `ipStr` is computed.
+                    replyBaseURL = decodeNulTerminatedTLVString(buf, off: off, tagLen: tagLen)
                 }
                 off += tagLen
             }
@@ -337,8 +388,10 @@ final class HDHRManager {
             guard !seenIPs.contains(ipStr) else { continue }
             seenIPs.insert(ipStr)
 
+            let baseURL = Self.verifiedReplyBaseURL(replyBaseURL, sourceIP: ipStr)
+
             found.append(HDHRDevice(DeviceID: String(format: "%08X", deviceID),
-                                    LocalIP: ipStr, BaseURL: "http://\(ipStr)",
+                                    LocalIP: ipStr, BaseURL: baseURL,
                                     TunerCount: nil, FirmwareVersion: nil, DeviceAuth: deviceAuth))
         }
         return found

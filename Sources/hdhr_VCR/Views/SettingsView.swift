@@ -199,6 +199,9 @@ struct SettingsView: View {
         if draft.Hdhr_setup_folder   != old.Hdhr_setup_folder   { glog("[Settings] SaveFolder: '\(old.Hdhr_setup_folder)' → '\(draft.Hdhr_setup_folder)'") }
         if draft.GuideHours          != old.GuideHours          { glog("[Settings] GuideHours: \(old.GuideHours) → \(draft.GuideHours)") }
         if draft.Default_transcode   != old.Default_transcode   { glog("[Settings] DefaultTranscode: '\(old.Default_transcode)' → '\(draft.Default_transcode)'") }
+        if draft.Virtual_tuner_relay_default_transcode != old.Virtual_tuner_relay_default_transcode {
+            glog("[Settings] RelayDefaultTranscode: '\(old.Virtual_tuner_relay_default_transcode)' → '\(draft.Virtual_tuner_relay_default_transcode)'")
+        }
         if draft.Guide_use_xml       != old.Guide_use_xml       { glog("[Settings] GuideUseXml: \(old.Guide_use_xml) → \(draft.Guide_use_xml)") }
         if draft.Appearance_mode     != old.Appearance_mode     { glog("[Settings] AppearanceMode: '\(old.Appearance_mode)' → '\(draft.Appearance_mode)'") }
         let interfaceChanged  = draft.Network_interface   != old.Network_interface
@@ -674,6 +677,20 @@ struct SettingsView: View {
             Section("Recording Relay") {
                 Toggle(isOn: $draft.Virtual_tuner_relay_enabled) {
                     HStack { Text("Rebroadcast In-Progress Recordings"); InfoButton("While a show is recording, this Mac briefly advertises itself as an extra HDHomeRun-style tuner on the local network, so another Mac running hdhrVCRplus can watch the recording without tying up a second real tuner. On by default. It can never be used to start a new recording — only to watch one already in progress — and works independently of Sharing above.") }
+                }
+                if draft.Virtual_tuner_relay_enabled {
+                    Picker(selection: $draft.Virtual_tuner_relay_default_transcode) {
+                        Text("Heavy").tag("heavy")
+                        Text("Internet 720").tag("internet720")
+                        Text("Internet 540").tag("internet540")
+                        Text("Internet 480").tag("internet480")
+                        Text("Internet 360").tag("internet360")
+                        Text("Internet 240").tag("internet240")
+                        Text("Mobile").tag("mobile")
+                    } label: {
+                        HStack { Text("Default transcode level"); InfoButton("Applied whenever a viewer of the rebroadcast above asks for any transcode — the specific profile their own client requests only decides whether to transcode at all, not which level; this Mac always uses the level chosen here instead. Every level keeps the source's own resolution and frame rate, so only the target bitrate differs — Heavy is the highest quality/bitrate, Mobile the lowest.") }
+                    }
+                    .accessibilityIdentifier("settings-relay-default-transcode")
                 }
             }
 

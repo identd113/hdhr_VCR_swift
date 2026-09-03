@@ -58,13 +58,22 @@ enum MPEGVideoStreamType {
 func mpegTSVideoStreamType(_ data: [UInt8]) -> UInt8? {
     guard data.count >= 189, data[0] == 0x47, data[188] == 0x47 else { return nil }
 
-    // Pass 1 — PAT (PID 0): collect the program's PMT PID(s).
+    // Pass 1 — PAT (PID 0): collect the program's PMT PID(s). Reads the PID straight out of `data`
+    // (not a sliced `pkt` array) for every packet, since the overwhelming majority of packets in a
+    // multiplex aren't PID 0 — only materializing an Array once a PID match is confirmed avoids
+    // paying for a 188-byte copy (up to ~11,000 times for the default 2MB scan) that's almost always
+    // thrown away unread. Breaks as soon as a PAT packet actually yields a PMT PID — a real
+    // broadcast repeats the PAT identically every ~100ms (see mpegTSVideoStreamType(inFileAt:)'s own
+    // doc comment), so the first hit already has everything pass 1 needs; scanning the rest of a
+    // multi-megabyte buffer for more PAT repeats would just re-derive the same PID set.
     var pmtPIDs = Set<Int>()
     var idx = 0
     while idx + 188 <= data.count {
-        let pkt = Array(data[idx..<idx + 188]); idx += 188
-        let pid = (Int(pkt[1] & 0x1f) << 8) | Int(pkt[2])
-        guard pid == 0, pkt[1] & 0x40 != 0 else { continue }   // PID 0 + payload-unit-start
+        let base = idx
+        idx += 188
+        let pid = (Int(data[base + 1] & 0x1f) << 8) | Int(data[base + 2])
+        guard pid == 0, data[base + 1] & 0x40 != 0 else { continue }   // PID 0 + payload-unit-start
+        let pkt = Array(data[base..<base + 188])
         let p = 4 + 1 + Int(pkt[4])                            // skip TS header + pointer field
         guard p + 3 <= pkt.count else { continue }
         let sectionLen = (Int(pkt[p + 1] & 0x0f) << 8) | Int(pkt[p + 2])
@@ -76,15 +85,19 @@ func mpegTSVideoStreamType(_ data: [UInt8]) -> UInt8? {
             if programNum != 0 { pmtPIDs.insert(mapPID) }
             i += 4
         }
+        if !pmtPIDs.isEmpty { break }
     }
     guard !pmtPIDs.isEmpty else { return nil }
 
-    // Pass 2 — PMT: first video stream_type (MPEG-1/2 video, H.264, or HEVC).
+    // Pass 2 — PMT: first video stream_type (MPEG-1/2 video, H.264, or HEVC). Same PID-before-slice
+    // ordering as pass 1 above.
     idx = 0
     while idx + 188 <= data.count {
-        let pkt = Array(data[idx..<idx + 188]); idx += 188
-        let pid = (Int(pkt[1] & 0x1f) << 8) | Int(pkt[2])
-        guard pmtPIDs.contains(pid), pkt[1] & 0x40 != 0 else { continue }
+        let base = idx
+        idx += 188
+        let pid = (Int(data[base + 1] & 0x1f) << 8) | Int(data[base + 2])
+        guard pmtPIDs.contains(pid), data[base + 1] & 0x40 != 0 else { continue }
+        let pkt = Array(data[base..<base + 188])
         let p = 4 + 1 + Int(pkt[4])
         guard p + 12 <= pkt.count else { continue }
         let sectionLen = (Int(pkt[p + 1] & 0x0f) << 8) | Int(pkt[p + 2])

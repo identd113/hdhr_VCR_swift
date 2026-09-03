@@ -530,7 +530,12 @@ final class AppState: ObservableObject {
         // Resume an incomplete signal scan: only if the store already has data (meaning a scan
         // was started before) and at least one channel still needs a sample.
         if config.Signal_quality_enabled, !ChannelSignalStore.shared.buckets.isEmpty {
-            let anyNeeded = devices.contains { device in
+            // recordableDevices — a discovered virtual relay device's synthetic lineup (fetched
+            // deliberately unfiltered to power the "Recording on Another Mac" menu, see
+            // performFetchAllGuides's own comment) shouldn't spuriously trigger a resume here;
+            // startSignalScan() itself re-filters to recordableDevices downstream regardless, so
+            // this is just keeping the trigger check consistent with what it actually gates.
+            let anyNeeded = recordableDevices.contains { device in
                 (lineups[device.DeviceID] ?? []).contains {
                     ChannelSignalStore.shared.needsSample(guideName: $0.GuideName)
                 }
@@ -670,6 +675,15 @@ final class AppState: ObservableObject {
         if errorMsg == nil {
             boundWebServerPort = config.Web_server_port
             webServer.updateTXTRecord()
+            // A successful (re)bind can follow a port change while the virtual-tuner relay was
+            // already active (reconcileWebServerState's port-change branch stops+restarts the
+            // listener) — updateVirtualTunerPresence() re-derives BaseURL from the now-current
+            // activePort and pushes it to VirtualTunerService.start(), which updates the UDP
+            // responder's advertised TLVs in place. Without this, the relay would keep advertising
+            // the stale pre-change port over UDP until an unrelated recording start/stop happened
+            // to call updateVirtualTunerPresence() again — a discovering client on another Mac gets
+            // a BaseURL it can't connect to. A no-op whenever nothing is currently recording.
+            updateVirtualTunerPresence()
         }
     }
 
@@ -810,7 +824,17 @@ final class AppState: ObservableObject {
     // SettingsView calls this directly on toggle change.
     func updateVirtualTunerPresence() {
         if isRecording && config.Virtual_tuner_relay_enabled {
-            let baseURL = webServer.virtualTunerBaseURL(preferredInterface: config.Network_interface)
+            // nil means no LAN interface was found (stale config.Network_interface after an adapter
+            // switch, or a momentary interface-list gap) — see virtualTunerBaseURL's own doc
+            // comment for why this must skip starting/refreshing the relay entirely rather than
+            // falling back to a "127.0.0.1" BaseURL that would be advertised to the whole LAN and
+            // is unreachable from any other machine. Leaves any already-running relay as-is (its
+            // last-known-good BaseURL) rather than tearing it down over a possibly-transient gap;
+            // the next state change that calls this again picks up a fresh interface list.
+            guard let baseURL = webServer.virtualTunerBaseURL(preferredInterface: config.Network_interface) else {
+                glog("[VirtualTuner] no LAN interface found — skipping relay start/refresh this cycle", level: .warning)
+                return
+            }
             let tunerCount = shows.filter { $0.show_recording }.count
             if let id = activeVirtualTunerDeviceID {
                 // Already running — refresh the advertised BaseURL/TunerCount in place (e.g. a

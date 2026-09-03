@@ -30,8 +30,14 @@ final class VirtualTunerService {
     // is what HDHRDevice.isVirtualRelay decodes from (see that property's own doc comment);
     // showTitleKey is what lets a discovering hdhrVCRplus instance's menu bar say "Recording on
     // <title>" instead of just a bare channel number (a generic lineup entry has no room for that).
+    // transcodeViewersKey mirrors that same reasoning for MenuContent's "Recording on Another Mac"
+    // submenu — see buildVirtualTunerLineupJSON's own comment on why this is per-show, not
+    // machine-wide, and why it reflects viewers of an ALREADY-active remote transcode session, not
+    // anything this instance's own click would request (watchRemoteRelay never applies a transcode
+    // override today).
     static let virtualRelayMarkerKey = "HdhrVCRplusVirtualRelay"
     static let showTitleKey = "HdhrVCRplusShowTitle"
+    static let transcodeViewersKey = "HdhrVCRplusTranscodeViewers"
 
     private let queue = DispatchQueue(label: "hdhrVCRplus.virtualtuner.udp", qos: .utility)
     private var sock: Int32 = -1

@@ -12,12 +12,12 @@ import Foundation
 struct VirtualTunerWebRoutesTests {
 
     @MainActor
-    @Test func discoverJSON_reflectsActiveRecordingCountAndCarriesRelayMarker() {
+    @Test func discoverJSON_reflectsActiveRecordingCountAndCarriesRelayMarker() throws {
         var show = Show.testRecording(title: "Days of Our Lives", channel: "5.1")
         show.hdhr_record = "FFFFFFFF"
         let state = makeTestAppState(shows: [show], devices: [.test(id: "FFFFFFFF")])
 
-        let json = WebServer().buildVirtualTunerDiscoverJSON(state: state, deviceID: "FEEDABCD")
+        let json = try #require(WebServer().buildVirtualTunerDiscoverJSON(state: state, deviceID: "FEEDABCD"))
         #expect(json["DeviceID"] as? String == "FEEDABCD")
         #expect(json["TunerCount"] as? Int == 1)
         #expect(json["HdhrVCRplusVirtualRelay"] as? Bool == true)
@@ -28,34 +28,34 @@ struct VirtualTunerWebRoutesTests {
     // Requested 2026-09-03: the relay should read as clearly related to the real unit it's
     // relaying from in a third-party client's device list, instead of a generic label.
     @MainActor
-    @Test func discoverJSON_friendlyNameIsSourceDeviceNameWithRelaySuffix() {
+    @Test func discoverJSON_friendlyNameIsSourceDeviceNameWithRelaySuffix() throws {
         var show = Show.testRecording(title: "Days of Our Lives", channel: "5.1")
         show.hdhr_record = "FFFFFFFF"
         let state = makeTestAppState(shows: [show],
                                       devices: [.test(id: "FFFFFFFF", friendlyName: "HDHomeRun EXTEND")])
-        let json = WebServer().buildVirtualTunerDiscoverJSON(state: state, deviceID: "FEEDABCD")
+        let json = try #require(WebServer().buildVirtualTunerDiscoverJSON(state: state, deviceID: "FEEDABCD"))
         #expect(json["FriendlyName"] as? String == "HDHomeRun EXTEND-Relay")
     }
 
     @MainActor
-    @Test func discoverJSON_friendlyNameFallsBackToGenericWhenSourceDeviceHasNone() {
+    @Test func discoverJSON_friendlyNameFallsBackToGenericWhenSourceDeviceHasNone() throws {
         var show = Show.testRecording(title: "Days of Our Lives", channel: "5.1")
         show.hdhr_record = "FFFFFFFF"
         // .test()'s default friendlyName is nil — mirrors a UDP-only-discovered source device with
         // no FriendlyName TLV read, same as the existing ModelNumber-absent convention.
         let state = makeTestAppState(shows: [show], devices: [.test(id: "FFFFFFFF")])
-        let json = WebServer().buildVirtualTunerDiscoverJSON(state: state, deviceID: "FEEDABCD")
+        let json = try #require(WebServer().buildVirtualTunerDiscoverJSON(state: state, deviceID: "FEEDABCD"))
         #expect(json["FriendlyName"] as? String == "hdhrVCRplus (Recording Relay)")
     }
 
     @MainActor
-    @Test func discoverJSON_tunerCountOnlyCountsActivelyRecordingShows() {
+    @Test func discoverJSON_tunerCountOnlyCountsActivelyRecordingShows() throws {
         var recording = Show.testRecording(title: "Recording Now", channel: "5.1")
         recording.hdhr_record = "FFFFFFFF"
         let scheduled = Show.testActive(title: "Not Recording Yet", channel: "7.1")
         let state = makeTestAppState(shows: [recording, scheduled], devices: [.test(id: "FFFFFFFF")])
 
-        let json = WebServer().buildVirtualTunerDiscoverJSON(state: state, deviceID: "FEEDABCD")
+        let json = try #require(WebServer().buildVirtualTunerDiscoverJSON(state: state, deviceID: "FEEDABCD"))
         #expect(json["TunerCount"] as? Int == 1)
     }
 
@@ -181,5 +181,64 @@ struct VirtualTunerWebRoutesTests {
         let html = ws.buildDevBarHTML(state: state, devTuners: devTuners)
         #expect(!html.contains("FEED3333"))
         #expect(html.contains("FFFFFFFF"))
+    }
+
+    // MARK: - effectiveTranscodeProfile (relay default-transcode-level setting)
+    //
+    // Regression for 2026-09-03's Settings addition: config.Virtual_tuner_relay_default_transcode
+    // always wins over a viewer's own requested profile string once ANY transcode is requested —
+    // the requested string only ever decides transcode:yes/no, per explicit user direction.
+
+    @Test func effectiveTranscodeProfile_requestedProfileIsOverriddenByConfiguredDefault() {
+        let result = WebServer.effectiveTranscodeProfile(requested: "mobile", configuredDefault: "heavy")
+        #expect(result.wantsTranscode)
+        #expect(result.profile == "heavy")
+    }
+
+    @Test func effectiveTranscodeProfile_unrecognizedRequestedStringStillTriggersConfiguredDefault() {
+        // Even a profile name this app doesn't recognize still counts as "wants transcode" —
+        // matches handleVirtualTunerStream's own wantsTranscode gate (any non-empty, non-"none").
+        let result = WebServer.effectiveTranscodeProfile(requested: "some-unknown-profile", configuredDefault: "internet480")
+        #expect(result.wantsTranscode)
+        #expect(result.profile == "internet480")
+    }
+
+    @Test func effectiveTranscodeProfile_noneRequested_doesNotTranscode() {
+        let result = WebServer.effectiveTranscodeProfile(requested: "none", configuredDefault: "heavy")
+        #expect(!result.wantsTranscode)
+        #expect(result.profile == "none")
+    }
+
+    @Test func effectiveTranscodeProfile_emptyRequested_doesNotTranscode() {
+        let result = WebServer.effectiveTranscodeProfile(requested: "", configuredDefault: "heavy")
+        #expect(!result.wantsTranscode)
+        #expect(result.profile == "")
+    }
+
+    // MARK: - VLCBridge.transcodeBitrateKbps (relay's seven recognized profile names)
+    //
+    // Regression for 2026-09-03: internet540/480/360/240 used to silently collapse into the same
+    // "default" bucket as any unrecognized string until the relay's Settings picker offered all
+    // seven by name — each must now map to its own distinct bitrate.
+
+    @Test func transcodeBitrateKbps_allSevenRecognizedProfilesAreDistinct() {
+        let profiles = ["heavy", "internet720", "internet540", "internet480", "internet360", "internet240", "mobile"]
+        let bitrates = profiles.map { VLCBridge.transcodeBitrateKbps(for: $0) }
+        #expect(Set(bitrates).count == profiles.count, "each recognized profile must map to a distinct bitrate")
+    }
+
+    @Test func transcodeBitrateKbps_descendingRoughlyByResolutionTier() {
+        // heavy (same res as source) highest, mobile (most bandwidth-conscious) lowest, the
+        // internetNNN ladder descending in between by nominal resolution tier.
+        #expect(VLCBridge.transcodeBitrateKbps(for: "heavy") > VLCBridge.transcodeBitrateKbps(for: "internet720"))
+        #expect(VLCBridge.transcodeBitrateKbps(for: "internet720") > VLCBridge.transcodeBitrateKbps(for: "internet540"))
+        #expect(VLCBridge.transcodeBitrateKbps(for: "internet540") > VLCBridge.transcodeBitrateKbps(for: "internet480"))
+        #expect(VLCBridge.transcodeBitrateKbps(for: "internet480") > VLCBridge.transcodeBitrateKbps(for: "internet360"))
+        #expect(VLCBridge.transcodeBitrateKbps(for: "internet360") > VLCBridge.transcodeBitrateKbps(for: "internet240"))
+        #expect(VLCBridge.transcodeBitrateKbps(for: "internet240") > VLCBridge.transcodeBitrateKbps(for: "mobile"))
+    }
+
+    @Test func transcodeBitrateKbps_unrecognizedProfile_fallsBackToGenericDefault() {
+        #expect(VLCBridge.transcodeBitrateKbps(for: "not-a-real-profile") == 2000)
     }
 }

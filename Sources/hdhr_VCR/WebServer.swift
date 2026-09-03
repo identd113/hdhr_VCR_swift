@@ -413,7 +413,12 @@ final class WebServer: @unchecked Sendable {
     // full rebuild).
     @MainActor
     func tdropDeviceIDs(state: AppState) -> Set<String> {
-        state.usableDeviceIDs.union(state.shows.map(\.hdhr_record).filter { !$0.isEmpty })
+        // recordableDevices, not raw usableDeviceIDs — must match buildDevBarHTML's own tuner-box
+        // iteration exactly (it never renders a box, and therefore never emits a #tdrop-{id}
+        // dropdown element, for a discovered virtual relay device), or this set would include an ID
+        // with no corresponding dropdown for a pushed tdrop payload to ever target.
+        let usableRecordable = Set(state.recordableDevices.filter { $0.isAvailable }.map { $0.DeviceID })
+        return usableRecordable.union(state.shows.map(\.hdhr_record).filter { !$0.isEmpty })
     }
 
     @MainActor
@@ -508,7 +513,11 @@ final class WebServer: @unchecked Sendable {
     private func pushFreshTunerCounts() async {
         guard let state = appState else { return }
         var counts: [String: Any] = [:]
-        for device in state.devices {
+        // recordableDevices — a discovered virtual relay device isn't a real tuner (its TunerCount
+        // is actually "count of actively-recording shows", not a real slot count), and
+        // buildDevBarHTML never renders a tuner box for it, so pushing a tuner_update entry for its
+        // DeviceID would only mislead the client with no corresponding UI to attach it to.
+        for device in state.recordableDevices {
             let active = state.activeTunerCount(for: device.DeviceID)
             // "nt" mirrors the initial page-load embed's own field (tunerJS, below) — without it, a
             // device the client only learns about via this SSE path (not yet in its local `tuners`
@@ -621,6 +630,19 @@ final class WebServer: @unchecked Sendable {
         }
     }
 
+    // A viewer's own requested profile string decides "transcode: yes/no" only — never which
+    // bitrate is actually used. This app's transcode sessions are already shared by show alone
+    // regardless of which profile string each viewer individually asked for (see
+    // VLCBridge.TranscodeSession's own doc comment), so per-viewer profile control never really
+    // existed here; `configuredDefault` (Settings → Sharing → Recording Relay → "Default transcode
+    // level", `config.Virtual_tuner_relay_default_transcode`) is the one admin-configured level
+    // actually applied whenever any transcode is requested, per explicit user direction. Pure — no
+    // I/O — so HDHRManagerTests-style tests can exercise it directly without a live NWConnection.
+    static func effectiveTranscodeProfile(requested: String, configuredDefault: String) -> (wantsTranscode: Bool, profile: String) {
+        let wantsTranscode = !requested.isEmpty && requested != "none"
+        return (wantsTranscode, wantsTranscode ? configuredDefault : requested)
+    }
+
     private func handleVirtualTunerStream(channel: String, deviceId: String?, durationSeconds: Int?, transcode: String?, conn: NWConnection) {
         guard let state = appState else { send(.badRequest("app state unavailable"), on: conn); return }
         glog("[VirtualTuner] /auto/v\(channel) requested dev=\(deviceId ?? "nil") transcode=\(transcode ?? "none")")
@@ -633,11 +655,14 @@ final class WebServer: @unchecked Sendable {
                 self.send(.notFound("no active recording on channel \(channel)"), on: conn)
                 return
             }
-            let profile = (transcode ?? "").lowercased().trimmingCharacters(in: .whitespaces)
-            let wantsTranscode = !profile.isEmpty && profile != "none"
+            let requestedProfile = (transcode ?? "").lowercased().trimmingCharacters(in: .whitespaces)
+            let (wantsTranscode, profile) = Self.effectiveTranscodeProfile(
+                requested: requestedProfile, configuredDefault: state.config.Virtual_tuner_relay_default_transcode)
             let vlcAvailable = VLCBridge.shared.isAvailable
             if wantsTranscode, !vlcAvailable {
-                glog("[VirtualTuner] stream ch=\(channel) requested transcode=\(profile) — VLC unavailable, serving untranscoded bytes", level: .warning)
+                glog("[VirtualTuner] stream ch=\(channel) requested transcode=\(requestedProfile) — VLC unavailable, serving untranscoded bytes", level: .warning)
+            } else if wantsTranscode, requestedProfile != profile {
+                glog("[VirtualTuner] stream ch=\(channel) requested transcode=\(requestedProfile) — using configured default '\(profile)' instead")
             }
             // Fast, proactive check first — a real device's own /lineup.json carries a per-channel
             // VideoCodec field (confirmed live 2026-09-02, see LineupEntry's own doc comment; some
@@ -664,7 +689,7 @@ final class WebServer: @unchecked Sendable {
                     return
                 }
                 if sourceIsAlreadyModern {
-                    glog("[VirtualTuner] stream ch=\(channel) requested transcode=\(profile) — source is already \(lineupVideoCodec ?? "a modern codec"), relaying as-is (no re-encode)")
+                    glog("[VirtualTuner] stream ch=\(channel) requested transcode=\(requestedProfile) — source is already \(lineupVideoCodec ?? "a modern codec"), relaying as-is (no re-encode)")
                 } else {
                     glog("[VirtualTuner] /auto/v\(channel) → 200 raw passthrough, show='\(show.show_title)' path=\(path)")
                 }
@@ -732,6 +757,15 @@ final class WebServer: @unchecked Sendable {
             onFinished()
         }
 
+        // External callers (the liveness probe below) share this same once-only guard instead of
+        // duplicating one, so a probe-detected dead connection and a normal read-path failure can
+        // never both fire cleanup.
+        var isFinished: Bool {
+            lock.lock(); defer { lock.unlock() }
+            return finished
+        }
+        func notifyFinished() { finishOnce() }
+
         func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
             targetQueue.async { [weak self] in
                 guard let self else { return }
@@ -775,6 +809,31 @@ final class WebServer: @unchecked Sendable {
         let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
         urlSession = session
         session.dataTask(with: localURL).resume()
+
+        // Periodic liveness probe — a viewer whose Mac sleeps or loses Wi-Fi without a clean TCP
+        // close (no FIN/RST) leaves conn.send "succeeding" from this side (writes just queue into
+        // the local kernel socket buffer) for as long as the OS's own TCP retransmission timeout
+        // takes, which can be many minutes — meanwhile the local libvlc encode (real CPU, unlike
+        // streamGrowingFile's cheap idle file-tail equivalent) keeps running the whole time with
+        // nothing to ever trigger cleanup. A zero-byte probe still round-trips through the same TCP
+        // stack a real send would, so it surfaces a genuinely dead connection (an already-received
+        // RST, or a broken route) without emitting a stray byte into the live MPEG-TS stream.
+        scheduleTranscodeLivenessProbe(conn: conn, delegate: delegate)
+    }
+
+    private static let transcodeLivenessProbeInterval: TimeInterval = 30
+
+    private func scheduleTranscodeLivenessProbe(conn: NWConnection, delegate: TranscodeProxyDelegate) {
+        queue.asyncAfter(deadline: .now() + Self.transcodeLivenessProbeInterval) { [weak self] in
+            guard let self, !delegate.isFinished else { return }
+            conn.send(content: Data(), completion: .contentProcessed({ error in
+                if error != nil {
+                    delegate.notifyFinished()
+                } else {
+                    self.scheduleTranscodeLivenessProbe(conn: conn, delegate: delegate)
+                }
+            }))
+        }
     }
 
     // Called on fileIOQueue (see handleWatchRecording) — FileHandle open/seek/attributesOfItem
@@ -1253,7 +1312,10 @@ final class WebServer: @unchecked Sendable {
                 glog("[VirtualTuner] /discover.json → 404 (not recording)", level: .warning)
                 return .notFound("not recording")
             }
-            let json = buildVirtualTunerDiscoverJSON(state: state, deviceID: deviceID)
+            guard let json = buildVirtualTunerDiscoverJSON(state: state, deviceID: deviceID) else {
+                glog("[VirtualTuner] /discover.json → 404 (no LAN interface found)", level: .warning)
+                return .notFound("no LAN interface available")
+            }
             glog("[VirtualTuner] /discover.json → 200 DeviceID=\(deviceID) BaseURL=\(json["BaseURL"] ?? "?") TunerCount=\(json["TunerCount"] ?? "?")")
             return jsonResponse(json)
 
@@ -1756,12 +1818,16 @@ final class WebServer: @unchecked Sendable {
     struct DevTuners { let total: Int; let active: Int; var isFull: Bool { total > 0 && active >= total } }
 
     @MainActor
-    static func computeDevTuners(state: AppState, logDiagnostics: Bool = false) -> [String: DevTuners] {
+    // `recordableDevices`, when given, is used as-is instead of re-deriving `state.recordableDevices`
+    // (a computed property that re-filters `devices` on every access) — buildHTML already hoists one
+    // copy and passes it here to avoid recomputing it a second time on its own hot path. Every other
+    // caller omits it and gets the same result computed fresh, same as before.
+    static func computeDevTuners(state: AppState, recordableDevices: [HDHRDevice]? = nil, logDiagnostics: Bool = false) -> [String: DevTuners] {
         var devTuners: [String: DevTuners] = [:]
         // recordableDevices (not state.devices) — a discovered virtual relay device has no real
         // tuner slots to count; feeding it into the client-side `tuners` JS map (tunerJS below,
         // buildHTML) would embed a phantom entry keyed on a device that's watch-only by design.
-        for d in state.recordableDevices {
+        for d in recordableDevices ?? state.recordableDevices {
             let total = d.TunerCount ?? 0
             let occupancy = state.deviceTunerOccupancy[d.DeviceID]
             // Use activeTunerCount = max(hardware occupancy, this app's recordings + VLC stream) so
@@ -1787,7 +1853,10 @@ final class WebServer: @unchecked Sendable {
     // Internal, not private — VirtualTunerWebRoutesTests calls this directly with synthetic
     // AppState, same testability pattern as the other builders in this file.
     @MainActor
-    func buildDevBarHTML(state: AppState, devTuners: [String: DevTuners]) -> String {
+    // `recordableDevices`, when given, is used as-is instead of re-deriving `state.recordableDevices`
+    // — see computeDevTuners' identical parameter for why (buildHTML hoists one copy and passes it
+    // to both). Every other caller omits it and gets the same result computed fresh, same as before.
+    func buildDevBarHTML(state: AppState, devTuners: [String: DevTuners], recordableDevices: [HDHRDevice]? = nil) -> String {
         // Occupancy count, rendered inline inside the .d-btn label rather than as its own
         // clickable element — a second click on the (already-active) name button opens the
         // same detail popover this used to open on its own (see handleDevClick in guide.js).
@@ -1838,7 +1907,7 @@ final class WebServer: @unchecked Sendable {
         // (handleRecord rejects it), so it doesn't belong in the guide's tuner picker at all, same
         // reasoning as WatchNowView's own tuner Picker. It can never carry a show (addShow/
         // updateShow reject it too), so skipping it here can't hide a real scheduled show.
-        for d in state.recordableDevices {
+        for d in recordableDevices ?? state.recordableDevices {
             let isUsable = usableIDs.contains(d.DeviceID)
             // A previously-discovered device that's gone unavailable (isUsable == false) only
             // gets a box when something still depends on it — nothing to warn about otherwise,
@@ -2249,17 +2318,22 @@ final class WebServer: @unchecked Sendable {
         let gridInner   = prebuiltGrid ?? buildGuideGridHTML(state: state)
         // Capture recording shows once — used by recsByDevJS below.
         let recording   = state.recordingShows
+        // Hoisted once — state.recordableDevices re-filters `devices` on every access, and this
+        // function reads it 8+ times below plus twice more inside computeDevTuners/buildDevBarHTML,
+        // on a function that runs on @MainActor on every add/delete/pause/resume/edit/favorite-
+        // toggle and recording start/stop (twice per call — horizontal + vertical variants — per
+        // prebuildPageHTML). Same reasoning as buildGuideGridHTML's own hoisted local.
+        let recordableDevices = state.recordableDevices
 
         // ── Per-device tuner counts (total slots vs. currently occupied) ────────
-        let devTuners = Self.computeDevTuners(state: state, logDiagnostics: true)
+        let devTuners = Self.computeDevTuners(state: state, recordableDevices: recordableDevices, logDiagnostics: true)
         // Embed tuner counts + per-device active-recording list as JS literals.
         // Build via JSONSerialization so DeviceID and LocalIP values are properly JSON-encoded;
         // raw string interpolation into JS string literals would allow injection if a device
         // ever had special characters in its ID or IP.
         let tunerJS: String = {
             var dict: [String: Any] = [:]
-            // recordableDevices — same reasoning as computeDevTuners above.
-            for d in state.recordableDevices {
+            for d in recordableDevices {
                 guard let dt = devTuners[d.DeviceID] else { continue }
                 // "nt" (noTranscode) mirrors AppState.startRecording's own device.supportsTranscode
                 // check — lets the Record modal warn proactively instead of only after a failed
@@ -2278,7 +2352,7 @@ final class WebServer: @unchecked Sendable {
         // recordableDevices — a virtual relay device's lineup is synthetic (its own recording's
         // channel only), not something guide.js's device picker should ever resolve names against.
         let channelNameLookup: [String: [String: String]] = Dictionary(
-            uniqueKeysWithValues: state.recordableDevices.map { d in
+            uniqueKeysWithValues: recordableDevices.map { d in
                 let map = Dictionary(
                     (state.lineups[d.DeviceID] ?? []).map { ($0.GuideNumber, $0.GuideName) },
                     uniquingKeysWith: { first, _ in first })
@@ -2287,8 +2361,7 @@ final class WebServer: @unchecked Sendable {
 
         let recsByDevJS: String = {
             var devMap: [String: [[String: String]]] = [:]
-            // recordableDevices — same reasoning as tunerJS above.
-            for d in state.recordableDevices {
+            for d in recordableDevices {
                 var entries: [[String: String]] = []
                 func chName(_ num: String) -> String { channelNameLookup[d.DeviceID]?[num] ?? "" }
                 if let occupancy = state.deviceTunerOccupancy[d.DeviceID], !occupancy.isEmpty {
@@ -2363,15 +2436,15 @@ final class WebServer: @unchecked Sendable {
         // recording (see VirtualTunerService.swift), so it could otherwise both wrongly trigger
         // multi-tuner mode for what's really a single real tuner, and win the lineup-only fallback
         // as the guide's default tuner — same reasoning as buildDevBarHTML excluding it entirely.
-        let defaultDev: String = state.recordableDevices.count > 1
-            ? (state.recordableDevices.first(where: { !(state.lineups[$0.DeviceID] ?? []).isEmpty && !state.guideStore.channels(deviceId: $0.DeviceID).isEmpty })?.DeviceID
-               ?? state.recordableDevices.first(where: { !(state.lineups[$0.DeviceID] ?? []).isEmpty })?.DeviceID
+        let defaultDev: String = recordableDevices.count > 1
+            ? (recordableDevices.first(where: { !(state.lineups[$0.DeviceID] ?? []).isEmpty && !state.guideStore.channels(deviceId: $0.DeviceID).isEmpty })?.DeviceID
+               ?? recordableDevices.first(where: { !(state.lineups[$0.DeviceID] ?? []).isEmpty })?.DeviceID
                ?? "")
             : ""
 
         // Header is just the title now; every tuner (incl. offline) gets a box in the dev-bar.
         let headerHTML = "<h1 style=\"margin:0\">hdhrVCRplus Guide</h1>"
-        let deviceBarHTML = "<div id=\"dev-bar\">" + buildDevBarHTML(state: state, devTuners: devTuners) + "</div>"
+        let deviceBarHTML = "<div id=\"dev-bar\">" + buildDevBarHTML(state: state, devTuners: devTuners, recordableDevices: recordableDevices) + "</div>"
 
         // ── Summary placeholder: current recording or next scheduled show ────
         let sumPhHTML = buildSumPhHTML(state: state)
@@ -2526,19 +2599,32 @@ final class WebServer: @unchecked Sendable {
 
     // Shared by the HTTP JSON builders below and AppState.updateVirtualTunerPresence (which needs
     // the same string to hand VirtualTunerService's UDP responder — see that type's own doc
-    // comment on why the UDP reply must carry this, not just the HTTP routes).
-    func virtualTunerBaseURL(preferredInterface: String) -> String {
-        let ip = lanIPAddress(preferredInterface: preferredInterface) ?? "127.0.0.1"
+    // comment on why the UDP reply must carry this, not just the HTTP routes). Returns nil rather
+    // than silently falling back to "127.0.0.1" when no LAN interface is found (a stale
+    // config.Network_interface after a network-adapter switch, or a momentary interface-list gap) —
+    // a relay advertising 127.0.0.1 over UDP to the whole LAN is worse than not advertising at all:
+    // it's meaningless to every other machine, and a discovering hdhrVCRplus instance would try to
+    // reach the relay's own loopback address instead of the real Mac. updateVirtualTunerPresence()
+    // treats nil as "don't start the relay this cycle" rather than starting it with a broken address.
+    func virtualTunerBaseURL(preferredInterface: String) -> String? {
+        guard let ip = lanIPAddress(preferredInterface: preferredInterface) else { return nil }
         return "http://\(ip):\(activePort)"
     }
 
     @MainActor
-    func buildVirtualTunerDiscoverJSON(state: AppState, deviceID: String) -> [String: Any] {
-        // Resolved once — virtualTunerBaseURL's own lanIPAddress lookup enumerates network
-        // interfaces (availableNetworkInterfaces/getifaddrs), so a second direct lanIPAddress call
-        // just for LocalIP below would pay that syscall pass twice per request.
-        let ip   = lanIPAddress(preferredInterface: state.config.Network_interface) ?? "127.0.0.1"
-        let base = "http://\(ip):\(activePort)"
+    func buildVirtualTunerDiscoverJSON(state: AppState, deviceID: String) -> [String: Any]? {
+        // No LAN IP to build a reachable URL from (see virtualTunerBaseURL's own doc comment) — nil
+        // here matches buildVirtualTunerLineupJSON's own empty-lineup fallback for the same gap.
+        // Goes through the shared virtualTunerBaseURL (not a second independent lanIPAddress call +
+        // its own "127.0.0.1" fallback, which is exactly what let this route silently keep
+        // advertising a broken loopback BaseURL to an HTTP client even after that fallback was
+        // fixed everywhere else) so a future correctness fix to the one shared accessor propagates
+        // here automatically instead of needing a second, independently-remembered copy. LocalIP is
+        // parsed back out of `base`'s own host rather than a second lanIPAddress call, so this still
+        // pays the interface-enumeration syscall only once per request, same as before.
+        guard let base = virtualTunerBaseURL(preferredInterface: state.config.Network_interface),
+              let ip = URL(string: base)?.host
+        else { return nil }
         let recordingShows = state.shows.filter { $0.show_recording }
         let tunerCount = recordingShows.count
         // Named after the real unit it's relaying from ("<original FriendlyName>-Relay") rather than
@@ -2566,11 +2652,16 @@ final class WebServer: @unchecked Sendable {
 
     @MainActor
     func buildVirtualTunerLineupJSON(state: AppState) -> [[String: Any]] {
-        let base = virtualTunerBaseURL(preferredInterface: state.config.Network_interface)
+        // No LAN IP to build a reachable URL from (see virtualTunerBaseURL's own doc comment) — an
+        // empty lineup here matches the same "not really available" state the UDP responder itself
+        // would be in (updateVirtualTunerPresence skips starting it entirely in this case), rather
+        // than emitting entries with an unreachable/garbled URL.
+        guard let base = virtualTunerBaseURL(preferredInterface: state.config.Network_interface) else { return [] }
         return state.shows.filter { $0.show_recording }.map { show in
-            let guideName = state.lineups[show.hdhr_record]?
-                .first(where: { $0.GuideNumber == show.show_channel })?.GuideName ?? show.show_channel
-            return [
+            let sourceEntry = state.lineups[show.hdhr_record]?
+                .first(where: { $0.GuideNumber == show.show_channel })
+            let guideName = sourceEntry?.GuideName ?? show.show_channel
+            var entry: [String: Any] = [
                 "GuideNumber": show.show_channel,
                 "GuideName": guideName,
                 // `dev=` disambiguates two real devices that happen to share a channel number
@@ -2584,6 +2675,20 @@ final class WebServer: @unchecked Sendable {
                 // on <title>" instead of just a channel number.
                 VirtualTunerService.showTitleKey: show.show_title,
             ]
+            // Standard field (VideoCodec), not a custom Hdhr... key — a discovering hdhrVCRplus
+            // instance's own LineupEntry decode already recognizes it from a real device's lineup,
+            // so no client-side change is needed to surface the source's actual broadcast codec
+            // (MPEG2/H264/...) for MenuContent's "Recording on Another Mac" submenu. The relay has
+            // no codec of its own — it's relaying whatever the source device's channel already is.
+            if let codec = sourceEntry?.VideoCodec { entry["VideoCodec"] = codec }
+            // Per-show, not machine-wide (explicit design direction) — reflects whether ANY viewer
+            // is currently watching THIS show transcoded, and how many, regardless of what this
+            // discovering instance's own click would request (it never requests one —
+            // watchRemoteRelay always plays raw). Omitted rather than 0 so the discovering side can
+            // treat "field present" as "transcoding is active" without a magic-number check.
+            let viewers = VLCBridge.shared.transcodeViewerCount(showId: show.show_id)
+            if viewers > 0 { entry[VirtualTunerService.transcodeViewersKey] = viewers }
+            return entry
         }
     }
 

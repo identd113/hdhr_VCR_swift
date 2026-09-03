@@ -161,13 +161,32 @@ struct MenuContent: View {
         if !remoteRelayEntries.isEmpty {
             Section("Recording on Another Mac") {
                 ForEach(remoteRelayEntries, id: \.entry.URL) { pair in
-                    Button {
-                        state.watchRemoteRelay(url: pair.entry.URL ?? "",
-                                                title: pair.entry.virtualRelayShowTitle ?? pair.entry.GuideName,
-                                                device: pair.device)
+                    let title = pair.entry.virtualRelayShowTitle ?? pair.entry.GuideName
+                    Menu {
+                        Button {
+                            state.watchRemoteRelay(url: pair.entry.URL ?? "", title: title, device: pair.device)
+                        } label: {
+                            Label("Watch", systemImage: "play.tv.fill")
+                        }
+                        Divider()
+                        // Incoming/outgoing are always the same value today — watchRemoteRelay
+                        // never applies a transcode override, so what clicking Watch above actually
+                        // gives you is always identical to the source's own broadcast codec. Shown
+                        // as two separate rows anyway so this doesn't need re-deriving if a future
+                        // feature ever adds a transcode choice here.
+                        let codec = pair.entry.VideoCodec ?? "unknown"
+                        menuInfo("Source: \(codec)", font: .footnote, secondary: true)
+                        menuInfo("You'll get: \(codec)", font: .footnote, secondary: true)
+                        // Reflects an already-active remote transcode session (any viewer of THIS
+                        // show on the remote Mac, not just this instance) — see
+                        // VirtualTunerService.transcodeViewersKey's own doc comment. Omitted
+                        // entirely (not "0 viewers") when nothing is transcoding.
+                        if let viewers = pair.entry.virtualRelayTranscodeViewers, viewers > 0 {
+                            menuInfo("Transcoding: \(viewers) viewer\(viewers == 1 ? "" : "s")", font: .footnote, secondary: true)
+                        }
                     } label: {
                         Label {
-                            Text("Recording on \(pair.entry.virtualRelayShowTitle ?? pair.entry.GuideName)")
+                            Text("Recording on \(title)")
                         } icon: {
                             Image(systemName: "play.tv.fill").foregroundStyle(watchNowBlue)
                         }

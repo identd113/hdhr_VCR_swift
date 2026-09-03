@@ -177,12 +177,17 @@ struct AddShowView: View {
         }
         // Ensure the lineup is present before the user can click Record in the web guide.
         // Recovers from silent startup fetch failures so show_url is never empty on first click.
-        // Keyed by state.devices.isEmpty (not a bare .task) — a plain .task only fires once for
-        // this view's lifetime, so if the wizard opens during a cold launch before device
-        // discovery has completed, `state.devices` is empty, the guard returns immediately, and
-        // it would otherwise never retry once discovery finishes; this id flips false once
-        // devices populate, re-running the task at that point.
-        .task(id: state.devices.isEmpty) {
+        // Keyed by state.recordableDevices.isEmpty (not a bare .task, and not state.devices.isEmpty)
+        // — a plain .task only fires once for this view's lifetime, so if the wizard opens during a
+        // cold launch before device discovery has completed, the guard returns immediately and it
+        // would otherwise never retry once discovery finishes; this id flips false once a real
+        // (non-relay) device populates, re-running the task at that point. recordableDevices, not
+        // raw devices, matters here: a discovered virtual-relay device (another instance's, watch-
+        // only) can populate state.devices first while no real tuner has appeared yet — keying on
+        // devices.isEmpty would flip false right then, fire this task with recordableDevices still
+        // empty (the `guard let device` returns immediately), and never re-fire once a real tuner
+        // shows up moments later since devices.isEmpty stays false from that point on.
+        .task(id: state.recordableDevices.isEmpty) {
             guard let device = selectedDevice ?? state.recordableDevices.first else { return }
             await state.ensureLineupLoaded(for: device)
         }

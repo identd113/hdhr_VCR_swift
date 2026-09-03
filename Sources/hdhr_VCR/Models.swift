@@ -435,6 +435,23 @@ struct AppConfig: Equatable {
     // recording to start/stop.
     var Virtual_tuner_relay_enabled: Bool = true
 
+    // Profile applied whenever a relay viewer requests any transcode at all — the specific profile
+    // string the viewer's own client requested is used only to decide "transcode: yes/no"
+    // (WebServer.handleVirtualTunerStream), never to pick the actual bitrate; this setting is the
+    // one source of truth for that, matching how a shared TranscodeSession already works (see
+    // VLCBridge.TranscodeSession's own doc comment — sessions are shared by show alone regardless
+    // of which profile string each viewer individually asked for, so there was already no such
+    // thing as true per-viewer profile control here). One of the seven names VLCBridge.
+    // transcodeBitrateKbps(for:) recognizes — heavy/mobile/internet720/internet540/internet480/
+    // internet360/internet240 — the real, EXTEND-only profile names both the original AppleScript
+    // app (identd113/hdhr_VCR-AS, "proven since 2016") and SiliconDust's own current
+    // info.hdhomerun.com/info/http_api documentation use (internet540 replaced internet720 there at
+    // some point, but a live device still honors internet720 when requested directly — kept in the
+    // set for that reason). "heavy" default, per explicit user direction — keeps the source's own
+    // resolution/frame-rate (as every profile here already does, see transcodeBitrateKbps' own doc
+    // comment) at the highest bitrate of the seven, prioritizing quality over bandwidth.
+    var Virtual_tuner_relay_default_transcode: String = "heavy"
+
     // Signal quality
     var Signal_quality_enabled:      Bool = false  // show signal bars in guide + web UI
     var Signal_quality_alert_notify: Bool = false  // deliver system notification + Discord on dropout
@@ -511,6 +528,7 @@ extension AppConfig: Codable {
         Web_server_port         = (try? c.decode(Int.self,    forKey: .Web_server_port))         ?? 1980
         Terminal_guide_enabled  = (try? c.decode(Bool.self,   forKey: .Terminal_guide_enabled))  ?? true
         Virtual_tuner_relay_enabled = (try? c.decode(Bool.self, forKey: .Virtual_tuner_relay_enabled)) ?? true
+        Virtual_tuner_relay_default_transcode = (try? c.decode(String.self, forKey: .Virtual_tuner_relay_default_transcode)) ?? "heavy"
         Signal_quality_enabled      = (try? c.decode(Bool.self, forKey: .Signal_quality_enabled))      ?? false
         Signal_quality_alert_notify = (try? c.decode(Bool.self, forKey: .Signal_quality_alert_notify)) ?? false
         Status_light_blink_enabled  = (try? c.decode(Bool.self, forKey: .Status_light_blink_enabled))  ?? false
@@ -656,10 +674,17 @@ struct LineupEntry: Codable, Identifiable {
     // remote-watch row. Reuses the existing lineup-fetch pipeline (HDHRManager.fetchLineup) rather
     // than a separate cache, since state.lineups is already refreshed on the same cadence.
     var virtualRelayShowTitle: String?
+    // Non-standard, set only by hdhrVCRplus's own virtual-tuner /lineup.json when at least one
+    // viewer is currently watching this specific show transcoded — see
+    // VirtualTunerService.transcodeViewersKey's own doc comment for why this is per-show, not
+    // machine-wide, and reflects an already-active remote session rather than anything this
+    // instance's own click would request. Omitted (nil) rather than 0 when no session is running.
+    var virtualRelayTranscodeViewers: Int?
 
     private enum CodingKeys: String, CodingKey {
         case GuideNumber, GuideName, URL, HD, Favorite, VideoCodec, AudioCodec
         case virtualRelayShowTitle = "HdhrVCRplusShowTitle"
+        case virtualRelayTranscodeViewers = "HdhrVCRplusTranscodeViewers"
     }
 }
 

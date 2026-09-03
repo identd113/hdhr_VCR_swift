@@ -72,6 +72,68 @@ struct HDHRManagerTests {
         #expect(device.supportsTranscode)
     }
 
+    // Regression for the 2026-09-03 fix: udpDiscoverAndFetch used to always call
+    // fetchDeviceInfo(ip:) with no baseURL, which silently guessed port 80 — correct for a real
+    // device but wrong for a virtual-tuner relay on Web_server_port (default 1980), which was
+    // never actually reachable via this app's own auto-discovery as a result. baseURL now supplies
+    // the real port when the UDP reply's own BaseURL TLV carried one.
+    @Test func fetchDeviceInfo_baseURLWithNonStandardPort_isUsedOverImplicitPort80() async throws {
+        var capturedURL: URL?
+        HDHRMockURLProtocol.requestHandler = { req in
+            capturedURL = req.url
+            let json = """
+            {"DeviceID":"FEED1234","LocalIP":"192.168.1.77","TunerCount":1,"FirmwareVersion":null}
+            """
+            return (hdhrOKResponse(for: req.url!), Data(json.utf8))
+        }
+        let manager = makeHDHRManager()
+        _ = try await manager.fetchDeviceInfo(ip: "192.168.1.77", baseURL: "http://192.168.1.77:1980")
+        #expect(capturedURL?.port == 1980)
+        #expect(capturedURL?.absoluteString == "http://192.168.1.77:1980/discover.json")
+    }
+
+    @Test func fetchDeviceInfo_noBaseURL_fallsBackToImplicitPort80FromIP() async throws {
+        var capturedURL: URL?
+        HDHRMockURLProtocol.requestHandler = { req in
+            capturedURL = req.url
+            let json = """
+            {"DeviceID":"1234ABCD","LocalIP":"192.168.1.50","TunerCount":2,"FirmwareVersion":null}
+            """
+            return (hdhrOKResponse(for: req.url!), Data(json.utf8))
+        }
+        let manager = makeHDHRManager()
+        _ = try await manager.fetchDeviceInfo(ip: "192.168.1.50")
+        #expect(capturedURL?.port == nil)  // implicit 80, matching a real device
+        #expect(capturedURL?.absoluteString == "http://192.168.1.50/discover.json")
+    }
+
+    // MARK: - HDHRManager.verifiedReplyBaseURL (UDP reply spoofing guard)
+    //
+    // Regression for a real gap the 2026-09-03 BaseURL-TLV fix introduced: without this check, any
+    // host on the LAN broadcast domain could reply to a discovery probe with a BaseURL TLV pointing
+    // at a completely different, attacker-controlled host, and fetchDeviceInfo would fetch
+    // discover.json from there instead of the packet's real (kernel-verified) source.
+
+    @Test func verifiedReplyBaseURL_hostMatchesSourceIP_isTrusted() {
+        let result = HDHRManager.verifiedReplyBaseURL("http://10.0.2.100:1980", sourceIP: "10.0.2.100")
+        #expect(result == "http://10.0.2.100:1980")
+    }
+
+    @Test func verifiedReplyBaseURL_hostMismatchesSourceIP_isRejected() {
+        let result = HDHRManager.verifiedReplyBaseURL("http://attacker.example:8080", sourceIP: "10.0.2.100")
+        #expect(result == "http://10.0.2.100")  // falls back to the verified source IP, port 80 implicit
+    }
+
+    @Test func verifiedReplyBaseURL_nilReply_fallsBackToSourceIP() {
+        let result = HDHRManager.verifiedReplyBaseURL(nil, sourceIP: "10.0.2.100")
+        #expect(result == "http://10.0.2.100")
+    }
+
+    @Test func verifiedReplyBaseURL_unparseableReply_fallsBackToSourceIP() {
+        let result = HDHRManager.verifiedReplyBaseURL("not a url", sourceIP: "10.0.2.100")
+        #expect(result == "http://10.0.2.100")
+    }
+
     // MARK: - HDHRDevice.supportsTranscode
     //
     // The real per-device capability field only exists on the CGNAT-unsafe cloud discover

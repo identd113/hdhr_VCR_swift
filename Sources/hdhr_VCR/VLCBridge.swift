@@ -873,9 +873,8 @@ final class VLCBridge: ObservableObject {
     // feature — a small fixed range avoids dynamic ephemeral-port probing/races entirely.
     private static let transcodePortRange = 19810...19819
 
-    /// Maps this app's own HDHomeRun-style transcode profile names (docs/HDHRFindings.md: `heavy`
-    /// = high-quality, `mobile` = low-bitrate, `internet720` = 720p-target) to a first-pass sout
-    /// bitrate guess — not a hard spec, meant to be tuned once actually watched live. Bitrate is
+    /// Maps this app's own HDHomeRun-style transcode profile names to a first-pass sout bitrate
+    /// guess — not a hard spec, meant to be tuned once actually watched live. Bitrate is
     /// deliberately the *only* thing that varies by profile — every profile keeps the source's own
     /// frame rate and dimensions (no `scale=`/`width=`/`height=`/`fps=` in the sout chain at all),
     /// per an explicit user request: whatever transcode level is requested, the output should still
@@ -883,12 +882,30 @@ final class VLCBridge: ObservableObject {
     /// against a full-resolution 1080i/720p source will look considerably blockier than the same
     /// bitrate would at a genuinely reduced resolution — a real quality tradeoff of this choice, not
     /// an oversight.
-    private static func transcodeBitrateKbps(for profile: String) -> Int {
+    ///
+    /// These seven names are the full set this app recognizes (AppConfig.
+    /// Virtual_tuner_relay_default_transcode's own doc comment) — the real, EXTEND-only profiles
+    /// both the original AppleScript app (identd113/hdhr_VCR-AS, in production since 2016) and
+    /// SiliconDust's current info.hdhomerun.com/info/http_api documentation define. `heavy`/
+    /// `mobile`/`internet720` were the first three given real values, live-verified 2026-09-02
+    /// (VirtualTunerLiveStreamTests.swift); `internet540`/`internet480`/`internet360`/`internet240`
+    /// used to silently collapse into the `default` bucket below (same 2000kbps as any unrecognized
+    /// string) until the relay got a Settings picker offering all seven by name — a descending
+    /// ladder loosely mirroring their real resolution tiers (540p → 240p), not a measured spec.
+    // Internal, not private — VLCBridgeTests-style tests exercise it directly, same testability
+    // pattern as HDHRManager.verifiedReplyBaseURL/WebServer.effectiveTranscodeProfile. `nonisolated`
+    // since it's pure (no actor state touched) — without it, VLCBridge's class-level @MainActor
+    // isolation would force every test call site onto @MainActor too, for no reason.
+    nonisolated static func transcodeBitrateKbps(for profile: String) -> Int {
         switch profile {
-        case "mobile":      return 400
-        case "internet720": return 2500
-        case "heavy":       return 6000
-        default:            return 2000
+        case "heavy":        return 6000
+        case "internet720":  return 2500
+        case "internet540":  return 1800
+        case "internet480":  return 1200
+        case "internet360":  return 800
+        case "internet240":  return 500
+        case "mobile":       return 400
+        default:             return 2000
         }
     }
 
@@ -962,6 +979,14 @@ final class VLCBridge: ObservableObject {
     /// since this session's *input* is also an /api/watch-recording relay, the same MainActor-hop-
     /// dependent source that caused the documented stop()-deadlock this queue exists to prevent)
     /// only once the count reaches zero. Safe to call for a show that isn't running.
+    /// Current viewer count (reference count) for `showId`'s transcode session, or 0 if none is
+    /// running. Read-only — lets a caller (WebServer's virtual-tuner /lineup.json builder, for the
+    /// "Recording on Another Mac" menu's transcode-activity indicator) report on session state
+    /// without touching `startTranscodeSession`/`stopTranscodeSession`'s own ref-counting.
+    func transcodeViewerCount(showId: String) -> Int {
+        transcodeSessions[showId]?.refCount ?? 0
+    }
+
     func stopTranscodeSession(showId: String) {
         guard let session = transcodeSessions[showId] else { return }
         session.refCount -= 1
