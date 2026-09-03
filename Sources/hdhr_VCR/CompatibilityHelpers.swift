@@ -19,6 +19,102 @@ func crc32<S: Sequence>(_ bytes: S) -> UInt32 where S.Element == UInt8 {
     return c ^ 0xFFFF_FFFF
 }
 
+// MARK: - MPEG-TS video codec detection
+
+// PMT stream_type values this app cares about distinguishing — MPEG-1/2 video vs. H.264/HEVC.
+// See docs/HDHRFindings.md's transcode-profile findings (verified live 2026-07-18): every profile
+// — including "none" — is an MPEG-TS container; only the video stream_type inside it changes.
+enum MPEGVideoStreamType {
+    static let mpeg1Video: UInt8 = 0x01
+    static let mpeg2Video: UInt8 = 0x02
+    static let h264:       UInt8 = 0x1b
+    static let hevc:       UInt8 = 0x24
+    /// True for a codec the virtual-tuner relay's transcode step would produce nothing new by
+    /// re-encoding into — i.e. it's already H.264/HEVC, so transcoding it again would just spend
+    /// CPU for a quality loss with no format benefit. See WebServer.handleVirtualTunerStream.
+    static func isAlreadyModernCodec(_ streamType: UInt8) -> Bool { streamType == h264 || streamType == hevc }
+
+    /// Same question, for `LineupEntry.VideoCodec`'s own string form ("MPEG2"/"H264" confirmed live
+    /// against a real device's /lineup.json 2026-09-02 — see that property's own doc comment).
+    /// Case-insensitive: nothing in what's actually been observed pins the exact casing down as
+    /// contractual, and a couple of spelling variants are included defensively since this field
+    /// isn't documented by SiliconDust anywhere this project has found.
+    static func isAlreadyModernCodec(_ videoCodec: String) -> Bool {
+        switch videoCodec.uppercased() {
+        case "H264", "H.264", "AVC", "HEVC", "H265", "H.265": return true
+        default: return false
+        }
+    }
+}
+
+/// Scans a byte buffer (188-byte MPEG-TS packets, sync byte `0x47`) for the PAT (PID 0) to find the
+/// program's PMT PID, then the PMT for the first video elementary stream's `stream_type` byte
+/// (`MPEGVideoStreamType`). Returns nil if the buffer doesn't contain a complete PAT+PMT pair yet
+/// (e.g. too little of the file has been scanned) or isn't a transport stream at all. Pulled out of
+/// `TranscodeStreamFormatTests.swift` (2026-07-18's live-captured PAT/PMT ground truth) into
+/// production code so the virtual-tuner relay's real-source-codec check (`WebServer.swift`) and
+/// that test's own fixture assertions share exactly one parser — see `Tests/hdhr_VCRTests/Models/
+/// TranscodeStreamFormatTests.swift` for the byte-level field-offset reasoning this follows.
+func mpegTSVideoStreamType(_ data: [UInt8]) -> UInt8? {
+    guard data.count >= 189, data[0] == 0x47, data[188] == 0x47 else { return nil }
+
+    // Pass 1 — PAT (PID 0): collect the program's PMT PID(s).
+    var pmtPIDs = Set<Int>()
+    var idx = 0
+    while idx + 188 <= data.count {
+        let pkt = Array(data[idx..<idx + 188]); idx += 188
+        let pid = (Int(pkt[1] & 0x1f) << 8) | Int(pkt[2])
+        guard pid == 0, pkt[1] & 0x40 != 0 else { continue }   // PID 0 + payload-unit-start
+        let p = 4 + 1 + Int(pkt[4])                            // skip TS header + pointer field
+        guard p + 3 <= pkt.count else { continue }
+        let sectionLen = (Int(pkt[p + 1] & 0x0f) << 8) | Int(pkt[p + 2])
+        var i = p + 8                                          // first program entry
+        let end = p + 3 + sectionLen - 4                       // minus CRC32
+        while i + 4 <= end, i + 4 <= pkt.count {
+            let programNum = (Int(pkt[i]) << 8) | Int(pkt[i + 1])
+            let mapPID = (Int(pkt[i + 2] & 0x1f) << 8) | Int(pkt[i + 3])
+            if programNum != 0 { pmtPIDs.insert(mapPID) }
+            i += 4
+        }
+    }
+    guard !pmtPIDs.isEmpty else { return nil }
+
+    // Pass 2 — PMT: first video stream_type (MPEG-1/2 video, H.264, or HEVC).
+    idx = 0
+    while idx + 188 <= data.count {
+        let pkt = Array(data[idx..<idx + 188]); idx += 188
+        let pid = (Int(pkt[1] & 0x1f) << 8) | Int(pkt[2])
+        guard pmtPIDs.contains(pid), pkt[1] & 0x40 != 0 else { continue }
+        let p = 4 + 1 + Int(pkt[4])
+        guard p + 12 <= pkt.count else { continue }
+        let sectionLen = (Int(pkt[p + 1] & 0x0f) << 8) | Int(pkt[p + 2])
+        let programInfoLen = (Int(pkt[p + 10] & 0x0f) << 8) | Int(pkt[p + 11])
+        var q = p + 12 + programInfoLen                       // first ES entry
+        let end = p + 3 + sectionLen - 4
+        while q + 5 <= end, q + 5 <= pkt.count {
+            let streamType = pkt[q]
+            let esInfoLen = (Int(pkt[q + 3] & 0x0f) << 8) | Int(pkt[q + 4])
+            if [MPEGVideoStreamType.mpeg1Video, MPEGVideoStreamType.mpeg2Video,
+                MPEGVideoStreamType.h264, MPEGVideoStreamType.hevc].contains(streamType) {
+                return streamType
+            }
+            q += 5 + esInfoLen
+        }
+    }
+    return nil
+}
+
+/// Reads up to `maxBytesToScan` from the start of the file at `path` and probes it for the video
+/// codec via `mpegTSVideoStreamType(_:)`. A real broadcast repeats the PAT/PMT roughly every
+/// 100ms, so a few hundred KB from the start of a recording is comfortably enough even if the very
+/// first packets happen to land between repeats — 2MB is a generous margin, not a measured minimum.
+func mpegTSVideoStreamType(inFileAt path: String, maxBytesToScan: Int = 2 * 1024 * 1024) -> UInt8? {
+    guard let handle = FileHandle(forReadingAtPath: path) else { return nil }
+    defer { try? handle.close() }
+    guard let data = try? handle.read(upToCount: maxBytesToScan), !data.isEmpty else { return nil }
+    return mpegTSVideoStreamType([UInt8](data))
+}
+
 struct NetworkInterfaceInfo: Identifiable {
     var id: String { name }
     let name: String

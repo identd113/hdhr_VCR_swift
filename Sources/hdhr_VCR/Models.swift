@@ -424,6 +424,17 @@ struct AppConfig: Equatable {
     // or usable, not to keep the data more private than the web server already makes it.
     var Terminal_guide_enabled: Bool = true
 
+    // Recording-relay virtual tuner (VirtualTunerService.swift, docs/VirtualTunerService.md) — while
+    // ≥1 show is recording, advertises a temporary HDHomeRun-like tuner on the LAN (UDP discovery +
+    // /discover.json/lineup.json/status.json, piggybacked on this same Web_server_port) so another
+    // hdhrVCRplus instance can watch the in-progress recording without opening a second real tuner.
+    // On by default — see FirstRunWizardView's dedicated explainer step, shown once on first launch,
+    // for the same explanation given here. Read live by AppState.updateVirtualTunerPresence, which
+    // is also called directly from SettingsView's save path so toggling this off tears the relay
+    // down immediately if a recording happens to be in progress, rather than waiting for the next
+    // recording to start/stop.
+    var Virtual_tuner_relay_enabled: Bool = true
+
     // Signal quality
     var Signal_quality_enabled:      Bool = false  // show signal bars in guide + web UI
     var Signal_quality_alert_notify: Bool = false  // deliver system notification + Discord on dropout
@@ -499,6 +510,7 @@ extension AppConfig: Codable {
         Web_server_enabled      = (try? c.decode(Bool.self,   forKey: .Web_server_enabled))      ?? false
         Web_server_port         = (try? c.decode(Int.self,    forKey: .Web_server_port))         ?? 1980
         Terminal_guide_enabled  = (try? c.decode(Bool.self,   forKey: .Terminal_guide_enabled))  ?? true
+        Virtual_tuner_relay_enabled = (try? c.decode(Bool.self, forKey: .Virtual_tuner_relay_enabled)) ?? true
         Signal_quality_enabled      = (try? c.decode(Bool.self, forKey: .Signal_quality_enabled))      ?? false
         Signal_quality_alert_notify = (try? c.decode(Bool.self, forKey: .Signal_quality_alert_notify)) ?? false
         Status_light_blink_enabled  = (try? c.decode(Bool.self, forKey: .Status_light_blink_enabled))  ?? false
@@ -551,14 +563,34 @@ struct HDHRDevice: Identifiable, Equatable {
     var FirmwareVersion: String?
     var DeviceAuth: String?   // used to call SiliconDust cloud guide API (EXTEND and similar)
     var ModelNumber: String?  // e.g. "HDTC-2US" — absent on a UDP-discovered device (no ModelNumber TLV read)
+    // The device's own network name, e.g. "HDHomeRun EXTEND" — confirmed live against a real
+    // device's own /discover.json 2026-09-03. Absent on a UDP-only-discovered device (no
+    // FriendlyName TLV read, same as ModelNumber above). Used by VirtualTunerService's relay to
+    // name itself "<original unit's FriendlyName>-Relay" instead of a generic label, so it reads as
+    // clearly related to the real tuner it's relaying from in a third-party client's device list
+    // (see WebServer.buildVirtualTunerDiscoverJSON).
+    var FriendlyName: String?
+    // Non-standard field only hdhrVCRplus's own /discover.json ever sets (VirtualTunerService) — a
+    // real HDHomeRun device's response never has it (decodes to false), so this is safe to trust.
+    // Gates a discovered device out of every "eligible tuner for a new recording" picker — a virtual
+    // relay is watch-only, see VirtualTunerService's own doc comment for why. Self-exclusion (never
+    // adding *this instance's own* virtual tuner to `devices` at all) is a separate check in
+    // AppState, keyed on DeviceID, not this flag — this flag alone can't distinguish "mine" from
+    // "another instance's."
+    var isVirtualRelay: Bool = false
 
     // Runtime-only: incremented each probe cycle when the device is not seen; reset when seen.
     // Not persisted — resets to 0 (available) on every launch.
     var missedProbes: Int = 0
     var isAvailable: Bool { missedProbes < 3 }
 
-    var lineupURL:  String { "http://\(LocalIP)/lineup.json" }  // always IP — LineupURL from discover.json may contain mDNS hostname
-    var statusURL:  String { "http://\(LocalIP)/status.json" }
+    // Port derived from BaseURL (falling back to the real protocol's implicit 80) rather than
+    // hardcoded — a real device's BaseURL never specifies a port (always 80, so this is a no-op
+    // for it), but a virtual relay tuner's (VirtualTunerService.swift) does, since it's served on
+    // this app's own WebServer port rather than a real device's standard 80/5004 split.
+    private var basePort: Int { BaseURL.flatMap { URL(string: $0)?.port } ?? 80 }
+    var lineupURL:  String { "http://\(LocalIP):\(basePort)/lineup.json" }  // always IP — LineupURL from discover.json may contain mDNS hostname
+    var statusURL:  String { "http://\(LocalIP):\(basePort)/status.json" }
 
     // The real per-device capability field only lives on the CGNAT-unsafe cloud discover endpoint
     // (see docs/HDHRFindings.md's "Transcode capability" section) — never call it. ModelNumber's
@@ -570,7 +602,8 @@ struct HDHRDevice: Identifiable, Equatable {
 
 extension HDHRDevice: Codable {
     enum CodingKeys: String, CodingKey {
-        case DeviceID, LocalIP, BaseURL, TunerCount, FirmwareVersion, DeviceAuth, ModelNumber
+        case DeviceID, LocalIP, BaseURL, TunerCount, FirmwareVersion, DeviceAuth, ModelNumber, FriendlyName
+        case isVirtualRelay = "HdhrVCRplusVirtualRelay"
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -580,6 +613,8 @@ extension HDHRDevice: Codable {
         FirmwareVersion = try? c.decode(String.self, forKey: .FirmwareVersion)
         DeviceAuth      = try? c.decode(String.self, forKey: .DeviceAuth)
         ModelNumber     = try? c.decode(String.self, forKey: .ModelNumber)
+        FriendlyName    = try? c.decode(String.self, forKey: .FriendlyName)
+        isVirtualRelay  = (try? c.decode(Bool.self,  forKey: .isVirtualRelay)) ?? false
         // Cloud response includes LocalIP directly; mDNS/device response omits it — extract host from BaseURL
         if let ip = try? c.decode(String.self, forKey: .LocalIP) {
             LocalIP = ip
@@ -602,9 +637,29 @@ struct LineupEntry: Codable, Identifiable {
     var HD: Int?
     var Favorite: Int?
     var isFavorite: Bool { Favorite == 1 }
+    // Real, undocumented-in-this-project-until-2026-09-02 fields — confirmed live against a real
+    // device's own /lineup.json (curl http://<device-ip>/lineup.json): most channels report
+    // "MPEG2"/"AC3", but some report "H264" (15 of 112 on the device this was verified against, a
+    // full sub-multiplex worth) — some channels genuinely broadcast in a modern codec already.
+    // docs/HDHRFindings.md previously (incorrectly) documented /lineup.json as carrying no other
+    // fields; that was simply never checked for. See VirtualTunerService.md's "Already-modern-
+    // codec skip" section — this is the fast, proactive way to know a source is already H.264,
+    // ahead of the on-disk PAT/PMT probe (mpegTSVideoStreamType(inFileAt:)), which stays as a
+    // fallback for when this field is nil (older firmware, or this app's own synthetic virtual-
+    // relay lineup entries, which never set it).
+    var VideoCodec: String?
+    var AudioCodec: String?
+    // Non-standard, set only by hdhrVCRplus's own virtual-tuner /lineup.json (VirtualTunerService,
+    // buildVirtualTunerLineupJSON) — nil for every real device, which has no notion of "show
+    // title" at the lineup level. Lets a discovering hdhrVCRplus instance's menu bar say
+    // "Recording on <title>" instead of just a bare channel number — see MenuContent.swift's
+    // remote-watch row. Reuses the existing lineup-fetch pipeline (HDHRManager.fetchLineup) rather
+    // than a separate cache, since state.lineups is already refreshed on the same cadence.
+    var virtualRelayShowTitle: String?
 
     private enum CodingKeys: String, CodingKey {
-        case GuideNumber, GuideName, URL, HD, Favorite
+        case GuideNumber, GuideName, URL, HD, Favorite, VideoCodec, AudioCodec
+        case virtualRelayShowTitle = "HdhrVCRplusShowTitle"
     }
 }
 

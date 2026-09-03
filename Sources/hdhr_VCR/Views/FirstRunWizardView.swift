@@ -16,7 +16,7 @@ struct FirstRunWizardView: View {
     // only inside finish(), same as every other field.
     @State private var saveFolder: String = ""
 
-    enum Step: Int { case intro, recordingDefaults, notificationTiming }
+    enum Step: Int { case intro, recordingDefaults, recordingRelay, notificationTiming }
     // Resting default is .recordingDefaults, NOT .intro — the splash is only ever entered
     // deliberately (see the .onAppear/.onChange below), so every "step starts at
     // .recordingDefaults" assumption elsewhere (sizing, header, nav bar) stays true by default,
@@ -43,6 +43,7 @@ struct FirstRunWizardView: View {
     @State private var finishGlowTrigger = 0
     @State private var finishTask: Task<Void, Never>?
 
+    @State private var relayEnabled: Bool = true
     @State private var transcode: String = "none"
     @State private var minFreeDiskGB: Double = 30.0
     @State private var failThreshold: Int = 3
@@ -78,11 +79,24 @@ struct FirstRunWizardView: View {
         case .checking: return TunerDiscoveryStatus(kind: .checking)
         case .notFound: return TunerDiscoveryStatus(kind: .notFound)
         case .confirmed:
-            let counts = Dictionary(uniqueKeysWithValues: state.devices.map {
+            // recordableDevices — a discovered virtual relay device (another instance's in-progress
+            // recording, VirtualTunerService.swift) isn't a real tuner this brand-new install could
+            // ever record on; counting/showing it here would misreport "found a tuner" during
+            // first-run setup for a machine that may have zero real ones. Local Network access can
+            // come back "confirmed" purely from successfully reaching a relay's own /lineup.json
+            // (AppState.confirmLocalNetworkAccessIfNeeded fires on ANY successful lineup fetch —
+            // legitimate proof the permission works, even though it says nothing about whether this
+            // specific machine has any real tuner) — .notFound here isn't quite right either (the
+            // network access truly IS fine), but it's a closer match than falsely claiming a single
+            // real tuner was found with nothing to show for it.
+            guard !state.recordableDevices.isEmpty else {
+                return TunerDiscoveryStatus(kind: .notFound)
+            }
+            let counts = Dictionary(uniqueKeysWithValues: state.recordableDevices.map {
                 ($0.DeviceID, state.lineups[$0.DeviceID]?.count ?? 0)
             })
-            return TunerDiscoveryStatus(kind: state.devices.count > 1 ? .foundMultiple : .foundSingle,
-                                         devices: state.devices, channelCounts: counts)
+            return TunerDiscoveryStatus(kind: state.recordableDevices.count > 1 ? .foundMultiple : .foundSingle,
+                                         devices: state.recordableDevices, channelCounts: counts)
         }
     }
 
@@ -104,6 +118,10 @@ struct FirstRunWizardView: View {
                     recordingDefaultsScreen
                         .transition(slideTransition)
                         .id(Step.recordingDefaults)
+                case .recordingRelay:
+                    recordingRelayScreen
+                        .transition(slideTransition)
+                        .id(Step.recordingRelay)
                 case .notificationTiming:
                     notificationTimingScreen
                         .transition(slideTransition)
@@ -115,14 +133,14 @@ struct FirstRunWizardView: View {
             if step != .intro {
                 Divider().opacity(0.5)
                 HStack {
-                    if step == .notificationTiming {
+                    if step != .recordingDefaults {
                         Button("Back") { goBack() }
                             .buttonStyle(.plain)
                             .foregroundStyle(.secondary)
                             .accessibilityIdentifier("wizard-back")
                     }
                     Spacer()
-                    if step == .recordingDefaults {
+                    if step != .notificationTiming {
                         Button("Next") { goNext() }
                             .buttonStyle(.borderedProminent)
                             .accessibilityIdentifier("wizard-next")
@@ -294,7 +312,7 @@ struct FirstRunWizardView: View {
             }
 
             HStack(spacing: 4) {
-                ForEach([Step.recordingDefaults, .notificationTiming], id: \.self) { s in
+                ForEach([Step.recordingDefaults, .recordingRelay, .notificationTiming], id: \.self) { s in
                     Circle().fill(s == step ? Color.accentColor : .secondary.opacity(0.3))
                         .frame(width: 8, height: 8)
                 }
@@ -304,8 +322,9 @@ struct FirstRunWizardView: View {
             .accessibilityLabel({
                 switch step {
                 case .intro:              return ""   // header isn't rendered during .intro
-                case .recordingDefaults:  return "Step 1 of 2: Recording Defaults"
-                case .notificationTiming: return "Step 2 of 2: Notification Timing"
+                case .recordingDefaults:  return "Step 1 of 3: Recording Defaults"
+                case .recordingRelay:     return "Step 2 of 3: Recording Relay"
+                case .notificationTiming: return "Step 3 of 3: Notification Timing"
                 }
             }())
         }
@@ -351,6 +370,46 @@ struct FirstRunWizardView: View {
         // Form is List-backed and defaults to claiming more vertical space than its rows actually
         // need in this fixed-width/content-height window — without this it leaves a visible gap
         // below the last row instead of hugging its own content.
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var recordingRelayScreen: some View {
+        Form {
+            Section {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Recording Relay").font(.headline)
+                    Text("A new way to share a recording that's already in progress, without spending a second tuner. You can change this later in Settings → Sharing.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Section {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("What it is", systemImage: "antenna.radiowaves.left.and.right")
+                        .font(.subheadline).bold()
+                    Text("While a show is recording, this Mac briefly advertises itself on your local network as an extra tuner — the same way a real HDHomeRun device would.")
+                        .font(.callout)
+                    Label("Why it's there", systemImage: "questionmark.circle")
+                        .font(.subheadline).bold()
+                    Text("Normally, watching a show that's already recording — from a second Mac, or another copy of this app — needs its own tuner, on top of the one already recording it. This relay lets another hdhrVCRplus instance watch the *same* recording straight off disk instead, so it never has to open a second one. If you only have one Mac, or don't run this app anywhere else, this has no effect either way.")
+                        .font(.callout)
+                    Label("What it can't do", systemImage: "lock.shield")
+                        .font(.subheadline).bold()
+                    Text("It's watch-only — nothing can start a new recording through it, on this Mac or any other, and it never appears as a real tuner in this app's own device lists. It only ever exists while something is actively recording, and only on your local network.")
+                        .font(.callout)
+                }
+                .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Section {
+                Toggle(isOn: $relayEnabled) {
+                    HStack { Text("Rebroadcast In-Progress Recordings"); InfoButton("On by default. Turn this off if you'd rather this Mac never advertise itself this way, even briefly.") }
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
         .fixedSize(horizontal: false, vertical: true)
     }
 
@@ -412,12 +471,14 @@ struct FirstRunWizardView: View {
 
     private func goNext() {
         goingForward = true
-        withAnimation(.easeInOut(duration: 0.25)) { step = .notificationTiming }
+        let next: Step = (step == .recordingDefaults) ? .recordingRelay : .notificationTiming
+        withAnimation(.easeInOut(duration: 0.25)) { step = next }
     }
 
     private func goBack() {
         goingForward = false
-        withAnimation(.easeInOut(duration: 0.25)) { step = .recordingDefaults }
+        let prev: Step = (step == .notificationTiming) ? .recordingRelay : .recordingDefaults
+        withAnimation(.easeInOut(duration: 0.25)) { step = prev }
     }
 
     // MARK: - Local Network permission
@@ -480,7 +541,11 @@ struct FirstRunWizardView: View {
         // concurrent call from startup()'s own launch-time fetch onto the same in-flight Task
         // (see that function's own comment), so this check is purely to skip the call entirely
         // once a prior run of this same function already populated every device.
-        if state.devices.contains(where: { (state.guideByDevice[$0.DeviceID] ?? []).isEmpty }) {
+        // recordableDevices — a virtual relay device's guide can never populate (its guide fetch is
+        // deliberately skipped, see AppState.performFetchAllGuides), so an unfiltered check here
+        // would always see it as "still empty" and call fetchAllGuides() on every run even after
+        // every real device's guide has already loaded.
+        if state.recordableDevices.contains(where: { (state.guideByDevice[$0.DeviceID] ?? []).isEmpty }) {
             await state.fetchAllGuides()
         }
         // state.onAirNow(for:) — the same lookup `/api/now.json` and the menu's own "on now" list
@@ -494,7 +559,7 @@ struct FirstRunWizardView: View {
         // already use for exactly this reason. `.prefix(10)` caps this at "a few posters," not a
         // fetch of the whole on-air lineup.
         var posterURLs: Set<String> = []
-        for device in state.devices {
+        for device in state.recordableDevices {
             for (_, entry) in state.onAirNow(for: device).prefix(10) {
                 if let url = entry.ImageURL, !url.isEmpty {
                     posterURLs.insert(url)
@@ -526,6 +591,7 @@ struct FirstRunWizardView: View {
     private func loadCurrentValuesIfNeeded() {
         guard !hasLoadedInitialValues else { return }
         hasLoadedInitialValues = true
+        relayEnabled         = state.config.Virtual_tuner_relay_enabled
         transcode            = state.config.Default_transcode
         minFreeDiskGB         = state.config.Min_disk_free_gb
         failThreshold         = state.config.Fail_count_setting
@@ -544,8 +610,14 @@ struct FirstRunWizardView: View {
         state.config.Fail_count_setting     = failThreshold
         state.config.Notify_upnext          = upNextMinutes
         state.config.Notify_recording       = recordingSoonMinutes
+        let relayChanged = relayEnabled != state.config.Virtual_tuner_relay_enabled
+        state.config.Virtual_tuner_relay_enabled = relayEnabled
         state.config.First_run_wizard_shown = true
         state.saveConfig()
+        // Re-evaluate immediately — same reasoning as SettingsView's save path — in the unlikely
+        // case a recording is already active while this wizard is still open (e.g. a reopen via
+        // Settings → Maintenance → "Reset First-Run Setup" while something happens to be recording).
+        if relayChanged { state.updateVirtualTunerPresence() }
         // Flourish, then dismiss — 380ms total, well under a ~500-700ms ceiling. .onExitCommand
         // and the red-close-button both call dismiss() directly and immediately regardless of
         // this pending task, so Escape mid-flourish still works exactly as before.

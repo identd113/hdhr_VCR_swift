@@ -807,4 +807,192 @@ final class VLCBridge: ObservableObject {
         let s = Unmanaged<CFString>.fromOpaque(p).takeRetainedValue() as String
         return s.isEmpty ? nil : s
     }
+
+    // MARK: - Headless transcode sessions (virtual-tuner relay Phase 2)
+    //
+    // A completely independent libvlc media player from the on-screen `mediaPlayer` above — no
+    // drawable/NSObject is ever set on it, so libvlc never allocates a real vout for it, only the
+    // sout (stream-output) chain below. Lives entirely off-thread from anything the user is doing
+    // with their own visible player: a remote viewer's transcoded relay must keep working whether
+    // or not a player window is even open. See docs/VirtualTunerService.md's "Real transcode
+    // (Phase 2)" section for the full design.
+    //
+    // The input side reads from this app's own /api/watch-recording growing-file HTTP relay — the
+    // exact same URL shape the on-screen player's own recording-relay watch already uses — never a
+    // raw file:// path. `play(url:)`'s own doc comment above explains why: VLC's plain file://
+    // access module snapshots a file's length at open time and won't read past it on a growing
+    // file, so a direct file:// URL onto the still-growing recording would stall the same way it
+    // would for on-screen playback.
+    //
+    // The output side uses libvlc's own `std{access=http}` sout module, which runs its own tiny
+    // httpd bound to 127.0.0.1 on one of a small fixed set of internal-only ports — never 0.0.0.0.
+    // WebServer.swift's own proxy relay (`pumpTranscodeProxy`) is the only client ever expected to
+    // connect to it; nothing here is reachable from the LAN directly.
+
+    /// One running headless transcode, keyed by `showId` alone in `transcodeSessions` below — NOT
+    /// by profile. Reference-counted — `startTranscodeSession` bumps it, `stopTranscodeSession`
+    /// drops it and only actually tears the session down once the count reaches zero, so N
+    /// concurrent external viewers of the same show share one transcode rather than paying for N,
+    /// *regardless of which profile string each of them requested*. This is deliberate, per explicit
+    /// user direction (2026-09-03): every profile already produces the same dimensions/frame rate as
+    /// the source (see `transcodeBitrateKbps`'s own doc comment) — bitrate is the only thing that
+    /// ever differs — so "transcode" itself doesn't mean anything more specific than "give me H.264
+    /// instead of the source codec," and there's no reason to pay for a second decode+encode just
+    /// because two viewers of the same show happened to pass different profile names. Whichever
+    /// profile actually started the session (`profile` below) is what every subsequent joiner gets,
+    /// even if they asked for a different one — logged clearly when that happens so it's visible,
+    /// not silent.
+    /// @unchecked Sendable: WebServer.swift reads `port`/`startedAt`/`localURL` from its own queues
+    /// after receiving one of these from the MainActor — safe because every stored property here is
+    /// either immutable after init (`showId`/`profile`/`port`/`startedAt`) or `fileprivate`, mutated
+    /// only from VLCBridge's own MainActor-isolated methods and never read cross-thread (`refCount`/
+    /// `media`/`player`, the latter two only ever touched inside `teardown(_:reason:)`'s own
+    /// `libvlcQueue` hop, itself always given a fresh, exclusively-owned snapshot the same way
+    /// `play(url:)`'s `nonisolated(unsafe)` pointers already are elsewhere in this file).
+    final class TranscodeSession: @unchecked Sendable {
+        let showId: String
+        let profile: String
+        let port: Int
+        let startedAt = Date()
+        fileprivate var refCount = 0
+        fileprivate let media: OpaquePointer
+        fileprivate let player: OpaquePointer
+
+        fileprivate init(showId: String, profile: String, port: Int, media: OpaquePointer, player: OpaquePointer) {
+            self.showId = showId; self.profile = profile; self.port = port
+            self.media = media; self.player = player
+        }
+
+        /// Local URL WebServer's proxy relay connects to for the transcoded bytes. The path
+        /// component must match the `dst=` path passed to `std{access=http,...}` at creation.
+        var localURL: URL { URL(string: "http://127.0.0.1:\(port)/relay")! }
+    }
+
+    private var transcodeSessions: [String: TranscodeSession] = [:]
+    // Ten concurrent distinct (show, profile) transcodes is far beyond any realistic use of this
+    // feature — a small fixed range avoids dynamic ephemeral-port probing/races entirely.
+    private static let transcodePortRange = 19810...19819
+
+    /// Maps this app's own HDHomeRun-style transcode profile names (docs/HDHRFindings.md: `heavy`
+    /// = high-quality, `mobile` = low-bitrate, `internet720` = 720p-target) to a first-pass sout
+    /// bitrate guess — not a hard spec, meant to be tuned once actually watched live. Bitrate is
+    /// deliberately the *only* thing that varies by profile — every profile keeps the source's own
+    /// frame rate and dimensions (no `scale=`/`width=`/`height=`/`fps=` in the sout chain at all),
+    /// per an explicit user request: whatever transcode level is requested, the output should still
+    /// match the source's fps and dimensions, not resize/reframe it. A `mobile` request at 400kbps
+    /// against a full-resolution 1080i/720p source will look considerably blockier than the same
+    /// bitrate would at a genuinely reduced resolution — a real quality tradeoff of this choice, not
+    /// an oversight.
+    private static func transcodeBitrateKbps(for profile: String) -> Int {
+        switch profile {
+        case "mobile":      return 400
+        case "internet720": return 2500
+        case "heavy":       return 6000
+        default:            return 2000
+        }
+    }
+
+    /// Starts (or joins the already-running) headless transcode session for `showId`, reading from
+    /// `sourceURL`. Sharing is keyed by `showId` alone, not `showId`+`profile` — see
+    /// `TranscodeSession`'s own doc comment for why. If a session for this show is already running
+    /// under a *different* profile than requested here, the join still succeeds (whichever profile
+    /// started it wins for every viewer) but is logged clearly so that's visible. Bumps the returned
+    /// session's reference count by one — call `stopTranscodeSession(showId:)` exactly once per
+    /// successful call here to release it. Returns nil if libvlc isn't ready or every port in the
+    /// fixed range is already in use.
+    func startTranscodeSession(showId: String, profile: String, sourceURL: String) -> TranscodeSession? {
+        if let existing = transcodeSessions[showId] {
+            existing.refCount += 1
+            if existing.profile != profile {
+                glog("[VLC] startTranscodeSession — joined existing \(showId) (refs=\(existing.refCount)); requested profile=\(profile) differs from running profile=\(existing.profile), which wins")
+            } else {
+                glog("[VLC] startTranscodeSession — joined existing \(showId):\(profile) (refs=\(existing.refCount))")
+            }
+            return existing
+        }
+        guard isAvailable, let inst = vlcInstance, let mpNewFn = _mpNew,
+              let mediaNLFn = _mediaNL, let mediaAddOptFn = _mediaAddOpt,
+              let setMediaFn = _mpSetMedia, let playFn = _mpPlay
+        else {
+            glog("[VLC] startTranscodeSession — libvlc not ready, refusing", level: .warning)
+            return nil
+        }
+        guard let port = Self.transcodePortRange.first(where: { candidate in
+            !transcodeSessions.values.contains { $0.port == candidate }
+        }) else {
+            glog("[VLC] startTranscodeSession — all \(Self.transcodePortRange.count) transcode ports in use", level: .warning)
+            return nil
+        }
+        guard let media = sourceURL.withCString({ mediaNLFn(inst, $0) }) else {
+            glog("[VLC] startTranscodeSession — libvlc_media_new_location returned nil for \(sourceURL)", level: .error)
+            return nil
+        }
+        let vb = Self.transcodeBitrateKbps(for: profile)
+        // No scale=/width=/height=/fps= — every profile keeps the source's own frame rate and
+        // dimensions regardless of which one was requested (see transcodeBitrateKbps's own doc
+        // comment on why, and its quality tradeoff). channels=2 — confirmed live (2026-09-02, real
+        // over-the-air 5.1 source): without an explicit downmix, mpga's underlying twolame encoder
+        // only supports up to 2 channels and silently fails ("doesn't support > 2 channels") on any
+        // 5.1 broadcast, producing a video-only transcode with no audio at all. Stereo is also
+        // simply the right target for a low-bandwidth relay profile regardless — none of
+        // "heavy"/"mobile"/"internet720" are meant to preserve surround.
+        let soutOpt = "sout=#transcode{vcodec=h264,vb=\(vb),acodec=mpga,ab=128,channels=2}"
+                    + ":std{access=http,mux=ts,dst=127.0.0.1:\(port)/relay}"
+        for opt in [soutOpt, "sout-keep", "--no-audio-time-stretch"] {
+            opt.withCString { mediaAddOptFn(media, $0) }
+        }
+        guard let player = mpNewFn(inst) else {
+            _mediaRelease?(media)
+            glog("[VLC] startTranscodeSession — libvlc_media_player_new failed", level: .error)
+            return nil
+        }
+        setMediaFn(player, media)
+        let rc = playFn(player)
+        if rc != 0 { glog("[VLC] startTranscodeSession — libvlc_media_player_play returned \(rc)", level: .warning) }
+        let session = TranscodeSession(showId: showId, profile: profile, port: port, media: media, player: player)
+        session.refCount = 1
+        transcodeSessions[showId] = session
+        glog("[VLC] startTranscodeSession — started \(showId):\(profile) on port \(port) source=\(sourceURL)")
+        return session
+    }
+
+    /// Releases one reference to the session for `showId` (any profile — sharing is per-show, not
+    /// per-profile, see `TranscodeSession`'s own doc comment); actually tears it down (off the
+    /// MainActor via `libvlcQueue` — same reasoning as `stopAndClearState()`'s own doc comment above,
+    /// since this session's *input* is also an /api/watch-recording relay, the same MainActor-hop-
+    /// dependent source that caused the documented stop()-deadlock this queue exists to prevent)
+    /// only once the count reaches zero. Safe to call for a show that isn't running.
+    func stopTranscodeSession(showId: String) {
+        guard let session = transcodeSessions[showId] else { return }
+        session.refCount -= 1
+        guard session.refCount <= 0 else {
+            glog("[VLC] stopTranscodeSession — \(showId) still has \(session.refCount) viewer(s), keeping it running")
+            return
+        }
+        transcodeSessions.removeValue(forKey: showId)
+        teardown(session, reason: "last viewer disconnected")
+    }
+
+    /// Force-stops the transcode session for `showId` regardless of ref count — a session must
+    /// never outlive the recording it's transcoding. Call from the same place `AppState` already
+    /// tears down the virtual-tuner relay itself on recording stop. At most one session can exist
+    /// per `showId` now that sharing is keyed by show alone (see `TranscodeSession`'s own doc
+    /// comment), so this is a direct removal rather than a prefix scan over multiple profile keys.
+    func stopAllTranscodeSessions(showId: String) {
+        guard let session = transcodeSessions.removeValue(forKey: showId) else { return }
+        teardown(session, reason: "recording ended")
+    }
+
+    private func teardown(_ session: TranscodeSession, reason: String) {
+        let stopFn = _mpStop, playerReleaseFn = _mpRelease, mediaReleaseFn = _mediaRelease
+        nonisolated(unsafe) let player = session.player
+        nonisolated(unsafe) let media = session.media
+        let key = "\(session.showId):\(session.profile)"
+        Self.libvlcQueue.async {
+            stopFn?(player)
+            playerReleaseFn?(player)
+            mediaReleaseFn?(media)
+            glog("[VLC] transcode session \(key) torn down (\(reason))")
+        }
+    }
 }

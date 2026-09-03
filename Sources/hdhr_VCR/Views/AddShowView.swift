@@ -117,7 +117,7 @@ struct AddShowView: View {
             } else if let pending = state.pendingAddChannel {
                 applyPendingChannel(pending)
             } else {
-                if selectedDevice == nil { selectedDevice = state.devices.first }
+                if selectedDevice == nil { selectedDevice = state.recordableDevices.first }
                 step = .guide
             }
         }
@@ -183,7 +183,7 @@ struct AddShowView: View {
         // it would otherwise never retry once discovery finishes; this id flips false once
         // devices populate, re-running the task at that point.
         .task(id: state.devices.isEmpty) {
-            guard let device = selectedDevice ?? state.devices.first else { return }
+            guard let device = selectedDevice ?? state.recordableDevices.first else { return }
             await state.ensureLineupLoaded(for: device)
         }
     }

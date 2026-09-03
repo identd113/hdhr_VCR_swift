@@ -225,6 +225,14 @@ final class AppState: ObservableObject {
     }
     // Discovered AND reachable — the web guide treats these as "active" tuners.
     var usableDeviceIDs: Set<String> { Set(devices.filter { $0.isAvailable }.map { $0.DeviceID }) }
+    // Every device-enumeration/picker that lists "which tuner can I browse/watch/record on" should
+    // build from this, not raw `devices` — a discovered virtual relay device (this instance's own
+    // is already excluded from `devices` entirely via self-exclusion, but a *different* instance's
+    // relay is not, by design) is watch-only and has no real lineup/guide data, so listing it
+    // alongside real tuners lets a user pick it as if it were one. Single-device backstop checks
+    // (addShow/updateShow/handleRecord/vlcOccupiesTuner) check one already-known device's own
+    // isVirtualRelay flag directly instead of filtering a list, and stay separate from this.
+    var recordableDevices: [HDHRDevice] { devices.filter { !$0.isVirtualRelay } }
     var unavailableDeviceShows: [Show] {
         guard !unavailableDeviceIDs.isEmpty else { return [] }
         return shows.filter { $0.show_active && unavailableDeviceIDs.contains($0.hdhr_record) }
@@ -267,10 +275,27 @@ final class AppState: ObservableObject {
     let recordingManager: RecordingManager
     let guideStore: GuideStore
     let webServer        = WebServer()
+    let virtualTuner     = VirtualTunerService()
+    // This instance's own currently-advertised virtual-tuner DeviceID, or nil when none is active
+    // (isRecording == false). MainActor-only — remembered here (not read back from virtualTuner
+    // itself) specifically so the self-exclusion check below never needs to synchronize with the
+    // UDP responder's own background queue; see VirtualTunerService's own doc comment for why it
+    // exposes no readable state at all. Not `private` — WebServer's /discover.json/lineup.json
+    // handlers read it directly, same convention as `shows`/`devices`/`config` etc. below.
+    var activeVirtualTunerDeviceID: String?
     @Published var webServerRunning: Bool    = false
     @Published var webServerError:   String? = nil
     private var internalWebServerUseCount = 0  // ref count: each open WKWebView guide window increments
+    // True from the instant reconcileWebServerState() kicks off webServer.start() until its async
+    // bind outcome (ready/failed/cancelled) lands in applyWebServerState. Closes the exact race that
+    // used to let two independent triggers (Sharing's setupWebServer() and a same-tick internal
+    // claim's ensureWebServerRunning(), e.g. reattachRecordings()'s virtual-tuner claim at launch)
+    // both call webServer.start() back-to-back — `webServerRunning` alone can't prevent that because
+    // it only flips true once the *first* call's async bind actually completes, so the second call's
+    // own `!webServerRunning` guard would still pass. See reconcileWebServerState's own doc comment.
+    private var webServerStarting = false
     private var recordingRelayActive = false   // true while watchRecordingInApp holds an internal-web-server claim
+    private var virtualTunerWebServerClaimActive = false   // true while updateVirtualTunerPresence holds an internal-web-server claim
 
     // Exponential backoff for repeated guide API failures per device.
     // Delays: 1 min → 5 min → 15 min → 30 min → 1 hour (capped).
@@ -523,49 +548,83 @@ final class AppState: ObservableObject {
         }
     }
 
+    // Sharing toggle entry point. Only clears webServerError when disabling — a stale error from a
+    // previous failed enable attempt shouldn't linger in Settings once the toggle is off, even if an
+    // internal claim (see below) is still keeping the server superficially "running". The actual
+    // start/stop decision is made by reconcileWebServerState(), the one function that ever touches
+    // webServer.start()/stop() — see its own doc comment for why that consolidation exists.
     func setupWebServer() {
-        guard config.Web_server_enabled else {
-            // Only tear the listener down if no internal holder still needs it. AddShowView's
-            // guide step and the Watch-Now-from-disk relay (watchRecordingInApp) both keep the
-            // localhost server alive via internalWebServerUseCount independent of this LAN-exposure
-            // toggle — an unconditional stop() here would kill an in-app guide's WKWebView or a live
-            // relay stream mid-playback. releaseInternalWebServer uses the same count==0 gate.
-            if internalWebServerUseCount == 0 {
-                webServer.stop()                   // no-op (and silent) if already stopped
-                if webServerRunning { webServerRunning = false }
-            }
-            if webServerError != nil { webServerError = nil }
-            return
-        }
-        webServerError = nil
-        webServer.start(port: config.Web_server_port, appState: self) { [weak self] errorMsg in
-            self?.applyWebServerState(errorMsg)
-        }
+        if !config.Web_server_enabled { webServerError = nil }
+        reconcileWebServerState()
     }
 
-    // Called by each in-app WKWebView guide window on appear; reference-counted so the server
-    // stops when the last window closes (unless permanently enabled in Settings).
+    // Called by each in-app WKWebView guide window on appear, the Watch-Now-from-disk relay
+    // (watchRecordingInApp), and the virtual-tuner relay's own claim (updateVirtualTunerPresence) —
+    // reference-counted so the server stops when the last claim releases (unless permanently enabled
+    // in Settings, i.e. config.Web_server_enabled). Just bumps the count and reconciles; the actual
+    // start decision (including "is one already in flight") lives in reconcileWebServerState().
     func ensureWebServerRunning() {
         internalWebServerUseCount += 1
-        guard !webServerRunning else { return }
-        webServerError = nil
-        webServer.start(port: config.Web_server_port, appState: self) { [weak self] errorMsg in
-            self?.applyWebServerState(errorMsg)
-        }
-    }
-
-    private func applyWebServerState(_ errorMsg: String?) {
-        webServerRunning = (errorMsg == nil)
-        webServerError   = errorMsg
-        if errorMsg == nil { webServer.updateTXTRecord() }
+        reconcileWebServerState()
     }
 
     func releaseInternalWebServer() {
         guard internalWebServerUseCount > 0 else { return }
         internalWebServerUseCount -= 1
-        guard internalWebServerUseCount == 0, !config.Web_server_enabled else { return }
-        webServer.stop()
-        webServerRunning = false
+        reconcileWebServerState()
+    }
+
+    // The one function that ever calls webServer.start()/stop(). Computes "should the server be
+    // running" from every independent trigger — the Sharing toggle (config.Web_server_enabled) and
+    // internalWebServerUseCount's ref-counted internal claims (WKWebView guide windows, the Watch-
+    // Now-from-disk relay, the virtual-tuner relay) — and reconciles in one place instead of letting
+    // each trigger call webServer.start() directly.
+    //
+    // That direct-call design used to let two independent triggers race: setupWebServer() (Sharing)
+    // and ensureWebServerRunning() (an internal claim) each guarded only on `!webServerRunning`, but
+    // that flag doesn't flip true until NWListener's *async* .ready callback actually lands — so two
+    // calls firing back-to-back (e.g. at launch: reattachRecordings()'s virtual-tuner claim calls
+    // ensureWebServerRunning(), then setupWebServer() runs immediately after in the same launch
+    // sequence when Sharing is on and a show was already recording) both saw `webServerRunning ==
+    // false` and both called webServer.start(), racing two real NWListener binds on the same port.
+    // Reproduced live 2026-09-03 while verifying the virtual-tuner relay's UDP discovery fix — every
+    // launch with an in-progress recording hit "Address already in use" and left the *entire* web
+    // server down (not just the virtual-tuner routes — /lineup.json and everything else on :1980).
+    //
+    // webServerStarting closes that window: set the instant a start is kicked off, cleared only once
+    // the bind's async outcome (ready/failed/cancelled) lands in applyWebServerState. That completion
+    // deliberately does NOT re-call this function itself — every trigger that can change `wantRunning`
+    // (setupWebServer, ensureWebServerRunning, releaseInternalWebServer) already calls reconcile
+    // itself at the moment it fires, including mid-bind (stop() is safe to call on a still-binding
+    // listener, and WebServer.stop() nils its callback first so a resulting .cancelled doesn't
+    // surface as a spurious error) — so nothing is missed by not also reconciling reactively here.
+    // Doing so anyway was tried and reverted: on a *persistent* failure (e.g. a genuinely unavailable
+    // port) it re-entered this function with `wantRunning` still true and `webServerRunning`/
+    // `webServerStarting` both already reset to false, which re-passed the start guard and called
+    // webServer.start() again — an unbounded, synchronous-feeling retry loop that pinned a CPU core
+    // and hung `swift test` outright the first time this was tried, 2026-09-03.
+    private func reconcileWebServerState() {
+        let wantRunning = config.Web_server_enabled || internalWebServerUseCount > 0
+        if wantRunning {
+            guard !webServerRunning, !webServerStarting else { return }
+            webServerStarting = true
+            webServerError = nil
+            webServer.start(port: config.Web_server_port, appState: self) { [weak self] errorMsg in
+                self?.applyWebServerState(errorMsg)
+            }
+        } else {
+            guard webServerRunning || webServerStarting else { return }
+            webServer.stop()
+            webServerStarting = false
+            webServerRunning = false
+        }
+    }
+
+    private func applyWebServerState(_ errorMsg: String?) {
+        webServerStarting = false
+        webServerRunning = (errorMsg == nil)
+        webServerError   = errorMsg
+        if errorMsg == nil { webServer.updateTXTRecord() }
     }
 
     // .local hostnames excluded — mDNS resolution happens in mDNSDiscover(), no benefit adding them here.
@@ -639,6 +698,12 @@ final class AppState: ObservableObject {
             }
         }
 
+        // A relaunch (deploy, or "Keep Recording & Quit") while a show is recording reattaches its
+        // curl process above without going through startRecording, so the virtual-tuner relay
+        // would otherwise never start for it until an unrelated recording elsewhere happened to
+        // start/stop — see startRecording/teardownRecordingState/skipRecording's own calls to this.
+        updateVirtualTunerPresence()
+
         // Any show with a discord_start_msg_id that wasn't reattached as actively recording
         // had its completion/failure embed skipped over the restart. Send a recovery embed now
         // and clear the ID so it doesn't linger into the next recording cycle.
@@ -688,11 +753,83 @@ final class AppState: ObservableObject {
         }
     }
 
+    // Starts/stops VirtualTunerService's UDP discovery responder to track whether *any* show is
+    // currently recording — call after every state change that could flip `isRecording`
+    // (startRecording, teardownRecordingState, skipRecording, reattachRecordings), and also after
+    // Settings toggles `Virtual_tuner_relay_enabled` (SettingsView's save path) so disabling it
+    // mid-recording tears the relay down immediately rather than waiting for the next start/stop.
+    // A fresh DeviceID is generated each time the responder (re)starts from idle, not reused across
+    // a stop/start cycle, so a client that cached the old ID from a previous recording can't
+    // confuse a later, unrelated one for the same "device" it already saw. Internal, not private —
+    // SettingsView calls this directly on toggle change.
+    func updateVirtualTunerPresence() {
+        if isRecording && config.Virtual_tuner_relay_enabled {
+            let baseURL = webServer.virtualTunerBaseURL(preferredInterface: config.Network_interface)
+            let tunerCount = shows.filter { $0.show_recording }.count
+            if let id = activeVirtualTunerDeviceID {
+                // Already running — refresh the advertised BaseURL/TunerCount in place (e.g. a
+                // second show started or stopped recording after the relay came up) without a
+                // rebind or a new DeviceID. See VirtualTunerService.start's own doc comment.
+                virtualTuner.start(deviceID: id, baseURL: baseURL, tunerCount: tunerCount)
+                return
+            }
+            let id = VirtualTunerService.makeDeviceID()
+            activeVirtualTunerDeviceID = id
+            // The relay's HTTP JSON routes and stream endpoint live on this same WebServer
+            // instance, which only actually runs its NWListener when Web_server_enabled is on or
+            // something else holds an internal-use claim (setupWebServer's own comment) — without
+            // this claim, a UDP client would discover a relay whose BaseURL has nothing listening
+            // on it whenever Sharing is off and no guide window/Watch-Now relay happens to be open.
+            if !virtualTunerWebServerClaimActive {
+                virtualTunerWebServerClaimActive = true
+                ensureWebServerRunning()
+            }
+            virtualTuner.start(deviceID: id, baseURL: baseURL, tunerCount: tunerCount) { [weak self] bound in
+                guard !bound else { return }
+                // UDP bind lost (port 65001 already in use) — back the ID out so WebServer's
+                // /discover.json/lineup.json/status.json routes stop advertising a relay no UDP
+                // client can ever actually discover, instead of leaving it "live" for the rest of
+                // the recording. Only relevant if this is still the same start attempt — a stop/
+                // start cycle that's already moved on must not clobber a newer id.
+                Task { @MainActor in
+                    guard let self, self.activeVirtualTunerDeviceID == id else { return }
+                    glog("[VirtualTuner] bind failed — clearing activeVirtualTunerDeviceID so HTTP routes stop advertising it", level: .warning)
+                    self.activeVirtualTunerDeviceID = nil
+                    if self.virtualTunerWebServerClaimActive {
+                        self.virtualTunerWebServerClaimActive = false
+                        self.releaseInternalWebServer()
+                    }
+                }
+            }
+        } else {
+            guard activeVirtualTunerDeviceID != nil else { return }
+            virtualTuner.stop()
+            activeVirtualTunerDeviceID = nil
+            if virtualTunerWebServerClaimActive {
+                virtualTunerWebServerClaimActive = false
+                releaseInternalWebServer()
+            }
+        }
+    }
+
+    // Never merge this instance's own currently-active virtual tuner back into `devices` via
+    // normal discovery — see VirtualTunerService's own doc comment. Another instance's virtual
+    // tuner (a different DeviceID) is deliberately NOT filtered here; only self-exclusion is
+    // required (see the "Rebroadcast an in-progress recording" plan's Guardrails).
+    // Internal, not private: exercised directly by VirtualTunerGuardrailTests (no live UDP/network
+    // discovery available in a unit test — this is the one seam that lets self-exclusion be
+    // asserted without one).
+    func excludingOwnVirtualTuner(_ discovered: [HDHRDevice]) -> [HDHRDevice] {
+        guard let id = activeVirtualTunerDeviceID else { return discovered }
+        return discovered.filter { $0.DeviceID != id }
+    }
+
     func discoverDevices(knownHosts: [String] = [], attempts: Int = 3) async {
         for attempt in 1...max(1, attempts) {
             statusMessage = attempt == 1 ? "Searching for tuners…" : "Searching for tuners (\(attempt)/\(attempts))…"
             do {
-                let found = try await hdhrManager.discoverDevices(knownHosts: knownHosts, interface: config.Network_interface)
+                let found = excludingOwnVirtualTuner(
+                    try await hdhrManager.discoverDevices(knownHosts: knownHosts, interface: config.Network_interface))
                 devices = found
                 await fetchAllLineups(for: found)
                 statusMessage = "\(devices.count) tuner(s) found"
@@ -715,7 +852,8 @@ final class AppState: ObservableObject {
         defer { probeInFlight = false }
         // Use a nil `found` to mean discovery itself failed (network error) — still counts as a miss
         // so a device that's offline AND causing discovery failures still reaches the unavailable threshold.
-        let found = try? await hdhrManager.discoverDevices(knownHosts: knownHostsFromShows(), interface: config.Network_interface)
+        let found = (try? await hdhrManager.discoverDevices(knownHosts: knownHostsFromShows(), interface: config.Network_interface))
+            .map(excludingOwnVirtualTuner)
         let existingIDs = Set(devices.map { $0.DeviceID })
 
         // Merge-update DeviceAuth + LocalIP on seen devices; increment missedProbes on unseen ones.
@@ -902,7 +1040,13 @@ final class AppState: ObservableObject {
 
     private func performFetchAllGuides() async {
         statusMessage = "Loading guide…"
-        let results = await guideStore.loadAll(devices: devices, hours: config.GuideHours, useXML: config.Guide_use_xml)
+        // recordableDevices (not devices) — a discovered virtual relay device has no DeviceAuth
+        // (VirtualTunerService.swift/buildVirtualTunerDiscoverJSON never sets one) and no cloud
+        // guide relationship, so a guide fetch against it can never succeed. Its own lineup fetch
+        // (fetchAllLineups) is a separate, unfiltered path — that one DOES need to reach a relay
+        // device, since its /lineup.json is exactly what feeds the "Recording on Another Mac"
+        // menu entry (see docs/VirtualTunerService.md's Remote watch menu entry section).
+        let results = await guideStore.loadAll(devices: recordableDevices, hours: config.GuideHours, useXML: config.Guide_use_xml)
         guideByDevice = guideStore.channelsByDevice
         // didSet already ran these when the menu is closed — only the menu-open case (where
         // didSet's own guard skips them) needs the explicit call here, so guide load doesn't
@@ -942,7 +1086,9 @@ final class AppState: ObservableObject {
         // no episode/matchup info, easy to hit whenever a show's start time lands near the hour
         // boundary (as this refresh does), even though the guide data had been correct all day.
         await fetchAllLineups(for: devices)
-        let results = await guideStore.loadAll(devices: devices, hours: config.GuideHours, useXML: config.Guide_use_xml)
+        // recordableDevices — see performFetchAllGuides's own comment on why guide fetch excludes
+        // a virtual relay device but lineup fetch (just above) deliberately doesn't.
+        let results = await guideStore.loadAll(devices: recordableDevices, hours: config.GuideHours, useXML: config.Guide_use_xml)
         guideByDevice = guideStore.channelsByDevice
         // Update per-device backoff; notify once per failure streak
         for (deviceId, ok) in results {
@@ -1411,8 +1557,13 @@ final class AppState: ObservableObject {
         }
 
         if !devices.isEmpty {
-            // If guide is missing for any device (fetch failed at startup), load it now
-            for device in devices where guideStore.channels(deviceId: device.DeviceID).isEmpty {
+            // If guide is missing for any device (fetch failed at startup), load it now.
+            // recordableDevices — a virtual relay device has no DeviceAuth/cloud guide relationship
+            // (see performFetchAllGuides's own comment) so its guide can never load; without this
+            // filter it would retry every single tick forever and eventually fire a real
+            // "Guide Load Failed" user notification/Discord embed for a device the user never
+            // configured (see handleGuideLoadFailure, called from ensureGuideLoaded's retry path).
+            for device in recordableDevices where guideStore.channels(deviceId: device.DeviceID).isEmpty {
                 ensureGuideLoaded(for: device.DeviceID)
             }
 
@@ -2003,6 +2154,7 @@ final class AppState: ObservableObject {
             }
         }
         webServer.broadcastRecordingEvent(type: "recording_started", channel: shows[index].show_channel, device: shows[index].hdhr_record, state: self)
+        updateVirtualTunerPresence()
         refreshTunerOccupancy()
         // Stamp notify_recording_time so the "Recording Soon" pre-notification won't re-fire
         shows[index].notify_recording_time = Date().addingTimeInterval(config.Notify_recording * 60)
@@ -2037,6 +2189,13 @@ final class AppState: ObservableObject {
         shows[i].show_last = Date()
         shows[i].show_paused = true
         shows[i].show_fail_reason = "Skipped"
+        // skipRecording doesn't route through teardownRecordingState (see that function's own
+        // comment on signalDropoutTicks for the same gap) — call directly so a skip that happens
+        // to be this app's last active recording still tears the virtual tuner down.
+        updateVirtualTunerPresence()
+        // A transcode session must never outlive the recording it's transcoding — see
+        // VLCBridge.stopAllTranscodeSessions's own doc comment.
+        VLCBridge.shared.stopAllTranscodeSessions(showId: showId)
         let channel = shows[i].show_channel, device = shows[i].hdhr_record
         await scheduleNextAir(index: i)
         saveConfig()
@@ -2070,6 +2229,10 @@ final class AppState: ObservableObject {
         // when the caller is about to remove the show and broadcast its own rebuild anyway.
         webServer.broadcastRecordingStopped(channel: show.show_channel, device: show.hdhr_record,
                                              state: self, alsoRebuildGrid: alsoRebuildGrid)
+        updateVirtualTunerPresence()
+        // A transcode session must never outlive the recording it's transcoding — see
+        // VLCBridge.stopAllTranscodeSessions's own doc comment.
+        VLCBridge.shared.stopAllTranscodeSessions(showId: show.show_id)
     }
 
     func stopRecording(index: Int, natural: Bool) async {
@@ -2417,6 +2580,16 @@ final class AppState: ObservableObject {
 
     func addShow(_ show: Show) {
         guard !shows.contains(where: { $0.show_id == show.show_id }) else { return }
+        // Hard backstop, not just a UI-level picker filter: a virtual relay tuner (another
+        // instance's rebroadcast of an in-progress recording, or — should self-exclusion ever be
+        // bypassed — this instance's own) is watch-only by design (see the "Rebroadcast an
+        // in-progress recording" plan's Guardrails). This is the one function every show-creation
+        // path funnels through (see the comment just below), so it's the one place this can be
+        // enforced with certainty regardless of how a caller assembled the Show.
+        if devices.first(where: { $0.DeviceID == show.hdhr_record })?.isVirtualRelay == true {
+            glog("[Show] Refused '\(show.show_title)' — \(show.hdhr_record) is a virtual relay tuner (watch-only)", level: .warning)
+            return
+        }
         glog("[Show] Added '\(show.show_title)' ch=\(show.show_channel) \(show.show_is_series ? "series" : "single")")
         // Conflict check + notifications live here (not left to each caller) so every path that
         // adds a show — the guide's "Record" action, the native Add Show wizard, any future
@@ -2458,6 +2631,12 @@ final class AppState: ObservableObject {
     }
     func updateShow(_ show: Show) {
         guard let i = shows.firstIndex(where: { $0.show_id == show.show_id }) else { return }
+        // Same hard backstop as addShow — an edit can reassign hdhr_record (e.g. seriesChannel →
+        // a different device), so this needs the identical check, not just a check on creation.
+        if devices.first(where: { $0.DeviceID == show.hdhr_record })?.isVirtualRelay == true {
+            glog("[Show] Refused edit of '\(show.show_title)' — \(show.hdhr_record) is a virtual relay tuner (watch-only)", level: .warning)
+            return
+        }
         glog("[Show] Updated '\(show.show_title)'")
         shows[i] = show; saveConfig()
         // Broadcast here (not left to each caller) so every path that edits a show — the guide's
@@ -3378,7 +3557,10 @@ final class AppState: ObservableObject {
 
     func watchInApp(url: String, title: String, deviceId: String? = nil, transcode: String? = nil, guideNumber: String? = nil) {
         guard VLCBridge.shared.isAvailable else { return }
-        let device = devices.first { $0.DeviceID == (deviceId ?? "") } ?? devices.first
+        // recordableDevices — this is the real-tuner live-watch path (gated by tunerAvailable's
+        // occupancy check just below); a discovered virtual relay device is never a legitimate
+        // fallback target here (use watchRemoteRelay for that instead).
+        let device = recordableDevices.first { $0.DeviceID == (deviceId ?? "") } ?? recordableDevices.first
         guard let device else { return }
         // A missing/empty lineup URL (stale or incomplete lineup data) passed straight to
         // libvlc can leave it never confirming either Playing or Error state — the player
@@ -3432,6 +3614,26 @@ final class AppState: ObservableObject {
             mgr.open(url: streamURL, title: title, device: device, appState: self, channelNumber: guideNumber)
             refreshTunerOccupancy()
         }
+    }
+
+    /// Opens a native player window directly against another hdhrVCRplus instance's virtual-relay
+    /// stream (see VirtualTunerService.swift / docs/VirtualTunerService.md) — the "Recording on
+    /// <title>" menu row. Deliberately does not reuse watchInApp: that function's tunerAvailable
+    /// gate exists to protect a REAL device's limited physical tuner count, which doesn't apply
+    /// here (a virtual relay is a disk-relay of content already being captured, not a tuner — the
+    /// whole point of this feature is to let unlimited viewers watch it without any of them
+    /// occupying a tuner slot). No sleep-prevention either: that's driven by a local guide entry,
+    /// and a remote relay's synthetic channel has none.
+    func watchRemoteRelay(url: String, title: String, device: HDHRDevice) {
+        guard VLCBridge.shared.isAvailable, !url.isEmpty else { return }
+        let mgr = VLCPlayerWindowManager.shared
+        let rawBase = url.urlBase
+        if mgr.currentDeviceID == device.DeviceID && (VLCBridge.shared.currentURL?.urlBase ?? "") == rawBase {
+            mgr.focus()
+            return
+        }
+        glog("[Watch] remote relay '\(title)' on \(device.DeviceID)")
+        mgr.open(url: url, title: title, device: device, appState: self)
     }
 
     func watchInVLC(url: String, transcode: String? = nil, deviceId: String? = nil) {
@@ -3498,7 +3700,10 @@ final class AppState: ObservableObject {
             watchInApp(url: show.show_url, title: show.show_title, deviceId: show.hdhr_record, transcode: show.show_transcode)
             return
         }
-        let device = devices.first { $0.DeviceID == show.hdhr_record } ?? devices.first
+        // recordableDevices — show.hdhr_record can never legitimately be a relay device (addShow/
+        // updateShow's own backstop guarantees that), but the fallback below shouldn't pick one
+        // either if the real device somehow isn't found.
+        let device = recordableDevices.first { $0.DeviceID == show.hdhr_record } ?? recordableDevices.first
         guard let device else { return }
         if !recordingRelayActive {
             recordingRelayActive = true
@@ -3606,7 +3811,10 @@ final class AppState: ObservableObject {
 
     // Requires no recording shows and no VLC session to avoid releasing during the tuner lock-in gap.
     private func releaseAssertionsIfIdle() {
-        let anyTunerActive = devices.compactMap { deviceTunerOccupancy[$0.DeviceID] }
+        // Excludes a discovered virtual relay device (VirtualTunerService.swift) — its "occupancy"
+        // reflects another Mac's own recording, not anything this instance is doing, and must
+        // never keep this instance's own sleep-prevention assertions held.
+        let anyTunerActive = recordableDevices.compactMap { deviceTunerOccupancy[$0.DeviceID] }
             .contains { $0.contains { $0.VctNumber != nil } }
         guard !anyTunerActive,
               recordingShows.isEmpty,
@@ -3795,7 +4003,14 @@ final class AppState: ObservableObject {
         signalScanTask = Task {
             // Only scan channels that don't already have fresh data — lets us resume a
             // partial scan and skip work after a clean full scan. force=true bypasses this.
-            let pendingByDevice: [(HDHRDevice, [LineupEntry])] = devices.compactMap { device in
+            // recordableDevices (not devices) — a discovered virtual relay device's synthetic
+            // lineup carries the SAME GuideName as the real channel it's relaying, and
+            // ChannelSignalStore.key(for:) keys purely by (trimmed/lowercased) GuideName, not by
+            // device. Scanning a relay's entries would poll its own /status.json (which never
+            // reports SignalQualityPercent — buildVirtualTunerStatusJSON has no such field), so
+            // every one of its channels would always fall into the "never locked" branch below and
+            // overwrite the REAL channel's signal history with a bogus snq=0 sample.
+            let pendingByDevice: [(HDHRDevice, [LineupEntry])] = recordableDevices.compactMap { device in
                 let entries = lineups[device.DeviceID] ?? []
                 let needed = force ? entries : entries.filter {
                     ChannelSignalStore.shared.needsSample(guideName: $0.GuideName)
@@ -3894,7 +4109,14 @@ final class AppState: ObservableObject {
     // make the app think a tuner is in use that isn't — exactly the cost this feature exists to
     // avoid (docs/WebServer.md's /api/watch-recording relay).
     func vlcOccupiesTuner(for deviceId: String) -> Bool {
-        VLCPlayerWindowManager.shared.currentDeviceID == deviceId && VLCBridge.shared.recordingShowId == nil
+        // A virtual relay device (VirtualTunerService.swift) never occupies a tuner, real or
+        // fake — watchRemoteRelay's stream URL isn't the /api/watch-recording shape VLCBridge.play
+        // recognizes, so recordingShowId stays nil during a remote-relay watch just like a real
+        // live-tuner watch would; without this check that would otherwise read as this (fake)
+        // device having a tuner in use, defeating the whole point of the relay (unlimited
+        // concurrent viewers, none of them costing a tuner slot).
+        guard devices.first(where: { $0.DeviceID == deviceId })?.isVirtualRelay != true else { return false }
+        return VLCPlayerWindowManager.shared.currentDeviceID == deviceId && VLCBridge.shared.recordingShowId == nil
     }
 
     // Channel this app itself is live-watching on deviceId via the in-app player (not the

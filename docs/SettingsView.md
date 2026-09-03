@@ -162,7 +162,7 @@ Sidebar entries (with SF Symbol icons):
 | Guide | `tv` | Guide hours, series scan retry |
 | Notifications | `bell.badge` | Up Next timing, Recording alert timing |
 | Advanced | `terminal` | Network interface, logging + verbose curl + config file path, check for updates, signal quality |
-| Sharing | `globe` | Enable/disable LAN web server, port, access URL |
+| Sharing | `globe` | Enable/disable LAN web server, port, access URL, recording-relay rebroadcast |
 | Maintenance | `wrench.and.screwdriver` | Show maintenance, guide/device ops |
 | About | `info.circle` | App logo, version, history, GitHub link |
 
@@ -283,6 +283,7 @@ Recording Complete embeds additionally include **Format** (file extension, e.g. 
   even under a future App Sandbox (`docs/MAS_COMPLIANCE.md`). Handing an executable's URL to
   Terminal.app this way makes Terminal run it directly (verified live), the same mechanism
   Finder's "New Terminal at Folder" service uses for a folder URL.
+- **Recording Relay section** — always visible (not gated on Sharing being on — the relay manages its own internal web-server claim, see below). Contains one **Rebroadcast In-Progress Recordings** `Toggle` bound to `draft.Virtual_tuner_relay_enabled` (defaults `true`). See `docs/VirtualTunerService.md` for the full mechanism; on Save, `SettingsView.save()` compares this against the pre-edit value and, if changed, calls `state.updateVirtualTunerPresence()` directly so toggling it off tears the relay down immediately if a recording happens to be in progress, rather than waiting for that recording to end. Also explained on first launch by `FirstRunWizardView`'s dedicated relay-explainer step (same wording as this toggle's `InfoButton`).
 - **Error banner** — shown when `state.webServerError` is non-nil (port in use, OS cancellation, etc.).
 
 Saving with changed `Web_server_enabled` or `Web_server_port` calls `state.setupWebServer()` immediately to start, restart, or stop the listener.

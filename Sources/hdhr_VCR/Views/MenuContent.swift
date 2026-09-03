@@ -64,10 +64,15 @@ struct MenuContent: View {
         let pausedShows          = state.pausedShows
         let unavailableShows     = state.unavailableDeviceShows
         let unavailableDeviceIDs = state.unavailableDeviceIDs
-        let availableDevices     = state.devices.filter { $0.isAvailable }
+        let availableDevices     = state.recordableDevices.filter { $0.isAvailable }
 
         // ── Header ────────────────────────────────────────────────────────
-        ForEach(state.devices) { device in
+        // recordableDevices — a discovered virtual relay device has no real lineup/guide data (see
+        // AppState.performFetchAllGuides's own comment on why its guide fetch is skipped entirely),
+        // so an unfiltered loop here would show a permanent, unfixable "⚠ no guide" warning for a
+        // tuner the user never added. It already gets its own correct, dedicated treatment in the
+        // "Recording on Another Mac" section below.
+        ForEach(state.recordableDevices) { device in
             let slots       = device.TunerCount ?? 1
             let vlcUsing    = state.vlcOccupiesTuner(for: device.DeviceID) ? 1 : 0
             let appCount    = recordingShows.filter { $0.hdhr_record == device.DeviceID }.count + vlcUsing
@@ -126,7 +131,7 @@ struct MenuContent: View {
         // ── Recording now ─────────────────────────────────────────────────
         let availableRecording = recordingShows.filter { !unavailableDeviceIDs.contains($0.hdhr_record) }
         if !availableRecording.isEmpty {
-            if state.devices.count > 1 {
+            if state.recordableDevices.count > 1 {
                 ForEach(availableDevices) { device in
                     let recs = availableRecording.filter { $0.hdhr_record == device.DeviceID }
                     if !recs.isEmpty {
@@ -138,6 +143,35 @@ struct MenuContent: View {
             } else {
                 Section("Recording Now") {
                     ForEach(availableRecording) { recordingMenu($0) }
+                }
+            }
+            Divider()
+        }
+
+        // ── Remote relays (another hdhrVCRplus instance's in-progress recording) ────────────
+        // state.devices never contains this instance's own virtual tuner (self-exclusion in
+        // AppState.excludingOwnVirtualTuner), so every isVirtualRelay device found here belongs
+        // to a different instance on the LAN.
+        let remoteRelayEntries: [(device: HDHRDevice, entry: LineupEntry)] =
+            state.devices.filter { $0.isVirtualRelay }.flatMap { device in
+                (state.lineups[device.DeviceID] ?? [])
+                    .filter { $0.virtualRelayShowTitle != nil }
+                    .map { (device: device, entry: $0) }
+            }
+        if !remoteRelayEntries.isEmpty {
+            Section("Recording on Another Mac") {
+                ForEach(remoteRelayEntries, id: \.entry.URL) { pair in
+                    Button {
+                        state.watchRemoteRelay(url: pair.entry.URL ?? "",
+                                                title: pair.entry.virtualRelayShowTitle ?? pair.entry.GuideName,
+                                                device: pair.device)
+                    } label: {
+                        Label {
+                            Text("Recording on \(pair.entry.virtualRelayShowTitle ?? pair.entry.GuideName)")
+                        } icon: {
+                            Image(systemName: "play.tv.fill").foregroundStyle(watchNowBlue)
+                        }
+                    }
                 }
             }
             Divider()
@@ -168,7 +202,7 @@ struct MenuContent: View {
         let remainingActive = availableActive.filter { !nextUpIds.contains($0.show_id) }
 
         if !nextUpGroups.isEmpty {
-            if state.devices.count > 1 {
+            if state.recordableDevices.count > 1 {
                 ForEach(availableDevices) { device in
                     let deviceGroups = nextUpGroups
                         .map { (time: $0.time, shows: $0.shows.filter { $0.hdhr_record == device.DeviceID }) }
@@ -201,7 +235,7 @@ struct MenuContent: View {
             Text("No shows scheduled").foregroundStyle(.secondary)
         } else {
             if !remainingActive.isEmpty {
-                if state.devices.count > 1 {
+                if state.recordableDevices.count > 1 {
                     ForEach(availableDevices) { device in
                         let deviceShows = remainingActive.filter { $0.hdhr_record == device.DeviceID }
                         if !deviceShows.isEmpty {
@@ -217,7 +251,7 @@ struct MenuContent: View {
                 }
             }
             if !availablePaused.isEmpty {
-                if state.devices.count > 1 {
+                if state.recordableDevices.count > 1 {
                     ForEach(availableDevices) { device in
                         let devicePaused = availablePaused.filter { $0.hdhr_record == device.DeviceID }
                         if !devicePaused.isEmpty {

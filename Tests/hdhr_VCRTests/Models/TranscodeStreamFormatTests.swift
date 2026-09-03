@@ -19,64 +19,20 @@ import Foundation
     static let noneFixture  = "R0AAHwAAsA0GMcEAAAAB4DA5+8Hh//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////9HQDAYAAKwSwABwQAA4DHwCBAGwL1iwAgAAuAx8AMGAQKB4DTwEgoEZW5nAIEK6CgF/w8Bv2VuZ4HgNfASCgRzcGEAgQroKAX/DwG/c3BhuzSBGv///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////w=="
     static let heavyFixture = "R0AAGwAAsA0GMcEAAAAB4DA5+8Hh//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////9HQDAQAAKwKQABwQAA4DHwABvgMfAAgeA08BIKBGVuZwCBCugoBf8PAb9lbmcd3CGw/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////w=="
 
-    /// Parses a PAT+PMT byte blob. Returns whether it is a transport stream (sync bytes at each
-    /// 188-byte boundary) and the first video elementary-stream type from the PMT.
-    private func probe(_ b64: String) -> (isTransportStream: Bool, videoStreamType: UInt8?) {
-        let data = [UInt8](Data(base64Encoded: b64)!)
-        let isTS = data.count >= 189 && data[0] == 0x47 && data[188] == 0x47
-
-        // Pass 1 — PAT (PID 0): collect the program's PMT PID(s).
-        var pmtPIDs = Set<Int>()
-        var idx = 0
-        while idx + 188 <= data.count {
-            let pkt = Array(data[idx..<idx+188]); idx += 188
-            let pid = (Int(pkt[1] & 0x1f) << 8) | Int(pkt[2])
-            guard pid == 0, pkt[1] & 0x40 != 0 else { continue }   // PID 0 + payload-unit-start
-            let p = 4 + 1 + Int(pkt[4])                            // skip TS header + pointer field
-            let sectionLen = (Int(pkt[p+1] & 0x0f) << 8) | Int(pkt[p+2])
-            var i = p + 8                                          // first program entry
-            let end = p + 3 + sectionLen - 4                       // minus CRC32
-            while i + 4 <= end {
-                let programNum = (Int(pkt[i]) << 8) | Int(pkt[i+1])
-                let mapPID = (Int(pkt[i+2] & 0x1f) << 8) | Int(pkt[i+3])
-                if programNum != 0 { pmtPIDs.insert(mapPID) }
-                i += 4
-            }
-        }
-
-        // Pass 2 — PMT: first video stream_type (MPEG-1/2 video, H.264, or HEVC).
-        idx = 0
-        while idx + 188 <= data.count {
-            let pkt = Array(data[idx..<idx+188]); idx += 188
-            let pid = (Int(pkt[1] & 0x1f) << 8) | Int(pkt[2])
-            guard pmtPIDs.contains(pid), pkt[1] & 0x40 != 0 else { continue }
-            let p = 4 + 1 + Int(pkt[4])
-            let sectionLen = (Int(pkt[p+1] & 0x0f) << 8) | Int(pkt[p+2])
-            let programInfoLen = (Int(pkt[p+10] & 0x0f) << 8) | Int(pkt[p+11])
-            var q = p + 12 + programInfoLen                       // first ES entry
-            let end = p + 3 + sectionLen - 4
-            while q + 5 <= end {
-                let streamType = pkt[q]
-                let esInfoLen = (Int(pkt[q+3] & 0x0f) << 8) | Int(pkt[q+4])
-                if [0x01, 0x02, 0x1b, 0x24].contains(streamType) {
-                    return (isTS, streamType)
-                }
-                q += 5 + esInfoLen
-            }
-        }
-        return (isTS, nil)
+    /// Base64-decodes a PAT+PMT fixture and probes it via the shared production parser
+    /// (`mpegTSVideoStreamType(_:)`, `CompatibilityHelpers.swift`) — extracted there so the virtual-
+    /// tuner relay's real-source-codec check (`WebServer.swift`) and this test's own ground-truth
+    /// assertions can never drift apart into two different byte-offset interpretations.
+    private func probe(_ b64: String) -> UInt8? {
+        mpegTSVideoStreamType([UInt8](Data(base64Encoded: b64)!))
     }
 
     @Test func rawProfileIsMpeg2InsideTransportStream() {
-        let r = probe(Self.noneFixture)
-        #expect(r.isTransportStream)          // container = MPEG-TS
-        #expect(r.videoStreamType == 0x02)    // MPEG-2 video
+        #expect(probe(Self.noneFixture) == 0x02)    // MPEG-2 video
     }
 
     @Test func transcodedProfileIsH264InsideSameTransportStream() {
-        let r = probe(Self.heavyFixture)
-        #expect(r.isTransportStream)          // still MPEG-TS — the container never changes
-        #expect(r.videoStreamType == 0x1b)    // only the video codec differs: H.264/AVC
+        #expect(probe(Self.heavyFixture) == 0x1b)   // H.264/AVC
     }
 
     @Test func outputExtensionIsAlwaysTS() {
@@ -96,5 +52,65 @@ import Foundation
         #expect(Show.isRecordingFile("Nova.TS"))                                 // case-insensitive
         #expect(!Show.isRecordingFile("Nova_4.1_20260101_2000.mp4"))             // never ours
         #expect(!Show.isRecordingFile("notes.txt"))
+    }
+
+    // MARK: - Virtual-tuner relay's "already a modern codec, skip re-encoding" check
+
+    @Test func isAlreadyModernCodec_trueOnlyForH264AndHEVC() {
+        #expect(MPEGVideoStreamType.isAlreadyModernCodec(MPEGVideoStreamType.h264))
+        #expect(MPEGVideoStreamType.isAlreadyModernCodec(MPEGVideoStreamType.hevc))
+        #expect(!MPEGVideoStreamType.isAlreadyModernCodec(MPEGVideoStreamType.mpeg2Video))
+        #expect(!MPEGVideoStreamType.isAlreadyModernCodec(MPEGVideoStreamType.mpeg1Video))
+    }
+
+    // String-form overload — LineupEntry.VideoCodec's own live-confirmed values ("MPEG2"/"H264",
+    // docs/HDHRFindings.md) are the fast, proactive check WebServer.handleVirtualTunerStream tries
+    // before ever falling back to the byte-level PAT/PMT probe above.
+    @Test func isAlreadyModernCodec_stringForm_matchesLineupsRealValues() {
+        #expect(MPEGVideoStreamType.isAlreadyModernCodec("H264"))     // confirmed live, real device
+        #expect(MPEGVideoStreamType.isAlreadyModernCodec("h264"))     // case-insensitive
+        #expect(MPEGVideoStreamType.isAlreadyModernCodec("HEVC"))
+        #expect(!MPEGVideoStreamType.isAlreadyModernCodec("MPEG2"))   // confirmed live, real device — the common case
+        #expect(!MPEGVideoStreamType.isAlreadyModernCodec(""))
+    }
+
+    // LineupEntry decodes the real /lineup.json shape confirmed live 2026-09-02 (docs/HDHRFindings.md):
+    // {"GuideNumber":"2.1","GuideName":"TPT 2","VideoCodec":"MPEG2","AudioCodec":"AC3","HD":1,"URL":"..."}
+    @Test func lineupEntry_decodesRealVideoCodecAndAudioCodecFields() throws {
+        let json = """
+        {"GuideNumber":"21.2","GuideName":"Snapshp","VideoCodec":"H264","AudioCodec":"AC3","HD":0,
+         "URL":"http://10.0.2.101:5004/auto/v21.2"}
+        """
+        let entry = try JSONDecoder().decode(LineupEntry.self, from: Data(json.utf8))
+        #expect(entry.VideoCodec == "H264")
+        #expect(entry.AudioCodec == "AC3")
+        #expect(MPEGVideoStreamType.isAlreadyModernCodec(entry.VideoCodec ?? ""))
+    }
+
+    @Test func lineupEntry_videoCodecIsNilWhenAbsent() throws {
+        // The virtual relay's own synthetic /lineup.json entries never set this — this is the case
+        // WebServer.handleVirtualTunerStream falls back to the on-disk PAT/PMT probe for.
+        let json = """
+        {"GuideNumber":"5.1","GuideName":"Recording On Other Mac","URL":"http://127.0.0.1:1980/auto/v5.1"}
+        """
+        let entry = try JSONDecoder().decode(LineupEntry.self, from: Data(json.utf8))
+        #expect(entry.VideoCodec == nil)
+        #expect(entry.AudioCodec == nil)
+    }
+
+    // File-based wrapper — WebServer.handleVirtualTunerStream reads the on-disk recording, not an
+    // in-memory buffer, so this covers the actual code path it calls (mpegTSVideoStreamType(inFileAt:)),
+    // not just the pure byte-parser the tests above already exercise.
+    @Test func fileBasedProbe_matchesTheSameGroundTruthFixtures() throws {
+        let path = NSTemporaryDirectory() + "hdhrVCRplus-tsformat-\(UUID().uuidString).ts"
+        try Data(base64Encoded: Self.heavyFixture)!.write(to: URL(fileURLWithPath: path))
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let streamType = mpegTSVideoStreamType(inFileAt: path)
+        #expect(streamType == 0x1b)
+        #expect(streamType.map(MPEGVideoStreamType.isAlreadyModernCodec) == true)
+    }
+
+    @Test func fileBasedProbe_returnsNilForAMissingFile() {
+        #expect(mpegTSVideoStreamType(inFileAt: "/nonexistent/\(UUID().uuidString).ts") == nil)
     }
 }

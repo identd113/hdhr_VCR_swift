@@ -139,6 +139,18 @@ hdhr_VCR passes the user's `Default_transcode` config value directly. VLC handle
 
 Because the recorder writes the HTTP body verbatim (`curl -o`, no remux), the correct extension for **both** profiles is a TS one — the app uses `.ts` (`Show.outputPath`), matching the `video/mp2t` MIME the disk relay serves and the `.ts` convention used by Plex/Emby/Jellyfin/MythTV/TVHeadend. `.mkv`/`.mp4` would require an actual remux step the app doesn't do. Regression-locked by `TranscodeStreamFormatTests` (real PAT+PMT fixtures). *(History: before 2026-07 the app wrote `.m2ts` for `none` and `.mkv` for transcoded — both container mislabels; those extensions remain recognized by the recording-file scans for backward compatibility.)*
 
+### `/lineup.json` carries per-channel `VideoCodec`/`AudioCodec` — corrected 2026-09-02
+
+**Superseded finding, kept below for context — the "GuideNumber, GuideName, URL per channel, nothing else" summary-table entry was wrong.** Found the same way the `Transcode` cloud field above was found: by reading the old AppleScript app's (`identd113/hdhr_VCR`) git history. `VideoCodec`/`AudioCodec`-keyed `NEAT`-level logging existed there as of commit `bfc8a5d` (2025-03-24) — `if VideoCodec of item i of temp is not "MPEG2" then ... logger(... "NEAT" ...)`, reading straight off `hdhr_lineup`, which is the *raw, unmodified* `/lineup.json` response (`hdhr_api(...)` fetches it directly, no enrichment step). That logging was swept away as incidental cleanup in an unrelated `"SeriesScan fix"` commit (`b40e760`, 2025-06-19), not because the field stopped existing.
+
+Verified live 2026-09-02 against the same real EXTEND (105404BE, `curl http://10.0.2.101/lineup.json`):
+
+```json
+{"GuideNumber": "2.1", "GuideName": "TPT 2", "VideoCodec": "MPEG2", "AudioCodec": "AC3", "HD": 1, "URL": "http://10.0.2.101:5004/auto/v2.1"}
+```
+
+Both fields are present today, on every one of the device's 112 channels — `AudioCodec` was uniformly `"AC3"`, but `VideoCodec` was **`"H264"` on 15 channels** (channel 21's entire sub-multiplex — Newsmax, OAN, ZLiving, etc.), not `"MPEG2"`. So this isn't a theoretical edge case: some real, currently-airing channels genuinely broadcast H.264 natively rather than MPEG-2. `LineupEntry.VideoCodec`/`.AudioCodec` (`Models.swift`) now decode these; `VirtualTunerService`'s transcode-skip check (`docs/VirtualTunerService.md`'s "Already-modern-codec skip") reads `VideoCodec` as its fast, proactive first check, falling back to the on-disk PAT/PMT probe (`mpegTSVideoStreamType(inFileAt:)`, `CompatibilityHelpers.swift`) only when this field is absent (older firmware, or this app's own synthetic virtual-relay lineup entries, which don't set it).
+
 ### Transcode capability: `Transcode` field exists, but only on a CGNAT-unsafe cloud endpoint (corrected 2026-08-27)
 
 **Superseded finding, kept below for context — the "no endpoint exists" conclusion was wrong.**
@@ -544,7 +556,7 @@ Primary documentation sources: `info.hdhomerun.com/info/http_api`, `info.hdhomer
 | Endpoint | Purpose |
 |---|---|
 | `/discover.json` | Device info: DeviceID, LocalIP, TunerCount, DeviceAuth |
-| `/lineup.json` | Channel lineup: GuideNumber, GuideName, URL per channel |
+| `/lineup.json` | Channel lineup: GuideNumber, GuideName, URL, VideoCodec, AudioCodec, HD, Favorite per channel |
 | `/status.json` | Active tuner occupancy: Resource, VctNumber, TargetIP |
 | `/tunerN/vstatus` | Per-tuner signal: ss, snq, lock, bps (key-value text). Not implemented on EXTEND — `404` (confirmed 2026-08-26; already handled in `AppState.swift`). |
 | `/lineup.post?favorite=±N` | Mark/unmark channel favorite |

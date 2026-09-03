@@ -29,6 +29,10 @@ Immediately below the header: **Add Show…** button, **Watch Now** button (when
 - Section header: `"Recording Now"` (single tuner) or `"Recording · 105404BE"` (per device, multiple tuners) — macOS section label style, uppercase gray small text with separator
 - Each recording: `"🔴 Show Title"` menu item, right-arrow indicates submenu
 
+**Recording on Another Mac** section (only visible when another discovered hdhrVCRplus instance is relaying an in-progress recording — see `docs/VirtualTunerService.md`; this instance's own relay is never shown here, only a different Mac's):
+- Section header: `"Recording on Another Mac"`
+- One row per remote relay channel: `"Recording on <Show Title>"` with a `play.tv.fill` icon in blue (same visual treatment as the Watching section above) — not a submenu, a single flat button. Clicking it calls `AppState.watchRemoteRelay(url:title:device:)`, opening a native player window directly against the relay's stream URL.
+
 **Up Next** section (only visible when shows start within 60 min):
 - Same section header pattern: `"Up Next"` or `"Up Next · 105404BE"`
 - Within the section: shows bucketed by start time, each time slot rendered as a `Section` header (`"8:00 PM"`) with its shows below; show items have `"  ch 5.1"` appended to the title
@@ -133,6 +137,9 @@ Divider
 Section "Recording Now"              ← only when shows are recording (single tuner)
 Section "Recording · DeviceID"       ← per device when multiple tuners present
   recordingMenu(show) …
+Divider
+Section "Recording on Another Mac"   ← only when a different instance's virtual relay is discovered
+  ["Recording on <title>" — play.tv.fill, calls state.watchRemoteRelay(...)] …
 Divider
 Section "Up Next"                    ← shows starting within the next hour (single tuner)
 Section "Up Next · DeviceID"         ← per device when multiple tuners present

@@ -215,6 +215,7 @@ struct SettingsView: View {
         // the "already recorded" skip badge based on the pre-toggle state for up to an hour.
         let skipConfigChanged = draft.Skip_recorded_episodes  != old.Skip_recorded_episodes
                              || draft.Series_subfolder_enabled != old.Series_subfolder_enabled
+        let relayEnabledChanged = draft.Virtual_tuner_relay_enabled != old.Virtual_tuner_relay_enabled
         state.config = draft
         state.saveConfig()
         // Keep the baseline in lockstep with what was just saved — otherwise resyncIfUntouched()
@@ -255,6 +256,10 @@ struct SettingsView: View {
             }
         }
         if webServerChanged { state.setupWebServer() }
+        // Re-evaluate immediately rather than waiting for the next recording start/stop — toggling
+        // this off while a show happens to be recording should tear the relay down right away, not
+        // leave it advertised until that recording ends.
+        if relayEnabledChanged { state.updateVirtualTunerPresence() }
         if formatChanged {
             state.guideStore.invalidateAll()
             state.guideByDevice = [:]
@@ -628,7 +633,9 @@ struct SettingsView: View {
                         Button("Cancel Scan") { state.cancelSignalScan() }
                             .foregroundStyle(.red)
                     } else {
-                        ForEach(state.devices) { device in
+                        // recordableDevices — a discovered virtual relay device (VirtualTunerService.swift)
+                        // has no real signal to measure; see AppState.startSignalScan's own comment.
+                        ForEach(state.recordableDevices) { device in
                             // force=true: manual scan always re-measures, even channels with fresh data
                             Button("Measure Signal: \(device.DeviceID)") { state.startSignalScan(force: true) }
                         }
@@ -661,6 +668,12 @@ struct SettingsView: View {
                             .font(.caption)
                             .foregroundStyle(.orange)
                     }
+                }
+            }
+
+            Section("Recording Relay") {
+                Toggle(isOn: $draft.Virtual_tuner_relay_enabled) {
+                    HStack { Text("Rebroadcast In-Progress Recordings"); InfoButton("While a show is recording, this Mac briefly advertises itself as an extra HDHomeRun-style tuner on the local network, so another Mac running hdhrVCRplus can watch the recording without tying up a second real tuner. On by default. It can never be used to start a new recording — only to watch one already in progress — and works independently of Sharing above.") }
                 }
             }
 

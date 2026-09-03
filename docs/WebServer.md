@@ -1024,7 +1024,7 @@ let webServer        = WebServer()
 @Published var webServerRunning: Bool    = false
 @Published var webServerError:   String? = nil
 
-func setupWebServer()   // starts/stops based on config.Web_server_enabled; called at startup and on Settings save
+func setupWebServer()   // updates the Web_server_enabled share of desired state; called at startup and on Settings save — see AppState.md's reconcileWebServerState() for the actual start/stop arbiter
 func quit()             // calls webServer.stop()
 ```
 

@@ -32,8 +32,8 @@ space than their rows need even without an outer fixed height).
 global already used by `DonationNagView`/`SettingsView`/the menu bar icon) at 36×36 in a rounded
 rect, next to "Welcome to hdhrVCRplus" (`.headline`) and a one-line subtitle, giving the window the
 same "unmistakably this app's own chrome" identity `DonationNagView`'s header comment already
-argues for. The step-progress dots sit directly below this, inside the same header `VStack` — 2
-small 8pt circles, filled accent-color = current step, hollow gray = other step (same visual
+argues for. The step-progress dots sit directly below this, inside the same header `VStack` — 3
+small 8pt circles, filled accent-color = current step, hollow gray = other steps (same visual
 pattern as `AddShowView`'s step indicator). **Not rendered during `.intro`** (`if step != .intro`
 around both the header and the bottom nav bar) — the splash has no header/nav chrome of its own,
 just its own Skip control (see below).
@@ -343,14 +343,21 @@ rows via one view, `RecordingDefaultsFields` (`Views/RecordingDefaultsFields.swi
 doc for it since it has no independent visual identity beyond what's described here and in
 `docs/SettingsView.md`'s Recording section.
 
-### Step 2 — Notification Timing
+### Step 2 — Recording Relay
+Three short labeled paragraphs (What it is / Why it's there / What it can't do, each with an SF
+Symbol `Label` heading) explaining the virtual-tuner relay in plain language, followed by one
+`Toggle` — same visual weight as a `SettingsView` section, not a marketing-style illustration
+screen. See "Steps" below for the config-commit details.
+
+### Step 3 — Notification Timing
 Up Next / Recording Soon lead-time minutes, same `Stepper` controls and warning banner (shown when
 the recording alert would fire at or after Up Next) as `SettingsView`'s Notifications tab.
 
-**Nav bar** (bottom): Back (step 2 only, `.plain` style, `.secondary` foreground — a quiet
-secondary action) and Next/Finish, right-aligned, Next/Finish `.borderedProminent`. A `Divider`
-above (`opacity(0.5)`, same softened-divider treatment used below the header, so the dividers read
-as subtle separators against the material background rather than harsh full-contrast lines).
+**Nav bar** (bottom): Back (steps 2–3, `.plain` style, `.secondary` foreground — a quiet
+secondary action) and Next/Finish, right-aligned, Next/Finish `.borderedProminent` (Finish only on
+the last step). A `Divider` above (`opacity(0.5)`, same softened-divider treatment used below the
+header, so the dividers read as subtle separators against the material background rather than harsh
+full-contrast lines).
 
 ## Intent
 
@@ -369,7 +376,7 @@ defaults.
 ## Steps
 
 ```swift
-enum Step: Int { case intro, recordingDefaults, notificationTiming }
+enum Step: Int { case intro, recordingDefaults, recordingRelay, notificationTiming }
 ```
 
 `.intro` is **never the resting default** (`@State private var step: Step = .recordingDefaults`) —
@@ -391,7 +398,18 @@ here just means "use the default," same as everywhere else); `finish()` writes i
 same key. Transcode/min-disk/fail-threshold commit to `state.config.Default_transcode` /
 `.Min_disk_free_gb` / `.Fail_count_setting` on Finish the same way.
 
-### Step 2 — Notification Timing
+### Step 2 — Recording Relay
+Explains the virtual-tuner relay (`docs/VirtualTunerService.md`) in plain terms — what it is, why
+it exists, and what it can't do — then one `Toggle` bound to local `@State relayEnabled` (default
+mirrors `state.config.Virtual_tuner_relay_enabled`, itself `true`). Same commit-on-Finish pattern
+as every other field here: `finish()` writes it to `state.config.Virtual_tuner_relay_enabled` and,
+if it changed, calls `state.updateVirtualTunerPresence()` directly so a recording already in
+progress (only realistically possible via a mid-session reset from Settings → Maintenance) reflects
+the new setting immediately rather than waiting for that recording to end. `SettingsView`'s own
+Sharing → Recording Relay toggle is the same setting, same wording, reachable any time after this
+wizard closes — this screen exists purely so a first-time user sees the explanation once, unprompted.
+
+### Step 3 — Notification Timing
 Binds to local `@State` (`upNextMinutes`, `recordingSoonMinutes`). Committed to
 `state.config.Notify_upnext` / `.Notify_recording` on Finish.
 

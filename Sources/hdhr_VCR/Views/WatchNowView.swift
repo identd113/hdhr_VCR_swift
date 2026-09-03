@@ -27,7 +27,12 @@ struct WatchNowView: View {
     }
 
     private var selectedDevice: HDHRDevice? {
-        state.devices.first { $0.DeviceID == selectedDeviceId } ?? state.devices.first
+        // recordableDevices for both halves — selectedDeviceId can currently only ever be seeded
+        // from recordableDevices (the Picker/onAppear below) or stay "", but resolving the primary
+        // lookup against raw `devices` here would silently start treating a relay as directly
+        // browsable/watchable the moment any future caller sets watchNowDeviceId to one.
+        state.recordableDevices.first { $0.DeviceID == selectedDeviceId }
+            ?? state.recordableDevices.first
     }
 
     // Returns one (channel, entry) pair per unique on-air channel.
@@ -45,7 +50,8 @@ struct WatchNowView: View {
             content
         }
         .onAppear {
-            selectedDeviceId = state.watchNowDeviceId ?? state.devices.first?.DeviceID ?? ""
+            selectedDeviceId = state.watchNowDeviceId
+                ?? state.recordableDevices.first?.DeviceID ?? ""
         }
         .onChange(of: state.watchNowDeviceId) { _, newId in
             if let id = newId { selectedDeviceId = id }
@@ -211,9 +217,14 @@ struct WatchNowView: View {
                 .accessibilityHidden(true)
             Text("Watch Now")
                 .font(.headline)
-            if state.devices.count > 1 {
+            // A discovered virtual relay device (another instance's in-progress-recording
+            // rebroadcast, VirtualTunerService.swift) is watch-only via the menu bar's own
+            // dedicated "Recording on Another Mac" row (AppState.watchRemoteRelay) — it has no
+            // real lineup/guide data, so it doesn't belong in this picker's "browse a live tuner's
+            // channels" flow.
+            if state.recordableDevices.count > 1 {
                 Picker("Tuner", selection: $selectedDeviceId) {
-                    ForEach(state.devices) { d in
+                    ForEach(state.recordableDevices) { d in
                         Text(d.DeviceID).tag(d.DeviceID)
                     }
                 }
