@@ -674,30 +674,6 @@ struct SettingsView: View {
                 }
             }
 
-            Section("Recording Relay") {
-                Toggle(isOn: $draft.Virtual_tuner_relay_enabled) {
-                    HStack { Text("Rebroadcast In-Progress Recordings"); InfoButton("While a show is recording, this Mac briefly advertises itself as an extra HDHomeRun-style tuner on the local network, so another Mac running hdhrVCRplus can watch the recording without tying up a second real tuner. On by default. It can never be used to start a new recording — only to watch one already in progress — and works independently of Sharing above.") }
-                }
-                if draft.Virtual_tuner_relay_enabled {
-                    Picker(selection: $draft.Virtual_tuner_relay_default_transcode) {
-                        Text("Heavy").tag("heavy")
-                        Text("Internet 720").tag("internet720")
-                        Text("Internet 540").tag("internet540")
-                        Text("Internet 480").tag("internet480")
-                        Text("Internet 360").tag("internet360")
-                        Text("Internet 240").tag("internet240")
-                        Text("Mobile").tag("mobile")
-                    } label: {
-                        HStack {
-                            Text(vlcInstalled ? "Default transcode level" : "Default transcode level (Requires VLC)")
-                            InfoButton("Applied whenever a viewer of the rebroadcast above asks for any transcode — the specific profile their own client requests only decides whether to transcode at all, not which level; this Mac always uses the level chosen here instead. Every level keeps the source's own resolution and frame rate, so only the target bitrate differs — Heavy is the highest quality/bitrate, Mobile the lowest. Without VLC installed, a transcode request is served as untranscoded, passthrough bytes instead — the rebroadcast itself still works.")
-                        }
-                    }
-                    .accessibilityIdentifier("settings-relay-default-transcode")
-                    .disabled(!vlcInstalled)
-                }
-            }
-
             if state.config.Web_server_enabled && state.webServerRunning {
                 let ip: String = {
                     let ifaces = availableNetworkInterfaces()
@@ -721,25 +697,42 @@ struct SettingsView: View {
                         Link("Open", destination: URL(string: urlStr)!)
                     }
                 }
+            }
 
-                // hdhr_guide (docs/TUIGuide.md) only works while the web server it's showing
-                // above is actually running — same gate as the Access section, so this row can
-                // never point someone at a tool that will just fail to connect. Terminal_guide_enabled
-                // is a separate sub-switch under that: the binary itself checks it (via
-                // /api/guide.json's terminalGuideEnabled field) and refuses to run when off, letting
-                // someone share the web guide with the household without also advertising/allowing
-                // the terminal client, without needing a second AppState code path.
-                let guideURL = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/hdhr_guide")
-                // Checked once per body render (cheap: a single stat call), not cached — deploy.sh
-                // always copies this file, so it's only ever missing via an unsupported dev flow
-                // (plain `swift build` + direct binary, no .app bundle) or a corrupted install; in
-                // either case the button should say so rather than silently no-op on click.
-                let guideExists = FileManager.default.fileExists(atPath: guideURL.path)
-                Section("Terminal Guide") {
-                    Toggle(isOn: $draft.Terminal_guide_enabled) {
-                        HStack { Text("Enable Terminal Guide"); InfoButton("Lets the bundled command-line client (path below) connect. On by default. Turning this off has no security effect — the same data is already reachable from any browser on the network whenever Sharing is on — it only hides/disables the terminal client specifically.") }
+            // hdhr_guide (docs/TUIGuide.md) connects to the exact same internal web server LAN
+            // Sharing exposes — there's no separate port/listener for it — so its own toggle is
+            // always visible but disabled (dimmed, "(Requires LAN Sharing)") while Sharing is off,
+            // the same "show it, don't hide it" pattern used for VLC-gated features elsewhere in
+            // this app, rather than the whole section vanishing. Gated on `draft.Web_server_enabled`
+            // (the pending toggle), matching every other reveal-on-toggle control in this form (the
+            // Port field above, the relay's transcode picker below) — not the Recording Relay
+            // toggle, which is deliberately independent of Sharing: it holds its own internal
+            // web-server claim (`AppState.ensureWebServerRunning()`) specifically so it keeps
+            // working with Sharing off, so it isn't gated here at all. Terminal_guide_enabled itself
+            // is a separate sub-switch under that: the binary checks it (via /api/guide.json's
+            // terminalGuideEnabled field) and refuses to run when off, letting someone share the web
+            // guide with the household without also advertising/allowing the terminal client.
+            let lanEnabled = draft.Web_server_enabled
+            Section("Terminal Guide") {
+                Toggle(isOn: $draft.Terminal_guide_enabled) {
+                    HStack {
+                        Text(lanEnabled ? "Enable Terminal Guide" : "Enable Terminal Guide (Requires LAN Sharing)")
+                        InfoButton("Lets the bundled command-line client (path below) connect. On by default. Turning this off has no security effect — the same data is already reachable from any browser on the network whenever Sharing is on — it only hides/disables the terminal client specifically. Requires LAN Sharing above to be on: the terminal client connects to that exact same local web server, not a separate one.")
                     }
-                    if draft.Terminal_guide_enabled {
+                }
+                .disabled(!lanEnabled)
+                if draft.Terminal_guide_enabled && lanEnabled {
+                    if state.config.Web_server_enabled && state.webServerRunning {
+                        // hdhr_guide (docs/TUIGuide.md) only works while the web server it's
+                        // showing above is actually running — same gate as the Access section, so
+                        // this row can never point someone at a tool that will just fail to connect.
+                        let guideURL = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/hdhr_guide")
+                        // Checked once per body render (cheap: a single stat call), not cached —
+                        // deploy.sh always copies this file, so it's only ever missing via an
+                        // unsupported dev flow (plain `swift build` + direct binary, no .app bundle)
+                        // or a corrupted install; in either case the button should say so rather
+                        // than silently no-op on click.
+                        let guideExists = FileManager.default.fileExists(atPath: guideURL.path)
                         Text(guideURL.path)
                             .font(.system(.body, design: .monospaced))
                             .textSelection(.enabled)
@@ -765,7 +758,39 @@ struct SettingsView: View {
                                 .font(.caption)
                                 .foregroundStyle(.orange)
                         }
+                    } else {
+                        // Draft toggles are on but not yet Saved (or Sharing hasn't finished
+                        // starting) — the actual listener isn't up yet, so there's nothing to
+                        // connect to. Matches this same "not live yet" distinction the Access
+                        // section above already draws between draft and `state.config`/`webServerRunning`.
+                        Text("Save to activate — the terminal client can connect once Sharing is running.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
+                }
+            }
+
+            Section("Recording Relay") {
+                Toggle(isOn: $draft.Virtual_tuner_relay_enabled) {
+                    HStack { Text("Rebroadcast In-Progress Recordings"); InfoButton("While a show is recording, this Mac briefly advertises itself as an extra HDHomeRun-style tuner on the local network, so another Mac running hdhrVCRplus can watch the recording without tying up a second real tuner. On by default. It can never be used to start a new recording — only to watch one already in progress — and works independently of Sharing above.") }
+                }
+                if draft.Virtual_tuner_relay_enabled {
+                    Picker(selection: $draft.Virtual_tuner_relay_default_transcode) {
+                        Text("Heavy").tag("heavy")
+                        Text("Internet 720").tag("internet720")
+                        Text("Internet 540").tag("internet540")
+                        Text("Internet 480").tag("internet480")
+                        Text("Internet 360").tag("internet360")
+                        Text("Internet 240").tag("internet240")
+                        Text("Mobile").tag("mobile")
+                    } label: {
+                        HStack {
+                            Text(vlcInstalled ? "Default transcode level" : "Default transcode level (Requires VLC)")
+                            InfoButton("Applied whenever a viewer of the rebroadcast above asks for any transcode — the specific profile their own client requests only decides whether to transcode at all, not which level; this Mac always uses the level chosen here instead. Every level keeps the source's own resolution and frame rate, so only the target bitrate differs — Heavy is the highest quality/bitrate, Mobile the lowest. Without VLC installed, a transcode request is served as untranscoded, passthrough bytes instead — the rebroadcast itself still works.")
+                        }
+                    }
+                    .accessibilityIdentifier("settings-relay-default-transcode")
+                    .disabled(!vlcInstalled)
                 }
             }
 
