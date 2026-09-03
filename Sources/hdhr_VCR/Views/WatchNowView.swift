@@ -550,59 +550,61 @@ struct WatchNowRow: View {
 
     @ViewBuilder
     private func watchButtons(managed: Show?) -> some View {
+        let vlcReady = VLCBridge.shared.isAvailable
         Group {
-            if VLCBridge.shared.isAvailable {
-                // A currently-recording show is already on disk — offer beginning-vs-live instead
-                // of the plain live-tuner Watch button, which would otherwise open a second,
-                // redundant tuner connection for a channel this app is already recording.
-                // show.show_channel == channel.GuideNumber matters here: `managed` comes from
-                // ManagedGuideMatcher.owner(for:), which matches any block sharing the show's
-                // SeriesID/title (by design, for seriesAll fan-out across channels) — so without
-                // this check, a rerun of the same series airing simultaneously on a *different*
-                // channel would also offer these relay buttons and hand back the wrong channel's
-                // (the actually-recording one's) file. See guideRingState's isRecording for the
-                // same fix applied to the ring badge.
-                if let show = managed, show.show_recording, show.show_channel == channel.GuideNumber {
-                    // Two separate buttons, not a pull-down menu — matches the menu bar's own
-                    // recording submenu, which offers these as two distinct items rather than
-                    // one nested behind a "Watch" disclosure.
-                    Button {
-                        state.watchRecordingInApp(show)
-                    } label: {
-                        Label("Watch Now!", systemImage: "play.tv.fill").font(.caption.bold())
-                    }
-                    .accessibilityLabel(watchLiveLabel(entry.Title))
-                    // Neither of these opens a fresh live tuner stream — both replay the
-                    // in-progress recording file from disk via the relay (docs/WebServer.md's
-                    // "Recording playback relay"), just at a different starting offset. The
-                    // tooltip says so explicitly since "Watch Now!" reads as "watch live" otherwise.
-                    .help("Play the in-progress recording of \(entry.Title) from disk, starting near live")
-                    .buttonStyle(.borderedProminent)
-                    .tint(watchNowBlue)
-                    .controlSize(.small)
-                    Button {
-                        state.watchRecordingInApp(show, fromBeginning: true)
-                    } label: {
-                        Label("Watch from Beginning", systemImage: "backward.end.fill").font(.caption.bold())
-                    }
-                    .accessibilityLabel(watchFromBeginningLabel(entry.Title))
-                    .help("Play the in-progress recording of \(entry.Title) from disk, starting at the beginning")
-                    .buttonStyle(.borderedProminent)
-                    .tint(watchNowBlue)
-                    .controlSize(.small)
-                } else {
-                    Button {
-                        state.watchInApp(url: channel.URL ?? "", title: entry.Title, deviceId: device.DeviceID,
-                                         guideNumber: channel.GuideNumber)
-                    } label: {
-                        Label("Watch", systemImage: "play.tv.fill").font(.caption.bold())
-                    }
-                    .accessibilityLabel(watchInAppLabel(entry.Title))
-                    .help(watchInAppLabel(entry.Title))
-                    .buttonStyle(.borderedProminent)
-                    .tint(watchNowBlue)
-                    .controlSize(.small)
+            // A currently-recording show is already on disk — offer beginning-vs-live instead
+            // of the plain live-tuner Watch button, which would otherwise open a second,
+            // redundant tuner connection for a channel this app is already recording.
+            // show.show_channel == channel.GuideNumber matters here: `managed` comes from
+            // ManagedGuideMatcher.owner(for:), which matches any block sharing the show's
+            // SeriesID/title (by design, for seriesAll fan-out across channels) — so without
+            // this check, a rerun of the same series airing simultaneously on a *different*
+            // channel would also offer these relay buttons and hand back the wrong channel's
+            // (the actually-recording one's) file. See guideRingState's isRecording for the
+            // same fix applied to the ring badge.
+            if let show = managed, show.show_recording, show.show_channel == channel.GuideNumber {
+                // Two separate buttons, not a pull-down menu — matches the menu bar's own
+                // recording submenu, which offers these as two distinct items rather than
+                // one nested behind a "Watch" disclosure.
+                Button {
+                    state.watchRecordingInApp(show)
+                } label: {
+                    Label(vlcReady ? "Watch Now!" : "Watch Now! (Requires VLC)", systemImage: "play.tv.fill").font(.caption.bold())
                 }
+                .accessibilityLabel(watchLiveLabel(entry.Title))
+                // Neither of these opens a fresh live tuner stream — both replay the
+                // in-progress recording file from disk via the relay (docs/WebServer.md's
+                // "Recording playback relay"), just at a different starting offset. The
+                // tooltip says so explicitly since "Watch Now!" reads as "watch live" otherwise.
+                .help(vlcReady ? "Play the in-progress recording of \(entry.Title) from disk, starting near live" : "Requires VLC to be installed")
+                .buttonStyle(.borderedProminent)
+                .tint(vlcReady ? watchNowBlue : .gray)
+                .controlSize(.small)
+                .disabled(!vlcReady)
+                Button {
+                    state.watchRecordingInApp(show, fromBeginning: true)
+                } label: {
+                    Label(vlcReady ? "Watch from Beginning" : "Watch from Beginning (Requires VLC)", systemImage: "backward.end.fill").font(.caption.bold())
+                }
+                .accessibilityLabel(watchFromBeginningLabel(entry.Title))
+                .help(vlcReady ? "Play the in-progress recording of \(entry.Title) from disk, starting at the beginning" : "Requires VLC to be installed")
+                .buttonStyle(.borderedProminent)
+                .tint(vlcReady ? watchNowBlue : .gray)
+                .controlSize(.small)
+                .disabled(!vlcReady)
+            } else {
+                Button {
+                    state.watchInApp(url: channel.URL ?? "", title: entry.Title, deviceId: device.DeviceID,
+                                     guideNumber: channel.GuideNumber)
+                } label: {
+                    Label(vlcReady ? "Watch" : "Watch (Requires VLC)", systemImage: "play.tv.fill").font(.caption.bold())
+                }
+                .accessibilityLabel(watchInAppLabel(entry.Title))
+                .help(vlcReady ? watchInAppLabel(entry.Title) : "Requires VLC to be installed")
+                .buttonStyle(.borderedProminent)
+                .tint(vlcReady ? watchNowBlue : .gray)
+                .controlSize(.small)
+                .disabled(!vlcReady)
             }
         }
     }

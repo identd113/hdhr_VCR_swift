@@ -688,9 +688,13 @@ struct SettingsView: View {
                         Text("Internet 240").tag("internet240")
                         Text("Mobile").tag("mobile")
                     } label: {
-                        HStack { Text("Default transcode level"); InfoButton("Applied whenever a viewer of the rebroadcast above asks for any transcode — the specific profile their own client requests only decides whether to transcode at all, not which level; this Mac always uses the level chosen here instead. Every level keeps the source's own resolution and frame rate, so only the target bitrate differs — Heavy is the highest quality/bitrate, Mobile the lowest.") }
+                        HStack {
+                            Text(vlcInstalled ? "Default transcode level" : "Default transcode level (Requires VLC)")
+                            InfoButton("Applied whenever a viewer of the rebroadcast above asks for any transcode — the specific profile their own client requests only decides whether to transcode at all, not which level; this Mac always uses the level chosen here instead. Every level keeps the source's own resolution and frame rate, so only the target bitrate differs — Heavy is the highest quality/bitrate, Mobile the lowest. Without VLC installed, a transcode request is served as untranscoded, passthrough bytes instead — the rebroadcast itself still works.")
+                        }
                     }
                     .accessibilityIdentifier("settings-relay-default-transcode")
+                    .disabled(!vlcInstalled)
                 }
             }
 

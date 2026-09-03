@@ -162,12 +162,14 @@ struct MenuContent: View {
             Section("Recording on Another Mac") {
                 ForEach(remoteRelayEntries, id: \.entry.URL) { pair in
                     let title = pair.entry.virtualRelayShowTitle ?? pair.entry.GuideName
+                    let vlcReady = VLCBridge.shared.isAvailable
                     Menu {
                         Button {
                             state.watchRemoteRelay(url: pair.entry.URL ?? "", title: title, device: pair.device)
                         } label: {
-                            Label("Watch", systemImage: "play.tv.fill")
+                            Label(vlcReady ? "Watch" : "Watch (Requires VLC)", systemImage: "play.tv.fill")
                         }
+                        .disabled(!vlcReady)
                         Divider()
                         // Incoming/outgoing are always the same value today — watchRemoteRelay
                         // never applies a transcode override, so what clicking Watch above actually
@@ -321,13 +323,15 @@ struct MenuContent: View {
     @ViewBuilder
     private var watchNowMenu: some View {
         if !state.devices.isEmpty {
+            let vlcReady = VLCBridge.shared.isAvailable
             Button {
                 state.watchNowDeviceId = nil
                 open("watch-now")
             } label: {
-                Label("Watch Now…", systemImage: "play.tv.fill")
-                    .foregroundStyle(watchNowBlue)
+                Label(vlcReady ? "Watch Now…" : "Watch Now… (Requires VLC)", systemImage: "play.tv.fill")
+                    .foregroundStyle(vlcReady ? watchNowBlue : Color(NSColor.disabledControlTextColor))
             }
+            .disabled(!vlcReady)
         }
     }
 
@@ -368,16 +372,17 @@ struct MenuContent: View {
                 menuInfo(sig.displayString, font: .footnote, secondary: true)
             }
             Divider()
-            if VLCBridge.shared.isAvailable {
-                Button(action: { state.watchRecordingInApp(show) }) {
-                    Label { Text("Watch Now!").foregroundColor(watchNowBlue) }
-                          icon: { Image(systemName: "play.tv.fill").foregroundColor(watchNowBlue) }
-                }
-                Button(action: { state.watchRecordingInApp(show, fromBeginning: true) }) {
-                    Label { Text("Watch from Beginning").foregroundColor(watchNowBlue) }
-                          icon: { Image(systemName: "backward.end.fill").foregroundColor(watchNowBlue) }
-                }
+            let vlcReady = VLCBridge.shared.isAvailable
+            Button(action: { state.watchRecordingInApp(show) }) {
+                Label { Text(vlcReady ? "Watch Now!" : "Watch Now! (Requires VLC)").foregroundColor(vlcReady ? watchNowBlue : Color(NSColor.disabledControlTextColor)) }
+                      icon: { Image(systemName: "play.tv.fill").foregroundColor(vlcReady ? watchNowBlue : Color(NSColor.disabledControlTextColor)) }
             }
+            .disabled(!vlcReady)
+            Button(action: { state.watchRecordingInApp(show, fromBeginning: true) }) {
+                Label { Text(vlcReady ? "Watch from Beginning" : "Watch from Beginning (Requires VLC)").foregroundColor(vlcReady ? watchNowBlue : Color(NSColor.disabledControlTextColor)) }
+                      icon: { Image(systemName: "backward.end.fill").foregroundColor(vlcReady ? watchNowBlue : Color(NSColor.disabledControlTextColor)) }
+            }
+            .disabled(!vlcReady)
             if state.config.Watch_in_VLC {
                 Button(action: { state.watchRecordingInVLC(show) }) {
                     Label { Text("Watch in VLC").foregroundColor(watchNowOrange) }

@@ -31,7 +31,7 @@ Immediately below the header: **Add Show…** button, **Watch Now** button (when
 
 **Recording on Another Mac** section (only visible when another discovered hdhrVCRplus instance is relaying an in-progress recording — see `docs/VirtualTunerService.md`; this instance's own relay is never shown here, only a different Mac's):
 - Section header: `"Recording on Another Mac"`
-- One row per remote relay channel: `"Recording on <Show Title>"` with a `play.tv.fill` icon in blue (same visual treatment as the Watching section above) — not a submenu, a single flat button. Clicking it calls `AppState.watchRemoteRelay(url:title:device:)`, opening a native player window directly against the relay's stream URL.
+- One row per remote relay channel: `"Recording on <Show Title>"` with a `play.tv.fill` icon in blue (same visual treatment as the Watching section above) — a `Menu`, not a flat button, opening onto: a **Watch** item (disabled + dimmed, labeled `"Watch (Requires VLC)"`, when `VLCBridge.shared.isAvailable` is false — otherwise calls `AppState.watchRemoteRelay(url:title:device:)`, opening a native player window directly against the relay's stream URL), a divider, then `"Source: <codec>"` / `"You'll get: <codec>"` info rows (currently always identical — `watchRemoteRelay` never applies a transcode override) and, only while at least one viewer on the remote Mac is actively transcoding that show, a `"Transcoding: N viewer(s)"` row.
 
 **Up Next** section (only visible when shows start within 60 min):
 - Same section header pattern: `"Up Next"` or `"Up Next · 105404BE"`
@@ -128,7 +128,7 @@ This is deliberately a real `@Published` property with its own timer rather than
 [Header: one line per device — DeviceID  liveCount/slots  ⚠ no lineup, no guide (inline, orange)]
 [Status message — secondary color, uses availableDeviceCount]
 [Add Show… — Button, opens wizard window]
-[Watch Now… — Label("Watch Now…", systemImage: "play.tv.fill"), when devices present]
+[Watch Now… — Label("Watch Now…", systemImage: "play.tv.fill"), when devices present; disabled + " (Requires VLC)" when VLCBridge.shared.isAvailable is false]
 Divider
 Settings…
 [Update Available: vX.Y.Z — arrow.down.circle.fill, only when state.updateCheckResult != nil]
@@ -139,7 +139,7 @@ Section "Recording · DeviceID"       ← per device when multiple tuners presen
   recordingMenu(show) …
 Divider
 Section "Recording on Another Mac"   ← only when a different instance's virtual relay is discovered
-  ["Recording on <title>" — play.tv.fill, calls state.watchRemoteRelay(...)] …
+  ["Recording on <title>" — play.tv.fill, Menu → Watch (disabled + " (Requires VLC)" when unavailable, else calls state.watchRemoteRelay(...)), Divider, Source/You'll-get codec rows, optional Transcoding: N viewer(s)] …
 Divider
 Section "Up Next"                    ← shows starting within the next hour (single tuner)
 Section "Up Next · DeviceID"         ← per device when multiple tuners present
@@ -181,7 +181,7 @@ Submenu contents — uses `showInfoHeader(show, entry:)` for the top block, then
 4. **Tuner ID** — `"tuner 105404BE"`, `secondaryLabelColor`
 5. **Signal** — shown when `state.tunerStatus[show.show_id]` is set: `"Signal: 78% · QAM256 · 12.4 Mbps"` (no "lock:" label; lock type uppercased), `secondaryLabelColor`
 6. Divider
-7. **Watch Now!** and **Watch from Beginning** — both shown when `VLCBridge.shared.isAvailable` (VLC app installed and dylib loaded); **Watch in VLC** — shown when `state.config.Watch_in_VLC == true` (user toggle in Settings → Advanced). These are independent conditions. All three call `state.watchRecordingInApp(show)` / `state.watchRecordingInApp(show, fromBeginning: true)` / `state.watchRecordingInVLC(show)` (not the generic `watchInApp`/`watchInVLC`) instead of opening a second tuner stream, since HDHomeRun allocates one tuner per TCP connection with no way to share a stream between the recording and a watch session (see `docs/HDHRFindings.md`). **Watch Now!**/**Watch from Beginning** both play it via the WebServer's `/api/watch-recording` relay (open-ended HTTP stream — see `docs/WebServer.md`), differing only in starting offset (~30s behind live vs. byte/second 0 — see `docs/AppState.md`'s `watchRecordingInApp`); **Watch in VLC** plays `show.show_recording_path` directly as a `file://` URL (external app, no reliable close hook to manage the relay, so it has no beginning/live choice — it already starts at 0 by nature). All three fall back to opening a live stream only if the recording file is missing. `WatchNowView`'s own recording rows offer the same Watch Now!/Watch from Beginning choice as two separate stylized buttons, not a pull-down `Menu` (tried first, didn't match the rest of the action row's visual language) — see `docs/WatchNowView.md`'s Action row.
+7. **Watch Now!** and **Watch from Beginning** — always shown, but disabled with a `" (Requires VLC)"` label suffix and dimmed (`disabledControlTextColor`) when `VLCBridge.shared.isAvailable` is false (VLC app not installed or dylib failed to load); **Watch in VLC** — shown when `state.config.Watch_in_VLC == true` (user toggle in Settings → Advanced, itself only offered when VLC is installed). These are independent conditions. All three call `state.watchRecordingInApp(show)` / `state.watchRecordingInApp(show, fromBeginning: true)` / `state.watchRecordingInVLC(show)` (not the generic `watchInApp`/`watchInVLC`) instead of opening a second tuner stream, since HDHomeRun allocates one tuner per TCP connection with no way to share a stream between the recording and a watch session (see `docs/HDHRFindings.md`). **Watch Now!**/**Watch from Beginning** both play it via the WebServer's `/api/watch-recording` relay (open-ended HTTP stream — see `docs/WebServer.md`), differing only in starting offset (~30s behind live vs. byte/second 0 — see `docs/AppState.md`'s `watchRecordingInApp`); **Watch in VLC** plays `show.show_recording_path` directly as a `file://` URL (external app, no reliable close hook to manage the relay, so it has no beginning/live choice — it already starts at 0 by nature). All three fall back to opening a live stream only if the recording file is missing. `WatchNowView`'s own recording rows offer the same Watch Now!/Watch from Beginning choice as two separate stylized buttons, not a pull-down `Menu` (tried first, didn't match the rest of the action row's visual language) — see `docs/WatchNowView.md`'s Action row.
 8. **Skip** (destructive) — `state.skipRecording(showId:)`: stops recording, advances schedule to next airing, no fail-count increment
 9. **Delete…** (destructive) — `state.confirmAndDeleteShow(show)`: stops recording + shows confirmation alert with poster image, then removes the show entirely
 10. **Show Recording in Finder** — shown when `show_recording_path` is non-empty
@@ -258,7 +258,7 @@ Label format: `"Ch 5.1  NBC · Show Title"` where the channel comes from matchin
 
 ## Watch Now — `watchNowMenu`
 
-A `Button` with `Label("Watch Now…", systemImage: "play.tv.fill")` in a blue tint (`watchNowBlue = Color(red: 0.2, green: 0.6, blue: 1.0)`). Shown when `state.devices` is non-empty. Opens the `"watch-now"` `Window` (`WatchNowView`) — a 420×620 poster-card grid of currently-airing shows. Single-instance, so reopening brings the existing window to front rather than duplicating.
+A `Button` with `Label("Watch Now…", systemImage: "play.tv.fill")` in a blue tint (`watchNowBlue = Color(red: 0.2, green: 0.6, blue: 1.0)`). Shown when `state.devices` is non-empty. Opens the `"watch-now"` `Window` (`WatchNowView`) — a 420×620 poster-card grid of currently-airing shows. Single-instance, so reopening brings the existing window to front rather than duplicating. When `VLCBridge.shared.isAvailable` is false, the button stays visible but is disabled and dimmed (`disabledControlTextColor`), with the label suffixed `" (Requires VLC)"` — the window's own per-channel Watch buttons need libvlc to play anything, so there's no point opening it.
 
 ---
 
