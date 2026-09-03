@@ -24,6 +24,7 @@
 
 Runs every `config.Idle_timer_interval` seconds on MainActor:
 
+- **VLC hot-install detection** (`checkVLCHotInstall()`, runs first, every tick) — `VLCBridge` dlopens `libvlc.dylib` and calls `libvlc_new()` exactly once, in its `private init()` the first time `VLCBridge.shared` is touched, so installing VLC mid-session can't make that singleton pick it up on its own. Each tick re-checks `VLCBridge.locateApp() != nil` (a live, uncached `NSWorkspace` bundle-id lookup); the moment that flips true while `VLCBridge.shared.isAvailable` is still false, fires a one-time `"VLC Detected"` user notification (category `"vlc.detected"`, action `"Relaunch Now"` → `AppState.relaunchForVLC()`) and sets `vlcInstallNotified` so it doesn't re-fire every tick. If VLC then disappears again before the user relaunches (installed then uninstalled), `vlcInstallNotified` resets so a later install prompts again. **Uninstalling VLC while already running is not detected or notified here at all** — the dylib this process already dlopen'd stays mapped in memory regardless of whether the file on disk still exists (standard dyld/mmap behavior), so an already-loaded `VLCBridge` keeps working for the rest of the session; only `SettingsView`'s own `vlcInstalled` (the same live, uncached lookup) needs to reflect a removal, and it already does on its next redraw with no help from this check.
 - If `devices` is empty → retries discovery immediately.
 - If guide channels missing for any device → calls `ensureGuideLoaded(for:)`.
 - Refreshes lineup + guide at each clock-hour boundary (`lastRefreshHour` vs current hour; non-blocking `Task`) — aligned with the web UI's 30-minute window slide. On total API failure the next attempt is the next hour boundary; intra-hour retries are handled per-device by `ensureGuideLoaded` backoff.
@@ -255,3 +256,12 @@ All three exit branches call `VLCBridge.shared.releasePlayer()` before terminati
 - **No recordings** — `releasePlayer()` → `recordingManager.stopAll()` → `NSApplication.terminate(nil)`
 - **Keep Recording & Quit** — `releasePlayer()` → `NSApplication.terminate(nil)` (curl orphaned to launchd; reattach on relaunch via `reattachRecordings()`)
 - **Stop Recordings & Quit** — `releasePlayer()` → `recordingManager.stopAll()` → `NSApplication.terminate(nil)`
+
+---
+
+## Relaunch for VLC (`relaunchForVLC()`)
+
+Fired by the "Relaunch Now" action on the VLC-detected notification (see Idle Loop's "VLC hot-install detection" above); also directly callable. A parallel, separate implementation from `quit()` above rather than a shared helper — `quit()`'s job is "terminate," this one's is "terminate, then open a fresh instance of this same bundle," matching `AppRelocator.swift`'s own open-then-terminate idiom (`NSWorkspace.OpenConfiguration` with `createsNewApplicationInstance = true`, `NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, …)`, then `NSApplication.terminate(nil)` inside that call's completion handler) rather than AppRelocator's own move-to-a-new-path variant.
+
+- **No recordings** — same as `quit()`'s first branch, then opens a new instance before terminating.
+- **Recordings in progress** — a lighter-weight `NSAlert` than `quit()`'s (`"Relaunch"` / `"Cancel"`, informational style, no destructive "stop recordings" option — relaunching for VLC has no reason to offer stopping them) explains that recordings will keep running through the relaunch; confirming does `releasePlayer()` → `webServer.stop()` → `saveConfig()` → open new instance → terminate. Relies on the exact same orphan-and-reattach mechanism `quit()`'s "Keep Recording & Quit" already depends on (`reattachRecordings()` on the next launch) — a relaunch is not a materially different case from that path already handles, just triggered by a different reason.

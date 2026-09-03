@@ -1608,6 +1608,8 @@ final class AppState: ObservableObject {
         let now = Date()
         var dirty = false
 
+        checkVLCHotInstall()
+
         // If startup discovery failed, keep retrying — single attempt per tick so we return quickly.
         // Falls through to Pass 1/Pass 2 below even while devices is empty, so stale show_recording
         // flags (e.g. a reattached recording whose show_end has passed) still get cleared during a
@@ -3099,12 +3101,14 @@ final class AppState: ObservableObject {
 
     func requestNotifyPermission() async {
         notifyPermission = (try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])) ?? false
-        let skipAction = UNNotificationAction(identifier: "SKIP_AIRING",    title: "Skip This Airing", options: [])
-        let stopAction = UNNotificationAction(identifier: "STOP_RECORDING", title: "Stop Recording",    options: [.destructive])
+        let skipAction     = UNNotificationAction(identifier: "SKIP_AIRING",    title: "Skip This Airing", options: [])
+        let stopAction     = UNNotificationAction(identifier: "STOP_RECORDING", title: "Stop Recording",    options: [.destructive])
+        let relaunchAction = UNNotificationAction(identifier: "RELAUNCH_APP",   title: "Relaunch Now",      options: [.foreground])
         UNUserNotificationCenter.current().setNotificationCategories([
             UNNotificationCategory(identifier: "upnext",            actions: [skipAction], intentIdentifiers: [], options: []),
             UNNotificationCategory(identifier: "recording.soon",    actions: [skipAction], intentIdentifiers: [], options: []),
-            UNNotificationCategory(identifier: "recording.started", actions: [stopAction], intentIdentifiers: [], options: [])
+            UNNotificationCategory(identifier: "recording.started", actions: [stopAction], intentIdentifiers: [], options: []),
+            UNNotificationCategory(identifier: "vlc.detected",      actions: [relaunchAction], intentIdentifiers: [], options: [])
         ])
         notificationDelegate.appState = self
         UNUserNotificationCenter.current().delegate = notificationDelegate
@@ -4243,6 +4247,78 @@ final class AppState: ObservableObject {
         return overlapping.count >= tunerCount
     }
 
+    // MARK: - VLC hot-install detection
+
+    /// Set once we've notified about a VLC install this session — avoids re-notifying every idle
+    /// tick while the user hasn't relaunched yet. Cleared if VLC disappears again (e.g. installed
+    /// then uninstalled before relaunching), so a later install prompts again.
+    private var vlcInstallNotified = false
+
+    /// VLCBridge dlopen's libvlc and calls libvlc_new() (which loads 300+ plugins) exactly once,
+    /// in its private init(), the first time VLCBridge.shared is touched — installing VLC after
+    /// that point can't make the already-created singleton pick it up without literally redoing
+    /// that one-shot dlopen/libvlc_new dance, so instead of hot-reloading, this just prompts a
+    /// relaunch once a fresh install is detected. Uninstalling VLC while the app is already
+    /// running does NOT get the same treatment: the dylib this process already dlopen'd stays
+    /// mapped in memory regardless of whether the file on disk still exists (standard dyld/mmap
+    /// behavior), so an already-loaded VLCBridge keeps working; only SettingsView's own
+    /// `vlcInstalled` (a live, uncached NSWorkspace lookup) needs to reflect a removal, and it
+    /// already does that on its own next redraw — nothing to detect or notify for that direction.
+    private func checkVLCHotInstall() {
+        let nowInstalled = VLCBridge.locateApp() != nil
+        guard nowInstalled else {
+            vlcInstallNotified = false   // let a future install prompt again
+            return
+        }
+        guard !VLCBridge.shared.isAvailable, !vlcInstallNotified else { return }
+        vlcInstallNotified = true
+        glog("[VLC] detected a VLC install while running — prompting for relaunch")
+        notify("VLC Detected",
+               body: "Relaunch hdhrVCRplus to enable in-app playback and the recording relay's transcode option.",
+               subtitle: "",
+               categoryIdentifier: "vlc.detected")
+    }
+
+    /// "Relaunch Now" action on the VLC-detected notification (also callable directly, e.g. a
+    /// future Settings button). Mirrors quit()'s own recording-in-progress handling — an orphaned
+    /// recording's curl process survives and reattachRecordings() reconnects it on next launch,
+    /// the same mechanism "Keep Recording & Quit" already relies on — but opens a fresh instance
+    /// of this same bundle first, via the same open-then-terminate idiom AppRelocator.swift uses
+    /// for its own move-and-relaunch flow.
+    func relaunchForVLC() {
+        func launchAndTerminate() {
+            glog("[VLC] relaunching to pick up newly installed VLC")
+            let config = NSWorkspace.OpenConfiguration()
+            config.createsNewApplicationInstance = true
+            NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: config) { _, error in
+                if let error { glog("[VLC] relaunch failed: \(error)", level: .error) }
+                DispatchQueue.main.async { NSApplication.shared.terminate(nil) }
+            }
+        }
+        guard isRecording else {
+            VLCBridge.shared.releasePlayer()
+            recordingManager.stopAll()
+            webServer.stop()
+            saveConfig()
+            launchAndTerminate()
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = "Recordings in progress"
+        let list = recordingShows.map { "• \($0.show_title) (Channel \($0.show_channel))" }.joined(separator: "\n")
+        alert.informativeText = "These recordings will keep running while hdhrVCRplus relaunches and reconnects to them:\n\n\(list)\n\nRelaunch now?"
+        alert.addButton(withTitle: "Relaunch")
+        alert.addButton(withTitle: "Cancel")
+        alert.alertStyle = .informational
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        glog("=== hdhrVCRplus relaunching for VLC (recordings kept running) ===")
+        VLCBridge.shared.releasePlayer()
+        webServer.stop()
+        saveConfig()
+        launchAndTerminate()
+    }
+
     func quit() {
         guard isRecording else {
             glog("=== hdhrVCRplus quit ===")
@@ -4304,6 +4380,10 @@ final class NotificationActionDelegate: NSObject, UNUserNotificationCenterDelega
 
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 didReceive response: UNNotificationResponse) async {
+        if response.actionIdentifier == "RELAUNCH_APP" {
+            await MainActor.run { appState?.relaunchForVLC() }
+            return
+        }
         let showId = response.notification.request.content.userInfo["show_id"] as? String ?? ""
         guard !showId.isEmpty else { return }
         switch response.actionIdentifier {
