@@ -432,6 +432,16 @@ final class AppState: ObservableObject {
         VLCBridge.shared.$currentURL
             .map { $0?.urlBase ?? "" }
             .assign(to: &$vlcCurrentURL)
+        // checkVLCHotInstall() used to run on every idleLoop() tick (as often as every 5s) for
+        // the app's entire lifetime — real but wasted work for the overwhelmingly common case
+        // (VLC never gets installed mid-session). A fresh install can only ever become relevant
+        // when the user is actually back at this app to notice/act on it, so checking on
+        // didBecomeActiveNotification instead — the app coming back to the foreground, whether
+        // that's a window being brought forward or just the menu bar icon being clicked — cuts
+        // this from "every few seconds forever" to "at most once per foreground-return."
+        NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.checkVLCHotInstall() }
+        }
         Task { await startup() }
     }
 
@@ -1607,8 +1617,6 @@ final class AppState: ObservableObject {
         defer { idleLoopRunning = false }
         let now = Date()
         var dirty = false
-
-        checkVLCHotInstall()
 
         // If startup discovery failed, keep retrying — single attempt per tick so we return quickly.
         // Falls through to Pass 1/Pass 2 below even while devices is empty, so stale show_recording
@@ -4285,6 +4293,15 @@ final class AppState: ObservableObject {
     /// the same mechanism "Keep Recording & Quit" already relies on — but opens a fresh instance
     /// of this same bundle first, via the same open-then-terminate idiom AppRelocator.swift uses
     /// for its own move-and-relaunch flow.
+    ///
+    /// **Port race, found in code review and fixed here**: `webServer.stop()`'s plain form only
+    /// starts an async `NWListener.cancel()` — it returns before the OS has actually released the
+    /// port, so launching the new instance immediately afterward could race it into "Address
+    /// already in use" if LAN Sharing or the relay held the port (the same class of bug
+    /// `reconcileWebServerState()` already fixed once for two racing binds *inside one process* —
+    /// this is that same race across two separate OS processes instead). `launchAndTerminate` is
+    /// now passed as `webServer.stop(completion:)`'s completion, so the new instance is only
+    /// launched once the listener's teardown is actually confirmed (or a bounded 2s fallback).
     func relaunchForVLC() {
         func launchAndTerminate() {
             glog("[VLC] relaunching to pick up newly installed VLC")
@@ -4298,9 +4315,8 @@ final class AppState: ObservableObject {
         guard isRecording else {
             VLCBridge.shared.releasePlayer()
             recordingManager.stopAll()
-            webServer.stop()
             saveConfig()
-            launchAndTerminate()
+            webServer.stop(completion: launchAndTerminate)
             return
         }
         let alert = NSAlert()
@@ -4314,9 +4330,8 @@ final class AppState: ObservableObject {
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         glog("=== hdhrVCRplus relaunching for VLC (recordings kept running) ===")
         VLCBridge.shared.releasePlayer()
-        webServer.stop()
         saveConfig()
-        launchAndTerminate()
+        webServer.stop(completion: launchAndTerminate)
     }
 
     func quit() {

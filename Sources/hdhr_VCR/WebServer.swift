@@ -305,8 +305,22 @@ final class WebServer: @unchecked Sendable {
         listener = l
     }
 
-    func stop() {
-        guard listener != nil else { return }
+    // `completion`, when given, fires once the listener's teardown is actually confirmed (its
+    // `.cancelled` state) rather than the instant this call returns — `listener.cancel()` itself
+    // is asynchronous, so a caller that needs the OS to have genuinely released the port before
+    // doing something else (AppState.relaunchForVLC() launches a fresh instance of this same app
+    // right after stopping) can't assume that's already true just because a plain stop() call
+    // returned. Bounded by a 2s fallback in case `.cancelled` never fires for some reason, so a
+    // completion caller can never hang here indefinitely. Both the `.cancelled` branch and the
+    // fallback timer run on `queue` (the same serial queue `l.stateUpdateHandler` itself fires on,
+    // since that's what `start(queue:)` bound it to), so guarding against firing `completion` twice
+    // needs no lock — the two paths can't actually run concurrently. Every other call site omits
+    // `completion` and is unaffected — same synchronous, fire-and-forget behavior as before.
+    func stop(completion: (() -> Void)? = nil) {
+        guard let l = listener else {
+            completion?()
+            return
+        }
         stateCallback = nil   // prevent the .cancelled callback from surfacing as an error
         sseLock.lock()
         let dyingSSE = sseConns; sseConns.removeAll()
@@ -319,7 +333,19 @@ final class WebServer: @unchecked Sendable {
         let dying = liveConns; liveConns.removeAll()
         connLock.unlock()
         for c in dying { c.cancel() }
-        listener?.cancel()
+        if let completion {
+            var finished = false
+            let finish: () -> Void = {
+                guard !finished else { return }
+                finished = true
+                DispatchQueue.main.async { completion() }
+            }
+            l.stateUpdateHandler = { state in
+                if case .cancelled = state { finish() }
+            }
+            queue.asyncAfter(deadline: .now() + 2.0, execute: finish)
+        }
+        l.cancel()
         listener = nil
         glog("[WebServer] Stopped")
     }

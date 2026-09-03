@@ -10,7 +10,7 @@ The web server is primarily scoped to **scheduling and management**, with one na
 
 ```swift
 func start(port: Int, appState: AppState, onState: @escaping (String?) -> Void)
-func stop()
+func stop(completion: (() -> Void)? = nil)  // completion, when given, fires once the listener's teardown is actually confirmed (its `.cancelled` state, bounded by a 2s fallback) rather than the instant this call returns — added for AppState.relaunchForVLC() (docs/AppState.md), which needs the OS to have genuinely released the port before launching a fresh instance of the app. Every other call site omits it and keeps the original synchronous, fire-and-forget behavior.
 func updateTXTRecord()    // @MainActor — refreshes mDNS TXT record if it actually changed since the last call; called from idleLoop
 func broadcastEvent(_:)   // pushes a JSON event to all open SSE clients
 func broadcastRecordingEvent(type:channel:device:state:prebuiltGrid:refreshPageCache:)  // @MainActor — builds sumPh + the device's tdrop fragment and calls broadcastEvent, then (unless refreshPageCache is false) rebuilds and re-caches the full page HTML (prebuildPageHTML) so a fresh page load right after a recording starts/stops shows the correct .g-prog-rec/.g-st-rec marker instead of the pre-event snapshot. `prebuiltGrid` lets a caller that already built the grid (see broadcastRecordingStopped) reuse it instead of paying for buildGuideGridHTML again
