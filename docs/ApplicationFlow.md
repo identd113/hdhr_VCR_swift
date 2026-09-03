@@ -4,6 +4,8 @@ How a request, a show, or a recording actually moves through the app — from tu
 
 **Reading the lines:** a **thick** edge is the critical recording write path. A **dotted** edge crosses a real process/network boundary — HTTP, SSE push, a Discord webhook, or UDP discovery. A thin solid edge is an ordinary in-process call. Edge color marks which subsystem a hop *leaves from*; each subsystem also gets one consistent color on its nodes and its subgraph panel.
 
+**Color key:** indigo = Startup · violet = Scheduling engine · red = Recording · amber = Push & notify · green = Menu bar UI · orange = Playback · cyan = Web guide · plum = Virtual tuner relay.
+
 ```mermaid
 %%{init: {"flowchart": {"curve":"basis", "nodeSpacing":34, "rankSpacing":54}}}%%
 flowchart TB
