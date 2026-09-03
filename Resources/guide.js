@@ -1694,7 +1694,13 @@ setInterval(updateNowLine,60000);
           var tdrop=Object.assign({},d.tdrop||{});
           tdropZKeys.forEach(function(k,i){tdrop[k]=res[2][i];});
           applyGuidePayload({grid:res[0],sumph:res[1],tdrop:tdrop});
-        }).catch(function(){});
+        }).catch(function(){
+          // A corrupted/truncated gzip+base64 payload throws here — fall back to a full refresh
+          // instead of leaving the grid stale with no retry until an unrelated later event or the
+          // hourly refresh happens to fire, same fallback the missing-DecompressionStream branch
+          // above already takes.
+          refreshGuide();
+        });
       } else if(d.grid){
         // Guide-change event (guide_refreshed/show_added/show_updated/show_deleted/
         // favorite_toggled) — server already rebuilt the grid once for everyone; apply
