@@ -35,6 +35,17 @@ VLC's own scrub bar handles resume-within-a-single-playback-session, but nothing
 
 ---
 
+### Relay/feed viewing: auto-play once ready, and a raw/H.264 transcode selector
+
+Two related requests (2026-09-04) for `VLCPlayerView` specifically when watching another instance's virtual tuner relay (`AppState.watchRemoteRelay`):
+
+1. **Auto-play once the stream is ready, no "Start" click needed.** Today the poster overlay always requires a manual Start click (`docs/VLCPlayerView.md`'s "Start button" section) — deliberately, for two reasons that any fix needs to account for: it's what lets VLC pre-buffer during the poster phase so playback is instant rather than showing a spinner once unmuted (`docs/VLCPlayerView.md`'s "Why" note), and it's the point where the saved volume (`@AppStorage("vlcVolume")`) gets restored — the player opens muted specifically so nothing plays audibly before the user has confirmed they're ready. An auto-play version would need to keep the pre-buffer window (just trigger off `bridge.isPlaying` becoming true instead of a click) and decide deliberately whether to also auto-unmute or stay muted until first user interaction — not obviously the same tradeoff as today's explicit gate.
+2. **A raw/H.264 selector in the player** (a checkbox/toggle, per the request) that tears down the current relay connection and reopens it with `&transcode=` added or removed, rather than requiring the viewer to back out to the menu bar's "Recording on Another Mac" → "Watch"/"Watch (H.264)" pair (`docs/MenuContent.md`) to choose up front. Would need `AppState.watchRemoteRelay`/`VLCPlayerWindowManager` to support swapping the URL on an already-open player window (today's flow only picks raw-vs-H.264 once, at open time, via which menu item was clicked) — likely reusing the same reconnect-via-`VLCBridge.play(url:)` mechanism the scrub bar's seek-by-reconnect already uses (`docs/WebServer.md`'s "Scrubbing" section), just swapping the `transcode` query param instead of the `start` offset.
+
+Not yet scoped or estimated — noted from a live viewing session, not designed.
+
+---
+
 ## Recording
 
 ### No reminder-only shows (notify without recording)
