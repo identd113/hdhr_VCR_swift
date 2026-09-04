@@ -68,6 +68,10 @@ struct VLCPlayerView: View {
     @State private var showTunerFullAlert = false      // quick-record toolbar button (see toolbar)
     @State private var isFullScreen = false      // driven by WindowCloseObserver's NSWindowDelegate callbacks
     @State private var toolbarHovered = false     // reveals the toolbar overlay while isFullScreen (see body)
+    // Gates FEED auto-play (see startPlayback's own doc comment) until this much real time has
+    // passed since the current stream opened — set by a .task(id: bridge.currentURL) below, so a
+    // channel switch mid-session restarts the wait for the newly-opened stream.
+    @State private var feedAutoPlayDelayElapsed = false
 
     private var currentGuideEntry: GuideEntry? {
         guard let ch = selectedChannel else { return nil }
@@ -101,6 +105,15 @@ struct VLCPlayerView: View {
     // window) — see body's isFullScreen toolbar overlay for why this exists. Not an exact value;
     // macOS doesn't expose the real strip height, so this may need tuning after an actual look.
     private static let fullScreenTopInset: CGFloat = 32
+
+    // Minimum real time a remote FEED session must sit buffering before auto-play unhides the
+    // poster and unmutes — requested 2026-09-04 after auto-play's own isPlaying-only gate turned
+    // out to fire too early (~3s, first confirmed decode) to build up a meaningful cushion against
+    // Player_buffer_min_rate's slow 93%-floor ramp (see docs/VLCPlayerView.md's "Auto-play for a
+    // remote FEED session"). One constant for both halves of startPlayback(auto:) — the poster
+    // reveal and the volume restore/unmute fire together, always have — so there's no separate
+    // "audio delay" to track apart from this.
+    private static let feedAutoPlayMinDelay: TimeInterval = 10
 
     // MARK: - "Live" recording entries in the channel picker
     //
@@ -139,6 +152,44 @@ struct VLCPlayerView: View {
     private var inferredCodecs: (video: String, audio: String) {
         let url = bridge.currentURL ?? ""
         return url.contains("transcode=") ? ("H.264", "AAC") : ("MPEG-2", "AC-3")
+    }
+
+    // MARK: - Remote FEED raw/H.264 toggle (docs/VirtualTunerService.md's "Recording on Another
+    // Mac" menu already offers this as two separate menu items at open time; this is the same
+    // choice made reachable inside an already-open player window instead of requiring a reopen).
+    //
+    // Only meaningful for a remote FEED session (device.isVirtualRelay — MenuContent's own
+    // "Recording on Another Mac" rows are the only source of a VLCPlayerWindowManager.open() call
+    // against such a device; watchInApp/watchRecordingInApp never pass one). `lineup` here is
+    // already scoped to this one device (state.lineups[device.DeviceID]), so matching by URL path
+    // alone (urlBase strips both the raw entry's own "?dev=" and an added "&transcode=") is
+    // unambiguous — every entry in this list already shares this device's DeviceID.
+    private var currentFeedEntry: LineupEntry? {
+        guard device.isVirtualRelay, let url = bridge.currentURL else { return nil }
+        let target = url.urlBase
+        return lineup.first { ($0.URL ?? "").urlBase == target }
+    }
+
+    private var feedIsTranscoding: Bool {
+        (bridge.currentURL ?? "").contains("transcode=")
+    }
+
+    // Mirrors MenuContent's own `alreadyModern` check — unset/"unknown" VideoCodec (older
+    // firmware, or a source lineup entry that never set it) is treated as "not confirmed modern,"
+    // same as there, so the toggle is offered rather than hidden.
+    private var feedSourceAlreadyModern: Bool {
+        MPEGVideoStreamType.isAlreadyModernCodec(currentFeedEntry?.VideoCodec ?? "unknown")
+    }
+
+    // Tears down and reopens the current FEED connection with (or without) &transcode=auto —
+    // reuses the exact reconnect-via-VLCBridge.play(url:) mechanism the scrub bar's seek-by-
+    // reconnect and catchUpToLive already use, so it doesn't reset volume or re-show the poster
+    // (unlike a channel switch via the picker, which deliberately does both of those).
+    private func toggleFeedTranscode(to wantsTranscode: Bool) {
+        guard wantsTranscode != feedIsTranscoding, let rawURL = currentFeedEntry?.URL else { return }
+        let newURL = wantsTranscode ? rawURL + "&transcode=auto" : rawURL
+        glog("[VLC] FEED transcode toggle → \(wantsTranscode ? "H.264" : "raw"): \(newURL)")
+        bridge.play(url: newURL)
     }
 
     private var canResizeToNative: Bool {
@@ -270,6 +321,25 @@ struct VLCPlayerView: View {
             cc.previousTrackCommand.isEnabled = true
             cc.previousTrackCommand.addTarget { _ in NotificationCenter.default.post(name: .vlcChannelPrev, object: nil); return .success }
         }
+        .onChange(of: bridge.isPlaying) { _, _ in
+            // Auto-play for a remote FEED session only — see attemptFeedAutoPlay's own doc
+            // comment for the full gate (isPlaying alone isn't enough; also needs
+            // feedAutoPlayDelayElapsed, set by the .task(id: bridge.currentURL) below).
+            attemptFeedAutoPlay()
+        }
+        // Arms feedAutoPlayDelayElapsed feedAutoPlayMinDelay seconds after the current stream
+        // opened — keyed on bridge.currentURL so a channel switch mid-session (a genuinely new
+        // stream, posterHidden reset to false by playChannel) restarts the wait; SwiftUI's own
+        // .task(id:) cancellation means the old wait is torn down automatically, never firing late
+        // against the new stream.
+        .task(id: bridge.currentURL) {
+            guard device.isVirtualRelay else { return }
+            feedAutoPlayDelayElapsed = false
+            try? await Task.sleep(for: .seconds(Self.feedAutoPlayMinDelay))
+            guard !Task.isCancelled else { return }
+            feedAutoPlayDelayElapsed = true
+            attemptFeedAutoPlay()
+        }
         .onChange(of: state.vlcCurrentURL) { _, rawURL in
             // Sync picker when watchInApp is called while the window is already open.
             glog("[VLC] vlcCurrentURL changed → syncChannel: \(rawURL.isEmpty ? "(empty)" : rawURL)")
@@ -367,6 +437,31 @@ struct VLCPlayerView: View {
         }
     }
 
+    // Unhides the poster and restores the saved volume — shared by the manual Start click and the
+    // remote-FEED auto-play path below, so the two can never drift apart (e.g. one restoring
+    // volume, the other forgetting to). `auto` only changes the log line, not the behavior: a FEED
+    // session skips the click entirely (see the onChange(of: bridge.isPlaying) handler in body),
+    // but still needs the exact same pre-buffer window a manual Start gets — this only fires once
+    // bridge.isPlaying is already true, same as the button's own `.disabled(!bridge.isPlaying)`.
+    private func startPlayback(auto: Bool) {
+        let lag = VLCBridge.shared.bufferInfo.lagSec
+        glog("[VLC] \(auto ? "FEED auto-play" : "Start clicked") — buffer ~\(String(format: "%.1f", lag))s built before unmute")
+        posterHidden = true
+        VLCBridge.shared.setVolume(Int(volume))
+    }
+
+    // Gate for the FEED auto-play path — called both when bridge.isPlaying flips and when the
+    // feedAutoPlayMinDelay timer (the .task(id: bridge.currentURL) in body) elapses, since either
+    // one can be the last condition to become true. Requested 2026-09-04: isPlaying alone (first
+    // confirmed decode, ~3s) fired auto-play too early to build a real cushion against
+    // Player_buffer_min_rate's slow ramp — feedAutoPlayDelayElapsed adds a flat minimum real-time
+    // wait on top, same value for both the poster reveal and the volume restore/unmute (they fire
+    // together in startPlayback — there's no separate "audio delay" to track apart from this).
+    private func attemptFeedAutoPlay() {
+        guard device.isVirtualRelay, bridge.isPlaying, feedAutoPlayDelayElapsed, !posterHidden else { return }
+        startPlayback(auto: true)
+    }
+
     // MARK: - Poster overlay
 
     private var posterOverlay: some View {
@@ -429,10 +524,7 @@ struct VLCPlayerView: View {
                     }
 
                     Button {
-                        let lag = VLCBridge.shared.bufferInfo.lagSec
-                        glog("[VLC] Start clicked — buffer ~\(String(format: "%.1f", lag))s built before unmute")
-                        posterHidden = true
-                        VLCBridge.shared.setVolume(Int(volume))
+                        startPlayback(auto: false)
                     } label: {
                         HStack(spacing: 8) {
                             if bridge.isPlaying {
@@ -630,6 +722,23 @@ struct VLCPlayerView: View {
                 .background(.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
             } else {
                 catchUpButton(showLabel: true)
+            }
+
+            // Raw/H.264 toggle for a remote FEED session — see currentFeedEntry's own doc comment.
+            // Hidden when the source is already a modern codec, same as MenuContent's own "Recording
+            // on Another Mac" menu only offering a second Watch (H.264) item under that condition —
+            // a source that's already H.264/HEVC would just get relayed as-is regardless, making the
+            // toggle a no-op.
+            if device.isVirtualRelay, !feedSourceAlreadyModern {
+                Divider().frame(height: 18)
+                Toggle(isOn: Binding(
+                    get: { feedIsTranscoding },
+                    set: { toggleFeedTranscode(to: $0) }
+                )) {
+                    Text("H.264")
+                }
+                .toggleStyle(.checkbox)
+                .help(feedIsTranscoding ? "Switch to the raw source stream" : "Switch to H.264 (transcoded by the source Mac)")
             }
 
             // Native resolution: resize window to 1:1 physical pixels.
