@@ -61,7 +61,9 @@ Discord_on_show_added   Bool    false   embed when show is added
 Discord_on_progress     Bool    false   edit the "Recording Started" embed every 5 min with elapsed/remaining time
 Web_server_enabled      Bool    false   enable NWListener LAN web server (Settings → Sharing)
 Web_server_port         Int     1980    TCP port for the web server (1025–65534; macOS requires root for <1024)
-Terminal_guide_enabled  Bool    true    sub-switch under Web_server_enabled — hdhr_guide (bundled CLI) refuses to run when false; courtesy gate only, not a security boundary (see docs/TUIGuide.md)
+Terminal_guide_enabled  Bool    false   sub-switch under Web_server_enabled — hdhr_guide (bundled CLI) refuses to run when false; courtesy gate only, not a security boundary (see docs/TUIGuide.md)
+Virtual_tuner_relay_enabled Bool false  Recording FEED — advertise a temporary tuner while recording so another instance can watch it live (Settings → Sharing, see docs/VirtualTunerService.md)
+Virtual_tuner_relay_default_transcode String "heavy" transcode profile applied to any FEED viewer who requests one — see docs/VirtualTunerService.md
 Hdhr_setup_folder       String  ""      default recording folder (POSIX path; empty = ~/Movies/hdhr_videos)
 Signal_quality_enabled      Bool false   collect per-channel SNQ signal history and show signal bars when scheduling a recording (Add/Edit/web Record)
 Signal_quality_alert_notify Bool false   notify + Discord embed when a recording's signal drops below 30% for ~20s, and again on recovery

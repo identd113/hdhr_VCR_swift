@@ -41,7 +41,7 @@ running with **Settings → Sharing** enabled (the Settings section's own label 
 exits immediately (no retry loop, no attempt to launch the app or flip the setting itself — it is
 a pure HTTP client with no control-plane surface into the running app).
 
-**Sub-switch:** `Terminal_guide_enabled` (`Models.swift`, defaults `true`) — Settings → Sharing →
+**Sub-switch:** `Terminal_guide_enabled` (`Models.swift`, defaults `false`) — Settings → Sharing →
 **Terminal Guide**'s own toggle, nested under (only shown/relevant when) `Web_server_enabled`.
 `hdhr_guide` reads it back from `/api/guide.json`'s `terminalGuideEnabled` field right after its
 first successful fetch and exits immediately if false ("disabled — Settings → Sharing → Terminal

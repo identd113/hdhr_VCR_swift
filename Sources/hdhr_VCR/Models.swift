@@ -421,19 +421,22 @@ struct AppConfig: Equatable {
     // auth beyond LAN-subnet matching" invariant) — it adds no endpoint of its own, so someone could
     // still reach the same data with curl regardless of this flag. It exists for someone who wants
     // the web guide shared with the household but doesn't want the terminal client itself advertised
-    // or usable, not to keep the data more private than the web server already makes it.
-    var Terminal_guide_enabled: Bool = true
+    // or usable, not to keep the data more private than the web server already makes it. Off by
+    // default (changed 2026-09-04, alongside Web_server_enabled/Virtual_tuner_relay_enabled below —
+    // every LAN-facing Sharing toggle defaults off now, each explained on its own first-run wizard
+    // step, see FirstRunWizardView's Sharing step).
+    var Terminal_guide_enabled: Bool = false
 
     // Recording-relay virtual tuner (VirtualTunerService.swift, docs/VirtualTunerService.md) — while
     // ≥1 show is recording, advertises a temporary HDHomeRun-like tuner on the LAN (UDP discovery +
     // /discover.json/lineup.json/status.json, piggybacked on this same Web_server_port) so another
     // hdhrVCRplus instance can watch the in-progress recording without opening a second real tuner.
-    // On by default — see FirstRunWizardView's dedicated explainer step, shown once on first launch,
-    // for the same explanation given here. Read live by AppState.updateVirtualTunerPresence, which
-    // is also called directly from SettingsView's save path so toggling this off tears the relay
-    // down immediately if a recording happens to be in progress, rather than waiting for the next
-    // recording to start/stop.
-    var Virtual_tuner_relay_enabled: Bool = true
+    // Off by default (changed 2026-09-04 — was on) — see FirstRunWizardView's dedicated explainer
+    // step, shown once on first launch, for the same explanation given here. Read live by
+    // AppState.updateVirtualTunerPresence, which is also called directly from SettingsView's save
+    // path so toggling this off tears the relay down immediately if a recording happens to be in
+    // progress, rather than waiting for the next recording to start/stop.
+    var Virtual_tuner_relay_enabled: Bool = false
 
     // Profile applied whenever a relay viewer requests any transcode at all — the specific profile
     // string the viewer's own client requested is used only to decide "transcode: yes/no"
@@ -526,8 +529,8 @@ extension AppConfig: Codable {
         Discord_enabled         = (try? c.decode(Bool.self,   forKey: .Discord_enabled))         ?? !Discord_webhook_url.isEmpty
         Web_server_enabled      = (try? c.decode(Bool.self,   forKey: .Web_server_enabled))      ?? false
         Web_server_port         = (try? c.decode(Int.self,    forKey: .Web_server_port))         ?? 1980
-        Terminal_guide_enabled  = (try? c.decode(Bool.self,   forKey: .Terminal_guide_enabled))  ?? true
-        Virtual_tuner_relay_enabled = (try? c.decode(Bool.self, forKey: .Virtual_tuner_relay_enabled)) ?? true
+        Terminal_guide_enabled  = (try? c.decode(Bool.self,   forKey: .Terminal_guide_enabled))  ?? false
+        Virtual_tuner_relay_enabled = (try? c.decode(Bool.self, forKey: .Virtual_tuner_relay_enabled)) ?? false
         Virtual_tuner_relay_default_transcode = (try? c.decode(String.self, forKey: .Virtual_tuner_relay_default_transcode)) ?? "heavy"
         Signal_quality_enabled      = (try? c.decode(Bool.self, forKey: .Signal_quality_enabled))      ?? false
         Signal_quality_alert_notify = (try? c.decode(Bool.self, forKey: .Signal_quality_alert_notify)) ?? false

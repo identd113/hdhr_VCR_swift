@@ -717,7 +717,7 @@ struct SettingsView: View {
                 Toggle(isOn: $draft.Terminal_guide_enabled) {
                     HStack {
                         Text(lanEnabled ? "Enable Terminal Guide" : "Enable Terminal Guide (Requires LAN Sharing)")
-                        InfoButton("Lets the bundled command-line client (path below) connect. On by default. Turning this off has no security effect — the same data is already reachable from any browser on the network whenever Sharing is on — it only hides/disables the terminal client specifically. Requires LAN Sharing above to be on: the terminal client connects to that exact same local web server, not a separate one.")
+                        InfoButton("Lets the bundled command-line client (path below) connect. Off by default. Turning this off has no security effect — the same data is already reachable from any browser on the network whenever Sharing is on — it only hides/disables the terminal client specifically. Requires LAN Sharing above to be on: the terminal client connects to that exact same local web server, not a separate one.")
                     }
                 }
                 .disabled(!lanEnabled)
@@ -772,7 +772,7 @@ struct SettingsView: View {
 
             Section("Recording FEED") {
                 Toggle(isOn: $draft.Virtual_tuner_relay_enabled) {
-                    HStack { Text("Rebroadcast In-Progress Recordings"); InfoButton("While a show is recording, this Mac briefly advertises itself as an extra HDHomeRun-style tuner on the local network, so another Mac running hdhrVCRplus can watch the recording without tying up a second real tuner. On by default. It can never be used to start a new recording — only to watch one already in progress — and works independently of Sharing above.") }
+                    HStack { Text("Rebroadcast In-Progress Recordings"); InfoButton("While a show is recording, this Mac briefly advertises itself as an extra HDHomeRun-style tuner on the local network, so another Mac running hdhrVCRplus can watch the recording without tying up a second real tuner. Off by default. It can never be used to start a new recording — only to watch one already in progress — and works independently of Sharing above.") }
                 }
                 if draft.Virtual_tuner_relay_enabled {
                     Picker(selection: $draft.Virtual_tuner_relay_default_transcode) {

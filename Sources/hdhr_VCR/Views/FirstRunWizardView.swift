@@ -16,7 +16,7 @@ struct FirstRunWizardView: View {
     // only inside finish(), same as every other field.
     @State private var saveFolder: String = ""
 
-    enum Step: Int { case intro, recordingDefaults, recordingRelay, notificationTiming }
+    enum Step: Int { case intro, recordingDefaults, sharing, recordingRelay, notificationTiming }
     // Resting default is .recordingDefaults, NOT .intro — the splash is only ever entered
     // deliberately (see the .onAppear/.onChange below), so every "step starts at
     // .recordingDefaults" assumption elsewhere (sizing, header, nav bar) stays true by default,
@@ -43,7 +43,9 @@ struct FirstRunWizardView: View {
     @State private var finishGlowTrigger = 0
     @State private var finishTask: Task<Void, Never>?
 
-    @State private var relayEnabled: Bool = true
+    @State private var sharingEnabled: Bool = false
+    @State private var terminalGuideEnabled: Bool = false
+    @State private var relayEnabled: Bool = false
     @State private var transcode: String = "none"
     @State private var minFreeDiskGB: Double = 30.0
     @State private var failThreshold: Int = 3
@@ -118,6 +120,10 @@ struct FirstRunWizardView: View {
                     recordingDefaultsScreen
                         .transition(slideTransition)
                         .id(Step.recordingDefaults)
+                case .sharing:
+                    sharingScreen
+                        .transition(slideTransition)
+                        .id(Step.sharing)
                 case .recordingRelay:
                     recordingRelayScreen
                         .transition(slideTransition)
@@ -246,7 +252,7 @@ struct FirstRunWizardView: View {
         withAnimation(.easeInOut(duration: 0.25)) { step = .recordingDefaults }
     }
 
-    // Double-click the header logo (Step 1/2 only — the intro has no header of its own) to replay
+    // Double-click the header logo (any non-intro step — the intro has no header of its own) to replay
     // the splash on demand. Deliberately does NOT go through playIntroIfNeeded()'s own
     // !hasPlayedIntro guard — that guard exists to stop it firing a *second* time automatically,
     // not to block an explicit, repeatable user request for one; hasPlayedIntro itself is left
@@ -312,7 +318,7 @@ struct FirstRunWizardView: View {
             }
 
             HStack(spacing: 4) {
-                ForEach([Step.recordingDefaults, .recordingRelay, .notificationTiming], id: \.self) { s in
+                ForEach([Step.recordingDefaults, .sharing, .recordingRelay, .notificationTiming], id: \.self) { s in
                     Circle().fill(s == step ? Color.accentColor : .secondary.opacity(0.3))
                         .frame(width: 8, height: 8)
                 }
@@ -322,9 +328,10 @@ struct FirstRunWizardView: View {
             .accessibilityLabel({
                 switch step {
                 case .intro:              return ""   // header isn't rendered during .intro
-                case .recordingDefaults:  return "Step 1 of 3: Recording Defaults"
-                case .recordingRelay:     return "Step 2 of 3: Recording FEED"
-                case .notificationTiming: return "Step 3 of 3: Notification Timing"
+                case .recordingDefaults:  return "Step 1 of 4: Recording Defaults"
+                case .sharing:            return "Step 2 of 4: Sharing"
+                case .recordingRelay:     return "Step 3 of 4: Recording FEED"
+                case .notificationTiming: return "Step 4 of 4: Notification Timing"
                 }
             }())
         }
@@ -373,6 +380,61 @@ struct FirstRunWizardView: View {
         .fixedSize(horizontal: false, vertical: true)
     }
 
+    private var sharingScreen: some View {
+        Form {
+            Section {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Sharing").font(.headline)
+                    Text("Reach your guide and recordings from other devices on your home network. Everything below is off by default. You can change any of this later in Settings → Sharing.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Section {
+                VStack(alignment: .leading, spacing: 10) {
+                    NetworkFlowDiagram(
+                        leftBadgeColor: Color(NSColor.systemGreen),
+                        leftCaption: "Sharing",
+                        leftCaptionSystemImage: "circle.fill",
+                        rightSystemImage: "network",
+                        rightCaption: "Browsing",
+                        rightCaptionSystemImage: "globe"
+                    )
+                    Text("Turns this Mac into a small local web server — any browser on your network can view the guide and start or manage recordings, the same way you would here.")
+                        .font(.callout)
+                    Toggle(isOn: $sharingEnabled) {
+                        HStack { Text("Enable Sharing"); InfoButton("Local network only — no authentication, so don't expose this port to the internet.") }
+                    }
+                }
+                .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Section {
+                VStack(alignment: .leading, spacing: 10) {
+                    NetworkFlowDiagram(
+                        leftBadgeColor: Color(NSColor.systemGreen),
+                        leftCaption: "Sharing",
+                        leftCaptionSystemImage: "circle.fill",
+                        rightSystemImage: "terminal",
+                        rightCaption: "Terminal",
+                        rightCaptionSystemImage: "terminal"
+                    )
+                    Text("A command-line version of the same guide, for browsing and recording from a terminal instead of a browser. Uses the same server as Sharing above, so it needs that turned on too.")
+                        .font(.callout)
+                    Toggle(isOn: $terminalGuideEnabled) {
+                        HStack { Text(sharingEnabled ? "Enable Terminal Guide" : "Enable Terminal Guide (Requires Sharing)"); InfoButton("Requires Enable Sharing above — the terminal client connects to that same local server, not a separate one.") }
+                    }
+                    .disabled(!sharingEnabled)
+                }
+                .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
     private var recordingRelayScreen: some View {
         Form {
             Section {
@@ -386,7 +448,14 @@ struct FirstRunWizardView: View {
 
             Section {
                 VStack(alignment: .leading, spacing: 10) {
-                    FeedFlowDiagram()
+                    NetworkFlowDiagram(
+                        leftBadgeColor: Color(NSColor.systemRed),
+                        leftCaption: "Recording",
+                        leftCaptionSystemImage: "circle.fill",
+                        rightSystemImage: "desktopcomputer",
+                        rightCaption: "Watching",
+                        rightCaptionSystemImage: "play.tv.fill"
+                    )
                     Text("While a show is recording, this Mac briefly shows up on your home network as an extra tuner. Another Mac running this app can watch that same recording straight off disk, instead of opening a second tuner to record it again.")
                         .font(.callout)
                     Label("Watch-only — it can't start a new recording, on this Mac or any other, and only exists on your local network while something is actively recording.", systemImage: "lock.shield")
@@ -398,7 +467,7 @@ struct FirstRunWizardView: View {
 
             Section {
                 Toggle(isOn: $relayEnabled) {
-                    HStack { Text("Rebroadcast In-Progress Recordings"); InfoButton("On by default. Turn this off if you'd rather this Mac never advertise itself this way, even briefly.") }
+                    HStack { Text("Rebroadcast In-Progress Recordings"); InfoButton("Off by default. Turn this on if you'd like another Mac running this app to watch a recording already in progress.") }
                 }
             }
         }
@@ -463,16 +532,22 @@ struct FirstRunWizardView: View {
                            removal:   .move(edge: .trailing).combined(with: .opacity))
     }
 
+    // Linear order every Next/Back press walks, one step at a time — kept as one list so adding/
+    // removing/reordering a step only ever needs an edit here, not a scattered set of per-step
+    // ternaries that has to stay in sync by hand (the exact bug shape a 3-step ternary couldn't
+    // hide any more once a 4th step was added).
+    private static let orderedSteps: [Step] = [.recordingDefaults, .sharing, .recordingRelay, .notificationTiming]
+
     private func goNext() {
         goingForward = true
-        let next: Step = (step == .recordingDefaults) ? .recordingRelay : .notificationTiming
-        withAnimation(.easeInOut(duration: 0.25)) { step = next }
+        guard let i = Self.orderedSteps.firstIndex(of: step), i + 1 < Self.orderedSteps.count else { return }
+        withAnimation(.easeInOut(duration: 0.25)) { step = Self.orderedSteps[i + 1] }
     }
 
     private func goBack() {
         goingForward = false
-        let prev: Step = (step == .notificationTiming) ? .recordingRelay : .recordingDefaults
-        withAnimation(.easeInOut(duration: 0.25)) { step = prev }
+        guard let i = Self.orderedSteps.firstIndex(of: step), i > 0 else { return }
+        withAnimation(.easeInOut(duration: 0.25)) { step = Self.orderedSteps[i - 1] }
     }
 
     // MARK: - Local Network permission
@@ -585,6 +660,8 @@ struct FirstRunWizardView: View {
     private func loadCurrentValuesIfNeeded() {
         guard !hasLoadedInitialValues else { return }
         hasLoadedInitialValues = true
+        sharingEnabled        = state.config.Web_server_enabled
+        terminalGuideEnabled  = state.config.Terminal_guide_enabled
         relayEnabled         = state.config.Virtual_tuner_relay_enabled
         transcode            = state.config.Default_transcode
         minFreeDiskGB         = state.config.Min_disk_free_gb
@@ -604,10 +681,16 @@ struct FirstRunWizardView: View {
         state.config.Fail_count_setting     = failThreshold
         state.config.Notify_upnext          = upNextMinutes
         state.config.Notify_recording       = recordingSoonMinutes
+        let webServerChanged = sharingEnabled != state.config.Web_server_enabled
+        state.config.Web_server_enabled     = sharingEnabled
+        state.config.Terminal_guide_enabled = terminalGuideEnabled
         let relayChanged = relayEnabled != state.config.Virtual_tuner_relay_enabled
         state.config.Virtual_tuner_relay_enabled = relayEnabled
         state.config.First_run_wizard_shown = true
         state.saveConfig()
+        // Same commit pattern as SettingsView.save(): only (re)start the listener if the toggle
+        // actually changed, rather than unconditionally calling setupWebServer() every Finish.
+        if webServerChanged { state.setupWebServer() }
         // Re-evaluate immediately — same reasoning as SettingsView's save path — in the unlikely
         // case a recording is already active while this wizard is still open (e.g. a reopen via
         // Settings → Maintenance → "Reset First-Run Setup" while something happens to be recording).

@@ -1,12 +1,28 @@
 import SwiftUI
 
-// Animated "how it works" map for Recording FEED — two devices connected by a line, with signal
-// rings broadcasting from the recording Mac and small packets flowing along the line to the
-// watching Mac. Purely illustrative (no real network activity of its own) — reused by
-// FirstRunWizardView's Recording FEED step; self-contained so a future Settings/Sharing screen
-// could show the same explainer without duplicating the animation.
-struct FeedFlowDiagram: View {
+// Animated "how it works" map for a LAN-facing feature — two devices connected by a line, with
+// signal rings broadcasting from the left (this Mac) device and small packets flowing along the
+// line to the right one. Purely illustrative (no real network activity of its own). Parametrized
+// so every first-run wizard "Sharing" step (Recording FEED, Enable Sharing, Terminal Guide) can
+// reuse the same animation engine with its own icons/colors/captions rather than each hand-rolling
+// a near-identical view — see FirstRunWizardView.swift's three call sites.
+//
+// Visual convention shared across every use: the left side (always "this Mac") gets a badge color
+// naming the specific local action happening (e.g. red = recording, green = serving on the LAN);
+// the right side stays watchNowBlue by default — "whoever's receiving it" reads as one consistent
+// identity regardless of which feature is being explained.
+struct NetworkFlowDiagram: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var leftSystemImage: String = "desktopcomputer"
+    var leftBadgeColor: Color
+    var leftCaption: String
+    var leftCaptionSystemImage: String
+
+    var rightSystemImage: String
+    var rightBadgeColor: Color = watchNowBlue
+    var rightCaption: String
+    var rightCaptionSystemImage: String
 
     private static let deviceSize: CGFloat = 40
     private static let packetSize: CGFloat = 7
@@ -36,7 +52,7 @@ struct FeedFlowDiagram: View {
                         // A single frame frozen mid-flow rather than no diagram at all — still
                         // communicates "these two are connected," just without motion.
                         Circle()
-                            .fill(watchNowBlue)
+                            .fill(rightBadgeColor)
                             .frame(width: Self.packetSize, height: Self.packetSize)
                             .position(x: (lineStartX + lineEndX) / 2, y: midY)
                     } else {
@@ -55,21 +71,21 @@ struct FeedFlowDiagram: View {
                         }
                     }
 
-                    deviceIcon(recording: true)
+                    deviceIcon(systemImage: leftSystemImage, badgeColor: leftBadgeColor)
                         .position(x: leftX, y: midY)
-                    deviceIcon(recording: false)
+                    deviceIcon(systemImage: rightSystemImage, badgeColor: rightBadgeColor)
                         .position(x: rightX, y: midY)
                 }
             }
             .frame(height: 84)
 
             HStack {
-                Label("Recording", systemImage: "circle.fill")
+                Label(leftCaption, systemImage: leftCaptionSystemImage)
                     .labelStyle(.titleAndIcon)
-                    .font(.caption2).foregroundStyle(Color(NSColor.systemRed))
+                    .font(.caption2).foregroundStyle(leftBadgeColor)
                 Spacer()
-                Label("Watching", systemImage: "play.tv.fill")
-                    .font(.caption2).foregroundStyle(watchNowBlue)
+                Label(rightCaption, systemImage: rightCaptionSystemImage)
+                    .font(.caption2).foregroundStyle(rightBadgeColor)
             }
         }
         .accessibilityHidden(true)   // purely decorative — the surrounding text explains the same thing
@@ -78,14 +94,14 @@ struct FeedFlowDiagram: View {
     // MARK: - Devices
 
     @ViewBuilder
-    private func deviceIcon(recording: Bool) -> some View {
+    private func deviceIcon(systemImage: String, badgeColor: Color) -> some View {
         ZStack(alignment: .topTrailing) {
-            Image(systemName: "desktopcomputer")
+            Image(systemName: systemImage)
                 .font(.system(size: Self.deviceSize * 0.62))
                 .foregroundStyle(Color(NSColor.labelColor))
                 .frame(width: Self.deviceSize, height: Self.deviceSize)
             Circle()
-                .fill(recording ? Color(NSColor.systemRed) : watchNowBlue)
+                .fill(badgeColor)
                 .frame(width: 11, height: 11)
                 .overlay(Circle().strokeBorder(Color(NSColor.windowBackgroundColor), lineWidth: 1.5))
                 .offset(x: 3, y: -2)
@@ -119,18 +135,18 @@ struct FeedFlowDiagram: View {
     private func packetDot(date: Date, phaseOffset: Double, startX: CGFloat, endX: CGFloat) -> some View {
         let t = Self.progress(date, cycleSeconds: Self.packetCycleSeconds, phaseOffset: phaseOffset)
         Circle()
-            .fill(watchNowBlue)
+            .fill(rightBadgeColor)
             .frame(width: Self.packetSize, height: Self.packetSize)
             .opacity(Self.packetOpacity(t))
     }
 
-    // Expanding, fading ring centered on the recording Mac — same "broadcasting outward" language
-    // SettingsView's About-tab SignalRing already uses for the app icon's own signal-pulse effect.
+    // Expanding, fading ring centered on the left ("this Mac") device — same "broadcasting outward"
+    // language SettingsView's About-tab SignalRing already uses for the app icon's own pulse effect.
     @ViewBuilder
     private func rippleRing(date: Date, phaseOffset: Double) -> some View {
         let t = Self.progress(date, cycleSeconds: Self.rippleCycleSeconds, phaseOffset: phaseOffset)
         Circle()
-            .stroke(Color(NSColor.systemRed).opacity(0.5 * (1 - t)), lineWidth: 2)
+            .stroke(leftBadgeColor.opacity(0.5 * (1 - t)), lineWidth: 2)
             .frame(width: Self.deviceSize, height: Self.deviceSize)
             .scaleEffect(1 + CGFloat(t) * 1.6)
     }

@@ -32,7 +32,7 @@ space than their rows need even without an outer fixed height).
 global already used by `DonationNagView`/`SettingsView`/the menu bar icon) at 36×36 in a rounded
 rect, next to "Welcome to hdhrVCRplus" (`.headline`) and a one-line subtitle, giving the window the
 same "unmistakably this app's own chrome" identity `DonationNagView`'s header comment already
-argues for. The step-progress dots sit directly below this, inside the same header `VStack` — 3
+argues for. The step-progress dots sit directly below this, inside the same header `VStack` — 4
 small 8pt circles, filled accent-color = current step, hollow gray = other steps (same visual
 pattern as `AddShowView`'s step indicator). **Not rendered during `.intro`** (`if step != .intro`
 around both the header and the bottom nav bar) — the splash has no header/nav chrome of its own,
@@ -42,7 +42,7 @@ just its own Skip control (see below).
 it, driven by a `keyframeAnimator(initialValue: FinishGlowValues(), trigger: finishGlowTrigger)` —
 same visual language as `DonationNagView`'s own appear-glow, reused here on *completion* instead.
 Unlike `DonationNagView`'s plain appear→fade Bool, this needs to rest *hidden* both before and
-after the flourish (nothing should show behind the icon while the user is still on Step 1/2) with a
+after the flourish (nothing should show behind the icon while the user is still on any earlier step) with a
 visible pulse in between — a two-state `withAnimation` toggle can't do that (it can only rest at
 one of its two endpoints), so it's a keyframe pulse instead: `FinishGlowValues`' own `initialValue`
 is hidden (scale 0.7, opacity 0), and pressing Finish increments `finishGlowTrigger`, popping the
@@ -272,7 +272,7 @@ finding `WindowNavigationTests.swift` already documents for other wizard control
 performs the same hand-off immediately, mid-animation regardless of which phase any tile (including
 the finale) is in.
 
-**Replay**: double-clicking the app-icon logo in Step 1/2's own header (`FirstRunWizardView.header`,
+**Replay**: double-clicking the app-icon logo in any non-intro step's own header (`FirstRunWizardView.header`,
 `accessibilityIdentifier("wizard-header-logo-replay-intro")`) calls `replayIntro()` — the same
 `withAnimation { step = .intro }` `playIntroIfNeeded()` uses, but without that function's own
 `!hasPlayedIntro` guard, since this is an explicit, repeatable request rather than the one-time
@@ -343,17 +343,25 @@ rows via one view, `RecordingDefaultsFields` (`Views/RecordingDefaultsFields.swi
 doc for it since it has no independent visual identity beyond what's described here and in
 `docs/SettingsView.md`'s Recording section.
 
-### Step 2 — Recording FEED
-An animated diagram (`FeedFlowDiagram`, `Views/FeedFlowDiagram.swift`) showing two devices
-connected by a line — signal rings broadcasting from the recording Mac, small packets flowing
-along the line to the watching one — above two short paragraphs of plain-language explanation and
-one `Toggle`. See "Steps" below for the config-commit details.
+### Step 2 — Sharing
+Two animated diagrams (`NetworkFlowDiagram`, `Views/NetworkFlowDiagram.swift` — see its own
+section below), each with a short explanation and a `Toggle`: **Enable Sharing** (the LAN web
+server) and, gated beneath it, **Enable Terminal Guide** — dimmed and `.disabled` until Sharing is
+on, exactly the same gating `SettingsView`'s own Sharing tab already uses, reproduced here rather
+than split across two separate wizard steps a user would have to bounce between to resolve the
+dependency. See "Steps" below for the config-commit details.
 
-### Step 3 — Notification Timing
+### Step 3 — Recording FEED
+An animated diagram (`NetworkFlowDiagram`) showing two devices connected by a line — signal rings
+broadcasting from the recording Mac, small packets flowing along the line to the watching one —
+above two short paragraphs of plain-language explanation and one `Toggle`. See "Steps" below for
+the config-commit details.
+
+### Step 4 — Notification Timing
 Up Next / Recording Soon lead-time minutes, same `Stepper` controls and warning banner (shown when
 the recording alert would fire at or after Up Next) as `SettingsView`'s Notifications tab.
 
-**Nav bar** (bottom): Back (steps 2–3, `.plain` style, `.secondary` foreground — a quiet
+**Nav bar** (bottom): Back (steps 2–4, `.plain` style, `.secondary` foreground — a quiet
 secondary action) and Next/Finish, right-aligned, Next/Finish `.borderedProminent` (Finish only on
 the last step). A `Divider` above (`opacity(0.5)`, same softened-divider treatment used below the
 header, so the dividers read as subtle separators against the material background rather than harsh
@@ -362,9 +370,12 @@ full-contrast lines).
 ## Intent
 
 A first-launch-only setup flow covering the handful of settings worth deciding before using the
-app: where recordings are saved and how, and how much notice you get before one starts. Everything
-else (Discord, Guide, Sharing) is left for `SettingsView` — this wizard is deliberately narrow, not
-a full onboarding tour.
+app: where recordings are saved and how, how much notice you get before one starts, and — since
+2026-09-04 — every LAN-facing Sharing toggle (Enable Sharing, Terminal Guide, Recording FEED),
+since each of those is now off by default and worth a one-time explanation of what it actually
+does before a first-time user goes looking for it in Settings. Everything else (Discord, Guide) is
+still left for `SettingsView` — this wizard covers "what's off by default and needs a plain-English
+explanation," not a full onboarding tour of every setting in the app.
 
 Every field defaults to the **current** config value (`loadCurrentValuesIfNeeded()`, called from
 `.onAppear`), not a hardcoded factory default — re-running the wizard later via the reset button
@@ -376,8 +387,14 @@ defaults.
 ## Steps
 
 ```swift
-enum Step: Int { case intro, recordingDefaults, recordingRelay, notificationTiming }
+enum Step: Int { case intro, recordingDefaults, sharing, recordingRelay, notificationTiming }
 ```
+
+Navigation (`goNext()`/`goBack()`) walks a single `orderedSteps` array
+(`[.recordingDefaults, .sharing, .recordingRelay, .notificationTiming]`) by index rather than a
+per-step ternary chain — added when `.sharing` made a 3-way ternary ambiguous; a plain ordered list
+is the one place to edit for any future reorder/insert/removal instead of a scattered set of
+hand-kept `step == .X ? .Y : .Z` conditions.
 
 `.intro` is **never the resting default** (`@State private var step: Step = .recordingDefaults`) —
 it's entered deliberately via `playIntroIfNeeded()`, called from both `.onAppear` and the
@@ -398,11 +415,30 @@ here just means "use the default," same as everywhere else); `finish()` writes i
 same key. Transcode/min-disk/fail-threshold commit to `state.config.Default_transcode` /
 `.Min_disk_free_gb` / `.Fail_count_setting` on Finish the same way.
 
-### Step 2 — Recording FEED
-Leads with `FeedFlowDiagram()` (see its own section below), then a short plain-language
+### Step 2 — Sharing
+Covers `Web_server_enabled` ("Enable Sharing," the LAN web server) and `Terminal_guide_enabled`
+("Enable Terminal Guide") on one screen — deliberately, since Terminal Guide's toggle is
+meaningless without Sharing on first: rather than splitting these across two wizard steps and
+making the user backtrack to resolve the dependency, both live here, with Terminal Guide's `Toggle`
+`.disabled(!sharingEnabled)` and its label suffixed `" (Requires Sharing)"` while Sharing is off —
+the exact same gating `SettingsView`'s own Sharing tab already does between these same two
+settings, reproduced in the wizard rather than reinvented. Binds two local `@State` bools
+(`sharingEnabled`, `terminalGuideEnabled`; both default `false`, mirroring both settings'
+`AppConfig` defaults), each introduced by its own `NetworkFlowDiagram` (see its own section below)
+and a short paragraph. Because the Terminal Guide toggle is SwiftUI-`.disabled` while Sharing is
+off, the wizard can never actually produce the (recoverable, but meaningless) state of Terminal
+Guide on with Sharing off — no extra validation needed in `finish()`.
+
+`finish()` commits both to `state.config.Web_server_enabled`/`.Terminal_guide_enabled` and, if
+`Web_server_enabled` changed, calls `state.setupWebServer()` immediately — the same
+changed-value-gated pattern `SettingsView.save()` already uses, so Sharing actually starts serving
+the moment this wizard closes rather than waiting for the next unrelated settings save.
+
+### Step 3 — Recording FEED
+Leads with `NetworkFlowDiagram(...)` (see its own section below), then a short plain-language
 explanation of the virtual-tuner relay (`docs/VirtualTunerService.md`) — what it is and what it
-can't do — then one `Toggle` bound to local `@State relayEnabled` (default mirrors
-`state.config.Virtual_tuner_relay_enabled`, itself `true`). Same commit-on-Finish pattern
+can't do — then one `Toggle` bound to local `@State relayEnabled` (default `false`, mirroring
+`state.config.Virtual_tuner_relay_enabled`'s own default). Same commit-on-Finish pattern
 as every other field here: `finish()` writes it to `state.config.Virtual_tuner_relay_enabled` and,
 if it changed, calls `state.updateVirtualTunerPresence()` directly so a recording already in
 progress (only realistically possible via a mid-session reset from Settings → Maintenance) reflects
@@ -410,18 +446,23 @@ the new setting immediately rather than waiting for that recording to end. `Sett
 Sharing → Recording FEED toggle is the same setting, same wording, reachable any time after this
 wizard closes — this screen exists purely so a first-time user sees the explanation once, unprompted.
 
-### `FeedFlowDiagram` (`Views/FeedFlowDiagram.swift`)
+### `NetworkFlowDiagram` (`Views/NetworkFlowDiagram.swift`)
 Self-contained animated view, not wizard-specific — usable anywhere the app wants the same
-explainer without re-deriving the animation. Two `desktopcomputer` SF Symbols (a red dot badge on
-the recording one, a blue `play.tv.fill`-colored badge on the watching one) connected by a dashed
-line, drawn in a `GeometryReader` so it scales to whatever width its container gives it. A single
-`TimelineView(.animation)` drives two independent, looping effects, each run twice at a half-cycle
-phase offset so the line/device never sits visibly empty between beats:
-- **Ripple rings** — expanding, fading circles centered on the recording Mac, the same
-  "broadcasting outward" language `SettingsView`'s About-tab `SignalRing` already uses for the app
-  icon's own pulse effect.
-- **Packets** — small dots traveling along the line from the recording Mac to the watching one,
-  fading in/out over the first/last 15% of the line so they don't pop at either device's edge.
+explainer without re-deriving the animation, and parametrized (icons/badge colors/captions) so
+Step 2's two sub-features and Step 3 each get their own themed instance instead of three
+near-duplicate views. Two SF Symbols (`desktopcomputer` on the left in every use — always "this
+Mac" — a feature-specific icon on the right: another `desktopcomputer` for Recording FEED's
+"watching Mac," `network` for Sharing's "any browser," `terminal` for Terminal Guide) connected by
+a dashed line, drawn in a `GeometryReader` so it scales to whatever width its container gives it.
+A single `TimelineView(.animation)` drives two independent, looping effects, each run twice at a
+half-cycle phase offset so the line/device never sits visibly empty between beats:
+- **Ripple rings** — expanding, fading circles centered on the left ("this Mac") device, colored by
+  `leftBadgeColor` (red for "Recording," green for "Sharing") — the same "broadcasting outward"
+  language `SettingsView`'s About-tab `SignalRing` already uses for the app icon's own pulse effect.
+- **Packets** — small dots traveling along the line from the left device to the right one, colored
+  by `rightBadgeColor` (`watchNowBlue` by default in every current use — "whoever's receiving it"
+  reads as one consistent identity across all three diagrams), fading in/out over the first/last
+  15% of the line so they don't pop at either device's edge.
 
 Both cycle lengths (1.6s packets, 1.8s rings) are independent named constants, not tied to each
 other or to any other animation in the app. Respects Reduce Motion — freezes to one static dot
@@ -431,7 +472,7 @@ above uses. Marked `.accessibilityHidden(true)`: purely decorative, and the diag
 the surrounding prose doesn't already say in words — a screen reader user isn't missing content by
 skipping it.
 
-### Step 3 — Notification Timing
+### Step 4 — Notification Timing
 Binds to local `@State` (`upNextMinutes`, `recordingSoonMinutes`). Committed to
 `state.config.Notify_upnext` / `.Notify_recording` on Finish.
 
