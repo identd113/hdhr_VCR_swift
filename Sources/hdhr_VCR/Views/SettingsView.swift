@@ -1054,6 +1054,25 @@ struct SettingsView: View {
                     Spacer()
                 }
 
+                Divider()
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Credits")
+                        .font(.headline)
+                    // In-app playback dlopens libvlc from the user's own separately-installed
+                    // VLC.app (VLCBridge.swift) — never bundled/redistributed, so this is
+                    // attribution for a runtime dependency, not a bundled-library notice.
+                    HStack(spacing: 4) {
+                        Text("Playback powered by")
+                        Link("VLC media player", destination: URL(string: "https://www.videolan.org/vlc/")!)
+                    }
+                    .font(.callout)
+                    Text("© VideoLAN, licensed under the GPL/LGPL.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
                 Text("Changelog")
                     .font(.headline)
                     .frame(maxWidth: .infinity, alignment: .leading)
