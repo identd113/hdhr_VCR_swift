@@ -705,7 +705,7 @@ struct SettingsView: View {
             // the same "show it, don't hide it" pattern used for VLC-gated features elsewhere in
             // this app, rather than the whole section vanishing. Gated on `draft.Web_server_enabled`
             // (the pending toggle), matching every other reveal-on-toggle control in this form (the
-            // Port field above, the relay's transcode picker below) — not the Recording Relay
+            // Port field above, the FEED's transcode picker below) — not the Recording FEED
             // toggle, which is deliberately independent of Sharing: it holds its own internal
             // web-server claim (`AppState.ensureWebServerRunning()`) specifically so it keeps
             // working with Sharing off, so it isn't gated here at all. Terminal_guide_enabled itself

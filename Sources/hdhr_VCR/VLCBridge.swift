@@ -1054,9 +1054,15 @@ final class VLCBridge: ObservableObject {
     /// tears down the virtual-tuner relay itself on recording stop. At most one session can exist
     /// per `showId` now that sharing is keyed by show alone (see `TranscodeSession`'s own doc
     /// comment), so this is a direct removal rather than a prefix scan over multiple profile keys.
-    func stopAllTranscodeSessions(showId: String) {
-        guard let session = transcodeSessions.removeValue(forKey: showId) else { return }
+    /// Returns the ref count at the moment of removal (0 if no session was running) so a caller
+    /// tracking a separate aggregate viewer count (`AppState.transcodeViewersCleared(_:)`) can
+    /// clear exactly that many at once, rather than one-at-a-time like `stopTranscodeSession` does.
+    @discardableResult
+    func stopAllTranscodeSessions(showId: String) -> Int {
+        guard let session = transcodeSessions.removeValue(forKey: showId) else { return 0 }
+        let removed = session.refCount
         teardown(session, reason: "recording ended")
+        return removed
     }
 
     private func teardown(_ session: TranscodeSession, reason: String) {

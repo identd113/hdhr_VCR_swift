@@ -736,10 +736,11 @@ final class WebServer: @unchecked Sendable {
                 }
                 // Counts only this — a raw-passthrough relay viewer — not a local Watch Now session
                 // (handleWatchRecording never passes onStreamEnded) and not a transcode viewer
-                // (already correctly ref-counted by VLCBridge.transcodeViewerCount(showId:); summed
-                // with this count only at display time, in MenuContent, rather than unified into one
-                // running total here). Both hops land on MainActor since AppState isn't otherwise
-                // safe to touch from fileIOQueue.
+                // (tracked separately by AppState.transcodeViewerCount, bumped from
+                // beginTranscodeRelay/pumpTranscodeProxy below; summed with this count only at
+                // display time, in MenuContent, rather than unified into one running total here).
+                // Both hops land on MainActor since AppState isn't otherwise safe to touch from
+                // fileIOQueue.
                 Task { @MainActor in state.relayRawViewerConnected() }
                 self.streamGrowingFile(path: path, showId: showId, startOffset: currentSize, conn: conn,
                                         durationSeconds: durationSeconds, sendTimeout: Self.growingFileSendTimeout,
@@ -763,11 +764,20 @@ final class WebServer: @unchecked Sendable {
             send(.notFound("transcode unavailable"), on: conn)
             return
         }
+        // Mirrors relayRawViewerConnected's shape — see AppState.transcodeViewerCount's own doc
+        // comment for why this reactive aggregate exists alongside VLCBridge's own per-show count.
+        appState?.transcodeViewerConnected()
         let header = "HTTP/1.1 200 OK\r\nContent-Type: video/mp2t\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\n\r\n"
-        conn.send(content: Data(header.utf8), completion: .contentProcessed({ [weak self] err in
+        // weak appState captured independently of self here (rather than via self?.appState after
+        // the guard below) — inside a `guard let self ... else` block the shadowed `self` isn't
+        // bound yet, so this sidesteps that ambiguity entirely rather than relying on it.
+        conn.send(content: Data(header.utf8), completion: .contentProcessed({ [weak self, weak appState = self.appState] err in
             guard let self, err == nil else {
                 conn.cancel()
-                Task { @MainActor in VLCBridge.shared.stopTranscodeSession(showId: showId) }
+                Task { @MainActor in
+                    VLCBridge.shared.stopTranscodeSession(showId: showId)
+                    appState?.transcodeViewerDisconnected()
+                }
                 return
             }
             // libvlc's sout httpd only actually starts accepting connections once the input/decode/
@@ -847,10 +857,13 @@ final class WebServer: @unchecked Sendable {
     // owns that property for the connection's whole lifetime).
     private func pumpTranscodeProxy(localURL: URL, showId: String, conn: NWConnection, durationSeconds: Int? = nil) {
         var urlSession: URLSession?
-        let cleanup: () -> Void = { [weak self] in
+        let cleanup: () -> Void = { [weak self, weak appState = self.appState] in
             urlSession?.invalidateAndCancel()
             conn.cancel()
-            Task { @MainActor in VLCBridge.shared.stopTranscodeSession(showId: showId) }
+            Task { @MainActor in
+                VLCBridge.shared.stopTranscodeSession(showId: showId)
+                appState?.transcodeViewerDisconnected()
+            }
             _ = self
         }
         let delegate = TranscodeProxyDelegate(conn: conn, targetQueue: queue, onFinished: cleanup)
@@ -947,19 +960,28 @@ final class WebServer: @unchecked Sendable {
     // wins; the other is silently dropped. Both the send completion and the timeout timer run on
     // `queue` (every NWConnection in this file is started with `queue`, see handleConnection), so
     // guarding against double-firing needs no lock.
+    // The timeout fallback is a cancellable DispatchWorkItem, not a bare asyncAfter closure — the
+    // overwhelmingly common case is the real send completing well before `timeout` fires (up to
+    // 86400s for growingFileNoTimeout's callers), and an uncancelled asyncAfter leaves that closure
+    // (retaining its captures) sitting on `queue` until it finally fires and no-ops. Cancelling it
+    // right on the success path releases that promptly instead of letting them pile up across a
+    // long streaming session's many chunks. Found in review 2026-09-04 — new with sendWithTimeout
+    // itself, not a regression in older code.
     private func sendWithTimeout(_ content: Data, on conn: NWConnection, timeout: TimeInterval,
                                   completion: @escaping (String?) -> Void) {
         var finished = false
-        conn.send(content: content, completion: .contentProcessed { err in
-            guard !finished else { return }
-            finished = true
-            completion(err.map { String(describing: $0) })
-        })
-        queue.asyncAfter(deadline: .now() + timeout) {
+        let timeoutWork = DispatchWorkItem {
             guard !finished else { return }
             finished = true
             completion("timed out after \(Int(timeout))s waiting for client to accept data")
         }
+        conn.send(content: content, completion: .contentProcessed { err in
+            guard !finished else { return }
+            finished = true
+            timeoutWork.cancel()
+            completion(err.map { String(describing: $0) })
+        })
+        queue.asyncAfter(deadline: .now() + timeout, execute: timeoutWork)
     }
 
     // Called on fileIOQueue (see handleWatchRecording) — FileHandle open/seek/attributesOfItem

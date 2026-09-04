@@ -298,12 +298,27 @@ final class AppState: ObservableObject {
     // here from a background queue via Task { @MainActor in ... }, since WebServer's fileIOQueue/
     // queue aren't MainActor-isolated). Never touched by local Watch Now (handleWatchRecording
     // doesn't pass onStreamEnded), so this counts only genuine outbound-to-another-machine viewers.
-    // MenuContent sums this with VLCBridge.shared.transcodeViewerCount(showId:) (already correctly
-    // ref-counted per show) at display time rather than folding transcode viewers into this same
-    // counter — that accounting already exists and doesn't need a second copy of it here.
+    // MenuContent sums this with transcodeViewerCount below at display time rather than a single
+    // combined counter — the two paths connect/disconnect independently.
     @Published private(set) var relayRawViewerCount: Int = 0
     func relayRawViewerConnected() { relayRawViewerCount += 1 }
     func relayRawViewerDisconnected() { relayRawViewerCount = max(0, relayRawViewerCount - 1) }
+
+    // Mirror of VLCBridge.shared.transcodeViewerCount(showId:)'s summed total, kept only so
+    // MenuContent's "FEED: N watching" row is reactive — VLCBridge's own per-session refCount
+    // dictionary isn't @Published (and MenuContent deliberately doesn't observe VLCBridge itself,
+    // since its bufferInfo/isPlaying etc. update far too often during local playback and would
+    // reintroduce the "Menu rebuild churn" class of bug, see CLAUDE.md). VLCBridge's dictionary
+    // stays the authoritative per-show source of truth (still queried directly by WebServer's
+    // /lineup.json builder for the "Recording on Another Mac" indicator) — this is a display-only
+    // second copy of the aggregate, updated at the same four mutation points VLCBridge's own
+    // refCount is: WebServer.beginTranscodeRelay's successful startTranscodeSession (connect) and
+    // both of its stopTranscodeSession call sites (disconnect), plus stopAllTranscodeSessions'
+    // returned removed-viewer count wherever a recording's teardown force-clears its session.
+    @Published private(set) var transcodeViewerCount: Int = 0
+    func transcodeViewerConnected() { transcodeViewerCount += 1 }
+    func transcodeViewerDisconnected() { transcodeViewerCount = max(0, transcodeViewerCount - 1) }
+    func transcodeViewersCleared(_ count: Int) { transcodeViewerCount = max(0, transcodeViewerCount - count) }
     @Published var webServerRunning: Bool    = false
     @Published var webServerError:   String? = nil
     private var internalWebServerUseCount = 0  // ref count: each open WKWebView guide window increments
@@ -2340,7 +2355,7 @@ final class AppState: ObservableObject {
         updateVirtualTunerPresence()
         // A transcode session must never outlive the recording it's transcoding — see
         // VLCBridge.stopAllTranscodeSessions's own doc comment.
-        VLCBridge.shared.stopAllTranscodeSessions(showId: showId)
+        transcodeViewersCleared(VLCBridge.shared.stopAllTranscodeSessions(showId: showId))
         let channel = shows[i].show_channel, device = shows[i].hdhr_record
         await scheduleNextAir(index: i)
         saveConfig()
@@ -2377,7 +2392,7 @@ final class AppState: ObservableObject {
         updateVirtualTunerPresence()
         // A transcode session must never outlive the recording it's transcoding — see
         // VLCBridge.stopAllTranscodeSessions's own doc comment.
-        VLCBridge.shared.stopAllTranscodeSessions(showId: show.show_id)
+        transcodeViewersCleared(VLCBridge.shared.stopAllTranscodeSessions(showId: show.show_id))
     }
 
     func stopRecording(index: Int, natural: Bool) async {

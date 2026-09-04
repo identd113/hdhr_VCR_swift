@@ -99,15 +99,16 @@ struct MenuContent: View {
         // ── Relay stats ───────────────────────────────────────────────────
         // Shown only while this instance's own virtual tuner is actually advertised (a show is
         // recording + the relay is enabled) — not a permanent row, since there's nothing to report
-        // otherwise. Combines relayRawViewerCount (raw-passthrough relay connections, tracked in
-        // AppState — see its own doc comment) with VLCBridge's own per-show transcodeViewerCount
-        // (already correctly ref-counted) summed across every currently-recording show, rather than
-        // unifying both into one running total — each half already has its own correct source of
-        // truth, no need for a second copy. Shown even at 0 watching, as confirmation the relay
-        // itself is up and reachable, not just once someone connects.
+        // otherwise. Sums relayRawViewerCount (raw-passthrough relay connections) with
+        // transcodeViewerCount (transcode/H.264 relay connections) — both @Published on AppState,
+        // both updated at the moment a viewer actually connects/disconnects, so this row stays live
+        // without needing an unrelated AppState mutation to force a menu rebuild first (was reading
+        // VLCBridge.shared.transcodeViewerCount(showId:) directly here before, which is correct but
+        // not itself @Published — see AppState.transcodeViewerCount's own doc comment on why a
+        // second, reactive copy of that aggregate lives there now). Shown even at 0 watching, as
+        // confirmation the relay itself is up and reachable, not just once someone connects.
         if state.activeVirtualTunerDeviceID != nil {
-            let transcodeViewers = state.recordingShows.reduce(0) { $0 + VLCBridge.shared.transcodeViewerCount(showId: $1.show_id) }
-            let totalViewers = state.relayRawViewerCount + transcodeViewers
+            let totalViewers = state.relayRawViewerCount + state.transcodeViewerCount
             Text("FEED: \(totalViewers) watching")
                 .foregroundStyle(Color(NSColor.secondaryLabelColor))
         }

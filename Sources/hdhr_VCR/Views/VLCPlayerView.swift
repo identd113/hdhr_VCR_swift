@@ -148,10 +148,18 @@ struct VLCPlayerView: View {
     // favorite and its numeric neighbors instead of stepping through the dial in order.
     private var channelCycleOrder: [LineupEntry] { recordingChannelEntries + lineup }
 
-    // HDHomeRun raw streams are always MPEG-2/AC-3; any transcode= param means H.264/AAC.
+    // HDHomeRun raw streams are always MPEG-2/AC-3. A real device EXTEND transcode profile
+    // (Default_transcode/show_transcode via Config.applyTranscode — "heavy"/"mobile"/
+    // "internet720"/etc, never the literal string "auto") is the tuner's own hardware
+    // transcoder, which produces H.264/AAC. The one case that specifically appends the literal
+    // "&transcode=auto" is a FEED (virtual tuner relay) request — VLCPlayerView's raw/H.264
+    // toggle and MenuContent's "Watch (H.264)" item both do this — which is this app's own
+    // software transcode via VLCBridge.startTranscodeSession, producing H.264/AC-3
+    // (acodec=a52, changed 2026-09-04; see that function's own doc comment).
     private var inferredCodecs: (video: String, audio: String) {
         let url = bridge.currentURL ?? ""
-        return url.contains("transcode=") ? ("H.264", "AAC") : ("MPEG-2", "AC-3")
+        guard url.contains("transcode=") else { return ("MPEG-2", "AC-3") }
+        return url.contains("transcode=auto") ? ("H.264", "AC-3") : ("H.264", "AAC")
     }
 
     // MARK: - Remote FEED raw/H.264 toggle (docs/VirtualTunerService.md's "Recording on Another
