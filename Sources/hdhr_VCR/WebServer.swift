@@ -660,7 +660,7 @@ final class WebServer: @unchecked Sendable {
     // bitrate is actually used. This app's transcode sessions are already shared by show alone
     // regardless of which profile string each viewer individually asked for (see
     // VLCBridge.TranscodeSession's own doc comment), so per-viewer profile control never really
-    // existed here; `configuredDefault` (Settings → Sharing → Recording FEED → "Default transcode
+    // existed here; `configuredDefault` (Settings → Web LAN → Recording FEED → "Default transcode
     // level", `config.Virtual_tuner_relay_default_transcode`) is the one admin-configured level
     // actually applied whenever any transcode is requested, per explicit user direction. Pure — no
     // I/O — so HDHRManagerTests-style tests can exercise it directly without a live NWConnection.

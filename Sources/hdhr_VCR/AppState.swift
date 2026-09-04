@@ -677,12 +677,12 @@ final class AppState: ObservableObject {
     // Now-from-disk relay, the virtual-tuner relay) — and reconciles in one place instead of letting
     // each trigger call webServer.start() directly.
     //
-    // That direct-call design used to let two independent triggers race: setupWebServer() (Sharing)
+    // That direct-call design used to let two independent triggers race: setupWebServer() (Web LAN)
     // and ensureWebServerRunning() (an internal claim) each guarded only on `!webServerRunning`, but
     // that flag doesn't flip true until NWListener's *async* .ready callback actually lands — so two
     // calls firing back-to-back (e.g. at launch: reattachRecordings()'s virtual-tuner claim calls
     // ensureWebServerRunning(), then setupWebServer() runs immediately after in the same launch
-    // sequence when Sharing is on and a show was already recording) both saw `webServerRunning ==
+    // sequence when Web LAN is on and a show was already recording) both saw `webServerRunning ==
     // false` and both called webServer.start(), racing two real NWListener binds on the same port.
     // Reproduced live 2026-09-03 while verifying the virtual-tuner relay's UDP discovery fix — every
     // launch with an in-progress recording hit "Address already in use" and left the *entire* web
@@ -907,7 +907,7 @@ final class AppState: ObservableObject {
             // instance, which only actually runs its NWListener when Web_server_enabled is on or
             // something else holds an internal-use claim (setupWebServer's own comment) — without
             // this claim, a UDP client would discover a relay whose BaseURL has nothing listening
-            // on it whenever Sharing is off and no guide window/Watch-Now relay happens to be open.
+            // on it whenever Web LAN is off and no guide window/Watch-Now relay happens to be open.
             virtualTunerWebServerClaim.claim { ensureWebServerRunning() }
             virtualTuner.start(deviceID: id, baseURL: baseURL, tunerCount: tunerCount) { [weak self] bound in
                 guard !bound else { return }
@@ -4382,7 +4382,7 @@ final class AppState: ObservableObject {
     /// **Port race, found in code review and fixed here**: `webServer.stop()`'s plain form only
     /// starts an async `NWListener.cancel()` — it returns before the OS has actually released the
     /// port, so launching the new instance immediately afterward could race it into "Address
-    /// already in use" if LAN Sharing or the relay held the port (the same class of bug
+    /// already in use" if Web LAN or the relay held the port (the same class of bug
     /// `reconcileWebServerState()` already fixed once for two racing binds *inside one process* —
     /// this is that same race across two separate OS processes instead). `launchAndTerminate` is
     /// now passed as `webServer.stop(completion:)`'s completion, so the new instance is only

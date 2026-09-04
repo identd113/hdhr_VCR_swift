@@ -9,7 +9,11 @@ private enum SettingsCategory: String, CaseIterable, Identifiable {
     case guide         = "Guide"
     case notifications = "Notifications"
     case advanced      = "Advanced"
-    case sharing       = "Sharing"
+    // Raw value renamed "Sharing" → "Web LAN" 2026-09-04, per explicit user request — the
+    // underlying Web_server_enabled/webServerRunning/setupWebServer() Swift symbols and config
+    // keys are unchanged, same "only the user-facing label moves" precedent as the section's
+    // earlier "Web Server" → "Sharing" rename (see sharingView's own doc comment history).
+    case sharing       = "Web LAN"
     case maintenance   = "Maintenance"
     case about         = "About"
 
@@ -310,7 +314,7 @@ struct SettingsView: View {
                     Text("Light").tag("light")
                     Text("Dark").tag("dark")
                 } label: {
-                    HStack { Text("Appearance"); InfoButton("Controls the look of this app's own windows, and the web guide when it's shown inside one of them (e.g. Add Show). \"Auto\" follows macOS. A browser connecting to Sharing over your network keeps its own independent light/dark choice — this setting has no effect on it.") }
+                    HStack { Text("Appearance"); InfoButton("Controls the look of this app's own windows, and the web guide when it's shown inside one of them (e.g. Add Show). \"Auto\" follows macOS. A browser connecting to Web LAN over your network keeps its own independent light/dark choice — this setting has no effect on it.") }
                 }
             }
 
@@ -650,13 +654,13 @@ struct SettingsView: View {
         .navigationTitle("Advanced")
     }
 
-    // MARK: - Sharing
+    // MARK: - Web LAN
 
     private var sharingView: some View {
         Form {
-            Section("Sharing") {
+            Section("Web LAN") {
                 Toggle(isOn: $draft.Web_server_enabled) {
-                    HStack { Text("Enable Sharing"); InfoButton("Serve the cable guide and recording controls as a web page on your local network — accessible from any browser on any device. Local network only; no authentication. Do not expose this port to the internet.") }
+                    HStack { Text("Enable Web LAN"); InfoButton("Serve the cable guide and recording controls as a web page on your local network — accessible from any browser on any device. Local network only; no authentication. Do not expose this port to the internet.") }
                 }
                 if draft.Web_server_enabled {
                     LabeledContent {
@@ -699,16 +703,16 @@ struct SettingsView: View {
                 }
             }
 
-            // hdhr_guide (docs/TUIGuide.md) connects to the exact same internal web server LAN
-            // Sharing exposes — there's no separate port/listener for it — so its own toggle is
-            // always visible but disabled (dimmed, "(Requires LAN Sharing)") while Sharing is off,
+            // hdhr_guide (docs/TUIGuide.md) connects to the exact same internal web server Web LAN
+            // exposes — there's no separate port/listener for it — so its own toggle is
+            // always visible but disabled (dimmed, "(Requires Web LAN)") while Web LAN is off,
             // the same "show it, don't hide it" pattern used for VLC-gated features elsewhere in
             // this app, rather than the whole section vanishing. Gated on `draft.Web_server_enabled`
             // (the pending toggle), matching every other reveal-on-toggle control in this form (the
             // Port field above, the FEED's transcode picker below) — not the Recording FEED
-            // toggle, which is deliberately independent of Sharing: it holds its own internal
+            // toggle, which is deliberately independent of Web LAN: it holds its own internal
             // web-server claim (`AppState.ensureWebServerRunning()`) specifically so it keeps
-            // working with Sharing off, so it isn't gated here at all. Terminal_guide_enabled itself
+            // working with Web LAN off, so it isn't gated here at all. Terminal_guide_enabled itself
             // is a separate sub-switch under that: the binary checks it (via /api/guide.json's
             // terminalGuideEnabled field) and refuses to run when off, letting someone share the web
             // guide with the household without also advertising/allowing the terminal client.
@@ -716,8 +720,8 @@ struct SettingsView: View {
             Section("Terminal Guide") {
                 Toggle(isOn: $draft.Terminal_guide_enabled) {
                     HStack {
-                        Text(lanEnabled ? "Enable Terminal Guide" : "Enable Terminal Guide (Requires LAN Sharing)")
-                        InfoButton("Lets the bundled command-line client (path below) connect. Off by default. Turning this off has no security effect — the same data is already reachable from any browser on the network whenever Sharing is on — it only hides/disables the terminal client specifically. Requires LAN Sharing above to be on: the terminal client connects to that exact same local web server, not a separate one.")
+                        Text(lanEnabled ? "Enable Terminal Guide" : "Enable Terminal Guide (Requires Web LAN)")
+                        InfoButton("Lets the bundled command-line client (path below) connect. Off by default. Turning this off has no security effect — the same data is already reachable from any browser on the network whenever Web LAN is on — it only hides/disables the terminal client specifically. Requires Web LAN above to be on: the terminal client connects to that exact same local web server, not a separate one.")
                     }
                 }
                 .disabled(!lanEnabled)
@@ -759,11 +763,11 @@ struct SettingsView: View {
                                 .foregroundStyle(.orange)
                         }
                     } else {
-                        // Draft toggles are on but not yet Saved (or Sharing hasn't finished
+                        // Draft toggles are on but not yet Saved (or Web LAN hasn't finished
                         // starting) — the actual listener isn't up yet, so there's nothing to
                         // connect to. Matches this same "not live yet" distinction the Access
                         // section above already draws between draft and `state.config`/`webServerRunning`.
-                        Text("Save to activate — the terminal client can connect once Sharing is running.")
+                        Text("Save to activate — the terminal client can connect once Web LAN is running.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -772,7 +776,7 @@ struct SettingsView: View {
 
             Section("Recording FEED") {
                 Toggle(isOn: $draft.Virtual_tuner_relay_enabled) {
-                    HStack { Text("Rebroadcast In-Progress Recordings"); InfoButton("While a show is recording, this Mac briefly advertises itself as an extra HDHomeRun-style tuner on the local network, so another Mac running hdhrVCRplus can watch the recording without tying up a second real tuner. Off by default. It can never be used to start a new recording — only to watch one already in progress — and works independently of Sharing above.") }
+                    HStack { Text("Rebroadcast In-Progress Recordings"); InfoButton("While a show is recording, this Mac briefly advertises itself as an extra HDHomeRun-style tuner on the local network, so another Mac running hdhrVCRplus can watch the recording without tying up a second real tuner. Off by default. It can never be used to start a new recording — only to watch one already in progress — and works independently of Web LAN above.") }
                 }
                 if draft.Virtual_tuner_relay_enabled {
                     Picker(selection: $draft.Virtual_tuner_relay_default_transcode) {
@@ -802,7 +806,7 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .navigationTitle("Sharing")
+        .navigationTitle("Web LAN")
     }
 
     // Opens a new Terminal window and runs `executable` in it directly, via

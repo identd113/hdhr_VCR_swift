@@ -16,7 +16,7 @@ struct FirstRunWizardView: View {
     // only inside finish(), same as every other field.
     @State private var saveFolder: String = ""
 
-    enum Step: Int { case intro, recordingDefaults, sharing, recordingRelay, notificationTiming }
+    enum Step: Int { case intro, recordingDefaults, webLAN, terminalGuide, recordingRelay, notificationTiming }
     // Resting default is .recordingDefaults, NOT .intro — the splash is only ever entered
     // deliberately (see the .onAppear/.onChange below), so every "step starts at
     // .recordingDefaults" assumption elsewhere (sizing, header, nav bar) stays true by default,
@@ -120,10 +120,14 @@ struct FirstRunWizardView: View {
                     recordingDefaultsScreen
                         .transition(slideTransition)
                         .id(Step.recordingDefaults)
-                case .sharing:
-                    sharingScreen
+                case .webLAN:
+                    webLANScreen
                         .transition(slideTransition)
-                        .id(Step.sharing)
+                        .id(Step.webLAN)
+                case .terminalGuide:
+                    terminalGuideScreen
+                        .transition(slideTransition)
+                        .id(Step.terminalGuide)
                 case .recordingRelay:
                     recordingRelayScreen
                         .transition(slideTransition)
@@ -318,7 +322,7 @@ struct FirstRunWizardView: View {
             }
 
             HStack(spacing: 4) {
-                ForEach([Step.recordingDefaults, .sharing, .recordingRelay, .notificationTiming], id: \.self) { s in
+                ForEach([Step.recordingDefaults, .webLAN, .terminalGuide, .recordingRelay, .notificationTiming], id: \.self) { s in
                     Circle().fill(s == step ? Color.accentColor : .secondary.opacity(0.3))
                         .frame(width: 8, height: 8)
                 }
@@ -328,10 +332,11 @@ struct FirstRunWizardView: View {
             .accessibilityLabel({
                 switch step {
                 case .intro:              return ""   // header isn't rendered during .intro
-                case .recordingDefaults:  return "Step 1 of 4: Recording Defaults"
-                case .sharing:            return "Step 2 of 4: Sharing"
-                case .recordingRelay:     return "Step 3 of 4: Recording FEED"
-                case .notificationTiming: return "Step 4 of 4: Notification Timing"
+                case .recordingDefaults:  return "Step 1 of 5: Recording Defaults"
+                case .webLAN:             return "Step 2 of 5: Web LAN"
+                case .terminalGuide:      return "Step 3 of 5: Terminal Guide"
+                case .recordingRelay:     return "Step 4 of 5: Recording FEED"
+                case .notificationTiming: return "Step 5 of 5: Notification Timing"
                 }
             }())
         }
@@ -380,12 +385,12 @@ struct FirstRunWizardView: View {
         .fixedSize(horizontal: false, vertical: true)
     }
 
-    private var sharingScreen: some View {
+    private var webLANScreen: some View {
         Form {
             Section {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Sharing").font(.headline)
-                    Text("Reach your guide and recordings from other devices on your home network. Everything below is off by default. You can change any of this later in Settings → Sharing.")
+                    Text("Web LAN").font(.headline)
+                    Text("Reach your guide and recordings from any browser on your home network. Off by default. You can change this later in Settings → Web LAN.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -393,37 +398,42 @@ struct FirstRunWizardView: View {
 
             Section {
                 VStack(alignment: .leading, spacing: 10) {
-                    NetworkFlowDiagram(
-                        leftBadgeColor: Color(NSColor.systemGreen),
-                        leftCaption: "Sharing",
-                        leftCaptionSystemImage: "circle.fill",
-                        rightSystemImage: "network",
-                        rightCaption: "Browsing",
-                        rightCaptionSystemImage: "globe"
-                    )
+                    WebLANDiagram()
                     Text("Turns this Mac into a small local web server — any browser on your network can view the guide and start or manage recordings, the same way you would here.")
                         .font(.callout)
                     Toggle(isOn: $sharingEnabled) {
-                        HStack { Text("Enable Sharing"); InfoButton("Local network only — no authentication, so don't expose this port to the internet.") }
+                        HStack { Text("Enable Web LAN"); InfoButton("Local network only — no authentication, so don't expose this port to the internet.") }
                     }
                 }
                 .fixedSize(horizontal: false, vertical: true)
             }
+        }
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var terminalGuideScreen: some View {
+        Form {
+            Section {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Terminal Guide").font(.headline)
+                    Text("A command-line version of the same guide, for browsing and recording from a terminal instead of a browser. Off by default. You can change this later in Settings → Web LAN.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
 
             Section {
                 VStack(alignment: .leading, spacing: 10) {
-                    NetworkFlowDiagram(
-                        leftBadgeColor: Color(NSColor.systemGreen),
-                        leftCaption: "Sharing",
-                        leftCaptionSystemImage: "circle.fill",
-                        rightSystemImage: "terminal",
-                        rightCaption: "Terminal",
-                        rightCaptionSystemImage: "terminal"
-                    )
-                    Text("A command-line version of the same guide, for browsing and recording from a terminal instead of a browser. Uses the same server as Sharing above, so it needs that turned on too.")
+                    TerminalTypingDiagram()
+                    Text(sharingEnabled
+                         ? "Connects to the same local server Web LAN just turned on — no separate listener of its own."
+                         : "Uses the same server as Web LAN — turn that on first (previous step) for this to do anything.")
                         .font(.callout)
+                        .foregroundStyle(sharingEnabled ? Color.primary : .secondary)
                     Toggle(isOn: $terminalGuideEnabled) {
-                        HStack { Text(sharingEnabled ? "Enable Terminal Guide" : "Enable Terminal Guide (Requires Sharing)"); InfoButton("Requires Enable Sharing above — the terminal client connects to that same local server, not a separate one.") }
+                        HStack { Text(sharingEnabled ? "Enable Terminal Guide" : "Enable Terminal Guide (Requires Web LAN)"); InfoButton("Requires Web LAN (previous step) to be on — the terminal client connects to that same local server, not a separate one.") }
                     }
                     .disabled(!sharingEnabled)
                 }
@@ -440,7 +450,7 @@ struct FirstRunWizardView: View {
             Section {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Recording FEED").font(.headline)
-                    Text("Watch a recording that's already in progress from another Mac — live, without spending a second tuner. You can change this later in Settings → Sharing.")
+                    Text("Watch a recording that's already in progress from another Mac — live, without spending a second tuner. You can change this later in Settings → Web LAN.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -536,7 +546,7 @@ struct FirstRunWizardView: View {
     // removing/reordering a step only ever needs an edit here, not a scattered set of per-step
     // ternaries that has to stay in sync by hand (the exact bug shape a 3-step ternary couldn't
     // hide any more once a 4th step was added).
-    private static let orderedSteps: [Step] = [.recordingDefaults, .sharing, .recordingRelay, .notificationTiming]
+    private static let orderedSteps: [Step] = [.recordingDefaults, .webLAN, .terminalGuide, .recordingRelay, .notificationTiming]
 
     private func goNext() {
         goingForward = true

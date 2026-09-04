@@ -15,7 +15,7 @@ macOS `List` with items using `Label(name, systemImage: icon)`. Icons and catego
 - `tv` Guide
 - `bell.badge` Notifications
 - `terminal` Advanced
-- `globe` Sharing
+- `globe` Web LAN
 - `wrench.and.screwdriver` Maintenance
 - `info.circle` About
 
@@ -31,7 +31,7 @@ Selected row highlighted in accent color. Each row carries `accessibilityIdentif
 
 ### Category: General
 Two `Section`s:
-- **System**: `Toggle("Launch at Login")`, `Toggle("Blink menu bar icon")`, `Picker("Appearance")` — bound to `draft.Appearance_mode` (`"auto"` | `"light"` | `"dark"`, default `"auto"`). Applied via `.preferredColorScheme(_:)` to every one of this app's own `Window` scenes (`hdhr_VCRApp.swift`'s `resolvedColorScheme`, `nil` for `"auto"` so a window just follows the system the normal SwiftUI way) — takes effect live the moment it's saved, no relaunch needed, since every window scene reads `appState.config` directly. Also applied to the web guide when it's loaded inside this app's own embedded `WKWebView` (`AddShowView`'s guide step — see `docs/AddShowView.md`'s "Appearance sync"), two-way: that embedded instance's own theme-switcher buttons update this same setting too. Does **not** reach a browser connecting to Sharing over the LAN — that's a structurally separate client with no channel back to this setting at all, not something this toggle has to specifically exclude (`docs/WebServer.md`'s dark-mode section).
+- **System**: `Toggle("Launch at Login")`, `Toggle("Blink menu bar icon")`, `Picker("Appearance")` — bound to `draft.Appearance_mode` (`"auto"` | `"light"` | `"dark"`, default `"auto"`). Applied via `.preferredColorScheme(_:)` to every one of this app's own `Window` scenes (`hdhr_VCRApp.swift`'s `resolvedColorScheme`, `nil` for `"auto"` so a window just follows the system the normal SwiftUI way) — takes effect live the moment it's saved, no relaunch needed, since every window scene reads `appState.config` directly. Also applied to the web guide when it's loaded inside this app's own embedded `WKWebView` (`AddShowView`'s guide step — see `docs/AddShowView.md`'s "Appearance sync"), two-way: that embedded instance's own theme-switcher buttons update this same setting too. Does **not** reach a browser connecting over Web LAN — that's a structurally separate client with no channel back to this setting at all, not something this toggle has to specifically exclude (`docs/WebServer.md`'s dark-mode section).
 - **Guide**: `Toggle("Use XMLTV guide format")` — bound to `draft.Guide_use_xml` (default `false`). Moved here from the Guide tab's former Format section (2026-08-10) so the JSON/XMLTV switch is visible without digging into a dedicated tab. While the toggle is on, an inline amber warning (the shared `CaveatBanner` component — soft orange-tint fill, orange text, the same one `ShowFormSection`'s transcode-mismatch banner uses, `accessibilityIdentifier("settings-guide-xmltv-warning")`) surfaces XMLTV's real caveats: Guide Hours is ignored (the server always sends ~2 days), and any device without DeviceAuth silently falls back to JSON regardless of this setting. Toggling and saving triggers an immediate guide refresh via the XMLTV endpoint.
 
 ### Category: Recording
@@ -162,7 +162,7 @@ Sidebar entries (with SF Symbol icons):
 | Guide | `tv` | Guide hours, series scan retry |
 | Notifications | `bell.badge` | Up Next timing, Recording alert timing |
 | Advanced | `terminal` | Network interface, logging + verbose curl + config file path, check for updates, signal quality |
-| Sharing | `globe` | Enable/disable LAN web server, port, access URL, recording-relay rebroadcast |
+| Web LAN | `globe` | Enable/disable LAN web server, port, access URL, recording-relay rebroadcast |
 | Maintenance | `wrench.and.screwdriver` | Show maintenance, guide/device ops |
 | About | `info.circle` | App logo, version, history, GitHub link |
 
@@ -263,33 +263,33 @@ Recording Complete embeds additionally include **Format** (file extension, e.g. 
 
 ---
 
-### Sharing
+### Web LAN
 
-(Settings section — the underlying `Web_server_enabled`/`Web_server_port` config keys and `WebServer.swift`/`webServerRunning`/`webServerError`/`setupWebServer()` Swift symbols are unchanged; only this section's own user-facing label was renamed from "Web Server" to "Sharing".)
+(Settings section — the underlying `Web_server_enabled`/`Web_server_port` config keys and `WebServer.swift`/`webServerRunning`/`webServerError`/`setupWebServer()` Swift symbols are unchanged; only this section's own user-facing label has moved twice — "Web Server" → "Sharing" → "Web LAN" (2026-09-04, explicit user request: "Sharing" read as too vague/generic for what this specific feature actually is). `private enum SettingsCategory`'s `case sharing` Swift symbol itself is untouched, same "only the label moves" precedent both renames followed — only its raw string value changed.)
 
-Three independent sharing *methods* — LAN, Terminal Guide, Recording FEED — each with its own always-visible toggle that reveals its own options directly beneath it when on. LAN is the one durable, user-controlled capability toggle; Terminal Guide's toggle is `.disabled` whenever LAN is off (it connects to that exact same internal web server, no separate listener of its own); Recording FEED's toggle is **not** gated on LAN at all — see its own entry below for why. All three now default off (changed 2026-09-04) and are each explained, with the same animated `NetworkFlowDiagram` graphic, on first launch by `FirstRunWizardView`'s Sharing and Recording FEED steps — see `docs/FirstRunWizardView.md`.
+Three independent sharing *methods* — the LAN web server itself, Terminal Guide, Recording FEED — each with its own always-visible toggle that reveals its own options directly beneath it when on. The LAN toggle is the one durable, user-controlled capability; Terminal Guide's toggle is `.disabled` whenever it's off (Terminal Guide connects to that exact same internal web server, no separate listener of its own); Recording FEED's toggle is **not** gated on it at all — see its own entry below for why. All three default off, and are each explained, with their own purpose-built animated diagram, on first launch by `FirstRunWizardView`'s Web LAN, Terminal Guide, and Recording FEED steps (three separate steps, not combined — see `docs/FirstRunWizardView.md` for why) — see `docs/FirstRunWizardView.md`.
 
-- **Enable Sharing (LAN)** — `Toggle` bound to `draft.Web_server_enabled`. Off by default. Warning label: *"Local network access only. No authentication. Do not expose this port to the internet."*
+- **Enable Web LAN** — `Toggle` bound to `draft.Web_server_enabled`. Off by default. Warning label: *"Local network access only. No authentication. Do not expose this port to the internet."*
 - **Port** — `TextField` (value binding, `.number.grouping(.never)` format to suppress the thousands comma), shown when enabled. Validated 1025–65534. Invalid values show an orange warning and block the Save button and `WindowCloseInterceptor`. Saving restarts the `NWListener` and re-registers mDNS at the new port immediately — no app restart needed.
 - **Access row** — shown only when `state.config.Web_server_enabled && state.webServerRunning`. Displays `http://{ip}:{port}` as selectable monospaced text with an **Open** `Link`. IP is resolved by `availableNetworkInterfaces()` filtering out `utun*` VPN interfaces; falls back to `"localhost"`. The link uses the device's IP directly (not an mDNS `.local` hostname) to prevent browser HTTPS upgrades.
 - **Terminal Guide section** — always visible; its **Enable Terminal Guide** `Toggle` (bound to
   `draft.Terminal_guide_enabled`, defaults `false`) is `.disabled(!draft.Web_server_enabled)` and its
-  label gains a `" (Requires LAN Sharing)"` suffix while LAN is off, dimming it rather than hiding
+  label gains a `" (Requires Web LAN)"` suffix while Web LAN is off, dimming it rather than hiding
   the whole section — the same "show it, don't hide it" pattern used for VLC-gated features
   elsewhere in this app. Gated on the *draft* toggle (matching the Port field above and the relay's
   transcode picker below), not `state.config`, for consistent live-editing feedback before Save.
   **Why the dependency is real, not just a UI choice**: `hdhr_guide` (`Sources/hdhr_guide/`)
-  connects to the exact same internal `NWListener` LAN Sharing exposes — there's no second
+  connects to the exact same internal `NWListener` Web LAN exposes — there's no second
   listener — and `AppState.reconcileWebServerState()`'s `wantRunning = config.Web_server_enabled ||
   internalWebServerUseCount > 0` means that listener could technically also be up transiently for
   an unrelated reason (an active Recording FEED, an open WKWebView guide window), but a Settings
   toggle needs a *durable* guarantee, not a coincidence that could disappear the moment a recording
-  ends — so this gates on the persistent LAN toggle specifically, not on `webServerRunning`.
+  ends — so this gates on the persistent Web LAN toggle specifically, not on `webServerRunning`.
   `Terminal_guide_enabled` itself is a separate sub-switch under that: `hdhr_guide` reads it back
   via `/api/guide.json`'s `terminalGuideEnabled` field and refuses to run when off — courtesy/
   discoverability only, not a security boundary, since the same JSON endpoint is already reachable
-  to any LAN browser once Sharing is on regardless of this flag (see `docs/TUIGuide.md`). When both
-  the LAN and Terminal Guide toggles are on: if the server is actually live
+  to any LAN browser once Web LAN is on regardless of this flag (see `docs/TUIGuide.md`). When both
+  the Web LAN and Terminal Guide toggles are on: if the server is actually live
   (`state.config.Web_server_enabled && state.webServerRunning`), shows the binary path (selectable
   monospaced text), an **Open in Terminal** button, and a one-line caption; otherwise (draft toggled
   on but not yet Saved) shows a `"Save to activate…"` placeholder instead of a button that would
@@ -299,7 +299,7 @@ Three independent sharing *methods* — LAN, Terminal Guide, Recording FEED — 
   even under a future App Sandbox (`docs/MAS_COMPLIANCE.md`). Handing an executable's URL to
   Terminal.app this way makes Terminal run it directly (verified live), the same mechanism
   Finder's "New Terminal at Folder" service uses for a folder URL.
-- **Recording FEED section** — always visible and its toggle is never disabled by LAN being off — deliberately, not an oversight: unlike Terminal Guide, the relay holds its **own** internal web-server claim (`AppState.ensureWebServerRunning()`/`releaseInternalWebServer()`, folded into the same `wantRunning` check above) for as long as a recording is active, so it keeps working with LAN Sharing off. Gating it on LAN would remove real, working, intentionally-independent functionality, not just reorganize the UI. Contains a **Rebroadcast In-Progress Recordings** `Toggle` bound to `draft.Virtual_tuner_relay_enabled` (defaults `false` — changed 2026-09-04, was `true`). See `docs/VirtualTunerService.md` for the full mechanism; on Save, `SettingsView.save()` compares this against the pre-edit value and, if changed, calls `state.updateVirtualTunerPresence()` directly so toggling it off tears the relay down immediately if a recording happens to be in progress, rather than waiting for that recording to end. Also explained on first launch by `FirstRunWizardView`'s dedicated relay-explainer step (same wording as this toggle's `InfoButton`).
+- **Recording FEED section** — always visible and its toggle is never disabled by Web LAN being off — deliberately, not an oversight: unlike Terminal Guide, the relay holds its **own** internal web-server claim (`AppState.ensureWebServerRunning()`/`releaseInternalWebServer()`, folded into the same `wantRunning` check above) for as long as a recording is active, so it keeps working with Web LAN off. Gating it on Web LAN would remove real, working, intentionally-independent functionality, not just reorganize the UI. Contains a **Rebroadcast In-Progress Recordings** `Toggle` bound to `draft.Virtual_tuner_relay_enabled` (defaults `false` — changed 2026-09-04, was `true`). See `docs/VirtualTunerService.md` for the full mechanism; on Save, `SettingsView.save()` compares this against the pre-edit value and, if changed, calls `state.updateVirtualTunerPresence()` directly so toggling it off tears the relay down immediately if a recording happens to be in progress, rather than waiting for that recording to end. Also explained on first launch by `FirstRunWizardView`'s dedicated Recording FEED step (same wording as this toggle's `InfoButton`).
   - While the toggle is on, a **Default transcode level** `Picker` (bound to `draft.Virtual_tuner_relay_default_transcode`, defaults `"heavy"`) offers the seven real EXTEND-only profile names — Heavy, Internet 720, Internet 540, Internet 480, Internet 360, Internet 240, Mobile (`VLCBridge.transcodeBitrateKbps(for:)`'s own doc comment has the sourcing: the original AppleScript app's 2016+ production list plus SiliconDust's current `info.hdhomerun.com/info/http_api` docs). This is the *only* level the relay ever actually transcodes at — `WebServer.handleVirtualTunerStream` uses a viewer's own requested `?transcode=` profile string only to decide whether to transcode at all, never which bitrate, by explicit design (mirrors how a transcode session is already shared by show alone regardless of which profile each viewer individually requested). The picker itself is disabled and its label suffixed `" (Requires VLC)"` when `vlcInstalled` is false — a requested transcode is served as untranscoded passthrough bytes instead (`WebServer.handleVirtualTunerStream` logs this fallback) — the rebroadcast toggle above stays fully enabled regardless, since the raw relay never touches VLC at all.
 - **Error banner** — shown when `state.webServerError` is non-nil (port in use, OS cancellation, etc.).
 

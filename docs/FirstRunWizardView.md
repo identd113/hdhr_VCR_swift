@@ -32,7 +32,7 @@ space than their rows need even without an outer fixed height).
 global already used by `DonationNagView`/`SettingsView`/the menu bar icon) at 36×36 in a rounded
 rect, next to "Welcome to hdhrVCRplus" (`.headline`) and a one-line subtitle, giving the window the
 same "unmistakably this app's own chrome" identity `DonationNagView`'s header comment already
-argues for. The step-progress dots sit directly below this, inside the same header `VStack` — 4
+argues for. The step-progress dots sit directly below this, inside the same header `VStack` — 5
 small 8pt circles, filled accent-color = current step, hollow gray = other steps (same visual
 pattern as `AddShowView`'s step indicator). **Not rendered during `.intro`** (`if step != .intro`
 around both the header and the bottom nav bar) — the splash has no header/nav chrome of its own,
@@ -343,25 +343,35 @@ rows via one view, `RecordingDefaultsFields` (`Views/RecordingDefaultsFields.swi
 doc for it since it has no independent visual identity beyond what's described here and in
 `docs/SettingsView.md`'s Recording section.
 
-### Step 2 — Sharing
-Two animated diagrams (`NetworkFlowDiagram`, `Views/NetworkFlowDiagram.swift` — see its own
-section below), each with a short explanation and a `Toggle`: **Enable Sharing** (the LAN web
-server) and, gated beneath it, **Enable Terminal Guide** — dimmed and `.disabled` until Sharing is
-on, exactly the same gating `SettingsView`'s own Sharing tab already uses, reproduced here rather
-than split across two separate wizard steps a user would have to bounce between to resolve the
-dependency. See "Steps" below for the config-commit details.
+### Step 2 — Web LAN
+A purpose-built animated diagram (`WebLANDiagram`, `Views/WebLANDiagram.swift` — see its own
+section below) — this Mac fanning out to three different device icons — above a short explanation
+and one `Toggle`, **Enable Web LAN**. See "Steps" below for the config-commit details.
 
-### Step 3 — Recording FEED
+### Step 3 — Terminal Guide
+A second, genuinely different animated diagram (`TerminalTypingDiagram`,
+`Views/TerminalTypingDiagram.swift` — see its own section below): a mock terminal window typing a
+command, not another instance of Web LAN's own broadcast-fan visual. **Split into its own step
+2026-09-04** — an earlier version put Web LAN and Terminal Guide on one combined screen (gating
+Terminal Guide's toggle right there, since it's meaningless without Web LAN on first); live
+feedback was that stacked together the two diagrams read as the same graphic twice. Now sequential
+instead: Web LAN's decision is already made by the time this step is reached, so the gating
+(`Toggle` `.disabled(!sharingEnabled)`, label suffixed `" (Requires Web LAN)"` when Web LAN is
+off) still works correctly across the step boundary — both bools are the same wizard-lifetime
+`@State`, just read from a later step now instead of the same screen. See "Steps" below for the
+config-commit details.
+
+### Step 4 — Recording FEED
 An animated diagram (`NetworkFlowDiagram`) showing two devices connected by a line — signal rings
 broadcasting from the recording Mac, small packets flowing along the line to the watching one —
 above two short paragraphs of plain-language explanation and one `Toggle`. See "Steps" below for
 the config-commit details.
 
-### Step 4 — Notification Timing
+### Step 5 — Notification Timing
 Up Next / Recording Soon lead-time minutes, same `Stepper` controls and warning banner (shown when
 the recording alert would fire at or after Up Next) as `SettingsView`'s Notifications tab.
 
-**Nav bar** (bottom): Back (steps 2–4, `.plain` style, `.secondary` foreground — a quiet
+**Nav bar** (bottom): Back (steps 2–5, `.plain` style, `.secondary` foreground — a quiet
 secondary action) and Next/Finish, right-aligned, Next/Finish `.borderedProminent` (Finish only on
 the last step). A `Divider` above (`opacity(0.5)`, same softened-divider treatment used below the
 header, so the dividers read as subtle separators against the material background rather than harsh
@@ -371,11 +381,12 @@ full-contrast lines).
 
 A first-launch-only setup flow covering the handful of settings worth deciding before using the
 app: where recordings are saved and how, how much notice you get before one starts, and — since
-2026-09-04 — every LAN-facing Sharing toggle (Enable Sharing, Terminal Guide, Recording FEED),
-since each of those is now off by default and worth a one-time explanation of what it actually
-does before a first-time user goes looking for it in Settings. Everything else (Discord, Guide) is
-still left for `SettingsView` — this wizard covers "what's off by default and needs a plain-English
-explanation," not a full onboarding tour of every setting in the app.
+2026-09-04 — every LAN-facing feature this app's Settings groups under its "Web LAN" section
+(Enable Web LAN, Terminal Guide, Recording FEED), each its own step, since each is now off by
+default and worth a one-time explanation of what it actually does before a first-time user goes
+looking for it in Settings. Everything else (Discord, Guide) is still left for `SettingsView` —
+this wizard covers "what's off by default and needs a plain-English explanation," not a full
+onboarding tour of every setting in the app.
 
 Every field defaults to the **current** config value (`loadCurrentValuesIfNeeded()`, called from
 `.onAppear`), not a hardcoded factory default — re-running the wizard later via the reset button
@@ -387,14 +398,14 @@ defaults.
 ## Steps
 
 ```swift
-enum Step: Int { case intro, recordingDefaults, sharing, recordingRelay, notificationTiming }
+enum Step: Int { case intro, recordingDefaults, webLAN, terminalGuide, recordingRelay, notificationTiming }
 ```
 
 Navigation (`goNext()`/`goBack()`) walks a single `orderedSteps` array
-(`[.recordingDefaults, .sharing, .recordingRelay, .notificationTiming]`) by index rather than a
-per-step ternary chain — added when `.sharing` made a 3-way ternary ambiguous; a plain ordered list
-is the one place to edit for any future reorder/insert/removal instead of a scattered set of
-hand-kept `step == .X ? .Y : .Z` conditions.
+(`[.recordingDefaults, .webLAN, .terminalGuide, .recordingRelay, .notificationTiming]`) by index
+rather than a per-step ternary chain — added when a 3rd non-`.recordingDefaults` step made the
+original 3-way ternary ambiguous; a plain ordered list is the one place to edit for any future
+reorder/insert/removal instead of a scattered set of hand-kept `step == .X ? .Y : .Z` conditions.
 
 `.intro` is **never the resting default** (`@State private var step: Step = .recordingDefaults`) —
 it's entered deliberately via `playIntroIfNeeded()`, called from both `.onAppear` and the
@@ -415,26 +426,61 @@ here just means "use the default," same as everywhere else); `finish()` writes i
 same key. Transcode/min-disk/fail-threshold commit to `state.config.Default_transcode` /
 `.Min_disk_free_gb` / `.Fail_count_setting` on Finish the same way.
 
-### Step 2 — Sharing
-Covers `Web_server_enabled` ("Enable Sharing," the LAN web server) and `Terminal_guide_enabled`
-("Enable Terminal Guide") on one screen — deliberately, since Terminal Guide's toggle is
-meaningless without Sharing on first: rather than splitting these across two wizard steps and
-making the user backtrack to resolve the dependency, both live here, with Terminal Guide's `Toggle`
-`.disabled(!sharingEnabled)` and its label suffixed `" (Requires Sharing)"` while Sharing is off —
-the exact same gating `SettingsView`'s own Sharing tab already does between these same two
-settings, reproduced in the wizard rather than reinvented. Binds two local `@State` bools
-(`sharingEnabled`, `terminalGuideEnabled`; both default `false`, mirroring both settings'
-`AppConfig` defaults), each introduced by its own `NetworkFlowDiagram` (see its own section below)
-and a short paragraph. Because the Terminal Guide toggle is SwiftUI-`.disabled` while Sharing is
-off, the wizard can never actually produce the (recoverable, but meaningless) state of Terminal
-Guide on with Sharing off — no extra validation needed in `finish()`.
+### Step 2 — Web LAN
+Covers `Web_server_enabled` ("Enable Web LAN," the LAN web server) on its own screen — one local
+`@State sharingEnabled` bool (default `false`, mirroring `AppConfig`'s own default), introduced by
+`WebLANDiagram()` (see its own section below) and a short paragraph.
 
-`finish()` commits both to `state.config.Web_server_enabled`/`.Terminal_guide_enabled` and, if
-`Web_server_enabled` changed, calls `state.setupWebServer()` immediately — the same
-changed-value-gated pattern `SettingsView.save()` already uses, so Sharing actually starts serving
-the moment this wizard closes rather than waiting for the next unrelated settings save.
+`finish()` commits it to `state.config.Web_server_enabled` and, if it changed, calls
+`state.setupWebServer()` immediately — the same changed-value-gated pattern `SettingsView.save()`
+already uses, so Web LAN actually starts serving the moment this wizard closes rather than waiting
+for the next unrelated settings save.
 
-### Step 3 — Recording FEED
+### Step 3 — Terminal Guide
+Covers `Terminal_guide_enabled` ("Enable Terminal Guide") on its own screen, one step after Web
+LAN — **not combined with it on one screen**, unlike an earlier version of this step (see the
+summary section above for why: two `NetworkFlowDiagram` instances stacked together read as visually
+redundant). The dependency is still enforced exactly as before, just across the step boundary
+instead of within one screen: local `@State terminalGuideEnabled`'s `Toggle` is
+`.disabled(!sharingEnabled)` and its label suffixed `" (Requires Web LAN)"` while `sharingEnabled`
+is off — the same `sharingEnabled` bool Step 2 set, still in scope since both are plain
+wizard-lifetime `@State`, not per-screen state. Because the toggle is SwiftUI-`.disabled` whenever
+`sharingEnabled` is false, the wizard can never actually produce the (recoverable, but meaningless)
+state of Terminal Guide on with Web LAN off *while moving forward through the wizard normally* —
+though going back to Step 2, turning Web LAN off after having already turned Terminal Guide on
+earlier, then returning here without touching the now-disabled Terminal Guide toggle, leaves
+`terminalGuideEnabled` at its prior `true` value: accepted, not a bug, matching
+`SettingsView.sharingView`'s own identical precedent (its Terminal Guide toggle doesn't force-reset
+either — see `docs/SettingsView.md`, "Turning this off has no security effect").
+
+`finish()` commits it to `state.config.Terminal_guide_enabled` — no follow-up action needed (unlike
+Web LAN, nothing has to be started/stopped for this flag; it's just read passively by `hdhr_guide`
+and `/api/guide.json`).
+
+### `WebLANDiagram` (`Views/WebLANDiagram.swift`)
+Purpose-built for Step 2, not a themed instance of `NetworkFlowDiagram` — added 2026-09-04
+alongside the step split above, replacing an earlier version that palette-swapped
+`NetworkFlowDiagram`'s own two-device shape. Web LAN's real relationship (one Mac serving many
+different *kinds* of devices) is genuinely different from Recording FEED's (one Mac connecting to
+one specific other Mac), so this fans out instead: "this Mac" on the left (green badge, ripple
+rings — same broadcasting language `NetworkFlowDiagram`/`SignalRing` use) connects via three
+separate dashed lines to three device icons on the right (`desktopcomputer`/`ipad`/`iphone`,
+`watchNowBlue`), each receiving its own small traveling packet at a staggered phase offset (0,
+0.33, 0.66 of the packet cycle) so the three arrivals read as a continuous fan-out rhythm rather
+than three lines pulsing in lockstep. Respects Reduce Motion (freezes to three static dots, one per
+line) and is `.accessibilityHidden(true)`, same conventions as every other diagram here.
+
+### `TerminalTypingDiagram` (`Views/TerminalTypingDiagram.swift`)
+Purpose-built for Step 3 — deliberately NOT another `NetworkFlowDiagram`/`WebLANDiagram` instance,
+since Terminal Guide isn't really a "this Mac broadcasting to a receiver" relationship the way the
+other two Sharing features are; it's a CLI session, so this shows that directly. A mock terminal
+window (hardcoded dark chrome — not theme-adaptive, deliberately, the same way a screenshot of
+another app's own UI wouldn't re-theme itself — with three decorative traffic-light dots) types out
+`$ hdhr_guide` character by character, holds with a blinking cursor, then resets and repeats.
+Respects Reduce Motion (freezes on the fully-typed line with cursor showing) and is
+`.accessibilityHidden(true)`, same conventions as every other diagram here.
+
+### Step 4 — Recording FEED
 Leads with `NetworkFlowDiagram(...)` (see its own section below), then a short plain-language
 explanation of the virtual-tuner relay (`docs/VirtualTunerService.md`) — what it is and what it
 can't do — then one `Toggle` bound to local `@State relayEnabled` (default `false`, mirroring
@@ -443,26 +489,25 @@ as every other field here: `finish()` writes it to `state.config.Virtual_tuner_r
 if it changed, calls `state.updateVirtualTunerPresence()` directly so a recording already in
 progress (only realistically possible via a mid-session reset from Settings → Maintenance) reflects
 the new setting immediately rather than waiting for that recording to end. `SettingsView`'s own
-Sharing → Recording FEED toggle is the same setting, same wording, reachable any time after this
+Web LAN → Recording FEED toggle is the same setting, same wording, reachable any time after this
 wizard closes — this screen exists purely so a first-time user sees the explanation once, unprompted.
 
 ### `NetworkFlowDiagram` (`Views/NetworkFlowDiagram.swift`)
-Self-contained animated view, not wizard-specific — usable anywhere the app wants the same
-explainer without re-deriving the animation, and parametrized (icons/badge colors/captions) so
-Step 2's two sub-features and Step 3 each get their own themed instance instead of three
-near-duplicate views. Two SF Symbols (`desktopcomputer` on the left in every use — always "this
-Mac" — a feature-specific icon on the right: another `desktopcomputer` for Recording FEED's
-"watching Mac," `network` for Sharing's "any browser," `terminal` for Terminal Guide) connected by
-a dashed line, drawn in a `GeometryReader` so it scales to whatever width its container gives it.
-A single `TimelineView(.animation)` drives two independent, looping effects, each run twice at a
-half-cycle phase offset so the line/device never sits visibly empty between beats:
+Self-contained animated view, parametrized (icons/badge colors/captions) so it's reusable for any
+future point-to-point "this Mac ↔ one specific other party" explainer — currently used only by
+Step 4, Recording FEED, whose "this Mac's recording, that Mac watching it" relationship is
+genuinely one-to-one (Web LAN and Terminal Guide moved to their own purpose-built diagrams above,
+see those sections for why). Two SF Symbols (`desktopcomputer` on both sides for FEED — another
+Mac, not a generic device) connected by a dashed line, drawn in a `GeometryReader` so it scales to
+whatever width its container gives it. A single `TimelineView(.animation)` drives two independent,
+looping effects, each run twice at a half-cycle phase offset so the line/device never sits visibly
+empty between beats:
 - **Ripple rings** — expanding, fading circles centered on the left ("this Mac") device, colored by
-  `leftBadgeColor` (red for "Recording," green for "Sharing") — the same "broadcasting outward"
-  language `SettingsView`'s About-tab `SignalRing` already uses for the app icon's own pulse effect.
+  `leftBadgeColor` (red for "Recording") — the same "broadcasting outward" language `SettingsView`'s
+  About-tab `SignalRing` already uses for the app icon's own pulse effect.
 - **Packets** — small dots traveling along the line from the left device to the right one, colored
-  by `rightBadgeColor` (`watchNowBlue` by default in every current use — "whoever's receiving it"
-  reads as one consistent identity across all three diagrams), fading in/out over the first/last
-  15% of the line so they don't pop at either device's edge.
+  by `rightBadgeColor` (`watchNowBlue` by default — "whoever's receiving it"), fading in/out over
+  the first/last 15% of the line so they don't pop at either device's edge.
 
 Both cycle lengths (1.6s packets, 1.8s rings) are independent named constants, not tied to each
 other or to any other animation in the app. Respects Reduce Motion — freezes to one static dot
@@ -472,7 +517,7 @@ above uses. Marked `.accessibilityHidden(true)`: purely decorative, and the diag
 the surrounding prose doesn't already say in words — a screen reader user isn't missing content by
 skipping it.
 
-### Step 4 — Notification Timing
+### Step 5 — Notification Timing
 Binds to local `@State` (`upNextMinutes`, `recordingSoonMinutes`). Committed to
 `state.config.Notify_upnext` / `.Notify_recording` on Finish.
 

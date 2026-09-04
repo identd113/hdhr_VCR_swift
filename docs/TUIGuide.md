@@ -36,15 +36,15 @@ below for why bundling a second executable here doesn't add a sandbox blocker.
 ![Recording summary screen with the four scheduling scope options](screenshots/tui_guide_schedule.png)
 
 **Prerequisite:** `Web_server_enabled` defaults to `false` (`Models.swift`). hdhrVCRplus must be
-running with **Settings → Sharing** enabled (the Settings section's own label — the underlying
+running with **Settings → Web LAN** enabled (the Settings section's own label — the underlying
 `Web_server_enabled` config key is unchanged), or `hdhr_guide` prints an actionable message and
 exits immediately (no retry loop, no attempt to launch the app or flip the setting itself — it is
 a pure HTTP client with no control-plane surface into the running app).
 
-**Sub-switch:** `Terminal_guide_enabled` (`Models.swift`, defaults `false`) — Settings → Sharing →
+**Sub-switch:** `Terminal_guide_enabled` (`Models.swift`, defaults `false`) — Settings → Web LAN →
 **Terminal Guide**'s own toggle, nested under (only shown/relevant when) `Web_server_enabled`.
 `hdhr_guide` reads it back from `/api/guide.json`'s `terminalGuideEnabled` field right after its
-first successful fetch and exits immediately if false ("disabled — Settings → Sharing → Terminal
+first successful fetch and exits immediately if false ("disabled — Settings → Web LAN → Terminal
 Guide is off."). This is a courtesy/discoverability gate only, **not a security boundary**:
 `/api/guide.json` (and `/api/record`, `/api/delete`, `/api/toggle-favorite`) are the same endpoints
 the browser guide already uses, already reachable to any device on the LAN once `Web_server_enabled`
