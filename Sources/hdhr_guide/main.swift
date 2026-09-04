@@ -8,10 +8,10 @@ DebugLog.log("=== hdhr_guide started (pid \(getpid())) ===")
 // to hdhrVCRplus's own LAN web server over plain HTTP (localhost:1980, hardcoded — matches
 // Web_server_port's default; a custom port isn't supported yet, see docs/TUIGuide.md), never
 // spawns a subprocess or dlopens anything, so it adds no App Sandbox blocker (see
-// docs/MAS_COMPLIANCE.md). Requires Settings → Web LAN enabled (the underlying `Web_server_enabled`
-// config key/Swift symbol names are unchanged — only the Settings UI's own label was renamed, see
-// SettingsView.swift) — defaults to false, so a fresh install needs that flipped once before this
-// tool can reach anything.
+// docs/MAS_COMPLIANCE.md). Requires Settings → Sharing → Enable Web LAN enabled (the underlying
+// `Web_server_enabled` config key/Swift symbol names are unchanged — only the Settings UI's own
+// labels moved, see SettingsView.swift) — defaults to false, so a fresh install needs that
+// flipped once before this tool can reach anything.
 
 let hourFormatter: DateFormatter = {
     let f = DateFormatter()
@@ -98,15 +98,15 @@ signal(SIGWINCH) { _ in resized = true }
 
 guard let initial = API.fetchGuide(device: nil) else {
     print("hdhr_guide: can't reach the web server at 127.0.0.1:1980.")
-    print("Make sure hdhrVCRplus is running with Settings → Web LAN enabled.")
+    print("Make sure hdhrVCRplus is running with Settings → Sharing → Enable Web LAN enabled.")
     exit(1)
 }
 // Checked once, right after the first successful fetch — a courtesy gate, not a security one (the
 // same endpoint this payload came from is already reachable to any browser on the LAN once Web LAN
-// is on regardless, see Settings → Web LAN → Terminal Guide's own explanation). Exiting here just
+// is on regardless, see Settings → Sharing → Terminal Guide's own explanation). Exiting here just
 // respects the switch rather than silently ignoring it.
 guard initial.terminalGuideEnabled else {
-    print("hdhr_guide: disabled — Settings → Web LAN → Terminal Guide is off.")
+    print("hdhr_guide: disabled — Settings → Sharing → Terminal Guide is off.")
     exit(1)
 }
 if initial.channels.isEmpty && initial.deviceId.isEmpty {

@@ -15,7 +15,7 @@ macOS `List` with items using `Label(name, systemImage: icon)`. Icons and catego
 - `tv` Guide
 - `bell.badge` Notifications
 - `terminal` Advanced
-- `globe` Web LAN
+- `globe` Sharing
 - `wrench.and.screwdriver` Maintenance
 - `info.circle` About
 
@@ -162,7 +162,7 @@ Sidebar entries (with SF Symbol icons):
 | Guide | `tv` | Guide hours, series scan retry |
 | Notifications | `bell.badge` | Up Next timing, Recording alert timing |
 | Advanced | `terminal` | Network interface, logging + verbose curl + config file path, check for updates, signal quality |
-| Web LAN | `globe` | Enable/disable LAN web server, port, access URL, recording-relay rebroadcast |
+| Sharing | `globe` | Enable/disable LAN web server, port, access URL, recording-relay rebroadcast |
 | Maintenance | `wrench.and.screwdriver` | Show maintenance, guide/device ops |
 | About | `info.circle` | App logo, version, history, GitHub link |
 
@@ -263,13 +263,13 @@ Recording Complete embeds additionally include **Format** (file extension, e.g. 
 
 ---
 
-### Web LAN
+### Sharing
 
-(Settings section — the underlying `Web_server_enabled`/`Web_server_port` config keys and `WebServer.swift`/`webServerRunning`/`webServerError`/`setupWebServer()` Swift symbols are unchanged; only this section's own user-facing label has moved twice — "Web Server" → "Sharing" → "Web LAN" (2026-09-04, explicit user request: "Sharing" read as too vague/generic for what this specific feature actually is). `private enum SettingsCategory`'s `case sharing` Swift symbol itself is untouched, same "only the label moves" precedent both renames followed — only its raw string value changed.)
+(Settings section — the underlying `Web_server_enabled`/`Web_server_port` config keys and `WebServer.swift`/`webServerRunning`/`webServerError`/`setupWebServer()` Swift symbols are unchanged; only user-facing labels have moved. The tab itself: "Web Server" → "Sharing" (historical), briefly "Web LAN" for one day (2026-09-04) then reverted the same day per explicit user correction — "Sharing" is the umbrella covering three independent methods, "Web LAN" is specifically the *first* method's own name, not a name for the whole tab. `private enum SettingsCategory`'s `case sharing` Swift symbol itself is untouched throughout, same "only the label moves" precedent every rename here has followed.)
 
-Three independent sharing *methods* — the LAN web server itself, Terminal Guide, Recording FEED — each with its own always-visible toggle that reveals its own options directly beneath it when on. The LAN toggle is the one durable, user-controlled capability; Terminal Guide's toggle is `.disabled` whenever it's off (Terminal Guide connects to that exact same internal web server, no separate listener of its own); Recording FEED's toggle is **not** gated on it at all — see its own entry below for why. All three default off, and are each explained, with their own purpose-built animated diagram, on first launch by `FirstRunWizardView`'s Web LAN, Terminal Guide, and Recording FEED steps (three separate steps, not combined — see `docs/FirstRunWizardView.md` for why) — see `docs/FirstRunWizardView.md`.
+Three independent sharing *methods* — **Web LAN** (the LAN web server itself), Terminal Guide, Recording FEED — each with its own always-visible toggle that reveals its own options directly beneath it when on. The Web LAN toggle is the one durable, user-controlled capability; Terminal Guide's toggle is `.disabled` whenever it's off (Terminal Guide connects to that exact same internal web server, no separate listener of its own); Recording FEED's toggle is **not** gated on it at all — see its own entry below for why. All three default off, and are each explained, with their own purpose-built animated diagram, on first launch by `FirstRunWizardView`'s Web LAN, Terminal Guide, and Recording FEED steps (three separate steps, not combined — see `docs/FirstRunWizardView.md` for why) — see `docs/FirstRunWizardView.md`.
 
-- **Enable Web LAN** — `Toggle` bound to `draft.Web_server_enabled`. Off by default. Warning label: *"Local network access only. No authentication. Do not expose this port to the internet."*
+- **Web LAN section** — its own **Enable Web LAN** `Toggle` bound to `draft.Web_server_enabled`. Off by default. Warning label: *"Local network access only. No authentication. Do not expose this port to the internet."*
 - **Port** — `TextField` (value binding, `.number.grouping(.never)` format to suppress the thousands comma), shown when enabled. Validated 1025–65534. Invalid values show an orange warning and block the Save button and `WindowCloseInterceptor`. Saving restarts the `NWListener` and re-registers mDNS at the new port immediately — no app restart needed.
 - **Access row** — shown only when `state.config.Web_server_enabled && state.webServerRunning`. Displays `http://{ip}:{port}` as selectable monospaced text with an **Open** `Link`. IP is resolved by `availableNetworkInterfaces()` filtering out `utun*` VPN interfaces; falls back to `"localhost"`. The link uses the device's IP directly (not an mDNS `.local` hostname) to prevent browser HTTPS upgrades.
 - **Terminal Guide section** — always visible; its **Enable Terminal Guide** `Toggle` (bound to

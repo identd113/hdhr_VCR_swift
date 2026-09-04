@@ -199,7 +199,7 @@ struct MenuContent: View {
                                 // "auto" (any non-empty, non-"none" string) only tells the remote
                                 // relay "transcode this" — it never decides the actual level;
                                 // that's the *source* Mac's own configured "Default transcode
-                                // level" (Settings → Web LAN → Recording FEED), by design (see
+                                // level" (Settings → Sharing → Recording FEED), by design (see
                                 // WebServer.effectiveTranscodeProfile's own doc comment).
                                 let url = (pair.entry.URL ?? "") + "&transcode=auto"
                                 state.watchRemoteRelay(url: url, title: title, device: pair.device)

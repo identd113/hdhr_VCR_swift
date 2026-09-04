@@ -9,11 +9,15 @@ private enum SettingsCategory: String, CaseIterable, Identifiable {
     case guide         = "Guide"
     case notifications = "Notifications"
     case advanced      = "Advanced"
-    // Raw value renamed "Sharing" → "Web LAN" 2026-09-04, per explicit user request — the
-    // underlying Web_server_enabled/webServerRunning/setupWebServer() Swift symbols and config
-    // keys are unchanged, same "only the user-facing label moves" precedent as the section's
-    // earlier "Web Server" → "Sharing" rename (see sharingView's own doc comment history).
-    case sharing       = "Web LAN"
+    // The TAB stays "Sharing" — an umbrella covering three independent LAN-facing methods (the
+    // web server itself, Terminal Guide, Recording FEED). Briefly renamed to "Web LAN" 2026-09-04,
+    // then reverted the same day per explicit user correction: "Web LAN" is the *first* method's
+    // own name (its own Section within this tab, see sharingView below — matches how "Terminal
+    // Guide"/"Recording FEED" each already have their own section name distinct from the tab), not
+    // a name for the whole tab. Underlying Web_server_enabled/webServerRunning/setupWebServer()
+    // Swift symbols and config keys are, either way, unchanged — same "only the user-facing label
+    // moves" precedent as the section's earlier "Web Server" → "Sharing" rename.
+    case sharing       = "Sharing"
     case maintenance   = "Maintenance"
     case about         = "About"
 
@@ -654,7 +658,7 @@ struct SettingsView: View {
         .navigationTitle("Advanced")
     }
 
-    // MARK: - Web LAN
+    // MARK: - Sharing
 
     private var sharingView: some View {
         Form {
@@ -806,7 +810,7 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .navigationTitle("Web LAN")
+        .navigationTitle("Sharing")
     }
 
     // Opens a new Terminal window and runs `executable` in it directly, via

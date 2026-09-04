@@ -390,7 +390,7 @@ struct FirstRunWizardView: View {
             Section {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Web LAN").font(.headline)
-                    Text("Reach your guide and recordings from any browser on your home network. Off by default. You can change this later in Settings → Web LAN.")
+                    Text("Reach your guide and recordings from any browser on your home network. Off by default. You can change this later in Settings → Sharing.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -418,7 +418,7 @@ struct FirstRunWizardView: View {
             Section {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Terminal Guide").font(.headline)
-                    Text("A command-line version of the same guide, for browsing and recording from a terminal instead of a browser. Off by default. You can change this later in Settings → Web LAN.")
+                    Text("A command-line version of the same guide, for browsing and recording from a terminal instead of a browser. Off by default. You can change this later in Settings → Sharing.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -450,7 +450,7 @@ struct FirstRunWizardView: View {
             Section {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Recording FEED").font(.headline)
-                    Text("Watch a recording that's already in progress from another Mac — live, without spending a second tuner. You can change this later in Settings → Web LAN.")
+                    Text("Watch a recording that's already in progress from another Mac — live, without spending a second tuner. You can change this later in Settings → Sharing.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }

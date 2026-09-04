@@ -381,12 +381,12 @@ full-contrast lines).
 
 A first-launch-only setup flow covering the handful of settings worth deciding before using the
 app: where recordings are saved and how, how much notice you get before one starts, and — since
-2026-09-04 — every LAN-facing feature this app's Settings groups under its "Web LAN" section
-(Enable Web LAN, Terminal Guide, Recording FEED), each its own step, since each is now off by
-default and worth a one-time explanation of what it actually does before a first-time user goes
-looking for it in Settings. Everything else (Discord, Guide) is still left for `SettingsView` —
-this wizard covers "what's off by default and needs a plain-English explanation," not a full
-onboarding tour of every setting in the app.
+2026-09-04 — every LAN-facing feature this app's Settings groups under its "Sharing" tab (Enable
+Web LAN, Terminal Guide, Recording FEED), each its own step, since each is now off by default and
+worth a one-time explanation of what it actually does before a first-time user goes looking for it
+in Settings. Everything else (Discord, Guide) is still left for `SettingsView` — this wizard covers
+"what's off by default and needs a plain-English explanation," not a full onboarding tour of every
+setting in the app.
 
 Every field defaults to the **current** config value (`loadCurrentValuesIfNeeded()`, called from
 `.onAppear`), not a hardcoded factory default — re-running the wizard later via the reset button
@@ -489,7 +489,7 @@ as every other field here: `finish()` writes it to `state.config.Virtual_tuner_r
 if it changed, calls `state.updateVirtualTunerPresence()` directly so a recording already in
 progress (only realistically possible via a mid-session reset from Settings → Maintenance) reflects
 the new setting immediately rather than waiting for that recording to end. `SettingsView`'s own
-Web LAN → Recording FEED toggle is the same setting, same wording, reachable any time after this
+Sharing → Recording FEED toggle is the same setting, same wording, reachable any time after this
 wizard closes — this screen exists purely so a first-time user sees the explanation once, unprompted.
 
 ### `NetworkFlowDiagram` (`Views/NetworkFlowDiagram.swift`)
