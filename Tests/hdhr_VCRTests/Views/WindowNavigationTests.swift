@@ -945,6 +945,137 @@ struct WindowNavigationTests {
         #expect(parts[1] == "true", "Edit Show window did not close cleanly")
     }
 
+    /// Deliberately crosses the boundary `watchNowRowButtonsAreAccessible`'s own doc comment
+    /// describes ("this suite only pops the app's own SwiftUI windows, not VLC") — added 2026-09-04
+    /// specifically to verify the VLC player window's own accessibility, which nothing else in this
+    /// file (or the app) had ever confirmed live. Only reachable when a show is actually recording
+    /// (skips cleanly otherwise, same "nothing to test" pattern `editShowOpensAndCloses` uses for
+    /// an empty schedule) — clicks the *recording-relay* "Watch Now!" row specifically (matched by
+    /// its help text, "Play the in-progress recording..."), never a live-channel "Watch " button,
+    /// which would need a free physical tuner and could fail/no-op with both tuners busy (confirmed
+    /// live: a first draft of this test matched the wrong button — the generic `"Watch "` prefix —
+    /// and hit a real "No Tuner Available" alert instead of opening the player).
+    ///
+    /// Real finding from building this test, worth preserving: unlike every other control in this
+    /// file (`watchNowRowButtonsAreAccessible`'s own comment: only `help of` comes through, `name`/
+    /// `description` are `missing value`), the VLC player's own SwiftUI controls — all newly given
+    /// an explicit `.accessibilityIdentifier(...)` in `VLCPlayerView.swift`, 2026-09-04 — DO surface
+    /// reliably via `value of attribute "AXIdentifier" of e`. A materially more robust lookup than
+    /// text-matching `help`/`description` (stable across UI copy changes, no risk of matching the
+    /// wrong same-prefixed control the way a bare `help starts with "Watch "` did above), confirmed
+    /// live rather than assumed given this file's own track record of AX properties not surfacing
+    /// the way SwiftUI's own modifier names might suggest.
+    @Test func vlcPlayerControlsAreAccessible() throws {
+        guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+        let script = #"""
+        tell application "System Events"
+            tell process "hdhr_VCR"
+                \#(dismissDonationNagSnippet)
+                click menu item "Watch Now…" of menu 1 of menu bar item 1 of menu bar 2
+                repeat 20 times
+                    delay 0.25
+                    if (count of windows) > 0 then exit repeat
+                end repeat
+                set watchBtn to missing value
+                repeat 20 times
+                    try
+                        set allEls to entire contents of window "Watch Now"
+                        repeat with e in allEls
+                            try
+                                if role of e is "AXButton" then
+                                    set h to (help of e) as string
+                                    if h starts with "Play the in-progress recording" then
+                                        set watchBtn to e
+                                        exit repeat
+                                    end if
+                                end if
+                            end try
+                        end repeat
+                    end try
+                    if watchBtn is not missing value then exit repeat
+                    delay 0.25
+                end repeat
+                if watchBtn is missing value then
+                    try
+                        click (first button of window "Watch Now" whose description is "close button")
+                    end try
+                    return "NO_RECORDING_TO_WATCH"
+                end if
+                click watchBtn
+                repeat 20 times
+                    delay 0.25
+                    if (count of windows) > 1 then exit repeat
+                end repeat
+                -- Player window title is the show's own title (VLCPlayerWindowManager sets
+                -- win.title = title) — not a fixed name, so find it as "whichever window isn't
+                -- Watch Now" rather than matching a literal string.
+                set playerWin to missing value
+                repeat with w in windows
+                    if (name of w) is not "Watch Now" then
+                        set playerWin to w
+                        exit repeat
+                    end if
+                end repeat
+                if playerWin is missing value then return "NO_PLAYER_WINDOW"
+                -- Same settle-then-poll shape as watchNowRowButtonsAreAccessible above — the
+                -- toolbar's own AX subtree populates after the window itself does.
+                set foundIds to {}
+                repeat 20 times
+                    set foundIds to {}
+                    try
+                        set allEls to entire contents of playerWin
+                        repeat with e in allEls
+                            try
+                                set idVal to (value of attribute "AXIdentifier" of e) as string
+                                if idVal starts with "vlc-" then set end of foundIds to idVal
+                            end try
+                        end repeat
+                    end try
+                    if (count of foundIds) > 0 then exit repeat
+                    delay 0.25
+                end repeat
+                try
+                    click (first button of playerWin whose description is "close button")
+                end try
+                repeat 20 times
+                    delay 0.2
+                    if (count of windows) = 1 then exit repeat
+                end repeat
+                try
+                    click (first button of window "Watch Now" whose description is "close button")
+                end try
+                set idList to ""
+                repeat with i in foundIds
+                    set idList to idList & i & ","
+                end repeat
+                return idList
+            end tell
+        end tell
+        """#
+        guard let result = runAppleScript(script) else {
+            Issue.record("VLC player accessibility script failed to run")
+            return
+        }
+        // Nothing recording — nothing to watch, not a failure of this test (same pattern as
+        // editShowOpensAndCloses's "no show has an Edit… entry" skip above).
+        if result == "NO_RECORDING_TO_WATCH" { return }
+        if result == "NO_PLAYER_WINDOW" {
+            Issue.record("Watch Now's recording-relay button didn't open a second window")
+            return
+        }
+        let foundIds = Set(result.split(separator: ",").map(String.init))
+        // The identifiers every Watch Now (local recording-relay) session should expose regardless
+        // of which show/device — deliberately excludes vlc-feed-transcode-toggle/vlc-cc-picker,
+        // which are FEED-only and recording-relay-hidden respectively (see this test's own doc
+        // comment and VLCPlayerView.swift's own CC-picker condition).
+        let expected: Set<String> = [
+            "vlc-channel-picker", "vlc-catch-up-button", "vlc-native-resolution",
+            "vlc-volume-slider", "vlc-start-button",
+        ]
+        let missing = expected.subtracting(foundIds)
+        #expect(missing.isEmpty, "VLC player window is missing expected accessibility identifiers: \(missing.sorted())")
+    }
+
     /// Shared helper for the simple single-instance windows (Add Show, Watch Now) that open
     /// directly from a flat top-level menu item with no per-show submenu to navigate.
     private func openAndCloseTopLevelWindow(menuItemName: String) throws -> (title: String, windowCountAfter: Int) {

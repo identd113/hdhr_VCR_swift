@@ -543,6 +543,7 @@ struct VLCPlayerView: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(!bridge.isPlaying)
+                    .accessibilityIdentifier("vlc-start-button")
                     .padding(.top, 4)
                 }
                 .frame(maxWidth: 360, alignment: .leading)
@@ -578,6 +579,7 @@ struct VLCPlayerView: View {
                     overlayButtonLabel("Retry", systemImage: "arrow.clockwise")
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier("vlc-retry-button")
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -607,6 +609,7 @@ struct VLCPlayerView: View {
                         overlayButtonLabel("Play Again", systemImage: "arrow.clockwise")
                     }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier("vlc-play-again-button")
                 }
             }
         }
@@ -664,6 +667,8 @@ struct VLCPlayerView: View {
             }
             .labelsHidden()
             .frame(maxWidth: 220)
+            .accessibilityLabel("Channel")
+            .accessibilityIdentifier("vlc-channel-picker")
             .onChange(of: selectedChannel) { _, ch in
                 posterHidden = false
                 posterNSImage = nil
@@ -701,6 +706,7 @@ struct VLCPlayerView: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(.red)
                 .accessibilityLabel("Record \(entry.Title)")
+                .accessibilityIdentifier("vlc-quick-record")
                 .help("Record \(entry.Title)")
             }
 
@@ -739,6 +745,9 @@ struct VLCPlayerView: View {
                 }
                 .toggleStyle(.checkbox)
                 .help(feedIsTranscoding ? "Switch to the raw source stream" : "Switch to H.264 (transcoded by the source Mac)")
+                .accessibilityLabel("H.264 transcode")
+                .accessibilityValue(feedIsTranscoding ? "On" : "Off")
+                .accessibilityIdentifier("vlc-feed-transcode-toggle")
             }
 
             // Native resolution: resize window to 1:1 physical pixels.
@@ -752,6 +761,7 @@ struct VLCPlayerView: View {
             }
             .buttonStyle(.plain)
             .disabled(!canResize)
+            .accessibilityIdentifier("vlc-native-resolution")
             .onHover { if $0 { nativeResHovered = true } }
             .popover(isPresented: $nativeResHovered, arrowEdge: .bottom) { nativeResPopover }
 
@@ -772,6 +782,7 @@ struct VLCPlayerView: View {
             Slider(value: $volume, in: 0...100)
                 .frame(width: 100)
                 .accessibilityLabel("Volume")
+                .accessibilityIdentifier("vlc-volume-slider")
                 .onChange(of: volume) { _, v in
                     VLCBridge.shared.setVolume(Int(v))
                 }
@@ -781,7 +792,7 @@ struct VLCPlayerView: View {
                 Divider().frame(height: 18)
                 Image(systemName: "headphones")
                     .foregroundStyle(.secondary)
-                    .accessibilityLabel("Audio track")
+                    .accessibilityHidden(true)   // decorative — the Picker below carries the real label
                 Picker("Audio Track", selection: $selectedAudioTrackId) {
                     ForEach(bridge.audioTracks, id: \.id) { track in
                         Text(track.name).tag(track.id)
@@ -789,6 +800,8 @@ struct VLCPlayerView: View {
                 }
                 .labelsHidden()
                 .frame(maxWidth: 150)
+                .accessibilityLabel("Audio track")
+                .accessibilityIdentifier("vlc-audio-track-picker")
                 .onChange(of: selectedAudioTrackId) { _, id in
                     guard id >= 0 else { return }
                     VLCBridge.shared.setAudioTrack(id: id)
@@ -804,7 +817,7 @@ struct VLCPlayerView: View {
                 Divider().frame(height: 18)
                 Image(systemName: "captions.bubble")
                     .foregroundStyle(selectedSpuTrackId >= 0 ? .primary : .secondary)
-                    .accessibilityLabel("Closed captions")
+                    .accessibilityHidden(true)   // decorative — the Picker below carries the real label
                 // A custom binding, not $selectedSpuTrackId directly, so only a real tap here
                 // (never the programmatic resets elsewhere) marks the choice explicit — see
                 // spuChoiceIsExplicit's own doc comment for why -1 alone can't tell them apart.
@@ -819,6 +832,8 @@ struct VLCPlayerView: View {
                 }
                 .labelsHidden()
                 .frame(maxWidth: 130)
+                .accessibilityLabel("Closed captions")
+                .accessibilityIdentifier("vlc-cc-picker")
                 .onChange(of: selectedSpuTrackId) { _, id in
                     VLCBridge.shared.setSpuTrack(id: id)
                 }
@@ -828,7 +843,7 @@ struct VLCPlayerView: View {
             if !systemDevices.isEmpty {
                 Divider().frame(height: 18)
                 Image(systemName: "airplayaudio").foregroundStyle(.secondary)
-                    .accessibilityLabel("Audio output")
+                    .accessibilityHidden(true)   // decorative — the Picker below carries the real label
                 Picker("Audio Output", selection: $selectedDevice) {
                     ForEach(systemDevices, id: \.id) { dev in
                         Text(dev.name).tag(dev.id)
@@ -836,6 +851,8 @@ struct VLCPlayerView: View {
                 }
                 .labelsHidden()
                 .frame(maxWidth: 200)
+                .accessibilityLabel("Audio output")
+                .accessibilityIdentifier("vlc-audio-output-picker")
                 .onChange(of: selectedDevice) { _, devId in
                     VLCBridge.shared.setAudioDevice(output: "auhal", deviceId: devId)
                 }
@@ -859,6 +876,7 @@ struct VLCPlayerView: View {
                 .frame(maxWidth: 80)
                 .help("Move to display")
                 .accessibilityLabel("Select display")
+                .accessibilityIdentifier("vlc-display-menu")
             }
         }
         .padding(.horizontal, 12)
@@ -905,6 +923,7 @@ struct VLCPlayerView: View {
                         }
                     })
                     .accessibilityLabel("Recording position")
+                    .accessibilityIdentifier("vlc-recording-scrub-slider")
                     Text(ctx.date, style: .time)
                         .monospacedDigit()
                         .foregroundStyle(.white.opacity(0.7))
@@ -941,6 +960,11 @@ struct VLCPlayerView: View {
         .help(bridge.recordingShowId != nil
               ? "Jump to the live edge of the recording"
               : "Speed up to live — discard buffer and jump to live edge")
+        // The icon-only (showLabel: false) case has no Text for SwiftUI to auto-derive a label
+        // from — explicit here so VoiceOver announces something meaningful either way, not just
+        // the SF Symbol's raw name.
+        .accessibilityLabel(bridge.recordingShowId != nil ? "Live Edge" : "Catch Up")
+        .accessibilityIdentifier("vlc-catch-up-button")
     }
 
     private var bufferMonitor: some View {
@@ -962,6 +986,7 @@ struct VLCPlayerView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Live buffer")
         .accessibilityValue("\(min(8, Int(info.lagSec.rounded()))) of 8 seconds")
+        .accessibilityIdentifier("vlc-buffer-monitor")
         .onHover { if $0 { bufferInfoHovered = true } }
         .popover(isPresented: $bufferInfoHovered, arrowEdge: .bottom) { bufferPopover }
     }
