@@ -292,6 +292,18 @@ final class AppState: ObservableObject {
     // exposes no readable state at all. Not `private` — WebServer's /discover.json/lineup.json
     // handlers read it directly, same convention as `shows`/`devices`/`config` etc. below.
     var activeVirtualTunerDeviceID: String?
+    // Count of currently-connected outbound relay viewers on the raw-passthrough path only —
+    // incremented/decremented by WebServer.handleVirtualTunerStream around each
+    // streamGrowingFile(...) call, via its onStreamEnded callback for the decrement (both hops land
+    // here from a background queue via Task { @MainActor in ... }, since WebServer's fileIOQueue/
+    // queue aren't MainActor-isolated). Never touched by local Watch Now (handleWatchRecording
+    // doesn't pass onStreamEnded), so this counts only genuine outbound-to-another-machine viewers.
+    // MenuContent sums this with VLCBridge.shared.transcodeViewerCount(showId:) (already correctly
+    // ref-counted per show) at display time rather than folding transcode viewers into this same
+    // counter — that accounting already exists and doesn't need a second copy of it here.
+    @Published private(set) var relayRawViewerCount: Int = 0
+    func relayRawViewerConnected() { relayRawViewerCount += 1 }
+    func relayRawViewerDisconnected() { relayRawViewerCount = max(0, relayRawViewerCount - 1) }
     @Published var webServerRunning: Bool    = false
     @Published var webServerError:   String? = nil
     private var internalWebServerUseCount = 0  // ref count: each open WKWebView guide window increments

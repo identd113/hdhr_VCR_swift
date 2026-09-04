@@ -96,4 +96,29 @@ struct VirtualTunerGuardrailTests {
         let state = await makeTestAppState(devices: [relay])
         #expect(await state.vlcOccupiesTuner(for: "FEED4444") == false)
     }
+
+    // MARK: - Relay raw viewer count
+
+    @Test func relayRawViewerCount_connectAndDisconnectTrackCorrectly() async {
+        // Exercises the counter itself, not WebServer.handleVirtualTunerStream's live-NWConnection
+        // call sites (kept out of the unit-test suite for the same reason as the "enabled" branch
+        // above) — connected()/disconnected() are the whole surface those call sites actually touch.
+        let state = await makeTestAppState()
+        #expect(await state.relayRawViewerCount == 0)
+        await MainActor.run { state.relayRawViewerConnected() }
+        await MainActor.run { state.relayRawViewerConnected() }
+        #expect(await state.relayRawViewerCount == 2)
+        await MainActor.run { state.relayRawViewerDisconnected() }
+        #expect(await state.relayRawViewerCount == 1)
+    }
+
+    @Test func relayRawViewerCount_disconnectNeverGoesNegative() async {
+        // A stray extra disconnect (e.g. both a real send-error path and a timeout racing to fire
+        // for the same connection, however unlikely given sendWithTimeout's own single-fire guard)
+        // must clamp at 0, not underflow into a negative count that would then need two connects to
+        // recover from.
+        let state = await makeTestAppState()
+        await MainActor.run { state.relayRawViewerDisconnected() }
+        #expect(await state.relayRawViewerCount == 0)
+    }
 }

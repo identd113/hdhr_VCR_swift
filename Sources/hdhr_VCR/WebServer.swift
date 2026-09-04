@@ -719,8 +719,17 @@ final class WebServer: @unchecked Sendable {
                 } else {
                     glog("[VirtualTuner] /auto/v\(channel) → 200 raw passthrough, show='\(show.show_title)' path=\(path)")
                 }
+                // Counts only this — a raw-passthrough relay viewer — not a local Watch Now session
+                // (handleWatchRecording never passes onStreamEnded) and not a transcode viewer
+                // (already correctly ref-counted by VLCBridge.transcodeViewerCount(showId:); summed
+                // with this count only at display time, in MenuContent, rather than unified into one
+                // running total here). Both hops land on MainActor since AppState isn't otherwise
+                // safe to touch from fileIOQueue.
+                Task { @MainActor in state.relayRawViewerConnected() }
                 self.streamGrowingFile(path: path, showId: showId, startOffset: 0, conn: conn,
-                                        durationSeconds: durationSeconds)
+                                        durationSeconds: durationSeconds, onStreamEnded: { [weak state] in
+                    Task { @MainActor in state?.relayRawViewerDisconnected() }
+                })
             }
         }
     }
@@ -904,10 +913,18 @@ final class WebServer: @unchecked Sendable {
     // own Watch Now) — only the virtual-tuner stream endpoint (handleVirtualTunerStream) passes a
     // real value, mirroring the real HDHomeRun device's own `?duration=` stream parameter (see
     // RecordingManager.swift's identical use of it against a real tuner).
+    // `onStreamEnded`, when given, fires exactly once when this stream actually ends — a real send
+    // error or timeout, the connection dying, the requested duration elapsing, or the source
+    // recording finishing and draining — from whichever of pumpGrowingFile/handleGrowingFileChunk's
+    // several exit points gets there first. Added 2026-09-04 so a caller (handleVirtualTunerStream)
+    // can track how many relay viewers are currently connected without needing its own separate
+    // connection-lifecycle bookkeeping; local Watch Now (handleWatchRecording) passes nil and isn't
+    // counted, since it's this Mac's own playback, not an outbound stream to another machine.
     private func streamGrowingFile(path: String, showId: String, startOffset: Int, conn: NWConnection,
-                                    durationSeconds: Int? = nil) {
+                                    durationSeconds: Int? = nil, onStreamEnded: (() -> Void)? = nil) {
         guard let handle = FileHandle(forReadingAtPath: path) else {
             queue.async { self.send(.notFound("could not open recording file"), on: conn) }
+            onStreamEnded?()
             return
         }
         var initialBytes = 0
@@ -932,10 +949,12 @@ final class WebServer: @unchecked Sendable {
                     self?.fileIOQueue.async { handle.closeFile() }
                     conn.cancel()
                     glog("[WebServer] watch-recording header send failed show=\(showId): \(reason ?? "unknown")", level: .warning)
+                    onStreamEnded?()
                     return
                 }
                 self.pumpGrowingFile(handle: handle, showId: showId, conn: conn,
-                                      bytesSent: initialBytes, waitStreak: 0, waitStartedAt: nil, deadline: deadline)
+                                      bytesSent: initialBytes, waitStreak: 0, waitStartedAt: nil, deadline: deadline,
+                                      onStreamEnded: onStreamEnded)
             }
         }
     }
@@ -952,7 +971,8 @@ final class WebServer: @unchecked Sendable {
     // → queue.async (send) rather than looping in place, so each step yields back to both queues
     // between file reads and socket sends.
     private func pumpGrowingFile(handle: FileHandle, showId: String, conn: NWConnection,
-                                  bytesSent: Int, waitStreak: Int, waitStartedAt: Date?, deadline: Date? = nil) {
+                                  bytesSent: Int, waitStreak: Int, waitStartedAt: Date?, deadline: Date? = nil,
+                                  onStreamEnded: (() -> Void)? = nil) {
         // Checked once per recursion (covers both the "have data" and "waiting" paths below) —
         // without this, a connection cancelled while the loop is in its 0.5s wait-for-more-data
         // poll (the common state once caught up to the live edge) wouldn't be noticed until a
@@ -961,6 +981,7 @@ final class WebServer: @unchecked Sendable {
         case .cancelled, .failed:
             glog("[WebServer] watch-recording show=\(showId) connection no longer alive at \(bytesSent) bytes — stopping")
             fileIOQueue.async { handle.closeFile() }
+            onStreamEnded?()
             return
         default:
             break
@@ -971,6 +992,7 @@ final class WebServer: @unchecked Sendable {
             glog("[WebServer] watch-recording show=\(showId) duration elapsed at \(bytesSent) bytes — closing stream")
             fileIOQueue.async { handle.closeFile() }
             conn.cancel()
+            onStreamEnded?()
             return
         }
         fileIOQueue.async { [weak self] in
@@ -979,7 +1001,7 @@ final class WebServer: @unchecked Sendable {
             self.queue.async {
                 self.handleGrowingFileChunk(chunk, handle: handle, showId: showId, conn: conn,
                                              bytesSent: bytesSent, waitStreak: waitStreak, waitStartedAt: waitStartedAt,
-                                             deadline: deadline)
+                                             deadline: deadline, onStreamEnded: onStreamEnded)
             }
         }
     }
@@ -988,7 +1010,8 @@ final class WebServer: @unchecked Sendable {
     // EOF for now") comes back from fileIOQueue — always runs on `queue`, same as the rest of this
     // file's connection handling.
     private func handleGrowingFileChunk(_ chunk: Data, handle: FileHandle, showId: String, conn: NWConnection,
-                                         bytesSent: Int, waitStreak: Int, waitStartedAt: Date?, deadline: Date? = nil) {
+                                         bytesSent: Int, waitStreak: Int, waitStartedAt: Date?, deadline: Date? = nil,
+                                         onStreamEnded: (() -> Void)? = nil) {
         guard !chunk.isEmpty else {
             // Caught up to what curl has written so far — poll until either more data lands or
             // the recording finishes, instead of ending the stream the moment we hit today's EOF.
@@ -1003,12 +1026,13 @@ final class WebServer: @unchecked Sendable {
                     self.queue.asyncAfter(deadline: .now() + 0.5) { [weak self] in
                         self?.pumpGrowingFile(handle: handle, showId: showId, conn: conn,
                                                bytesSent: bytesSent, waitStreak: waitStreak + 1, waitStartedAt: startedAt,
-                                               deadline: deadline)
+                                               deadline: deadline, onStreamEnded: onStreamEnded)
                     }
                 } else {
                     glog("[WebServer] watch-recording show=\(showId) recording finished, drained \(bytesSent) bytes — closing stream")
                     self.fileIOQueue.async { handle.closeFile() }
                     conn.cancel()
+                    onStreamEnded?()
                 }
             }
             return
@@ -1031,11 +1055,13 @@ final class WebServer: @unchecked Sendable {
                 // calling it here even when the connection may already be dying is harmless.
                 conn.cancel()
                 glog("[WebServer] watch-recording show=\(showId) client disconnected after \(newTotal) bytes: \(reason ?? "unknown")")
+                onStreamEnded?()
                 return
             }
             self.queue.async {
                 self.pumpGrowingFile(handle: handle, showId: showId, conn: conn,
-                                      bytesSent: newTotal, waitStreak: 0, waitStartedAt: nil, deadline: deadline)
+                                      bytesSent: newTotal, waitStreak: 0, waitStartedAt: nil, deadline: deadline,
+                                      onStreamEnded: onStreamEnded)
             }
         }
     }

@@ -96,6 +96,21 @@ struct MenuContent: View {
                                                  Color(NSColor.secondaryLabelColor))
         }
         Text(state.statusMessage).foregroundStyle(Color(NSColor.secondaryLabelColor))
+        // ── Relay stats ───────────────────────────────────────────────────
+        // Shown only while this instance's own virtual tuner is actually advertised (a show is
+        // recording + the relay is enabled) — not a permanent row, since there's nothing to report
+        // otherwise. Combines relayRawViewerCount (raw-passthrough relay connections, tracked in
+        // AppState — see its own doc comment) with VLCBridge's own per-show transcodeViewerCount
+        // (already correctly ref-counted) summed across every currently-recording show, rather than
+        // unifying both into one running total — each half already has its own correct source of
+        // truth, no need for a second copy. Shown even at 0 watching, as confirmation the relay
+        // itself is up and reachable, not just once someone connects.
+        if state.activeVirtualTunerDeviceID != nil {
+            let transcodeViewers = state.recordingShows.reduce(0) { $0 + VLCBridge.shared.transcodeViewerCount(showId: $1.show_id) }
+            let totalViewers = state.relayRawViewerCount + transcodeViewers
+            Text("Relay: \(totalViewers) watching")
+                .foregroundStyle(Color(NSColor.secondaryLabelColor))
+        }
         // ── Add Show ──────────────────────────────────────────────────────
         Button { open("add-show") } label: { Label("Add Show…", systemImage: "plus") }
         // ── Watch Now ─────────────────────────────────────────────────────
@@ -163,6 +178,14 @@ struct MenuContent: View {
                 ForEach(remoteRelayEntries, id: \.entry.URL) { pair in
                     let title = pair.entry.virtualRelayShowTitle ?? pair.entry.GuideName
                     let vlcReady = VLCBridge.shared.isAvailable
+                    let codec = pair.entry.VideoCodec ?? "unknown"
+                    // Only offer H.264 when the source isn't already a modern codec — the remote
+                    // relay's own "Already-modern-codec skip" (docs/VirtualTunerService.md) would
+                    // just relay it as-is regardless of this request, making a second, functionally
+                    // identical button pointless. VideoCodec being unset/"unknown" (an older
+                    // firmware, or this app's own synthetic virtual-relay lineup entries never
+                    // setting it) is treated as "not confirmed modern" — offer it, don't hide it.
+                    let alreadyModern = MPEGVideoStreamType.isAlreadyModernCodec(codec)
                     Menu {
                         Button {
                             state.watchRemoteRelay(url: pair.entry.URL ?? "", title: title, device: pair.device)
@@ -170,15 +193,29 @@ struct MenuContent: View {
                             Label(vlcReady ? "Watch" : "Watch (Requires VLC)", systemImage: "play.tv.fill")
                         }
                         .disabled(!vlcReady)
+                        if !alreadyModern {
+                            Button {
+                                // "auto" (any non-empty, non-"none" string) only tells the remote
+                                // relay "transcode this" — it never decides the actual level;
+                                // that's the *source* Mac's own configured "Default transcode
+                                // level" (Settings → Sharing → Recording Relay), by design (see
+                                // WebServer.effectiveTranscodeProfile's own doc comment).
+                                let url = (pair.entry.URL ?? "") + "&transcode=auto"
+                                state.watchRemoteRelay(url: url, title: title, device: pair.device)
+                            } label: {
+                                Label(vlcReady ? "Watch (H.264)" : "Watch (H.264) (Requires VLC)", systemImage: "play.tv.fill")
+                            }
+                            .disabled(!vlcReady)
+                        }
                         Divider()
-                        // Incoming/outgoing are always the same value today — watchRemoteRelay
-                        // never applies a transcode override, so what clicking Watch above actually
-                        // gives you is always identical to the source's own broadcast codec. Shown
-                        // as two separate rows anyway so this doesn't need re-deriving if a future
-                        // feature ever adds a transcode choice here.
-                        let codec = pair.entry.VideoCodec ?? "unknown"
+                        // "Source" is always accurate; "You'll get" only describes the plain Watch
+                        // button above — when a second, H.264-transcoded option is also offered,
+                        // the two buttons' own labels already say which is which, so this line is
+                        // skipped rather than shown twice with two different meanings.
                         menuInfo("Source: \(codec)", font: .footnote, secondary: true)
-                        menuInfo("You'll get: \(codec)", font: .footnote, secondary: true)
+                        if alreadyModern {
+                            menuInfo("You'll get: \(codec)", font: .footnote, secondary: true)
+                        }
                         // Reflects an already-active remote transcode session (any viewer of THIS
                         // show on the remote Mac, not just this instance) — see
                         // VirtualTunerService.transcodeViewersKey's own doc comment. Omitted
