@@ -515,3 +515,9 @@ Or open Console.app → use Settings → Advanced → Logging → "Show App Log 
 | `"internet720"` | `http://{device}/auto/vX.X?transcode=internet720` |
 
 For the channel picker, `Default_transcode` is used (no show-specific transcode because the picker is not show-aware). For "Watch Now!" from a recording or guide entry, the show's `show_transcode` is passed and takes priority.
+
+### Viewer-side decode is already hardware-accelerated for H.264
+
+`VLCBridge`'s global libvlc init (`VLCBridge.swift`, the `libvlc_new` argv) never sets `--avcodec-hw` — only the two x264 GOP options (`--sout-x264-keyint`/`-min-keyint`, encode-side only, see `docs/VirtualTunerService.md`'s Phase 2 section) are passed. That leaves libvlc at its own default, `avcodec-hw=any` (confirmed via `vlc -p avcodec --advanced --help-verbose`), which attempts hardware decode whenever the codec/platform supports it. Live-verified 2026-09-04: playing a VideoToolbox-eligible source through the same untouched libvlc engine spawned `VTDecoderXPCService` (macOS's hardware VideoToolbox decode helper) — direct proof decode is running on the GPU/media engine, not the CPU, with no code change needed.
+
+This applies to any H.264 stream the on-screen player receives — a source channel that's natively H.264, or a FEED transcoded server-side to H.264 (see `docs/VirtualTunerService.md`'s "H.264 option" and "In-player raw/H.264 toggle"). It does **not** apply to raw MPEG-2 playback — VideoToolbox cannot hardware-decode MPEG-2 on Apple Silicon at all (`VTIsHardwareDecodeSupported` returns `false`), a hardware/OS limitation independent of VLC or this app, so MPEG-2 decode is always software regardless. Encode is a separate story entirely: this VLC install has no hardware H.264 *encoder* module at all (see `TODO.md`'s "Virtual tuner relay transcode" item 3), so the server-side transcode step (`startTranscodeSession`) stays pure-software CPU work no matter what.
