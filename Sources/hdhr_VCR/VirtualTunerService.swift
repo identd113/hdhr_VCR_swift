@@ -34,10 +34,16 @@ final class VirtualTunerService {
     // submenu — see buildVirtualTunerLineupJSON's own comment on why this is per-show, not
     // machine-wide, and why it reflects viewers of an ALREADY-active remote transcode session, not
     // anything this instance's own click would request (watchRemoteRelay never applies a transcode
-    // override today).
+    // override today). signalQualityKey, added 2026-09-04, carries the source tuner's own estimated
+    // signal (same 0-100 snq scale a real device's /status.json SignalQualityPercent field uses —
+    // WebServer.liveSignalQualityPercent(for:state:) is the shared lookup both that route and this
+    // key's own producer, buildVirtualTunerLineupJSON, read from) — a real lineup entry has no
+    // per-channel signal field at all, only /status.json does, so this has to be a synthetic key
+    // here rather than reusing the real field name the way VideoCodec/AudioCodec do above.
     static let virtualRelayMarkerKey = "HdhrVCRplusVirtualRelay"
     static let showTitleKey = "HdhrVCRplusShowTitle"
     static let transcodeViewersKey = "HdhrVCRplusTranscodeViewers"
+    static let signalQualityKey = "HdhrVCRplusSignalQualityPercent"
 
     private let queue = DispatchQueue(label: "hdhrVCRplus.virtualtuner.udp", qos: .utility)
     private var sock: Int32 = -1

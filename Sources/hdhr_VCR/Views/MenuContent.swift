@@ -223,6 +223,15 @@ struct MenuContent: View {
                         if let viewers = pair.entry.virtualRelayTranscodeViewers, viewers > 0 {
                             menuInfo("Transcoding: \(viewers) viewer\(viewers == 1 ? "" : "s")", font: .footnote, secondary: true)
                         }
+                        // Estimated signal on the *remote* Mac's real tuner actually recording this
+                        // show — see VirtualTunerService.signalQualityKey's own doc comment for
+                        // where this comes from (piggybacked on /lineup.json, not a separate
+                        // /status.json fetch this instance doesn't otherwise make for a relay
+                        // device). Omitted entirely rather than "0%" when not yet known, same
+                        // convention as the viewer count above.
+                        if let snq = pair.entry.virtualRelaySignalQualityPercent {
+                            menuInfo("Signal: \(snq)%", font: .footnote, secondary: true)
+                        }
                     } label: {
                         Label {
                             Text("Recording on \(title)")

@@ -557,7 +557,7 @@ Primary documentation sources: `info.hdhomerun.com/info/http_api`, `info.hdhomer
 |---|---|
 | `/discover.json` | Device info: DeviceID, LocalIP, TunerCount, DeviceAuth |
 | `/lineup.json` | Channel lineup: GuideNumber, GuideName, URL, VideoCodec, AudioCodec, HD, Favorite per channel |
-| `/status.json` | Active tuner occupancy: Resource, VctNumber, TargetIP |
+| `/status.json` | Active tuner occupancy: Resource, VctNumber, TargetIP, SignalQualityPercent (0-100 snq; omitted when not locked — already used live by `AppState.startSignalScan`/`fetchDeviceStatusUncached`'s passive signal collection, and by the virtual-tuner relay's own `/status.json` as of 2026-09-04, see `docs/VirtualTunerService.md`'s "Estimated signal for FEED consumers") |
 | `/tunerN/vstatus` | Per-tuner signal: ss, snq, lock, bps (key-value text). Not implemented on EXTEND — `404` (confirmed 2026-08-26; already handled in `AppState.swift`). |
 | `/lineup.post?favorite=±N` | Mark/unmark channel favorite |
 | `api.hdhomerun.com/api/guide.php` | Cloud guide data (DeviceAuth gated); optional `Start=<epoch>` shifts window start; `Duration` in hours from Start (capped ~29h per call) |

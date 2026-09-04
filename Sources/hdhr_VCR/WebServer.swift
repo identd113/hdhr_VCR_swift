@@ -1482,11 +1482,13 @@ final class WebServer: @unchecked Sendable {
             return .ok(contentType: "application/json", body: lineupBody)
 
         case "/status.json":
-            // Top-level JSON array — a real device's own /status.json is a bare array of
-            // {Resource, VctNumber, TargetIP} (docs/HDHRFindings.md), which is also exactly how
-            // this app's own client-side code decodes it ([DeviceTunerInfo] in AppState.swift) —
+            // Top-level JSON array — a real device's own /status.json is an array of
+            // {Resource, VctNumber, TargetIP, SignalQualityPercent} rows (docs/HDHRFindings.md;
+            // SignalQualityPercent omitted per-row when not locked), which is also exactly how this
+            // app's own client-side code decodes it ([DeviceTunerInfo] in Models.swift) —
             // jsonResponse only handles [String: Any], so this one encodes directly, same as
-            // /lineup.json just above.
+            // /lineup.json just above. buildVirtualTunerStatusJSON now populates
+            // SignalQualityPercent too (added 2026-09-04) — see its own doc comment.
             guard state.activeVirtualTunerDeviceID != nil else {
                 glog("[VirtualTuner] /status.json → 404 (not recording)", level: .warning)
                 return .notFound("not recording")
@@ -2843,6 +2845,10 @@ final class WebServer: @unchecked Sendable {
             // treat "field present" as "transcoding is active" without a magic-number check.
             let viewers = VLCBridge.shared.transcodeViewerCount(showId: show.show_id)
             if viewers > 0 { entry[VirtualTunerService.transcodeViewersKey] = viewers }
+            // See VirtualTunerService.signalQualityKey's own doc comment.
+            if let snq = liveSignalQualityPercent(for: show, state: state) {
+                entry[VirtualTunerService.signalQualityKey] = snq
+            }
             return entry
         }
     }
@@ -2850,12 +2856,44 @@ final class WebServer: @unchecked Sendable {
     @MainActor
     func buildVirtualTunerStatusJSON(state: AppState) -> [[String: Any]] {
         state.recordingShows.enumerated().map { i, show -> [String: Any] in
-            [
+            var entry: [String: Any] = [
                 "Resource": "tuner\(i)",
                 "VctNumber": show.show_channel,
                 "TargetIP": "",
             ]
+            // Estimated signal for the real physical tuner actually recording this show — same
+            // SignalQualityPercent field name (and 0-100 snq scale) a real HDHomeRun device's own
+            // /status.json already carries (DeviceTunerInfo, Models.swift), so a raw third-party
+            // HDHomeRun-aware client polling this route directly decodes it for free via the exact
+            // same struct. Added 2026-09-04: this route previously omitted it entirely. This app's
+            // own FEED-consumer UI (MenuContent's "Recording on Another Mac") reads the equivalent
+            // value off /lineup.json instead (buildVirtualTunerLineupJSON,
+            // VirtualTunerService.signalQualityKey) — relay devices are excluded from the regular
+            // device-occupancy poll loop, so /status.json isn't otherwise fetched for one.
+            if let snq = liveSignalQualityPercent(for: show, state: state) {
+                entry["SignalQualityPercent"] = snq
+            }
+            return entry
         }
+    }
+
+    // Shared by buildVirtualTunerStatusJSON (real HDHomeRun-shaped field) and
+    // buildVirtualTunerLineupJSON (this app's own HdhrVCRplusSignalQualityPercent extension) so the
+    // Resource-header-first / VctNumber-fallback match isn't duplicated between the two routes —
+    // mirrors AppState.fetchDeviceStatusUncached's own vstatus lookup and
+    // teardownRecordingState's tuner-clear match. No new polling: state.deviceTunerOccupancy is
+    // already continuously refreshed every idle tick against the real source device, for the
+    // unrelated purpose of driving this instance's own tuner-occupancy math — this just reads that
+    // same already-live data. Returns nil when the source device hasn't been polled yet, or its
+    // tuner isn't currently locked to this show's channel.
+    @MainActor
+    private func liveSignalQualityPercent(for show: Show, state: AppState) -> Int? {
+        guard let tuners = state.deviceTunerOccupancy[show.hdhr_record] else { return nil }
+        let match = (!show.show_tuner_resource.isEmpty
+                        ? tuners.first(where: { $0.Resource.lowercased() == show.show_tuner_resource })
+                        : nil)
+                 ?? tuners.first(where: { $0.VctNumber == show.show_channel })
+        return match?.SignalQualityPercent
     }
 
     // Structured (non-HTML) guide data for one tuner, powering hdhr_guide (Contents/Helpers/) —

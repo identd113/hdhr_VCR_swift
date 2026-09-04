@@ -123,6 +123,76 @@ struct VirtualTunerWebRoutesTests {
         #expect(Set(tuners.compactMap { $0["VctNumber"] as? String }) == ["5.1", "7.1"])
     }
 
+    // MARK: - Estimated signal (SignalQualityPercent / HdhrVCRplusSignalQualityPercent), added 2026-09-04
+
+    @MainActor
+    @Test func statusJSON_reportsSignalQualityFromLiveDeviceOccupancy_matchedByTunerResource() {
+        var show = Show.testRecording(title: "Days of Our Lives", channel: "5.1")
+        show.hdhr_record = "FFFFFFFF"
+        show.show_tuner_resource = "tuner1"
+        let state = makeTestAppState(shows: [show], devices: [.test(id: "FFFFFFFF")])
+        // Two tuner rows on the device — the resource-header match must pick tuner1's snq (72),
+        // not tuner0's (11), even though both happen to report the same VctNumber in this fixture.
+        state.deviceTunerOccupancy["FFFFFFFF"] = [
+            DeviceTunerInfo(Resource: "tuner0", VctNumber: "5.1", TargetIP: nil, SignalQualityPercent: 11),
+            DeviceTunerInfo(Resource: "tuner1", VctNumber: "5.1", TargetIP: nil, SignalQualityPercent: 72),
+        ]
+
+        let tuners = WebServer().buildVirtualTunerStatusJSON(state: state)
+        #expect(tuners.first?["SignalQualityPercent"] as? Int == 72)
+    }
+
+    @MainActor
+    @Test func statusJSON_fallsBackToChannelMatch_whenNoTunerResourceRecordedYet() {
+        var show = Show.testRecording(title: "Days of Our Lives", channel: "5.1")
+        show.hdhr_record = "FFFFFFFF"
+        // show_tuner_resource defaults to empty (Show.blank) — the X-HDHomeRun-Resource header
+        // capture hasn't landed yet, same window captureResourceHeaders exists for elsewhere.
+        #expect(show.show_tuner_resource.isEmpty)
+        let state = makeTestAppState(shows: [show], devices: [.test(id: "FFFFFFFF")])
+        state.deviceTunerOccupancy["FFFFFFFF"] = [
+            DeviceTunerInfo(Resource: "tuner0", VctNumber: "5.1", TargetIP: nil, SignalQualityPercent: 55),
+        ]
+
+        let tuners = WebServer().buildVirtualTunerStatusJSON(state: state)
+        #expect(tuners.first?["SignalQualityPercent"] as? Int == 55)
+    }
+
+    @MainActor
+    @Test func statusJSON_omitsSignalQuality_whenDeviceNeverPolled() {
+        var show = Show.testRecording(title: "Days of Our Lives", channel: "5.1")
+        show.hdhr_record = "FFFFFFFF"
+        let state = makeTestAppState(shows: [show], devices: [.test(id: "FFFFFFFF")])
+        // No deviceTunerOccupancy entry at all for this device.
+
+        let tuners = WebServer().buildVirtualTunerStatusJSON(state: state)
+        #expect(tuners.first?["SignalQualityPercent"] == nil)
+    }
+
+    @MainActor
+    @Test func lineupJSON_carriesSignalQualityUnderNonStandardKey() {
+        var show = Show.testRecording(title: "Days of Our Lives", channel: "5.1")
+        show.hdhr_record = "FFFFFFFF"
+        show.show_tuner_resource = "tuner0"
+        let state = makeTestAppState(shows: [show], devices: [.test(id: "FFFFFFFF")])
+        state.deviceTunerOccupancy["FFFFFFFF"] = [
+            DeviceTunerInfo(Resource: "tuner0", VctNumber: "5.1", TargetIP: nil, SignalQualityPercent: 83),
+        ]
+
+        let entry = try! #require(WebServer().buildVirtualTunerLineupJSON(state: state).first)
+        #expect(entry["HdhrVCRplusSignalQualityPercent"] as? Int == 83)
+    }
+
+    @MainActor
+    @Test func lineupJSON_omitsSignalQualityKey_whenNotYetKnown() {
+        var show = Show.testRecording(title: "Days of Our Lives", channel: "5.1")
+        show.hdhr_record = "FFFFFFFF"
+        let state = makeTestAppState(shows: [show], devices: [.test(id: "FFFFFFFF")])
+
+        let entry = try! #require(WebServer().buildVirtualTunerLineupJSON(state: state).first)
+        #expect(entry["HdhrVCRplusSignalQualityPercent"] == nil)
+    }
+
     // MARK: - /api/record refusal for a virtual-relay device
 
     @MainActor

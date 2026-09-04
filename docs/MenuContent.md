@@ -37,6 +37,7 @@ Immediately below the header: **Add Show…** button, **Watch Now** button (when
   - **A second `"Watch (H.264)"` item, added 2026-09-04** — same VLC gate, shown only when the source isn't already a modern codec (`MPEGVideoStreamType.isAlreadyModernCodec(codec)`; an unset/`"unknown"` codec is treated as *not* confirmed modern, so it's still offered) — a source that's already H.264/HEVC would just get relayed as-is regardless (`docs/VirtualTunerService.md`'s "Already-modern-codec skip"), making a second, functionally identical button pointless. Calls the same `watchRemoteRelay`, with `&transcode=auto` appended to the URL — any non-empty, non-`"none"` string only tells the *remote* relay "transcode this," it never picks the level; that's always the source Mac's own configured "Default transcode level" (`docs/VirtualTunerService.md`'s `effectiveTranscodeProfile`).
   - A divider, then `"Source: <codec>"` (always shown, always accurate) and `"You'll get: <codec>"` (shown **only** when the H.264 item above isn't offered, i.e. the source is already modern and both watch options would be identical) — when both watch options are offered, their own labels ("Watch" vs "Watch (H.264)") already say which is which, so `"You'll get"` is skipped rather than shown once with an now-ambiguous meaning.
   - Only while at least one viewer on the remote Mac is actively transcoding that show, a `"Transcoding: N viewer(s)"` row.
+  - **A `"Signal: N%"` row, added 2026-09-04** — the *source* Mac's own real tuner signal for the show being relayed (`LineupEntry.virtualRelaySignalQualityPercent`, decoded from `/lineup.json`'s non-standard `HdhrVCRplusSignalQualityPercent` field), omitted entirely rather than shown as "0%" when not yet known — see `docs/VirtualTunerService.md`'s "Estimated signal for FEED consumers" section.
 
 **Up Next** section (only visible when shows start within 60 min):
 - Same section header pattern: `"Up Next"` or `"Up Next · 105404BE"`
@@ -145,7 +146,7 @@ Section "Recording · DeviceID"       ← per device when multiple tuners presen
   recordingMenu(show) …
 Divider
 Section "Recording on Another Mac"   ← only when a different instance's virtual relay is discovered
-  ["Recording on <title>" — play.tv.fill, Menu → Watch (raw), Watch (H.264) (only when source isn't already modern; both disabled + " (Requires VLC)" when unavailable, else call state.watchRemoteRelay(...), the latter with &transcode=auto), Divider, Source codec row (always) + You'll-get row (only when H.264 item absent), optional Transcoding: N viewer(s)] …
+  ["Recording on <title>" — play.tv.fill, Menu → Watch (raw), Watch (H.264) (only when source isn't already modern; both disabled + " (Requires VLC)" when unavailable, else call state.watchRemoteRelay(...), the latter with &transcode=auto), Divider, Source codec row (always) + You'll-get row (only when H.264 item absent), optional Transcoding: N viewer(s), optional Signal: N%] …
 Divider
 Section "Up Next"                    ← shows starting within the next hour (single tuner)
 Section "Up Next · DeviceID"         ← per device when multiple tuners present

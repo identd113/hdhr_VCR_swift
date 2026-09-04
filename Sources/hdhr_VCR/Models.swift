@@ -680,11 +680,25 @@ struct LineupEntry: Codable, Identifiable {
     // machine-wide, and reflects an already-active remote session rather than anything this
     // instance's own click would request. Omitted (nil) rather than 0 when no session is running.
     var virtualRelayTranscodeViewers: Int?
+    // Non-standard, set only by hdhrVCRplus's own virtual-tuner /lineup.json — estimated signal
+    // (0-100 snq, same scale/meaning as a real device's own /status.json SignalQualityPercent
+    // field, see DeviceTunerInfo below) for the real tuner actually recording this show. Added
+    // 2026-09-04 so MenuContent's "Recording on Another Mac" row can show it without a separate
+    // /status.json fetch — a discovered relay device is deliberately excluded from the regular
+    // device-occupancy poll loop (recordableDevices, see CLAUDE.md's Virtual tuner relay
+    // guardrails), so nothing else already fetches a relay's own /status.json; piggybacking on
+    // /lineup.json instead, already continuously fetched for relay devices (the one deliberate
+    // recordableDevices exception — see AppState.recordableDevices's own doc comment), needs no
+    // new polling. A real device's /lineup.json has no per-channel signal field at all (only
+    // /status.json does), hence the synthetic key rather than reusing the real field name. Nil
+    // when not yet known or the source tuner isn't currently locked.
+    var virtualRelaySignalQualityPercent: Int?
 
     private enum CodingKeys: String, CodingKey {
         case GuideNumber, GuideName, URL, HD, Favorite, VideoCodec, AudioCodec
         case virtualRelayShowTitle = "HdhrVCRplusShowTitle"
         case virtualRelayTranscodeViewers = "HdhrVCRplusTranscodeViewers"
+        case virtualRelaySignalQualityPercent = "HdhrVCRplusSignalQualityPercent"
     }
 }
 
