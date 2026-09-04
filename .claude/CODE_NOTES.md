@@ -816,3 +816,52 @@ left here; re-ran the script end-to-end afterward to confirm all three fixes act
   review asked about (#3, "is CoW overhead a real hot-path issue") is not — every
   read-mutate-write cycle in the diff copies at most a handful of scalars/`Optional<Date>`/
   `Optional<Task>`, not a large collection.
+
+## 2026-09-03 — Range v2.2.0..HEAD review (virtual tuner relay, VLCBridge, VLC gating/hot-install, Sharing settings reorg)
+
+8 finder agents (correctness ×3, cleanup ×3, altitude, CLAUDE.md conventions) over the ~4,500-line
+diff, 1-vote-verified. Conventions and both removed-behavior/cross-file-tracer angles came back
+clean — the `recordableDevices`/`isVirtualRelay` guardrail refactor is well executed everywhere it
+was checked. Two of the ten raw candidates were already fixed same-day (`3d12114`, from the prior
+`HEAD~5..HEAD` pass); of the rest, three turned out to already be documented, deliberate design
+(not gaps) once cross-checked against `docs/VirtualTunerService.md`; six are genuine, still-open —
+moved to `ISSUES.md`. Full breakdown:
+
+- **Already fixed same day (`3d12114`)** — the `relaunchForVLC()` port race and `checkVLCHotInstall()`
+  timer-polling findings from the prior `HEAD~5..HEAD` review. Not re-listed below.
+- **Verified as intentional, not a gap**: `WebServer.handleRecord`/`handleToggleFavorite` looking up a
+  device via `state.devices.first(where:)` then separately checking `!device.isVirtualRelay`, rather
+  than looking up via `state.recordableDevices`. `docs/VirtualTunerService.md`'s own `recordableDevices`
+  section says this explicitly: "Single-device backstop checks on an already-known device (`addShow`/
+  `updateShow`/`handleRecord`/`handleToggleFavorite`/`vlcOccupiesTuner`) check that device's own
+  `isVirtualRelay` flag directly instead, and stay separate from this accessor." Correctly implemented
+  per that documented design — flagged by the review because it doesn't match the more common
+  `recordableDevices`-filtering pattern used elsewhere, but that's the deliberate exception, not a miss.
+- **Verified as already-documented, tracked elsewhere, not new**:
+  - `excludingOwnVirtualTuner` being a filter callers must remember to route through, rather than
+    structurally baked into every device-merge path — this is `docs/VirtualTunerService.md`'s own
+    "Guardrails" section, verbatim ("new call sites should default to this rather than raw `devices`" /
+    "two full audits after initial shipment each found call sites that still missed this"). Same known,
+    named architectural risk, not a fresh finding.
+  - `beginTranscodeRelay`'s fixed ~0.6s startup grace period instead of an event-driven readiness
+    check — already in `docs/VirtualTunerService.md`'s "Real transcode (Phase 2)" section ("still a
+    fixed guess, not an event-driven readiness signal") and already named as gap #4 in this session's
+    earlier "is the relay ready for release" assessment.
+- **New, genuine, moved to `ISSUES.md`** (see that file for full writeups): `applyWebServerState()`
+  stamping `boundWebServerPort` from live `config` instead of the port actually bound (a Settings
+  port-change-mid-bind race); the virtual-tuner relay's `TunerCount`/lineup/discover JSON builders
+  (`AppState.swift:848`, `WebServer.swift:2654/2686/2723`) re-deriving "is this show recording" via a
+  bare `shows.filter { $0.show_recording }` instead of the canonical `recordingShows` property (which
+  also excludes a show whose `show_end` has already passed) — a real, if narrow-window, inconsistency
+  between what the relay advertises and what the rest of the app considers still recording; the PAT/PMT
+  on-disk codec-probe fallback (`sourceIsAlreadyModernCodec`) re-reading and re-scanning ~2MB per viewer
+  connection with no per-show cache; `lanIPAddress()`/`virtualTunerBaseURL()` re-running a full
+  `getifaddrs()` enumeration on every `/discover.json`/`/lineup.json` request instead of caching the
+  resolved LAN IP; `MenuContent.remoteRelayEntries` (the "Recording on Another Mac" list) being
+  recomputed via `filter`+`flatMap` on every menu body render with no caching — landing directly in the
+  "Menu rebuild churn" hot path CLAUDE.md already warns about; `usableDeviceIDs` being derived from raw
+  `devices` rather than `recordableDevices`, currently harmless only because every caller happens to
+  separately intersect against an already-filtered list first.
+- **Noted, low value, not moved anywhere**: `LineupEntry.AudioCodec` is decoded from the wire but read
+  by no production code path, only test assertions — dead stored property, not worth its own issue
+  entry; fine to just delete next time that file is touched for something else, or leave as-is.
