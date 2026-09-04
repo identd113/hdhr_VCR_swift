@@ -255,10 +255,32 @@ final class VLCBridge: ObservableObject {
         if let pluginPath = vlcAppURL?.appendingPathComponent("Contents/MacOS/plugins").path {
             setenv("VLC_PLUGIN_PATH", pluginPath, 1)
         }
+        // x264's own GOP-length config (sout-x264-keyint/-min-keyint, used only by
+        // startTranscodeSession's FEED transcode path below) has to be set here, at
+        // libvlc_new()'s global argv, not as a per-media libvlc_media_add_option() — confirmed
+        // live 2026-09-04: passing them as per-media options (either inline inside the
+        // transcode{} chain string, or as separate colon-prefixed per-item options) silently
+        // left the x264 encoder at its own untouched default (keyint=250) both times; only the
+        // global-instance form actually changed the emitted GOP. Harmless to set unconditionally
+        // on the one shared instance — nothing else in this app ever instantiates an x264
+        // *encoder* (the on-screen player only ever decodes), so this can't affect live/recording
+        // playback, only a future transcode session. See startTranscodeSession's own comment for
+        // why keyint=60 was picked.
+        // strdup'd here, freed inside the detached task right after the (synchronous) newFn call
+        // reads them — Task.detached only *schedules* the closure below, so freeing on this
+        // (calling) thread via a plain `defer` here would race the task and could free them
+        // before it ever runs; nonisolated(unsafe) since these are plain C pointers with no
+        // shared mutable state, same reasoning as inst/mp's own capture just below.
+        nonisolated(unsafe) let vlcArgCStrings: [UnsafeMutablePointer<CChar>?] =
+            ["--sout-x264-keyint=60", "--sout-x264-min-keyint=60"].map { (s: String) in s.withCString { strdup($0) } }
         Task.detached(priority: .userInitiated) { [weak self] in
+            let vlcArgPointers: [UnsafePointer<CChar>?] = vlcArgCStrings.map { UnsafePointer($0) }
             // OpaquePointer isn't Sendable, but these are freshly-created VLC handles with no
             // other owner yet — safe to hand across the actor boundary to MainActor.run below.
-            nonisolated(unsafe) let inst = newFn(0, nil)
+            nonisolated(unsafe) let inst = vlcArgPointers.withUnsafeBufferPointer { buf in
+                newFn(Int32(vlcArgPointers.count), buf.baseAddress)
+            }
+            vlcArgCStrings.forEach { free($0) }
             nonisolated(unsafe) let mp   = inst.flatMap { mpNewFn($0) }
             await MainActor.run { [weak self] in
                 guard let self else { return }
@@ -948,14 +970,43 @@ final class VLCBridge: ObservableObject {
         // No scale=/width=/height=/fps= — every profile keeps the source's own frame rate and
         // dimensions regardless of which one was requested (see transcodeBitrateKbps's own doc
         // comment on why, and its quality tradeoff). channels=2 — confirmed live (2026-09-02, real
-        // over-the-air 5.1 source): without an explicit downmix, mpga's underlying twolame encoder
-        // only supports up to 2 channels and silently fails ("doesn't support > 2 channels") on any
+        // over-the-air 5.1 source): without an explicit downmix, the audio encoder only supports up
+        // to 2 channels and would otherwise silently fail ("doesn't support > 2 channels") on any
         // 5.1 broadcast, producing a video-only transcode with no audio at all. Stereo is also
         // simply the right target for a low-bandwidth relay profile regardless — none of
         // "heavy"/"mobile"/"internet720" are meant to preserve surround.
-        let soutOpt = "sout=#transcode{vcodec=h264,vb=\(vb),acodec=mpga,ab=128,channels=2}"
+        // acodec=a52 (AC-3), not mpga (MPEG Layer 2) — changed 2026-09-04, per explicit user
+        // request: an AC-3 source stays AC-3 end to end (one lossy re-encode instead of AC-3 →
+        // lossy MP2), and every real HDHomeRun-based client (this app's own VLCBridge included)
+        // already decodes AC-3 natively as the standard ATSC broadcast audio codec — there's no
+        // compatibility reason to force a codec *change*, only a bitrate/channel-count one.
+        // Verified live 2026-09-04 against a real 5.1 + stereo dual-language recording: libvlc's
+        // `avcodec` encoder module reports "found encoder A52 Audio (aka AC3)" and produces valid
+        // 2-channel 128kbps AC-3 for both tracks (mediainfo-confirmed), same shape mpga produced
+        // before, just AC-3 instead of MP2.
+        //
+        let soutOpt = "sout=#transcode{vcodec=h264,vb=\(vb),acodec=a52,ab=128,channels=2}"
                     + ":std{access=http,mux=ts,dst=127.0.0.1:\(port)/relay}"
-        for opt in [soutOpt, "sout-keep", "--no-audio-time-stretch"] {
+        // sout-x264-keyint/sout-x264-min-keyint — added 2026-09-04, per explicit user request,
+        // after comparing mediainfo output for a real over-the-air H.264 channel against this
+        // encoder's default GOP: the real broadcast keeps a keyframe every ~1s (confirmed live:
+        // "GOP M=4, N=30" at 29.97fps); left at x264's own default (keyint=250, unset here before
+        // this), a 59.94fps source went ~4.2s between keyframes — a viewer joining the FEED
+        // transcode mid-stream (or scrubbing) has to wait up to that long for the next IDR before
+        // anything decodes. These are x264's own global advanced config options (`vlc -p x264
+        // --advanced --help-verbose`), NOT recognized fields inside the `transcode{}` chain
+        // string above — a first attempt at `transcode{...,keyint=60,keyint_min=60,...}` silently
+        // no-op'd (mediainfo still showed the x264 default 250/25 in the output), confirmed live
+        // both by that mismatch and by testing the correct syntax directly against VLC's CLI
+        // before changing this. 60 isn't a per-source frame-rate lookup (the source's actual fps
+        // isn't known before this sout chain is built, and probing it would need a real decode/
+        // SPS-parse this function doesn't otherwise do) — it's a fixed frame count chosen as a
+        // reasonable approximation across realistic broadcast frame rates: exactly 1.0s at
+        // 59.94fps, 2.0s at 29.97fps. min-keyint=60 (equal to keyint) is a request, not a
+        // guarantee — x264 still auto-clamps it down (observed ~31 in testing, since `scenecut`
+        // stays enabled at its own default and wants room to insert an early scene-cut IDR), which
+        // only tightens the join-latency win further, never loosens it.
+        for opt in [soutOpt, "sout-x264-keyint=60", "sout-x264-min-keyint=60", "sout-keep", "--no-audio-time-stretch"] {
             opt.withCString { mediaAddOptFn(media, $0) }
         }
         guard let player = mpNewFn(inst) else {

@@ -251,11 +251,12 @@ struct VirtualTunerLiveStreamTests {
         }
         // Regression guard for a real bug caught live the first time this test actually ran
         // (2026-09-02): a real over-the-air 5.1 source silently produced a video-only transcode
-        // with no audio track at all — mpga's underlying twolame encoder only supports up to 2
-        // channels and dropped the audio entirely rather than erroring loudly. Fixed by adding an
-        // explicit `channels=2` downmix to the sout chain (VLCBridge.startTranscodeSession's own
-        // comment on why). Asserting a 2-channel audio track survived the transcode catches a
-        // regression of that same silent failure, not just "some bytes came back."
+        // with no audio track at all — the audio encoder (mpga at the time; acodec=a52/AC-3 as of
+        // 2026-09-04, same constraint) only supports up to 2 channels and dropped the audio
+        // entirely rather than erroring loudly. Fixed by adding an explicit `channels=2` downmix to
+        // the sout chain (VLCBridge.startTranscodeSession's own comment on why). Asserting a
+        // 2-channel audio track survived the transcode catches a regression of that same silent
+        // failure, not just "some bytes came back."
         // Not an exact-match assertion: mediainfo's --Inform concatenates one value per matching
         // track with no separator (a transcode can legitimately produce more than one audio track),
         // so "22" (two 2-channel tracks) is a real, valid pass, not "22 channels". Checking for the
