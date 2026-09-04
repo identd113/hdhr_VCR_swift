@@ -862,6 +862,41 @@ final class WebServer: @unchecked Sendable {
         }
     }
 
+    // Bounds a single conn.send(...) completion — Network.framework's own send has no built-in
+    // timeout, so a peer that stops draining its TCP receive window (rather than cleanly closing)
+    // leaves .contentProcessed's completion pending forever, with zero error/disconnect ever
+    // surfacing on this side. Caught live 2026-09-04: a relay viewer's stream froze for ~5 minutes
+    // with no server-side log signal at all, until the client itself gave up and reconnected from
+    // byte 0 — this Mac's own log showed nothing wrong the entire time. A sibling connection to the
+    // same peer, streaming a different show concurrently, stayed perfectly healthy throughout,
+    // ruling out a Mac-wide bottleneck (shared queue/disk) — this is about one specific stalled
+    // flow, which is exactly the case a per-send timeout catches and a state check can't (conn.state
+    // never transitioned to .cancelled/.failed during the stall; the socket looked alive to
+    // Network.framework the whole time, it just wasn't being drained by the far end).
+    private static let growingFileSendTimeout: TimeInterval = 15
+
+    // Sends `content` on `conn`, calling `completion(failureReason)` exactly once — either when the
+    // send's own completion fires (nil on success, the error's description on failure), or after
+    // `timeout` seconds if the completion never fires at all (a synthetic "timed out ..." reason —
+    // see growingFileSendTimeout's own doc comment for why this exists). Whichever fires first
+    // wins; the other is silently dropped. Both the send completion and the timeout timer run on
+    // `queue` (every NWConnection in this file is started with `queue`, see handleConnection), so
+    // guarding against double-firing needs no lock.
+    private func sendWithTimeout(_ content: Data, on conn: NWConnection, timeout: TimeInterval,
+                                  completion: @escaping (String?) -> Void) {
+        var finished = false
+        conn.send(content: content, completion: .contentProcessed { err in
+            guard !finished else { return }
+            finished = true
+            completion(err.map { String(describing: $0) })
+        })
+        queue.asyncAfter(deadline: .now() + timeout) {
+            guard !finished else { return }
+            finished = true
+            completion("timed out after \(Int(timeout))s waiting for client to accept data")
+        }
+    }
+
     // Called on fileIOQueue (see handleWatchRecording) — FileHandle open/seek/attributesOfItem
     // can all block on a slow/contended volume, same reasoning as the read loop in
     // pumpGrowingFile below. Hops back to `queue` only for the actual NWConnection send.
@@ -890,19 +925,18 @@ final class WebServer: @unchecked Sendable {
         let deadline = durationSeconds.map { Date().addingTimeInterval(Double($0)) }
         let header = "HTTP/1.1 200 OK\r\nContent-Type: video/mp2t\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\n\r\n"
         glog("[WebServer] watch-recording OPEN show=\(showId) path=\(path) startOffset=\(initialBytes)")
-        // No [weak self] on the outer closure — it only calls conn.send(...); self is referenced
-        // solely inside the nested .contentProcessed completion handler, which already declares
-        // its own weak capture.
-        queue.async {
-            conn.send(content: Data(header.utf8), completion: .contentProcessed({ [weak self] err in
-                guard let self, err == nil else {
+        queue.async { [weak self] in
+            guard let self else { return }
+            self.sendWithTimeout(Data(header.utf8), on: conn, timeout: Self.growingFileSendTimeout) { [weak self] reason in
+                guard let self, reason == nil else {
                     self?.fileIOQueue.async { handle.closeFile() }
-                    glog("[WebServer] watch-recording header send failed show=\(showId): \(String(describing: err))", level: .warning)
+                    conn.cancel()
+                    glog("[WebServer] watch-recording header send failed show=\(showId): \(reason ?? "unknown")", level: .warning)
                     return
                 }
                 self.pumpGrowingFile(handle: handle, showId: showId, conn: conn,
                                       bytesSent: initialBytes, waitStreak: 0, waitStartedAt: nil, deadline: deadline)
-            }))
+            }
         }
     }
 
@@ -986,17 +1020,24 @@ final class WebServer: @unchecked Sendable {
         if newTotal / (5 * 1_048_576) > bytesSent / (5 * 1_048_576) {
             glog("[WebServer] watch-recording show=\(showId) sent \(newTotal / 1_048_576) MB so far")
         }
-        conn.send(content: chunk, completion: .contentProcessed({ [weak self] err in
-            guard let self, err == nil else {
+        sendWithTimeout(chunk, on: conn, timeout: Self.growingFileSendTimeout) { [weak self] reason in
+            guard let self, reason == nil else {
                 self?.fileIOQueue.async { handle.closeFile() }
-                glog("[WebServer] watch-recording show=\(showId) client disconnected after \(newTotal) bytes: \(String(describing: err))")
+                // Explicit cancel — a real send error usually means the OS already knows the
+                // connection is dead, but the synthetic timeout case (the peer stopped draining
+                // its receive window without the socket itself ever erroring) does not; without
+                // this, a stalled connection stays open indefinitely from this side even after
+                // giving up on it. cancel() is idempotent (WebServer.stop()'s own comment), so
+                // calling it here even when the connection may already be dying is harmless.
+                conn.cancel()
+                glog("[WebServer] watch-recording show=\(showId) client disconnected after \(newTotal) bytes: \(reason ?? "unknown")")
                 return
             }
             self.queue.async {
                 self.pumpGrowingFile(handle: handle, showId: showId, conn: conn,
                                       bytesSent: newTotal, waitStreak: 0, waitStartedAt: nil, deadline: deadline)
             }
-        }))
+        }
     }
 
     // MARK: - Connection handling
@@ -2651,7 +2692,12 @@ final class WebServer: @unchecked Sendable {
         guard let base = virtualTunerBaseURL(preferredInterface: state.config.Network_interface),
               let ip = URL(string: base)?.host
         else { return nil }
-        let recordingShows = state.shows.filter { $0.show_recording }
+        // state.recordingShows (not a bare show_recording filter) — also excludes a show whose
+        // show_end has already passed but hasn't been flipped to inactive by the idle loop yet, so
+        // this can't briefly disagree with what the rest of the app (menu bar's "Recording Now",
+        // etc.) already considers finished. Fixed 2026-09-03 (ISSUES.md) — was inconsistent here and
+        // at the two other virtual-tuner JSON builders below.
+        let recordingShows = state.recordingShows
         let tunerCount = recordingShows.count
         // Named after the real unit it's relaying from ("<original FriendlyName>-Relay") rather than
         // a generic label, so it reads as clearly related in a third-party client's device list —
@@ -2683,7 +2729,7 @@ final class WebServer: @unchecked Sendable {
         // would be in (updateVirtualTunerPresence skips starting it entirely in this case), rather
         // than emitting entries with an unreachable/garbled URL.
         guard let base = virtualTunerBaseURL(preferredInterface: state.config.Network_interface) else { return [] }
-        return state.shows.filter { $0.show_recording }.map { show in
+        return state.recordingShows.map { show in
             let sourceEntry = state.lineups[show.hdhr_record]?
                 .first(where: { $0.GuideNumber == show.show_channel })
             let guideName = sourceEntry?.GuideName ?? show.show_channel
@@ -2720,7 +2766,7 @@ final class WebServer: @unchecked Sendable {
 
     @MainActor
     func buildVirtualTunerStatusJSON(state: AppState) -> [[String: Any]] {
-        state.shows.filter { $0.show_recording }.enumerated().map { i, show -> [String: Any] in
+        state.recordingShows.enumerated().map { i, show -> [String: Any] in
             [
                 "Resource": "tuner\(i)",
                 "VctNumber": show.show_channel,
