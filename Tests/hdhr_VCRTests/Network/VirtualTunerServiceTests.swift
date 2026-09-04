@@ -105,12 +105,56 @@ struct VirtualTunerServiceTests {
     }
 
     @Test func makeDeviceID_isFreshOnEveryCall() {
-        // Deliberately NOT deterministic — a fresh ID must be minted on every relay restart so a
-        // client that cached an old ID from a since-ended recording can't confuse a later,
-        // unrelated session for the one it already knows about (see makeDeviceID's own doc
-        // comment). Collision probability across 100 calls with a 16-bit random component is
-        // negligible enough not to flake in practice.
+        // Deliberately NOT deterministic — this is the no-source-device fallback path only; a fresh
+        // ID must be minted on every call so two calls that both hit this fallback (e.g. two
+        // separate relay sessions where the source device was never discovered) don't collide.
+        // Collision probability across 100 calls with a 16-bit random component is negligible
+        // enough not to flake in practice.
         let ids = Set((0..<100).map { _ in VirtualTunerService.makeDeviceID() })
         #expect(ids.count > 1)
+    }
+
+    // MARK: - relayDeviceID
+
+    @Test func relayDeviceID_withSourceDevice_isStableAndValidHex() {
+        // Deliberately IS deterministic, unlike makeDeviceID above — same source tuner must
+        // produce the same relay DeviceID every time, so a rediscovery updates the existing device
+        // list entry instead of piling up a new one on every relay restart (see this function's own
+        // doc comment for the full reasoning). Must also stay valid hex — VirtualTunerService.
+        // start(deviceID:) parses it via UInt32(_, radix: 16) for the real UDP wire protocol's
+        // binary DeviceID TLV; a non-hex ID (an earlier version literally appended "_Relay") makes
+        // start() reject it and the relay never binds at all — caught live, mid-recording.
+        let id = VirtualTunerService.relayDeviceID(sourceDeviceID: "105404BE")
+        #expect(id == "FEED04BE")
+        #expect(UInt32(id, radix: 16) != nil)
+        #expect(VirtualTunerService.relayDeviceID(sourceDeviceID: "105404BE") == id)
+    }
+
+    @Test func relayDeviceID_withDifferentSourceDevices_producesDifferentIDs() {
+        let a = VirtualTunerService.relayDeviceID(sourceDeviceID: "105404BE")
+        let b = VirtualTunerService.relayDeviceID(sourceDeviceID: "10440A2C")
+        #expect(a != b)
+        #expect(a == "FEED04BE")
+        #expect(b == "FEED0A2C")
+    }
+
+    @Test func relayDeviceID_neverCollidesWithItsOwnSourceDeviceID() {
+        // The FEED sentinel prefix — same one makeDeviceID's own random scheme uses, so this app
+        // mints only one consistent "known-fake" brand of DeviceID, relay or otherwise — guarantees
+        // this regardless of the source's own remaining digits, so the relay's ID can never equal
+        // the real tuner's own ID and confuse a DeviceID-keyed dict.
+        let source = "105404BE"
+        #expect(VirtualTunerService.relayDeviceID(sourceDeviceID: source) != source)
+    }
+
+    @Test func relayDeviceID_withNilOrInvalidSource_fallsBackToMakeDeviceID() {
+        // nil (no recording), wrong length (must be exactly 8 hex digits, a real DeviceID's own
+        // shape), and right-length-but-non-hex (fails the UInt32(_, radix: 16) check) all hit the
+        // fallback, which still uses makeDeviceID's own FEED-prefixed random scheme.
+        for input in [nil, "abc", "ZZZZZZZZ"] {
+            let id = VirtualTunerService.relayDeviceID(sourceDeviceID: input)
+            #expect(id.hasPrefix("FEED"))
+            #expect(id.count == 8)
+        }
     }
 }

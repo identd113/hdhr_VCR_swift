@@ -196,20 +196,68 @@ final class VirtualTunerService {
         return pkt
     }
 
+    /// Fallback generator only, as of 2026-09-03 — see `relayDeviceID(sourceDeviceID:)` below for
+    /// the primary path and the reasoning behind why it exists.
+    ///
     /// Distinct from any real DeviceID and from this project's own FFFF0001 fake EXTEND test
     /// device (an unrelated sentinel — see project memory): "FEED" isn't a value any real
     /// SiliconDust allocation uses. The suffix mixes this Mac's own hostname (crc32, reusing the
-    /// existing routine rather than adding a second one) with a fresh random value on every call —
-    /// hostname alone would make two different Macs' IDs collision-resistant but return the exact
-    /// same ID on every relay restart, contradicting AppState.updateVirtualTunerPresence's own
-    /// "a fresh DeviceID is minted each time the responder (re)starts" guarantee: a client that
-    /// cached ID X from a since-ended recording could otherwise mistake a later, unrelated
-    /// recording session (also advertising X) for the one it already knows about.
+    /// existing routine rather than adding a second one) with a fresh random value on every call, so
+    /// this fallback path alone still can't collide across two different Macs or return the same ID
+    /// twice.
     static func makeDeviceID() -> String {
         let host = ProcessInfo.processInfo.hostName
         let hostHash = crc32(Array(host.utf8)) & 0xFFFF
         let session = UInt32.random(in: 0...0xFFFF)
         let suffix = hostHash ^ session
         return String(format: "FEED%04X", suffix)
+    }
+
+    /// The virtual tuner's advertised DeviceID for a relay session — stable and deterministic per
+    /// source tuner (2026-09-03, explicit user request) instead of a fully random ID minted fresh
+    /// on every relay restart, replacing a fresh random ID that left yet another
+    /// now-permanently-unavailable `FEED####` entry behind in every other instance's device list on
+    /// every relay restart (a plain relaunch during dev testing, or just normal daily recording
+    /// start/stop), with nothing to ever clean them up — see `AppState.probeForNewDevices()`'s
+    /// stale-device pruning (`deviceUnavailableSince`/`staleDeviceForgetAfter`) for the other half
+    /// of that same fix. Reusing the same ID across sessions is safe here specifically *because* it
+    /// depends only on the source tuner's own DeviceID, which never changes between sessions either
+    /// — a client sees a consistent "the relay for tuner X" identity across restarts instead of a
+    /// series of arbitrary, unrelated-looking session markers.
+    ///
+    /// **Not literally `"<sourceDeviceID>_Relay"`** — an earlier version of this function did
+    /// exactly that and shipped briefly the same day, but `VirtualTunerService.start(deviceID:)`
+    /// parses this string via `UInt32(deviceID, radix: 16)` to build the real UDP wire protocol's
+    /// binary DeviceID TLV (`docs/VirtualTunerService.md`'s "Wire protocol" section) — a
+    /// non-hex-suffixed string isn't valid hex, so `start()` rejected it outright and the relay
+    /// failed to bind at all, caught live within minutes via `"invalid deviceID ... — not
+    /// starting"` in the log, mid-recording. A `u32` has exactly 8 hex digits of room, full stop —
+    /// no format lets a DeviceID carry more than that.
+    ///
+    /// **`"FEED" + the source's own last 4 hex digits`** — same 4-digit `FEED` sentinel prefix
+    /// `makeDeviceID()` already uses (2026-09-03: kept deliberately, rather than trimming it to a
+    /// 2-digit `"FE"` marker to show more of the source's digits, a version of this function briefly
+    /// carried — for one consistent "known-fake" brand across every DeviceID this app ever mints,
+    /// real or relay, instead of two slightly different reserved prefixes). Spends 4 of the 8
+    /// available digits on that marker, leaving room for the source's own last 4
+    /// (`105404BE` → `FEED04BE`). Never collides with the source's own DeviceID (a real device's
+    /// own ID starting with `FEED` would be exactly as surprising as one starting `FE` alone), so
+    /// nothing keying a device dictionary by DeviceID (including this app's own
+    /// `AppState.devices`/`lineups`/etc.) can confuse the two. The human-readable "which real tuner
+    /// is this relaying" connection lives primarily in `FriendlyName`
+    /// (`"<source>-Relay"`, `WebServer.buildVirtualTunerDiscoverJSON`) — a free-text field with no
+    /// hex constraint — the last-4-digits match here is a bonus, not the primary signal.
+    ///
+    /// Falls back to `makeDeviceID()`'s random scheme when `sourceDeviceID` is nil or isn't exactly
+    /// an 8-hex-digit value itself (no show is recording, or its `hdhr_record` device was somehow
+    /// never discovered, or was only ever UDP-discovered with some other ID shape — shouldn't
+    /// happen in practice, since this is only ever called from
+    /// `AppState.updateVirtualTunerPresence()`'s `isRecording`-gated branch against a real,
+    /// HTTP-discovered device).
+    static func relayDeviceID(sourceDeviceID: String?) -> String {
+        guard let sourceDeviceID, sourceDeviceID.count == 8,
+              UInt32(sourceDeviceID, radix: 16) != nil
+        else { return makeDeviceID() }
+        return "FEED\(sourceDeviceID.suffix(4).uppercased())"
     }
 }

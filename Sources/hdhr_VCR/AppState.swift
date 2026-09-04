@@ -377,6 +377,25 @@ final class AppState: ObservableObject {
     // shape. Cleared
     // once TunerCount is restored or the device becomes unavailable.
     private var tunerCountFallbackAt: [String: Date] = [:]
+    // deviceId → the moment this device first crossed the 3-missed-probes unavailable threshold.
+    // Cleared the instant the device is seen again. Drives pruneStaleUnavailableDevices()'s "forget
+    // it after a reasonable time" grace period below — separate from missedProbes (an int, not a
+    // timestamp, and itself never persisted/reset-on-launch) because the grace period needs to
+    // survive across the 60s/5min probe cadence without depending on probe *count*, only elapsed
+    // wall-clock time unavailable.
+    private var deviceUnavailableSince: [String: Date] = [:]
+    // How long a device with no show assigned to it may sit unavailable before this instance stops
+    // remembering it at all. A device *any* show still references (any state — active, paused, even
+    // an inactive one — matches "Web guide offline devices" invariant's "never silently omit them")
+    // is never pruned regardless of how long it's been gone, since the user may still be waiting on
+    // it to come back. Chosen generously long relative to the ~2-7 min it takes to even reach
+    // "unavailable" in the first place, and to real device flakiness (network blip, reboot, firmware
+    // update) — short enough that a session's worth of now-dead virtual-tuner-relay DeviceIDs
+    // (VirtualTunerService.makeDeviceID()'s fallback path, or a relay from a Mac that's since gone
+    // offline) don't pile up in the menu bar header forever, which is what prompted adding this
+    // 2026-09-03 (a dev machine relaunched repeatedly during testing had accumulated 18 stale
+    // "FEED####  — unavailable" rows with no show ever assigned to any of them).
+    private static let staleDeviceForgetAfter: TimeInterval = 3600
     private var guideRefreshInFlight: Bool = false
     // In-flight fetchDeviceStatus(for:) calls, keyed by device — coalesces concurrent callers onto
     // the same real fetch (mirrors ensureLineupLoaded's loadingLineupTasks idiom) instead of a
@@ -828,10 +847,7 @@ final class AppState: ObservableObject {
     // (startRecording, teardownRecordingState, skipRecording, reattachRecordings), and also after
     // Settings toggles `Virtual_tuner_relay_enabled` (SettingsView's save path) so disabling it
     // mid-recording tears the relay down immediately rather than waiting for the next start/stop.
-    // A fresh DeviceID is generated each time the responder (re)starts from idle, not reused across
-    // a stop/start cycle, so a client that cached the old ID from a previous recording can't
-    // confuse a later, unrelated one for the same "device" it already saw. Internal, not private —
-    // SettingsView calls this directly on toggle change.
+    // Internal, not private — SettingsView calls this directly on toggle change.
     func updateVirtualTunerPresence() {
         if isRecording && config.Virtual_tuner_relay_enabled {
             // nil means no LAN interface was found (stale config.Network_interface after an adapter
@@ -845,7 +861,7 @@ final class AppState: ObservableObject {
                 glog("[VirtualTuner] no LAN interface found — skipping relay start/refresh this cycle", level: .warning)
                 return
             }
-            let tunerCount = shows.filter { $0.show_recording }.count
+            let tunerCount = recordingShows.count
             if let id = activeVirtualTunerDeviceID {
                 // Already running — refresh the advertised BaseURL/TunerCount in place (e.g. a
                 // second show started or stopped recording after the relay came up) without a
@@ -853,7 +869,12 @@ final class AppState: ObservableObject {
                 virtualTuner.start(deviceID: id, baseURL: baseURL, tunerCount: tunerCount)
                 return
             }
-            let id = VirtualTunerService.makeDeviceID()
+            // Stable "<realDeviceID>_Relay" ID instead of a fully random one — see
+            // VirtualTunerService.relayDeviceID's own doc comment for the full reasoning (mirrors
+            // buildVirtualTunerDiscoverJSON's "<FriendlyName>-Relay" naming) and probeForNewDevices's
+            // stale-device pruning (deviceUnavailableSince/staleDeviceForgetAfter) for the other half
+            // of the same fix.
+            let id = VirtualTunerService.relayDeviceID(sourceDeviceID: recordingShows.first?.hdhr_record)
             activeVirtualTunerDeviceID = id
             // The relay's HTTP JSON routes and stream endpoint live on this same WebServer
             // instance, which only actually runs its NWListener when Web_server_enabled is on or
@@ -916,7 +937,11 @@ final class AppState: ObservableObject {
         statusMessage = "No tuners found — will keep trying"
     }
 
-    // Never removes entries — avoids disrupting active recordings; isAvailable goes false after 3 missed probes.
+    // Never removes an entry a show still references, regardless of how long it's been
+    // unavailable — avoids disrupting active recordings, and matches the "never silently omit"
+    // rule for a device a show is waiting on. A device *nothing* references does eventually get
+    // forgotten — see the pruning pass near the end of this function. isAvailable goes false after
+    // 3 missed probes.
     private func probeForNewDevices() async {
         guard !probeInFlight else { return }
         probeInFlight = true
@@ -994,6 +1019,39 @@ final class AppState: ObservableObject {
         if devices.contains(where: { $0.missedProbes > 0 && $0.missedProbes <= 3 })
             || tunerCountRecentlyMissing {
             nextQuickProbe = Date().addingTimeInterval(60)
+        }
+
+        // Forget any device that's both unavailable and has no show assigned to it, once it's been
+        // gone longer than staleDeviceForgetAfter — see that constant's own doc comment for why.
+        // Placed before the newDevices early-return below so pruning still runs on an ordinary
+        // nothing-new-found tick, not only when a new device happens to show up the same cycle.
+        for device in devices {
+            if device.isAvailable {
+                deviceUnavailableSince.removeValue(forKey: device.DeviceID)
+            } else if deviceUnavailableSince[device.DeviceID] == nil {
+                deviceUnavailableSince[device.DeviceID] = now
+            }
+        }
+        let staleIDs = devices.compactMap { device -> String? in
+            guard !device.isAvailable,
+                  let since = deviceUnavailableSince[device.DeviceID],
+                  now.timeIntervalSince(since) > Self.staleDeviceForgetAfter,
+                  !shows.contains(where: { $0.hdhr_record == device.DeviceID })
+            else { return nil }
+            return device.DeviceID
+        }
+        if !staleIDs.isEmpty {
+            glog("[DeviceProbe] forgetting \(staleIDs.count) stale unavailable device(s) with no assigned show: \(staleIDs.joined(separator: ", "))")
+            devices.removeAll { staleIDs.contains($0.DeviceID) }
+            for id in staleIDs {
+                deviceUnavailableSince.removeValue(forKey: id)
+                tunerCountFallbackAt.removeValue(forKey: id)
+                lineups.removeValue(forKey: id)
+                guideByDevice.removeValue(forKey: id)
+                deviceTunerOccupancy.removeValue(forKey: id)
+                lastTunerAudit.removeValue(forKey: id)
+            }
+            webServer.broadcastDeviceBarEvent(type: "deviceRemoved", deviceId: staleIDs.joined(separator: ","), state: self)
         }
 
         let newDevices = (found ?? []).filter { !existingIDs.contains($0.DeviceID) }
