@@ -323,7 +323,7 @@ struct FirstRunWizardView: View {
                 switch step {
                 case .intro:              return ""   // header isn't rendered during .intro
                 case .recordingDefaults:  return "Step 1 of 3: Recording Defaults"
-                case .recordingRelay:     return "Step 2 of 3: Recording Relay"
+                case .recordingRelay:     return "Step 2 of 3: Recording FEED"
                 case .notificationTiming: return "Step 3 of 3: Notification Timing"
                 }
             }())
@@ -377,7 +377,7 @@ struct FirstRunWizardView: View {
         Form {
             Section {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Recording Relay").font(.headline)
+                    Text("Recording FEED").font(.headline)
                     Text("A new way to share a recording that's already in progress, without spending a second tuner. You can change this later in Settings → Sharing.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -392,7 +392,7 @@ struct FirstRunWizardView: View {
                         .font(.callout)
                     Label("Why it's there", systemImage: "questionmark.circle")
                         .font(.subheadline).bold()
-                    Text("Normally, watching a show that's already recording — from a second Mac, or another copy of this app — needs its own tuner, on top of the one already recording it. This relay lets another hdhrVCRplus instance watch the *same* recording straight off disk instead, so it never has to open a second one. If you only have one Mac, or don't run this app anywhere else, this has no effect either way.")
+                    Text("Normally, watching a show that's already recording — from a second Mac, or another copy of this app — needs its own tuner, on top of the one already recording it. This FEED lets another hdhrVCRplus instance watch the *same* recording straight off disk instead, so it never has to open a second one. If you only have one Mac, or don't run this app anywhere else, this has no effect either way.")
                         .font(.callout)
                     Label("What it can't do", systemImage: "lock.shield")
                         .font(.subheadline).bold()

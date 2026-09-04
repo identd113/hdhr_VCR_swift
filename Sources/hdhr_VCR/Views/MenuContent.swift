@@ -108,7 +108,7 @@ struct MenuContent: View {
         if state.activeVirtualTunerDeviceID != nil {
             let transcodeViewers = state.recordingShows.reduce(0) { $0 + VLCBridge.shared.transcodeViewerCount(showId: $1.show_id) }
             let totalViewers = state.relayRawViewerCount + transcodeViewers
-            Text("Relay: \(totalViewers) watching")
+            Text("FEED: \(totalViewers) watching")
                 .foregroundStyle(Color(NSColor.secondaryLabelColor))
         }
         // ── Add Show ──────────────────────────────────────────────────────
@@ -198,7 +198,7 @@ struct MenuContent: View {
                                 // "auto" (any non-empty, non-"none" string) only tells the remote
                                 // relay "transcode this" — it never decides the actual level;
                                 // that's the *source* Mac's own configured "Default transcode
-                                // level" (Settings → Sharing → Recording Relay), by design (see
+                                // level" (Settings → Sharing → Recording FEED), by design (see
                                 // WebServer.effectiveTranscodeProfile's own doc comment).
                                 let url = (pair.entry.URL ?? "") + "&transcode=auto"
                                 state.watchRemoteRelay(url: url, title: title, device: pair.device)

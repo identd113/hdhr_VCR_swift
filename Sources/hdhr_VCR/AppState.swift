@@ -4352,7 +4352,7 @@ final class AppState: ObservableObject {
         vlcInstallNotified = true
         glog("[VLC] detected a VLC install while running — prompting for relaunch")
         notify("VLC Detected",
-               body: "Relaunch hdhrVCRplus to enable in-app playback and the recording relay's transcode option.",
+               body: "Relaunch hdhrVCRplus to enable in-app playback and the recording FEED's transcode option.",
                subtitle: "",
                categoryIdentifier: "vlc.detected")
     }

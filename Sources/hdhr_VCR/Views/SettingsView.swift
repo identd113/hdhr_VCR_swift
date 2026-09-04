@@ -770,7 +770,7 @@ struct SettingsView: View {
                 }
             }
 
-            Section("Recording Relay") {
+            Section("Recording FEED") {
                 Toggle(isOn: $draft.Virtual_tuner_relay_enabled) {
                     HStack { Text("Rebroadcast In-Progress Recordings"); InfoButton("While a show is recording, this Mac briefly advertises itself as an extra HDHomeRun-style tuner on the local network, so another Mac running hdhrVCRplus can watch the recording without tying up a second real tuner. On by default. It can never be used to start a new recording — only to watch one already in progress — and works independently of Sharing above.") }
                 }

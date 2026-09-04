@@ -343,7 +343,7 @@ rows via one view, `RecordingDefaultsFields` (`Views/RecordingDefaultsFields.swi
 doc for it since it has no independent visual identity beyond what's described here and in
 `docs/SettingsView.md`'s Recording section.
 
-### Step 2 — Recording Relay
+### Step 2 — Recording FEED
 Three short labeled paragraphs (What it is / Why it's there / What it can't do, each with an SF
 Symbol `Label` heading) explaining the virtual-tuner relay in plain language, followed by one
 `Toggle` — same visual weight as a `SettingsView` section, not a marketing-style illustration
@@ -398,7 +398,7 @@ here just means "use the default," same as everywhere else); `finish()` writes i
 same key. Transcode/min-disk/fail-threshold commit to `state.config.Default_transcode` /
 `.Min_disk_free_gb` / `.Fail_count_setting` on Finish the same way.
 
-### Step 2 — Recording Relay
+### Step 2 — Recording FEED
 Explains the virtual-tuner relay (`docs/VirtualTunerService.md`) in plain terms — what it is, why
 it exists, and what it can't do — then one `Toggle` bound to local `@State relayEnabled` (default
 mirrors `state.config.Virtual_tuner_relay_enabled`, itself `true`). Same commit-on-Finish pattern
@@ -406,7 +406,7 @@ as every other field here: `finish()` writes it to `state.config.Virtual_tuner_r
 if it changed, calls `state.updateVirtualTunerPresence()` directly so a recording already in
 progress (only realistically possible via a mid-session reset from Settings → Maintenance) reflects
 the new setting immediately rather than waiting for that recording to end. `SettingsView`'s own
-Sharing → Recording Relay toggle is the same setting, same wording, reachable any time after this
+Sharing → Recording FEED toggle is the same setting, same wording, reachable any time after this
 wizard closes — this screen exists purely so a first-time user sees the explanation once, unprompted.
 
 ### Step 3 — Notification Timing

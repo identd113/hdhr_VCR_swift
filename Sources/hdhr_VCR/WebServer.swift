@@ -660,7 +660,7 @@ final class WebServer: @unchecked Sendable {
     // bitrate is actually used. This app's transcode sessions are already shared by show alone
     // regardless of which profile string each viewer individually asked for (see
     // VLCBridge.TranscodeSession's own doc comment), so per-viewer profile control never really
-    // existed here; `configuredDefault` (Settings → Sharing → Recording Relay → "Default transcode
+    // existed here; `configuredDefault` (Settings → Sharing → Recording FEED → "Default transcode
     // level", `config.Virtual_tuner_relay_default_transcode`) is the one admin-configured level
     // actually applied whenever any transcode is requested, per explicit user direction. Pure — no
     // I/O — so HDHRManagerTests-style tests can exercise it directly without a live NWConnection.
@@ -1651,7 +1651,7 @@ final class WebServer: @unchecked Sendable {
         // enforcement is AppState.addShow's own hard backstop, but rejecting here gives the web
         // guide a clear error instead of a silent no-op from addShowFromGuide.
         guard !device.isVirtualRelay else {
-            return json(["ok": false, "error": "This tuner is a temporary recording relay and can't be recorded from — watch it directly instead."])
+            return json(["ok": false, "error": "This tuner is a temporary recording FEED and can't be recorded from — watch it directly instead."])
         }
 
         // distantPast so currently-airing shows (StartTime < now) are also matchable
@@ -1827,7 +1827,7 @@ final class WebServer: @unchecked Sendable {
         // lineup entries must not be forwarded to hdhrManager.setFavorite against a device that
         // isn't real.
         guard !device.isVirtualRelay else {
-            return json(["ok": false, "error": "This tuner is a temporary recording relay and has no favorites of its own."])
+            return json(["ok": false, "error": "This tuner is a temporary recording FEED and has no favorites of its own."])
         }
 
         let newFav = !ch.isFavorite   // ch is a struct copy; capture before toggleFavorite mutates lineups
@@ -2764,7 +2764,7 @@ final class WebServer: @unchecked Sendable {
         // at the two other virtual-tuner JSON builders below.
         let recordingShows = state.recordingShows
         let tunerCount = recordingShows.count
-        // Named after the real unit it's relaying from ("<original FriendlyName>-Relay") rather than
+        // Named after the real unit it's relaying from ("<original FriendlyName>-FEED") rather than
         // a generic label, so it reads as clearly related in a third-party client's device list —
         // falls back to the generic name only if the source device's own FriendlyName was never
         // fetched (e.g. a UDP-only-discovered device with no FriendlyName TLV, or no show currently
@@ -2772,7 +2772,7 @@ final class WebServer: @unchecked Sendable {
         let sourceDevice = recordingShows.first.flatMap { show in
             state.devices.first(where: { $0.DeviceID == show.hdhr_record })
         }
-        let friendlyName = sourceDevice?.FriendlyName.map { "\($0)-Relay" } ?? "hdhrVCRplus (Recording Relay)"
+        let friendlyName = sourceDevice?.FriendlyName.map { "\($0)-FEED" } ?? "hdhrVCRplus (Recording FEED)"
         return [
             "DeviceID": deviceID,
             "FriendlyName": friendlyName,

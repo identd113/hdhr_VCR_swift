@@ -34,7 +34,7 @@ struct VirtualTunerWebRoutesTests {
         let state = makeTestAppState(shows: [show],
                                       devices: [.test(id: "FFFFFFFF", friendlyName: "HDHomeRun EXTEND")])
         let json = try #require(WebServer().buildVirtualTunerDiscoverJSON(state: state, deviceID: "FEEDABCD"))
-        #expect(json["FriendlyName"] as? String == "HDHomeRun EXTEND-Relay")
+        #expect(json["FriendlyName"] as? String == "HDHomeRun EXTEND-FEED")
     }
 
     @MainActor
@@ -45,7 +45,7 @@ struct VirtualTunerWebRoutesTests {
         // no FriendlyName TLV read, same as the existing ModelNumber-absent convention.
         let state = makeTestAppState(shows: [show], devices: [.test(id: "FFFFFFFF")])
         let json = try #require(WebServer().buildVirtualTunerDiscoverJSON(state: state, deviceID: "FEEDABCD"))
-        #expect(json["FriendlyName"] as? String == "hdhrVCRplus (Recording Relay)")
+        #expect(json["FriendlyName"] as? String == "hdhrVCRplus (Recording FEED)")
     }
 
     @MainActor
