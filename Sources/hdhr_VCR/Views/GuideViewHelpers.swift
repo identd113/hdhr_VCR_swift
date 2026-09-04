@@ -175,11 +175,20 @@ func isNewEpisode(_ entry: GuideEntry) -> Bool {
     return false
 }
 
+// Checked once before falling through to the 4 replacingOccurrences passes below — most guide
+// text (titles, channel names) contains none of these, and each pass is a full string scan +
+// allocation regardless of whether it finds anything, so skipping straight to "already safe" for
+// the common case avoids paying for 4 no-op scans. Called on the order of a dozen times per grid
+// entry across ~1300+ program blocks per rebuild (buildGuideGridHTML, buildTunerShowsHTML,
+// buildDevBarHTML, buildSumPhHTML), on @MainActor.
+private let htmlEscapeChars = CharacterSet(charactersIn: "&<>\"")
+
 func he(_ s: String) -> String {
-    s.replacingOccurrences(of: "&",  with: "&amp;")
-     .replacingOccurrences(of: "<",  with: "&lt;")
-     .replacingOccurrences(of: ">",  with: "&gt;")
-     .replacingOccurrences(of: "\"", with: "&quot;")
+    guard s.rangeOfCharacter(from: htmlEscapeChars) != nil else { return s }
+    return s.replacingOccurrences(of: "&",  with: "&amp;")
+            .replacingOccurrences(of: "<",  with: "&lt;")
+            .replacingOccurrences(of: ">",  with: "&gt;")
+            .replacingOccurrences(of: "\"", with: "&quot;")
 }
 
 // MARK: - Guide ring/badge (native equivalent of the web guide's .g-st-* status ring)

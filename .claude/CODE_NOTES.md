@@ -865,3 +865,76 @@ moved to `ISSUES.md`. Full breakdown:
 - **Noted, low value, not moved anywhere**: `LineupEntry.AudioCodec` is decoded from the wire but read
   by no production code path, only test assertions — dead stored property, not worth its own issue
   entry; fine to just delete next time that file is touched for something else, or leave as-is.
+
+## 2026-09-04 — swift-quality-reviewer pass on dadf7c9..HEAD (Relay→FEED rename + FEED hardening)
+- **`VLCBridge.swift:1009`** — `startTranscodeSession`'s per-media option list still includes
+  `"sout-x264-keyint=60"`/`"sout-x264-min-keyint=60"` passed via `mediaAddOptFn(media, ...)`, even
+  though the doc comment added in this same commit (`VLCBridge.swift:258-267`, on the `libvlc_new()`
+  global-argv change) states plainly that the per-media form was confirmed live to silently no-op —
+  only the global instance-level `--sout-x264-keyint=60`/`--sout-x264-min-keyint=60` (now passed to
+  `newFn` at `libvlc_new`) actually changes the emitted GOP. The two per-media strings at line 1009
+  are therefore dead weight left over from the pre-fix attempt — harmless (a no-op is still a no-op)
+  but actively misleading to the next reader, who will see two places setting the same values and not
+  know one of them is known-inert by the code's own admission. Worth deleting the two per-media
+  entries from that `for opt in [...]` list next time this function is touched.
+- Confirmed the "user-facing Relay → FEED" rename stayed correctly scoped: internal identifiers
+  (`isVirtualRelay`, `watchRemoteRelay`, `Virtual_tuner_relay_enabled` config key, `/api/watch-recording`
+  "relay" comments referring to the *local* disk-relay Watch Now path, unrelated to the cross-machine
+  FEED feature) were deliberately left alone, matching the commit's own stated scope. Only
+  `SettingsView.swift:708`'s comment ("not the Recording Relay toggle") still says the pre-rename name
+  — cosmetic, comment-only, not touched by the diff; fine to fold in next time that file is edited.
+- `relayRawViewerCount`/`onStreamEnded` plumbing (`WebServer.swift`, `AppState.swift`) is a clean
+  connect/disconnect ref-count with a `max(0, ...)` floor and unit tests for both directions and the
+  negative-clamp case — no notes, just confirming it's solid.
+- `VirtualTunerLiveStreamTests.swift`'s new `relayServesRawRecordingBytesToARealConnection` split (grow
+  a file mid-stream to prove the live-edge-start fix) uses a 500ms `Task.sleep` to let the relay's
+  fileIOQueue hop open+stat the file before the second half is appended — a time-based synchronization
+  guess rather than an actual "connection opened" signal. Low severity: this is an opt-in
+  (`RUN_VIRTUAL_TUNER_LIVE_TESTS=1`) live-hardware test, not part of default `swift test`/CI, and the
+  window is generous relative to the real cost (one dispatch + one stat call) — but if this ever starts
+  flaking, the fix is a real synchronization point (e.g. a small callback/continuation from
+  `handleVirtualTunerStream` when it's about to read file size) rather than a longer sleep.
+
+## 2026-09-04 — swift-quality-reviewer pre-release efficiency pass (whole codebase, not diff-scoped)
+- **`WebServer.buildGuideGridHTML` (`WebServer.swift:2367-2376`)** — `ggSkip`/`ggAlias`/`ggKnown`
+  (a `Set<String>`, a `[String:String]`, and a 24-element `Set<String>`) are declared *inside* the
+  innermost per-entry loop, so all three small collections are freshly allocated and populated once
+  per guide entry rendered. `prebuildPageHTML`'s own comment two callers up confirms the real scale:
+  "1300+ program blocks" per rebuild, and this function runs on `@MainActor` for every one of the
+  9+ guide-changing event types (add/edit/delete/pause/resume/favorite-toggle/recording start-stop)
+  CLAUDE.md's "New cached page variant" section already flags as MainActor-blocking. Trivial fix:
+  hoist the three literals to `private static let`s (or function-level `let`s outside the loop) —
+  they're pure static lookup tables with no captured state, genuinely the same class of waste as
+  "recreating formatters/caches per call." Rest of this function is otherwise well-optimized
+  (`recChannelsByDevice`/`pendingRecChannelsByDevice`/`hwOtherChannelsByDevice` are all correctly
+  hoisted once per device outside the entry loop, `ManagedGuideMatcher` builds its indices once
+  up front) — this is the one spot that didn't get the same treatment.
+- **`he(_:)` (`Views/GuideViewHelpers.swift:178-183`)** — HTML-escapes by chaining 4 unconditional
+  `replacingOccurrences(of:with:)` calls (`&`, `<`, `>`, `"`), each a full string scan + new
+  allocation even when the input contains none of those characters (the overwhelmingly common case
+  for guide titles/channel names/genres). Called roughly a dozen times per guide-grid entry (title,
+  sub-title, tooltip, every `data-*` attribute) across the same 1300+-block rebuild above, plus again
+  in `buildTunerShowsHTML`/`buildDevBarHTML`/`buildSumPhHTML` for every broadcast. Not flagged as a
+  top-priority fix — each individual call is cheap — but a `guard s.utf8.contains(where: ...)` fast
+  path (skip straight to returning `s` unchanged when none of the 4 characters are present) would cut
+  the common-case cost by ~4x with no behavior change, and this function sits squarely in the hot
+  path CLAUDE.md's "generated-HTML size and DOM node count as budgets" note already calls out.
+- **`WebServer.isSkippedAiring` (`WebServer.swift:2196-2202`)** — recompiles the same
+  `#"^S\d+E\d+$"#` pattern via `String.range(of:options:.regularExpression)` on every call for every
+  managed (owner != nil) guide entry, rather than once. Minor in absolute terms (bounded by managed-
+  show count, not full grid size) but a real, confirmed case of "recompile per call" — a
+  `private static let episodeTagPattern` (either a precompiled `NSRegularExpression` or, since the
+  pattern is fixed and simple, a hand-rolled `S\d+E\d+` scan) would remove the per-call compile cost.
+- **`WebServer.swift:1545-1550` (`GET /favicon.ico`)** — synchronous `Data(contentsOf:)` disk read
+  directly on `@MainActor` per request, unlike `cachedIconPNG` two cases below it which is
+  pre-loaded once. Very low severity (browsers cache favicons aggressively, file is tiny, this route
+  sees traffic only on a fresh/uncached page load) — noting it as the same shape as
+  `ConfigManager.save`'s already-tracked MainActor-disk-I/O issue (`TODO.md`) in case it's ever worth
+  folding into that same cleanup pass, not raising it as independently worth scheduling.
+- Everything else checked in the priority list (`AppState.idleLoop` and its per-tick passes,
+  `MenuContent.body`'s derived-list `let`s, `GuideStore`'s index/query methods, `ManagedGuideMatcher`,
+  `broadcastGuideChangeEvent`/`broadcastRecordingEvent`/`prebuildPageHTML`'s grid-sharing) was already
+  either well-optimized with explicit hoisting comments explaining why, or already covered by an
+  existing `ISSUES.md`/`TODO.md` entry (`ConfigManager.save`, SSE gzip, `remoteRelayEntries`,
+  `lanIPAddress`/`getifaddrs` per-request, `sourceIsAlreadyModernCodec`'s uncached PAT/PMT rescan) —
+  not re-listed here.

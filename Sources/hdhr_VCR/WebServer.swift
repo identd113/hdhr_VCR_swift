@@ -2188,6 +2188,11 @@ final class WebServer: @unchecked Sendable {
         return result
     }
 
+    // Compiled once, not per call — isSkippedAiring runs for every managed guide entry on every
+    // guide-grid rebuild; String.range(of:options:.regularExpression) recompiles the pattern from
+    // scratch on every single call, which NSRegularExpression's own init doesn't need to pay again.
+    private static let episodeTagRegex = try! NSRegularExpression(pattern: #"^S\d+E\d+$"#, options: [.caseInsensitive])
+
     // Shared by buildGuideGridHTML's willSkip and buildGuideJSON's willSkip — a managed airing is
     // skipped when skip-already-recorded is on, this isn't the entry currently recording (which
     // would otherwise flag its own in-progress file as a duplicate), the owning show doesn't have
@@ -2197,10 +2202,24 @@ final class WebServer: @unchecked Sendable {
                                   episodeNumber: String?, recordedTagsByShow: [String: Set<String>]) -> Bool {
         guard skipEnabled, !isRecordingNow, let owner, !owner.show_ignore_duplicate_once,
               let ep = episodeNumber,
-              ep.range(of: #"^S\d+E\d+$"#, options: [.regularExpression, .caseInsensitive]) != nil
+              Self.episodeTagRegex.firstMatch(in: ep, range: NSRange(ep.startIndex..., in: ep)) != nil
         else { return false }
         return recordedTagsByShow[owner.show_id]?.contains(ep.uppercased()) == true
     }
+
+    // Pure static data for buildGuideGridHTML's per-entry genre-tag lookup below — hoisted out of
+    // the loop body (previously freshly allocated per program block, ~1300+ times per rebuild per
+    // prebuildPageHTML's own comment, on @MainActor, for every one of 9+ guide-changing events).
+    private static let ggSkip: Set<String> = ["series","miniseries","mini-series","mini series","special"]
+    private static let ggAlias: [String: String] = [
+        "sitcom":"comedy","movies":"movie","kids":"children","sport":"sports",
+        "documentary":"doc","game show":"gameshow","animation":"children","animated":"children"
+    ]
+    private static let ggKnown: Set<String> = [
+        "drama","comedy","news","sports","reality","movie","talk","children",
+        "crime","romance","thriller","action","mystery","doc","science","nature",
+        "history","music","food","travel","gameshow","home","health","faith"
+    ]
 
     // Builds the .gi innerHTML (g-hdr + per-channel rows) used by both buildHTML() and /api/guide-refresh.
     // Self-contained: all dependencies come from `state` or module-level globals (he, hourFmt, etc.).
@@ -2364,22 +2383,12 @@ final class WebServer: @unchecked Sendable {
                          : isConflict              ? " g-st-conflict"
                          : isMgd                   ? " g-st-sched"
                          : isOtherTunerNow         ? " g-st-inuse" : ""
-                    let ggSkip: Set<String>  = ["series","miniseries","mini-series","mini series","special"]
-                    let ggAlias: [String: String] = [
-                        "sitcom":"comedy","movies":"movie","kids":"children","sport":"sports",
-                        "documentary":"doc","game show":"gameshow","animation":"children","animated":"children"
-                    ]
-                    let ggKnown: Set<String> = [
-                        "drama","comedy","news","sports","reality","movie","talk","children",
-                        "crime","romance","thriller","action","mystery","doc","science","nature",
-                        "history","music","food","travel","gameshow","home","health","faith"
-                    ]
                     var gg: [String] = []
                     for f in (e.Filter ?? []) {
                         let lo = f.lowercased()
-                        if ggSkip.contains(lo) { continue }
-                        let g = ggAlias[lo] ?? lo
-                        if ggKnown.contains(g) && !gg.contains(g) { gg.append(g); if gg.count == 2 { break } }
+                        if Self.ggSkip.contains(lo) { continue }
+                        let g = Self.ggAlias[lo] ?? lo
+                        if Self.ggKnown.contains(g) && !gg.contains(g) { gg.append(g); if gg.count == 2 { break } }
                     }
                     var extraStyle = ""
                     if (e.Filter?.count ?? 0) > 1 && gg.count == 2 && !isEntryRec {
