@@ -265,14 +265,14 @@ final class VLCBridge: ObservableObject {
         // on the one shared instance — nothing else in this app ever instantiates an x264
         // *encoder* (the on-screen player only ever decodes), so this can't affect live/recording
         // playback, only a future transcode session. See startTranscodeSession's own comment for
-        // why keyint=60 was picked.
+        // why keyint=30 was picked (tightened from 60, 2026-09-04).
         // strdup'd here, freed inside the detached task right after the (synchronous) newFn call
         // reads them — Task.detached only *schedules* the closure below, so freeing on this
         // (calling) thread via a plain `defer` here would race the task and could free them
         // before it ever runs; nonisolated(unsafe) since these are plain C pointers with no
         // shared mutable state, same reasoning as inst/mp's own capture just below.
         nonisolated(unsafe) let vlcArgCStrings: [UnsafeMutablePointer<CChar>?] =
-            ["--sout-x264-keyint=60", "--sout-x264-min-keyint=60"].map { (s: String) in s.withCString { strdup($0) } }
+            ["--sout-x264-keyint=30", "--sout-x264-min-keyint=30"].map { (s: String) in s.withCString { strdup($0) } }
         Task.detached(priority: .userInitiated) { [weak self] in
             let vlcArgPointers: [UnsafePointer<CChar>?] = vlcArgCStrings.map { UnsafePointer($0) }
             // OpaquePointer isn't Sendable, but these are freshly-created VLC handles with no
@@ -987,26 +987,16 @@ final class VLCBridge: ObservableObject {
         //
         let soutOpt = "sout=#transcode{vcodec=h264,vb=\(vb),acodec=a52,ab=128,channels=2}"
                     + ":std{access=http,mux=ts,dst=127.0.0.1:\(port)/relay}"
-        // sout-x264-keyint/sout-x264-min-keyint — added 2026-09-04, per explicit user request,
-        // after comparing mediainfo output for a real over-the-air H.264 channel against this
-        // encoder's default GOP: the real broadcast keeps a keyframe every ~1s (confirmed live:
-        // "GOP M=4, N=30" at 29.97fps); left at x264's own default (keyint=250, unset here before
-        // this), a 59.94fps source went ~4.2s between keyframes — a viewer joining the FEED
-        // transcode mid-stream (or scrubbing) has to wait up to that long for the next IDR before
-        // anything decodes. These are x264's own global advanced config options (`vlc -p x264
-        // --advanced --help-verbose`), NOT recognized fields inside the `transcode{}` chain
-        // string above — a first attempt at `transcode{...,keyint=60,keyint_min=60,...}` silently
-        // no-op'd (mediainfo still showed the x264 default 250/25 in the output), confirmed live
-        // both by that mismatch and by testing the correct syntax directly against VLC's CLI
-        // before changing this. 60 isn't a per-source frame-rate lookup (the source's actual fps
-        // isn't known before this sout chain is built, and probing it would need a real decode/
-        // SPS-parse this function doesn't otherwise do) — it's a fixed frame count chosen as a
-        // reasonable approximation across realistic broadcast frame rates: exactly 1.0s at
-        // 59.94fps, 2.0s at 29.97fps. min-keyint=60 (equal to keyint) is a request, not a
-        // guarantee — x264 still auto-clamps it down (observed ~31 in testing, since `scenecut`
-        // stays enabled at its own default and wants room to insert an early scene-cut IDR), which
-        // only tightens the join-latency win further, never loosens it.
-        for opt in [soutOpt, "sout-x264-keyint=60", "sout-x264-min-keyint=60", "sout-keep", "--no-audio-time-stretch"] {
+        // GOP length (keyframe every ~0.5-1s — tighter than real broadcast's own ~1s cadence,
+        // deliberately, since a FEED transcode session is shared across viewers who join at
+        // arbitrary points in an already-running encode, unlike a session's own creator who always
+        // gets a fresh IDR as frame one) is already set via --sout-x264-keyint=30/
+        // --sout-x264-min-keyint=30 in libvlc_new()'s global argv above —
+        // see that call site's own comment for why it has to be global-instance argv, not a
+        // per-media option here: confirmed live 2026-09-04 that libvlc_media_add_option-ing these
+        // two keys on this media (the same mechanism soutOpt/sout-keep use below) silently no-ops,
+        // leaving x264 at its own untouched keyint=250 default. Do not re-add them here.
+        for opt in [soutOpt, "sout-keep", "--no-audio-time-stretch"] {
             opt.withCString { mediaAddOptFn(media, $0) }
         }
         guard let player = mpNewFn(inst) else {
