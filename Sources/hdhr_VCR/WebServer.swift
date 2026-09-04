@@ -711,7 +711,7 @@ final class WebServer: @unchecked Sendable {
                 let sourceIsAlreadyModern = (wantsTranscode && vlcAvailable)
                     && Self.sourceIsAlreadyModernCodec(lineupVideoCodec: lineupVideoCodec, recordingPath: path)
                 if wantsTranscode, vlcAvailable, !sourceIsAlreadyModern {
-                    Task { @MainActor in self.beginTranscodeRelay(showId: showId, profile: profile, conn: conn) }
+                    Task { @MainActor in self.beginTranscodeRelay(showId: showId, profile: profile, conn: conn, durationSeconds: durationSeconds) }
                     return
                 }
                 if sourceIsAlreadyModern {
@@ -739,7 +739,7 @@ final class WebServer: @unchecked Sendable {
     // output to `conn`. The session reads from this app's own /api/watch-recording relay — never a
     // raw file:// path, see VLCBridge's own "Headless transcode sessions" doc comment for why.
     @MainActor
-    private func beginTranscodeRelay(showId: String, profile: String, conn: NWConnection) {
+    private func beginTranscodeRelay(showId: String, profile: String, conn: NWConnection, durationSeconds: Int? = nil) {
         let sourceURL = "http://127.0.0.1:\(activePort)/api/watch-recording?show=\(showId)&start=0"
         guard let session = VLCBridge.shared.startTranscodeSession(showId: showId, profile: profile, sourceURL: sourceURL) else {
             send(.notFound("transcode unavailable"), on: conn)
@@ -761,7 +761,7 @@ final class WebServer: @unchecked Sendable {
             let elapsed = Date().timeIntervalSince(session.startedAt)
             let delay = max(0, 0.6 - elapsed)
             self.queue.asyncAfter(deadline: .now() + delay) {
-                self.pumpTranscodeProxy(localURL: session.localURL, showId: showId, conn: conn)
+                self.pumpTranscodeProxy(localURL: session.localURL, showId: showId, conn: conn, durationSeconds: durationSeconds)
             }
         }))
     }
@@ -827,7 +827,7 @@ final class WebServer: @unchecked Sendable {
     // client-disconnect handling already uses, not an NWConnection state observer (which would
     // clobber handleConnection's own stateUpdateHandler — see that function's doc comment on why it
     // owns that property for the connection's whole lifetime).
-    private func pumpTranscodeProxy(localURL: URL, showId: String, conn: NWConnection) {
+    private func pumpTranscodeProxy(localURL: URL, showId: String, conn: NWConnection, durationSeconds: Int? = nil) {
         var urlSession: URLSession?
         let cleanup: () -> Void = { [weak self] in
             urlSession?.invalidateAndCancel()
@@ -855,6 +855,22 @@ final class WebServer: @unchecked Sendable {
         // stack a real send would, so it surfaces a genuinely dead connection (an already-received
         // RST, or a broken route) without emitting a stray byte into the live MPEG-TS stream.
         scheduleTranscodeLivenessProbe(conn: conn, delegate: delegate)
+
+        // Mirrors the raw-passthrough path's own `?duration=` deadline (pumpGrowingFile) — a client
+        // requesting a bounded window on a transcoded stream gets the same self-terminate-after-N-
+        // seconds behavior a real tuner's own `?duration=` param would give it, instead of the
+        // transcode running (and billing CPU) indefinitely until the viewer disconnects on its own.
+        // A single asyncAfter rather than a per-chunk deadline check (unlike pumpGrowingFile, which
+        // already recurses once per chunk anyway) — this path is event-driven off
+        // TranscodeProxyDelegate's own didReceive callbacks, not a polling loop, so there's no
+        // existing per-iteration hook to piggyback the check onto.
+        if let durationSeconds {
+            queue.asyncAfter(deadline: .now() + Double(durationSeconds)) { [weak delegate] in
+                guard let delegate, !delegate.isFinished else { return }
+                glog("[VirtualTuner] transcode relay show=\(showId) duration elapsed — closing stream")
+                delegate.notifyFinished()
+            }
+        }
     }
 
     private static let transcodeLivenessProbeInterval: TimeInterval = 30
