@@ -159,18 +159,40 @@ struct VirtualTunerLiveStreamTests {
         return (state, device, show.show_id)
     }
 
+    // Regression guard for a real reported bug (2026-09-04): a FEED viewer used to start at byte 0
+    // of the recording — a real HDHomeRun tuner has no backlog at all when you tune in, so starting
+    // at byte 0 instead blasted the *entire* recording-so-far as fast as disk+network allowed
+    // (measured live: ~940MB in ~19s for a recording that had been running a while), then switched
+    // to a real-time-paced trickle only once caught up — a discontinuous burst-then-trickle shape
+    // that isn't "watching live" at all until the burst finishes, and confused the client player's
+    // own buffering (tuned for a real tuner's continuous delivery). Fixed by starting at the file's
+    // *current* size (the live edge) instead of 0. This test simulates a genuinely growing file —
+    // writes only the first half of a real capture before connecting, then appends the second half
+    // only after the relay request has landed — and asserts the relay served bytes from the second
+    // half (the live edge at connect time), never replaying the first half that predates the
+    // connection.
     @MainActor
     @Test func relayServesRawRecordingBytesToARealConnection() async throws {
         guard virtualTunerLiveTestsOptedIn() else { return }
-        let (samplePath, entry): (String, LineupEntry)
+        let (capturedPath, entry): (String, LineupEntry)
         do {
-            (samplePath, entry) = try await captureRealChannelSample()
+            (capturedPath, entry) = try await captureRealChannelSample()
         } catch {
             Issue.record("RUN_VIRTUAL_TUNER_LIVE_TESTS=1 but couldn't capture a real channel sample (\(error)) — need a real, reachable HDHomeRun device on the LAN")
             return
         }
+        defer { try? FileManager.default.removeItem(atPath: capturedPath) }
+        let sampleBytes = try Data(contentsOf: URL(fileURLWithPath: capturedPath))
+        #expect(sampleBytes.count > 4096)   // needs enough bytes to split meaningfully below
+        let midpoint = sampleBytes.count / 2
+        let firstHalf  = sampleBytes.prefix(midpoint)
+        let secondHalf = sampleBytes.suffix(from: midpoint)
+
+        // samplePath (not capturedPath) is what the relay actually serves from — starts holding
+        // only firstHalf, simulating "recording in progress, this much captured so far."
+        let samplePath = NSTemporaryDirectory() + "hdhrVCRplus-vtunertest-growing-\(UUID().uuidString).ts"
+        try Data(firstHalf).write(to: URL(fileURLWithPath: samplePath))
         defer { try? FileManager.default.removeItem(atPath: samplePath) }
-        let sampleBytes = try Data(contentsOf: URL(fileURLWithPath: samplePath))
 
         let (state, device, showId) = try await makeLiveRelayState(samplePath: samplePath, entry: entry)
         defer { state.webServer.stop() }
@@ -179,11 +201,26 @@ struct VirtualTunerLiveStreamTests {
         #expect(deviceId != nil)   // relay actually activated
 
         let streamURL = URL(string: "http://127.0.0.1:\(Self.testPort)/auto/v\(entry.GuideNumber)?dev=\(device.DeviceID)")!
-        let received = try await collectBytes(from: streamURL, maxBytes: 4096, timeout: 5)
-        #expect(!received.isEmpty)
-        // Untranscoded path is a byte-for-byte passthrough of the on-disk file — the whole point of
-        // Phase 1's design (docs/VirtualTunerService.md).
-        #expect(received == sampleBytes.prefix(received.count))
+        async let received = collectBytes(from: streamURL, maxBytes: 4096, timeout: 10)
+        // Gives handleVirtualTunerStream's fileIOQueue hop time to actually open the connection and
+        // read the file's size (firstHalf's — the "live edge" at that instant) before secondHalf
+        // ever lands on disk. Generous relative to that hop's real cost (a dispatch + one stat call)
+        // for stability under real scheduler load, matching this suite's existing "generous timeout"
+        // philosophy elsewhere.
+        try await Task.sleep(for: .milliseconds(500))
+        // FileHandle append rather than a second whole-file write — matches how curl actually grows
+        // a real recording (appending), and avoids a truncate-then-rewrite race with the relay's own
+        // concurrent read.
+        let handle = try FileHandle(forWritingTo: URL(fileURLWithPath: samplePath))
+        handle.seekToEndOfFile()
+        handle.write(secondHalf)
+        try handle.close()
+
+        let receivedBytes = try await received
+        #expect(!receivedBytes.isEmpty)
+        // Must be a prefix of secondHalf (the live edge onward) — never of firstHalf or the whole
+        // file, which is what byte-0-start would have produced instead.
+        #expect(receivedBytes == secondHalf.prefix(receivedBytes.count))
 
         _ = showId
     }

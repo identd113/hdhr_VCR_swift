@@ -705,13 +705,28 @@ final class WebServer: @unchecked Sendable {
                     self.queue.async { self.send(.notFound("recording not found"), on: conn) }
                     return
                 }
+                // Start at the live edge (current write position), not byte 0 — a real HDHomeRun
+                // tuner has no backlog at all when you tune in, so this is what actually makes a
+                // FEED viewer's experience match one: byte 0 would instead blast the *entire*
+                // recording-so-far as fast as disk+network allow (confirmed live 2026-09-04: ~940MB
+                // in ~19s for a recording that had been running a while), then switch to a real-
+                // time-paced trickle only once caught up — a discontinuous burst-then-trickle
+                // delivery shape that (a) isn't "watching live" at all until the burst finishes and
+                // (b) is exactly what caused a real reported playback stall, since the client-side
+                // player's own buffering assumptions are tuned for a real tuner's continuous
+                // delivery, not this burst. Starting here instead means the very first byte sent is
+                // already at the live edge, so the whole session is real-time-paced by construction
+                // (curl can only write the recording as fast as the broadcast delivers it) — no
+                // separate output-side rate limiter needed. `streamGrowingFile` itself still clamps
+                // this to the file's actual current size at open time, same as any other offset.
+                let currentSize = (try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? Int ?? 0
                 // Re-encoding an already-H.264/HEVC source would just spend CPU for a quality loss
                 // with no format benefit, so relay it as-is instead of spinning up a real transcode
                 // session — see docs/VirtualTunerService.md's "Already-modern-codec skip" section.
                 let sourceIsAlreadyModern = (wantsTranscode && vlcAvailable)
                     && Self.sourceIsAlreadyModernCodec(lineupVideoCodec: lineupVideoCodec, recordingPath: path)
                 if wantsTranscode, vlcAvailable, !sourceIsAlreadyModern {
-                    Task { @MainActor in self.beginTranscodeRelay(showId: showId, profile: profile, conn: conn, durationSeconds: durationSeconds) }
+                    Task { @MainActor in self.beginTranscodeRelay(showId: showId, profile: profile, conn: conn, durationSeconds: durationSeconds, startOffset: currentSize) }
                     return
                 }
                 if sourceIsAlreadyModern {
@@ -726,7 +741,7 @@ final class WebServer: @unchecked Sendable {
                 // running total here). Both hops land on MainActor since AppState isn't otherwise
                 // safe to touch from fileIOQueue.
                 Task { @MainActor in state.relayRawViewerConnected() }
-                self.streamGrowingFile(path: path, showId: showId, startOffset: 0, conn: conn,
+                self.streamGrowingFile(path: path, showId: showId, startOffset: currentSize, conn: conn,
                                         durationSeconds: durationSeconds, sendTimeout: Self.growingFileSendTimeout,
                                         onStreamEnded: { [weak state] in
                     Task { @MainActor in state?.relayRawViewerDisconnected() }
@@ -739,8 +754,11 @@ final class WebServer: @unchecked Sendable {
     // output to `conn`. The session reads from this app's own /api/watch-recording relay — never a
     // raw file:// path, see VLCBridge's own "Headless transcode sessions" doc comment for why.
     @MainActor
-    private func beginTranscodeRelay(showId: String, profile: String, conn: NWConnection, durationSeconds: Int? = nil) {
-        let sourceURL = "http://127.0.0.1:\(activePort)/api/watch-recording?show=\(showId)&start=0"
+    private func beginTranscodeRelay(showId: String, profile: String, conn: NWConnection, durationSeconds: Int? = nil, startOffset: Int = 0) {
+        // startOffset: the live edge at request time (see handleVirtualTunerStream's own comment on
+        // why) — only matters for the viewer that actually creates this session; a later joiner
+        // reuses the already-running encode from whatever point it started at, same as today.
+        let sourceURL = "http://127.0.0.1:\(activePort)/api/watch-recording?show=\(showId)&start=\(startOffset)"
         guard let session = VLCBridge.shared.startTranscodeSession(showId: showId, profile: profile, sourceURL: sourceURL) else {
             send(.notFound("transcode unavailable"), on: conn)
             return
