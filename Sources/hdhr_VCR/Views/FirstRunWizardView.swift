@@ -378,26 +378,20 @@ struct FirstRunWizardView: View {
             Section {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Recording FEED").font(.headline)
-                    Text("A new way to share a recording that's already in progress, without spending a second tuner. You can change this later in Settings → Sharing.")
+                    Text("Watch a recording that's already in progress from another Mac — live, without spending a second tuner. You can change this later in Settings → Sharing.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
             }
 
             Section {
-                VStack(alignment: .leading, spacing: 8) {
-                    Label("What it is", systemImage: "antenna.radiowaves.left.and.right")
-                        .font(.subheadline).bold()
-                    Text("While a show is recording, this Mac briefly advertises itself on your local network as an extra tuner — the same way a real HDHomeRun device would.")
+                VStack(alignment: .leading, spacing: 10) {
+                    FeedFlowDiagram()
+                    Text("While a show is recording, this Mac briefly shows up on your home network as an extra tuner. Another Mac running this app can watch that same recording straight off disk, instead of opening a second tuner to record it again.")
                         .font(.callout)
-                    Label("Why it's there", systemImage: "questionmark.circle")
-                        .font(.subheadline).bold()
-                    Text("Normally, watching a show that's already recording — from a second Mac, or another copy of this app — needs its own tuner, on top of the one already recording it. This FEED lets another hdhrVCRplus instance watch the *same* recording straight off disk instead, so it never has to open a second one. If you only have one Mac, or don't run this app anywhere else, this has no effect either way.")
+                    Label("Watch-only — it can't start a new recording, on this Mac or any other, and only exists on your local network while something is actively recording.", systemImage: "lock.shield")
                         .font(.callout)
-                    Label("What it can't do", systemImage: "lock.shield")
-                        .font(.subheadline).bold()
-                    Text("It's watch-only — nothing can start a new recording through it, on this Mac or any other, and it never appears as a real tuner in this app's own device lists. It only ever exists while something is actively recording, and only on your local network.")
-                        .font(.callout)
+                        .foregroundStyle(.secondary)
                 }
                 .fixedSize(horizontal: false, vertical: true)
             }

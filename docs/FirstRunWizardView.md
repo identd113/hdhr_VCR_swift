@@ -344,10 +344,10 @@ doc for it since it has no independent visual identity beyond what's described h
 `docs/SettingsView.md`'s Recording section.
 
 ### Step 2 — Recording FEED
-Three short labeled paragraphs (What it is / Why it's there / What it can't do, each with an SF
-Symbol `Label` heading) explaining the virtual-tuner relay in plain language, followed by one
-`Toggle` — same visual weight as a `SettingsView` section, not a marketing-style illustration
-screen. See "Steps" below for the config-commit details.
+An animated diagram (`FeedFlowDiagram`, `Views/FeedFlowDiagram.swift`) showing two devices
+connected by a line — signal rings broadcasting from the recording Mac, small packets flowing
+along the line to the watching one — above two short paragraphs of plain-language explanation and
+one `Toggle`. See "Steps" below for the config-commit details.
 
 ### Step 3 — Notification Timing
 Up Next / Recording Soon lead-time minutes, same `Stepper` controls and warning banner (shown when
@@ -399,15 +399,37 @@ same key. Transcode/min-disk/fail-threshold commit to `state.config.Default_tran
 `.Min_disk_free_gb` / `.Fail_count_setting` on Finish the same way.
 
 ### Step 2 — Recording FEED
-Explains the virtual-tuner relay (`docs/VirtualTunerService.md`) in plain terms — what it is, why
-it exists, and what it can't do — then one `Toggle` bound to local `@State relayEnabled` (default
-mirrors `state.config.Virtual_tuner_relay_enabled`, itself `true`). Same commit-on-Finish pattern
+Leads with `FeedFlowDiagram()` (see its own section below), then a short plain-language
+explanation of the virtual-tuner relay (`docs/VirtualTunerService.md`) — what it is and what it
+can't do — then one `Toggle` bound to local `@State relayEnabled` (default mirrors
+`state.config.Virtual_tuner_relay_enabled`, itself `true`). Same commit-on-Finish pattern
 as every other field here: `finish()` writes it to `state.config.Virtual_tuner_relay_enabled` and,
 if it changed, calls `state.updateVirtualTunerPresence()` directly so a recording already in
 progress (only realistically possible via a mid-session reset from Settings → Maintenance) reflects
 the new setting immediately rather than waiting for that recording to end. `SettingsView`'s own
 Sharing → Recording FEED toggle is the same setting, same wording, reachable any time after this
 wizard closes — this screen exists purely so a first-time user sees the explanation once, unprompted.
+
+### `FeedFlowDiagram` (`Views/FeedFlowDiagram.swift`)
+Self-contained animated view, not wizard-specific — usable anywhere the app wants the same
+explainer without re-deriving the animation. Two `desktopcomputer` SF Symbols (a red dot badge on
+the recording one, a blue `play.tv.fill`-colored badge on the watching one) connected by a dashed
+line, drawn in a `GeometryReader` so it scales to whatever width its container gives it. A single
+`TimelineView(.animation)` drives two independent, looping effects, each run twice at a half-cycle
+phase offset so the line/device never sits visibly empty between beats:
+- **Ripple rings** — expanding, fading circles centered on the recording Mac, the same
+  "broadcasting outward" language `SettingsView`'s About-tab `SignalRing` already uses for the app
+  icon's own pulse effect.
+- **Packets** — small dots traveling along the line from the recording Mac to the watching one,
+  fading in/out over the first/last 15% of the line so they don't pop at either device's edge.
+
+Both cycle lengths (1.6s packets, 1.8s rings) are independent named constants, not tied to each
+other or to any other animation in the app. Respects Reduce Motion — freezes to one static dot
+at the line's midpoint instead of animating (still shows the two devices are connected, just
+without motion), the same "different code path, not a faster version" convention the Intro Splash
+above uses. Marked `.accessibilityHidden(true)`: purely decorative, and the diagram says nothing
+the surrounding prose doesn't already say in words — a screen reader user isn't missing content by
+skipping it.
 
 ### Step 3 — Notification Timing
 Binds to local `@State` (`upNextMinutes`, `recordingSoonMinutes`). Committed to
