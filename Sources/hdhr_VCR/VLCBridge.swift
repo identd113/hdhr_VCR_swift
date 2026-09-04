@@ -1028,15 +1028,25 @@ final class VLCBridge: ObservableObject {
         transcodeSessions[showId]?.refCount ?? 0
     }
 
-    func stopTranscodeSession(showId: String) {
-        guard let session = transcodeSessions[showId] else { return }
+    /// Returns whether a reference was actually released — `false` when no session was running
+    /// for `showId` (already force-cleared by `stopAllTranscodeSessions`, e.g. the recording
+    /// ended before this viewer's own connection noticed the killed httpd and called this). A
+    /// caller mirroring this into a separate aggregate viewer count (`AppState.transcodeViewerCount`)
+    /// must check this before decrementing — found live 2026-09-04: WebServer's two call sites were
+    /// decrementing unconditionally, so a viewer's stale post-teardown cleanup call double-counted
+    /// against `transcodeViewerCount` (a single app-wide Int, not keyed by show) and could
+    /// under-report a *different*, still-actively-transcoding show's viewer count.
+    @discardableResult
+    func stopTranscodeSession(showId: String) -> Bool {
+        guard let session = transcodeSessions[showId] else { return false }
         session.refCount -= 1
         guard session.refCount <= 0 else {
             glog("[VLC] stopTranscodeSession — \(showId) still has \(session.refCount) viewer(s), keeping it running")
-            return
+            return true
         }
         transcodeSessions.removeValue(forKey: showId)
         teardown(session, reason: "last viewer disconnected")
+        return true
     }
 
     /// Force-stops the transcode session for `showId` regardless of ref count — a session must

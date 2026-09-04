@@ -938,3 +938,39 @@ moved to `ISSUES.md`. Full breakdown:
   existing `ISSUES.md`/`TODO.md` entry (`ConfigManager.save`, SSE gzip, `remoteRelayEntries`,
   `lanIPAddress`/`getifaddrs` per-request, `sourceIsAlreadyModernCodec`'s uncached PAT/PMT rescan) —
   not re-listed here.
+
+## 2026-09-04 — swift-quality-reviewer full-span pass, v2.2.0..HEAD (44 commits, tail end)
+
+Deep pass over the entire unreleased span. Confirmed the tail wasn't covered by the two same-day
+prior passes (`dadf7c9..HEAD` review and the whole-codebase efficiency pass, both landed in commits
+`d1ca8c5`/`7c4529c`) by diffing which commits actually touched `CODE_NOTES.md` — those two passes'
+findings were fixed in `d1ca8c5`/`7c4529c` themselves, leaving only `a13d0fa` (GOP 60→30 tighten) and
+`321fdb5` (TODO.md doc-only correction) as genuinely unreviewed by name. Both read clean: `a13d0fa`
+is a live-hardware-verified perf tune with a commit message matching its diff exactly (no scope
+creep — touches only `VLCBridge.swift`'s two GOP constants, `Version.swift`'s build stamp, and doc/
+TODO text describing the same change); `321fdb5` is a pure doc correction, zero source changes.
+- Verified `WebServer.swift`'s new `concurrentMap`/`UncheckedSendableBox` helper (~line 165-185,
+  landed as part of the `dadf7c9..HEAD` pass) actually replaced the two previously-duplicated
+  `DispatchQueue.concurrentPerform` blocks (`prebuildPageHTML`'s gzip pair,
+  `broadcastGuideChangeEvent`'s grid/sumph/tdrop compression) rather than adding a third copy —
+  `grep -n concurrentPerform Sources/hdhr_VCR/WebServer.swift` shows exactly one call site (inside
+  `concurrentMap` itself). Good instance of the "New cached page variant" CLAUDE.md guidance being
+  followed proactively rather than needing a review to catch a missed hoist.
+- Spot-checked every new `queue.asyncAfter`/`Task.sleep` introduced across the full span
+  (`WebServer.swift`'s transcode-duration cutoff, liveness probe, `sendWithTimeout`'s cancellable
+  `DispatchWorkItem` fallback, SSE keepalive, idle-close; `VLCPlayerView.swift`'s
+  `feedAutoPlayMinDelay`) — all are genuine bounded timeouts or deliberate UX pacing with inline
+  justification comments citing a live-caught failure mode, not disguised "wait until X is probably
+  done" race papering. The one exception already on record (`VirtualTunerLiveStreamTests.swift`'s
+  500ms opt-in-test sleep) was already flagged in the prior day's pass — not re-flagged here.
+- Grepped the full `v2.2.0..HEAD` source diff for new `nonisolated(unsafe)`/`@unchecked Sendable`
+  (all three sites — `VLCBridge.swift`'s `libvlc_new` argv strdup, `TranscodeSession`, and
+  `WebServer.swift`'s `UncheckedSendableBox`), new `print(`, new `Process()` spawns, and any
+  `.plist`/`.entitlements` diffs — zero new `print(` statements, zero new subprocess spawns, zero
+  plist/entitlement changes (no scope escalation on the sandbox-migration front), and every
+  concurrency escape hatch found already carries its own justification comment explaining the
+  specific unsafety being asserted and why it's sound.
+- No new findings beyond what the same-day `dadf7c9..HEAD` 4-agent pass and whole-codebase
+  efficiency pass already caught and fixed (`d1ca8c5`, `7c4529c`) — this pass functioned as a
+  verification/no-gap-found pass over an unusually well-self-reviewed release cycle, not a source of
+  fresh issues. Nothing moved to `ISSUES.md`.

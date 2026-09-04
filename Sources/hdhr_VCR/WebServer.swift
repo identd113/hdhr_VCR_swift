@@ -671,13 +671,19 @@ final class WebServer: @unchecked Sendable {
 
     private func handleVirtualTunerStream(channel: String, deviceId: String?, durationSeconds: Int?, transcode: String?, conn: NWConnection) {
         guard let state = appState else { send(.badRequest("app state unavailable"), on: conn); return }
-        glog("[VirtualTuner] /auto/v\(channel) requested dev=\(deviceId ?? "nil") transcode=\(transcode ?? "none")")
+        // `channel` is client-controlled (a percent-decoded URL path segment, LAN-reachable, no
+        // auth) — logged with newlines/control characters stripped so a crafted request (e.g.
+        // "5%0A[FAKE] forged line") can't inject fake-looking lines into hdhrVCRplus.log. Only
+        // affects logging; the real `channel` value (used for the actual show match below) is
+        // untouched.
+        let logChannel = channel.filter { !$0.isNewline && !$0.unicodeScalars.contains(where: { $0.value < 0x20 }) }
+        glog("[VirtualTuner] /auto/v\(logChannel) requested dev=\(deviceId ?? "nil") transcode=\(transcode ?? "none")")
         Task { @MainActor in
             guard let show = state.shows.first(where: {
                 $0.show_recording && $0.show_channel == channel && (deviceId == nil || $0.hdhr_record == deviceId)
             }), !show.show_recording_path.isEmpty else {
                 let recordingChannels = state.shows.filter { $0.show_recording }.map { $0.show_channel }
-                glog("[VirtualTuner] /auto/v\(channel) → 404 no matching active recording (currently recording: \(recordingChannels))", level: .warning)
+                glog("[VirtualTuner] /auto/v\(logChannel) → 404 no matching active recording (currently recording: \(recordingChannels))", level: .warning)
                 self.send(.notFound("no active recording on channel \(channel)"), on: conn)
                 return
             }
@@ -686,9 +692,9 @@ final class WebServer: @unchecked Sendable {
                 requested: requestedProfile, configuredDefault: state.config.Virtual_tuner_relay_default_transcode)
             let vlcAvailable = VLCBridge.shared.isAvailable
             if wantsTranscode, !vlcAvailable {
-                glog("[VirtualTuner] stream ch=\(channel) requested transcode=\(requestedProfile) — VLC unavailable, serving untranscoded bytes", level: .warning)
+                glog("[VirtualTuner] stream ch=\(logChannel) requested transcode=\(requestedProfile) — VLC unavailable, serving untranscoded bytes", level: .warning)
             } else if wantsTranscode, requestedProfile != profile {
-                glog("[VirtualTuner] stream ch=\(channel) requested transcode=\(requestedProfile) — using configured default '\(profile)' instead")
+                glog("[VirtualTuner] stream ch=\(logChannel) requested transcode=\(requestedProfile) — using configured default '\(profile)' instead")
             }
             // Fast, proactive check first — a real device's own /lineup.json carries a per-channel
             // VideoCodec field (confirmed live 2026-09-02, see LineupEntry's own doc comment; some
@@ -701,7 +707,7 @@ final class WebServer: @unchecked Sendable {
             let showId = show.show_id
             self.fileIOQueue.async {
                 guard FileManager.default.fileExists(atPath: path) else {
-                    glog("[VirtualTuner] /auto/v\(channel) → 404 recording file missing on disk: \(path)", level: .warning)
+                    glog("[VirtualTuner] /auto/v\(logChannel) → 404 recording file missing on disk: \(path)", level: .warning)
                     self.queue.async { self.send(.notFound("recording not found"), on: conn) }
                     return
                 }
@@ -730,9 +736,9 @@ final class WebServer: @unchecked Sendable {
                     return
                 }
                 if sourceIsAlreadyModern {
-                    glog("[VirtualTuner] stream ch=\(channel) requested transcode=\(requestedProfile) — source is already \(lineupVideoCodec ?? "a modern codec"), relaying as-is (no re-encode)")
+                    glog("[VirtualTuner] stream ch=\(logChannel) requested transcode=\(requestedProfile) — source is already \(lineupVideoCodec ?? "a modern codec"), relaying as-is (no re-encode)")
                 } else {
-                    glog("[VirtualTuner] /auto/v\(channel) → 200 raw passthrough, show='\(show.show_title)' path=\(path)")
+                    glog("[VirtualTuner] /auto/v\(logChannel) → 200 raw passthrough, show='\(show.show_title)' path=\(path)")
                 }
                 // Counts only this — a raw-passthrough relay viewer — not a local Watch Now session
                 // (handleWatchRecording never passes onStreamEnded) and not a transcode viewer
@@ -775,8 +781,12 @@ final class WebServer: @unchecked Sendable {
             guard let self, err == nil else {
                 conn.cancel()
                 Task { @MainActor in
-                    VLCBridge.shared.stopTranscodeSession(showId: showId)
-                    appState?.transcodeViewerDisconnected()
+                    // Only decrement AppState's mirror when a reference was actually released —
+                    // see stopTranscodeSession's own doc comment for the double-count this guards
+                    // against (the recording could have already force-cleared this session).
+                    if VLCBridge.shared.stopTranscodeSession(showId: showId) {
+                        appState?.transcodeViewerDisconnected()
+                    }
                 }
                 return
             }
@@ -861,8 +871,11 @@ final class WebServer: @unchecked Sendable {
             urlSession?.invalidateAndCancel()
             conn.cancel()
             Task { @MainActor in
-                VLCBridge.shared.stopTranscodeSession(showId: showId)
-                appState?.transcodeViewerDisconnected()
+                // Only decrement AppState's mirror when a reference was actually released — same
+                // double-count guard as beginTranscodeRelay's own cleanup path above.
+                if VLCBridge.shared.stopTranscodeSession(showId: showId) {
+                    appState?.transcodeViewerDisconnected()
+                }
             }
             _ = self
         }
