@@ -27,6 +27,14 @@ No direct path to immediately record an in-progress show without going through W
 
 ---
 
+### Closed captions don't survive the FEED transcode path
+
+Backlogged 2026-09-04, explicit user choice — a future idea, not something to start on without asking first. Confirmed via `mediainfo`: a real source carries 6 embedded EIA-608/708 CC tracks, the x264 transcode output has 0. Root cause confirmed too: VLC's own `x264` stream-out module (`VLCBridge.startTranscodeSession`'s sout chain) has no exposed option for A/53 caption passthrough at all (`vlc -p x264 --advanced --help-verbose` — nothing caption/SEI/a53-related), so the MPEG-2 decode → H.264 encode pipeline silently drops the embedded user-data. Raw (untranscoded) FEED needs no fix — CC already passes through untouched, and the player's existing CC picker already works for it with zero FEED-specific code (confirmed live: VLC directly detects `Adding CC track 1-4` on a real FEED URL, see `docs/VLCPlayerView.md`'s CC picker section).
+
+If ever picked up, two directions were floated, neither started, no clear winner chosen: (a) switch the transcode implementation to shell out to `ffmpeg -a53cc 1` instead of libvlc's stream-out chain — a real new dependency this app doesn't otherwise need; (b) write a custom TS-level CC extractor that pulls EIA-608/708 user-data from the source and manually re-injects it as SEI into the x264 output — meaningful new code, no existing scaffolding to build on.
+
+---
+
 ## Player / Watch Now
 
 ### No watched/resume tracking across sessions
@@ -45,11 +53,13 @@ Every managed show type records; there's no way to just get notified when someth
 
 ### Virtual tuner relay transcode — remaining polish after Phase 2's live verification
 
-Phase 1 shipped 2026-09-01; Phase 2 (real H.264 transcode) implemented and live-verified against a real HDHomeRun device 2026-09-02 (`Tests/hdhr_VCRTests/WebServer/VirtualTunerLiveStreamTests.swift`, `RUN_VIRTUAL_TUNER_LIVE_TESTS=1`) — see `docs/VirtualTunerService.md`'s "Real transcode (Phase 2)" section for the full design and what's actually been confirmed working live (raw passthrough, transcode to H.264 with surviving stereo audio). `?duration=` now honored on the transcode path too (fixed 2026-09-04 — see `docs/VirtualTunerService.md`'s own note). Remaining gaps, not blocking:
+Phase 1 shipped 2026-09-01; Phase 2 (real H.264 transcode) implemented and live-verified against a real HDHomeRun device 2026-09-02 (`Tests/hdhr_VCRTests/WebServer/VirtualTunerLiveStreamTests.swift`, `RUN_VIRTUAL_TUNER_LIVE_TESTS=1`) — see `docs/VirtualTunerService.md`'s "Real transcode (Phase 2)" section for the full design and what's actually been confirmed working live (raw passthrough, transcode to H.264 with surviving stereo audio). `?duration=` now honored on the transcode path too (fixed 2026-09-04), audio re-encodes to AC-3 (not MPEG Layer 2) so it stays the same codec end to end, and the GOP length now targets ~1-2s via `sout-x264-keyint`/`-min-keyint` (matching real broadcast cadence, down from x264's own ~4.2s default) — see `docs/VirtualTunerService.md`'s own notes on all three. Remaining gaps, not blocking:
 
 1. `VLCBridge.transcodeBitrateKbps(for:)`'s numbers per profile are a first-pass guess, not measured against real watched playback quality — worth a real living-room sanity check. Per an explicit user request (2026-09-02), bitrate is deliberately the *only* thing that varies by profile now — every profile keeps the source's own frame rate/dimensions (no `scale=`/`width=`/`height=`/`fps=` in the sout chain), so a `mobile` request against a full-resolution source will look blockier than a genuinely downscaled stream at the same bitrate would. That's the accepted tradeoff, not something to "fix" without asking first.
 2. Live testing so far covers short-lived sessions (~15-20s windows). Multiple concurrent viewers of the same show sharing one `TranscodeSession` correctly (the reference-counting path, including across *different* requested profiles — sharing is now keyed by `showId` alone, not `showId`+profile, per a 2026-09-03 explicit user request) has been live-verified against the real deployed app. Not yet verified: a long-running session's resource behavior over a full-length recording rather than a short test window.
 3. The active transcode is pure CPU/software encoding (`libvlc`'s `x264` module, confirmed via its own log output and live CPU/GPU sampling 2026-09-03 — ~90-112% CPU per active session, no measurable GPU engagement) — no hardware acceleration. VideoToolbox can hardware-encode H.264 on this hardware (confirmed via a direct `VTCopyVideoEncoderList` check) but cannot hardware-*decode* MPEG-2 on Apple Silicon at all (`VTIsHardwareDecodeSupported` returns `false`), so a fully-hardware MPEG2→H264 pipeline isn't possible here regardless — at best a hybrid (software decode + hardware encode) could reduce, not eliminate, the CPU cost. Whether libvlc's own transcode module even exposes a way to select the VideoToolbox encoder for the output side is unverified. Deferred — noted for future consideration, not scoped.
+
+Closed-caption passthrough for the transcode path specifically is a separate, lower-priority idea — see the "Accepted — not our bug / not scheduled" section above, "Closed captions don't survive the FEED transcode path."
 
 ---
 
