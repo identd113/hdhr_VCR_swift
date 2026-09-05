@@ -44,7 +44,11 @@ struct TerminalTypingDiagram: View {
                         promptLine(typedCount: Self.command.count, cursorOn: true)
                             .padding(.leading, 12)
                     } else {
-                        TimelineView(.animation) { timeline in
+                        // Matched to typeSecondsPerChar (the finest-grained state change here —
+                        // blinkCycleSeconds is an exact multiple of it) rather than firing on every
+                        // frame via .animation, which redraws far more often than the visible state
+                        // actually changes. See NetworkFlowDiagram's matching comment.
+                        TimelineView(.periodic(from: .now, by: Self.typeSecondsPerChar)) { timeline in
                             let t = Self.progress(timeline.date)
                             let typedCount = Self.typedCharCount(for: t)
                             let cursorOn = Self.cursorBlinkOn(timeline.date)
@@ -76,9 +80,11 @@ struct TerminalTypingDiagram: View {
             .font(.system(.callout, design: .monospaced))
     }
 
-    // 0...1 progress through one full type→hold→reset cycle.
+    // Elapsed seconds into one full type→hold→reset cycle (not the 0...1 ratio DiagramAnimation's
+    // callers elsewhere want — typedCharCount below needs an actual second count to compare against
+    // typeDuration/typeSecondsPerChar).
     private static func progress(_ date: Date) -> Double {
-        (date.timeIntervalSinceReferenceDate).truncatingRemainder(dividingBy: cycleSeconds)
+        DiagramAnimation.progress(date, cycleSeconds: cycleSeconds) * cycleSeconds
     }
 
     private static func typedCharCount(for elapsedInCycle: Double) -> Int {
@@ -87,7 +93,6 @@ struct TerminalTypingDiagram: View {
     }
 
     private static func cursorBlinkOn(_ date: Date) -> Bool {
-        let t = date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: blinkCycleSeconds)
-        return t < blinkCycleSeconds / 2
+        DiagramAnimation.progress(date, cycleSeconds: blinkCycleSeconds) < 0.5
     }
 }

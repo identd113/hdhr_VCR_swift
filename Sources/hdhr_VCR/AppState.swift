@@ -224,7 +224,10 @@ final class AppState: ObservableObject {
                                     expectedMinutes: show.show_length) != nil
     }
     // Discovered AND reachable — the web guide treats these as "active" tuners.
-    var usableDeviceIDs: Set<String> { Set(devices.filter { $0.isAvailable }.map { $0.DeviceID }) }
+    // Filters through `recordableDevices` (not raw `devices`) so a virtual relay's DeviceID can
+    // never end up "usable" here even for a future caller that checks `.contains(id)` directly
+    // without separately intersecting against recordableDevices first.
+    var usableDeviceIDs: Set<String> { Set(recordableDevices.filter { $0.isAvailable }.map { $0.DeviceID }) }
     // Every device-enumeration/picker that lists "which tuner can I browse/watch/record on" should
     // build from this, not raw `devices` — a discovered virtual relay device (this instance's own
     // is already excluded from `devices` entirely via self-exclusion, but a *different* instance's
@@ -712,8 +715,9 @@ final class AppState: ObservableObject {
             guard !webServerRunning, !webServerStarting else { return }
             webServerStarting = true
             webServerError = nil
-            webServer.start(port: config.Web_server_port, appState: self) { [weak self] errorMsg in
-                self?.applyWebServerState(errorMsg)
+            let startPort = config.Web_server_port
+            webServer.start(port: startPort, appState: self) { [weak self] errorMsg in
+                self?.applyWebServerState(errorMsg, port: startPort)
             }
         } else {
             guard webServerRunning || webServerStarting else { return }
@@ -724,12 +728,15 @@ final class AppState: ObservableObject {
         }
     }
 
-    private func applyWebServerState(_ errorMsg: String?) {
+    private func applyWebServerState(_ errorMsg: String?, port: Int) {
         webServerStarting = false
         webServerRunning = (errorMsg == nil)
         webServerError   = errorMsg
         if errorMsg == nil {
-            boundWebServerPort = config.Web_server_port
+            // `port` is the value actually passed to this completing start() call, not the live
+            // config.Web_server_port — a Settings change during the in-flight bind must not let a
+            // stale completion stamp boundWebServerPort with a port the listener isn't bound to.
+            boundWebServerPort = port
             webServer.updateTXTRecord()
             // A successful (re)bind can follow a port change while the virtual-tuner relay was
             // already active (reconcileWebServerState's port-change branch stops+restarts the
@@ -4387,6 +4394,29 @@ final class AppState: ObservableObject {
     /// this is that same race across two separate OS processes instead). `launchAndTerminate` is
     /// now passed as `webServer.stop(completion:)`'s completion, so the new instance is only
     /// launched once the listener's teardown is actually confirmed (or a bounded 2s fallback).
+    // Shared bullet list of active recordings for the "recordings in progress" alerts below —
+    // quit() and relaunchForVLC() present the same shows, just with different surrounding copy.
+    private var recordingsListText: String {
+        recordingShows.map { "• \($0.show_title) (Channel \($0.show_channel))" }.joined(separator: "\n")
+    }
+
+    // Shared exit-path teardown for quit()/relaunchForVLC(): releases the VLC player, optionally
+    // stops active recordings, persists config, and stops the web server — completion-based (via
+    // `thenStop`) only when the caller must wait for the OS to actually release the port first
+    // (relaunchForVLC launching a fresh process), plain fire-and-forget otherwise (quit() doesn't
+    // need to wait — the whole process is exiting regardless). Consolidating this avoids the two
+    // call sites drifting on which `webServer.stop()` overload each uses.
+    private func teardownForExit(stopRecordings: Bool, thenStop: (() -> Void)? = nil) {
+        VLCBridge.shared.releasePlayer()
+        if stopRecordings { recordingManager.stopAll() }
+        saveConfig()
+        if let thenStop {
+            webServer.stop(completion: thenStop)
+        } else {
+            webServer.stop()
+        }
+    }
+
     func relaunchForVLC() {
         func launchAndTerminate() {
             glog("[VLC] relaunching to pick up newly installed VLC")
@@ -4398,41 +4428,31 @@ final class AppState: ObservableObject {
             }
         }
         guard isRecording else {
-            VLCBridge.shared.releasePlayer()
-            recordingManager.stopAll()
-            saveConfig()
-            webServer.stop(completion: launchAndTerminate)
+            teardownForExit(stopRecordings: true, thenStop: launchAndTerminate)
             return
         }
         let alert = NSAlert()
         alert.messageText = "Recordings in progress"
-        let list = recordingShows.map { "• \($0.show_title) (Channel \($0.show_channel))" }.joined(separator: "\n")
-        alert.informativeText = "These recordings will keep running while hdhrVCRplus relaunches and reconnects to them:\n\n\(list)\n\nRelaunch now?"
+        alert.informativeText = "These recordings will keep running while hdhrVCRplus relaunches and reconnects to them:\n\n\(recordingsListText)\n\nRelaunch now?"
         alert.addButton(withTitle: "Relaunch")
         alert.addButton(withTitle: "Cancel")
         alert.alertStyle = .informational
         NSApp.activate(ignoringOtherApps: true)
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         glog("=== hdhrVCRplus relaunching for VLC (recordings kept running) ===")
-        VLCBridge.shared.releasePlayer()
-        saveConfig()
-        webServer.stop(completion: launchAndTerminate)
+        teardownForExit(stopRecordings: false, thenStop: launchAndTerminate)
     }
 
     func quit() {
         guard isRecording else {
             glog("=== hdhrVCRplus quit ===")
-            VLCBridge.shared.releasePlayer()
-            recordingManager.stopAll()
-            webServer.stop()
-            saveConfig()
+            teardownForExit(stopRecordings: true)
             NSApplication.shared.terminate(nil)
             return
         }
         let alert = NSAlert()
         alert.messageText = "Recordings in progress"
-        let list = recordingShows.map { "• \($0.show_title) (Channel \($0.show_channel))" }.joined(separator: "\n")
-        alert.informativeText = "These recordings will be stopped:\n\n\(list)\n\nChoose \"Keep Recording\" to exit while recordings continue — relaunch the app to reconnect."
+        alert.informativeText = "These recordings will be stopped:\n\n\(recordingsListText)\n\nChoose \"Keep Recording\" to exit while recordings continue — relaunch the app to reconnect."
         alert.addButton(withTitle: "Keep Recording & Quit") // default (Return key) — curl survives as an orphan; reattachRecordings() reconnects on next launch
         alert.addButton(withTitle: "Stop Recordings & Quit")
         alert.addButton(withTitle: "Go Back")
@@ -4441,16 +4461,11 @@ final class AppState: ObservableObject {
         switch alert.runModal() {
         case .alertFirstButtonReturn:  // keep recordings running, quit
             glog("=== hdhrVCRplus quit (recordings kept running) ===")
-            VLCBridge.shared.releasePlayer()
-            webServer.stop()
-            saveConfig()
+            teardownForExit(stopRecordings: false)
             NSApplication.shared.terminate(nil)
         case .alertSecondButtonReturn: // stop all, then quit
             glog("=== hdhrVCRplus quit (recordings stopped) ===")
-            VLCBridge.shared.releasePlayer()
-            recordingManager.stopAll()
-            webServer.stop()
-            saveConfig()
+            teardownForExit(stopRecordings: true)
             NSApplication.shared.terminate(nil)
         default:                       // Go Back — cancel
             break

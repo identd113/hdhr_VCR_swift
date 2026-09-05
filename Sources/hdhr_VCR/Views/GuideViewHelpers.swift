@@ -133,6 +133,14 @@ let timeRangeFormatter: DateFormatter = {
     return f
 }()
 
+// Appends "(Requires <requirement>)" to a control's label whenever the gating condition (VLC
+// installed, Web LAN on, etc.) isn't met — the single place this hand-rolled-everywhere ternary
+// pattern lives, used by MenuContent/WatchNowView/SettingsView/FirstRunWizardView so the wording
+// can't drift between call sites the way "Requires Web LAN" vs "Requires VLC" phrasing already had.
+func gatedLabel(_ base: String, met: Bool, requirement: String) -> String {
+    met ? base : "\(base) (Requires \(requirement))"
+}
+
 // Accessibility labels for WatchNowView's Watch/Watch-in-VLC buttons.
 func watchInAppLabel(_ title: String) -> String { "Watch \(title)" }
 func watchInVLCLabel(_ title: String) -> String { "Watch \(title) in VLC" }

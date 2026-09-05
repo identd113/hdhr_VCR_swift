@@ -191,7 +191,7 @@ struct MenuContent: View {
                         Button {
                             state.watchRemoteRelay(url: pair.entry.URL ?? "", title: title, device: pair.device)
                         } label: {
-                            Label(vlcReady ? "Watch" : "Watch (Requires VLC)", systemImage: "play.tv.fill")
+                            Label(gatedLabel("Watch", met: vlcReady, requirement: "VLC"), systemImage: "play.tv.fill")
                         }
                         .disabled(!vlcReady)
                         if !alreadyModern {
@@ -204,7 +204,7 @@ struct MenuContent: View {
                                 let url = (pair.entry.URL ?? "") + "&transcode=auto"
                                 state.watchRemoteRelay(url: url, title: title, device: pair.device)
                             } label: {
-                                Label(vlcReady ? "Watch (H.264)" : "Watch (H.264) (Requires VLC)", systemImage: "play.tv.fill")
+                                Label(gatedLabel("Watch (H.264)", met: vlcReady, requirement: "VLC"), systemImage: "play.tv.fill")
                             }
                             .disabled(!vlcReady)
                         }
@@ -375,7 +375,7 @@ struct MenuContent: View {
                 state.watchNowDeviceId = nil
                 open("watch-now")
             } label: {
-                Label(vlcReady ? "Watch Now…" : "Watch Now… (Requires VLC)", systemImage: "play.tv.fill")
+                Label(gatedLabel("Watch Now…", met: vlcReady, requirement: "VLC"), systemImage: "play.tv.fill")
                     .foregroundStyle(vlcReady ? watchNowBlue : Color(NSColor.disabledControlTextColor))
             }
             .disabled(!vlcReady)
@@ -421,12 +421,12 @@ struct MenuContent: View {
             Divider()
             let vlcReady = VLCBridge.shared.isAvailable
             Button(action: { state.watchRecordingInApp(show) }) {
-                Label { Text(vlcReady ? "Watch Now!" : "Watch Now! (Requires VLC)").foregroundColor(vlcReady ? watchNowBlue : Color(NSColor.disabledControlTextColor)) }
+                Label { Text(gatedLabel("Watch Now!", met: vlcReady, requirement: "VLC")).foregroundColor(vlcReady ? watchNowBlue : Color(NSColor.disabledControlTextColor)) }
                       icon: { Image(systemName: "play.tv.fill").foregroundColor(vlcReady ? watchNowBlue : Color(NSColor.disabledControlTextColor)) }
             }
             .disabled(!vlcReady)
             Button(action: { state.watchRecordingInApp(show, fromBeginning: true) }) {
-                Label { Text(vlcReady ? "Watch from Beginning" : "Watch from Beginning (Requires VLC)").foregroundColor(vlcReady ? watchNowBlue : Color(NSColor.disabledControlTextColor)) }
+                Label { Text(gatedLabel("Watch from Beginning", met: vlcReady, requirement: "VLC")).foregroundColor(vlcReady ? watchNowBlue : Color(NSColor.disabledControlTextColor)) }
                       icon: { Image(systemName: "backward.end.fill").foregroundColor(vlcReady ? watchNowBlue : Color(NSColor.disabledControlTextColor)) }
             }
             .disabled(!vlcReady)

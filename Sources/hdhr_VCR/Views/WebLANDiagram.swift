@@ -14,6 +14,7 @@ struct WebLANDiagram: View {
     private static let packetSize: CGFloat = 6
     private static let packetCycleSeconds: Double = 1.8
     private static let rippleCycleSeconds: Double = 1.8
+    private static let frameInterval: Double = 1.0 / 30.0
     // Three receivers, evenly staggered across the packet cycle — reads as a continuous fan-out
     // rhythm rather than three lines all pulsing in lockstep.
     private static let receivers: [(systemImage: String, phaseOffset: Double, yOffset: CGFloat)] = [
@@ -49,7 +50,9 @@ struct WebLANDiagram: View {
                                 .position(x: (branchX + rightEdgeX) / 2, y: midY + receiver.yOffset / 2)
                         }
                     } else {
-                        TimelineView(.animation) { timeline in
+                        // Matched to the actual visual cadence, not display refresh rate — see
+                        // NetworkFlowDiagram's matching comment.
+                        TimelineView(.periodic(from: .now, by: Self.frameInterval)) { timeline in
                             ForEach(Self.receivers, id: \.systemImage) { receiver in
                                 packetDot(date: timeline.date, phaseOffset: receiver.phaseOffset,
                                           startX: branchX, endX: rightEdgeX - Self.receiverSize / 2 - 4,
@@ -98,31 +101,19 @@ struct WebLANDiagram: View {
         .accessibilityHidden(true)   // purely decorative — the surrounding text explains the same thing
     }
 
-    private static func progress(_ date: Date, cycleSeconds: Double, phaseOffset: Double) -> Double {
-        let t = date.timeIntervalSinceReferenceDate / cycleSeconds + phaseOffset
-        return t.truncatingRemainder(dividingBy: 1)
-    }
-
-    private static func packetOpacity(_ t: Double) -> Double {
-        let fadeWidth = 0.15
-        if t < fadeWidth { return t / fadeWidth }
-        if t > 1 - fadeWidth { return (1 - t) / fadeWidth }
-        return 1
-    }
-
     @ViewBuilder
     private func packetDot(date: Date, phaseOffset: Double, startX: CGFloat, endX: CGFloat, startY: CGFloat, endY: CGFloat) -> some View {
-        let t = Self.progress(date, cycleSeconds: Self.packetCycleSeconds, phaseOffset: phaseOffset)
+        let t = DiagramAnimation.progress(date, cycleSeconds: Self.packetCycleSeconds, phaseOffset: phaseOffset)
         Circle()
             .fill(watchNowBlue)
             .frame(width: Self.packetSize, height: Self.packetSize)
-            .opacity(Self.packetOpacity(t))
+            .opacity(DiagramAnimation.edgeFadeOpacity(t))
             .position(x: startX + (endX - startX) * CGFloat(t), y: startY + (endY - startY) * CGFloat(t))
     }
 
     @ViewBuilder
     private func rippleRing(date: Date, phaseOffset: Double) -> some View {
-        let t = Self.progress(date, cycleSeconds: Self.rippleCycleSeconds, phaseOffset: phaseOffset)
+        let t = DiagramAnimation.progress(date, cycleSeconds: Self.rippleCycleSeconds, phaseOffset: phaseOffset)
         Circle()
             .stroke(Color(NSColor.systemGreen).opacity(0.5 * (1 - t)), lineWidth: 2)
             .frame(width: Self.deviceSize, height: Self.deviceSize)

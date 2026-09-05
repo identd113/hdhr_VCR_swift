@@ -40,6 +40,7 @@ struct NetworkFlowDiagram: View {
     private static let packetCycleSeconds: Double = 1.6
     private static let rippleCycleSeconds: Double = 1.8
     private static let phaseOffsets: [Double] = [0, 0.5]
+    private static let frameInterval: Double = 1.0 / 30.0
 
     var body: some View {
         VStack(spacing: 8) {
@@ -65,7 +66,11 @@ struct NetworkFlowDiagram: View {
                             .frame(width: Self.packetSize, height: Self.packetSize)
                             .position(x: (lineStartX + lineEndX) / 2, y: midY)
                     } else {
-                        TimelineView(.animation) { timeline in
+                        // Matched to the actual visual cadence (smooth-looking continuous motion
+                        // tops out well below display refresh rate) rather than firing on every
+                        // frame via .animation, which redraws 2-4x more often than needed for a
+                        // purely decorative diagram.
+                        TimelineView(.periodic(from: .now, by: Self.frameInterval)) { timeline in
                             ForEach(Self.phaseOffsets, id: \.self) { offset in
                                 rippleRing(date: timeline.date, phaseOffset: offset)
                                     .position(x: leftX, y: midY)
@@ -119,41 +124,25 @@ struct NetworkFlowDiagram: View {
 
     // MARK: - Animation math
 
-    // 0...1 progress around one cycle, offset so multiple instances (phaseOffsets) stay evenly
-    // spaced along the same line instead of bunching up.
-    private static func progress(_ date: Date, cycleSeconds: Double, phaseOffset: Double) -> Double {
-        let t = date.timeIntervalSinceReferenceDate / cycleSeconds + phaseOffset
-        return t.truncatingRemainder(dividingBy: 1)
-    }
-
     private static func packetX(_ date: Date, phaseOffset: Double, startX: CGFloat, endX: CGFloat) -> CGFloat {
-        let t = progress(date, cycleSeconds: packetCycleSeconds, phaseOffset: phaseOffset)
+        let t = DiagramAnimation.progress(date, cycleSeconds: packetCycleSeconds, phaseOffset: phaseOffset)
         return startX + (endX - startX) * CGFloat(t)
-    }
-
-    // Fades in/out over the first and last 15% of the line so a packet doesn't pop in/out abruptly
-    // right at each device's own edge.
-    private static func packetOpacity(_ t: Double) -> Double {
-        let fadeWidth = 0.15
-        if t < fadeWidth { return t / fadeWidth }
-        if t > 1 - fadeWidth { return (1 - t) / fadeWidth }
-        return 1
     }
 
     @ViewBuilder
     private func packetDot(date: Date, phaseOffset: Double, startX: CGFloat, endX: CGFloat) -> some View {
-        let t = Self.progress(date, cycleSeconds: Self.packetCycleSeconds, phaseOffset: phaseOffset)
+        let t = DiagramAnimation.progress(date, cycleSeconds: Self.packetCycleSeconds, phaseOffset: phaseOffset)
         Circle()
             .fill(rightBadgeColor)
             .frame(width: Self.packetSize, height: Self.packetSize)
-            .opacity(Self.packetOpacity(t))
+            .opacity(DiagramAnimation.edgeFadeOpacity(t))
     }
 
     // Expanding, fading ring centered on the left ("this Mac") device — same "broadcasting outward"
     // language SettingsView's About-tab SignalRing already uses for the app icon's own pulse effect.
     @ViewBuilder
     private func rippleRing(date: Date, phaseOffset: Double) -> some View {
-        let t = Self.progress(date, cycleSeconds: Self.rippleCycleSeconds, phaseOffset: phaseOffset)
+        let t = DiagramAnimation.progress(date, cycleSeconds: Self.rippleCycleSeconds, phaseOffset: phaseOffset)
         Circle()
             .stroke(leftBadgeColor.opacity(0.5 * (1 - t)), lineWidth: 2)
             .frame(width: Self.deviceSize, height: Self.deviceSize)

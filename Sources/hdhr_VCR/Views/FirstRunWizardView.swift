@@ -322,22 +322,19 @@ struct FirstRunWizardView: View {
             }
 
             HStack(spacing: 4) {
-                ForEach([Step.recordingDefaults, .webLAN, .terminalGuide, .recordingRelay, .notificationTiming], id: \.self) { s in
+                ForEach(Self.orderedSteps, id: \.self) { s in
                     Circle().fill(s == step ? Color.accentColor : .secondary.opacity(0.3))
                         .frame(width: 8, height: 8)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel({
-                switch step {
-                case .intro:              return ""   // header isn't rendered during .intro
-                case .recordingDefaults:  return "Step 1 of 5: Recording Defaults"
-                case .webLAN:             return "Step 2 of 5: Web LAN"
-                case .terminalGuide:      return "Step 3 of 5: Terminal Guide"
-                case .recordingRelay:     return "Step 4 of 5: Recording FEED"
-                case .notificationTiming: return "Step 5 of 5: Notification Timing"
-                }
+            // Derived from orderedSteps rather than a hardcoded "Step N of 5" per case, so adding,
+            // removing, or reordering a wizard step can't leave this announcement silently stale
+            // the way a hand-maintained switch could.
+            .accessibilityLabel(step == .intro ? "" : {
+                let n = (Self.orderedSteps.firstIndex(of: step) ?? 0) + 1
+                return "Step \(n) of \(Self.orderedSteps.count): \(Self.stepTitle(step))"
             }())
         }
         .padding(.horizontal, 20)
@@ -433,7 +430,7 @@ struct FirstRunWizardView: View {
                         .font(.callout)
                         .foregroundStyle(sharingEnabled ? Color.primary : .secondary)
                     Toggle(isOn: $terminalGuideEnabled) {
-                        HStack { Text(sharingEnabled ? "Enable Terminal Guide" : "Enable Terminal Guide (Requires Web LAN)"); InfoButton("Requires Web LAN (previous step) to be on — the terminal client connects to that same local server, not a separate one.") }
+                        HStack { Text(gatedLabel("Enable Terminal Guide", met: sharingEnabled, requirement: "Web LAN")); InfoButton("Requires Web LAN (previous step) to be on — the terminal client connects to that same local server, not a separate one.") }
                     }
                     .disabled(!sharingEnabled)
                 }
@@ -547,6 +544,17 @@ struct FirstRunWizardView: View {
     // ternaries that has to stay in sync by hand (the exact bug shape a 3-step ternary couldn't
     // hide any more once a 4th step was added).
     private static let orderedSteps: [Step] = [.recordingDefaults, .webLAN, .terminalGuide, .recordingRelay, .notificationTiming]
+
+    private static func stepTitle(_ step: Step) -> String {
+        switch step {
+        case .intro:              return ""
+        case .recordingDefaults:  return "Recording Defaults"
+        case .webLAN:             return "Web LAN"
+        case .terminalGuide:      return "Terminal Guide"
+        case .recordingRelay:     return "Recording FEED"
+        case .notificationTiming: return "Notification Timing"
+        }
+    }
 
     private func goNext() {
         goingForward = true

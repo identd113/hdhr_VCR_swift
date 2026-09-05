@@ -724,7 +724,7 @@ struct SettingsView: View {
             Section("Terminal Guide") {
                 Toggle(isOn: $draft.Terminal_guide_enabled) {
                     HStack {
-                        Text(lanEnabled ? "Enable Terminal Guide" : "Enable Terminal Guide (Requires Web LAN)")
+                        Text(gatedLabel("Enable Terminal Guide", met: lanEnabled, requirement: "Web LAN"))
                         InfoButton("Lets the bundled command-line client (path below) connect. Off by default. Turning this off has no security effect — the same data is already reachable from any browser on the network whenever Web LAN is on — it only hides/disables the terminal client specifically. Requires Web LAN above to be on: the terminal client connects to that exact same local web server, not a separate one.")
                     }
                 }
@@ -793,7 +793,7 @@ struct SettingsView: View {
                         Text("Mobile").tag("mobile")
                     } label: {
                         HStack {
-                            Text(vlcInstalled ? "Default transcode level" : "Default transcode level (Requires VLC)")
+                            Text(gatedLabel("Default transcode level", met: vlcInstalled, requirement: "VLC"))
                             InfoButton("Applied whenever a viewer of the rebroadcast above asks for any transcode — the specific profile their own client requests only decides whether to transcode at all, not which level; this Mac always uses the level chosen here instead. Every level keeps the source's own resolution and frame rate, so only the target bitrate differs — Heavy is the highest quality/bitrate, Mobile the lowest. Without VLC installed, a transcode request is served as untranscoded, passthrough bytes instead — the rebroadcast itself still works.")
                         }
                     }

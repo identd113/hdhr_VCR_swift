@@ -340,8 +340,19 @@ final class WebServer: @unchecked Sendable {
                 finished = true
                 DispatchQueue.main.async { completion() }
             }
+            // Replaces (rather than chains onto) the handler `start()` installed — safe regardless
+            // of call order because this closure reproduces the same .failed/.cancelled logging
+            // itself, instead of relying on the original handler still being installed.
             l.stateUpdateHandler = { state in
-                if case .cancelled = state { finish() }
+                switch state {
+                case .cancelled:
+                    glog("[WebServer] Listener cancelled")
+                    finish()
+                case .failed(let err):
+                    glog("[WebServer] Failed: \(err)", level: .error)
+                default:
+                    break
+                }
             }
             queue.asyncAfter(deadline: .now() + 2.0, execute: finish)
         }

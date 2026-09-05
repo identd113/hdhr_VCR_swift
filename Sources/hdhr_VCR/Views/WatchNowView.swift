@@ -569,7 +569,7 @@ struct WatchNowRow: View {
                 Button {
                     state.watchRecordingInApp(show)
                 } label: {
-                    Label(vlcReady ? "Watch Now!" : "Watch Now! (Requires VLC)", systemImage: "play.tv.fill").font(.caption.bold())
+                    Label(gatedLabel("Watch Now!", met: vlcReady, requirement: "VLC"), systemImage: "play.tv.fill").font(.caption.bold())
                 }
                 .accessibilityLabel(watchLiveLabel(entry.Title))
                 // Neither of these opens a fresh live tuner stream — both replay the
@@ -584,7 +584,7 @@ struct WatchNowRow: View {
                 Button {
                     state.watchRecordingInApp(show, fromBeginning: true)
                 } label: {
-                    Label(vlcReady ? "Watch from Beginning" : "Watch from Beginning (Requires VLC)", systemImage: "backward.end.fill").font(.caption.bold())
+                    Label(gatedLabel("Watch from Beginning", met: vlcReady, requirement: "VLC"), systemImage: "backward.end.fill").font(.caption.bold())
                 }
                 .accessibilityLabel(watchFromBeginningLabel(entry.Title))
                 .help(vlcReady ? "Play the in-progress recording of \(entry.Title) from disk, starting at the beginning" : "Requires VLC to be installed")
@@ -597,7 +597,7 @@ struct WatchNowRow: View {
                     state.watchInApp(url: channel.URL ?? "", title: entry.Title, deviceId: device.DeviceID,
                                      guideNumber: channel.GuideNumber)
                 } label: {
-                    Label(vlcReady ? "Watch" : "Watch (Requires VLC)", systemImage: "play.tv.fill").font(.caption.bold())
+                    Label(gatedLabel("Watch", met: vlcReady, requirement: "VLC"), systemImage: "play.tv.fill").font(.caption.bold())
                 }
                 .accessibilityLabel(watchInAppLabel(entry.Title))
                 .help(vlcReady ? watchInAppLabel(entry.Title) : "Requires VLC to be installed")

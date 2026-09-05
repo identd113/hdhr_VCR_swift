@@ -1015,3 +1015,33 @@ Full `swift build` and test suite pass; every fix verified against a real pty (w
 **Resolution**: introduced `AppState.ShowRuntimeState` — one struct holding all 12 of those fields (`isConflicting`, `conflictBeatenByFavorite`, `conflictNotifiedEpoch`, `missedStartNotifiedEpoch`, `suppressStartDiscord`, `pendingDiscordStart`, `failedThisAttempt`, `duplicateOverrideUsedThisAttempt`, `discordEpisodeSnapshot`, `signalDropoutTicks`, `retryAfter`, `discordCardTask`) — and one `showRuntime: [String: ShowRuntimeState]` dictionary keyed by `show_id`. `deleteShow`'s purge is now a single `showRuntime.removeValue(forKey:)` instead of an 11-line checklist. `tunerStatus` deliberately stays its own separate `@Published` dict, not folded in — it's the one field of the old 13 that drives SwiftUI updates, and combining it with everything else would make every other field's frequent mutation (e.g. `signalDropoutTicks`, ticked every idle-loop pass) also fire `objectWillChange`, reintroducing the "Menu rebuild churn" class of bug this project already hardened against elsewhere. Every call site (~130 references across `AppState.swift` plus 5 external reads) was migrated by hand, preserving exact behavior at each: a wholesale Set reassignment (conflict detection) became a full-replace loop over affected ids only; several "clear on teardown/reschedule" sites became per-field `nil`/`false` resets rather than whole-entry removals (since other fields on that same show must survive); `deleteShow` alone collapses to the one whole-entry removal. `AppStateDeleteShowCleanupTests` rewritten to populate/assert a single `ShowRuntimeState` (plus `tunerStatus` separately) instead of ten individual dictionaries — a future field added to `ShowRuntimeState` is now automatically covered without the test needing to know about it. `CLAUDE.md` and `docs/AppState.md`/`docs/WebServer.md`/`docs/MenuContent.md`/`docs/RecordingManager.md`/`docs/ShowFormSection.md` updated to match (`docs/CODE_REVIEW_2026-08-02.md` and this file left untouched as dated historical snapshots). Full suite (336 tests) passes; both build targets clean.
 
 **Resolving commit**: `5f4355d`
+
+---
+
+# Code review fixes — 2026-09-05
+
+## RESOLVED — `AppState.applyWebServerState()` stamped `boundWebServerPort` from the live `config` value instead of the port that actually bound
+
+**File:** `AppState.swift` — `reconcileWebServerState()`/`applyWebServerState(_:port:)`
+
+**Root cause**: `reconcileWebServerState()` called `webServer.start(port: config.Web_server_port, ...)`, but the completion closure read `config.Web_server_port` again at completion time instead of using the port that specific bind was actually started with. If the user changed and saved the port again while a bind was still in flight, the completion would stamp `boundWebServerPort` with the new (unbound) port, permanently defeating the stale-port check in `reconcileWebServerState`.
+
+**Resolution**: capture the port in a local (`startPort`) at the moment `webServer.start(port:...)` is called, and thread it through the completion closure into `applyWebServerState(_:port:)`, which now stamps `boundWebServerPort` from that captured value rather than re-reading live config.
+
+## RESOLVED — Virtual tuner relay's `TunerCount`/lineup/discover JSON already using canonical `recordingShows` — stale open issue
+
+**Files:** `AppState.swift` (`updateVirtualTunerPresence`), `WebServer.swift` (`buildVirtualTunerDiscoverJSON`/`buildVirtualTunerLineupJSON`/`buildVirtualTunerStatusJSON`)
+
+**Root cause**: an `ISSUES.md` entry from the 2026-09-03 review described these four call sites as still using a bare `shows.filter { $0.show_recording }` instead of the canonical `recordingShows` property (which also excludes a show whose `show_end` has already passed). By the time of this pass, all four already read from `state.recordingShows`/`recordingShows` directly — the fix had landed as an incidental part of `d12cd0e` ("fix: timeout a hung relay send instead of hanging silently forever") in the same unpushed range, and the issue entry was never moved out of `ISSUES.md`.
+
+**Resolution**: no code change needed — verified live against the current source that all four sites use `recordingShows`. Entry moved here instead of describing an already-fixed bug as open.
+
+**Resolving commit**: `d12cd0e` (original fix, undocumented); this entry itself is documentation-only.
+
+## RESOLVED — `AppState.usableDeviceIDs` derived from raw `devices` instead of `recordableDevices`
+
+**File:** `AppState.swift`
+
+**Root cause**: `usableDeviceIDs` filtered `devices` directly rather than going through `recordableDevices`, so it didn't structurally exclude a virtual relay's `DeviceID`. Every existing caller happened to be safe only because it separately intersected against an already-`recordableDevices`-filtered list first — a future caller checking `usableDeviceIDs.contains(id)` directly wouldn't have inherited that exclusion.
+
+**Resolution**: `usableDeviceIDs` now filters `recordableDevices` instead of `devices`, so every current and future caller inherits the virtual-relay exclusion for free.
