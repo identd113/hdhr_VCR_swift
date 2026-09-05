@@ -974,3 +974,29 @@ TODO text describing the same change); `321fdb5` is a pure doc correction, zero 
   efficiency pass already caught and fixed (`d1ca8c5`, `7c4529c`) — this pass functioned as a
   verification/no-gap-found pass over an unusually well-self-reviewed release cycle, not a source of
   fresh issues. Nothing moved to `ISSUES.md`.
+
+## 2026-09-04 — First-run wizard diagrams (`dfd9823..HEAD`, efficiency pass)
+
+- `NetworkFlowDiagram.swift`, `WebLANDiagram.swift`, `TerminalTypingDiagram.swift` all gate their
+  `TimelineView(.animation)` behind `@Environment(\.accessibilityReduceMotion)`, rendering a single
+  static frame instead when Reduce Motion is on — the correct, already-present lever for the
+  "should this even animate continuously" question; no gap there.
+- Confirmed only one of the three diagrams is ever mounted at a time: `FirstRunWizardView.body`'s
+  `switch step` (`FirstRunWizardView.swift:113`) puts `webLANScreen`/`terminalGuideScreen`/
+  `recordingRelayScreen` in mutually exclusive branches, so navigating wizard steps unmounts the
+  previous step's `TimelineView` rather than accumulating three live animation loops. No
+  window-occlusion-based pause exists beyond that (relies on the standard AppKit occluded-window
+  render pause), but the wizard is a short-lived, single-instance `Window` (`hdhr_VCRApp.swift:178`)
+  a user finishes/dismisses quickly — not judged worth extra plumbing.
+- `TerminalTypingDiagram.promptLine` (`TerminalTypingDiagram.swift:71-77`) recomputes
+  `String(Self.command.prefix(typedCount))` and rebuilds the 3-part `Text` concatenation every
+  `TimelineView` tick (up to 120Hz), including the ~67% of each ~2.7s cycle (`holdSeconds` + reset
+  gap) where `typedCount` is invariant and only the blink cursor changes. Real but genuinely
+  negligible — `command` is a 10-character literal (`"hdhr_guide"`), so the wasted work is a single
+  short-string slice + three trivial `Text` inits per frame, not worth the added complexity of
+  caching against previous `typedCount`. Left as-is per the pass's own "small absolute cost on a
+  decorative view" framing; noting here so a future pass doesn't re-litigate it as new.
+- Verified `WebServer.swift` and `VLCBridge.swift` have zero diff in `dfd9823..HEAD` (`git diff
+  dfd9823..HEAD --stat` confirms) — this range is UI-only (three new diagram views + a Settings
+  Sharing→Web LAN rename + a `Terminal_guide_enabled`/`Virtual_tuner_relay_enabled` default flip to
+  off in `Models.swift`); no server/transcode-path changes to review for this pass.

@@ -424,7 +424,8 @@ struct AppConfig: Equatable {
     // or usable, not to keep the data more private than the web server already makes it. Off by
     // default (changed 2026-09-04, alongside Web_server_enabled/Virtual_tuner_relay_enabled below —
     // every LAN-facing Sharing toggle defaults off now, each explained on its own first-run wizard
-    // step, see FirstRunWizardView's Sharing step).
+    // step — see FirstRunWizardView's Web LAN and Terminal Guide steps, separate screens as of the
+    // same day, not one combined "Sharing" step).
     var Terminal_guide_enabled: Bool = false
 
     // Recording-relay virtual tuner (VirtualTunerService.swift, docs/VirtualTunerService.md) — while
