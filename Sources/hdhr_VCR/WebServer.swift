@@ -847,11 +847,21 @@ final class WebServer: @unchecked Sendable {
         private let conn: NWConnection
         private let targetQueue: DispatchQueue
         private let onFinished: () -> Void
+        // Fired instead of onFinished when a dataTask ends in an error before ever delivering a
+        // single byte — pumpTranscodeProxy's own retry loop treats this as "the local sout httpd
+        // probably isn't accepting connections yet" rather than a real end/failure, and re-issues a
+        // fresh attempt on this same delegate/session (see pumpTranscodeProxy's own doc comment).
+        // Never fired once real data has started flowing — from that point on, any error goes
+        // through onFinished exactly as before.
+        private let onFailedBeforeAnyData: () -> Void
         private let lock = NSLock()
         private var finished = false
+        private var receivedAnyData = false
 
-        init(conn: NWConnection, targetQueue: DispatchQueue, onFinished: @escaping () -> Void) {
+        init(conn: NWConnection, targetQueue: DispatchQueue, onFinished: @escaping () -> Void,
+             onFailedBeforeAnyData: @escaping () -> Void) {
             self.conn = conn; self.targetQueue = targetQueue; self.onFinished = onFinished
+            self.onFailedBeforeAnyData = onFailedBeforeAnyData
         }
 
         private func finishOnce() {
@@ -873,6 +883,7 @@ final class WebServer: @unchecked Sendable {
         func notifyFinished() { finishOnce() }
 
         func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+            lock.lock(); receivedAnyData = true; lock.unlock()
             targetQueue.async { [weak self] in
                 guard let self else { return }
                 self.conn.send(content: data, completion: .contentProcessed({ error in
@@ -885,7 +896,16 @@ final class WebServer: @unchecked Sendable {
         }
 
         func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-            finishOnce()
+            lock.lock()
+            let alreadyFinished = finished
+            let hadData = receivedAnyData
+            lock.unlock()
+            guard !alreadyFinished else { return }
+            if error != nil, !hadData {
+                onFailedBeforeAnyData()
+            } else {
+                finishOnce()
+            }
         }
     }
 
@@ -897,8 +917,17 @@ final class WebServer: @unchecked Sendable {
     // client-disconnect handling already uses, not an NWConnection state observer (which would
     // clobber handleConnection's own stateUpdateHandler — see that function's doc comment on why it
     // owns that property for the connection's whole lifetime).
+    // Retry ceiling/backoff for the connection-not-ready-yet case below — on top of
+    // beginTranscodeRelay's own ~0.6s initial grace period, this buys up to 4 * 0.5s = 2s more
+    // before actually giving up, for the slower-machine/heavier-content case that grace period's
+    // own doc comment already flags as a known, unquantified risk (docs/VirtualTunerService.md's
+    // "Startup race" note).
+    private static let transcodeProxyMaxConnectAttempts = 5
+    private static let transcodeProxyRetryDelay: TimeInterval = 0.5
+
     private func pumpTranscodeProxy(localURL: URL, showId: String, conn: NWConnection, durationSeconds: Int? = nil) {
         var urlSession: URLSession?
+        var connectAttempt = 0   // mutated only inside closures that hop onto `queue` first — see below
         let cleanup: () -> Void = { [weak self, weak appState = self.appState] in
             urlSession?.invalidateAndCancel()
             conn.cancel()
@@ -911,7 +940,34 @@ final class WebServer: @unchecked Sendable {
             }
             _ = self
         }
-        let delegate = TranscodeProxyDelegate(conn: conn, targetQueue: queue, onFinished: cleanup)
+        // Reissues a fresh dataTask on the SAME session/delegate — used for the initial attempt and
+        // every retry, so the liveness probe and duration deadline set up below (both tied to this
+        // one delegate instance) never need to be duplicated per attempt.
+        var startAttempt: (() -> Void)!
+        let delegate = TranscodeProxyDelegate(conn: conn, targetQueue: queue, onFinished: cleanup,
+                                               onFailedBeforeAnyData: { [weak self] in
+            guard let self else { return }
+            // TranscodeProxyDelegate's own callbacks run on URLSession's private delegate queue, not
+            // `queue` — hop over before touching connectAttempt/conn.state, matching every other
+            // conn-touching path in this file.
+            self.queue.async {
+                switch conn.state {
+                case .cancelled, .failed:
+                    return   // client already gave up — no point retrying into a dead connection
+                default: break
+                }
+                connectAttempt += 1
+                guard connectAttempt < Self.transcodeProxyMaxConnectAttempts else {
+                    glog("[VirtualTuner] transcode relay show=\(showId) local httpd still not accepting connections after \(connectAttempt) attempts — giving up", level: .warning)
+                    cleanup()
+                    return
+                }
+                glog("[VirtualTuner] transcode relay show=\(showId) local httpd not ready yet (attempt \(connectAttempt)) — retrying in \(Self.transcodeProxyRetryDelay)s")
+                self.queue.asyncAfter(deadline: .now() + Self.transcodeProxyRetryDelay) {
+                    startAttempt()
+                }
+            }
+        })
         let config = URLSessionConfiguration.default
         // No timeout — this is an intentionally long-lived stream for as long as the recording (and
         // this viewer's own connection) stays open. 0 means "use the system default" for these
@@ -920,7 +976,8 @@ final class WebServer: @unchecked Sendable {
         config.timeoutIntervalForResource = 86400
         let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
         urlSession = session
-        session.dataTask(with: localURL).resume()
+        startAttempt = { session.dataTask(with: localURL).resume() }
+        startAttempt()
 
         // Periodic liveness probe — a viewer whose Mac sleeps or loses Wi-Fi without a clean TCP
         // close (no FIN/RST) leaves conn.send "succeeding" from this side (writes just queue into
