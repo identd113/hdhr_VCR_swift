@@ -171,7 +171,7 @@ Sidebar entries (with SF Symbol icons):
 ### General
 
 - **Launch at Login** — uses `SMAppService.mainApp` (`register()`/`unregister()`), Apple's Login Item API — not a hand-written LaunchAgents plist. `launchAtLoginRegistered` reads `SMAppService.mainApp.status == .enabled`; the toggle only calls register/unregister on Save if the draft value differs from that live status. Toggle reverts to the actual registered state on a thrown error; the error's `localizedDescription` is shown in red below the toggle.
-- **Blink menu bar icon** — `Toggle` bound to `draft.Status_light_blink_enabled` (off by default). When on, the menu bar icon's built-in status light blinks on a 6s cycle (5s lit, 1s off) instead of staying lit continuously while a recording is in progress or a show is starting within 30 minutes. Takes effect live — no restart or window reopen needed. Driven by `AppState.statusLightTimer`/`tickStatusLight()`, a dedicated 1Hz timer independent of the idle loop; see [MenuContent.md](MenuContent.md#menu-bar-icon-states).
+- **Blink menu bar icon** — `Toggle` bound to `draft.Status_light_blink_enabled` (off by default). When on, the menu bar icon's built-in status light blinks on a 6s cycle (5s lit, 1s off) instead of staying lit continuously while a recording is in progress, a show is starting within 30 minutes, or a recording is available to watch from another Mac's Recording FEED. Takes effect live — no restart or window reopen needed. Driven by `AppState.statusLightTimer`/`tickStatusLight()`, a dedicated 1Hz timer independent of the idle loop; see [MenuContent.md](MenuContent.md#menu-bar-icon-states).
 
 ---
 
@@ -271,7 +271,7 @@ Three independent sharing *methods* — **Web LAN** (the LAN web server itself),
 
 - **Web LAN section** — its own **Enable Web LAN** `Toggle` bound to `draft.Web_server_enabled`. Off by default. Warning label: *"Local network access only. No authentication. Do not expose this port to the internet."*
 - **Port** — `TextField` (value binding, `.number.grouping(.never)` format to suppress the thousands comma), shown when enabled. Validated 1025–65534. Invalid values show an orange warning and block the Save button and `WindowCloseInterceptor`. Saving restarts the `NWListener` and re-registers mDNS at the new port immediately — no app restart needed.
-- **Access row** — shown only when `state.config.Web_server_enabled && state.webServerRunning`. Displays `http://{ip}:{port}` as selectable monospaced text with an **Open** `Link`. IP is resolved by `availableNetworkInterfaces()` filtering out `utun*` VPN interfaces; falls back to `"localhost"`. The link uses the device's IP directly (not an mDNS `.local` hostname) to prevent browser HTTPS upgrades.
+- **Access row** — part of the Web LAN section itself (not a separate "Access" section — folded in 2026-09-05, previously its own section directly below), shown only when `state.config.Web_server_enabled && state.webServerRunning`. Displays `http://{ip}:{port}` as selectable monospaced text with an **Open** `Link`. IP is resolved by `availableNetworkInterfaces()` filtering out `utun*` VPN interfaces; falls back to `"localhost"`. The link uses the device's IP directly (not an mDNS `.local` hostname) to prevent browser HTTPS upgrades.
 - **Terminal Guide section** — always visible; its **Enable Terminal Guide** `Toggle` (bound to
   `draft.Terminal_guide_enabled`, defaults `false`) is `.disabled(!draft.Web_server_enabled)` and its
   label gains a `" (Requires Web LAN)"` suffix while Web LAN is off, dimming it rather than hiding

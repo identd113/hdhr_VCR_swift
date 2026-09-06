@@ -35,6 +35,14 @@ If ever picked up, two directions were floated, neither started, no clear winner
 
 ---
 
+## Menu Bar
+
+### FEED-available status light shows even when no one is actually watching
+
+Added 2026-09-06: the menu bar blue light (`AppState.hasAvailableRemoteFeed`/`.feedAvailable` in `statusLightCandidates`) lights up whenever *any* remote hdhrVCRplus instance's Recording FEED relay is discovered with a show attached — regardless of whether anyone is actually watching it from this Mac or anywhere else. Flagged live 2026-09-06, deferred: arguably this status should only matter (and only light up) once a real viewer is connected to that relay, not just because it exists and *could* be watched — otherwise it's less "something needs your attention" and more "a relay happens to be up," which is a much weaker signal. Not scoped: would need the discovering side to know the relay's own current viewer count (the source Mac already tracks this internally — `relayRawViewerCount`/`VLCBridge.transcodeViewerCount`, surfaced today only as `MenuContent`'s own "FEED: N watching" header row on the *source* Mac, not published anywhere a remote discoverer could read it) — likely a new non-standard `/lineup.json`/`/discover.json` field alongside `HdhrVCRplusShowTitle`, or deciding the light should instead reflect "am *I* currently watching this," which is trivially already known locally (`VLCBridge.shared.currentURL` matching a remote relay entry's own URL) but changes what the light actually means.
+
+---
+
 ## Player / Watch Now
 
 ### No watched/resume tracking across sessions

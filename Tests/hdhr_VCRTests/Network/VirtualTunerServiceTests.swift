@@ -95,6 +95,47 @@ struct VirtualTunerServiceTests {
         #expect(id != "FFFF0001")
     }
 
+    // MARK: - isDiscoverReply / deviceID(fromReplyPacket:) — unsolicited FEED-announce self-filter
+
+    @Test func isDiscoverReply_recognizesRealReplyFormat() {
+        let pkt = VirtualTunerService.buildDiscoverReply(deviceID: 0xFEED1234, baseURL: "http://10.0.2.100:1980", tunerCount: 1)
+        #expect(VirtualTunerService.isDiscoverReply(pkt))
+    }
+
+    @Test func isDiscoverReply_rejectsWrongType() {
+        // 0x0002 is DISCOVER_REQUEST — must never be mistaken for an unsolicited announce.
+        #expect(!VirtualTunerService.isDiscoverReply(realDiscoverRequestBytes()))
+    }
+
+    @Test func isDiscoverReply_rejectsTooShort() {
+        #expect(!VirtualTunerService.isDiscoverReply([0x00, 0x03]))
+        #expect(!VirtualTunerService.isDiscoverReply([]))
+    }
+
+    @Test func deviceID_fromReplyPacket_extractsTheEncodedID() {
+        let pkt = VirtualTunerService.buildDiscoverReply(deviceID: 0xFEED1234, baseURL: "http://10.0.2.100:1980", tunerCount: 2)
+        #expect(VirtualTunerService.deviceID(fromReplyPacket: pkt) == 0xFEED1234)
+    }
+
+    @Test func deviceID_fromReplyPacket_roundTripsAnEmptyBaseURLAndZeroTunerCount() {
+        // The invalid-deviceID-early-exit shape (buildDiscoverReply's own defaults) — must still
+        // parse cleanly rather than tripping the bounds check on a shorter-than-usual payload.
+        let pkt = VirtualTunerService.buildDiscoverReply(deviceID: 0x0A0B0C0D)
+        #expect(VirtualTunerService.deviceID(fromReplyPacket: pkt) == 0x0A0B0C0D)
+    }
+
+    @Test func deviceID_fromReplyPacket_nilOnMalformedOrTooShortInput() {
+        #expect(VirtualTunerService.deviceID(fromReplyPacket: []) == nil)
+        #expect(VirtualTunerService.deviceID(fromReplyPacket: [0x00, 0x03, 0x00, 0x06, 0x02]) == nil)   // truncated TLV
+    }
+
+    @Test func deviceID_fromReplyPacket_nilWhenNoDeviceIDTLVPresent() {
+        // A payload with only an unrelated TLV (tag 0x01, DeviceType) and no tag-0x02 DeviceID at all.
+        let payload: [UInt8] = [0x01, 0x04, 0x00, 0x00, 0x00, 0x01]
+        let pkt: [UInt8] = [0x00, 0x03, UInt8(payload.count >> 8), UInt8(payload.count & 0xFF)] + payload
+        #expect(VirtualTunerService.deviceID(fromReplyPacket: pkt) == nil)
+    }
+
     @Test func start_invalidDeviceID_reportsBindFailureWithoutTouchingASocket() {
         // Covers the synchronous early-exit branch of start(deviceID:onBindResult:) — the part of
         // the bind-result callback plumbing (AppState.updateVirtualTunerPresence's own consumer)

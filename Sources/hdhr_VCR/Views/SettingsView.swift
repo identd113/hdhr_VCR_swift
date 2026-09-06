@@ -680,23 +680,20 @@ struct SettingsView: View {
                             .foregroundStyle(.orange)
                     }
                 }
-            }
-
-            if state.config.Web_server_enabled && state.webServerRunning {
-                let ip: String = {
-                    let ifaces = availableNetworkInterfaces()
-                    // Explicit interface selected — use its IP
-                    if !state.config.Network_interface.isEmpty,
-                       let match = ifaces.first(where: { $0.name == state.config.Network_interface }) {
-                        return match.ip
-                    }
-                    // Auto — prefer physical Ethernet/Wi-Fi (en*, wlan*), then any non-VPN
-                    return ifaces.first(where: { $0.name.hasPrefix("en") || $0.name.hasPrefix("wlan") })?.ip
-                        ?? ifaces.first(where: { !isPointToPointInterface($0.name) })?.ip
-                        ?? "localhost"
-                }()
-                let urlStr = "http://\(ip):\(state.config.Web_server_port)"
-                Section("Access") {
+                if state.config.Web_server_enabled && state.webServerRunning {
+                    let ip: String = {
+                        let ifaces = availableNetworkInterfaces()
+                        // Explicit interface selected — use its IP
+                        if !state.config.Network_interface.isEmpty,
+                           let match = ifaces.first(where: { $0.name == state.config.Network_interface }) {
+                            return match.ip
+                        }
+                        // Auto — prefer physical Ethernet/Wi-Fi (en*, wlan*), then any non-VPN
+                        return ifaces.first(where: { $0.name.hasPrefix("en") || $0.name.hasPrefix("wlan") })?.ip
+                            ?? ifaces.first(where: { !isPointToPointInterface($0.name) })?.ip
+                            ?? "localhost"
+                    }()
+                    let urlStr = "http://\(ip):\(state.config.Web_server_port)"
                     HStack {
                         Text(urlStr)
                             .font(.system(.body, design: .monospaced))

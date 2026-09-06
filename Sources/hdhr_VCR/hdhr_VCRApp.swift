@@ -226,28 +226,45 @@ struct hdhr_VCRApp: App {
 
     // Silently open+close the menu so SwiftUI builds the view graph while the icon is still dimmed.
     // The startup opacity signals "not ready" so any accidental click during pre-warm is harmless.
+    // Switches on appState.activeStatusLight rather than re-deriving isRecording/nextShowMinutes/
+    // hasAvailableRemoteFeed priority here — AppState.tickStatusLight() already resolved which
+    // status (if more than one is active) should be showing *this instant*, including cycling
+    // between recording/feed when both are true; this view only has to render whichever one it's
+    // told.
     @ViewBuilder
     private var statusLabel: some View {
-        if appState.isRecording {
+        switch appState.activeStatusLight {
+        case .recording:
             blinkableIcon(litImage: appIconMenuBarRecording,
                           litSystemName: "record.circle.fill",
                           litColor: .red,
                           accessibilityLabel: "hdhrVCRplus — recording in progress")
-        } else if let mins = appState.nextShowMinutes, mins <= 30 {
-            let minsInt = Int(mins.rounded())
+        case .upNext(let minsInt):
             blinkableIcon(litImage: appIconMenuBarUpNext,
                           litSystemName: "clock.badge.fill",
                           litColor: .orange,
                           accessibilityLabel: "hdhrVCRplus — recording starting in \(minsInt) minute\(minsInt == 1 ? "" : "s")")
-        } else if let icon = appIconMenuBar {
-            Image(nsImage: icon)
-                .opacity(appState.isReady ? 1.0 : 0.3)
-                .accessibilityLabel("hdhrVCRplus")
-        } else {
-            // Fallback: no bundle resources (e.g. direct swift build)
-            Image(systemName: "tv")
-                .opacity(appState.isReady ? 1.0 : 0.3)
-                .accessibilityLabel("hdhrVCRplus")
+        case .feedAvailable:
+            // Same baked-artwork treatment as recording/up-next (app-feed.jpg — the same mark,
+            // just a blue status dot instead of red/amber), so a FEED being available reads as
+            // clearly "part of the same family" of status lights rather than a generic system
+            // glyph. "play.tv.fill" + watchNowBlue remain as the bundle-less fallback, matching the
+            // same Watch-button icon/color MenuContent's own "Recording on Another Mac" entries use.
+            blinkableIcon(litImage: appIconMenuBarFeed,
+                          litSystemName: "play.tv.fill",
+                          litColor: watchNowBlue,
+                          accessibilityLabel: "hdhrVCRplus — a recording is available to watch from another Mac")
+        case nil:
+            if let icon = appIconMenuBar {
+                Image(nsImage: icon)
+                    .opacity(appState.isReady ? 1.0 : 0.3)
+                    .accessibilityLabel("hdhrVCRplus")
+            } else {
+                // Fallback: no bundle resources (e.g. direct swift build)
+                Image(systemName: "tv")
+                    .opacity(appState.isReady ? 1.0 : 0.3)
+                    .accessibilityLabel("hdhrVCRplus")
+            }
         }
     }
 

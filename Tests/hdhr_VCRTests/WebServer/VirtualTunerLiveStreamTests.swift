@@ -47,6 +47,14 @@ private func findExecutable(_ name: String) -> String? {
 
 private enum LiveTestError: Error { case noRealDeviceFound, noChannelsInLineup, captureFailed, badResponse, timedOut }
 
+// Lets a Task.detached background write-loop be told to stop from the main test body without a
+// lock — used only by relaySurvivesAConsumerThatStopsReadingForOverAMinute's growth simulation.
+private actor GrowthController {
+    private var running = true
+    func isRunning() -> Bool { running }
+    func stop() { running = false }
+}
+
 @Suite("Virtual tuner relay — live stream + transcode (opt-in)", .serialized)
 struct VirtualTunerLiveStreamTests {
     private static let testPort = 19801
@@ -223,6 +231,140 @@ struct VirtualTunerLiveStreamTests {
         #expect(receivedBytes == secondHalf.prefix(receivedBytes.count))
 
         _ = showId
+    }
+
+    // Regression test for a real bug found and fixed live 2026-09-05: a per-send timeout used to
+    // kill this relay's connection whenever a single conn.send() didn't complete within a fixed
+    // window (15s, then 60s after 15s proved too tight) — but live-testing a real remote FEED viewer
+    // showed a perfectly healthy client can legitimately stop draining its socket for well over a
+    // minute (its own player buffering ahead), so a real, working connection kept getting killed and
+    // forced to reconnect at a new live-edge offset — the actual mechanism behind a "the relay
+    // doesn't work" report. Removed entirely (see WebServer.swift's growingFileNoTimeout doc
+    // comment): every streamGrowingFile caller now shares one effectively-unbounded timeout, relying
+    // on real conn.state transitions to detect a genuinely dead peer instead of guessing from send
+    // timing. This test proves it holds: a raw-socket client that stops calling recv() entirely for
+    // 75s — comfortably longer than either retired threshold — while the source file keeps growing
+    // behind it (so the server's conn.send() calls genuinely block on real TCP backpressure the
+    // whole time, not idly waiting for new data) must still find the connection alive and every byte
+    // intact, in order, once it resumes reading.
+    @MainActor
+    @Test func relaySurvivesAConsumerThatStopsReadingForOverAMinute() async throws {
+        guard virtualTunerLiveTestsOptedIn() else { return }
+        let (capturedPath, entry): (String, LineupEntry)
+        do {
+            (capturedPath, entry) = try await captureRealChannelSample()
+        } catch {
+            Issue.record("RUN_VIRTUAL_TUNER_LIVE_TESTS=1 but couldn't capture a real channel sample (\(error)) — need a real, reachable HDHomeRun device on the LAN")
+            return
+        }
+        defer { try? FileManager.default.removeItem(atPath: capturedPath) }
+        let captured = try Data(contentsOf: URL(fileURLWithPath: capturedPath))
+        #expect(captured.count > 200_000)
+        // A smaller repeating unit than the full capture — this test only cares about byte-exact
+        // relay fidelity under backpressure, not decodability, so a short repeated chunk keeps the
+        // 75s stall's disk usage sane (~2MB/s here vs. replaying the whole multi-MB capture on every
+        // 100ms tick).
+        let growthChunk = Data(captured.prefix(200_000))
+
+        // Starts empty — the relay serves from the live edge (current size at connect time), so an
+        // empty file at connect time means every byte the client ever receives comes from the
+        // background growth loop below, making a byte-for-byte check against `growthChunk` (repeated)
+        // unambiguous.
+        let samplePath = NSTemporaryDirectory() + "hdhrVCRplus-vtunertest-stall-\(UUID().uuidString).ts"
+        FileManager.default.createFile(atPath: samplePath, contents: nil)
+        defer { try? FileManager.default.removeItem(atPath: samplePath) }
+
+        let (state, device, showId) = try await makeLiveRelayState(samplePath: samplePath, entry: entry)
+        defer { state.webServer.stop() }
+        _ = showId
+
+        // Keeps the file growing for the life of the test, looping `growthChunk` — simulating an
+        // indefinitely-long real recording — every 100ms, well above real broadcast bitrate, so the
+        // server has more than enough queued data to genuinely fill the kernel's TCP buffers during
+        // the stall below rather than just idle-polling for more.
+        let growing = GrowthController()
+        let growTask = Task.detached {
+            guard let handle = FileHandle(forWritingAtPath: samplePath) else { return }
+            defer { handle.closeFile() }
+            while await growing.isRunning() {
+                handle.write(growthChunk)
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+        }
+        defer { growTask.cancel() }
+
+        // Raw socket, not URLSession — URLSession's AsyncBytes may keep draining the OS socket into
+        // its own internal buffer regardless of whether this test calls next(), which wouldn't
+        // reproduce the real TCP-receive-window backpressure this test depends on.
+        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        #expect(fd >= 0)
+        defer { close(fd) }
+        var addr = sockaddr_in()
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_port = UInt16(Self.testPort).bigEndian
+        inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr)
+        let connected = withUnsafePointer(to: &addr) { p in
+            p.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) }
+        }
+        #expect(connected == 0)
+        let request = "GET /auto/v\(entry.GuideNumber)?dev=\(device.DeviceID)&transcode=none HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: keep-alive\r\n\r\n"
+        _ = Array(request.utf8).withUnsafeBytes { send(fd, $0.baseAddress, $0.count, 0) }
+
+        // Reads (and discards) the HTTP header, then a modest amount of real body data — proving
+        // normal delivery started, matching relayServesRawRecordingBytesToARealConnection's own
+        // "prove it's really flowing first" shape — before this test's own stall scenario begins.
+        var raw = Data()
+        var buf = [UInt8](repeating: 0, count: 65536)
+        let headerTerminator = Data("\r\n\r\n".utf8)
+        while raw.range(of: headerTerminator) == nil {
+            let n = recv(fd, &buf, buf.count, 0)
+            guard n > 0 else { break }
+            raw.append(contentsOf: buf[0..<n])
+        }
+        guard let headerRange = raw.range(of: headerTerminator) else {
+            Issue.record("never saw end of HTTP header from the relay")
+            return
+        }
+        var body = Data(raw[headerRange.upperBound...])
+        while body.count < 262_144 {   // 256KB — comfortably past typical kernel socket buffer sizes
+            let n = recv(fd, &buf, buf.count, 0)
+            guard n > 0 else { break }
+            body.append(contentsOf: buf[0..<n])
+        }
+        #expect(!body.isEmpty)
+
+        // The actual stall: stop calling recv() entirely. The growth loop above keeps writing well
+        // past any reasonable kernel socket buffer size the whole time, so the server's own
+        // conn.send() calls are genuinely blocked on real TCP backpressure throughout this window —
+        // not idly waiting for new data, the exact condition the retired timeout used to kill on.
+        try await Task.sleep(for: .seconds(75))
+
+        // Resume reading with a bounded timeout now (a real regression would hang here forever
+        // otherwise) — the connection must still be alive and deliver more real data.
+        var tv = timeval(tv_sec: 15, tv_usec: 0)
+        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
+        var postStallBytes = 0
+        while postStallBytes < 65536 {
+            let n = recv(fd, &buf, buf.count, 0)
+            guard n > 0 else { break }
+            body.append(contentsOf: buf[0..<n])
+            postStallBytes += n
+        }
+        await growing.stop()
+
+        #expect(postStallBytes > 0)   // connection survived the stall and kept delivering
+
+        // Every byte ever received — before and after the stall — must match the known repeating
+        // pattern in order: proof the long stall caused no drop, corruption, or reordering anywhere
+        // in the stream, not just that bytes kept flowing.
+        var mismatchAt: Int? = nil
+        for i in 0..<body.count {
+            if body[body.startIndex + i] != growthChunk[growthChunk.startIndex + (i % growthChunk.count)] {
+                mismatchAt = i
+                break
+            }
+        }
+        #expect(mismatchAt == nil)
     }
 
     @MainActor

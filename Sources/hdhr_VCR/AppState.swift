@@ -152,10 +152,26 @@ final class AppState: ObservableObject {
     }
     // Menu bar "blink" state for Settings → "Blink menu bar icon"; driven by statusLightTimer
     // (see startStatusLightTimer/tickStatusLight below), read by hdhr_VCRApp's statusLabel.
-    // Deliberately a real @Published rather than a view-local TimelineView — a TimelineView
-    // inside the MenuBarExtra label broke click-to-open-menu (AppKit's NSStatusItem stops
-    // forwarding clicks once its label content free-runs on its own render loop).
+    // Deliberately real @Published properties rather than a view-local TimelineView — a
+    // TimelineView inside the MenuBarExtra label broke click-to-open-menu (AppKit's NSStatusItem
+    // stops forwarding clicks once its label content free-runs on its own render loop).
+    //
+    // Two tiers, not a single priority pick: `.recording` and `.feedAvailable` are equally
+    // "important, worth interrupting for" — when both are true at once, tickStatusLight() cycles
+    // the light between them (each getting its own full blink cycle) rather than one silently
+    // hiding the other. `.upNext` is strictly subordinate to both — shown only when neither of the
+    // other two is active — per explicit user direction 2026-09-06: recording + up-next + a FEED
+    // available should show red/blue cycling only, never up-next's amber.
+    enum StatusLightKind: Equatable {
+        case recording
+        case feedAvailable
+        case upNext(minutes: Int)
+    }
     @Published var statusLightOn: Bool = true
+    // Which status the light is currently showing (nil = idle, no light) — recomputed every tick
+    // alongside statusLightOn. hdhr_VCRApp's statusLabel switches on this instead of re-deriving
+    // its own priority order, so the cycling logic lives in exactly one place.
+    @Published var activeStatusLight: StatusLightKind? = nil
     var isRecording: Bool      { shows.contains { $0.show_recording } }
     var recordingShows: [Show] { shows.filter { $0.show_recording && ($0.show_end ?? .distantPast) > Date() } }
     var activeShows: [Show]    { shows.filter { $0.show_active && !$0.show_recording && !$0.show_paused }
@@ -163,6 +179,26 @@ final class AppState: ObservableObject {
     var pausedShows: [Show]    { shows.filter { $0.show_active && $0.show_paused } }
     var inactiveShows: [Show]  { shows.filter { !$0.show_active } }
     var unavailableDeviceIDs: Set<String> { Set(devices.filter { !$0.isAvailable }.map { $0.DeviceID }) }
+
+    // Shows currently recording on a *different* hdhrVCRplus instance's Recording FEED relay,
+    // available to watch from this Mac (MenuContent's "Recording on Another Mac" section, and the
+    // menu bar's own blue blink below). state.devices never contains this instance's own virtual
+    // tuner (self-exclusion in excludingOwnVirtualTuner), so every isVirtualRelay device found
+    // here belongs to a different instance on the LAN. Single source of truth — MenuContent reads
+    // this instead of recomputing the same filter/flatMap locally, so the two can't drift apart.
+    // `isAvailable` is checked here (not just `isVirtualRelay`) so a relay that's gone clears from
+    // both surfaces within the few minutes probeForNewDevices() takes to mark it unavailable,
+    // instead of waiting for the much longer stale-device-forget prune (staleDeviceForgetAfter,
+    // 1 hour) that only clears the underlying `lineups` cache — found live 2026-09-06 killing a
+    // test mock relay and watching it stay listed.
+    var remoteRelayEntries: [(device: HDHRDevice, entry: LineupEntry)] {
+        devices.filter { $0.isVirtualRelay && $0.isAvailable }.flatMap { device in
+            (lineups[device.DeviceID] ?? [])
+                .filter { $0.virtualRelayShowTitle != nil }
+                .map { (device: device, entry: $0) }
+        }
+    }
+    var hasAvailableRemoteFeed: Bool { !remoteRelayEntries.isEmpty }
 
     // Shared source of truth for "which channels on this device read as recording" — used by
     // WebServer.swift's guide grid (ring badges + the RECORDING section) and WatchNowView's Watch
@@ -548,6 +584,17 @@ final class AppState: ObservableObject {
         //    for the full discovery + guide fetch sequence to complete.
         setupWebServer()
 
+        // 3b. Start listening for other instances' unsolicited FEED announces (see
+        //     VirtualTunerService.beginPassiveListening's own doc comment) — independent of whether
+        //     THIS instance ever relays anything itself, so a FEED appearing/disappearing elsewhere
+        //     on the LAN is picked up within about a second instead of on the next ~10s idle-loop
+        //     discovery poll. Wired here (guarded by skipStartup via this whole function, unlike
+        //     init()) so unit tests constructing an AppState never bind a real socket.
+        virtualTuner.onFeedAnnounce = { [weak self] _ in
+            Task { @MainActor in await self?.probeForNewDevices() }
+        }
+        virtualTuner.beginPassiveListening()
+
         // 4. Notification permission — fire-and-forget; must not block discovery
         Task { await requestNotifyPermission() }
 
@@ -693,16 +740,21 @@ final class AppState: ObservableObject {
     //
     // webServerStarting closes that window: set the instant a start is kicked off, cleared only once
     // the bind's async outcome (ready/failed/cancelled) lands in applyWebServerState. That completion
-    // deliberately does NOT re-call this function itself — every trigger that can change `wantRunning`
-    // (setupWebServer, ensureWebServerRunning, releaseInternalWebServer) already calls reconcile
-    // itself at the moment it fires, including mid-bind (stop() is safe to call on a still-binding
-    // listener, and WebServer.stop() nils its callback first so a resulting .cancelled doesn't
-    // surface as a spurious error) — so nothing is missed by not also reconciling reactively here.
-    // Doing so anyway was tried and reverted: on a *persistent* failure (e.g. a genuinely unavailable
-    // port) it re-entered this function with `wantRunning` still true and `webServerRunning`/
-    // `webServerStarting` both already reset to false, which re-passed the start guard and called
-    // webServer.start() again — an unbounded, synchronous-feeling retry loop that pinned a CPU core
-    // and hung `swift test` outright the first time this was tried, 2026-09-03.
+    // deliberately does NOT unconditionally re-call this function on every outcome — every trigger
+    // that can change `wantRunning` (setupWebServer, ensureWebServerRunning, releaseInternalWebServer)
+    // already calls reconcile itself at the moment it fires, including mid-bind (stop() is safe to
+    // call on a still-binding listener, and WebServer.stop() nils its callback first so a resulting
+    // .cancelled doesn't surface as a spurious error) — so nothing is missed by not also reconciling
+    // reactively on every completion. Doing so unconditionally was tried and reverted: on a
+    // *persistent* failure (e.g. a genuinely unavailable port) it re-entered this function with
+    // `wantRunning` still true and `webServerRunning`/`webServerStarting` both already reset to
+    // false, which re-passed the start guard and called webServer.start() again — an unbounded,
+    // synchronous-feeling retry loop that pinned a CPU core and hung `swift test` outright the first
+    // time this was tried, 2026-09-03. `applyWebServerState` *does* now reconcile again, but only
+    // on its success path and only when the just-bound port has already diverged from
+    // `config.Web_server_port` — the narrow fix for a Settings port change arriving while this exact
+    // bind was still in flight (see that function's own comment) — never on failure, so it can't
+    // reintroduce the same unbounded loop.
     private func reconcileWebServerState() {
         let wantRunning = config.Web_server_enabled || internalWebServerUseCount > 0
         if wantRunning {
@@ -747,6 +799,20 @@ final class AppState: ObservableObject {
             // to call updateVirtualTunerPresence() again — a discovering client on another Mac gets
             // a BaseURL it can't connect to. A no-op whenever nothing is currently recording.
             updateVirtualTunerPresence()
+            // Catches a Settings port change that arrived while THIS bind was still in flight:
+            // reconcileWebServerState's stale-port branch requires webServerRunning already true
+            // before it'll even look at whether the port changed, so a reconcile call that lands
+            // while webServerStarting is still true is a complete no-op — the new port is silently
+            // dropped, and nothing else notices until some unrelated trigger happens to call
+            // reconcile again. Checking here, once, right after a bind actually succeeds, closes
+            // that gap without reintroducing the unbounded retry loop this function's own top
+            // comment describes hitting once: this only re-enters reconcileWebServerState on the
+            // SUCCESS path (errorMsg == nil, this whole branch), and only when the port has
+            // genuinely diverged since — a real failure on the next attempt still reports its own
+            // error and stops there, exactly like any other start() call.
+            if boundWebServerPort != config.Web_server_port {
+                reconcileWebServerState()
+            }
         }
     }
 
@@ -1378,10 +1444,36 @@ final class AppState: ObservableObject {
         var upcomingResult:  [String: [(channel: String, date: Date)]] = [:]
         for show in candidateShows {
             let schNext = show.show_next ?? .distantFuture
-            // Replicate scheduledMenu's schEntry logic: direct match first, series fallback
+            // Replicate scheduledMenu's schEntry logic: direct match first, series fallback. For a
+            // series show that has a real SeriesID, a direct (proximity-only) match must also
+            // genuinely carry that same SeriesID before it's accepted. Without this, a preempted
+            // slot (the guide's real content changed since show_next was last set — a live sports
+            // overrun, a schedule swap) silently binds the show to whatever unrelated program now
+            // airs closest to the stale show_next time, and MenuContent's "confirmed guide entry"
+            // check (which gates Up Next vs. Scheduled) reads that as confirmed when it isn't — the
+            // exact case a live "Sabrina Carpenter SNL showing as Up Next a day later" report
+            // traced back to, 2026-09-06. A single/dateTime show has no SeriesID to validate
+            // against, so proximity alone is still the right (and only) test for those.
+            //
+            // Deliberately no title-based fallback here (tried, then dropped the same day): a
+            // title-only-tracked series show (show_seriesid empty — a real, supported case for a
+            // guide entry that lacked SeriesID data) has no room for a comparable check here, and
+            // reusing the web guide's own custom show_title (which the Record modal's titleOverride
+            // can set to anything, unrelated to the guide's own title text) risks the opposite
+            // failure: rejecting a perfectly correct match just because the user renamed the show.
+            // Net effect: a title-only-tracked series show's Up Next entry is never "confirmed" by
+            // this direct-match path — the elseif below also requires a non-empty show_seriesid, so
+            // it stays out of Up Next (shown in Scheduled instead) even when it's actually on
+            // track. Accepted tradeoff, not fixed further — favors never showing a false "confirmed"
+            // over sometimes failing to show a true one.
             let direct = guideStore.entries(deviceId: show.hdhr_record, channelNum: show.show_channel)
-            if let hit = direct.first(where: { abs($0.startDate.timeIntervalSince(schNext)) < 5 * 60 }) {
-                scheduledResult[show.show_id] = hit
+                .first(where: { abs($0.startDate.timeIntervalSince(schNext)) < 5 * 60 })
+            let directIsGenuine = direct.map { entry in
+                !show.isSeries
+                    || (!show.show_seriesid.isEmpty && entry.SeriesID == show.show_seriesid)
+            } ?? false
+            if let direct, directIsGenuine {
+                scheduledResult[show.show_id] = direct
             } else if show.show_use_seriesid, !show.show_seriesid.isEmpty {
                 // dev is always the show's assigned tuner — SeriesID(All) differs from
                 // SeriesID(Channel) only in channel scope, not device scope.
@@ -1511,6 +1603,20 @@ final class AppState: ObservableObject {
         show.show_next      = entry.startDate
         show.show_end       = entry.endDate
         show.show_seriesid  = entry.SeriesID ?? ""
+        // Never actually observed in practice — every real guide entry seen so far has carried a
+        // SeriesID — but scheduleNextAir/startRecording both already carry a title-only fallback
+        // specifically for the case a provider's guide entry lacks one, so it's a real, anticipated
+        // gap, not dead code. Surfaced here, at creation time, rather than staying silent: a
+        // SeriesID-type show missing its ID matches only by title from here on (weaker — proximity
+        // + title only, no ID to fall back on if the show gets renamed or the guide's title text
+        // drifts), so the user should know immediately rather than discover it only if/when
+        // matching actually degrades later.
+        if (type == .seriesChannel || type == .seriesAll), show.show_seriesid.isEmpty {
+            glog("[\(show.show_title)] added as a SeriesID-type show, but this guide entry had no SeriesID — matching will fall back to title only", level: .warning)
+            notify("No SeriesID Available",
+                   body: "\(show.show_title) — Ch \(show.show_channel) at \(shortTime(show.show_next))",
+                   subtitle: "This guide didn't provide a SeriesID — matching will use title only, which is less reliable")
+        }
         show.show_logo_url  = entry.ImageURL ?? ""
         show.show_url       = channel.URL ?? ""
         show.show_genre     = entry.firstGenre ?? ""
@@ -1669,21 +1775,54 @@ final class AppState: ObservableObject {
         }
     }
 
-    // 6s cycle: lit 5s, off 1s. No-ops (beyond resetting to lit) when blink is disabled or nothing
-    // is recording/up-next. Deliberately NOT gated on menuIsOpen — unlike rebuildMenuEntries() and
-    // friends, this only feeds the MenuBarExtra *label* (never MenuContent, the dropdown itself),
-    // and menuIsOpen can get stuck true from SwiftUI's eager startup build of the dropdown content
-    // (see the "Silently open+close" comment on statusLabel in hdhr_VCRApp.swift) — gating on it
-    // here would silently block the blink indefinitely on a fresh launch until the user's first
-    // real menu open/close.
+    // Builds this tick's candidate set, tier-first: `.recording`/`.feedAvailable` together when
+    // either or both are true (order here is also the "pick one" order used when blink is off, and
+    // the cycle order used when it's on); `.upNext` only considered at all when NEITHER of those
+    // two is active — never appended alongside them, per the "would not show the next up blink,
+    // just the red and blue" example driving this design.
+    // Internal, not private, so AppStateStatusLightTests can exercise the tier logic directly
+    // without needing to drive the real 1Hz timer.
+    var statusLightCandidates: [StatusLightKind] {
+        var tier1: [StatusLightKind] = []
+        if isRecording { tier1.append(.recording) }
+        if hasAvailableRemoteFeed { tier1.append(.feedAvailable) }
+        if !tier1.isEmpty { return tier1 }
+        if let mins = nextShowMinutes, mins <= 30 { return [.upNext(minutes: Int(mins.rounded()))] }
+        return []
+    }
+
+    // 6s cycle: lit 5s, off 1s — unchanged regardless of how many statuses are active (explicit
+    // user direction: "the flash rate shouldn't change"). With N candidates active and blink
+    // enabled, each gets its own full 6s cycle before advancing to the next (a 2-candidate loop is
+    // 12s total: red lit 5s/off 1s, then blue lit 5s/off 1s, repeat) — rather than splitting one 6s
+    // window between them, so each color still reads clearly on its own. With blink disabled,
+    // there's no timer to alternate on, so the highest-priority candidate is shown steadily lit
+    // (matching this function's pre-existing behavior for the single-candidate case) — the other
+    // candidate, if any, simply doesn't get shown until blink is turned on. Deliberately NOT gated
+    // on menuIsOpen — unlike rebuildMenuEntries() and friends, this only feeds the MenuBarExtra
+    // *label* (never MenuContent, the dropdown itself), and menuIsOpen can get stuck true from
+    // SwiftUI's eager startup build of the dropdown content (see the "Silently open+close" comment
+    // on statusLabel in hdhr_VCRApp.swift) — gating on it here would silently block the blink
+    // indefinitely on a fresh launch until the user's first real menu open/close.
     private func tickStatusLight() {
-        guard config.Status_light_blink_enabled,
-              isRecording || (nextShowMinutes.map { $0 <= 30 } ?? false) else {
+        let candidates = statusLightCandidates
+        guard !candidates.isEmpty else {
+            if activeStatusLight != nil { activeStatusLight = nil }
             if !statusLightOn { statusLightOn = true }
             return
         }
-        let cyclePosition = Date().timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 6.0)
-        let newValue = cyclePosition < 5.0
+        guard config.Status_light_blink_enabled else {
+            if activeStatusLight != candidates[0] { activeStatusLight = candidates[0] }
+            if !statusLightOn { statusLightOn = true }
+            return
+        }
+        let cycleLength = 6.0 * Double(candidates.count)
+        let position = Date().timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: cycleLength)
+        let index = min(candidates.count - 1, Int(position / 6.0))
+        let withinColor = position.truncatingRemainder(dividingBy: 6.0)
+        let newLight = candidates[index]
+        let newValue = withinColor < 5.0
+        if activeStatusLight != newLight { activeStatusLight = newLight }
         if statusLightOn != newValue { statusLightOn = newValue }
     }
 

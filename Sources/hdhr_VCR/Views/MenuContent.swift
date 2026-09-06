@@ -165,15 +165,10 @@ struct MenuContent: View {
         }
 
         // ── Remote relays (another hdhrVCRplus instance's in-progress recording) ────────────
-        // state.devices never contains this instance's own virtual tuner (self-exclusion in
-        // AppState.excludingOwnVirtualTuner), so every isVirtualRelay device found here belongs
-        // to a different instance on the LAN.
-        let remoteRelayEntries: [(device: HDHRDevice, entry: LineupEntry)] =
-            state.devices.filter { $0.isVirtualRelay }.flatMap { device in
-                (state.lineups[device.DeviceID] ?? [])
-                    .filter { $0.virtualRelayShowTitle != nil }
-                    .map { (device: device, entry: $0) }
-            }
+        // state.remoteRelayEntries is the shared source of truth (also drives the menu bar's own
+        // blue blink, hdhr_VCRApp.swift's statusLabel) — read here rather than recomputing the
+        // same filter/flatMap locally, so the two surfaces can't drift apart.
+        let remoteRelayEntries = state.remoteRelayEntries
         if !remoteRelayEntries.isEmpty {
             Section("Recording on Another Mac") {
                 ForEach(remoteRelayEntries, id: \.entry.URL) { pair in

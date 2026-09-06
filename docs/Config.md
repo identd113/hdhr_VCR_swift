@@ -67,7 +67,7 @@ Virtual_tuner_relay_default_transcode String "heavy" transcode profile applied t
 Hdhr_setup_folder       String  ""      default recording folder (POSIX path; empty = ~/Movies/hdhr_videos)
 Signal_quality_enabled      Bool false   collect per-channel SNQ signal history and show signal bars when scheduling a recording (Add/Edit/web Record)
 Signal_quality_alert_notify Bool false   notify + Discord embed when a recording's signal drops below 30% for ~20s, and again on recovery
-Status_light_blink_enabled  Bool false   blink the recording/up-next menu bar status light (6s cycle: 5s lit, 1s off) instead of showing it lit continuously; driven by AppState's own 1Hz timer, independent of the idle loop
+Status_light_blink_enabled  Bool false   blink the recording/up-next/remote-FEED-available menu bar status light (6s cycle: 5s lit, 1s off) instead of showing it lit continuously; driven by AppState's own 1Hz timer, independent of the idle loop
 Donation_unlocked       Bool    false   set true once a valid donation-nag unlock code is entered; see docs/DonationNagView.md
 Donation_unlock_code    String  ""      the validated code entered on successful unlock; shown back in Settings → About as registration confirmation
 Dock_icon_mode          String  "auto"  auto | always | never — Settings → Advanced override for the launch-time Dock-icon heuristic (see TODO.md's "Show Stoppers" entry)

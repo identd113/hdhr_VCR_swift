@@ -178,7 +178,9 @@ final class HDHRManager {
     /// non-point-to-point IPv4 interface — or just the named one if `interface` is non-empty.
     /// Values are raw sin_addr.s_addr bit patterns (already in network byte order), computed as
     /// (addr | ~netmask) via bitwise ops that are byte-order agnostic.
-    private static func subnetBroadcastAddresses(interface: String) -> [in_addr_t] {
+    /// Internal, not private — VirtualTunerService.broadcastAnnounce() reuses this same target list for
+    /// its own unsolicited FEED announces rather than duplicating the interface-enumeration logic.
+    static func subnetBroadcastAddresses(interface: String) -> [in_addr_t] {
         var results: [in_addr_t] = []
         var ptr: UnsafeMutablePointer<ifaddrs>? = nil
         guard getifaddrs(&ptr) == 0 else { return results }

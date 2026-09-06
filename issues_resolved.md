@@ -1045,3 +1045,119 @@ Full `swift build` and test suite pass; every fix verified against a real pty (w
 **Root cause**: `usableDeviceIDs` filtered `devices` directly rather than going through `recordableDevices`, so it didn't structurally exclude a virtual relay's `DeviceID`. Every existing caller happened to be safe only because it separately intersected against an already-`recordableDevices`-filtered list first — a future caller checking `usableDeviceIDs.contains(id)` directly wouldn't have inherited that exclusion.
 
 **Resolution**: `usableDeviceIDs` now filters `recordableDevices` instead of `devices`, so every current and future caller inherits the virtual-relay exclusion for free.
+
+---
+
+# Real remote FEED viewer live-tested — 2026-09-05
+
+## RESOLVED — Raw (untranscoded) FEED relay repeatedly disconnected a healthy remote viewer, forcing stutter-and-reconnect instead of continuous playback
+
+**File:** `WebServer.swift` — `sendWithTimeout`/`streamGrowingFile`/`pumpGrowingFile`/`handleGrowingFileChunk`, `handleVirtualTunerStream`
+
+**Reported**: 2026-09-05, live — "The actual relay dowtn appear to work, (non transcoded) stream," while testing a real notarized build against a second Mac on the LAN.
+
+**Root cause**: `handleVirtualTunerStream` passed a caller-specific `growingFileSendTimeout` (15s, part of the same unpushed range's `d12cd0e`) to `streamGrowingFile`, forcibly closing the connection if any single `conn.send()` didn't complete within that window. The app's own log showed the relay actually working — repeated `200 raw passthrough` responses successfully sending real data — immediately followed by `client disconnected ... timed out after 15s waiting for client to accept data`, 5 times in one short session. The receiving Mac's own VLCBridge, playing the relay like any other stream, legitimately stops draining the socket for a stretch once its buffer is comfortably ahead — the same "can legitimately go quiet" behavior already known and special-cased for VLCBridge's headless transcode-source consumer, just now observed on the far end of a real network hop. Killing the connection over this forced a reconnect at a new live-edge offset every 15-30s — visible as constant stutter/skip-ahead, which is what "doesn't work" actually looked like.
+
+**First attempt (insufficient)**: raised the timeout 15s → 60s, reasoning it just needed more headroom. Correctly identified the mechanism but treated it as a calibration problem rather than a design problem — per-send timing can never reliably distinguish "client momentarily behind" from "client dead."
+
+**Resolution**: removed the caller-specific timeout entirely. `streamGrowingFile`/`pumpGrowingFile`/`handleGrowingFileChunk` no longer take a `sendTimeout` parameter at all — every caller (local Watch Now, the transcode-source fetch, and now the real remote relay) uses the same `growingFileNoTimeout` (86400s, effectively unbounded) `sendWithTimeout` already used for the other two. A genuinely dead peer still self-heals via the existing `conn.state` check in `pumpGrowingFile` (`.cancelled`/`.failed`) once the OS's own TCP layer gives up on it — this wrapper only guards against `Network.framework`'s own send completion never firing at all, not against a still-alive connection that's merely slow to drain. The correct model for a growing recording file is to keep reading and polling it until the connection is genuinely over, not to guess "hung" from send timing.
+
+**Resolving commit**: (uncommitted at time of writing — see this session's WebServer.swift/docs/WebServer.md changes)
+
+## VERIFIED — 30-minute sustained real-world soak test confirms the fix, plus a permanent regression test added
+
+**Files:** `Tests/hdhr_VCRTests/WebServer/VirtualTunerLiveStreamTests.swift`
+
+**Verification**: two real, concurrently-recording channels (a live MLB broadcast and another channel) were each relayed to a plain `curl` client for a full 30 minutes via `/auto/v<channel>?dev=...&transcode=none`, sampling both the relay's delivered bytes and the source recording file's on-disk growth every 15s. Results: **zero server-initiated forced disconnects** across the entire 30 minutes (confirmed via the app log — no `"client disconnected"`/`"timed out"`/`"header send failed"` lines for either connection); one channel's connection closed itself gracefully only when the real recording legitimately ended at its scheduled time (`"recording finished, drained 8654348256 bytes — closing stream"`), the other ran the complete, uninterrupted 30 minutes on its original connection. Both complete captures (1.16GB and 830MB) came back **byte-for-byte identical** to their source recording files over their entire length — verified by locating the exact byte offset each relay connection started at (aligning the capture's own first 32KB against the source file) and comparing every subsequent byte — zero drops, corruption, or reordering introduced by the relay.
+
+**Added**: `relaySurvivesAConsumerThatStopsReadingForOverAMinute`, a permanent opt-in (`RUN_VIRTUAL_TUNER_LIVE_TESTS=1`) regression test reproducing the failure mechanism directly rather than relying on a future live re-test to catch it again — a raw POSIX socket client (same idiom as `WebServerTests.swift`'s `rawRequest`, needed because `URLSession`'s `AsyncBytes` may keep draining the OS socket internally regardless of whether test code calls `next()`) connects, confirms normal delivery, then deliberately stops calling `recv()` for 75s — comfortably past both retired thresholds (15s, 60s) — while a background loop keeps the source file growing fast enough to genuinely fill the kernel's TCP buffers, guaranteeing the server's `conn.send()` calls are truly blocked on real backpressure the whole time, not idly waiting. Asserts the connection is still alive afterward and every byte received, before and after the stall, matches the known repeating pattern exactly in order.
+
+**Resolving commit**: (uncommitted at time of writing)
+
+---
+
+# A channel-locked series show's "Up Next" entry can silently bind to an unrelated preempted program — 2026-09-06
+
+## RESOLVED — Menu bar's "Up Next" showed a stale "Saturday Night Live" episode a day after it aired, because its slot was preempted and the guide-match fell back to proximity alone
+
+**File:** `AppState.swift` — `rebuildMenuEntries()`
+
+**Reported**: 2026-09-06, live — a `Saturday Night Live · S51E03 · Sabrina Carpenter` entry showing in the menu bar's "Up Next" section, a day after that episode actually aired.
+
+**Root cause**: this show is a `seriesChannel` recording (SeriesID + channel-locked to 11.1, by design never following the series to a different channel). Its previously-matched SNL slot on channel 11.1 was preempted by live MLB coverage (a real schedule change — the current guide showed "MLB Baseball" in that exact time slot, not SNL, and the real upcoming SNL episodes with the same SeriesID were airing on a completely different channel, 23.4, which this channel-locked show correctly doesn't track). `rebuildMenuEntries()`'s `menuScheduledEntry` computation, however, accepted *any* guide entry within 5 minutes of the show's `show_next` timestamp on that channel as a "direct match" — no check that the entry's title or SeriesID had anything to do with the show at all. This silently bound the show to the MLB guide entry's timing, which MenuContent's "series show without a confirmed guide entry stays in Scheduled, not Up Next" check (`MenuContent.swift:256`) then read as "confirmed," keeping it in Up Next even though `startRecording()`'s own separate, correct live re-check would have skipped the actual recording attempt at that time (`AppState.swift:2132-2154`, unaffected by this bug — no wrong content was ever at risk of being recorded, only the menu display was wrong).
+
+**Resolution**: for a series show (`show.isSeries`) that has a real SeriesID, a "direct" proximity match must now also carry that same SeriesID (`entry.SeriesID == show.show_seriesid`) before it's accepted — otherwise `rebuildMenuEntries()` falls through to the existing SeriesID-based search (`guideStore.nextEpisode`), which validates properly, or leaves the entry unset entirely if nothing genuine is found, correctly demoting the show out of Up Next into Scheduled via the existing (already correct) check in `MenuContent.swift`. A single/dateTime show has no SeriesID to validate against, so proximity alone remains the right (and only) test for those.
+
+A title-based fallback (`Show.seriesTitle(from: entry.Title) == show.show_title`) was in the first version of this fix and dropped the same day, live, after review: the web guide's Record modal can set `show_title` to an arbitrary user-typed override unrelated to the guide's own title text (`titleOverride` in `WebServer.swift`), so that comparison would reject a perfectly valid match for any renamed show. Accepted consequence, not fixed further: a title-only-tracked series show (`show_seriesid` empty) is now never "confirmed" by this path and always shows in Scheduled rather than Up Next, even when genuinely on track — favors never showing a false positive over sometimes missing a true one.
+
+**Resolving commit**: (uncommitted at time of writing)
+
+---
+
+# A dead remote FEED relay stayed in the menu bar for up to an hour — 2026-09-06
+
+## RESOLVED — `AppState.remoteRelayEntries` didn't check `isAvailable`, so a gone relay kept showing in "Recording on Another Mac" and driving the menu bar's blue blink for up to an hour
+
+**File:** `AppState.swift`
+
+**Reported**: 2026-09-06, live — killed a test mock relay (`tools/mock_hdhr.py --feed-file`) and asked how long the menu bar would take to stop showing it; the honest answer at the time was "up to ~1 hour."
+
+**Root cause**: `remoteRelayEntries` filtered only on `isVirtualRelay`, not `isAvailable`. `probeForNewDevices()` marks a missing device unavailable within a few minutes (first miss at the next scheduled probe, then two ~60s "quick probe" follow-ups), but that alone cleared nothing this property read — `fetchAllLineups`'s failure path leaves the old cached `lineups[deviceID]` entry untouched on a failed fetch, and the lineup is only actually wiped by the separate "forget stale devices" pass, gated on `staleDeviceForgetAfter` (3600s = 1 hour). So both the "Recording on Another Mac" menu section and the menu bar's blue blink kept advertising a relay the app already knew was gone.
+
+**Resolution**: `remoteRelayEntries` now filters `devices.filter { $0.isVirtualRelay && $0.isAvailable }` — both surfaces clear within the same few minutes it takes `probeForNewDevices()` to mark the device unavailable, instead of waiting for the 1-hour stale-device-forget prune. That prune is unchanged — still the right cadence for actually forgetting the device and clearing `lineups`/`guideByDevice`/etc., just no longer the gate for "should the menu bar still advertise this as watchable right now."
+
+**Resolving commit**: (uncommitted at time of writing)
+
+---
+
+# Code review of everything since Friday AM (2fac77c..HEAD) — 2026-09-06
+
+## RESOLVED — FEED live-edge fix silently fell back to byte 0 on a stat failure, reintroducing the exact burst it was written to fix
+
+**File:** `WebServer.swift` — `handleVirtualTunerStream`
+
+**Root cause**: `let currentSize = (try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? Int ?? 0` swallowed any error from the stat call (a transient race right after the preceding `fileExists` check, a permissions hiccup, the file being replaced) and silently defaulted to byte 0, with no log line. That's the exact "blast the entire recording-so-far" burst the live-edge fix (`033c889`) existed to eliminate — just reachable via a different trigger (a stat failure instead of an explicit byte-0 request).
+
+**Resolution**: changed to a `guard let` with no fallback — a stat failure now logs an error and returns a 404 ("recording temporarily unavailable") instead of guessing an offset. The client's own retry gets a fresh shot at a real live-edge offset rather than silently receiving a burst.
+
+**Resolving commit**: (uncommitted at time of writing)
+
+## RESOLVED — A Settings web-server port change arriving mid-bind was silently dropped, leaving the server on the stale port indefinitely
+
+**File:** `AppState.swift` — `reconcileWebServerState()`/`applyWebServerState(_:port:)`
+
+**Root cause**: `reconcileWebServerState()`'s stale-port branch (`if webServerRunning, boundWebServerPort != config.Web_server_port`) only runs when `webServerRunning` is already `true`. If a Settings port change triggers a reconcile call while a previous bind is still in flight (`webServerStarting == true`, `webServerRunning` still `false`), the whole call is a no-op — the new port is silently dropped. The in-flight bind then completes on the *old* port, correctly stamping `boundWebServerPort` with it, and nothing notices the mismatch until some unrelated trigger happens to call `reconcileWebServerState()` again.
+
+**Resolution**: `applyWebServerState(_:port:)` now checks, on its success path only, whether `boundWebServerPort` still matches `config.Web_server_port` — if not (the exact case above), it calls `reconcileWebServerState()` once to catch up immediately. This can't reintroduce the unbounded retry loop a previous, more general version of this idea caused (see that function's own comment): it only fires when the current bind actually *succeeded*, and only proceeds to a genuinely different port — a real failure on that next attempt reports its own error and stops there, same as any other `start()` call.
+
+**Resolving commit**: (uncommitted at time of writing)
+
+## RESOLVED — The FEED log-injection fix covered the log line but not the same value echoed into the HTTP response body
+
+**File:** `WebServer.swift` — `handleVirtualTunerStream`
+
+**Root cause**: the 404 response for "no active recording on channel X" echoed the raw, client-controlled `channel` value directly into the response body, while the log line one statement above it correctly used `logChannel` (stripped of newlines/control characters). Inconsistent application of the same sanitization to two different sinks of the same untrusted value.
+
+**Resolution**: the response body now uses `logChannel` too. `channel` itself stays unsanitized everywhere it's actually used for matching (unaffected — matching must see the real value), only the two places it's echoed back as text now agree.
+
+**Resolving commit**: (uncommitted at time of writing)
+
+---
+
+# A FEED viewer played a beat, stalled, and heard fragmented audio right after joining — 2026-09-06
+
+## RESOLVED — `streamGrowingFile`'s live-edge join offset could land mid-TS-packet, corrupting the client's demux on connect
+
+**File:** `WebServer.swift` — `streamGrowingFile`
+
+**Reported**: 2026-09-06, live — "a feed consumer gets a first and maybe a second [segment], but then pauses, and you hear fragments of audio."
+
+**Root cause**: a new FEED viewer's `startOffset` is the recording file's momentary byte size at request time (the live-edge join, see `handleVirtualTunerStream`'s own comment on why byte 0 isn't used) — a value with no relation to MPEG-TS's 188-byte packet framing, since curl writes to disk in whatever chunk sizes its own TCP reads land on. `streamGrowingFile`'s offset clamp only bounded this to the file's current size; it never rounded to a packet boundary. A viewer's very first byte could therefore land mid-packet, forcing its demuxer to scan forward for the next `0x47` sync byte (potentially past the PAT/PMT it needs first) before it could decode anything — exactly the "plays a beat, stalls, then fragments" symptom. The user's own framing of the bug as TCP packet reordering wasn't the actual mechanism: this pipeline's sends are already strictly serialized (`pumpGrowingFile` only issues the next read after the prior `NWConnection.send`'s completion fires), so there is no reordering to guard against — the real gap was handing the client an unaligned starting point rather than the clean, sync-aligned one live-streaming platforms generally guarantee (HLS/DASH always start a client at a keyframe-aligned segment boundary; broadcast/IPTV decoders always resync to `0x47` before decoding).
+
+**Resolution**: added `WebServer.alignedToTSPacketBoundary(_:)`, a pure static helper (`(max(0, offset) / 188) * 188`) that `streamGrowingFile`'s clamp now rounds down through before seeking. One fix point covers every caller sharing this function: the raw FEED passthrough, local Watch Now scrub-bar reconnects, and the transcode relay's own source fetch (`beginTranscodeRelay`'s `start=` query param round-trips through the same `handleWatchRecording` → `streamGrowingFile` path).
+
+**Tests added**: `Tests/hdhr_VCRTests/WebServer/VirtualTunerWebRoutesTests.swift` — four fast, non-live unit tests directly on `alignedToTSPacketBoundary(_:)` (rounds a torn-packet offset down, leaves an exact multiple unchanged, rounds a sub-packet offset to zero, never goes negative). No real HDHomeRun/live opt-in needed since this is pure arithmetic, unlike the existing `VirtualTunerLiveStreamTests.swift` suite.
+
+**Not yet live-confirmed**: root-caused by code reading, not a forced byte-level reproduction against a real FEED viewer session — flagging per this file's own convention for that gap (see e.g. the `AppState.seekRecording` deadlock entry in `ISSUES.md`).
+
+**Resolving commit**: (uncommitted at time of writing)

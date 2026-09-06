@@ -3,14 +3,15 @@
 ## Visual Appearance
 
 ### Menu bar icon
-A VHS-cassette mark with a built-in status light sits in the macOS menu bar (`AppIcon.swift` — three pre-baked bitmaps loaded once at launch: `app.jpg`/`app-recording.jpg`/`app-upnext.jpg`). Selection logic lives in `hdhr_VCRApp.swift`'s `statusLabel`, not in this file, despite `MenuContent` being the rest of the menu bar UI. It changes state based on app activity:
+A VHS-cassette mark with a built-in status light sits in the macOS menu bar (`AppIcon.swift` — four pre-baked bitmaps loaded once at launch: `app.jpg`/`app-recording.jpg`/`app-upnext.jpg`/`app-feed.jpg`). Selection logic lives in `hdhr_VCRApp.swift`'s `statusLabel`, not in this file, despite `MenuContent` being the rest of the menu bar UI. It changes state based on app activity, checked in this priority order:
 - **Starting up** — idle mark rendered at 30% opacity (dimmed), indicating the app is not yet ready
 - **Idle** — full-opacity idle mark, light off/dim
+- **Recording** — swaps to the mark with its light lit red when any show is actively recording (highest-priority active state)
 - **Show starting soon** — swaps to the mark with its light lit amber when any show starts within 30 minutes
-- **Recording** — swaps to the mark with its light lit red when any show is actively recording
-- **Blink** (Settings → General → "Blink menu bar icon", off by default) — while recording or show-soon, the lit mark alternates with the dim/idle mark on a 6s cycle (5s lit, 1s off) instead of staying lit continuously
+- **Remote FEED available, added 2026-09-06** — lowest-priority active state, checked only when neither of the above two applies: swaps to the mark with its light lit blue (`app-feed.jpg`, added 2026-09-06 — a hue-only recolor of `app-recording.jpg`'s badge, same shape/glow/border, just blue instead of red, matching `watchNowBlue`) whenever `AppState.hasAvailableRemoteFeed` is true, i.e. `remoteRelayEntries` (the same list backing the dropdown's own "Recording on Another Mac" section, below) is non-empty. Falls back to a blue `play.tv.fill` SF Symbol only when the bundle has no image resources at all (see below) — matches the same "Watch" icon MenuContent's own remote-relay entries use, for one consistent visual identity across both surfaces.
+- **Blink** (Settings → General → "Blink menu bar icon", off by default) — while recording, show-soon, or remote-FEED-available, the lit mark alternates with the dim/idle mark on a 6s cycle (5s lit, 1s off) instead of staying lit continuously (`AppState.tickStatusLight()`'s gate covers all three states)
 
-If the bundled image resources are missing (e.g. a direct `swift build` without the app bundle), each state falls back to an SF Symbol instead: dimmed `tv`, orange `clock.badge.fill`, red `record.circle.fill` — these fallbacks blink the same way when enabled.
+If the bundled image resources are missing (e.g. a direct `swift build` without the app bundle), all three active states fall back to an SF Symbol instead: red `record.circle.fill`, orange `clock.badge.fill`, blue `play.tv.fill` — these fallbacks blink the same way when enabled.
 
 ### Dropdown menu
 Clicking the icon opens a native macOS cascading menu (NSMenu style). The menu has no custom background — it uses the system's standard menu appearance (dark translucent on macOS). Items are full-width, standard menu item height (~22pt). Interactive items highlight in system accent color on hover.

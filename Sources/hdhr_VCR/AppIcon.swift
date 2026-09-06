@@ -16,6 +16,10 @@ private let appIconUpNextImage: NSImage? = {
     guard let url = Bundle.main.url(forResource: "app-upnext", withExtension: "jpg") else { return nil }
     return NSImage(contentsOf: url)
 }()
+private let appIconFeedImage: NSImage? = {
+    guard let url = Bundle.main.url(forResource: "app-feed", withExtension: "jpg") else { return nil }
+    return NSImage(contentsOf: url)
+}()
 
 // Proportionally-scaled for the menu bar status label. Height tracks the actual menu bar
 // thickness (2pt padding top+bottom); width preserves the source aspect ratio — no cropping.
@@ -37,3 +41,4 @@ private func menuBarScaled(_ src: NSImage?) -> NSImage? {
 let appIconMenuBar: NSImage? = menuBarScaled(appIconImage)
 let appIconMenuBarRecording: NSImage? = menuBarScaled(appIconRecordingImage)
 let appIconMenuBarUpNext: NSImage? = menuBarScaled(appIconUpNextImage)
+let appIconMenuBarFeed: NSImage? = menuBarScaled(appIconFeedImage)

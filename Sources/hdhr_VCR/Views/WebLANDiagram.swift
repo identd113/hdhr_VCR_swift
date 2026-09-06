@@ -1,11 +1,11 @@
 import SwiftUI
 
-// Animated "how it works" map for Web LAN, purpose-built rather than reusing NetworkFlowDiagram's
-// two-node shape (added 2026-09-04, replacing an earlier version that palette-swapped the same
-// diagram FEED uses — live feedback was that stacked side by side on one screen they read as the
-// same graphic twice). Web LAN is a genuinely different relationship than FEED's: one Mac serving
-// many different *kinds* of devices at once, not one Mac connecting to one specific other Mac — so
-// this fans out to three distinct device icons instead of a single clean line to a single icon.
+// Animated "how it works" map for Web LAN: this Mac's guide and live/recorded shows, reachable from
+// any browser or device already on your home network — no separate app or account needed. Purpose-
+// built rather than reusing NetworkFlowDiagram's two-node shape, because Web LAN's relationship is
+// genuinely different from Recording FEED's: one Mac serving many different *kinds* of devices at
+// once, not one Mac connecting to one specific other Mac — so this fans out to three distinct device
+// icons instead of a single clean line to a single icon.
 struct WebLANDiagram: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 

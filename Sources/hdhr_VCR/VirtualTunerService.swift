@@ -53,6 +53,16 @@ final class VirtualTunerService {
     private var advertisedDeviceID: UInt32 = 0
     private var advertisedBaseURL: String = ""
     private var advertisedTunerCount: UInt8 = 0
+    // True only while this instance actually has a relay to advertise — guards handleReadable()'s
+    // reply-to-a-request branch so a socket bound purely for beginPassiveListening() (see its own
+    // doc comment) never answers a real discovery probe with stale/zeroed-out advertised fields.
+    private var isAdvertising = false
+
+    // Called (on `queue`) whenever an unsolicited DISCOVER_REPLY-shaped packet arrives from
+    // somewhere other than this instance's own relay — see handleReadable()'s own comment on the
+    // self-filter. AppState sets this once, at startup, to trigger an immediate probeForNewDevices()
+    // instead of waiting for the next idle-loop tick — see AppState.init()'s own wiring.
+    var onFeedAnnounce: ((String) -> Void)?
 
     /// Begins responding to discovery requests as `deviceID` (8 hex chars, e.g. "FEED1234"),
     /// advertising `baseURL` (e.g. "http://10.0.2.100:1980") and `tunerCount` in the reply's own
@@ -71,9 +81,11 @@ final class VirtualTunerService {
     /// `mock_hdhr.py` documents for a real device losing that race. `onBindResult`, if given, is
     /// called once (on an arbitrary queue) with whether the UDP responder actually came up — lets
     /// AppState.updateVirtualTunerPresence back out `activeVirtualTunerDeviceID` on failure rather
-    /// than leaving the HTTP JSON routes advertising a "live" relay no UDP client can discover.
-    /// Not called at all when already running (the early `self.sock < 0` return below) — a caller
-    /// only needs the result of the bind attempt that mints a fresh device ID.
+    /// than leaving the HTTP JSON routes advertising a "live" relay no UDP client can discover. In
+    /// practice this fires `true` immediately in the overwhelmingly common case, since
+    /// `AppState.init()`'s unconditional `beginPassiveListening()` call already bound the socket
+    /// well before any show ever starts recording — `bindSocketIfNeeded`'s "already bound" fast path
+    /// (see its own doc comment) still reports success rather than silently skipping the callback.
     func start(deviceID: String, baseURL: String = "", tunerCount: Int = 0, onBindResult: ((Bool) -> Void)? = nil) {
         guard let idValue = UInt32(deviceID, radix: 16) else {
             glog("[VirtualTuner] invalid deviceID '\(deviceID)' — not starting", level: .warning)
@@ -85,58 +97,129 @@ final class VirtualTunerService {
             self.advertisedDeviceID = idValue
             self.advertisedBaseURL = baseURL
             self.advertisedTunerCount = UInt8(clamping: tunerCount)
-            guard self.sock < 0 else { return }   // already bound — just updated the advertised fields above
-
-            let s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)
-            guard s >= 0 else {
-                glog("[VirtualTuner] socket() failed errno=\(errno) — discovery responder disabled", level: .warning)
-                onBindResult?(false)
-                return
-            }
-            var yes: Int32 = 1
-            setsockopt(s, SOL_SOCKET, SO_REUSEPORT, &yes, socklen_t(MemoryLayout<Int32>.size))
-            var addr = sockaddr_in()
-            addr.sin_family = sa_family_t(AF_INET)
-            addr.sin_port = in_port_t(65001).bigEndian
-            addr.sin_addr.s_addr = INADDR_ANY
-            let bindResult = withUnsafePointer(to: &addr) { ptr in
-                ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { saPtr in
-                    bind(s, saPtr, socklen_t(MemoryLayout<sockaddr_in>.size))
-                }
-            }
-            guard bindResult == 0 else {
-                glog("[VirtualTuner] UDP bind(:65001) failed errno=\(errno) — discovery responder disabled", level: .warning)
-                Darwin.close(s)
-                onBindResult?(false)
-                return
-            }
-            self.sock = s
-            let source = DispatchSource.makeReadSource(fileDescriptor: s, queue: self.queue)
-            source.setEventHandler { [weak self] in self?.handleReadable() }
-            source.setCancelHandler { Darwin.close(s) }
-            source.resume()
-            self.readSource = source
+            self.isAdvertising = true
+            guard self.bindSocketIfNeeded(onBindResult: onBindResult) else { return }
             glog("[VirtualTuner] started, DeviceID=\(deviceID)")
             onBindResult?(true)
+            self.broadcastAnnounce()
         }
     }
 
-    /// Stops responding and closes the socket. Safe to call when not running.
+    /// Binds the discovery socket if it isn't already bound, *without* advertising anything — used
+    /// so this instance can passively receive other instances' unsolicited FEED announces (see
+    /// `onFeedAnnounce`) even while it has no relay of its own running. Called once, unconditionally,
+    /// at app startup (`AppState.init()`), independent of `start()`/`stop()`'s own relay lifecycle.
+    /// A later `start(deviceID:)` call reuses this same already-bound socket (its own `guard
+    /// self.sock < 0` early-exit, now inside `bindSocketIfNeeded`) rather than rebinding — exactly
+    /// one socket per process ever binds :65001, deliberately: two sockets on the same host both
+    /// bound there (this passive listener plus a separately-relaying instance's own responder) would
+    /// let SO_REUSEPORT's per-flow hash silently route some real discovery requests to whichever
+    /// socket isn't actually advertising, dropping them.
+    func beginPassiveListening() {
+        queue.async { [weak self] in
+            _ = self?.bindSocketIfNeeded(onBindResult: nil)
+        }
+    }
+
+    /// Must be called on `queue`. Returns whether the socket is bound (either just now, or already
+    /// was) — false only on a genuine socket()/bind() failure. Shared by start() (which then also
+    /// sets the advertised fields) and beginPassiveListening() (which leaves them untouched).
+    private func bindSocketIfNeeded(onBindResult: ((Bool) -> Void)?) -> Bool {
+        guard sock < 0 else { return true }   // already bound
+
+        let s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)
+        guard s >= 0 else {
+            glog("[VirtualTuner] socket() failed errno=\(errno) — discovery responder disabled", level: .warning)
+            onBindResult?(false)
+            return false
+        }
+        var yes: Int32 = 1
+        setsockopt(s, SOL_SOCKET, SO_REUSEPORT, &yes, socklen_t(MemoryLayout<Int32>.size))
+        // Needed to send() this same socket's own unsolicited announce() broadcasts below — every
+        // other use of this socket (replying to a specific requester) is unicast and never needed it.
+        setsockopt(s, SOL_SOCKET, SO_BROADCAST, &yes, socklen_t(MemoryLayout<Int32>.size))
+        var addr = sockaddr_in()
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_port = in_port_t(65001).bigEndian
+        addr.sin_addr.s_addr = INADDR_ANY
+        let bindResult = withUnsafePointer(to: &addr) { ptr in
+            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { saPtr in
+                bind(s, saPtr, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+        guard bindResult == 0 else {
+            glog("[VirtualTuner] UDP bind(:65001) failed errno=\(errno) — discovery responder disabled", level: .warning)
+            Darwin.close(s)
+            onBindResult?(false)
+            return false
+        }
+        sock = s
+        let source = DispatchSource.makeReadSource(fileDescriptor: s, queue: queue)
+        source.setEventHandler { [weak self] in self?.handleReadable() }
+        source.setCancelHandler { Darwin.close(s) }
+        source.resume()
+        readSource = source
+        return true
+    }
+
+    /// Stops actively advertising a relay — a later discovery request gets no reply until `start()`
+    /// is called again. Deliberately does NOT close the socket: it stays bound (and keeps receiving
+    /// other instances' FEED announces via `onFeedAnnounce`) for the app's whole lifetime, same as
+    /// beginPassiveListening()'s own reasoning. Safe to call when not currently advertising.
     func stop() {
         queue.async { [weak self] in
-            guard let self, self.sock >= 0 else { return }
-            self.readSource?.cancel()   // cancel handler closes the fd
-            self.readSource = nil
-            self.sock = -1
-            glog("[VirtualTuner] stopped")
+            guard let self, self.isAdvertising else { return }
+            // One last announce reflecting the relay that's going away, before clearing the fields
+            // it's built from — gives another instance's listener an immediate nudge to re-probe
+            // (which will correctly find this device gone) instead of waiting up to ~10s for its
+            // next idle-loop tick.
+            self.broadcastAnnounce()
+            self.isAdvertising = false
+            self.advertisedDeviceID = 0
+            self.advertisedBaseURL = ""
+            self.advertisedTunerCount = 0
+            glog("[VirtualTuner] stopped advertising (socket stays bound for passive listening)")
         }
     }
 
-    // Runs on `queue` (the read source's target queue). Parses an incoming discovery request
-    // (type 0x0002) as loosely as mock_hdhr.py's own reference implementation — length ≥4 bytes and
-    // the big-endian type field — and replies unicast with a DISCOVER_REPLY (type 0x0003) carrying
-    // the same TLVs a real device's own reply does (see buildDiscoverReply's own doc comment for
-    // the live-captured ground truth this is built from).
+    /// Broadcasts the currently-advertised DISCOVER_REPLY unsolicited (to every active interface's
+    /// subnet-directed broadcast plus the global fallback — reusing HDHRManager's own target list so
+    /// this doesn't duplicate that logic) instead of unicasting it to a specific requester, so any
+    /// other hdhrVCRplus instance's passive listener (see beginPassiveListening()) learns about a
+    /// FEED appearing/changing/disappearing immediately rather than only on its next periodic
+    /// discovery poll. Must be called on `queue`, with the socket already bound and something
+    /// actually advertised — both call sites (start()/stop() above) already guarantee this.
+    private func broadcastAnnounce() {
+        guard sock >= 0, isAdvertising else { return }
+        let pkt = Self.buildDiscoverReply(deviceID: advertisedDeviceID, baseURL: advertisedBaseURL,
+                                           tunerCount: advertisedTunerCount)
+        var targets = HDHRManager.subnetBroadcastAddresses(interface: "")
+        targets.append(0xFFFFFFFF)   // INADDR_BROADCAST fallback — mirrors udpDiscoverSync's own reasoning
+        for targetAddr in targets {
+            var dst = sockaddr_in()
+            dst.sin_family = sa_family_t(AF_INET)
+            dst.sin_port = in_port_t(65001).bigEndian
+            dst.sin_addr.s_addr = targetAddr
+            pkt.withUnsafeBytes { raw in
+                withUnsafePointer(to: dst) { dstPtr in
+                    dstPtr.withMemoryRebound(to: sockaddr.self, capacity: 1) { saPtr in
+                        _ = sendto(sock, raw.baseAddress!, pkt.count, 0, saPtr, socklen_t(MemoryLayout<sockaddr_in>.size))
+                    }
+                }
+            }
+        }
+        glog("[VirtualTuner] announced DeviceID=\(String(format: "%08X", advertisedDeviceID)) unsolicited to \(targets.count) broadcast target(s)")
+    }
+
+    // Runs on `queue` (the read source's target queue). Two shapes of inbound packet matter:
+    //  - A discovery request (type 0x0002, mock_hdhr.py-loose validation) — replied to unicast with
+    //    a DISCOVER_REPLY, same as always, but only while `isAdvertising` (a socket bound purely by
+    //    beginPassiveListening() must never answer with stale/zeroed-out fields).
+    //  - An unsolicited DISCOVER_REPLY (type 0x0003) from somewhere other than this instance's own
+    //    relay — another hdhrVCRplus instance's broadcastAnnounce() — self-filtered by DeviceID (a
+    //    broadcast can loop back to the sender's own socket on some setups) and forwarded to
+    //    onFeedAnnounce so AppState can refresh immediately instead of waiting for its next poll.
+    // Anything else (malformed, or a reply this instance itself just sent) is silently ignored.
     private func handleReadable() {
         var buf = [UInt8](repeating: 0, count: 1024)
         let bufCapacity = buf.count
@@ -149,20 +232,32 @@ final class VirtualTunerService {
                 }
             }
         }
-        guard n >= 4, Self.isDiscoverRequest(Array(buf[0..<n])) else { return }
+        guard n >= 4 else { return }
+        let bytes = Array(buf[0..<n])
         // inet_ntoa's static buffer is safe here — handleReadable() only ever runs serially on
         // `queue` (the read source's own target queue), never concurrently with itself.
         let fromIP = String(cString: inet_ntoa(from.sin_addr))
-        glog("[VirtualTuner] UDP discovery request from \(fromIP):\(UInt16(bigEndian: from.sin_port)) — replying with DeviceID=\(String(format: "%08X", advertisedDeviceID)) BaseURL=\(advertisedBaseURL)")
-        let pkt = Self.buildDiscoverReply(deviceID: advertisedDeviceID, baseURL: advertisedBaseURL,
-                                           tunerCount: advertisedTunerCount)
 
-        pkt.withUnsafeBytes { raw in
-            withUnsafePointer(to: from) { fromPtr in
-                fromPtr.withMemoryRebound(to: sockaddr.self, capacity: 1) { saPtr in
-                    _ = sendto(sock, raw.baseAddress!, pkt.count, 0, saPtr, socklen_t(MemoryLayout<sockaddr_in>.size))
+        if Self.isDiscoverRequest(bytes) {
+            guard isAdvertising else { return }
+            glog("[VirtualTuner] UDP discovery request from \(fromIP):\(UInt16(bigEndian: from.sin_port)) — replying with DeviceID=\(String(format: "%08X", advertisedDeviceID)) BaseURL=\(advertisedBaseURL)")
+            let pkt = Self.buildDiscoverReply(deviceID: advertisedDeviceID, baseURL: advertisedBaseURL,
+                                               tunerCount: advertisedTunerCount)
+            pkt.withUnsafeBytes { raw in
+                withUnsafePointer(to: from) { fromPtr in
+                    fromPtr.withMemoryRebound(to: sockaddr.self, capacity: 1) { saPtr in
+                        _ = sendto(sock, raw.baseAddress!, pkt.count, 0, saPtr, socklen_t(MemoryLayout<sockaddr_in>.size))
+                    }
                 }
             }
+            return
+        }
+
+        if Self.isDiscoverReply(bytes), let announcedID = Self.deviceID(fromReplyPacket: bytes) {
+            guard !(isAdvertising && announcedID == advertisedDeviceID) else { return }   // our own broadcast looped back
+            let hex = String(format: "%08X", announcedID)
+            glog("[VirtualTuner] unsolicited FEED announce from \(fromIP) DeviceID=\(hex)")
+            onFeedAnnounce?(hex)
         }
     }
 
@@ -172,6 +267,34 @@ final class VirtualTunerService {
     /// it's unit-testable without a live socket (see VirtualTunerServiceTests.swift).
     static func isDiscoverRequest(_ bytes: [UInt8]) -> Bool {
         bytes.count >= 4 && bytes[0] == 0x00 && bytes[1] == 0x02
+    }
+
+    /// Pure match of a DISCOVER_REPLY's leading type field (0x0003, big-endian) — the shape
+    /// broadcastAnnounce() broadcasts unsolicited and handleReadable() must recognize on the receiving
+    /// end. Same looseness as isDiscoverRequest(_:) above (length + type only, no CRC check).
+    static func isDiscoverReply(_ bytes: [UInt8]) -> Bool {
+        bytes.count >= 4 && bytes[0] == 0x00 && bytes[1] == 0x03
+    }
+
+    /// Extracts the DeviceID TLV (tag 0x02, 4 bytes, big-endian) from a DISCOVER_REPLY packet's
+    /// payload, or nil if malformed/absent. Pure inverse of buildDiscoverReply's own DeviceID
+    /// encoding, extracted for the same unit-testability reason as isDiscoverRequest(_:).
+    static func deviceID(fromReplyPacket bytes: [UInt8]) -> UInt32? {
+        guard bytes.count >= 4 else { return nil }
+        let payloadLen = Int(bytes[2]) << 8 | Int(bytes[3])
+        let end = min(4 + payloadLen, bytes.count)
+        var off = 4
+        while off + 2 <= end {
+            let tag = bytes[off], len = Int(bytes[off + 1])
+            off += 2
+            guard off + len <= end else { return nil }
+            if tag == 0x02, len == 4 {
+                return (UInt32(bytes[off]) << 24) | (UInt32(bytes[off + 1]) << 16)
+                     | (UInt32(bytes[off + 2]) << 8) | UInt32(bytes[off + 3])
+            }
+            off += len
+        }
+        return nil
     }
 
     /// Pure builder for the DISCOVER_REPLY (type 0x0003). TLV set and order (DeviceType, DeviceID,

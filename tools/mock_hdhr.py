@@ -52,6 +52,41 @@ auto-refresh).
 /discover.json always responds normally so the device remains discoverable.
 
 Stop with Ctrl+C — the interface alias is removed automatically on exit.
+
+── FEED mode ─────────────────────────────────────────────────────────────────
+--feed-file PATH switches this script entirely into mocking a REMOTE hdhrVCRplus instance's
+Recording FEED (virtual tuner relay) instead of a real tuner — for testing this app's own "Watch a
+recording on another Mac" consumer flow (MenuContent's "Recording on Another Mac" submenu,
+AppState.watchRemoteRelay, VLCPlayerView's remote-FEED playback) without needing a second physical
+Mac. Advertises itself over UDP discovery with the exact same TLV set/order (DeviceType, DeviceID,
+BaseURL, TunerCount, LineupURL) VirtualTunerService.buildDiscoverReply sends — ground truth captured
+from a real EXTEND's own reply, see that Swift function's own doc comment — and serves
+/discover.json + /lineup.json with the same non-standard HdhrVCRplusVirtualRelay/
+HdhrVCRplusShowTitle markers this app's own HDHRDevice/LineupEntry decoders recognize. /auto/v<channel>
+streams the given file's real bytes from disk with the exact same header shape the real relay uses
+(no Content-Length, Connection: keep-alive — EOF-terminated, matching WebServer.streamGrowingFile).
+
+No root needed for FEED mode (unlike the real-device-mock mode above) — it binds an unprivileged
+port and adds no interface alias, just reusing this Mac's own already-legitimate LAN address.
+
+Usage:
+    python3 tools/mock_hdhr.py --feed-file /path/to/recording.ts
+    python3 tools/mock_hdhr.py --feed-file rec.ts --feed-channel 5.1 --feed-title "Mock Show"
+    python3 tools/mock_hdhr.py --feed-file rec.ts --feed-growing   # keep polling for new bytes
+                                                                    # at EOF instead of closing —
+                                                                    # point at a real file that's
+                                                                    # still actively being written
+                                                                    # (e.g. a genuine in-progress
+                                                                    # recording) to mimic the real
+                                                                    # relay's live-growth behavior
+    python3 tools/mock_hdhr.py --feed-file rec.ts --feed-from-live-edge  # start at the file's
+                                                                    # *current* size instead of
+                                                                    # byte 0 — matches a real
+                                                                    # relay's "no backlog" behavior
+                                                                    # for a viewer tuning in live
+
+Every other flag above (--lan, --guide-file, --bad-tuner, etc.) belongs to the real-device-mock
+mode and is ignored once --feed-file is given.
 """
 
 import argparse
@@ -155,8 +190,31 @@ def build_discover_reply() -> bytes:
     return pkt + struct.pack("<I", crc32(pkt))
 
 
-def udp_thread():
-    reply_pkt = build_discover_reply()
+def build_feed_discover_reply(device_id_hex: str, base_url: str, tuner_count: int = 1) -> bytes:
+    """Mirrors VirtualTunerService.buildDiscoverReply's exact TLV set/order (DeviceType, DeviceID,
+    BaseURL, TunerCount, LineupURL) byte-for-byte — ground truth captured from a real EXTEND's own
+    reply, see that Swift function's own doc comment. The BaseURL TLV (0x2A) is what lets a real
+    hdhrVCRplus instance learn this relay lives on a non-standard port instead of assuming 80 —
+    without it the client's own follow-up GET (HDHRManager.fetchDeviceInfo) would guess wrong and
+    silently fail against this mock the same way it would against a real, unadvertised-port relay."""
+    device_id = int(device_id_hex, 16)
+    payload  = bytes([0x01, 0x04, 0x00, 0x00, 0x00, 0x01])               # DeviceType = tuner
+    payload += bytes([0x02, 0x04]) + struct.pack(">I", device_id)        # DeviceID
+    base_url_bytes = base_url.encode()[:255]
+    payload += bytes([0x2A, len(base_url_bytes)]) + base_url_bytes       # BaseURL
+    payload += bytes([0x10, 0x01, tuner_count & 0xFF])                   # TunerCount
+    lineup_url_bytes = f"{base_url}/lineup.json".encode()[:255]
+    payload += bytes([0x27, len(lineup_url_bytes)]) + lineup_url_bytes   # LineupURL
+    header = struct.pack(">HH", 0x0003, len(payload))
+    pkt = header + payload
+    return pkt + struct.pack("<I", crc32(pkt))
+
+
+def udp_thread(reply_pkt: bytes | None = None, device_label: str | None = None):
+    if reply_pkt is None:
+        reply_pkt = build_discover_reply()
+    if device_label is None:
+        device_label = MOCK_DEVICE_ID
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
     try:
@@ -165,7 +223,7 @@ def udp_thread():
         log(f"[UDP] Cannot bind :{DISCOVER_PORT}: {e} — UDP discovery disabled")
         return
 
-    log(f"[UDP] Listening on :{DISCOVER_PORT}, responding as {MOCK_DEVICE_ID}")
+    log(f"[UDP] Listening on :{DISCOVER_PORT}, responding as {device_label}")
     while True:
         try:
             data, addr = sock.recvfrom(1024)
@@ -491,6 +549,180 @@ class ControlHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
 
+# ── FEED mode: mocks a REMOTE hdhrVCRplus instance's virtual-tuner relay ─────
+
+class FeedHandler(BaseHTTPRequestHandler):
+    feed_file: str = ""
+    feed_channel: str = "5.1"
+    feed_title: str = "Mock FEED Recording"
+    feed_device_id: str = "FEEDC0DE"
+    feed_base_url: str = ""
+    feed_local_ip: str = ""
+    feed_growing: bool = False
+    feed_from_live_edge: bool = False
+
+    def log_message(self, fmt, *args):
+        log(f"[FEED-HTTP] {fmt % args}")
+
+    def do_GET(self):
+        path = self.path.split("?")[0]
+        if path == "/discover.json":
+            self._send_json(self._mock_discover())
+        elif path == "/lineup.json":
+            self._send_json(self._mock_lineup())
+        elif path == "/status.json":
+            self._send_json(self._mock_status())
+        elif path.startswith("/auto/v"):
+            self._serve_stream(path[len("/auto/v"):])
+        else:
+            self._send_error(404, f"{path} not found on mock FEED relay")
+
+    def _mock_discover(self) -> dict:
+        """Shape mirrors WebServer.buildVirtualTunerDiscoverJSON — DeviceID/FriendlyName/ModelNumber/
+        BaseURL/LineupURL/TunerCount/LocalIP plus the same HdhrVCRplusVirtualRelay marker
+        HDHRDevice.isVirtualRelay decodes from."""
+        return {
+            "DeviceID": self.feed_device_id,
+            "FriendlyName": f"{self.feed_title} (Mock FEED)",
+            "ModelNumber": "HDVR-RELAY",
+            "BaseURL": self.feed_base_url,
+            "LineupURL": f"{self.feed_base_url}/lineup.json",
+            "TunerCount": 1,
+            "LocalIP": self.feed_local_ip,
+            "HdhrVCRplusVirtualRelay": True,
+        }
+
+    def _mock_lineup(self) -> list:
+        """Shape mirrors WebServer.buildVirtualTunerLineupJSON — one entry, URL pointing back at
+        this same mock's /auto/v<channel>, HdhrVCRplusShowTitle carrying the show title a generic
+        HDHomeRun lineup entry has no room for (what lets MenuContent's "Recording on Another Mac"
+        submenu say "Recording on <title>" instead of just a channel number)."""
+        return [{
+            "GuideNumber": self.feed_channel,
+            "GuideName": self.feed_channel,
+            "URL": f"{self.feed_base_url}/auto/v{self.feed_channel}?dev={self.feed_device_id}",
+            "HdhrVCRplusShowTitle": self.feed_title,
+        }]
+
+    def _mock_status(self) -> list:
+        return [{"Resource": "tuner0", "VctNumber": self.feed_channel, "TargetIP": ""}]
+
+    def _serve_stream(self, channel: str):
+        """Streams feed_file's real bytes from disk — same header shape (no Content-Length,
+        Connection: keep-alive, EOF-terminated) WebServer.streamGrowingFile sends, and the same
+        188-byte-TS-packet-aligned chunk size (188*200) it reads/sends with. Starts at byte 0 by
+        default (plain playback of whatever's on disk); --feed-from-live-edge starts at the file's
+        *current* size instead, matching a real relay's "no backlog" behavior for a viewer tuning in
+        live. At EOF: closes by default (a static/already-finished file), or polls every 0.5s for
+        more data with --feed-growing (point this at a file still being actively written — e.g. a
+        genuine in-progress recording — to mimic the real relay's live-growth behavior indefinitely).
+        """
+        if not os.path.isfile(self.feed_file):
+            self._send_error(404, "feed file not found")
+            return
+        start_offset = os.path.getsize(self.feed_file) if self.feed_from_live_edge else 0
+        log(f"[FEED] /auto/v{channel} → 200 streaming {self.feed_file} from offset {start_offset}"
+            + (" (growing)" if self.feed_growing else ""))
+        header = "HTTP/1.1 200 OK\r\nContent-Type: video/mp2t\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\n\r\n"
+        chunk_size = 188 * 200
+        sent = 0
+        try:
+            self.wfile.write(header.encode())
+            with open(self.feed_file, "rb") as f:
+                f.seek(start_offset)
+                while True:
+                    chunk = f.read(chunk_size)
+                    if chunk:
+                        self.wfile.write(chunk)
+                        sent += len(chunk)
+                        continue
+                    if not self.feed_growing:
+                        break
+                    time.sleep(0.5)   # caught up — poll for more data, same as the real relay
+        except BrokenPipeError:
+            pass
+        except Exception as e:
+            log(f"[FEED] /auto/v{channel} error after {sent} bytes: {e}")
+        log(f"[FEED] /auto/v{channel} connection closed after {sent} bytes")
+
+    def _send_json(self, obj):
+        data = json.dumps(obj).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _send_error(self, code: int, message: str):
+        body = message.encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "text/plain")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
+def run_feed_mode(args):
+    """Entirely separate from the real-device-mock flow below — a FEED relay has no real device to
+    proxy, needs no root (unprivileged port, no interface alias), and ignores every --lan/
+    --guide-file/--bad-* flag."""
+    global MOCK_IP
+
+    if not os.path.isfile(args.feed_file):
+        print(f"Error: --feed-file {args.feed_file} does not exist.")
+        sys.exit(1)
+
+    iface = default_lan_interface()
+    if not iface:
+        print("Error: could not determine the default-route LAN interface.")
+        sys.exit(1)
+    own_addr, _ = interface_ipv4_network(iface) or (None, None)
+    if not own_addr:
+        print(f"Error: could not determine {iface}'s own IPv4 address.")
+        sys.exit(1)
+    MOCK_IP = str(own_addr)
+
+    device_id = args.feed_device_id.upper()
+    base_url  = f"http://{MOCK_IP}:{args.feed_port}"
+
+    FeedHandler.feed_file           = args.feed_file
+    FeedHandler.feed_channel        = args.feed_channel
+    FeedHandler.feed_title          = args.feed_title
+    FeedHandler.feed_device_id      = device_id
+    FeedHandler.feed_base_url       = base_url
+    FeedHandler.feed_local_ip       = MOCK_IP
+    FeedHandler.feed_growing        = args.feed_growing
+    FeedHandler.feed_from_live_edge = args.feed_from_live_edge
+
+    reply_pkt = build_feed_discover_reply(device_id, base_url, tuner_count=1)
+    threading.Thread(target=udp_thread, args=(reply_pkt, device_id), daemon=True).start()
+
+    try:
+        server = ThreadedHTTPServer((MOCK_IP, args.feed_port), FeedHandler)
+    except OSError as e:
+        print(f"Failed to bind FEED server {MOCK_IP}:{args.feed_port}: {e}")
+        sys.exit(1)
+
+    def shutdown(sig=None, frame=None):
+        print()
+        sys.exit(0)
+    signal.signal(signal.SIGINT,  shutdown)
+    signal.signal(signal.SIGTERM, shutdown)
+
+    print(f"\nMock FEED relay ready:")
+    print(f"  Device ID      : {device_id}")
+    print(f"  Channel        : {args.feed_channel}  ({args.feed_title})")
+    print(f"  Source file    : {args.feed_file}" + (" (growing — polls for new bytes at EOF)" if args.feed_growing else " (static — closes at EOF)"))
+    print(f"  Start offset   : {'live edge (current file size)' if args.feed_from_live_edge else 'byte 0'}")
+    print(f"  Base URL       : {base_url}")
+    print(f"  Stream URL     : {base_url}/auto/v{args.feed_channel}?dev={device_id}")
+    print(f"\nNo root needed — port {args.feed_port} is unprivileged and no interface alias is used.")
+    print(f"A real hdhrVCRplus instance on this LAN should discover this within a few seconds and\n"
+          f"list it under \"Recording on Another Mac.\" Ctrl+C to stop.\n")
+
+    server.serve_forever()
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def main():
@@ -536,7 +768,31 @@ def main():
                          "control over guide data for scheduling tests. Re-read on every request. "
                          "Forces DeviceAuth off on this mock so the app actually fetches from it "
                          "(see the module docstring for why, and the expected JSON shape).")
+    ap.add_argument("--feed-file", metavar="PATH", default=None,
+                    help="Switch entirely into FEED mode: mock a REMOTE hdhrVCRplus instance's "
+                         "Recording FEED (virtual tuner relay), streaming this real file from disk "
+                         "on /auto/v<channel> — see the module docstring's 'FEED mode' section. "
+                         "Every other flag above is ignored once this is given.")
+    ap.add_argument("--feed-channel", metavar="NUM", default="5.1",
+                    help="FEED mode: channel number to advertise/serve (default: 5.1)")
+    ap.add_argument("--feed-title", metavar="STR", default="Mock FEED Recording",
+                    help="FEED mode: show title advertised for the mock recording")
+    ap.add_argument("--feed-device-id", metavar="ID", default="FEEDC0DE",
+                    help="FEED mode: 8-hex-char DeviceID to advertise (default: FEEDC0DE)")
+    ap.add_argument("--feed-port", metavar="PORT", type=int, default=8090,
+                    help="FEED mode: HTTP port to serve on — unprivileged, no root needed (default: 8090)")
+    ap.add_argument("--feed-growing", action="store_true",
+                    help="FEED mode: poll for new bytes at EOF instead of closing — point at a "
+                         "file still being actively written (e.g. a real in-progress recording) to "
+                         "mimic the real relay's live-growth behavior indefinitely")
+    ap.add_argument("--feed-from-live-edge", action="store_true",
+                    help="FEED mode: start streaming at the file's *current* size instead of byte "
+                         "0 — matches a real relay's 'no backlog' behavior for a viewer tuning in live")
     args = ap.parse_args()
+
+    if args.feed_file:
+        run_feed_mode(args)
+        return
 
     bad_lineup = args.bad_lineup or args.bad_tuner
     bad_guide  = args.bad_guide  or args.bad_tuner

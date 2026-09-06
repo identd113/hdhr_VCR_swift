@@ -695,7 +695,11 @@ final class WebServer: @unchecked Sendable {
             }), !show.show_recording_path.isEmpty else {
                 let recordingChannels = state.shows.filter { $0.show_recording }.map { $0.show_channel }
                 glog("[VirtualTuner] /auto/v\(logChannel) → 404 no matching active recording (currently recording: \(recordingChannels))", level: .warning)
-                self.send(.notFound("no active recording on channel \(channel)"), on: conn)
+                // logChannel (already stripped of newlines/control characters above), not the raw
+                // channel — this is only ever echoed back as informational text, never used for
+                // matching, so there's no reason for it to carry the same injection risk as the log
+                // line right above it just because it's a different sink.
+                self.send(.notFound("no active recording on channel \(logChannel)"), on: conn)
                 return
             }
             let requestedProfile = (transcode ?? "").lowercased().trimmingCharacters(in: .whitespaces)
@@ -736,7 +740,17 @@ final class WebServer: @unchecked Sendable {
                 // (curl can only write the recording as fast as the broadcast delivers it) — no
                 // separate output-side rate limiter needed. `streamGrowingFile` itself still clamps
                 // this to the file's actual current size at open time, same as any other offset.
-                let currentSize = (try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? Int ?? 0
+                // No `?? 0` fallback here, deliberately — defaulting to 0 on a stat failure would
+                // silently reintroduce the exact byte-0 burst this whole live-edge change exists to
+                // avoid (see the comment above), just via a different trigger (a transient stat
+                // error right after the fileExists check above, rather than an explicit byte-0
+                // request). Refusing the request instead means the client's own retry gets a fresh
+                // shot at a real live-edge offset rather than silently blasting the whole file.
+                guard let currentSize = (try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? Int else {
+                    glog("[VirtualTuner] /auto/v\(logChannel) → could not stat recording file size, refusing rather than guessing byte 0: \(path)", level: .error)
+                    self.queue.async { self.send(.notFound("recording temporarily unavailable"), on: conn) }
+                    return
+                }
                 // Re-encoding an already-H.264/HEVC source would just spend CPU for a quality loss
                 // with no format benefit, so relay it as-is instead of spinning up a real transcode
                 // session — see docs/VirtualTunerService.md's "Already-modern-codec skip" section.
@@ -760,7 +774,7 @@ final class WebServer: @unchecked Sendable {
                 // fileIOQueue.
                 Task { @MainActor in state.relayRawViewerConnected() }
                 self.streamGrowingFile(path: path, showId: showId, startOffset: currentSize, conn: conn,
-                                        durationSeconds: durationSeconds, sendTimeout: Self.growingFileSendTimeout,
+                                        durationSeconds: durationSeconds,
                                         onStreamEnded: { [weak state] in
                     Task { @MainActor in state?.relayRawViewerDisconnected() }
                 })
@@ -946,41 +960,39 @@ final class WebServer: @unchecked Sendable {
     // Bounds a single conn.send(...) completion — Network.framework's own send has no built-in
     // timeout, so a peer that stops draining its TCP receive window (rather than cleanly closing)
     // leaves .contentProcessed's completion pending forever, with zero error/disconnect ever
-    // surfacing on this side. Caught live 2026-09-04: a relay viewer's stream froze for ~5 minutes
-    // with no server-side log signal at all, until the client itself gave up and reconnected from
-    // byte 0 — this Mac's own log showed nothing wrong the entire time. A sibling connection to the
-    // same peer, streaming a different show concurrently, stayed perfectly healthy throughout,
-    // ruling out a Mac-wide bottleneck (shared queue/disk) — this is about one specific stalled
-    // flow, which is exactly the case a per-send timeout catches and a state check can't (conn.state
-    // never transitioned to .cancelled/.failed during the stall; the socket looked alive to
-    // Network.framework the whole time, it just wasn't being drained by the far end).
+    // surfacing on this side. `growingFileNoTimeout` (below) is the one value every streamGrowingFile
+    // caller uses — a finite-but-huge stand-in rather than literally infinite, matching this file's
+    // own established idiom for "unbounded" (pumpTranscodeProxy's URLSessionConfiguration timeouts,
+    // 86400 = one day) rather than risking DispatchTime overflow from an actually-infinite deadline.
+    // A genuinely dead peer still self-heals eventually via `conn.state` transitioning to
+    // `.cancelled`/`.failed` (checked once per recursion in pumpGrowingFile) once the OS's own TCP
+    // retransmission timeout gives up on it — this wrapper exists only to bound the case where
+    // Network.framework's completion itself never fires at all, not to second-guess a still-alive
+    // connection that's merely slow to drain.
     //
-    // Deliberately NOT the default for every streamGrowingFile caller — only handleVirtualTunerStream
-    // (the actual outbound relay to a real remote viewer) passes this. A first version applied it
-    // uniformly, which also caught /api/watch-recording's own internal consumers: local Watch Now,
-    // and — critically — VLCBridge's own headless transcode session, which reads this same URL as
-    // its *encode source*. A real-time H.264 encode reads its input in bursts, not continuously, and
-    // can legitimately go quiet for well over 15s (especially right at startup) without anything
-    // being wrong — this 15s timeout was killing that source connection out from under the encoder,
-    // tearing the whole transcode session down and forcing a full restart, over and over. Caught live
-    // 2026-09-04 (same day as the fix that introduced it): "watch-recording ... timed out after 15s
-    // waiting for client to accept data" firing twice in six minutes on the exact connection feeding
-    // an active transcode session — which is precisely the "plays a few seconds, then buffers"
-    // symptom a real viewer reported. See growingFileNoTimeout below for what handleWatchRecording
-    // actually passes instead.
-    private static let growingFileSendTimeout: TimeInterval = 15
-    // "No timeout" in practice for /api/watch-recording's internal consumers (local Watch Now, and
-    // VLCBridge's own transcode-source fetch) — a finite-but-huge stand-in rather than literally
-    // infinite, matching this file's own established idiom for "unbounded" (pumpTranscodeProxy's
-    // URLSessionConfiguration timeouts, 86400 = one day) rather than risking DispatchTime overflow
-    // from an actually-infinite deadline. Still self-heals eventually if a connection is truly dead
-    // forever, just without the aggressive 15s window that's wrong for these two consumers.
+    // A shorter, caller-specific timeout for the actual outbound relay to a real remote viewer
+    // (handleVirtualTunerStream) was tried twice — 15s, then 60s after 15s proved too tight — and
+    // dropped entirely 2026-09-05: any per-send deadline short enough to catch a truly-frozen peer
+    // in reasonable time is also short enough to catch a perfectly healthy one. Live-testing a real
+    // raw (untranscoded) FEED viewer showed the "timed out" line firing routinely — 5 times in one
+    // short session — against a connection that had just sent real data moments before: the player
+    // on the receiving end (this app's own VLCBridge, playing the relay like any other stream)
+    // legitimately stops draining the socket for a stretch once its own buffer is comfortably ahead,
+    // the same "can legitimately go quiet" behavior VLCBridge's own headless transcode-source fetch
+    // already forced this file to special-case once before (a first version of the 15s timeout also
+    // caught that source connection uniformly, tearing down active transcode sessions the same way).
+    // Killing a relay connection over this doesn't recover anything a real failure wouldn't already
+    // surface via `conn.state` — it just forces an unnecessary reconnect at a new live-edge offset,
+    // which is what a "the relay doesn't work" report actually looked like: stutters and skips ahead
+    // every 15-30s, not a stream that never starts. The correct model for a growing recording file
+    // is to keep reading and polling it until the connection is genuinely over — not to guess "hung"
+    // from send timing — so every streamGrowingFile caller now shares this same generous value.
     private static let growingFileNoTimeout: TimeInterval = 86400
 
     // Sends `content` on `conn`, calling `completion(failureReason)` exactly once — either when the
     // send's own completion fires (nil on success, the error's description on failure), or after
     // `timeout` seconds if the completion never fires at all (a synthetic "timed out ..." reason —
-    // see growingFileSendTimeout's own doc comment for why this exists). Whichever fires first
+    // see growingFileNoTimeout's own doc comment for why this exists). Whichever fires first
     // wins; the other is silently dropped. Both the send completion and the timeout timer run on
     // `queue` (every NWConnection in this file is started with `queue`, see handleConnection), so
     // guarding against double-firing needs no lock.
@@ -1023,8 +1035,7 @@ final class WebServer: @unchecked Sendable {
     // connection-lifecycle bookkeeping; local Watch Now (handleWatchRecording) passes nil and isn't
     // counted, since it's this Mac's own playback, not an outbound stream to another machine.
     private func streamGrowingFile(path: String, showId: String, startOffset: Int, conn: NWConnection,
-                                    durationSeconds: Int? = nil, sendTimeout: TimeInterval = growingFileNoTimeout,
-                                    onStreamEnded: (() -> Void)? = nil) {
+                                    durationSeconds: Int? = nil, onStreamEnded: (() -> Void)? = nil) {
         guard let handle = FileHandle(forReadingAtPath: path) else {
             queue.async { self.send(.notFound("could not open recording file"), on: conn) }
             onStreamEnded?()
@@ -1037,8 +1048,9 @@ final class WebServer: @unchecked Sendable {
             // wait-for-more-data poll below instead of erroring.
             let currentSize = (try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? Int
             let clamped = min(startOffset, currentSize ?? startOffset)
-            handle.seek(toFileOffset: UInt64(max(0, clamped)))
-            initialBytes = clamped
+            let aligned = Self.alignedToTSPacketBoundary(clamped)
+            handle.seek(toFileOffset: UInt64(aligned))
+            initialBytes = aligned
         }
         // Computed once here, not re-derived from durationSeconds on every recursion — a fixed
         // wall-clock deadline the whole relay chain threads through and checks, not a countdown.
@@ -1047,7 +1059,7 @@ final class WebServer: @unchecked Sendable {
         glog("[WebServer] watch-recording OPEN show=\(showId) path=\(path) startOffset=\(initialBytes)")
         queue.async { [weak self] in
             guard let self else { return }
-            self.sendWithTimeout(Data(header.utf8), on: conn, timeout: sendTimeout) { [weak self] reason in
+            self.sendWithTimeout(Data(header.utf8), on: conn, timeout: Self.growingFileNoTimeout) { [weak self] reason in
                 guard let self, reason == nil else {
                     self?.fileIOQueue.async { handle.closeFile() }
                     conn.cancel()
@@ -1057,14 +1069,31 @@ final class WebServer: @unchecked Sendable {
                 }
                 self.pumpGrowingFile(handle: handle, showId: showId, conn: conn,
                                       bytesSent: initialBytes, waitStreak: 0, waitStartedAt: nil, deadline: deadline,
-                                      sendTimeout: sendTimeout, onStreamEnded: onStreamEnded)
+                                      onStreamEnded: onStreamEnded)
             }
         }
     }
 
+    // Size of one MPEG-TS packet — the unit alignedToTSPacketBoundary(_:) rounds down to, and
+    // watchRecordingChunkSize below is a multiple of.
+    private static let tsPacketSize = 188
+
     // 200 MPEG-TS packets (188 bytes each) per read — keeps TS packet alignment without
     // materially affecting latency.
-    private static let watchRecordingChunkSize = 188 * 200
+    private static let watchRecordingChunkSize = tsPacketSize * 200
+
+    // Rounds a byte offset down to the nearest complete TS packet boundary — `offset` is usually
+    // the recording file's momentary byte size (handleVirtualTunerStream's live-edge startOffset),
+    // which has no relation to 188-byte packet framing: curl writes to disk in whatever chunk sizes
+    // its own TCP reads land on. Seeking a fresh FEED viewer to a mid-packet offset hands it a torn
+    // leading packet — its demuxer has to scan forward for the next 0x47 sync byte (potentially past
+    // the PAT/PMT it needs first) before it can decode anything, which is exactly what a "plays a
+    // beat, stalls, fragments of audio" report looks like. Extracted as a pure function (rather than
+    // inlined in streamGrowingFile) so this arithmetic itself is directly unit-testable, matching
+    // sourceIsAlreadyModernCodec/effectiveTranscodeProfile's own testability shape in this file.
+    static func alignedToTSPacketBoundary(_ offset: Int) -> Int {
+        (max(0, offset) / tsPacketSize) * tsPacketSize
+    }
 
     // Runs on `queue` (called from streamGrowingFile's send completion, or its own recursive
     // re-entry points below — both always on `queue`). Only the conn.state check and orchestration
@@ -1075,7 +1104,7 @@ final class WebServer: @unchecked Sendable {
     // between file reads and socket sends.
     private func pumpGrowingFile(handle: FileHandle, showId: String, conn: NWConnection,
                                   bytesSent: Int, waitStreak: Int, waitStartedAt: Date?, deadline: Date? = nil,
-                                  sendTimeout: TimeInterval = growingFileNoTimeout, onStreamEnded: (() -> Void)? = nil) {
+                                  onStreamEnded: (() -> Void)? = nil) {
         // Checked once per recursion (covers both the "have data" and "waiting" paths below) —
         // without this, a connection cancelled while the loop is in its 0.5s wait-for-more-data
         // poll (the common state once caught up to the live edge) wouldn't be noticed until a
@@ -1104,7 +1133,7 @@ final class WebServer: @unchecked Sendable {
             self.queue.async {
                 self.handleGrowingFileChunk(chunk, handle: handle, showId: showId, conn: conn,
                                              bytesSent: bytesSent, waitStreak: waitStreak, waitStartedAt: waitStartedAt,
-                                             deadline: deadline, sendTimeout: sendTimeout, onStreamEnded: onStreamEnded)
+                                             deadline: deadline, onStreamEnded: onStreamEnded)
             }
         }
     }
@@ -1114,7 +1143,7 @@ final class WebServer: @unchecked Sendable {
     // file's connection handling.
     private func handleGrowingFileChunk(_ chunk: Data, handle: FileHandle, showId: String, conn: NWConnection,
                                          bytesSent: Int, waitStreak: Int, waitStartedAt: Date?, deadline: Date? = nil,
-                                         sendTimeout: TimeInterval = growingFileNoTimeout, onStreamEnded: (() -> Void)? = nil) {
+                                         onStreamEnded: (() -> Void)? = nil) {
         guard !chunk.isEmpty else {
             // Caught up to what curl has written so far — poll until either more data lands or
             // the recording finishes, instead of ending the stream the moment we hit today's EOF.
@@ -1129,7 +1158,7 @@ final class WebServer: @unchecked Sendable {
                     self.queue.asyncAfter(deadline: .now() + 0.5) { [weak self] in
                         self?.pumpGrowingFile(handle: handle, showId: showId, conn: conn,
                                                bytesSent: bytesSent, waitStreak: waitStreak + 1, waitStartedAt: startedAt,
-                                               deadline: deadline, sendTimeout: sendTimeout, onStreamEnded: onStreamEnded)
+                                               deadline: deadline, onStreamEnded: onStreamEnded)
                     }
                 } else {
                     glog("[WebServer] watch-recording show=\(showId) recording finished, drained \(bytesSent) bytes — closing stream")
@@ -1147,7 +1176,7 @@ final class WebServer: @unchecked Sendable {
         if newTotal / (5 * 1_048_576) > bytesSent / (5 * 1_048_576) {
             glog("[WebServer] watch-recording show=\(showId) sent \(newTotal / 1_048_576) MB so far")
         }
-        sendWithTimeout(chunk, on: conn, timeout: sendTimeout) { [weak self] reason in
+        sendWithTimeout(chunk, on: conn, timeout: Self.growingFileNoTimeout) { [weak self] reason in
             guard let self, reason == nil else {
                 self?.fileIOQueue.async { handle.closeFile() }
                 // Explicit cancel — a real send error usually means the OS already knows the
@@ -1164,7 +1193,7 @@ final class WebServer: @unchecked Sendable {
             self.queue.async {
                 self.pumpGrowingFile(handle: handle, showId: showId, conn: conn,
                                       bytesSent: newTotal, waitStreak: 0, waitStartedAt: nil, deadline: deadline,
-                                      sendTimeout: sendTimeout, onStreamEnded: onStreamEnded)
+                                      onStreamEnded: onStreamEnded)
             }
         }
     }

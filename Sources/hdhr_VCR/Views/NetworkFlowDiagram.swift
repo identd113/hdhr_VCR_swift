@@ -1,21 +1,20 @@
 import SwiftUI
 
-// Animated "how it works" map for a point-to-point LAN-facing feature — two devices connected by a
-// line, with signal rings broadcasting from the left (this Mac) device and small packets flowing
-// along the line to the right one. Purely illustrative (no real network activity of its own).
-// Parametrized (icons/badge colors/captions) so it's reusable wherever the app wants this exact
-// "this Mac ↔ one specific other party" shape, rather than hardcoded to any one feature — currently
-// only Recording FEED (FirstRunWizardView's Recording FEED step), whose "this Mac's recording,
-// that Mac watching it" relationship is genuinely one-to-one.
+// Animated "how it works" map for Recording FEED: watch a recording that's already in progress on
+// another Mac, live, without spending a second tuner. Two devices connected by a line — signal
+// rings broadcast from the left (this Mac, recording) and small packets flow along the line to the
+// right (the other Mac, watching) — makes that one-to-one hand-off legible at a glance. Purely
+// illustrative, no real network activity of its own. Parametrized (icons/badge colors/captions) so
+// it's reusable for any future point-to-point "this Mac ↔ one specific other party" explainer, not
+// hardcoded to FEED, though FEED — whose "this Mac's recording, that Mac watching it" relationship
+// is genuinely one-to-one — is the only user today.
 //
-// Sibling diagrams for the app's other Sharing features deliberately do NOT reuse this component:
-// added 2026-09-04 after live feedback that Web LAN's earlier version — a straight palette-swap of
-// this same one-to-one shape — read as visually redundant stacked next to a similar diagram on the
-// same wizard screen. Web LAN (`WebLANDiagram.swift`) is a genuinely different relationship — one
-// Mac serving many different kinds of devices, not one specific pair — so it fans out to three
-// device icons instead. Terminal Guide (`TerminalTypingDiagram.swift`) isn't a broadcast
-// relationship at all — it's a CLI session — so it abandons the two-device shape entirely for a
-// mock terminal window with a typing command.
+// Web LAN and Terminal Guide, the app's other Sharing features, use their own purpose-built
+// diagrams instead of a themed copy of this one, because their relationships are shaped differently:
+// Web LAN (`WebLANDiagram.swift`) is one Mac serving many different kinds of devices at once, not
+// one specific pair, so it fans out to three device icons. Terminal Guide
+// (`TerminalTypingDiagram.swift`) isn't a broadcast relationship at all — it's a CLI session — so it
+// shows a mock terminal window with a typing command instead of the two-device shape.
 //
 // Visual convention shared across every use of THIS component: the left side (always "this Mac")
 // gets a badge color naming the specific local action happening (e.g. red = recording); the right

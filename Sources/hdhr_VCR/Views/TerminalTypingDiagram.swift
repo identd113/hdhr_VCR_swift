@@ -1,12 +1,11 @@
 import SwiftUI
 
-// Animated "how it works" map for Terminal Guide — a standalone mock terminal window with a
-// command typing itself out and a blinking cursor, looping. Deliberately NOT another instance of
-// the network-flow diagrams (NetworkFlowDiagram/WebLANDiagram) other Sharing features use — added
-// 2026-09-04 after live feedback that a palette-swapped copy of the same "two devices, flowing
-// packets" shape read as visually redundant next to Web LAN's own diagram. Terminal Guide isn't
-// really "this Mac broadcasting to a receiver" the way Web LAN/Recording FEED are — it's a CLI
-// session — so this shows that directly instead of forcing it into the same broadcast metaphor.
+// Animated "how it works" map for Terminal Guide: browse the guide and schedule recordings from a
+// terminal, no browser needed — a standalone mock terminal window with a command typing itself out
+// and a blinking cursor, looping. Deliberately NOT another instance of the network-flow diagrams
+// (NetworkFlowDiagram/WebLANDiagram) other Sharing features use: Terminal Guide isn't really "this
+// Mac broadcasting to a receiver" the way Web LAN/Recording FEED are — it's a CLI session — so this
+// shows that directly instead of forcing it into the same broadcast metaphor.
 //
 // Hardcoded dark chrome (not theme-adaptive) is deliberate: this is a small cameo of what an actual
 // terminal window looks like, which is conventionally dark regardless of the host app's own

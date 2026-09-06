@@ -285,6 +285,31 @@ struct VirtualTunerWebRoutesTests {
         #expect(result.profile == "")
     }
 
+    // MARK: - alignedToTSPacketBoundary (FEED live-edge join offset never lands mid-TS-packet)
+    //
+    // Regression coverage for a real reported bug: a FEED viewer would play a beat, stall, and hear
+    // fragmented audio right after joining — root-caused to streamGrowingFile seeking to the
+    // recording file's raw byte size (curl's own TCP-read chunk boundaries, unrelated to 188-byte TS
+    // packet framing) with no alignment. See issues_resolved.md / ISSUES.md for the full writeup.
+
+    @Test func alignedToTSPacketBoundary_roundsDownToNearestCompletePacket() {
+        // 5 whole packets (940 bytes) plus 60 stray bytes of a 6th, torn packet.
+        #expect(WebServer.alignedToTSPacketBoundary(5 * 188 + 60) == 5 * 188)
+    }
+
+    @Test func alignedToTSPacketBoundary_exactMultipleIsUnchanged() {
+        #expect(WebServer.alignedToTSPacketBoundary(10 * 188) == 10 * 188)
+    }
+
+    @Test func alignedToTSPacketBoundary_belowOnePacket_roundsToZero() {
+        #expect(WebServer.alignedToTSPacketBoundary(100) == 0)
+    }
+
+    @Test func alignedToTSPacketBoundary_zeroAndNegative_neverGoNegative() {
+        #expect(WebServer.alignedToTSPacketBoundary(0) == 0)
+        #expect(WebServer.alignedToTSPacketBoundary(-5) == 0)
+    }
+
     // MARK: - VLCBridge.transcodeBitrateKbps (relay's seven recognized profile names)
     //
     // Regression for 2026-09-03: internet540/480/360/240 used to silently collapse into the same
