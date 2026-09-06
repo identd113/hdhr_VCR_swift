@@ -421,10 +421,15 @@ final class VLCBridge: ObservableObject {
         // catch up to the live edge (and start playback) much faster than a live tuner stream.
         let networkCachingMs = isRecordingRelay ? 300 : 2000
 
-        // No [weak self] here — this closure only touches pre-extracted nonisolated(unsafe) lets
-        // (mp, inst, media, etc.); self is only referenced inside the nested Task below, which
-        // already declares its own weak capture.
-        Self.libvlcQueue.async {
+        // [self] here, not [weak self] — this closure only touches pre-extracted
+        // nonisolated(unsafe) lets (mp, inst, media, etc.) and is otherwise transient (runs once,
+        // discarded); self (VLCBridge.shared, a singleton — never deallocated) is only referenced
+        // inside the nested Task below, which declares its own weak capture for a real reason: a
+        // staleness check (currentURL == url), not memory management. Explicit here (rather than
+        // the implicit strong capture Swift would apply anyway just from passing self down to that
+        // nested closure) only to silence the compiler's ImplicitStrongCapture warning about the
+        // two levels using different capture strength for the same value — no behavior change.
+        Self.libvlcQueue.async { [self] in
             stopFn?(mp)
             if let oldMedia { mediaReleaseFn?(oldMedia) }
             guard let media = url.withCString({ mediaNLFn?(inst, $0) }) else {
@@ -486,10 +491,11 @@ final class VLCBridge: ObservableObject {
         nonisolated(unsafe) let mp = oldMp
         // Enqueued after stopAndClearState's own libvlcQueue work below (same serial queue — FIFO
         // guarantees this mp's stop finishes before its release runs).
-        // No [weak self] here — this closure only touches pre-extracted nonisolated(unsafe) lets
-        // (releaseFn, mp); self is only referenced inside the nested Task below, which already
-        // declares its own weak capture.
-        Self.libvlcQueue.async {
+        // [self] here, not [weak self] — see play()'s identical Self.libvlcQueue.async closure
+        // above for the full reasoning (transient, singleton self, explicit only to silence the
+        // ImplicitStrongCapture warning against the nested Task's own, differently-motivated
+        // [weak self]).
+        Self.libvlcQueue.async { [self] in
             releaseFn?(mp)
             glog("[VLC] releasePlayer — mediaPlayer released, tuner freed")
             // retainedDrawable/drawableView must outlive the actual libvlc release: libvlc dispatches

@@ -689,7 +689,14 @@ final class WebServer: @unchecked Sendable {
         // untouched.
         let logChannel = channel.filter { !$0.isNewline && !$0.unicodeScalars.contains(where: { $0.value < 0x20 }) }
         glog("[VirtualTuner] /auto/v\(logChannel) requested dev=\(deviceId ?? "nil") transcode=\(transcode ?? "none")")
-        Task { @MainActor in
+        // [state] explicit here and on the nested fileIOQueue.async closure below, not [weak state]
+        // — both are transient (this whole chain runs once per request, discarded after), so
+        // strongly holding `state` for their own brief execution is harmless; only the innermost
+        // onStreamEnded closure (retained by streamGrowingFile for the life of a potentially
+        // long-lived relay session) actually needs — and already has — [weak state]. Explicit only
+        // to silence the compiler's ImplicitStrongCapture warning about that innermost weak capture
+        // differing from these outer scopes' implicit strong one; no behavior change.
+        Task { @MainActor [state] in
             guard let show = state.shows.first(where: {
                 $0.show_recording && $0.show_channel == channel && (deviceId == nil || $0.hdhr_record == deviceId)
             }), !show.show_recording_path.isEmpty else {
@@ -720,7 +727,7 @@ final class WebServer: @unchecked Sendable {
                 .first(where: { $0.GuideNumber == channel })?.VideoCodec
             let path = show.show_recording_path
             let showId = show.show_id
-            self.fileIOQueue.async {
+            self.fileIOQueue.async { [state] in
                 guard FileManager.default.fileExists(atPath: path) else {
                     glog("[VirtualTuner] /auto/v\(logChannel) → 404 recording file missing on disk: \(path)", level: .warning)
                     self.queue.async { self.send(.notFound("recording not found"), on: conn) }
