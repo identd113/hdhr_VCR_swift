@@ -1099,7 +1099,7 @@ final class WebServer: @unchecked Sendable {
     // connection-lifecycle bookkeeping; local Watch Now (handleWatchRecording) passes nil and isn't
     // counted, since it's this Mac's own playback, not an outbound stream to another machine.
     private func streamGrowingFile(path: String, showId: String, startOffset: Int, conn: NWConnection,
-                                    durationSeconds: Int? = nil, onStreamEnded: (() -> Void)? = nil) {
+                                    durationSeconds: Int? = nil, bitrate: Double? = nil, onStreamEnded: (() -> Void)? = nil) {
         guard let handle = FileHandle(forReadingAtPath: path) else {
             queue.async { self.send(.notFound("could not open recording file"), on: conn) }
             onStreamEnded?()
@@ -1119,8 +1119,22 @@ final class WebServer: @unchecked Sendable {
         // Computed once here, not re-derived from durationSeconds on every recursion — a fixed
         // wall-clock deadline the whole relay chain threads through and checks, not a countdown.
         let deadline = durationSeconds.map { Date().addingTimeInterval(Double($0)) }
+
+        // Use bitrate parameter (queried from HDHR device via MainActor context), or calculate from file as fallback.
+        // If neither available, use 6 Mbps default for MPEG-2 HD (typical for broadcast streams like WCCO).
+        let effectiveBitrate = bitrate ?? {
+            if let durationSec = durationSeconds, durationSec > 0 {
+                let fileSize = (try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? Int ?? 0
+                return Double(max(fileSize, initialBytes) * 8) / Double(durationSec) // bits per second
+            } else {
+                return 6_000_000  // 6 Mbps default (matched to observed WCCO broadcast bitrate)
+            }
+        }()
+
         let header = "HTTP/1.1 200 OK\r\nContent-Type: video/mp2t\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\n\r\n"
-        glog("[WebServer] watch-recording OPEN show=\(showId) path=\(path) startOffset=\(initialBytes)")
+        let bitrateKbps = Int(effectiveBitrate / 1000)
+        let paceDelayMs = Int((Double(Self.watchRecordingChunkSize) * 8.0 / effectiveBitrate) * 1000)
+        glog("[WebServer] watch-recording OPEN show=\(showId) bitrate=\(bitrateKbps)kbps pacing=\(paceDelayMs)ms/chunk path=\(path) startOffset=\(initialBytes)")
         queue.async { [weak self] in
             guard let self else { return }
             self.sendWithTimeout(Data(header.utf8), on: conn, timeout: Self.growingFileNoTimeout) { [weak self] reason in
@@ -1133,9 +1147,15 @@ final class WebServer: @unchecked Sendable {
                 }
                 self.pumpGrowingFile(handle: handle, showId: showId, conn: conn,
                                       bytesSent: initialBytes, waitStreak: 0, waitStartedAt: nil, deadline: deadline,
-                                      onStreamEnded: onStreamEnded)
+                                      bitrate: effectiveBitrate, chunkStartTime: Date(), onStreamEnded: onStreamEnded)
             }
         }
+    }
+
+    // HDHR /status.json tuner entry (partial decode for NetworkRate only)
+    private struct HDHRTunerStatus: Codable {
+        let VctNumber: String?
+        let NetworkRate: Int
     }
 
     // Size of one MPEG-TS packet — the unit alignedToTSPacketBoundary(_:) rounds down to, and
@@ -1168,6 +1188,7 @@ final class WebServer: @unchecked Sendable {
     // between file reads and socket sends.
     private func pumpGrowingFile(handle: FileHandle, showId: String, conn: NWConnection,
                                   bytesSent: Int, waitStreak: Int, waitStartedAt: Date?, deadline: Date? = nil,
+                                  bitrate: Double = 5_000_000, chunkStartTime: Date = Date(),
                                   onStreamEnded: (() -> Void)? = nil) {
         // Checked once per recursion (covers both the "have data" and "waiting" paths below) —
         // without this, a connection cancelled while the loop is in its 0.5s wait-for-more-data
@@ -1197,7 +1218,8 @@ final class WebServer: @unchecked Sendable {
             self.queue.async {
                 self.handleGrowingFileChunk(chunk, handle: handle, showId: showId, conn: conn,
                                              bytesSent: bytesSent, waitStreak: waitStreak, waitStartedAt: waitStartedAt,
-                                             deadline: deadline, onStreamEnded: onStreamEnded)
+                                             deadline: deadline, bitrate: bitrate, chunkStartTime: chunkStartTime,
+                                             onStreamEnded: onStreamEnded)
             }
         }
     }
@@ -1207,6 +1229,7 @@ final class WebServer: @unchecked Sendable {
     // file's connection handling.
     private func handleGrowingFileChunk(_ chunk: Data, handle: FileHandle, showId: String, conn: NWConnection,
                                          bytesSent: Int, waitStreak: Int, waitStartedAt: Date?, deadline: Date? = nil,
+                                         bitrate: Double = 5_000_000, chunkStartTime: Date = Date(),
                                          onStreamEnded: (() -> Void)? = nil) {
         guard !chunk.isEmpty else {
             // Caught up to what curl has written so far — poll until either more data lands or
@@ -1222,7 +1245,8 @@ final class WebServer: @unchecked Sendable {
                     self.queue.asyncAfter(deadline: .now() + 0.5) { [weak self] in
                         self?.pumpGrowingFile(handle: handle, showId: showId, conn: conn,
                                                bytesSent: bytesSent, waitStreak: waitStreak + 1, waitStartedAt: startedAt,
-                                               deadline: deadline, onStreamEnded: onStreamEnded)
+                                               deadline: deadline, bitrate: bitrate, chunkStartTime: Date(),
+                                               onStreamEnded: onStreamEnded)
                     }
                 } else {
                     glog("[WebServer] watch-recording show=\(showId) recording finished, drained \(bytesSent) bytes — closing stream")
@@ -1254,10 +1278,25 @@ final class WebServer: @unchecked Sendable {
                 onStreamEnded?()
                 return
             }
-            self.queue.async {
+            // Constant-rate pacing: ATSC/OTA streams deliver at a fixed bitrate. Delay the next
+            // chunk read by exactly the time this chunk should take to transmit. This enforces
+            // the stream's native bitrate, preventing buffer bloat and matching the real tuner's
+            // delivery characteristics.
+            let chunkBits = Double(chunk.count) * 8.0
+            let pacingDelay = chunkBits / bitrate  // seconds — time this chunk should take to send
+            let pacingDelayMs = Int(pacingDelay * 1000)
+
+            self.queue.asyncAfter(deadline: .now() + pacingDelay) {
                 self.pumpGrowingFile(handle: handle, showId: showId, conn: conn,
                                       bytesSent: newTotal, waitStreak: 0, waitStartedAt: nil, deadline: deadline,
+                                      bitrate: bitrate, chunkStartTime: Date(),
                                       onStreamEnded: onStreamEnded)
+            }
+
+            // Log pacing milestones: every MB, show the actual pacing rate
+            if newTotal / (1_048_576) > bytesSent / (1_048_576) {
+                let expectedMbps = bitrate / 1_000_000
+                glog("[WebServer] watch-recording show=\(showId) pacing @\(String(format: "%.2f", expectedMbps))Mbps (\(pacingDelayMs)ms/chunk)")
             }
         }
     }

@@ -79,6 +79,13 @@ Historical record of bugs encountered during development. Used as a "don't repea
 - **`.claude/CODE_NOTES.md` still describes an already-applied fix (hoisting `ggSkip`/`ggAlias`/`ggKnown` to static lets in `WebServer.buildGuideGridHTML`) as an outstanding suggestion**, even though the code already reflects that exact hoist. `CODE_NOTES.md`'s own header states completed fixes belong in `CHANGELOG.md`, not left as prose here — this entry was never relocated once the fix landed.
   **Fix, if ever picked up**: move the entry (or a summary of it) to `CHANGELOG.md`, and remove it from `CODE_NOTES.md`.
 
+*(Found 2026-09-07 live — user attempted to record Jerry Springer from web guide, recording never happened despite request being sent.)*
+
+- **Web guide "Record" button (via `/api/record` on a show) fails silently — show is never saved to config if the app crashes or is force-quit during the add-show operation.** Found 2026-09-07 when user clicked Record on Jerry Springer at 14:34:26Z and 14:34:50Z via web guide; app exited uncleanly somewhere between 14:34:50Z–14:35:46Z (56-second gap with zero log output, abnormal), and when it restarted at 14:35:46Z, Jerry Springer was not in the saved config. Show was never scheduled because its data never made it to disk.
+  **Root cause, not yet investigated**: either a crash in the add-show logic when triggered from web guide (possible codepath difference from the native Add Show UI), or the user force-quit the app mid-operation. No network/device errors visible in logs — purely a data persistence failure.
+  **Impact**: real, but only on app-crash race conditions. Normal use is unaffected (the show-save pipeline works fine until a crash interrupts it).
+  **Fix, if ever picked up**: instrument the add-show → config-save pipeline with guards and error logging to catch any exceptions that might silently abort the persist; add a "failed to save, retry?" dialog if persist fails. Also: reproduce why the 56-second log gap exists (either catch the crash directly, or confirm the force-quit scenario).
+
 ---
 
 ## Accepted — flagged, not scheduled (marginal / by-design)

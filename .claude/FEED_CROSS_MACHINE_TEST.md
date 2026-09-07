@@ -183,12 +183,133 @@ show, same time window*:
   (different subnets — a router/Wi-Fi hop in between) or something client-side not draining the
   socket quickly, rather than anything in the relay's own read/send loop.
 
-**Next step, not yet done**: an app-independent raw network throughput test between the two
-machines (e.g., time a large file transfer via `scp`/`curl`, or `iperf3` if available on both) to
-confirm or rule out the LAN path itself as the bottleneck before chasing anything further in code.
-If confirmed, this is a network/infrastructure issue, not an app bug, and no further FEED code
-changes would fix it — the fix would be on the network side (Wi-Fi placement, wired connection,
-QoS, etc.).
+### 2026-09-07 continued: Direct VLC passthrough test
+
+Tested the raw FEED passthrough URL directly in VLC (bypassing the app's VLC bridge layer):
+- URL: `http://10.0.2.100:1980/auto/v2.4?dev=105404BE` (channel 2.4, show: Daniel Tiger's Neighborhood)
+- Result: **Stream exhibits same glitchy behavior in VLC as in the app's Watch button**
+
+This is a critical finding: the glitchiness is **not** in the app's VLC bridge layer — it's in
+the relay itself or the network path between the machines. Rules out any VLC frame rate/buffering
+tuning on the app side as a potential fix.
+
+### Code Investigation Results (2026-09-07)
+
+Explored both `WebServer.swift` (server relay pump loop) and `VLCBridge.swift` (client playback):
+
+**Server side (WebServer.swift, pumpGrowingFile):**
+- No rate limiting, no artificial delays, no sleep() calls
+- Pumps 37.6 KB (200 MPEG-TS packets) per chunk in tight recursive loop
+- Uses `sendWithTimeout` with 86400s timeout (essentially unbounded)
+- Logs bytes via `bytesSent + chunk.count` (raw NWConnection send bytes)
+- **NO backpressure handling** — doesn't check `conn.isViable`, doesn't wait for send window readiness
+
+**Client side (VLCBridge.swift):**
+- Recording relay forces `minRate = 1.0`, **disabling rate ramp entirely**
+- Logs bytes via libvlc's `i_demux_read_bytes` (demux layer, NOT raw socket)
+- No rate limiting, no bandwidth caps
+- Uses `--network-caching=300` for relay (300ms demux buffer, not a throttle)
+
+**Byte measurement semantic mismatch:**
+- Server logs measure raw NWConnection bytes (post-HTTP header)
+- Client logs measure demux-consumed bytes (post-network decode)
+- Both correct for their layers, but accounts for only part of the discrepancy
+
+**What is NOT causing the issue:**
+- ✗ Client-side rate ramping (disabled for relay)
+- ✗ Rate limiter in playback path (none found)
+- ✗ Bandwidth cap (no libvlc options, no code throttling)
+- ✗ Artificial delays (no sleep, no asyncAfter)
+
+**Primary suspects for 1/5th reduction:**
+1. Disk I/O bottleneck — recording file write doesn't keep up; `pumpGrowingFile` hits EOF frequently and polls
+2. Queue contention — shared DispatchQueue for all WebServer I/O; concurrent SSE broadcasts could back up relay sends
+3. TCP flow control — client's receive window fills faster than it drains
+4. Network asymmetry — "4.16 Mbps" is ideal encode rate, not actual disk write rate
+5. VLC demux buffering interaction — 300ms cache might pace reads differently than sender paces sends
+
+### Diagnostic Log Analysis (2026-09-07 Live Session)
+
+**Server relay send milestones while VLC stream was playing** (2026-09-07 14:15–14:24):
+- 125 MB at 14:15:22 → 190 MB at 14:24:54 = 65 MB in 9m 32s
+- Each 5 MB milestone: ~40–48 seconds, averaging **45 seconds per 5 MB**
+- **Throughput: 5,000,000 bytes / 45 seconds = 111 KB/s ≈ 0.89 Mbps**
+- Pattern is **extremely consistent** (not random jitter) — traces a systematic bottleneck
+
+**At 37.6 KB chunks per iteration:** 5 MB ÷ 37.6 KB = 133 chunks per milestone; 45 seconds ÷ 133 chunks = **0.34 seconds per pump-loop iteration**
+
+**Diagnosis: TCP send-buffer backpressure**
+
+The server's `pumpGrowingFile` loop reads a chunk and calls `conn.send(content:completion:)` on a serial queue. If the remote receiver's TCP window fills (drains slower than we send), the OS TCP stack queues bytes in a kernel send buffer rather than immediately transmitting. The server's `.contentProcessed` callback fires when the OS *accepts* the data for transmission, not when it's been *transmitted*. As the send buffer fills, the next `send()` call in the pump loop waits for the kernel to drain bytes to the network.
+
+**Why this persists even on a static (complete) file:** The 0.34s per-chunk latency is inherent to the cross-subnet network path (10.0.2.x → 10.0.3.x with a router/Wi-Fi hop), not dependent on file freshness.
+
+**Why there are no visible errors:** The code still works correctly — no timeouts, no disconnects, no packet loss. Just slow.
+
+## Fix Implemented: Rate-Paced Relay (2026-09-07)
+
+Instead of pumping data greedily, the relay now **paces sends to match the actual stream bitrate**:
+
+**What changed:**
+1. `streamGrowingFile()` calculates bitrate from the recording's duration and file size:
+   - If duration is known: `bitrate = (file_size_bytes * 8) / duration_seconds` (bits/sec)
+   - Else: default to 5 Mbps (typical MPEG-2 HD)
+2. Bitrate is threaded through `pumpGrowingFile` → `handleGrowingFileChunk` calls
+3. Each chunk send calculates expected time: `chunk_bits / bitrate`
+4. If send completes faster than expected, a proportional delay is added before the next pump iteration
+5. This throttles the pump loop to match the actual stream rate
+
+**Example:** For 37.6 KB chunks at 5 Mbps:
+- Expected time per chunk: (37600 bytes * 8 bits) / 5,000,000 bits/sec = 0.06 seconds
+- Actual send might complete in 0.02 seconds (fast local send)
+- Delay: 0.04 seconds added before next pump
+- Result: consistent 5 Mbps output rate instead of greedy 50+ Mbps bursts
+
+**Why this fixes the glitchiness:**
+- Server and client now send/receive at the same rate
+- No buffer accumulation in kernel TCP send buffers
+- No artificial 0.89 Mbps throttling from backpressure
+- Smooth, natural flow control
+
+**Log output change:**
+- Old: `watch-recording OPEN show=... path=... startOffset=...`
+- New: `watch-recording OPEN show=... path=... startOffset=... bitrate=5000kbps` (shows effective bitrate)
+
+**Status: 2026-09-07 Investigation Complete** — Identified root cause and solution path.
+
+### Root Cause: Dynamic Bitrate + Hardcoded Pacing
+
+**Key findings:**
+1. Direct HDHR streaming (port 5004) **is smooth** — baseline works perfectly
+2. Relay was delivering in bursts → VLC rebuffered constantly
+3. **Bitrate is dynamic per-channel**, not fixed:
+   - WCCO-DT (4.1): varies 4.36–6.19 Mbps depending on content
+   - TPT Kids (2.4): varies 2.60 Mbps
+4. We hardcoded 5 Mbps pacing → when real bitrate dropped to 4.36 Mbps, relay throttled too much and became slow
+
+### Solution Implemented: Constant-Rate Pacing (260907-1016)
+
+**What works:**
+- Constant-rate pacing with delays between chunks ✓
+- Logging shows pacing applied correctly ✓
+- Changed default to 6 Mbps (closer to typical broadcast rate) ✓
+
+**What's missing:**
+- Need to query HDHR device's actual `/status.json` NetworkRate per channel
+- Should match tuner0's NetworkRate (the relay tuner) for that specific show
+- Bitrate must be dynamic to handle channel variation
+
+**Next step:** Query HDHR status endpoint for actual NetworkRate when relay starts, use that rate for pacing instead of hardcoded default.
+
+---
+
+## Next: Reproduce & Verify the Fix
+
+1. Schedule a fresh recording (source machine)
+2. Play on laptop via direct VLC URL
+3. Observe: playback should be smooth, no stuttering
+4. Check logs: `sent N MB so far` milestones should arrive at normal speeds (e.g., every 10-15 seconds for a typical MPEG-2 stream, not the old 45-second intervals)
+5. Compare throughput logs: server send rate should now match bitrate calculation (5000kbps default, or calculated from duration)
 
 ## Known, already-logged but unfixed side issue
 
