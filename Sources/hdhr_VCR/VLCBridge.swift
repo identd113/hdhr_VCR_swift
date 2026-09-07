@@ -37,6 +37,7 @@ private typealias vlc_media_add_opt_fn   = @convention(c) (OpaquePointer?, Unsaf
 private typealias vlc_mp_set_rate_fn     = @convention(c) (OpaquePointer?, Float) -> Int32
 private typealias vlc_mp_get_rate_fn     = @convention(c) (OpaquePointer?) -> Float
 private typealias vlc_mp_get_state_fn    = @convention(c) (OpaquePointer?) -> Int32
+private typealias vlc_mp_get_time_fn     = @convention(c) (OpaquePointer?) -> Int64   // libvlc_media_player_get_time — ms
 private typealias vlc_mp_get_stats_fn    = @convention(c) (OpaquePointer?, UnsafeMutableRawPointer?) -> Int32
 private typealias vlc_video_get_size_fn  = @convention(c) (OpaquePointer?, UInt32, UnsafeMutablePointer<UInt32>?, UnsafeMutablePointer<UInt32>?) -> Int32
 private typealias vlc_get_version_fn     = @convention(c) () -> UnsafePointer<CChar>?
@@ -172,6 +173,20 @@ final class VLCBridge: ObservableObject {
     private var catchUpCooldown: Date   = .distantPast
     private var tracksFetched:   Bool   = false
 
+    // MARK: - Stall diagnostics (added 2026-09-06 for a live "pauses every few seconds" report)
+    // Neither `isPlaying` nor a rate-change log line says anything about whether playback is
+    // actually *advancing* — a network stall and a decode/render-side stall both leave libvlc
+    // reporting state 3 (Playing) throughout, so up to now a repeating stall had zero log signal
+    // beyond the user's own eyes. Tracking `libvlc_media_player_get_time()` (real playback position)
+    // against `i_demux_read_bytes` (bytes actually pulled off the network) each tick tells the two
+    // apart: position frozen + bytes still arriving = a decode/render bottleneck (matches the
+    // "can't process it fast enough" theory); position frozen + bytes also stalled = a real network
+    // gap (would show up server-side too, unlike the decode case). `nil` until the first tick after
+    // a fresh play() so the very first delta isn't computed against a stale prior session's numbers.
+    private var lastTickTimeMs:      Int64? = nil
+    private var lastTickReadBytes:   Int32? = nil
+    private var consecutiveStalledTicks: Int = 0
+
     private let _new:          vlc_new_fn?
     private let _mediaNL:      vlc_media_new_loc_fn?
     private let _mediaRelease: vlc_media_release_fn?
@@ -188,6 +203,7 @@ final class VLCBridge: ObservableObject {
     private let _mpGetRate:     vlc_mp_get_rate_fn?
     private let _mpGetState:    vlc_mp_get_state_fn?
     private let _mpGetStats:    vlc_mp_get_stats_fn?
+    private let _mpGetTime:     vlc_mp_get_time_fn?
     private let _videoGetSize:  vlc_video_get_size_fn?
     private let _getVersion:    vlc_get_version_fn?
     private let _audioTrackDesc:   vlc_track_desc_fn?  // libvlc_audio_get_track_description
@@ -226,6 +242,7 @@ final class VLCBridge: ObservableObject {
         _mpGetRate    = sym("libvlc_media_player_get_rate")
         _mpGetState   = sym("libvlc_media_player_get_state")
         _mpGetStats   = sym("libvlc_media_player_get_stats")
+        _mpGetTime    = sym("libvlc_media_player_get_time")
         _videoGetSize = sym("libvlc_video_get_size")
         _getVersion   = sym("libvlc_get_version")
         _audioTrackDesc   = sym("libvlc_audio_get_track_description")
@@ -464,6 +481,9 @@ final class VLCBridge: ObservableObject {
                 self.estimatedLagSec = 0.0
                 self.currentRate     = targetMinRate
                 self.lastCorrupted   = 0
+                self.lastTickTimeMs  = nil
+                self.lastTickReadBytes = nil
+                self.consecutiveStalledTicks = 0
                 self.startStatsTimer()
             }
         }
@@ -681,6 +701,7 @@ final class VLCBridge: ObservableObject {
         var newBitrate   = bufferInfo.demuxBitrate
         var newCorrupted = bufferInfo.corrupted
         var corruptDelta: Int32 = 0
+        var readBytes: Int32? = nil
         if let getStats = _mpGetStats {
             var s = VLCStats()
             let ok = withUnsafeMutableBytes(of: &s) { getStats(mp, $0.baseAddress) }
@@ -689,9 +710,47 @@ final class VLCBridge: ObservableObject {
                 lastCorrupted = s.i_demux_corrupted
                 newBitrate    = s.f_demux_bitrate
                 newCorrupted  = lastCorrupted
+                readBytes     = s.i_demux_read_bytes
             } else {
                 glog("[VLC] WARNING: get_stats returned \(ok) — stats polling skipped (may indicate VLC 4 struct mismatch)", level: .warning)
             }
+        }
+
+        // Stall diagnostics — see the MARK above for why neither isPlaying nor a rate-change log
+        // line says anything about whether playback is actually advancing. Only meaningful once
+        // playback is confirmed and the fill phase (if any) has finished — a still-ramping rate
+        // legitimately advances position slower than 1 real second per real second, which isn't a
+        // stall, just the ramp working as designed.
+        if isPlaying, minRate >= 1.0 || currentRate >= 0.999, let getTime = _mpGetTime {
+            let nowMs = getTime(mp)
+            if let lastMs = lastTickTimeMs, let bytes = readBytes, let lastBytes = lastTickReadBytes {
+                let posDeltaMs  = nowMs - lastMs
+                let bytesDelta  = bytes - lastBytes
+                // Real tick interval is statsTimerInterval (3s) — position should advance by
+                // roughly that much (scaled by rate, but rate is ~1.0 here). Anything under 20% of
+                // that is treated as stalled rather than requiring an exact match, since normal
+                // scheduler jitter on a 3s Timer is real but small next to a genuine freeze.
+                let expectedMs = Int64(Self.statsTimerInterval * 1000 * 0.2)
+                if posDeltaMs < expectedMs {
+                    consecutiveStalledTicks += 1
+                    if consecutiveStalledTicks == 1 {
+                        let cause = bytesDelta > 0 ? "bytes still arriving (+\(bytesDelta)) — decode/render-side" : "no new bytes either — network-side"
+                        glog("[VLC] STALL — playback position advanced only \(posDeltaMs)ms in the last \(Int(Self.statsTimerInterval))s, \(cause)", level: .warning)
+                    }
+                } else if consecutiveStalledTicks > 0 {
+                    let stalledFor = Double(consecutiveStalledTicks) * Self.statsTimerInterval
+                    glog("[VLC] STALL resolved after ~\(String(format: "%.1f", stalledFor))s (\(consecutiveStalledTicks) tick(s)) — position now advancing normally (+\(posDeltaMs)ms)")
+                    consecutiveStalledTicks = 0
+                }
+            }
+            lastTickTimeMs = nowMs
+        }
+        if let bytes = readBytes {
+            let oldTotal = lastTickReadBytes ?? 0
+            if Int(bytes) / (5 * 1_048_576) > Int(oldTotal) / (5 * 1_048_576) {
+                glog("[VLC] received \(Int(bytes) / 1_048_576) MB so far")
+            }
+            lastTickReadBytes = bytes
         }
         // Single publish per tick — bar is always updated, bitrate/corrupted carry forward when stats fail.
         bufferInfo = VLCBufferInfo(lagSec: estimatedLagSec, rate: currentRate,
