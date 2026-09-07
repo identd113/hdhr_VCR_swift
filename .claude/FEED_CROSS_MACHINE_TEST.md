@@ -107,12 +107,30 @@ curl process** separately — `ps aux | grep curl` — the app can delete the `S
 always killing the underlying `curl` recording process, which then keeps writing to disk
 indefinitely (`kill -9 <pid>` it, then remove the partial `.ts` file it left in `DVR Tests/`).
 
-## Watching it (manual step — cannot be automated)
+## Watching it (now automatable — see below; manual click also still works)
 
-Click "Watch" (or "Watch (H.264)") on the laptop yourself, from the "Recording on Another Mac"
-menu bar item. **I cannot trigger this remotely.**
+**Preferred, added 2026-09-07**: trigger a real Watch action over SSH, no GUI/Accessibility
+session needed at all:
 
-### Why the GUI can't be automated
+```bash
+ssh laptop "open 'hdhrvcrplus://watch?dev=FEED04BE&channel=2.4'"
+```
+
+This uses the app's own `hdhrvcrplus://` URL scheme (`hdhr_VCRApp.swift`'s `AppDelegate.application(_:open:)`,
+`CFBundleURLTypes` in `tools/Info.plist.template`) — `open` goes through Launch Services, which
+needs no Accessibility permission, unlike AppleScript UI-scripting (see "Why the GUI can't be
+automated" below for why that path never worked over SSH). `dev`/`channel` mirror the real
+HDHomeRun device's own `/auto/v<channel>?dev=<deviceId>` addressing — get the live values from
+`curl http://<laptop>:1980/lineup.json` after the laptop has discovered the source Mac's relay
+(`grep -i FEED ~/Library/Logs/hdhrVCRplus.log` on the laptop to confirm discovery landed). Add
+`&transcode=1` to trigger "Watch (H.264)" instead of the plain raw watch.
+
+Alternatively, click "Watch" (or "Watch (H.264)") on the laptop yourself, from the "Recording on
+Another Mac" menu bar item — still useful when you need a human actually looking at the screen
+(e.g. to confirm the `windowVisible` diagnostic below, or to catch a visual glitch the logs
+wouldn't show).
+
+### Why the GUI itself can't be automated (AppleScript path — superseded by the URL scheme above)
 
 This repo's own `Tests/hdhr_VCRTests/Views/WindowNavigationTests.swift` has a working AppleScript
 pattern for driving this exact menu bar item via `System Events` (`click menu item "Watch" of menu
@@ -123,10 +141,9 @@ plain SSH command hangs indefinitely (checked `ps aux` on the laptop — the pro
 CPU, never returns) because there's no interactive session to grant/hold Accessibility permission
 for whatever's running the AppleEvent. Checked the laptop's TCC database directly
 (`sqlite3 "/Library/Application Support/com.apple.TCC/TCC.db" "SELECT service, client, auth_value
-FROM access WHERE service='kTCCServiceAccessibility'"`) — no relevant grant exists. Don't burn time
-retrying this remotely; it needs a real console/Screen-Sharing session on the laptop with
-Accessibility granted interactively first, and even then AppleScript-driving a live SwiftUI
-`MenuBarExtra` is fragile (see that test file's extensive scar-tissue comments).
+FROM access WHERE service='kTCCServiceAccessibility'"`) — no relevant grant exists. This is the gap
+the `hdhrvcrplus://` URL scheme above was built specifically to close — no reason to revisit
+AppleScript UI-scripting for this anymore.
 
 ## Monitoring both logs live during a test
 
@@ -147,176 +164,80 @@ ssh laptop "tail -f -n0 ~/Library/Logs/hdhrVCRplus.log" | grep -E --line-buffere
 - Client: `rate set to 0.90 (fill phase)` → a few `rate → X (lag ~Ys / 8s)` lines → `rate → 1.000
   (lag ~8s / 8s)` within **~8-9 real seconds** of the first one (the fixed linear ramp — if this
   instead crawls for minutes, the old asymptotic-ramp bug is back).
-- After that: steady `[VLC] tick pos=+Xms/3000ms bytes=+Y displayed=+D lost=+L rate=1.000` lines
-  every ~3s (added 2026-09-07) — `pos` should be close to `3000ms` each tick once caught up.
-  `[VLC] received N MB so far` mirrors the server's own `sent N MB so far` milestones — **compare
-  the two directly**, this is how the throughput finding below was caught.
+- After that: steady `[VLC] tick pos=+Xms/3000ms bytes=+Y displayed=+D lost=+L rate=1.000
+  windowVisible=<bool>` lines every ~3s — `pos` should be close to `3000ms` each tick once caught
+  up. `[VLC] received N MB so far` mirrors the server's own `sent N MB so far` milestones — compare
+  the two directly to sanity-check delivery rate.
+- **`windowVisible` (added 2026-09-07) is the field that settles whether a stall is real** —
+  `NSWindow.occlusionState.contains(.visible)` off the player's own drawable view. Earlier
+  sessions this same day repeatedly got stuck arguing over whether a long `displayed=+0` stretch
+  was a real VLC-side stall or just the window being backgrounded/the laptop's screen asleep
+  (`open`-triggered playback doesn't wake the display) — this field removes the guesswork. A
+  confirmed real stall (this investigation's own live result, same day) can still happen with
+  `windowVisible=true` the whole time — don't assume `true` alone proves it's benign, only that
+  it's *not* a backgrounding artifact.
 
 ### What to flag
 
-- `[VLC] STALL — playback position advanced only Xms of the expected 3000ms, ...` (client) — a
-  real stutter, tagged as decode/render-side (bytes still arriving) or network-side (no new bytes).
-- `N frame(s) dropped this tick` (client) — rendering-level hitch, distinct from a clock stall.
+- `[VLC] STALL — playback position advanced only Xms of the expected 3000ms, ..., windowVisible=<bool>`
+  (client) — a real stutter, tagged decode/render-side (bytes still arriving) or network-side (no
+  new bytes) — cross-check `windowVisible` before concluding anything about the *cause*.
+- `N frame(s) dropped this tick ... windowVisible=<bool> (real render-side hitch, not backgrounding)`
+  vs `(window not visible — likely explains this)` — the diagnostic's own log line already states
+  which one it thinks this is.
+- A `STALL resolved after ~Ns (N tick(s))` line whose resolving tick shows a huge `displayed=+N`
+  burst (900+, vs. a normal tick's ~150-250) — the signature of a backgrounded window's decode
+  pipeline queuing frames without compositing them, then flushing on return. Distinguish from a
+  genuine VLC-side stall (this investigation found real examples of *both*, including one with
+  `windowVisible=true` throughout and a genuine negative `pos` delta / real `lost` frames — a true
+  PCR/clock discontinuity, not explainable by backgrounding at all).
 - Server-side `sent N MB so far` milestones arriving much slower than expected for the channel's
-  real bitrate (see below) — the actual finding so far.
+  real bitrate — the original finding that started this whole investigation (see "Resolution" below
+  for what that turned out to be, and what it wasn't).
 
-## Current status / where this was left off (2026-09-07)
+## Resolution (2026-09-07) — read this first if picking the investigation back up
 
-**Both fixes already shipped and confirmed working live**, twice, on a real cross-machine session:
-- FEED join-offset TS-packet alignment (was causing "plays a beat, stalls" right at join).
-- VLC fill-phase rate ramp (was taking real *minutes* to reach 1.0x instead of ~8s).
+**The actual root cause, found late in the same day this file's earlier sections were written**:
+none of the throughput/pacing/backpressure theories below panned out. The real mechanism was
+delivery *cadence*, not rate — `pumpGrowingFile` was sending 37.6KB bursts separated by a flat
+500ms silent poll whenever it caught up to the live edge, a pattern the real HDHomeRun tuner's own
+broadcast-fed stream can never produce (there's no backlog to burst-release from a live antenna
+feed). Confirmed with a raw-socket byte sampler comparing the real tuner's own port-5004 stream
+(avg 1.5KB chunks, gaps almost always <20ms) against the relay (avg 34.8KB chunks, ~15% of reads
+landing on the 500ms silent gap) — a completely different diagnostic approach than the
+throughput/bitrate-math investigation below, and the one that actually found the mechanism.
 
-**Still open — user reports ongoing "glitchy" playback even with both fixes active**, well after
-the fill-phase ramp settles at 1.0x. Investigation so far found **zero** hard errors, stalls, or
-disconnects in either log during a ~6-minute test session — but a real throughput mismatch when
-comparing the server's own recording-growth rate against its FEED-delivery rate for the *same
-show, same time window*:
+**Fix**: adaptive per-connection chunk size in `WebServer.swift` — small (`watchRecordingChunkSize`,
+8 TS packets) at the live edge matching the real tuner's cadence, large
+(`watchRecordingBacklogChunkSize`, 200 packets, the old size) only while draining a genuine backlog
+(e.g. a Watch Now scrub-bar seek) — plus a 20ms live-edge poll instead of the old 500ms. See
+`ISSUES.md`'s (now resolved, moved to `issues_resolved.md`) FEED stall entries for the full trail,
+including the earlier VLC-side tuning attempts (`--clock-jitter`, `--prefetch-buffer-size`) that
+were tried and ruled out insufficient *before* this was found.
 
-- Source (real tuner → disk, this Mac): **~4.16 Mbps** (measured from the recording file's own
-  growth: `(419453952 - 240009072) bytes / 345s`).
-- FEED delivery (this Mac → laptop, same window): **~0.85 Mbps** (measured from consecutive
-  `sent N MB so far` log milestones) — roughly **1/5th** of the source rate.
-- This gap **persisted even after the source recording had already ended** (file fully written,
-  no more live-pacing constraint left to blame) — the relay was still only delivering ~1 Mbps
-  while just draining an already-complete, static file. That rules out "waiting for live data" as
-  the explanation and points at either the network path between `10.0.2.100` and `10.0.3.215`
-  (different subnets — a router/Wi-Fi hop in between) or something client-side not draining the
-  socket quickly, rather than anything in the relay's own read/send loop.
+**Verified working**: a live cross-machine test with the window kept frontmost the whole time ran
+**7.5+ minutes with zero stalls**, `windowVisible=true` confirmed throughout (see the "What healthy
+looks like" section above for that diagnostic field). Not a complete fix, though — see below.
 
-### 2026-09-07 continued: Direct VLC passthrough test
+**Still open, marked Beta in the app as of this same day**: the relay-cadence fix measurably
+improved things but didn't eliminate every VLC-side stall — a separate live session (also with
+`windowVisible=true` confirmed, ruling out backgrounding) showed a real ~66-81s stall and a genuine
+negative-`pos`/real-`lost`-frames PCR discontinuity. VLC 3.0.23's own demux/clock-sync pipeline is
+still the suspected root cause (see `ISSUES.md`'s original diagnosis), just triggered less often
+now. Also found the same day: switching audio/CC tracks on a FEED doesn't take effect (new
+`ISSUES.md` entry, not yet root-caused) — plausibly the same class of "reading a disk-backed
+stream" limitation already documented for local Watch Now's CC picker.
 
-Tested the raw FEED passthrough URL directly in VLC (bypassing the app's VLC bridge layer):
-- URL: `http://10.0.2.100:1980/auto/v2.4?dev=105404BE` (channel 2.4, show: Daniel Tiger's Neighborhood)
-- Result: **Stream exhibits same glitchy behavior in VLC as in the app's Watch button**
+**Side issue also fixed the same day**: `AppState.probeForNewDevices()`'s missing
+`recordableDevices`-equivalent filter (the "first FEED discovery throws a harmless TLS/JSON error"
+issue this file used to describe as open) — fixed, see `issues_resolved.md`.
 
-This is a critical finding: the glitchiness is **not** in the app's VLC bridge layer — it's in
-the relay itself or the network path between the machines. Rules out any VLC frame rate/buffering
-tuning on the app side as a potential fix.
-
-### Code Investigation Results (2026-09-07)
-
-Explored both `WebServer.swift` (server relay pump loop) and `VLCBridge.swift` (client playback):
-
-**Server side (WebServer.swift, pumpGrowingFile):**
-- No rate limiting, no artificial delays, no sleep() calls
-- Pumps 37.6 KB (200 MPEG-TS packets) per chunk in tight recursive loop
-- Uses `sendWithTimeout` with 86400s timeout (essentially unbounded)
-- Logs bytes via `bytesSent + chunk.count` (raw NWConnection send bytes)
-- **NO backpressure handling** — doesn't check `conn.isViable`, doesn't wait for send window readiness
-
-**Client side (VLCBridge.swift):**
-- Recording relay forces `minRate = 1.0`, **disabling rate ramp entirely**
-- Logs bytes via libvlc's `i_demux_read_bytes` (demux layer, NOT raw socket)
-- No rate limiting, no bandwidth caps
-- Uses `--network-caching=300` for relay (300ms demux buffer, not a throttle)
-
-**Byte measurement semantic mismatch:**
-- Server logs measure raw NWConnection bytes (post-HTTP header)
-- Client logs measure demux-consumed bytes (post-network decode)
-- Both correct for their layers, but accounts for only part of the discrepancy
-
-**What is NOT causing the issue:**
-- ✗ Client-side rate ramping (disabled for relay)
-- ✗ Rate limiter in playback path (none found)
-- ✗ Bandwidth cap (no libvlc options, no code throttling)
-- ✗ Artificial delays (no sleep, no asyncAfter)
-
-**Primary suspects for 1/5th reduction:**
-1. Disk I/O bottleneck — recording file write doesn't keep up; `pumpGrowingFile` hits EOF frequently and polls
-2. Queue contention — shared DispatchQueue for all WebServer I/O; concurrent SSE broadcasts could back up relay sends
-3. TCP flow control — client's receive window fills faster than it drains
-4. Network asymmetry — "4.16 Mbps" is ideal encode rate, not actual disk write rate
-5. VLC demux buffering interaction — 300ms cache might pace reads differently than sender paces sends
-
-### Diagnostic Log Analysis (2026-09-07 Live Session)
-
-**Server relay send milestones while VLC stream was playing** (2026-09-07 14:15–14:24):
-- 125 MB at 14:15:22 → 190 MB at 14:24:54 = 65 MB in 9m 32s
-- Each 5 MB milestone: ~40–48 seconds, averaging **45 seconds per 5 MB**
-- **Throughput: 5,000,000 bytes / 45 seconds = 111 KB/s ≈ 0.89 Mbps**
-- Pattern is **extremely consistent** (not random jitter) — traces a systematic bottleneck
-
-**At 37.6 KB chunks per iteration:** 5 MB ÷ 37.6 KB = 133 chunks per milestone; 45 seconds ÷ 133 chunks = **0.34 seconds per pump-loop iteration**
-
-**Diagnosis: TCP send-buffer backpressure**
-
-The server's `pumpGrowingFile` loop reads a chunk and calls `conn.send(content:completion:)` on a serial queue. If the remote receiver's TCP window fills (drains slower than we send), the OS TCP stack queues bytes in a kernel send buffer rather than immediately transmitting. The server's `.contentProcessed` callback fires when the OS *accepts* the data for transmission, not when it's been *transmitted*. As the send buffer fills, the next `send()` call in the pump loop waits for the kernel to drain bytes to the network.
-
-**Why this persists even on a static (complete) file:** The 0.34s per-chunk latency is inherent to the cross-subnet network path (10.0.2.x → 10.0.3.x with a router/Wi-Fi hop), not dependent on file freshness.
-
-**Why there are no visible errors:** The code still works correctly — no timeouts, no disconnects, no packet loss. Just slow.
-
-## Fix Implemented: Rate-Paced Relay (2026-09-07)
-
-Instead of pumping data greedily, the relay now **paces sends to match the actual stream bitrate**:
-
-**What changed:**
-1. `streamGrowingFile()` calculates bitrate from the recording's duration and file size:
-   - If duration is known: `bitrate = (file_size_bytes * 8) / duration_seconds` (bits/sec)
-   - Else: default to 5 Mbps (typical MPEG-2 HD)
-2. Bitrate is threaded through `pumpGrowingFile` → `handleGrowingFileChunk` calls
-3. Each chunk send calculates expected time: `chunk_bits / bitrate`
-4. If send completes faster than expected, a proportional delay is added before the next pump iteration
-5. This throttles the pump loop to match the actual stream rate
-
-**Example:** For 37.6 KB chunks at 5 Mbps:
-- Expected time per chunk: (37600 bytes * 8 bits) / 5,000,000 bits/sec = 0.06 seconds
-- Actual send might complete in 0.02 seconds (fast local send)
-- Delay: 0.04 seconds added before next pump
-- Result: consistent 5 Mbps output rate instead of greedy 50+ Mbps bursts
-
-**Why this fixes the glitchiness:**
-- Server and client now send/receive at the same rate
-- No buffer accumulation in kernel TCP send buffers
-- No artificial 0.89 Mbps throttling from backpressure
-- Smooth, natural flow control
-
-**Log output change:**
-- Old: `watch-recording OPEN show=... path=... startOffset=...`
-- New: `watch-recording OPEN show=... path=... startOffset=... bitrate=5000kbps` (shows effective bitrate)
-
-**Status: 2026-09-07 Investigation Complete** — Identified root cause and solution path.
-
-### Root Cause: Dynamic Bitrate + Hardcoded Pacing
-
-**Key findings:**
-1. Direct HDHR streaming (port 5004) **is smooth** — baseline works perfectly
-2. Relay was delivering in bursts → VLC rebuffered constantly
-3. **Bitrate is dynamic per-channel**, not fixed:
-   - WCCO-DT (4.1): varies 4.36–6.19 Mbps depending on content
-   - TPT Kids (2.4): varies 2.60 Mbps
-4. We hardcoded 5 Mbps pacing → when real bitrate dropped to 4.36 Mbps, relay throttled too much and became slow
-
-### Solution Implemented: Constant-Rate Pacing (260907-1016)
-
-**What works:**
-- Constant-rate pacing with delays between chunks ✓
-- Logging shows pacing applied correctly ✓
-- Changed default to 6 Mbps (closer to typical broadcast rate) ✓
-
-**What's missing:**
-- Need to query HDHR device's actual `/status.json` NetworkRate per channel
-- Should match tuner0's NetworkRate (the relay tuner) for that specific show
-- Bitrate must be dynamic to handle channel variation
-
-**Next step:** Query HDHR status endpoint for actual NetworkRate when relay starts, use that rate for pacing instead of hardcoded default.
-
----
-
-## Next: Reproduce & Verify the Fix
-
-1. Schedule a fresh recording (source machine)
-2. Play on laptop via direct VLC URL
-3. Observe: playback should be smooth, no stuttering
-4. Check logs: `sent N MB so far` milestones should arrive at normal speeds (e.g., every 10-15 seconds for a typical MPEG-2 stream, not the old 45-second intervals)
-5. Compare throughput logs: server send rate should now match bitrate calculation (5000kbps default, or calculated from duration)
-
-## Known, already-logged but unfixed side issue
-
-`AppState.probeForNewDevices()` (`AppState.swift` ~line 1157-1162) doesn't filter newly-discovered
-relay devices before an errant guide-fetch attempt, so the *first* time a FEED appears (or
-disappears) after a device-probe cycle, the viewer's log shows a real (harmless) network/JSON
-error (`NETWORK ERROR ... TLS error` or `DecodingError.dataCorrupted ... Unexpected character 'o'
-in expected null value`) — reproduced twice live this session. Logged in `TODO.md` under
-"Recording" with the exact fix scoped (filter `newDevices` to exclude `isVirtualRelay` before the
-`guideStore.loadAll` call) but not yet applied — ask to have it fixed if it's noisy.
+**New tooling from this investigation, useful for the next one**:
+- The `hdhrvcrplus://watch?dev=<id>&channel=<channel>` URL scheme (see "Watching it" above) — no
+  more needing a human at the laptop for every test iteration.
+- The `windowVisible` tick-diagnostic field — settles the "is this a real stall or just a
+  backgrounded window" question that ate a lot of time earlier in this same investigation.
+- A raw-socket byte-level sampler script (ad hoc, not committed — recreate as needed: connect,
+  skip HTTP headers, log `recv()` size + inter-arrival gap for a few seconds) — this is what
+  actually found the cadence mismatch; throughput/bitrate math alone (the bulk of this file's
+  now-superseded earlier sections) never would have.

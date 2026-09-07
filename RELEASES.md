@@ -9,12 +9,14 @@ What's new in each version. For the fuller list of changes within a version, see
 ## v2.3.0 (2026-09-07)
 
 ### Added
-- **Recording FEED** — watch an in-progress recording live from another Mac on your LAN, without
-  tying up a second tuner. Off by default (Settings → Sharing → "Rebroadcast In-Progress
+- **Recording FEED (Beta)** — watch an in-progress recording live from another Mac on your LAN,
+  without tying up a second tuner. Off by default (Settings → Sharing → "Rebroadcast In-Progress
   Recordings," or during first-run setup). A discovering Mac sees it appear under "Recording on
-  Another Mac" within about a second.
+  Another Mac," labeled with which Mac it's from, within about a second. Marked Beta — occasional
+  playback hiccups, and switching audio/CC tracks while watching, are known limitations.
 - **FEED viewing extras** — an H.264 transcode option for clients that can't play raw MPEG-2,
-  auto-play, a live viewer count, and an estimated signal-quality reading from the source Mac.
+  auto-play with a plain "Buffering…" indicator, a live viewer count, and an estimated
+  signal-quality reading from the source Mac.
 - **Closed captions now carry through a FEED's raw (non-transcoded) stream.**
 
 ### Updated
@@ -24,7 +26,8 @@ What's new in each version. For the fuller list of changes within a version, see
 - **Fixed: FEED playback from another Mac could stutter and freeze for stretches of several
   seconds to half a minute, then resume.** Traced to how this Mac delivered the video data — large
   bursts followed by long silent gaps — rather than the network or the receiving Mac's player.
-  Fixed by matching a real HDHomeRun tuner's own smooth, continuous delivery pattern.
+  Fixed by matching a real HDHomeRun tuner's own smooth, continuous delivery pattern — a real,
+  measured improvement, though not a complete fix (see the Beta note above).
 - **Fixed: buffering could take real minutes instead of the intended ~8 seconds**, leaving
   playback running noticeably slow (and audio slightly out of sync) the whole time.
 - **Fixed: a FEED viewer joining right at the live edge could get a corrupted first moment**
