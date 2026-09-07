@@ -361,11 +361,14 @@ off) still works correctly across the step boundary — both bools are the same 
 `@State`, just read from a later step now instead of the same screen. See "Steps" below for the
 config-commit details.
 
-### Step 4 — Recording FEED
+### Step 4 — Recording FEED (Beta)
 An animated diagram (`NetworkFlowDiagram`) showing two devices connected by a line — signal rings
 broadcasting from the recording Mac, small packets flowing along the line to the watching one —
-above two short paragraphs of plain-language explanation and one `Toggle`. See "Steps" below for
-the config-commit details.
+above two short paragraphs of plain-language explanation and one `Toggle`. The headline and both
+the screen's own body text and the toggle's `InfoButton` carry a "(Beta)"/beta-caveat callout,
+added 2026-09-07, naming occasional playback hiccups and non-working audio/CC track switching as
+known limitations on the watching Mac — see `ISSUES.md`. See "Steps" below for the config-commit
+details.
 
 ### Step 5 — Notification Timing
 Up Next / Recording Soon lead-time minutes, same `Stepper` controls and warning banner (shown when
@@ -480,7 +483,7 @@ another app's own UI wouldn't re-theme itself — with three decorative traffic-
 Respects Reduce Motion (freezes on the fully-typed line with cursor showing) and is
 `.accessibilityHidden(true)`, same conventions as every other diagram here.
 
-### Step 4 — Recording FEED
+### Step 4 — Recording FEED (Beta)
 Leads with `NetworkFlowDiagram(...)` (see its own section below), then a short plain-language
 explanation of the virtual-tuner relay (`docs/VirtualTunerService.md`) — what it is and what it
 can't do — then one `Toggle` bound to local `@State relayEnabled` (default `false`, mirroring

@@ -446,8 +446,8 @@ struct FirstRunWizardView: View {
         Form {
             Section {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Recording FEED").font(.headline)
-                    Text("Watch a recording that's already in progress from another Mac — live, without spending a second tuner. You can change this later in Settings → Sharing.")
+                    Text("Recording FEED (Beta)").font(.headline)
+                    Text("Watch a recording that's already in progress from another Mac — live, without spending a second tuner. You can change this later in Settings → Sharing. Occasional playback hiccups, and switching audio/CC tracks while watching, are known limitations still being worked on.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -474,7 +474,7 @@ struct FirstRunWizardView: View {
 
             Section {
                 Toggle(isOn: $relayEnabled) {
-                    HStack { Text("Rebroadcast In-Progress Recordings"); InfoButton("Off by default. Turn this on if you'd like another Mac running this app to watch a recording already in progress.") }
+                    HStack { Text("Rebroadcast In-Progress Recordings"); InfoButton("Off by default. Turn this on if you'd like another Mac running this app to watch a recording already in progress. Beta: occasional playback hiccups on the watching Mac are a known limitation still being worked on.") }
                 }
             }
         }
@@ -551,7 +551,7 @@ struct FirstRunWizardView: View {
         case .recordingDefaults:  return "Recording Defaults"
         case .webLAN:             return "Web LAN"
         case .terminalGuide:      return "Terminal Guide"
-        case .recordingRelay:     return "Recording FEED"
+        case .recordingRelay:     return "Recording FEED (Beta)"
         case .notificationTiming: return "Notification Timing"
         }
     }

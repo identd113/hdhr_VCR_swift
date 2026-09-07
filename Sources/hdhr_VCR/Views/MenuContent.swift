@@ -170,7 +170,7 @@ struct MenuContent: View {
         // same filter/flatMap locally, so the two surfaces can't drift apart.
         let remoteRelayEntries = state.remoteRelayEntries
         if !remoteRelayEntries.isEmpty {
-            Section("Recording on Another Mac") {
+            Section("Recording on Another Mac (Beta)") {
                 ForEach(remoteRelayEntries, id: \.entry.URL) { pair in
                     let title = pair.entry.virtualRelayShowTitle ?? pair.entry.GuideName
                     let vlcReady = VLCBridge.shared.isAvailable
