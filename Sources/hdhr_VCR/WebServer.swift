@@ -805,7 +805,9 @@ final class WebServer: @unchecked Sendable {
         // Mirrors relayRawViewerConnected's shape — see AppState.transcodeViewerCount's own doc
         // comment for why this reactive aggregate exists alongside VLCBridge's own per-show count.
         appState?.transcodeViewerConnected()
-        let header = "HTTP/1.1 200 OK\r\nContent-Type: video/mp2t\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\n\r\n"
+        // Connection: close — see streamGrowingFile's identical header for why keep-alive is
+        // wrong here too (no Content-Length/chunked framing on an open-ended stream).
+        let header = "HTTP/1.1 200 OK\r\nContent-Type: video/mp2t\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n"
         // weak appState captured independently of self here (rather than via self?.appState after
         // the guard below) — inside a `guard let self ... else` block the shadowed `self` isn't
         // bound yet, so this sidesteps that ambiguity entirely rather than relying on it.
@@ -904,7 +906,14 @@ final class WebServer: @unchecked Sendable {
             if error != nil, !hadData {
                 onFailedBeforeAnyData()
             } else {
-                finishOnce()
+                // Hopped onto targetQueue, matching onFailedBeforeAnyData's own sibling call just
+                // above — this delegate method runs on URLSession's private delegate queue, not
+                // targetQueue, same as that branch's own comment already explains. finishOnce()
+                // calls onFinished (pumpTranscodeProxy's cleanup), which touches conn/urlSession;
+                // every other path into cleanup() already runs on targetQueue, so this stops being
+                // the one exception relying on cleanup()'s own APIs happening to be thread-safe
+                // incidentally. Found in code review 2026-09-07 — see ISSUES.md.
+                targetQueue.async { [weak self] in self?.finishOnce() }
             }
         }
     }
@@ -1099,42 +1108,56 @@ final class WebServer: @unchecked Sendable {
     // connection-lifecycle bookkeeping; local Watch Now (handleWatchRecording) passes nil and isn't
     // counted, since it's this Mac's own playback, not an outbound stream to another machine.
     private func streamGrowingFile(path: String, showId: String, startOffset: Int, conn: NWConnection,
-                                    durationSeconds: Int? = nil, bitrate: Double? = nil, onStreamEnded: (() -> Void)? = nil) {
+                                    durationSeconds: Int? = nil, onStreamEnded: (() -> Void)? = nil) {
         guard let handle = FileHandle(forReadingAtPath: path) else {
             queue.async { self.send(.notFound("could not open recording file"), on: conn) }
             onStreamEnded?()
             return
         }
         var initialBytes = 0
+        // Read unconditionally (not just inside the startOffset>0 clamp below) — also drives the
+        // backlog-vs-live-edge chunk-size decision just below, which needs to know the file's real
+        // size even when startOffset is 0 (a fresh Watch Now session with no seek yet still has a
+        // real backlog from byte 0 to the recording's current length).
+        let currentSizeAtConnect = (try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? Int
         if startOffset > 0 {
             // Clamp to the file's current size so a stale/racy offset (e.g. computed just before
             // the recording restarted) can't seek past EOF — it'll just enter the normal
             // wait-for-more-data poll below instead of erroring.
-            let currentSize = (try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? Int
-            let clamped = min(startOffset, currentSize ?? startOffset)
+            let clamped = min(startOffset, currentSizeAtConnect ?? startOffset)
             let aligned = Self.alignedToTSPacketBoundary(clamped)
             handle.seek(toFileOffset: UInt64(aligned))
             initialBytes = aligned
         }
+        // Backlog vs. live-edge: handleVirtualTunerStream's FEED path always joins at the file's
+        // exact current size (zero backlog, by construction — see its own comment), so this is
+        // only ever "large" for handleWatchRecording's native Watch Now relay, which can have a
+        // real multi-MB backlog to drain quickly right after a scrub-bar seek. Read this many bytes
+        // per chunk only while there's still a meaningful backlog; handleGrowingFileChunk downgrades
+        // to the small, cadence-friendly watchRecordingChunkSize the moment a read comes back short
+        // (see its own comment) — a one-way transition once real-time catch-up is reached. See
+        // ISSUES.md's "watchRecordingChunkSize's 2026-09-07 shrink... also applies to the Watch Now
+        // backlog-catch-up path" entry this fixes.
+        let hasBacklog = (currentSizeAtConnect ?? initialBytes) - initialBytes > Self.watchRecordingChunkSize
+        let initialChunkSize = hasBacklog ? Self.watchRecordingBacklogChunkSize : Self.watchRecordingChunkSize
         // Computed once here, not re-derived from durationSeconds on every recursion — a fixed
         // wall-clock deadline the whole relay chain threads through and checks, not a countdown.
         let deadline = durationSeconds.map { Date().addingTimeInterval(Double($0)) }
 
-        // Use bitrate parameter (queried from HDHR device via MainActor context), or calculate from file as fallback.
-        // If neither available, use 6 Mbps default for MPEG-2 HD (typical for broadcast streams like WCCO).
-        let effectiveBitrate = bitrate ?? {
-            if let durationSec = durationSeconds, durationSec > 0 {
-                let fileSize = (try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? Int ?? 0
-                return Double(max(fileSize, initialBytes) * 8) / Double(durationSec) // bits per second
-            } else {
-                return 6_000_000  // 6 Mbps default (matched to observed WCCO broadcast bitrate)
-            }
-        }()
-
-        let header = "HTTP/1.1 200 OK\r\nContent-Type: video/mp2t\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\n\r\n"
-        let bitrateKbps = Int(effectiveBitrate / 1000)
-        let paceDelayMs = Int((Double(Self.watchRecordingChunkSize) * 8.0 / effectiveBitrate) * 1000)
-        glog("[WebServer] watch-recording OPEN show=\(showId) bitrate=\(bitrateKbps)kbps pacing=\(paceDelayMs)ms/chunk path=\(path) startOffset=\(initialBytes)")
+        // Connection: close, not keep-alive — this response never carries Content-Length or
+        // Transfer-Encoding: chunked (the body length is genuinely unknown, since it's whatever
+        // the recording grows to), so per RFC 7230 §3.3.3 the only valid framing here is "read
+        // until the connection closes." Declaring keep-alive on top of that is the actual
+        // contradiction: it promises the connection stays open for a next request that can never
+        // come, on a response whose own length can only be signaled by that same connection
+        // eventually closing. Found live 2026-09-07 investigating why a real HDHomeRun tuner's own
+        // direct stream (also close-terminated, but says so correctly) played smoothly while this
+        // relay didn't — a spec-compliant HTTP client reading this response has no reliable way to
+        // tell "more data is coming" from "the server is about to close on me," which is a
+        // plausible reason for VLC's HTTP access module to read defensively/conservatively rather
+        // than pulling data as fast as it's available.
+        let header = "HTTP/1.1 200 OK\r\nContent-Type: video/mp2t\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n"
+        glog("[WebServer] watch-recording OPEN show=\(showId) path=\(path) startOffset=\(initialBytes)")
         queue.async { [weak self] in
             guard let self else { return }
             self.sendWithTimeout(Data(header.utf8), on: conn, timeout: Self.growingFileNoTimeout) { [weak self] reason in
@@ -1147,24 +1170,46 @@ final class WebServer: @unchecked Sendable {
                 }
                 self.pumpGrowingFile(handle: handle, showId: showId, conn: conn,
                                       bytesSent: initialBytes, waitStreak: 0, waitStartedAt: nil, deadline: deadline,
-                                      bitrate: effectiveBitrate, chunkStartTime: Date(), onStreamEnded: onStreamEnded)
+                                      chunkSize: initialChunkSize, onStreamEnded: onStreamEnded)
             }
         }
-    }
-
-    // HDHR /status.json tuner entry (partial decode for NetworkRate only)
-    private struct HDHRTunerStatus: Codable {
-        let VctNumber: String?
-        let NetworkRate: Int
     }
 
     // Size of one MPEG-TS packet — the unit alignedToTSPacketBoundary(_:) rounds down to, and
     // watchRecordingChunkSize below is a multiple of.
     private static let tsPacketSize = 188
 
-    // 200 MPEG-TS packets (188 bytes each) per read — keeps TS packet alignment without
-    // materially affecting latency.
-    private static let watchRecordingChunkSize = tsPacketSize * 200
+    // 8 MPEG-TS packets (188 bytes each) per read — shrunk from 200 (37.6KB) 2026-09-07 after a
+    // direct byte-level comparison against the real HDHomeRun tuner's own port-5004 stream (see
+    // ISSUES.md's FEED stall entry): a raw socket sampler recording recv() sizes/gaps for both
+    // showed the real device delivers an average 1497-byte chunk with inter-arrival gaps mostly
+    // under 20ms and never over 80ms, while this relay — even measured over loopback, before any
+    // network hop — was averaging 34.8KB chunks with ~15% of reads landing on the hardcoded 500ms
+    // "caught up, wait" poll below, i.e. burst-then-go-silent-for-half-a-second, repeatedly, for
+    // the life of a connection. That gap pattern is a plausible direct cause of the PCR-vs-wall-
+    // clock drift VLC's own `--file-logging` debug output already named as the actual stall
+    // trigger. 8 packets (1504 bytes) matches the real device's measured average almost exactly.
+    // The earlier 200-vs-2000-packet chunk-size test noted below found no *throughput* difference
+    // between those two — this change targets delivery *granularity/cadence*, not throughput,
+    // which that test never varied.
+    private static let watchRecordingChunkSize = tsPacketSize * 8
+
+    // The pre-2026-09-07 chunk size (200 packets, 37.6KB), kept only for the initial backlog-drain
+    // phase of a connection that starts behind the live edge (see streamGrowingFile's own
+    // `hasBacklog` comment) — handleGrowingFileChunk downgrades to the small, cadence-friendly
+    // watchRecordingChunkSize the moment a read comes back short, which never happens while a real
+    // backlog remains, only once catch-up reaches real-time. Restores the old, already-tested-fine
+    // throughput for the one case that still needs it (a fast scrub-bar catch-up), without
+    // reintroducing the old cadence at the live edge, which is what actually caused the FEED stall.
+    private static let watchRecordingBacklogChunkSize = tsPacketSize * 200
+
+    // How often pumpGrowingFile retries a read once it's caught up to the live edge, and how many
+    // of those retries happen between each MainActor "is the show still recording" check — see
+    // handleGrowingFileChunk's own comment on why these are separate cadences. 25 polls * 20ms =
+    // ~500ms worst-case "recording just stopped" detection latency, matching the flat 500ms this
+    // replaced exactly, while the read-retry itself now happens far more often.
+    private static let liveEdgePollInterval: TimeInterval = 0.02
+    private static let stillRecordingCheckEveryNPolls = 25
 
     // Rounds a byte offset down to the nearest complete TS packet boundary — `offset` is usually
     // the recording file's momentary byte size (handleVirtualTunerStream's live-edge startOffset),
@@ -1188,8 +1233,7 @@ final class WebServer: @unchecked Sendable {
     // between file reads and socket sends.
     private func pumpGrowingFile(handle: FileHandle, showId: String, conn: NWConnection,
                                   bytesSent: Int, waitStreak: Int, waitStartedAt: Date?, deadline: Date? = nil,
-                                  bitrate: Double = 5_000_000, chunkStartTime: Date = Date(),
-                                  onStreamEnded: (() -> Void)? = nil) {
+                                  chunkSize: Int = watchRecordingChunkSize, onStreamEnded: (() -> Void)? = nil) {
         // Checked once per recursion (covers both the "have data" and "waiting" paths below) —
         // without this, a connection cancelled while the loop is in its 0.5s wait-for-more-data
         // poll (the common state once caught up to the live edge) wouldn't be noticed until a
@@ -1214,39 +1258,63 @@ final class WebServer: @unchecked Sendable {
         }
         fileIOQueue.async { [weak self] in
             guard let self else { return }
-            let chunk = handle.readData(ofLength: Self.watchRecordingChunkSize)
+            let chunk = handle.readData(ofLength: chunkSize)
             self.queue.async {
                 self.handleGrowingFileChunk(chunk, handle: handle, showId: showId, conn: conn,
                                              bytesSent: bytesSent, waitStreak: waitStreak, waitStartedAt: waitStartedAt,
-                                             deadline: deadline, bitrate: bitrate, chunkStartTime: chunkStartTime,
-                                             onStreamEnded: onStreamEnded)
+                                             deadline: deadline, chunkSize: chunkSize, onStreamEnded: onStreamEnded)
             }
         }
     }
 
     // The continuation of pumpGrowingFile once a chunk (or an empty read, meaning "caught up to
     // EOF for now") comes back from fileIOQueue — always runs on `queue`, same as the rest of this
-    // file's connection handling.
+    // file's connection handling. `chunkSize` is the size that was just read with — see this
+    // function's own handling below for how it can shrink (never grow) as a connection catches up
+    // from an initial backlog to real-time.
     private func handleGrowingFileChunk(_ chunk: Data, handle: FileHandle, showId: String, conn: NWConnection,
                                          bytesSent: Int, waitStreak: Int, waitStartedAt: Date?, deadline: Date? = nil,
-                                         bitrate: Double = 5_000_000, chunkStartTime: Date = Date(),
-                                         onStreamEnded: (() -> Void)? = nil) {
+                                         chunkSize: Int, onStreamEnded: (() -> Void)? = nil) {
         guard !chunk.isEmpty else {
             // Caught up to what curl has written so far — poll until either more data lands or
             // the recording finishes, instead of ending the stream the moment we hit today's EOF.
+            //
+            // Poll interval shrunk from a flat 500ms to 20ms 2026-09-07 — a direct byte-level
+            // comparison against the real HDHomeRun tuner's own port-5004 stream (raw socket
+            // sampler logging recv() sizes/gaps for both, see watchRecordingChunkSize's own
+            // comment and ISSUES.md's FEED stall entry) found the real device delivers data with
+            // inter-arrival gaps almost always under 20ms and never over 80ms, while this relay's
+            // old 500ms poll meant ~15% of reads landed on a hard burst-then-silent-for-half-a-
+            // second pattern — a plausible direct trigger for the PCR-vs-wall-clock drift VLC's
+            // own debug logs already named as the actual stall cause. The MainActor stillRecording
+            // check only runs every Nth poll (still-recording detection stays bounded at the same
+            // ~500ms worst case as before) rather than every 20ms poll, so this doesn't turn into
+            // 50 MainActor hops/sec per connection — the interim polls just retry the read
+            // directly on `queue`.
+            let startedAt = waitStartedAt ?? Date()
+            if waitStreak == 0 {
+                glog("[WebServer] watch-recording show=\(showId) caught up to live edge at \(bytesSent) bytes — waiting for more data")
+            }
+            // Force the small chunk size from here on, regardless of what chunkSize was reading
+            // with — reaching a genuine empty read means there's no backlog left to drain, by
+            // definition, even if the non-empty branch below never happened to see a short read
+            // (e.g. a backlog that was an exact multiple of watchRecordingBacklogChunkSize).
+            guard waitStreak % Self.stillRecordingCheckEveryNPolls == 0 else {
+                self.queue.asyncAfter(deadline: .now() + Self.liveEdgePollInterval) { [weak self] in
+                    self?.pumpGrowingFile(handle: handle, showId: showId, conn: conn,
+                                           bytesSent: bytesSent, waitStreak: waitStreak + 1, waitStartedAt: startedAt,
+                                           deadline: deadline, chunkSize: Self.watchRecordingChunkSize, onStreamEnded: onStreamEnded)
+                }
+                return
+            }
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 let stillRecording = self.appState?.shows.first(where: { $0.show_id == showId })?.show_recording ?? false
                 if stillRecording {
-                    let startedAt = waitStartedAt ?? Date()
-                    if waitStreak == 0 {
-                        glog("[WebServer] watch-recording show=\(showId) caught up to live edge at \(bytesSent) bytes — waiting for more data")
-                    }
-                    self.queue.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                    self.queue.asyncAfter(deadline: .now() + Self.liveEdgePollInterval) { [weak self] in
                         self?.pumpGrowingFile(handle: handle, showId: showId, conn: conn,
                                                bytesSent: bytesSent, waitStreak: waitStreak + 1, waitStartedAt: startedAt,
-                                               deadline: deadline, bitrate: bitrate, chunkStartTime: Date(),
-                                               onStreamEnded: onStreamEnded)
+                                               deadline: deadline, chunkSize: Self.watchRecordingChunkSize, onStreamEnded: onStreamEnded)
                     }
                 } else {
                     glog("[WebServer] watch-recording show=\(showId) recording finished, drained \(bytesSent) bytes — closing stream")
@@ -1260,6 +1328,13 @@ final class WebServer: @unchecked Sendable {
         if waitStreak > 0, let waitStartedAt {
             glog("[WebServer] watch-recording show=\(showId) resumed after \(String(format: "%.1f", Date().timeIntervalSince(waitStartedAt)))s wait (\(waitStreak) polls)")
         }
+        // A read that came back shorter than what was asked for means there wasn't a full
+        // chunkSize's worth of backlog actually sitting on disk — i.e. this connection has caught
+        // up to real-time, even if it started behind (watchRecordingBacklogChunkSize). Downgrade to
+        // the small, cadence-friendly size from here on; a full-size read (still draining backlog)
+        // keeps whatever size it's already using. One-way — never grows back, since a connection
+        // that's caught up to the live edge never needs to burst-drain again.
+        let nextChunkSize = chunk.count < chunkSize ? Self.watchRecordingChunkSize : chunkSize
         let newTotal = bytesSent + chunk.count
         if newTotal / (5 * 1_048_576) > bytesSent / (5 * 1_048_576) {
             glog("[WebServer] watch-recording show=\(showId) sent \(newTotal / 1_048_576) MB so far")
@@ -1278,25 +1353,22 @@ final class WebServer: @unchecked Sendable {
                 onStreamEnded?()
                 return
             }
-            // Constant-rate pacing: ATSC/OTA streams deliver at a fixed bitrate. Delay the next
-            // chunk read by exactly the time this chunk should take to transmit. This enforces
-            // the stream's native bitrate, preventing buffer bloat and matching the real tuner's
-            // delivery characteristics.
-            let chunkBits = Double(chunk.count) * 8.0
-            let pacingDelay = chunkBits / bitrate  // seconds — time this chunk should take to send
-            let pacingDelayMs = Int(pacingDelay * 1000)
-
-            self.queue.asyncAfter(deadline: .now() + pacingDelay) {
+            // No artificial pacing delay here — removed 2026-09-07 (was added in 744372d, "constant-
+            // rate pacing"). The recording file's own growth is already paced in real time by curl
+            // reading from the tuner; re-imposing a *second*, separately-computed, guessed-bitrate
+            // delay via a GCD timer on top of an already-correctly-paced source only added jitter
+            // instead of removing it. Live `--file-logging` VLC captures the same day showed the
+            // real failure mode was never insufficient average throughput — it was multi-second PCR
+            // jitter (`ES_OUT_SET_(GROUP_)PCR is called too late`) causing repeated decoder buffer
+            // resets, reproduced identically on both a 51-81%-signal channel and a 97%-signal one
+            // (ruling out over-the-air reception as the cause). Forwarding each chunk immediately —
+            // exactly as fast as it's read off disk, no added delay — lets delivery timing track the
+            // source's own real-time cadence directly instead of a second, less accurate guess at
+            // it. See ISSUES.md's FEED throughput/stall entry for the full trail this reverses.
+            self.queue.async {
                 self.pumpGrowingFile(handle: handle, showId: showId, conn: conn,
                                       bytesSent: newTotal, waitStreak: 0, waitStartedAt: nil, deadline: deadline,
-                                      bitrate: bitrate, chunkStartTime: Date(),
-                                      onStreamEnded: onStreamEnded)
-            }
-
-            // Log pacing milestones: every MB, show the actual pacing rate
-            if newTotal / (1_048_576) > bytesSent / (1_048_576) {
-                let expectedMbps = bitrate / 1_000_000
-                glog("[WebServer] watch-recording show=\(showId) pacing @\(String(format: "%.2f", expectedMbps))Mbps (\(pacingDelayMs)ms/chunk)")
+                                      chunkSize: nextChunkSize, onStreamEnded: onStreamEnded)
             }
         }
     }

@@ -57,6 +57,14 @@ final class VirtualTunerService {
     // reply-to-a-request branch so a socket bound purely for beginPassiveListening() (see its own
     // doc comment) never answers a real discovery probe with stale/zeroed-out advertised fields.
     private var isAdvertising = false
+    // The DeviceID most recently sent by *this instance's own* broadcastAnnounce() — set inside
+    // that function itself (not derived from isAdvertising/advertisedDeviceID) specifically so
+    // handleReadable()'s self-filter still recognizes a delayed loopback of stop()'s own "goodbye"
+    // broadcast even after isAdvertising has already been cleared. Deliberately never reset to nil
+    // by stop() — see handleReadable()'s own comment on why an unbounded-lifetime comparison here
+    // is the fix, not a new risk (the exact same "what if a real device shares this ID" tradeoff
+    // already existed in the old isAdvertising-gated check, just for a shorter window).
+    private var lastBroadcastDeviceID: UInt32?
 
     // Called (on `queue`) whenever an unsolicited DISCOVER_REPLY-shaped packet arrives from
     // somewhere other than this instance's own relay — see handleReadable()'s own comment on the
@@ -191,6 +199,11 @@ final class VirtualTunerService {
     /// actually advertised — both call sites (start()/stop() above) already guarantee this.
     private func broadcastAnnounce() {
         guard sock >= 0, isAdvertising else { return }
+        // Captured before the loop below — see this function's own lastBroadcastDeviceID field
+        // comment for why this must reflect the ID actually put on the wire here, independent of
+        // whatever advertisedDeviceID/isAdvertising become by the time a loopback of this exact
+        // packet is later read back.
+        lastBroadcastDeviceID = advertisedDeviceID
         let pkt = Self.buildDiscoverReply(deviceID: advertisedDeviceID, baseURL: advertisedBaseURL,
                                            tunerCount: advertisedTunerCount)
         var targets = HDHRManager.subnetBroadcastAddresses(interface: "")
@@ -254,7 +267,13 @@ final class VirtualTunerService {
         }
 
         if Self.isDiscoverReply(bytes), let announcedID = Self.deviceID(fromReplyPacket: bytes) {
-            guard !(isAdvertising && announcedID == advertisedDeviceID) else { return }   // our own broadcast looped back
+            // lastBroadcastDeviceID, not isAdvertising/advertisedDeviceID — those get cleared by
+            // stop() synchronously, in the same queue.async closure that just called
+            // broadcastAnnounce(), well before a loopback of that exact packet can actually be
+            // read back here. Comparing against isAdvertising's current value would make stop()'s
+            // own "goodbye" broadcast fail this self-filter and get misread as a genuine remote
+            // announce the instant it loops back — confirmed live 2026-09-07, see ISSUES.md.
+            guard announcedID != lastBroadcastDeviceID else { return }   // our own broadcast looped back
             let hex = String(format: "%08X", announcedID)
             glog("[VirtualTuner] unsolicited FEED announce from \(fromIP) DeviceID=\(hex)")
             onFeedAnnounce?(hex)

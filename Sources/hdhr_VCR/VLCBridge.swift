@@ -5,7 +5,13 @@ import CoreAudio
 // ── C struct mirrors matching libvlc header layouts exactly ──────────────────
 // Field order must match the structs in libvlc_media_player.h.
 
-// Mirrors libvlc_media_stats_t (VLC 3.x layout). Field order and types must match exactly.
+// Mirrors libvlc_media_stats_t (VLC 3.x layout) IN FULL — libvlc_media_get_stats writes every
+// field below regardless of which ones this file actually reads, so the mirror must match the
+// real struct's total size exactly. A short mirror (an earlier version of this struct stopped at
+// i_lost_pictures, 10 fields/40 bytes) still compiles and "works" right up until the C call
+// actually runs, at which point libvlc writes its full 15-field/60-byte struct into a buffer only
+// 40 bytes long — a real stack buffer overflow, silently dormant here for as long as the symbol
+// lookup below happened to fail (see that lookup's own doc comment for how that was found).
 // VLC 4.x changed this struct — if stats polling misbehaves on VLC 4, disable it.
 private struct VLCStats {
     var i_read_bytes:          Int32 = 0
@@ -18,6 +24,11 @@ private struct VLCStats {
     var i_decoded_audio:       Int32 = 0
     var i_displayed_pictures:  Int32 = 0
     var i_lost_pictures:       Int32 = 0
+    var i_played_abuffers:     Int32 = 0
+    var i_lost_abuffers:       Int32 = 0
+    var i_sent_packets:        Int32 = 0
+    var i_sent_bytes:          Int32 = 0
+    var f_send_bitrate:        Float = 0
 }
 
 // ── Function pointer typedefs (all @convention(c)) ───────────────────────────
@@ -38,7 +49,7 @@ private typealias vlc_mp_set_rate_fn     = @convention(c) (OpaquePointer?, Float
 private typealias vlc_mp_get_rate_fn     = @convention(c) (OpaquePointer?) -> Float
 private typealias vlc_mp_get_state_fn    = @convention(c) (OpaquePointer?) -> Int32
 private typealias vlc_mp_get_time_fn     = @convention(c) (OpaquePointer?) -> Int64   // libvlc_media_player_get_time — ms
-private typealias vlc_mp_get_stats_fn    = @convention(c) (OpaquePointer?, UnsafeMutableRawPointer?) -> Int32
+private typealias vlc_media_get_stats_fn = @convention(c) (OpaquePointer?, UnsafeMutableRawPointer?) -> Int32  // libvlc_media_get_stats — takes the media object, not the player
 private typealias vlc_video_get_size_fn  = @convention(c) (OpaquePointer?, UInt32, UnsafeMutablePointer<UInt32>?, UnsafeMutablePointer<UInt32>?) -> Int32
 private typealias vlc_get_version_fn     = @convention(c) () -> UnsafePointer<CChar>?
 private typealias vlc_track_desc_fn      = @convention(c) (OpaquePointer?) -> OpaquePointer?
@@ -204,7 +215,7 @@ final class VLCBridge: ObservableObject {
     private let _mpSetRate:     vlc_mp_set_rate_fn?
     private let _mpGetRate:     vlc_mp_get_rate_fn?
     private let _mpGetState:    vlc_mp_get_state_fn?
-    private let _mpGetStats:    vlc_mp_get_stats_fn?
+    private let _mpGetStats:    vlc_media_get_stats_fn?
     private let _mpGetTime:     vlc_mp_get_time_fn?
     private let _videoGetSize:  vlc_video_get_size_fn?
     private let _getVersion:    vlc_get_version_fn?
@@ -243,7 +254,18 @@ final class VLCBridge: ObservableObject {
         _mpSetRate    = sym("libvlc_media_player_set_rate")
         _mpGetRate    = sym("libvlc_media_player_get_rate")
         _mpGetState   = sym("libvlc_media_player_get_state")
-        _mpGetStats   = sym("libvlc_media_player_get_stats")
+        // NOT "libvlc_media_player_get_stats" — that symbol has never existed in libvlc (confirmed
+        // via `nm` against the bundled libvlc.dylib, VLC 3.0.23: only `libvlc_media_get_stats`
+        // exports, operating on the *media* object, not the player). The lookup silently returned
+        // nil here since this was first written, so every tick's stats block below was a no-op —
+        // no crash, no warning, just a permanently-skipped `if let getStats = _mpGetStats`. That
+        // means the "log every VLC tick unconditionally" diagnostics never actually ran on either
+        // machine in the 2026-09-07 FEED investigation; the "zero stalls" read from those logs
+        // reflected the check never firing, not clean playback. Found live 2026-09-07 while
+        // investigating why a real, currently-playing cross-machine FEED session had produced zero
+        // tick lines in ~16 minutes of runtime. See VLCStats's own doc comment for the struct-size
+        // bug this also silently avoided by never being called.
+        _mpGetStats   = sym("libvlc_media_get_stats")
         _mpGetTime    = sym("libvlc_media_player_get_time")
         _videoGetSize = sym("libvlc_video_get_size")
         _getVersion   = sym("libvlc_get_version")
@@ -290,8 +312,19 @@ final class VLCBridge: ObservableObject {
         // (calling) thread via a plain `defer` here would race the task and could free them
         // before it ever runs; nonisolated(unsafe) since these are plain C pointers with no
         // shared mutable state, same reasoning as inst/mp's own capture just below.
+        // --clock-jitter is a core "input" option controlling libvlc's own clock-sync module,
+        // not a per-media/demux setting — moved here from play()'s per-media
+        // libvlc_media_add_option() list 2026-09-07 after a live cross-machine FEED test showed
+        // the per-media form had no effect (same ~20-30s decode-stall pattern reproduced
+        // identically with it set). Same category-of-fix as the x264 keyint options just above:
+        // this codebase already found once that some core/global VLC options are silently
+        // ignored when passed per-media and only take effect from libvlc_new()'s global argv.
+        // 20000ms (20s) comfortably exceeds the 9.5s PCR jitter ISSUES.md's FEED investigation
+        // measured against VLC 3.0.23's 5000ms default. Harmless to set unconditionally on the
+        // one shared instance — every playback path (live tuner, FEED relay, recording relay)
+        // benefits from more clock-jitter tolerance, none needs less.
         nonisolated(unsafe) let vlcArgCStrings: [UnsafeMutablePointer<CChar>?] =
-            ["--sout-x264-keyint=30", "--sout-x264-min-keyint=30"].map { (s: String) in s.withCString { strdup($0) } }
+            ["--sout-x264-keyint=30", "--sout-x264-min-keyint=30", "--clock-jitter=20000"].map { (s: String) in s.withCString { strdup($0) } }
         Task.detached(priority: .userInitiated) { [weak self] in
             let vlcArgPointers: [UnsafePointer<CChar>?] = vlcArgCStrings.map { UnsafePointer($0) }
             // OpaquePointer isn't Sendable, but these are freshly-created VLC handles with no
@@ -439,6 +472,18 @@ final class VLCBridge: ObservableObject {
         // paying for 1.7s of buffering the relay path doesn't need — this is what lets Watch Now
         // catch up to the live edge (and start playback) much faster than a live tuner stream.
         let networkCachingMs = isRecordingRelay ? 300 : 2000
+        // prefetch-buffer-size (KiB) — VLC 3.0.23's "prefetch" stream_filter defaults to 16384
+        // KiB (16MB), confirmed via `VLC --longhelp --advanced`. ISSUES.md's "FEED playback still
+        // stalls in VLC specifically" entry's --file-logging captures named this exact module as
+        // periodically stopping draining the socket and forcing "a full buffer-reset-and-refill
+        // cycle from scratch rather than the continuous, small-cache top-up healthy playback
+        // should show" — live-tested 2026-09-07 with a global --clock-jitter bump alone (see
+        // libvlc_new()'s argv above) and the same ~20-30s decode stalls reproduced identically, so
+        // jitter tolerance isn't the actual mechanism. Shrinking the prefetch buffer 16x doesn't
+        // fix the underlying stall trigger either, but bounds how much has to be re-fetched each
+        // time one happens. Applied to both paths — even the local disk relay goes through the
+        // same "prefetch" stream_filter.
+        let prefetchBufferKiB = 1024
 
         // [self] here, not [weak self] — this closure only touches pre-extracted
         // nonisolated(unsafe) lets (mp, inst, media, etc.) and is otherwise transient (runs once,
@@ -455,7 +500,7 @@ final class VLCBridge: ObservableObject {
                 glog("[VLC] ERROR: libvlc_media_new_location returned nil for url=\(url)", level: .error)
                 return
             }
-            for opt in ["--network-caching=\(networkCachingMs)", "--drop-late-frames", "--avcodec-hurry-up", "--no-audio-time-stretch"] {
+            for opt in ["--network-caching=\(networkCachingMs)", "--prefetch-buffer-size=\(prefetchBufferKiB)", "--drop-late-frames", "--avcodec-hurry-up", "--no-audio-time-stretch"] {
                 opt.withCString { mediaAddOptFn?(media, $0) }
             }
             setMediaFn?(mp, media)
@@ -708,9 +753,9 @@ final class VLCBridge: ObservableObject {
         var readBytes: Int32? = nil
         var displayedPictures: Int32? = nil
         var lostPictures: Int32? = nil
-        if let getStats = _mpGetStats {
+        if let getStats = _mpGetStats, let media = currentMedia {
             var s = VLCStats()
-            let ok = withUnsafeMutableBytes(of: &s) { getStats(mp, $0.baseAddress) }
+            let ok = withUnsafeMutableBytes(of: &s) { getStats(media, $0.baseAddress) }
             if ok == 1 {
                 corruptDelta      = s.i_demux_corrupted - lastCorrupted
                 lastCorrupted     = s.i_demux_corrupted
@@ -744,28 +789,39 @@ final class VLCBridge: ObservableObject {
         // glitch, just the ramp working as designed.
         if isPlaying, minRate >= 1.0 || currentRate >= 0.999, let getTime = _mpGetTime {
             let nowMs = getTime(mp)
+            // Ground truth for the "was the window actually being composited" question the
+            // displayed/lost-pictures fields alone can't answer — added 2026-09-07 after a live
+            // FEED stall report where a 66-81s "stall" resolved with a huge one-tick burst of
+            // displayed pictures (900+), the exact signature of macOS suspending a non-visible
+            // window's compositing while decode kept queuing frames, then flushing on return —
+            // but with no way to confirm that from the log alone versus a genuine render-side
+            // hitch. NSWindow.occlusionState.contains(.visible) is false whenever the window is
+            // fully covered, minimized, on an inactive Space, or the display is asleep — exactly
+            // the conditions that would produce this pattern. Read on the MainActor (tickController
+            // already runs there via the Timer's own Task { @MainActor in ... }), so no thread hop.
+            let windowVisible = drawableView?.window?.occlusionState.contains(.visible) ?? false
             if let lastMs = lastTickTimeMs, let bytes = readBytes, let lastBytes = lastTickReadBytes {
                 let posDeltaMs   = nowMs - lastMs
                 let bytesDelta   = bytes - lastBytes
                 let displayDelta = displayedPictures.flatMap { d in lastDisplayedPictures.map { d - $0 } }
                 let lostDelta    = lostPictures.flatMap      { l in lastLostPictures.map      { l - $0 } }
                 let expectedMs   = Int64(Self.statsTimerInterval * 1000)
-                glog("[VLC] tick pos=+\(posDeltaMs)ms/\(expectedMs)ms bytes=+\(bytesDelta) displayed=+\(displayDelta ?? -1) lost=+\(lostDelta ?? -1) rate=\(String(format: "%.3f", currentRate))")
+                glog("[VLC] tick pos=+\(posDeltaMs)ms/\(expectedMs)ms bytes=+\(bytesDelta) displayed=+\(displayDelta ?? -1) lost=+\(lostDelta ?? -1) rate=\(String(format: "%.3f", currentRate)) windowVisible=\(windowVisible)")
                 // Under 60% of the expected real-time advance is a real, perceptible slowdown, not
                 // just scheduler jitter on the 3s Timer (which is real but small next to this).
                 if posDeltaMs < Int64(Double(expectedMs) * 0.6) {
                     consecutiveStalledTicks += 1
                     if consecutiveStalledTicks == 1 {
                         let cause = bytesDelta > 0 ? "bytes still arriving (+\(bytesDelta)) — decode/render-side" : "no new bytes either — network-side"
-                        glog("[VLC] STALL — playback position advanced only \(posDeltaMs)ms of the expected \(expectedMs)ms, \(cause)", level: .warning)
+                        glog("[VLC] STALL — playback position advanced only \(posDeltaMs)ms of the expected \(expectedMs)ms, \(cause), windowVisible=\(windowVisible)", level: .warning)
                     }
                 } else if consecutiveStalledTicks > 0 {
                     let stalledFor = Double(consecutiveStalledTicks) * Self.statsTimerInterval
-                    glog("[VLC] STALL resolved after ~\(String(format: "%.1f", stalledFor))s (\(consecutiveStalledTicks) tick(s)) — position now advancing normally (+\(posDeltaMs)ms)")
+                    glog("[VLC] STALL resolved after ~\(String(format: "%.1f", stalledFor))s (\(consecutiveStalledTicks) tick(s)) — position now advancing normally (+\(posDeltaMs)ms), windowVisible=\(windowVisible)")
                     consecutiveStalledTicks = 0
                 }
                 if let lostDelta, lostDelta > 0 {
-                    glog("[VLC] \(lostDelta) frame(s) dropped this tick (displayed +\(displayDelta ?? -1)) — window may be backgrounded, or a real render-side hitch if it's frontmost")
+                    glog("[VLC] \(lostDelta) frame(s) dropped this tick (displayed +\(displayDelta ?? -1)) — windowVisible=\(windowVisible)\(windowVisible ? " (real render-side hitch, not backgrounding)" : " (window not visible — likely explains this)")")
                 }
             }
             lastTickTimeMs = nowMs

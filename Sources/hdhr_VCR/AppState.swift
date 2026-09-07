@@ -1159,7 +1159,18 @@ final class AppState: ObservableObject {
         glog("[DeviceProbe] \(newDevices.count) new tuner(s): \(newDevices.map { $0.DeviceID }.joined(separator: ", "))")
         devices.append(contentsOf: newDevices)
         await fetchAllLineups(for: newDevices)
-        let results = await guideStore.loadAll(devices: newDevices, hours: config.GuideHours, useXML: config.Guide_use_xml)
+        // recordableDevices-equivalent filter — the one guide-fetch call site in this file that was
+        // missing it (every sibling, fetchAllGuides()/performFetchAllGuides(), is already scoped
+        // this way). A newly-discovered virtual-tuner relay has no real SiliconDust cloud guide to
+        // fetch — GuideStore.load() would fire a real request against the relay's fabricated
+        // LocalIP/no-DeviceAuth identity and fail. Live-caught 2026-09-06 in exactly this shape
+        // (see TODO.md's "FEED consumers should get a minimal, locally-sourced 'now playing'
+        // guide/lineup" entry) and made more likely to trigger by this same release's near-real-
+        // time FEED discovery push (onFeedAnnounce → probeForNewDevices() fires immediately on any
+        // unsolicited FEED broadcast, not just the ~10s idle-loop poll). fetchAllLineups above is
+        // unaffected — a relay's own /lineup.json is a real, legitimate fetch this app relies on.
+        let guideFetchDevices = newDevices.filter { !$0.isVirtualRelay }
+        let results = await guideStore.loadAll(devices: guideFetchDevices, hours: config.GuideHours, useXML: config.Guide_use_xml)
         for (deviceId, ok) in results {
             if ok { guideApiBackoff.removeValue(forKey: deviceId) }
             else  { guideApiBackoff[deviceId, default: APIBackoff()].recordFailure() }
