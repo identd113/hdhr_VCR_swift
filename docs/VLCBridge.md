@@ -41,7 +41,7 @@ func sym<T>(_ name: String) -> T? {
 `isAvailable` is set to `true` only when both `libvlc_new` and `libvlc_media_player_new` resolved — the minimum two symbols needed to actually play anything.
 
 On success, init creates:
-1. A libvlc instance via `libvlc_new(0, nil)` — no extra argv; VLC's defaults are fine
+1. A libvlc instance via `libvlc_new(argc, argv)` — **not empty argv**, as of 2026-09-04/07: `--sout-x264-keyint=30`/`--sout-x264-min-keyint=30` (x264 GOP length, only exercised by a future transcode *encode* session, never by on-screen playback — see "Transcode Sessions" below) and `--clock-jitter=20000` (raises libvlc's own PCR/wall-clock jitter tolerance from its 5000ms default; moved here from a per-media option 2026-09-07 after live testing showed the per-media form had no effect — some core VLC options are silently ignored unless set at instance-creation time, a pattern first found with the x264 options and confirmed again with this one). Harmless to set unconditionally on the one shared instance.
 2. A media player via `libvlc_media_player_new(instance)` — the **no-media constructor**
 
 **Why no-media constructor**: `libvlc_media_player_new` takes only the instance and creates a player with no media attached. Media is set later via `libvlc_media_player_set_media`. This lets the same player object live for the entire session and switch channels without recreating it, which avoids re-attaching the drawable NSView on every channel change.
@@ -50,14 +50,17 @@ On success, init creates:
 
 ## Buffered Playback & Rate Controller
 
-Every `play(url:)` call applies four media options before starting:
+Every `play(url:)` call applies five per-media options before starting:
 
 ```swift
-"--network-caching=\(networkCachingMs)"  // 2000ms for a live stream, 300ms for the recording relay — see below
+"--network-caching=\(networkCachingMs)"      // 2000ms for a live stream, 300ms for the recording relay — see below
+"--prefetch-buffer-size=\(prefetchBufferKiB)" // 1024 KiB, down from VLC's own 16384 KiB default — added 2026-09-07
 "--drop-late-frames"         // drop corrupt/late frames rather than showing artifacts
 "--avcodec-hurry-up"         // drop non-essential B-frames under decode pressure
 "--no-audio-time-stretch"    // prevent audio init crash when sample rate is 0 on first MPEG-2 frame
 ```
+
+`--prefetch-buffer-size` targets the same VLC 3.0.23 "prefetch" stream_filter module a live FEED-stall investigation named as periodically stopping draining the socket and forcing a full buffer-reset-and-refill instead of a continuous small-cache top-up (see `ISSUES.md`/`issues_resolved.md`'s FEED entries for the full trail) — shrinking it bounds how much has to be re-fetched each time that happens. **Not independently confirmed to be doing anything**: it's applied per-media (`libvlc_media_add_option`), the same mechanism `--clock-jitter` just demonstrated (above) can be silently ignored for some options; it went live bundled with a separate, since-confirmed relay-side fix in the same build, so this option alone was never isolated. Harmless either way — a smaller buffer is a reasonable setting on its own merits if it's taking effect, inert if not.
 
 `--no-audio-time-stretch` is specifically required for live MPEG-2 transport streams from HDHomeRun tuners. VLC's audio time-stretch module tries to initialize before the first audio frame arrives, sees a 0 Hz sample rate, and fails with `too low audio sample frequency (0)` / `module not functional`. The option prevents that module from loading for live streams.
 
@@ -65,7 +68,7 @@ An adaptive rate controller runs every 3 seconds via a repeating `Timer` (`stats
 
 - **Fill phase**: Plays at `minRate` (from `AppConfig.Player_buffer_min_rate`; default 0.93). Stream arrives ~7% faster than consumed — VLC's demux buffer grows.
 - **Hold phase**: Rate ramps linearly toward 1.0 as `estimatedLagSec` approaches the 8-second target. At 8s the rate reaches 1.0 and the buffer stabilises.
-- **Auto catch-up**: Same tick polls `libvlc_media_player_get_stats`. If `i_demux_corrupted` rises by >15 in 3s, calls `catchUpToLive()` with a 30s debounce.
+- **Auto catch-up**: Same tick polls `libvlc_media_get_stats` (see "Stall/frame-drop diagnostics" below for the symbol-name fix this depends on). If `i_demux_corrupted` rises by >15 in 3s, calls `catchUpToLive()` with a 30s debounce — but only when `recordingShowId == nil` (i.e. never for a recording-relay/Watch Now seek session, whose fixed `&start=<byteOffset>` anchor `catchUpToLive()` would otherwise yank playback backward to; a relay uses `seekRecordingToLiveEdge` for its own equivalent instead). FEED sessions (`recordingShowId` is only ever set by `beginRecordingSeek`, called exclusively from `/api/watch-recording` URLs) stay eligible for this auto-catch-up the whole time.
 
 Rate formula applied every tick (`VLCBridge.rampedFillRate(minRate:estimatedLagSec:tickInterval:)`, extracted as a pure function for unit testing — `Tests/hdhr_VCRTests/VLC/VLCBridgeRateRampTests.swift`):
 ```
@@ -113,10 +116,22 @@ Every significant controller event is logged to `hdhrVCRplus.log`:
 | SPU/CC track selected | INFO | `[VLC] setSpuTrack id=0 (on)` / `id=-1 (off)` |
 | Stats call failed | WARN | `[VLC] WARNING: get_stats returned N — stats polling skipped (may indicate VLC 4 struct mismatch)` |
 | Auto catch-up | INFO | `[VLC] stream corruption detected (i_demux_corrupted delta=N) — catching up to live` |
+| Every tick, unconditionally (see below) | INFO | `[VLC] tick pos=+2971ms/3000ms bytes=+1503827 displayed=+182 lost=+0 rate=1.000` |
+| Real stall detected | WARN | `[VLC] STALL — playback position advanced only Nms of the expected 3000ms, bytes still arriving (+N) — decode/render-side` (or `no new bytes either — network-side`) |
+| Stall clears | INFO | `[VLC] STALL resolved after ~Ns (N tick(s)) — position now advancing normally (+Nms)` |
+| Frames dropped | INFO | `[VLC] N frame(s) dropped this tick (displayed +N) — window may be backgrounded, or a real render-side hitch if it's frontmost` |
+
+### Stall/frame-drop diagnostics (added 2026-09-07)
+
+Every `tickController` tick — once `isPlaying` and the fill ramp (if any) has finished (`minRate >= 1.0 || currentRate >= 0.999`) — logs `pos`/`bytes`/`displayed`/`lost`/`rate` unconditionally, not just when a threshold trips: `pos` is `libvlc_media_player_get_time()`'s delta since the last tick (compared against the expected ~3000ms real-tick-interval advance — under 60% flags a real, perceptible stall, not just scheduler jitter on the 3s `Timer`); `bytes`/`displayed`/`lost` come from `libvlc_media_get_stats` (see below). A stall counter (`consecutiveStalledTicks`) tracks how long a stall lasts and logs once when it starts and once when it clears, rather than one WARNING per tick. `lost` (dropped video frames) is logged plainly, not escalated, since it also spikes when the window is merely backgrounded (macOS stops compositing) — not a real glitch. This diagnostic was the primary tool used to isolate and fix a real FEED (cross-machine relay viewing) playback stall — see `ISSUES.md`/`issues_resolved.md`'s FEED entries for the investigation this fed into.
+
+**A negative `pos` delta is possible and meaningful, not a bug** — it means libvlc's own reported player time moved *backward* between ticks (a real PCR/clock discontinuity), observed live during the FEED investigation. It renders as a slightly confusing `pos=+-2992ms` in the log (a hardcoded `+` ahead of a negative number) — cosmetic only, the stall-detection threshold check handles a negative value correctly (trivially flagged as a stall).
+
+**Symbol-name bug, found and fixed 2026-09-07**: `_mpGetStats` originally looked up `libvlc_media_player_get_stats`, a symbol that has never existed in libvlc (confirmed via `nm` against the bundled `libvlc.dylib`) — only `libvlc_media_get_stats` exports, and it takes the *media* object (`currentMedia`), not the player (`mp`). `dlsym` returning nil for a bogus name is silent, so this whole diagnostic (including the frame-drop/displayed-pictures logging above) never actually ran from the day it was added until this was found — every earlier "clean playback, zero stalls" read from these logs during that window reflected the check never firing, not confirmation of clean playback. Fixed by correcting the symbol name and pointing the call at `currentMedia` instead of `mp`. The same fix also closed a **latent stack buffer overflow**: `VLCStats` (below) was originally truncated to 10 of the real struct's 15 fields (40 of 60 bytes) — had the symbol lookup happened to succeed with the struct still short, `libvlc_media_get_stats` would have written its full 60-byte struct into a 40-byte buffer.
 
 ### Known risks
 
-- **VLC 4.x stats struct** — `VLCStats` mirrors the VLC 3.x `libvlc_media_stats_t` field layout. VLC 4 reorganised the struct; on VLC 4 the corruption/lost-frame counters will read garbage. The version check at init logs a WARNING if major ≥ 4, and the stats return-value check logs a WARNING if the call returns non-1. Both degrade gracefully: auto catch-up stops working but playback is unaffected.
+- **VLC 4.x stats struct** — `VLCStats` mirrors the VLC 3.x `libvlc_media_stats_t` field layout **in full** (all 15 fields/60 bytes, not just the ones this file reads — see the symbol-name-bug note above for why a short mirror is a real overflow risk, not just wasted fields). VLC 4 reorganised the struct; on VLC 4 the corruption/lost-frame counters will read garbage. The version check at init logs a WARNING if major ≥ 4, and the stats return-value check logs a WARNING if the call returns non-1. Both degrade gracefully: auto catch-up and the stall/frame-drop diagnostics stop working but playback is unaffected.
 - **`set_rate` on live streams** — `libvlc_media_player_set_rate` may be silently ignored for non-seekable streams on some VLC versions. After setting rate, `libvlc_media_player_get_rate` is called to verify; a mismatch logs a WARNING. If ignored, the buffer never grows but playback continues normally at 1.0x.
 - **Recording-relay stop/reconnect deadlock (mitigated, not proven via forced reproduction)** — see "Channel Switching (play)" above for the full mechanism. Fixed 2026-08-15 by moving `libvlc_media_player_stop`/`_release` off the MainActor onto `libvlcQueue`. The fix is reasoned from code (the blocking call plus the relay's `@MainActor` poll-hop are a textbook mutual-deadlock shape) and passes the full test suite, but the original failure was never deliberately forced to reproduce — it was caught once, live, via a crash report. If an app-wide hang during recording playback ever recurs, re-open `ISSUES.md`/`issues_resolved.md` rather than assuming this fix is airtight.
 
@@ -154,7 +169,7 @@ func play(url: String) {
         _mpStop?(mp)                                          // the call that used to block the MainActor
         if let oldMedia { _mediaRelease?(oldMedia) }
         guard let media = url.withCString({ _mediaNL?(inst, $0) }) else { return }
-        for opt in ["--network-caching=...", "--drop-late-frames", "--avcodec-hurry-up", "--no-audio-time-stretch"] {
+        for opt in ["--network-caching=...", "--prefetch-buffer-size=...", "--drop-late-frames", "--avcodec-hurry-up", "--no-audio-time-stretch"] {
             opt.withCString { _mediaAddOpt?(media, $0) }
         }
         _mpSetMedia?(mp, media)

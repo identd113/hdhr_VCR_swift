@@ -1183,3 +1183,115 @@ A title-based fallback (`Show.seriesTitle(from: entry.Title) == show.show_title`
 **Not yet live-confirmed**: the fix is mathematically verified (unit tests + hand-derived recurrence) and matches the live-observed timing exactly, but hasn't yet been re-tested against a real remote FEED session to confirm the "plays, stalls, plays" symptom is actually gone end to end.
 
 **Resolving commit**: (uncommitted at time of writing)
+
+---
+
+# VLC tick/stall diagnostics never actually ran — wrong libvlc symbol name — 2026-09-07
+
+## RESOLVED — `_mpGetStats` looked up a libvlc symbol that has never existed, so `VLCBridge.tickController`'s per-tick stall/frame-drop diagnostics (added earlier the same day in `e4032b2`) silently never executed on either machine
+
+**File:** `VLCBridge.swift` — `VLCStats` struct, `_mpGetStats` symbol lookup in `init()`, and its call site in `tickController()`
+
+**Found**: 2026-09-07, mid-investigation of the FEED throughput/glitchiness issue (see `ISSUES.md`'s ongoing entry). A real, currently-playing cross-machine FEED session that had been running ~16 minutes had produced **zero** `[VLC] tick pos=...` lines — the diagnostic added that same morning specifically to catch this kind of stall was completely silent.
+
+**Root cause**: `_mpGetStats = sym("libvlc_media_player_get_stats")` looked up a symbol name that has never existed in libvlc — confirmed directly via `nm` against the bundled `libvlc.dylib` (VLC 3.0.23, identical build on both machines): only `libvlc_media_get_stats` exports, and it operates on the *media* object (`libvlc_media_t*`), not the media player. `dlsym` returning `nil` for a bogus name is silent (no crash, no log), so `_mpGetStats` was `nil` from the moment this code was written, and the `if let getStats = _mpGetStats { ... }` block computing `readBytes`/`displayedPictures`/`lostPictures` never ran even once — confirmed by zero `get_stats returned ...` warning lines anywhere in either machine's entire log history either, which is the only other place that branch could have logged anything. This means every earlier "zero VLC errors/stalls" observation in the FEED investigation reflected the check never firing, not confirmation of clean playback.
+
+**Second, purely latent bug this one was hiding**: the `VLCStats` mirror struct was truncated to 10 of the real `libvlc_media_stats_t`'s 15 fields (40 bytes vs. the real 60-byte struct). Had the symbol lookup above happened to succeed with the struct still short, `libvlc_media_get_stats` would have written its full 60-byte struct into a buffer the Swift side only allocated 40 bytes for — a real stack buffer overflow, dormant only because the symbol never resolved.
+
+**Fix**: corrected the symbol name to `libvlc_media_get_stats`, pointed the call at `currentMedia` (the actual media object) instead of `mp` (the player), and extended `VLCStats` to the full real 15-field/60-byte layout (`i_played_abuffers`/`i_lost_abuffers`/`i_sent_packets`/`i_sent_bytes`/`f_send_bitrate` added). Renamed the misleading `vlc_mp_get_stats_fn` typealias to `vlc_media_get_stats_fn`.
+
+**Live-verified same day**: redeployed to both machines, scheduled a fresh test recording, reconnected the laptop's FEED viewer — `[VLC] tick pos=...` lines and `STALL`/`STALL resolved` lines began appearing immediately and continuously for the rest of the session, including a genuine sustained stall (position stuck at 0ms advancement for 18+ seconds) that the diagnostic caught in real time. The diagnostic itself is confirmed working; what it found (real decode/render-side stalls) fed directly into the investigation below.
+
+**Resolving commit**: (uncommitted at time of writing)
+
+---
+
+# FEED relay throughput/pacing investigation — 2026-09-07 (relay confirmed healthy; remaining stall isolated to VLC client)
+
+## RESOLVED (relay-side) — constant-rate pacing (`744372d`) never worked, was based on a wrong diagnosis, and has been removed; the actual playback stall was tracked down to VLC itself, not this app's code
+
+**Files:** `WebServer.swift` — `streamGrowingFile`/`pumpGrowingFile`/`handleGrowingFileChunk`
+
+**Starting point**: `744372d` ("implement constant-rate pacing for FEED relay streaming") added an artificial per-chunk delay to the relay's send loop, on the theory that TCP send-buffer backpressure over the cross-subnet link was causing bursty delivery and player rebuffering. This was investigated end-to-end the same day and every part of it turned out to be either wrong or ineffective:
+
+1. **Network path capacity ruled out**: a 100MB throwaway file served from the source Mac and pulled by the laptop with plain `curl` (no app code involved) sustained ~420-450 Mbps across 3 runs — roughly 500x the ~0.89 Mbps that had been measured for FEED delivery. The link was never the bottleneck.
+2. **The pacing fix itself never worked**: with it active and logging `pacing @6.00Mbps`, real "sent N MB so far" milestones still measured ~0.83-0.95 Mbps — statistically identical to the pre-pacing baseline. Its "dynamic per-channel bitrate" mechanism was also non-functional as shipped: neither call site ever passed a `bitrate:` argument, the duration-based fallback divided current file size by the client's optional `?duration=` query parameter (not real elapsed time, producing meaningless results whenever that parameter was set), and the `HDHRTunerStatus` struct added to eventually query `/status.json`'s real `NetworkRate` was unused dead code from day one.
+3. **Fixed per-chunk overhead ruled out**: live-tested by bumping `watchRecordingChunkSize` 10x (200→2000 TS packets). If a roughly-constant per-chunk overhead were the ceiling, 10x-larger chunks should have moved achieved throughput much closer to the paced target. It didn't — same ~0.85 Mbps, same stall pattern. Reverted.
+4. **Client CPU/decode load ruled out**: the laptop is an Apple M4 MacBook Air (16GB); `ps aux` during active stalling showed the app at ~5% CPU.
+5. **HTTP framing fixed but not causal**: the relay's `video/mp2t` response declared `Connection: keep-alive` while never sending `Content-Length`/`Transfer-Encoding: chunked` — a genuine RFC 7230 §3.3.3 violation (a response with neither can only be correctly framed as "read until close"). Changed to `Connection: close`, confirmed by direct comparison that this now matches the real HDHomeRun device's own captured response headers — but live-tested with no change to the stall pattern. Kept anyway since it's objectively the correct header.
+6. **TCP-level causes ruled out**: `netstat` on the live connection showed `Send-Q`/`Recv-Q` both at 0 continuously and zero retransmissions system-wide during a "healthy" snapshot — ruling out slow-start-restart, congestion, or any kernel-level explanation for *that* snapshot (see below for a later, contradicting snapshot that turned out to be diagnostic of the real cause).
+7. **QoS-boosted the pacing timer** (`.userInitiated` + `.enforceQoS` on the `DispatchWorkItem`, in case `.utility`-QoS timer coalescing was adding the unaccounted ~250-300ms/chunk gap) — kept as a correctness improvement, but the investigation's own methodology had a real gap here: the "sent N MB so far" log doubles as absolute file offset, not per-connection delivered bytes, so throughput deltas spanning a client reconnect were inadvertently measuring the recording's own real-time growth rate, not relay performance. Noted so a future investigation doesn't repeat it.
+8. **Weak over-the-air signal ruled out — the actual turning point**: direct `--file-logging` VLC debug captures (standalone VLC, bypassing this app's VLCBridge entirely) on two channels at very different signal quality — 2.4 (TPTKids, 51-81% signal) and 4.1 (WCCO-DT, 97% signal, scheduled specifically to test this) — showed the *same* failure signature on both: `ts debug: transport_error_indicator set`, `ts warning: discontinuity received...`, `main error: buffer deadlock prevented`, `ES_OUT_SET_(GROUP_)PCR is called too late` (jitter up to 9.5 seconds), `playback way too early: playing silence`, repeated full `Buffering 0%` resets. A 97%-signal channel showing the identical pathology as a 51%-signal one rules out reception quality.
+
+**Fix — removed the pacing mechanism entirely** rather than continuing to tune it: the recording file is already paced in real time by curl reading from the tuner, so a second, separately-computed, guessed-bitrate delay via a GCD timer on top of an already-correctly-paced source was adding jitter, not removing it. `handleGrowingFileChunk` now re-enters `pumpGrowingFile` immediately via `queue.async` with no artificial delay. Removed the resulting fully-dead `bitrate`/`chunkStartTime`/`effectiveBitrate` plumbing and the unused `HDHRTunerStatus` struct rather than leave inert wiring behind. Verified the one other candidate burst source — the "caught up to live edge" 0.5s poll — is not the chronic contributor (fires exactly once per connection, always resolves in exactly one poll, every time on record) and left it untouched.
+
+**Root cause, conclusively isolated after removing pacing**: the exact same stall reproduced immediately on the very next test. `netstat` this time showed the connection's `Send-Q` pinned at a constant 131072 bytes — not draining — while the server's own byte-offset counter kept slowly advancing (the kernel accepting small trickles as tiny gaps opened, never actually clearing the buffer). That is the signature of the *receiver* not draining its socket. Confirmed directly with a controlled cross-client comparison: `ffmpeg -i <the same live FEED URL> -f null -`, run from the source Mac against the very session VLC was simultaneously stuck on, processed the identical byte stream continuously at `speed=1.13x-1.30x` (real-time or faster) for the full test — zero stalls, zero re-buffering, zero PCR errors. **The relay's delivery is healthy; the stall is isolated to VLC 3.0.23's own demux/prefetch pipeline getting stuck on this specific stream shape.**
+
+**Status**: the relay-side investigation is closed — no further server-side change is indicated by the evidence gathered. The original user-facing symptom (FEED playback glitchy/freezing in the app's own VLCBridge-driven player) is **not yet resolved**, since it was traced to VLC's own client-side behavior rather than anything this app's code controls — tracked as a new, much narrower open entry in `ISSUES.md` (candidate next steps: a newer VLC version, or VLC-specific playback option tuning from `VLCBridge.swift`).
+
+**Resolving commit**: (uncommitted at time of writing)
+
+---
+
+# FEED playback stalls in VLC — resolved, root cause was relay delivery cadence, not VLC itself — 2026-09-07
+
+## RESOLVED — `pumpGrowingFile`'s 37.6KB chunks + flat 500ms live-edge poll produced a bursty delivery cadence the real HDHomeRun tuner never has; VLC's demux/PCR-sync logic was reacting correctly to genuinely bad input, not misbehaving
+
+**Files:** `WebServer.swift` — `watchRecordingChunkSize`, `handleGrowingFileChunk`'s live-edge poll; `VLCBridge.swift` — three auxiliary client-side tuning options kept from the same day's earlier (insufficient-alone) attempts
+
+**Prior conclusion, now superseded**: earlier the same day, this file's "FEED relay throughput/pacing investigation" entry above concluded the relay was healthy and the stall was isolated to VLC's own demux/prefetch pipeline — based on aggregate throughput (`ffmpeg -f null -` sustaining real-time with zero stalls) and TCP-level `netstat` snapshots. Three follow-up VLC-side tuning attempts (`--clock-jitter` per-media, `--clock-jitter` as a global `libvlc_new()` arg, `--prefetch-buffer-size` shrunk from 16MB to 1MB) were tried live cross-machine and none changed the stall pattern, live-confirmed with the user giving the player window full, undivided attention (ruling out window-backgrounding as a confound) — see the now-removed `ISSUES.md` entry this replaces for that full trail.
+
+**User pushed back on the "relay ruled out" conclusion** — the aggregate-throughput and netstat evidence never actually compared *delivery granularity/cadence* between the relay and a real tuner, only whether enough bytes moved and whether TCP itself was backed up. Asked directly: look at how a real HDHomeRun device paces bytes out and compare it byte-for-byte against this relay's own delivery.
+
+**Investigation**: wrote a raw-socket sampler (`sample_stream.py`, not committed — scratch tool) that connects directly to a stream and logs `recv()` chunk sizes and inter-arrival gaps for several seconds. Ran it against three targets:
+- **Real tuner, direct** (`http://<tuner-ip>:5004/auto/v2.4`): avg chunk **1,497 bytes**, gaps almost always under 20ms, max gap 80ms, **zero gaps over 200ms**, zero chunks over 40KB — a smooth, continuous trickle.
+- **This relay, over loopback** (pre-fix): avg chunk **34,802 bytes** (23x larger), **12 of 83 reads (~15%) landed on a hard ~520-528ms silent gap**, p90 gap 521ms.
+- **This relay, over the real cross-subnet link** (pre-fix, laptop → source Mac): consistent with the loopback measurement, confirming the burst-then-silence pattern wasn't a network-path artifact.
+
+**Root cause**: `pumpGrowingFile`'s `watchRecordingChunkSize` (200 TS packets, 37.6KB) plus `handleGrowingFileChunk`'s flat 500ms "caught up to live edge, wait" poll meant the relay alternated between bursting a large chunk immediately (whenever any backlog existed on disk) and going fully silent for up to 500ms while polling — a pattern the real tuner's own RF-to-HTTP passthrough can never produce, since a physical broadcast can't accumulate a backlog to burst-release. That burst/silence pattern is a plausible direct trigger for the PCR-vs-wall-clock drift VLC's own `--file-logging` debug output had already named as the actual stall mechanism (`ES_OUT_SET_(GROUP_)PCR is called too late`): VLC's clock-sync logic assumes PCR-embedded timestamps and real delivery time move together at roughly 1:1, and a relay that silently sits on data for half a second before dumping it breaks that assumption repeatedly over a session.
+
+**Fix**: shrunk `watchRecordingChunkSize` from 200 TS packets to 8 (1,504 bytes — matches the real tuner's measured average almost exactly), and shrunk the live-edge poll interval from a flat 500ms to 20ms (`WebServer.liveEdgePollInterval`). Decoupled the poll-retry cadence from the `@MainActor` "is the show still recording" check (`WebServer.stillRecordingCheckEveryNPolls = 25`, ≈500ms at the new 20ms interval) so this doesn't turn into 50 MainActor hops/sec per connection — only every 25th poll actually hops to the MainActor; the interim polls just retry the file read directly on `queue`.
+
+**Verified**:
+- Byte-level, before pushing to the laptop: re-ran the same sampler against the fixed relay. Loopback: avg chunk dropped to **1,461 bytes** (vs. real tuner's 1,497), p90 gap **21.1ms** (vs. real tuner's 18.3ms), max gap **151.6ms** (down from 528ms), **zero gaps over 200ms** (down from 12). Over the real cross-subnet link: median/p90 gap ~20-25ms, max gap 136.9ms, zero gaps over 200ms.
+- Live, cross-machine, with the user's full attention on the player window (methodology matching the earlier confound-free re-tests): **78+ consecutive seconds of clean playback** — 26 straight 3-second diagnostic ticks, `pos` tracking ~2900-3200ms of the expected 3000ms every tick, zero `STALL` events — vs. every prior test that day (pre-fix) stalling within the first 0-30 seconds. Held steady even after the user backgrounded the window partway through.
+
+**Not done**: the three VLC-side tuning options from earlier the same day (`--clock-jitter` global, `--prefetch-buffer-size=1024`) are still present in `VLCBridge.swift` — confirmed insufficient alone, not confirmed unnecessary in combination with this fix (the live re-test ran with all of them still active). Left in place rather than reverted blind, since removing them would need its own separate live re-test to confirm the relay fix alone is sufficient; flagged here rather than silently carried forward as dead weight if a future pass wants to strip them down to just the relay fix.
+
+**Resolving commit**: (uncommitted at time of writing)
+
+---
+
+# Three findings from the 2026-09-07 FEED/relay code review — all fixed same day
+
+## RESOLVED — `VirtualTunerService.stop()`'s own "goodbye" broadcast wasn't self-filtered if it looped back
+
+**File:** `VirtualTunerService.swift` — `stop()`, `broadcastAnnounce()`, `handleReadable()`
+
+**Root cause**: `start()` sets `isAdvertising = true` before calling `broadcastAnnounce()`, so a looped-back start announce is correctly recognized as "my own" by the self-filter (`isAdvertising && announcedID == advertisedDeviceID`). `stop()` did the opposite order — `broadcastAnnounce()` first, then immediately clearing `isAdvertising`/`advertisedDeviceID` in the very next line, all inside one serial `queue.async` closure. Since a looped-back copy of that packet can only be processed as a *later*, separate dispatch onto the same serial queue, by the time it arrives the state the self-filter depends on has already been cleared — the guard misreads the instance's own "goodbye" as a genuine remote announce and fires `onFeedAnnounce?(hex)` for the device that just stopped.
+
+**Resolution**: added a new field, `lastBroadcastDeviceID`, set inside `broadcastAnnounce()` itself (capturing the ID actually put on the wire) rather than derived from `isAdvertising`/`advertisedDeviceID`, and never reset by `stop()`. The self-filter now compares against this instead: `guard announcedID != lastBroadcastDeviceID else { return }` — timing-independent, since it doesn't matter when `stop()` clears the advertising state afterward.
+
+**Resolving commit**: (uncommitted at time of writing)
+
+## RESOLVED — `TranscodeProxyDelegate`'s normal-completion path called `cleanup()` off the file's own designated queue
+
+**File:** `WebServer.swift` — `TranscodeProxyDelegate.urlSession(_:task:didCompleteWithError:)`
+
+**Root cause**: the `onFailedBeforeAnyData` branch (added in `17ecf33`) explicitly hops via `self.queue.async { ... }` before touching anything, since this delegate method runs on URLSession's own private delegate queue, not `WebServer.queue`. Its sibling branch (`else { finishOnce() }`, the normal end-of-stream/real-error-after-data path) never got the same treatment.
+
+**Resolution**: wrapped the `else { finishOnce() }` branch in `targetQueue.async { [weak self] in self?.finishOnce() }`, matching its sibling. `finishOnce()`'s own internal `NSLock`-guarded idempotency check already makes it safe to call from any thread/queue, so this change is purely about consistency and no longer relying on the incidental thread-safety of whatever `cleanup()` happens to call today.
+
+**Resolving commit**: (uncommitted at time of writing)
+
+## RESOLVED — the FEED live-edge chunk-size shrink also slowed down Watch Now's backlog-catch-up path
+
+**File:** `WebServer.swift` — `streamGrowingFile`, `pumpGrowingFile`, `handleGrowingFileChunk`
+
+**Root cause**: the FEED-stall fix's `watchRecordingChunkSize` shrink (200→8 TS packets) applied unconditionally to every `pumpGrowingFile` read, including `handleWatchRecording`'s native Watch Now relay, which can have a large backlog to drain quickly after a scrub-bar seek — unlike `handleVirtualTunerStream`'s FEED path, which always joins at the live edge with zero backlog by construction.
+
+**Resolution**: `streamGrowingFile` now decides an initial chunk size per connection based on whether there's a real backlog at connect time (`currentSizeAtConnect - initialBytes > watchRecordingChunkSize`) — `watchRecordingBacklogChunkSize` (the restored old 200-packet/37.6KB size) if so, else the small live-edge-cadence size. `chunkSize` threads through `pumpGrowingFile`/`handleGrowingFileChunk` as a parameter and adapts one-way: any non-empty read that comes back *shorter* than what was requested (meaning the backlog is exhausted) downgrades to the small size for every subsequent read on that connection; reaching a genuine empty read (fully caught up) also force-downgrades, as a safety net for the edge case where a backlog happens to be an exact multiple of the large chunk size.
+
+**Verified live**: after redeploying, a raw-socket sampler against a fresh FEED session showed the live-edge cadence unchanged from the original fix (avg chunk 1418 bytes, p90 gap 22.1ms, zero gaps over 200ms) — confirming `hasBacklog` correctly evaluates false for the always-live-edge FEED path. The same sampler against `/api/watch-recording?...&start=0` on an in-progress recording (a real ~28MB backlog) showed the backlog-catch-up path using much larger chunks (avg 12.3KB) and draining at several MB/s — well above real-time — while gaps stayed smooth throughout (p90 20.8ms, zero over 200ms), confirming the fast-drain path doesn't reintroduce the old silent-gap pattern (it never touches the live-edge polling wait while backlog remains, so there's nothing to burst-and-go-silent).
+
+**Resolving commit**: (uncommitted at time of writing)
