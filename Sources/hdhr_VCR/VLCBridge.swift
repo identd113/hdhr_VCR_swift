@@ -579,6 +579,29 @@ final class VLCBridge: ObservableObject {
 
     // MARK: - Rate controller (private)
 
+    // Shared by startStatsTimer's own Timer interval and tickController's rate-ramp math — the
+    // latter must advance estimatedLagSec by exactly this much per tick (real elapsed seconds, not
+    // a function of the current rate) for the ramp to actually take ~8 real seconds as intended;
+    // keeping both reads of "how often does this timer fire" pointed at one constant means they
+    // can't silently drift apart the way the old inline `3.0` literals (one here, one in the ramp
+    // formula, coincidentally the same number for unrelated reasons) already had.
+    private static let statsTimerInterval: TimeInterval = 3.0
+
+    /// Pure step of the fill-phase rate ramp — extracted out of tickController() so this arithmetic
+    /// is directly unit-testable without a real libvlc session, matching WebServer's own
+    /// alignedToTSPacketBoundary(_:)/effectiveTranscodeProfile testability shape. Advances
+    /// `estimatedLagSec` by a fixed `tickInterval` (real elapsed seconds, capped at `maxLagSec`) and
+    /// derives the rate linearly from how much of that window has elapsed — see tickController's own
+    /// comment for why this must NOT depend on the current rate (that self-referential version is
+    /// the bug this replaced: convergence took real minutes instead of ~`maxLagSec` seconds).
+    nonisolated static func rampedFillRate(minRate: Float, estimatedLagSec: Double, tickInterval: TimeInterval,
+                                            maxLagSec: Double = 8.0) -> (newLagSec: Double, newRate: Float) {
+        let newLagSec = min(maxLagSec, estimatedLagSec + tickInterval)
+        let fillRatio = Float(newLagSec / maxLagSec)
+        let newRate   = minRate + (1.0 - minRate) * fillRatio
+        return (newLagSec, newRate)
+    }
+
     private func startStatsTimer() {
         // Always starts — tickController does more than the rate ramp/stats (isPlaying/hasError
         // state detection, track fetching, video pixel size), all needed regardless of minRate.
@@ -591,7 +614,7 @@ final class VLCBridge: ObservableObject {
         // resize/drag) — isPlaying/hasError detection and the rate ramp would silently freeze for
         // the duration, e.g. "Connecting…" sticking until a menu closes. .common includes both
         // .default and .eventTracking, so the timer keeps firing through UI tracking.
-        let timer = Timer(timeInterval: 3.0, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: Self.statsTimerInterval, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in self?.tickController() }
         }
         RunLoop.main.add(timer, forMode: .common)
@@ -633,11 +656,20 @@ final class VLCBridge: ObservableObject {
         // Fetch track descriptions once playing; retry every tick until audio tracks appear.
         if isPlaying && !tracksFetched { fetchTracks() }
 
-        // Adaptive rate: ramp from minRate toward 1.0 as estimated buffer lag grows toward 8s.
+        // Adaptive rate: ramp from minRate toward 1.0 linearly over 8 real seconds. `estimatedLagSec`
+        // must advance by a fixed amount each tick (the timer's own real interval) — a version of
+        // this that instead grew it by `(1.0 - currentRate) * 3.0` was self-referential: as
+        // currentRate approaches 1.0, that increment shrinks toward zero, turning what the "8s"
+        // naming/UI (VLCPlayerView's buffer pill, both literally labeled "of 8 seconds") promise as
+        // an ~8-second ramp into a geometric decay that only gets close enough to stop updating
+        // after several real *minutes* — confirmed live 2026-09-06: 0.90 → ~1.000 took 6 minutes,
+        // not 8 seconds, meanwhile playing continuously below realtime with audio time-stretch
+        // disabled (see the `--no-audio-time-stretch` option below) the whole time. That's a much
+        // more plausible source of sustained "glitchy" playback than a single bad join moment.
         if minRate < 1.0 {
-            estimatedLagSec = min(8.0, estimatedLagSec + Double(1.0 - currentRate) * 3.0)
-            let fillRatio   = Float(estimatedLagSec / 8.0)
-            let newRate     = minRate + (1.0 - minRate) * fillRatio
+            let (newLagSec, newRate) = Self.rampedFillRate(
+                minRate: minRate, estimatedLagSec: estimatedLagSec, tickInterval: Self.statsTimerInterval)
+            estimatedLagSec = newLagSec
             if abs(newRate - currentRate) > 0.001 {
                 currentRate = newRate
                 _ = _mpSetRate?(mp, newRate)

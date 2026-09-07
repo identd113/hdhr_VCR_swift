@@ -67,12 +67,14 @@ An adaptive rate controller runs every 3 seconds via a repeating `Timer` (`stats
 - **Hold phase**: Rate ramps linearly toward 1.0 as `estimatedLagSec` approaches the 8-second target. At 8s the rate reaches 1.0 and the buffer stabilises.
 - **Auto catch-up**: Same tick polls `libvlc_media_player_get_stats`. If `i_demux_corrupted` rises by >15 in 3s, calls `catchUpToLive()` with a 30s debounce.
 
-Rate formula applied every tick:
+Rate formula applied every tick (`VLCBridge.rampedFillRate(minRate:estimatedLagSec:tickInterval:)`, extracted as a pure function for unit testing — `Tests/hdhr_VCRTests/VLC/VLCBridgeRateRampTests.swift`):
 ```
-estimatedLagSec += (1.0 - currentRate) * 3.0   // capped at 8.0
+estimatedLagSec += tickInterval   // fixed real elapsed seconds per tick, capped at 8.0
 fillRatio = estimatedLagSec / 8.0
 newRate   = minRate + (1.0 - minRate) * fillRatio
 ```
+
+**Fixed 2026-09-06** — this used to be `estimatedLagSec += (1.0 - currentRate) * 3.0`: self-referential, since that increment shrinks toward zero as `currentRate` approaches 1.0. The recurrence this produces (`L_{n+1} = 0.9625·L_n + 0.3` for `minRate = 0.90`) converges to the 8.0 cap only geometrically, not linearly — confirmed live via a real remote-FEED session's log: reaching ~1.000 from 0.90 took a full **6 minutes**, not the ~8 real seconds the "8-second target" naming (and the buffer pill's own "N of 8 seconds" UI) promised. That's 6 minutes of continuous sub-realtime playback with `--no-audio-time-stretch` in effect (see above) and a `_mpSetRate` call every few seconds — a far more plausible source of sustained "plays a bit, stalls, plays again" symptoms than a single bad join moment, especially combined with the auto-catch-up corruption trigger below: a corruption spike during that long degraded window forces a reconnect that resets the fill phase, potentially repeating the whole slow ramp. The fix makes `estimatedLagSec` advance by a fixed real-time tick interval regardless of the current rate, so the ramp is linear and actually finishes in `maxLagSec` (8) real seconds.
 
 `catchUpToLive()` calls `play(url: currentURL)`, which stops the stream, resets `estimatedLagSec` to 0, and restarts the fill phase from scratch.
 

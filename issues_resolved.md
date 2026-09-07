@@ -1161,3 +1161,25 @@ A title-based fallback (`Show.seriesTitle(from: entry.Title) == show.show_title`
 **Not yet live-confirmed**: root-caused by code reading, not a forced byte-level reproduction against a real FEED viewer session — flagging per this file's own convention for that gap (see e.g. the `AppState.seekRecording` deadlock entry in `ISSUES.md`).
 
 **Resolving commit**: (uncommitted at time of writing)
+
+---
+
+# A FEED viewer kept playing for a bit, stalling, then resuming — 2026-09-06
+
+## RESOLVED — `VLCBridge`'s fill-phase rate ramp took real minutes to reach full speed instead of the intended ~8 seconds
+
+**File:** `VLCBridge.swift` — `tickController()`'s adaptive-rate block, now `rampedFillRate(minRate:estimatedLagSec:tickInterval:maxLagSec:)`
+
+**Reported**: 2026-09-06, live — after the TS-alignment fix above shipped, a remote FEED viewer on a second Mac still showed "it plays for a bit then stops for some time and then plays again," with the user's own hypothesis being the player "can't process the incoming data quickly enough."
+
+**Investigation**: pulled the server-side log for the live session in question — completely healthy, gapless delivery for 16+ continuous minutes at a low, trivially-easy-to-sustain bitrate (~1 Mbps), ruling out both the relay and any network/decode-throughput bottleneck. Pulled the *client* Mac's own log via a fresh SSH connection (the actual VLC playback logic runs there, not on the relay side) and found the real mechanism: `[VLC] rate → 0.904 (lag ~0s / 8s)` at 23:33:33 crawling to `[VLC] rate → 1.000 (lag ~7s / 8s)` only at 23:39:33 — six minutes to complete a ramp the code's own comment (and the toolbar buffer pill's own "N of 8 seconds" UI) describe as an ~8-second fill phase.
+
+**Root cause**: `estimatedLagSec += (1.0 - currentRate) * 3.0` is self-referential — as `currentRate` approaches 1.0, its own increment shrinks toward zero. Solving the recurrence for `minRate = 0.90` gives `L_{n+1} = 0.9625·L_n + 0.3` (a geometric decay toward the 8.0 cap, not a linear ramp reaching it), whose half-life is ~54 seconds per halving of the remaining gap — matching the observed ~6-minute real convergence almost exactly. For that entire window, playback ran continuously below realtime (starting at `AppConfig.Player_buffer_min_rate`, 0.90 here) with `--no-audio-time-stretch` in effect (required elsewhere to avoid an MPEG-2 sample-rate-0 crash, but meaning no pitch/timing correction during six minutes of off-speed playback) and a real `libvlc_media_player_set_rate` call every few seconds — plausible on its own, and more so combined with `tickController`'s own existing auto-catch-up trigger (a demux-corruption spike forces `catchUpToLive()`, which stops, reconnects, and resets the fill phase to `minRate` from scratch): a corruption blip during the long degraded window forces a reconnect that restarts the whole slow ramp, a self-perpetuating loop matching "plays a bit, stalls, plays again" far better than a single bad join moment would.
+
+**Resolution**: extracted the ramp step into a pure `VLCBridge.rampedFillRate(minRate:estimatedLagSec:tickInterval:maxLagSec:)` that advances `estimatedLagSec` by a fixed real-time tick interval (`statsTimerInterval`, 3.0s — now a shared constant with the timer that used to hardcode the same number for an unrelated reason) regardless of the current rate, making the ramp genuinely linear and finished in `maxLagSec` (8) real seconds, matching what the code and UI already claimed.
+
+**Tests added**: `Tests/hdhr_VCRTests/VLC/VLCBridgeRateRampTests.swift` — five fast unit tests on the extracted pure function: reaches full rate within `maxLagSec` (not minutes), is linear in elapsed time rather than current rate, never exceeds the cap, returns `minRate` at zero elapsed time, and respects a custom cap. No real libvlc session needed.
+
+**Not yet live-confirmed**: the fix is mathematically verified (unit tests + hand-derived recurrence) and matches the live-observed timing exactly, but hasn't yet been re-tested against a real remote FEED session to confirm the "plays, stalls, plays" symptom is actually gone end to end.
+
+**Resolving commit**: (uncommitted at time of writing)
