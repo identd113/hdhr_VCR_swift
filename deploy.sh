@@ -39,6 +39,19 @@ pkill -x hdhr_VCR 2>/dev/null && echo "    Stopped." || echo "    Not running."
 # every run; clean them before this run adds its own.
 find . -maxdepth 1 -name "hdhrVCRplus [0-9]*.app" -exec rm -rf {} +
 
+# hdhrVCRplus.app (and Info.plist specifically, since it's the one file this script never
+# regenerates from source — deliberately not SPM-generated, see CLAUDE.md) live in a folder under
+# active iCloud Drive "Desktop & Documents" sync, which does not reliably keep an app bundle
+# (a directory macOS treats as one atomic unit) intact — observed live 2026-09-06 silently evicting
+# either just Info.plist or the entire bundle between one deploy and the next, with nothing else on
+# this machine having touched it. Self-heal from the git-tracked template rather than launching a
+# bundle with no Info.plist at all (see deploy_release.sh's matching step for the fuller story).
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Helpers" "$APP/Contents/Resources"
+if [ ! -f "$APP/Contents/Info.plist" ]; then
+    echo "==> WARNING: Info.plist missing (iCloud eviction?) — restoring from tools/Info.plist.template"
+    cp tools/Info.plist.template "$APP/Contents/Info.plist"
+fi
+
 echo "==> Generating version…"
 # Stamp the build time as YYMMDD-HHMM (e.g. "260521-2011") so About tab always shows when this build was made
 APP_VERSION="$(date +%y%m%d-%H%M)"
