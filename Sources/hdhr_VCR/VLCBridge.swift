@@ -185,6 +185,8 @@ final class VLCBridge: ObservableObject {
     // a fresh play() so the very first delta isn't computed against a stale prior session's numbers.
     private var lastTickTimeMs:      Int64? = nil
     private var lastTickReadBytes:   Int32? = nil
+    private var lastDisplayedPictures: Int32? = nil
+    private var lastLostPictures:      Int32? = nil
     private var consecutiveStalledTicks: Int = 0
 
     private let _new:          vlc_new_fn?
@@ -483,6 +485,8 @@ final class VLCBridge: ObservableObject {
                 self.lastCorrupted   = 0
                 self.lastTickTimeMs  = nil
                 self.lastTickReadBytes = nil
+                self.lastDisplayedPictures = nil
+                self.lastLostPictures = nil
                 self.consecutiveStalledTicks = 0
                 self.startStatsTimer()
             }
@@ -702,48 +706,71 @@ final class VLCBridge: ObservableObject {
         var newCorrupted = bufferInfo.corrupted
         var corruptDelta: Int32 = 0
         var readBytes: Int32? = nil
+        var displayedPictures: Int32? = nil
+        var lostPictures: Int32? = nil
         if let getStats = _mpGetStats {
             var s = VLCStats()
             let ok = withUnsafeMutableBytes(of: &s) { getStats(mp, $0.baseAddress) }
             if ok == 1 {
-                corruptDelta  = s.i_demux_corrupted - lastCorrupted
-                lastCorrupted = s.i_demux_corrupted
-                newBitrate    = s.f_demux_bitrate
-                newCorrupted  = lastCorrupted
-                readBytes     = s.i_demux_read_bytes
+                corruptDelta      = s.i_demux_corrupted - lastCorrupted
+                lastCorrupted     = s.i_demux_corrupted
+                newBitrate        = s.f_demux_bitrate
+                newCorrupted      = lastCorrupted
+                readBytes         = s.i_demux_read_bytes
+                displayedPictures = s.i_displayed_pictures
+                lostPictures      = s.i_lost_pictures
             } else {
                 glog("[VLC] WARNING: get_stats returned \(ok) — stats polling skipped (may indicate VLC 4 struct mismatch)", level: .warning)
             }
         }
 
-        // Stall diagnostics — see the MARK above for why neither isPlaying nor a rate-change log
-        // line says anything about whether playback is actually advancing. Only meaningful once
+        // Stall/glitch diagnostics — see the MARK above for why neither isPlaying nor a rate-change
+        // log line says anything about whether playback is actually advancing or rendering cleanly.
+        // Two independent signals, since a "glitch" a viewer perceives isn't always a full freeze:
+        //   - Playback-clock advancement (libvlc_media_player_get_time vs. real elapsed tick time) —
+        //     a genuine stall (network or decode) shows up here.
+        //   - i_displayed_pictures/i_lost_pictures deltas — dropped/skipped video frames that don't
+        //     necessarily slow the clock at all (a frame gets skipped to stay in sync, not queued
+        //     and delayed), which the clock-only check above this comment (used until 2026-09-07)
+        //     couldn't see at all. i_lost_pictures also spikes when the window is merely backgrounded
+        //     (macOS stops compositing) — that's expected, not a real glitch, so it's logged plainly
+        //     rather than escalated to a WARNING the way a clock stall is.
+        // Every tick's numbers are logged unconditionally (not just when a threshold trips) — a
+        // prior version only warned on a near-total freeze (position advancing <20% of the expected
+        // ~3s), which would miss a real but partial stutter (e.g. position still advancing at 60-70%
+        // speed — clearly perceptible as choppy, but nowhere near "frozen"). Only meaningful once
         // playback is confirmed and the fill phase (if any) has finished — a still-ramping rate
         // legitimately advances position slower than 1 real second per real second, which isn't a
-        // stall, just the ramp working as designed.
+        // glitch, just the ramp working as designed.
         if isPlaying, minRate >= 1.0 || currentRate >= 0.999, let getTime = _mpGetTime {
             let nowMs = getTime(mp)
             if let lastMs = lastTickTimeMs, let bytes = readBytes, let lastBytes = lastTickReadBytes {
-                let posDeltaMs  = nowMs - lastMs
-                let bytesDelta  = bytes - lastBytes
-                // Real tick interval is statsTimerInterval (3s) — position should advance by
-                // roughly that much (scaled by rate, but rate is ~1.0 here). Anything under 20% of
-                // that is treated as stalled rather than requiring an exact match, since normal
-                // scheduler jitter on a 3s Timer is real but small next to a genuine freeze.
-                let expectedMs = Int64(Self.statsTimerInterval * 1000 * 0.2)
-                if posDeltaMs < expectedMs {
+                let posDeltaMs   = nowMs - lastMs
+                let bytesDelta   = bytes - lastBytes
+                let displayDelta = displayedPictures.flatMap { d in lastDisplayedPictures.map { d - $0 } }
+                let lostDelta    = lostPictures.flatMap      { l in lastLostPictures.map      { l - $0 } }
+                let expectedMs   = Int64(Self.statsTimerInterval * 1000)
+                glog("[VLC] tick pos=+\(posDeltaMs)ms/\(expectedMs)ms bytes=+\(bytesDelta) displayed=+\(displayDelta ?? -1) lost=+\(lostDelta ?? -1) rate=\(String(format: "%.3f", currentRate))")
+                // Under 60% of the expected real-time advance is a real, perceptible slowdown, not
+                // just scheduler jitter on the 3s Timer (which is real but small next to this).
+                if posDeltaMs < Int64(Double(expectedMs) * 0.6) {
                     consecutiveStalledTicks += 1
                     if consecutiveStalledTicks == 1 {
                         let cause = bytesDelta > 0 ? "bytes still arriving (+\(bytesDelta)) — decode/render-side" : "no new bytes either — network-side"
-                        glog("[VLC] STALL — playback position advanced only \(posDeltaMs)ms in the last \(Int(Self.statsTimerInterval))s, \(cause)", level: .warning)
+                        glog("[VLC] STALL — playback position advanced only \(posDeltaMs)ms of the expected \(expectedMs)ms, \(cause)", level: .warning)
                     }
                 } else if consecutiveStalledTicks > 0 {
                     let stalledFor = Double(consecutiveStalledTicks) * Self.statsTimerInterval
                     glog("[VLC] STALL resolved after ~\(String(format: "%.1f", stalledFor))s (\(consecutiveStalledTicks) tick(s)) — position now advancing normally (+\(posDeltaMs)ms)")
                     consecutiveStalledTicks = 0
                 }
+                if let lostDelta, lostDelta > 0 {
+                    glog("[VLC] \(lostDelta) frame(s) dropped this tick (displayed +\(displayDelta ?? -1)) — window may be backgrounded, or a real render-side hitch if it's frontmost")
+                }
             }
             lastTickTimeMs = nowMs
+            lastDisplayedPictures = displayedPictures
+            lastLostPictures = lostPictures
         }
         if let bytes = readBytes {
             let oldTotal = lastTickReadBytes ?? 0
