@@ -1,11 +1,76 @@
 import SwiftUI
 
+// A parsed `hdhrvcrplus://watch?dev=<deviceId>&channel=<channelNumber>[&transcode=1]` request —
+// added 2026-09-07 so a FEED's "Watch"/"Watch (H.264)" action can be triggered non-interactively
+// (`open 'hdhrvcrplus://...'` over SSH, via Launch Services) for cross-machine testing, without
+// needing AppleScript UI-scripting's interactive Accessibility session (see
+// .claude/FEED_CROSS_MACHINE_TEST.md's "Why the GUI can't be automated" section for the gap this
+// closes). Takes device+channel, mirroring the real HDHomeRun device's own `/auto/v<channel>?
+// dev=<deviceId>` addressing (`docs/VirtualTunerService.md`) — deliberately not a raw pre-built
+// relay URL, so this can't be pointed at an arbitrary string; the app resolves the real URL itself
+// from `AppState.remoteRelayEntries`, the same source `MenuContent`'s own Watch buttons use.
+struct WatchURLRequest: Equatable {
+    let deviceId: String
+    let channel: String
+    let wantsTranscode: Bool
+
+    /// Pure parse — extracted for direct unit testing without a real NSApplication/AppState,
+    /// matching this codebase's established pattern (`WebServer.alignedToTSPacketBoundary`,
+    /// `effectiveTranscodeProfile`, etc.). Returns nil for anything not shaped like this scheme.
+    static func parse(_ url: URL) -> WatchURLRequest? {
+        guard url.scheme == "hdhrvcrplus", url.host == "watch",
+              let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let deviceId = components.queryItems?.first(where: { $0.name == "dev" })?.value, !deviceId.isEmpty,
+              let channel = components.queryItems?.first(where: { $0.name == "channel" })?.value, !channel.isEmpty
+        else { return nil }
+        let wantsTranscode = components.queryItems?.first(where: { $0.name == "transcode" })?.value == "1"
+        return WatchURLRequest(deviceId: deviceId, channel: channel, wantsTranscode: wantsTranscode)
+    }
+}
+
 // Runs the /Applications relocation check (AppRelocator.swift) once AppKit has fully finished
 // launching — an NSAlert shown from App.init() (before the run loop is up) is unreliable, so this
 // waits for the one lifecycle point SwiftUI's App protocol doesn't otherwise expose.
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    // Set by hdhr_VCRApp.init() right after both it and AppState exist — @NSApplicationDelegateAdaptor
+    // and @StateObject are two independently-managed objects with no reference to each other by
+    // default, so this is the one link between them an AppKit-level delegate callback (below) needs.
+    weak var appState: AppState?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppRelocator.relocateToApplicationsIfNeeded()
+    }
+
+    // AppKit's modern replacement for the older kAEGetURL Apple Event handler — called for both
+    // file opens and a registered CFBundleURLTypes scheme's own opens (tools/Info.plist.template).
+    // A LAN-only, same-Mac trigger (Launch Services only delivers this to an already-running
+    // instance of *this* app), but still resolved defensively against live state rather than
+    // trusted blindly, matching this app's own no-auth-but-validate-inputs stance elsewhere
+    // (CLAUDE.md's WebServer note) — an unrecognized shape or a dev/channel with no matching,
+    // currently-available FEED both just log and no-op, never crash or guess.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        guard let appState else { return }
+        for url in urls {
+            guard let request = WatchURLRequest.parse(url) else {
+                glog("[URLScheme] ignoring unrecognized URL: \(url.absoluteString)", level: .warning)
+                continue
+            }
+            Task { @MainActor in
+                guard let pair = appState.remoteRelayEntries.first(where: {
+                    $0.device.DeviceID == request.deviceId && $0.entry.GuideNumber == request.channel
+                }) else {
+                    glog("[URLScheme] watch request for dev=\(request.deviceId) channel=\(request.channel) — no matching available FEED", level: .warning)
+                    return
+                }
+                let title = pair.entry.virtualRelayShowTitle ?? pair.entry.GuideName
+                // Same "auto" convention MenuContent's own H.264 button uses — any non-empty,
+                // non-"none" string only tells the remote relay "transcode this," never decides
+                // the level (WebServer.effectiveTranscodeProfile's own doc comment).
+                let relayURL = request.wantsTranscode ? (pair.entry.URL ?? "") + "&transcode=auto" : (pair.entry.URL ?? "")
+                glog("[URLScheme] watch request resolved — dev=\(request.deviceId) channel=\(request.channel) transcode=\(request.wantsTranscode)")
+                appState.watchRemoteRelay(url: relayURL, title: title, device: pair.device)
+            }
+        }
     }
 }
 
@@ -60,6 +125,12 @@ struct hdhr_VCRApp: App {
         if let icon = appIconImage {
             NSApplication.shared.applicationIconImage = icon
         }
+
+        // Hands AppDelegate the one reference it needs for application(_:open:) above — both
+        // appDelegate and appState (the latter via its default-value property-wrapper expression)
+        // are already fully constructed by this point in a custom init(), even though they're two
+        // independently-managed property wrappers with no reference to each other otherwise.
+        appDelegate.appState = appState
     }
 
     var body: some Scene {
