@@ -3090,6 +3090,12 @@ final class WebServer: @unchecked Sendable {
                 // for; this is what lets another hdhrVCRplus instance's menu bar say "Recording
                 // on <title>" instead of just a channel number.
                 VirtualTunerService.showTitleKey: show.show_title,
+                // This Mac's own hostname — added 2026-09-07 so a discovering instance's menu bar
+                // can say which Mac a "Recording on <title>" row is actually coming from (matters
+                // once more than one Mac on the LAN is relaying at once). Always known — unlike
+                // the show-title/viewer-count/signal fields above, there's no "not yet available"
+                // case for this one, so it's set unconditionally rather than only when present.
+                VirtualTunerService.sourceHostnameKey: ProcessInfo.processInfo.hostName,
             ]
             // Standard field (VideoCodec), not a custom Hdhr... key — a discovering hdhrVCRplus
             // instance's own LineupEntry decode already recognizes it from a real device's lineup,

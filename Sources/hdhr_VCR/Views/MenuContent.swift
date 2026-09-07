@@ -232,7 +232,16 @@ struct MenuContent: View {
                         }
                     } label: {
                         Label {
-                            Text("Recording on \(title)")
+                            // Hostname suffix added 2026-09-07, explicit user request — without it,
+                            // two relays from two different Macs both just read "Recording on
+                            // <title>" with nothing distinguishing which physical Mac either comes
+                            // from. Omitted (not "Recording on <title> — unknown") on the rare
+                            // chance an older build on the source Mac never set the field.
+                            if let hostname = pair.entry.virtualRelaySourceHostname {
+                                Text("Recording on \(title) — \(hostname)")
+                            } else {
+                                Text("Recording on \(title)")
+                            }
                         } icon: {
                             Image(systemName: "play.tv.fill").foregroundStyle(watchNowBlue)
                         }

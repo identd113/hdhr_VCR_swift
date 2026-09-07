@@ -75,6 +75,10 @@ struct VirtualTunerWebRoutesTests {
         #expect(entry["HdhrVCRplusShowTitle"] as? String == "Days of Our Lives")
         #expect((entry["URL"] as? String)?.contains("/auto/v5.1") == true)
         #expect((entry["URL"] as? String)?.contains("dev=FFFFFFFF") == true)
+        // Always set (unlike show title/viewers/signal above, there's no "not yet known" case for
+        // this Mac's own hostname) — added 2026-09-07 so MenuContent's "Recording on <title>" row
+        // can also say which Mac, once more than one is relaying at once.
+        #expect(entry["HdhrVCRplusSourceHostname"] as? String == ProcessInfo.processInfo.hostName)
     }
 
     @MainActor

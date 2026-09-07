@@ -44,6 +44,11 @@ final class VirtualTunerService {
     static let showTitleKey = "HdhrVCRplusShowTitle"
     static let transcodeViewersKey = "HdhrVCRplusTranscodeViewers"
     static let signalQualityKey = "HdhrVCRplusSignalQualityPercent"
+    // Added 2026-09-07, explicit user request: MenuContent's "Recording on Another Mac" row named
+    // only the show, with no way to tell *which* Mac when more than one is relaying. Reuses
+    // ProcessInfo.processInfo.hostName as-is (the same value ConfigManager already keys its own
+    // per-host config filename on, e.g. "woodflix.local") rather than a separate lookup/format.
+    static let sourceHostnameKey = "HdhrVCRplusSourceHostname"
 
     private let queue = DispatchQueue(label: "hdhrVCRplus.virtualtuner.udp", qos: .utility)
     private var sock: Int32 = -1
