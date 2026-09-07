@@ -189,6 +189,7 @@ struct MenuContent: View {
                             Label(gatedLabel("Watch", met: vlcReady, requirement: "VLC"), systemImage: "play.tv.fill")
                         }
                         .disabled(!vlcReady)
+                        .accessibilityLabel(gatedLabel(watchInAppLabel(title), met: vlcReady, requirement: "VLC"))
                         if !alreadyModern {
                             Button {
                                 // "auto" (any non-empty, non-"none" string) only tells the remote
@@ -202,6 +203,7 @@ struct MenuContent: View {
                                 Label(gatedLabel("Watch (H.264)", met: vlcReady, requirement: "VLC"), systemImage: "play.tv.fill")
                             }
                             .disabled(!vlcReady)
+                            .accessibilityLabel(gatedLabel(watchInAppH264Label(title), met: vlcReady, requirement: "VLC"))
                         }
                         Divider()
                         // "Source" is always accurate; "You'll get" only describes the plain Watch
@@ -420,16 +422,19 @@ struct MenuContent: View {
                       icon: { Image(systemName: "play.tv.fill").foregroundColor(vlcReady ? watchNowBlue : Color(NSColor.disabledControlTextColor)) }
             }
             .disabled(!vlcReady)
+            .accessibilityLabel(gatedLabel(watchLiveLabel(show.show_title), met: vlcReady, requirement: "VLC"))
             Button(action: { state.watchRecordingInApp(show, fromBeginning: true) }) {
                 Label { Text(gatedLabel("Watch from Beginning", met: vlcReady, requirement: "VLC")).foregroundColor(vlcReady ? watchNowBlue : Color(NSColor.disabledControlTextColor)) }
                       icon: { Image(systemName: "backward.end.fill").foregroundColor(vlcReady ? watchNowBlue : Color(NSColor.disabledControlTextColor)) }
             }
             .disabled(!vlcReady)
+            .accessibilityLabel(gatedLabel(watchFromBeginningLabel(show.show_title), met: vlcReady, requirement: "VLC"))
             if state.config.Watch_in_VLC {
                 Button(action: { state.watchRecordingInVLC(show) }) {
                     Label { Text("Watch in VLC").foregroundColor(watchNowOrange) }
                           icon: { Image(systemName: "arrow.up.forward.app").foregroundColor(watchNowOrange) }
                 }
+                .accessibilityLabel(watchInVLCLabel(show.show_title))
             }
             Button("Skip", role: .destructive) { Task { await state.skipRecording(showId: show.show_id) } }
             Button("Delete…", role: .destructive) { state.confirmAndDeleteShow(show) }

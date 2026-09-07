@@ -147,6 +147,11 @@ func watchInVLCLabel(_ title: String) -> String { "Watch \(title) in VLC" }
 // Accessibility labels for the two choices offered when watching a currently-recording show.
 func watchFromBeginningLabel(_ title: String) -> String { "Watch \(title) from the beginning" }
 func watchLiveLabel(_ title: String) -> String { "Watch \(title) live" }
+// Accessibility label for the H.264-transcoded choice offered alongside watchInAppLabel's plain
+// option when watching another hdhrVCRplus instance's Recording FEED (MenuContent's "Recording on
+// Another Mac" section) — distinguishes the two buttons' announced text the same way their visible
+// labels ("Watch" vs "Watch (H.264)") already do.
+func watchInAppH264Label(_ title: String) -> String { "Watch \(title) in H.264" }
 
 func guideTimeRange(_ entry: GuideEntry) -> String {
     "\(timeRangeFormatter.string(from: entry.startDate)) – \(timeRangeFormatter.string(from: entry.endDate))"
