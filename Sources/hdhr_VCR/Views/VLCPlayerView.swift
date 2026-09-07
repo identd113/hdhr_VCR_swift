@@ -531,28 +531,52 @@ struct VLCPlayerView: View {
                         }
                     }
 
-                    Button {
-                        startPlayback(auto: false)
-                    } label: {
+                    // FEED sessions never need a click — attemptFeedAutoPlay() always fires once
+                    // buffered, whether or not this is on screen — so rendering a *clickable*
+                    // Button here would be actively misleading (it looks actionable but clicking
+                    // it does nothing auto-play wasn't already about to do on its own). Requested
+                    // 2026-09-07 after a live cross-machine test made this visible: the button
+                    // rendered for the several real seconds attemptFeedAutoPlay's own buffer/delay
+                    // gate takes, reading as "click here" rather than "buffering, please wait."
+                    // Same visual content, just non-interactive — the buffering feedback itself
+                    // (spinner + label) stays, only the affordance-that-does-nothing goes away.
+                    if device.isVirtualRelay {
                         HStack(spacing: 8) {
-                            if bridge.isPlaying {
-                                Image(systemName: "play.fill")
-                            } else {
-                                ProgressView().controlSize(.small)
-                            }
-                            Text(bridge.isPlaying ? "Start" : "Connecting…")
+                            ProgressView().controlSize(.small)
+                            Text("Buffering…")
                         }
                         .font(.title3.bold())
                         .padding(.horizontal, 22)
                         .padding(.vertical, 12)
                         .background(.ultraThinMaterial)
                         .clipShape(RoundedRectangle(cornerRadius: 10))
-                        .foregroundStyle(bridge.isPlaying ? .white : .white.opacity(0.45))
+                        .foregroundStyle(.white.opacity(0.45))
+                        .accessibilityLabel("hdhrVCRplus — buffering, playback will start automatically")
+                        .padding(.top, 4)
+                    } else {
+                        Button {
+                            startPlayback(auto: false)
+                        } label: {
+                            HStack(spacing: 8) {
+                                if bridge.isPlaying {
+                                    Image(systemName: "play.fill")
+                                } else {
+                                    ProgressView().controlSize(.small)
+                                }
+                                Text(bridge.isPlaying ? "Start" : "Connecting…")
+                            }
+                            .font(.title3.bold())
+                            .padding(.horizontal, 22)
+                            .padding(.vertical, 12)
+                            .background(.ultraThinMaterial)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .foregroundStyle(bridge.isPlaying ? .white : .white.opacity(0.45))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!bridge.isPlaying)
+                        .accessibilityIdentifier("vlc-start-button")
+                        .padding(.top, 4)
                     }
-                    .buttonStyle(.plain)
-                    .disabled(!bridge.isPlaying)
-                    .accessibilityIdentifier("vlc-start-button")
-                    .padding(.top, 4)
                 }
                 .frame(maxWidth: 360, alignment: .leading)
             }
