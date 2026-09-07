@@ -17,11 +17,11 @@ the program guide is free too, courtesy of SiliconDust, the same way it's always
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 [![Proven since 2016](https://img.shields.io/badge/proven%20since-2016-lightgrey)](https://github.com/identd113/hdhr_VCR-AS)
 
-### 📦 Latest: [v2.2.0](https://github.com/identd113/hdhr_VCR_swift/releases/download/v2.2.0/hdhrVCRplus-2.2.0.dmg)
-- New: First-Run Wizard — guides you through folder setup and tuner discovery on first launch
-- New: type-ahead show search in both the web guide and Terminal Guide
-- Proactive warnings when a picked transcode profile isn't supported by the tuner
-- Fixed a security issue in the web guide's search results, plus several smaller fixes
+### 📦 Latest: [v2.3.0](https://github.com/identd113/hdhr_VCR_swift/releases/download/v2.3.0/hdhrVCRplus-2.3.0.dmg)
+- New: Recording FEED — watch an in-progress recording live from another Mac on your LAN, no second tuner needed
+- New: H.264 option, auto-play, live viewer count, and signal strength when watching a FEED
+- Fixed FEED playback stutters/freezes, traced to how the video data was being delivered
+- VoiceOver accessibility labels added to the in-app video player and menu bar
 
 **[📋 Release Notes](RELEASES.md)** — what's new in each version, with download links.
 
@@ -158,6 +158,7 @@ whether you're on Terminal.app or three hops away over SSH.
 
 ### Remote access
 
+- **Recording FEED** — watch an in-progress recording live from another Mac on your LAN without opening a second tuner session. Off by default; turn it on in Settings → Sharing → "Rebroadcast In-Progress Recordings." A discovering Mac sees it appear under "Recording on Another Mac" within about a second, with a plain-MPEG-2 "Watch" and an on-the-fly-transcoded "Watch (H.264)" option, a live viewer count, and an estimated signal-strength reading from the source Mac's own tuner.
 - **LAN web UI** — built-in web server (port 1980) serves the same cable guide grid, with per-tuner Recording/Up Next/Scheduled lists, accessible from any browser on your network. No port forwarding needed; subnet-guarded. Pull down at the top of the grid to refresh in place, no page reload. (Viewing is Mac-only via the in-app VLC player.)
 - **Portrait phone layout at `/vertical`** — visit `http://<mac-ip>:1980/vertical` on your phone for a calendar-style guide: channels become side-by-side columns, time reads top-to-bottom. Responds live to how you're holding the phone, no toggle to remember; the plain root URL always stays the standard horizontal grid regardless of device, if you'd rather bookmark that instead.
 - **Terminal Guide** — a full-screen terminal client for browsing the guide and scheduling recordings without a browser, bundled with the app (`hdhrVCRplus.app/Contents/Helpers/hdhr_guide`). Run it over SSH from anywhere on your network, or click "Open in Terminal" in Settings → Sharing. Same schedule/delete/favorite actions as the web guide, all from a keyboard.

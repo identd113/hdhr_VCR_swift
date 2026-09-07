@@ -6,6 +6,35 @@ What's new in each version. For the fuller list of changes within a version, see
 
 ---
 
+## v2.3.0 (2026-09-07)
+
+### Added
+- **Recording FEED** — watch an in-progress recording live from another Mac on your LAN, without
+  tying up a second tuner. Off by default (Settings → Sharing → "Rebroadcast In-Progress
+  Recordings," or during first-run setup). A discovering Mac sees it appear under "Recording on
+  Another Mac" within about a second.
+- **FEED viewing extras** — an H.264 transcode option for clients that can't play raw MPEG-2,
+  auto-play, a live viewer count, and an estimated signal-quality reading from the source Mac.
+- **Closed captions now carry through a FEED's raw (non-transcoded) stream.**
+
+### Updated
+- **"Relay" renamed to "FEED"** throughout the app, for clarity.
+- **"Sharing" settings reorganized into "Web LAN"** — the web guide's settings/first-run steps
+  split out under this clearer name; every option gets its own short animated first-run screen.
+- **Fixed: FEED playback from another Mac could stutter and freeze for stretches of several
+  seconds to half a minute, then resume.** Traced to how this Mac delivered the video data — large
+  bursts followed by long silent gaps — rather than the network or the receiving Mac's player.
+  Fixed by matching a real HDHomeRun tuner's own smooth, continuous delivery pattern.
+- **Fixed: buffering could take real minutes instead of the intended ~8 seconds**, leaving
+  playback running noticeably slow (and audio slightly out of sync) the whole time.
+- **Fixed: a FEED viewer joining right at the live edge could get a corrupted first moment**
+  of video/audio.
+- **Fixed: the first viewer of a freshly-started FEED transcode could occasionally fail to
+  connect** if they joined before the transcode had finished starting up.
+- **Deploy scripts now self-heal** if iCloud sync evicts the app bundle mid-session.
+- VoiceOver accessibility labels added to the in-app video player and the menu bar's Watch
+  buttons, verified against real VoiceOver navigation.
+
 ## v2.2.0 (2026-08-29)
 
 ### Added

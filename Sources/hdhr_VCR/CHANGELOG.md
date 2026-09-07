@@ -2,6 +2,24 @@
 
 Every entry is tagged **Added** (something new), **Updated** (existing behavior changed, improved, or fixed), **Removed** (something taken away), or **Info** (a note — nothing to do, nothing visibly different).
 
+## v2.3.0 — 2026-09-07
+
+**Added**
+- **New: Recording FEED.** While a show is recording, this Mac can temporarily present itself as an extra, discoverable tuner on your LAN — so another Mac running hdhrVCRplus (or any HDHomeRun-aware app) can watch the in-progress recording live, without opening a second tuner session against your real device. Off by default — turn it on in Settings → Sharing → "Rebroadcast In-Progress Recordings," or during first-run setup, where its own animated step explains what it does. A discovering Mac sees it show up under "Recording on Another Mac" in the menu bar within about a second of it starting.
+- **FEED viewing: H.264 option, auto-play, live viewer count, estimated signal.** Alongside plain "Watch," a "Watch (H.264)" option transcodes on the fly for a client that can't handle raw MPEG-2 — picture size and frame rate always match the source, only bitrate changes. Playback auto-starts once a few seconds have buffered. The menu shows how many people are currently watching a FEED, and an estimated signal-quality reading from the *source* Mac's own tuner, so a weak/strong reception issue is visible before you even connect.
+- **Closed captions carry through a FEED's raw (non-transcoded) stream.**
+
+**Updated**
+- **"Relay" renamed to "FEED" throughout the app**, for clarity — same feature, clearer name.
+- **"Sharing" settings reorganized into "Web LAN"** — the web guide's own settings and first-run steps split out under this clearer name; "Sharing" (still the Settings tab name) now covers both Web LAN and Recording FEED. Every option gets its own short animated first-run screen, all off by default.
+- **Fixed: FEED playback from another Mac could stutter, freeze for stretches of several seconds to half a minute, then resume — traced through several rounds of investigation to how this Mac delivered the video data, not the network or the receiving Mac's player.** The relay was sending data in large bursts followed by long silent gaps whenever it caught up to the live edge, a pattern a real HDHomeRun tuner's own broadcast-fed stream never produces (broadcast video arrives as a smooth, continuous trickle — there's no backlog to burst-release). Confirmed by directly comparing byte-by-byte delivery timing against a real tuner and matching this Mac's own delivery to it. A related fix also corrected the response headers on this same stream, which weren't quite standards-compliant for a stream of unknown length.
+- **Fixed: buffering could take real minutes to finish instead of the intended ~8 seconds**, leaving playback running noticeably slow (and audio slightly out of sync) for that whole stretch — a math bug in how the buffering countdown advanced.
+- **Fixed: a FEED viewer joining right as a recording caught up to the live edge could get a corrupted first moment of video/audio** ("plays a beat, stalls, fragments of audio") from a torn opening data packet.
+- **Fixed: the very first viewer of a freshly-started FEED transcode could occasionally fail to connect** if they connected before the transcode had finished spinning up — now retries automatically instead of giving up.
+- **Deploy scripts now self-heal** if iCloud sync ever evicts the app bundle or its Info.plist mid-session, instead of failing outright.
+- Added VoiceOver accessibility labels to the in-app video player's controls and the menu bar's Watch buttons, verified against real VoiceOver navigation.
+- A handful of internal robustness fixes found during code review ahead of this release: a newly-discovered FEED device could trigger a wasted (harmless, but noisy-in-the-log) guide-fetch attempt; a rare timing edge case in FEED discovery could very briefly misreport a FEED that had just stopped as still present; a background cleanup task could run on the wrong internal queue in one narrow case. None of these were ever visible in normal use.
+
 ## v2.2.0 — 2026-08-29
 
 **Added**
