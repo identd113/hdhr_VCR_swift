@@ -593,11 +593,8 @@ struct FirstRunWizardView: View {
         // the idle loop to eventually get to it on its own schedule. Concurrent, not sequential —
         // each device's fetch is independent, so a multi-tuner household shouldn't wait
         // N × latency here when max(latency) gets the same result.
-        // recordableDevices, not raw state.devices — a discovered virtual-relay device has no real
-        // lineup to fetch (found live 2026-09-09: iterating raw devices here fired a real
-        // "[Lineup] FEED04BE fetch failed" JSON-decode warning against another instance's relay).
         await withTaskGroup(of: Void.self) { group in
-            for device in state.recordableDevices {
+            for device in state.devices {
                 group.addTask { await state.ensureLineupLoaded(for: device) }
             }
         }
@@ -622,10 +619,8 @@ struct FirstRunWizardView: View {
             try? await Task.sleep(for: .milliseconds(200))
         }
         guard !state.devices.isEmpty else { return }
-        // recordableDevices — same reasoning as checkNetworkAccessIfNeeded above, a virtual relay
-        // has no real lineup to fetch.
         await withTaskGroup(of: Void.self) { group in
-            for device in state.recordableDevices {
+            for device in state.devices {
                 group.addTask { await state.ensureLineupLoaded(for: device) }
             }
         }

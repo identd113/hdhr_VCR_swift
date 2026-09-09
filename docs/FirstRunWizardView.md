@@ -308,6 +308,9 @@ device-aware replacement for the original plain network-status row. Four states:
 `checkNetworkAccessIfNeeded()` itself (the actual discovery/confirmation logic feeding this card via
 `discoveryStatus`, a presentational computed property) is unchanged from before this redesign — see
 "Local Network permission" below.
+<!-- DOC-DRIFT: no "Local Network permission" section exists anywhere in this file — the sentence
+above points at one. Flagging rather than guessing the intended target; find/restore or retarget
+the cross-reference. -->
 
 **Background art prefetch during the splash** (`prefetchIntroArtIfNeeded()`, its own `.task`
 alongside `checkNetworkAccessIfNeeded()`'s) — while the intro splash is on screen, the wizard also
@@ -320,7 +323,15 @@ own device-discovery scan
 briefly polls `state.devices` (200ms × up to 20, ~4s ceiling, comfortably inside the ~5.35s splash)
 waiting for either that function or `AppState`'s own launch-time `startup()` to populate it, then
 loads lineups (`ensureLineupLoaded(for:)` — a no-op if already loaded) and, only if some device's
-guide isn't already loaded, `fetchAllGuides()`. Channel selection and favorite-first ordering reuse
+guide isn't already loaded, `fetchAllGuides()`. Deliberately iterates raw `state.devices` here, not
+`recordableDevices` — fetching a virtual FEED relay's own lineup is required, not a bug: it's what
+populates `AppState.remoteRelayEntries` (the "Recording on Another Mac" menu data), which reads
+`lineups[device.DeviceID]` directly for every relay device. A 2026-09-09 pass briefly "fixed" this
+to skip relay devices after a one-off transient JSON-decode failure here (actually caused by the
+separate, still-open `webServerRunning` desync bug in `ISSUES.md`, not by fetching a relay's lineup
+being wrong in itself) — reverted the same day once `docs/VirtualTunerService.md`'s own "lineup
+fetch is the one deliberate exception" note was found; see `issues_resolved.md`'s matching entry
+for the full story of the mistake. Channel selection and favorite-first ordering reuse
 `state.onAirNow(for:)` (`.prefix(10)`, capping this at "a few posters," not the whole on-air
 lineup) rather than reimplementing that sort — the same lookup `/api/now.json` and the menu's own
 "on now" list already use, whose own sort already puts `channel.isFavorite` first (ties broken by
