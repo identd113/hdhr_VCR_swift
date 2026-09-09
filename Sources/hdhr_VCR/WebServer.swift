@@ -1189,28 +1189,46 @@ final class WebServer: @unchecked Sendable {
     // watchRecordingChunkSize below is a multiple of.
     private static let tsPacketSize = 188
 
-    // 8 MPEG-TS packets (188 bytes each) per read — shrunk from 200 (37.6KB) 2026-09-07 after a
-    // direct byte-level comparison against the real HDHomeRun tuner's own port-5004 stream (see
-    // ISSUES.md's FEED stall entry): a raw socket sampler recording recv() sizes/gaps for both
-    // showed the real device delivers an average 1497-byte chunk with inter-arrival gaps mostly
-    // under 20ms and never over 80ms, while this relay — even measured over loopback, before any
-    // network hop — was averaging 34.8KB chunks with ~15% of reads landing on the hardcoded 500ms
-    // "caught up, wait" poll below, i.e. burst-then-go-silent-for-half-a-second, repeatedly, for
-    // the life of a connection. That gap pattern is a plausible direct cause of the PCR-vs-wall-
-    // clock drift VLC's own `--file-logging` debug output already named as the actual stall
-    // trigger. 8 packets (1504 bytes) matches the real device's measured average almost exactly.
-    // The earlier 200-vs-2000-packet chunk-size test noted below found no *throughput* difference
-    // between those two — this change targets delivery *granularity/cadence*, not throughput,
-    // which that test never varied.
+    // Shrunk from 200 packets (37.6KB) to 8 (1504 bytes) 2026-09-07 after a direct byte-level
+    // comparison against the real HDHomeRun tuner's own port-5004 stream (see ISSUES.md's FEED
+    // stall entry): a raw socket sampler found the real device delivers an average 1497-byte chunk
+    // with inter-arrival gaps under 20ms, while this relay — even over loopback — was averaging
+    // 34.8KB chunks with ~15% of reads landing on the hardcoded 500ms "caught up, wait" poll below,
+    // i.e. burst-then-silent-for-half-a-second. That fix bundled two changes at once (the chunk
+    // shrink AND the poll interval drop to 20ms below) and was only ever validated as the pair —
+    // never chunk-size-alone vs. poll-alone. It genuinely fixed the *original* burst/500ms-silence
+    // bug (confirmed via a 7.5+ minute zero-stall loopback test at the time), but a *different*,
+    // still-open stall (`ISSUES.md`'s "VLC-side FEED playback stalls") kept appearing once real
+    // cross-machine Wi-Fi hop testing started — a case the loopback validation never covered.
+    //
+    // **Briefly reverted to a single generous size (`tsPacketSize * 200`, matching
+    // `watchRecordingBacklogChunkSize` below) for a few hours on 2026-09-09**, after comparing
+    // against Jellyfin's own HDHomeRun live-TV relay (`jellyfin/jellyfin`,
+    // `MediaBrowser.Controller/Streaming/ProgressiveFileStream.cs` +
+    // `src/Jellyfin.LiveTv/TunerHosts/SharedHttpStream.cs`) — a mature, widely-deployed open-source
+    // project solving a similar problem, using one generous buffer (`IODefaults.CopyToBufferSize`,
+    // 80KB) with no small-chunk cadence-matching at all. The theory: matching the real tuner's own
+    // *wire* packetization (a UDP/RF-driven artifact of the broadcast signal chain) has no logical
+    // bearing on how large *this app's own local-disk-read-then-relay-forward* chunks should be —
+    // TCP re-segments either way.
+    //
+    // **Re-reverted back to the small, cadence-matched size same day**, after tracing an actual
+    // regression the large-chunk revert caused: a live-edge cushion fix (`feedLiveEdgeCushionBytes`,
+    // see that constant's own comment) landed first and, on its own, gave a genuinely clean 4m39s
+    // zero-stall retest — that's the "it was working" moment. The chunk-size revert to large was a
+    // *second*, separate change layered on top immediately after, without re-confirming the clean
+    // state first — and it was only after *that* change that stalls (a live-observed "plays ~10s,
+    // pauses ~20s" pattern) reappeared. The two changes were never actually isolated against each
+    // other with a clean before/after — this revert restores the small live-edge size specifically
+    // to re-test against the known-good cushion-off/small-chunk combination before drawing any
+    // conclusion about chunk size one way or the other. See `ISSUES.md`'s entry for the retest.
     private static let watchRecordingChunkSize = tsPacketSize * 8
 
-    // The pre-2026-09-07 chunk size (200 packets, 37.6KB), kept only for the initial backlog-drain
-    // phase of a connection that starts behind the live edge (see streamGrowingFile's own
-    // `hasBacklog` comment) — handleGrowingFileChunk downgrades to the small, cadence-friendly
+    // The pre-2026-09-07 chunk size (200 packets, 37.6KB), used for the initial backlog-drain phase
+    // of a connection that starts behind the live edge (see streamGrowingFile's own `hasBacklog`
+    // comment) — handleGrowingFileChunk downgrades to the small, cadence-friendly
     // watchRecordingChunkSize the moment a read comes back short, which never happens while a real
-    // backlog remains, only once catch-up reaches real-time. Restores the old, already-tested-fine
-    // throughput for the one case that still needs it (a fast scrub-bar catch-up), without
-    // reintroducing the old cadence at the live edge, which is what actually caused the FEED stall.
+    // backlog remains, only once catch-up reaches real-time.
     private static let watchRecordingBacklogChunkSize = tsPacketSize * 200
 
     // How often pumpGrowingFile retries a read once it's caught up to the live edge, and how many
@@ -1223,26 +1241,33 @@ final class WebServer: @unchecked Sendable {
 
     // FEED-only: how far behind the recording's true current size handleVirtualTunerStream's raw
     // passthrough relay stays, permanently, instead of ever reading right up to the write pointer
-    // like the 20ms live-edge poll above does on its own. Added 2026-09-08 after live testing kept
-    // showing occasional stalls even with the cadence fix in place (the burst/500ms-poll mismatch
-    // this file's other constants already fixed) — the remaining suspect is disk read latency on
-    // the recording volume itself (RAID/network-mount cache-coherency lag between curl's flush and
-    // our read), which the cadence fix can't help since it's a storage-layer hiccup, not a delivery-
-    // pacing one. Every byte this relay serves has now had at least ~2-3s to fully settle on disk
-    // before we touch it. ~1.5MB ≈ 2-3s at the OTA bitrates actually measured live (2.6-6.19 Mbps,
-    // docs/HDHRFindings.md) — deliberately small ("stay close to 1:1 with live," not a multi-second
-    // buffer, per explicit user direction — the multi-second drift real apps like Channels/HDHomeRun's
-    // own app show is VLC's own client-side jitter buffer growing, a separate, already-expected
-    // mechanism this isn't trying to replace or eliminate). Not applied to handleWatchRecording's
-    // local Watch Now relay (same-machine playback has no cross-network disk-read race to guard
-    // against, and already gets its own head start via AppState's recordingLiveEdgeBackoffSeconds).
+    // like the 20ms live-edge poll above does on its own. Added 2026-09-08 (disk-read-latency
+    // hypothesis for the residual VLC demux stall — see docs/VirtualTunerService.md's live-edge
+    // cushion entry for the full mechanism/rationale). **Disabled (0) 2026-09-09** after two
+    // independent live-tested rounds both showed the same result: the cushion made the stall worse,
+    // not better. 2026-09-08's round found VLC stops progressing entirely once any backlog forms
+    // between the live edge and the cushion boundary. This session reproduced it again fresh and,
+    // for the first time, captured direct thread-level proof why: a clean 5s `sample` taken squarely
+    // mid-stall (`displayed=+0` for ~90s+ beforehand) showed both the network-read thread
+    // (`vlc_tls_Read`) and the "prefetch" plugin's consumer thread >99% blocked (`poll`/
+    // `_pthread_cond_wait`) for the entire window, despite the source relay's own log confirming
+    // continuous, uninterrupted byte delivery throughout — VLC's demux pipeline goes essentially
+    // idle even while data keeps arriving. Left at `0` rather than removed outright: the mechanism
+    // (join-offset, ceiling math, graceful degradation, drain-on-finish, per-iteration backlog
+    // chunk-sizing) is fully gated on `> 0` everywhere it's used, so `0` is a true no-op, restoring
+    // byte-for-byte the pre-2026-09-08 live-edge-join behavior — kept in place rather than deleted
+    // in case a future investigation (e.g. the not-yet-tried debugger-at-the-moment-of-stall
+    // approach, now actually tried once — see above) points at a fixable bug in the mechanism
+    // itself rather than the cushion concept being wrong. Root cause of the underlying VLC stall
+    // (independent of this cushion) remains open — see `ISSUES.md`'s "VLC-side FEED playback
+    // stalls" entry.
     //
     // handleGrowingFileChunk's read-ceiling math (`max(bytesSent, trueSize - liveEdgeCushionBytes)`)
     // degrades gracefully for a freshly-started recording that doesn't have this much backlog yet —
     // see handleVirtualTunerStream's own join-offset comment for that edge case, and the "recording
     // finished" branch's cushion-disable step for why the final cushion's worth of a show is still
     // fully delivered once the source stops growing rather than being permanently withheld.
-    private static let feedLiveEdgeCushionBytes = 1_500_000
+    private static let feedLiveEdgeCushionBytes = 0
 
     // Rounds a byte offset down to the nearest complete TS packet boundary — `offset` is usually
     // the recording file's momentary byte size (handleVirtualTunerStream's live-edge startOffset),

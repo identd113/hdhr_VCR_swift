@@ -522,6 +522,38 @@ final class VLCBridge: ObservableObject {
         // same "prefetch" stream_filter.
         let prefetchBufferKiB = 1024
 
+        // ts-trust-pcr experiment — tried and reverted same day, 2026-09-09. VLC 3.0.23's TS demux
+        // module (modules/demux/mpeg/ts.c, add_bool "ts-trust-pcr", default true) exposes whether
+        // the demuxer trusts the broadcast's own embedded PCR clock or derives its own from packet
+        // arrival timing. Motivated by a real negative playback-clock delta seen live
+        // (`[VLC] tick pos=+-6857ms/3000ms` — get_time() regressing, not just advancing slowly)
+        // together with get_stats().i_demux_read_bytes climbing normally throughout a stall (so the
+        // demuxer wasn't starved — pointed at clock-mapping, not data delivery). **Live-tested
+        // result: much worse, not better** — with `--no-ts-trust-pcr` set, a fresh FEED connection
+        // never produced a single displayed frame in 6+ minutes, stuck in an ever-climbing
+        // "Buffering NN%" ramp the whole time (vs. normally reaching 100%/first frame within a few
+        // seconds). Reverted immediately; left at VLC's own default (trust in-stream PCR) rather
+        // than kept as a dormant opt-in, since there's no scenario found so far where this
+        // direction helps. See `ISSUES.md`'s "VLC-side FEED playback stalls" entry for the full
+        // retest note.
+
+        // stream-filter experiment — tried and reverted same day, 2026-09-09, right after the
+        // ts-trust-pcr experiment just above. Targeted the "prefetch" module directly (rather than
+        // tuning it — prefetchBufferKiB already tried that once, 2026-09-07) since two independent
+        // `sample <pid>` captures this session both showed prefetch's own consumer thread >99%
+        // blocked in `_pthread_cond_wait` mid-stall. `--stream-filter=record` replaces VLC's
+        // auto-probed stream-filter chain with only "record" (the other real member of the default
+        // chain for this stream shape, per the teardown log's `removing module "record"` /
+        // `"prefetch"` / `"access"` lines) — i.e. prefetch never loads at all. **Live-tested result:
+        // same failure mode as ts-trust-pcr** — "Buffering NN%" crept up over 50+ seconds (57% at
+        // the 50s mark) with zero displayed frames the whole time, instead of the normal few-second
+        // ramp to first frame. Reverted immediately. Two different levers (PCR trust, prefetch
+        // presence) both broke the same "Buffering %"/rate-ramp startup logic instead of fixing the
+        // mid-session stall — suggests that logic depends on the prefetch module's own internal
+        // fill-state more directly than its outward behavior (buffer-size tuning) implied, and this
+        // investigation doesn't have enough visibility into that dependency to keep guessing safely.
+        // See `ISSUES.md`'s "VLC-side FEED playback stalls" entry.
+
         // [self] here, not [weak self] — this closure only touches pre-extracted
         // nonisolated(unsafe) lets (mp, inst, media, etc.) and is otherwise transient (runs once,
         // discarded); self (VLCBridge.shared, a singleton — never deallocated) is only referenced

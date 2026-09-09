@@ -16,18 +16,32 @@ mid-investigation — see "Current status" at the bottom for exactly where this 
   The LaunchAgent itself is still present, deliberately not also removed in the same pass — next
   restart should confirm whether the Login Item alone was the trigger.
 - **Laptop** ("viewer"): `mikewoodfill@10.0.3.215`, repo cloned at
-  `~/Documents/GitHub/hdhr_VCR_swift`. **`/Applications/hdhrVCRplus.app` should never exist here —
-  removed 2026-09-09, along with its own macOS Login Item named "hdhrVCRplus" that had been
-  silently auto-launching it at every login** (same `osascript` technique as this Mac's own Login
-  Item above — the laptop has no LaunchAgent at all, so this alone fully explains every laptop-side
-  "two processes" observation from tonight: dev-repo copy holding the port-1980 listener +
-  `/Applications` copy running alongside it, neither freshly launched by anything this session
-  did). The **only** install on the laptop now is `~/Documents/GitHub/hdhr_VCR_swift/hdhrVCRplus.app`,
-  the dev-loop build `./deploy.sh` there produces — before testing, always `pkill -x hdhr_VCR`
-  (harmless if nothing's running) then `open ~/Documents/GitHub/hdhr_VCR_swift/hdhrVCRplus.app`.
-  If `/Applications/hdhrVCRplus.app` ever reappears (e.g. a future `deploy_release.sh`/DMG install
-  for a genuine release test), check Login Items again before leaving it — don't let it silently
-  re-enable this same trap.
+  `~/Documents/GitHub/hdhr_VCR_swift`. **`/Applications/hdhrVCRplus.app` is the laptop's correct
+  test/everyday install — always test from there, never from the repo-local dev-folder build.**
+  A 2026-09-09 pass wrongly concluded the opposite (deleted `/Applications/hdhrVCRplus.app` as
+  "stray," left the dev-repo copy running instead) — **corrected same day, per explicit user
+  direction**: `/Applications/hdhrVCRplus.app` was recreated from the dev-repo build (`cp -R`,
+  ad-hoc signature carries over fine — codesign `-` isn't path-bound) and is once again the
+  laptop's running/tested copy; the dev-repo copy under `~/Documents/GitHub/hdhr_VCR_swift` still
+  gets built by `./deploy.sh` there (needed for the iCloud-synced fast-iteration workflow below)
+  but should not be the one left *running* on this machine.
+  **Also removed 2026-09-09, and this part of that pass still stands**: a macOS Login Item named
+  "hdhrVCRplus" that had been silently auto-launching *some* copy at every login, independent of
+  any LaunchAgent (the laptop has none) — this, not "two legitimate installs," was the actual
+  cause of the "two processes" symptom investigated that night. Removing the Login Item was
+  correct; removing the `/Applications` bundle itself was not — those were two separate fixes
+  bundled into one pass, and only the first one should have shipped.
+  Workflow: build via `./deploy.sh` in the dev-repo directory (below), then `pkill -x hdhr_VCR`
+  followed by `rm -rf /Applications/hdhrVCRplus.app && cp -R
+  ~/Documents/GitHub/hdhr_VCR_swift/hdhrVCRplus.app /Applications/hdhrVCRplus.app` and `open
+  /Applications/hdhrVCRplus.app` to actually pick up and run the new build — a plain `./deploy.sh`
+  on the laptop alone launches the *dev-repo* copy, not `/Applications`, and would silently retest
+  the old build if skipped. **The `rm -rf` first is required, not optional** — confirmed live
+  2026-09-09: `cp -R src dst` when `dst` already exists as a directory nests `src` *inside* `dst`
+  rather than replacing it (a plain macOS `cp` behavior, not specific to this app), silently
+  leaving the old binary in place at `dst/Contents/MacOS/hdhr_VCR` while the new one lands one
+  level deeper and is never launched — caught by checking `/api/ping`'s `version` field after a
+  redeploy and finding it hadn't moved. Confirm via `/api/ping`'s `version` field either way.
   **Different `/24` from this Mac** (`10.0.3.x` vs `10.0.2.x`) — there's a router/Wi-Fi hop
   between them, not a flat switch. Relevant to the throughput finding below.
 - Passwordless SSH is already set up: `ssh laptop` (alias in `~/.ssh/config`) reaches it directly,
@@ -69,9 +83,15 @@ folders — an edit made here shows up on the laptop within a few seconds with n
 needed (confirmed via matching `md5` of the same file on both machines). So iterating is just:
 
 ```
-./deploy.sh                                             # this Mac
-ssh laptop "cd ~/Documents/GitHub/hdhr_VCR_swift && ./deploy.sh"   # laptop, same synced source
+./deploy.sh                                             # this Mac — builds AND leaves this copy running, that's correct here
+ssh laptop "cd ~/Documents/GitHub/hdhr_VCR_swift && ./deploy.sh && pkill -x hdhr_VCR && sleep 1 && rm -rf /Applications/hdhrVCRplus.app && cp -R hdhrVCRplus.app /Applications/hdhrVCRplus.app && open /Applications/hdhrVCRplus.app"
 ```
+
+The laptop's `./deploy.sh` alone only builds the dev-repo copy and launches *it* — the extra
+`pkill`/`cp -R`/`open` after `&&` is what actually gets the new build into `/Applications` and
+running from there, which is the copy that must be the one left running on the laptop (see
+"Machines" above — corrected 2026-09-09 after a prior pass got this backwards). Skipping that
+tail silently retests against a stale `/Applications` build while the dev-repo copy runs unseen.
 
 `.build` on both machines is a symlink to `/tmp/hdhr_vcr_build_cache` (see CLAUDE.md's iCloud
 notes) — that target is a real local directory, not itself synced (`/tmp` never syncs), so a
@@ -80,11 +100,14 @@ once before `./deploy.sh` will build at all (it fails with a misleading
 `NSCocoaErrorDomain Code=512 ... Not a directory` otherwise — found live 2026-09-08).
 
 **Only run ONE instance on the laptop at a time** — see the "Laptop" entry under Machines above.
-Both `/Applications` (the laptop's normal everyday install — keep it) and the repo-local dev build
-legitimately exist there; the rule is never let both run *simultaneously*, since Launch Services
+Both `/Applications` (the laptop's normal everyday install and the one to test from) and the
+repo-local dev build (needed only as the source `./deploy.sh` compiles into, not itself meant to
+stay running) exist there; the rule is never let both run *simultaneously*, since Launch Services
 then silently routes test traffic to whichever it considers canonical, independent of which was
 actually just redeployed (cost a chunk of a session before this was caught, 2026-09-08). Always
-`pkill -x hdhr_VCR` before `open`ing either one.
+`pkill -x hdhr_VCR` before `open`ing either one, and always finish a laptop redeploy by launching
+`/Applications`, per the corrected workflow above — not the dev-repo copy `./deploy.sh` itself
+launches.
 
 **Heavier path (an actual signed-build/DMG-install test, not ordinary iteration)**:
 `./deploy_release.sh 2.2.4 --skip-notarize` (signed, not notarized/published), then push the DMG
@@ -312,6 +335,15 @@ keep-vs-revert not yet made.** If picked up again: get a real VLC verbose log du
 before trying another relay-side mechanical fix — this session spent a lot of cycles on
 plausible-sounding server-side theories (disk latency, chunk size, network bandwidth) that all
 measured out fine, while the client's own demux behavior was never directly instrumented.
+
+**Resolved (decision made), 2026-09-09**: `feedLiveEdgeCushionBytes` set to `0` after this same
+regression reproduced fresh in a follow-up cross-machine session, this time with a real thread-level
+capture (`sample <pid>` on the laptop, squarely mid-stall) confirming the client's own demux pipeline
+goes idle — not backed up, not blocked trying to read — while the relay keeps delivering bytes
+normally. A 4m39s clean retest with the cushion disabled (zero stalls, vs. two stalls within ~90s
+each with it on) supports the decision without fully proving the underlying VLC bug is gone. Full
+write-up: `ISSUES.md`'s "VLC-side FEED playback stalls" entry and `docs/VirtualTunerService.md`'s
+live-edge cushion entry.
 
 **Also found and fixed this same day, unrelated to the cushion itself**: the laptop had two
 divergent app copies running *simultaneously* (`/Applications/hdhrVCRplus.app`, stale, vs. the
