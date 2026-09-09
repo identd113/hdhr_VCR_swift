@@ -55,6 +55,39 @@ private typealias vlc_get_version_fn     = @convention(c) () -> UnsafePointer<CC
 private typealias vlc_track_desc_fn      = @convention(c) (OpaquePointer?) -> OpaquePointer?
 private typealias vlc_track_rel_fn       = @convention(c) (OpaquePointer?) -> Void
 private typealias vlc_track_set_fn       = @convention(c) (OpaquePointer?, Int32) -> Int32
+// libvlc_log_set(instance, cb, data) — routes *every* libvlc-internal log message through our own
+// callback instead of VLC's own file/console logger interface, letting it land directly in this
+// app's own glog() sink (~/Library/Logs/hdhrVCRplus.log) instead of a separate file. Added
+// 2026-09-09 as a permanent, reusable capability (this app already dlopens libvlc itself rather
+// than shelling out to the vlc binary, so there's no reason to go through its CLI-oriented
+// --file-logging path at all) — kept wired up unconditionally (harmless when quiet) even though
+// the investigation that motivated it didn't pan out: with a live FEED stall reproduced twice
+// (36s and 90s+) and this callback active, it never received a single demux/stream_filter/decoder-
+// level message — only startup/module-load output — even combined with a temporary --verbose=2 in
+// libvlc_new()'s argv (removed again after the test; add it back only for another attempt at this
+// same class of investigation). Best guess, not confirmed: this VLC.app release build has
+// debug-level msg_Dbg() tracing compiled out of its demux/decode modules entirely, in which case
+// no verbosity setting could ever surface it and a different technique (sampling/attaching a
+// debugger to the process during a live stall) would be needed instead. See ISSUES.md's FEED stall
+// entry for the full trail.
+// `args` is declared as a raw pointer, not CVaListPointer — CVaListPointer itself isn't
+// representable in a @convention(c) signature (the C ABI's va_list is, in memory, just a pointer
+// on this platform), so it's received raw here and re-wrapped into CVaListPointer inside the
+// callback body, where that restriction doesn't apply.
+private typealias vlc_log_cb        = @convention(c) (UnsafeMutableRawPointer?, Int32, OpaquePointer?, UnsafePointer<CChar>?, UnsafeMutableRawPointer?) -> Void
+private typealias vlc_log_set_fn    = @convention(c) (OpaquePointer?, vlc_log_cb?, UnsafeMutableRawPointer?) -> Void
+
+// Free function, not a closure — @convention(c) callbacks can't capture context, so `data` is
+// unused (nil) and this just writes straight to the app's own glog() sink. libvlc's log levels:
+// 0=DEBUG, 1=NOTICE, 2=WARNING, 3=ERROR (libvlc_log_level in vlc/libvlc.h) — kept as the raw
+// number rather than a name mapping here, since a wrong guess at the mapping would be worse than
+// the number alone for a diagnostic that's meant to be read directly off the log.
+private func vlcLogCallback(_ data: UnsafeMutableRawPointer?, _ level: Int32, _ ctx: OpaquePointer?, _ fmt: UnsafePointer<CChar>?, _ args: UnsafeMutableRawPointer?) {
+    guard let fmt, let args else { return }
+    let vaList = CVaListPointer(_fromUnsafeMutablePointer: args)
+    let message = NSString(format: String(cString: fmt), arguments: vaList)
+    glog("[VLC-core L\(level)] \(message)")
+}
 
 // ── CoreAudio device change monitoring ───────────────────────────────────────
 
@@ -224,6 +257,7 @@ final class VLCBridge: ObservableObject {
     private let _spuDesc:          vlc_track_desc_fn?  // libvlc_video_get_spu_description
     private let _spuSet:           vlc_track_set_fn?   // libvlc_video_set_spu
     private let _trackDescRelease: vlc_track_rel_fn?   // libvlc_track_description_list_release
+    private let _logSet:           vlc_log_set_fn?     // libvlc_log_set
 
     private init() {
         let vlcAppURL = Self.locateApp()
@@ -265,6 +299,7 @@ final class VLCBridge: ObservableObject {
         // investigating why a real, currently-playing cross-machine FEED session had produced zero
         // tick lines in ~16 minutes of runtime. See VLCStats's own doc comment for the struct-size
         // bug this also silently avoided by never being called.
+        _logSet       = sym("libvlc_log_set")
         _mpGetStats   = sym("libvlc_media_get_stats")
         _mpGetTime    = sym("libvlc_media_player_get_time")
         _videoGetSize = sym("libvlc_video_get_size")
@@ -293,6 +328,7 @@ final class VLCBridge: ObservableObject {
         // C function pointers are plain values, safe to capture across threads.
         let newFn   = _new!
         let mpNewFn = _mpNew!
+        let logSetFn = _logSet
         if let pluginPath = vlcAppURL?.appendingPathComponent("Contents/MacOS/plugins").path {
             setenv("VLC_PLUGIN_PATH", pluginPath, 1)
         }
@@ -333,6 +369,7 @@ final class VLCBridge: ObservableObject {
                 newFn(Int32(vlcArgPointers.count), buf.baseAddress)
             }
             vlcArgCStrings.forEach { free($0) }
+            if let inst { logSetFn?(inst, vlcLogCallback, nil) }
             nonisolated(unsafe) let mp   = inst.flatMap { mpNewFn($0) }
             await MainActor.run { [weak self] in
                 guard let self else { return }
