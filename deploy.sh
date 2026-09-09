@@ -50,6 +50,18 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Helpers" "$APP/Contents/Resources"
 if [ ! -f "$APP/Contents/Info.plist" ]; then
     echo "==> WARNING: Info.plist missing (iCloud eviction?) — restoring from tools/Info.plist.template"
     cp tools/Info.plist.template "$APP/Contents/Info.plist"
+    # The template's own CFBundleShortVersionString is just a "0.0.0" placeholder — unlike
+    # deploy_release.sh (which always re-stamps the real semver a few lines after its own copy of
+    # this same self-heal), a plain dev deploy.sh never sets this field at all. Left at "0.0.0" it
+    # falsely reads as older than every published GitHub release, so AppState's update checker
+    # (currentReleaseVersion()) nags "Update Now" on every launch until the next real
+    # deploy_release.sh — restamp it from the latest git tag instead, the same "last real release"
+    # value CFBundleShortVersionString is supposed to hold between actual releases.
+    _LAST_TAG="$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')"
+    if [ -n "$_LAST_TAG" ]; then
+        /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $_LAST_TAG" "$APP/Contents/Info.plist"
+        echo "    Restamped CFBundleShortVersionString to last release: $_LAST_TAG"
+    fi
 fi
 
 echo "==> Generating version…"
