@@ -9,18 +9,25 @@ mid-investigation — see "Current status" at the bottom for exactly where this 
 - **This Mac** ("source", hostname `woodflix`): `/Users/plexserver/Documents/GitHub/hdhr_VCR_swift`.
   LAN IP on the interface the app advertises FEED from: `10.0.2.100`. Real tuner device `105404BE`.
   Always runs the repo-local dev-folder build (`./deploy.sh` — never installs to `/Applications`).
+  **Had a macOS Login Item named "hdhrVCRplus" pointed at this exact dev-repo app bundle, on top of
+  the `com.hdhr.vcrplus.plist` LaunchAgent** (`ISSUES.md`'s open duplicate-launch entry) — two
+  independent OS-level auto-launch triggers for the same target, found and the Login Item removed
+  2026-09-09 (`osascript -e 'tell application "System Events" to delete login item "hdhrVCRplus"'`).
+  The LaunchAgent itself is still present, deliberately not also removed in the same pass — next
+  restart should confirm whether the Login Item alone was the trigger.
 - **Laptop** ("viewer"): `mikewoodfill@10.0.3.215`, repo cloned at
-  `~/Documents/GitHub/hdhr_VCR_swift`. **Two copies legitimately live here, by design** —
-  `/Applications/hdhrVCRplus.app` is the laptop's normal, everyday-use install (keep it — don't
-  delete it for testing convenience) and `~/Documents/GitHub/hdhr_VCR_swift/hdhrVCRplus.app` is
-  the dev-loop build `./deploy.sh` there produces. **Never run both at once** — Launch Services
-  routes the `hdhrvcrplus://` URL scheme to whichever it considers canonical independent of which
-  was actually just redeployed, so two running copies means test traffic can silently hit a stale
-  build (found live 2026-09-08, cost a chunk of a session before it was caught). Before testing a
-  fresh dev-repo build: `pkill -x hdhr_VCR` (kills whichever is running, by exact binary name —
-  same on both copies) then `open ~/Documents/GitHub/hdhr_VCR_swift/hdhrVCRplus.app` — never also
-  leave `/Applications`'s copy running at the same time. When done testing and handing the laptop
-  back for normal use, `pkill -x hdhr_VCR` again and `open /Applications/hdhrVCRplus.app`.
+  `~/Documents/GitHub/hdhr_VCR_swift`. **`/Applications/hdhrVCRplus.app` should never exist here —
+  removed 2026-09-09, along with its own macOS Login Item named "hdhrVCRplus" that had been
+  silently auto-launching it at every login** (same `osascript` technique as this Mac's own Login
+  Item above — the laptop has no LaunchAgent at all, so this alone fully explains every laptop-side
+  "two processes" observation from tonight: dev-repo copy holding the port-1980 listener +
+  `/Applications` copy running alongside it, neither freshly launched by anything this session
+  did). The **only** install on the laptop now is `~/Documents/GitHub/hdhr_VCR_swift/hdhrVCRplus.app`,
+  the dev-loop build `./deploy.sh` there produces — before testing, always `pkill -x hdhr_VCR`
+  (harmless if nothing's running) then `open ~/Documents/GitHub/hdhr_VCR_swift/hdhrVCRplus.app`.
+  If `/Applications/hdhrVCRplus.app` ever reappears (e.g. a future `deploy_release.sh`/DMG install
+  for a genuine release test), check Login Items again before leaving it — don't let it silently
+  re-enable this same trap.
   **Different `/24` from this Mac** (`10.0.3.x` vs `10.0.2.x`) — there's a router/Wi-Fi hop
   between them, not a flat switch. Relevant to the throughput finding below.
 - Passwordless SSH is already set up: `ssh laptop` (alias in `~/.ssh/config`) reaches it directly,
