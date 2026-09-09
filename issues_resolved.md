@@ -1310,4 +1310,16 @@ A title-based fallback (`Show.seriesTitle(from: entry.Title) == show.show_title`
 
 **Verified live**: after redeploying, a raw-socket sampler against a fresh FEED session showed the live-edge cadence unchanged from the original fix (avg chunk 1418 bytes, p90 gap 22.1ms, zero gaps over 200ms) — confirming `hasBacklog` correctly evaluates false for the always-live-edge FEED path. The same sampler against `/api/watch-recording?...&start=0` on an in-progress recording (a real ~28MB backlog) showed the backlog-catch-up path using much larger chunks (avg 12.3KB) and draining at several MB/s — well above real-time — while gaps stayed smooth throughout (p90 20.8ms, zero over 200ms), confirming the fast-drain path doesn't reintroduce the old silent-gap pattern (it never touches the live-edge polling wait while backlog remains, so there's nothing to burst-and-go-silent).
 
+# `checkNetworkAccessIfNeeded`/`prefetchIntroArtIfNeeded` fetched a lineup for the FEED virtual relay, throwing a real decode-error warning — 2026-09-09
+
+## RESOLVED — First-run wizard's network-check/art-prefetch loops iterated raw `state.devices` instead of `recordableDevices`
+
+**File:** `Views/FirstRunWizardView.swift` — `checkNetworkAccessIfNeeded()`, `prefetchIntroArtIfNeeded()`
+
+**Root cause**: both functions looped over `state.devices` (every discovered device, including a virtual FEED relay watched from another instance) and called `state.ensureLineupLoaded(for:)` for each — the same class of bug `CLAUDE.md`'s "Virtual tuner relay guardrails" invariant explicitly calls out ("a picker doesn't inherit backstop (2) for free... default new device-facing code to `recordableDevices`"). Found live during an unrelated FEED cross-machine test session that repeatedly discovered/re-announced a relay device: `[WARN] [Lineup] FEED04BE fetch failed: DecodingError.dataCorrupted... Unexpected character 'o' in expected null value` — the relay's lineup endpoint returned a non-JSON response at that moment (plausibly while the web server was mid-recovery from the also-open duplicate-launch/`webServerRunning` desync issue in `ISSUES.md`), and the app treated it as a real fetch failure worth a WARN log. User-visible symptom: opening the native "Add Show" window intermittently failed to load / showed a guide error.
+
+**Resolution**: both loops now iterate `state.recordableDevices` (`devices.filter { !$0.isVirtualRelay }`) instead of raw `state.devices`, matching every other lineup/guide-fetch call site in the codebase (`AddShowView.swift`'s own `.task` and `applyWebGuideEntry` already did this correctly). The `state.devices.isEmpty` guards immediately around these loops were left as-is — those are genuinely asking "has discovery found anything at all yet," not "should we fetch a lineup for this specific device," so they don't need the same filter.
+
+**Resolving commit**: (uncommitted at time of writing)
+
 **Resolving commit**: (uncommitted at time of writing)
