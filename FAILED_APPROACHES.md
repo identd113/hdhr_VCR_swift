@@ -4,6 +4,22 @@ Not an issue tracker — this is a record of things that were tried repeatedly, 
 
 ---
 
+## Single-instance enforcement (`flock()` lock file) for the duplicate-launch bug — 2026-09-09, reverted same session
+
+**Context**: chasing the "two real hdhr_VCR processes launch around the same restart" bug (see `ISSUES.md`'s open entry on this) with a hard fix rather than just the softer `startRecording` resync already shipped (`issues_resolved.md`). Tried adding a real single-instance guard to `AppState.startup()`: acquire an exclusive `flock()` on a well-known lock file at the very top of `startup()`, before any real work; a process that can't acquire it activates whichever instance holds it and exits.
+
+**What happened, in order:**
+
+1. First cut checked `NSRunningApplication.runningApplications(withBundleIdentifier:)` instead of a file lock. Live-confirmed to lose the exact race it existed to catch — two processes launching within the same second both ran the check before either had finished registering with the OS's own app-tracking, so both saw zero "other" instances and both proceeded to a real `WebServer` bind conflict anyway.
+2. Switched to `flock()` (a kernel-level exclusive lock, not an eventually-consistent tracking list) with a single non-blocking attempt. This introduced a **new, worse failure mode**: `deploy.sh`'s `pkill` sends SIGTERM but does not wait for the old process to actually exit (it runs a real SIGTERM handler — flushing config — before dying), so the *newly launched* process's one-shot lock check routinely ran while the *old, dying* process still held the lock, lost, and exited immediately with no retry. Result: an ordinary `./deploy.sh` restart — not just the rare double-launch race this was meant to fix — left the app **completely down** (no process running, web server unreachable) with real recordings still in progress and no automatic recovery.
+3. Added a ~3-second retry loop (poll every 100ms) to distinguish "a rival is mid-exit" from "a rival is genuinely staying." Redeployed — the app still failed to come back up the same way; by inspection the lock was free again moments later, meaning *something* was winning the race and then also exiting shortly after for a reason never isolated (further LaunchAgent-vs-deploy.sh interaction, most likely, but not confirmed).
+
+**Reverted in full** rather than debugged further live — real recordings were in progress throughout, and each iteration's blast radius (the whole app not coming back up at all) was strictly worse than the original bug being chased (a noisy but harmless Discord notification loop, already fixed a different, lower-risk way — see `issues_resolved.md`'s `startRecording` resync entry, which fully addresses the actual user-visible symptom without needing single-instance enforcement at all). Confirmed via `git diff` that the revert is byte-identical to the last known-good commit.
+
+**Lesson**: a defense-in-depth hardening pass for a low-severity, already-otherwise-fixed bug is not worth attempting live against a machine with real, currently-recording content, however "safe" each individual step looks in isolation — the actual failure mode that bit twice (an external, uncontrolled process-lifecycle detail: `pkill`'s no-wait semantics interacting with the app's own SIGTERM handler) was never something code review alone would have caught, and only surfaced by deploying. If this is revisited, do it against a throwaway/idle instance with no real recordings at stake, and treat `deploy.sh`'s restart timing itself (not just the app's own launch-detection logic) as part of what needs to be understood first.
+
+---
+
 ## Channels DVR compatibility for the virtual-tuner relay
 
 **Context**: `VirtualTunerService`/`WebServer`'s virtual-tuner relay (`docs/VirtualTunerService.md`) — while a show records, this app advertises a temporary HDHomeRun-like tuner so another instance can watch the in-progress recording. 2026-09-02's UDP protocol fix (adding DeviceType/BaseURL/TunerCount/LineupURL TLVs, matching a real EXTEND byte-for-byte) got the relay showing up for the first time in a real third-party client — the iOS "Channels" app, used in its standalone server-less mode (no separate Channels DVR Server involved). But Channels would only ever discover the device (repeatedly, correctly, over UDP) and — at most — fetch `/discover.json` once over HTTP; it never once requested `/lineup.json`, no matter what was tried in its UI, so the source always showed with no channels ("(null)" name, empty lineup).
