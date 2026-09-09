@@ -43,6 +43,18 @@ Added 2026-09-06: the menu bar blue light (`AppState.hasAvailableRemoteFeed`/`.f
 
 ---
 
+### Dock icon flash workaround — user doesn't recall why it's needed, considering removal
+
+Raised 2026-09-09: the user no longer remembers the specific reason this was added and wants to consider removing it. Context for when this comes back up — see "Accepted — not our bug / not scheduled" section above ("macOS Local Network permission block") for the full original writeup: `hdhr_VCRApp.swift`'s `init()` briefly sets `NSApplication.shared.setActivationPolicy(.regular)` (showing a Dock icon) at launch in `"auto"` Dock-icon mode, until `AppState.confirmLocalNetworkAccessIfNeeded()` flips it back to `.accessory` once a real guide/lineup fetch succeeds — a mitigation for a confirmed, Apple-acknowledged macOS bug where a fully backgrounded (`LSUIElement`) menu-bar app can silently never receive the system's Local Network permission prompt at all, with no self-recovery path.
+
+**Confirmed inert on this Mac right now** (2026-09-09 investigation, chasing an unrelated duplicate-app-launch bug — see `ISSUES.md`): live config here has `Dock_icon_mode: "never"` and `Local_network_confirmed: true`, so the activation-policy-toggling code path never actually executes on this machine — no flash to see. It would still matter for `"auto"` mode (the default) on a fresh install or after a config reset, where Local Network access hasn't been confirmed yet.
+
+**Also clarified while looking into this**: the "forced silent open+close at launch" mentioned in `MenuContent`'s `onAppear` comment (`hdhr_VCRApp.swift`) is unrelated — it's not code this app wrote (nothing in the source implements an explicit trigger), just `MenuBarExtra` itself instantiating its content view once internally, which this codebase observed and leaned on as a free launch hook. Not part of the Dock-icon mitigation and nothing to remove there.
+
+**Not yet decided**: whether to actually remove the Dock-icon toggle code. Tradeoff is real — doing so would remove the only defense (however unconfirmed in effectiveness) against a bug Apple hasn't fixed, for anyone running in `"auto"` mode. Revisit when actually deciding, not just investigating.
+
+---
+
 ## Player / Watch Now
 
 ### No watched/resume tracking across sessions
