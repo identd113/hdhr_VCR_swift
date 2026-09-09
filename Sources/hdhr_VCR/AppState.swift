@@ -2248,6 +2248,27 @@ final class AppState: ObservableObject {
     func startRecording(index: Int) async {
         var show = shows[index]
         guard !show.show_recording else { return }
+        // Found live 2026-09-09: two independent triggers (the idle loop's regular per-tick pass
+        // and a separate "start immediately if airing now" shortcut) can each observe
+        // show_recording == false and both reach this far before either one's write is visible —
+        // recordingManager's own `pids[showId] == nil` guard silently no-ops the second real
+        // process launch (so there's never an actual duplicate curl), but AppState had no
+        // matching guard, so the second call fell through, re-logged a fake "START", and — worse
+        // — if something afterward ever reset show_recording back to false without also clearing
+        // recordingManager's tracked pid, every later idle-loop tick would repeat this same
+        // dance forever: re-enter here, see show_recording == false, and (since a real process is
+        // still tracked) get correctly blocked by the tuner-full check below, filing a fresh
+        // "Tuner Conflict" notification on every single retry. Checking recordingManager directly
+        // — the actual source of truth for "is a process already running for this show," not the
+        // `shows` array's own copy of that fact — closes both: resync rather than silently
+        // no-op'ing, so a desynced flag doesn't loop this check forever, and never re-attempt
+        // recordingManager.start() when it already has this show_id tracked.
+        if recordingManager.isRunning(showId: show.show_id) {
+            shows[index].show_recording = true
+            shows[index].show_tuner_resource = ""   // will be re-captured by captureResourceHeaders()
+            glog("[\(show.show_title)] resynced show_recording — recordingManager already has this show's process tracked", level: .warning)
+            return
+        }
         // Skip if the assigned device is absent or unavailable — avoids burning fail count on a dead tuner.
         guard let device = devices.first(where: { $0.DeviceID == show.hdhr_record }) else {
             glog("[\(show.show_title)] device \(show.hdhr_record) not in device list — skipping recording start", level: .warning)

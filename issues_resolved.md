@@ -1284,6 +1284,22 @@ A title-based fallback (`Show.seriesTitle(from: entry.Title) == show.show_title`
 
 **Resolving commit**: (uncommitted at time of writing)
 
+---
+
+## RESOLVED — a desynced `show_recording` flag re-entered `startRecording` forever, spamming a "Tuner Conflict" Discord notification every ~10s for an already-recording show
+
+**File:** `AppState.swift` — `startRecording(index:)`
+
+**Found live 2026-09-09**: two real, legitimate, currently-airing series recordings ("Jimmy Kimmel Live!", "The Tonight Show Starring Jimmy Fallon") both had their `show_recording` flag read `false` in the live app state even though their real `curl` processes were genuinely running and correctly writing to disk — the log showed `startRecording` had actually reached `recordingManager.start()` and logged a `START ch=...` line **twice**, one second apart, for the same show. From that point, the idle loop re-entered `startRecording` on every tick, hit the (correctly firing, but misleadingly-attributed) tuner-full check every time, and fired a fresh "⚠️ Tuner Conflict" Discord notification every ~10s — indefinitely, for as long as the show kept airing.
+
+**Root cause, only partially confirmed**: `recordingManager`'s own `start()` already guards against an actual second `curl` launch (`guard pids[showId] == nil else { return }`, a silent no-op — confirmed via `ps aux`, only one real process per show ever existed), but `AppState.startRecording` had no matching guard before it — so a second call that also observed `show_recording == false` would run all the way through, including logging a fake "START" line and (crucially) nothing corrected the flag itself afterward if some *other* path had reset it back to `false` without also clearing `recordingManager`'s tracked pid. The exact mechanism producing two independent `startRecording` calls within the same second was not fully nailed down — the app's own `[Startup]` log lines were observed doubling on both this incident's restart *and* the very next one (`"[Startup] recordings reattached"` logged twice at the same timestamp, both times), suggesting `AppState.startup()` itself may be invoked twice per launch; not root-caused, logged separately below as a new open item.
+
+**Resolution**: `startRecording` now checks `recordingManager.isRunning(showId:)` — the actual source of truth for "is a process already running for this show," independent of the `shows` array's own copy of that fact — right after the existing `!show.show_recording` guard. If a process is already tracked, it **resyncs** `show_recording = true` (and clears `show_tuner_resource` for recapture, mirroring `reattachRecordings()`'s own pattern) rather than silently no-op'ing, so a desynced flag can't loop this same check — and the Discord spam — forever. Regression test added: `AppStateRecordingEngineTests.startRecording_calledAgainWhileAlreadyRunning_resyncsFlagInsteadOfLoopingForever`.
+
+**Live remediation**: redeployed with the fix in place; `reattachRecordings()` (which now had real, already-running processes to find, unlike the original restart earlier the same night when neither show had started recording yet) correctly reattached both shows to the same pids, confirmed via `[Startup] Reattached '...' pid=...` log lines and `isRecording: true` in the live API — the Tuner Conflict spam stopped immediately after.
+
+**Resolving commit**: (uncommitted at time of writing)
+
 ## RESOLVED — the FEED live-edge chunk-size shrink also slowed down Watch Now's backlog-catch-up path
 
 **File:** `WebServer.swift` — `streamGrowingFile`, `pumpGrowingFile`, `handleGrowingFileChunk`

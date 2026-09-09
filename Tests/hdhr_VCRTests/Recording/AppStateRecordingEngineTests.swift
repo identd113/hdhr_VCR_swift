@@ -70,6 +70,35 @@ struct AppStateRecordingEngineTests {
         manager.stop(showId: show.show_id)
     }
 
+    // Regression for the live 2026-09-09 incident (see startRecording's own comment on the fix):
+    // a desynced show_recording==false with a real process already tracked by recordingManager
+    // must resync the flag, not silently no-op and leave the next idle-loop tick to repeat the
+    // exact same "TUNER FULL" Discord-notification loop forever.
+    @Test @MainActor func startRecording_calledAgainWhileAlreadyRunning_resyncsFlagInsteadOfLoopingForever() async throws {
+        let scriptPath = try writeMockCurlScript(sleepSeconds: 30)
+        defer { try? FileManager.default.removeItem(atPath: scriptPath) }
+        let manager = RecordingManager(curlExecutablePath: scriptPath)
+        let show = makeShow(recordDir: tempRecordDir(), next: Date().addingTimeInterval(-5), end: Date().addingTimeInterval(1800))
+        let state = makeTestAppState(shows: [show], devices: [makeDevice()], recordingManager: manager)
+        state.maxDiskPct = 100
+        state.config.Min_disk_free_gb = 0
+
+        await state.startRecording(index: 0)
+        await waitUntil { manager.isRunning(showId: show.show_id) }
+        #expect(state.shows[0].show_recording == true)
+
+        // Simulate whatever external path desynced the flag without stopping the real process —
+        // the exact shape observed live: recordingManager still has it tracked, but the shows
+        // array's own copy of that fact reads false.
+        state.shows[0].show_recording = false
+
+        await state.startRecording(index: 0)
+
+        #expect(state.shows[0].show_recording == true)
+        #expect(manager.isRunning(showId: show.show_id) == true)
+        manager.stop(showId: show.show_id)
+    }
+
     // Device support is gated on HDHRDevice.supportsTranscode (ModelNumber's "HDTC" prefix) —
     // startRecording must never hand curl a transcode profile the tuner will just reject with
     // X-HDHomeRun-Error 802 "Unknown Transcode Profile" (docs/HDHRFindings.md). makeDevice() (no
