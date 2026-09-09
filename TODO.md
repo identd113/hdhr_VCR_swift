@@ -71,6 +71,18 @@ Closed-caption passthrough for the transcode path specifically is a separate, lo
 
 ---
 
+### FEED relay must not cut off a viewer who's still behind the live edge once the source recording stops
+
+Flagged 2026-09-08, alongside the live-edge cushion added the same day (`WebServer.swift`'s `feedLiveEdgeCushionBytes` — `streamGrowingFile`/`pumpGrowingFile`/`handleGrowingFileChunk`'s `liveEdgeCushionBytes` param): that cushion's own "recording finished" branch was written to drain its small (~2-3s) remaining tail before closing, so it already shouldn't lose the very end of the show for a viewer sitting right at the cushion boundary. Not yet verified for the much bigger case the user actually described: a viewer who has drifted **far** further behind the live edge than the cushion — e.g. a full minute, via VLC's own client-side jitter-buffer growth (see the "close to 1:1" FEED discussion the same day) or a deliberate seek — at the moment the source show's recording ends. Need to confirm two things live: (1) that no *other* code path (a stop-recording handler, a connection-cleanup pass) force-closes an in-progress FEED viewer connection the instant `show_recording` flips false, independent of `pumpGrowingFile`'s own drain logic — if one exists, it would cut off a deeply-behind viewer mid-show; (2) that a viewer who joined via a real backlog drain (not just the small cushion-fill case) actually receives the *entire* remaining file before the connection closes, not just whatever was left within the cushion window. If either isn't already true, the fix should be: never treat "`show_recording` is now false" as a reason to close a FEED viewer connection on its own — only actually close once that viewer's own read position has genuinely caught up to the recording's true final byte.
+
+---
+
+### Other instances' "Recording on Another Mac" menu should update promptly once a FEED session naturally winds down
+
+Flagged 2026-09-08: today, when the *source* Mac's recording finishes and its last FEED viewer finishes draining (`pumpGrowingFile` reaches true EOF with `show_recording == false` and closes), nothing proactively tells a *discovering* Mac's menu bar ("Recording on Another Mac (Beta)" — see `MenuContent.swift`) that the relay is gone. That menu currently relies on the existing polling/staleness machinery — `probeForNewDevices()` marking the device `isAvailable == false` within a few minutes, `remoteRelayEntries` filtering on `isVirtualRelay && isAvailable` (see `issues_resolved.md`'s entry around line 1105) — so a discoverer's menu can lag behind the relay's actual end by up to that polling interval, showing a "Watch" option for a relay that's already gone. Not yet scoped: the source Mac would need to actively announce "this relay is done" the moment its last viewer drains (a UDP broadcast or an SSE-style push, mirroring how `VirtualTunerService` already announces the relay's *existence*) rather than a discoverer having to notice its absence on its own next poll. Worth deciding whether this is worth the added protocol surface versus just shortening the existing poll interval for this one case.
+
+---
+
 ### FEED consumers should get a minimal, locally-sourced "now playing" guide/lineup — never a real SiliconDust API call
 
 Explicit user request, 2026-09-06: a discovering instance's guide/lineup for a FEED (virtual relay) device should be a small, filtered view — just what's currently airing on the relay's one advertised channel — built from data the FEED server itself already has and serves, not fetched the way a real device's guide is. **A FEED consumer must never send a real API request to SiliconDust's servers (or attempt any cloud/device guide fetch at all) for a relay device.**

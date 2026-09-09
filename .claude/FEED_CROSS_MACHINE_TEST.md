@@ -6,15 +6,41 @@ mid-investigation — see "Current status" at the bottom for exactly where this 
 
 ## Machines
 
-- **This Mac** ("source"): `/Users/plexserver/Documents/GitHub/hdhr_VCR_swift`. LAN IP on the
-  interface the app advertises FEED from: `10.0.2.100`. Real tuner device `105404BE`.
+- **This Mac** ("source", hostname `woodflix`): `/Users/plexserver/Documents/GitHub/hdhr_VCR_swift`.
+  LAN IP on the interface the app advertises FEED from: `10.0.2.100`. Real tuner device `105404BE`.
+  Always runs the repo-local dev-folder build (`./deploy.sh` — never installs to `/Applications`).
 - **Laptop** ("viewer"): `mikewoodfill@10.0.3.215`, repo cloned at
-  `~/Documents/GitHub/hdhr_VCR_swift`, app installed at `/Applications/hdhrVCRplus.app`.
+  `~/Documents/GitHub/hdhr_VCR_swift`. **Two copies legitimately live here, by design** —
+  `/Applications/hdhrVCRplus.app` is the laptop's normal, everyday-use install (keep it — don't
+  delete it for testing convenience) and `~/Documents/GitHub/hdhr_VCR_swift/hdhrVCRplus.app` is
+  the dev-loop build `./deploy.sh` there produces. **Never run both at once** — Launch Services
+  routes the `hdhrvcrplus://` URL scheme to whichever it considers canonical independent of which
+  was actually just redeployed, so two running copies means test traffic can silently hit a stale
+  build (found live 2026-09-08, cost a chunk of a session before it was caught). Before testing a
+  fresh dev-repo build: `pkill -x hdhr_VCR` (kills whichever is running, by exact binary name —
+  same on both copies) then `open ~/Documents/GitHub/hdhr_VCR_swift/hdhrVCRplus.app` — never also
+  leave `/Applications`'s copy running at the same time. When done testing and handing the laptop
+  back for normal use, `pkill -x hdhr_VCR` again and `open /Applications/hdhrVCRplus.app`.
   **Different `/24` from this Mac** (`10.0.3.x` vs `10.0.2.x`) — there's a router/Wi-Fi hop
   between them, not a flat switch. Relevant to the throughput finding below.
 - Passwordless SSH is already set up: `ssh laptop` (alias in `~/.ssh/config`) reaches it directly,
   no password. If that ever stops working, `ssh-copy-id mikewoodfill@10.0.3.215` re-adds this
   Mac's key (needs the laptop's password once, interactively — can't be done headlessly).
+
+## If `ssh laptop` fails, retry before asking the user "is it online?"
+
+Confirmed 2026-09-08: this LAN has two active Bonjour Sleep Proxies (`dns-sd -B _sleep-proxy._udp`
+showed "Master Bedroom" and "Basement AppleTV", both Apple TVs), and the laptop has Wake for
+Network Access enabled (`pmset -g` → `womp 1`) with SSH/Remote Login already Bonjour-advertised
+(automatic once Remote Login is on — no extra setup). That means a `ssh laptop` attempt while the
+laptop is genuinely *asleep* (not powered off, not off-Wi-Fi) should itself trigger a proxy-mediated
+wake — the router's own ARP resolution on the laptop's local segment is what a sleep proxy
+intercepts, so this works even from this Mac's different `/24`, no manual magic-packet crafting
+needed.
+
+**So**: a single failed `ssh -o ConnectTimeout=5 laptop "..."` is not proof the laptop is
+unreachable — wait ~10-15s (waking from sleep isn't instant) and retry once before concluding it's
+actually off/disconnected and asking the user. Only escalate to asking after a retry also fails.
 
 ## Confirming both machines are on the same build
 
@@ -30,27 +56,33 @@ Compare the `"version"` field (`yymmdd-hhmm`) — must match exactly before trus
 
 ## Building and pushing a new build to both machines
 
-```
-./deploy_release.sh 2.2.4 --skip-notarize      # signed, NOT notarized/published — our "iterate fast" mode
-```
-
-Then push the same DMG to the laptop and install it — **there is no way to do this from the
-laptop's GUI remotely** (see "Why the GUI can't be automated" below), so it's a manual
-mount-and-replace over SSH:
+**Fast path (dev iteration — use this by default), discovered 2026-09-08**: the whole repo
+(source included) is already iCloud-synced between the two machines' `~/Documents/GitHub`
+folders — an edit made here shows up on the laptop within a few seconds with no `scp`/`git push`
+needed (confirmed via matching `md5` of the same file on both machines). So iterating is just:
 
 ```
-scp dist/hdhrVCRplus-2.2.4.dmg laptop:~/Documents/GitHub/hdhr_VCR_swift/dist/hdhrVCRplus-2.2.4.dmg
-ssh laptop "hdiutil attach ~/Documents/GitHub/hdhr_VCR_swift/dist/hdhrVCRplus-2.2.4.dmg -nobrowse -mountpoint /tmp/dmg_mount_new
-pkill -x hdhr_VCR
-sleep 1
-rm -rf /Applications/hdhrVCRplus.app
-cp -R /tmp/dmg_mount_new/hdhrVCRplus.app /Applications/hdhrVCRplus.app
-hdiutil detach /tmp/dmg_mount_new
-xattr -cr /Applications/hdhrVCRplus.app
-open /Applications/hdhrVCRplus.app
-sleep 2
-curl -s http://localhost:1980/api/ping"
+./deploy.sh                                             # this Mac
+ssh laptop "cd ~/Documents/GitHub/hdhr_VCR_swift && ./deploy.sh"   # laptop, same synced source
 ```
+
+`.build` on both machines is a symlink to `/tmp/hdhr_vcr_build_cache` (see CLAUDE.md's iCloud
+notes) — that target is a real local directory, not itself synced (`/tmp` never syncs), so a
+laptop that hasn't built since its last reboot may need `mkdir -p /tmp/hdhr_vcr_build_cache`
+once before `./deploy.sh` will build at all (it fails with a misleading
+`NSCocoaErrorDomain Code=512 ... Not a directory` otherwise — found live 2026-09-08).
+
+**Only run ONE instance on the laptop at a time** — see the "Laptop" entry under Machines above.
+Both `/Applications` (the laptop's normal everyday install — keep it) and the repo-local dev build
+legitimately exist there; the rule is never let both run *simultaneously*, since Launch Services
+then silently routes test traffic to whichever it considers canonical, independent of which was
+actually just redeployed (cost a chunk of a session before this was caught, 2026-09-08). Always
+`pkill -x hdhr_VCR` before `open`ing either one.
+
+**Heavier path (an actual signed-build/DMG-install test, not ordinary iteration)**:
+`./deploy_release.sh 2.2.4 --skip-notarize` (signed, not notarized/published), then push the DMG
+and mount-and-replace over SSH — see `docs/Distribution.md`'s Release Checklist for the DMG
+install steps if this is ever actually needed; don't reach for it just to test a code change.
 
 Then re-run the version check above to confirm.
 
@@ -241,3 +273,44 @@ issue this file used to describe as open) — fixed, see `issues_resolved.md`.
   skip HTTP headers, log `recv()` size + inter-arrival gap for a few seconds) — this is what
   actually found the cadence mismatch; throughput/bitrate math alone (the bulk of this file's
   now-superseded earlier sections) never would have.
+
+## 2026-09-08 — live-edge cushion attempt: reverted, VLC demux stall on backlog
+
+Tried next, aimed at the "still open" residual stall above (disk-read-latency hypothesis: every
+byte served has now had ~2-3s to settle on disk before the relay touches it, via a fixed cushion
+behind the recording's true current size — `WebServer.swift`'s `feedLiveEdgeCushionBytes`,
+`streamGrowingFile`/`pumpGrowingFile`'s `liveEdgeCushionBytes` param). The cushion mechanics
+themselves worked exactly as designed — confirmed via a temporary debug log (`[DEBUG-CUSHION]`,
+removed before commit): correct join offset, correct ceiling enforcement, correct backlog-aware
+chunk-size switching (small at the live edge, `watchRecordingBacklogChunkSize` once a real gap
+exists) once a follow-up fix caught the tiny-chunk-size-during-real-backlog bug (RTT-bound
+throughput on the cross-subnet hop, ~0.6-0.9 Mbps — see the fix's own comment on
+`backlogAvailable`).
+
+**But the actual live result was worse than the problem it was trying to solve**: once any backlog
+formed (which happens almost immediately on this link), VLC on the laptop stopped progressing
+entirely — `pos=+0ms/3000ms displayed=+0` on every tick, indefinitely, while still slowly absorbing
+~300KB every 3s into some internal buffer. Not a stall-and-recover, a flat non-progress. Ruled out:
+raw network capacity (confirmed ~580 Mbps via `iperf3` between the two machines, same link,
+same time), source-side queue contention (checked the source Mac's own log for the exact window —
+no competing `buildHTML`/`TunerAudit` work), and the chunk-size computation itself (the debug log
+confirmed it was correct). Working theory, not confirmed: serving a real backlog in ~37.6KB jumps
+recreates the *same class* of bursty-delivery problem the original cadence fix (above) solved —
+just via backlog catch-up instead of the old poll-interval bursts — and VLC's demux/PCR handling
+chokes on it the same way. Not root-caused further; would need VLC's own `--file-logging` verbose
+output during a live repro to actually confirm.
+
+**Status as of this writing: code still in the tree, not deployed to either machine, decision on
+keep-vs-revert not yet made.** If picked up again: get a real VLC verbose log during the stall
+before trying another relay-side mechanical fix — this session spent a lot of cycles on
+plausible-sounding server-side theories (disk latency, chunk size, network bandwidth) that all
+measured out fine, while the client's own demux behavior was never directly instrumented.
+
+**Also found and fixed this same day, unrelated to the cushion itself**: the laptop had two
+divergent app copies running *simultaneously* (`/Applications/hdhrVCRplus.app`, stale, vs. the
+repo-local `./deploy.sh` build) — Launch Services routed the `hdhrvcrplus://` URL scheme to
+whichever it considered canonical, independent of which had just been redeployed, so several
+live tests silently exercised a two-day-stale build. Both copies are legitimate and both stay —
+`/Applications` is the laptop's normal everyday install, not just test scaffolding — the actual
+fix is discipline about never running both at once; see the "Machines"/"Building and pushing"
+sections above for the corrected single-instance-at-a-time workflow.

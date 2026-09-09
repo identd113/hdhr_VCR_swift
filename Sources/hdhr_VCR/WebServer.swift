@@ -733,26 +733,29 @@ final class WebServer: @unchecked Sendable {
                     self.queue.async { self.send(.notFound("recording not found"), on: conn) }
                     return
                 }
-                // Start at the live edge (current write position), not byte 0 — a real HDHomeRun
-                // tuner has no backlog at all when you tune in, so this is what actually makes a
-                // FEED viewer's experience match one: byte 0 would instead blast the *entire*
+                // Start feedLiveEdgeCushionBytes behind the current write position, not byte 0 and
+                // not exactly at the live edge either. Byte 0 would blast the *entire*
                 // recording-so-far as fast as disk+network allow (confirmed live 2026-09-04: ~940MB
                 // in ~19s for a recording that had been running a while), then switch to a real-
                 // time-paced trickle only once caught up — a discontinuous burst-then-trickle
                 // delivery shape that (a) isn't "watching live" at all until the burst finishes and
                 // (b) is exactly what caused a real reported playback stall, since the client-side
                 // player's own buffering assumptions are tuned for a real tuner's continuous
-                // delivery, not this burst. Starting here instead means the very first byte sent is
-                // already at the live edge, so the whole session is real-time-paced by construction
-                // (curl can only write the recording as fast as the broadcast delivers it) — no
-                // separate output-side rate limiter needed. `streamGrowingFile` itself still clamps
-                // this to the file's actual current size at open time, same as any other offset.
-                // No `?? 0` fallback here, deliberately — defaulting to 0 on a stat failure would
-                // silently reintroduce the exact byte-0 burst this whole live-edge change exists to
-                // avoid (see the comment above), just via a different trigger (a transient stat
+                // delivery, not this burst. Joining exactly at the live edge (the original 2026-09-04
+                // fix) solved that, but still left every served byte racing curl's own write —
+                // `feedLiveEdgeCushionBytes`'s own comment covers why that's a live-tested-suspect
+                // for the residual stalls found 2026-09-07/08. `max(0, ...)` covers a freshly-started
+                // recording that doesn't have cushion-bytes worth of backlog yet — falls back to
+                // starting at the true beginning rather than a negative/impossible offset; the small
+                // one-time backlog burst that follows (see streamGrowingFile's own `hasBacklog`) is
+                // far smaller and non-repeating, unlike the old byte-0 case above. `streamGrowingFile`
+                // itself still clamps this to the file's actual current size at open time, same as
+                // any other offset. No `?? 0` fallback on the stat itself, deliberately — defaulting
+                // to 0 on a stat failure would silently reintroduce the exact byte-0 burst this whole
+                // live-edge change exists to avoid, just via a different trigger (a transient stat
                 // error right after the fileExists check above, rather than an explicit byte-0
                 // request). Refusing the request instead means the client's own retry gets a fresh
-                // shot at a real live-edge offset rather than silently blasting the whole file.
+                // shot at a real offset rather than silently blasting the whole file.
                 guard let currentSize = (try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? Int else {
                     glog("[VirtualTuner] /auto/v\(logChannel) → could not stat recording file size, refusing rather than guessing byte 0: \(path)", level: .error)
                     self.queue.async { self.send(.notFound("recording temporarily unavailable"), on: conn) }
@@ -780,8 +783,9 @@ final class WebServer: @unchecked Sendable {
                 // Both hops land on MainActor since AppState isn't otherwise safe to touch from
                 // fileIOQueue.
                 Task { @MainActor in state.relayRawViewerConnected() }
-                self.streamGrowingFile(path: path, showId: showId, startOffset: currentSize, conn: conn,
-                                        durationSeconds: durationSeconds,
+                let joinOffset = max(0, currentSize - Self.feedLiveEdgeCushionBytes)
+                self.streamGrowingFile(path: path, showId: showId, startOffset: joinOffset, conn: conn,
+                                        durationSeconds: durationSeconds, liveEdgeCushionBytes: Self.feedLiveEdgeCushionBytes,
                                         onStreamEnded: { [weak state] in
                     Task { @MainActor in state?.relayRawViewerDisconnected() }
                 })
@@ -1107,8 +1111,13 @@ final class WebServer: @unchecked Sendable {
     // can track how many relay viewers are currently connected without needing its own separate
     // connection-lifecycle bookkeeping; local Watch Now (handleWatchRecording) passes nil and isn't
     // counted, since it's this Mac's own playback, not an outbound stream to another machine.
+    // liveEdgeCushionBytes: 0 (default) preserves exact prior behavior for every existing caller
+    // (handleWatchRecording's local Watch Now relay) — only handleVirtualTunerStream's raw FEED
+    // path passes a real value (feedLiveEdgeCushionBytes below). See that constant's own comment
+    // for why FEED specifically needs this and Watch Now doesn't.
     private func streamGrowingFile(path: String, showId: String, startOffset: Int, conn: NWConnection,
-                                    durationSeconds: Int? = nil, onStreamEnded: (() -> Void)? = nil) {
+                                    durationSeconds: Int? = nil, liveEdgeCushionBytes: Int = 0,
+                                    onStreamEnded: (() -> Void)? = nil) {
         guard let handle = FileHandle(forReadingAtPath: path) else {
             queue.async { self.send(.notFound("could not open recording file"), on: conn) }
             onStreamEnded?()
@@ -1168,9 +1177,10 @@ final class WebServer: @unchecked Sendable {
                     onStreamEnded?()
                     return
                 }
-                self.pumpGrowingFile(handle: handle, showId: showId, conn: conn,
+                self.pumpGrowingFile(handle: handle, showId: showId, conn: conn, path: path,
                                       bytesSent: initialBytes, waitStreak: 0, waitStartedAt: nil, deadline: deadline,
-                                      chunkSize: initialChunkSize, onStreamEnded: onStreamEnded)
+                                      chunkSize: initialChunkSize, liveEdgeCushionBytes: liveEdgeCushionBytes,
+                                      onStreamEnded: onStreamEnded)
             }
         }
     }
@@ -1211,6 +1221,29 @@ final class WebServer: @unchecked Sendable {
     private static let liveEdgePollInterval: TimeInterval = 0.02
     private static let stillRecordingCheckEveryNPolls = 25
 
+    // FEED-only: how far behind the recording's true current size handleVirtualTunerStream's raw
+    // passthrough relay stays, permanently, instead of ever reading right up to the write pointer
+    // like the 20ms live-edge poll above does on its own. Added 2026-09-08 after live testing kept
+    // showing occasional stalls even with the cadence fix in place (the burst/500ms-poll mismatch
+    // this file's other constants already fixed) — the remaining suspect is disk read latency on
+    // the recording volume itself (RAID/network-mount cache-coherency lag between curl's flush and
+    // our read), which the cadence fix can't help since it's a storage-layer hiccup, not a delivery-
+    // pacing one. Every byte this relay serves has now had at least ~2-3s to fully settle on disk
+    // before we touch it. ~1.5MB ≈ 2-3s at the OTA bitrates actually measured live (2.6-6.19 Mbps,
+    // docs/HDHRFindings.md) — deliberately small ("stay close to 1:1 with live," not a multi-second
+    // buffer, per explicit user direction — the multi-second drift real apps like Channels/HDHomeRun's
+    // own app show is VLC's own client-side jitter buffer growing, a separate, already-expected
+    // mechanism this isn't trying to replace or eliminate). Not applied to handleWatchRecording's
+    // local Watch Now relay (same-machine playback has no cross-network disk-read race to guard
+    // against, and already gets its own head start via AppState's recordingLiveEdgeBackoffSeconds).
+    //
+    // handleGrowingFileChunk's read-ceiling math (`max(bytesSent, trueSize - liveEdgeCushionBytes)`)
+    // degrades gracefully for a freshly-started recording that doesn't have this much backlog yet —
+    // see handleVirtualTunerStream's own join-offset comment for that edge case, and the "recording
+    // finished" branch's cushion-disable step for why the final cushion's worth of a show is still
+    // fully delivered once the source stops growing rather than being permanently withheld.
+    private static let feedLiveEdgeCushionBytes = 1_500_000
+
     // Rounds a byte offset down to the nearest complete TS packet boundary — `offset` is usually
     // the recording file's momentary byte size (handleVirtualTunerStream's live-edge startOffset),
     // which has no relation to 188-byte packet framing: curl writes to disk in whatever chunk sizes
@@ -1231,9 +1264,12 @@ final class WebServer: @unchecked Sendable {
     // this one relay connection, never the whole web server. Recurses via fileIOQueue.async (read)
     // → queue.async (send) rather than looping in place, so each step yields back to both queues
     // between file reads and socket sends.
-    private func pumpGrowingFile(handle: FileHandle, showId: String, conn: NWConnection,
+    // path: only actually read (via a fresh stat, not the FileHandle's own position/size) when
+    // liveEdgeCushionBytes > 0 — see the ceiling computation in the fileIOQueue closure below.
+    private func pumpGrowingFile(handle: FileHandle, showId: String, conn: NWConnection, path: String,
                                   bytesSent: Int, waitStreak: Int, waitStartedAt: Date?, deadline: Date? = nil,
-                                  chunkSize: Int = watchRecordingChunkSize, onStreamEnded: (() -> Void)? = nil) {
+                                  chunkSize: Int = watchRecordingChunkSize, liveEdgeCushionBytes: Int = 0,
+                                  onStreamEnded: (() -> Void)? = nil) {
         // Checked once per recursion (covers both the "have data" and "waiting" paths below) —
         // without this, a connection cancelled while the loop is in its 0.5s wait-for-more-data
         // poll (the common state once caught up to the live edge) wouldn't be noticed until a
@@ -1258,11 +1294,42 @@ final class WebServer: @unchecked Sendable {
         }
         fileIOQueue.async { [weak self] in
             guard let self else { return }
-            let chunk = handle.readData(ofLength: chunkSize)
+            // Cushion ceiling: never read past (true current file size - liveEdgeCushionBytes).
+            // `max(bytesSent, ...)` is what makes this degrade gracefully for a freshly-started
+            // recording (trueSize - cushion can go negative when there isn't cushion-bytes worth of
+            // backlog yet) — floors the ceiling at bytesSent itself, never below it, so readLength
+            // below can never go negative. A genuinely 0 readLength here is indistinguishable from
+            // (and handled identically to) a real "caught up to EOF" empty read by
+            // handleGrowingFileChunk just below — the only difference is *which* edge it's caught
+            // up to, the true one or the cushion-shifted one.
+            var readLength = chunkSize
+            var effectiveChunkSize = chunkSize
+            if liveEdgeCushionBytes > 0 {
+                let trueSize = (try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? Int ?? bytesSent
+                let ceiling = max(bytesSent, trueSize - liveEdgeCushionBytes)
+                let backlogAvailable = ceiling - bytesSent
+                // Recomputed fresh every iteration from the *actual* current gap to the cushion
+                // boundary — deliberately not the one-way-only-shrinks chunkSize the non-cushion
+                // path uses below (that assumes a connection caught up to the live edge never
+                // needs to burst-drain again, which no longer holds once a persistent cushion
+                // exists: a real backlog can reappear mid-session whenever the network can't keep
+                // up with this session's own bitrate, e.g. the cross-subnet Wi-Fi hop to a remote
+                // viewer). Found live 2026-09-08: staying stuck at the tiny cadence-matched size
+                // during a real backlog throughput-caps around ~0.6-0.9 Mbps (each small send is
+                // round-trip-latency-bound over that hop, not bandwidth-bound), well under real
+                // OTA bitrates — a gap that size can never be recovered from, it only widens.
+                // Watch_recordingChunkSize's own small size stays correct for the *steady-state*
+                // cushion-following case (no real backlog, just tracking the moving boundary).
+                effectiveChunkSize = backlogAvailable > Self.watchRecordingChunkSize
+                    ? Self.watchRecordingBacklogChunkSize : Self.watchRecordingChunkSize
+                readLength = min(effectiveChunkSize, backlogAvailable)
+            }
+            let chunk = readLength > 0 ? handle.readData(ofLength: readLength) : Data()
             self.queue.async {
-                self.handleGrowingFileChunk(chunk, handle: handle, showId: showId, conn: conn,
+                self.handleGrowingFileChunk(chunk, handle: handle, showId: showId, conn: conn, path: path,
                                              bytesSent: bytesSent, waitStreak: waitStreak, waitStartedAt: waitStartedAt,
-                                             deadline: deadline, chunkSize: chunkSize, onStreamEnded: onStreamEnded)
+                                             deadline: deadline, chunkSize: effectiveChunkSize, liveEdgeCushionBytes: liveEdgeCushionBytes,
+                                             onStreamEnded: onStreamEnded)
             }
         }
     }
@@ -1272,9 +1339,9 @@ final class WebServer: @unchecked Sendable {
     // file's connection handling. `chunkSize` is the size that was just read with — see this
     // function's own handling below for how it can shrink (never grow) as a connection catches up
     // from an initial backlog to real-time.
-    private func handleGrowingFileChunk(_ chunk: Data, handle: FileHandle, showId: String, conn: NWConnection,
+    private func handleGrowingFileChunk(_ chunk: Data, handle: FileHandle, showId: String, conn: NWConnection, path: String,
                                          bytesSent: Int, waitStreak: Int, waitStartedAt: Date?, deadline: Date? = nil,
-                                         chunkSize: Int, onStreamEnded: (() -> Void)? = nil) {
+                                         chunkSize: Int, liveEdgeCushionBytes: Int = 0, onStreamEnded: (() -> Void)? = nil) {
         guard !chunk.isEmpty else {
             // Caught up to what curl has written so far — poll until either more data lands or
             // the recording finishes, instead of ending the stream the moment we hit today's EOF.
@@ -1301,9 +1368,10 @@ final class WebServer: @unchecked Sendable {
             // (e.g. a backlog that was an exact multiple of watchRecordingBacklogChunkSize).
             guard waitStreak % Self.stillRecordingCheckEveryNPolls == 0 else {
                 self.queue.asyncAfter(deadline: .now() + Self.liveEdgePollInterval) { [weak self] in
-                    self?.pumpGrowingFile(handle: handle, showId: showId, conn: conn,
+                    self?.pumpGrowingFile(handle: handle, showId: showId, conn: conn, path: path,
                                            bytesSent: bytesSent, waitStreak: waitStreak + 1, waitStartedAt: startedAt,
-                                           deadline: deadline, chunkSize: Self.watchRecordingChunkSize, onStreamEnded: onStreamEnded)
+                                           deadline: deadline, chunkSize: Self.watchRecordingChunkSize,
+                                           liveEdgeCushionBytes: liveEdgeCushionBytes, onStreamEnded: onStreamEnded)
                 }
                 return
             }
@@ -1312,9 +1380,27 @@ final class WebServer: @unchecked Sendable {
                 let stillRecording = self.appState?.shows.first(where: { $0.show_id == showId })?.show_recording ?? false
                 if stillRecording {
                     self.queue.asyncAfter(deadline: .now() + Self.liveEdgePollInterval) { [weak self] in
-                        self?.pumpGrowingFile(handle: handle, showId: showId, conn: conn,
+                        self?.pumpGrowingFile(handle: handle, showId: showId, conn: conn, path: path,
                                                bytesSent: bytesSent, waitStreak: waitStreak + 1, waitStartedAt: startedAt,
-                                               deadline: deadline, chunkSize: Self.watchRecordingChunkSize, onStreamEnded: onStreamEnded)
+                                               deadline: deadline, chunkSize: Self.watchRecordingChunkSize,
+                                               liveEdgeCushionBytes: liveEdgeCushionBytes, onStreamEnded: onStreamEnded)
+                    }
+                } else if liveEdgeCushionBytes > 0 {
+                    // Recording just stopped — the cushion's whole purpose (staying behind an
+                    // *actively growing* file) no longer applies to a file that will never grow
+                    // again, and the final liveEdgeCushionBytes of real content would otherwise
+                    // never be served (permanently withheld behind a ceiling that can now never
+                    // advance). One more pass with the cushion disabled drains that tail at
+                    // backlog speed; the very next genuinely-empty read (now a true EOF, not a
+                    // cushion-limited one) falls through to the close below on its own. See
+                    // TODO.md's "FEED relay must not cut off a viewer..." entry for the related,
+                    // not-yet-verified case of a viewer sitting much further behind than this
+                    // cushion (e.g. a full minute) at the moment recording stops.
+                    self.queue.async { [weak self] in
+                        self?.pumpGrowingFile(handle: handle, showId: showId, conn: conn, path: path,
+                                               bytesSent: bytesSent, waitStreak: 0, waitStartedAt: nil,
+                                               deadline: deadline, chunkSize: Self.watchRecordingBacklogChunkSize,
+                                               liveEdgeCushionBytes: 0, onStreamEnded: onStreamEnded)
                     }
                 } else {
                     glog("[WebServer] watch-recording show=\(showId) recording finished, drained \(bytesSent) bytes — closing stream")
@@ -1366,9 +1452,10 @@ final class WebServer: @unchecked Sendable {
             // source's own real-time cadence directly instead of a second, less accurate guess at
             // it. See ISSUES.md's FEED throughput/stall entry for the full trail this reverses.
             self.queue.async {
-                self.pumpGrowingFile(handle: handle, showId: showId, conn: conn,
+                self.pumpGrowingFile(handle: handle, showId: showId, conn: conn, path: path,
                                       bytesSent: newTotal, waitStreak: 0, waitStartedAt: nil, deadline: deadline,
-                                      chunkSize: nextChunkSize, onStreamEnded: onStreamEnded)
+                                      chunkSize: nextChunkSize, liveEdgeCushionBytes: liveEdgeCushionBytes,
+                                      onStreamEnded: onStreamEnded)
             }
         }
     }
