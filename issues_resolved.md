@@ -1326,6 +1326,8 @@ A title-based fallback (`Show.seriesTitle(from: entry.Title) == show.show_title`
 
 **Resolution**: reverted in full (`git revert`) — both loops are back to iterating raw `state.devices`. The user-visible symptom that prompted the original misdiagnosis (the native "Add Show" window intermittently failing to load its guide) was actually fixed by a clean app relaunch, unrelated to this code.
 
+**Resolving commit**: (uncommitted at time of writing — the revert of the original wrong fix)
+
 ---
 
 ## RESOLVED — Orphaned `AppState` instance runs forever, doubling recordings/Discord notifications/tuner load
@@ -1346,4 +1348,20 @@ A title-based fallback (`Show.seriesTitle(from: entry.Title) == show.show_title`
 
 **Resolving commit**: `c89ef33` (the fix); `0d74648` (docs); confirmed `2026-09-11` (uncommitted at time of writing — this entry's own move from `ISSUES.md`).
 
-**Resolving commit**: (uncommitted at time of writing — the revert of the original wrong fix)
+---
+
+## RESOLVED — Watch Now yield-tuner-to-Record structurally could never actually succeed: `vlcOccupiesTuner` never cleared after the flow's own `stop()` call
+
+**File:** `AppState.swift` — `vlcOccupiesTuner(for:)`, `recordAfterYieldingWatchNow`, `cancelYieldRecordingIfInProgress`
+
+**Live-tested 2026-09-11** against a real 2-tuner EXTEND (105404BE, HDTC-2US) — the feature had never been exercised end-to-end before this. Test shape: a real `[MOCK]`-prefixed recording occupied tuner0, a real native Watch Now session (driven via Accessibility/`osascript`, the same technique `WindowNavigationTests.swift` uses) occupied tuner1 watching a different live channel, then Record was triggered on a third channel via the Watch Now window's own quick-record menu. The "Stop Watching & Record?" dialog appeared and was confirmed the same way.
+
+**First run: failed as designed, but revealed the flow could never succeed at all.** The tuner-free poll ran its full 45s budget with `tunersFull` reading `true` every single second, then `startRecording`'s own attempt also saw `tunersFull` and never actually started a recording — `show_recording` stayed `false` for the entire following 90-attempt/45s wait too. Cross-checked against `TunerAudit`'s own periodic log and the real device's own `/status.json` (fetched directly, IP taken from an already-logged real stream URL, not guessed): the real hardware tuner had in fact freed up almost immediately after `VLCBridge.shared.stop()` ran. The poll loop's own `tunersFull` was wrong, not the device.
+
+**Root cause**: `vlcOccupiesTuner(for:)` keys off `VLCPlayerWindowManager.currentDeviceID` — deliberately never cleared by `recordAfterYieldingWatchNow`'s `VLCBridge.shared.stop()` call, since `stop()` (not `releasePlayer()`) exists specifically to leave the window/drawable alive for a smooth same-window reconnect (see this file's own "Orphaned AppState" — unrelated — entry's neighbor, the 2026-09-11 `stop()`-not-`releasePlayer()` fix, for that reasoning). That's correct for every other caller of `vlcOccupiesTuner`, but inside this one flow it meant the "own live watch" contribution to `activeTunerCount` (`max(hw, rec+vlc)`) never dropped, so `rec+vlc` alone stayed at `tunerCount` for the flow's *entire* duration regardless of what the real hardware or `hw` reported — not a slow-device timing issue, a structural one: the flow's own success condition (`tunersFull` becoming false) was permanently unreachable while its own stale self-reference kept counting against it.
+
+**Resolution**: added `AppState.yieldingWatchNowDeviceID`, set to the target device the instant `VLCBridge.shared.stop()` is called in `recordAfterYieldingWatchNow`, cleared via `defer` on every exit from that function and immediately (not left to a cancelled task's delayed cooperative unwind) in `cancelYieldRecordingIfInProgress()`. `vlcOccupiesTuner(for:)` now returns `false` early when this matches the queried device, without touching `currentDeviceID` itself — `VLCPlayerWindowManager.open()`'s reuse-vs-recreate branch still needs to see that as unchanged when the reconnect actually happens, or the "stuck on Connecting" bug the `stop()`-not-`releasePlayer()` fix exists to prevent comes back.
+
+**Verified live, same session, after redeploying with the fix**: identical test repeated end to end — `"[Watch] yield: tuner confirmed free after 1s of polling"` immediately (not 45s), `"[Watch] yield: recording file confirmed on disk ... after 1 tries — reopening playback from the beginning"` the same second, and the VLC window's title visibly changed from the watched channel to the newly-recording show, confirming the in-place reconnect actually worked. Full 459-test suite passes; `TunerBlockedOnlyByOwnWatchNowTests`/`AppState tuner occupancy` suites unaffected. Both test recordings and their config entries/partial files were cleaned up after; both real tuners confirmed free via the device's own `/status.json` afterward.
+
+**Resolving commit**: (uncommitted at time of writing)

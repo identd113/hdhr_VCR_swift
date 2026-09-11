@@ -144,6 +144,24 @@ final class AppState: ObservableObject {
     // with the new one) and playerWindowDidClose's cancel (it would find nil and no-op instead of
     // cancelling the new task).
     private var yieldRecordingGeneration = 0
+    // Set the instant recordAfterYieldingWatchNow calls VLCBridge.shared.stop() to genuinely
+    // relinquish this device's tuner, cleared via `defer` on every exit from that function (and
+    // immediately by cancelYieldRecordingIfInProgress, not left to the cancelled task's own
+    // eventual unwind). Added 2026-09-11 after a live test found the yield flow can never actually
+    // succeed without this: vlcOccupiesTuner(for:) intentionally keys off
+    // VLCPlayerWindowManager.currentDeviceID, which stop() deliberately leaves set (so the window
+    // can be reused for a smooth reconnect — see recordAfterYieldingWatchNow's own doc comment on
+    // why releasePlayer() isn't used instead). That's correct for every other caller, but inside
+    // this flow it means vlcOccupiesTuner keeps reporting "still occupying" for the *entire* wait —
+    // activeTunerCount's rec+vlc sum then never drops below tunerCount even once the real hardware
+    // and the new recording alone would fit, so both the tuner-free poll and startRecording's own
+    // Tuner Conflict gate see tunersFull stay true structurally, forever, regardless of what the
+    // device actually reports. vlcOccupiesTuner checks this property (only for its own device) to
+    // correctly stop counting a stream this same flow already dropped, without touching
+    // currentDeviceID itself — which VLCPlayerWindowManager.open()'s reuse-vs-recreate branch still
+    // needs to see as unchanged when the reconnect actually happens, or the "stuck on Connecting"
+    // bug that fix exists to prevent comes back.
+    private var yieldingWatchNowDeviceID: String? = nil
     @Published var pendingAddEntry: (device: HDHRDevice, channel: LineupEntry, entry: GuideEntry)? = nil
     @Published var pendingAddEntryGeneration: Int = 0   // bumped each time a new entry is set; drives onChange in AddShowView
     @Published var pendingAddChannel: (device: HDHRDevice, channel: LineupEntry)? = nil
@@ -1849,6 +1867,11 @@ final class AppState: ObservableObject {
         // Task.isCancelled checkpoint) can't clear a *different*, newly-started task's reference.
         yieldRecordingGeneration += 1
         yieldRecordingProgress = nil
+        // Immediately, not left to the cancelled task's own deferred cleanup (cooperative
+        // cancellation only unwinds at its next Task.isCancelled checkpoint, up to ~1s later) — a
+        // fresh yield trigger for the same device landing in that window must see this device as
+        // no longer artificially held by the cancelled attempt. See its own doc comment.
+        yieldingWatchNowDeviceID = nil
         glog("[Watch] yield: cancelled — player window closed mid-flow, recording (if scheduled) continues")
     }
 
@@ -1881,6 +1904,11 @@ final class AppState: ObservableObject {
         // already documents this exact "so a later play() finds a live surface to render into"
         // property, it just hadn't been needed by any reconnect-in-the-same-window path until now.
         VLCBridge.shared.stop()
+        // See yieldingWatchNowDeviceID's own doc comment — without this, tunersFull/startRecording's
+        // Tuner Conflict gate would never see this device as anything but full for the rest of this
+        // function, no matter what actually frees up. Cleared via defer on every exit from here.
+        yieldingWatchNowDeviceID = device.DeviceID
+        defer { yieldingWatchNowDeviceID = nil }
         setYieldProgress("Scheduling the recording…", generation: generation)
         let showId = addShowFromGuide(entry: entry, type: type, device: device, channel: channel)
         // First attempt: addShow's own "start immediately if airing now" Task may already be
@@ -4775,6 +4803,10 @@ final class AppState: ObservableObject {
         // device having a tuner in use, defeating the whole point of the relay (unlimited
         // concurrent viewers, none of them costing a tuner slot).
         guard !isVirtualRelayDevice(deviceId) else { return false }
+        // yieldingWatchNowDeviceID excludes a device whose live stream recordAfterYieldingWatchNow
+        // already called VLCBridge.shared.stop() on — see that property's own doc comment for why
+        // this can't instead be read off currentDeviceID/recordingShowId alone.
+        guard yieldingWatchNowDeviceID != deviceId else { return false }
         return VLCPlayerWindowManager.shared.currentDeviceID == deviceId && VLCBridge.shared.recordingShowId == nil
     }
 
