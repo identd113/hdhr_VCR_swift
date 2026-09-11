@@ -2495,8 +2495,13 @@ final class AppState: ObservableObject {
         // recordingManager.start() when it already has this show_id tracked.
         if recordingManager.isRunning(showId: show.show_id) {
             shows[index].show_recording = true
-            shows[index].show_tuner_resource = ""   // will be re-captured by captureResourceHeaders()
+            shows[index].show_tuner_resource = ""   // re-captured by refreshTunerOccupancy below
             glog("[\(show.show_title)] resynced show_recording — recordingManager already has this show's process tracked", level: .warning)
+            // captureResourceHeaders() only ever runs inside refreshTunerOccupancy — without this
+            // call the cleared field above stays blank ("—" in the web UI) until some unrelated
+            // show's own start/stop/watch event happens to trigger a refresh, which could be a
+            // long wait if this resync path fires repeatedly for an otherwise-idle show.
+            refreshTunerOccupancy()
             return
         }
         // Skip if the assigned device is absent or unavailable — avoids burning fail count on a dead tuner.
@@ -4816,12 +4821,15 @@ final class AppState: ObservableObject {
     private func teardownForExit(stopRecordings: Bool, thenStop: (() -> Void)? = nil) {
         VLCBridge.shared.releasePlayer()
         if stopRecordings { recordingManager.stopAll() }
-        saveConfig()
+        // webServer.stop() before saveConfig() — matches quit()'s pre-consolidation order. Inert
+        // either way today (webServer.stop() touches no AppConfig-persisted state), but keeping the
+        // original sequence avoids an unannounced ordering change for whatever a future field adds.
         if let thenStop {
             webServer.stop(completion: thenStop)
         } else {
             webServer.stop()
         }
+        saveConfig()
     }
 
     func relaunchForVLC() {
