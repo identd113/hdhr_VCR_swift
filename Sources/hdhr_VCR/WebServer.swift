@@ -688,7 +688,6 @@ final class WebServer: @unchecked Sendable {
         // affects logging; the real `channel` value (used for the actual show match below) is
         // untouched.
         let logChannel = channel.filter { !$0.isNewline && !$0.unicodeScalars.contains(where: { $0.value < 0x20 }) }
-        glog("[VirtualTuner] /auto/v\(logChannel) requested dev=\(deviceId ?? "nil") transcode=\(transcode ?? "none")")
         // [state] explicit here and on the nested fileIOQueue.async closure below, not [weak state]
         // — both are transient (this whole chain runs once per request, discarded after), so
         // strongly holding `state` for their own brief execution is harmless; only the innermost
@@ -697,6 +696,21 @@ final class WebServer: @unchecked Sendable {
         // to silence the compiler's ImplicitStrongCapture warning about that innermost weak capture
         // differing from these outer scopes' implicit strong one; no behavior change.
         Task { @MainActor [state] in
+            // Same gate the four JSON routes elsewhere in this file already apply (/discover.json
+            // etc.) — without it, this data-plane route stayed reachable by a client that already
+            // knows/guesses a deviceId+channel even while activeVirtualTunerDeviceID is nil
+            // (FEED_feature_enabled off, or simply nothing recording), defeating the master
+            // hide-switch's intent (CLAUDE.md / AppConfig.FEED_feature_enabled's own doc comment).
+            // activeVirtualTunerDeviceID is only ever non-nil when FEED_feature_enabled is true
+            // (AppState.updateVirtualTunerPresence), so checking it alone is equivalent to and
+            // sufficient in place of a separate flag check. Must run on MainActor, same as the
+            // property itself — checked here rather than before this hop.
+            guard state.activeVirtualTunerDeviceID != nil else {
+                glog("[VirtualTuner] /auto/v\(logChannel) → 404 (not recording)", level: .warning)
+                self.send(.notFound("not recording"), on: conn)
+                return
+            }
+            glog("[VirtualTuner] /auto/v\(logChannel) requested dev=\(deviceId ?? "nil") transcode=\(transcode ?? "none")")
             guard let show = state.shows.first(where: {
                 $0.show_recording && $0.show_channel == channel && (deviceId == nil || $0.hdhr_record == deviceId)
             }), !show.show_recording_path.isEmpty else {
@@ -786,6 +800,7 @@ final class WebServer: @unchecked Sendable {
                 let joinOffset = max(0, currentSize - Self.feedLiveEdgeCushionBytes)
                 self.streamGrowingFile(path: path, showId: showId, startOffset: joinOffset, conn: conn,
                                         durationSeconds: durationSeconds, liveEdgeCushionBytes: Self.feedLiveEdgeCushionBytes,
+                                        knownFileSizeAtOffsetComputation: currentSize,
                                         onStreamEnded: { [weak state] in
                     Task { @MainActor in state?.relayRawViewerDisconnected() }
                 })
@@ -1117,6 +1132,7 @@ final class WebServer: @unchecked Sendable {
     // for why FEED specifically needs this and Watch Now doesn't.
     private func streamGrowingFile(path: String, showId: String, startOffset: Int, conn: NWConnection,
                                     durationSeconds: Int? = nil, liveEdgeCushionBytes: Int = 0,
+                                    knownFileSizeAtOffsetComputation: Int? = nil,
                                     onStreamEnded: (() -> Void)? = nil) {
         guard let handle = FileHandle(forReadingAtPath: path) else {
             queue.async { self.send(.notFound("could not open recording file"), on: conn) }
@@ -1128,7 +1144,15 @@ final class WebServer: @unchecked Sendable {
         // backlog-vs-live-edge chunk-size decision just below, which needs to know the file's real
         // size even when startOffset is 0 (a fresh Watch Now session with no seek yet still has a
         // real backlog from byte 0 to the recording's current length).
-        let currentSizeAtConnect = (try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? Int
+        // knownFileSizeAtOffsetComputation, when the caller already stat'd the file to derive
+        // startOffset itself (handleVirtualTunerStream's FEED join-at-live-edge path), reuses that
+        // same reading instead of stat'ing again here — a second, independent stat left a real
+        // window (FileHandle open + the caller's own glog calls, above) for the file to keep growing
+        // between the two, so hasBacklog below could flip true even though the caller computed
+        // startOffset to be exactly the live edge "by construction." Other callers (handleWatchRecording)
+        // don't have a startOffset tied to a fresh stat of their own, so they still re-stat here as before.
+        let currentSizeAtConnect = knownFileSizeAtOffsetComputation
+            ?? ((try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? Int)
         if startOffset > 0 {
             // Clamp to the file's current size so a stale/racy offset (e.g. computed just before
             // the recording restarted) can't seek past EOF — it'll just enter the normal
