@@ -399,6 +399,10 @@ struct WatchNowRow: View {
     let managedShow: Show?
 
     @State private var showTunerFullAlert = false
+    // Set instead of showTunerFullAlert when the only thing blocking a quick-record is this
+    // instance's own live Watch Now stream on the same device — see TODO.md's "Watch Now should
+    // yield its tuner" entry and quickRecordMenu's yieldWatchNowConfirm parameter.
+    @State private var yieldWatchNowConfirm: QuickRecordYieldRequest? = nil
 
     private static let timeFmt: DateFormatter = {
         let f = DateFormatter(); f.timeStyle = .short; f.dateStyle = .none; return f
@@ -437,6 +441,19 @@ struct WatchNowRow: View {
         } message: {
             let count = device.TunerCount.map { "\($0)" } ?? "all"
             Text("\(entry.Title) is on now, but \(count) tuner(s) on \(device.DeviceID) are occupied. Free a tuner first, then add this show.")
+        }
+        // See TODO.md's "Watch Now should yield its tuner" entry — offered only when
+        // quickRecordMenu's failure handler determined the sole blocker is this instance's own
+        // live Watch Now stream on this device (never a real recording or another device/TV).
+        .confirmationDialog("Stop Watching & Record?", isPresented: Binding(
+            get: { yieldWatchNowConfirm != nil }, set: { if !$0 { yieldWatchNowConfirm = nil } }
+        ), presenting: yieldWatchNowConfirm) { req in
+            Button("Stop Watching & Record") {
+                Task { await state.recordAfterYieldingWatchNow(type: req.type, entry: req.entry, device: req.device, channel: req.channel) }
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: { req in
+            Text("This tuner is only busy because you're watching it here. Stop watching \(req.entry.Title) and start recording it instead? Playback will resume from the recording in a moment.")
         }
     }
 
@@ -647,7 +664,7 @@ struct WatchNowRow: View {
                 // with VLCPlayerView's toolbar Record button, so the two don't duplicate the
                 // Menu-building code or the four description strings.
                 quickRecordMenu(state: state, entry: entry, device: device, channel: channel,
-                                 tunerFullAlert: $showTunerFullAlert) {
+                                 tunerFullAlert: $showTunerFullAlert, yieldWatchNowConfirm: $yieldWatchNowConfirm) {
                     Label("Record", systemImage: "record.circle").font(.caption.bold())
                 }
                 .accessibilityLabel("Record \(entry.Title)")

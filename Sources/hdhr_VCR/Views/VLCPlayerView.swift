@@ -66,6 +66,10 @@ struct VLCPlayerView: View {
     @State private var isScrubbing = false
     @State private var videoControlsHovered = false   // shows the recording scrub overlay on hover
     @State private var showTunerFullAlert = false      // quick-record toolbar button (see toolbar)
+    // Set instead of showTunerFullAlert when the only thing blocking a quick-record is this
+    // instance's own live Watch Now stream on the same device — see TODO.md's "Watch Now should
+    // yield its tuner" entry and quickRecordMenu's yieldWatchNowConfirm parameter.
+    @State private var yieldWatchNowConfirm: QuickRecordYieldRequest? = nil
     @State private var isFullScreen = false      // driven by WindowCloseObserver's NSWindowDelegate callbacks
     @State private var toolbarHovered = false     // reveals the toolbar overlay while isFullScreen (see body)
     // Gates FEED auto-play (see startPlayback's own doc comment) until this much real time has
@@ -307,6 +311,29 @@ struct VLCPlayerView: View {
             let count = device.TunerCount.map { "\($0)" } ?? "all"
             Text("\(currentGuideEntry?.Title ?? "This show") is on now, but \(count) tuner(s) on \(device.DeviceID) are occupied. Free a tuner first, then add this show.")
         }
+        // See TODO.md's "Watch Now should yield its tuner" entry — offered only when
+        // quickRecordMenu's failure handler determined the sole blocker is this instance's own
+        // live Watch Now stream on this device (never a real recording or another device/TV).
+        .confirmationDialog("Stop Watching & Record?", isPresented: Binding(
+            get: { yieldWatchNowConfirm != nil }, set: { if !$0 { yieldWatchNowConfirm = nil } }
+        ), presenting: yieldWatchNowConfirm) { req in
+            Button("Stop Watching & Record") {
+                // Set synchronously, before the Task below even gets a scheduler turn, so the
+                // overlay never shows a stale/blank state even for one frame — recordAfterYielding
+                // WatchNow itself immediately overwrites this with the same text as its own first
+                // step, this just guarantees there's no gap before that Task actually starts.
+                posterHidden = false
+                state.yieldRecordingProgress = "Stopping live playback — starting \(req.entry.Title)…"
+                Task {
+                    await state.recordAfterYieldingWatchNow(type: req.type, entry: req.entry, device: req.device, channel: req.channel)
+                    // recordAfterYieldingWatchNow already clears yieldRecordingProgress itself on
+                    // every exit path (success or give-up) — nothing left to do here.
+                }
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: { req in
+            Text("This tuner is only busy because you're watching it here. Stop watching \(req.entry.Title) and start recording it instead? Playback will resume from the recording in a moment.")
+        }
         .onAppear {
             glog("[VLC] VLCPlayerView.onAppear device=\(device.DeviceID) initialURL=\(initialURL)")
             availableScreens = NSScreen.screens   // NSScreen.screens is main-thread-only; safe here
@@ -540,7 +567,30 @@ struct VLCPlayerView: View {
                     // gate takes, reading as "click here" rather than "buffering, please wait."
                     // Same visual content, just non-interactive — the buffering feedback itself
                     // (spinner + label) stays, only the affordance-that-does-nothing goes away.
-                    if device.isVirtualRelay {
+                    if let yieldProgress = state.yieldRecordingProgress {
+                        // Same non-interactive "buffering" treatment as the FEED case just below —
+                        // nothing to click here either, this resolves on its own once the new
+                        // recording takes over (or, on failure, the normal error/Tuner Conflict
+                        // paths this same request would have hit anyway take it from here). Bound
+                        // to AppState.yieldRecordingProgress (not a local, set-once @State string)
+                        // so this updates live as recordAfterYieldingWatchNow actually progresses —
+                        // requested explicitly 2026-09-11: "show what we are doing... provide a
+                        // timer, each tick is an attempt to check the status.json... if there is a
+                        // delay, provide updates" — a single static message for the whole wait
+                        // wasn't good enough once real waits started running 20-40s.
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text(yieldProgress)
+                        }
+                        .font(.title3.bold())
+                        .padding(.horizontal, 22)
+                        .padding(.vertical, 12)
+                        .background(.ultraThinMaterial)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .foregroundStyle(.white.opacity(0.45))
+                        .accessibilityLabel("hdhrVCRplus — \(yieldProgress)")
+                        .padding(.top, 4)
+                    } else if device.isVirtualRelay {
                         HStack(spacing: 8) {
                             ProgressView().controlSize(.small)
                             Text("Buffering…")
@@ -702,9 +752,6 @@ struct VLCPlayerView: View {
             .accessibilityLabel("Channel")
             .accessibilityIdentifier("vlc-channel-picker")
             .onChange(of: selectedChannel) { _, ch in
-                posterHidden = false
-                posterNSImage = nil
-                VLCBridge.shared.setVolume(0)
                 // Reset unconditionally, before the suppress check below — a synced (externally
                 // triggered) channel switch still means the track list underneath genuinely
                 // changed, even though suppressNextChannelPlay skips re-triggering playback here.
@@ -714,6 +761,20 @@ struct VLCPlayerView: View {
                 selectedSpuTrackId   = -1
                 spuChoiceIsExplicit  = false
                 if suppressNextChannelPlay { suppressNextChannelPlay = false; return }
+                // Poster reset moved here, *after* the suppress check — root-caused 2026-09-11:
+                // syncChannel's own recording-relay match (the yield-to-record flow's live→disk
+                // handoff) sets suppressNextChannelPlay=true then reassigns selectedChannel to a
+                // synthetic "live:showId" entry for the *same* show already playing, purely so the
+                // channel picker's label updates. That's not a real channel switch, but this
+                // handler used to unconditionally blank posterNSImage/reopen posterHidden anyway —
+                // and since .task(id: currentGuideEntry?.ImageURL) only re-fires when the image URL
+                // actually changes (it doesn't here — currentGuideEntry's own synthetic-entry
+                // resolution deliberately maps back to the same real show), nothing ever
+                // repopulated it: the show's poster/logo was gone for the rest of that session.
+                // Only a genuine switch (the branch below) should ever clear it.
+                posterHidden = false
+                posterNSImage = nil
+                VLCBridge.shared.setVolume(0)
                 guard let ch else { return }
                 if let showId = showId(fromLiveGuideNumber: ch.GuideNumber) {
                     guard let show = state.shows.first(where: { $0.show_id == showId }) else { return }
@@ -732,7 +793,7 @@ struct VLCPlayerView: View {
             if bridge.recordingShowId == nil, let ch = selectedChannel, let entry = currentGuideEntry,
                !state.shows.contains(where: { $0.show_active && $0.hdhr_record == device.DeviceID && $0.show_channel == ch.GuideNumber }) {
                 quickRecordMenu(state: state, entry: entry, device: device, channel: ch,
-                                 tunerFullAlert: $showTunerFullAlert) {
+                                 tunerFullAlert: $showTunerFullAlert, yieldWatchNowConfirm: $yieldWatchNowConfirm) {
                     Label("Record", systemImage: "record.circle")
                 }
                 .buttonStyle(.plain)

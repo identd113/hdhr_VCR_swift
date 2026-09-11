@@ -126,6 +126,12 @@ final class AppState: ObservableObject {
 
     @Published var editingShowId: String? = nil
     @Published var watchNowDeviceId: String? = nil
+    // Live progress text for the "Watch Now yields its tuner to Record" flow — recordAfterYieldingWatchNow
+    // updates this at every meaningful step (nil when that flow isn't in progress) so VLCPlayerView's
+    // poster overlay can show real-time status instead of one static message for the whole wait —
+    // requested explicitly 2026-09-11: "show what we are doing... provide a timer, each tick is an
+    // attempt to check the status.json... if there is a delay, provide updates."
+    @Published var yieldRecordingProgress: String? = nil
     @Published var pendingAddEntry: (device: HDHRDevice, channel: LineupEntry, entry: GuideEntry)? = nil
     @Published var pendingAddEntryGeneration: Int = 0   // bumped each time a new entry is set; drives onChange in AddShowView
     @Published var pendingAddChannel: (device: HDHRDevice, channel: LineupEntry)? = nil
@@ -1649,7 +1655,8 @@ final class AppState: ObservableObject {
 
     // MARK: - Add show from guide entry (called by menu)
 
-    func addShowFromGuide(entry: GuideEntry, type: ShowState, device: HDHRDevice, channel: LineupEntry, airDays: [String]? = nil, transcode: String? = nil, bonusTime: Bool = false, titleOverride: String? = nil, newOnly: Bool = false) {
+    @discardableResult
+    func addShowFromGuide(entry: GuideEntry, type: ShowState, device: HDHRDevice, channel: LineupEntry, airDays: [String]? = nil, transcode: String? = nil, bonusTime: Bool = false, titleOverride: String? = nil, newOnly: Bool = false) -> String {
         // Use the default directory automatically; user can override per-show via Edit.
         let folder = defaultSaveDir
 
@@ -1719,7 +1726,9 @@ final class AppState: ObservableObject {
             resolveSeriesAir(show: &show, device: device, isAll: true, channel: channel)
         }
 
+        let showId = show.show_id
         addShow(show) // conflict check, "Show Added" notify/Discord, and web broadcast all happen there
+        return showId
     }
 
     // The tuner-full check + addShowFromGuide call behind the quick-record pulldown
@@ -1729,12 +1738,161 @@ final class AppState: ObservableObject {
     // WatchNowViewTests) without going through either caller's UI, since the UI itself is just a
     // stock SwiftUI Menu with nothing app-specific to verify. Returns false (and adds nothing)
     // when the device's tuners are full — the caller is expected to show its own "All Tuners
-    // Busy" alert in that case, same as addShowFromGuide's other callers already do inline.
+    // Busy" alert in that case (or, if tunerBlockedOnlyByOwnWatchNow(for:) says the block is only
+    // this instance's own live Watch Now stream, offer recordAfterYieldingWatchNow instead — see
+    // both below), same as addShowFromGuide's other callers already do inline.
     @discardableResult
     func quickRecord(type: ShowState, entry: GuideEntry, device: HDHRDevice, channel: LineupEntry) -> Bool {
         guard !tunersFull(for: device.DeviceID) else { return false }
         addShowFromGuide(entry: entry, type: type, device: device, channel: channel)
         return true
+    }
+
+    // Whether a device's tuners are full for a reason this instance can fix on the user's own
+    // behalf: its own live, non-recording Watch Now stream (vlcOccupiesTuner already excludes the
+    // no-tuner recording-relay case — this can never be true for that, or for a real recording, or
+    // for another physical device/TV/another Mac occupying a real tuner slot; see TODO.md's "Watch
+    // Now should yield its tuner" entry for the full reasoning). deviceTunerOccupancy's hardware-
+    // polled count already includes this app's own live tuner as one of its busy slots the same
+    // way it would count any other viewer's — subtracting exactly the 1 this instance contributed
+    // (never below 0) gives an honest projected post-stop count without waiting for a fresh
+    // status.json poll, which is what actually makes offering this synchronously (right when the
+    // "All Tuners Busy" alert would otherwise show) possible.
+    func tunerBlockedOnlyByOwnWatchNow(for deviceId: String) -> Bool {
+        guard tunersFull(for: deviceId), vlcOccupiesTuner(for: deviceId) else { return false }
+        guard let device = devices.first(where: { $0.DeviceID == deviceId }),
+              let tunerCount = device.TunerCount, tunerCount > 0 else { return false }
+        let hw  = deviceTunerOccupancy[deviceId]?.filter { $0.VctNumber != nil }.count ?? 0
+        let rec = recordingShows.filter { $0.hdhr_record == deviceId }.count
+        let projected = max(max(hw - 1, 0), rec)
+        return projected < tunerCount
+    }
+
+    // Confirmed-by-the-user counterpart to tunerBlockedOnlyByOwnWatchNow(for:) — stops this
+    // instance's own live Watch Now stream on `device`, schedules the recording exactly like a
+    // normal quick-record, then — once it's confirmed actually recording with bytes on disk —
+    // reopens playback from the in-progress file via the same on-disk relay watchRecordingInApp
+    // already uses for any other currently-recording show, so the viewer gets a short
+    // interruption instead of a hard block. Uses releasePlayer() (a real connection teardown), not
+    // the soft stop() the remote-command Stop key uses — only a genuine drop frees the physical
+    // tuner promptly enough for the recording that follows to actually claim it. Caller
+    // (quickRecordMenu's confirm dialog) is responsible for only offering this when
+    // tunerBlockedOnlyByOwnWatchNow(for:) was true at the moment of the prompt.
+    func recordAfterYieldingWatchNow(type: ShowState, entry: GuideEntry, device: HDHRDevice, channel: LineupEntry) async {
+        glog("[Watch] Yielding this instance's own live Watch Now stream on \(device.DeviceID) to record '\(entry.Title)'")
+        yieldRecordingProgress = "Stopping live playback…"
+        // stop() — the soft teardown — not releasePlayer(). Root-caused 2026-09-11: releasePlayer()
+        // nils VLCBridge.drawableView (the NSView libvlc renders into), and setDrawable(_:) — the
+        // only thing that ever re-sets it — is called exclusively from VLCVideoSurface.makeNSView,
+        // which SwiftUI only invokes when a *new* NSView is actually created. VLCPlayerWindowManager
+        // .open()'s "reusing existing window" path (what watchRecordingInApp below goes through,
+        // same device, just a new URL) deliberately does NOT recreate the hosted view when the
+        // device hasn't changed — so makeNSView never re-fires, drawableView stays nil forever, and
+        // the subsequent play() call just queues as pendingURL and sits there ("play deferred — no
+        // drawable yet") — the exact "stuck on Connecting… forever" symptom found live. stop()
+        // calls the same underlying _mpStop (same libvlcQueue, same real network-connection drop
+        // that frees the tuner) but deliberately leaves drawableView attached — its own doc comment
+        // already documents this exact "so a later play() finds a live surface to render into"
+        // property, it just hadn't been needed by any reconnect-in-the-same-window path until now.
+        VLCBridge.shared.stop()
+        yieldRecordingProgress = "Scheduling the recording…"
+        let showId = addShowFromGuide(entry: entry, type: type, device: device, channel: channel)
+        // First attempt: addShow's own "start immediately if airing now" Task may already be
+        // racing to call startRecording concurrently — that's fine, startRecording's own
+        // recordingManager.isRunning(showId:) resync guard makes a second concurrent call here
+        // harmless (never a double curl launch), and this way nothing here has to wait on that
+        // other Task's own timing before trying.
+        //
+        // A real device can take a long time — well over one idle-loop tick (10s default) — to
+        // actually register the dropped tuner connection from releasePlayer() above. Live-measured
+        // 2026-09-11 across three separate real tests: ~20s, ~21s, and ~29s before the tuner
+        // actually read as free. A raw `kill -9` on a recording's own curl process frees the same
+        // physical tuner immediately by comparison (confirmed live) — so this multi-second gap is
+        // most likely this device's own handling of a libvlc-originated disconnect specifically,
+        // not a hard minimum the device enforces regardless of client. Polls for the tuner actually
+        // freeing every 1s — fast enough to notice promptly without hammering the device's
+        // status.json with a real HTTP fetch (fetchDeviceStatus) far more often than needed; 300ms
+        // was tried first and found unnecessarily aggressive for what's ultimately a multi-second-
+        // scale wait, per explicit user direction.
+        var tunerConfirmedFree = false
+        for pollAttempt in 1...45 {   // 45 × 1s = 45s budget
+            yieldRecordingProgress = "Waiting for the tuner to free up… (\(pollAttempt)s, checked \(pollAttempt)×)"
+            await fetchDeviceStatus(for: device)
+            let stillFull = tunersFull(for: device.DeviceID)
+            // Logging every single tick would be mild noise over a 45s window — one line every 5s
+            // plus the moment it actually resolves.
+            if pollAttempt == 1 || pollAttempt % 5 == 0 {
+                glog("[Watch] yield fast-poll \(pollAttempt)/45 (\(pollAttempt)s elapsed): tunersFull=\(stillFull)")
+            }
+            if !stillFull {
+                tunerConfirmedFree = true
+                glog("[Watch] yield: tuner confirmed free after \(pollAttempt)s of polling")
+                break
+            }
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+        }
+        if !tunerConfirmedFree {
+            glog("[Watch] yield: tuner never confirmed free within the 45s poll budget — attempting startRecording once anyway", level: .warning)
+        }
+        yieldRecordingProgress = "Tuner free — starting the recording…"
+        if let i = shows.firstIndex(where: { $0.show_id == showId }) {
+            await startRecording(index: i)
+        } else {
+            glog("[Watch] yield: show \(showId) no longer in shows[] — cannot call startRecording", level: .warning)
+        }
+        // One unified, generously-budgeted loop from here — startRecording retries until
+        // show_recording flips true, *then* keeps polling for the file to actually appear on disk,
+        // all in the same loop with one combined timeout. Deliberately NOT two separate bounded
+        // loops (a "retry starting" one followed by a "wait for the file" one) — that shape shipped
+        // 2026-09-11 and had a real bug: found live twice, `show_recording` flipped true only partway
+        // through the first loop's own budget, leaving too little of the second loop's separate,
+        // short budget (5s) for the file to actually appear — both times the debug log at the very
+        // end showed `fileExists=true`, meaning the file genuinely did land, just a beat after this
+        // function had already given up and gone silent, so watchRecordingInApp was simply never
+        // called and the player sat on a dead "Connecting…" forever. One shared ~45s budget for
+        // "keep trying until it's actually watchable" removes that boundary entirely.
+        for attempt in 1...90 {
+            if let show = shows.first(where: { $0.show_id == showId }) {
+                if show.show_recording, !show.show_recording_path.isEmpty,
+                   FileManager.default.fileExists(atPath: show.show_recording_path) {
+                    glog("[Watch] yield: recording file confirmed on disk (\(show.show_recording_path)) after \(attempt) tries — reopening playback from the beginning")
+                    yieldRecordingProgress = "Recording confirmed — reconnecting…"
+                    // fromBeginning: true, not the default near-live-edge offset — the user
+                    // explicitly wants this flow to always start reading from byte 0 of the
+                    // just-started recording, not compute an "elapsed" catch-up point (barely
+                    // meaningful seconds into a fresh recording anyway, and found live to
+                    // occasionally behave oddly this close to the very start of the file).
+                    watchRecordingInApp(show, fromBeginning: true)
+                    // watchRecordingInApp's own open()/play() drives VLCPlayerView's normal
+                    // Connecting/Start overlay from here — clear this so the two don't show at once.
+                    yieldRecordingProgress = nil
+                    return
+                }
+                if show.show_recording {
+                    yieldRecordingProgress = "Recording started — waiting for the file to appear on disk… (\(attempt)/90)"
+                } else {
+                    yieldRecordingProgress = "Still trying to start the recording… (\(attempt)/90)"
+                    if let i = shows.firstIndex(where: { $0.show_id == showId }) {
+                        await startRecording(index: i)
+                    }
+                }
+            }
+            if attempt == 1 || attempt % 5 == 0 {
+                let show = shows.first(where: { $0.show_id == showId })
+                glog("[Watch] yield attempt \(attempt)/90: show_recording=\(show?.show_recording ?? false) path=\(show?.show_recording_path.isEmpty == false) fileExists=\(show.map { FileManager.default.fileExists(atPath: $0.show_recording_path) } ?? false)")
+            }
+            try? await Task.sleep(nanoseconds: 500_000_000)
+        }
+        let finalShow = shows.first(where: { $0.show_id == showId })
+        glog("[Watch] Recording didn't confirm within the wait window after yielding Watch Now — not reopening playback (show_recording=\(finalShow?.show_recording ?? false), show_recording_path=\(finalShow?.show_recording_path ?? "nil"), fileExists=\(finalShow.map { FileManager.default.fileExists(atPath: $0.show_recording_path) } ?? false))", level: .warning)
+        yieldRecordingProgress = nil
+        // The live watch is already gone (releasePlayer() above) and nothing is going to reconnect
+        // it on its own — without this, the player window is left showing a dead, non-interactive
+        // "Connecting…" indefinitely with no explanation (found live 2026-09-11). Tuner Conflict's
+        // own notification already covers *why* if that's the reason; this covers the "and now
+        // what" the player window itself otherwise leaves completely silent.
+        notify("Couldn't Resume Playback", body: entry.Title,
+               subtitle: "Still trying to record — reopen Watch Now once it starts")
     }
 
     // Tie-break for SeriesID(All) shows simulcast/rerun on multiple channels of the same device

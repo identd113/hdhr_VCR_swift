@@ -28,6 +28,16 @@ let recordTypeDescription: [ShowState: String] = [
     .seriesAll:     "Record new episodes on any channel",
 ]
 
+// Carries what's needed to actually perform the tuner-yield swap once the user confirms it —
+// see AppState.tunerBlockedOnlyByOwnWatchNow(for:)/recordAfterYieldingWatchNow(type:entry:device:
+// channel:) and TODO.md's "Watch Now should yield its tuner" entry for the full feature.
+struct QuickRecordYieldRequest {
+    let type: ShowState
+    let entry: GuideEntry
+    let device: HDHRDevice
+    let channel: LineupEntry
+}
+
 // Four-type pulldown wrapping AppState.quickRecord(type:entry:device:channel:) — which goes
 // straight through addShowFromGuide(...), the same function the web guide's own quick-record
 // path (WebServer.swift's handleRecord) already uses, with every optional left at its default
@@ -42,10 +52,28 @@ let recordTypeDescription: [ShowState: String] = [
 // scripting), a custom accessibility action can be invoked directly and reliably via AppleScript/
 // System Events' `perform action`, no NSMenu-tracking flakiness involved, for anyone who does
 // want to drive this via UI automation later.
+// Pulled out of quickRecordMenu below rather than a local function there — a @ViewBuilder
+// function body can't contain a local func declaration ("closure containing a declaration cannot
+// be used with result builder 'ViewBuilder'"). yieldWatchNowConfirm defaults to .constant(nil)
+// (no-op) at every quickRecordMenu call site that doesn't pass one, so this falls straight
+// through to the plain tunerFullAlert path exactly as before this was added.
+@MainActor
+private func handleQuickRecordFailure(
+    _ type: ShowState, state: AppState, entry: GuideEntry, device: HDHRDevice, channel: LineupEntry,
+    tunerFullAlert: Binding<Bool>, yieldWatchNowConfirm: Binding<QuickRecordYieldRequest?>
+) {
+    if state.tunerBlockedOnlyByOwnWatchNow(for: device.DeviceID) {
+        yieldWatchNowConfirm.wrappedValue = QuickRecordYieldRequest(type: type, entry: entry, device: device, channel: channel)
+    } else {
+        tunerFullAlert.wrappedValue = true
+    }
+}
+
 @MainActor @ViewBuilder
 func quickRecordMenu<Content: View>(
     state: AppState, entry: GuideEntry, device: HDHRDevice, channel: LineupEntry,
-    tunerFullAlert: Binding<Bool>, @ViewBuilder label: () -> Content
+    tunerFullAlert: Binding<Bool>, yieldWatchNowConfirm: Binding<QuickRecordYieldRequest?> = .constant(nil),
+    @ViewBuilder label: () -> Content
 ) -> some View {
     // Mirrors the web guide's own withholding of a real Record affordance for paid programming
     // (data-inf gates the genre-filter's "hide infomercials" mode there); this is the one place
@@ -58,7 +86,8 @@ func quickRecordMenu<Content: View>(
             ForEach(ShowState.allCases, id: \.self) { type in
                 Button {
                     if !state.quickRecord(type: type, entry: entry, device: device, channel: channel) {
-                        tunerFullAlert.wrappedValue = true
+                        handleQuickRecordFailure(type, state: state, entry: entry, device: device, channel: channel,
+                                                  tunerFullAlert: tunerFullAlert, yieldWatchNowConfirm: yieldWatchNowConfirm)
                     }
                 } label: {
                     Text(type.rawValue)
@@ -69,16 +98,28 @@ func quickRecordMenu<Content: View>(
             label()
         }
         .accessibilityAction(named: Text(ShowState.single.rawValue)) {
-            if !state.quickRecord(type: .single, entry: entry, device: device, channel: channel) { tunerFullAlert.wrappedValue = true }
+            if !state.quickRecord(type: .single, entry: entry, device: device, channel: channel) {
+                handleQuickRecordFailure(.single, state: state, entry: entry, device: device, channel: channel,
+                                          tunerFullAlert: tunerFullAlert, yieldWatchNowConfirm: yieldWatchNowConfirm)
+            }
         }
         .accessibilityAction(named: Text(ShowState.dateTime.rawValue)) {
-            if !state.quickRecord(type: .dateTime, entry: entry, device: device, channel: channel) { tunerFullAlert.wrappedValue = true }
+            if !state.quickRecord(type: .dateTime, entry: entry, device: device, channel: channel) {
+                handleQuickRecordFailure(.dateTime, state: state, entry: entry, device: device, channel: channel,
+                                          tunerFullAlert: tunerFullAlert, yieldWatchNowConfirm: yieldWatchNowConfirm)
+            }
         }
         .accessibilityAction(named: Text(ShowState.seriesChannel.rawValue)) {
-            if !state.quickRecord(type: .seriesChannel, entry: entry, device: device, channel: channel) { tunerFullAlert.wrappedValue = true }
+            if !state.quickRecord(type: .seriesChannel, entry: entry, device: device, channel: channel) {
+                handleQuickRecordFailure(.seriesChannel, state: state, entry: entry, device: device, channel: channel,
+                                          tunerFullAlert: tunerFullAlert, yieldWatchNowConfirm: yieldWatchNowConfirm)
+            }
         }
         .accessibilityAction(named: Text(ShowState.seriesAll.rawValue)) {
-            if !state.quickRecord(type: .seriesAll, entry: entry, device: device, channel: channel) { tunerFullAlert.wrappedValue = true }
+            if !state.quickRecord(type: .seriesAll, entry: entry, device: device, channel: channel) {
+                handleQuickRecordFailure(.seriesAll, state: state, entry: entry, device: device, channel: channel,
+                                          tunerFullAlert: tunerFullAlert, yieldWatchNowConfirm: yieldWatchNowConfirm)
+            }
         }
     }
 }

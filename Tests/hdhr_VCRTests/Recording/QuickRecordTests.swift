@@ -111,4 +111,52 @@ struct QuickRecordTests {
         #expect(show.show_use_seriesid_all == true)
         #expect(show.hdhr_record == "DEV1")
     }
+
+    @Test @MainActor func addShowFromGuide_returnsTheCreatedShowsId() throws {
+        let device = HDHRDevice.test(id: "DEV1", tuners: 2)
+        let channel = LineupEntry.test(number: "5.1", name: "KFOO")
+        let entry = GuideEntry.test(title: "Evening News")
+        let state = makeTestAppState(devices: [device], lineups: ["DEV1": [channel]])
+
+        let returnedId = state.addShowFromGuide(entry: entry, type: .single, device: device, channel: channel)
+
+        let show = try #require(state.shows.first)
+        #expect(returnedId == show.show_id)
+    }
+}
+
+// MARK: - AppState.tunerBlockedOnlyByOwnWatchNow(for:)
+//
+// Backs the "Watch Now should yield its tuner to a new recording request" feature (TODO.md) —
+// offers a confirm dialog instead of a hard "All Tuners Busy" block when the only thing occupying
+// the last tuner is this instance's own live Watch Now stream. Like vlcOccupiesTuner itself (see
+// TunerOccupancyTests.swift's own file-header note), the "true" branch can't be exercised here:
+// VLCPlayerWindowManager.shared.currentDeviceID is a real singleton only ever set by actually
+// opening a player window, which these tests never do — it stays nil, so vlcOccupiesTuner (and
+// therefore this function) can only be verified false in this environment. These tests cover the
+// two guard clauses that don't depend on it: "tuners aren't even full" and "full, but for a real
+// reason" — both must stay false regardless of whatever vlcOccupiesTuner would ever say.
+@Suite("AppState.tunerBlockedOnlyByOwnWatchNow")
+struct TunerBlockedOnlyByOwnWatchNowTests {
+
+    @Test @MainActor func falseWhenTunersAreNotFull() {
+        let device = HDHRDevice.test(id: "DEV1", tuners: 2)
+        let state = makeTestAppState(devices: [device])
+        #expect(state.tunerBlockedOnlyByOwnWatchNow(for: "DEV1") == false)
+    }
+
+    @Test @MainActor func falseWhenFullDueToARealRecording_notVLC() {
+        let device = HDHRDevice.test(id: "DEV1", tuners: 1)
+        var recording = Show.testRecording(title: "Already Recording", channel: "9.9")
+        recording.hdhr_record = "DEV1"
+        let state = makeTestAppState(shows: [recording], devices: [device])
+        // tunersFull(for:) is true here (1 recording, 1 tuner) but vlcOccupiesTuner is false (no
+        // live VLC session in this test environment) — never offer to drop a real recording.
+        #expect(state.tunerBlockedOnlyByOwnWatchNow(for: "DEV1") == false)
+    }
+
+    @Test @MainActor func falseForAnUnknownDevice() {
+        let state = makeTestAppState()
+        #expect(state.tunerBlockedOnlyByOwnWatchNow(for: "NOPE") == false)
+    }
 }

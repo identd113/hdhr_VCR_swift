@@ -63,16 +63,6 @@ VLC's own scrub bar handles resume-within-a-single-playback-session, but nothing
 
 ---
 
-### Watch Now should yield its tuner to a new recording request instead of blocking it
-
-Flagged 2026-09-10, real scenario: user was watching a live channel via Watch Now (one tuner) while another tuner elsewhere was occupied (e.g. a TV directly on the device), then hit Record on a third, currently-airing show and got `tunersFull` blocked — "2 tuner(s) on 105404BE are occupied. Free a tuner first, then add this show." One of those two occupying tuners was this app's own in-app Watch Now stream, which the app could drop on its own rather than making the user do it manually.
-
-Idea: when a record request is blocked only because of tuner exhaustion, and at least one of the occupying tuners is *this instance's own* live Watch Now session (not a recording, and not another Mac's FEED relay), offer to stop that Watch Now stream, start the recording on the now-freed tuner, then immediately resume playback for the user by relaying from the in-progress recording file on disk (the same on-disk-relay mechanism `docs/WebServer.md`'s `/api/watch-recording` / `AppState.watchRecordingInApp` already uses for watching a currently-recording show) — so the viewer sees a short interruption rather than a hard block. Does not apply to a tuner occupied by an actual recording (never preempted, see "No preemption policy" in memory) or by another physical device/TV — only a live, non-recording Watch Now session on a tuner this app itself opened is a legitimate thing to drop.
-
-Not scoped: needs a way to identify which occupied tuner(s) came from this instance's own Watch Now vs. an external source, a UI decision (auto-drop vs. confirm first), and to confirm the handoff from live Watch Now playback to the disk-relay read is actually seamless in practice (buffering/seek behavior switching sources mid-stream). Key files likely involved: `AppState.tunersFull`/`activeTunerCount`, `AppState.watchRecordingInApp`, wherever the Record action currently short-circuits on `tunersFull`.
-
----
-
 ## Recording
 
 ### No reminder-only shows (notify without recording)
