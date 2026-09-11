@@ -60,6 +60,36 @@ final class WebServer: @unchecked Sendable {
     private var liveConns: [NWConnection] = []
     private let connLock  = NSLock()
 
+    // Every in-flight per-request Task (handleConnection's `Task { await self.route(...) }`),
+    // keyed so each one removes only its own entry on completion. Added 2026-09-11 so
+    // AppState's SIGTERM handler can give a bounded window for these to actually finish before
+    // the process dies — see waitForInFlightRequests(timeout:) below and ISSUES.md's "Web guide
+    // Record button fails silently" entry: a request that's fully received (and, since 2026-09-10,
+    // logged as such) but still queued behind a busy MainActor when the process is force-quit
+    // (`pkill`, `deploy.sh`'s normal stop-before-rebuild step) previously vanished with no trace
+    // at all — not a caught-and-logged error, genuinely never processed. This doesn't help an
+    // actual crash (nothing can save in-flight work then), only the force-quit/pkill case, which
+    // — unlike a crash — already gives this app a moment to react via the existing SIGTERM
+    // interception.
+    private var inFlightRequestTasks: [UUID: Task<Void, Never>] = [:]
+    private let inFlightLock = NSLock()
+
+    // NSLock's lock()/unlock() are NS_SWIFT_UNAVAILABLE_FROM_ASYNC (a Swift 6 error, a warning
+    // today) — every actual call site below is a synchronous, non-async function instead, even
+    // though some are themselves called from async code, so the lock/unlock invocation itself
+    // never sits directly in an async context.
+    private func trackInFlightRequest(_ id: UUID, task: Task<Void, Never>) {
+        inFlightLock.lock(); inFlightRequestTasks[id] = task; inFlightLock.unlock()
+    }
+    private func untrackInFlightRequest(_ id: UUID) {
+        inFlightLock.lock(); inFlightRequestTasks.removeValue(forKey: id); inFlightLock.unlock()
+    }
+    private func snapshotInFlightRequestTasks() -> [Task<Void, Never>] {
+        inFlightLock.lock()
+        defer { inFlightLock.unlock() }
+        return Array(inFlightRequestTasks.values)
+    }
+
     // Pre-built page HTML cache — rebuilt after guide refresh, served instantly on GET /.
     // Desktop and mobile share the same guide window size (see guideWindow(state:)) — one
     // cached copy serves every UA.
@@ -1707,10 +1737,35 @@ final class WebServer: @unchecked Sendable {
             if method == "POST", cleanPath.hasPrefix("/api/") {
                 glog("[WebServer] Received \(method) \(cleanPath)")
             }
-            Task {
+            // Tracked in inFlightRequestTasks (not just fired-and-forgotten) so
+            // waitForInFlightRequests(timeout:) can give this a bounded window to actually finish
+            // on a force-quit instead of it vanishing mid-queue — see that property's own comment.
+            let requestID = UUID()
+            let task = Task {
                 let response = await self.route(method: method, path: cleanPath, body: body)
                 self.send(response, on: conn, acceptsGzip: acceptsGzip, keepAlive: keepAlive)
+                self.untrackInFlightRequest(requestID)
             }
+            trackInFlightRequest(requestID, task: task)
+        }
+    }
+
+    // Gives every currently-tracked in-flight request Task up to `timeout` to finish — called from
+    // AppState's SIGTERM handler right alongside its existing bounded wait for in-flight Discord
+    // card sends, same withTaskGroup(first-of-{timeout,all-done}-wins) shape. Snapshots the task
+    // list once at the start rather than looping until empty — a request that arrives *during* this
+    // wait (the server is still nominally up until the process actually exits) isn't this function's
+    // job to also wait for; it either completes within the same window incidentally or is lost the
+    // same as any work started too close to shutdown, same as before this existed.
+    func waitForInFlightRequests(timeout: TimeInterval) async {
+        let tasks = snapshotInFlightRequestTasks()
+        guard !tasks.isEmpty else { return }
+        glog("[WebServer] waiting up to \(timeout)s for \(tasks.count) in-flight request(s) before shutdown")
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000)) }
+            group.addTask { for t in tasks { _ = await t.value } }
+            await group.next()
+            group.cancelAll()
         }
     }
 

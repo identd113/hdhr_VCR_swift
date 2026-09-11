@@ -641,6 +641,13 @@ final class AppState: ObservableObject {
                         group.cancelAll()
                     }
                 }
+                // Same bounded-wait shape as the Discord-card drain just above, for a different
+                // silent-loss mechanism: a web guide request (e.g. Record) that's fully received but
+                // still queued behind a busy MainActor when a pkill/deploy.sh restart arrives
+                // previously vanished with zero trace instead of getting a chance to actually run —
+                // see WebServer.waitForInFlightRequests's own doc comment and ISSUES.md's "Web guide
+                // Record button fails silently" entry.
+                await self.webServer.waitForInFlightRequests(timeout: 2)
                 self.saveConfig()
                 signal(SIGTERM, SIG_DFL)
                 raise(SIGTERM)
