@@ -418,17 +418,24 @@ defaults.
 ## Steps
 
 ```swift
-enum Step: Int { case intro, recordingDefaults, webLAN, terminalGuide, recordingRelay, notificationTiming }
+enum Step: Int, CaseIterable { case intro, recordingDefaults, webLAN, terminalGuide, recordingRelay, notificationTiming }
 ```
 
-Navigation (`goNext()`/`goBack()`) walks a single `orderedSteps` — as of 2026-09-10 an **instance**
-computed property (not a static array), so it can conditionally drop `.recordingRelay` when
-`FEED_feature_enabled` is off (default): `[.recordingDefaults, .webLAN, .terminalGuide,
-.recordingRelay, .notificationTiming]` with the flag on, `[.recordingDefaults, .webLAN,
-.terminalGuide, .notificationTiming]` without it — by index
-rather than a per-step ternary chain — added when a 3rd non-`.recordingDefaults` step made the
-original 3-way ternary ambiguous; a plain ordered list is the one place to edit for any future
-reorder/insert/removal instead of a scattered set of hand-kept `step == .X ? .Y : .Z` conditions.
+Navigation (`goNext()`/`goBack()`) walks a single `orderedSteps` — an **instance** computed
+property (not a static array), so it can conditionally drop `.recordingRelay` when
+`FEED_feature_enabled` is off (default). **Derived from `Step.allCases` with an opt-*out* filter,
+not a hand-typed literal array, as of 2026-09-11** (`Step` gained `CaseIterable` the same commit):
+`Step.allCases.filter { switch $0 { case .intro: false; case .recordingRelay:
+config.FEED_feature_enabled; default: true } }` — `.intro` always excluded (shown separately,
+before this Next/Back sequence begins), `.recordingRelay` conditional on the flag, everything else
+included by default. Replaces an earlier hand-typed array (`[.recordingDefaults, .webLAN,
+.terminalGuide, .recordingRelay, .notificationTiming]` / without `.recordingRelay`) that itself had
+replaced a 3-way ternary chain — that array shape reintroduced the same drift class one level up:
+a new `Step` case compiled cleanly (the rendering `switch`/`stepTitle` are both exhaustive) but
+could silently drop out of Next/Back navigation, the progress dots, and the VoiceOver step count if
+this array wasn't separately remembered, mirroring the 2026-09-05 VoiceOver "Step N of X" fix's own
+drift class one layer down. Deriving from `allCases` with an opt-out filter means a new case is
+now included by default unless explicitly excluded — the safer failure mode.
 
 `.intro` is **never the resting default** (`@State private var step: Step = .recordingDefaults`) —
 it's entered deliberately via `playIntroIfNeeded()`, called from both `.onAppear` and the
