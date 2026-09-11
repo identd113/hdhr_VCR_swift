@@ -449,7 +449,10 @@ struct WatchNowRow: View {
             get: { yieldWatchNowConfirm != nil }, set: { if !$0 { yieldWatchNowConfirm = nil } }
         ), presenting: yieldWatchNowConfirm) { req in
             Button("Stop Watching & Record") {
-                Task { await state.recordAfterYieldingWatchNow(type: req.type, entry: req.entry, device: req.device, channel: req.channel) }
+                // startYieldingWatchNowToRecord (not a raw Task) — see VLCPlayerView's own call
+                // site for why: tracks the task so playerWindowDidClose can cancel it if the
+                // player window closes mid-wait, and guards against a second overlapping trigger.
+                state.startYieldingWatchNowToRecord(type: req.type, entry: req.entry, device: req.device, channel: req.channel)
             }
             Button("Cancel", role: .cancel) { }
         } message: { req in

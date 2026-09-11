@@ -132,6 +132,18 @@ final class AppState: ObservableObject {
     // requested explicitly 2026-09-11: "show what we are doing... provide a timer, each tick is an
     // attempt to check the status.json... if there is a delay, provide updates."
     @Published var yieldRecordingProgress: String? = nil
+    // Backs startYieldingWatchNowToRecord/cancelYieldRecordingIfInProgress — see both below.
+    private var yieldRecordingTask: Task<Void, Never>? = nil
+    // Bumped by both start (each new task gets the current value) and cancel (invalidates
+    // whichever task is in flight) — lets a task's own completion handler tell whether it's still
+    // the current one before clearing yieldRecordingTask. Without this a cancelled task's delayed
+    // completion (cancellation is cooperative — it doesn't stop until the next Task.isCancelled
+    // checkpoint, up to ~1s later) could race a fresh trigger started in that window: the stale
+    // completion's unconditional `yieldRecordingTask = nil` would wipe out the *new* task's
+    // reference, silently defeating both the reentrancy guard (a third trigger could now overlap
+    // with the new one) and playerWindowDidClose's cancel (it would find nil and no-op instead of
+    // cancelling the new task).
+    private var yieldRecordingGeneration = 0
     @Published var pendingAddEntry: (device: HDHRDevice, channel: LineupEntry, entry: GuideEntry)? = nil
     @Published var pendingAddEntryGeneration: Int = 0   // bumped each time a new entry is set; drives onChange in AddShowView
     @Published var pendingAddChannel: (device: HDHRDevice, channel: LineupEntry)? = nil
@@ -1787,14 +1799,67 @@ final class AppState: ObservableObject {
     // normal quick-record, then — once it's confirmed actually recording with bytes on disk —
     // reopens playback from the in-progress file via the same on-disk relay watchRecordingInApp
     // already uses for any other currently-recording show, so the viewer gets a short
-    // interruption instead of a hard block. Uses releasePlayer() (a real connection teardown), not
-    // the soft stop() the remote-command Stop key uses — only a genuine drop frees the physical
-    // tuner promptly enough for the recording that follows to actually claim it. Caller
-    // (quickRecordMenu's confirm dialog) is responsible for only offering this when
-    // tunerBlockedOnlyByOwnWatchNow(for:) was true at the moment of the prompt.
-    func recordAfterYieldingWatchNow(type: ShowState, entry: GuideEntry, device: HDHRDevice, channel: LineupEntry) async {
+    // interruption instead of a hard block. Uses stop() — see the inline comment at the call site
+    // below for exactly why, not releasePlayer(). Caller (quickRecordMenu's confirm dialog) is
+    // responsible for only offering this when tunerBlockedOnlyByOwnWatchNow(for:) was true at the
+    // moment of the prompt.
+    // Both confirm-dialog call sites (VLCPlayerView, WatchNowView) go through here rather than a
+    // raw `Task { await recordAfterYieldingWatchNow(...) }` — guards against two overlapping
+    // triggers (e.g. one dialog confirmed just as another fires) each stopping playback and
+    // separately scheduling a recording against the one tuner slot that's only freed once, and
+    // gives playerWindowDidClose somewhere to actually reach in and cancel the wait if the user
+    // closes the player window mid-flow (see cancelYieldRecordingIfInProgress below).
+    @discardableResult
+    func startYieldingWatchNowToRecord(type: ShowState, entry: GuideEntry, device: HDHRDevice, channel: LineupEntry) -> Bool {
+        guard yieldRecordingTask == nil else {
+            glog("[Watch] yield: already in progress — ignoring duplicate trigger for '\(entry.Title)'", level: .warning)
+            return false
+        }
+        yieldRecordingGeneration += 1
+        let generation = yieldRecordingGeneration
+        yieldRecordingTask = Task { [weak self] in
+            await self?.recordAfterYieldingWatchNow(type: type, entry: entry, device: device, channel: channel, generation: generation)
+            // Only clear if this is still the current generation — a cancelled predecessor's
+            // completion can otherwise land after a fresh trigger already replaced
+            // yieldRecordingTask, wiping out the new task's reference (see yieldRecordingGeneration's
+            // own doc comment).
+            if self?.yieldRecordingGeneration == generation { self?.yieldRecordingTask = nil }
+        }
+        return true
+    }
+
+    // Called from VLCPlayerWindowManager.playerWindowDidClose() — the player window closing mid-wait
+    // means the user no longer wants playback reopened. The recording itself is left alone (already
+    // scheduled/started by this point in the common case); this only stops recordAfterYieldingWatchNow
+    // from calling watchRecordingInApp once the file shows up, which would otherwise silently reopen
+    // a window the user just closed with no way to opt out.
+    func cancelYieldRecordingIfInProgress() {
+        guard let task = yieldRecordingTask else { return }
+        task.cancel()
+        yieldRecordingTask = nil
+        // Invalidates the generation the cancelled task's own completion handler captured, so that
+        // handler's delayed, merely-cooperative unwind (up to ~1s later, at its next
+        // Task.isCancelled checkpoint) can't clear a *different*, newly-started task's reference.
+        yieldRecordingGeneration += 1
+        yieldRecordingProgress = nil
+        glog("[Watch] yield: cancelled — player window closed mid-flow, recording (if scheduled) continues")
+    }
+
+    // Writes yieldRecordingProgress only if `generation` still matches yieldRecordingGeneration —
+    // recordAfterYieldingWatchNow's own isCancelled checks are cooperative (checked only at each
+    // loop-top and Task.sleep boundary), so a cancelled task can otherwise still be mid-execution
+    // (e.g. past a break out of the tuner-poll loop, on its way into the file-wait loop) and write
+    // stale progress text after a fresh trigger already bumped the generation and started its own
+    // task — a one-tick flicker/blank of the poster overlay. Gating every write here, not just the
+    // loop-top isCancelled checks, closes that regardless of exactly where the stale task currently is.
+    private func setYieldProgress(_ text: String?, generation: Int) {
+        guard yieldRecordingGeneration == generation else { return }
+        yieldRecordingProgress = text
+    }
+
+    private func recordAfterYieldingWatchNow(type: ShowState, entry: GuideEntry, device: HDHRDevice, channel: LineupEntry, generation: Int) async {
         glog("[Watch] Yielding this instance's own live Watch Now stream on \(device.DeviceID) to record '\(entry.Title)'")
-        yieldRecordingProgress = "Stopping live playback…"
+        setYieldProgress("Stopping live playback…", generation: generation)
         // stop() — the soft teardown — not releasePlayer(). Root-caused 2026-09-11: releasePlayer()
         // nils VLCBridge.drawableView (the NSView libvlc renders into), and setDrawable(_:) — the
         // only thing that ever re-sets it — is called exclusively from VLCVideoSurface.makeNSView,
@@ -1809,7 +1874,7 @@ final class AppState: ObservableObject {
         // already documents this exact "so a later play() finds a live surface to render into"
         // property, it just hadn't been needed by any reconnect-in-the-same-window path until now.
         VLCBridge.shared.stop()
-        yieldRecordingProgress = "Scheduling the recording…"
+        setYieldProgress("Scheduling the recording…", generation: generation)
         let showId = addShowFromGuide(entry: entry, type: type, device: device, channel: channel)
         // First attempt: addShow's own "start immediately if airing now" Task may already be
         // racing to call startRecording concurrently — that's fine, startRecording's own
@@ -1830,7 +1895,12 @@ final class AppState: ObservableObject {
         // scale wait, per explicit user direction.
         var tunerConfirmedFree = false
         for pollAttempt in 1...45 {   // 45 × 1s = 45s budget
-            yieldRecordingProgress = "Waiting for the tuner to free up… (\(pollAttempt)s, checked \(pollAttempt)×)"
+            if Task.isCancelled {
+                glog("[Watch] yield: cancelled during tuner-free poll — recording (if scheduled) continues, not reopening playback")
+                setYieldProgress(nil, generation: generation)
+                return
+            }
+            setYieldProgress("Waiting for the tuner to free up… (\(pollAttempt)s, checked \(pollAttempt)×)", generation: generation)
             await fetchDeviceStatus(for: device)
             let stillFull = tunersFull(for: device.DeviceID)
             // Logging every single tick would be mild noise over a 45s window — one line every 5s
@@ -1848,7 +1918,7 @@ final class AppState: ObservableObject {
         if !tunerConfirmedFree {
             glog("[Watch] yield: tuner never confirmed free within the 45s poll budget — attempting startRecording once anyway", level: .warning)
         }
-        yieldRecordingProgress = "Tuner free — starting the recording…"
+        setYieldProgress("Tuner free — starting the recording…", generation: generation)
         if let i = shows.firstIndex(where: { $0.show_id == showId }) {
             await startRecording(index: i)
         } else {
@@ -1866,11 +1936,16 @@ final class AppState: ObservableObject {
         // called and the player sat on a dead "Connecting…" forever. One shared ~45s budget for
         // "keep trying until it's actually watchable" removes that boundary entirely.
         for attempt in 1...90 {
+            if Task.isCancelled {
+                glog("[Watch] yield: cancelled while waiting for the recording file — recording (if scheduled) continues, not reopening playback")
+                setYieldProgress(nil, generation: generation)
+                return
+            }
             if let show = shows.first(where: { $0.show_id == showId }) {
                 if show.show_recording, !show.show_recording_path.isEmpty,
                    FileManager.default.fileExists(atPath: show.show_recording_path) {
                     glog("[Watch] yield: recording file confirmed on disk (\(show.show_recording_path)) after \(attempt) tries — reopening playback from the beginning")
-                    yieldRecordingProgress = "Recording confirmed — reconnecting…"
+                    setYieldProgress("Recording confirmed — reconnecting…", generation: generation)
                     // fromBeginning: true, not the default near-live-edge offset — the user
                     // explicitly wants this flow to always start reading from byte 0 of the
                     // just-started recording, not compute an "elapsed" catch-up point (barely
@@ -1879,13 +1954,13 @@ final class AppState: ObservableObject {
                     watchRecordingInApp(show, fromBeginning: true)
                     // watchRecordingInApp's own open()/play() drives VLCPlayerView's normal
                     // Connecting/Start overlay from here — clear this so the two don't show at once.
-                    yieldRecordingProgress = nil
+                    setYieldProgress(nil, generation: generation)
                     return
                 }
                 if show.show_recording {
-                    yieldRecordingProgress = "Recording started — waiting for the file to appear on disk… (\(attempt)/90)"
+                    setYieldProgress("Recording started — waiting for the file to appear on disk… (\(attempt)/90)", generation: generation)
                 } else {
-                    yieldRecordingProgress = "Still trying to start the recording… (\(attempt)/90)"
+                    setYieldProgress("Still trying to start the recording… (\(attempt)/90)", generation: generation)
                     if let i = shows.firstIndex(where: { $0.show_id == showId }) {
                         await startRecording(index: i)
                     }
@@ -1899,7 +1974,7 @@ final class AppState: ObservableObject {
         }
         let finalShow = shows.first(where: { $0.show_id == showId })
         glog("[Watch] Recording didn't confirm within the wait window after yielding Watch Now — not reopening playback (show_recording=\(finalShow?.show_recording ?? false), show_recording_path=\(finalShow?.show_recording_path ?? "nil"), fileExists=\(finalShow.map { FileManager.default.fileExists(atPath: $0.show_recording_path) } ?? false))", level: .warning)
-        yieldRecordingProgress = nil
+        setYieldProgress(nil, generation: generation)
         // The live watch is already gone (releasePlayer() above) and nothing is going to reconnect
         // it on its own — without this, the player window is left showing a dead, non-interactive
         // "Connecting…" indefinitely with no explanation (found live 2026-09-11). Tuner Conflict's

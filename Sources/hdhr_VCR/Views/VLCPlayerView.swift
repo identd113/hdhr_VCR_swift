@@ -324,11 +324,12 @@ struct VLCPlayerView: View {
                 // step, this just guarantees there's no gap before that Task actually starts.
                 posterHidden = false
                 state.yieldRecordingProgress = "Stopping live playback — starting \(req.entry.Title)…"
-                Task {
-                    await state.recordAfterYieldingWatchNow(type: req.type, entry: req.entry, device: req.device, channel: req.channel)
-                    // recordAfterYieldingWatchNow already clears yieldRecordingProgress itself on
-                    // every exit path (success or give-up) — nothing left to do here.
-                }
+                // startYieldingWatchNowToRecord (not a raw Task) — tracks the task so
+                // playerWindowDidClose can cancel it if this window closes mid-wait, and guards
+                // against a second overlapping trigger. It already clears yieldRecordingProgress
+                // itself on every exit path (success, cancellation, or give-up) — nothing left to
+                // do here.
+                state.startYieldingWatchNowToRecord(type: req.type, entry: req.entry, device: req.device, channel: req.channel)
             }
             Button("Cancel", role: .cancel) { }
         } message: { req in
@@ -1470,6 +1471,9 @@ final class VLCPlayerWindowManager {
 
     fileprivate func playerWindowDidClose() {
         glog("[VLC] WindowManager.playerWindowDidClose")
+        // Cancel any in-flight "yield tuner to record" wait before it can reopen a window the user
+        // just closed — see AppState.cancelYieldRecordingIfInProgress's own doc comment.
+        appState?.cancelYieldRecordingIfInProgress()
         // Stop audio listener before releasing the player — windowWillClose fires before onDisappear,
         // so without this the CoreAudio callback fires into a partially torn-down view.
         VLCBridge.shared.stopDeviceChangeMonitoring()
