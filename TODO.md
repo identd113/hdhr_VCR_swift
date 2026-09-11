@@ -193,19 +193,20 @@ Added to `deploy_release.sh` on 2026-08-07 by copying `deploy.sh`'s existing ~13
 
 ---
 
-### `broadcastGuideChangeEvent`'s SSE payload — gzip shipped 2026-08-31, two structural options still open
+### `broadcastGuideChangeEvent`'s SSE payload — gzip shipped 2026-08-31, accept-queue split shipped 2026-09-11, one structural option still open
 
 As of the 2026-08-01 pre-release review, `broadcastGuideChangeEvent` is called from 9+ show-lifecycle sites (add/update/pause/resume/delete/favorite-toggle/duplicate-override-clear), each triggering a full page rebuild (`buildGuideGridHTML` + `buildDevBarHTML` + gzip'd `prebuildPageHTML`) on the main actor. **Confirmed 2026-08-24** (full trail in `ISSUES.md`'s entry) as the actual root cause of a live "web guide feels laggy, feels like it's stuck connecting" report — not disk I/O, not raw TCP connect time (both measured and ruled out). Root mechanism: the event embeds the *entire* guide grid HTML, uncompressed, in the SSE JSON payload — measured at ~2.2MB for one broadcast, pushed to every connected SSE client. `WebServer`'s `NWListener` and every `NWConnection` share one serial `DispatchQueue`, so those large sends compete directly with accepting brand-new connections.
 
 **Option (b), gzip the SSE payload, shipped 2026-08-31** — see `ISSUES.md`'s entry for the full writeup. `broadcastGuideChangeEvent` now gzip+base64's grid/sumph/tdrop (new `gridZ`/`sumphZ`/`tdropZ` keys, falling back to the plain key when compression doesn't help), decoded client-side via the browser's native `DecompressionStream('gzip')`. **Measured live: one real broadcast dropped from 2,252,437 bytes to 211,466 bytes (10.65x)**, confirmed by `WebServerPerfTests.guideChangeBroadcast_isGzipCompressed`, which also round-trips the captured frame through `/usr/bin/gunzip` to catch silently-broken compression, not just "compression turned off." `apiLatency_staysResponsive_duringGuideChangeBurst()` is the regression test for the underlying report itself.
 
-**Options (a) and (c) remain undone** — neither touches the shared-serial-queue mechanism itself, only how many bytes move through it per broadcast (already addressed by gzip) or who has to wait behind those bytes:
+**Option (2), the listener's own accept queue, shipped 2026-09-11** — `WebServer` now runs `NWListener` (and its `stateUpdateHandler`/`stop()` cleanup) on a separate `acceptQueue` (`hdhrVCRplus.webserver.accept`) from `queue` (every accepted connection's own request/response I/O and SSE fan-out sends). Accept latency no longer scales with how many SSE clients are currently being pushed to. Doesn't shrink the payload further (already addressed by gzip) — see `docs/WebServer.md`'s "Connection model" section for the full mechanism.
+
+**Option (1) remains undone** — doesn't touch the shared-serial-queue mechanism at all, only how many bytes move through it per broadcast:
 1. Stop embedding the full grid in every SSE push at all — send a lightweight "guide_changed" notification instead, let clients pull `/api/guide-refresh` themselves. Biggest structural fix; changes the SSE contract `guide.js`'s `applyGuidePayload` currently depends on.
-2. Give the listener's accept path its own queue instead of sharing one serial queue with every connection's I/O — doesn't shrink the payload further, but stops a slow SSE fan-out from being able to starve new-connection accept processing specifically.
 
 With `Series_subfolder_enabled && Skip_recorded_episodes` both on, each rebuild also re-scans every managed series' recording folder — an additional cost stacked on top of the above, not yet separately measured.
 
-**Key file**: `WebServer.swift` → `broadcastGuideChangeEvent`, `broadcastEvent`, `gzipBase64`, `queue`.
+**Key file**: `WebServer.swift` → `broadcastGuideChangeEvent`, `broadcastEvent`, `gzipBase64`, `queue`, `acceptQueue`.
 
 ---
 
