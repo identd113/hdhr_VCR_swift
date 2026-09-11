@@ -220,7 +220,7 @@ Follow-up to the 2026-08-11 coverage-guided pass. Both files got real injection 
 
 ---
 
-### AppState's recording-scheduling engine — covered 2026-08-15; `resolveSeriesAir` still gap
+### AppState's recording-scheduling engine — covered 2026-08-15; `resolveSeriesAir` covered 2026-09-11
 
 `idleLoop()`/`startRecording(index:)`/`stopRecording(index:natural:)`/`scheduleNextAir(index:)` — the
 code that actually decides when a recording starts, stops, retries after failure, and reschedules —
@@ -255,9 +255,12 @@ it does), and that a no-match tick re-syncs `show_end` off the bumped `show_next
 leaving it stale. Pre-loads the mocked `GuideStore` via a direct `guideStore.load(for:)` call before
 constructing `AppState` (so `isFresh` is already true and `scheduleNextAir` never re-enters its own
 guide-fetch branch), a simpler variant of the request-handler-timed-to-an-`await` technique
-`AppStateIdleLoopStaleIndexTests.swift` uses. **Still uncovered**: `resolveSeriesAir` (a separate
-function, called from the Add Show flow via `applyGuideEntry`, not from `scheduleNextAir`) has
-similar tier-matching logic of its own that these tests don't exercise.
+`AppStateIdleLoopStaleIndexTests.swift` uses.
+
+**`resolveSeriesAir` covered 2026-09-11**: `Tests/hdhr_VCRTests/Recording/AppStateResolveSeriesAirTests.swift`
+exercises this separate function (called from the Add Show flow via `applyGuideEntry`, not from
+`scheduleNextAir`) directly — its own tier-matching logic over `currentEpisode`/`nextEpisode`/
+title-fallback candidates.
 
 Three more gaps found by the 2026-08-16 full-codebase audit — Bonus Time (sports-genre default +
 `show_end` padding arithmetic), idle-loop stale-index-across-`await` safety, and `deleteShow`'s
