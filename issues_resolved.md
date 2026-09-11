@@ -1365,3 +1365,17 @@ A title-based fallback (`Show.seriesTitle(from: entry.Title) == show.show_title`
 **Verified live, same session, after redeploying with the fix**: identical test repeated end to end — `"[Watch] yield: tuner confirmed free after 1s of polling"` immediately (not 45s), `"[Watch] yield: recording file confirmed on disk ... after 1 tries — reopening playback from the beginning"` the same second, and the VLC window's title visibly changed from the watched channel to the newly-recording show, confirming the in-place reconnect actually worked. Full 459-test suite passes; `TunerBlockedOnlyByOwnWatchNowTests`/`AppState tuner occupancy` suites unaffected. Both test recordings and their config entries/partial files were cleaned up after; both real tuners confirmed free via the device's own `/status.json` afterward.
 
 **Resolving commit**: (uncommitted at time of writing)
+
+---
+
+## RESOLVED — `probeForNewDevices()`'s newly-discovered-device guide fetch sent a real request against a FEED virtual relay, including a TLS attempt against a plain-HTTP address
+
+**File:** `AppState.swift` — `probeForNewDevices()`
+
+**Not the same bug as the "NOT A BUG, reverted same day" entry above** — that one was about `FirstRunWizardView`'s *lineup*-fetch loops, correctly left unfiltered since a relay's own `/lineup.json` is legitimately needed. This one is about `probeForNewDevices()`'s *guide*-fetch call, a genuinely different data source relay devices were never meant to be queried for.
+
+**Root cause**: `docs/VirtualTunerService.md`'s own "Known limitation" section documents `guideByDevice[relayId]` as intentionally never populated — `AppState.recordableDevices` is the accessor essentially every guide-fetch call site filters through specifically to exclude relay devices (`fetchAllGuides()`/`performFetchAllGuides()` both correctly scoped this way) — but `probeForNewDevices()` missed it: `newDevices = (found ?? []).filter { !existingIDs.contains(...) }` had no `isVirtualRelay` filter, so a newly-discovered relay device flowed straight into `guideStore.loadAll(devices: newDevices, ...)`. Live-caught 2026-09-06: `[FEED04BE] load() called — DeviceAuth:nil LocalIP:'10.0.2.100' hours:24` immediately followed by a `NETWORK ERROR` (`A TLS error caused the secure connection to fail`, failing URL `https://10.0.2.100/guide.json?...`) — a wasted request against a same-LAN address with no such endpoint (this app's own `WebServer` is HTTP-only and doesn't implement `/guide.json` at all), firing the instant another instance's FEED is first discovered. Got worse the same release once near-real-time FEED discovery push (`onFeedAnnounce` → `probeForNewDevices()` firing on any unsolicited FEED broadcast, not just the ~10s idle-loop poll) shipped, since that made this call site run far more often.
+
+**Resolution**: `newDevices` is now filtered to `guideFetchDevices = newDevices.filter { !$0.isVirtualRelay }` before the `guideStore.loadAll` call, mirroring `fetchAllGuides()`. `devices.append(contentsOf: newDevices)` and `fetchAllLineups(for: newDevices)` stay unfiltered — a relay device still needs to appear in `devices` and still needs its own `/lineup.json` fetched, both legitimate; only the SiliconDust cloud-guide fetch was ever the problem. Verified still in place 2026-09-11 (`AppState.swift:1284`, unregressed by later work).
+
+**Resolving commit**: `5138343`
