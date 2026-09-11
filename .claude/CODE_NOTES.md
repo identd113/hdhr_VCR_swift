@@ -1000,3 +1000,83 @@ TODO text describing the same change); `321fdb5` is a pure doc correction, zero 
   dfd9823..HEAD --stat` confirms) — this range is UI-only (three new diagram views + a Settings
   Sharing→Web LAN rename + a `Terminal_guide_enabled`/`Virtual_tuner_relay_enabled` default flip to
   off in `Models.swift`); no server/transcode-path changes to review for this pass.
+
+## 2026-09-11 — redundancy/inefficiency-only pass (uncommitted Watch-Now-yield diff + 7-day non-FEED history)
+- **`AppState.recordAfterYieldingWatchNow`'s two poll loops (`AppState.swift:1851-1871` tuner-free,
+  `:1892-1927` file-appear)** — near-identical shape (cancellation check → throttled progress
+  log → `yieldRecordingProgress` update → `try? await Task.sleep`) but genuinely different bodies:
+  loop 1 does a real network fetch (`fetchDeviceStatus`) + `tunersFull` check on a 1s/45-attempt
+  budget; loop 2 is a pure in-memory `shows` lookup + conditional `startRecording` retry + disk
+  `fileExists` check on a 0.5s/90-attempt budget, and the file's own comment documents *why* the
+  two were deliberately merged from an earlier two-bounded-loop shape that had a real timing bug.
+  Verdict: **not worth extracting** — the shared "shape" is 4 trivial lines around genuinely
+  different checks/budgets; a generic helper would need enough closures to lose most of the
+  readability it'd save. Low severity, no action.
+- **Tuner occupancy computation (`AppState.activeTunerCount`, `WebServer.computeDevTuners`,
+  `WebServer.pushFreshTunerCounts`)** — all three read the same in-memory source of truth
+  (`deviceTunerOccupancy`/`recordingShows`/`vlcOccupiesTuner` via `activeTunerCount`, itself the one
+  shared function `computeDevTuners`/`pushFreshTunerCounts`/`broadcastRecordingEvent` all call) —
+  no independent network refetch anywhere in this trio, and `pushFreshTunerCounts` (now `internal`,
+  called from `fetchDeviceStatusUncached`'s hardware-occupancy-changed branch per the uncommitted
+  diff) does a pure `[String:Any]` dict build over `recordableDevices` + one `broadcastEvent` — no
+  disk/network cost added by making it a second call site. Clean, no finding.
+- **`broadcastRecordingEvent` vs `buildGuideRefreshPayload`/`broadcastGuideChangeEvent`
+  (`WebServer.swift:390-470`)** — both already funnel through the same shared helpers
+  (`buildSumPhHTML`, `buildTunerShowsHTML`, `buildGuideGridHTML`, `computeDevTuners`) rather than
+  each inlining its own HTML-string building; `prebuiltGrid` param threading (`broadcastRecordingStopped`
+  building the grid once and handing it to both calls) already does exactly the sharing CLAUDE.md's
+  "New cached page variant" note asks for. Clean, no finding.
+- **`buildGuideGridHTML` per-entry allocations (`WebServer.swift:2591-2852`)** — re-checked after
+  `7c4529c`'s hoist (genre-tag `Set`/`Dict` lookups → `static let`, `he()` fast-path, cached
+  `episodeTagRegex`); `Self.hourFmt` is already a cached `static let DateFormatter`, `isNewTest`
+  (`newEpisodeTest()`) is computed once above the device loop, not per entry. Remaining per-entry
+  work (`var gg: [String] = []`, the `stateLabel` closure, several string-interpolation `data-*`
+  attribute builds) is small, genuinely per-entry-variable data that can't be hoisted further
+  without changing behavior — no remaining low-hanging allocation left in this function. Clean,
+  matches the 09-04 pass's own "rest of this function is otherwise well-optimized" note.
+- **`AppState.teardownForExit`/`quit()`/`relaunchForVLC()` (`AppState.swift:4840-4910`)** — both
+  alert-building call sites already share `recordingsListText` (bullet-list formatting) and
+  `teardownForExit` (VLC release/stopAll/webServer.stop/saveConfig sequencing); the uncommitted
+  diff's `teardownForExit` reorder (`webServer.stop()` before `saveConfig()`) is a pure sequencing
+  change with an explicit "inert either way today" comment, not a redundancy/perf issue. Clean, no
+  finding.
+- Scanned the rest of the 7-day non-FEED history (`Resources/guide.js` — zero commits touched it
+  this window; `deploy.sh`/`deploy_release.sh` — only Info.plist self-heal commits, shell-script
+  scope, nothing per-request/per-render to flag; `FirstRunWizardView.swift`'s animated-diagram work,
+  `5468f72`, already generalized `FeedFlowDiagram`→`NetworkFlowDiagram` as its own explicit
+  dedup goal; `MenuContent.swift`'s VoiceOver-label and Sharing→Web LAN rename commits are additive
+  labels/copy, no new per-render work). No further findings.
+
+## 2026-09-11 — swift-quality-reviewer pass on the then-uncommitted working tree (10 Swift/script files)
+- **`AppState.swift`'s `startYieldingWatchNowToRecord`/`cancelYieldRecordingIfInProgress`/
+  `yieldRecordingGeneration` (`AppState.swift:135-146,1789-1833`)** — reviewed the generation-counter
+  design specifically for a self-cancellation bug (does `watchRecordingInApp`'s reopen inside
+  `recordAfterYieldingWatchNow` trigger `VLCPlayerWindowManager.playerWindowDidClose` and cancel its
+  own in-flight task?). Confirmed no: `watchRecordingInApp` reuses the existing player window
+  (same-device reconnect path, per the `VLCBridge.shared.stop()` comment right above it in the same
+  function) rather than closing/reopening one, so `playerWindowDidClose` only fires on a genuine
+  user-initiated close. Design is sound, not hacky — real races (found live, documented inline)
+  justify the generation counter.
+- **Scope observation, not a bug**: the uncommitted working tree bundled at least four independently-
+  committable units — (1) Watch-Now-yield cancellation/reentrancy hardening (`AppState.swift`,
+  `VLCPlayerView.swift`, `WatchNowView.swift`), (2) `WebServer.swift`'s new `acceptQueue` (decouples
+  connection-accept latency from SSE fan-out) + `pushFreshTunerCounts` wiring into the hardware-
+  occupancy-changed branch, (3) two new/expanded test files closing TODO.md-documented coverage gaps
+  (`RecordingManagerTests.swift`'s verbose-curl-log tests via a new `curlLogPathOverride` seam,
+  `AppStateResolveSeriesAirTests.swift`), (4) `tools/generate_favicon.py` extraction deduping
+  `deploy.sh`/`deploy_release.sh`'s identical heredoc. Each unit is internally well-scoped (no drive-
+  by changes inside any one), but per CLAUDE.md's commit-sequencing convention these read as 3-4
+  separate commits, not one. Flagging for the splitting step, not as a code defect.
+- **Docs gap**: `TODO.md` has three open entries this diff resolves but leaves unedited/unmarked —
+  "`deploy.sh`/`deploy_release.sh`'s favicon-generation heredoc is duplicated verbatim" (~line 186,
+  fully fixed by `tools/generate_favicon.py`), the verbose-curl-logging coverage gap called out in
+  "RecordingManager/HDHRManager test coverage" (~line 215, closed by the three new
+  `RecordingManagerTests.swift` tests), and `resolveSeriesAir` named explicitly as still-a-gap in
+  "AppState's recording-scheduling engine" (~line 223, closed by
+  `AppStateResolveSeriesAirTests.swift`'s six tests). Worth a follow-up doc pass before/alongside
+  committing so `TODO.md` doesn't claim open work that's actually done.
+- Everything else in the diff — `RecordingManager`/`Models.swift`'s `curlLogPathOverride`/
+  `rotateCurlVerboseLogIfNeeded(path:)` test seams, `WebServer.swift`'s `acceptQueue` split (verified
+  `liveConns`/`connLock` already makes cross-queue access from `handleConnection` safe, no new race),
+  `teardownForExit`'s inert reorder, `Version.swift`'s bump — reviewed clean, no hack/dead-code/
+  efficiency findings.
