@@ -40,6 +40,7 @@ struct AppStateStatusLightTests {
     @Test @MainActor func feedAvailableOnly_returnsFeedAvailable() {
         let (device, lineups) = makeRemoteRelay()
         let state = makeTestAppState(shows: [], devices: [device], lineups: lineups)
+        state.config.FEED_feature_enabled = true   // master hide switch — off by default, see its own doc comment
         #expect(state.statusLightCandidates == [.feedAvailable])
     }
 
@@ -53,6 +54,7 @@ struct AppStateStatusLightTests {
     @Test @MainActor func recordingAndFeedAvailable_returnsBothInOrder() {
         let (device, lineups) = makeRemoteRelay()
         let state = makeTestAppState(shows: [.testRecording()], devices: [device], lineups: lineups)
+        state.config.FEED_feature_enabled = true   // master hide switch — off by default, see its own doc comment
         #expect(state.statusLightCandidates == [.recording, .feedAvailable])
     }
 
@@ -63,6 +65,7 @@ struct AppStateStatusLightTests {
         var upNextShow = Show.testActive(title: "Something Later")
         upNextShow.show_next = Date().addingTimeInterval(10 * 60)
         let state = makeTestAppState(shows: [.testRecording(), upNextShow], devices: [device], lineups: lineups)
+        state.config.FEED_feature_enabled = true   // master hide switch — off by default, see its own doc comment
         #expect(state.statusLightCandidates == [.recording, .feedAvailable])
     }
 
@@ -78,6 +81,7 @@ struct AppStateStatusLightTests {
         var (device, lineups) = makeRemoteRelay()
         device.missedProbes = 3   // isAvailable == false
         let state = makeTestAppState(shows: [], devices: [device], lineups: lineups)
+        state.config.FEED_feature_enabled = true   // isolate the isAvailable guard from the master hide switch (also off)
         #expect(state.statusLightCandidates.isEmpty)
     }
 }

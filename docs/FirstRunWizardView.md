@@ -373,6 +373,12 @@ off) still works correctly across the step boundary — both bools are the same 
 config-commit details.
 
 ### Step 4 — Recording FEED (Beta)
+**Hidden as of 2026-09-10** — `orderedSteps` (see "Steps" below) omits `.recordingRelay` entirely
+unless `state.config.FEED_feature_enabled` is `true` (default `false`, config-file only — see
+`docs/VirtualTunerService.md`'s top note), so a first-run user today never sees this step at all and
+the wizard is one step shorter. The rest of this entry describes it as it renders once that flag is
+on; nothing about the screen itself changed.
+
 An animated diagram (`NetworkFlowDiagram`) showing two devices connected by a line — signal rings
 broadcasting from the recording Mac, small packets flowing along the line to the watching one —
 above two short paragraphs of plain-language explanation and one `Toggle`. The headline and both
@@ -415,8 +421,11 @@ defaults.
 enum Step: Int { case intro, recordingDefaults, webLAN, terminalGuide, recordingRelay, notificationTiming }
 ```
 
-Navigation (`goNext()`/`goBack()`) walks a single `orderedSteps` array
-(`[.recordingDefaults, .webLAN, .terminalGuide, .recordingRelay, .notificationTiming]`) by index
+Navigation (`goNext()`/`goBack()`) walks a single `orderedSteps` — as of 2026-09-10 an **instance**
+computed property (not a static array), so it can conditionally drop `.recordingRelay` when
+`FEED_feature_enabled` is off (default): `[.recordingDefaults, .webLAN, .terminalGuide,
+.recordingRelay, .notificationTiming]` with the flag on, `[.recordingDefaults, .webLAN,
+.terminalGuide, .notificationTiming]` without it — by index
 rather than a per-step ternary chain — added when a 3rd non-`.recordingDefaults` step made the
 original 3-way ternary ambiguous; a plain ordered list is the one place to edit for any future
 reorder/insert/removal instead of a scattered set of hand-kept `step == .X ? .Y : .Z` conditions.

@@ -208,7 +208,11 @@ final class AppState: ObservableObject {
     // 1 hour) that only clears the underlying `lineups` cache — found live 2026-09-06 killing a
     // test mock relay and watching it stay listed.
     var remoteRelayEntries: [(device: HDHRDevice, entry: LineupEntry)] {
-        devices.filter { $0.isVirtualRelay && $0.isAvailable }.flatMap { device in
+        // FEED_feature_enabled is the master hide switch (2026-09-10, config-file only, see its own
+        // doc comment) — even if another Mac's relay is genuinely discovered on the LAN, this
+        // instance stays silent about it while the feature is hidden.
+        guard config.FEED_feature_enabled else { return [] }
+        return devices.filter { $0.isVirtualRelay && $0.isAvailable }.flatMap { device in
             (lineups[device.DeviceID] ?? [])
                 .filter { $0.virtualRelayShowTitle != nil }
                 .map { (device: device, entry: $0) }
@@ -971,7 +975,10 @@ final class AppState: ObservableObject {
     // mid-recording tears the relay down immediately rather than waiting for the next start/stop.
     // Internal, not private — SettingsView calls this directly on toggle change.
     func updateVirtualTunerPresence() {
-        if isRecording && config.Virtual_tuner_relay_enabled {
+        // FEED_feature_enabled gates this too (master hide switch, 2026-09-10) — belt-and-suspenders
+        // alongside Virtual_tuner_relay_enabled itself no longer being reachable from any UI, in case
+        // an existing config already has that sub-toggle set true from before the feature was hidden.
+        if isRecording && config.FEED_feature_enabled && config.Virtual_tuner_relay_enabled {
             // nil means no LAN interface was found (stale config.Network_interface after an adapter
             // switch, or a momentary interface-list gap) — see virtualTunerBaseURL's own doc
             // comment for why this must skip starting/refreshing the relay entirely rather than

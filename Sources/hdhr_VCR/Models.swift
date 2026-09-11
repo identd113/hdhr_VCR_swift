@@ -428,6 +428,15 @@ struct AppConfig: Equatable {
     // same day, not one combined "Sharing" step).
     var Terminal_guide_enabled: Bool = false
 
+    // Master hide switch for the entire Recording FEED / virtual-tuner-relay feature (both the
+    // publish side below and the consume side — MenuContent's "Recording on Another Mac" section,
+    // AppState.remoteRelayEntries/hasAvailableRemoteFeed). Deliberately config-file-only: no UI
+    // anywhere sets this, on purpose — flagged 2026-09-10 as needing more work (VLC stalls/
+    // track-switching still open, see TODO.md), so hidden rather than removed to keep the code and
+    // an easy path back. Flip to `true` by hand-editing the config JSON to bring the feature back;
+    // every other FEED toggle/UI below stays exactly as it was, gated on this one flag.
+    var FEED_feature_enabled: Bool = false
+
     // Recording-relay virtual tuner (VirtualTunerService.swift, docs/VirtualTunerService.md) — while
     // ≥1 show is recording, advertises a temporary HDHomeRun-like tuner on the LAN (UDP discovery +
     // /discover.json/lineup.json/status.json, piggybacked on this same Web_server_port) so another
@@ -436,7 +445,8 @@ struct AppConfig: Equatable {
     // step, shown once on first launch, for the same explanation given here. Read live by
     // AppState.updateVirtualTunerPresence, which is also called directly from SettingsView's save
     // path so toggling this off tears the relay down immediately if a recording happens to be in
-    // progress, rather than waiting for the next recording to start/stop.
+    // progress, rather than waiting for the next recording to start/stop. Also gated by
+    // FEED_feature_enabled above — see that field's doc comment.
     var Virtual_tuner_relay_enabled: Bool = false
 
     // Profile applied whenever a relay viewer requests any transcode at all — the specific profile
@@ -531,6 +541,7 @@ extension AppConfig: Codable {
         Web_server_enabled      = (try? c.decode(Bool.self,   forKey: .Web_server_enabled))      ?? false
         Web_server_port         = (try? c.decode(Int.self,    forKey: .Web_server_port))         ?? 1980
         Terminal_guide_enabled  = (try? c.decode(Bool.self,   forKey: .Terminal_guide_enabled))  ?? false
+        FEED_feature_enabled    = (try? c.decode(Bool.self,   forKey: .FEED_feature_enabled))    ?? false
         Virtual_tuner_relay_enabled = (try? c.decode(Bool.self, forKey: .Virtual_tuner_relay_enabled)) ?? false
         Virtual_tuner_relay_default_transcode = (try? c.decode(String.self, forKey: .Virtual_tuner_relay_default_transcode)) ?? "heavy"
         Signal_quality_enabled      = (try? c.decode(Bool.self, forKey: .Signal_quality_enabled))      ?? false

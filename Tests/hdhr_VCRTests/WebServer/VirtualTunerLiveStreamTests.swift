@@ -144,6 +144,7 @@ struct VirtualTunerLiveStreamTests {
         // falling through to the on-disk PAT/PMT probe.
         let state = makeTestAppState(shows: [show], devices: [device],
                                       lineups: [device.DeviceID: [entry]])
+        state.config.FEED_feature_enabled = true
         state.config.Virtual_tuner_relay_enabled = true
         // Keep AppState's own port config in lockstep with the port actually started below —
         // updateVirtualTunerPresence()'s ensureWebServerRunning() call reads config.Web_server_port

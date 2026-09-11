@@ -322,7 +322,7 @@ struct FirstRunWizardView: View {
             }
 
             HStack(spacing: 4) {
-                ForEach(Self.orderedSteps, id: \.self) { s in
+                ForEach(orderedSteps, id: \.self) { s in
                     Circle().fill(s == step ? Color.accentColor : .secondary.opacity(0.3))
                         .frame(width: 8, height: 8)
                 }
@@ -333,8 +333,8 @@ struct FirstRunWizardView: View {
             // removing, or reordering a wizard step can't leave this announcement silently stale
             // the way a hand-maintained switch could.
             .accessibilityLabel(step == .intro ? "" : {
-                let n = (Self.orderedSteps.firstIndex(of: step) ?? 0) + 1
-                return "Step \(n) of \(Self.orderedSteps.count): \(Self.stepTitle(step))"
+                let n = (orderedSteps.firstIndex(of: step) ?? 0) + 1
+                return "Step \(n) of \(orderedSteps.count): \(Self.stepTitle(step))"
             }())
         }
         .padding(.horizontal, 20)
@@ -543,7 +543,16 @@ struct FirstRunWizardView: View {
     // removing/reordering a step only ever needs an edit here, not a scattered set of per-step
     // ternaries that has to stay in sync by hand (the exact bug shape a 3-step ternary couldn't
     // hide any more once a 4th step was added).
-    private static let orderedSteps: [Step] = [.recordingDefaults, .webLAN, .terminalGuide, .recordingRelay, .notificationTiming]
+    // Instance property (not static) so .recordingRelay can be dropped while
+    // AppConfig.FEED_feature_enabled is off — the feature's master hide switch, 2026-09-10 — without
+    // touching recordingRelayScreen or any of its own save logic below, so re-enabling the flag
+    // brings the step straight back.
+    private var orderedSteps: [Step] {
+        var steps: [Step] = [.recordingDefaults, .webLAN, .terminalGuide]
+        if state.config.FEED_feature_enabled { steps.append(.recordingRelay) }
+        steps.append(.notificationTiming)
+        return steps
+    }
 
     private static func stepTitle(_ step: Step) -> String {
         switch step {
@@ -558,14 +567,14 @@ struct FirstRunWizardView: View {
 
     private func goNext() {
         goingForward = true
-        guard let i = Self.orderedSteps.firstIndex(of: step), i + 1 < Self.orderedSteps.count else { return }
-        withAnimation(.easeInOut(duration: 0.25)) { step = Self.orderedSteps[i + 1] }
+        guard let i = orderedSteps.firstIndex(of: step), i + 1 < orderedSteps.count else { return }
+        withAnimation(.easeInOut(duration: 0.25)) { step = orderedSteps[i + 1] }
     }
 
     private func goBack() {
         goingForward = false
-        guard let i = Self.orderedSteps.firstIndex(of: step), i > 0 else { return }
-        withAnimation(.easeInOut(duration: 0.25)) { step = Self.orderedSteps[i - 1] }
+        guard let i = orderedSteps.firstIndex(of: step), i > 0 else { return }
+        withAnimation(.easeInOut(duration: 0.25)) { step = orderedSteps[i - 1] }
     }
 
     // MARK: - Local Network permission
