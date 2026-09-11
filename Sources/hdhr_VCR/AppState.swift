@@ -4484,6 +4484,12 @@ final class AppState: ObservableObject {
                 lastGuideOccupancyBroadcast[device.DeviceID] = Date()
                 webServer.broadcastGuideChangeEvent(type: "tuner_occupancy_changed",
                                                     extra: ["device": device.DeviceID], state: self)
+                // broadcastGuideChangeEvent's payload (grid/sumph/tdrop) never touches #dev-bar, so
+                // without this the tuner box's own live-count badge stays stale on a hardware-only
+                // occupancy change (another Mac/TV/this app's own Watch Now locking or freeing the
+                // tuner) until a recording start/stop or the hourly refresh happens to touch it —
+                // see pushFreshTunerCounts's own doc comment.
+                await webServer.pushFreshTunerCounts()
             }
         }
 

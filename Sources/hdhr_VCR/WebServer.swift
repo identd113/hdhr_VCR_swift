@@ -27,8 +27,8 @@ final class WebServer: @unchecked Sendable {
     private var activePort: Int = 1980
     private let queue = DispatchQueue(label: "hdhrVCRplus.webserver", qos: .utility)
     // Every NWConnection is started with `queue` (see handleConnection), so it backs everything —
-    // accepting connections, every other connection's request/response I/O, SSE keepalives — not
-    // just requests. The Watch Now recording relay's disk reads (handleWatchRecording →
+    // every connection's request/response I/O, SSE keepalives, SSE fan-out sends — not just
+    // requests. The Watch Now recording relay's disk reads (handleWatchRecording →
     // streamGrowingFile → pumpGrowingFile) are the one place this file does *blocking* synchronous
     // I/O (FileHandle open/seek/readData) against a real filesystem that can stall (a slow/
     // contended external or network-mounted recording volume) — routing that through `queue` would
@@ -36,6 +36,18 @@ final class WebServer: @unchecked Sendable {
     // just the one streaming connection. `fileIOQueue` isolates exactly that blocking work; actual
     // NWConnection sends still happen on `queue`, same as everywhere else in this file.
     private let fileIOQueue = DispatchQueue(label: "hdhrVCRplus.webserver.fileio", qos: .utility)
+    // The listener itself (accepting brand-new connections) runs on a separate queue from `queue`
+    // above — see `start(port:...)`'s `l.start(queue:)` call. TODO.md's "broadcastGuideChangeEvent's
+    // SSE payload" entry, option (2): before this, `l.start(queue: queue)` meant a new connection's
+    // `newConnectionHandler` callback sat in the exact same serial FIFO as every other connection's
+    // request/response I/O and SSE fan-out sends — a large guide-change broadcast to N connected
+    // SSE clients (still real work even gzip'd, per that same TODO entry's option 1) could delay
+    // accepting a brand-new client behind it. `acceptQueue` decouples "notice and register a new
+    // connection" (handleConnection: subnet check, append to liveConns, hand off to `queue` for its
+    // own I/O) from that fan-out — accept latency no longer scales with how many SSE clients are
+    // currently being pushed to. Doesn't shrink the SSE payload further (already addressed by gzip);
+    // narrower fix for who has to wait behind those bytes.
+    private let acceptQueue = DispatchQueue(label: "hdhrVCRplus.webserver.accept", qos: .userInitiated)
     private weak var appState: AppState?
 
     // SSE: open connections waiting for push events
@@ -301,7 +313,7 @@ final class WebServer: @unchecked Sendable {
             }
         }
 
-        l.start(queue: queue)
+        l.start(queue: acceptQueue)
         listener = l
     }
 
@@ -312,10 +324,11 @@ final class WebServer: @unchecked Sendable {
     // right after stopping) can't assume that's already true just because a plain stop() call
     // returned. Bounded by a 2s fallback in case `.cancelled` never fires for some reason, so a
     // completion caller can never hang here indefinitely. Both the `.cancelled` branch and the
-    // fallback timer run on `queue` (the same serial queue `l.stateUpdateHandler` itself fires on,
-    // since that's what `start(queue:)` bound it to), so guarding against firing `completion` twice
-    // needs no lock — the two paths can't actually run concurrently. Every other call site omits
-    // `completion` and is unaffected — same synchronous, fire-and-forget behavior as before.
+    // fallback timer run on `acceptQueue` (the same serial queue `l.stateUpdateHandler` itself
+    // fires on, since that's what `start(queue:)` bound it to — see `acceptQueue`'s own doc
+    // comment), so guarding against firing `completion` twice needs no lock — the two paths can't
+    // actually run concurrently. Every other call site omits `completion` and is unaffected — same
+    // synchronous, fire-and-forget behavior as before.
     func stop(completion: (() -> Void)? = nil) {
         guard let l = listener else {
             completion?()
@@ -354,7 +367,7 @@ final class WebServer: @unchecked Sendable {
                     break
                 }
             }
-            queue.asyncAfter(deadline: .now() + 2.0, execute: finish)
+            acceptQueue.asyncAfter(deadline: .now() + 2.0, execute: finish)
         }
         l.cancel()
         listener = nil
@@ -543,11 +556,20 @@ final class WebServer: @unchecked Sendable {
         }))
     }
 
-    // Push a tuner_update SSE event so newly-connected clients get accurate occupancy immediately.
-    // Uses activeTunerCount (same source as broadcastRecordingEvent) so the count includes the
+    // Push a tuner_update SSE event with fresh per-device occupancy — guide.js's tuner_update
+    // handler updates each #tun-{devId} badge in place, no grid rebuild needed. Uses
+    // activeTunerCount (same source as broadcastRecordingEvent) so the count includes the
     // in-app VLC stream + externally-used tuners, not recordings alone.
+    //
+    // Called from two places: registerSSE below (a newly-connected client gets accurate occupancy
+    // immediately instead of waiting for the next recording event or idle tick), and
+    // AppState.fetchDeviceStatusUncached's hardware-only occupancy-changed branch — that branch
+    // already broadcasts a full guide-change event so the grid's .g-st-inuse ring stays in sync,
+    // but that payload never touches #dev-bar (see buildGuideRefreshPayload), so without this call
+    // the tuner box's own live-count badge would sit stale until the next recording start/stop or
+    // the hourly refresh, even while the grid ring updated immediately.
     @MainActor
-    private func pushFreshTunerCounts() async {
+    func pushFreshTunerCounts() async {
         guard let state = appState else { return }
         var counts: [String: Any] = [:]
         // recordableDevices — a discovered virtual relay device isn't a real tuner (its TunerCount
