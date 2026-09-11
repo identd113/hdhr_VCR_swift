@@ -169,7 +169,12 @@ struct AppStateRecordingEngineTests {
 
         // No GuideStore data loaded in this fixture, so writeMetadataSidecar's entry is nil —
         // exercises the graceful-degradation path (title-only .nfo, no season/episode/synopsis).
+        // startRecording fires the write via Task.detached (fire-and-forget, see its own doc
+        // comment) rather than awaiting it, so the file isn't guaranteed to exist the instant
+        // startRecording's own await returns — poll instead of asserting immediately (flaked
+        // under load, ~1 in 15 full-suite runs, before this fix; see ISSUES.md).
         let nfoPath = (state.shows[0].show_recording_path as NSString).deletingPathExtension + ".nfo"
+        await waitUntil { FileManager.default.fileExists(atPath: nfoPath) }
         #expect(FileManager.default.fileExists(atPath: nfoPath))
         let xml = try String(contentsOfFile: nfoPath, encoding: .utf8)
         #expect(xml.contains("<showtitle>Test Show</showtitle>"))
