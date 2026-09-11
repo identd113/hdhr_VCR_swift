@@ -16,7 +16,7 @@ struct FirstRunWizardView: View {
     // only inside finish(), same as every other field.
     @State private var saveFolder: String = ""
 
-    enum Step: Int { case intro, recordingDefaults, webLAN, terminalGuide, recordingRelay, notificationTiming }
+    enum Step: Int, CaseIterable { case intro, recordingDefaults, webLAN, terminalGuide, recordingRelay, notificationTiming }
     // Resting default is .recordingDefaults, NOT .intro — the splash is only ever entered
     // deliberately (see the .onAppear/.onChange below), so every "step starts at
     // .recordingDefaults" assumption elsewhere (sizing, header, nav bar) stays true by default,
@@ -539,19 +539,27 @@ struct FirstRunWizardView: View {
                            removal:   .move(edge: .trailing).combined(with: .opacity))
     }
 
-    // Linear order every Next/Back press walks, one step at a time — kept as one list so adding/
-    // removing/reordering a step only ever needs an edit here, not a scattered set of per-step
-    // ternaries that has to stay in sync by hand (the exact bug shape a 3-step ternary couldn't
-    // hide any more once a 4th step was added).
+    // Linear order every Next/Back press walks, one step at a time. Derived from Step.allCases
+    // (Step is CaseIterable, added 2026-09-11) rather than a hand-typed literal parallel to the
+    // case list — a hand-typed array meant a new Step case compiled cleanly (stepTitle's switch
+    // and the rendering switch are both exhaustive, compiler-enforced) but could silently drop out
+    // of Next/Back navigation, the progress dots, and the VoiceOver step count if this array wasn't
+    // separately remembered — the exact drift class the 2026-09-05 VoiceOver "Step N of X" fix
+    // closed one level up. Deriving from allCases with an opt-*out* filter instead means a new case
+    // is included by default (shows up in the wizard) unless explicitly excluded here, the safer
+    // failure mode.
     // Instance property (not static) so .recordingRelay can be dropped while
     // AppConfig.FEED_feature_enabled is off — the feature's master hide switch, 2026-09-10 — without
     // touching recordingRelayScreen or any of its own save logic below, so re-enabling the flag
     // brings the step straight back.
     private var orderedSteps: [Step] {
-        var steps: [Step] = [.recordingDefaults, .webLAN, .terminalGuide]
-        if state.config.FEED_feature_enabled { steps.append(.recordingRelay) }
-        steps.append(.notificationTiming)
-        return steps
+        Step.allCases.filter { step in
+            switch step {
+            case .intro: return false   // shown separately, before this Next/Back sequence begins
+            case .recordingRelay: return state.config.FEED_feature_enabled
+            default: return true
+            }
+        }
     }
 
     private static func stepTitle(_ step: Step) -> String {

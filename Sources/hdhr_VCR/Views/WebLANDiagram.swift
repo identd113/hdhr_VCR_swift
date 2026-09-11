@@ -50,33 +50,27 @@ struct WebLANDiagram: View {
                                 .position(x: (branchX + rightEdgeX) / 2, y: midY + receiver.yOffset / 2)
                         }
                     } else {
-                        // Matched to the actual visual cadence, not display refresh rate — see
-                        // NetworkFlowDiagram's matching comment.
-                        TimelineView(.periodic(from: .now, by: Self.frameInterval)) { timeline in
+                        // .animation + DiagramAnimation.snappedDate, not .periodic — see
+                        // NetworkFlowDiagram's matching comment and ISSUES.md's entry (2026-09-11).
+                        TimelineView(.animation) { timeline in
+                            let date = DiagramAnimation.snappedDate(timeline.date, interval: Self.frameInterval)
                             ForEach(Self.receivers, id: \.systemImage) { receiver in
-                                packetDot(date: timeline.date, phaseOffset: receiver.phaseOffset,
-                                          startX: branchX, endX: rightEdgeX - Self.receiverSize / 2 - 4,
-                                          startY: midY, endY: midY + receiver.yOffset)
+                                DiagramAnimation.packetDot(date: date, cycleSeconds: Self.packetCycleSeconds,
+                                                            phaseOffset: receiver.phaseOffset, size: Self.packetSize, color: watchNowBlue,
+                                                            startX: branchX, endX: rightEdgeX - Self.receiverSize / 2 - 4,
+                                                            startY: midY, endY: midY + receiver.yOffset)
                             }
-                            rippleRing(date: timeline.date, phaseOffset: 0)
+                            DiagramAnimation.rippleRing(date: date, cycleSeconds: Self.rippleCycleSeconds,
+                                                         phaseOffset: 0, size: Self.deviceSize, color: Color(NSColor.systemGreen))
                                 .position(x: leftX, y: midY)
-                            rippleRing(date: timeline.date, phaseOffset: 0.5)
+                            DiagramAnimation.rippleRing(date: date, cycleSeconds: Self.rippleCycleSeconds,
+                                                         phaseOffset: 0.5, size: Self.deviceSize, color: Color(NSColor.systemGreen))
                                 .position(x: leftX, y: midY)
                         }
                     }
 
-                    ZStack(alignment: .topTrailing) {
-                        Image(systemName: "desktopcomputer")
-                            .font(.system(size: Self.deviceSize * 0.62))
-                            .foregroundStyle(Color(NSColor.labelColor))
-                            .frame(width: Self.deviceSize, height: Self.deviceSize)
-                        Circle()
-                            .fill(Color(NSColor.systemGreen))
-                            .frame(width: 11, height: 11)
-                            .overlay(Circle().strokeBorder(Color(NSColor.windowBackgroundColor), lineWidth: 1.5))
-                            .offset(x: 3, y: -2)
-                    }
-                    .position(x: leftX, y: midY)
+                    DiagramAnimation.deviceIcon(systemImage: "desktopcomputer", size: Self.deviceSize, badgeColor: Color(NSColor.systemGreen))
+                        .position(x: leftX, y: midY)
 
                     ForEach(Self.receivers, id: \.systemImage) { receiver in
                         Image(systemName: receiver.systemImage)
@@ -99,24 +93,5 @@ struct WebLANDiagram: View {
             }
         }
         .accessibilityHidden(true)   // purely decorative — the surrounding text explains the same thing
-    }
-
-    @ViewBuilder
-    private func packetDot(date: Date, phaseOffset: Double, startX: CGFloat, endX: CGFloat, startY: CGFloat, endY: CGFloat) -> some View {
-        let t = DiagramAnimation.progress(date, cycleSeconds: Self.packetCycleSeconds, phaseOffset: phaseOffset)
-        Circle()
-            .fill(watchNowBlue)
-            .frame(width: Self.packetSize, height: Self.packetSize)
-            .opacity(DiagramAnimation.edgeFadeOpacity(t))
-            .position(x: startX + (endX - startX) * CGFloat(t), y: startY + (endY - startY) * CGFloat(t))
-    }
-
-    @ViewBuilder
-    private func rippleRing(date: Date, phaseOffset: Double) -> some View {
-        let t = DiagramAnimation.progress(date, cycleSeconds: Self.rippleCycleSeconds, phaseOffset: phaseOffset)
-        Circle()
-            .stroke(Color(NSColor.systemGreen).opacity(0.5 * (1 - t)), lineWidth: 2)
-            .frame(width: Self.deviceSize, height: Self.deviceSize)
-            .scaleEffect(1 + CGFloat(t) * 1.6)
     }
 }

@@ -65,28 +65,32 @@ struct NetworkFlowDiagram: View {
                             .frame(width: Self.packetSize, height: Self.packetSize)
                             .position(x: (lineStartX + lineEndX) / 2, y: midY)
                     } else {
-                        // Matched to the actual visual cadence (smooth-looking continuous motion
-                        // tops out well below display refresh rate) rather than firing on every
-                        // frame via .animation, which redraws 2-4x more often than needed for a
-                        // purely decorative diagram.
-                        TimelineView(.periodic(from: .now, by: Self.frameInterval)) { timeline in
+                        // .animation, not .periodic — added 2026-09-11 (see ISSUES.md's entry):
+                        // .periodic kept firing on its fixed wall-clock schedule even while this
+                        // view wasn't actually being displayed (wizard window backgrounded, Mac
+                        // idle), wasting CPU/battery; .animation is suspended by SwiftUI in that
+                        // case. DiagramAnimation.snappedDate throttles the *redraw cadence* while
+                        // still visible instead — matches the actual visual cadence .periodic used
+                        // to provide directly (own reasoning below still applies, just achieved a
+                        // different way).
+                        TimelineView(.animation) { timeline in
+                            let date = DiagramAnimation.snappedDate(timeline.date, interval: Self.frameInterval)
                             ForEach(Self.phaseOffsets, id: \.self) { offset in
-                                rippleRing(date: timeline.date, phaseOffset: offset)
+                                DiagramAnimation.rippleRing(date: date, cycleSeconds: Self.rippleCycleSeconds,
+                                                             phaseOffset: offset, size: Self.deviceSize, color: leftBadgeColor)
                                     .position(x: leftX, y: midY)
                             }
                             ForEach(Self.phaseOffsets, id: \.self) { offset in
-                                packetDot(date: timeline.date, phaseOffset: offset,
-                                          startX: lineStartX, endX: lineEndX)
-                                    .position(
-                                        x: Self.packetX(timeline.date, phaseOffset: offset, startX: lineStartX, endX: lineEndX),
-                                        y: midY)
+                                DiagramAnimation.packetDot(date: date, cycleSeconds: Self.packetCycleSeconds,
+                                                            phaseOffset: offset, size: Self.packetSize, color: rightBadgeColor,
+                                                            startX: lineStartX, endX: lineEndX, startY: midY, endY: midY)
                             }
                         }
                     }
 
-                    deviceIcon(systemImage: leftSystemImage, badgeColor: leftBadgeColor)
+                    DiagramAnimation.deviceIcon(systemImage: leftSystemImage, size: Self.deviceSize, badgeColor: leftBadgeColor)
                         .position(x: leftX, y: midY)
-                    deviceIcon(systemImage: rightSystemImage, badgeColor: rightBadgeColor)
+                    DiagramAnimation.deviceIcon(systemImage: rightSystemImage, size: Self.deviceSize, badgeColor: rightBadgeColor)
                         .position(x: rightX, y: midY)
                 }
             }
@@ -102,49 +106,5 @@ struct NetworkFlowDiagram: View {
             }
         }
         .accessibilityHidden(true)   // purely decorative — the surrounding text explains the same thing
-    }
-
-    // MARK: - Devices
-
-    @ViewBuilder
-    private func deviceIcon(systemImage: String, badgeColor: Color) -> some View {
-        ZStack(alignment: .topTrailing) {
-            Image(systemName: systemImage)
-                .font(.system(size: Self.deviceSize * 0.62))
-                .foregroundStyle(Color(NSColor.labelColor))
-                .frame(width: Self.deviceSize, height: Self.deviceSize)
-            Circle()
-                .fill(badgeColor)
-                .frame(width: 11, height: 11)
-                .overlay(Circle().strokeBorder(Color(NSColor.windowBackgroundColor), lineWidth: 1.5))
-                .offset(x: 3, y: -2)
-        }
-    }
-
-    // MARK: - Animation math
-
-    private static func packetX(_ date: Date, phaseOffset: Double, startX: CGFloat, endX: CGFloat) -> CGFloat {
-        let t = DiagramAnimation.progress(date, cycleSeconds: packetCycleSeconds, phaseOffset: phaseOffset)
-        return startX + (endX - startX) * CGFloat(t)
-    }
-
-    @ViewBuilder
-    private func packetDot(date: Date, phaseOffset: Double, startX: CGFloat, endX: CGFloat) -> some View {
-        let t = DiagramAnimation.progress(date, cycleSeconds: Self.packetCycleSeconds, phaseOffset: phaseOffset)
-        Circle()
-            .fill(rightBadgeColor)
-            .frame(width: Self.packetSize, height: Self.packetSize)
-            .opacity(DiagramAnimation.edgeFadeOpacity(t))
-    }
-
-    // Expanding, fading ring centered on the left ("this Mac") device — same "broadcasting outward"
-    // language SettingsView's About-tab SignalRing already uses for the app icon's own pulse effect.
-    @ViewBuilder
-    private func rippleRing(date: Date, phaseOffset: Double) -> some View {
-        let t = DiagramAnimation.progress(date, cycleSeconds: Self.rippleCycleSeconds, phaseOffset: phaseOffset)
-        Circle()
-            .stroke(leftBadgeColor.opacity(0.5 * (1 - t)), lineWidth: 2)
-            .frame(width: Self.deviceSize, height: Self.deviceSize)
-            .scaleEffect(1 + CGFloat(t) * 1.6)
     }
 }
