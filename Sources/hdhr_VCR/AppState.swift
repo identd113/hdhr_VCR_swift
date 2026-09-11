@@ -547,7 +547,36 @@ final class AppState: ObservableObject {
         NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.checkVLCHotInstall() }
         }
-        Task { await startup() }
+        // `[weak self]`, not a bare `Task { await startup() }` — see ISSUES.md's "duplicate
+        // [Startup] log lines" entry for the full story. Root-caused 2026-09-11: `@StateObject`'s
+        // documented guarantee is that only one instance's *storage* is ever kept, not that its
+        // initial-value expression (this init()) is only ever *evaluated* once — SwiftUI can
+        // construct and discard an extra AppState while resolving view identity early in launch.
+        // A discarded instance is normally harmless and gets deallocated promptly — except a
+        // *strongly*-capturing `Task { await startup() }` right here kept a discarded instance
+        // alive forever via its own running Task, standing up a full idle loop/recording engine as
+        // a permanent orphan nothing in the UI ever referenced. Confirmed live: two different
+        // `launchInstanceID`s logged one line apart from the exact same pid, both completing full
+        // startups (one losing the web server bind race with "Address already in use"), then both
+        // idle loops still ticking — and both firing duplicate Discord "Recording Started" cards
+        // for the same real recording — hours later.
+        // First fix attempt (2026-09-11, same day, reverted within the hour): moved this call to
+        // `hdhr_VCRApp`'s `MenuContent().onAppear`, the hook this codebase already trusts as a
+        // reliable "fires once, even on the forced silent open+close MenuBarExtra does at launch"
+        // signal for the first-run wizard/donation nag. **Broke on the very next real deploy** —
+        // the status item (and therefore that onAppear) sometimes doesn't render at all this
+        // early/this reliably on this machine's OS, so `startup()` never fired: no web server bind,
+        // no discovery, nothing scheduled, confirmed via a screenshot showing no menu bar icon at
+        // all two minutes after launch. Whatever "forced silent open+close" guarantee the wizard/
+        // nag have relied on is evidently not as bulletproof as this codebase assumed — real, but
+        // apparently not this early/reliably on every launch. Reverted; do not retry that approach
+        // without independently re-verifying the onAppear-fires-at-launch assumption itself first.
+        // Actual fix: keep firing from init() (immediate, doesn't depend on any View ever
+        // appearing) but with `[weak self]` — a discarded instance's Task now resolves `self` to
+        // nil almost immediately (nothing else references it) and no-ops instead of running a full
+        // startup(); the one real, kept instance's `self` stays alive via `@StateObject`'s own
+        // storage exactly as before, so its startup() fires exactly as reliably as it always did.
+        Task { [weak self] in await self?.startup() }
     }
 
     // MARK: - Startup
