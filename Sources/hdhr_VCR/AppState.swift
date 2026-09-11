@@ -224,7 +224,18 @@ final class AppState: ObservableObject {
                 .map { (device: device, entry: $0) }
         }
     }
-    var hasAvailableRemoteFeed: Bool { !remoteRelayEntries.isEmpty }
+    // Short-circuiting contains(where:), not `!remoteRelayEntries.isEmpty` — this is polled every
+    // tick of tickStatusLight()'s 1Hz Timer for the app's entire run, so building (and discarding)
+    // remoteRelayEntries' full filter+flatMap array every second, even while FEED is disabled or no
+    // remote relay exists, is unnecessary allocation on an infinite hot loop. Mirrors
+    // remoteRelayEntries' own FEED_feature_enabled gate rather than re-checking it separately.
+    var hasAvailableRemoteFeed: Bool {
+        guard config.FEED_feature_enabled else { return false }
+        return devices.contains { device in
+            device.isVirtualRelay && device.isAvailable
+                && (lineups[device.DeviceID] ?? []).contains { $0.virtualRelayShowTitle != nil }
+        }
+    }
 
     // Shared source of truth for "which channels on this device read as recording" — used by
     // WebServer.swift's guide grid (ring badges + the RECORDING section) and WatchNowView's Watch
@@ -1762,9 +1773,12 @@ final class AppState: ObservableObject {
         guard tunersFull(for: deviceId), vlcOccupiesTuner(for: deviceId) else { return false }
         guard let device = devices.first(where: { $0.DeviceID == deviceId }),
               let tunerCount = device.TunerCount, tunerCount > 0 else { return false }
-        let hw  = deviceTunerOccupancy[deviceId]?.filter { $0.VctNumber != nil }.count ?? 0
-        let rec = recordingShows.filter { $0.hdhr_record == deviceId }.count
-        let projected = max(max(hw - 1, 0), rec)
+        // Algebraically max(activeTunerCount(for:) - 1, 0) — activeTunerCount = max(hw, rec + 1)
+        // once vlcOccupiesTuner is confirmed true (the guard above), so subtracting exactly the 1
+        // this instance's own stream contributed and re-maxing against 0 is the same value as
+        // reimplementing the hw/rec projection inline; reuses the one shared formula instead of a
+        // second copy that a future change to activeTunerCount would need to be mirrored into by hand.
+        let projected = max(activeTunerCount(for: deviceId) - 1, 0)
         return projected < tunerCount
     }
 
