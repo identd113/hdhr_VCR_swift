@@ -63,6 +63,20 @@ VLC's own scrub bar handles resume-within-a-single-playback-session, but nothing
 
 ---
 
+### Generalize the stop()-not-releasePlayer() smooth-reconnect technique to every live→disk-relay handoff, not just the yield-to-record flow
+
+Flagged 2026-09-11. The Watch Now yield-tuner-to-Record feature (`AppState.recordAfterYieldingWatchNow`) root-caused and fixed a "stuck on Connecting…" bug by calling `VLCBridge.shared.stop()` (leaves `VLCPlayerWindowManager`'s `drawableView` attached) instead of `releasePlayer()` (nils it) right before handing off to `watchRecordingInApp(_:)` — `releasePlayer()` would have meant `VLCVideoSurface.makeNSView` never re-fires for a same-device window reuse, so a later `play()` just sits queued forever with no surface to render into. See `recordAfterYieldingWatchNow`'s own doc comment and `issues_resolved.md` for the full root-cause writeup.
+
+That fix is currently scoped to just this one flow. Any *other* place in the app that transitions a live, in-app-network-watched channel over to watching its own now-in-progress recording from disk (or the reverse — recording-relay playback handing back to a live stream) should go through the same `stop()`-then-`watchRecordingInApp`/`watchInVLC` sequence rather than whatever it does today, or it risks hitting the identical stuck-on-Connecting failure mode. Needs an audit of every `VLCBridge.shared.releasePlayer()`/`watchRecordingInApp`/`watchInVLC` call site (`AppState.swift`) to check which ones are a same-device handoff (where the fix applies) versus a genuine full teardown (window closing, different device — where `releasePlayer()` remains correct). Not yet scoped or audited.
+
+---
+
+### Watch Now should show whether the video is currently reading from the network or from disk
+
+Requested 2026-09-11. Right now there's no user-visible indicator of *how* the current stream is being delivered — a live channel reads directly from the tuner over the network, while watching an in-progress (or completed) recording via the local relay (`watchRecordingInApp`, `/api/watch-recording`) reads from disk on this Mac. The distinguishing signal already exists internally (`VLCBridge.shared.recordingShowId != nil` means disk-relay; `docs/AppState.md`'s `vlcOccupiesTuner`/`vlcLiveChannel` entries already key off exactly this), it just isn't surfaced anywhere in the UI. `VLCPlayerView` already has a codec-info popover (fixed for FEED's AAC-vs-AC-3 conflation in `d1ca8c5`) that reads naturally as the place to add a "Source: Live network stream" / "Source: Local recording (disk)" line alongside the existing codec info — no new UI surface needed, just one more fact in an existing one. Not yet scoped.
+
+---
+
 ## Recording
 
 ### No reminder-only shows (notify without recording)
