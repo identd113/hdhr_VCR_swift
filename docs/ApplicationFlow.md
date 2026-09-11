@@ -6,6 +6,8 @@ How a request, a show, or a recording actually moves through the app — from tu
 
 **Color key:** indigo = Startup · violet = Scheduling engine · red = Recording · amber = Push & notify · green = Menu bar UI · orange = Playback · cyan = Web guide · plum = Virtual tuner relay.
 
+**Virtual tuner relay (Recording FEED) is hidden as of 2026-09-10** behind `AppConfig.FEED_feature_enabled` (default `false`, config-file only) — see `docs/VirtualTunerService.md`'s own note for the full story. Every node/edge in the plum subgraph below describes the mechanism as it behaves once that flag is `true`; while it's off (the shipped default), none of it runs.
+
 ```mermaid
 %%{init: {"flowchart": {"curve":"basis", "nodeSpacing":34, "rankSpacing":54}}}%%
 flowchart TB
@@ -128,6 +130,6 @@ flowchart TB
 - **Menu bar UI** — Add/Edit Show writes through the same `AppState` mutators the web guide calls — there is only one path that persists a show.
 - **Playback** — Watch Now! either opens a live tuner stream (counts toward tuner occupancy) or, for a show that's currently recording, relays it from disk instead — that path is explicitly excluded from the tuner count.
 - **Web guide** — A second front door on the LAN, not a separate state machine. It also renders the status ring per guide entry — scheduled (blue) or already-recorded (skip, slate) — from the same managed-show data.
-- **Virtual tuner relay** — While a recording is active, this instance impersonates a second HDHomeRun so a peer can watch the same file without opening a real tuner — self-filtered out of its own device list, and hard-limited to watch-only everywhere a show gets created.
+- **Virtual tuner relay** — While a recording is active, this instance impersonates a second HDHomeRun so a peer can watch the same file without opening a real tuner — self-filtered out of its own device list, and hard-limited to watch-only everywhere a show gets created. **Hidden as of 2026-09-10** behind `FEED_feature_enabled` (default off) — see this doc's own top-of-file note.
 
 Every write path funnels through `AppState`; every state change fans back out through push (SSE, Discord) rather than any client polling for it.
