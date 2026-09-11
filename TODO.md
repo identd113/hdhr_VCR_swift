@@ -183,11 +183,13 @@ Scoped 2026-08-24, following up on the "web guide feels laggy" report in `ISSUES
 
 ---
 
-### `deploy.sh`/`deploy_release.sh`'s favicon-generation heredoc is duplicated verbatim
+### `deploy.sh`/`deploy_release.sh`'s favicon-generation heredoc is duplicated verbatim — resolved 2026-09-11
 
 Added to `deploy_release.sh` on 2026-08-07 by copying `deploy.sh`'s existing ~13-line inline `python3` heredoc that builds `favicon.ico` from the iconset's 16×16/32×32 PNGs, rather than factoring it into one shared script. Matches this codebase's existing pattern of keeping the two deploy scripts independently self-contained (the "Deploying resources" `cp` block is duplicated the same way), so not urgent — but a future fix to the ICO-writing logic (wrong byte order, a malformed header, adding more sizes) has to be found and applied in both places, and it's easy to fix one and forget the other.
 
-**Key file**: `deploy.sh` / `deploy_release.sh` (favicon generation block).
+**Resolved**: extracted to `tools/generate_favicon.py` (`python3 tools/generate_favicon.py <16px.png> <32px.png> <out.ico>`); both deploy scripts now call the one shared script instead of carrying their own copy of the heredoc.
+
+**Key file**: `tools/generate_favicon.py`.
 
 ---
 

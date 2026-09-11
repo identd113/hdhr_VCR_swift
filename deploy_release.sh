@@ -145,18 +145,7 @@ sips -z 512  512  Resources/AppIcon-source.png --out "$_ICONSET/icon_256x256@2x.
 sips -z 1024 1024 Resources/AppIcon-source.png --out "$_ICONSET/icon_512x512@2x.png" > /dev/null
 iconutil --convert icns "$_ICONSET" --output Resources/AppIcon.icns
 cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
-python3 - "$_ICONSET/icon_16x16.png" "$_ICONSET/icon_32x32.png" Resources/favicon.ico <<'PYEOF'
-import sys, struct
-paths_sizes = [(sys.argv[1], 16), (sys.argv[2], 32)]
-images = [(sz, open(p, 'rb').read()) for p, sz in paths_sizes]
-hdr = struct.pack('<HHH', 0, 1, len(images))
-off = 6 + len(images) * 16
-dirs, blobs = b'', b''
-for sz, data in images:
-    dirs += struct.pack('<BBBBHHII', sz, sz, 0, 0, 1, 32, len(data), off)
-    off += len(data); blobs += data
-open(sys.argv[3], 'wb').write(hdr + dirs + blobs)
-PYEOF
+python3 tools/generate_favicon.py "$_ICONSET/icon_16x16.png" "$_ICONSET/icon_32x32.png" Resources/favicon.ico
 cp Resources/favicon.ico "$APP/Contents/Resources/favicon.ico"
 
 echo "==> Signing…"
