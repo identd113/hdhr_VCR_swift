@@ -1028,6 +1028,8 @@ Full `swift build` and test suite pass; every fix verified against a real pty (w
 
 **Resolution**: capture the port in a local (`startPort`) at the moment `webServer.start(port:...)` is called, and thread it through the completion closure into `applyWebServerState(_:port:)`, which now stamps `boundWebServerPort` from that captured value rather than re-reading live config.
 
+**Resolving commit**: `c1b9a90`
+
 ## RESOLVED — Virtual tuner relay's `TunerCount`/lineup/discover JSON already using canonical `recordingShows` — stale open issue
 
 **Files:** `AppState.swift` (`updateVirtualTunerPresence`), `WebServer.swift` (`buildVirtualTunerDiscoverJSON`/`buildVirtualTunerLineupJSON`/`buildVirtualTunerStatusJSON`)
@@ -1045,6 +1047,8 @@ Full `swift build` and test suite pass; every fix verified against a real pty (w
 **Root cause**: `usableDeviceIDs` filtered `devices` directly rather than going through `recordableDevices`, so it didn't structurally exclude a virtual relay's `DeviceID`. Every existing caller happened to be safe only because it separately intersected against an already-`recordableDevices`-filtered list first — a future caller checking `usableDeviceIDs.contains(id)` directly wouldn't have inherited that exclusion.
 
 **Resolution**: `usableDeviceIDs` now filters `recordableDevices` instead of `devices`, so every current and future caller inherits the virtual-relay exclusion for free.
+
+**Resolving commit**: `c1b9a90`
 
 ---
 

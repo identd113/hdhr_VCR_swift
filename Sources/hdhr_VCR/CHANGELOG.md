@@ -22,6 +22,7 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 **Info**
 - A `hdhrvcrplus://watch?dev=<id>&channel=<channel>` URL scheme now exists for triggering a FEED watch programmatically (e.g. `open 'hdhrvcrplus://...'`) — a developer/testing convenience, not something most users will ever type themselves.
 - A handful of internal robustness fixes found during code review ahead of this release: a newly-discovered FEED device could trigger a wasted (harmless, but noisy-in-the-log) guide-fetch attempt; a rare timing edge case in FEED discovery could very briefly misreport a FEED that had just stopped as still present; a background cleanup task could run on the wrong internal queue in one narrow case. None of these were ever visible in normal use.
+- The web guide's per-entry genre lookup tables were being rebuilt from scratch for every single program block rendered (1300+ per full guide rebuild) instead of once — hoisted to shared constants. Efficiency only, never visible in normal use.
 
 ## v2.2.0 — 2026-08-29
 

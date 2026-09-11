@@ -896,19 +896,6 @@ moved to `ISSUES.md`. Full breakdown:
   `handleVirtualTunerStream` when it's about to read file size) rather than a longer sleep.
 
 ## 2026-09-04 — swift-quality-reviewer pre-release efficiency pass (whole codebase, not diff-scoped)
-- **`WebServer.buildGuideGridHTML` (`WebServer.swift:2367-2376`)** — `ggSkip`/`ggAlias`/`ggKnown`
-  (a `Set<String>`, a `[String:String]`, and a 24-element `Set<String>`) are declared *inside* the
-  innermost per-entry loop, so all three small collections are freshly allocated and populated once
-  per guide entry rendered. `prebuildPageHTML`'s own comment two callers up confirms the real scale:
-  "1300+ program blocks" per rebuild, and this function runs on `@MainActor` for every one of the
-  9+ guide-changing event types (add/edit/delete/pause/resume/favorite-toggle/recording start-stop)
-  CLAUDE.md's "New cached page variant" section already flags as MainActor-blocking. Trivial fix:
-  hoist the three literals to `private static let`s (or function-level `let`s outside the loop) —
-  they're pure static lookup tables with no captured state, genuinely the same class of waste as
-  "recreating formatters/caches per call." Rest of this function is otherwise well-optimized
-  (`recChannelsByDevice`/`pendingRecChannelsByDevice`/`hwOtherChannelsByDevice` are all correctly
-  hoisted once per device outside the entry loop, `ManagedGuideMatcher` builds its indices once
-  up front) — this is the one spot that didn't get the same treatment.
 - **`he(_:)` (`Views/GuideViewHelpers.swift:178-183`)** — HTML-escapes by chaining 4 unconditional
   `replacingOccurrences(of:with:)` calls (`&`, `<`, `>`, `"`), each a full string scan + new
   allocation even when the input contains none of those characters (the overwhelmingly common case
