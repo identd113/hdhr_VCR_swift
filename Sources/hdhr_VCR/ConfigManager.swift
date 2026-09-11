@@ -52,6 +52,43 @@ final class ConfigManager {
         glog("[Config] Saved \(configURL.lastPathComponent)")
     }
 
+    // Serial so writes stay strictly in call order — save(_:) does a remove+copy+atomic-write, and
+    // running two concurrently on a shared DispatchQueue.concurrentPerform-style queue could let an
+    // older snapshot's write land after a newer one's, leaving stale content as the final on-disk
+    // file. FIFO on a serial queue guarantees each call's I/O completes before the next one starts.
+    private let saveQueue = DispatchQueue(label: "hdhr_VCR.ConfigManager.save", qos: .utility)
+
+    // Runs save(_:)'s file I/O on a private background queue instead of the caller's own thread.
+    // AppState.saveConfig() is this method's one real caller and runs on @MainActor for 26 call
+    // sites covering essentially every show mutation — WebServer hops onto that same actor for
+    // nearly every request touching AppState, so synchronous disk I/O here previously stalled every
+    // web request queued behind it (see TODO.md's "ConfigManager.save's disk write runs
+    // synchronously on the MainActor" entry, and ISSUES.md's "Web guide feels laggy" root-cause
+    // chain). Mirrors the same nonisolated-background-work shape already used for
+    // writeMetadataSidecar/recordedEpisodeTags. `onFailure` (called off the calling thread) exists
+    // so a caller that needs to react to a failed save — AppState.saveConfig() sets a user-visible
+    // statusMessage — still can, without saveAsync itself needing to be async/throwing.
+    func saveAsync(_ file: ConfigFile, onFailure: ((Error) -> Void)? = nil) {
+        saveQueue.async { [self] in
+            do {
+                try save(file)
+            } catch {
+                glog("[Config] Save failed: \(error)", level: .error)
+                onFailure?(error)
+            }
+        }
+    }
+
+    // Blocks the caller until every saveAsync(_:) enqueued so far has actually finished writing to
+    // disk — call only right before the process is about to exit (the SIGTERM handler,
+    // AppState.teardownForExit()), where a fire-and-forget save could otherwise still be sitting in
+    // the queue when the process dies, silently discarding it. Everywhere else, saveAsync's whole
+    // point is to keep this exact wait off the caller (usually @MainActor), so don't call this from
+    // a normal show-mutation path. Safe (returns immediately) when nothing is pending.
+    func flushPendingSaves() {
+        saveQueue.sync {}
+    }
+
     var configPath: String { configURL.path }
 
     // Copies the live config file to `url` — used by Settings' Export Config button. Removes an

@@ -667,6 +667,11 @@ final class AppState: ObservableObject {
                 // Record button fails silently" entry.
                 await self.webServer.waitForInFlightRequests(timeout: 2)
                 self.saveConfig()
+                // saveConfig() now dispatches its actual disk write to ConfigManager's own
+                // background queue (see its doc comment) — block here until that write actually
+                // lands, otherwise the process could die (the raise(SIGTERM) below) before this
+                // final save ever reaches disk, silently losing it.
+                self.configManager.flushPendingSaves()
                 signal(SIGTERM, SIG_DFL)
                 raise(SIGTERM)
             }
@@ -1042,12 +1047,18 @@ final class AppState: ObservableObject {
         if needsSave { saveConfig() }
     }
 
+    // Snapshots config/shows synchronously (cheap in-memory struct copies) then hands the actual
+    // remove+copy+atomic-write disk I/O to ConfigManager's own background queue — see
+    // ConfigManager.saveAsync's doc comment for why this moved off @MainActor. Callers that must be
+    // sure the write has actually landed before proceeding (right before process exit) call
+    // configManager.flushPendingSaves() themselves afterward; every other one of this function's 26
+    // call sites is fire-and-forget by design, same as before this change from their point of view.
     func saveConfig() {
-        do {
-            try configManager.save(ConfigFile(config: config, shows: shows))
-        } catch {
-            glog("[Config] Save failed: \(error)", level: .error)
-            statusMessage = "Config save error — check log"
+        let file = ConfigFile(config: config, shows: shows)
+        configManager.saveAsync(file) { [weak self] _ in
+            Task { @MainActor in
+                self?.statusMessage = "Config save error — check log"
+            }
         }
     }
 
@@ -4944,6 +4955,11 @@ final class AppState: ObservableObject {
             webServer.stop()
         }
         saveConfig()
+        // Same reasoning as the SIGTERM handler: saveConfig()'s actual write now happens on a
+        // background queue, and both callers (quit()/relaunchForVLC()) proceed straight to
+        // NSApplication.terminate(nil) or relaunching right after this returns — block until the
+        // write actually lands so it can't be lost to the process exiting first.
+        configManager.flushPendingSaves()
     }
 
     func relaunchForVLC() {

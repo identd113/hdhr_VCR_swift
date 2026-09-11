@@ -10,12 +10,12 @@ import Foundation
 // that out (passed comfortably). Follow-up from the user narrowed it to concurrent heavy disk
 // I/O instead (CrashPlan backup + a large file copy running at the time).
 //
-// AppState.saveConfig() -> ConfigManager.save(_:) does three synchronous, blocking filesystem
-// calls directly on the @MainActor — remove the old backup, copy the current config to it, then
-// an atomic write of the new one — and it's called from 26 sites in AppState.swift covering
-// essentially every show mutation (add/edit/delete/pause/resume/idle-loop reschedule). Because
-// AppState is @MainActor, and WebServer hops onto that same actor for nearly every request that
-// touches AppState, a slow disk write here blocks the actor and therefore every other web
+// At the time this test was written, AppState.saveConfig() -> ConfigManager.save(_:) did three
+// synchronous, blocking filesystem calls directly on the @MainActor — remove the old backup, copy
+// the current config to it, then an atomic write of the new one — from 26 sites in AppState.swift
+// covering essentially every show mutation (add/edit/delete/pause/resume/idle-loop reschedule).
+// Because AppState is @MainActor, and WebServer hops onto that same actor for nearly every request
+// that touches AppState, a slow disk write there blocked the actor and therefore every other web
 // request queued behind it — architecturally the same shape as this project's own past
 // MainActor-blocking bugs (issues_resolved.md's "Blocking waitpid on the main actor can freeze
 // the menu-bar UI"; ISSUES.md's VLC relay-seek deadlock).
@@ -32,10 +32,16 @@ import Foundation
 // corrected to actually open SSE connections) — broadcastGuideChangeEvent's SSE payload size, not
 // disk I/O. This test's own measurement already showed synthetic disk pressure barely moves
 // saveConfig()'s latency on a fast SSD (~1ms either way). `ConfigManager.save`'s MainActor-
-// blocking write is still a legitimate, independently-scoped finding (see TODO.md), just not the
-// fix for that report — so this stays opt-in like WindowNavigationTests.swift's
-// RUN_WINDOW_NAV_TESTS convention, rather than burning real disk I/O (3 concurrent 20MB
-// write+fsync+remove loops) on every ordinary `swift test` run to guard a demoted theory:
+// blocking write was still a legitimate, independently-scoped finding (see TODO.md), just not the
+// fix for that report.
+//
+// UPDATE 2026-09-11: that independent finding is now fixed — saveConfig() snapshots config/shows
+// synchronously (cheap) and hands the actual disk I/O to ConfigManager.saveAsync(_:), which runs it
+// on its own private background queue, so saveConfig() itself no longer blocks on disk at all. This
+// test now mostly measures Task-enqueue overhead rather than real I/O, but stays opt-in like
+// WindowNavigationTests.swift's RUN_WINDOW_NAV_TESTS convention — the background DiskPressure
+// writers it spins up are still real, sustained I/O worth not burning on every ordinary `swift
+// test` run:
 //   RUN_DISK_IO_TESTS=1 swift test --filter AppStateDiskIOLatencyTests
 private func diskIOTestsOptedIn() -> Bool {
     ProcessInfo.processInfo.environment["RUN_DISK_IO_TESTS"] == "1"
@@ -123,10 +129,10 @@ struct AppStateDiskIOLatencyTests {
         let pressureMax    = underPressure.last ?? 0
 
         // Loose on purpose (this file's own convention — see WebServerPerfTests.swift): sized to
-        // catch a real architectural regression (e.g. someone adding synchronous work to
-        // saveConfig that's much more I/O-sensitive than today), not to enforce a specific
-        // millisecond figure on a shared/loaded CI machine.
+        // catch a real architectural regression (e.g. someone reintroducing synchronous disk I/O
+        // into saveConfig, undoing ConfigManager.saveAsync's background-queue dispatch), not to
+        // enforce a specific millisecond figure on a shared/loaded CI machine.
         #expect(pressureMedian < 0.5,
-            "saveConfig() median \(Int(pressureMedian * 1000))ms under concurrent disk writes (baseline was \(Int(baselineMedian * 1000))ms, worst \(Int(pressureMax * 1000))ms) — ConfigManager.save's remove+copy+atomic-write runs synchronously on the MainActor, so a slow disk stalls every web request behind it")
+            "saveConfig() median \(Int(pressureMedian * 1000))ms under concurrent disk writes (baseline was \(Int(baselineMedian * 1000))ms, worst \(Int(pressureMax * 1000))ms) — saveConfig() should only ever enqueue onto ConfigManager's background save queue, never block on disk I/O itself")
     }
 }
