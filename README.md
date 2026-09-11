@@ -18,9 +18,9 @@ the program guide is free too, courtesy of SiliconDust, the same way it's always
 [![Proven since 2016](https://img.shields.io/badge/proven%20since-2016-lightgrey)](https://github.com/identd113/hdhr_VCR-AS)
 
 ### 📦 Latest: [v2.3.0](https://github.com/identd113/hdhr_VCR_swift/releases/download/v2.3.0/hdhrVCRplus-2.3.0.dmg)
-- New: Recording FEED (Beta) — watch an in-progress recording live from another Mac on your LAN, no second tuner needed
-- New: H.264 option, auto-play, live viewer count, and signal strength when watching a FEED
-- Fixed FEED playback stutters/freezes, traced to how the video data was being delivered
+- New: Watch Now can yield its tuner to a blocked recording request instead of just blocking it
+- Fixed a rare bug that could silently double recordings and Discord notifications
+- Fixed a repeating "Tuner Conflict" notification and duplicate Login Items
 - VoiceOver accessibility labels added to the in-app video player and menu bar
 
 **[📋 Release Notes](RELEASES.md)** — what's new in each version, with download links.

@@ -6,37 +6,33 @@ What's new in each version. For the fuller list of changes within a version, see
 
 ---
 
-## v2.3.0 (2026-09-07)
+## v2.3.0 (2026-09-11)
 
 ### Added
-- **Recording FEED (Beta)** — watch an in-progress recording live from another Mac on your LAN,
-  without tying up a second tuner. Off by default (Settings → Sharing → "Rebroadcast In-Progress
-  Recordings," or during first-run setup). A discovering Mac sees it appear under "Recording on
-  Another Mac," labeled with which Mac it's from, within about a second. Marked Beta — occasional
-  playback hiccups, and switching audio/CC tracks while watching, are known limitations.
-- **FEED viewing extras** — an H.264 transcode option for clients that can't play raw MPEG-2,
-  auto-play with a plain "Buffering…" indicator, a live viewer count, and an estimated
-  signal-quality reading from the source Mac.
-- **Closed captions now carry through a FEED's raw (non-transcoded) stream.**
+- **Watch Now can now yield its tuner to a blocked recording request** — if you're watching live
+  TV on a device's last free tuner and a scheduled recording needs it, a "Stop Watching & Record?"
+  dialog offers to stop watching, start the recording, and reconnect you to watch it from disk a
+  moment later, instead of just blocking with "All Tuners Busy."
 
 ### Updated
-- **"Relay" renamed to "FEED"** throughout the app, for clarity.
 - **"Sharing" settings reorganized into "Web LAN"** — the web guide's settings/first-run steps
   split out under this clearer name; every option gets its own short animated first-run screen.
-- **Fixed: FEED playback from another Mac could stutter and freeze for stretches of several
-  seconds to half a minute, then resume.** Traced to how this Mac delivered the video data — large
-  bursts followed by long silent gaps — rather than the network or the receiving Mac's player.
-  Fixed by matching a real HDHomeRun tuner's own smooth, continuous delivery pattern — a real,
-  measured improvement, though not a complete fix (see the Beta note above).
-- **Fixed: buffering could take real minutes instead of the intended ~8 seconds**, leaving
-  playback running noticeably slow (and audio slightly out of sync) the whole time.
-- **Fixed: a FEED viewer joining right at the live edge could get a corrupted first moment**
-  of video/audio.
-- **Fixed: the first viewer of a freshly-started FEED transcode could occasionally fail to
-  connect** if they joined before the transcode had finished starting up.
+- **Fixed: a rare bug could leave a background copy of the app running invisibly, silently
+  doubling recordings and Discord notifications.**
+- **Fixed: a "Tuner Conflict" notification could repeat for the same show on every retry**
+  instead of firing once.
+- **Fixed: duplicate Login Items could appear after certain updates.**
+- **Web guide and API stay responsive even under heavy load.**
 - **Deploy scripts now self-heal** if iCloud sync evicts the app bundle mid-session.
 - VoiceOver accessibility labels added to the in-app video player and the menu bar's Watch
   buttons, verified against real VoiceOver navigation.
+
+### In progress
+- **Recording FEED** — the idea: watch an in-progress recording live from another Mac on your LAN
+  without tying up a second tuner. Fully built and tested, but not enabled in this release — an
+  occasional client-side playback stall hasn't been fully tracked down yet, so it stays off with no
+  setting to turn it on until it's solid. No user-facing change this release; watch for it in a
+  future one.
 
 ## v2.2.0 (2026-08-29)
 
