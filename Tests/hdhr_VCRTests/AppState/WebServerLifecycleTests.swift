@@ -17,6 +17,14 @@ import Foundation
 @Suite("AppState web server lifecycle — reconcileWebServerState race regression", .serialized)
 struct WebServerLifecycleTests {
     static let testPort = 19802
+    // Distinct from testPort, not reused across both tests — found 2026-09-11: `.serialized` only
+    // orders the two tests, it doesn't make the first test's `defer { state.webServer.stop() }`
+    // finish the real async NWListener teardown before the second test starts (`stop()`'s own real
+    // socket close completes via a callback; `defer` bodies can't `await` it). A real, reproducible
+    // flake under full-suite load — the second test's own bind onto the still-closing first
+    // listener's port could fail outright, not just run slow. Using a second port sidesteps the
+    // teardown-timing race entirely rather than trying to win it.
+    static let secondTestPort = 19803
 
     @MainActor
     @Test func backToBackTriggers_atLaunch_doNotRaceASecondBind() async throws {
@@ -45,7 +53,7 @@ struct WebServerLifecycleTests {
     @MainActor
     @Test func disablingWhileAnInternalClaimIsActive_keepsServerRunning() async throws {
         let state = makeTestAppState()
-        state.config.Web_server_port = Self.testPort
+        state.config.Web_server_port = Self.secondTestPort
         defer { state.webServer.stop() }
 
         state.config.Web_server_enabled = true

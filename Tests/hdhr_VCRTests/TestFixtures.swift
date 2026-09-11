@@ -86,12 +86,20 @@ func writeMockCurlScript(headerLines: [String] = [], sleepSeconds: Double = 30,
     // \r) instead of .whitespacesAndNewlines, silently leaving a trailing \r on every parsed value
     // — a real bug (show_tuner_resource ending up as "tuner0\r", never matching a clean "tuner0"
     // elsewhere) this echo-based \n-only mock could never have caught.
+    // One printf call, not one per line piped into a `{ ...; } > file` group (found 2026-09-11 —
+    // see ISSUES.md's entry, though fixed here rather than left open since the fix was this small).
+    // The old shape issued a separate write() per header line against the same already-open fd;
+    // a reader polling the file (readHDHRResource as a "has the script finished writing yet"
+    // readiness signal, elsewhere in this same test's callers) could observe it between two of
+    // those writes — e.g. the tuner-resource line landed but the error line hadn't yet — a real,
+    // reproducible flake under full-suite parallel load (RecordingManagerTests.
+    // readAndClearHDHRError_mapsKnownCodeAndDeletesFile). printf's format string repeats once per
+    // remaining argument, so passing every line as its own argument to one printf call still
+    // produces the identical CRLF-terminated output, just via a single small write() a concurrent
+    // reader can't observe half of.
     script += "if [[ -n \"$hdr\" ]]; then\n"
-    script += "  {\n    printf '%s\\r\\n' \"HTTP/1.1 200 OK\"\n"
-    for line in headerLines {
-        script += "    printf '%s\\r\\n' \"\(line)\"\n"
-    }
-    script += "  } > \"$hdr\"\n"
+    let quotedLines = (["HTTP/1.1 200 OK"] + headerLines).map { "\"\($0)\"" }.joined(separator: " ")
+    script += "  printf '%s\\r\\n' \(quotedLines) > \"$hdr\"\n"
     script += "fi\n"
     script += "sleep \(sleepSeconds)\n"
     script += "exit \(exitCode)\n"
