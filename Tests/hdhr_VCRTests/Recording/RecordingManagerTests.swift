@@ -235,6 +235,86 @@ struct RecordingManagerTests {
         // No public getter for assertionIds — this just confirms no crash across repeated release.
         manager.releaseAllAssertions()
     }
+
+    // MARK: - Verbose curl logging (TODO.md's "RecordingManager/HDHRManager test coverage" gap)
+    //
+    // curlLogPathOverride (init parameter, mirrors curlExecutablePath's own seam) points
+    // start(verbose: true)'s writeCurlLogHeader/rotateCurlVerboseLogIfNeeded at a scratch file
+    // instead of the real ~/Library/Logs/hdhrVCRplus-curl.log — same "widen for testability"
+    // precedent as every other seam in this file.
+
+    @Test @MainActor func start_verboseTrue_writesCurlLogHeaderToOverridePath() async throws {
+        let scriptPath = try writeMockCurlScript(sleepSeconds: 30)
+        defer { cleanup(scriptPath) }
+        let logPath = NSTemporaryDirectory() + "hdhrVCRplus-test-curllog-\(UUID().uuidString).log"
+        defer { cleanup(logPath, logPath + ".1") }
+        let manager = RecordingManager(curlExecutablePath: scriptPath, curlLogPathOverride: logPath)
+        let outputPath = NSTemporaryDirectory() + "hdhrVCRplus-test-\(UUID().uuidString).ts"
+        defer { cleanup(outputPath) }
+        let showId = "test-\(UUID().uuidString)"
+
+        try manager.start(showId: showId, title: "Verbose Test", url: "http://192.0.2.1/auto/v5.1",
+                           outputPath: outputPath, durationSeconds: 60, transcode: "none",
+                           showEnd: Date().addingTimeInterval(60), verbose: true)
+        await waitUntil { manager.isRunning(showId: showId) }
+        manager.stop(showId: showId)
+
+        let contents = try #require(String(data: try Data(contentsOf: URL(fileURLWithPath: logPath)), encoding: .utf8))
+        #expect(contents.contains("[CURL] \(showId) → \(outputPath)"))
+        // The curl args themselves should be logged too, including the -v flag verbose:true adds.
+        #expect(contents.contains("-v"))
+    }
+
+    @Test @MainActor func start_verboseFalse_neverCreatesOverridePath() async throws {
+        let scriptPath = try writeMockCurlScript(sleepSeconds: 30)
+        defer { cleanup(scriptPath) }
+        let logPath = NSTemporaryDirectory() + "hdhrVCRplus-test-curllog-\(UUID().uuidString).log"
+        defer { cleanup(logPath) }
+        let manager = RecordingManager(curlExecutablePath: scriptPath, curlLogPathOverride: logPath)
+        let outputPath = NSTemporaryDirectory() + "hdhrVCRplus-test-\(UUID().uuidString).ts"
+        defer { cleanup(outputPath) }
+        let showId = "test-\(UUID().uuidString)"
+
+        try manager.start(showId: showId, title: "Non-Verbose Test", url: "http://192.0.2.1/auto/v5.1",
+                           outputPath: outputPath, durationSeconds: 60, transcode: "none",
+                           showEnd: Date().addingTimeInterval(60), verbose: false)
+        await waitUntil { manager.isRunning(showId: showId) }
+        manager.stop(showId: showId)
+
+        #expect(FileManager.default.fileExists(atPath: logPath) == false)
+    }
+
+    @Test @MainActor func start_verboseTrue_rotatesAnOversizedExistingLogBeforeAppending() async throws {
+        let scriptPath = try writeMockCurlScript(sleepSeconds: 30)
+        defer { cleanup(scriptPath) }
+        let logPath = NSTemporaryDirectory() + "hdhrVCRplus-test-curllog-\(UUID().uuidString).log"
+        let backupPath = logPath + ".1"
+        defer { cleanup(logPath, backupPath) }
+        // rotateCurlVerboseLogIfNeeded's cap is 5MB — plant an existing file already over it so
+        // this start() call's rotation check fires (same "checked once per verbose recording
+        // start" cadence documented on rotateCurlVerboseLogIfNeeded itself).
+        let oversized = Data(repeating: 0x41, count: 5 * 1024 * 1024 + 1)
+        try oversized.write(to: URL(fileURLWithPath: logPath))
+
+        let manager = RecordingManager(curlExecutablePath: scriptPath, curlLogPathOverride: logPath)
+        let outputPath = NSTemporaryDirectory() + "hdhrVCRplus-test-\(UUID().uuidString).ts"
+        defer { cleanup(outputPath) }
+        let showId = "test-\(UUID().uuidString)"
+
+        try manager.start(showId: showId, title: "Rotate Test", url: "http://192.0.2.1/auto/v5.1",
+                           outputPath: outputPath, durationSeconds: 60, transcode: "none",
+                           showEnd: Date().addingTimeInterval(60), verbose: true)
+        await waitUntil { manager.isRunning(showId: showId) }
+        manager.stop(showId: showId)
+
+        // The oversized original moved to .1 (not deleted, not left in place)...
+        let backupSize = try #require(try FileManager.default.attributesOfItem(atPath: backupPath)[.size] as? Int)
+        #expect(backupSize == oversized.count)
+        // ...and a fresh, small file took its place with this recording's own header line.
+        let freshContents = try #require(String(data: try Data(contentsOf: URL(fileURLWithPath: logPath)), encoding: .utf8))
+        #expect(freshContents.contains("[CURL] \(showId)"))
+        #expect(freshContents.count < oversized.count)
+    }
 }
 
 private extension RecordingManagerTests {

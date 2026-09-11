@@ -19,8 +19,17 @@ final class RecordingManager {
     // spawnDetached/posix_spawn at all, only which path gets passed into that unmodified call.
     private let curlExecutablePath: String
 
-    init(curlExecutablePath: String = "/usr/bin/curl") {
+    // Test seam only, mirroring curlExecutablePath above — production always gets nil and falls
+    // back to `Self.curlLogPath` (the real, fixed ~/Library/Logs/hdhrVCRplus-curl.log SettingsView
+    // also displays/opens, which must keep pointing at the real path regardless of this override).
+    // Lets RecordingManagerTests exercise start(verbose: true)'s writeCurlLogHeader/
+    // rotateCurlVerboseLogIfNeeded branch against a scratch file instead of the user's real log.
+    private let curlLogPathOverride: String?
+    private var effectiveCurlLogPath: String { curlLogPathOverride ?? Self.curlLogPath }
+
+    init(curlExecutablePath: String = "/usr/bin/curl", curlLogPathOverride: String? = nil) {
         self.curlExecutablePath = curlExecutablePath
+        self.curlLogPathOverride = curlLogPathOverride
     }
 
     // MARK: - Start
@@ -51,10 +60,10 @@ final class RecordingManager {
         try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
 
         if verbose {
-            rotateCurlVerboseLogIfNeeded()
+            rotateCurlVerboseLogIfNeeded(path: effectiveCurlLogPath)
             writeCurlLogHeader(showId: showId, curlArgs: curlArgs, outputPath: outputPath)
         }
-        let logPath: String? = verbose ? Self.curlLogPath : nil
+        let logPath: String? = verbose ? effectiveCurlLogPath : nil
 
         // Spawn curl directly in its own POSIX session — one PID per recording.
         // Sleep prevention is handled by a fire-and-forget IOKit assertion below.
@@ -325,7 +334,7 @@ final class RecordingManager {
     // MARK: - Verbose log
 
     private func writeCurlLogHeader(showId: String, curlArgs: [String], outputPath: String) {
-        let path = Self.curlLogPath
+        let path = effectiveCurlLogPath
         // curlLogPath is its own dedicated file (curlVerboseLogFilePath, see Models.swift),
         // separate from the main app log — rotateCurlVerboseLogIfNeeded(), called by start()
         // right before this, handles the size cap by renaming rather than truncating in place,

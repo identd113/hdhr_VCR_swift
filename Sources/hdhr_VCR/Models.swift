@@ -89,14 +89,18 @@ private let logFile = RotatingLogFile(path: logFilePath)
 let curlVerboseLogFilePath = NSHomeDirectory() + "/Library/Logs/hdhrVCRplus-curl.log"
 private let curlVerboseLogCapBytes: UInt64 = 5 * 1024 * 1024
 
-func rotateCurlVerboseLogIfNeeded() {
+// `path` defaults to the real curlVerboseLogFilePath; RecordingManagerTests overrides it to a
+// scratch file so exercising the verbose-logging branch never touches the user's real
+// ~/Library/Logs — the only thing that changes production behavior at all is passing this
+// parameter explicitly, which no production call site does.
+func rotateCurlVerboseLogIfNeeded(path: String = curlVerboseLogFilePath) {
     let fm = FileManager.default
-    guard let attrs = try? fm.attributesOfItem(atPath: curlVerboseLogFilePath),
+    guard let attrs = try? fm.attributesOfItem(atPath: path),
           let size = (attrs[.size] as? NSNumber)?.uint64Value,
           size >= curlVerboseLogCapBytes else { return }
-    let backupPath = curlVerboseLogFilePath + ".1"
+    let backupPath = path + ".1"
     try? fm.removeItem(atPath: backupPath)
-    try? fm.moveItem(atPath: curlVerboseLogFilePath, toPath: backupPath)
+    try? fm.moveItem(atPath: path, toPath: backupPath)
 }
 
 func glog(_ msg: String, level: LogLevel = .info) {
