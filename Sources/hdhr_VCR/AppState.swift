@@ -108,6 +108,22 @@ final class AppState: ObservableObject {
     // Set to true in tests: startup() returns immediately, preventing idleLoop from running.
     var skipStartup = false
 
+    // Diagnostic for ISSUES.md's open "duplicate [Startup] log lines" investigation (2026-09-09):
+    // logged once, right at the top of startup(), so two genuinely different AppState instances —
+    // whether from two OS processes racing or (per that entry's own re-opened finding) some
+    // still-unexplained double-construction within one process — carry two different IDs in the
+    // log, settling the process-vs-in-process question the next time this reproduces. A plain
+    // UUID, not tied to anything persisted — safe to leave in permanently.
+    private let launchInstanceID = UUID().uuidString.prefix(8)
+    // Re-entrancy guard, same shape as idleLoop()'s idleLoopRunning — startup() has exactly one call
+    // site (Task { await startup() } in init(), just below) and @StateObject's single-construction
+    // guarantee should make a second real call impossible, but that guarantee is exactly what the
+    // same ISSUES.md entry suspects is somehow being defeated. Cheap defense-in-depth regardless of
+    // the still-unconfirmed root cause: a second entry now logs and bails instead of silently
+    // re-running the whole startup sequence (duplicate device discovery, a second reattachRecordings
+    // pass, a second web-server bind attempt) against already-live state.
+    private var startupCalled = false
+
     @Published var editingShowId: String? = nil
     @Published var watchNowDeviceId: String? = nil
     @Published var pendingAddEntry: (device: HDHRDevice, channel: LineupEntry, entry: GuideEntry)? = nil
@@ -534,6 +550,12 @@ final class AppState: ObservableObject {
 
     func startup() async {
         guard !skipStartup else { return }
+        guard !startupCalled else {
+            glog("[Startup] startup() called again on instance \(launchInstanceID) — ignored (see ISSUES.md's duplicate-launch entry)", level: .warning)
+            return
+        }
+        startupCalled = true
+        glog("[Startup] instance \(launchInstanceID) starting, pid=\(ProcessInfo.processInfo.processIdentifier)")
         // Intercept SIGTERM (pkill, launchd stop) to flush config before the process dies.
         // Re-raises SIGTERM with the default handler so the process exits normally without
         // triggering the quit dialog — recordings survive as orphans via POSIX_SPAWN_SETSID.

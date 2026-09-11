@@ -1648,6 +1648,19 @@ final class WebServer: @unchecked Sendable {
                 && httpVersion == "HTTP/1.1"
                 && (method == "GET" || method == "POST")
                 && leftover.isEmpty
+            // Logged here — fully parsed, but before the Task/MainActor hop below — specifically so
+            // a request that's received but never actually processed (the app crashes/force-quits
+            // while this Task sits queued waiting for a busy MainActor, e.g. behind an expensive
+            // guide-grid rebuild — see CLAUDE.md's "New cached page variant" invariant) leaves a
+            // trace. ISSUES.md's "Web guide Record button fails silently" entry found a real request
+            // that vanished with zero log output across a 56s gap before a crash — this closes that
+            // diagnostic gap for next time: a repeat occurrence will show this line even if the
+            // matching "[Show] Added"/"[Show] Deleted"/etc. line that should follow never does,
+            // confirming the request was received but the mutation itself never ran. POST-only and
+            // state-mutating routes only (not every GET) to avoid log noise on the hot path.
+            if method == "POST", cleanPath.hasPrefix("/api/") {
+                glog("[WebServer] Received \(method) \(cleanPath)")
+            }
             Task {
                 let response = await self.route(method: method, path: cleanPath, body: body)
                 self.send(response, on: conn, acceptsGzip: acceptsGzip, keepAlive: keepAlive)
