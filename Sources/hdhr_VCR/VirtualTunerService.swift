@@ -65,10 +65,13 @@ final class VirtualTunerService {
     // The DeviceID most recently sent by *this instance's own* broadcastAnnounce() — set inside
     // that function itself (not derived from isAdvertising/advertisedDeviceID) specifically so
     // handleReadable()'s self-filter still recognizes a delayed loopback of stop()'s own "goodbye"
-    // broadcast even after isAdvertising has already been cleared. Deliberately never reset to nil
-    // by stop() — see handleReadable()'s own comment on why an unbounded-lifetime comparison here
-    // is the fix, not a new risk (the exact same "what if a real device shares this ID" tradeoff
-    // already existed in the old isAdvertising-gated check, just for a shorter window).
+    // broadcast even after isAdvertising has already been cleared. Cleared again a couple seconds
+    // after each broadcastAnnounce() (see that function) rather than kept forever — relayDeviceID(
+    // sourceDeviceID:) is deterministic per *source* device, so an unbounded lifetime here would
+    // silently drop a genuinely different, later relay session for the same physical tuner (this
+    // instance restarting its own relay after a stop/restart, or — since multiple hdhrVCRplus
+    // instances can point at the same physical device — a different Mac starting to relay it)
+    // forever, not just absorb the one real near-term loopback this field exists to filter.
     private var lastBroadcastDeviceID: UInt32?
 
     // Called (on `queue`) whenever an unsolicited DISCOVER_REPLY-shaped packet arrives from
@@ -130,7 +133,29 @@ final class VirtualTunerService {
     /// socket isn't actually advertising, dropping them.
     func beginPassiveListening() {
         queue.async { [weak self] in
-            _ = self?.bindSocketIfNeeded(onBindResult: nil)
+            self?.bindSocketWithRetry(attemptsRemaining: 3, delay: 2)
+        }
+    }
+
+    /// Must be called on `queue`. Retries a transient bind(:65001) failure a few times with
+    /// backoff instead of giving up after the one attempt beginPassiveListening() used to make —
+    /// a bind failure right at app launch (e.g. a quick relaunch before the OS has released the
+    /// previous process's own socket) would otherwise leave this instance never receiving another
+    /// instance's immediate FEED-announce push for its entire run, silently degraded to the
+    /// ~10s idle-loop discovery poll with nothing prompting a retry unless this instance itself
+    /// later starts recording (start()'s own bindSocketIfNeeded call gets a fresh attempt then,
+    /// independent of this one). Bounded, not indefinite — a persistent failure (port genuinely
+    /// held long-term by something else, e.g. a real libhdhomerun-based tool) is expected to just
+    /// mean this instance relies on the idle-loop poll fallback, same as before this retry existed.
+    private func bindSocketWithRetry(attemptsRemaining: Int, delay: TimeInterval) {
+        guard sock < 0 else { return }   // already bound (e.g. a concurrent start() call won the race)
+        if bindSocketIfNeeded(onBindResult: nil) { return }
+        guard attemptsRemaining > 0 else {
+            glog("[VirtualTuner] passive-listen bind retries exhausted — relying on idle-loop discovery poll only", level: .warning)
+            return
+        }
+        queue.asyncAfter(deadline: .now() + delay) { [weak self] in
+            self?.bindSocketWithRetry(attemptsRemaining: attemptsRemaining - 1, delay: delay * 2)
         }
     }
 
@@ -209,6 +234,17 @@ final class VirtualTunerService {
         // whatever advertisedDeviceID/isAdvertising become by the time a loopback of this exact
         // packet is later read back.
         lastBroadcastDeviceID = advertisedDeviceID
+        let announcedID = advertisedDeviceID
+        // Bounded window, not forever — see lastBroadcastDeviceID's own doc comment. 2s is ample
+        // for a genuine loopback of this exact packet (near-instant on any real LAN setup) while
+        // staying short enough that a later, unrelated announce sharing the same deterministic ID
+        // isn't misread as this broadcast echoing back. Only clears if nothing fresher has
+        // already overwritten it (another broadcastAnnounce() call in the meantime) — worst case
+        // that just means this timer no-ops and the fresher call's own timer clears it instead.
+        queue.asyncAfter(deadline: .now() + 2) { [weak self] in
+            guard let self, self.lastBroadcastDeviceID == announcedID else { return }
+            self.lastBroadcastDeviceID = nil
+        }
         let pkt = Self.buildDiscoverReply(deviceID: advertisedDeviceID, baseURL: advertisedBaseURL,
                                            tunerCount: advertisedTunerCount)
         var targets = HDHRManager.subnetBroadcastAddresses(interface: "")
