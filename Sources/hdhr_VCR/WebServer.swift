@@ -93,24 +93,27 @@ final class WebServer: @unchecked Sendable {
         return Array(inFlightRequestTasks.values)
     }
 
-    // FEED client-side local relay (viewer-Mac side, see docs/VirtualTunerService.md) — a session
-    // is an opaque id mapping to the local puller's temp-file path plus a liveness check, registered
-    // by AppState.startFeedLocalRelay right before it hands VLC a /api/feed-local-relay?session=
-    // URL. Opaque-id-keyed, never a raw ?path=, same posture as /api/watch-recording's show=<id>
-    // lookup (CLAUDE.md: no auth beyond LAN-subnet matching, so a mutating/data route must validate
-    // via a server-side lookup rather than trusting client-supplied paths).
-    private var feedLocalRelaySessions: [String: (path: String, isStillActive: @MainActor () -> Bool)] = [:]
-    private let feedLocalRelayLock = NSLock()
-    func registerFeedLocalRelaySession(id: String, path: String, isStillActive: @escaping @MainActor () -> Bool) {
-        feedLocalRelayLock.lock(); feedLocalRelaySessions[id] = (path, isStillActive); feedLocalRelayLock.unlock()
+    // FEED client-side local relay (viewer-Mac side, see docs/VirtualTunerService.md) — an in-
+    // memory proxy, not a disk round-trip (simplified 2026-09-12 from the original puller-curl-to-
+    // temp-file design once FeedRelayPacer's delivery-smoothing fix was confirmed live — see
+    // issues_resolved.md's "VLC-side FEED playback stalls" entry). A session is just an opaque id
+    // mapping to the remote FEED URL to proxy, registered by AppState.startFeedLocalRelay right
+    // before it hands VLC a /api/feed-local-relay?session= URL. Opaque-id-keyed, never a raw
+    // ?url= — same posture as /api/watch-recording's show=<id> lookup (CLAUDE.md: no auth beyond
+    // LAN-subnet matching, so a mutating/data route must validate via a server-side lookup rather
+    // than trusting client-supplied input).
+    private var feedRelaySessions: [String: String] = [:]
+    private let feedRelayLock = NSLock()
+    func registerFeedRelaySession(id: String, remoteURL: String) {
+        feedRelayLock.lock(); feedRelaySessions[id] = remoteURL; feedRelayLock.unlock()
     }
-    func unregisterFeedLocalRelaySession(id: String) {
-        feedLocalRelayLock.lock(); feedLocalRelaySessions.removeValue(forKey: id); feedLocalRelayLock.unlock()
+    func unregisterFeedRelaySession(id: String) {
+        feedRelayLock.lock(); feedRelaySessions.removeValue(forKey: id); feedRelayLock.unlock()
     }
-    private func feedLocalRelaySession(id: String) -> (path: String, isStillActive: @MainActor () -> Bool)? {
-        feedLocalRelayLock.lock()
-        defer { feedLocalRelayLock.unlock() }
-        return feedLocalRelaySessions[id]
+    private func feedRelayRemoteURL(id: String) -> String? {
+        feedRelayLock.lock()
+        defer { feedRelayLock.unlock() }
+        return feedRelaySessions[id]
     }
 
     // Pre-built page HTML cache — rebuilt after guide refresh, served instantly on GET /.
@@ -710,34 +713,223 @@ final class WebServer: @unchecked Sendable {
         }
     }
 
-    // GET /api/feed-local-relay?session=<opaque-id>&start=<offset> — the viewer-Mac side of the
-    // FEED client-side local relay (docs/VirtualTunerService.md): a puller curl (RecordingManager.
-    // startFeedPull) is already writing the *remote* Mac's FEED bytes to a local temp file, and this
-    // route lets VLC read that growing file over loopback instead of connecting to the remote Mac
-    // directly — the same `streamGrowingFile` mechanism Watch Now already uses, proven clean over
-    // loopback. `sessionId` is opaque and server-side-registered (AppState.startFeedLocalRelay via
-    // registerFeedLocalRelaySession) — never a raw path — same posture as handleWatchRecording's
-    // show=<id> lookup.
-    private func handleFeedLocalRelay(sessionId: String, startOffset: Int, conn: NWConnection) {
-        guard !sessionId.isEmpty, let session = feedLocalRelaySession(id: sessionId) else {
+    // GET /api/feed-local-relay?session=<opaque-id> — the viewer-Mac side of the FEED client-side
+    // local relay (docs/VirtualTunerService.md). In-memory proxy (simplified 2026-09-12 from an
+    // earlier puller-curl-to-temp-file design — see issues_resolved.md): opens an in-process HTTP
+    // request to the *remote* Mac's own FEED URL and forwards bytes straight through to VLC's
+    // connection via FeedRelayProxyDelegate, which paces delivery so a burst on the network hop
+    // doesn't reach VLC as a burst. `sessionId` is opaque and server-side-registered
+    // (AppState.startFeedLocalRelay via registerFeedRelaySession) — never a raw client-supplied
+    // URL — same posture as handleWatchRecording's show=<id> lookup.
+    private func handleFeedLocalRelay(sessionId: String, conn: NWConnection) {
+        guard !sessionId.isEmpty, let remoteURLString = feedRelayRemoteURL(id: sessionId),
+              let remoteURL = URL(string: remoteURLString) else {
             send(.notFound("no such FEED relay session"), on: conn); return
         }
-        fileIOQueue.async {
-            guard FileManager.default.fileExists(atPath: session.path) else {
-                self.queue.async { self.send(.notFound("relay temp file not found"), on: conn) }
+        beginFeedRelayProxy(remoteURL: remoteURL, sessionId: sessionId, conn: conn)
+    }
+
+    // Delegate-based (not completion-handler-based) URLSessionDataTask consumer for the FEED
+    // client-side local relay — mirrors TranscodeProxyDelegate's own shape (an open-ended remote
+    // stream with no natural end, forwarded to `conn` as chunks arrive) but adds delivery pacing:
+    // unlike libvlc's own sout httpd (already correctly real-time-paced, TranscodeProxyDelegate's
+    // source), the remote FEED URL's delivery cadence over a real network hop is NOT already smooth
+    // — see issues_resolved.md's "VLC-side FEED playback stalls" entry for the investigation this
+    // pacing fixes. Runs on URLSession's own delegate queue; every `conn.send` hops onto
+    // `targetQueue` first, matching this file's own threading discipline.
+    private final class FeedRelayProxyDelegate: NSObject, URLSessionDataDelegate {
+        private let conn: NWConnection
+        private let targetQueue: DispatchQueue
+        private let onFinished: () -> Void
+        // Mirrors TranscodeProxyDelegate's own field — fired instead of onFinished when the dataTask
+        // ends in an error before ever delivering a single byte, so beginFeedRelayProxy's retry loop
+        // can tell "the remote isn't answering yet/at all" apart from a genuine stream end.
+        private let onFailedBeforeAnyData: () -> Void
+        private let lock = NSLock()
+        private var finished = false
+        private var receivedAnyData = false
+        private weak var currentTask: URLSessionDataTask?
+
+        // Pacing state — see drainIfNeeded's own comment for the math. No periodic file-stat
+        // sampling needed here (unlike the earlier disk-backed FeedRelayPacer): every byte's arrival
+        // is already a direct event, so the observed rate is just a running average of real receipts.
+        private var buffer = Data()
+        private var draining = false
+        private let startedAt = Date()
+        private var bytesReceived = 0
+        private var bytesSent = 0
+        // Seed/floor for the observed-rate average — avoids a wildly-low estimate (and therefore an
+        // overly aggressive hold-back) from the very first, possibly-tiny chunk. Mid-range OTA
+        // MPEG-2 guess, same value FeedRelayPacer's disk-based predecessor used.
+        private static let minAssumedBytesPerSecond: Double = 150_000
+        // How far ahead of a perfectly steady real-time pace delivery is allowed to run before this
+        // delegate starts holding chunks back — same value/reasoning as FeedRelayPacer's own.
+        private static let lookaheadSeconds: TimeInterval = 0.5
+        private static let drainRetryInterval: TimeInterval = 0.02
+
+        init(conn: NWConnection, targetQueue: DispatchQueue, onFinished: @escaping () -> Void,
+             onFailedBeforeAnyData: @escaping () -> Void) {
+            self.conn = conn; self.targetQueue = targetQueue; self.onFinished = onFinished
+            self.onFailedBeforeAnyData = onFailedBeforeAnyData
+        }
+
+        private func finishOnce() {
+            lock.lock()
+            let alreadyFinished = finished
+            finished = true
+            lock.unlock()
+            guard !alreadyFinished else { return }
+            onFinished()
+        }
+        var isFinished: Bool { lock.lock(); defer { lock.unlock() }; return finished }
+        func notifyFinished() { finishOnce() }
+
+        func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+            lock.lock()
+            receivedAnyData = true
+            currentTask = dataTask
+            buffer.append(data)
+            bytesReceived += data.count
+            lock.unlock()
+            targetQueue.async { [weak self] in self?.drainIfNeeded() }
+        }
+
+        // Sends as much of the buffered backlog as a steady real-time pace currently allows, then
+        // re-schedules itself if bytes remain buffered but aren't allowed out yet. Always runs on
+        // targetQueue. `allowed` mirrors FeedRelayPacer's own math: "how many bytes should have gone
+        // out by (now + lookaheadSeconds) at the observed rate," minus what's already been sent —
+        // 0 or negative means delivery is already at/ahead of pace, so this just waits.
+        private func drainIfNeeded() {
+            lock.lock()
+            guard !finished, !draining, !buffer.isEmpty else { lock.unlock(); return }
+            let elapsed = Date().timeIntervalSince(startedAt)
+            let observedRate = elapsed > 0
+                ? max(Self.minAssumedBytesPerSecond, Double(bytesReceived) / elapsed)
+                : Self.minAssumedBytesPerSecond
+            let targetByNow = observedRate * (elapsed + Self.lookaheadSeconds)
+            let allowed = max(0, Int(targetByNow) - bytesSent)
+            let toSend = min(allowed, buffer.count)
+            guard toSend > 0 else {
+                lock.unlock()
+                targetQueue.asyncAfter(deadline: .now() + Self.drainRetryInterval) { [weak self] in self?.drainIfNeeded() }
                 return
             }
-            // liveEdgeCushionBytes stays 0 (the default) — this is a same-machine read of a file
-            // this Mac's own puller curl is actively writing, the same shape as Watch Now, not the
-            // cross-machine raw FEED passthrough (handleVirtualTunerStream) that needs a cushion.
-            // pacer: one fresh instance per connection (a catchUpToLive reconnect gets a clean
-            // pacing state, not one polluted by the just-abandoned connection's own bytesSent/rate
-            // history) — see FeedRelayPacer's own doc comment for why this path specifically needs
-            // delivery smoothing that Watch Now/raw FEED passthrough don't.
-            let initialSize = (try? FileManager.default.attributesOfItem(atPath: session.path))?[.size] as? Int ?? startOffset
-            self.streamGrowingFile(path: session.path, showId: sessionId, startOffset: startOffset, conn: conn,
-                                    pacer: FeedRelayPacer(initialFileSize: initialSize),
-                                    stillActiveCheck: session.isStillActive)
+            let chunk = buffer.prefix(toSend)
+            buffer.removeFirst(toSend)
+            bytesSent += toSend
+            draining = true
+            let hasMore = !buffer.isEmpty
+            lock.unlock()
+            conn.send(content: Data(chunk), completion: .contentProcessed({ [weak self] error in
+                guard let self else { return }
+                self.lock.lock(); self.draining = false; self.lock.unlock()
+                if error != nil {
+                    self.lock.lock(); let task = self.currentTask; self.lock.unlock()
+                    task?.cancel()
+                    self.finishOnce()
+                    return
+                }
+                // Keep draining the rest of what's already buffered before waiting on the pace
+                // again — this recursion is bounded by buffer.count strictly decreasing each call.
+                if hasMore { self.drainIfNeeded() }
+            }))
+        }
+
+        func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+            lock.lock()
+            let alreadyFinished = finished
+            let hadData = receivedAnyData
+            lock.unlock()
+            guard !alreadyFinished else { return }
+            if error != nil, !hadData {
+                onFailedBeforeAnyData()
+            } else {
+                // Hopped onto targetQueue — this delegate method runs on URLSession's private
+                // delegate queue, not targetQueue, same reasoning TranscodeProxyDelegate's own
+                // matching method documents.
+                targetQueue.async { [weak self] in self?.finishOnce() }
+            }
+        }
+    }
+
+    private static let feedRelayMaxConnectAttempts = 5
+    private static let feedRelayRetryDelay: TimeInterval = 0.5
+
+    // Opens an outbound connection to the remote Mac's FEED URL and forwards every chunk it
+    // produces, paced, straight out to `conn` — mirrors pumpTranscodeProxy's own retry-before-any-
+    // data shape (a few attempts, short backoff) for a transient "remote not answering yet" case,
+    // though here that's a real network target rather than a just-started local httpd.
+    private func beginFeedRelayProxy(remoteURL: URL, sessionId: String, conn: NWConnection) {
+        var urlSession: URLSession?
+        var connectAttempt = 0   // mutated only inside closures that hop onto `queue` first
+        let cleanup: () -> Void = {
+            urlSession?.invalidateAndCancel()
+            conn.cancel()
+        }
+        var startAttempt: (() -> Void)!
+        let delegate = FeedRelayProxyDelegate(conn: conn, targetQueue: queue, onFinished: cleanup,
+                                               onFailedBeforeAnyData: { [weak self] in
+            guard let self else { return }
+            self.queue.async {
+                switch conn.state {
+                case .cancelled, .failed:
+                    return   // viewer already gave up — no point retrying into a dead connection
+                default: break
+                }
+                connectAttempt += 1
+                guard connectAttempt < Self.feedRelayMaxConnectAttempts else {
+                    glog("[VirtualTuner] FEED local relay session=\(sessionId) remote not answering after \(connectAttempt) attempts — giving up", level: .warning)
+                    cleanup()
+                    return
+                }
+                glog("[VirtualTuner] FEED local relay session=\(sessionId) remote not ready yet (attempt \(connectAttempt)) — retrying in \(Self.feedRelayRetryDelay)s")
+                self.queue.asyncAfter(deadline: .now() + Self.feedRelayRetryDelay) { startAttempt() }
+            }
+        })
+        let config = URLSessionConfiguration.default
+        // No timeout — an intentionally long-lived stream for as long as the source recording (and
+        // this viewer's own connection) stays open, matching pumpTranscodeProxy's identical config.
+        config.timeoutIntervalForRequest  = 86400
+        config.timeoutIntervalForResource = 86400
+        let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
+        urlSession = session
+        startAttempt = { session.dataTask(with: remoteURL).resume() }
+        // Connection: close — see streamGrowingFile's identical header for why keep-alive is wrong
+        // here too (no Content-Length/chunked framing on an open-ended stream). Sent before starting
+        // the actual proxy fetch, same order beginTranscodeRelay uses — VLC's HTTP client expects a
+        // real status line first; forwarding raw TS bytes (starting with the 0x47 sync byte, which
+        // reads as the literal character 'G') with no header ahead of them was a real bug caught
+        // live 2026-09-12 ("invalid HTTP reply 'G'", VLC's own log) the first time this was tested.
+        let header = "HTTP/1.1 200 OK\r\nContent-Type: video/mp2t\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n"
+        conn.send(content: Data(header.utf8), completion: .contentProcessed({ err in
+            guard err == nil else {
+                conn.cancel()
+                glog("[VirtualTuner] FEED local relay session=\(sessionId) header send failed: \(err!.localizedDescription)", level: .warning)
+                return
+            }
+            startAttempt()
+        }))
+
+        // Periodic liveness probe — mirrors scheduleTranscodeLivenessProbe's identical reasoning: a
+        // viewer whose Mac sleeps or loses Wi-Fi without a clean TCP close leaves conn.send
+        // "succeeding" from this side for as long as the OS's own TCP retransmission timeout takes
+        // (many minutes), during which this proxy would otherwise keep pulling from the remote Mac
+        // with nothing to ever trigger cleanup.
+        scheduleFeedRelayLivenessProbe(conn: conn, delegate: delegate)
+    }
+
+    private static let feedRelayLivenessProbeInterval: TimeInterval = 30
+
+    private func scheduleFeedRelayLivenessProbe(conn: NWConnection, delegate: FeedRelayProxyDelegate) {
+        queue.asyncAfter(deadline: .now() + Self.feedRelayLivenessProbeInterval) { [weak self] in
+            guard let self, !delegate.isFinished else { return }
+            conn.send(content: Data(), completion: .contentProcessed({ error in
+                if error != nil {
+                    delegate.notifyFinished()
+                } else {
+                    self.scheduleFeedRelayLivenessProbe(conn: conn, delegate: delegate)
+                }
+            }))
         }
     }
 
@@ -1253,7 +1445,6 @@ final class WebServer: @unchecked Sendable {
     private func streamGrowingFile(path: String, showId: String, startOffset: Int, conn: NWConnection,
                                     durationSeconds: Int? = nil, liveEdgeCushionBytes: Int = 0,
                                     knownFileSizeAtOffsetComputation: Int? = nil,
-                                    pacer: FeedRelayPacer? = nil,
                                     stillActiveCheck: @escaping @MainActor () -> Bool,
                                     onStreamEnded: (() -> Void)? = nil) {
         guard let handle = FileHandle(forReadingAtPath: path) else {
@@ -1326,7 +1517,7 @@ final class WebServer: @unchecked Sendable {
                 self.pumpGrowingFile(handle: handle, showId: showId, conn: conn, path: path,
                                       bytesSent: initialBytes, waitStreak: 0, waitStartedAt: nil, deadline: deadline,
                                       chunkSize: initialChunkSize, liveEdgeCushionBytes: liveEdgeCushionBytes,
-                                      pacer: pacer, stillActiveCheck: stillActiveCheck, onStreamEnded: onStreamEnded)
+                                      stillActiveCheck: stillActiveCheck, onStreamEnded: onStreamEnded)
             }
         }
     }
@@ -1415,85 +1606,6 @@ final class WebServer: @unchecked Sendable {
     // fully delivered once the source stops growing rather than being permanently withheld.
     private static let feedLiveEdgeCushionBytes = 0
 
-    // Smooths delivery to VLC for the FEED client-side local relay only (docs/VirtualTunerService.md
-    // — passed by handleFeedLocalRelay, nil for every other streamGrowingFile caller). Root-caused
-    // 2026-09-12: with this app's own client-side local-relay puller in place (VLC's socket
-    // genuinely loopback-only, real network read isolated in a separate curl process), the VLC-side
-    // PCR-loss stall (ISSUES.md's "VLC-side FEED playback stalls" entry) still reproduced identically
-    // — but the SAME already-on-disk bytes played back with zero stalls when opened directly in VLC
-    // as a static file. That rules out corrupted data and isolates the cause to *delivery cadence*:
-    // a real recording's file grows at a genuinely steady, tuner-paced rate, so streamGrowingFile's
-    // "forward each chunk immediately, no artificial delay" policy (see the removed-2026-09-07
-    // constant-rate-pacing comment a few hundred lines below) is already correct there. This FEED
-    // temp file's growth is instead whatever burst/gap pattern the *puller's own* network reads
-    // land in — pumpGrowingFile faithfully replays that same burst/gap pattern straight to VLC,
-    // which is what actually reaches VLC's clock-sync logic. This is NOT a repeat of the reverted
-    // 744372d pacing attempt: that one added a guessed-bitrate delay on top of an already-correctly-
-    // paced tuner-fed source and made things worse; this applies pacing only where the source
-    // genuinely isn't paced yet.
-    //
-    // Deliberately does NOT throttle a genuine backlog drain (a fresh catchUpToLive reconnect can
-    // be tens of MB behind, per streamGrowingFile's own hasBacklog fast-path) — only once a
-    // connection has already transitioned to the small, cadence-matched watchRecordingChunkSize
-    // (handleGrowingFileChunk's own one-way "caught up to live edge" signal) does
-    // handleGrowingFileChunk consult this pacer before scheduling the next send. Applying it during
-    // backlog drain would throttle a multi-minute-old reconnect down to the observed real-time
-    // bitrate, taking minutes to catch up instead of the fast drain that already works fine (per the
-    // same static-file test above — draining already-on-disk bytes plays back cleanly regardless).
-    // @unchecked Sendable — same posture as WebServer itself just above. A given instance is only
-    // ever touched sequentially (fileIOQueue's read step, then queue's send/schedule step, one at a
-    // time per connection, never concurrently) even though those two hops run on different queues.
-    private final class FeedRelayPacer: @unchecked Sendable {
-        private let startedAt = Date()
-        private var bytesSent = 0
-        private var lastMeasuredAt = Date()
-        private var lastMeasuredSize: Int
-        // Seeded with a mid-range OTA MPEG-2 guess (2.4 Mbps) so early delivery isn't held back
-        // before the first real measurement lands — refined below from the file's own true growth,
-        // independent of anything already throttled through this pacer (measuring what's actually
-        // been *sent* would make the estimate circular).
-        private var observedBytesPerSecond: Double = 300_000
-        private static let measureInterval: TimeInterval = 2.0
-        // How far ahead of a perfectly steady real-time pace delivery is allowed to run before this
-        // pacer starts holding chunks back — small enough to actually smooth out a burst, large
-        // enough not to add a second, separately-perceptible lag on top of the relay's existing
-        // "few seconds behind live" delay (docs/VirtualTunerService.md's Known limitation).
-        private static let lookaheadSeconds: TimeInterval = 0.5
-
-        init(initialFileSize: Int) { lastMeasuredSize = initialFileSize }
-
-        // Called from pumpGrowingFile's fileIOQueue closure with a fresh stat of the file — cheap,
-        // and needed regardless of liveEdgeCushionBytes (which stays 0 for this path), so this is a
-        // second, independent stat call rather than reusing that branch's own (currently disabled).
-        func maybeUpdateObservedRate(currentFileSize: Int) {
-            let now = Date()
-            let elapsed = now.timeIntervalSince(lastMeasuredAt)
-            guard elapsed >= Self.measureInterval else { return }
-            let delta = currentFileSize - lastMeasuredSize
-            if delta > 0 {
-                // EWMA, not a straight replace — one noisy 2s window (a transient hiccup on the
-                // puller's own read) shouldn't swing the target rate wildly on its own.
-                observedBytesPerSecond = observedBytesPerSecond * 0.7 + (Double(delta) / elapsed) * 0.3
-            }
-            lastMeasuredAt = now
-            lastMeasuredSize = currentFileSize
-        }
-
-        // How long to hold `chunkBytes` before actually sending it, so that the cumulative sent
-        // total tracks a steady real-time pace (plus lookaheadSeconds of slack) instead of whatever
-        // moment the underlying disk read happened to succeed. Returns 0 (send immediately) whenever
-        // delivery is already at or behind pace — this only ever holds bytes back, never speeds
-        // anything up beyond what pumpGrowingFile's own read cadence already provides.
-        func delayBeforeSending(chunkBytes: Int) -> TimeInterval {
-            let projected = bytesSent + chunkBytes
-            let wallClockNeeded = Double(projected) / observedBytesPerSecond - Self.lookaheadSeconds
-            let targetInstant = startedAt.addingTimeInterval(wallClockNeeded)
-            return max(0, targetInstant.timeIntervalSinceNow)
-        }
-
-        func recordSent(_ n: Int) { bytesSent += n }
-    }
-
     // Rounds a byte offset down to the nearest complete TS packet boundary — `offset` is usually
     // the recording file's momentary byte size (handleVirtualTunerStream's live-edge startOffset),
     // which has no relation to 188-byte packet framing: curl writes to disk in whatever chunk sizes
@@ -1519,7 +1631,6 @@ final class WebServer: @unchecked Sendable {
     private func pumpGrowingFile(handle: FileHandle, showId: String, conn: NWConnection, path: String,
                                   bytesSent: Int, waitStreak: Int, waitStartedAt: Date?, deadline: Date? = nil,
                                   chunkSize: Int = watchRecordingChunkSize, liveEdgeCushionBytes: Int = 0,
-                                  pacer: FeedRelayPacer? = nil,
                                   stillActiveCheck: @escaping @MainActor () -> Bool,
                                   onStreamEnded: (() -> Void)? = nil) {
         // Checked once per recursion (covers both the "have data" and "waiting" paths below) —
@@ -1554,15 +1665,6 @@ final class WebServer: @unchecked Sendable {
             // (and handled identically to) a real "caught up to EOF" empty read by
             // handleGrowingFileChunk just below — the only difference is *which* edge it's caught
             // up to, the true one or the cushion-shifted one.
-            // Independent of the cushion branch below (which stays disabled, `feedLiveEdgeCushionBytes
-            // == 0`, for this path) — refreshes the pacer's own observed-bitrate estimate from a
-            // fresh stat every ~2s, regardless of how much has actually been read/sent this
-            // iteration. See FeedRelayPacer's own doc comment for why this must come from the true
-            // file size, not from anything already throttled through the pacer itself.
-            if let pacer {
-                let trueSize = (try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? Int ?? bytesSent
-                pacer.maybeUpdateObservedRate(currentFileSize: trueSize)
-            }
             var readLength = chunkSize
             var effectiveChunkSize = chunkSize
             if liveEdgeCushionBytes > 0 {
@@ -1590,7 +1692,7 @@ final class WebServer: @unchecked Sendable {
                 self.handleGrowingFileChunk(chunk, handle: handle, showId: showId, conn: conn, path: path,
                                              bytesSent: bytesSent, waitStreak: waitStreak, waitStartedAt: waitStartedAt,
                                              deadline: deadline, chunkSize: effectiveChunkSize, liveEdgeCushionBytes: liveEdgeCushionBytes,
-                                             pacer: pacer, stillActiveCheck: stillActiveCheck, onStreamEnded: onStreamEnded)
+                                             stillActiveCheck: stillActiveCheck, onStreamEnded: onStreamEnded)
             }
         }
     }
@@ -1603,7 +1705,6 @@ final class WebServer: @unchecked Sendable {
     private func handleGrowingFileChunk(_ chunk: Data, handle: FileHandle, showId: String, conn: NWConnection, path: String,
                                          bytesSent: Int, waitStreak: Int, waitStartedAt: Date?, deadline: Date? = nil,
                                          chunkSize: Int, liveEdgeCushionBytes: Int = 0,
-                                         pacer: FeedRelayPacer? = nil,
                                          stillActiveCheck: @escaping @MainActor () -> Bool,
                                          onStreamEnded: (() -> Void)? = nil) {
         guard !chunk.isEmpty else {
@@ -1635,7 +1736,7 @@ final class WebServer: @unchecked Sendable {
                     self?.pumpGrowingFile(handle: handle, showId: showId, conn: conn, path: path,
                                            bytesSent: bytesSent, waitStreak: waitStreak + 1, waitStartedAt: startedAt,
                                            deadline: deadline, chunkSize: Self.watchRecordingChunkSize,
-                                           liveEdgeCushionBytes: liveEdgeCushionBytes, pacer: pacer,
+                                           liveEdgeCushionBytes: liveEdgeCushionBytes,
                                            stillActiveCheck: stillActiveCheck, onStreamEnded: onStreamEnded)
                 }
                 return
@@ -1648,7 +1749,7 @@ final class WebServer: @unchecked Sendable {
                         self?.pumpGrowingFile(handle: handle, showId: showId, conn: conn, path: path,
                                                bytesSent: bytesSent, waitStreak: waitStreak + 1, waitStartedAt: startedAt,
                                                deadline: deadline, chunkSize: Self.watchRecordingChunkSize,
-                                               liveEdgeCushionBytes: liveEdgeCushionBytes, pacer: pacer,
+                                               liveEdgeCushionBytes: liveEdgeCushionBytes,
                                                stillActiveCheck: stillActiveCheck, onStreamEnded: onStreamEnded)
                     }
                 } else if liveEdgeCushionBytes > 0 {
@@ -1666,7 +1767,7 @@ final class WebServer: @unchecked Sendable {
                         self?.pumpGrowingFile(handle: handle, showId: showId, conn: conn, path: path,
                                                bytesSent: bytesSent, waitStreak: 0, waitStartedAt: nil,
                                                deadline: deadline, chunkSize: Self.watchRecordingBacklogChunkSize,
-                                               liveEdgeCushionBytes: 0, pacer: pacer,
+                                               liveEdgeCushionBytes: 0,
                                                stillActiveCheck: stillActiveCheck, onStreamEnded: onStreamEnded)
                     }
                 } else {
@@ -1705,43 +1806,31 @@ final class WebServer: @unchecked Sendable {
         // source's own real-time cadence directly instead of a second, less accurate guess at
         // it. See ISSUES.md's FEED throughput/stall entry for the full trail this reverses.
         //
-        // FeedRelayPacer is the one deliberate exception, added 2026-09-12, and only once a
-        // connection has reached the small cadence-matched chunkSize (never during a genuine
-        // backlog drain — see that class's own doc comment for why). Unlike the reverted
-        // 744372d attempt, this file's growth is NOT already correctly paced (it's the output of
-        // a second growing-file relay hop, not a direct tuner read), so smoothing delivery here
-        // is a materially different case, not a repeat of that mistake.
-        let pacingDelay = (pacer != nil && chunkSize == Self.watchRecordingChunkSize)
-            ? pacer!.delayBeforeSending(chunkBytes: chunk.count) : 0
-        let sendNow = { [weak self] in
-            guard let self else { return }
-            pacer?.recordSent(chunk.count)
-            self.sendWithTimeout(chunk, on: conn, timeout: Self.growingFileNoTimeout) { [weak self] reason in
-                guard let self, reason == nil else {
-                    self?.fileIOQueue.async { handle.closeFile() }
-                    // Explicit cancel — a real send error usually means the OS already knows the
-                    // connection is dead, but the synthetic timeout case (the peer stopped draining
-                    // its receive window without the socket itself ever erroring) does not; without
-                    // this, a stalled connection stays open indefinitely from this side even after
-                    // giving up on it. cancel() is idempotent (WebServer.stop()'s own comment), so
-                    // calling it here even when the connection may already be dying is harmless.
-                    conn.cancel()
-                    glog("[WebServer] watch-recording show=\(showId) client disconnected after \(newTotal) bytes: \(reason ?? "unknown")")
-                    onStreamEnded?()
-                    return
-                }
-                self.queue.async {
-                    self.pumpGrowingFile(handle: handle, showId: showId, conn: conn, path: path,
-                                          bytesSent: newTotal, waitStreak: 0, waitStartedAt: nil, deadline: deadline,
-                                          chunkSize: nextChunkSize, liveEdgeCushionBytes: liveEdgeCushionBytes, pacer: pacer,
-                                          stillActiveCheck: stillActiveCheck, onStreamEnded: onStreamEnded)
-                }
+        // A FEED-specific pacer briefly lived here 2026-09-12 (see issues_resolved.md's "VLC-side
+        // FEED playback stalls" entry) but was superseded the same day by moving FEED's client-side
+        // local relay to an in-memory proxy (WebServer.FeedRelayProxyDelegate) that paces delivery
+        // itself, upstream of this function — this file's own growth (a real recording, tuner-fed)
+        // never needed pacing and still doesn't.
+        sendWithTimeout(chunk, on: conn, timeout: Self.growingFileNoTimeout) { [weak self] reason in
+            guard let self, reason == nil else {
+                self?.fileIOQueue.async { handle.closeFile() }
+                // Explicit cancel — a real send error usually means the OS already knows the
+                // connection is dead, but the synthetic timeout case (the peer stopped draining
+                // its receive window without the socket itself ever erroring) does not; without
+                // this, a stalled connection stays open indefinitely from this side even after
+                // giving up on it. cancel() is idempotent (WebServer.stop()'s own comment), so
+                // calling it here even when the connection may already be dying is harmless.
+                conn.cancel()
+                glog("[WebServer] watch-recording show=\(showId) client disconnected after \(newTotal) bytes: \(reason ?? "unknown")")
+                onStreamEnded?()
+                return
             }
-        }
-        if pacingDelay > 0 {
-            queue.asyncAfter(deadline: .now() + pacingDelay, execute: sendNow)
-        } else {
-            sendNow()
+            self.queue.async {
+                self.pumpGrowingFile(handle: handle, showId: showId, conn: conn, path: path,
+                                      bytesSent: newTotal, waitStreak: 0, waitStartedAt: nil, deadline: deadline,
+                                      chunkSize: nextChunkSize, liveEdgeCushionBytes: liveEdgeCushionBytes,
+                                      stillActiveCheck: stillActiveCheck, onStreamEnded: onStreamEnded)
+            }
         }
     }
 
@@ -1882,14 +1971,13 @@ final class WebServer: @unchecked Sendable {
                 self.handleWatchRecording(showId: showId, startOffset: max(0, startOffset), conn: conn); return
             }
             // FEED client-side local relay — see handleFeedLocalRelay's own doc comment. Needs the
-            // raw NWConnection for streamGrowingFile, same reason as /api/watch-recording above, so
-            // it's special-cased here rather than going through the generic route()/routeOnMain()
-            // dispatch.
+            // raw NWConnection to forward proxied chunks directly, same reason as
+            // /api/watch-recording above, so it's special-cased here rather than going through the
+            // generic route()/routeOnMain() dispatch.
             if cleanPath == "/api/feed-local-relay" && method == "GET" {
                 let query = URLComponents(string: path)?.queryItems ?? []
                 let sessionId = query.first(where: { $0.name == "session" })?.value ?? ""
-                let startOffset = query.first(where: { $0.name == "start" }).flatMap { Int($0.value ?? "") } ?? 0
-                self.handleFeedLocalRelay(sessionId: sessionId, startOffset: max(0, startOffset), conn: conn); return
+                self.handleFeedLocalRelay(sessionId: sessionId, conn: conn); return
             }
             // Virtual tuner stream — see VirtualTunerService.swift's doc comment. "/auto/v" prefix
             // matches the real HDHomeRun's own stream-URL shape (docs/HDHRFindings.md); the channel

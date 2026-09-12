@@ -224,13 +224,8 @@ struct VLCPlayerView: View {
         guard wantsTranscode != feedIsTranscoding, let rawURL = currentFeedEntry?.URL else { return }
         let newRemoteURL = wantsTranscode ? rawURL + "&transcode=auto" : rawURL
         glog("[VLC] FEED transcode toggle → \(wantsTranscode ? "H.264" : "raw"): \(newRemoteURL)")
-        Task {
-            // On failure, startFeedLocalRelay already showed an alert — leave playback as-is
-            // (the toggle binding reads feedIsTranscoding fresh next render, so it snaps back to
-            // reflect reality rather than showing a state that was never actually applied).
-            guard let localURL = await state.startFeedLocalRelay(remoteURL: newRemoteURL, device: device) else { return }
-            bridge.play(url: localURL)
-        }
+        let localURL = state.startFeedLocalRelay(remoteURL: newRemoteURL, device: device)
+        bridge.play(url: localURL)
     }
 
     // The Native-resolution icon's color now also encodes whether the current stream is being
@@ -1330,7 +1325,6 @@ final class VLCPlayerWindowManager {
     // holds the local http://127.0.0.1:<port>/api/feed-local-relay?... URL, not the real one.
     private(set) var currentFeedRemoteURL: String?
     private(set) var currentFeedSessionId: String?
-    private var currentFeedTempPath: String?
     private weak var appState: AppState?
     // Local NSEvent monitor for arrow-key seek + Esc-to-exit-fullscreen — installed once per real
     // window (created in `open()`'s new-window branch), torn down in `playerWindowDidClose()`.
@@ -1341,13 +1335,12 @@ final class VLCPlayerWindowManager {
 
     private init() {}
 
-    /// Records which FEED session/remote URL/temp path is now backing the player, right before
+    /// Records which FEED session/remote URL is now backing the player, right before
     /// AppState.startFeedLocalRelay hands VLCBridge the local relay URL — see currentFeedRemoteURL's
     /// own doc comment. Cleared in playerWindowDidClose.
-    func setFeedRelayTracking(remoteURL: String, sessionId: String, tempPath: String) {
+    func setFeedRelayTracking(remoteURL: String, sessionId: String) {
         currentFeedRemoteURL = remoteURL
         currentFeedSessionId = sessionId
-        currentFeedTempPath = tempPath
     }
 
     /// Bring the player window to the front without switching the stream.
@@ -1564,18 +1557,16 @@ final class VLCPlayerWindowManager {
         keyMonitor = nil
         pendingSeekDelta = 0   // in case the window closed mid-hold, before a matching keyUp arrived
         // FEED client-side local relay teardown — guarded so a normal live-tuner/Watch-Now close
-        // pays no new cost. Order matters: stop the puller curl before deleting its temp file (a
-        // still-running curl reopening/rewriting a deleted path would recreate it).
+        // pays no new cost. Unregistering the session is enough: FeedRelayProxyDelegate's own
+        // cleanup (invalidating its URLSession) fires from conn.cancel() below closing the
+        // NWConnection it's forwarding into — there's no separate process or temp file to tear down
+        // now that this relay is in-memory (see issues_resolved.md's "VLC-side FEED playback
+        // stalls" entry for the 2026-09-12 simplification).
         if let sessionId = currentFeedSessionId {
-            appState?.recordingManager.stopFeedPull(sessionId: sessionId)
-            appState?.webServer.unregisterFeedLocalRelaySession(id: sessionId)
-            if let tempPath = currentFeedTempPath {
-                try? FileManager.default.removeItem(atPath: tempPath)
-            }
+            appState?.webServer.unregisterFeedRelaySession(id: sessionId)
         }
         currentFeedRemoteURL = nil
         currentFeedSessionId = nil
-        currentFeedTempPath = nil
         currentDeviceID = nil
         currentChannelNumber = nil
         window = nil

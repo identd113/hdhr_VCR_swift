@@ -8,16 +8,6 @@ final class RecordingManager {
     private var assertionIds: [String: IOPMAssertionID]  = [:]   // IOKit assertion per show (+ "vlc")
     private var lastExitStatus: [String: Int32]           = [:]   // raw waitpid status, set when isRunning() reaps a dead curl
 
-    // FEED client-side local relay pullers (docs/VirtualTunerService.md) — a separate dictionary
-    // from `pids` on purpose: unlike a real recording curl (which deliberately survives a
-    // force-quit/crash via POSIX_SPAWN_SETSID so it can be reattached on next launch, see
-    // spawnDetached's own comment), a FEED puller must NEVER get that treatment. Once this app's
-    // own WebServer is gone, nothing can ever serve the local temp file it's writing to again, so
-    // keeping this in a distinct dictionary makes "always kill these on exit" a structural fact
-    // (stopAllFeedPulls, called unconditionally from AppState.teardownForExit and the SIGTERM
-    // handler) rather than a filter someone has to remember to apply to `pids`.
-    private var feedPullPids: [String: Int32] = [:]
-
     static var curlLogPath: String { curlVerboseLogFilePath }
 
     // Path to the curl binary spawned by start(). Injectable for tests only — every production
@@ -250,62 +240,6 @@ final class RecordingManager {
 
     func stopAll() {
         for id in Array(pids.keys) { stop(showId: id) }
-    }
-
-    // MARK: - FEED client-side local relay puller
-
-    // Pulls a remote FEED URL (another Mac's in-progress recording) to a local temp file so VLC can
-    // read it over loopback instead of connecting to the remote Mac directly — see AppState.
-    // startFeedLocalRelay and docs/VirtualTunerService.md. Deliberately not built on start()/pids:
-    // start()'s signature is tailored to a real recording (?duration=&transcode= appended,
-    // show_id/show_end headers, --max-time/sleep-assertion sized off durationSeconds) — none of
-    // which fits a FEED pull (already-complete URL, no known end time).
-    func startFeedPull(sessionId: String, url: String, outputPath: String, networkInterface: String = "") throws {
-        guard feedPullPids[sessionId] == nil else { return }
-
-        var curlArgs: [String] = [
-            "--connect-timeout", "10",
-            "-H", "appname:hdhrVCRplus",
-        ]
-        if !networkInterface.isEmpty { curlArgs += ["--interface", networkInterface] }
-        // No --max-time — this runs until explicitly killed (stopFeedPull, on window close) or the
-        // remote closes the connection on its own (curl exits, caught by isFeedPullRunning's reap),
-        // mirroring streamGrowingFile's own growingFileNoTimeout philosophy on the serving side.
-        curlArgs += [url, "-o", outputPath]
-
-        let dir = (outputPath as NSString).deletingLastPathComponent
-        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
-
-        let pid = try spawnDetached(executablePath: curlExecutablePath, arguments: curlArgs, stderrPath: nil)
-        feedPullPids[sessionId] = pid
-        glog("[Rec] FEED pull started session=\(sessionId) pid=\(pid): \(url) → \(outputPath)")
-    }
-
-    func stopFeedPull(sessionId: String) {
-        guard let pid = feedPullPids.removeValue(forKey: sessionId) else { return }
-        kill(pid, SIGKILL)
-        // Same detached-reap reasoning as stop(showId:) above — never block the main actor waiting
-        // on a child that may be stuck in an uninterruptible syscall.
-        DispatchQueue.global(qos: .utility).async { waitpid(pid, nil, 0) }
-        glog("[Rec] FEED pull stopped session=\(sessionId)")
-    }
-
-    // Same waitpid(WNOHANG) reap pattern as isRunning() above.
-    func isFeedPullRunning(sessionId: String) -> Bool {
-        guard let pid = feedPullPids[sessionId] else { return false }
-        var status: Int32 = 0
-        let wret = waitpid(pid, &status, WNOHANG)
-        if wret == 0 { return true }
-        if wret > 0 { feedPullPids.removeValue(forKey: sessionId); return false }
-        if kill(pid, 0) == 0 { return true }
-        feedPullPids.removeValue(forKey: sessionId); return false
-    }
-
-    // Called unconditionally (not gated on any "keep recordings running" flag — that's about the
-    // user's own recordings, unrelated to an unresumable FEED session) from both
-    // AppState.teardownForExit and the SIGTERM handler.
-    func stopAllFeedPulls() {
-        for id in Array(feedPullPids.keys) { stopFeedPull(sessionId: id) }
     }
 
     // MARK: - Detached spawn
