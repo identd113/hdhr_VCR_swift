@@ -38,10 +38,20 @@ struct MenuContent: View {
         }
     }
 
-    // Returns the channel + current guide entry for the active VLC stream, or nil when nothing is playing.
-    private var nowWatchingInfo: (channel: LineupEntry, entry: GuideEntry?)? {
-        guard !state.vlcCurrentURL.isEmpty else { return nil }
-        let base = state.vlcCurrentURL.urlBase
+    // Returns the device + channel + current guide entry for the active VLC stream, or nil when
+    // nothing is playing. Matches against VLCPlayerWindowManager.currentFeedRemoteURL when a FEED
+    // session is active, falling back to state.vlcCurrentURL otherwise — not vlcCurrentURL alone
+    // (a direct mirror of VLCBridge.currentURL, AppState.swift:585-590). Once the FEED client-side
+    // local relay is in play, VLCBridge.currentURL/vlcCurrentURL hold a LOCAL
+    // http://127.0.0.1/api/feed-local-relay?... URL that never matches any device's own real
+    // lineup entry — same gotcha VLCPlayerView's own currentFeedEntry already documents and works
+    // around. Before this fix, this menu's "Now Watching" section (and, added 2026-09-12, the
+    // header's own "Watching FEED from <host>" line below) silently showed nothing at all while
+    // actually watching a remote FEED.
+    private var nowWatchingInfo: (device: HDHRDevice, channel: LineupEntry, entry: GuideEntry?)? {
+        let rawURL = VLCPlayerWindowManager.shared.currentFeedRemoteURL ?? state.vlcCurrentURL
+        guard !rawURL.isEmpty else { return nil }
+        let base = rawURL.urlBase
         for device in state.devices {
             guard let channel = (state.lineups[device.DeviceID] ?? []).first(where: {
                 let u = $0.URL ?? ""
@@ -50,9 +60,19 @@ struct MenuContent: View {
             let now   = Date()
             let entry = state.guideEntries(deviceId: device.DeviceID, channelNum: channel.GuideNumber)
                 .first { $0.startDate <= now && $0.endDate > now }
-            return (channel, entry)
+            return (device, channel, entry)
         }
         return nil
+    }
+
+    // THIS Mac watching another instance's FEED right now — the "tuner is a shared resource"
+    // counterpart to the header's per-device rows above (which only ever reflect this Mac's own
+    // real tuners) and the separate "FEED: N watching" line below (which only reflects OTHER Macs
+    // watching THIS Mac's own relay). Added 2026-09-12, explicit request. Reuses nowWatchingInfo's
+    // already-corrected URL matching rather than re-deriving device/channel identity a second way.
+    private var watchingRemoteFeedHostname: String? {
+        guard let info = nowWatchingInfo, info.device.isVirtualRelay else { return nil }
+        return info.channel.virtualRelaySourceHostname ?? info.device.DeviceID
     }
 
     var body: some View {
@@ -95,6 +115,10 @@ struct MenuContent: View {
                                  liveCount > 0 ? Color(NSColor.labelColor) :
                                                  Color(NSColor.secondaryLabelColor))
         }
+        if let hostname = watchingRemoteFeedHostname {
+            Text("Watching FEED from \(hostname)")
+                .foregroundStyle(Color(NSColor.secondaryLabelColor))
+        }
         Text(state.statusMessage).foregroundStyle(Color(NSColor.secondaryLabelColor))
         // ── Relay stats ───────────────────────────────────────────────────
         // Shown only while this instance's own virtual tuner is actually advertised (a show is
@@ -136,8 +160,14 @@ struct MenuContent: View {
                     DispatchQueue.main.async { VLCPlayerWindowManager.shared.focus() }
                 } label: {
                     Label {
+                        // entry is always nil for a remote FEED device (guideByDevice[relayId]
+                        // never populates — see docs/VirtualTunerService.md's "Known limitation");
+                        // falls back to the relay's own lineup extra instead of showing just the
+                        // bare channel with no show name, same source VLCPlayerView's poster
+                        // overlay fallback already uses.
+                        let showName = info.entry?.Title ?? (info.device.isVirtualRelay ? info.channel.virtualRelayShowTitle : nil)
                         Text("Ch \(info.channel.GuideNumber)  \(info.channel.GuideName)" +
-                             (info.entry.map { " · \($0.Title)" } ?? ""))
+                             (showName.map { " · \($0)" } ?? ""))
                     } icon: {
                         Image(systemName: "play.tv.fill").foregroundStyle(watchNowBlue)
                     }
