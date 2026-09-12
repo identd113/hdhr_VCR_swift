@@ -1381,3 +1381,21 @@ A title-based fallback (`Show.seriesTitle(from: entry.Title) == show.show_title`
 **Resolution**: `newDevices` is now filtered to `guideFetchDevices = newDevices.filter { !$0.isVirtualRelay }` before the `guideStore.loadAll` call, mirroring `fetchAllGuides()`. `devices.append(contentsOf: newDevices)` and `fetchAllLineups(for: newDevices)` stay unfiltered — a relay device still needs to appear in `devices` and still needs its own `/lineup.json` fetched, both legitimate; only the SiliconDust cloud-guide fetch was ever the problem. Verified still in place 2026-09-11 (`AppState.swift:1284`, unregressed by later work).
 
 **Resolving commit**: `5138343`
+
+---
+
+## RESOLVED (partially — on `main` specifically) — First-Run Wizard crashed outright on two steps (runaway AppKit layout loop)
+
+**Files:** `Views/FirstRunWizardView.swift` (`notificationTimingScreen`), `Views/WebLANDiagram.swift`
+
+**Full root-cause investigation happened on `feature/recording-feed`, 2026-09-12** — see that branch's `issues_resolved.md` for the complete trail (three misleading fix attempts, the exact AppKit failure signature, both real root causes). This entry records what actually landed on `main`, cherry-picked/derived from that investigation the same day, since `main` never got its own write-up.
+
+**What shipped on `main`:**
+1. `502cc00` — `notificationTimingScreen` was missing the trailing `.fixedSize(horizontal: false, vertical: true)` every other wizard step has. Its content is genuinely dynamic (a warning `Label` toggles on/off with the Stepper values), so without an explicit ideal-size declaration this step's height was ambiguous inside the wizard's content-fitted (`height: nil`) window — triggering AppKit's "needs another Update Constraints in Window pass" safety-limit abort. This step is unguarded by any feature flag and shipped unchanged in the already-released v2.3.0, so this was a live, real crash risk for every user, not just FEED testers.
+2. `ff72def` — `WebLANDiagram` used the same `TimelineView(.animation)` shape as `NetworkFlowDiagram` (the FEED step's diagram, gated behind `FEED_feature_enabled`), which `feature/recording-feed`'s investigation flagged as a demonstrated crash risk in this content-fitted hosting context even though it was ruled out as the actual root cause of the two real crashes found there. `WebLANDiagram` has no feature-flag gate, so it ships to every user — fixed defensively to always render the static single-frame diagram, never a live `TimelineView`.
+
+**Verified by reading current `main` source, 2026-09-12** (not just trusting the commit messages): `notificationTimingScreen` does end with `.fixedSize(horizontal: false, vertical: true)`; `WebLANDiagram.swift` no longer uses `TimelineView`.
+
+**Remaining gap on `main`, confirmed present, not yet ported**: `NetworkFlowDiagram.swift` — the FEED step's own diagram — **still uses `TimelineView(.animation)`** (confirmed via direct grep of current source). `feature/recording-feed`'s `b78aa47` removed it there too, defensively, same reasoning as the `WebLANDiagram` fix above. Lower urgency than the two fixes above since `NetworkFlowDiagram` only renders inside `recordingRelayScreen`, reachable only when `AppConfig.FEED_feature_enabled` is `true` (default `false`, not exposed in Settings UI on `main` today) — but it's the same demonstrated risk class, sitting in the same content-fitted window, unaddressed. `recordingRelayScreen` itself does **not** need the "shorten tall content" fix `feature/recording-feed` applied there — `main`'s version was already in the shorter, 3-section shape before this investigation (confirmed by diffing `main` against the two branches' shared merge-base), so that particular crash trigger never applied here.
+
+**Resolving commits**: `502cc00`, `ff72def` (partial — see remaining gap above)

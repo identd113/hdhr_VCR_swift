@@ -135,6 +135,16 @@ The concrete bug this request also surfaced — `probeForNewDevices()` sending a
 
 ---
 
+### Raw FEED passthrough (`/auto/v<channel>`) never shares one stream across multiple viewers, unlike the transcode path
+
+Raised 2026-09-12 during `feature/recording-feed` testing, but the underlying mechanism is `main`'s own pre-existing `VirtualTunerService`/`handleVirtualTunerStream` code, confirmed by reading current `main` source — not something that branch introduced. Every viewer of the raw (non-transcoded) FEED endpoint gets its own independent `streamGrowingFile` call — its own `FileHandle`, its own read/poll loop, its own outbound send from the source Mac — confirmed live by running two simultaneous raw viewers against the same show and observing the source do the read and the send twice. This is unlike `VLCBridge.TranscodeSession` (the transcode path), which is already ref-counted — N viewers of a transcoded stream share one real encode and one output.
+
+**Why this hasn't been changed**: sharing one raw stream the same way would need a real fan-out design, not a small tweak — a late joiner wants to start at their own live edge, not wherever a single shared reader currently sits, and a slow viewer's connection can't be allowed to block delivery to a fast one, so it'd need a per-viewer buffer/cursor into one shared upstream read rather than literally one socket fanned out. That's a legitimate broadcast-server pattern (real backpressure handling, ref-counted lifecycle mirroring `TranscodeSession`'s own), just non-trivial to get right.
+
+**Why it's not worth it today**: this app's actual usage is normally one Mac watching another's recording — rarely more than one simultaneous raw viewer of the same show. The test that surfaced this was a deliberate double-watch for comparison purposes, not two independent real viewers. Revisit only if multiple concurrent raw viewers of the same FEED becomes an actual observed pattern, not a hypothetical one.
+
+---
+
 ## Terminal Guide
 
 See `docs/TUIGuide.md`'s "Deferred ideas" section for open feature gaps and known limitations.
