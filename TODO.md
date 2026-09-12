@@ -71,9 +71,9 @@ That fix is currently scoped to just this one flow. Any *other* place in the app
 
 ---
 
-### Watch Now should show whether the video is currently reading from the network or from disk
+### ~~Watch Now should show whether the video is currently reading from the network or from disk~~ — done 2026-09-11
 
-Requested 2026-09-11. Right now there's no user-visible indicator of *how* the current stream is being delivered — a live channel reads directly from the tuner over the network, while watching an in-progress (or completed) recording via the local relay (`watchRecordingInApp`, `/api/watch-recording`) reads from disk on this Mac. The distinguishing signal already exists internally (`VLCBridge.shared.recordingShowId != nil` means disk-relay; `docs/AppState.md`'s `vlcOccupiesTuner`/`vlcLiveChannel` entries already key off exactly this), it just isn't surfaced anywhere in the UI. `VLCPlayerView` already has a codec-info popover (fixed for FEED's AAC-vs-AC-3 conflation in `d1ca8c5`) that reads naturally as the place to add a "Source: Live network stream" / "Source: Local recording (disk)" line alongside the existing codec info — no new UI surface needed, just one more fact in an existing one. Not yet scoped.
+Requested and shipped same day: the Native-resolution toolbar button's icon color and its hover popover's top row both now show live-network-vs-disk-relay source (`VLCPlayerView.swift`'s `nativeIconSourceColor`, keyed off `bridge.recordingShowId`). See `docs/VLCPlayerView.md`'s "Native resolution button" entry.
 
 ---
 

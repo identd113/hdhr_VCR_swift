@@ -204,6 +204,18 @@ struct VLCPlayerView: View {
         bridge.play(url: newURL)
     }
 
+    // The Native-resolution icon's color now also encodes whether the current stream is being
+    // read from the network (a live tuner stream) or from disk (the recording relay) — requested
+    // 2026-09-11, see TODO.md's "Watch Now should show whether the video is currently reading
+    // from the network or from disk". `bridge.recordingShowId` is the same signal AppState's
+    // `vlcOccupiesTuner`/`vlcLiveChannel` already key off for this exact distinction elsewhere.
+    // Blue = network, purple = disk — replaces the plain `.accentColor` this icon used to glow
+    // (see the toolbar's own comment on how "achievable but not yet native" is still conveyed:
+    // full-saturation + shadow vs. a dimmed version of the same hue, not a color swap).
+    private var nativeIconSourceColor: Color {
+        bridge.recordingShowId != nil ? .purple : .blue
+    }
+
     private var canResizeToNative: Bool {
         bridge.videoPixelSize != nil && VLCPlayerWindowManager.shared.nativeVideoFitsCurrentScreen()
     }
@@ -845,13 +857,17 @@ struct VLCPlayerView: View {
             }
 
             // Native resolution: resize window to 1:1 physical pixels.
-            // Glows blue when native is achievable but the window isn't already there.
+            // Glows at full saturation when native is achievable but the window isn't already
+            // there; dims to the same hue once already at native. The hue itself is
+            // nativeIconSourceColor (blue = network, purple = disk) — added 2026-09-11 so the
+            // icon doubles as an at-a-glance "where is this data actually coming from" indicator,
+            // not just "can I resize this."
             Button {
                 VLCPlayerWindowManager.shared.sizeToNativeVideo()
             } label: {
                 Label("Native", systemImage: "aspectratio")
-                    .foregroundStyle(notAtNative ? AnyShapeStyle(Color.accentColor) : canResize ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tertiary))
-                    .shadow(color: notAtNative ? Color.accentColor.opacity(0.6) : .clear, radius: 5)
+                    .foregroundStyle(!canResize ? AnyShapeStyle(.tertiary) : AnyShapeStyle(nativeIconSourceColor.opacity(notAtNative ? 1.0 : 0.55)))
+                    .shadow(color: notAtNative ? nativeIconSourceColor.opacity(0.6) : .clear, radius: 5)
             }
             .buttonStyle(.plain)
             .disabled(!canResize)
@@ -1107,6 +1123,12 @@ struct VLCPlayerView: View {
         VStack(alignment: .leading, spacing: 5) {
             Text("Native Resolution").font(.subheadline.bold())
             Divider()
+            // Shown regardless of whether a frame has decoded yet — recordingShowId is known
+            // (or not) independent of video-pixel-size, and this is the more fundamental fact.
+            HStack {
+                Circle().fill(nativeIconSourceColor).frame(width: 8, height: 8)
+                Text(bridge.recordingShowId != nil ? "Local recording (disk)" : "Live network stream")
+            }
             if let px = bridge.videoPixelSize {
                 let scale = VLCPlayerWindowManager.shared.currentScreenScale
                 let logW  = Int(px.width  / scale)
