@@ -670,6 +670,10 @@ final class AppState: ObservableObject {
                 // see WebServer.waitForInFlightRequests's own doc comment and ISSUES.md's "Web guide
                 // Record button fails silently" entry.
                 await self.webServer.waitForInFlightRequests(timeout: 2)
+                // A FEED puller curl must never survive this process's exit the way a real
+                // recording curl deliberately does — see RecordingManager.feedPullPids's own doc
+                // comment.
+                self.recordingManager.stopAllFeedPulls()
                 self.saveConfig()
                 // saveConfig() now dispatches its actual disk write to ConfigManager's own
                 // background queue (see its doc comment) — block here until that write actually
@@ -696,6 +700,15 @@ final class AppState: ObservableObject {
         // 2. Reattach any recordings that survived a restart
         await reattachRecordings()
         glog("[Startup] recordings reattached")
+
+        // 2b. FEED client-side local relay (docs/VirtualTunerService.md) orphan temp-file sweep —
+        // a crash between RecordingManager.startFeedPull and a normal player-window close would
+        // otherwise leak that session's temp file forever; the puller process itself is already
+        // guaranteed dead (a FEED pull is never reattached the way a real recording curl is — see
+        // RecordingManager.feedPullPids's own doc comment), so no liveness check is needed here —
+        // by the time this runs, this instance's own prior pullers are already dead and nothing
+        // else writes files matching this pattern.
+        sweepOrphanedFeedRelayTempFiles()
 
         // 3. Start the web server now — port binding doesn't need devices or guide data.
         //    Starting here means the server is up within ~1s of launch instead of waiting
@@ -4328,6 +4341,94 @@ final class AppState: ObservableObject {
         }
     }
 
+    // See startup()'s call site for why this needs no liveness check.
+    private func sweepOrphanedFeedRelayTempFiles() {
+        let dir = NSTemporaryDirectory()
+        guard let entries = try? FileManager.default.contentsOfDirectory(atPath: dir) else { return }
+        let orphans = entries.filter { $0.hasPrefix("hdhrVCRplus-feed-") }
+        guard !orphans.isEmpty else { return }
+        for name in orphans {
+            try? FileManager.default.removeItem(atPath: dir + name)
+        }
+        glog("[Watch] swept \(orphans.count) orphaned FEED relay temp file(s) from a prior session")
+    }
+
+    // Bounded wait for startFeedLocalRelay's puller to prove it's actually going to work — see that
+    // function's own step 5. Polled, not a single fixed sleep, so a fast-starting puller doesn't
+    // pay the full wait.
+    private static let feedLocalRelayStartupPollInterval: TimeInterval = 0.15
+    private static let feedLocalRelayStartupTimeout: TimeInterval = 2.0
+
+    /// FEED client-side local relay (docs/VirtualTunerService.md) — pulls `remoteURL` (another
+    /// Mac's in-progress recording, served by its own /auto/v<channel> route) into a local temp
+    /// file via a puller curl (RecordingManager.startFeedPull), then returns a 127.0.0.1 URL for
+    /// VLC to read that file over loopback instead of connecting to the remote Mac directly. This
+    /// insulates libvlc from the real cross-machine network read that the long-documented FEED
+    /// stall bug (ISSUES.md's "VLC-side FEED playback stalls" entry) only ever reproduces under —
+    /// the identical relay code plays flawlessly forever over loopback. Returns nil on failure
+    /// (after showing an alert and cleaning up); callers must not fall back to `remoteURL` on nil,
+    /// since that would silently reintroduce the exact bug this exists to avoid.
+    func startFeedLocalRelay(remoteURL: String, device: HDHRDevice) async -> String? {
+        let mgr = VLCPlayerWindowManager.shared
+        // Stop any previous FEED puller before starting a new one — e.g. switching raw↔H.264 or
+        // re-watching a different relay reuses this same singleton player window.
+        if let previousSessionId = mgr.currentFeedSessionId {
+            recordingManager.stopFeedPull(sessionId: previousSessionId)
+            webServer.unregisterFeedLocalRelaySession(id: previousSessionId)
+        }
+        // The UUID (not just device id) ensures switching raw↔H.264, or re-watching, never aliases
+        // two different byte streams onto the same path.
+        let sessionId = "\(device.DeviceID)-\(UUID().uuidString)"
+        let tempPath = "\(NSTemporaryDirectory())hdhrVCRplus-feed-\(sessionId).ts"
+
+        func fail() -> String? {
+            recordingManager.stopFeedPull(sessionId: sessionId)
+            webServer.unregisterFeedLocalRelaySession(id: sessionId)
+            try? FileManager.default.removeItem(atPath: tempPath)
+            let alert = NSAlert()
+            alert.messageText = "Couldn't Start FEED Relay"
+            alert.informativeText = "Could not connect to the remote recording — try again from the source Mac's menu."
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+            return nil
+        }
+
+        do {
+            try recordingManager.startFeedPull(sessionId: sessionId, url: remoteURL, outputPath: tempPath,
+                                                networkInterface: config.Network_interface)
+        } catch {
+            glog("[Watch] FEED local relay puller failed to start for \(remoteURL): \(error.localizedDescription)", level: .warning)
+            return fail()
+        }
+        webServer.registerFeedLocalRelaySession(id: sessionId, path: tempPath) { [weak self] in
+            self?.recordingManager.isFeedPullRunning(sessionId: sessionId) ?? false
+        }
+
+        // Wait for either the puller to have actually written something, or to have already died
+        // (a bad remote URL/host) — without this, a bad remoteURL degrades from "libvlc eventually
+        // surfaces a real connect error against the actual remote host" to a confusing 404 against
+        // a local relay whose puller never started, which is worse, not equivalent.
+        var waited: TimeInterval = 0
+        while waited < Self.feedLocalRelayStartupTimeout {
+            let size = (try? FileManager.default.attributesOfItem(atPath: tempPath))?[.size] as? Int ?? 0
+            if size > 0 { break }
+            if !recordingManager.isFeedPullRunning(sessionId: sessionId) {
+                glog("[Watch] FEED local relay puller exited immediately for \(remoteURL)", level: .warning)
+                return fail()
+            }
+            try? await Task.sleep(nanoseconds: UInt64(Self.feedLocalRelayStartupPollInterval * 1_000_000_000))
+            waited += Self.feedLocalRelayStartupPollInterval
+        }
+        guard (try? FileManager.default.attributesOfItem(atPath: tempPath))?[.size] as? Int ?? 0 > 0 else {
+            glog("[Watch] FEED local relay puller produced no data within \(Self.feedLocalRelayStartupTimeout)s for \(remoteURL)", level: .warning)
+            return fail()
+        }
+
+        mgr.setFeedRelayTracking(remoteURL: remoteURL, sessionId: sessionId, tempPath: tempPath)
+        return "http://127.0.0.1:\(webServer.activePort)/api/feed-local-relay?session=\(sessionId)&start=0"
+    }
+
     /// Opens a native player window directly against another hdhrVCRplus instance's virtual-relay
     /// stream (see VirtualTunerService.swift / docs/VirtualTunerService.md) — the "Recording on
     /// <title>" menu row. Deliberately does not reuse watchInApp: that function's tunerAvailable
@@ -4339,13 +4440,17 @@ final class AppState: ObservableObject {
     func watchRemoteRelay(url: String, title: String, device: HDHRDevice) {
         guard VLCBridge.shared.isAvailable, !url.isEmpty else { return }
         let mgr = VLCPlayerWindowManager.shared
-        let rawBase = url.urlBase
-        if mgr.currentDeviceID == device.DeviceID && (VLCBridge.shared.currentURL?.urlBase ?? "") == rawBase {
+        // Dedup against the true remote URL, not bridge.currentURL — once startFeedLocalRelay
+        // succeeds below, currentURL holds the LOCAL relay URL, not this one.
+        if mgr.currentDeviceID == device.DeviceID && mgr.currentFeedRemoteURL == url {
             mgr.focus()
             return
         }
-        glog("[Watch] remote relay '\(title)' on \(device.DeviceID)")
-        mgr.open(url: url, title: title, device: device, appState: self)
+        Task {
+            guard let localURL = await startFeedLocalRelay(remoteURL: url, device: device) else { return }
+            glog("[Watch] remote relay '\(title)' on \(device.DeviceID) via local relay")
+            mgr.open(url: localURL, title: title, device: device, appState: self)
+        }
     }
 
     func watchInVLC(url: String, transcode: String? = nil, deviceId: String? = nil) {
@@ -4989,6 +5094,10 @@ final class AppState: ObservableObject {
     private func teardownForExit(stopRecordings: Bool, thenStop: (() -> Void)? = nil) {
         VLCBridge.shared.releasePlayer()
         if stopRecordings { recordingManager.stopAll() }
+        // Unconditional — unlike the user's own recordings above, a FEED puller curl is never
+        // meant to survive/be reattached (see RecordingManager.feedPullPids's own doc comment):
+        // once this process's WebServer is gone, nothing can ever serve its temp file again.
+        recordingManager.stopAllFeedPulls()
         // webServer.stop() before saveConfig() — matches quit()'s pre-consolidation order. Inert
         // either way today (webServer.stop() touches no AppConfig-persisted state), but keeping the
         // original sequence avoids an unannounced ordering change for whatever a future field adds.
