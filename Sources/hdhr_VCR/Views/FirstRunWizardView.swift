@@ -510,6 +510,17 @@ struct FirstRunWizardView: View {
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
+        // Every other step's Form ends with this — this one was missing it. Without an explicit
+        // ideal vertical size, and with this step's height genuinely dynamic (the warning Label
+        // above appears/disappears as the Steppers change), this step's height was ambiguous/
+        // unstable inside the wizard's content-fitted (`height: nil`) window — triggering a real,
+        // repeatable crash (AppKit's "window has been marked as needing another Update Constraints
+        // in Window pass..." safety-limit abort) whenever a user adjusts the notification-timing
+        // steppers so the warning toggles on. Confirmed present unchanged in the v2.3.0 release
+        // (not gated behind any feature flag — this is the wizard's last step, shown to everyone).
+        // Found and fixed on feature/recording-feed 2026-09-12; see that branch's
+        // issues_resolved.md for the full investigation.
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     // Label morphs Finish → checkmark during the flourish delay (finish()'s finishTask) instead
