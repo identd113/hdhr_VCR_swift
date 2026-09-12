@@ -16,7 +16,7 @@ struct FirstRunWizardView: View {
     // only inside finish(), same as every other field.
     @State private var saveFolder: String = ""
 
-    enum Step: Int, CaseIterable { case intro, recordingDefaults, webLAN, terminalGuide, recordingRelay, notificationTiming }
+    enum Step: Int, CaseIterable { case intro, recordingDefaults, vlcRequired, webLAN, terminalGuide, recordingRelay, notificationTiming }
     // Resting default is .recordingDefaults, NOT .intro — the splash is only ever entered
     // deliberately (see the .onAppear/.onChange below), so every "step starts at
     // .recordingDefaults" assumption elsewhere (sizing, header, nav bar) stays true by default,
@@ -51,6 +51,14 @@ struct FirstRunWizardView: View {
     @State private var failThreshold: Int = 3
     @State private var upNextMinutes: Double = 35.0
     @State private var recordingSoonMinutes: Double = 15.5
+
+    // VLC-requirement step (added 2026-09-12, alongside removing the external "Open in VLC"
+    // feature) — no config to persist here, purely a live install-status check + install helper,
+    // so unlike the @State fields above this has nothing to save in finish()/loadCurrentValuesIfNeeded().
+    // Re-checked in .onAppear/via the "Check Again" button, not cached forever, since installing
+    // VLC is exactly the kind of thing that can happen mid-wizard (switch to Terminal, come back).
+    @State private var vlcInstalled: Bool = false
+    @State private var vlcInstallCopyFeedback: String?
 
     @State private var hasLoadedInitialValues = false
     // Guards onDisappear's fallback save so Finish's own save isn't redundantly repeated.
@@ -120,6 +128,10 @@ struct FirstRunWizardView: View {
                     recordingDefaultsScreen
                         .transition(slideTransition)
                         .id(Step.recordingDefaults)
+                case .vlcRequired:
+                    vlcRequiredScreen
+                        .transition(slideTransition)
+                        .id(Step.vlcRequired)
                 case .webLAN:
                     webLANScreen
                         .transition(slideTransition)
@@ -395,6 +407,118 @@ struct FirstRunWizardView: View {
         .fixedSize(horizontal: false, vertical: true)
     }
 
+    // Added 2026-09-12, same day the external "Open in VLC" feature (Watch_in_VLC config setting,
+    // AppState.watchInVLC/watchRecordingInVLC) was removed — that removal didn't reduce the VLC
+    // *dependency* at all, since the in-app player itself dynamically loads libvlc from an
+    // installed VLC.app (VLCBridge.locateApp()/isAvailable, docs/VLCBridge.md) for every watching
+    // feature in the app, in-app player included. Every watch-triggering surface elsewhere
+    // (MenuContent, WatchNowView, SettingsView's FEED transcode picker) already dims/labels itself
+    // "(Requires VLC)" via VLCBridge.shared.isAvailable/gatedLabel when VLC is missing — this step
+    // is what makes that requirement visible up front, with an actual path to fix it, instead of a
+    // new user discovering it only once they click a dimmed button somewhere later.
+    private var vlcRequiredScreen: some View {
+        Form {
+            Section {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("VLC Required for Watching").font(.headline)
+                    Text("hdhrVCRplus uses VLC's own playback engine for everything you watch — live TV, in-progress recordings, and a FEED session from another Mac. Without VLC.app installed, those features stay visible but dimmed, labeled \"Requires VLC,\" until it's installed. Recording itself doesn't need VLC at all — only watching does.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Section {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 8) {
+                        Image(systemName: vlcInstalled ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                            .foregroundStyle(vlcInstalled ? Color(NSColor.systemGreen) : Color(NSColor.systemOrange))
+                        Text(vlcInstalled ? "VLC is installed." : "VLC is not installed yet.")
+                            .font(.callout.bold())
+                        Spacer()
+                        Button("Check Again") { recheckVLCInstalled() }
+                            .buttonStyle(.plain)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("wizard-vlc-recheck")
+                    }
+
+                    if !vlcInstalled {
+                        if homebrewInstalled {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Homebrew detected — the fastest way to install VLC:")
+                                    .font(.callout)
+                                Button {
+                                    installVLCViaHomebrew()
+                                } label: {
+                                    Label("Install VLC via Homebrew", systemImage: "terminal")
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .accessibilityIdentifier("wizard-vlc-brew-install")
+                                if let vlcInstallCopyFeedback {
+                                    Text(vlcInstallCopyFeedback)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        } else {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Download it directly from VideoLAN:")
+                                    .font(.callout)
+                                Button {
+                                    NSWorkspace.shared.open(Self.vlcDownloadURL)
+                                } label: {
+                                    Label("Download VLC", systemImage: "arrow.down.circle")
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .accessibilityIdentifier("wizard-vlc-download")
+                            }
+                        }
+                        Text("After installing, come back to this app — it checks automatically and will prompt you to relaunch, which is needed to actually load VLC's playback engine.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .fixedSize(horizontal: false, vertical: true)
+        // Re-checks every time this step becomes visible (not just once at wizard launch) — the
+        // realistic flow is: land here, see "not installed," switch to Terminal/browser to install,
+        // come back and click Next/Back past this step and back again (or just re-open the wizard)
+        // to confirm before moving on. A one-shot check at wizard launch would never reflect that.
+        .onAppear { vlcInstalled = VLCBridge.locateApp() != nil }
+    }
+
+    private static let vlcDownloadURL = URL(string: "https://www.videolan.org/vlc/download-macosx.html")!
+
+    private var homebrewInstalled: Bool {
+        FileManager.default.fileExists(atPath: "/opt/homebrew/bin/brew") ||
+        FileManager.default.fileExists(atPath: "/usr/local/bin/brew")
+    }
+
+    private func recheckVLCInstalled() {
+        vlcInstalled = VLCBridge.locateApp() != nil
+    }
+
+    // Copies the install command to the clipboard and opens Terminal.app (via NSWorkspace, the
+    // same technique SettingsView.openInTerminal already uses for the Terminal Guide feature) —
+    // deliberately never Process()/AppleScript-System-Events to type or run it automatically. A
+    // brew-install UI existed once and was removed entirely (2026-08-19, see docs/MAS_COMPLIANCE.md)
+    // specifically because spawning `brew` via Process() is forbidden under Mac App Store
+    // sandboxing; typing the command into Terminal via System Events would reopen the same class of
+    // problem via the Apple Events automation entitlement instead. Copy-and-paste needs neither.
+    private func installVLCViaHomebrew() {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString("brew install --cask vlc", forType: .string)
+        if let terminalURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Terminal") {
+            NSWorkspace.shared.open(terminalURL)
+        }
+        vlcInstallCopyFeedback = "Command copied — switch to Terminal, paste (⌘V), and press Return."
+    }
+
     private var webLANScreen: some View {
         Form {
             Section {
@@ -600,6 +724,7 @@ struct FirstRunWizardView: View {
         switch step {
         case .intro:              return ""
         case .recordingDefaults:  return "Recording Defaults"
+        case .vlcRequired:        return "VLC"
         case .webLAN:             return "Web LAN"
         case .terminalGuide:      return "Terminal Guide"
         case .recordingRelay:     return "Recording FEED (Beta)"

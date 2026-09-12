@@ -632,26 +632,6 @@ struct WatchNowRow: View {
     @ViewBuilder
     private func secondaryButtons(managed: Show?) -> some View {
         Group {
-            if state.config.Watch_in_VLC {
-                Button {
-                    // Same "already recording this channel" gate as watchButtons(managed:) above
-                    // (see its own comment for why the channel-match check matters) — without it,
-                    // this button would open a second, redundant tuner connection in external VLC
-                    // for a channel this app is already recording.
-                    if let show = managed, show.show_recording, show.show_channel == channel.GuideNumber {
-                        state.watchRecordingInVLC(show)
-                    } else {
-                        state.watchInVLC(url: channel.URL ?? "", deviceId: device.DeviceID)
-                    }
-                } label: {
-                    Label("VLC", systemImage: "arrow.up.forward.app").font(.caption.bold())
-                }
-                .accessibilityLabel(watchInVLCLabel(entry.Title))
-                .help(watchInVLCLabel(entry.Title))
-                .buttonStyle(.borderedProminent)
-                .tint(watchNowOrange)
-                .controlSize(.small)
-            }
             if let show = managed {
                 Button {
                     state.editingShowId = show.show_id

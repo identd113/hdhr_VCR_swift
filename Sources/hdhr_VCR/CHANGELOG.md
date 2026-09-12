@@ -2,6 +2,14 @@
 
 Every entry is tagged **Added** (something new), **Updated** (existing behavior changed, improved, or fixed), **Removed** (something taken away), or **Info** (a note — nothing to do, nothing visibly different).
 
+## Unreleased
+
+**Removed**
+- **"Watch in VLC"** — the button/menu item that opened a live channel or in-progress recording in a separate, external VLC.app window. Removed everywhere it appeared (Watch Now's action row, the menu bar's recording submenu, and the Settings toggle that controlled it) — it wasn't reliable enough to keep. This doesn't change what VLC is needed for: hdhrVCRplus still requires VLC.app to be installed for all of its own in-app playback, live TV and recordings alike.
+
+**Added**
+- **First-Run Wizard now explains the VLC requirement up front.** A new step checks whether VLC.app is installed and, if not, offers a one-click path to get it: an "Install VLC via Homebrew" button (when Homebrew is detected) that copies the install command to your clipboard and opens Terminal for you to paste and run, or a direct download link otherwise. Every watching feature elsewhere in the app already dims itself and explains "(Requires VLC)" when it's missing — this just surfaces that fact before you go looking for it.
+
 ## v2.3.0 — 2026-09-11
 
 **Added**

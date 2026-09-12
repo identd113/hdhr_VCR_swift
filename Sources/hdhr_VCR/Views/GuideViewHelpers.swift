@@ -182,9 +182,8 @@ func gatedLabel(_ base: String, met: Bool, requirement: String) -> String {
     met ? base : "\(base) (Requires \(requirement))"
 }
 
-// Accessibility labels for WatchNowView's Watch/Watch-in-VLC buttons.
+// Accessibility label for WatchNowView's Watch button.
 func watchInAppLabel(_ title: String) -> String { "Watch \(title)" }
-func watchInVLCLabel(_ title: String) -> String { "Watch \(title) in VLC" }
 // Accessibility labels for the two choices offered when watching a currently-recording show.
 func watchFromBeginningLabel(_ title: String) -> String { "Watch \(title) from the beginning" }
 func watchLiveLabel(_ title: String) -> String { "Watch \(title) live" }

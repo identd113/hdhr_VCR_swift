@@ -354,12 +354,49 @@ rows via one view, `RecordingDefaultsFields` (`Views/RecordingDefaultsFields.swi
 doc for it since it has no independent visual identity beyond what's described here and in
 `docs/SettingsView.md`'s Recording section.
 
-### Step 2 — Web LAN
+### Step 2 — VLC Required, added 2026-09-12
+Explains that hdhrVCRplus uses VLC's own playback engine for every watching feature (live TV,
+in-progress recordings, a remote FEED session) — recording itself never needs VLC, only watching
+does. Added the same day the external "Open in VLC" feature (`Watch_in_VLC` config setting,
+`AppState.watchInVLC`/`watchRecordingInVLC`) was removed entirely — that removal didn't reduce the
+VLC dependency at all, since the in-app player itself dynamically loads libvlc from an installed
+VLC.app; every watch-triggering surface elsewhere (`MenuContent`, `WatchNowView`, `SettingsView`'s
+FEED transcode picker) already dims/labels itself `" (Requires VLC)"` via
+`VLCBridge.shared.isAvailable`/`gatedLabel` when VLC is missing, so this step makes that requirement
+visible up front rather than a new user discovering it only once they click a dimmed button later.
+
+A live status row (`checkmark.circle.fill`/`exclamationmark.triangle.fill`, green/orange) reflects
+`VLCBridge.locateApp() != nil`, re-checked in `.onAppear` (fires every time this step becomes
+visible, not just once at wizard launch) and via a "Check Again" button — the realistic flow is
+land here, see "not installed," switch away to install it, come back and re-check before moving on.
+When not installed, offers one of two install paths depending on `homebrewInstalled`
+(`FileManager.fileExists` on `/opt/homebrew/bin/brew` or `/usr/local/bin/brew`, no `Process()`
+spawn needed just to check):
+- **Homebrew detected**: an "Install VLC via Homebrew" button (`installVLCViaHomebrew()`) copies
+  `brew install --cask vlc` to the clipboard and opens Terminal.app via
+  `NSWorkspace.shared.open(_:)` (the same technique `SettingsView.openInTerminal` already uses for
+  the Terminal Guide feature) — deliberately **not** `Process()` or AppleScript/System-Events
+  keystroke simulation to type or run it automatically. A brew-install UI existed once and was
+  removed entirely (2026-08-19, `docs/MAS_COMPLIANCE.md`) specifically because spawning `brew` via
+  `Process()` is forbidden under Mac App Store sandboxing; typing the command into Terminal via
+  System Events would reopen the same class of problem via the Apple Events automation entitlement
+  instead — copy-and-paste needs neither. Shows a one-line confirmation ("Command copied — switch
+  to Terminal, paste (⌘V), and press Return.") after clicking.
+- **No Homebrew**: a "Download VLC" button opens `videolan.org`'s own macOS download page in the
+  default browser instead.
+
+Either way, a closing note explains that coming back to the app after installing is what matters —
+`AppState.checkVLCHotInstall()` (fires on `didBecomeActiveNotification`, already existed before this
+step) detects the fresh install automatically and prompts a relaunch, which is what actually loads
+libvlc into the running process. This step has no config of its own to persist — no
+`loadCurrentValuesIfNeeded()`/`finish()` involvement, unlike every other step's `@State` fields.
+
+### Step 3 — Web LAN
 A purpose-built animated diagram (`WebLANDiagram`, `Views/WebLANDiagram.swift` — see its own
 section below) — this Mac fanning out to three different device icons — above a short explanation
 and one `Toggle`, **Enable Web LAN**. See "Steps" below for the config-commit details.
 
-### Step 3 — Terminal Guide
+### Step 4 — Terminal Guide
 A second, genuinely different animated diagram (`TerminalTypingDiagram`,
 `Views/TerminalTypingDiagram.swift` — see its own section below): a mock terminal window typing a
 command, not another instance of Web LAN's own broadcast-fan visual. **Split into its own step
@@ -372,7 +409,7 @@ off) still works correctly across the step boundary — both bools are the same 
 `@State`, just read from a later step now instead of the same screen. See "Steps" below for the
 config-commit details.
 
-### Step 4 — Recording FEED (Beta)
+### Step 5 — Recording FEED (Beta)
 **Hidden as of 2026-09-10** — `orderedSteps` (see "Steps" below) omits `.recordingRelay` entirely
 unless `state.config.FEED_feature_enabled` is `true` (default `false`, config-file only — see
 `docs/VirtualTunerService.md`'s top note), so a first-run user today never sees this step at all and
@@ -387,7 +424,7 @@ added 2026-09-07, naming occasional playback hiccups and non-working audio/CC tr
 known limitations on the watching Mac — see `ISSUES.md`. See "Steps" below for the config-commit
 details.
 
-### Step 5 — Notification Timing
+### Step 6 — Notification Timing
 Up Next / Recording Soon lead-time minutes, same `Stepper` controls and warning banner (shown when
 the recording alert would fire at or after Up Next) as `SettingsView`'s Notifications tab.
 
@@ -404,9 +441,12 @@ app: where recordings are saved and how, how much notice you get before one star
 2026-09-04 — every LAN-facing feature this app's Settings groups under its "Sharing" tab (Enable
 Web LAN, Terminal Guide, Recording FEED), each its own step, since each is now off by default and
 worth a one-time explanation of what it actually does before a first-time user goes looking for it
-in Settings. Everything else (Discord, Guide) is still left for `SettingsView` — this wizard covers
-"what's off by default and needs a plain-English explanation," not a full onboarding tour of every
-setting in the app.
+in Settings. Since 2026-09-12, also a hard requirement rather than a Settings feature: VLC.app must
+be installed for any watching feature to work at all, so Step 2 explains that plainly and offers an
+install path (Homebrew or a direct download) before a first-time user hits a dimmed, unexplained
+"Watch" button somewhere later. Everything else (Discord, Guide) is still left for `SettingsView` —
+this wizard covers "what's off by default (or a hard external dependency) and needs a plain-English
+explanation," not a full onboarding tour of every setting in the app.
 
 Every field defaults to the **current** config value (`loadCurrentValuesIfNeeded()`, called from
 `.onAppear`), not a hardcoded factory default — re-running the wizard later via the reset button
@@ -418,7 +458,7 @@ defaults.
 ## Steps
 
 ```swift
-enum Step: Int, CaseIterable { case intro, recordingDefaults, webLAN, terminalGuide, recordingRelay, notificationTiming }
+enum Step: Int, CaseIterable { case intro, recordingDefaults, vlcRequired, webLAN, terminalGuide, recordingRelay, notificationTiming }
 ```
 
 Navigation (`goNext()`/`goBack()`) walks a single `orderedSteps` — an **instance** computed
@@ -456,7 +496,14 @@ here just means "use the default," same as everywhere else); `finish()` writes i
 same key. Transcode/min-disk/fail-threshold commit to `state.config.Default_transcode` /
 `.Min_disk_free_gb` / `.Fail_count_setting` on Finish the same way.
 
-### Step 2 — Web LAN
+### Step 2 — VLC Required
+No `@State` field commits anywhere in `finish()` — `vlcInstalled`/`vlcInstallCopyFeedback` are
+purely live-check/UI-feedback state, re-derived from `VLCBridge.locateApp()` on `.onAppear` and the
+"Check Again" button, not settings. The only side effects a user can trigger on this screen
+(clipboard write, opening Terminal.app or a browser) are fire-and-forget, nothing this wizard's own
+save logic needs to know about.
+
+### Step 3 — Web LAN
 Covers `Web_server_enabled` ("Enable Web LAN," the LAN web server) on its own screen — one local
 `@State sharingEnabled` bool (default `false`, mirroring `AppConfig`'s own default), introduced by
 `WebLANDiagram()` (see its own section below) and a short paragraph.
@@ -466,18 +513,18 @@ Covers `Web_server_enabled` ("Enable Web LAN," the LAN web server) on its own sc
 already uses, so Web LAN actually starts serving the moment this wizard closes rather than waiting
 for the next unrelated settings save.
 
-### Step 3 — Terminal Guide
+### Step 4 — Terminal Guide
 Covers `Terminal_guide_enabled` ("Enable Terminal Guide") on its own screen, one step after Web
 LAN — **not combined with it on one screen**, unlike an earlier version of this step (see the
 summary section above for why: two `NetworkFlowDiagram` instances stacked together read as visually
 redundant). The dependency is still enforced exactly as before, just across the step boundary
 instead of within one screen: local `@State terminalGuideEnabled`'s `Toggle` is
 `.disabled(!sharingEnabled)` and its label suffixed `" (Requires Web LAN)"` while `sharingEnabled`
-is off — the same `sharingEnabled` bool Step 2 set, still in scope since both are plain
+is off — the same `sharingEnabled` bool Step 3 set, still in scope since both are plain
 wizard-lifetime `@State`, not per-screen state. Because the toggle is SwiftUI-`.disabled` whenever
 `sharingEnabled` is false, the wizard can never actually produce the (recoverable, but meaningless)
 state of Terminal Guide on with Web LAN off *while moving forward through the wizard normally* —
-though going back to Step 2, turning Web LAN off after having already turned Terminal Guide on
+though going back to Step 3, turning Web LAN off after having already turned Terminal Guide on
 earlier, then returning here without touching the now-disabled Terminal Guide toggle, leaves
 `terminalGuideEnabled` at its prior `true` value: accepted, not a bug, matching
 `SettingsView.sharingView`'s own identical precedent (its Terminal Guide toggle doesn't force-reset
@@ -488,7 +535,7 @@ Web LAN, nothing has to be started/stopped for this flag; it's just read passive
 and `/api/guide.json`).
 
 ### `WebLANDiagram` (`Views/WebLANDiagram.swift`)
-Purpose-built for Step 2, not a themed instance of `NetworkFlowDiagram` — added 2026-09-04
+Purpose-built for Step 3, not a themed instance of `NetworkFlowDiagram` — added 2026-09-04
 alongside the step split above, replacing an earlier version that palette-swapped
 `NetworkFlowDiagram`'s own two-device shape. Web LAN's real relationship (one Mac serving many
 different *kinds* of devices) is genuinely different from Recording FEED's (one Mac connecting to
@@ -501,7 +548,7 @@ than three lines pulsing in lockstep. Respects Reduce Motion (freezes to three s
 line) and is `.accessibilityHidden(true)`, same conventions as every other diagram here.
 
 ### `TerminalTypingDiagram` (`Views/TerminalTypingDiagram.swift`)
-Purpose-built for Step 3 — deliberately NOT another `NetworkFlowDiagram`/`WebLANDiagram` instance,
+Purpose-built for Step 4 — deliberately NOT another `NetworkFlowDiagram`/`WebLANDiagram` instance,
 since Terminal Guide isn't really a "this Mac broadcasting to a receiver" relationship the way the
 other two Sharing features are; it's a CLI session, so this shows that directly. A mock terminal
 window (hardcoded dark chrome — not theme-adaptive, deliberately, the same way a screenshot of
@@ -510,7 +557,7 @@ another app's own UI wouldn't re-theme itself — with three decorative traffic-
 Respects Reduce Motion (freezes on the fully-typed line with cursor showing) and is
 `.accessibilityHidden(true)`, same conventions as every other diagram here.
 
-### Step 4 — Recording FEED (Beta)
+### Step 5 — Recording FEED (Beta)
 Leads with `NetworkFlowDiagram(...)` (see its own section below), then a short plain-language
 explanation of the virtual-tuner relay (`docs/VirtualTunerService.md`) — what it is and what it
 can't do — then one `Toggle` bound to local `@State relayEnabled` (default `false`, mirroring
@@ -525,7 +572,7 @@ wizard closes — this screen exists purely so a first-time user sees the explan
 ### `NetworkFlowDiagram` (`Views/NetworkFlowDiagram.swift`)
 Self-contained animated view, parametrized (icons/badge colors/captions) so it's reusable for any
 future point-to-point "this Mac ↔ one specific other party" explainer — currently used only by
-Step 4, Recording FEED, whose "this Mac's recording, that Mac watching it" relationship is
+Step 5, Recording FEED, whose "this Mac's recording, that Mac watching it" relationship is
 genuinely one-to-one (Web LAN and Terminal Guide moved to their own purpose-built diagrams above,
 see those sections for why). Two SF Symbols (`desktopcomputer` on both sides for FEED — another
 Mac, not a generic device) connected by a dashed line, drawn in a `GeometryReader` so it scales to
@@ -547,7 +594,7 @@ above uses. Marked `.accessibilityHidden(true)`: purely decorative, and the diag
 the surrounding prose doesn't already say in words — a screen reader user isn't missing content by
 skipping it.
 
-### Step 5 — Notification Timing
+### Step 6 — Notification Timing
 Binds to local `@State` (`upNextMinutes`, `recordingSoonMinutes`). Committed to
 `state.config.Notify_upnext` / `.Notify_recording` on Finish.
 

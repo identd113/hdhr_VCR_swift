@@ -468,13 +468,6 @@ struct MenuContent: View {
             }
             .disabled(!vlcReady)
             .accessibilityLabel(gatedLabel(watchFromBeginningLabel(show.show_title), met: vlcReady, requirement: "VLC"))
-            if state.config.Watch_in_VLC {
-                Button(action: { state.watchRecordingInVLC(show) }) {
-                    Label { Text("Watch in VLC").foregroundColor(watchNowOrange) }
-                          icon: { Image(systemName: "arrow.up.forward.app").foregroundColor(watchNowOrange) }
-                }
-                .accessibilityLabel(watchInVLCLabel(show.show_title))
-            }
             Button("Skip", role: .destructive) { Task { await state.skipRecording(showId: show.show_id) } }
             Button("Delete…", role: .destructive) { state.confirmAndDeleteShow(show) }
             if !show.show_recording_path.isEmpty {

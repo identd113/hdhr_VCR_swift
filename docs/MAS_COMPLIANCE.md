@@ -20,7 +20,11 @@ Replaced `~/Library/LaunchAgents/` plist with `SMAppService.mainApp.register()` 
 Requires bundle ID `com.hdhr.vcrplus` (already set in Info.plist).
 
 ### 4. `Process()` for brew installs — resolved 2026-08-19
-The brew install UI (`SettingsView.swift`'s `runBrew()`/`brewInstallRow`/Maintenance → Tools section) was removed entirely, not just for MAS — it wasn't pulling its weight generally (VLC is still detected via `NSWorkspace`/`VLCBridge.locateApp()` for the "Watch in VLC" toggle; only the install-it-for-me buttons and the `Process()` spawn of `brew` are gone). This blocker no longer applies to either distribution track.
+The brew install UI (`SettingsView.swift`'s `runBrew()`/`brewInstallRow`/Maintenance → Tools section) was removed entirely, not just for MAS — it wasn't pulling its weight generally. VLC is still detected via `NSWorkspace`/`VLCBridge.locateApp()` (the in-app player's own `isAvailable` gate, and — added 2026-09-12 — `FirstRunWizardView`'s VLC-requirement step), but only ever to *check* for it, never to install it. This blocker no longer applies to either distribution track.
+
+The 2026-09-12 First-Run Wizard VLC step's own "Install via Homebrew" button stays clear of this blocker the same way — it copies `brew install --cask vlc` to the clipboard and opens Terminal.app via `NSWorkspace.shared.open(_:)` (the same technique `SettingsView.openInTerminal` already uses for the Terminal Guide feature), never `Process()` or AppleScript/System Events automation. The user pastes and runs it themselves.
+
+The external "Open in VLC" feature (`Watch_in_VLC` config setting, `AppState.watchInVLC`/`watchRecordingInVLC`) was removed entirely 2026-09-12, unrelated to MAS compliance — see `CHANGELOG.md`'s "Unreleased" section for why.
 
 ### 7. Privacy Manifest
 `Sources/hdhr_VCR/PrivacyInfo.xcprivacy` declares:

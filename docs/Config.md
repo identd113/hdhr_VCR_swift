@@ -42,8 +42,6 @@ Series_scan_retry_hours Int     4       hours before re-scanning guide when no e
 Check_for_updates       Bool    true    gate the automatic once-a-day background update check (AppState.updateCheckLoop()); manual "Check for Updates" button always runs regardless; see UpdateChecker.swift
 Network_interface       String  ""      bind UDP discovery + curl to NIC; empty = Auto; utun* = VPN
 Verbose_curl            Bool    false   add -v to curl; stderr appended to hdhrVCRplus.log
-Watch_in_VLC            Bool    false   show "Watch in VLC" buttons (only when VLC installed)
-Watch_in_VLC_initialized Bool   false   set true after first VLC auto-detect; prevents overriding user's toggle on subsequent launches
 Player_buffer_min_rate  Int     93      floor playback rate % for adaptive buffer fill (90–100); 100 = disabled
 Sports_padding_enabled  Bool    true    master Bonus Time toggle; extends recording past guide end (any show can enable; sports entries default to true)
 Sports_padding_minutes  Int     30      Bonus Time extension duration in minutes (10–60, step 5)

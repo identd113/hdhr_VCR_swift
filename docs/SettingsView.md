@@ -42,7 +42,6 @@ Two `Section`s:
 - Default transcode: inline `Picker` — None / Heavy / Mobile / Internet 720
 - Min free disk: `Stepper` showing `"Min free disk: N GB"`, range 1–100
 - Pause after N failures: `Stepper`, range 1–10
-- Watch in VLC: `Toggle` (only visible when VLC is installed)
 - Bonus Time: `Toggle`; when on, reveals a `Stepper` for bonus minutes (10–60, step 5)
 
 **Post-Processing** section:
@@ -87,7 +86,7 @@ Each action row: title in medium weight + a small `ⓘ` `InfoButton` (tapping sh
 
 When a task finishes: green `checkmark.circle.fill` + result message in a separate `Section`.
 
-**Tools section (Homebrew install rows for VLC/HDHomeRun CLI) — removed 2026-08-19.** `runBrew()`/`brewInstallRow`/`brewPath`/`hdhrCliInstalled` and their `brewBusy`/`brewStatus` state are gone; VLC is still detected for the "Watch in VLC" toggle (`vlcInstalled`, kept — see General below), but there's no longer any install-it-for-me button for either tool, nor a Homebrew dependency in this view at all. Also removes a Mac App Store distribution blocker this was previously flagged as (`docs/MAS_COMPLIANCE.md`) — there was no sandboxed way to invoke Homebrew.
+**Tools section (Homebrew install rows for VLC/HDHomeRun CLI) — removed 2026-08-19.** `runBrew()`/`brewInstallRow`/`brewPath`/`hdhrCliInstalled` and their `brewBusy`/`brewStatus` state are gone; there's no longer any install-it-for-me button for either tool, nor a Homebrew dependency in this view at all. Also removes a Mac App Store distribution blocker this was previously flagged as (`docs/MAS_COMPLIANCE.md`) — there was no sandboxed way to invoke Homebrew. `vlcInstalled` (`VLCBridge.locateApp() != nil`) is still defined in this file — see line ~797's Default transcode level gating — but no longer backs a "Watch in VLC" toggle, which was removed entirely 2026-09-12 (see `CHANGELOG.md`'s "Unreleased" section). A clipboard-copy + open-Terminal "Install via Homebrew" button was added to `FirstRunWizardView`'s new VLC-requirement step the same day — a different, sandbox-safe mechanism from the removed `Process()`-based one (see `docs/MAS_COMPLIANCE.md`).
 
 **Developer section** — removed (2026-07-23): it only offered a "Simulate macOS version" picker, which had been dead since `CableGuideView` (its one consumer) was removed.
 
@@ -181,7 +180,6 @@ Sidebar entries (with SF Symbol icons):
 - **Default transcode** — `Picker`: None / Heavy / Mobile / Internet 720. Stored in `draft.Default_transcode`.
 - **Min free disk** — `Stepper` (1–100 GB). Recording is refused when free space is below this threshold (`AppState.diskOK(for:)`).
 - **Pause after N failures** — `Stepper` (1–10). After `Fail_count_setting` consecutive failures, `show_active = false` and the show moves to Paused. Each successful recording start decrements `show_fail_count` by 1.
-- **Watch in VLC** — `Toggle`, only shown when `VLCBridge.locateApp() != nil` (VLC resolved dynamically via Launch Services bundle-id lookup, not assumed at a fixed path — see `docs/VLCBridge.md`). Enables "Watch in VLC" buttons throughout the app. Stored in `draft.Watch_in_VLC`. **Auto-initialized**: on first launch (when `Watch_in_VLC_initialized == false`), the setting is auto-enabled if VLC is installed, then `Watch_in_VLC_initialized` is set to true so subsequent user toggles are never overridden.
 - **Min buffer rate** — no longer exposed in Settings (removed 2026-07-23; low-utility tuning knob). `Player_buffer_min_rate` still exists in `AppConfig` and still sets the fill-phase floor for the in-app player's 8-second live buffer — it's just fixed at its default (93%) instead of user-adjustable.
 - **Bonus Time** — `Toggle` (on by default). Extends any show's recording past guide end. Sports entries default to enabled via `applyWebGuideEntry()`; any show can override via the per-show toggle. Stored in `draft.Sports_padding_enabled`.
 - **Bonus Time duration** — `Stepper` (10–60 min, step 5, default 30). Only visible when Bonus Time toggle is on. Stored in `draft.Sports_padding_minutes`.

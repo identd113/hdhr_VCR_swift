@@ -352,12 +352,6 @@ struct SettingsView: View {
                     idPrefix: "settings-recording"
                 )
 
-                if vlcInstalled {
-                    Toggle(isOn: $draft.Watch_in_VLC) {
-                        HStack { Text("Watch in VLC"); InfoButton("Adds Watch in VLC buttons for live and recorded streams throughout the app.") }
-                    }
-                }
-
                 Toggle(isOn: $draft.Sports_padding_enabled) {
                     HStack { Text("Bonus Time"); InfoButton("Lets recordings extend past the guide's listed end time. Sports shows opt into this by default — covers live events that run long.") }
                 }

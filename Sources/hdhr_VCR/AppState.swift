@@ -462,10 +462,6 @@ final class AppState: ObservableObject {
     }
     private var recordingRelayClaim = WebServerClaimFlag()      // held while watchRecordingInApp's relay session is open
     private var virtualTunerWebServerClaim = WebServerClaimFlag()  // held while updateVirtualTunerPresence's relay is advertised
-    // Claimed once, on first use, and never released via a matching call — see
-    // watchRecordingInVLC(_:)'s own doc comment for why an externally-launched VLC.app window
-    // gives this app no signal to release it on.
-    private var recordingRelayVLCClaim = WebServerClaimFlag()
 
     // Exponential backoff for repeated guide API failures per device.
     // Delays: 1 min → 5 min → 15 min → 30 min → 1 hour (capped).
@@ -537,9 +533,9 @@ final class AppState: ObservableObject {
     // In-flight fetchDeviceStatus(for:) calls, keyed by device — coalesces concurrent callers onto
     // the same real fetch (mirrors ensureLineupLoaded's loadingLineupTasks idiom) instead of a
     // second caller silently skipping and reading stale tunerStatus. That distinction matters here:
-    // watchInApp/watchInVLC specifically await this call to force a fresh poll before deciding
-    // whether tuners are full, so a skip-and-return-immediately guard would defeat the whole point
-    // of awaiting it whenever the idle loop's own per-tick call happened to already be in flight.
+    // watchInApp specifically awaits this call to force a fresh poll before deciding whether
+    // tuners are full, so a skip-and-return-immediately guard would defeat the whole point of
+    // awaiting it whenever the idle loop's own per-tick call happened to already be in flight.
     private var fetchStatusTasks: [String: Task<Void, Never>] = [:]
     // Tracks in-flight lineup fetches so concurrent callers await the same Task instead of polling
     private var loadingLineupTasks: [String: Task<Void, Never>] = [:]
@@ -685,13 +681,6 @@ final class AppState: ObservableObject {
         // 1. Config first — shows visible in menu immediately
         loadConfig()
         glog("[Startup] config loaded — \(shows.count) shows, GuideHours=\(config.GuideHours)")
-
-        // Auto-enable Watch in VLC on first launch if VLC is installed
-        if !config.Watch_in_VLC_initialized {
-            config.Watch_in_VLC = VLCBridge.locateApp() != nil
-            config.Watch_in_VLC_initialized = true
-            saveConfig()
-        }
 
         // 2. Reattach any recordings that survived a restart
         await reattachRecordings()
@@ -4394,21 +4383,6 @@ final class AppState: ObservableObject {
         mgr.open(url: localURL, title: title, device: device, appState: self)
     }
 
-    func watchInVLC(url: String, transcode: String? = nil, deviceId: String? = nil) {
-        let raw = config.applyTranscode(url, override: transcode)
-        guard config.Watch_in_VLC,
-              let streamURL = URL(string: raw) else { return }
-        guard let vlcApp = VLCBridge.locateApp() else { return }
-        let device = devices.first { $0.DeviceID == (deviceId ?? "") }
-        Task {
-            if let device {
-                guard await tunerAvailable(device) else { return }
-            }
-            NSWorkspace.shared.open([streamURL], withApplicationAt: vlcApp,
-                                    configuration: .init()) { _, _ in }
-        }
-    }
-
     // A currently-recording show is already occupying a tuner; re-requesting the same channel
     // for "Watch Now" would open a second TCP connection and consume a second tuner — HDHomeRun's
     // port 5004 allocates one tuner per connection with no client-multiplexing (docs/HDHRFindings.md).
@@ -4529,45 +4503,6 @@ final class AppState: ObservableObject {
         seekRecording(showId: showId, toSeconds: max(0, elapsed - Self.recordingLiveEdgeBackoffSeconds))
     }
 
-    /// External-VLC counterpart to watchRecordingInApp(_:) — same "a currently-recording show
-    /// already occupies a tuner, so watch the file being written to disk instead of opening a
-    /// second tuner connection" rule (see that function's own doc comment for the full reasoning).
-    ///
-    /// Fixed 2026-09-12 — was opening a raw `file://` URL directly. Per watchRecordingInApp's own
-    /// doc comment, libvlc's local-file access module snapshots the file's length at open time and
-    /// won't read past it even though curl keeps appending — so a direct file:// URL here would
-    /// silently stop advancing (not crash, just freeze) the moment playback caught up to wherever
-    /// the file was when VLC.app opened it, instead of continuing to follow the still-growing
-    /// recording. Routed through the same `/api/watch-recording` open-ended-HTTP-stream relay
-    /// watchRecordingInApp already uses for the in-app player, which has no such limit.
-    ///
-    /// No tunerAvailable gate, deliberately — same as watchRecordingInApp, this never touches the
-    /// tuner at all, so checking its availability would just find it correctly "occupied" by this
-    /// show's own recording and wrongly block every call.
-    func watchRecordingInVLC(_ show: Show) {
-        guard config.Watch_in_VLC, let vlcApp = VLCBridge.locateApp() else { return }
-        guard !show.show_recording_path.isEmpty,
-              FileManager.default.fileExists(atPath: show.show_recording_path) else {
-            watchInVLC(url: show.show_url, transcode: show.show_transcode, deviceId: show.hdhr_record)
-            return
-        }
-        // Claimed but never released via a matching releaseRecordingRelayIfNeeded()-style call --
-        // unlike the in-app player, an externally-launched VLC.app window gives this app no signal
-        // when the user actually stops watching, so there's no reliable moment to release it.
-        // Left running for the rest of this app session once used; a lightweight local listener
-        // staying up is a fair trade against leaving the relay unusable, and safe against the
-        // in-app player's own independent claim/release pairing since ensureWebServerRunning()/
-        // releaseInternalWebServer() are refcounted underneath both claims.
-        recordingRelayVLCClaim.claim { ensureWebServerRunning() }
-        let elapsed = recordingElapsedSeconds(show)
-        let startSeconds = max(0, elapsed - Self.recordingLiveEdgeBackoffSeconds)
-        let startOffset = recordingByteOffset(for: show, atSeconds: startSeconds) ?? 0
-        let relayURL = "http://127.0.0.1:\(config.Web_server_port)/api/watch-recording?show=\(show.show_id)&start=\(startOffset)"
-        guard let streamURL = URL(string: relayURL) else { return }
-        glog("[Watch] '\(show.show_title)' from disk via local relay, opening in VLC.app (recording in progress): \(show.show_recording_path)")
-        NSWorkspace.shared.open([streamURL], withApplicationAt: vlcApp, configuration: .init()) { _, _ in }
-    }
-
     private func alertTunerFull(tunerCount: Int, deviceId: String) {
         let alert = NSAlert()
         alert.messageText = "No Tuner Available"
@@ -4614,11 +4549,11 @@ final class AppState: ObservableObject {
     }
 
     // Coalesces concurrent callers for the same device onto one real fetch — several call sites
-    // (idle-loop per-tick, startup, probes, watchInApp/watchInVLC forcing a fresh poll before
-    // checking tuner availability) can all target the same device within a short window. A second
-    // caller awaits the same in-flight Task rather than either stacking up redundant requests or
-    // (the wrong fix) skipping and returning immediately with stale data — watchInApp/watchInVLC
-    // specifically need the awaited call to reflect an actually-fresh poll.
+    // (idle-loop per-tick, startup, probes, watchInApp forcing a fresh poll before checking tuner
+    // availability) can all target the same device within a short window. A second caller awaits
+    // the same in-flight Task rather than either stacking up redundant requests or (the wrong fix)
+    // skipping and returning immediately with stale data — watchInApp specifically needs the
+    // awaited call to reflect an actually-fresh poll.
     private func fetchDeviceStatus(for device: HDHRDevice) async {
         let id = device.DeviceID
         if let existing = fetchStatusTasks[id] {
