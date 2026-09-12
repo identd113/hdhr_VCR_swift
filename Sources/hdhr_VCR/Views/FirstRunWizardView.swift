@@ -170,8 +170,18 @@ struct FirstRunWizardView: View {
         // intro hand-off in finishIntro() below does the same).
         .frame(width: step == .intro ? 640 : 460, height: step == .intro ? 480 : nil)
         // Keeps the window on-screen across steps whose content height differs a lot (see
-        // WindowRecenterer's own doc comment below for why this is needed at all).
-        .background(WindowRecenterer(trigger: step))
+        // Re-centers the wizard's own window whenever the visible step changes. Height genuinely
+        // varies per step by design (docs/FirstRunWizardView.md: "height follows content"), but
+        // `.windowResizability(.contentSize)` only resizes the window -- it doesn't reposition it,
+        // and AppKit's default resize keeps the window's top edge fixed and grows the bottom edge
+        // downward. A step tall enough to push that bottom edge past the visible screen hides the
+        // Next/Back/Finish row entirely, even though it's still present in the view tree (reported
+        // live for Step 4, Recording FEED -- the tallest step, combining a diagram, two paragraphs,
+        // and a Label). Centering after every step change means any extra height grows symmetrically
+        // off both the top and bottom instead of only downward, which is what actually keeps the
+        // button row on-screen. See Views/WindowAction.swift for the shared NSViewRepresentable
+        // idiom this and DonationNagView's floating-level setter both use.
+        .background(WindowAction(trigger: step) { $0.center() })
         // Same floating-panel chrome as DonationNagView — thickMaterial + 20pt rounded corners +
         // a faint border + drop shadow — so this reads as the same "app's own chrome" rather than
         // a bare Settings-style dialog in a hiddenTitleBar window with no material treatment.
@@ -776,33 +786,6 @@ struct FirstRunWizardView: View {
         panel.allowsMultipleSelection = false
         panel.directoryURL = state.defaultSaveDir
         if panel.runModal() == .OK, let url = panel.url { saveFolder = url.path }
-    }
-}
-
-// Re-centers the wizard's own window whenever the visible step changes. Height genuinely varies
-// per step by design (docs/FirstRunWizardView.md: "height follows content"), but
-// `.windowResizability(.contentSize)` only resizes the window -- it doesn't reposition it, and
-// AppKit's default resize keeps the window's top edge fixed and grows the bottom edge downward.
-// A step tall enough to push that bottom edge past the visible screen hides the Next/Back/Finish
-// row entirely, even though it's still present in the view tree (reported live for Step 4,
-// Recording FEED -- the tallest step, combining a diagram, two paragraphs, and a Label). Centering
-// after every step change means any extra height grows symmetrically off both the top and bottom
-// instead of only downward, which is what actually keeps the button row on-screen. Same
-// NSViewRepresentable-plus-DispatchQueue.main.async idiom DonationNagView.swift's
-// FloatingWindowLevelSetter already uses to reach the hosting NSWindow from SwiftUI.
-private struct WindowRecenterer: NSViewRepresentable {
-    let trigger: FirstRunWizardView.Step
-
-    func makeNSView(context: Context) -> NSView {
-        let v = NSView()
-        DispatchQueue.main.async { v.window?.center() }
-        return v
-    }
-
-    // Fires whenever `trigger` (the current step) changes, since that's the one stored
-    // property SwiftUI diffs to decide this view needs updating.
-    func updateNSView(_ nsView: NSView, context: Context) {
-        DispatchQueue.main.async { nsView.window?.center() }
     }
 }
 

@@ -11,9 +11,10 @@ Fixed-width (400pt) window, single-instance (`Window`, not `WindowGroup` — see
   the header band (content has enough top padding to clear them)
 - The whole card is clipped to a 20pt continuous rounded rect with a subtle 1px light stroke and a
   soft drop shadow, on a `.thickMaterial` base — reads as a floating panel, not a flat window
-- A private `FloatingWindowLevelSetter` (`NSViewRepresentable` setting `window?.level = .floating`
-  once mounted — the same technique the old, now-removed `FloatingGuideView` used, see git history)
-  keeps the nag above other windows so it can't get lost behind the guide, Settings, etc.
+- `WindowAction` (`Views/WindowAction.swift`, a shared `NSViewRepresentable` — also used by
+  `FirstRunWizardView`'s window re-centering) setting `window?.level = .floating` — the same
+  technique the old, now-removed `FloatingGuideView` used, see git history — keeps the nag above
+  other windows so it can't get lost behind the guide, Settings, etc.
 - An `.onAppear` resets `enteredCode`/`showMismatch` to a clean slate — macOS window-state
   restoration can otherwise repopulate a closed-and-reopened single-instance `Window`'s field
   contents from its last session, which looked like a bug in testing (a stale typed code + a

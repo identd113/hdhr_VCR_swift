@@ -48,7 +48,9 @@ struct DonationNagView: View {
                 .strokeBorder(.white.opacity(0.12), lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.4), radius: 28, y: 14)
-        .background(FloatingWindowLevelSetter())
+        // Keeps the nag above other windows so it can't get lost behind the guide, Settings, etc. —
+        // same technique the old FloatingGuideView used (see git history) before its removal.
+        .background(WindowAction(trigger: true) { $0.level = .floating })
         .onAppear {
             // macOS window-state restoration can repopulate a closed-and-reopened single-instance
             // Window scene's field contents from its last session — force a clean slate on every
@@ -202,17 +204,4 @@ struct DonationNagView: View {
     private func sha256Hex(_ s: String) -> String {
         SHA256.hash(data: Data(s.utf8)).map { String(format: "%02x", $0) }.joined()
     }
-}
-
-// Keeps the nag above other windows so it can't get lost behind the guide, Settings, etc. —
-// same technique the old FloatingGuideView used (see git history) before its removal.
-private struct FloatingWindowLevelSetter: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSView {
-        let v = NSView()
-        DispatchQueue.main.async {
-            v.window?.level = .floating
-        }
-        return v
-    }
-    func updateNSView(_ nsView: NSView, context: Context) {}
 }

@@ -148,7 +148,8 @@ accuracy regresses right after app launch specifically.
   `FloatingGuideView.swift` (confirmed via `git show v1.4.6:...FloatingGuideView.swift`) — not
   copy-paste *divergence* since the old copy no longer exists, but if a third window ever wants
   floating-level behavior, promote it out of file-private scope into a shared helper rather than
-  a third paste.
+  a third paste. **Done 2026-09-12** — a second copy (`FirstRunWizardView`'s `WindowRecenterer`)
+  did appear in the meantime; both are now the one shared `Views/WindowAction.swift`.
 - `docs/DonationNagView.md` explicitly documents "no throttling or snooze" — the nag re-opens on
   every `addShow` call (native or web) until unlocked, including immediately after "Not now" —
   confirmed intentional design (not a bug): `TODO.md`-style deferred fix already named in the doc
@@ -1067,3 +1068,77 @@ TODO text describing the same change); `321fdb5` is a pure doc correction, zero 
   `liveConns`/`connLock` already makes cross-queue access from `handleConnection` safe, no new race),
   `teardownForExit`'s inert reorder, `Version.swift`'s bump — reviewed clean, no hack/dead-code/
   efficiency findings.
+
+## 2026-09-12 — dbe4186..af212f5 review (feature/recording-feed merge: FEED in-memory relay, Watch Now VLC fixes, First-Run Wizard crash fixes)
+
+- `Sources/hdhr_VCR/WebServer.swift`'s `FeedRelayProxyDelegate` (new, ~line 733) — verified thread
+  safety of the EWMA pacer by hand: every mutable field (`buffer`, `draining`, `bytesReceived`,
+  `bytesSent`, `finished`, `receivedAnyData`, `currentTask`) is only ever touched inside the one
+  `NSLock`, and `drainIfNeeded`'s recursive re-entry (`hasMore` → call itself again after
+  `conn.send`'s completion) is bounded by `buffer.count` strictly decreasing each call — no
+  unbounded recursion risk. `startAttempt: (() -> Void)!` (implicitly-unwrapped, set one line after
+  declaration) is a verbatim mirror of the pre-existing `TranscodeProxyDelegate`/`beginTranscodeRelay`
+  idiom one screen away in the same file (`WebServer.swift:1286`) — not a new hack, same
+  synchronous-assignment-before-any-async-use guarantee applies.
+- `RecordingManager.startFeedPull`/`stopFeedPull`/`isFeedPullRunning`/`stopAllFeedPulls`/
+  `feedPullPids` (the disk-backed predecessor the task description flagged to check for orphaned
+  references) never actually touched `main`'s `RecordingManager.swift` at all —
+  `git diff dbe4186..af212f5 -- Sources/hdhr_VCR/RecordingManager.swift` is empty, confirming those
+  functions were introduced *and* removed entirely within `feature/recording-feed`'s own history
+  before merging, netting to zero. Grepped the full tree for all five symbol names post-merge: only
+  historical mentions in `issues_resolved.md`/`TODO.md`/comments remain, no live code references.
+  Clean.
+- `Sources/hdhr_VCR/AppState.swift:4453` (`watchRecordingInVLC`'s new local-relay URL) builds
+  `"http://127.0.0.1:\(config.Web_server_port)/..."`, while the same commit's
+  `startFeedLocalRelay` (line 4354) uses `webServer.activePort` for the identical kind of URL — a
+  real divergence, but not new debt introduced by this diff: two other pre-existing sibling
+  functions in the same file (`AppState.swift:4497`, `4547`) already use `config.Web_server_port`
+  for their own `/api/watch-recording` relay URLs, untouched by this diff. The new line follows the
+  majority pre-existing pattern rather than the more-correct `activePort` one. Only matters if the
+  configured port and the actually-bound port ever diverge (a bind failure falling back to a
+  different port) — narrow edge case, not flagged as a hard bug, but if `activePort` is ever
+  confirmed to diverge from `config.Web_server_port` in the wild, all four call sites should be
+  unified on `activePort` in one pass rather than fixed piecemeal.
+- `Sources/hdhr_VCR/VLCBridge.swift:447` — `isRecordingRelay` broadened to
+  `url.contains("/api/watch-recording") || url.contains("/api/feed-local-relay")`. This modifies
+  (not triples) the two-place `"/api/watch-recording"` match CLAUDE.md already calls accepted debt;
+  the new `"/api/feed-local-relay"` string is a distinct marker documented in
+  `docs/VirtualTunerService.md`'s "Client-side local relay" section and consistent with the file's
+  established stringly-typed-route-marker convention. Not a third copy of the same string, but
+  worth watching: a future FEED-adjacent route should reuse one of these two markers or introduce a
+  shared helper rather than adding a third distinct magic string here.
+- `Sources/hdhr_VCR/Views/DiagramAnimationSupport.swift`/`NetworkFlowDiagram.swift`/
+  `WebLANDiagram.swift` — verified the animation removal (root-caused AppKit "Update Constraints"
+  crash in a content-fitted wizard window) left no orphans: `DiagramAnimation.packetDot`/
+  `.rippleRing`/`.snappedDate`/`.edgeFadeOpacity` all zero-hit grepped across `Sources/`+`docs/`
+  post-removal. `DiagramAnimation.progress` correctly kept (still used by `TerminalTypingDiagram`'s
+  cursor blink, a `.periodic` TimelineView never implicated in the crash).
+- `tools/feed_diagnostics/` (`analyze_pcr.py`, `extract_window.py`, `feed_capture_tagger.py`,
+  `watch_and_extract.sh`) — tracked in git (not gitignored beyond their `__pycache__/`), and
+  legitimately load-bearing: `issues_resolved.md`'s "VLC-side FEED playback stalls" entry cites
+  `analyze_pcr.py`'s findings as the evidence that ruled out content-level PCR corruption and
+  pointed at delivery cadence instead, so keeping them tracked (vs. deleting as session-ephemeral)
+  is reasonable. Two gaps: (1) not added to `CLAUDE.md`'s `## Tools` table, unlike every other
+  `tools/*` script; (2) `analyze_pcr.py`'s and `watch_and_extract.sh`'s own docstrings reference
+  "ISSUES.md's still-open 'next step 3'" — but this exact merge deletes that whole ISSUES.md entry
+  (moved to `issues_resolved.md` as resolved), so the tracked scripts now carry a dangling reference
+  to prose that no longer exists where they say it does. Reported to the main agent as findings, not
+  fixed here.
+- `TODO.md`'s own "Simplification ideas for the FEED client-side local relay" entry (idea 4) already
+  self-documents that `streamGrowingFile`/`pumpGrowingFile`'s new `stillActiveCheck` closure
+  parameter (threaded through 4 functions) has "nothing left to justify it" now that the FEED path
+  bypasses `streamGrowingFile` entirely via the in-memory proxy instead — kept anyway since both
+  remaining real callers already pass one trivially and reverting would be pure churn. Verified this
+  self-assessment is accurate; not re-flagging as unaddressed dead-parameter risk since the team
+  already reasoned through and documented the tradeoff.
+- Overall: FEED relay teardown (`VLCPlayerWindowManager.playerWindowDidClose`) unregisters the
+  session id but doesn't force-cancel an in-flight `FeedRelayProxyDelegate`/`URLSession` directly —
+  verified this is fine by design: the active proxy's cleanup is triggered transitively once
+  `VLCBridge.shared.releasePlayer()` (called earlier in the same function) tears down libvlc's own
+  socket to the local relay, which fails the next `conn.send` and cascades into
+  `FeedRelayProxyDelegate.finishOnce()` → `cleanup()`. The 30s liveness probe
+  (`scheduleFeedRelayLivenessProbe`) is a correct backstop for the case where that socket close
+  never arrives cleanly (Mac sleeps, Wi-Fi drops). No leak found. Minor: the teardown comment says
+  "fires from conn.cancel() below" but there's no literal `conn.cancel()` call in that function —
+  it's describing the transitive effect of `releasePlayer()` a few lines above, not a call "below."
+  Cosmetic comment-accuracy nit only, not a functional issue.

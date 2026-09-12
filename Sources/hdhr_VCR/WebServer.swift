@@ -729,30 +729,106 @@ final class WebServer: @unchecked Sendable {
         beginFeedRelayProxy(remoteURL: remoteURL, sessionId: sessionId, conn: conn)
     }
 
-    // Delegate-based (not completion-handler-based) URLSessionDataTask consumer for the FEED
-    // client-side local relay — mirrors TranscodeProxyDelegate's own shape (an open-ended remote
-    // stream with no natural end, forwarded to `conn` as chunks arrive) but adds delivery pacing:
-    // unlike libvlc's own sout httpd (already correctly real-time-paced, TranscodeProxyDelegate's
-    // source), the remote FEED URL's delivery cadence over a real network hop is NOT already smooth
-    // — see issues_resolved.md's "VLC-side FEED playback stalls" entry for the investigation this
-    // pacing fixes. Runs on URLSession's own delegate queue; every `conn.send` hops onto
-    // `targetQueue` first, matching this file's own threading discipline.
-    private final class FeedRelayProxyDelegate: NSObject, URLSessionDataDelegate {
-        private let conn: NWConnection
-        private let targetQueue: DispatchQueue
+    // Shared base for the two delegate-based (not completion-handler-based) URLSessionDataTask
+    // consumers below (transcode relay + FEED local relay) — both forward an open-ended remote
+    // stream with no natural end to `conn` as chunks arrive, and share the exact same
+    // finish-once/liveness-probe/failed-before-any-data plumbing. Runs on URLSession's own delegate
+    // queue; `targetQueue` is what every `conn`-touching call hops onto first, matching this file's
+    // own threading discipline (see accumulate()/handleConnection's doc comments on why every
+    // NWConnection touch funnels through one queue). Only `finished`/`receivedAnyData` need the
+    // lock — they're the only state touched from both URLSession's private delegate queue (this
+    // class's own methods) and `targetQueue` (external callers like the liveness probe); a
+    // subclass's own additional state should stay `targetQueue`-only wherever possible instead of
+    // adding more locked fields (see FeedRelayProxyDelegate's own pacing state for why that's safe).
+    private class RelayProxyDelegateBase: NSObject, URLSessionDataDelegate {
+        let conn: NWConnection
+        let targetQueue: DispatchQueue
         private let onFinished: () -> Void
-        // Mirrors TranscodeProxyDelegate's own field — fired instead of onFinished when the dataTask
-        // ends in an error before ever delivering a single byte, so beginFeedRelayProxy's retry loop
-        // can tell "the remote isn't answering yet/at all" apart from a genuine stream end.
+        // Fired instead of onFinished when a dataTask ends in an error before ever delivering a
+        // single byte — the caller's own retry loop treats this as "the source probably isn't
+        // accepting connections yet" rather than a real end/failure, and re-issues a fresh attempt
+        // on this same delegate/session. Never fired once real data has started flowing — from that
+        // point on, any error goes through onFinished exactly as before.
         private let onFailedBeforeAnyData: () -> Void
-        private let lock = NSLock()
+        let lock = NSLock()
         private var finished = false
-        private var receivedAnyData = false
-        private weak var currentTask: URLSessionDataTask?
+        fileprivate var receivedAnyData = false
 
-        // Pacing state — see drainIfNeeded's own comment for the math. No periodic file-stat
-        // sampling needed here (unlike the earlier disk-backed FeedRelayPacer): every byte's arrival
-        // is already a direct event, so the observed rate is just a running average of real receipts.
+        init(conn: NWConnection, targetQueue: DispatchQueue, onFinished: @escaping () -> Void,
+             onFailedBeforeAnyData: @escaping () -> Void) {
+            self.conn = conn; self.targetQueue = targetQueue; self.onFinished = onFinished
+            self.onFailedBeforeAnyData = onFailedBeforeAnyData
+        }
+
+        func finishOnce() {
+            lock.lock()
+            let alreadyFinished = finished
+            finished = true
+            lock.unlock()
+            guard !alreadyFinished else { return }
+            onFinished()
+        }
+
+        // External callers (the liveness probe) share this same once-only guard instead of
+        // duplicating one, so a probe-detected dead connection and a normal read-path failure can
+        // never both fire cleanup.
+        var isFinished: Bool { lock.lock(); defer { lock.unlock() }; return finished }
+        func notifyFinished() { finishOnce() }
+
+        func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+            lock.lock()
+            let alreadyFinished = finished
+            let hadData = receivedAnyData
+            lock.unlock()
+            guard !alreadyFinished else { return }
+            if error != nil, !hadData {
+                onFailedBeforeAnyData()
+            } else {
+                // Hopped onto targetQueue — this delegate method runs on URLSession's private
+                // delegate queue, not targetQueue. finishOnce() calls onFinished (the caller's
+                // cleanup), which touches conn/urlSession; every other path into cleanup() already
+                // runs on targetQueue, so this stops being the one exception relying on cleanup()'s
+                // own APIs happening to be thread-safe incidentally. Found in code review
+                // 2026-09-07 — see issues_resolved.md.
+                targetQueue.async { [weak self] in self?.finishOnce() }
+            }
+        }
+    }
+
+    // libvlc's sout httpd sends an open-ended stream with no natural end while the transcode keeps
+    // running — forwards each chunk straight through immediately, no pacing needed since the source
+    // is already correctly real-time-paced (unlike FeedRelayProxyDelegate's source, see that class's
+    // own comment).
+    private final class TranscodeProxyDelegate: RelayProxyDelegateBase {
+        func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+            lock.lock(); receivedAnyData = true; lock.unlock()
+            targetQueue.async { [weak self] in
+                guard let self else { return }
+                self.conn.send(content: data, completion: .contentProcessed({ error in
+                    if error != nil {
+                        dataTask.cancel()
+                        self.finishOnce()
+                    }
+                }))
+            }
+        }
+    }
+
+    // FEED client-side local relay's consumer — same open-ended-stream shape as TranscodeProxyDelegate
+    // above, but adds delivery pacing: unlike libvlc's own sout httpd, the remote FEED URL's delivery
+    // cadence over a real network hop is NOT already smooth — see issues_resolved.md's "VLC-side FEED
+    // playback stalls" entry for the investigation this pacing fixes.
+    //
+    // Pacing state (buffer/draining/bytesReceived/bytesSent) is deliberately NOT lock-protected like
+    // the base class's finished/receivedAnyData — didReceive hops onto targetQueue before touching
+    // any of it, and drainIfNeeded (plus its conn.send completion, which also runs on targetQueue
+    // since conn was started with targetQueue) is the only other thing that touches it, so it's all
+    // single-serial-queue-confined already. A prior version locked this state with hand-written
+    // lock/unlock pairs and no `defer` — a future edit adding an early return between a lock and its
+    // unlock would have deadlocked the whole relay session silently; this shape has no locks to get
+    // wrong instead.
+    private final class FeedRelayProxyDelegate: RelayProxyDelegateBase {
+        private weak var currentTask: URLSessionDataTask?
         private var buffer = Data()
         private var draining = false
         private let startedAt = Date()
@@ -765,43 +841,29 @@ final class WebServer: @unchecked Sendable {
         // How far ahead of a perfectly steady real-time pace delivery is allowed to run before this
         // delegate starts holding chunks back — same value/reasoning as FeedRelayPacer's own.
         private static let lookaheadSeconds: TimeInterval = 0.5
-        private static let drainRetryInterval: TimeInterval = 0.02
-
-        init(conn: NWConnection, targetQueue: DispatchQueue, onFinished: @escaping () -> Void,
-             onFailedBeforeAnyData: @escaping () -> Void) {
-            self.conn = conn; self.targetQueue = targetQueue; self.onFinished = onFinished
-            self.onFailedBeforeAnyData = onFailedBeforeAnyData
-        }
-
-        private func finishOnce() {
-            lock.lock()
-            let alreadyFinished = finished
-            finished = true
-            lock.unlock()
-            guard !alreadyFinished else { return }
-            onFinished()
-        }
-        var isFinished: Bool { lock.lock(); defer { lock.unlock() }; return finished }
-        func notifyFinished() { finishOnce() }
+        // Floor for the computed wait below, and the fallback interval if that computation would
+        // otherwise land on zero/negative — not a fixed poll cadence any more (see drainIfNeeded).
+        private static let minDrainRetryInterval: TimeInterval = 0.02
 
         func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
-            lock.lock()
-            receivedAnyData = true
-            currentTask = dataTask
-            buffer.append(data)
-            bytesReceived += data.count
-            lock.unlock()
-            targetQueue.async { [weak self] in self?.drainIfNeeded() }
+            lock.lock(); receivedAnyData = true; lock.unlock()
+            targetQueue.async { [weak self] in
+                guard let self else { return }
+                self.currentTask = dataTask
+                self.buffer.append(data)
+                self.bytesReceived += data.count
+                self.drainIfNeeded()
+            }
         }
 
         // Sends as much of the buffered backlog as a steady real-time pace currently allows, then
-        // re-schedules itself if bytes remain buffered but aren't allowed out yet. Always runs on
-        // targetQueue. `allowed` mirrors FeedRelayPacer's own math: "how many bytes should have gone
-        // out by (now + lookaheadSeconds) at the observed rate," minus what's already been sent —
-        // 0 or negative means delivery is already at/ahead of pace, so this just waits.
+        // re-schedules itself if bytes remain buffered but aren't allowed out yet. Must only ever be
+        // called on targetQueue (didReceive's own hop, and this function's own conn.send completion,
+        // both guarantee that). `allowed` mirrors FeedRelayPacer's own math: "how many bytes should
+        // have gone out by (now + lookaheadSeconds) at the observed rate," minus what's already been
+        // sent — 0 or negative means delivery is already at/ahead of pace, so this just waits.
         private func drainIfNeeded() {
-            lock.lock()
-            guard !finished, !draining, !buffer.isEmpty else { lock.unlock(); return }
+            guard !isFinished, !draining, !buffer.isEmpty else { return }
             let elapsed = Date().timeIntervalSince(startedAt)
             let observedRate = elapsed > 0
                 ? max(Self.minAssumedBytesPerSecond, Double(bytesReceived) / elapsed)
@@ -810,8 +872,14 @@ final class WebServer: @unchecked Sendable {
             let allowed = max(0, Int(targetByNow) - bytesSent)
             let toSend = min(allowed, buffer.count)
             guard toSend > 0 else {
-                lock.unlock()
-                targetQueue.asyncAfter(deadline: .now() + Self.drainRetryInterval) { [weak self] in self?.drainIfNeeded() }
+                // Compute exactly when `allowed` will next turn positive instead of polling on a
+                // fixed interval — a fixed 20ms poll could wake/re-check up to ~25 times for one real
+                // send whenever the hold-back is close to the full lookaheadSeconds window (e.g.
+                // right after a network burst). New data arriving still re-triggers drainIfNeeded
+                // sooner via didReceive regardless, so this is only the worst-case fallback wake-up.
+                let neededElapsed = (Double(bytesSent) + 1) / observedRate - Self.lookaheadSeconds
+                let wait = max(Self.minDrainRetryInterval, neededElapsed - elapsed)
+                targetQueue.asyncAfter(deadline: .now() + wait) { [weak self] in self?.drainIfNeeded() }
                 return
             }
             let chunk = buffer.prefix(toSend)
@@ -819,13 +887,11 @@ final class WebServer: @unchecked Sendable {
             bytesSent += toSend
             draining = true
             let hasMore = !buffer.isEmpty
-            lock.unlock()
             conn.send(content: Data(chunk), completion: .contentProcessed({ [weak self] error in
                 guard let self else { return }
-                self.lock.lock(); self.draining = false; self.lock.unlock()
+                self.draining = false
                 if error != nil {
-                    self.lock.lock(); let task = self.currentTask; self.lock.unlock()
-                    task?.cancel()
+                    self.currentTask?.cancel()
                     self.finishOnce()
                     return
                 }
@@ -833,22 +899,6 @@ final class WebServer: @unchecked Sendable {
                 // again — this recursion is bounded by buffer.count strictly decreasing each call.
                 if hasMore { self.drainIfNeeded() }
             }))
-        }
-
-        func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-            lock.lock()
-            let alreadyFinished = finished
-            let hadData = receivedAnyData
-            lock.unlock()
-            guard !alreadyFinished else { return }
-            if error != nil, !hadData {
-                onFailedBeforeAnyData()
-            } else {
-                // Hopped onto targetQueue — this delegate method runs on URLSession's private
-                // delegate queue, not targetQueue, same reasoning TranscodeProxyDelegate's own
-                // matching method documents.
-                targetQueue.async { [weak self] in self?.finishOnce() }
-            }
         }
     }
 
@@ -866,7 +916,12 @@ final class WebServer: @unchecked Sendable {
             urlSession?.invalidateAndCancel()
             conn.cancel()
         }
-        var startAttempt: (() -> Void)!
+        // Optional, not an implicitly-unwrapped `!` — assigned right after the session below is
+        // constructed, but nothing in the type system enforced that ordering before, so a future
+        // refactor moving things around could have force-unwrapped a nil and crashed the web
+        // server's connection-handling queue. A nil call here is still a real bug (retry silently
+        // doing nothing instead of retrying), but no longer a crash.
+        var startAttempt: (() -> Void)?
         let delegate = FeedRelayProxyDelegate(conn: conn, targetQueue: queue, onFinished: cleanup,
                                                onFailedBeforeAnyData: { [weak self] in
             guard let self else { return }
@@ -883,7 +938,7 @@ final class WebServer: @unchecked Sendable {
                     return
                 }
                 glog("[VirtualTuner] FEED local relay session=\(sessionId) remote not ready yet (attempt \(connectAttempt)) — retrying in \(Self.feedRelayRetryDelay)s")
-                self.queue.asyncAfter(deadline: .now() + Self.feedRelayRetryDelay) { startAttempt() }
+                self.queue.asyncAfter(deadline: .now() + Self.feedRelayRetryDelay) { startAttempt?() }
             }
         })
         let config = URLSessionConfiguration.default
@@ -907,7 +962,7 @@ final class WebServer: @unchecked Sendable {
                 glog("[VirtualTuner] FEED local relay session=\(sessionId) header send failed: \(err!.localizedDescription)", level: .warning)
                 return
             }
-            startAttempt()
+            startAttempt?()
         }))
 
         // Periodic liveness probe — mirrors scheduleTranscodeLivenessProbe's identical reasoning: a
@@ -1169,86 +1224,6 @@ final class WebServer: @unchecked Sendable {
         }))
     }
 
-    // Delegate-based (not completion-handler-based) URLSessionDataTask consumer — libvlc's sout
-    // httpd sends an open-ended stream with no natural end while the transcode keeps running, so
-    // bytes must be forwarded to `conn` as each chunk arrives, not collected and returned once.
-    // Runs on URLSession's own delegate queue, never WebServer's `queue` directly — every conn.send
-    // call is hopped onto `targetQueue` first, matching this file's own threading discipline
-    // (see accumulate()/handleConnection's doc comments on why every NWConnection touch funnels
-    // through one queue).
-    private final class TranscodeProxyDelegate: NSObject, URLSessionDataDelegate {
-        private let conn: NWConnection
-        private let targetQueue: DispatchQueue
-        private let onFinished: () -> Void
-        // Fired instead of onFinished when a dataTask ends in an error before ever delivering a
-        // single byte — pumpTranscodeProxy's own retry loop treats this as "the local sout httpd
-        // probably isn't accepting connections yet" rather than a real end/failure, and re-issues a
-        // fresh attempt on this same delegate/session (see pumpTranscodeProxy's own doc comment).
-        // Never fired once real data has started flowing — from that point on, any error goes
-        // through onFinished exactly as before.
-        private let onFailedBeforeAnyData: () -> Void
-        private let lock = NSLock()
-        private var finished = false
-        private var receivedAnyData = false
-
-        init(conn: NWConnection, targetQueue: DispatchQueue, onFinished: @escaping () -> Void,
-             onFailedBeforeAnyData: @escaping () -> Void) {
-            self.conn = conn; self.targetQueue = targetQueue; self.onFinished = onFinished
-            self.onFailedBeforeAnyData = onFailedBeforeAnyData
-        }
-
-        private func finishOnce() {
-            lock.lock()
-            let alreadyFinished = finished
-            finished = true
-            lock.unlock()
-            guard !alreadyFinished else { return }
-            onFinished()
-        }
-
-        // External callers (the liveness probe below) share this same once-only guard instead of
-        // duplicating one, so a probe-detected dead connection and a normal read-path failure can
-        // never both fire cleanup.
-        var isFinished: Bool {
-            lock.lock(); defer { lock.unlock() }
-            return finished
-        }
-        func notifyFinished() { finishOnce() }
-
-        func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
-            lock.lock(); receivedAnyData = true; lock.unlock()
-            targetQueue.async { [weak self] in
-                guard let self else { return }
-                self.conn.send(content: data, completion: .contentProcessed({ error in
-                    if error != nil {
-                        dataTask.cancel()
-                        self.finishOnce()
-                    }
-                }))
-            }
-        }
-
-        func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-            lock.lock()
-            let alreadyFinished = finished
-            let hadData = receivedAnyData
-            lock.unlock()
-            guard !alreadyFinished else { return }
-            if error != nil, !hadData {
-                onFailedBeforeAnyData()
-            } else {
-                // Hopped onto targetQueue, matching onFailedBeforeAnyData's own sibling call just
-                // above — this delegate method runs on URLSession's private delegate queue, not
-                // targetQueue, same as that branch's own comment already explains. finishOnce()
-                // calls onFinished (pumpTranscodeProxy's cleanup), which touches conn/urlSession;
-                // every other path into cleanup() already runs on targetQueue, so this stops being
-                // the one exception relying on cleanup()'s own APIs happening to be thread-safe
-                // incidentally. Found in code review 2026-09-07 — see ISSUES.md.
-                targetQueue.async { [weak self] in self?.finishOnce() }
-            }
-        }
-    }
-
     // Opens an outbound connection to the transcode session's own localhost httpd and forwards
     // every chunk it produces straight out to `conn` as it arrives. Releases the session's
     // reference (VLCBridge.stopTranscodeSession) exactly once, whichever side closes first — relies
@@ -1282,8 +1257,9 @@ final class WebServer: @unchecked Sendable {
         }
         // Reissues a fresh dataTask on the SAME session/delegate — used for the initial attempt and
         // every retry, so the liveness probe and duration deadline set up below (both tied to this
-        // one delegate instance) never need to be duplicated per attempt.
-        var startAttempt: (() -> Void)!
+        // one delegate instance) never need to be duplicated per attempt. Optional, not an
+        // implicitly-unwrapped `!` — see beginFeedRelayProxy's identical field for why.
+        var startAttempt: (() -> Void)?
         let delegate = TranscodeProxyDelegate(conn: conn, targetQueue: queue, onFinished: cleanup,
                                                onFailedBeforeAnyData: { [weak self] in
             guard let self else { return }
@@ -1304,7 +1280,7 @@ final class WebServer: @unchecked Sendable {
                 }
                 glog("[VirtualTuner] transcode relay show=\(showId) local httpd not ready yet (attempt \(connectAttempt)) — retrying in \(Self.transcodeProxyRetryDelay)s")
                 self.queue.asyncAfter(deadline: .now() + Self.transcodeProxyRetryDelay) {
-                    startAttempt()
+                    startAttempt?()
                 }
             }
         })
@@ -1317,7 +1293,7 @@ final class WebServer: @unchecked Sendable {
         let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
         urlSession = session
         startAttempt = { session.dataTask(with: localURL).resume() }
-        startAttempt()
+        startAttempt?()
 
         // Periodic liveness probe — a viewer whose Mac sleeps or loses Wi-Fi without a clean TCP
         // close (no FIN/RST) leaves conn.send "succeeding" from this side (writes just queue into

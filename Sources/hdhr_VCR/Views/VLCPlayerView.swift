@@ -62,6 +62,14 @@ struct VLCPlayerView: View {
     @ObservedObject private var bridge = VLCBridge.shared
     @State private var bufferInfoHovered  = false
     @State private var nativeResHovered   = false
+    // Captured once when nativeResHovered flips true (see the .onHover below) rather than read
+    // live from recordingSizeText inside nativeResPopover — that computed property's own doc
+    // comment always claimed "recomputed only when the popover reopens," but `body` actually
+    // re-evaluates on every bridge.bufferInfo publish (every ~3s while playing, VLCBridge.swift),
+    // which re-derives nativeResPopover (and therefore recordingSizeText's blocking disk stat)
+    // that often for as long as the popover stays open — not just once per open. This @State
+    // snapshot is what actually delivers the "recompute only on open" behavior the comment describes.
+    @State private var recordingSizeSnapshot: String?
     @State private var scrubValue: Double = 0     // recording scrub bar — only meaningful while isScrubbing
     @State private var isScrubbing = false
     @State private var videoControlsHovered = false   // shows the recording scrub overlay on hover
@@ -172,9 +180,10 @@ struct VLCPlayerView: View {
         return url.contains("transcode=auto") ? ("H.264", "AC-3") : ("H.264", "AAC")
     }
 
-    // A plain stat of the recording file's current size — see nativeResPopover's own comment on
-    // why this is a one-shot snapshot (recomputed only when the popover reopens), not a tracked
-    // value with its own update timer.
+    // A plain stat of the recording file's current size. Only ever called from the "Native" button's
+    // .onHover (captured into recordingSizeSnapshot) — never read directly from nativeResPopover's
+    // body, which would re-run this blocking disk stat on every bridge.bufferInfo publish (~3s while
+    // playing) for as long as the popover stayed open, not just once per open as originally intended.
     private var recordingSizeText: String? {
         guard let showId = bridge.recordingShowId,
               let show = state.shows.first(where: { $0.show_id == showId }),
@@ -896,7 +905,7 @@ struct VLCPlayerView: View {
             .buttonStyle(.plain)
             .disabled(!canResize)
             .accessibilityIdentifier("vlc-native-resolution")
-            .onHover { if $0 { nativeResHovered = true } }
+            .onHover { if $0 { recordingSizeSnapshot = recordingSizeText; nativeResHovered = true } }
             .popover(isPresented: $nativeResHovered, arrowEdge: .bottom) { nativeResPopover }
 
             // Live wall-clock time. The recording scrub bar lives in a hover overlay on the video
@@ -1154,12 +1163,13 @@ struct VLCPlayerView: View {
                 Text(bridge.recordingShowId != nil ? "Local recording (disk)" : "Live network stream")
             }
             // A plain on-disk-size snapshot, not a tracked/ticking value like the separate "Live
-            // Buffer" popover's lagSec — recomputed fresh each time this popover opens (a computed
-            // `some View`), not on any timer, per an explicit request that this not need continuous
-            // tracking. Only meaningful for the disk-relay case (a live network stream has no local
-            // file to check).
-            if bridge.recordingShowId != nil, let recordingSizeText {
-                row("On disk", recordingSizeText)
+            // Buffer" popover's lagSec — recomputed fresh each time this popover opens (captured
+            // into recordingSizeSnapshot by the "Native" button's .onHover, not read live here),
+            // not on any timer, per an explicit request that this not need continuous tracking.
+            // Only meaningful for the disk-relay case (a live network stream has no local file to
+            // check).
+            if bridge.recordingShowId != nil, let recordingSizeSnapshot {
+                row("On disk", recordingSizeSnapshot)
             }
             if let px = bridge.videoPixelSize {
                 let scale = VLCPlayerWindowManager.shared.currentScreenScale

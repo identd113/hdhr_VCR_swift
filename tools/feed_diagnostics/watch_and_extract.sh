@@ -1,10 +1,10 @@
 #!/bin/bash
 # Watches the client machine's log for a real [VLC] STALL, then automatically
 # slices the matching window out of a running feed_capture_tagger.py capture
-# and runs analyze_pcr.py on it -- closing ISSUES.md's still-open "next step
-# 3": does the stall correspond to a genuine PCR discontinuity baked into the
-# bytes, or is the content clean at that point (pointing at pure delivery
-# jitter instead)?
+# and runs analyze_pcr.py on it -- closing issues_resolved.md's "VLC-side
+# FEED playback stalls" entry's "next step 3": does the stall correspond to a
+# genuine PCR discontinuity baked into the bytes, or is the content clean at
+# that point (pointing at pure delivery jitter instead)?
 #
 # Run feed_capture_tagger.py FIRST, in parallel with your normal FEED viewing
 # (it's a second, independent reader of the same relay -- doesn't disturb

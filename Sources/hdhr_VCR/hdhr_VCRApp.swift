@@ -236,8 +236,8 @@ struct hdhr_VCRApp: App {
         // Donation nag — single instance; opened via openDonationNagIfNeeded() on launch and
         // after a show is added (native or web), see DonationNagView.swift / docs/DonationNagView.md.
         // hiddenTitleBar (no title text, traffic lights remain) + DonationNagView's own
-        // FloatingWindowLevelSetter for a modern floating-panel look, distinct from the other
-        // standard-titled windows above.
+        // WindowAction-based floating level for a modern floating-panel look, distinct from the
+        // other standard-titled windows above.
         Window("Support hdhrVCRplus", id: "donation-nag") {
             DonationNagView()
                 .environmentObject(appState)

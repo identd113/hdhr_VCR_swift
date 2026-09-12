@@ -4,9 +4,10 @@ every PCR value and continuity-counter transition it contains, flagging
 anything that would explain VLC's
 'ES_OUT_SET_(GROUP_)PCR is called too late' / 'no reference clock' cascade.
 
-This answers ISSUES.md's still-open "next step 3": is a genuine PCR
-discontinuity baked into the bytes at a stall's location, or is the content
-clean and the jitter purely a live-delivery-timing artifact?
+This answers issues_resolved.md's "VLC-side FEED playback stalls" entry's
+"next step 3": is a genuine PCR discontinuity baked into the bytes at a
+stall's location, or is the content clean and the jitter purely a
+live-delivery-timing artifact?
 
 Usage:
     python3 analyze_pcr.py /tmp/feed_stall_window.ts
