@@ -1932,14 +1932,21 @@ final class AppState: ObservableObject {
         // ~20s/21s/29s across three real tests — to register the dropped tuner connection from
         // stop() above, chalked up at the time to the device's own handling of a libvlc-originated
         // disconnect (a raw `kill -9` on a recording's own curl process, by contrast, frees the
-        // same physical tuner instantly). That theory didn't hold up: the real root cause, found
-        // the same day and fixed via yieldingWatchNowDeviceID (see its own doc comment, and
-        // issues_resolved.md's "Watch Now yield-tuner-to-Record structurally could never actually
-        // succeed"), was this function's own vlcOccupiesTuner check never clearing its stale
-        // self-reference — the device's real /status.json showed the tuner freeing almost
-        // immediately even during the ~20-29s-labeled runs; this app's own tunersFull() just
-        // wasn't reading it correctly yet. Once fixed, live-verified: tuner confirmed free after
-        // 1s of polling, not 20+. This loop's 1s poll interval (vs. an initially-tried 300ms,
+        // same physical tuner instantly). Part of that theory didn't hold up: the same day,
+        // yieldingWatchNowDeviceID (see its own doc comment, and issues_resolved.md's "Watch Now
+        // yield-tuner-to-Record structurally could never actually succeed") fixed a *separate*,
+        // structural bug — this function's own vlcOccupiesTuner check never clearing its stale
+        // self-reference — that could make this poll never resolve at all, independent of the
+        // device. But a real, variable device-side delay is still genuinely there underneath that:
+        // live-verified twice post-fix, once confirming free in ~1s, once taking 16s (2026-09-11
+        // cross-machine re-test) — so this is not a fixed cost, and the original "device is slow to
+        // notice a libvlc-originated disconnect" theory stands for whatever's left after the
+        // software bug's contribution is subtracted out. See TODO.md's "more insistent tuner
+        // release" entry for the real fix candidate (an HDHomeRun ClientID/SessionID mechanism,
+        // documented for port 4999 but unconfirmed on port 5004) — not attempted here, since a
+        // faster release is a device-protocol question, not something this polling loop itself can
+        // solve; this loop's 45s budget stays generous specifically because that device-side delay
+        // is real and not fully bounded. This loop's 1s poll interval (vs. an initially-tried 300ms,
         // found unnecessarily aggressive against the device's status.json, per explicit user
         // direction) predates that finding and stays a reasonable cadence regardless — fast enough
         // to notice promptly without hammering the device, on a wait that's normally ~1s now but

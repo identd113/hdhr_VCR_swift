@@ -57,6 +57,16 @@ Raised 2026-09-09: the user no longer remembers the specific reason this was add
 
 ## Player / Watch Now
 
+### More insistent tuner release for the yield-to-record flow — without killing anything
+
+Flagged 2026-09-11/12: the Watch Now yield-tuner-to-Record flow's tuner-free wait (`AppState.recordAfterYieldingWatchNow`'s tuner-free poll) is genuinely variable in practice — live-tested twice post-`yieldingWatchNowDeviceID`-fix, once resolving in ~1s, once taking 16s (cross-machine re-test, see `issues_resolved.md`'s follow-up on that entry) — because the real HDHomeRun device only frees a port-5004 tuner once it notices the underlying TCP connection actually closed, and that detection isn't instant. A raw `kill -9` on a recording's own curl process frees the same tuner immediately by comparison, but killing anything here isn't an option — `VLCBridge` is a shared, long-lived libvlc engine used for all playback in the app, not a disposable per-stream process like a recording's curl; killing it would tear down far more than just this one connection.
+
+**Real candidate, not yet attempted**: `docs/HDHRFindings.md`'s ClientID/SessionID mechanism — officially documented for port 4999 (SiliconDust's separate Record Engine daemon, not what this app uses), where "sending the same ClientID with a new SessionID tells the engine to free the previous tuner and allocate a new one... without them, the old connection must fully close before the new tuner can start." That's exactly this problem. The doc's own port-5004 section says it was tried once (2026-05-31): the device accepted a request carrying both params without error, but **it was never confirmed whether the device actually honors them there or silently ignores them** — "further testing needed."
+
+**What it would take to actually use this**: (1) live-test whether reusing a ClientID across a port-5004 stop+restart genuinely makes the device release the old tuner faster than today's passive TCP-close detection — this needs to happen against a real device before writing any code, since the whole idea is moot if port 5004 just ignores the params; (2) if confirmed, `AppState`/`RecordingManager`/`VLCBridge` would all need to agree on a persistent per-app-instance `ClientID` (generated once, likely at `startup()`) and thread fresh `SessionID`s through both the VLC playback URL and the curl recording URL — a real, multi-file plumbing change, not a one-line fix. Not scoped further than this until the live test confirms it's worth building.
+
+---
+
 ### No watched/resume tracking across sessions
 
 VLC's own scrub bar handles resume-within-a-single-playback-session, but nothing persists a recording's watched state or last playback position across app restarts or between Watch Now and a later Finder-opened file. Comparable apps (Plex, Channels DVR) track both, letting a library view distinguish "new," "in progress," and "watched." Would need a small persisted per-recording-file record (position + watched flag), keyed by a stable identifier since filenames can be reorganized — 2026-08-11 feature-gap survey, not yet scoped.

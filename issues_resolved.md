@@ -1366,6 +1366,8 @@ A title-based fallback (`Show.seriesTitle(from: entry.Title) == show.show_title`
 
 **Resolving commit**: (uncommitted at time of writing)
 
+**Follow-up, 2026-09-12 — the ~1s figure above was not representative.** Re-tested cross-machine (Mac mini watching, laptop's own tuner deliberately tied up by a separate device first) against the same real device: the tuner-free poll this time took **16s**, not 1s, and the full click-to-watching handoff took ~22-23s end to end — landing right back in the original ~20-29s range this entry's own "Root cause" section otherwise correctly diagnosed as a genuine device-side delay, not purely the software bug. The permanent-hang bug this entry fixes is still fixed (the recording did start and playback did reconnect, just slower) — but don't read the 1s figure as the new normal; the real device-side latency in registering a dropped port-5004 connection is variable and can still run into the tens of seconds. See `TODO.md`'s "more insistent tuner release" entry for the actual fix candidate (ClientID/SessionID reuse, unconfirmed on port 5004) — not yet attempted.
+
 ---
 
 ## RESOLVED — `probeForNewDevices()`'s newly-discovered-device guide fetch sent a real request against a FEED virtual relay, including a TLS attempt against a plain-HTTP address
