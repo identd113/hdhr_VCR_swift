@@ -531,6 +531,8 @@ struct FirstRunWizardView: View {
         // dynamic by the conditional warning Label above, which appears/disappears as the Steppers
         // change — left this content-fitted window's height ambiguous/unstable, tripping the same
         // AppKit "Update Constraints" safety-limit crash the FEED step's own (already-fixed) bug did.
+        // Confirmed present unchanged in the v2.3.0 release too (not gated behind any feature flag —
+        // this is the wizard's last step, shown to everyone); also fixed on `main` directly.
         .fixedSize(horizontal: false, vertical: true)
     }
 
