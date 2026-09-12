@@ -1928,17 +1928,22 @@ final class AppState: ObservableObject {
         // harmless (never a double curl launch), and this way nothing here has to wait on that
         // other Task's own timing before trying.
         //
-        // A real device can take a long time — well over one idle-loop tick (10s default) — to
-        // actually register the dropped tuner connection from releasePlayer() above. Live-measured
-        // 2026-09-11 across three separate real tests: ~20s, ~21s, and ~29s before the tuner
-        // actually read as free. A raw `kill -9` on a recording's own curl process frees the same
-        // physical tuner immediately by comparison (confirmed live) — so this multi-second gap is
-        // most likely this device's own handling of a libvlc-originated disconnect specifically,
-        // not a hard minimum the device enforces regardless of client. Polls for the tuner actually
-        // freeing every 1s — fast enough to notice promptly without hammering the device's
-        // status.json with a real HTTP fetch (fetchDeviceStatus) far more often than needed; 300ms
-        // was tried first and found unnecessarily aggressive for what's ultimately a multi-second-
-        // scale wait, per explicit user direction.
+        // Originally measured (same day, before the fix below existed) as taking a long time —
+        // ~20s/21s/29s across three real tests — to register the dropped tuner connection from
+        // stop() above, chalked up at the time to the device's own handling of a libvlc-originated
+        // disconnect (a raw `kill -9` on a recording's own curl process, by contrast, frees the
+        // same physical tuner instantly). That theory didn't hold up: the real root cause, found
+        // the same day and fixed via yieldingWatchNowDeviceID (see its own doc comment, and
+        // issues_resolved.md's "Watch Now yield-tuner-to-Record structurally could never actually
+        // succeed"), was this function's own vlcOccupiesTuner check never clearing its stale
+        // self-reference — the device's real /status.json showed the tuner freeing almost
+        // immediately even during the ~20-29s-labeled runs; this app's own tunersFull() just
+        // wasn't reading it correctly yet. Once fixed, live-verified: tuner confirmed free after
+        // 1s of polling, not 20+. This loop's 1s poll interval (vs. an initially-tried 300ms,
+        // found unnecessarily aggressive against the device's status.json, per explicit user
+        // direction) predates that finding and stays a reasonable cadence regardless — fast enough
+        // to notice promptly without hammering the device, on a wait that's normally ~1s now but
+        // still budgeted generously in case a real device-side delay ever does occur.
         var tunerConfirmedFree = false
         for pollAttempt in 1...45 {   // 45 × 1s = 45s budget
             if Task.isCancelled {
@@ -2021,7 +2026,7 @@ final class AppState: ObservableObject {
         let finalShow = shows.first(where: { $0.show_id == showId })
         glog("[Watch] Recording didn't confirm within the wait window after yielding Watch Now — not reopening playback (show_recording=\(finalShow?.show_recording ?? false), show_recording_path=\(finalShow?.show_recording_path ?? "nil"), fileExists=\(finalShow.map { FileManager.default.fileExists(atPath: $0.show_recording_path) } ?? false))", level: .warning)
         setYieldProgress(nil, generation: generation)
-        // The live watch is already gone (releasePlayer() above) and nothing is going to reconnect
+        // The live watch is already gone (stop() above) and nothing is going to reconnect
         // it on its own — without this, the player window is left showing a dead, non-interactive
         // "Connecting…" indefinitely with no explanation (found live 2026-09-11). Tuner Conflict's
         // own notification already covers *why* if that's the reason; this covers the "and now
