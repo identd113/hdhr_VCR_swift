@@ -1,13 +1,13 @@
 import SwiftUI
 
-// Animated "how it works" map for Recording FEED: watch a recording that's already in progress on
-// another Mac, live, without spending a second tuner. Two devices connected by a line — signal
-// rings broadcast from the left (this Mac, recording) and small packets flow along the line to the
-// right (the other Mac, watching) — makes that one-to-one hand-off legible at a glance. Purely
-// illustrative, no real network activity of its own. Parametrized (icons/badge colors/captions) so
-// it's reusable for any future point-to-point "this Mac ↔ one specific other party" explainer, not
-// hardcoded to FEED, though FEED — whose "this Mac's recording, that Mac watching it" relationship
-// is genuinely one-to-one — is the only user today.
+// Static "how it works" map for Recording FEED: watch a recording that's already in progress on
+// another Mac, live, without spending a second tuner. Two devices connected by a line — a small dot
+// mid-line reads as "something flows between them" — makes that one-to-one hand-off legible at a
+// glance without needing real motion (see the body's own comment on why this is deliberately no
+// longer animated). Parametrized (icons/badge colors/captions) so it's reusable for any future
+// point-to-point "this Mac ↔ one specific other party" explainer, not hardcoded to FEED, though FEED
+// — whose "this Mac's recording, that Mac watching it" relationship is genuinely one-to-one — is the
+// only user today.
 //
 // Web LAN and Terminal Guide, the app's other Sharing features, use their own purpose-built
 // diagrams instead of a themed copy of this one, because their relationships are shaped differently:
@@ -20,8 +20,6 @@ import SwiftUI
 // gets a badge color naming the specific local action happening (e.g. red = recording); the right
 // side stays watchNowBlue by default — "whoever's receiving it" reads as one consistent identity.
 struct NetworkFlowDiagram: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
     var leftSystemImage: String = "desktopcomputer"
     var leftBadgeColor: Color
     var leftCaption: String
@@ -34,12 +32,6 @@ struct NetworkFlowDiagram: View {
 
     private static let deviceSize: CGFloat = 40
     private static let packetSize: CGFloat = 7
-    // Two packets/rings per side, offset by half a cycle, so the line/device never sits empty
-    // between beats — reads as a continuous flow rather than a single pulse repeating with a gap.
-    private static let packetCycleSeconds: Double = 1.6
-    private static let rippleCycleSeconds: Double = 1.8
-    private static let phaseOffsets: [Double] = [0, 0.5]
-    private static let frameInterval: Double = 1.0 / 30.0
 
     var body: some View {
         VStack(spacing: 8) {
@@ -57,36 +49,24 @@ struct NetworkFlowDiagram: View {
                     }
                     .stroke(Color(NSColor.separatorColor), style: StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
 
-                    if reduceMotion {
-                        // A single frame frozen mid-flow rather than no diagram at all — still
-                        // communicates "these two are connected," just without motion.
-                        Circle()
-                            .fill(rightBadgeColor)
-                            .frame(width: Self.packetSize, height: Self.packetSize)
-                            .position(x: (lineStartX + lineEndX) / 2, y: midY)
-                    } else {
-                        // .animation, not .periodic — added 2026-09-11 (see ISSUES.md's entry):
-                        // .periodic kept firing on its fixed wall-clock schedule even while this
-                        // view wasn't actually being displayed (wizard window backgrounded, Mac
-                        // idle), wasting CPU/battery; .animation is suspended by SwiftUI in that
-                        // case. DiagramAnimation.snappedDate throttles the *redraw cadence* while
-                        // still visible instead — matches the actual visual cadence .periodic used
-                        // to provide directly (own reasoning below still applies, just achieved a
-                        // different way).
-                        TimelineView(.animation) { timeline in
-                            let date = DiagramAnimation.snappedDate(timeline.date, interval: Self.frameInterval)
-                            ForEach(Self.phaseOffsets, id: \.self) { offset in
-                                DiagramAnimation.rippleRing(date: date, cycleSeconds: Self.rippleCycleSeconds,
-                                                             phaseOffset: offset, size: Self.deviceSize, color: leftBadgeColor)
-                                    .position(x: leftX, y: midY)
-                            }
-                            ForEach(Self.phaseOffsets, id: \.self) { offset in
-                                DiagramAnimation.packetDot(date: date, cycleSeconds: Self.packetCycleSeconds,
-                                                            phaseOffset: offset, size: Self.packetSize, color: rightBadgeColor,
-                                                            startX: lineStartX, endX: lineEndX, startY: midY, endY: midY)
-                            }
-                        }
-                    }
+                    // Always the single-frame frozen-mid-flow rendering, never a live TimelineView —
+                    // see issues_resolved.md's "First-Run Wizard's Recording FEED step crashed the
+                    // app outright" entry. Two attempted fixes first (capping this step's Form
+                    // height; switching .animation to .periodic) both failed to stop a real,
+                    // repeatable crash: any continuously-redrawing TimelineView hosted inside this
+                    // wizard's content-fitted (`height: nil`) window triggers AppKit's own
+                    // "needs Update Constraints"/layout-invalidation path every tick, and once that
+                    // count exceeds a small fixed AppKit safety limit the process gets hard-
+                    // terminated — reproduced deterministically, at the identical window size, three
+                    // times in one session, regardless of which TimelineView schedule was used. This
+                    // diagram is purely illustrative (`.accessibilityHidden(true)` below) — the
+                    // motion was a nice-to-have, not worth an unrecoverable crash. Still communicates
+                    // "these two are connected," just without motion, same as the old `reduceMotion`
+                    // fallback below used to provide.
+                    Circle()
+                        .fill(rightBadgeColor)
+                        .frame(width: Self.packetSize, height: Self.packetSize)
+                        .position(x: (lineStartX + lineEndX) / 2, y: midY)
 
                     DiagramAnimation.deviceIcon(systemImage: leftSystemImage, size: Self.deviceSize, badgeColor: leftBadgeColor)
                         .position(x: leftX, y: midY)
