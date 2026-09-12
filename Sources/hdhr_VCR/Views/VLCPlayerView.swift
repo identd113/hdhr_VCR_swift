@@ -99,6 +99,16 @@ struct VLCPlayerView: View {
             .first { $0.startDate <= now && $0.endDate > now }
     }
 
+    // Falls back to the FEED relay's own lineup extra (see currentFeedEntry's own doc comment)
+    // when currentGuideEntry is nil — always true for a remote FEED device today (no local guide
+    // data exists for one). Not a true per-episode image (currentFeedEntry.virtualRelayImageURL is
+    // the source show's channel logo, same as Discord's embed thumbnail) but still real identity
+    // instead of the generic "tv" placeholder icon.
+    private var effectivePosterImageURL: String? {
+        currentGuideEntry?.ImageURL
+            ?? (device.isVirtualRelay ? currentFeedEntry?.virtualRelayImageURL : nil)
+    }
+
     private var lineup: [LineupEntry] {
         (state.lineups[device.DeviceID] ?? []).sorted {
             $0.GuideNumber.localizedStandardCompare($1.GuideNumber) == .orderedAscending
@@ -121,11 +131,20 @@ struct VLCPlayerView: View {
     // Minimum real time a remote FEED session must sit buffering before auto-play unhides the
     // poster and unmutes — requested 2026-09-04 after auto-play's own isPlaying-only gate turned
     // out to fire too early (~3s, first confirmed decode) to build up a meaningful cushion against
-    // Player_buffer_min_rate's slow 93%-floor ramp (see docs/VLCPlayerView.md's "Auto-play for a
-    // remote FEED session"). One constant for both halves of startPlayback(auto:) — the poster
-    // reveal and the volume restore/unmute fire together, always have — so there's no separate
-    // "audio delay" to track apart from this.
-    private static let feedAutoPlayMinDelay: TimeInterval = 10
+    // Player_buffer_min_rate's slow ramp (see docs/VLCPlayerView.md's "Auto-play for a remote FEED
+    // session"). One constant for both halves of startPlayback(auto:) — the poster reveal and the
+    // volume restore/unmute fire together, always have — so there's no separate "audio delay" to
+    // track apart from this.
+    //
+    // Was 10 until 2026-09-12: the fill-phase ramp itself was fixed 2026-09-06 (rampedFillRate's
+    // linearity fix, VLCBridge.swift) to reliably finish in its own maxLagSec (8.0, default param
+    // of rampedFillRate) real seconds instead of the pre-fix's occasional multi-minute crawl, but
+    // this constant was never revisited afterward — 10s was leaving 2s of pure dead air on top of
+    // an already-reliable 8s ramp. Dropped to match maxLagSec exactly so the poster reveals right
+    // as the ramp completes rather than after. Not live-tested against a real FEED session yet —
+    // revert to 10 if a live check shows video revealing visibly mid-ramp (a few seconds of
+    // subtly-slow-motion playback) rather than right at 1.0× rate.
+    private static let feedAutoPlayMinDelay: TimeInterval = 8
 
     // MARK: - "Live" recording entries in the channel picker
     //
@@ -345,8 +364,8 @@ struct VLCPlayerView: View {
             .onReceive(NotificationCenter.default.publisher(for: .vlcFullScreenChanged)) { note in
                 isFullScreen = (note.userInfo?["isFullScreen"] as? Bool) ?? false
             }
-            .task(id: currentGuideEntry?.ImageURL) {
-                guard let url = currentGuideEntry?.ImageURL else { posterNSImage = nil; return }
+            .task(id: effectivePosterImageURL) {
+                guard let url = effectivePosterImageURL else { posterNSImage = nil; return }
                 posterNSImage = await ChannelIconCache.shared.image(for: url)
             }
         }
@@ -596,6 +615,50 @@ struct VLCPlayerView: View {
                         }
 
                         if let synopsis = entry.Synopsis, !synopsis.isEmpty {
+                            Text(synopsis)
+                                .font(.callout)
+                                .foregroundStyle(.white.opacity(0.6))
+                                .lineLimit(4)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    } else if device.isVirtualRelay, let feedEntry = currentFeedEntry,
+                              let feedTitle = feedEntry.virtualRelayShowTitle, !feedTitle.isEmpty {
+                        // currentGuideEntry is always nil for a remote FEED device — nothing
+                        // populates a discoverer's guideByDevice[relayId] today (a known,
+                        // documented gap, TODO.md's "FEED consumers should get a minimal,
+                        // locally-sourced 'now playing' guide/lineup"). Without this fallback the
+                        // poster showed nothing at all for the full feedAutoPlayMinDelay wait.
+                        // These fields (added 2026-09-12) mirror AppState.DiscordEpisodeSnapshot,
+                        // carried over the relay's own /lineup.json — see
+                        // VirtualTunerService.episodeTitleKey's own doc comment. Same layout as the
+                        // currentGuideEntry branch above, just sourced differently.
+                        Text(feedTitle)
+                            .font(.title2.bold())
+                            .foregroundStyle(.white)
+                            .lineLimit(2)
+
+                        let epNum   = feedEntry.virtualRelayEpisodeNumber
+                        let epTitle = feedEntry.virtualRelayEpisodeTitle
+                        switch (epNum, epTitle) {
+                        case (let n?, let t?) where !n.isEmpty && !t.isEmpty:
+                            Text("\(n)  \(t)")
+                                .font(.subheadline)
+                                .foregroundStyle(.white.opacity(0.75))
+                                .lineLimit(1)
+                        case (let n?, _) where !n.isEmpty:
+                            Text(n)
+                                .font(.subheadline)
+                                .foregroundStyle(.white.opacity(0.75))
+                        case (_, let t?) where !t.isEmpty:
+                            Text(t)
+                                .font(.subheadline)
+                                .foregroundStyle(.white.opacity(0.75))
+                                .lineLimit(1)
+                        default:
+                            EmptyView()
+                        }
+
+                        if let synopsis = feedEntry.virtualRelaySynopsis, !synopsis.isEmpty {
                             Text(synopsis)
                                 .font(.callout)
                                 .foregroundStyle(.white.opacity(0.6))

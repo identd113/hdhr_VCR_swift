@@ -3598,6 +3598,18 @@ final class WebServer: @unchecked Sendable {
             if let snq = liveSignalQualityPercent(for: show, state: state) {
                 entry[VirtualTunerService.signalQualityKey] = snq
             }
+            // See VirtualTunerService.episodeTitleKey's own doc comment — reuses the same snapshot
+            // buildDiscordShowEmbed prefers over a live guide lookup, for the identical staleness
+            // reason. Only present once "Recording Started" has actually fired (this function only
+            // ever iterates state.recordingShows, so that's already guaranteed by the time we get
+            // here) — omitted per-field rather than sent empty, matching every other optional key
+            // above.
+            if let snapshot = state.showRuntime[show.show_id]?.discordEpisodeSnapshot {
+                if !snapshot.epTitle.isEmpty { entry[VirtualTunerService.episodeTitleKey] = snapshot.epTitle }
+                if !snapshot.epNum.isEmpty { entry[VirtualTunerService.episodeNumberKey] = snapshot.epNum }
+                if !snapshot.synopsis.isEmpty { entry[VirtualTunerService.synopsisKey] = snapshot.synopsis }
+            }
+            if !show.show_logo_url.isEmpty { entry[VirtualTunerService.imageURLKey] = show.show_logo_url }
             return entry
         }
     }

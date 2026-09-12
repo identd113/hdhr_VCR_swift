@@ -136,6 +136,32 @@ struct VirtualTunerServiceTests {
         #expect(VirtualTunerService.deviceID(fromReplyPacket: pkt) == nil)
     }
 
+    // MARK: - isGoodbye(fromReplyPacket:) — stop()'s short-circuit signal (added 2026-09-12)
+
+    @Test func isGoodbye_falseForAnOrdinaryAnnounce() {
+        let pkt = VirtualTunerService.buildDiscoverReply(deviceID: 0xFEED1234, baseURL: "http://10.0.2.100:1980", tunerCount: 1)
+        #expect(!VirtualTunerService.isGoodbye(fromReplyPacket: pkt))
+    }
+
+    @Test func isGoodbye_trueWhenTheTLVIsPresent() {
+        let pkt = VirtualTunerService.buildDiscoverReply(deviceID: 0xFEED1234, baseURL: "http://10.0.2.100:1980",
+                                                          tunerCount: 0, isGoodbye: true)
+        #expect(VirtualTunerService.isGoodbye(fromReplyPacket: pkt))
+    }
+
+    @Test func isGoodbye_stillReportsTheCorrectDeviceIDAndZeroTunerCount() {
+        // A real goodbye is built with tunerCount: 0 (broadcastAnnounce(goodbye:)'s own contract) —
+        // confirm the goodbye TLV doesn't disturb parsing of the fields already there.
+        let pkt = VirtualTunerService.buildDiscoverReply(deviceID: 0xFEED1234, baseURL: "http://10.0.2.100:1980",
+                                                          tunerCount: 0, isGoodbye: true)
+        #expect(VirtualTunerService.deviceID(fromReplyPacket: pkt) == 0xFEED1234)
+    }
+
+    @Test func isGoodbye_nilOnMalformedOrTooShortInput() {
+        #expect(!VirtualTunerService.isGoodbye(fromReplyPacket: []))
+        #expect(!VirtualTunerService.isGoodbye(fromReplyPacket: [0x00, 0x03, 0x00, 0x06, 0x02]))   // truncated TLV
+    }
+
     @Test func start_invalidDeviceID_reportsBindFailureWithoutTouchingASocket() {
         // Covers the synchronous early-exit branch of start(deviceID:onBindResult:) — the part of
         // the bind-result callback plumbing (AppState.updateVirtualTunerPresence's own consumer)

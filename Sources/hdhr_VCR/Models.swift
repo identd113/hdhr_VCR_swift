@@ -725,6 +725,15 @@ struct LineupEntry: Codable, Identifiable {
     // relay-produced entry (unlike the fields above, there's no "not yet known" case for this
     // one); nil for every real device, which has no notion of "hostname" at the lineup level.
     var virtualRelaySourceHostname: String?
+    // Non-standard, set only by hdhrVCRplus's own virtual-tuner /lineup.json — see
+    // VirtualTunerService.episodeTitleKey's own doc comment (mirrors AppState.DiscordEpisodeSnapshot,
+    // captured once at "Recording Started"). Nil for every real device and until that snapshot
+    // exists. imageURL reuses the source show's channel logo (show.show_logo_url), not a true
+    // per-episode image — this app has no existing concept of one.
+    var virtualRelayEpisodeTitle: String?
+    var virtualRelayEpisodeNumber: String?
+    var virtualRelaySynopsis: String?
+    var virtualRelayImageURL: String?
 
     private enum CodingKeys: String, CodingKey {
         case GuideNumber, GuideName, URL, HD, Favorite, VideoCodec, AudioCodec
@@ -732,6 +741,10 @@ struct LineupEntry: Codable, Identifiable {
         case virtualRelayTranscodeViewers = "HdhrVCRplusTranscodeViewers"
         case virtualRelaySignalQualityPercent = "HdhrVCRplusSignalQualityPercent"
         case virtualRelaySourceHostname = "HdhrVCRplusSourceHostname"
+        case virtualRelayEpisodeTitle = "HdhrVCRplusEpisodeTitle"
+        case virtualRelayEpisodeNumber = "HdhrVCRplusEpisodeNumber"
+        case virtualRelaySynopsis = "HdhrVCRplusSynopsis"
+        case virtualRelayImageURL = "HdhrVCRplusImageURL"
     }
 }
 

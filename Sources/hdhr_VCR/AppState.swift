@@ -708,8 +708,26 @@ final class AppState: ObservableObject {
         //     on the LAN is picked up within about a second instead of on the next ~10s idle-loop
         //     discovery poll. Wired here (guarded by skipStartup via this whole function, unlike
         //     init()) so unit tests constructing an AppState never bind a real socket.
-        virtualTuner.onFeedAnnounce = { [weak self] _ in
-            Task { @MainActor in await self?.probeForNewDevices() }
+        virtualTuner.onFeedAnnounce = { [weak self] deviceIDHex, isGoodbye in
+            Task { @MainActor in
+                guard let self else { return }
+                // Short-circuits probeForNewDevices()'s normal 3-consecutive-miss threshold for
+                // this one device — a goodbye announce means the source Mac itself just told
+                // everyone, on purpose, that this relay is gone, which is strictly more certain
+                // than an ordinary missed probe (which could just as easily be a transient Wi-Fi
+                // blip). Pre-setting missedProbes to one below the threshold means the
+                // probeForNewDevices() call right below (which will legitimately not find this
+                // now-stopped relay) hits missed == 3 and marks it unavailable on this very cycle,
+                // instead of waiting ~2 more idle-loop ticks for the threshold to elapse on its
+                // own. Uses max(...) rather than a flat assignment so this can never *lower* an
+                // already-higher count from prior misses; if the device is somehow still found by
+                // the probe right after this (an in-flight reply racing the goodbye), that probe's
+                // own "found" branch resets missedProbes to 0 regardless, so no harm either way.
+                if isGoodbye, let idx = self.devices.firstIndex(where: { $0.DeviceID == deviceIDHex }) {
+                    self.devices[idx].missedProbes = max(self.devices[idx].missedProbes, 2)
+                }
+                await self.probeForNewDevices()
+            }
         }
         virtualTuner.beginPassiveListening()
 
