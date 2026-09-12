@@ -161,9 +161,27 @@ struct VLCPlayerView: View {
     // software transcode via VLCBridge.startTranscodeSession, producing H.264/AC-3
     // (acodec=a52, changed 2026-09-04; see that function's own doc comment).
     private var inferredCodecs: (video: String, audio: String) {
-        let url = bridge.currentURL ?? ""
+        // FEED (client-side local relay, docs/VirtualTunerService.md) has already swapped
+        // bridge.currentURL for a local http://127.0.0.1/api/feed-local-relay?... URL that never
+        // carries &transcode= regardless of what the remote source is actually sending — check the
+        // true remote URL for that case instead, same fix as currentFeedEntry/feedIsTranscoding below.
+        let url = device.isVirtualRelay
+            ? (VLCPlayerWindowManager.shared.currentFeedRemoteURL ?? "")
+            : (bridge.currentURL ?? "")
         guard url.contains("transcode=") else { return ("MPEG-2", "AC-3") }
         return url.contains("transcode=auto") ? ("H.264", "AC-3") : ("H.264", "AAC")
+    }
+
+    // A plain stat of the recording file's current size — see nativeResPopover's own comment on
+    // why this is a one-shot snapshot (recomputed only when the popover reopens), not a tracked
+    // value with its own update timer.
+    private var recordingSizeText: String? {
+        guard let showId = bridge.recordingShowId,
+              let show = state.shows.first(where: { $0.show_id == showId }),
+              let attrs = try? FileManager.default.attributesOfItem(atPath: show.show_recording_path),
+              let size = attrs[.size] as? Int64, size > 0 else { return nil }
+        let mb = Double(size) / 1_048_576
+        return mb >= 1024 ? String(format: "%.2f GB", mb / 1024) : String(format: "%.0f MB", mb)
     }
 
     // MARK: - Remote FEED raw/H.264 toggle (docs/VirtualTunerService.md's "Recording on Another
@@ -177,13 +195,17 @@ struct VLCPlayerView: View {
     // alone (urlBase strips both the raw entry's own "?dev=" and an added "&transcode=") is
     // unambiguous — every entry in this list already shares this device's DeviceID.
     private var currentFeedEntry: LineupEntry? {
-        guard device.isVirtualRelay, let url = bridge.currentURL else { return nil }
+        // Matched against the true remote URL, not bridge.currentURL — once the FEED client-side
+        // local relay is in play, bridge.currentURL holds a LOCAL http://127.0.0.1/api/
+        // feed-local-relay?... URL (see currentFeedRemoteURL's own doc comment), which would never
+        // match any of this device's real lineup entries.
+        guard device.isVirtualRelay, let url = VLCPlayerWindowManager.shared.currentFeedRemoteURL else { return nil }
         let target = url.urlBase
         return lineup.first { ($0.URL ?? "").urlBase == target }
     }
 
     private var feedIsTranscoding: Bool {
-        (bridge.currentURL ?? "").contains("transcode=")
+        (VLCPlayerWindowManager.shared.currentFeedRemoteURL ?? "").contains("transcode=")
     }
 
     // Mirrors MenuContent's own `alreadyModern` check — unset/"unknown" VideoCodec (older
@@ -193,15 +215,17 @@ struct VLCPlayerView: View {
         MPEGVideoStreamType.isAlreadyModernCodec(currentFeedEntry?.VideoCodec ?? "unknown")
     }
 
-    // Tears down and reopens the current FEED connection with (or without) &transcode=auto —
-    // reuses the exact reconnect-via-VLCBridge.play(url:) mechanism the scrub bar's seek-by-
-    // reconnect and catchUpToLive already use, so it doesn't reset volume or re-show the poster
-    // (unlike a channel switch via the picker, which deliberately does both of those).
+    // Tears down and reopens the current FEED connection with (or without) &transcode=auto — routed
+    // through state.startFeedLocalRelay (same as watchRemoteRelay's initial open) rather than
+    // calling bridge.play(url:) directly against the raw remote URL: doing that would reconnect
+    // libvlc straight to the remote Mac and reintroduce the exact cross-machine stall bug the FEED
+    // client-side local relay exists to avoid, just for this one interaction.
     private func toggleFeedTranscode(to wantsTranscode: Bool) {
         guard wantsTranscode != feedIsTranscoding, let rawURL = currentFeedEntry?.URL else { return }
-        let newURL = wantsTranscode ? rawURL + "&transcode=auto" : rawURL
-        glog("[VLC] FEED transcode toggle → \(wantsTranscode ? "H.264" : "raw"): \(newURL)")
-        bridge.play(url: newURL)
+        let newRemoteURL = wantsTranscode ? rawURL + "&transcode=auto" : rawURL
+        glog("[VLC] FEED transcode toggle → \(wantsTranscode ? "H.264" : "raw"): \(newRemoteURL)")
+        let localURL = state.startFeedLocalRelay(remoteURL: newRemoteURL, device: device)
+        bridge.play(url: localURL)
     }
 
     // The Native-resolution icon's color now also encodes whether the current stream is being
@@ -1129,6 +1153,14 @@ struct VLCPlayerView: View {
                 Circle().fill(nativeIconSourceColor).frame(width: 8, height: 8)
                 Text(bridge.recordingShowId != nil ? "Local recording (disk)" : "Live network stream")
             }
+            // A plain on-disk-size snapshot, not a tracked/ticking value like the separate "Live
+            // Buffer" popover's lagSec — recomputed fresh each time this popover opens (a computed
+            // `some View`), not on any timer, per an explicit request that this not need continuous
+            // tracking. Only meaningful for the disk-relay case (a live network stream has no local
+            // file to check).
+            if bridge.recordingShowId != nil, let recordingSizeText {
+                row("On disk", recordingSizeText)
+            }
             if let px = bridge.videoPixelSize {
                 let scale = VLCPlayerWindowManager.shared.currentScreenScale
                 let logW  = Int(px.width  / scale)
@@ -1164,8 +1196,15 @@ struct VLCPlayerView: View {
 
     // MARK: - Helpers
 
-    private func syncChannel(to url: String) {
-        guard !url.isEmpty else { return }
+    private func syncChannel(to rawSyncURL: String) {
+        guard !rawSyncURL.isEmpty else { return }
+        // FEED's client-side local relay (docs/VirtualTunerService.md) means every caller of this
+        // function — .onAppear's initialURL, state.vlcCurrentURL, bridge.recordingShowId's onChange
+        // — now hands this a LOCAL http://127.0.0.1/api/feed-local-relay?... URL for a virtual
+        // relay device, which can never match anything in `lineup` (this device's real, remote
+        // lineup entries). Same fix as currentFeedEntry/feedIsTranscoding above: substitute the
+        // true remote URL before matching.
+        let url = device.isVirtualRelay ? (VLCPlayerWindowManager.shared.currentFeedRemoteURL ?? rawSyncURL) : rawSyncURL
         let base = url.urlBase
         // Recording-relay stream: match against this device's currently-recording shows instead
         // of the lineup — the relay URL (docs/WebServer.md) never matches a real channel URL.
@@ -1280,6 +1319,12 @@ final class VLCPlayerWindowManager {
     /// watching this exact channel" apart from "some other tuner on this device is in use", so the
     /// in-use-by-other-tuner marker doesn't flag your own live Watch session as someone else's.
     private(set) var currentChannelNumber: String?
+    // FEED client-side local relay (docs/VirtualTunerService.md) — set by AppState.
+    // startFeedLocalRelay right before it hands VLC the local relay URL, so VLCPlayerView can
+    // still tell which remote Mac/URL is actually being watched even though bridge.currentURL now
+    // holds the local http://127.0.0.1:<port>/api/feed-local-relay?... URL, not the real one.
+    private(set) var currentFeedRemoteURL: String?
+    private(set) var currentFeedSessionId: String?
     private weak var appState: AppState?
     // Local NSEvent monitor for arrow-key seek + Esc-to-exit-fullscreen — installed once per real
     // window (created in `open()`'s new-window branch), torn down in `playerWindowDidClose()`.
@@ -1289,6 +1334,14 @@ final class VLCPlayerWindowManager {
     private var pendingSeekDelta: Double = 0
 
     private init() {}
+
+    /// Records which FEED session/remote URL is now backing the player, right before
+    /// AppState.startFeedLocalRelay hands VLCBridge the local relay URL — see currentFeedRemoteURL's
+    /// own doc comment. Cleared in playerWindowDidClose.
+    func setFeedRelayTracking(remoteURL: String, sessionId: String) {
+        currentFeedRemoteURL = remoteURL
+        currentFeedSessionId = sessionId
+    }
 
     /// Bring the player window to the front without switching the stream.
     func focus() {
@@ -1503,6 +1556,17 @@ final class VLCPlayerWindowManager {
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
         keyMonitor = nil
         pendingSeekDelta = 0   // in case the window closed mid-hold, before a matching keyUp arrived
+        // FEED client-side local relay teardown — guarded so a normal live-tuner/Watch-Now close
+        // pays no new cost. Unregistering the session is enough: FeedRelayProxyDelegate's own
+        // cleanup (invalidating its URLSession) fires from conn.cancel() below closing the
+        // NWConnection it's forwarding into — there's no separate process or temp file to tear down
+        // now that this relay is in-memory (see issues_resolved.md's "VLC-side FEED playback
+        // stalls" entry for the 2026-09-12 simplification).
+        if let sessionId = currentFeedSessionId {
+            appState?.webServer.unregisterFeedRelaySession(id: sessionId)
+        }
+        currentFeedRemoteURL = nil
+        currentFeedSessionId = nil
         currentDeviceID = nil
         currentChannelNumber = nil
         window = nil

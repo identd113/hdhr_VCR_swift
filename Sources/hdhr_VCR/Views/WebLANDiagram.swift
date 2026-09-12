@@ -35,15 +35,13 @@ struct WebLANDiagram: View {
                     }
 
                     // Always the single-frame frozen-mid-flow rendering, never a live TimelineView —
-                    // see issues_resolved.md's "First-Run Wizard's Recording FEED step crashed the
-                    // app outright" entry (feature/recording-feed branch): a continuously-redrawing
-                    // TimelineView(.animation) hosted inside this wizard's content-fitted window
-                    // triggers a real, repeatable AppKit crash ("needs another Update Constraints in
-                    // Window pass..."). That entry caught it on NetworkFlowDiagram (the FEED step,
-                    // gated behind a flag and unreachable in this release); this diagram uses the
-                    // identical TimelineView(.animation) shape in a wizard step with no such gate —
-                    // Web LAN is shown to every user — so it carries the same crash risk even though
-                    // it hasn't been directly observed live yet.
+                    // see NetworkFlowDiagram's matching comment and issues_resolved.md's "First-Run
+                    // Wizard's Recording FEED step crashed the app outright" entry. That entry caught
+                    // it on NetworkFlowDiagram (the FEED step, gated behind a flag and unreachable in
+                    // a default build); this diagram uses the identical TimelineView(.animation)
+                    // shape in a wizard step with no such gate — Web LAN is shown to every user — so
+                    // it carries the same crash risk even though it hasn't been directly observed
+                    // live yet. Removed here too, proactively.
                     ForEach(Self.receivers, id: \.systemImage) { receiver in
                         Circle()
                             .fill(watchNowBlue)

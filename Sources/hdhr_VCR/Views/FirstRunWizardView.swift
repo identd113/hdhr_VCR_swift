@@ -169,6 +169,9 @@ struct FirstRunWizardView: View {
         // transaction as the step change (goNext()/goBack() already animate step this way; the
         // intro hand-off in finishIntro() below does the same).
         .frame(width: step == .intro ? 640 : 460, height: step == .intro ? 480 : nil)
+        // Keeps the window on-screen across steps whose content height differs a lot (see
+        // WindowRecenterer's own doc comment below for why this is needed at all).
+        .background(WindowRecenterer(trigger: step))
         // Same floating-panel chrome as DonationNagView — thickMaterial + 20pt rounded corners +
         // a faint border + drop shadow — so this reads as the same "app's own chrome" rather than
         // a bare Settings-style dialog in a hiddenTitleBar window with no material treatment.
@@ -442,6 +445,24 @@ struct FirstRunWizardView: View {
         .fixedSize(horizontal: false, vertical: true)
     }
 
+    // Was the tallest wizard step — an extra Label plus a third, separate Section just for the
+    // toggle (webLANScreen/terminalGuideScreen fold their toggle into the diagram/text Section
+    // instead) pushed this past what the other steps need, and that extra height was enough on at
+    // least one real machine to crash the app outright (see issues_resolved.md's "First-Run
+    // Wizard's Recording FEED step crashed the app outright" entry for the full investigation,
+    // including two other fix attempts — a ScrollView wrapper, and removing NetworkFlowDiagram's
+    // animation — that both turned out NOT to be the actual cause: the crash reproduced identically,
+    // at the identical window size, even after each). The ScrollView wrapper in particular is now
+    // suspected as having been its own contributing cause, not a fix — a ScrollView has no
+    // well-defined "ideal height" the way a plain Form/VStack does, which is a bad combination with
+    // this wizard's own `.frame(height: nil)` content-fit window sizing (this file's body property,
+    // ~line 171): SwiftUI/AppKit can end up repeatedly re-negotiating between candidate heights
+    // rather than ever settling on one, tripping the same "Update Constraints" safety limit.
+    // Resolution: back to a plain Form, structurally matching every sibling step exactly (no
+    // ScrollView, ending in the same `.fixedSize(vertical: true)`) — content shortened instead
+    // (toggle folded into the single diagram/text Section, the separate "Watch-only" Label folded
+    // into the toggle's own InfoButton) so the natural height comes down without ever introducing a
+    // ScrollView into this fragile hosting context.
     private var recordingRelayScreen: some View {
         Form {
             Section {
@@ -465,17 +486,11 @@ struct FirstRunWizardView: View {
                     )
                     Text("While a show is recording, this Mac briefly shows up on your home network as an extra tuner. Another Mac running this app can watch that same recording straight off disk, instead of opening a second tuner to record it again.")
                         .font(.callout)
-                    Label("Watch-only — it can't start a new recording, on this Mac or any other, and only exists on your local network while something is actively recording.", systemImage: "lock.shield")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
+                    Toggle(isOn: $relayEnabled) {
+                        HStack { Text("Rebroadcast In-Progress Recordings"); InfoButton("Off by default. Turn this on if you'd like another Mac running this app to watch a recording already in progress. Watch-only — it can't start a new recording, on this Mac or any other, and only exists on your local network while something is actively recording. Beta: occasional playback hiccups on the watching Mac are a known limitation still being worked on.") }
+                    }
                 }
                 .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Section {
-                Toggle(isOn: $relayEnabled) {
-                    HStack { Text("Rebroadcast In-Progress Recordings"); InfoButton("Off by default. Turn this on if you'd like another Mac running this app to watch a recording already in progress. Beta: occasional playback hiccups on the watching Mac are a known limitation still being worked on.") }
-                }
             }
         }
         .formStyle(.grouped)
@@ -510,16 +525,14 @@ struct FirstRunWizardView: View {
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
-        // Every other step's Form ends with this — this one was missing it. Without an explicit
-        // ideal vertical size, and with this step's height genuinely dynamic (the warning Label
-        // above appears/disappears as the Steppers change), this step's height was ambiguous/
-        // unstable inside the wizard's content-fitted (`height: nil`) window — triggering a real,
-        // repeatable crash (AppKit's "window has been marked as needing another Update Constraints
-        // in Window pass..." safety-limit abort) whenever a user adjusts the notification-timing
-        // steppers so the warning toggles on. Confirmed present unchanged in the v2.3.0 release
-        // (not gated behind any feature flag — this is the wizard's last step, shown to everyone).
-        // Found and fixed on feature/recording-feed 2026-09-12; see that branch's
-        // issues_resolved.md for the full investigation.
+        // Every other step ends with this — this one was missing it (see issues_resolved.md's
+        // "First-Run Wizard's Recording FEED step crashed the app outright" entry, follow-up
+        // finding): without an explicit ideal vertical size, this step's height — made genuinely
+        // dynamic by the conditional warning Label above, which appears/disappears as the Steppers
+        // change — left this content-fitted window's height ambiguous/unstable, tripping the same
+        // AppKit "Update Constraints" safety-limit crash the FEED step's own (already-fixed) bug did.
+        // Confirmed present unchanged in the v2.3.0 release too (not gated behind any feature flag —
+        // this is the wizard's last step, shown to everyone); also fixed on `main` directly.
         .fixedSize(horizontal: false, vertical: true)
     }
 
@@ -763,6 +776,33 @@ struct FirstRunWizardView: View {
         panel.allowsMultipleSelection = false
         panel.directoryURL = state.defaultSaveDir
         if panel.runModal() == .OK, let url = panel.url { saveFolder = url.path }
+    }
+}
+
+// Re-centers the wizard's own window whenever the visible step changes. Height genuinely varies
+// per step by design (docs/FirstRunWizardView.md: "height follows content"), but
+// `.windowResizability(.contentSize)` only resizes the window -- it doesn't reposition it, and
+// AppKit's default resize keeps the window's top edge fixed and grows the bottom edge downward.
+// A step tall enough to push that bottom edge past the visible screen hides the Next/Back/Finish
+// row entirely, even though it's still present in the view tree (reported live for Step 4,
+// Recording FEED -- the tallest step, combining a diagram, two paragraphs, and a Label). Centering
+// after every step change means any extra height grows symmetrically off both the top and bottom
+// instead of only downward, which is what actually keeps the button row on-screen. Same
+// NSViewRepresentable-plus-DispatchQueue.main.async idiom DonationNagView.swift's
+// FloatingWindowLevelSetter already uses to reach the hosting NSWindow from SwiftUI.
+private struct WindowRecenterer: NSViewRepresentable {
+    let trigger: FirstRunWizardView.Step
+
+    func makeNSView(context: Context) -> NSView {
+        let v = NSView()
+        DispatchQueue.main.async { v.window?.center() }
+        return v
+    }
+
+    // Fires whenever `trigger` (the current step) changes, since that's the one stored
+    // property SwiftUI diffs to decide this view needs updating.
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async { nsView.window?.center() }
     }
 }
 

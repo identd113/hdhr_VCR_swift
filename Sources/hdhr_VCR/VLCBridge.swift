@@ -439,7 +439,12 @@ final class VLCBridge: ObservableObject {
         // playing after a reconnect that isn't a scrub (no seekBaseSeconds change needed there).
         // AppState.seekRecording/watchRecordingInApp additionally set seekBaseSeconds afterward
         // via beginRecordingSeek().
-        let isRecordingRelay = url.contains("/api/watch-recording")
+        // FEED's client-side local relay (docs/VirtualTunerService.md) is the same loopback-file-
+        // read shape as /api/watch-recording — a real recording curl vs. a FEED puller curl
+        // writing the file libvlc reads, no network jitter for libvlc itself to buffer against —
+        // so it gets the same 300ms network-caching value (below) instead of the 2000ms live-
+        // stream value it would otherwise fall into.
+        let isRecordingRelay = url.contains("/api/watch-recording") || url.contains("/api/feed-local-relay")
         if isRecordingRelay {
             recordingReopenedAt = Date()
             minRate = 1.0   // local loopback file read — no network jitter to buffer against

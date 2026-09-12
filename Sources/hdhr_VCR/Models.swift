@@ -434,11 +434,13 @@ struct AppConfig: Equatable {
 
     // Master hide switch for the entire Recording FEED / virtual-tuner-relay feature (both the
     // publish side below and the consume side — MenuContent's "Recording on Another Mac" section,
-    // AppState.remoteRelayEntries/hasAvailableRemoteFeed). Deliberately config-file-only: no UI
-    // anywhere sets this, on purpose — flagged 2026-09-10 as needing more work (VLC stalls/
-    // track-switching still open, see TODO.md), so hidden rather than removed to keep the code and
-    // an easy path back. Flip to `true` by hand-editing the config JSON to bring the feature back;
-    // every other FEED toggle/UI below stays exactly as it was, gated on this one flag.
+    // AppState.remoteRelayEntries/hasAvailableRemoteFeed). Defaults to `false` and is config-file-
+    // only (no UI sets it) — flagged 2026-09-10 as needing more work, hidden rather than removed to
+    // keep the code and an easy path back. `feature/recording-feed`'s VLC playback-stall bug is now
+    // fixed (see issues_resolved.md's "VLC-side FEED playback stalls" entry) as of this branch's
+    // merge into `main`, but audio/CC track switching on a FEED session is still open (ISSUES.md) —
+    // deliberately kept `false` here rather than merging that branch's own default-to-`true` flip
+    // (`ff90cda`) until that one closes too.
     var FEED_feature_enabled: Bool = false
 
     // Recording-relay virtual tuner (VirtualTunerService.swift, docs/VirtualTunerService.md) — while
@@ -545,6 +547,10 @@ extension AppConfig: Codable {
         Web_server_enabled      = (try? c.decode(Bool.self,   forKey: .Web_server_enabled))      ?? false
         Web_server_port         = (try? c.decode(Int.self,    forKey: .Web_server_port))         ?? 1980
         Terminal_guide_enabled  = (try? c.decode(Bool.self,   forKey: .Terminal_guide_enabled))  ?? false
+        // ?? true on this branch (feature/recording-feed) only — matches the struct default's
+        // own flip above; ?? false on main. A config file that already has this key explicitly
+        // saved (e.g. `false`, from before this branch re-enabled it) still wins either way — this
+        // fallback only matters for a config with no saved value at all.
         FEED_feature_enabled    = (try? c.decode(Bool.self,   forKey: .FEED_feature_enabled))    ?? false
         Virtual_tuner_relay_enabled = (try? c.decode(Bool.self, forKey: .Virtual_tuner_relay_enabled)) ?? false
         Virtual_tuner_relay_default_transcode = (try? c.decode(String.self, forKey: .Virtual_tuner_relay_default_transcode)) ?? "heavy"

@@ -83,13 +83,21 @@ VLC's own scrub bar handles resume-within-a-single-playback-session, but nothing
 
 Flagged 2026-09-11. The Watch Now yield-tuner-to-Record feature (`AppState.recordAfterYieldingWatchNow`) root-caused and fixed a "stuck on Connecting…" bug by calling `VLCBridge.shared.stop()` (leaves `VLCPlayerWindowManager`'s `drawableView` attached) instead of `releasePlayer()` (nils it) right before handing off to `watchRecordingInApp(_:)` — `releasePlayer()` would have meant `VLCVideoSurface.makeNSView` never re-fires for a same-device window reuse, so a later `play()` just sits queued forever with no surface to render into. See `recordAfterYieldingWatchNow`'s own doc comment and `issues_resolved.md` for the full root-cause writeup.
 
-That fix is currently scoped to just this one flow. Any *other* place in the app that transitions a live, in-app-network-watched channel over to watching its own now-in-progress recording from disk (or the reverse — recording-relay playback handing back to a live stream) should go through the same `stop()`-then-`watchRecordingInApp`/`watchInVLC` sequence rather than whatever it does today, or it risks hitting the identical stuck-on-Connecting failure mode. Needs an audit of every `VLCBridge.shared.releasePlayer()`/`watchRecordingInApp`/`watchInVLC` call site (`AppState.swift`) to check which ones are a same-device handoff (where the fix applies) versus a genuine full teardown (window closing, different device — where `releasePlayer()` remains correct). Not yet scoped or audited.
+That fix is currently scoped to just this one flow. Any *other* place in the app that transitions a live, in-app-network-watched channel over to watching its own now-in-progress recording from disk (or the reverse — recording-relay playback handing back to a live stream) should go through the same `stop()`-then-`watchRecordingInApp`/`watchInVLC` sequence rather than whatever it does today, or it risks hitting the identical stuck-on-Connecting failure mode.
+
+**Audited 2026-09-12 (while resuming FEED work on `feature/recording-feed`) — no current FEED code path is actually exposed to this.** Checked every `releasePlayer()`/`stop()`/`mgr.open()` call site: `VLCPlayerWindowManager.open()`'s reuse-vs-recreate branch is keyed on device match, and a FEED relay's device ID is always distinct from any real physical device *and* ephemeral (the relay stops advertising entirely once its source recording ends, rather than being reconnected to) — so any FEED-related open either takes the safe "recreate" path (different device) or the source simply vanishes rather than triggering a same-device reconnect. The one FEED path that *does* reconnect in place — `VLCPlayerView.toggleFeedTranscode` (raw ↔ H.264) — calls `bridge.play(url:)` directly on the already-alive player and never touches `VLCPlayerWindowManager.open()`, so it was never exposed to this bug class either. Nothing to fix here today; revisit only if a future feature actually adds a same-device FEED reconnect (e.g. a FEED session handing off to local disk playback once its source recording finishes — not a real code path today, just a hypothetical raised during this audit).
 
 ---
 
 ### ~~Watch Now should show whether the video is currently reading from the network or from disk~~ — done 2026-09-11
 
 Requested and shipped same day: the Native-resolution toolbar button's icon color and its hover popover's top row both now show live-network-vs-disk-relay source (`VLCPlayerView.swift`'s `nativeIconSourceColor`, keyed off `bridge.recordingShowId`). See `docs/VLCPlayerView.md`'s "Native resolution button" entry.
+
+---
+
+### ~~Show buffer information next to Local Recording / network device listings~~ — done 2026-09-12
+
+Requested and shipped same day: turned out to mean the existing "Local recording (disk)" / "Live network stream" indicator in the native-resolution button's hover popover (`VLCPlayerView.swift`'s `nativeResPopover`, see the item right above this one) — not the menu bar or web guide device lists. Added an "On disk" row showing the recording file's current size (`VLCPlayerView.recordingSizeText`, a plain `FileManager.attributesOfItem` stat), shown only for the disk-relay case. Deliberately a one-shot snapshot recomputed each time the popover reopens, not tracked on a timer like the separate "Live Buffer" pill's `lagSec` — matching the explicit request that this not need continuous updates. See `docs/VLCPlayerView.md`'s "Native resolution button" entry.
 
 ---
 
@@ -135,13 +143,24 @@ The concrete bug this request also surfaced — `probeForNewDevices()` sending a
 
 ---
 
+### ~~Simplification ideas for the FEED client-side local relay~~ — idea 1 done 2026-09-12, ideas 2-4 resolved/superseded
+
+Raised 2026-09-12 once the disk-backed pacing fix (`issues_resolved.md`'s "VLC-side FEED playback stalls" entry) was confirmed live; idea 1 was then done the same day.
+
+1. **Done.** Replaced the puller-curl-to-temp-file design with an in-memory proxy (`WebServer.FeedRelayProxyDelegate`, mirroring `pumpTranscodeProxy`/`TranscodeProxyDelegate`'s existing shape) — see `docs/VirtualTunerService.md`'s "Client-side local relay" section for the full mechanics. Removed wholesale: `RecordingManager.startFeedPull`/`stopFeedPull`/`isFeedPullRunning`/`stopAllFeedPulls`/`feedPullPids`, the temp-file naming scheme and its startup orphan sweep, and the disk I/O itself.
+2. **Resolved as a side effect of idea 1**, not separately fixed: with no local temp file accumulating history, there's no backlog left to replay — every new proxy connection (including a `catchUpToLive` reconnect) starts fresh at the remote's own live edge. The byte-zero-replay quirk this idea described no longer applies.
+3. **Superseded** — `handleVirtualTunerStream`'s client is no longer a puller curl either; it's `WebServer`'s own in-process `URLSession`-based proxy. Re-evaluating `feedLiveEdgeCushionBytes` against that client, if ever wanted, starts from a clean slate rather than the puller-curl framing this idea was written against.
+4. **Moot** — the FEED-local-relay path no longer calls `streamGrowingFile` at all (idea 1's in-memory replacement bypasses it entirely), so `stillActiveCheck`'s generalization on that function has nothing left to justify it either way; left in place since both remaining callers (`handleWatchRecording`/`handleVirtualTunerStream`) already pass one trivially and reverting it would be pure churn for no behavior change.
+
+---
+
 ### Raw FEED passthrough (`/auto/v<channel>`) never shares one stream across multiple viewers, unlike the transcode path
 
-Raised 2026-09-12 during `feature/recording-feed` testing, but the underlying mechanism is `main`'s own pre-existing `VirtualTunerService`/`handleVirtualTunerStream` code, confirmed by reading current `main` source — not something that branch introduced. Every viewer of the raw (non-transcoded) FEED endpoint gets its own independent `streamGrowingFile` call — its own `FileHandle`, its own read/poll loop, its own outbound send from the source Mac — confirmed live by running two simultaneous raw viewers against the same show and observing the source do the read and the send twice. This is unlike `VLCBridge.TranscodeSession` (the transcode path), which is already ref-counted — N viewers of a transcoded stream share one real encode and one output.
+Raised 2026-09-12, deliberately **not scoped or started** — an explicit "not now" from an exploratory discussion, kept here only so the tradeoff is written down rather than re-litigated from scratch later. Every viewer of the raw (non-transcoded) FEED endpoint gets its own independent `streamGrowingFile` call — its own `FileHandle`, its own read/poll loop, its own outbound send from the source Mac — confirmed live 2026-09-12 by running two simultaneous raw viewers (the app's own client-side local relay + plain VLC.app) against the same show and observing the source do the read and the send twice. This is unlike `VLCBridge.TranscodeSession` (the transcode path), which is already ref-counted — N viewers of a transcoded stream share one real encode and one output.
 
 **Why this hasn't been changed**: sharing one raw stream the same way would need a real fan-out design, not a small tweak — a late joiner wants to start at their own live edge, not wherever a single shared reader currently sits, and a slow viewer's connection can't be allowed to block delivery to a fast one, so it'd need a per-viewer buffer/cursor into one shared upstream read rather than literally one socket fanned out. That's a legitimate broadcast-server pattern (real backpressure handling, ref-counted lifecycle mirroring `TranscodeSession`'s own), just non-trivial to get right.
 
-**Why it's not worth it today**: this app's actual usage is normally one Mac watching another's recording — rarely more than one simultaneous raw viewer of the same show. The test that surfaced this was a deliberate double-watch for comparison purposes, not two independent real viewers. Revisit only if multiple concurrent raw viewers of the same FEED becomes an actual observed pattern, not a hypothetical one.
+**Why it's not worth it today**: this app's actual usage is normally one Mac watching another's recording — rarely more than one simultaneous raw viewer of the same show. The 2026-09-12 test that surfaced this was a deliberate double-watch for comparison purposes, not two independent real viewers. Revisit only if multiple concurrent raw viewers of the same FEED becomes an actual observed pattern, not a hypothetical one.
 
 ---
 

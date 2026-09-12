@@ -462,6 +462,10 @@ final class AppState: ObservableObject {
     }
     private var recordingRelayClaim = WebServerClaimFlag()      // held while watchRecordingInApp's relay session is open
     private var virtualTunerWebServerClaim = WebServerClaimFlag()  // held while updateVirtualTunerPresence's relay is advertised
+    // Claimed once, on first use, and never released via a matching call — see
+    // watchRecordingInVLC(_:)'s own doc comment for why an externally-launched VLC.app window
+    // gives this app no signal to release it on.
+    private var recordingRelayVLCClaim = WebServerClaimFlag()
 
     // Exponential backoff for repeated guide API failures per device.
     // Delays: 1 min → 5 min → 15 min → 30 min → 1 hour (capped).
@@ -4324,6 +4328,32 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// FEED client-side local relay (docs/VirtualTunerService.md) — registers `remoteURL` (another
+    /// Mac's in-progress recording, served by its own /auto/v<channel> route) with WebServer under
+    /// a fresh opaque session id, then returns a 127.0.0.1 URL for VLC to open instead. WebServer's
+    /// `FeedRelayProxyDelegate` does the actual work once VLC connects to that URL: an in-process
+    /// HTTP request to `remoteURL`, paced and forwarded straight through — no disk, no separate
+    /// puller process (simplified 2026-09-12 from an earlier puller-curl-to-temp-file design once
+    /// the pacing fix was confirmed live — see issues_resolved.md's "VLC-side FEED playback
+    /// stalls" entry). This insulates libvlc from the real cross-machine network read that bug
+    /// only ever reproduced under — the identical relay code plays flawlessly forever over
+    /// loopback. Callers must not fall back to `remoteURL` on failure, since that would silently
+    /// reintroduce the exact bug this exists to avoid.
+    func startFeedLocalRelay(remoteURL: String, device: HDHRDevice) -> String {
+        let mgr = VLCPlayerWindowManager.shared
+        // Unregister any previous session before starting a new one — e.g. switching raw↔H.264 or
+        // re-watching a different relay reuses this same singleton player window.
+        if let previousSessionId = mgr.currentFeedSessionId {
+            webServer.unregisterFeedRelaySession(id: previousSessionId)
+        }
+        // The UUID (not just device id) ensures switching raw↔H.264, or re-watching, never aliases
+        // two different sessions onto the same id.
+        let sessionId = "\(device.DeviceID)-\(UUID().uuidString)"
+        webServer.registerFeedRelaySession(id: sessionId, remoteURL: remoteURL)
+        mgr.setFeedRelayTracking(remoteURL: remoteURL, sessionId: sessionId)
+        return "http://127.0.0.1:\(webServer.activePort)/api/feed-local-relay?session=\(sessionId)"
+    }
+
     /// Opens a native player window directly against another hdhrVCRplus instance's virtual-relay
     /// stream (see VirtualTunerService.swift / docs/VirtualTunerService.md) — the "Recording on
     /// <title>" menu row. Deliberately does not reuse watchInApp: that function's tunerAvailable
@@ -4335,13 +4365,15 @@ final class AppState: ObservableObject {
     func watchRemoteRelay(url: String, title: String, device: HDHRDevice) {
         guard VLCBridge.shared.isAvailable, !url.isEmpty else { return }
         let mgr = VLCPlayerWindowManager.shared
-        let rawBase = url.urlBase
-        if mgr.currentDeviceID == device.DeviceID && (VLCBridge.shared.currentURL?.urlBase ?? "") == rawBase {
+        // Dedup against the true remote URL, not bridge.currentURL — once startFeedLocalRelay
+        // succeeds below, currentURL holds the LOCAL relay URL, not this one.
+        if mgr.currentDeviceID == device.DeviceID && mgr.currentFeedRemoteURL == url {
             mgr.focus()
             return
         }
-        glog("[Watch] remote relay '\(title)' on \(device.DeviceID)")
-        mgr.open(url: url, title: title, device: device, appState: self)
+        let localURL = startFeedLocalRelay(remoteURL: url, device: device)
+        glog("[Watch] remote relay '\(title)' on \(device.DeviceID) via local relay")
+        mgr.open(url: localURL, title: title, device: device, appState: self)
     }
 
     func watchInVLC(url: String, transcode: String? = nil, deviceId: String? = nil) {
@@ -4479,16 +4511,43 @@ final class AppState: ObservableObject {
         seekRecording(showId: showId, toSeconds: max(0, elapsed - Self.recordingLiveEdgeBackoffSeconds))
     }
 
+    /// External-VLC counterpart to watchRecordingInApp(_:) — same "a currently-recording show
+    /// already occupies a tuner, so watch the file being written to disk instead of opening a
+    /// second tuner connection" rule (see that function's own doc comment for the full reasoning).
+    ///
+    /// Fixed 2026-09-12 — was opening a raw `file://` URL directly. Per watchRecordingInApp's own
+    /// doc comment, libvlc's local-file access module snapshots the file's length at open time and
+    /// won't read past it even though curl keeps appending — so a direct file:// URL here would
+    /// silently stop advancing (not crash, just freeze) the moment playback caught up to wherever
+    /// the file was when VLC.app opened it, instead of continuing to follow the still-growing
+    /// recording. Routed through the same `/api/watch-recording` open-ended-HTTP-stream relay
+    /// watchRecordingInApp already uses for the in-app player, which has no such limit.
+    ///
+    /// No tunerAvailable gate, deliberately — same as watchRecordingInApp, this never touches the
+    /// tuner at all, so checking its availability would just find it correctly "occupied" by this
+    /// show's own recording and wrongly block every call.
     func watchRecordingInVLC(_ show: Show) {
+        guard config.Watch_in_VLC, let vlcApp = VLCBridge.locateApp() else { return }
         guard !show.show_recording_path.isEmpty,
               FileManager.default.fileExists(atPath: show.show_recording_path) else {
             watchInVLC(url: show.show_url, transcode: show.show_transcode, deviceId: show.hdhr_record)
             return
         }
-        guard config.Watch_in_VLC, let vlcApp = VLCBridge.locateApp() else { return }
-        let fileURL = URL(fileURLWithPath: show.show_recording_path)
-        glog("[Watch] '\(show.show_title)' from disk in external VLC: \(show.show_recording_path)")
-        NSWorkspace.shared.open([fileURL], withApplicationAt: vlcApp, configuration: .init()) { _, _ in }
+        // Claimed but never released via a matching releaseRecordingRelayIfNeeded()-style call --
+        // unlike the in-app player, an externally-launched VLC.app window gives this app no signal
+        // when the user actually stops watching, so there's no reliable moment to release it.
+        // Left running for the rest of this app session once used; a lightweight local listener
+        // staying up is a fair trade against leaving the relay unusable, and safe against the
+        // in-app player's own independent claim/release pairing since ensureWebServerRunning()/
+        // releaseInternalWebServer() are refcounted underneath both claims.
+        recordingRelayVLCClaim.claim { ensureWebServerRunning() }
+        let elapsed = recordingElapsedSeconds(show)
+        let startSeconds = max(0, elapsed - Self.recordingLiveEdgeBackoffSeconds)
+        let startOffset = recordingByteOffset(for: show, atSeconds: startSeconds) ?? 0
+        let relayURL = "http://127.0.0.1:\(config.Web_server_port)/api/watch-recording?show=\(show.show_id)&start=\(startOffset)"
+        guard let streamURL = URL(string: relayURL) else { return }
+        glog("[Watch] '\(show.show_title)' from disk via local relay, opening in VLC.app (recording in progress): \(show.show_recording_path)")
+        NSWorkspace.shared.open([streamURL], withApplicationAt: vlcApp, configuration: .init()) { _, _ in }
     }
 
     private func alertTunerFull(tunerCount: Int, deviceId: String) {

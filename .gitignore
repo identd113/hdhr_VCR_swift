@@ -15,6 +15,7 @@ TestMacro
 /hdhrVCRplus.app
 tools/__pycache__/
 tools/test_scenarios/__pycache__/
+tools/feed_diagnostics/__pycache__/
 
 # ── Test artifacts ────────────────────────────────────────────────────────
 Tests/hdhr_VCRTests/Views/__Snapshots__/
