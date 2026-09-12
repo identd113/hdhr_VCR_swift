@@ -95,6 +95,12 @@ Requested and shipped same day: the Native-resolution toolbar button's icon colo
 
 ---
 
+### ~~Show buffer information next to Local Recording / network device listings~~ — done 2026-09-12
+
+Requested and shipped same day: turned out to mean the existing "Local recording (disk)" / "Live network stream" indicator in the native-resolution button's hover popover (`VLCPlayerView.swift`'s `nativeResPopover`, see the item right above this one) — not the menu bar or web guide device lists. Added an "On disk" row showing the recording file's current size (`VLCPlayerView.recordingSizeText`, a plain `FileManager.attributesOfItem` stat), shown only for the disk-relay case. Deliberately a one-shot snapshot recomputed each time the popover reopens, not tracked on a timer like the separate "Live Buffer" pill's `lagSec` — matching the explicit request that this not need continuous updates. See `docs/VLCPlayerView.md`'s "Native resolution button" entry.
+
+---
+
 ## Recording
 
 ### No reminder-only shows (notify without recording)

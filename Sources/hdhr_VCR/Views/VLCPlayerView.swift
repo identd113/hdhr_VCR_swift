@@ -166,6 +166,18 @@ struct VLCPlayerView: View {
         return url.contains("transcode=auto") ? ("H.264", "AC-3") : ("H.264", "AAC")
     }
 
+    // A plain stat of the recording file's current size — see nativeResPopover's own comment on
+    // why this is a one-shot snapshot (recomputed only when the popover reopens), not a tracked
+    // value with its own update timer.
+    private var recordingSizeText: String? {
+        guard let showId = bridge.recordingShowId,
+              let show = state.shows.first(where: { $0.show_id == showId }),
+              let attrs = try? FileManager.default.attributesOfItem(atPath: show.show_recording_path),
+              let size = attrs[.size] as? Int64, size > 0 else { return nil }
+        let mb = Double(size) / 1_048_576
+        return mb >= 1024 ? String(format: "%.2f GB", mb / 1024) : String(format: "%.0f MB", mb)
+    }
+
     // MARK: - Remote FEED raw/H.264 toggle (docs/VirtualTunerService.md's "Recording on Another
     // Mac" menu already offers this as two separate menu items at open time; this is the same
     // choice made reachable inside an already-open player window instead of requiring a reopen).
@@ -1128,6 +1140,14 @@ struct VLCPlayerView: View {
             HStack {
                 Circle().fill(nativeIconSourceColor).frame(width: 8, height: 8)
                 Text(bridge.recordingShowId != nil ? "Local recording (disk)" : "Live network stream")
+            }
+            // A plain on-disk-size snapshot, not a tracked/ticking value like the separate "Live
+            // Buffer" popover's lagSec — recomputed fresh each time this popover opens (a computed
+            // `some View`), not on any timer, per an explicit request that this not need continuous
+            // tracking. Only meaningful for the disk-relay case (a live network stream has no local
+            // file to check).
+            if bridge.recordingShowId != nil, let recordingSizeText {
+                row("On disk", recordingSizeText)
             }
             if let px = bridge.videoPixelSize {
                 let scale = VLCPlayerWindowManager.shared.currentScreenScale
