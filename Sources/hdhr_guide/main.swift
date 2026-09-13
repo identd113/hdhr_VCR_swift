@@ -137,6 +137,34 @@ var statusMsg = "Loaded \(payload.channels.count) channels on HDHR-\(payload.dev
 var lastPoll = Date()
 let pollInterval: TimeInterval = 20
 
+// Record summary screen (Mode.recordSummary) toggles — mirror the web Record modal's "New Only"
+// checkbox (#rm-new) and multi-day picker (#rm-days), both settable at schedule time there but
+// previously absent here entirely (docs/TUIGuide.md's "obvious misses" audit, 2026-09-13):
+// confirmRecord used to POST immediately on 1-4 with no way to opt into either. pendingDays is
+// index into Show.weekdayNames (Sunday=0...Saturday=6), only meaningful for showType "dateTime"
+// (single/seriesChannel/seriesAll all ignore airDays server-side, see addShowFromGuide's own
+// switch in AppState.swift) — reset to the entry's own weekday, and pendingNewOnly to false,
+// every time Enter opens this screen fresh for an unmanaged entry (handle(_:)'s .enter case).
+var pendingNewOnly = false
+var pendingDays: Set<Int> = []
+// (name, key) pairs, index-aligned with Show.weekdayNames — single letters chosen to avoid any
+// collision with this screen's other live keys (1-4, d/D, Esc); u/m/t/w/h/f/s is otherwise
+// unused in Mode.recordSummary.
+let dayLetters: [(name: String, key: Character)] = [
+    ("Su", "u"), ("Mo", "m"), ("Tu", "t"), ("We", "w"), ("Th", "h"), ("Fr", "f"), ("Sa", "s")
+]
+// Index-aligned with dayLetters/Calendar.component(.weekday:) (Sunday=1...Saturday=7, so index =
+// weekday-1) — the exact strings POST /api/record's airDays expects (Show.weekdayNames,
+// Models.swift). Duplicated rather than imported for the same module-boundary reason
+// genreImpliesBonusTime already is (hdhr_VCR is an executable, not a library) — see
+// docs/TUIGuide.md's "Deliberately left as a known tradeoff" note.
+let fullWeekdayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+// Case-insensitive lookup into dayLetters/Show.weekdayNames — nil for anything not a day key.
+func dayIndex(for c: Character) -> Int? {
+    let lower = Character(String(c).lowercased())
+    return dayLetters.firstIndex { $0.key == lower }
+}
+
 // Search / channel-jump (Mode.search — see GuideLogic.swift's own "Search / channel-jump" section
 // header for the full design). `searchQuery` is everything typed since `/` was pressed, the `#`
 // prefix included when present — `isChannelJumpQuery` below is the single place that decides which
@@ -400,8 +428,16 @@ func confirmRecord(_ typeKey: Character) {
     // the web guide or native wizard at the same moment, and would start actually padding the
     // instant the user later re-enables the setting for a show they never opted in.
     let bonusTime = payload.sportsPaddingEnabled && genreImpliesBonusTime(entry.genre)
+    // airDays only actually applies server-side to "dateTime" (addShowFromGuide's own switch,
+    // AppState.swift) — sent only for that type so [1]/[3]/[4] keep their exact prior behavior
+    // (empty/ignored) regardless of whatever's currently toggled in pendingDays. newOnly is safe
+    // to always send: meaningless (and ignored) for single/dateTime, same as every other client.
+    let airDays = showType == "dateTime"
+        ? pendingDays.sorted().map { fullWeekdayNames[$0] }
+        : nil
     let resp = API.postRecord(deviceId: payload.deviceId, guideNumber: ch.guideNumber,
-                               startTime: entry.startTime, showType: showType, bonusTime: bonusTime)
+                               startTime: entry.startTime, showType: showType, bonusTime: bonusTime,
+                               airDays: airDays, newOnly: pendingNewOnly)
     if resp.ok {
         let recNote = resp.recStarted == true ? " (recording now)" : ""
         let queueNote = resp.tunerFull == true ? " - tuner full, queued" : ""
@@ -447,6 +483,10 @@ func handle(_ key: Key) {
         switch key {
         case .char(let c) where isScheduled && (c == "d" || c == "D"): confirmDelete()
         case .char(let c) where !isScheduled && "1234".contains(c): confirmRecord(c)
+        case .char(let c) where !isScheduled && (c == "n" || c == "N"): pendingNewOnly.toggle()
+        case .char(let c) where !isScheduled && dayIndex(for: c) != nil:
+            let idx = dayIndex(for: c)!
+            if pendingDays.contains(idx) { pendingDays.remove(idx) } else { pendingDays.insert(idx) }
         case .escape: mode = .normal
         default: break
         }
@@ -536,7 +576,13 @@ func handle(_ key: Key) {
     case .char("/"): beginSearch()
     case .tab: switchDevice()
     case .enter:
-        if currentEntry() != nil { mode = .recordSummary }
+        if let (_, e) = currentEntry() {
+            mode = .recordSummary
+            // Fresh per screen-open, not carried over from whatever the last program scheduled
+            // here left them at — matches the web Record modal opening fresh every time too.
+            pendingNewOnly = false
+            pendingDays = [Calendar.current.component(.weekday, from: e.startDate) - 1]
+        }
     case .char("q"): interrupted = true
     default: break
     }
@@ -610,6 +656,20 @@ func renderSummaryScreen() {
         out += "  \(bold)[2]\(reset) Every week at this time\n"
         out += "  \(bold)[3]\(reset) New episodes on this channel\n"
         out += "  \(bold)[4]\(reset) New episodes on any channel on this tuner\n\n"
+        // Days/New Only mirror the web Record modal's day-picker (#rm-days) and "New Only"
+        // checkbox (#rm-new) — settable here before picking a type, not just via a later edit
+        // (docs/TUIGuide.md's "obvious misses" audit, 2026-09-13). Days only actually applies to
+        // [2] (single/series types ignore airDays server-side — addShowFromGuide's own switch in
+        // AppState.swift, so toggling this has no effect on [1]/[3]/[4]); New Only only applies
+        // to [3]/[4] (meaningless for single/dateTime, same as the native/web clients). Built via
+        // the same field() helper as every other value above, not hand-colored per token, so the
+        // existing truncate()-before-color discipline (see this function's own comment on why)
+        // covers these too rather than risking a raw-ANSI overflow on a narrow terminal.
+        let daysList = dayLetters.enumerated().filter { pendingDays.contains($0.offset) }.map { $0.element.name }
+        let daysValue = daysList.isEmpty ? "none - falls back to this entry's own day" : daysList.joined(separator: ", ")
+        out += field("Days [2]", daysValue + "  (u/m/t/w/h/f/s toggles)")
+        out += field("New Only [3/4]", (pendingNewOnly ? "On" : "Off") + "  (n toggles)")
+        out += "\n"
     }
     out += dim + "[Esc] Cancel" + reset
 

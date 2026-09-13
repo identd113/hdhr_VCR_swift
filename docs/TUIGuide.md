@@ -276,8 +276,13 @@ recording options into the footer:
   below), and **Status** (recording now / already scheduled / not scheduled)
 - **Synopsis**, word-wrapped (`wordWrap(_:width:)`, `Terminal.swift`) to the terminal width (capped
   at 76 columns) — omitted when the guide entry has none
-- Either the four recording-scope options (a fresh, unmanaged entry), or a single **[d]**
-  Remove/Stop & Delete option (an entry that's already managed — see below), then `[Esc]` to cancel
+- Either the four recording-scope options plus two toggleable fields — **Days [2]** (which
+  weekdays option `[2]`/Weekly will use, `u`/`m`/`t`/`w`/`h`/`f`/`s` to toggle, defaults to just
+  the entry's own airing day) and **New Only [3/4]** (`n` to toggle, applies only to
+  `[3]`/`[4]`/Series) — mirroring the web Record modal's day-picker and "New Only" checkbox,
+  settable here before picking a type rather than only via a later edit in another client. Or a
+  single **[d]** Remove/Stop & Delete option (an entry that's already managed — see below), then
+  `[Esc]` to cancel
 
 `selRow`/`selEntry` don't change while this screen is up — only the option keys and `Esc` are
 handled — so it's safe for `renderSummaryScreen()`/`handle(_:)` to re-resolve the same entry each
@@ -351,7 +356,9 @@ Table entries below name the physical keys; the footer's own on-screen hint spel
 | `/` | Enter search / channel-jump mode (`#5.1` jumps to a channel number; anything else searches show titles) — see "Search / channel-jump" below |
 | `Tab` | Switch to the next tuner |
 | `Enter` | Open the recording summary screen for the selected program |
-| `1`–`4` (unmanaged entry) | Once / Weekly / Series (this channel) / Series (any channel on this tuner) — POSTs immediately with server-side defaults (e.g. weekly's day-of-week defaults to the entry's own weekday, same as the web Record modal). No transcode/title override in this client — use the web guide or native UI afterward for anything non-default |
+| `1`–`4` (unmanaged entry) | Once / Weekly / Series (this channel) / Series (any channel on this tuner) — POSTs immediately, using whatever `u`/`m`/`t`/`w`/`h`/`f`/`s` and `n` (below) are currently set to. No transcode/title override in this client — use the web guide or native UI afterward for anything non-default |
+| `u`/`m`/`t`/`w`/`h`/`f`/`s` (unmanaged entry) | Toggle Sun/Mon/Tue/Wed/Thu/Fri/Sat in the pending day set for option `[2]` (Weekly) — defaults to just the entry's own airing day, same starting point the web Record modal's day-picker (`#rm-days`) uses, but toggleable here too instead of being a fixed single day. No effect on `[1]`/`[3]`/`[4]` (single/series types ignore it server-side) |
+| `n` (unmanaged entry) | Toggle "New Only" (skip reruns) for options `[3]`/`[4]` — mirrors the web Record modal's `#rm-new` checkbox. No effect on `[1]`/`[2]` |
 | `d` (already-managed entry) | Remove the scheduled recording, or Stop & Delete if it's currently recording |
 | `Esc` (on the summary screen) | Cancel without changes, back to the grid |
 | `q` / `Ctrl-C` | Quit — restores the terminal (leaves raw mode + the alternate screen buffer) before exiting either way |
