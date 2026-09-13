@@ -264,8 +264,15 @@ struct VLCPlayerView: View {
     // Blue = network, purple = disk — replaces the plain `.accentColor` this icon used to glow
     // (see the toolbar's own comment on how "achievable but not yet native" is still conveyed:
     // full-saturation + shadow vs. a dimmed version of the same hue, not a color swap).
+    //
+    // A third case, added 2026-09-13: a remote FEED session (`device.isVirtualRelay`) is neither
+    // of the above — it arrives over the network like a live tuner stream, but what's actually on
+    // the other end is the *source* Mac's own in-progress recording being read off *its* disk, not
+    // a live broadcast feed. Indigo (between blue and purple) reflects that it's genuinely a blend
+    // of both, not a strict either/or the binary above assumes.
     private var nativeIconSourceColor: Color {
-        bridge.recordingShowId != nil ? .purple : .blue
+        if device.isVirtualRelay { return .indigo }
+        return bridge.recordingShowId != nil ? .purple : .blue
     }
 
     private var canResizeToNative: Bool {
@@ -955,9 +962,9 @@ struct VLCPlayerView: View {
             // Native resolution: resize window to 1:1 physical pixels.
             // Glows at full saturation when native is achievable but the window isn't already
             // there; dims to the same hue once already at native. The hue itself is
-            // nativeIconSourceColor (blue = network, purple = disk) — added 2026-09-11 so the
-            // icon doubles as an at-a-glance "where is this data actually coming from" indicator,
-            // not just "can I resize this."
+            // nativeIconSourceColor (blue = network, purple = disk, indigo = FEED — added
+            // 2026-09-11, FEED case added 2026-09-13) so the icon doubles as an at-a-glance
+            // "where is this data actually coming from" indicator, not just "can I resize this."
             Button {
                 VLCPlayerWindowManager.shared.sizeToNativeVideo()
             } label: {
@@ -1223,7 +1230,18 @@ struct VLCPlayerView: View {
             // (or not) independent of video-pixel-size, and this is the more fundamental fact.
             HStack {
                 Circle().fill(nativeIconSourceColor).frame(width: 8, height: 8)
-                Text(bridge.recordingShowId != nil ? "Local recording (disk)" : "Live network stream")
+                // FEED case added 2026-09-13, same reasoning as nativeIconSourceColor's own
+                // comment — "Live network stream" was true but misleading for a FEED session: it
+                // reads over the network like a live tuner does, but what's actually arriving is
+                // the source Mac's own recording being read off *its* disk, not a live broadcast.
+                // Names the source Mac when known (LineupEntry.virtualRelaySourceHostname, the
+                // same /lineup.json extra MenuContent's "Watching FEED from <hostname>" row uses)
+                // rather than just "FEED" alone, for the same reason that row does.
+                if device.isVirtualRelay {
+                    Text("Network → Disk (FEED" + (currentFeedEntry?.virtualRelaySourceHostname.map { " from \($0)" } ?? "") + ")")
+                } else {
+                    Text(bridge.recordingShowId != nil ? "Local recording (disk)" : "Live network stream")
+                }
             }
             // A plain on-disk-size snapshot, not a tracked/ticking value like the separate "Live
             // Buffer" popover's lagSec — recomputed fresh each time this popover opens (captured
