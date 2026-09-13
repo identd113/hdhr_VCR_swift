@@ -1500,3 +1500,99 @@ Two related pieces of work from the same session, both explicit user requests ra
 **Fix**: removed the `0xF0` TLV and all `isGoodbye`-named plumbing. `onFeedAnnounce`'s signature changed from `(String, Bool)` to `(String, Int)` (the parsed `TunerCount`, via a new `VirtualTunerService.tunerCount(fromReplyPacket:)`, replacing `isGoodbye(fromReplyPacket:)`); `AppState`'s handler now checks `tunerCount == 0` everywhere it used to check `isGoodbye == true`. No behavior change and no fidelity lost — confirmed by walking every real call site before removing anything. Bonus: also cleanly resolves how a narrow existing race (`updateVirtualTunerPresence()` computing a legitimate `TunerCount: 0` from a non-`stop()` refresh, found in the 2026-09-12 full-app review — see `ISSUES.md`'s still-open `updateVirtualTunerPresence` entry) reads on the receiving side — there was no clean way to express "not a goodbye, but also nothing to watch" under the old two-field scheme; under "TunerCount alone is truth" it just correctly reads as unavailable.
 
 **Resolving commit**: `c85e048`
+
+---
+
+# FEED code-review pass — 2026-09-13
+
+`/code-review` scoped to `af212f5..HEAD` (every post-merge FEED commit landed on `main` 2026-09-12/13). Nine of ten findings fixed same-day; the tenth (permanent `glog()` diagnostics in `AddShowView.swift`, left over from the still-open `6a5120a` silent-failure investigation) stayed open deliberately — see `ISSUES.md`.
+
+## RESOLVED — A normal (non-goodbye) virtual-tuner announce could carry `TunerCount=0` while a recording was still in progress
+
+**Files:** `AppState.swift`
+
+**Root cause**: `updateVirtualTunerPresence()`'s "already running" branch computed `tunerCount` from `recordingShows` (filtered to `show_end > Date()`), not the unfiltered `isRecording`/`show_recording` check that gates the function itself. In the window after a show's `show_end` passed but before `idleLoop` flipped `show_recording` false, any FEED viewer connect/disconnect refreshed presence with `tunerCount = 0` on a still-genuinely-recording relay — a real (non-`stop()`) announce indistinguishable on the wire from a deliberate goodbye. The receiving instance's `onFeedAnnounce` read any `TunerCount=0` as "definitely gone," pre-advancing `missedProbes` toward the unavailable threshold for a relay that was still live. Same divergence also affected first-start `relayDeviceID(sourceDeviceID:)` resolution, which used `recordingShows.first?.hdhr_record` and could fall back to a random DeviceID instead of the stable `<sourceID>_Relay` identity in that same window.
+
+**Fix**: both call sites now derive from `shows.filter { $0.show_recording }` (the same unfiltered set `isRecording` itself checks), computed once as `activelyRecordingShows` at the top of the branch.
+
+**Resolving commit**: `9ff3a5a`
+
+## RESOLVED — Every FEED viewer connect/disconnect fired a synchronous UDP broadcast + forced every peer to re-fetch its full lineup
+
+**Files:** `AppState.swift`
+
+**Root cause**: `refreshVirtualTunerAnnounceIfActive()` (added 2026-09-13 alongside viewer-count propagation) called `updateVirtualTunerPresence()` directly on every `relayRawViewerConnected/Disconnected`/`transcodeViewerConnected/Disconnected` call — each doing a `getifaddrs()` scan plus a UDP broadcast synchronously on `@MainActor`, and triggering a full `/lineup.json` re-fetch on every peer instance that received it. A burst of ordinary viewer churn (a Wi-Fi drop, the 30s liveness probe closing several dead connections at once, a browser refresh) fanned out into one MainActor-blocking broadcast per event.
+
+**Fix**: debounced via a cancelled-and-rescheduled `Task` with a 300ms delay (`virtualTunerAnnounceRefreshTask`) — a churn burst now collapses into a single broadcast instead of one per event, while still delivering a near-real-time update once the burst settles.
+
+**Resolving commit**: `9ff3a5a`
+
+## RESOLVED — `Show.effectiveVideoCodec`'s device-transcode-capability lookup was duplicated verbatim at two call sites
+
+**Files:** `AppState.swift`, `WebServer.swift`, `Views/VLCPlayerView.swift`
+
+**Root cause**: `state.devices.first(where: { $0.DeviceID == show.hdhr_record })?.supportsTranscode ?? false` appeared independently in `WebServer.handleWatchRecording`'s transcode-needed check and `buildVirtualTunerLineupJSON`'s published `VideoCodec` field — a duplicated read of the same device-capability data CLAUDE.md's "Transcode capability gate" invariant already asks be centralized, risking future drift between the two copies.
+
+**Fix**: added `AppState.deviceSupportsTranscode(forDeviceID:)` as the one shared lookup; both `WebServer.swift` call sites and `VLCPlayerView`'s own local-relay codec inference (which had the identical one-liner inline) now call through it.
+
+**Resolving commit**: `9ff3a5a`
+
+## RESOLVED — `DEFAULT_TRANSCODE` template guard validated against a stale, hand-rolled profile whitelist
+
+**Files:** `WebServer.swift`
+
+**Root cause**: `buildHTML()`'s `DEFAULT_TRANSCODE` substitution validated `config.Default_transcode` against a literal `["none", "heavy", "mobile", "internet720"]` array instead of the canonical `Show.validTranscodeProfiles` set (which also includes `internet540/480/360/240`) introduced the same day `handleRecord`/`handleEdit` started accepting those values. A user-configured `internet540` default would silently downgrade to `none` when baked into the guide page.
+
+**Fix**: swapped the hand-rolled array for `Show.validTranscodeProfiles.contains(...)`.
+
+**Resolving commit**: `9ff3a5a`
+
+## RESOLVED — "Recording on Another Mac"'s VoiceOver label announced "H.264" for a genuinely HEVC source
+
+**Files:** `Views/MenuContent.swift`, `Views/GuideViewHelpers.swift`
+
+**Root cause**: `watchAccessibilityLabel` used `watchInAppH264Label(title)` (a hardcoded "in H.264" string) whenever `MPEGVideoStreamType.isAlreadyModernCodec(codec)` was true — but that helper also returns `true` for HEVC/H265, while the *visible* label already correctly read "Watch (HEVC)" via `VLCPlayerView.displayCodecName`. VoiceOver and on-screen text disagreed for any HEVC-sourced FEED show.
+
+**Fix**: added `watchInAppCodecLabel(_:codec:)`, deriving the accessibility label from the same `displayCodecName(codec)` value the visible label already uses, instead of a separate hardcoded string.
+
+**Resolving commit**: `41fea5d`
+
+## RESOLVED — `VLCPlayerView.inferredCodecs`'s local-relay branch re-ran three linear scans on every ~3s render
+
+**Files:** `Views/VLCPlayerView.swift`
+
+**Root cause**: the local Watch-Now (recording-relay) branch of `inferredCodecs`, added 2026-09-13 alongside `Show.effectiveVideoCodec`, did a `state.shows.first` lookup, a device lookup, and a channel-lineup scan on every evaluation — and `body` re-evaluates roughly every 3s during playback (`bridge.bufferInfo` publishing), even though the answer only actually changes once per recording.
+
+**Fix**: factored the derivation into `computeLocalRelayCodecs(show:state:)` and cached its result in a new `@State private var cachedLocalRelayCodecs`, refreshed only from `.onAppear` and the existing `bridge.recordingShowId` `.onChange` handler — `inferredCodecs` now just reads the cache (falling back to a live compute only the first time a show's codec hasn't been cached yet).
+
+**Resolving commit**: `9ff3a5a`
+
+## RESOLVED — `onFeedAnnounce`'s goodbye branch bumped `missedProbes` without the self-exclusion filter its sibling branch uses
+
+**Files:** `AppState.swift`
+
+**Root cause**: the goodbye short-circuit (`if isGoodbye, let idx = self.devices.firstIndex(where: { $0.DeviceID == deviceIDHex })`) matched any device by DeviceID alone, while the `fetchAllLineups` branch two lines below it additionally requires `$0.isVirtualRelay`. Asymmetric, and — though practically unreachable today since the relay ID space is normally distinct via `relayDeviceID`'s `FEED`-prefixed fallback — not structurally guarded against a real tuner's DeviceID ever coinciding with a goodbye announce.
+
+**Fix**: added the same `&& $0.isVirtualRelay` condition to the goodbye branch's lookup.
+
+**Resolving commit**: `9ff3a5a`
+
+## RESOLVED — A malformed TunerCount TLV silently dropped an entire unsolicited FEED announce, including its device-presence signal
+
+**Files:** `VirtualTunerService.swift`
+
+**Root cause**: `handleReadable()` required both `deviceID(fromReplyPacket:)` and `tunerCount(fromReplyPacket:)` to parse successfully before invoking `onFeedAnnounce`, versus only `deviceID` before the 2026-09-13 TunerCount-alone-as-truth simplification (see the `c85e048`-resolved entry above). A truncated/malformed unsolicited DISCOVER_REPLY whose TunerCount TLV failed to parse now silently dropped the presence signal too — latent, since all current producers always include the TLV.
+
+**Fix**: `tunerCount` now falls back to `1` (never `0`, so it can never be misread as a goodbye) when the TLV itself fails to parse, while still firing `onFeedAnnounce` with the successfully-parsed `deviceID`.
+
+**Resolving commit**: `9ff3a5a`
+
+## RESOLVED — Orphaned comment left after `feedLiveEdgeCushionBytes`' removal
+
+**Files:** `WebServer.swift`
+
+**Root cause**: `36cc212` removed the `feedLiveEdgeCushionBytes` constant but left its explanatory ~12-line comment behind, floating between `stillRecordingCheckEveryNPolls` and `roundDownToTSPacketBoundary` with no code left to document.
+
+**Fix**: deleted the orphaned comment — its history was already independently captured in this file's own "VLC-side FEED playback stalls" entry.
+
+**Resolving commit**: `9ff3a5a`
