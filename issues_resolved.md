@@ -1596,3 +1596,15 @@ Two related pieces of work from the same session, both explicit user requests ra
 **Fix**: deleted the orphaned comment — its history was already independently captured in this file's own "VLC-side FEED playback stalls" entry.
 
 **Resolving commit**: `9ff3a5a`
+
+---
+
+## RESOLVED — Native Add Show wizard silently dropped a second show added in the same window session
+
+**Files:** `Views/AddShowView.swift`, `AppState.swift`
+
+**Root cause**: `Window("Add Show", id: "add-show")` (`hdhr_VCRApp.swift`) is single-instance, and `AddShowView`'s `@State private var show = Show.blank()` is only initialized once per window instance. `applyWebGuideEntry` — the sole call site every guide pick funnels through (the "record" WKScriptMessage handler) — mutates that same `show` in place on every pick, but never touched `show_id`. Live-reproduced 2026-09-13: user added "NFL Football" ch 4.1 successfully (dismissing the window), then ~2 minutes later picked a second guide entry (ch 9.1, the actual Chicago Bears game) — the window/state was evidently still alive, so the second pick reused the first show's `show_id`. `AppState.addShow`'s very first line, `guard !shows.contains(where: { $0.show_id == show.show_id }) else { return }`, silently dropped it with **no log at all** — none of the 2026-09-12 silent-failure diagnostics (`6a5120a`) fired, because they all sit upstream of this guard and every one of them looked normal (button tapped, `save()` reached, `dismiss()` called unconditionally right after regardless of whether `addShow` actually added anything). Confirmed against the config file: only the ch 4.1 show existed after both attempts.
+
+**Fix**: `applyWebGuideEntry` now regenerates `show.show_id` at the top, on every guide pick, so a fresh identity is guaranteed regardless of whatever kept the window's View state alive across sessions. Also added a warning log to `addShow`'s duplicate-ID guard so a future recurrence (from this or a different cause) is immediately diagnosable without another live investigation.
+
+**Resolving commit**: `0b54613`
