@@ -1630,3 +1630,15 @@ Two related pieces of work from the same session, both explicit user requests ra
 **Fix**: added `AppState.maintainVLCSleepAssertionIfNeeded()`, called every `idleLoop()` tick (~5s) — re-arms a rolling 300s `"vlc"` assertion whenever `VLCBridge.recordingShowId` or `VLCPlayerWindowManager.currentFeedRemoteURL` is active, no-op otherwise. Unlike `watchInApp`'s one-shot guide-entry-bounded duration, neither of these two paths knows a bounded end time up front (a recording keeps growing; a remote relay has no guide entry), so a short rolling re-arm was used instead of a longer one-time duration.
 
 **Resolving commit**: `7e7f35c`
+
+## RESOLVED — A Bonus Time recording's displayed episode info drifted to whatever program aired next
+
+**Files:** `Views/MenuContent.swift`, `Views/VLCPlayerView.swift`
+
+**Root cause**: live-reported 2026-09-13 via screenshot — the menu bar's "Recording Now" row for a Bonus-Time NFL Football recording showed a completely unrelated news-magazine episode's title/info, even though the recording itself was still correctly capturing the football game. `MenuContent.recordingMenu` resolved the displayed guide entry by querying "what's airing on this channel right now" (wall-clock `Date()`) — correct for the normal case where a recording airs during its own guide slot, but once Bonus Time keeps the recording running past that slot's own end time, "right now" resolves to whatever different program the channel has since moved on to, not the one actually being recorded. The identical bug existed in `VLCPlayerView.currentGuideEntry` (the in-app player's poster/synopsis while watching a recording via Watch Now) for the same reason.
+
+**Fix**: both now anchor the guide-entry lookup to the show's own scheduled start (`show_next`) instead of wall-clock now — always resolves to the entry that was airing when recording began, which never changes for the life of the recording regardless of how long Bonus Time extends past it. A plain live-channel selection (not a recording) keeps using wall-clock now, unchanged.
+
+**Not fixed, flagged for later**: `MenuContent.nowWatchingInfo` (the menu header's "Now Watching" line) has the same "what's live now on this channel" shape and could show the same drift while watching a *remote* FEED relay of someone else's Bonus Time recording — but unlike the two cases above, it resolves purely by channel/URL match with no show identity (no `show_next` available to anchor to), so fixing it would need threading the source recording's own show identity through the relay session rather than a one-line anchor swap. Lower priority since it only affects the watcher's own header display, not the recording itself.
+
+**Resolving commit**: `30bf217`
