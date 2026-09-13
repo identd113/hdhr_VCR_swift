@@ -9,10 +9,18 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 
 **Added**
 - **First-Run Wizard now explains the VLC requirement up front.** A new step checks whether VLC.app is installed and, if not, offers a one-click path to get it: an "Install VLC via Homebrew" button (when Homebrew is detected) that copies the install command to your clipboard and opens Terminal for you to paste and run, or a direct download link otherwise. Every watching feature elsewhere in the app already dims itself and explains "(Requires VLC)" when it's missing — this just surfaces that fact before you go looking for it.
+- **Terminal Guide (`hdhr_guide`) can now set "New Only" (skip reruns) and pick specific weekdays** for a recurring "Weekly" schedule directly from its recording summary screen, matching what the web guide's Record dialog already offered — previously schedule-only and locked to server defaults for both.
+
+**Updated**
+- **Fixed: adding a second show from the native Add Show window in one sitting could silently do nothing.** The window would close normally, looking successful, but the second show never actually got added — only happened when an earlier Add Show in that same still-open window had already succeeded.
+- **Fixed: a recording that ran past its scheduled end time (Bonus Time) could start showing the wrong show's title/episode info** in the menu bar and in-app player once whatever aired next on that channel began — the recording itself kept capturing the right thing the whole time; only the display was ever affected.
+- **Fixed: watching an in-progress recording (Watch Now), or another Mac's shared recording once FEED ships, no longer lets the Mac go to sleep mid-playback.**
 
 **Info**
 - A security review found and fixed an unvalidated field in two internal web-guide API endpoints (transcode profile selection) that could have let another device on the same LAN send a malformed request to a tuner. No user-facing change.
 - A handful more internal FEED robustness fixes: a viewer connecting to or disconnecting from an in-progress FEED relay now promptly notifies other hdhrVCRplus instances on the LAN instead of waiting up to an hour for them to notice. Not visible in normal use, and doesn't apply while FEED stays disabled by default.
+- A further batch of internal FEED robustness/efficiency fixes from a full code-review pass: a rare wire-format edge case in device announcements, a duplicated device-capability lookup, and a couple of one-render-too-many performance items in the in-app player. None visible in normal use, and FEED stays disabled by default.
+- Excessive internal logging during a long Watch Now session on a fast-growing recording (e.g. a live sports broadcast) has been throttled — it could previously fill an entire day's log within minutes.
 
 ## v2.3.0 — 2026-09-11
 

@@ -186,6 +186,8 @@ After startup, lineup/guide failures are appended inline to the device row: `"  
 
 Menu label: `🔴 [Title]` (or `🔴 [Title] · S02E05` when guide entry is found for the airing)
 
+**The guide entry is anchored to the show's own scheduled start (`show.show_next`), not wall-clock time** — fixed 2026-09-13 after a live report: querying "what's airing on this channel right now" broke for a Bonus Time recording, since once wall-clock time passes the original guide slot's own end, that query resolves to whatever *different* program the channel has since moved on to, not the one actually being recorded. Anchoring to the show's own start always resolves to the entry that was airing when recording began, for the life of the recording. `VLCPlayerView.currentGuideEntry` (the in-app player's poster/synopsis while watching a recording) had the identical bug, fixed the same way — see `docs/VLCPlayerView.md`. `MenuContent.nowWatchingInfo` (the header's "Now Watching" line) has the same "what's live now" shape and isn't fixed — it resolves purely by channel/URL match with no show identity to anchor to, so it could still show this drift while watching a *remote* FEED relay of someone else's Bonus Time recording.
+
 Submenu contents — uses `showInfoHeader(show, entry:)` for the top block, then:
 1. **Type + channel** — `"SeriesID(All) · Channel 5.1"`, full `labelColor` — followed inline by a `SignalBarsView` when `state.config.Signal_quality_enabled` and the channel is found in the device's lineup (same signal-bucket source as `docs/ChannelSignalStore.md`'s generic mention of this component)
 2. **Start time + duration** — `"8:00 PM · 60 min"`, `secondaryLabelColor`
