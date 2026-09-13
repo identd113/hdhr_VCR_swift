@@ -192,6 +192,12 @@ func watchLiveLabel(_ title: String) -> String { "Watch \(title) live" }
 // Another Mac" section) — distinguishes the two buttons' announced text the same way their visible
 // labels ("Watch" vs "Watch (H.264)") already do.
 func watchInAppH264Label(_ title: String) -> String { "Watch \(title) in H.264" }
+// Same shape as watchInAppH264Label, but for the plain Watch button on an already-modern-codec
+// FEED source (MenuContent's "Recording on Another Mac" section) — the visible label there already
+// names the actual codec (VLCPlayerView.displayCodecName), which can be HEVC, not just H.264;
+// isAlreadyModernCodec returns true for both, so the accessibility label must too or VoiceOver
+// announces "H.264" for a stream that's actually HEVC.
+func watchInAppCodecLabel(_ title: String, codec: String) -> String { "Watch \(title) in \(codec)" }
 
 func guideTimeRange(_ entry: GuideEntry) -> String {
     "\(timeRangeFormatter.string(from: entry.startDate)) – \(timeRangeFormatter.string(from: entry.endDate))"

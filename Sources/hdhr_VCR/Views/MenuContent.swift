@@ -219,7 +219,9 @@ struct MenuContent: View {
                     // explicit user request: two ways of saying the same thing was more confusing
                     // than one clear one.
                     let watchLabel = alreadyModern ? "Watch (\(VLCPlayerView.displayCodecName(codec)))" : "Watch"
-                    let watchAccessibilityLabel = alreadyModern ? watchInAppH264Label(title) : watchInAppLabel(title)
+                    let watchAccessibilityLabel = alreadyModern
+                        ? watchInAppCodecLabel(title, codec: VLCPlayerView.displayCodecName(codec))
+                        : watchInAppLabel(title)
                     Menu {
                         Button {
                             state.watchRemoteRelay(url: pair.entry.URL ?? "", title: title, device: pair.device)
