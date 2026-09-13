@@ -423,6 +423,15 @@ struct AddShowView: View {
                                      genre: String, imageURL: String) {
         let startDate = Date(timeIntervalSince1970: TimeInterval(startTime))
         let endDate   = Date(timeIntervalSince1970: TimeInterval(endTime))
+        // Confirmed live 2026-09-13 as the actual root cause of a "clicked Record, wizard closed,
+        // show never appeared" report: this Window("Add Show", id: "add-show") is single-instance,
+        // and @State show isn't otherwise reset between wizard sessions — a second guide pick
+        // after an earlier successful save in the same window instance was reusing that prior
+        // show's show_id, which AppState.addShow's duplicate guard then silently dropped. This is
+        // the one place every guide pick funnels through (the "record" WKScriptMessage handler's
+        // only call site), so regenerating the ID here guarantees a fresh identity regardless of
+        // whatever kept the surrounding View state alive.
+        show.show_id          = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
         show.show_title      = title
         show.show_channel    = guideNumber
         show.show_length     = (endTime - startTime) / 60

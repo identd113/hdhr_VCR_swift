@@ -3387,7 +3387,17 @@ final class AppState: ObservableObject {
     // MARK: - Show CRUD
 
     func addShow(_ show: Show) {
-        guard !shows.contains(where: { $0.show_id == show.show_id }) else { return }
+        guard !shows.contains(where: { $0.show_id == show.show_id }) else {
+            // Was a silent no-op — confirmed live 2026-09-13 as the actual mechanism behind a
+            // "clicked Record, wizard closed, but the show never appeared" report: AddShowView's
+            // Window("Add Show", id: "add-show") is single-instance, and its @State show wasn't
+            // reset after a successful save, so a second wizard session in the same window
+            // instance reused the prior show's show_id. save() calls dismiss() unconditionally
+            // right after this, regardless of whether addShow actually added anything, so the
+            // wizard closing was never itself proof of success. See ISSUES.md/issues_resolved.md.
+            glog("[Show] addShow no-op — show_id '\(show.show_id)' ('\(show.show_title)') already present", level: .warning)
+            return
+        }
         // Hard backstop, not just a UI-level picker filter: a virtual relay tuner (another
         // instance's rebroadcast of an in-progress recording, or — should self-exclusion ever be
         // bypassed — this instance's own) is watch-only by design (see the "Rebroadcast an
