@@ -382,6 +382,10 @@ struct AddShowView: View {
         let channel = pending.channel
         let device  = pending.device
         selectedDevice           = device
+        // Same fix as applyWebGuideEntry's own doc comment below — this is the wizard's other,
+        // independent entry point into the same @State show (right-click/quick-add flows that
+        // skip the guide step via state.pendingAddEntry), so it needs the identical show_id reset.
+        show.show_id             = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
         show.show_title          = entry.Title
         show.show_channel        = channel.GuideNumber
         show.show_length         = entry.durationMinutes
