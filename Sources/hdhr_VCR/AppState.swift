@@ -232,6 +232,19 @@ final class AppState: ObservableObject {
     var inactiveShows: [Show]  { shows.filter { !$0.show_active } }
     var unavailableDeviceIDs: Set<String> { Set(devices.filter { !$0.isAvailable }.map { $0.DeviceID }) }
 
+    // Single shared lookup for "does this recording device support hardware transcode" — used by
+    // WebServer's Show.effectiveVideoCodec call sites (handleWatchRecording's re-transcode check,
+    // buildVirtualTunerLineupJSON's published VideoCodec) so both read the same cached-device
+    // fallback instead of duplicating the `state.devices.first(where:)?.supportsTranscode ?? false`
+    // one-liner independently. Not the actual enforcement gate (that's the one-place check in
+    // startRecording, CLAUDE.md's "Transcode capability gate" invariant) — this is a display-only
+    // re-derivation for a device that's usually still cached (with isAvailable=false but its last-
+    // known ModelNumber intact) even while briefly unreachable, since probeForNewDevices never
+    // prunes a device a show still references.
+    func deviceSupportsTranscode(forDeviceID deviceID: String) -> Bool {
+        devices.first(where: { $0.DeviceID == deviceID })?.supportsTranscode ?? false
+    }
+
     // Shows currently recording on a *different* hdhrVCRplus instance's Recording FEED relay,
     // available to watch from this Mac (MenuContent's "Recording on Another Mac" section, and the
     // menu bar's own blue blink below). state.devices never contains this instance's own virtual
@@ -453,9 +466,22 @@ final class AppState: ObservableObject {
     // unconditionally) when no relay is currently advertised. See AppState.onFeedAnnounce's
     // matching receiving-side fix for why an announce alone isn't enough — the discovering side
     // also needs to actually re-fetch this device's /lineup.json on it.
+    //
+    // Debounced (~300ms) rather than firing updateVirtualTunerPresence()'s getifaddrs()+UDP-
+    // broadcast synchronously on every single call — a burst of viewer churn (a Wi-Fi drop that
+    // knocks out several connections at once, the 30s liveness probe closing dead ones together)
+    // used to fan out into one MainActor-blocking broadcast per event, each also costing every
+    // discovering peer a full /lineup.json re-fetch. Collapsing a burst into one broadcast still
+    // delivers a near-real-time update — it just waits for the burst to settle first.
+    private var virtualTunerAnnounceRefreshTask: Task<Void, Never>?
     private func refreshVirtualTunerAnnounceIfActive() {
         guard activeVirtualTunerDeviceID != nil else { return }
-        updateVirtualTunerPresence()
+        virtualTunerAnnounceRefreshTask?.cancel()
+        virtualTunerAnnounceRefreshTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            guard !Task.isCancelled, let self, self.activeVirtualTunerDeviceID != nil else { return }
+            self.updateVirtualTunerPresence()
+        }
     }
     @Published var webServerRunning: Bool    = false
     @Published var webServerError:   String? = nil
@@ -751,7 +777,11 @@ final class AppState: ObservableObject {
                 // the probe right after this (an in-flight reply racing the goodbye), that probe's
                 // own "found" branch resets missedProbes to 0 regardless, so no harm either way.
                 let wasKnown = self.devices.contains { $0.DeviceID == deviceIDHex }
-                if isGoodbye, let idx = self.devices.firstIndex(where: { $0.DeviceID == deviceIDHex }) {
+                // isVirtualRelay-scoped, matching the fetchAllLineups branch below — a goodbye
+                // announce only ever originates from a relay, so this should never match a real
+                // tuner, but staying scoped keeps the two branches symmetric rather than relying
+                // on DeviceID-space separation alone.
+                if isGoodbye, let idx = self.devices.firstIndex(where: { $0.DeviceID == deviceIDHex && $0.isVirtualRelay }) {
                     self.devices[idx].missedProbes = max(self.devices[idx].missedProbes, 2)
                 }
                 await self.probeForNewDevices()
@@ -1146,7 +1176,17 @@ final class AppState: ObservableObject {
                 glog("[VirtualTuner] no LAN interface found — skipping relay start/refresh this cycle", level: .warning)
                 return
             }
-            let tunerCount = recordingShows.count
+            // Derived from the same unfiltered `show_recording` check `isRecording` itself uses
+            // (not the show_end-filtered `recordingShows`) — this function is only reached when
+            // isRecording is true, and in the window after a show's show_end passes but before
+            // idleLoop flips show_recording false, recordingShows can be empty while a recording
+            // is genuinely still in progress. Using recordingShows there let TunerCount read 0 on
+            // an ordinary (non-goodbye) announce — misread by peers' onFeedAnnounce as "gone" —
+            // and let the relay's stable DeviceID fall back to a random one on first start in that
+            // same window. See ISSUES.md's "updateVirtualTunerPresence... TunerCount=0" /
+            // "...relayDeviceID" entries.
+            let activelyRecordingShows = shows.filter { $0.show_recording }
+            let tunerCount = activelyRecordingShows.count
             if let id = activeVirtualTunerDeviceID {
                 // Already running — refresh the advertised BaseURL/TunerCount in place (e.g. a
                 // second show started or stopped recording after the relay came up) without a
@@ -1159,7 +1199,7 @@ final class AppState: ObservableObject {
             // buildVirtualTunerDiscoverJSON's "<FriendlyName>-Relay" naming) and probeForNewDevices's
             // stale-device pruning (deviceUnavailableSince/staleDeviceForgetAfter) for the other half
             // of the same fix.
-            let id = VirtualTunerService.relayDeviceID(sourceDeviceID: recordingShows.first?.hdhr_record)
+            let id = VirtualTunerService.relayDeviceID(sourceDeviceID: activelyRecordingShows.first?.hdhr_record)
             activeVirtualTunerDeviceID = id
             // The relay's HTTP JSON routes and stream endpoint live on this same WebServer
             // instance, which only actually runs its NWListener when Web_server_enabled is on or

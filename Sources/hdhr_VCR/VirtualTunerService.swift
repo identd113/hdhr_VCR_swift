@@ -345,8 +345,13 @@ final class VirtualTunerService {
             return
         }
 
-        if Self.isDiscoverReply(bytes), let announcedID = Self.deviceID(fromReplyPacket: bytes),
-           let tunerCount = Self.tunerCount(fromReplyPacket: bytes) {
+        if Self.isDiscoverReply(bytes), let announcedID = Self.deviceID(fromReplyPacket: bytes) {
+            // Falls back to 1 (never 0) when the TunerCount TLV itself fails to parse (a
+            // malformed/truncated packet) — deviceID alone is still a genuine presence signal and
+            // shouldn't be dropped just because the count is unreadable, but a fabricated 0 here
+            // would get misread downstream as onFeedAnnounce's deliberate "gone" signal. All
+            // current producers always include this TLV, so this path is latent, not routinely hit.
+            let tunerCount = Self.tunerCount(fromReplyPacket: bytes) ?? 1
             // lastBroadcastDeviceID, not isAdvertising/advertisedDeviceID — those get cleared by
             // stop() synchronously, in the same queue.async closure that just called
             // broadcastAnnounce(), well before a loopback of that exact packet can actually be

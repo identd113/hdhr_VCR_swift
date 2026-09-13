@@ -1145,7 +1145,7 @@ final class WebServer: @unchecked Sendable {
             // already-H.264 file the instant a viewer's H.264 toggle requested one.
             let channelVideoCodec = state.lineups[show.hdhr_record]?
                 .first(where: { $0.GuideNumber == channel })?.VideoCodec
-            let deviceSupportsTranscode = state.devices.first(where: { $0.DeviceID == show.hdhr_record })?.supportsTranscode ?? false
+            let deviceSupportsTranscode = state.deviceSupportsTranscode(forDeviceID: show.hdhr_record)
             let lineupVideoCodec = Show.effectiveVideoCodec(transcode: show.show_transcode,
                                                              deviceSupportsTranscode: deviceSupportsTranscode,
                                                              channelVideoCodec: channelVideoCodec)
@@ -1599,19 +1599,6 @@ final class WebServer: @unchecked Sendable {
     // replaced exactly, while the read-retry itself now happens far more often.
     private static let liveEdgePollInterval: TimeInterval = 0.02
     private static let stillRecordingCheckEveryNPolls = 25
-
-    // A "live-edge cushion" (staying a fixed number of bytes behind the recording's true current
-    // size, rather than reading right up to the write pointer) lived here 2026-09-08/09 as a
-    // disk-read-latency hypothesis for a residual VLC demux stall — live-tested twice, found to
-    // make the stall worse both times (VLC stops progressing entirely once any backlog forms
-    // between the live edge and the cushion boundary; direct thread-level `sample` evidence showed
-    // its demux pipeline going idle despite continuous byte delivery), left disabled (`0`, a true
-    // no-op via the same `> 0` gate everywhere it was threaded through) rather than removed outright
-    // in case a future investigation wanted to revisit the mechanism. Removed entirely 2026-09-13
-    // once that future investigation actually happened and found the real fix lived somewhere else
-    // completely — the client-side proxy's own delivery pacer, upstream of this function — making
-    // the cushion concept itself a proven dead end, not just a disabled one. Full trail:
-    // `issues_resolved.md`'s "VLC-side FEED playback stalls" entry.
 
     // Rounds a byte offset down to the nearest complete TS packet boundary — `offset` is usually
     // the recording file's momentary byte size (handleVirtualTunerStream's live-edge startOffset),
@@ -3367,7 +3354,7 @@ final class WebServer: @unchecked Sendable {
             ("SPORTS_PADDING_MINUTES", String(state.config.Sports_padding_minutes)),
             ("GRID_INNER", gridInner)
         ])
-        let validTranscode = ["none", "heavy", "mobile", "internet720"].contains(state.config.Default_transcode)
+        let validTranscode = Show.validTranscodeProfiles.contains(state.config.Default_transcode)
             ? state.config.Default_transcode : "none"
         let verExpTs = Int(Date().addingTimeInterval(2 * 3600).timeIntervalSince1970) * 1000
         let jsFilled = fillTemplate(cachedGuideJS ?? "console.error('guide.js failed to load');", [
@@ -3589,7 +3576,7 @@ final class WebServer: @unchecked Sendable {
             // own `show_transcode` profile actually produced once recording started — without
             // this, a hardware-transcoded (real H.264) recording on a channel that itself
             // broadcasts MPEG2 would publish the wrong codec to every discovering instance.
-            let sourceDeviceSupportsTranscode = state.devices.first(where: { $0.DeviceID == show.hdhr_record })?.supportsTranscode ?? false
+            let sourceDeviceSupportsTranscode = state.deviceSupportsTranscode(forDeviceID: show.hdhr_record)
             if let codec = Show.effectiveVideoCodec(transcode: show.show_transcode,
                                                      deviceSupportsTranscode: sourceDeviceSupportsTranscode,
                                                      channelVideoCodec: sourceEntry?.VideoCodec) {

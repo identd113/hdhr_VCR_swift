@@ -70,6 +70,14 @@ struct VLCPlayerView: View {
     // that often for as long as the popover stays open — not just once per open. This @State
     // snapshot is what actually delivers the "recompute only on open" behavior the comment describes.
     @State private var recordingSizeSnapshot: String?
+    // Cache for inferredCodecs' local Watch-Now (recording-relay) branch — that branch does three
+    // linear scans (state.shows.first, a device lookup, a channel-lineup scan) to derive the
+    // show's effective codec, and previously re-ran them on every `body` evaluation (~3s while
+    // playing, per bridge.bufferInfo publishing) even though the answer only actually changes once
+    // per recording. Recomputed in .onAppear and the bridge.recordingShowId .onChange handler below
+    // rather than inside inferredCodecs itself (a computed property read during view-body
+    // evaluation must not mutate @State).
+    @State private var cachedLocalRelayCodecs: (showId: String, video: String, audio: String)?
     @State private var scrubValue: Double = 0     // recording scrub bar — only meaningful while isScrubbing
     @State private var isScrubbing = false
     @State private var videoControlsHovered = false   // shows the recording scrub overlay on hover
@@ -205,19 +213,34 @@ struct VLCPlayerView: View {
         }
         // Local Watch Now (recording-relay): same effective-codec logic, computed directly since
         // both the show and its device are already known locally — no publishing step needed.
-        if let showId = bridge.recordingShowId, let show = state.shows.first(where: { $0.show_id == showId }) {
-            let deviceSupportsTranscode = state.devices.first(where: { $0.DeviceID == show.hdhr_record })?.supportsTranscode ?? false
-            let channelCodec = state.lineups[show.hdhr_record]?.first(where: { $0.GuideNumber == show.show_channel })?.VideoCodec
-            let codec = Show.effectiveVideoCodec(transcode: show.show_transcode,
-                                                  deviceSupportsTranscode: deviceSupportsTranscode,
-                                                  channelVideoCodec: channelCodec) ?? "unknown"
-            guard MPEGVideoStreamType.isAlreadyModernCodec(codec) else { return ("MPEG-2", "AC-3") }
-            return (Self.displayCodecName(codec), "AC-3")
+        // Served from cachedLocalRelayCodecs (kept fresh by .onAppear / the recordingShowId
+        // .onChange handler below) when it matches the current show; only falls through to a live
+        // recompute the first time this show's codec hasn't been cached yet.
+        if let showId = bridge.recordingShowId {
+            if let cached = cachedLocalRelayCodecs, cached.showId == showId {
+                return (cached.video, cached.audio)
+            }
+            if let show = state.shows.first(where: { $0.show_id == showId }) {
+                return Self.computeLocalRelayCodecs(show: show, state: state)
+            }
         }
         // Live channel, not a relay of any kind — the only remaining producer of a &transcode=
         // URL param is this app's own on-the-fly software transcode toggle.
         let url = bridge.currentURL ?? ""
         return url.contains("transcode=") ? ("H.264", "AC-3") : ("MPEG-2", "AC-3")
+    }
+
+    // Recomputes cachedLocalRelayCodecs for the given show, or clears it when there's no local
+    // recording-relay playback active. Called from .onAppear and the bridge.recordingShowId
+    // .onChange handler — never from inferredCodecs itself, which is a computed property read
+    // during view-body evaluation and must not mutate @State.
+    private func refreshCachedLocalRelayCodecs(showId: String?) {
+        guard let showId, let show = state.shows.first(where: { $0.show_id == showId }) else {
+            cachedLocalRelayCodecs = nil
+            return
+        }
+        let codecs = Self.computeLocalRelayCodecs(show: show, state: state)
+        cachedLocalRelayCodecs = (showId: showId, video: codecs.video, audio: codecs.audio)
     }
 
     // "H264" (the raw VideoCodec string form) → "H.264" for display; anything else passed through
@@ -226,6 +249,18 @@ struct VLCPlayerView: View {
     // label, so the two surfaces can't drift on how a codec string is displayed.
     static func displayCodecName(_ codec: String) -> String {
         codec.uppercased() == "H264" ? "H.264" : codec
+    }
+
+    // The actual three-scan derivation inferredCodecs' local-relay branch needs — factored out so
+    // it can be run once (cachedLocalRelayCodecs) instead of on every body evaluation.
+    private static func computeLocalRelayCodecs(show: Show, state: AppState) -> (video: String, audio: String) {
+        let deviceSupportsTranscode = state.deviceSupportsTranscode(forDeviceID: show.hdhr_record)
+        let channelCodec = state.lineups[show.hdhr_record]?.first(where: { $0.GuideNumber == show.show_channel })?.VideoCodec
+        let codec = Show.effectiveVideoCodec(transcode: show.show_transcode,
+                                              deviceSupportsTranscode: deviceSupportsTranscode,
+                                              channelVideoCodec: channelCodec) ?? "unknown"
+        guard MPEGVideoStreamType.isAlreadyModernCodec(codec) else { return ("MPEG-2", "AC-3") }
+        return (displayCodecName(codec), "AC-3")
     }
 
     // A plain stat of the recording file's current size. Only ever called from the "Native" button's
@@ -437,6 +472,7 @@ struct VLCPlayerView: View {
         }
         .onAppear {
             glog("[VLC] VLCPlayerView.onAppear device=\(device.DeviceID) initialURL=\(initialURL)")
+            refreshCachedLocalRelayCodecs(showId: bridge.recordingShowId)
             availableScreens = NSScreen.screens   // NSScreen.screens is main-thread-only; safe here
             VLCBridge.shared.liveMinRate = Float(state.config.Player_buffer_min_rate) / 100.0
             VLCBridge.shared.setVolume(0)   // muted until Start is clicked
@@ -485,6 +521,7 @@ struct VLCPlayerView: View {
             // AppState.watchRecordingInApp defers setting this to the next run-loop turn, so the
             // very first syncChannel(to:) call (from .onAppear, in the same synchronous window-
             // open transaction) can run before it lands — re-sync once it does.
+            refreshCachedLocalRelayCodecs(showId: showId)
             guard showId != nil, let url = bridge.currentURL else { return }
             syncChannel(to: url)
         }
