@@ -2,13 +2,16 @@ import SwiftUI
 
 // A parsed `hdhrvcrplus://watch?dev=<deviceId>&channel=<channelNumber>[&transcode=1]` request —
 // added 2026-09-07 so a FEED's "Watch"/"Watch (H.264)" action can be triggered non-interactively
-// (`open 'hdhrvcrplus://...'` over SSH, via Launch Services) for cross-machine testing, without
-// needing AppleScript UI-scripting's interactive Accessibility session (see
-// .claude/FEED_CROSS_MACHINE_TEST.md's "Why the GUI can't be automated" section for the gap this
-// closes). Takes device+channel, mirroring the real HDHomeRun device's own `/auto/v<channel>?
-// dev=<deviceId>` addressing (`docs/VirtualTunerService.md`) — deliberately not a raw pre-built
-// relay URL, so this can't be pointed at an arbitrary string; the app resolves the real URL itself
-// from `AppState.remoteRelayEntries`, the same source `MenuContent`'s own Watch buttons use.
+// (`open 'hdhrvcrplus://...'` over SSH, via Launch Services) for cross-machine testing. An
+// AppleScript/System Events UI-scripting path for the same menu item already existed (and still
+// does, in WindowNavigationTests.swift) but only works from an interactive Terminal session that
+// already holds Accessibility permission — invoked over a plain SSH command instead, `osascript`
+// hangs indefinitely with no interactive session to grant/hold that permission for. This URL
+// scheme closes that gap without needing Accessibility at all. Takes device+channel, mirroring the
+// real HDHomeRun device's own `/auto/v<channel>?dev=<deviceId>` addressing
+// (`docs/VirtualTunerService.md`) — deliberately not a raw pre-built relay URL, so this can't be
+// pointed at an arbitrary string; the app resolves the real URL itself from
+// `AppState.remoteRelayEntries`, the same source `MenuContent`'s own Watch buttons use.
 struct WatchURLRequest: Equatable {
     let deviceId: String
     let channel: String

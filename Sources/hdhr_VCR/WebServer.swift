@@ -1111,29 +1111,27 @@ final class WebServer: @unchecked Sendable {
                     self.queue.async { self.send(.notFound("recording not found"), on: conn) }
                     return
                 }
-                // Start feedLiveEdgeCushionBytes behind the current write position, not byte 0 and
-                // not exactly at the live edge either. Byte 0 would blast the *entire*
-                // recording-so-far as fast as disk+network allow (confirmed live 2026-09-04: ~940MB
-                // in ~19s for a recording that had been running a while), then switch to a real-
-                // time-paced trickle only once caught up — a discontinuous burst-then-trickle
+                // Join exactly at the current write position, not byte 0 — byte 0 would blast the
+                // *entire* recording-so-far as fast as disk+network allow (confirmed live 2026-09-04:
+                // ~940MB in ~19s for a recording that had been running a while), then switch to a
+                // real-time-paced trickle only once caught up — a discontinuous burst-then-trickle
                 // delivery shape that (a) isn't "watching live" at all until the burst finishes and
-                // (b) is exactly what caused a real reported playback stall, since the client-side
-                // player's own buffering assumptions are tuned for a real tuner's continuous
-                // delivery, not this burst. Joining exactly at the live edge (the original 2026-09-04
-                // fix) solved that, but still left every served byte racing curl's own write —
-                // `feedLiveEdgeCushionBytes`'s own comment covers why that's a live-tested-suspect
-                // for the residual stalls found 2026-09-07/08. `max(0, ...)` covers a freshly-started
-                // recording that doesn't have cushion-bytes worth of backlog yet — falls back to
-                // starting at the true beginning rather than a negative/impossible offset; the small
-                // one-time backlog burst that follows (see streamGrowingFile's own `hasBacklog`) is
-                // far smaller and non-repeating, unlike the old byte-0 case above. `streamGrowingFile`
-                // itself still clamps this to the file's actual current size at open time, same as
-                // any other offset. No `?? 0` fallback on the stat itself, deliberately — defaulting
-                // to 0 on a stat failure would silently reintroduce the exact byte-0 burst this whole
-                // live-edge change exists to avoid, just via a different trigger (a transient stat
-                // error right after the fileExists check above, rather than an explicit byte-0
-                // request). Refusing the request instead means the client's own retry gets a fresh
-                // shot at a real offset rather than silently blasting the whole file.
+                // (b) was a real reported playback-stall trigger, since the client-side player's own
+                // buffering assumptions are tuned for a real tuner's continuous delivery, not this
+                // burst. (A live-edge *cushion* — staying deliberately a little behind this exact
+                // position — was tried afterward as a fix for a separate, later stall investigation;
+                // live-tested twice and found to make it worse, not better, so it was removed
+                // entirely 2026-09-13 rather than left disabled-by-default — the eventual real fix,
+                // see issues_resolved.md's "VLC-side FEED playback stalls" entry, turned out to live
+                // entirely upstream of this function, in the client-side proxy's own delivery pacer.)
+                // `streamGrowingFile` itself still clamps this to the file's actual current size at
+                // open time, same as any other offset. No `?? 0` fallback on the stat itself,
+                // deliberately — defaulting to 0 on a stat failure would silently reintroduce the
+                // exact byte-0 burst this whole live-edge change exists to avoid, just via a
+                // different trigger (a transient stat error right after the fileExists check above,
+                // rather than an explicit byte-0 request). Refusing the request instead means the
+                // client's own retry gets a fresh shot at a real offset rather than silently
+                // blasting the whole file.
                 guard let currentSize = (try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? Int else {
                     glog("[VirtualTuner] /auto/v\(logChannel) → could not stat recording file size, refusing rather than guessing byte 0: \(path)", level: .error)
                     self.queue.async { self.send(.notFound("recording temporarily unavailable"), on: conn) }
@@ -1161,9 +1159,8 @@ final class WebServer: @unchecked Sendable {
                 // Both hops land on MainActor since AppState isn't otherwise safe to touch from
                 // fileIOQueue.
                 Task { @MainActor in state.relayRawViewerConnected() }
-                let joinOffset = max(0, currentSize - Self.feedLiveEdgeCushionBytes)
-                self.streamGrowingFile(path: path, showId: showId, startOffset: joinOffset, conn: conn,
-                                        durationSeconds: durationSeconds, liveEdgeCushionBytes: Self.feedLiveEdgeCushionBytes,
+                self.streamGrowingFile(path: path, showId: showId, startOffset: currentSize, conn: conn,
+                                        durationSeconds: durationSeconds,
                                         knownFileSizeAtOffsetComputation: currentSize,
                                         stillActiveCheck: { [weak self] in
                     self?.appState?.shows.first(where: { $0.show_id == showId })?.show_recording ?? false
@@ -1414,12 +1411,8 @@ final class WebServer: @unchecked Sendable {
     // can track how many relay viewers are currently connected without needing its own separate
     // connection-lifecycle bookkeeping; local Watch Now (handleWatchRecording) passes nil and isn't
     // counted, since it's this Mac's own playback, not an outbound stream to another machine.
-    // liveEdgeCushionBytes: 0 (default) preserves exact prior behavior for every existing caller
-    // (handleWatchRecording's local Watch Now relay) — only handleVirtualTunerStream's raw FEED
-    // path passes a real value (feedLiveEdgeCushionBytes below). See that constant's own comment
-    // for why FEED specifically needs this and Watch Now doesn't.
     private func streamGrowingFile(path: String, showId: String, startOffset: Int, conn: NWConnection,
-                                    durationSeconds: Int? = nil, liveEdgeCushionBytes: Int = 0,
+                                    durationSeconds: Int? = nil,
                                     knownFileSizeAtOffsetComputation: Int? = nil,
                                     stillActiveCheck: @escaping @MainActor () -> Bool,
                                     onStreamEnded: (() -> Void)? = nil) {
@@ -1492,7 +1485,7 @@ final class WebServer: @unchecked Sendable {
                 }
                 self.pumpGrowingFile(handle: handle, showId: showId, conn: conn, path: path,
                                       bytesSent: initialBytes, waitStreak: 0, waitStartedAt: nil, deadline: deadline,
-                                      chunkSize: initialChunkSize, liveEdgeCushionBytes: liveEdgeCushionBytes,
+                                      chunkSize: initialChunkSize,
                                       stillActiveCheck: stillActiveCheck, onStreamEnded: onStreamEnded)
             }
         }
@@ -1526,9 +1519,10 @@ final class WebServer: @unchecked Sendable {
     // TCP re-segments either way.
     //
     // **Re-reverted back to the small, cadence-matched size same day**, after tracing an actual
-    // regression the large-chunk revert caused: a live-edge cushion fix (`feedLiveEdgeCushionBytes`,
-    // see that constant's own comment) landed first and, on its own, gave a genuinely clean 4m39s
-    // zero-stall retest — that's the "it was working" moment. The chunk-size revert to large was a
+    // regression the large-chunk revert caused: a live-edge cushion fix (since removed entirely,
+    // 2026-09-13 — proven a dead end, see issues_resolved.md's "VLC-side FEED playback stalls"
+    // entry) landed first and, on its own, gave a genuinely clean 4m39s zero-stall retest — that's
+    // the "it was working" moment. The chunk-size revert to large was a
     // *second*, separate change layered on top immediately after, without re-confirming the clean
     // state first — and it was only after *that* change that stalls (a live-observed "plays ~10s,
     // pauses ~20s" pattern) reappeared. The two changes were never actually isolated against each
@@ -1552,35 +1546,18 @@ final class WebServer: @unchecked Sendable {
     private static let liveEdgePollInterval: TimeInterval = 0.02
     private static let stillRecordingCheckEveryNPolls = 25
 
-    // FEED-only: how far behind the recording's true current size handleVirtualTunerStream's raw
-    // passthrough relay stays, permanently, instead of ever reading right up to the write pointer
-    // like the 20ms live-edge poll above does on its own. Added 2026-09-08 (disk-read-latency
-    // hypothesis for the residual VLC demux stall — see docs/VirtualTunerService.md's live-edge
-    // cushion entry for the full mechanism/rationale). **Disabled (0) 2026-09-09** after two
-    // independent live-tested rounds both showed the same result: the cushion made the stall worse,
-    // not better. 2026-09-08's round found VLC stops progressing entirely once any backlog forms
-    // between the live edge and the cushion boundary. This session reproduced it again fresh and,
-    // for the first time, captured direct thread-level proof why: a clean 5s `sample` taken squarely
-    // mid-stall (`displayed=+0` for ~90s+ beforehand) showed both the network-read thread
-    // (`vlc_tls_Read`) and the "prefetch" plugin's consumer thread >99% blocked (`poll`/
-    // `_pthread_cond_wait`) for the entire window, despite the source relay's own log confirming
-    // continuous, uninterrupted byte delivery throughout — VLC's demux pipeline goes essentially
-    // idle even while data keeps arriving. Left at `0` rather than removed outright: the mechanism
-    // (join-offset, ceiling math, graceful degradation, drain-on-finish, per-iteration backlog
-    // chunk-sizing) is fully gated on `> 0` everywhere it's used, so `0` is a true no-op, restoring
-    // byte-for-byte the pre-2026-09-08 live-edge-join behavior — kept in place rather than deleted
-    // in case a future investigation (e.g. the not-yet-tried debugger-at-the-moment-of-stall
-    // approach, now actually tried once — see above) points at a fixable bug in the mechanism
-    // itself rather than the cushion concept being wrong. Root cause of the underlying VLC stall
-    // (independent of this cushion) remains open — see `ISSUES.md`'s "VLC-side FEED playback
-    // stalls" entry.
-    //
-    // handleGrowingFileChunk's read-ceiling math (`max(bytesSent, trueSize - liveEdgeCushionBytes)`)
-    // degrades gracefully for a freshly-started recording that doesn't have this much backlog yet —
-    // see handleVirtualTunerStream's own join-offset comment for that edge case, and the "recording
-    // finished" branch's cushion-disable step for why the final cushion's worth of a show is still
-    // fully delivered once the source stops growing rather than being permanently withheld.
-    private static let feedLiveEdgeCushionBytes = 0
+    // A "live-edge cushion" (staying a fixed number of bytes behind the recording's true current
+    // size, rather than reading right up to the write pointer) lived here 2026-09-08/09 as a
+    // disk-read-latency hypothesis for a residual VLC demux stall — live-tested twice, found to
+    // make the stall worse both times (VLC stops progressing entirely once any backlog forms
+    // between the live edge and the cushion boundary; direct thread-level `sample` evidence showed
+    // its demux pipeline going idle despite continuous byte delivery), left disabled (`0`, a true
+    // no-op via the same `> 0` gate everywhere it was threaded through) rather than removed outright
+    // in case a future investigation wanted to revisit the mechanism. Removed entirely 2026-09-13
+    // once that future investigation actually happened and found the real fix lived somewhere else
+    // completely — the client-side proxy's own delivery pacer, upstream of this function — making
+    // the cushion concept itself a proven dead end, not just a disabled one. Full trail:
+    // `issues_resolved.md`'s "VLC-side FEED playback stalls" entry.
 
     // Rounds a byte offset down to the nearest complete TS packet boundary — `offset` is usually
     // the recording file's momentary byte size (handleVirtualTunerStream's live-edge startOffset),
@@ -1602,11 +1579,9 @@ final class WebServer: @unchecked Sendable {
     // this one relay connection, never the whole web server. Recurses via fileIOQueue.async (read)
     // → queue.async (send) rather than looping in place, so each step yields back to both queues
     // between file reads and socket sends.
-    // path: only actually read (via a fresh stat, not the FileHandle's own position/size) when
-    // liveEdgeCushionBytes > 0 — see the ceiling computation in the fileIOQueue closure below.
     private func pumpGrowingFile(handle: FileHandle, showId: String, conn: NWConnection, path: String,
                                   bytesSent: Int, waitStreak: Int, waitStartedAt: Date?, deadline: Date? = nil,
-                                  chunkSize: Int = watchRecordingChunkSize, liveEdgeCushionBytes: Int = 0,
+                                  chunkSize: Int = watchRecordingChunkSize,
                                   stillActiveCheck: @escaping @MainActor () -> Bool,
                                   onStreamEnded: (() -> Void)? = nil) {
         // Checked once per recursion (covers both the "have data" and "waiting" paths below) —
@@ -1633,41 +1608,11 @@ final class WebServer: @unchecked Sendable {
         }
         fileIOQueue.async { [weak self] in
             guard let self else { return }
-            // Cushion ceiling: never read past (true current file size - liveEdgeCushionBytes).
-            // `max(bytesSent, ...)` is what makes this degrade gracefully for a freshly-started
-            // recording (trueSize - cushion can go negative when there isn't cushion-bytes worth of
-            // backlog yet) — floors the ceiling at bytesSent itself, never below it, so readLength
-            // below can never go negative. A genuinely 0 readLength here is indistinguishable from
-            // (and handled identically to) a real "caught up to EOF" empty read by
-            // handleGrowingFileChunk just below — the only difference is *which* edge it's caught
-            // up to, the true one or the cushion-shifted one.
-            var readLength = chunkSize
-            var effectiveChunkSize = chunkSize
-            if liveEdgeCushionBytes > 0 {
-                let trueSize = (try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? Int ?? bytesSent
-                let ceiling = max(bytesSent, trueSize - liveEdgeCushionBytes)
-                let backlogAvailable = ceiling - bytesSent
-                // Recomputed fresh every iteration from the *actual* current gap to the cushion
-                // boundary — deliberately not the one-way-only-shrinks chunkSize the non-cushion
-                // path uses below (that assumes a connection caught up to the live edge never
-                // needs to burst-drain again, which no longer holds once a persistent cushion
-                // exists: a real backlog can reappear mid-session whenever the network can't keep
-                // up with this session's own bitrate, e.g. the cross-subnet Wi-Fi hop to a remote
-                // viewer). Found live 2026-09-08: staying stuck at the tiny cadence-matched size
-                // during a real backlog throughput-caps around ~0.6-0.9 Mbps (each small send is
-                // round-trip-latency-bound over that hop, not bandwidth-bound), well under real
-                // OTA bitrates — a gap that size can never be recovered from, it only widens.
-                // Watch_recordingChunkSize's own small size stays correct for the *steady-state*
-                // cushion-following case (no real backlog, just tracking the moving boundary).
-                effectiveChunkSize = backlogAvailable > Self.watchRecordingChunkSize
-                    ? Self.watchRecordingBacklogChunkSize : Self.watchRecordingChunkSize
-                readLength = min(effectiveChunkSize, backlogAvailable)
-            }
-            let chunk = readLength > 0 ? handle.readData(ofLength: readLength) : Data()
+            let chunk = handle.readData(ofLength: chunkSize)
             self.queue.async {
                 self.handleGrowingFileChunk(chunk, handle: handle, showId: showId, conn: conn, path: path,
                                              bytesSent: bytesSent, waitStreak: waitStreak, waitStartedAt: waitStartedAt,
-                                             deadline: deadline, chunkSize: effectiveChunkSize, liveEdgeCushionBytes: liveEdgeCushionBytes,
+                                             deadline: deadline, chunkSize: chunkSize,
                                              stillActiveCheck: stillActiveCheck, onStreamEnded: onStreamEnded)
             }
         }
@@ -1680,7 +1625,7 @@ final class WebServer: @unchecked Sendable {
     // from an initial backlog to real-time.
     private func handleGrowingFileChunk(_ chunk: Data, handle: FileHandle, showId: String, conn: NWConnection, path: String,
                                          bytesSent: Int, waitStreak: Int, waitStartedAt: Date?, deadline: Date? = nil,
-                                         chunkSize: Int, liveEdgeCushionBytes: Int = 0,
+                                         chunkSize: Int,
                                          stillActiveCheck: @escaping @MainActor () -> Bool,
                                          onStreamEnded: (() -> Void)? = nil) {
         guard !chunk.isEmpty else {
@@ -1712,7 +1657,6 @@ final class WebServer: @unchecked Sendable {
                     self?.pumpGrowingFile(handle: handle, showId: showId, conn: conn, path: path,
                                            bytesSent: bytesSent, waitStreak: waitStreak + 1, waitStartedAt: startedAt,
                                            deadline: deadline, chunkSize: Self.watchRecordingChunkSize,
-                                           liveEdgeCushionBytes: liveEdgeCushionBytes,
                                            stillActiveCheck: stillActiveCheck, onStreamEnded: onStreamEnded)
                 }
                 return
@@ -1725,25 +1669,6 @@ final class WebServer: @unchecked Sendable {
                         self?.pumpGrowingFile(handle: handle, showId: showId, conn: conn, path: path,
                                                bytesSent: bytesSent, waitStreak: waitStreak + 1, waitStartedAt: startedAt,
                                                deadline: deadline, chunkSize: Self.watchRecordingChunkSize,
-                                               liveEdgeCushionBytes: liveEdgeCushionBytes,
-                                               stillActiveCheck: stillActiveCheck, onStreamEnded: onStreamEnded)
-                    }
-                } else if liveEdgeCushionBytes > 0 {
-                    // Recording just stopped — the cushion's whole purpose (staying behind an
-                    // *actively growing* file) no longer applies to a file that will never grow
-                    // again, and the final liveEdgeCushionBytes of real content would otherwise
-                    // never be served (permanently withheld behind a ceiling that can now never
-                    // advance). One more pass with the cushion disabled drains that tail at
-                    // backlog speed; the very next genuinely-empty read (now a true EOF, not a
-                    // cushion-limited one) falls through to the close below on its own. See
-                    // TODO.md's "FEED relay must not cut off a viewer..." entry for the related,
-                    // not-yet-verified case of a viewer sitting much further behind than this
-                    // cushion (e.g. a full minute) at the moment recording stops.
-                    self.queue.async { [weak self] in
-                        self?.pumpGrowingFile(handle: handle, showId: showId, conn: conn, path: path,
-                                               bytesSent: bytesSent, waitStreak: 0, waitStartedAt: nil,
-                                               deadline: deadline, chunkSize: Self.watchRecordingBacklogChunkSize,
-                                               liveEdgeCushionBytes: 0,
                                                stillActiveCheck: stillActiveCheck, onStreamEnded: onStreamEnded)
                     }
                 } else {
@@ -1804,7 +1729,7 @@ final class WebServer: @unchecked Sendable {
             self.queue.async {
                 self.pumpGrowingFile(handle: handle, showId: showId, conn: conn, path: path,
                                       bytesSent: newTotal, waitStreak: 0, waitStartedAt: nil, deadline: deadline,
-                                      chunkSize: nextChunkSize, liveEdgeCushionBytes: liveEdgeCushionBytes,
+                                      chunkSize: nextChunkSize,
                                       stillActiveCheck: stillActiveCheck, onStreamEnded: onStreamEnded)
             }
         }
