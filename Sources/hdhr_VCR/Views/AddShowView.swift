@@ -335,7 +335,22 @@ struct AddShowView: View {
             case .details:
                 HStack(spacing: 8) {
                     Button("Back") { goBack() }
-                    Button("Record") { save() }
+                    Button("Record") {
+                        // Diagnostic, added 2026-09-13 after a live "clicked Record on Details,
+                        // nothing happened, no logs at all" report — every silent-failure path
+                        // inside save() itself already logs (recordFolder nil, applyWebGuideEntry's
+                        // stream-URL-not-found), so a report with none of those lines present either
+                        // means save() never actually ran (this button was disabled and the tap was
+                        // a no-op SwiftUI never dispatches to this closure at all) or something
+                        // between here and AppState.addShow()'s own unconditional "[Show] Added" log
+                        // silently swallows it. This line at least distinguishes the two: if a future
+                        // report has this line but still no "[Show] Added", the bug is inside
+                        // save()/addShow(); if it's missing entirely, canAdvance was false and the
+                        // real bug is upstream in whatever left show_title/show_url/recordFolder
+                        // unexpectedly unsatisfied without tripping either of save()'s own guards.
+                        glog("[AddShow] Details Record button tapped for '\(show.show_title)'")
+                        save()
+                    }
                         .disabled(!canAdvance)
                         .buttonStyle(.borderedProminent)
                         .tint(recordRed)
@@ -439,6 +454,12 @@ struct AddShowView: View {
         show.show_time = Double(comps.hour ?? 20) + Double(comps.minute ?? 0) / 60.0
         airDays    = [Show.weekdayNames[(comps.weekday ?? 2) - 1]]
         seriesType = .single
+        // Diagnostic, added 2026-09-13 (see the Details "Record" button's own matching comment) —
+        // canAdvance's exact inputs at the moment the Details step actually renders, so a repeat of
+        // "clicked Record, nothing happened, no logs at all" can show whether the button was ever
+        // really enabled in the first place, rather than only being inferable after the fact from
+        // which OTHER warning lines are absent.
+        glog("[AddShow] Details step ready for '\(title)': title.isEmpty=\(show.show_title.isEmpty) url.isEmpty=\(show.show_url.isEmpty) recordFolder=\(recordFolder?.path ?? "nil") canAdvance=\(canAdvance)")
     }
 
     private func chooseFolder() {
