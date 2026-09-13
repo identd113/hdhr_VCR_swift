@@ -671,7 +671,11 @@ final class WebServer: @unchecked Sendable {
     // `start` is an app-level byte offset (not an RFC 7233 Range header) computed by
     // AppState.seekRecording(_:) from an approximate bytes-per-second estimate — the recording
     // has no index, so this is an approximate scrub, not a frame-accurate seek.
-    private func handleWatchRecording(showId: String, startOffset: Int, conn: NWConnection) {
+    // liveEdgeLagBytes > 0 only for the internal request beginTranscodeRelay's own sourceURL makes
+    // against this same route (see that function's own comment) — every other caller (a real Watch
+    // Now window) omits `sourceLag` and gets exactly today's behavior, reading flush to the true
+    // live edge.
+    private func handleWatchRecording(showId: String, startOffset: Int, liveEdgeLagBytes: Int = 0, conn: NWConnection) {
         guard !showId.isEmpty, let state = appState else {
             send(.badRequest("missing show id"), on: conn); return
         }
@@ -706,6 +710,7 @@ final class WebServer: @unchecked Sendable {
                     return
                 }
                 self.streamGrowingFile(path: path, showId: showId, startOffset: startOffset, conn: conn,
+                                        liveEdgeLagBytes: liveEdgeLagBytes,
                                         stillActiveCheck: { [weak self] in
                     self?.appState?.shows.first(where: { $0.show_id == showId })?.show_recording ?? false
                 })
@@ -1180,6 +1185,13 @@ final class WebServer: @unchecked Sendable {
         }
     }
 
+    // ~10s at a mid-range OTA MPEG-2 guess (same 150,000 bytes/sec assumption
+    // RelayProxyDelegateBase.minAssumedBytesPerSecond documents) — not tied to any specific
+    // channel's real bitrate, just generous enough that a real backlog almost always exists at
+    // this offset behind the write position. See beginTranscodeRelay's own sourceLag comment for
+    // what this is actually for.
+    private static let transcodeSourceLiveEdgeLagBytes = 1_500_000
+
     // Starts (or joins) a VLCBridge headless transcode session for showId+profile and proxies its
     // output to `conn`. The session reads from this app's own /api/watch-recording relay — never a
     // raw file:// path, see VLCBridge's own "Headless transcode sessions" doc comment for why.
@@ -1188,7 +1200,31 @@ final class WebServer: @unchecked Sendable {
         // startOffset: the live edge at request time (see handleVirtualTunerStream's own comment on
         // why) — only matters for the viewer that actually creates this session; a later joiner
         // reuses the already-running encode from whatever point it started at, same as today.
-        let sourceURL = "http://127.0.0.1:\(activePort)/api/watch-recording?show=\(showId)&start=\(startOffset)"
+        //
+        // `sourceLag=1`, added 2026-09-13: this source read is never watched directly by a human —
+        // only the transcode's own real-time *output* (paced separately, see
+        // TranscodeProxyDelegate/RelayProxyDelegateBase) is ever actually seen by a viewer, so
+        // trailing a few seconds behind the true live edge here is invisible downstream. Flagged
+        // live: under concurrent CPU load (a recording plus multiple transcode viewers sharing one
+        // encode), this source read was hitting streamGrowingFile's 20ms caught-up-to-live-edge
+        // poll far more often than a real Watch Now viewer ever does, since curl's own writes land
+        // in bursts, not a smooth trickle — a reader tracking flush against the true edge empties
+        // out between bursts far more often than one reading from a real backlog a few seconds
+        // back. A real Watch Now window never sets this — a human's own perceived latency to true
+        // live matters there, so that path stays exactly as it was.
+        //
+        // Starting `transcodeSourceLiveEdgeLagBytes` behind `startOffset`, not at it, matters: the
+        // ongoing cap this triggers in streamGrowingFile only ever limits how close to the *current*
+        // real file size a read is allowed to land — it does nothing to conjure up bytes that don't
+        // exist yet. Starting exactly at the live edge (zero backlog, by construction) and then
+        // capping against it would just mean waiting `transcodeSourceLiveEdgeLagBytes` worth of new
+        // growth before the very first byte, stalling the session's first viewer for no reason.
+        // Starting this far back instead hands the read a real, already-on-disk backlog to drain
+        // immediately via the existing fast backlog-read path (same one Watch Now's own scrub-seek
+        // already uses) — the ongoing cap only starts actually limiting anything once that backlog
+        // is drained and the read naturally catches up to within the lag of real-time.
+        let laggedStart = max(0, startOffset - Self.transcodeSourceLiveEdgeLagBytes)
+        let sourceURL = "http://127.0.0.1:\(activePort)/api/watch-recording?show=\(showId)&start=\(laggedStart)&sourceLag=1"
         guard let session = VLCBridge.shared.startTranscodeSession(showId: showId, profile: profile, sourceURL: sourceURL) else {
             send(.notFound("transcode unavailable"), on: conn)
             return
@@ -1407,6 +1443,7 @@ final class WebServer: @unchecked Sendable {
     private func streamGrowingFile(path: String, showId: String, startOffset: Int, conn: NWConnection,
                                     durationSeconds: Int? = nil,
                                     knownFileSizeAtOffsetComputation: Int? = nil,
+                                    liveEdgeLagBytes: Int = 0,
                                     stillActiveCheck: @escaping @MainActor () -> Bool,
                                     onStreamEnded: (() -> Void)? = nil) {
         guard let handle = FileHandle(forReadingAtPath: path) else {
@@ -1478,7 +1515,7 @@ final class WebServer: @unchecked Sendable {
                 }
                 self.pumpGrowingFile(handle: handle, showId: showId, conn: conn, path: path,
                                       bytesSent: initialBytes, waitStreak: 0, waitStartedAt: nil, deadline: deadline,
-                                      chunkSize: initialChunkSize,
+                                      chunkSize: initialChunkSize, liveEdgeLagBytes: liveEdgeLagBytes,
                                       stillActiveCheck: stillActiveCheck, onStreamEnded: onStreamEnded)
             }
         }
@@ -1575,6 +1612,7 @@ final class WebServer: @unchecked Sendable {
     private func pumpGrowingFile(handle: FileHandle, showId: String, conn: NWConnection, path: String,
                                   bytesSent: Int, waitStreak: Int, waitStartedAt: Date?, deadline: Date? = nil,
                                   chunkSize: Int = watchRecordingChunkSize,
+                                  liveEdgeLagBytes: Int = 0,
                                   stillActiveCheck: @escaping @MainActor () -> Bool,
                                   onStreamEnded: (() -> Void)? = nil) {
         // Checked once per recursion (covers both the "have data" and "waiting" paths below) —
@@ -1601,11 +1639,30 @@ final class WebServer: @unchecked Sendable {
         }
         fileIOQueue.async { [weak self] in
             guard let self else { return }
-            let chunk = handle.readData(ofLength: chunkSize)
+            // liveEdgeLagBytes > 0 (only ever set for a transcode session's own internal source
+            // read — see beginTranscodeRelay's own comment on why): deliberately treat "available
+            // to read" as ending `liveEdgeLagBytes` short of the file's real current size, not the
+            // real size itself. A plain `readData` would otherwise return non-empty right up to
+            // the true live edge, which is exactly what makes this reader hit the 20ms
+            // caught-up-and-wait poll below so often — curl's own writes land in bursts, not a
+            // smooth trickle, so a reader tracking flush against the true edge empties out between
+            // bursts far more often than one reading from a few seconds back, where a real backlog
+            // almost always already exists. Capped, not skipped outright, so a real backlog still
+            // drains at full chunk size same as today; only the tail end near the lagged boundary
+            // ever returns short.
+            let chunk: Data
+            if liveEdgeLagBytes > 0 {
+                let realSize = (try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? Int ?? bytesSent
+                let readableEnd = max(bytesSent, realSize - liveEdgeLagBytes)
+                let cappedSize = min(chunkSize, readableEnd - bytesSent)
+                chunk = cappedSize > 0 ? handle.readData(ofLength: cappedSize) : Data()
+            } else {
+                chunk = handle.readData(ofLength: chunkSize)
+            }
             self.queue.async {
                 self.handleGrowingFileChunk(chunk, handle: handle, showId: showId, conn: conn, path: path,
                                              bytesSent: bytesSent, waitStreak: waitStreak, waitStartedAt: waitStartedAt,
-                                             deadline: deadline, chunkSize: chunkSize,
+                                             deadline: deadline, chunkSize: chunkSize, liveEdgeLagBytes: liveEdgeLagBytes,
                                              stillActiveCheck: stillActiveCheck, onStreamEnded: onStreamEnded)
             }
         }
@@ -1619,6 +1676,7 @@ final class WebServer: @unchecked Sendable {
     private func handleGrowingFileChunk(_ chunk: Data, handle: FileHandle, showId: String, conn: NWConnection, path: String,
                                          bytesSent: Int, waitStreak: Int, waitStartedAt: Date?, deadline: Date? = nil,
                                          chunkSize: Int,
+                                         liveEdgeLagBytes: Int = 0,
                                          stillActiveCheck: @escaping @MainActor () -> Bool,
                                          onStreamEnded: (() -> Void)? = nil) {
         guard !chunk.isEmpty else {
@@ -1650,6 +1708,7 @@ final class WebServer: @unchecked Sendable {
                     self?.pumpGrowingFile(handle: handle, showId: showId, conn: conn, path: path,
                                            bytesSent: bytesSent, waitStreak: waitStreak + 1, waitStartedAt: startedAt,
                                            deadline: deadline, chunkSize: Self.watchRecordingChunkSize,
+                                           liveEdgeLagBytes: liveEdgeLagBytes,
                                            stillActiveCheck: stillActiveCheck, onStreamEnded: onStreamEnded)
                 }
                 return
@@ -1662,6 +1721,7 @@ final class WebServer: @unchecked Sendable {
                         self?.pumpGrowingFile(handle: handle, showId: showId, conn: conn, path: path,
                                                bytesSent: bytesSent, waitStreak: waitStreak + 1, waitStartedAt: startedAt,
                                                deadline: deadline, chunkSize: Self.watchRecordingChunkSize,
+                                               liveEdgeLagBytes: liveEdgeLagBytes,
                                                stillActiveCheck: stillActiveCheck, onStreamEnded: onStreamEnded)
                     }
                 } else {
@@ -1722,7 +1782,7 @@ final class WebServer: @unchecked Sendable {
             self.queue.async {
                 self.pumpGrowingFile(handle: handle, showId: showId, conn: conn, path: path,
                                       bytesSent: newTotal, waitStreak: 0, waitStartedAt: nil, deadline: deadline,
-                                      chunkSize: nextChunkSize,
+                                      chunkSize: nextChunkSize, liveEdgeLagBytes: liveEdgeLagBytes,
                                       stillActiveCheck: stillActiveCheck, onStreamEnded: onStreamEnded)
             }
         }
@@ -1862,7 +1922,14 @@ final class WebServer: @unchecked Sendable {
                 let query = URLComponents(string: path)?.queryItems ?? []
                 let showId = query.first(where: { $0.name == "show" })?.value ?? ""
                 let startOffset = query.first(where: { $0.name == "start" }).flatMap { Int($0.value ?? "") } ?? 0
-                self.handleWatchRecording(showId: showId, startOffset: max(0, startOffset), conn: conn); return
+                // sourceLag=1 only ever appears on beginTranscodeRelay's own internal request against
+                // this same route — see that function's own comment on why. A boolean flag, not a
+                // client-supplied byte count: the actual lag amount is a fixed server-side constant
+                // (Self.transcodeSourceLiveEdgeLagBytes), never taken from the request itself.
+                let sourceLag = query.first(where: { $0.name == "sourceLag" })?.value == "1"
+                self.handleWatchRecording(showId: showId, startOffset: max(0, startOffset),
+                                           liveEdgeLagBytes: sourceLag ? Self.transcodeSourceLiveEdgeLagBytes : 0,
+                                           conn: conn); return
             }
             // FEED client-side local relay — see handleFeedLocalRelay's own doc comment. Needs the
             // raw NWConnection to forward proxied chunks directly, same reason as
