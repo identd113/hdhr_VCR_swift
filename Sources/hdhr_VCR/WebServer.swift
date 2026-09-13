@@ -2349,6 +2349,12 @@ final class WebServer: @unchecked Sendable {
         let recStarted   = entry.StartTime <= nowTs && entry.EndTime > nowTs
         let newActive    = recStarted && !tunerFull ? activeTuners + 1 : activeTuners
         let airDays   = obj["airDays"]   as? [String]
+        // Validate against the real profile whitelist — this endpoint has no auth beyond
+        // LAN-subnet matching, and an unvalidated value is interpolated directly into the tuner's
+        // curl request URL by RecordingManager.start(transcode:).
+        if let rawTranscode = obj["transcode"] as? String, !Show.validTranscodeProfiles.contains(rawTranscode) {
+            return json(["ok": false, "error": "Invalid transcode profile"])
+        }
         let transcode = obj["transcode"] as? String
         let bonusTime = obj["bonusTime"] as? Bool ?? false
         let title     = (obj["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -2467,7 +2473,13 @@ final class WebServer: @unchecked Sendable {
             updated.show_length = len
         }
         if let bonus = obj["bonusTime"] as? Bool { updated.show_bonus_time = bonus }
-        if let transcode = obj["transcode"] as? String { updated.show_transcode = transcode }
+        if let transcode = obj["transcode"] as? String {
+            // Same whitelist validation as handleRecord above — see Show.validTranscodeProfiles.
+            guard Show.validTranscodeProfiles.contains(transcode) else {
+                return .badRequest("Invalid transcode profile")
+            }
+            updated.show_transcode = transcode
+        }
         // Web-guide escape hatch for the "will skip — already on disk" state (see docs/WebServer.md's
         // "Duplicate-episode override" note) — mirrors the native Add/Edit dialog's
         // show_ignore_duplicate_once toggle so a duplicate flagged in the browser isn't a dead end.

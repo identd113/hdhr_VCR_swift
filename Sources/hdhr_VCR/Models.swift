@@ -249,6 +249,15 @@ struct Show: Identifiable, Equatable {
         genre?.lowercased().contains("sport") == true
     }
 
+    // The full set of real, EXTEND-only transcode profile names this app recognizes — mirrors
+    // VLCBridge.transcodeBitrateKbps(for:)'s own doc comment on where this list comes from.
+    // WebServer's two mutating web-guide endpoints that accept a caller-supplied transcode string
+    // (handleRecord/handleEdit) validate against this before storing it, since an unvalidated value
+    // is interpolated directly into the tuner's curl request URL (no auth beyond LAN-subnet matching).
+    static let validTranscodeProfiles: Set<String> = [
+        "none", "heavy", "mobile", "internet720", "internet540", "internet480", "internet360", "internet240"
+    ]
+
     static func blank(channel: String = "", device: String = "") -> Show {
         Show(
             show_id: UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased(),

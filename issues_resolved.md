@@ -1458,3 +1458,19 @@ Reported 2026-09-12 (only reachable with `AppConfig.FEED_feature_enabled` set `t
 **Not yet live-verified on `main` post-merge** — verify next time: enable `FEED_feature_enabled`, reset the wizard (Settings → Maintenance → "Reset First-Run Setup"), and confirm the Continue button is visible on the FEED step.
 
 **Resolving commit**: `dd37f8f`
+
+---
+
+# Full-app code review fixes — 2026-09-13
+
+One of the ten findings from the 2026-09-12 full-app review (`ISSUES.md`) fixed same week; the other nine remain open there (correctness races, an inert invariant violation, and efficiency/maintainability items) pending their own scoped fixes.
+
+## RESOLVED — `WebServer.handleEdit`/`handleRecord` accepted an unvalidated `transcode` request field, which reached the tuner's curl request URL via direct string interpolation
+
+**Files:** `Models.swift`, `WebServer.swift`
+
+**Root cause**: Both mutating web-guide endpoints stored `obj["transcode"] as? String` straight into `show_transcode` with no whitelist check, even though the app already had a `validTranscode` array used elsewhere (`WebServer.swift`'s guide-page template fill) that was never reused here. `RecordingManager.start(transcode:)` interpolates that value directly into the stream URL passed to curl (`"\(url)?duration=...&transcode=\(profile)"`). Since this endpoint has no auth beyond LAN-subnet matching, any host on the LAN could send a `transcode` value containing `&` or other query-breaking characters and inject extra query parameters into the request sent to the HDHomeRun tuner.
+
+**Fix**: added `Show.validTranscodeProfiles` — the full 8-name whitelist (`none`/`heavy`/`mobile`/`internet720`/`internet540`/`internet480`/`internet360`/`internet240`) already documented in `VLCBridge.transcodeBitrateKbps(for:)`'s own doc comment — and validated the incoming `transcode` field against it in both `handleRecord` (rejects with `{"ok": false, "error": "Invalid transcode profile"}`) and `handleEdit` (rejects with a `400`), before the value is ever stored.
+
+**Resolving commit**: pending (uncommitted at time of writing)
