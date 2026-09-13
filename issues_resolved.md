@@ -1489,7 +1489,7 @@ Two related pieces of work from the same session, both explicit user requests ra
 
 **Fix**: made raw-viewer tracking per-show (`relayRawViewerCounts: [String: Int]`, since a relay can advertise more than one concurrent recording), published it as a new `HdhrVCRplusRawViewers` field in `/lineup.json` (`LineupEntry.virtualRelayRawViewers`, omitted unless >0, same convention as the transcode field). Every viewer connect/disconnect (raw or transcode) now calls a new `AppState.refreshVirtualTunerAnnounceIfActive()`, which re-broadcasts via the same refresh-in-place mechanism `TunerCount` changes already used. `onFeedAnnounce`'s handler now also re-fetches an already-known, non-goodbye relay's lineup immediately (`fetchAllLineups(for:)`) instead of waiting for the hourly pass.
 
-**Resolving commit**: pending (uncommitted at time of writing)
+**Resolving commit**: `c85e048`
 
 ## RESOLVED — VirtualTunerService's UDP announce carried a redundant non-standard "goodbye" TLV alongside the standard TunerCount TLV that already meant the same thing
 
@@ -1499,4 +1499,4 @@ Two related pieces of work from the same session, both explicit user requests ra
 
 **Fix**: removed the `0xF0` TLV and all `isGoodbye`-named plumbing. `onFeedAnnounce`'s signature changed from `(String, Bool)` to `(String, Int)` (the parsed `TunerCount`, via a new `VirtualTunerService.tunerCount(fromReplyPacket:)`, replacing `isGoodbye(fromReplyPacket:)`); `AppState`'s handler now checks `tunerCount == 0` everywhere it used to check `isGoodbye == true`. No behavior change and no fidelity lost — confirmed by walking every real call site before removing anything. Bonus: also cleanly resolves how a narrow existing race (`updateVirtualTunerPresence()` computing a legitimate `TunerCount: 0` from a non-`stop()` refresh, found in the 2026-09-12 full-app review — see `ISSUES.md`'s still-open `updateVirtualTunerPresence` entry) reads on the receiving side — there was no clean way to express "not a goodbye, but also nothing to watch" under the old two-field scheme; under "TunerCount alone is truth" it just correctly reads as unavailable.
 
-**Resolving commit**: pending (uncommitted at time of writing)
+**Resolving commit**: `c85e048`
