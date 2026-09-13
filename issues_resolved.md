@@ -1608,3 +1608,5 @@ Two related pieces of work from the same session, both explicit user requests ra
 **Fix**: `applyWebGuideEntry` now regenerates `show.show_id` at the top, on every guide pick, so a fresh identity is guaranteed regardless of whatever kept the window's View state alive across sessions. Also added a warning log to `addShow`'s duplicate-ID guard so a future recurrence (from this or a different cause) is immediately diagnosable without another live investigation.
 
 **Resolving commit**: `0b54613`
+
+**Addendum, same day**: audited for other entry points into the same `@State show` — found `applyPendingEntry` (the quick-add/right-click path via `state.pendingAddEntry`, which skips the guide step) had the identical gap, un-fixed by the above. Given the same `show.show_id` regeneration fix. `EditShowView`'s equivalent single-instance-window pattern was also checked and is *not* vulnerable — its `loadShow()` already fully reloads `show` from `state.shows` on every `.onChange(of: state.editingShowId)`, by design (edits an existing show by ID rather than minting a new one). Resolving commit: `fc40f75`.
