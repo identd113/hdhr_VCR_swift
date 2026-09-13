@@ -734,6 +734,37 @@ final class WebServer: @unchecked Sendable {
         beginFeedRelayProxy(remoteURL: remoteURL, sessionId: sessionId, conn: conn)
     }
 
+    // GET /api/transcode-source-relay?show=<id>&start=<offset> — added 2026-09-13, reusing the exact
+    // mechanism above for a *loopback* source instead of a remote Mac's FEED URL. Root cause found
+    // live: a real HDHomeRun EXTEND transcode's own source read (this app's own
+    // /api/watch-recording — see beginTranscodeRelay) forwarded curl's bursty on-disk writes
+    // straight into libvlc's transcode encoder with zero smoothing (streamGrowingFile deliberately
+    // forwards immediately — correct for a real Watch Now viewer or raw FEED passthrough, both of
+    // which already stay responsive that way). libvlc's own encode pipeline turned out to be just
+    // as sensitive to that burstiness as a remote FEED viewer's playback was — confirmed live via
+    // repeated `[VLC-core L3] late buffer for mux input` warnings and high CPU under 2 concurrent
+    // transcode viewers, matching the *identical* class of problem `issues_resolved.md`'s "VLC-side
+    // FEED playback stalls" entry already root-caused and fixed for the FEED-viewer case: delivery
+    // cadence, not raw throughput. Rather than re-implementing pacing a second time inside
+    // streamGrowingFile (a much more sensitive, heavily-relied-on shared path — Watch Now and raw
+    // FEED passthrough both still need to forward immediately, unpaced), this reuses the same
+    // already-proven `beginFeedRelayProxy`/`FeedRelayProxyDelegate` pacer against a synthetic
+    // "remote" URL that just happens to be this app's own loopback `/api/watch-recording` —
+    // `beginTranscodeRelay`'s own sourceURL now points here instead of at that route directly, so
+    // libvlc's transcode source connection gets the same steady, real-time-paced trickle a genuine
+    // remote FEED viewer already does, instead of whatever burst curl's own last disk flush produced.
+    // `showId`/`startOffset` build the inner URL directly (`sourceLag=1` included — see that flag's
+    // own doc comment) rather than going through the opaque session registry `/api/feed-local-relay`
+    // uses: there's no separate "session" here to register/unregister against a window's own
+    // lifecycle, just a deterministic loopback URL derived straight from this request's own params.
+    private func handleTranscodeSourceRelay(showId: String, startOffset: Int, conn: NWConnection) {
+        guard !showId.isEmpty,
+              let remoteURL = URL(string: "http://127.0.0.1:\(activePort)/api/watch-recording?show=\(showId)&start=\(startOffset)&sourceLag=1") else {
+            send(.badRequest("missing show id"), on: conn); return
+        }
+        beginFeedRelayProxy(remoteURL: remoteURL, sessionId: "transcode-source-\(showId)", conn: conn)
+    }
+
     // Shared base for the two delegate-based (not completion-handler-based) URLSessionDataTask
     // consumers below (transcode relay + FEED local relay) — both forward an open-ended remote
     // stream with no natural end to `conn` as chunks arrive, paced, and share the exact same
@@ -1201,7 +1232,7 @@ final class WebServer: @unchecked Sendable {
         // why) — only matters for the viewer that actually creates this session; a later joiner
         // reuses the already-running encode from whatever point it started at, same as today.
         //
-        // `sourceLag=1`, added 2026-09-13: this source read is never watched directly by a human —
+        // Live-edge lag, added 2026-09-13: this source read is never watched directly by a human —
         // only the transcode's own real-time *output* (paced separately, see
         // TranscodeProxyDelegate/RelayProxyDelegateBase) is ever actually seen by a viewer, so
         // trailing a few seconds behind the true live edge here is invisible downstream. Flagged
@@ -1223,8 +1254,20 @@ final class WebServer: @unchecked Sendable {
         // immediately via the existing fast backlog-read path (same one Watch Now's own scrub-seek
         // already uses) — the ongoing cap only starts actually limiting anything once that backlog
         // is drained and the read naturally catches up to within the lag of real-time.
+        //
+        // Routed through /api/transcode-source-relay, not /api/watch-recording directly, added
+        // 2026-09-13 same investigation: the live-edge lag alone only reduced how *often* this read
+        // hit an empty poll — it did nothing about the actual bytes still arriving in the same
+        // bursts curl's own writes always have, straight into libvlc's encoder with zero smoothing.
+        // That burstiness turned out to matter to the *encoder's* own PCR/timestamp bookkeeping
+        // just as much as it did to a remote FEED viewer's playback (issues_resolved.md's "VLC-side
+        // FEED playback stalls" entry) — confirmed live via repeated `late buffer for mux input`
+        // warnings under 2 concurrent transcode viewers. handleTranscodeSourceRelay reuses the
+        // exact same proven pacer (FeedRelayProxyDelegate) against this same lagged
+        // /api/watch-recording URL internally, so libvlc's transcode source connection now gets a
+        // steady real-time trickle instead of a raw burst.
         let laggedStart = max(0, startOffset - Self.transcodeSourceLiveEdgeLagBytes)
-        let sourceURL = "http://127.0.0.1:\(activePort)/api/watch-recording?show=\(showId)&start=\(laggedStart)&sourceLag=1"
+        let sourceURL = "http://127.0.0.1:\(activePort)/api/transcode-source-relay?show=\(showId)&start=\(laggedStart)"
         guard let session = VLCBridge.shared.startTranscodeSession(showId: showId, profile: profile, sourceURL: sourceURL) else {
             send(.notFound("transcode unavailable"), on: conn)
             return
@@ -1939,6 +1982,14 @@ final class WebServer: @unchecked Sendable {
                 let query = URLComponents(string: path)?.queryItems ?? []
                 let sessionId = query.first(where: { $0.name == "session" })?.value ?? ""
                 self.handleFeedLocalRelay(sessionId: sessionId, conn: conn); return
+            }
+            // Transcode's own source read — see handleTranscodeSourceRelay's own doc comment. Same
+            // "needs the raw NWConnection" reasoning as the two routes above.
+            if cleanPath == "/api/transcode-source-relay" && method == "GET" {
+                let query = URLComponents(string: path)?.queryItems ?? []
+                let showId = query.first(where: { $0.name == "show" })?.value ?? ""
+                let startOffset = query.first(where: { $0.name == "start" }).flatMap { Int($0.value ?? "") } ?? 0
+                self.handleTranscodeSourceRelay(showId: showId, startOffset: max(0, startOffset), conn: conn); return
             }
             // Virtual tuner stream — see VirtualTunerService.swift's doc comment. "/auto/v" prefix
             // matches the real HDHomeRun's own stream-URL shape (docs/HDHRFindings.md); the channel
