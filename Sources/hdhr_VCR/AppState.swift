@@ -398,17 +398,31 @@ final class AppState: ObservableObject {
     // exposes no readable state at all. Not `private` — WebServer's /discover.json/lineup.json
     // handlers read it directly, same convention as `shows`/`devices`/`config` etc. below.
     var activeVirtualTunerDeviceID: String?
-    // Count of currently-connected outbound relay viewers on the raw-passthrough path only —
-    // incremented/decremented by WebServer.handleVirtualTunerStream around each
+    // Per-show count of currently-connected outbound relay viewers on the raw-passthrough path
+    // only — incremented/decremented by WebServer.handleVirtualTunerStream around each
     // streamGrowingFile(...) call, via its onStreamEnded callback for the decrement (both hops land
     // here from a background queue via Task { @MainActor in ... }, since WebServer's fileIOQueue/
     // queue aren't MainActor-isolated). Never touched by local Watch Now (handleWatchRecording
     // doesn't pass onStreamEnded), so this counts only genuine outbound-to-another-machine viewers.
-    // MenuContent sums this with transcodeViewerCount below at display time rather than a single
-    // combined counter — the two paths connect/disconnect independently.
-    @Published private(set) var relayRawViewerCount: Int = 0
-    func relayRawViewerConnected() { relayRawViewerCount += 1 }
-    func relayRawViewerDisconnected() { relayRawViewerCount = max(0, relayRawViewerCount - 1) }
+    // Keyed by show_id (not a single aggregate) so buildVirtualTunerLineupJSON can publish an
+    // accurate per-show count in /lineup.json — a relay can advertise more than one concurrent
+    // recording (TunerCount > 1), and a single aggregate couldn't be attributed to the right show.
+    // MenuContent's own "FEED: N watching" row sums relayRawViewerCount (below) with
+    // transcodeViewerCount at display time rather than a single combined counter — the two paths
+    // connect/disconnect independently.
+    @Published private(set) var relayRawViewerCounts: [String: Int] = [:]
+    var relayRawViewerCount: Int { relayRawViewerCounts.values.reduce(0, +) }
+    func rawViewerCount(showId: String) -> Int { relayRawViewerCounts[showId] ?? 0 }
+    func relayRawViewerConnected(showId: String) {
+        relayRawViewerCounts[showId, default: 0] += 1
+        refreshVirtualTunerAnnounceIfActive()
+    }
+    func relayRawViewerDisconnected(showId: String) {
+        guard let current = relayRawViewerCounts[showId] else { return }
+        if current <= 1 { relayRawViewerCounts.removeValue(forKey: showId) }
+        else { relayRawViewerCounts[showId] = current - 1 }
+        refreshVirtualTunerAnnounceIfActive()
+    }
 
     // Mirror of VLCBridge.shared.transcodeViewerCount(showId:)'s summed total, kept only so
     // MenuContent's "FEED: N watching" row is reactive — VLCBridge's own per-session refCount
@@ -422,9 +436,27 @@ final class AppState: ObservableObject {
     // both of its stopTranscodeSession call sites (disconnect), plus stopAllTranscodeSessions'
     // returned removed-viewer count wherever a recording's teardown force-clears its session.
     @Published private(set) var transcodeViewerCount: Int = 0
-    func transcodeViewerConnected() { transcodeViewerCount += 1 }
-    func transcodeViewerDisconnected() { transcodeViewerCount = max(0, transcodeViewerCount - 1) }
-    func transcodeViewersCleared(_ count: Int) { transcodeViewerCount = max(0, transcodeViewerCount - count) }
+    func transcodeViewerConnected() { transcodeViewerCount += 1; refreshVirtualTunerAnnounceIfActive() }
+    func transcodeViewerDisconnected() { transcodeViewerCount = max(0, transcodeViewerCount - 1); refreshVirtualTunerAnnounceIfActive() }
+    func transcodeViewersCleared(_ count: Int) {
+        guard count > 0 else { return }
+        transcodeViewerCount = max(0, transcodeViewerCount - count)
+        refreshVirtualTunerAnnounceIfActive()
+    }
+
+    // Re-broadcasts this instance's virtual-tuner UDP announce (same mechanism
+    // updateVirtualTunerPresence already uses when a recording starts/stops) whenever a viewer
+    // connects to or disconnects from the relay — a discovering instance's near-real-time FEED
+    // push (VirtualTunerService's "Unsolicited FEED announces") previously only fired on the
+    // relay's own appear/disappear/TunerCount-change, leaving a viewer-count change invisible
+    // until the next hourly refreshGuides() lineup re-fetch. No-op (and cheap to call
+    // unconditionally) when no relay is currently advertised. See AppState.onFeedAnnounce's
+    // matching receiving-side fix for why an announce alone isn't enough — the discovering side
+    // also needs to actually re-fetch this device's /lineup.json on it.
+    private func refreshVirtualTunerAnnounceIfActive() {
+        guard activeVirtualTunerDeviceID != nil else { return }
+        updateVirtualTunerPresence()
+    }
     @Published var webServerRunning: Bool    = false
     @Published var webServerError:   String? = nil
     private var internalWebServerUseCount = 0  // ref count: each open WKWebView guide window increments
@@ -697,9 +729,15 @@ final class AppState: ObservableObject {
         //     on the LAN is picked up within about a second instead of on the next ~10s idle-loop
         //     discovery poll. Wired here (guarded by skipStartup via this whole function, unlike
         //     init()) so unit tests constructing an AppState never bind a real socket.
-        virtualTuner.onFeedAnnounce = { [weak self] deviceIDHex, isGoodbye in
+        virtualTuner.onFeedAnnounce = { [weak self] deviceIDHex, tunerCount in
             Task { @MainActor in
                 guard let self else { return }
+                // A relay only ever advertises while actually recording, so a live announce's own
+                // TunerCount is normally >=1 — `0` can only mean stop()'s own deliberate final
+                // broadcast (see VirtualTunerService.onFeedAnnounce's doc comment; this used to be
+                // a separate `isGoodbye` Bool/non-standard TLV, simplified 2026-09-13 since the
+                // count alone already carried the same information in every real case).
+                let isGoodbye = tunerCount == 0
                 // Short-circuits probeForNewDevices()'s normal 3-consecutive-miss threshold for
                 // this one device — a goodbye announce means the source Mac itself just told
                 // everyone, on purpose, that this relay is gone, which is strictly more certain
@@ -712,10 +750,23 @@ final class AppState: ObservableObject {
                 // already-higher count from prior misses; if the device is somehow still found by
                 // the probe right after this (an in-flight reply racing the goodbye), that probe's
                 // own "found" branch resets missedProbes to 0 regardless, so no harm either way.
+                let wasKnown = self.devices.contains { $0.DeviceID == deviceIDHex }
                 if isGoodbye, let idx = self.devices.firstIndex(where: { $0.DeviceID == deviceIDHex }) {
                     self.devices[idx].missedProbes = max(self.devices[idx].missedProbes, 2)
                 }
                 await self.probeForNewDevices()
+                // probeForNewDevices() above only fetches /lineup.json for a genuinely *new*
+                // device (its own newDevices branch) — an already-known relay's lineup is
+                // otherwise only refreshed on the hourly refreshGuides() pass, far too slow to
+                // pick up a viewer-count or show-metadata change this same announce mechanism now
+                // also fires on (see refreshVirtualTunerAnnounceIfActive). Re-fetch immediately
+                // instead. Skipped on a goodbye announce — the relay just said it's gone, so its
+                // lineup either 404s or is about to.
+                if wasKnown, !isGoodbye,
+                   let device = self.devices.first(where: { $0.DeviceID == deviceIDHex && $0.isVirtualRelay }) {
+                    await self.fetchAllLineups(for: [device])
+                    if self.menuIsOpen { self.rebuildMenuEntries() }
+                }
             }
         }
         virtualTuner.beginPassiveListening()
@@ -3512,6 +3563,11 @@ final class AppState: ObservableObject {
         // tunerStatus stays its own dict (not folded into showRuntime — see that struct's doc
         // comment).
         tunerStatus.removeValue(forKey: show.show_id)
+        // Same "correct regardless of which path preceded this" reasoning as tunerStatus above —
+        // a viewer still connected to this show's raw FEED relay at delete time (rare, but the
+        // connection's own onStreamEnded decrement isn't guaranteed to have already fired) would
+        // otherwise leave a stale per-show entry behind forever, since show_id is never reused.
+        relayRawViewerCounts.removeValue(forKey: show.show_id)
         saveConfig()
         pushShowUpdate(type: "show_deleted", channel: show.show_channel, device: show.hdhr_record)
     }

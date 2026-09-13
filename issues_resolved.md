@@ -1474,3 +1474,29 @@ One of the ten findings from the 2026-09-12 full-app review (`ISSUES.md`) fixed 
 **Fix**: added `Show.validTranscodeProfiles` — the full 8-name whitelist (`none`/`heavy`/`mobile`/`internet720`/`internet540`/`internet480`/`internet360`/`internet240`) already documented in `VLCBridge.transcodeBitrateKbps(for:)`'s own doc comment — and validated the incoming `transcode` field against it in both `handleRecord` (rejects with `{"ok": false, "error": "Invalid transcode profile"}`) and `handleEdit` (rejects with a `400`), before the value is ever stored.
 
 **Resolving commit**: `16aaacc`
+
+---
+
+# FEED viewer-count propagation + UDP protocol simplification — 2026-09-13
+
+Two related pieces of work from the same session, both explicit user requests rather than proactive FEED work (FEED itself stays deprioritized — see `TODO.md`).
+
+## RESOLVED — A viewer connecting to or disconnecting from an in-progress FEED relay was invisible to other hdhrVCRplus instances for up to an hour
+
+**Files:** `AppState.swift`, `WebServer.swift`, `VirtualTunerService.swift`, `Models.swift`
+
+**Root cause**: (1) Raw-passthrough viewer count (`AppState.relayRawViewerCount`) was tracked as a single machine-wide `Int` and never published anywhere — only the separate, rarer transcode-viewer count (`HdhrVCRplusTranscodeViewers`) reached `/lineup.json`, but `watchRemoteRelay` always requests the raw path, so the common instance-to-instance case had no viewer-count signal at all. (2) Neither viewer-count mutator triggered a fresh UDP announce — only the relay's own appear/disappear/`TunerCount` change did. (3) Even when an announce did fire, `AppState.onFeedAnnounce`'s handler only re-fetched `/lineup.json` for a genuinely *new* device; an already-known relay's lineup (where the viewer-count fields actually live) was otherwise only refreshed by the hourly `refreshGuides()` pass.
+
+**Fix**: made raw-viewer tracking per-show (`relayRawViewerCounts: [String: Int]`, since a relay can advertise more than one concurrent recording), published it as a new `HdhrVCRplusRawViewers` field in `/lineup.json` (`LineupEntry.virtualRelayRawViewers`, omitted unless >0, same convention as the transcode field). Every viewer connect/disconnect (raw or transcode) now calls a new `AppState.refreshVirtualTunerAnnounceIfActive()`, which re-broadcasts via the same refresh-in-place mechanism `TunerCount` changes already used. `onFeedAnnounce`'s handler now also re-fetches an already-known, non-goodbye relay's lineup immediately (`fetchAllLineups(for:)`) instead of waiting for the hourly pass.
+
+**Resolving commit**: pending (uncommitted at time of writing)
+
+## RESOLVED — VirtualTunerService's UDP announce carried a redundant non-standard "goodbye" TLV alongside the standard TunerCount TLV that already meant the same thing
+
+**Files:** `VirtualTunerService.swift`, `AppState.swift`, `Tests/hdhr_VCRTests/Network/VirtualTunerServiceTests.swift`
+
+**Root cause**: the 2026-09-12 goodbye short-circuit fix (see above in this file) added a non-standard `0xF0` TLV and threaded a `Bool` through `broadcastAnnounce(goodbye:)`/`buildDiscoverReply(isGoodbye:)`/`isGoodbye(fromReplyPacket:)`/`onFeedAnnounce`, specifically so the receiving side could tell "definitely gone" apart from an ordinary re-announce. But a relay only ever advertises while actually recording — `TunerCount` is always >=1 in that case — and `stop()`'s own final broadcast was already the only place a live announce ever carried `TunerCount: 0`. The two fields were carrying identical information; the flag was pure duplication.
+
+**Fix**: removed the `0xF0` TLV and all `isGoodbye`-named plumbing. `onFeedAnnounce`'s signature changed from `(String, Bool)` to `(String, Int)` (the parsed `TunerCount`, via a new `VirtualTunerService.tunerCount(fromReplyPacket:)`, replacing `isGoodbye(fromReplyPacket:)`); `AppState`'s handler now checks `tunerCount == 0` everywhere it used to check `isGoodbye == true`. No behavior change and no fidelity lost — confirmed by walking every real call site before removing anything. Bonus: also cleanly resolves how a narrow existing race (`updateVirtualTunerPresence()` computing a legitimate `TunerCount: 0` from a non-`stop()` refresh, found in the 2026-09-12 full-app review — see `ISSUES.md`'s still-open `updateVirtualTunerPresence` entry) reads on the receiving side — there was no clean way to express "not a goodbye, but also nothing to watch" under the old two-field scheme; under "TunerCount alone is truth" it just correctly reads as unavailable.
+
+**Resolving commit**: pending (uncommitted at time of writing)

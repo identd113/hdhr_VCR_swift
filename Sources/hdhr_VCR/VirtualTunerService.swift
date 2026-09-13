@@ -43,6 +43,12 @@ final class VirtualTunerService {
     static let virtualRelayMarkerKey = "HdhrVCRplusVirtualRelay"
     static let showTitleKey = "HdhrVCRplusShowTitle"
     static let transcodeViewersKey = "HdhrVCRplusTranscodeViewers"
+    // Added 2026-09-13, sibling to transcodeViewersKey above — covers the raw-passthrough path,
+    // which is what watchRemoteRelay actually requests (this app's own instances watching each
+    // other never apply a transcode override), so transcodeViewersKey alone could never reflect
+    // the common case of "is anyone actually watching this FEED." Same per-show, omit-when-zero
+    // shape as transcodeViewersKey — see buildVirtualTunerLineupJSON's producer comment.
+    static let rawViewersKey = "HdhrVCRplusRawViewers"
     static let signalQualityKey = "HdhrVCRplusSignalQualityPercent"
     // Added 2026-09-07, explicit user request: MenuContent's "Recording on Another Mac" row named
     // only the show, with no way to tell *which* Mac when more than one is relaying. Reuses
@@ -94,11 +100,13 @@ final class VirtualTunerService {
     // somewhere other than this instance's own relay — see handleReadable()'s own comment on the
     // self-filter. AppState sets this once, at startup, to trigger an immediate probeForNewDevices()
     // instead of waiting for the next idle-loop tick — see AppState.init()'s own wiring. The second
-    // parameter is true only for stop()'s own final "goodbye" broadcast (see buildDiscoverReply's
-    // isGoodbye TLV) — added 2026-09-12 so AppState can short-circuit probeForNewDevices()'s normal
-    // 3-consecutive-miss threshold for this one device instead of waiting ~2 more idle-loop cycles
-    // to notice a relay that just told everyone, on purpose, that it's gone.
-    var onFeedAnnounce: ((String, Bool) -> Void)?
+    // parameter is the announced TunerCount, straight off the standard `0x10` TLV — a relay only
+    // ever advertises while actually recording (TunerCount normally >=1), so `0` uniquely means
+    // "this relay just told everyone, on purpose, that it's gone" (stop()'s own final broadcast
+    // explicitly zeroes it). Was a separate `Bool` (a non-standard `0xF0` "goodbye" TLV) until
+    // 2026-09-13 — removed as redundant once it was clear TunerCount alone already carried the
+    // same information in every real case; see issues_resolved.md for the full reasoning.
+    var onFeedAnnounce: ((String, Int) -> Void)?
 
     /// Begins responding to discovery requests as `deviceID` (8 hex chars, e.g. "FEED1234"),
     /// advertising `baseURL` (e.g. "http://10.0.2.100:1980") and `tunerCount` in the reply's own
@@ -230,10 +238,11 @@ final class VirtualTunerService {
             // One last announce reflecting the relay that's going away, before clearing the fields
             // it's built from — gives another instance's listener an immediate nudge to re-probe
             // (which will correctly find this device gone) instead of waiting up to ~10s for its
-            // next idle-loop tick. `goodbye: true` (added 2026-09-12) additionally short-circuits
-            // probeForNewDevices()'s normal 3-consecutive-miss threshold on the receiving side —
-            // see AppState.onFeedAnnounce's wiring — instead of just nudging the timing of a
-            // threshold that still had to elapse the same as if this announce never happened.
+            // next idle-loop tick. `goodbye: true` forces this one broadcast's TunerCount to 0 —
+            // the receiving side reads a 0 count as "definitely gone" (see onFeedAnnounce's own
+            // doc comment) and short-circuits probeForNewDevices()'s normal 3-consecutive-miss
+            // threshold instead of just nudging the timing of a threshold that still had to elapse
+            // the same as if this announce never happened.
             self.broadcastAnnounce(goodbye: true)
             self.isAdvertising = false
             self.advertisedDeviceID = 0
@@ -251,10 +260,11 @@ final class VirtualTunerService {
     /// discovery poll. Must be called on `queue`, with the socket already bound and something
     /// actually advertised — both call sites (start()/stop() above) already guarantee this.
     ///
-    /// `goodbye`, added 2026-09-12: stop()'s own final call passes `true` — sends `tunerCount: 0`
-    /// (this relay genuinely has none left, unlike a normal announce which always reflects
-    /// `advertisedTunerCount`) plus buildDiscoverReply's isGoodbye TLV, so the receiving side can
-    /// tell "definitely gone" apart from an ordinary re-announce on the wire, not just by timing.
+    /// `goodbye`, added 2026-09-12, simplified 2026-09-13: stop()'s own final call passes `true` —
+    /// sends `tunerCount: 0` (this relay genuinely has none left, unlike a normal announce which
+    /// always reflects `advertisedTunerCount`, itself always >=1 while actually advertising) so the
+    /// receiving side can tell "definitely gone" apart from an ordinary re-announce by the count
+    /// alone — see onFeedAnnounce's own doc comment for why no separate TLV/flag is needed for this.
     private func broadcastAnnounce(goodbye: Bool = false) {
         guard sock >= 0, isAdvertising else { return }
         // Captured before the loop below — see this function's own lastBroadcastDeviceID field
@@ -274,8 +284,7 @@ final class VirtualTunerService {
             self.lastBroadcastDeviceID = nil
         }
         let pkt = Self.buildDiscoverReply(deviceID: advertisedDeviceID, baseURL: advertisedBaseURL,
-                                           tunerCount: goodbye ? 0 : advertisedTunerCount,
-                                           isGoodbye: goodbye)
+                                           tunerCount: goodbye ? 0 : advertisedTunerCount)
         var targets = HDHRManager.subnetBroadcastAddresses(interface: "")
         targets.append(0xFFFFFFFF)   // INADDR_BROADCAST fallback — mirrors udpDiscoverSync's own reasoning
         for targetAddr in targets {
@@ -336,7 +345,8 @@ final class VirtualTunerService {
             return
         }
 
-        if Self.isDiscoverReply(bytes), let announcedID = Self.deviceID(fromReplyPacket: bytes) {
+        if Self.isDiscoverReply(bytes), let announcedID = Self.deviceID(fromReplyPacket: bytes),
+           let tunerCount = Self.tunerCount(fromReplyPacket: bytes) {
             // lastBroadcastDeviceID, not isAdvertising/advertisedDeviceID — those get cleared by
             // stop() synchronously, in the same queue.async closure that just called
             // broadcastAnnounce(), well before a loopback of that exact packet can actually be
@@ -345,9 +355,8 @@ final class VirtualTunerService {
             // announce the instant it loops back — confirmed live 2026-09-07, see ISSUES.md.
             guard announcedID != lastBroadcastDeviceID else { return }   // our own broadcast looped back
             let hex = String(format: "%08X", announcedID)
-            let goodbye = Self.isGoodbye(fromReplyPacket: bytes)
-            glog("[VirtualTuner] unsolicited FEED announce from \(fromIP) DeviceID=\(hex)\(goodbye ? " (goodbye)" : "")")
-            onFeedAnnounce?(hex, goodbye)
+            glog("[VirtualTuner] unsolicited FEED announce from \(fromIP) DeviceID=\(hex) TunerCount=\(tunerCount)\(tunerCount == 0 ? " (gone)" : "")")
+            onFeedAnnounce?(hex, tunerCount)
         }
     }
 
@@ -401,17 +410,7 @@ final class VirtualTunerService {
     /// (AppState.updateVirtualTunerPresence) always supplies both. Extracted from handleReadable()
     /// for the same unit-testability reason as isDiscoverRequest(_:) above.
     ///
-    /// `isGoodbye`, added 2026-09-12: appends a non-standard tag `0xF0` TLV (1 byte, value 1) —
-    /// chosen well outside the real protocol's own observed tag range (0x01/0x02/0x10/0x27/0x2A/0x2B
-    /// above) so it can never collide with a genuine field a future real-protocol discovery adds. A
-    /// real HDHomeRun client ignores an unknown TLV, same precedent as every `HdhrVCRplus*` JSON
-    /// extra elsewhere in this app — only this app's own `isGoodbye(fromReplyPacket:)` reader ever
-    /// looks for it. Set only by `broadcastAnnounce(goodbye:)`'s call from `stop()`, distinguishing
-    /// "this relay just stopped, on purpose" from an ordinary still-advertising re-announce (a
-    /// refresh, or `start()`'s own initial broadcast) — see `AppState.onFeedAnnounce`'s wiring for
-    /// what the receiving side does with it.
-    static func buildDiscoverReply(deviceID: UInt32, baseURL: String = "", tunerCount: UInt8 = 0,
-                                    isGoodbye: Bool = false) -> [UInt8] {
+    static func buildDiscoverReply(deviceID: UInt32, baseURL: String = "", tunerCount: UInt8 = 0) -> [UInt8] {
         var payload: [UInt8] = [0x01, 0x04, 0x00, 0x00, 0x00, 0x01]   // DeviceType = tuner (0x00000001)
         payload += [0x02, 0x04] + withUnsafeBytes(of: deviceID.bigEndian) { Array($0) }   // DeviceID
         let baseURLBytes = Array(baseURL.utf8.prefix(255))
@@ -419,7 +418,6 @@ final class VirtualTunerService {
         payload += [0x10, 0x01, tunerCount]                                                // TunerCount
         let lineupURLBytes = Array("\(baseURL)/lineup.json".utf8.prefix(255))
         payload += [0x27, UInt8(lineupURLBytes.count)] + lineupURLBytes                    // LineupURL
-        if isGoodbye { payload += [0xF0, 0x01, 0x01] }                                     // Goodbye (non-standard)
 
         var pkt: [UInt8] = [0x00, 0x03, UInt8(payload.count >> 8), UInt8(payload.count & 0xFF)] + payload
         let crc = crc32(pkt)
@@ -427,21 +425,27 @@ final class VirtualTunerService {
         return pkt
     }
 
-    /// Extracts the goodbye TLV (tag 0xF0) buildDiscoverReply's `isGoodbye` param adds — pure
-    /// inverse, same shape/reasoning as `deviceID(fromReplyPacket:)` above.
-    static func isGoodbye(fromReplyPacket bytes: [UInt8]) -> Bool {
-        guard bytes.count >= 4 else { return false }
+    /// Extracts the TunerCount TLV (tag 0x10, 1 byte) from a DISCOVER_REPLY packet's payload, or nil
+    /// if malformed/absent. Pure inverse of buildDiscoverReply's own TunerCount encoding, same
+    /// shape/reasoning as `deviceID(fromReplyPacket:)` above. This is also how the receiving side
+    /// tells an ordinary announce apart from stop()'s final "goodbye" one (2026-09-12 through
+    /// 2026-09-13 that distinction was a separate non-standard `0xF0` TLV — removed once it became
+    /// clear TunerCount alone already carried the same information: a relay only ever advertises
+    /// while actually recording, so a live announce's count is normally >=1, and `0` here can only
+    /// mean stop()'s own deliberate final broadcast — see `AppState.onFeedAnnounce`'s doc comment).
+    static func tunerCount(fromReplyPacket bytes: [UInt8]) -> Int? {
+        guard bytes.count >= 4 else { return nil }
         let payloadLen = Int(bytes[2]) << 8 | Int(bytes[3])
         let end = min(4 + payloadLen, bytes.count)
         var off = 4
         while off + 2 <= end {
             let tag = bytes[off], len = Int(bytes[off + 1])
             off += 2
-            guard off + len <= end else { return false }
-            if tag == 0xF0, len == 1, bytes[off] == 0x01 { return true }
+            guard off + len <= end else { return nil }
+            if tag == 0x10, len == 1 { return Int(bytes[off]) }
             off += len
         }
-        return false
+        return nil
     }
 
     /// Fallback generator only, as of 2026-09-03 — see `relayDeviceID(sourceDeviceID:)` below for

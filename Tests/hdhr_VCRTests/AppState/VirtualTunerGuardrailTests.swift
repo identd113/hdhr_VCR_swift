@@ -105,10 +105,11 @@ struct VirtualTunerGuardrailTests {
         // above) — connected()/disconnected() are the whole surface those call sites actually touch.
         let state = await makeTestAppState()
         #expect(await state.relayRawViewerCount == 0)
-        await MainActor.run { state.relayRawViewerConnected() }
-        await MainActor.run { state.relayRawViewerConnected() }
+        await MainActor.run { state.relayRawViewerConnected(showId: "show1") }
+        await MainActor.run { state.relayRawViewerConnected(showId: "show1") }
         #expect(await state.relayRawViewerCount == 2)
-        await MainActor.run { state.relayRawViewerDisconnected() }
+        #expect(await state.rawViewerCount(showId: "show1") == 2)
+        await MainActor.run { state.relayRawViewerDisconnected(showId: "show1") }
         #expect(await state.relayRawViewerCount == 1)
     }
 
@@ -118,7 +119,19 @@ struct VirtualTunerGuardrailTests {
         // must clamp at 0, not underflow into a negative count that would then need two connects to
         // recover from.
         let state = await makeTestAppState()
-        await MainActor.run { state.relayRawViewerDisconnected() }
+        await MainActor.run { state.relayRawViewerDisconnected(showId: "show1") }
         #expect(await state.relayRawViewerCount == 0)
+    }
+
+    @Test func relayRawViewerCount_isPerShow_notASingleMachineWideAggregate() async {
+        // A relay can advertise more than one concurrent recording (TunerCount > 1) —
+        // buildVirtualTunerLineupJSON needs each show's own count, not one shared total.
+        let state = await makeTestAppState()
+        await MainActor.run { state.relayRawViewerConnected(showId: "show1") }
+        await MainActor.run { state.relayRawViewerConnected(showId: "show2") }
+        await MainActor.run { state.relayRawViewerConnected(showId: "show2") }
+        #expect(await state.rawViewerCount(showId: "show1") == 1)
+        #expect(await state.rawViewerCount(showId: "show2") == 2)
+        #expect(await state.relayRawViewerCount == 3)
     }
 }

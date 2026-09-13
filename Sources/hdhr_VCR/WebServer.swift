@@ -1158,7 +1158,7 @@ final class WebServer: @unchecked Sendable {
                 // display time, in MenuContent, rather than unified into one running total here).
                 // Both hops land on MainActor since AppState isn't otherwise safe to touch from
                 // fileIOQueue.
-                Task { @MainActor in state.relayRawViewerConnected() }
+                Task { @MainActor in state.relayRawViewerConnected(showId: showId) }
                 self.streamGrowingFile(path: path, showId: showId, startOffset: currentSize, conn: conn,
                                         durationSeconds: durationSeconds,
                                         knownFileSizeAtOffsetComputation: currentSize,
@@ -1166,7 +1166,7 @@ final class WebServer: @unchecked Sendable {
                     self?.appState?.shows.first(where: { $0.show_id == showId })?.show_recording ?? false
                 },
                                         onStreamEnded: { [weak state] in
-                    Task { @MainActor in state?.relayRawViewerDisconnected() }
+                    Task { @MainActor in state?.relayRawViewerDisconnected(showId: showId) }
                 })
             }
         }
@@ -3531,6 +3531,11 @@ final class WebServer: @unchecked Sendable {
             // treat "field present" as "transcoding is active" without a magic-number check.
             let viewers = VLCBridge.shared.transcodeViewerCount(showId: show.show_id)
             if viewers > 0 { entry[VirtualTunerService.transcodeViewersKey] = viewers }
+            // See VirtualTunerService.rawViewersKey's own doc comment — this is the path
+            // watchRemoteRelay actually uses, so this field (not transcodeViewersKey) is what
+            // covers the common instance-watching-instance case.
+            let rawViewers = state.rawViewerCount(showId: show.show_id)
+            if rawViewers > 0 { entry[VirtualTunerService.rawViewersKey] = rawViewers }
             // See VirtualTunerService.signalQualityKey's own doc comment.
             if let snq = liveSignalQualityPercent(for: show, state: state) {
                 entry[VirtualTunerService.signalQualityKey] = snq

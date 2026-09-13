@@ -710,6 +710,12 @@ struct LineupEntry: Codable, Identifiable {
     // machine-wide, and reflects an already-active remote session rather than anything this
     // instance's own click would request. Omitted (nil) rather than 0 when no session is running.
     var virtualRelayTranscodeViewers: Int?
+    // Non-standard, set only by hdhrVCRplus's own virtual-tuner /lineup.json — sibling of
+    // virtualRelayTranscodeViewers above, covering the raw-passthrough path instead. See
+    // VirtualTunerService.rawViewersKey's own doc comment for why this is the field that actually
+    // covers the common case (watchRemoteRelay always requests raw). Omitted (nil) rather than 0
+    // when no raw viewer is connected.
+    var virtualRelayRawViewers: Int?
     // Non-standard, set only by hdhrVCRplus's own virtual-tuner /lineup.json — estimated signal
     // (0-100 snq, same scale/meaning as a real device's own /status.json SignalQualityPercent
     // field, see DeviceTunerInfo below) for the real tuner actually recording this show. Added
@@ -744,6 +750,7 @@ struct LineupEntry: Codable, Identifiable {
         case GuideNumber, GuideName, URL, HD, Favorite, VideoCodec, AudioCodec
         case virtualRelayShowTitle = "HdhrVCRplusShowTitle"
         case virtualRelayTranscodeViewers = "HdhrVCRplusTranscodeViewers"
+        case virtualRelayRawViewers = "HdhrVCRplusRawViewers"
         case virtualRelaySignalQualityPercent = "HdhrVCRplusSignalQualityPercent"
         case virtualRelaySourceHostname = "HdhrVCRplusSourceHostname"
         case virtualRelayEpisodeTitle = "HdhrVCRplusEpisodeTitle"

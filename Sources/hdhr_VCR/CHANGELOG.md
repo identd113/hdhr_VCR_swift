@@ -10,6 +10,10 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 **Added**
 - **First-Run Wizard now explains the VLC requirement up front.** A new step checks whether VLC.app is installed and, if not, offers a one-click path to get it: an "Install VLC via Homebrew" button (when Homebrew is detected) that copies the install command to your clipboard and opens Terminal for you to paste and run, or a direct download link otherwise. Every watching feature elsewhere in the app already dims itself and explains "(Requires VLC)" when it's missing — this just surfaces that fact before you go looking for it.
 
+**Info**
+- A security review found and fixed an unvalidated field in two internal web-guide API endpoints (transcode profile selection) that could have let another device on the same LAN send a malformed request to a tuner. No user-facing change.
+- A handful more internal FEED robustness fixes: a viewer connecting to or disconnecting from an in-progress FEED relay now promptly notifies other hdhrVCRplus instances on the LAN instead of waiting up to an hour for them to notice. Not visible in normal use, and doesn't apply while FEED stays disabled by default.
+
 ## v2.3.0 — 2026-09-11
 
 **Added**
