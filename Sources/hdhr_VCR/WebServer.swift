@@ -1599,6 +1599,9 @@ final class WebServer: @unchecked Sendable {
     // replaced exactly, while the read-retry itself now happens far more often.
     private static let liveEdgePollInterval: TimeInterval = 0.02
     private static let stillRecordingCheckEveryNPolls = 25
+    // Minimum waitStreak before a "caught up to live edge" / "resumed" pair is actually logged —
+    // see handleGrowingFileChunk's own comment on the pair it gates. 10 polls * 20ms = ~200ms.
+    private static let minLoggedWaitStreak = 10
 
     // Rounds a byte offset down to the nearest complete TS packet boundary — `offset` is usually
     // the recording file's momentary byte size (handleVirtualTunerStream's live-edge startOffset),
@@ -1686,9 +1689,14 @@ final class WebServer: @unchecked Sendable {
             // 50 MainActor hops/sec per connection — the interim polls just retry the read
             // directly on `queue`.
             let startedAt = waitStartedAt ?? Date()
-            if waitStreak == 0 {
-                glog("[WebServer] watch-recording show=\(showId) caught up to live edge at \(bytesSent) bytes — waiting for more data")
-            }
+            // No log here — logged (if at all) once the wait is known to have actually lasted,
+            // in the "resumed" branch below, which has both the byte offset and duration at once.
+            // Logging unconditionally on every waitStreak==0 entry flooded the log during a fast-
+            // growing recording (a live sports broadcast): confirmed live 2026-09-13, ~85
+            // lines/sec sustained for as long as anyone watched — the wait streak almost never
+            // survives past a single ~20ms poll when curl is writing that fast, so this fired on
+            // nearly every poll instead of only on genuine pauses, burning through the entire
+            // daily log-rotation budget (CLAUDE.md's ~20MB cap) in minutes.
             // Force the small chunk size from here on, regardless of what chunkSize was reading
             // with — reaching a genuine empty read means there's no backlog left to drain, by
             // definition, even if the non-empty branch below never happened to see a short read
@@ -1721,8 +1729,14 @@ final class WebServer: @unchecked Sendable {
             }
             return
         }
-        if waitStreak > 0, let waitStartedAt {
-            glog("[WebServer] watch-recording show=\(showId) resumed after \(String(format: "%.1f", Date().timeIntervalSince(waitStartedAt)))s wait (\(waitStreak) polls)")
+        // Only a wait that actually lasted a handful of polls is worth a log line — a streak that
+        // resolves within one ~20ms poll (extremely common while a fast-growing recording is being
+        // watched) is normal steady-state operation, not the kind of pause ISSUES.md's FEED stall
+        // investigation cared about. bytesSent here is still the pre-this-chunk total, i.e. exactly
+        // the byte offset the wait started at — folded into this one line instead of a separate
+        // "caught up" line the empty-chunk branch above used to log unconditionally.
+        if waitStreak >= Self.minLoggedWaitStreak, let waitStartedAt {
+            glog("[WebServer] watch-recording show=\(showId) resumed after \(String(format: "%.1f", Date().timeIntervalSince(waitStartedAt)))s wait (\(waitStreak) polls, caught up at \(bytesSent) bytes)")
         }
         // A read that came back shorter than what was asked for means there wasn't a full
         // chunkSize's worth of backlog actually sitting on disk — i.e. this connection has caught
