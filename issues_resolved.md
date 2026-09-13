@@ -1473,4 +1473,4 @@ One of the ten findings from the 2026-09-12 full-app review (`ISSUES.md`) fixed 
 
 **Fix**: added `Show.validTranscodeProfiles` — the full 8-name whitelist (`none`/`heavy`/`mobile`/`internet720`/`internet540`/`internet480`/`internet360`/`internet240`) already documented in `VLCBridge.transcodeBitrateKbps(for:)`'s own doc comment — and validated the incoming `transcode` field against it in both `handleRecord` (rejects with `{"ok": false, "error": "Invalid transcode profile"}`) and `handleEdit` (rejects with a `400`), before the value is ever stored.
 
-**Resolving commit**: pending (uncommitted at time of writing)
+**Resolving commit**: `16aaacc`
