@@ -1610,3 +1610,13 @@ Two related pieces of work from the same session, both explicit user requests ra
 **Resolving commit**: `0b54613`
 
 **Addendum, same day**: audited for other entry points into the same `@State show` — found `applyPendingEntry` (the quick-add/right-click path via `state.pendingAddEntry`, which skips the guide step) had the identical gap, un-fixed by the above. Given the same `show.show_id` regeneration fix. `EditShowView`'s equivalent single-instance-window pattern was also checked and is *not* vulnerable — its `loadShow()` already fully reloads `show` from `state.shows` on every `.onChange(of: state.editingShowId)`, by design (edits an existing show by ID rather than minting a new one). Resolving commit: `fc40f75`.
+
+## RESOLVED — `handleGrowingFileChunk`'s live-edge wait/resume logging flooded the log during a fast-growing recording
+
+**Files:** `WebServer.swift`
+
+**Root cause**: live-caught 2026-09-13 during a real recording/watch/FEED test — the "caught up to live edge" (`waitStreak == 0`) / "resumed after Xs wait" (`waitStreak > 0`) log pair in `handleGrowingFileChunk`'s empty-chunk branch logged unconditionally on every transition, with no minimum-duration gate. While watching an in-progress recording of a live sports broadcast (data arriving faster than the 20ms poll interval), the wait streak almost never survived past a single poll — so the pair fired on nearly every ~20ms cycle instead of only on genuine pauses, sustaining ~85 log lines/sec for as long as anyone watched. This filled the entire ~20MB daily rotation budget (`RotatingLogFile`, CLAUDE.md's Logs section) in a few minutes, pushing the day's own earlier history (including this same day's FEED code-review work) into the `.log.1` generation and toward permanent eviction on the next rotation. Both `handleWatchRecording` (local in-app Watch Now) and `handleVirtualTunerStream` (the FEED relay — Channels app / another instance's VLC) share this same `streamGrowingFile`/`pumpGrowingFile`/`handleGrowingFileChunk` path, so both were affected identically.
+
+**Fix**: collapsed the two log lines into one (byte offset + duration together, using `bytesSent`'s already-correct pre-this-chunk value), gated on a new `minLoggedWaitStreak` (10 polls, ~200ms) instead of firing on every transition — a real pause is still logged with full detail; a sub-poll-cycle blip (the common case at high growth rates) logs nothing.
+
+**Resolving commit**: `c48772d`
