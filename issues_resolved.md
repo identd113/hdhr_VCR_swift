@@ -1620,3 +1620,13 @@ Two related pieces of work from the same session, both explicit user requests ra
 **Fix**: collapsed the two log lines into one (byte offset + duration together, using `bytesSent`'s already-correct pre-this-chunk value), gated on a new `minLoggedWaitStreak` (10 polls, ~200ms) instead of firing on every transition — a real pause is still logged with full detail; a sub-poll-cycle blip (the common case at high growth rates) logs nothing.
 
 **Resolving commit**: `c48772d`
+
+## RESOLVED — Watching an in-progress recording (Watch Now) or a remote FEED relay never prevented system sleep
+
+**Files:** `AppState.swift`, `docs/RecordingManager.md`
+
+**Root cause**: only two of the app's sleep-relevant states held an IOKit assertion — an active recording (`RecordingManager.start`/`reattach`) and live-channel watching (`watchInApp`, sized from the current guide entry's end time). `watchRecordingInApp` and `watchRemoteRelay` never called `preventSleep` at all; `watchRemoteRelay`'s own doc comment explicitly noted this as a known gap ("a remote relay's synthetic channel has none") rather than a bug. Live-caught 2026-09-13: a laptop watching another instance's FEED relay went to sleep mid-playback (a VLC `STALL` logged at the transition), confirming the gap in practice, not just in theory.
+
+**Fix**: added `AppState.maintainVLCSleepAssertionIfNeeded()`, called every `idleLoop()` tick (~5s) — re-arms a rolling 300s `"vlc"` assertion whenever `VLCBridge.recordingShowId` or `VLCPlayerWindowManager.currentFeedRemoteURL` is active, no-op otherwise. Unlike `watchInApp`'s one-shot guide-entry-bounded duration, neither of these two paths knows a bounded end time up front (a recording keeps growing; a remote relay has no guide entry), so a short rolling re-arm was used instead of a longer one-time duration.
+
+**Resolving commit**: `7e7f35c`
