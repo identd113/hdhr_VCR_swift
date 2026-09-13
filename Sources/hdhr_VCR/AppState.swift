@@ -2322,6 +2322,7 @@ final class AppState: ObservableObject {
         guard !idleLoopRunning else { return }
         idleLoopRunning = true
         defer { idleLoopRunning = false }
+        maintainVLCSleepAssertionIfNeeded()
         let now = Date()
         var dirty = false
 
@@ -4441,6 +4442,26 @@ final class AppState: ObservableObject {
         }
     }
 
+    // Keeps the "vlc" sleep-prevention assertion continuously renewed while watching an in-progress
+    // recording locally (watchRecordingInApp) or another instance's FEED relay remotely
+    // (watchRemoteRelay) — neither path knows a bounded end time up front the way watchInApp's
+    // live-channel case does (an in-progress recording keeps growing; a remote relay's synthetic
+    // channel has no guide entry at all), so unlike that case's one-shot duration computed from the
+    // guide entry's end time, this re-arms a short assertion every idleLoop() tick (~5s) instead.
+    // Confirmed live 2026-09-13: a laptop watching a remote FEED relay went to sleep mid-playback
+    // (a VLC STALL logged right at the transition) because neither of these two paths held any
+    // assertion at all — only live-channel watching and active recordings did. Called unconditionally
+    // every tick; cheap when nothing needs it (one property check, no assertion churn) and, since
+    // `preventSleep` starts by releasing any stale assertion for the same id, re-arming a still-valid
+    // one is harmless. The 300s duration is comfortably longer than the ~5s tick interval, so a
+    // missed or delayed tick doesn't let the assertion lapse prematurely.
+    private func maintainVLCSleepAssertionIfNeeded() {
+        let isWatchingRecordingOrRelay = VLCBridge.shared.recordingShowId != nil
+            || VLCPlayerWindowManager.shared.currentFeedRemoteURL != nil
+        guard isWatchingRecordingOrRelay else { return }
+        recordingManager.preventSleep(id: "vlc", reason: "Watching recording/FEED relay", duration: 300)
+    }
+
     /// FEED client-side local relay (docs/VirtualTunerService.md) — registers `remoteURL` (another
     /// Mac's in-progress recording, served by its own /auto/v<channel> route) with WebServer under
     /// a fresh opaque session id, then returns a 127.0.0.1 URL for VLC to open instead. WebServer's
@@ -4473,8 +4494,10 @@ final class AppState: ObservableObject {
     /// gate exists to protect a REAL device's limited physical tuner count, which doesn't apply
     /// here (a virtual relay is a disk-relay of content already being captured, not a tuner — the
     /// whole point of this feature is to let unlimited viewers watch it without any of them
-    /// occupying a tuner slot). No sleep-prevention either: that's driven by a local guide entry,
-    /// and a remote relay's synthetic channel has none.
+    /// occupying a tuner slot). Sleep prevention is handled separately here too — a remote relay's
+    /// synthetic channel has no guide entry to compute a one-shot duration from the way watchInApp's
+    /// live-channel case does, so it's covered instead by maintainVLCSleepAssertionIfNeeded()'s
+    /// per-idleLoop-tick renewal (keyed off currentFeedRemoteURL, set by startFeedLocalRelay below).
     func watchRemoteRelay(url: String, title: String, device: HDHRDevice) {
         guard VLCBridge.shared.isAvailable, !url.isEmpty else { return }
         let mgr = VLCPlayerWindowManager.shared

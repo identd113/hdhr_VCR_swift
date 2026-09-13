@@ -48,7 +48,8 @@ Each recording produces **one ps line**: a direct `curl` process in its own POSI
 Sleep assertions are tracked by key in `assertionIds: [String: IOPMAssertionID]`:
 
 - **Per recording**: key = `showId`. Created in `start()` and `reattach()` for `durationSeconds + 300` seconds.
-- **Watch Now**: key = `"vlc"`. Created in `AppState.watchInApp()` when a guide entry's end time is known, sized to `max(60, entry.endDate.timeIntervalSinceNow) + 300`.
+- **Live channel watch**: key = `"vlc"`. Created in `AppState.watchInApp()` when a guide entry's end time is known, sized to `max(60, entry.endDate.timeIntervalSinceNow) + 300`.
+- **Watching an in-progress recording (Watch Now) or another instance's FEED relay**: same `"vlc"` key, but neither `watchRecordingInApp` nor `watchRemoteRelay` can compute a one-shot duration up front (a recording keeps growing; a remote relay's synthetic channel has no guide entry at all) — added 2026-09-13 after a laptop went to sleep mid-FEED-playback with no assertion held at all. Instead, `AppState.maintainVLCSleepAssertionIfNeeded()` runs on every `idleLoop()` tick (~5s) and re-arms a fresh 300s assertion whenever `VLCBridge.shared.recordingShowId` or `VLCPlayerWindowManager.shared.currentFeedRemoteURL` is non-nil — a no-op when neither is playing.
 
 `preventSleep(id:reason:duration:)` releases any existing assertion for that key before creating a new one, preventing stale assertions from accumulating on repeated calls.
 
