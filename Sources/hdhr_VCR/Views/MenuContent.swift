@@ -427,7 +427,18 @@ struct MenuContent: View {
     private func recordingMenu(_ show: Show) -> some View {
         let recNow       = Date()
         let recEntries   = state.guideEntries(deviceId: show.hdhr_record, channelNum: show.show_channel)
-        let currentEntry = recEntries.first { $0.startDate <= recNow && $0.endDate > recNow }
+        // Anchored to the show's own scheduled start (show_next), not wall-clock `recNow` — a
+        // Bonus Time recording keeps running past its guide slot's own end time, so querying "what's
+        // airing on this channel right now" once `recNow` passes that end time resolves to whatever
+        // *different* program the channel has since moved on to, not the one actually being
+        // recorded. Confirmed live 2026-09-13: a Bonus Time NFL Football recording started showing
+        // a completely unrelated news-magazine episode's title/episode info mid-recording once the
+        // channel's own guide entry rolled over, even though the recording itself correctly kept
+        // capturing the football game. Using the show's own start time instead always resolves to
+        // the entry that was airing when recording began, which never changes for the life of the
+        // recording regardless of how long Bonus Time extends past it.
+        let anchorTime   = show.show_next ?? recNow
+        let currentEntry = recEntries.first { $0.startDate <= anchorTime && $0.endDate > anchorTime }
         let recEp        = currentEntry.flatMap { $0.episodeInfoLabel }
         let menuTitle    = recEp.map { "🔴 \(show.show_title) · \($0)" } ?? "🔴 \(show.show_title)"
         let isSportsBonus = state.config.Sports_padding_enabled && show.show_bonus_time

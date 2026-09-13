@@ -100,11 +100,19 @@ struct VLCPlayerView: View {
         // recordingChannelEntries makes for the channel picker — not a real channel number the
         // guide is keyed by, so it never matches below on its own. Resolve it back to the show's
         // actual channel first so poster/synopsis still resolve while watching a recording.
-        let channelNum = showId(fromLiveGuideNumber: ch.GuideNumber)
-            .flatMap { id in state.recordingShows.first { $0.show_id == id }?.show_channel }
-            ?? ch.GuideNumber
+        let recordingShow = showId(fromLiveGuideNumber: ch.GuideNumber)
+            .flatMap { id in state.recordingShows.first { $0.show_id == id } }
+        let channelNum = recordingShow?.show_channel ?? ch.GuideNumber
+        // Anchored to the recording's own scheduled start, not wall-clock `now`, when watching a
+        // recording — same fix as MenuContent.recordingMenu's identical bug: a Bonus Time recording
+        // keeps running past its guide slot's own end, so querying "what's live on this channel
+        // right now" past that point resolves to whatever program the channel has since moved on
+        // to, not the one actually being recorded. Confirmed live 2026-09-13 (MenuContent's
+        // "Recording Now" row showed an unrelated news-magazine episode mid-Bonus-Time-recording).
+        // Plain live-channel selections (recordingShow == nil) keep using wall-clock `now`, unchanged.
+        let anchorTime = recordingShow?.show_next ?? now
         return state.guideEntries(deviceId: device.DeviceID, channelNum: channelNum)
-            .first { $0.startDate <= now && $0.endDate > now }
+            .first { $0.startDate <= anchorTime && $0.endDate > anchorTime }
     }
 
     // Falls back to the FEED relay's own lineup extra (see currentFeedEntry's own doc comment)
