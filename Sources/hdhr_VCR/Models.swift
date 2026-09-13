@@ -249,6 +249,23 @@ struct Show: Identifiable, Equatable {
         genre?.lowercased().contains("sport") == true
     }
 
+    // What codec this show's own recording actually is — accounting for a real hardware
+    // transcode profile, which overrides the channel's own raw broadcast codec. A channel's
+    // /lineup.json VideoCodec reflects its native over-the-air/cable encoding (e.g. "MPEG2");
+    // it says nothing about what a per-show transcode profile actually produced once applied.
+    // Confirmed live 2026-09-13 via ffprobe against a real "heavy" recording: MPEG-TS container,
+    // H.264 video (High profile), AC-3 audio — every real EXTEND profile (heavy/mobile/
+    // internet*) produces H.264, never anything else.
+    //
+    // `deviceSupportsTranscode` mirrors the same gate `AppState.startRecording` applies (CLAUDE.md's
+    // "Transcode capability gate" invariant) — `show_transcode` alone isn't authoritative, since it
+    // stays at the user's saved choice even on a device that doesn't actually support hardware
+    // transcode, in which case the real recording used "none" regardless of what this show says.
+    static func effectiveVideoCodec(transcode: String, deviceSupportsTranscode: Bool, channelVideoCodec: String?) -> String? {
+        guard deviceSupportsTranscode, transcode != "none", !transcode.isEmpty else { return channelVideoCodec }
+        return "H264"
+    }
+
     // The full set of real, EXTEND-only transcode profile names this app recognizes — mirrors
     // VLCBridge.transcodeBitrateKbps(for:)'s own doc comment on where this list comes from.
     // WebServer's two mutating web-guide endpoints that accept a caller-supplied transcode string

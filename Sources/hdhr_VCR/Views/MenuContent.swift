@@ -205,21 +205,29 @@ struct MenuContent: View {
                     let title = pair.entry.virtualRelayShowTitle ?? pair.entry.GuideName
                     let vlcReady = VLCBridge.shared.isAvailable
                     let codec = pair.entry.VideoCodec ?? "unknown"
-                    // Only offer H.264 when the source isn't already a modern codec — the remote
-                    // relay's own "Already-modern-codec skip" (docs/VirtualTunerService.md) would
-                    // just relay it as-is regardless of this request, making a second, functionally
-                    // identical button pointless. VideoCodec being unset/"unknown" (an older
-                    // firmware, or this app's own synthetic virtual-relay lineup entries never
-                    // setting it) is treated as "not confirmed modern" — offer it, don't hide it.
+                    // Only offer a second, H.264-transcode-request button when the source isn't
+                    // already a modern codec — the remote relay's own "Already-modern-codec skip"
+                    // (docs/VirtualTunerService.md) would just relay it as-is regardless of this
+                    // request, making a second, functionally identical button pointless.
+                    // VideoCodec being unset/"unknown" (an older firmware, or this app's own
+                    // synthetic virtual-relay lineup entries never setting it) is treated as "not
+                    // confirmed modern" — offer it, don't hide it.
                     let alreadyModern = MPEGVideoStreamType.isAlreadyModernCodec(codec)
+                    // When already modern, the plain Watch button *is* the H.264 stream — label it
+                    // that way directly instead of a plain "Watch" plus a separate "You'll get:
+                    // H264" footnote explaining what you're about to click. Added 2026-09-13,
+                    // explicit user request: two ways of saying the same thing was more confusing
+                    // than one clear one.
+                    let watchLabel = alreadyModern ? "Watch (\(VLCPlayerView.displayCodecName(codec)))" : "Watch"
+                    let watchAccessibilityLabel = alreadyModern ? watchInAppH264Label(title) : watchInAppLabel(title)
                     Menu {
                         Button {
                             state.watchRemoteRelay(url: pair.entry.URL ?? "", title: title, device: pair.device)
                         } label: {
-                            Label(gatedLabel("Watch", met: vlcReady, requirement: "VLC"), systemImage: "play.tv.fill")
+                            Label(gatedLabel(watchLabel, met: vlcReady, requirement: "VLC"), systemImage: "play.tv.fill")
                         }
                         .disabled(!vlcReady)
-                        .accessibilityLabel(gatedLabel(watchInAppLabel(title), met: vlcReady, requirement: "VLC"))
+                        .accessibilityLabel(gatedLabel(watchAccessibilityLabel, met: vlcReady, requirement: "VLC"))
                         if !alreadyModern {
                             Button {
                                 // "auto" (any non-empty, non-"none" string) only tells the remote
@@ -236,14 +244,7 @@ struct MenuContent: View {
                             .accessibilityLabel(gatedLabel(watchInAppH264Label(title), met: vlcReady, requirement: "VLC"))
                         }
                         Divider()
-                        // "Source" is always accurate; "You'll get" only describes the plain Watch
-                        // button above — when a second, H.264-transcoded option is also offered,
-                        // the two buttons' own labels already say which is which, so this line is
-                        // skipped rather than shown twice with two different meanings.
                         menuInfo("Source: \(codec)", font: .footnote, secondary: true)
-                        if alreadyModern {
-                            menuInfo("You'll get: \(codec)", font: .footnote, secondary: true)
-                        }
                         // Reflects an already-active remote transcode session (any viewer of THIS
                         // show on the remote Mac, not just this instance) — see
                         // VirtualTunerService.transcodeViewersKey's own doc comment. Omitted

@@ -1101,8 +1101,20 @@ final class WebServer: @unchecked Sendable {
             // channels genuinely already report "H264", not "MPEG2") — no disk I/O needed at all.
             // Only nil for older firmware or this app's own synthetic virtual-relay lineup entries,
             // which don't set it — the on-disk PAT/PMT probe below is the fallback for that case.
-            let lineupVideoCodec = state.lineups[show.hdhr_record]?
+            //
+            // Show.effectiveVideoCodec, added 2026-09-13: the raw channel-level VideoCodec above
+            // reflects the channel's native broadcast encoding, not what this specific recording's
+            // own `show_transcode` profile actually produced — a "heavy"/etc. hardware transcode
+            // always yields real H.264 regardless of what the channel itself broadcasts. Without
+            // this, a hardware-transcoded recording's channel still reporting e.g. "MPEG2" would
+            // make this check wrongly think a re-encode is needed, redundantly re-transcoding an
+            // already-H.264 file the instant a viewer's H.264 toggle requested one.
+            let channelVideoCodec = state.lineups[show.hdhr_record]?
                 .first(where: { $0.GuideNumber == channel })?.VideoCodec
+            let deviceSupportsTranscode = state.devices.first(where: { $0.DeviceID == show.hdhr_record })?.supportsTranscode ?? false
+            let lineupVideoCodec = Show.effectiveVideoCodec(transcode: show.show_transcode,
+                                                             deviceSupportsTranscode: deviceSupportsTranscode,
+                                                             channelVideoCodec: channelVideoCodec)
             let path = show.show_recording_path
             let showId = show.show_id
             self.fileIOQueue.async { [state] in
@@ -3520,10 +3532,19 @@ final class WebServer: @unchecked Sendable {
             ]
             // Standard field (VideoCodec), not a custom Hdhr... key — a discovering hdhrVCRplus
             // instance's own LineupEntry decode already recognizes it from a real device's lineup,
-            // so no client-side change is needed to surface the source's actual broadcast codec
-            // (MPEG2/H264/...) for MenuContent's "Recording on Another Mac" submenu. The relay has
-            // no codec of its own — it's relaying whatever the source device's channel already is.
-            if let codec = sourceEntry?.VideoCodec { entry["VideoCodec"] = codec }
+            // so no client-side change is needed to surface the source's actual codec (MPEG2/
+            // H264/...) for MenuContent's "Recording on Another Mac" submenu and VLCPlayerView's
+            // "Native" popover. Show.effectiveVideoCodec, added 2026-09-13: the channel's own raw
+            // VideoCodec reflects its native broadcast encoding, not what this specific show's
+            // own `show_transcode` profile actually produced once recording started — without
+            // this, a hardware-transcoded (real H.264) recording on a channel that itself
+            // broadcasts MPEG2 would publish the wrong codec to every discovering instance.
+            let sourceDeviceSupportsTranscode = state.devices.first(where: { $0.DeviceID == show.hdhr_record })?.supportsTranscode ?? false
+            if let codec = Show.effectiveVideoCodec(transcode: show.show_transcode,
+                                                     deviceSupportsTranscode: sourceDeviceSupportsTranscode,
+                                                     channelVideoCodec: sourceEntry?.VideoCodec) {
+                entry["VideoCodec"] = codec
+            }
             // Per-show, not machine-wide (explicit design direction) — reflects whether ANY viewer
             // is currently watching THIS show transcoded, and how many, regardless of what this
             // discovering instance's own click would request (it never requests one —

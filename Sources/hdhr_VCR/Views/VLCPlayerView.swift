@@ -179,24 +179,53 @@ struct VLCPlayerView: View {
     // favorite and its numeric neighbors instead of stepping through the dial in order.
     private var channelCycleOrder: [LineupEntry] { recordingChannelEntries + lineup }
 
-    // HDHomeRun raw streams are always MPEG-2/AC-3. A real device EXTEND transcode profile
-    // (Default_transcode/show_transcode via Config.applyTranscode — "heavy"/"mobile"/
-    // "internet720"/etc, never the literal string "auto") is the tuner's own hardware
-    // transcoder, which produces H.264/AAC. The one case that specifically appends the literal
-    // "&transcode=auto" is a FEED (virtual tuner relay) request — VLCPlayerView's raw/H.264
-    // toggle and MenuContent's "Watch (H.264)" item both do this — which is this app's own
-    // software transcode via VLCBridge.startTranscodeSession, producing H.264/AC-3
-    // (acodec=a52, changed 2026-09-04; see that function's own doc comment).
+    // HDHomeRun raw streams are always MPEG-2/AC-3. Every real, actually-applied transcode
+    // path — a real device EXTEND hardware profile (heavy/mobile/internet*) *and* this app's own
+    // software transcode (VLCBridge.startTranscodeSession, the FEED raw/H.264 toggle and
+    // MenuContent's "Watch (H.264)" item) — produces H.264/AC-3. Confirmed live 2026-09-13 via
+    // ffprobe against a real "heavy" hardware-transcoded recording (previously assumed AAC for
+    // the hardware-profile case; that was never actually verified and was wrong).
     private var inferredCodecs: (video: String, audio: String) {
-        // FEED (client-side local relay, docs/VirtualTunerService.md) has already swapped
-        // bridge.currentURL for a local http://127.0.0.1/api/feed-local-relay?... URL that never
-        // carries &transcode= regardless of what the remote source is actually sending — check the
-        // true remote URL for that case instead, same fix as currentFeedEntry/feedIsTranscoding below.
-        let url = device.isVirtualRelay
-            ? (VLCPlayerWindowManager.shared.currentFeedRemoteURL ?? "")
-            : (bridge.currentURL ?? "")
-        guard url.contains("transcode=") else { return ("MPEG-2", "AC-3") }
-        return url.contains("transcode=auto") ? ("H.264", "AC-3") : ("H.264", "AAC")
+        // FEED: the source Mac's own effective codec is now published directly in /lineup.json
+        // (Show.effectiveVideoCodec, WebServer.buildVirtualTunerLineupJSON) — already accounts
+        // for a real hardware transcode profile overriding the channel's own raw broadcast
+        // codec, so this is authoritative rather than a guess from a URL query string (raw
+        // passthrough of an already-modern-codec recording never carries &transcode= at all,
+        // which the old URL-only heuristic had no way to see past).
+        if device.isVirtualRelay {
+            // feedIsTranscoding first: once the viewer's own H.264 toggle has requested a
+            // software transcode (&transcode=auto on the remote URL), what's actually arriving
+            // is genuinely H.264 regardless of what the *source* recording itself is — checking
+            // currentFeedEntry?.VideoCodec alone (the source's own codec) would keep reporting
+            // the untransformed source codec even while watching a transcoded stream.
+            if feedIsTranscoding { return ("H.264", "AC-3") }
+            let codec = currentFeedEntry?.VideoCodec ?? "unknown"
+            guard MPEGVideoStreamType.isAlreadyModernCodec(codec) else { return ("MPEG-2", "AC-3") }
+            return (Self.displayCodecName(codec), "AC-3")
+        }
+        // Local Watch Now (recording-relay): same effective-codec logic, computed directly since
+        // both the show and its device are already known locally — no publishing step needed.
+        if let showId = bridge.recordingShowId, let show = state.shows.first(where: { $0.show_id == showId }) {
+            let deviceSupportsTranscode = state.devices.first(where: { $0.DeviceID == show.hdhr_record })?.supportsTranscode ?? false
+            let channelCodec = state.lineups[show.hdhr_record]?.first(where: { $0.GuideNumber == show.show_channel })?.VideoCodec
+            let codec = Show.effectiveVideoCodec(transcode: show.show_transcode,
+                                                  deviceSupportsTranscode: deviceSupportsTranscode,
+                                                  channelVideoCodec: channelCodec) ?? "unknown"
+            guard MPEGVideoStreamType.isAlreadyModernCodec(codec) else { return ("MPEG-2", "AC-3") }
+            return (Self.displayCodecName(codec), "AC-3")
+        }
+        // Live channel, not a relay of any kind — the only remaining producer of a &transcode=
+        // URL param is this app's own on-the-fly software transcode toggle.
+        let url = bridge.currentURL ?? ""
+        return url.contains("transcode=") ? ("H.264", "AC-3") : ("MPEG-2", "AC-3")
+    }
+
+    // "H264" (the raw VideoCodec string form) → "H.264" for display; anything else passed through
+    // as-is (e.g. "HEVC" already reads fine unpunctuated). Internal, not private — MenuContent's
+    // "Recording on Another Mac" menu reuses this for its own already-modern "Watch (H.264)"
+    // label, so the two surfaces can't drift on how a codec string is displayed.
+    static func displayCodecName(_ codec: String) -> String {
+        codec.uppercased() == "H264" ? "H.264" : codec
     }
 
     // A plain stat of the recording file's current size. Only ever called from the "Native" button's
@@ -1000,96 +1029,99 @@ struct VLCPlayerView: View {
                     VLCBridge.shared.setVolume(Int(v))
                 }
 
-            // Audio track picker — shown when the stream has more than one audio track
-            if bridge.audioTracks.count > 1 {
-                Divider().frame(height: 18)
-                Image(systemName: "headphones")
-                    .foregroundStyle(.secondary)
-                    .accessibilityHidden(true)   // decorative — the Picker below carries the real label
-                Picker("Audio Track", selection: $selectedAudioTrackId) {
-                    ForEach(bridge.audioTracks, id: \.id) { track in
-                        Text(track.name).tag(track.id)
-                    }
-                }
-                .labelsHidden()
-                .frame(maxWidth: 150)
-                .accessibilityLabel("Audio track")
-                .accessibilityIdentifier("vlc-audio-track-picker")
-                .onChange(of: selectedAudioTrackId) { _, id in
-                    guard id >= 0 else { return }
-                    VLCBridge.shared.setAudioTrack(id: id)
-                }
-            }
-
-            // CC picker — shown only when closed-caption tracks are detected in the stream, and
-            // never for a recording-relay session (bridge.recordingShowId != nil): switching SPU
-            // tracks while reading the relay's on-disk file back doesn't produce a visible
-            // result, so a pulldown that looks like it does something but doesn't would be worse
-            // than not offering it at all.
-            if !bridge.spuTracks.isEmpty, bridge.recordingShowId == nil {
-                Divider().frame(height: 18)
-                Image(systemName: "captions.bubble")
-                    .foregroundStyle(selectedSpuTrackId >= 0 ? .primary : .secondary)
-                    .accessibilityHidden(true)   // decorative — the Picker below carries the real label
-                // A custom binding, not $selectedSpuTrackId directly, so only a real tap here
-                // (never the programmatic resets elsewhere) marks the choice explicit — see
-                // spuChoiceIsExplicit's own doc comment for why -1 alone can't tell them apart.
-                Picker("Captions", selection: Binding(
-                    get: { selectedSpuTrackId },
-                    set: { selectedSpuTrackId = $0; spuChoiceIsExplicit = true }
-                )) {
-                    Text("Off").tag(Int32(-1))
-                    ForEach(bridge.spuTracks, id: \.id) { track in
-                        Text(track.name).tag(track.id)
-                    }
-                }
-                .labelsHidden()
-                .frame(maxWidth: 130)
-                .accessibilityLabel("Closed captions")
-                .accessibilityIdentifier("vlc-cc-picker")
-                .onChange(of: selectedSpuTrackId) { _, id in
-                    VLCBridge.shared.setSpuTrack(id: id)
-                }
-            }
-
-            // Audio output picker — all CoreAudio output devices (built-in, Bluetooth, AirPlay, USB)
-            if !systemDevices.isEmpty {
-                Divider().frame(height: 18)
-                Image(systemName: "airplayaudio").foregroundStyle(.secondary)
-                    .accessibilityHidden(true)   // decorative — the Picker below carries the real label
-                Picker("Audio Output", selection: $selectedDevice) {
-                    ForEach(systemDevices, id: \.id) { dev in
-                        Text(dev.name).tag(dev.id)
-                    }
-                }
-                .labelsHidden()
-                .frame(maxWidth: 200)
-                .accessibilityLabel("Audio output")
-                .accessibilityIdentifier("vlc-audio-output-picker")
-                .onChange(of: selectedDevice) { _, devId in
-                    VLCBridge.shared.setAudioDevice(output: "auhal", deviceId: devId)
-                }
-            }
-
-            // Screen picker — shown when a second display (including AirPlay) is available.
-            // Connect an AirPlay display via Control Center → Screen Mirroring first.
-            if availableScreens.count > 1 {
+            // Audio track / captions / audio output / display — consolidated into one overflow
+            // menu (added 2026-09-13) rather than up to four always-visible icon+picker+divider
+            // groups. These are "set once per session, rarely touched again" choices, unlike the
+            // channel picker/catch-up/native/volume controls above, which stay directly in the
+            // toolbar since they're adjusted far more often. No option was removed — every one of
+            // these four sub-menus keeps exactly the same visibility condition and side effect
+            // (VLCBridge call / state update) it had as a standalone Picker; still individually
+            // hidden here when not applicable (e.g. a single-audio-track live channel shows no
+            // "Audio Track" row at all, same as it previously showed no picker at all).
+            let hasAudioTrackChoice = bridge.audioTracks.count > 1
+            let hasCaptionChoice = !bridge.spuTracks.isEmpty && bridge.recordingShowId == nil
+            let hasOutputChoice = !systemDevices.isEmpty
+            let hasDisplayChoice = availableScreens.count > 1
+            if hasAudioTrackChoice || hasCaptionChoice || hasOutputChoice || hasDisplayChoice {
                 Divider().frame(height: 18)
                 Menu {
-                    ForEach(availableScreens, id: \.displayID) { screen in
-                        Button(screen.localizedName) {
-                            VLCPlayerWindowManager.shared.moveToScreen(screen)
-                        }
+                    if hasAudioTrackChoice {
+                        Menu {
+                            ForEach(bridge.audioTracks, id: \.id) { track in
+                                Button {
+                                    selectedAudioTrackId = track.id
+                                    VLCBridge.shared.setAudioTrack(id: track.id)
+                                } label: {
+                                    if track.id == selectedAudioTrackId { Label(track.name, systemImage: "checkmark") }
+                                    else { Text(track.name) }
+                                }
+                            }
+                        } label: { Label("Audio Track", systemImage: "headphones") }
+                        .accessibilityIdentifier("vlc-audio-track-picker")
+                    }
+                    // Never for a recording-relay session (bridge.recordingShowId != nil):
+                    // switching SPU tracks while reading the relay's on-disk file back doesn't
+                    // produce a visible result, so a menu that looks like it does something but
+                    // doesn't would be worse than not offering it at all.
+                    if hasCaptionChoice {
+                        Menu {
+                            // A direct assignment here (not the custom binding the old Picker
+                            // used) still marks the choice explicit — spuChoiceIsExplicit only
+                            // exists to distinguish a real tap from the programmatic resets
+                            // elsewhere in this file, and every path through this menu is a real tap.
+                            Button {
+                                selectedSpuTrackId = -1; spuChoiceIsExplicit = true
+                                VLCBridge.shared.setSpuTrack(id: -1)
+                            } label: {
+                                if selectedSpuTrackId < 0 { Label("Off", systemImage: "checkmark") } else { Text("Off") }
+                            }
+                            ForEach(bridge.spuTracks, id: \.id) { track in
+                                Button {
+                                    selectedSpuTrackId = track.id; spuChoiceIsExplicit = true
+                                    VLCBridge.shared.setSpuTrack(id: track.id)
+                                } label: {
+                                    if track.id == selectedSpuTrackId { Label(track.name, systemImage: "checkmark") }
+                                    else { Text(track.name) }
+                                }
+                            }
+                        } label: { Label("Captions", systemImage: "captions.bubble") }
+                        .accessibilityIdentifier("vlc-cc-picker")
+                    }
+                    if hasOutputChoice {
+                        Menu {
+                            ForEach(systemDevices, id: \.id) { dev in
+                                Button {
+                                    selectedDevice = dev.id
+                                    VLCBridge.shared.setAudioDevice(output: "auhal", deviceId: dev.id)
+                                } label: {
+                                    if dev.id == selectedDevice { Label(dev.name, systemImage: "checkmark") }
+                                    else { Text(dev.name) }
+                                }
+                            }
+                        } label: { Label("Audio Output", systemImage: "airplayaudio") }
+                        .accessibilityIdentifier("vlc-audio-output-picker")
+                    }
+                    // Move-to-display — connect an AirPlay display via Control Center → Screen
+                    // Mirroring first for it to show up here.
+                    if hasDisplayChoice {
+                        Menu {
+                            ForEach(availableScreens, id: \.displayID) { screen in
+                                Button(screen.localizedName) {
+                                    VLCPlayerWindowManager.shared.moveToScreen(screen)
+                                }
+                            }
+                        } label: { Label("Display", systemImage: "airplayvideo") }
+                        .accessibilityIdentifier("vlc-display-menu")
                     }
                 } label: {
-                    Label("Display", systemImage: "airplayvideo")
+                    Image(systemName: "ellipsis.circle")
                         .foregroundStyle(.secondary)
                 }
                 .menuStyle(.borderlessButton)
-                .frame(maxWidth: 80)
-                .help("Move to display")
-                .accessibilityLabel("Select display")
-                .accessibilityIdentifier("vlc-display-menu")
+                .frame(maxWidth: 24)
+                .help("Audio, captions, output, and display options")
+                .accessibilityLabel("More options")
+                .accessibilityIdentifier("vlc-more-options-menu")
             }
         }
         .padding(.horizontal, 12)
