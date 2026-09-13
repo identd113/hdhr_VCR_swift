@@ -731,15 +731,27 @@ final class WebServer: @unchecked Sendable {
 
     // Shared base for the two delegate-based (not completion-handler-based) URLSessionDataTask
     // consumers below (transcode relay + FEED local relay) — both forward an open-ended remote
-    // stream with no natural end to `conn` as chunks arrive, and share the exact same
+    // stream with no natural end to `conn` as chunks arrive, paced, and share the exact same
     // finish-once/liveness-probe/failed-before-any-data plumbing. Runs on URLSession's own delegate
     // queue; `targetQueue` is what every `conn`-touching call hops onto first, matching this file's
     // own threading discipline (see accumulate()/handleConnection's doc comments on why every
     // NWConnection touch funnels through one queue). Only `finished`/`receivedAnyData` need the
     // lock — they're the only state touched from both URLSession's private delegate queue (this
-    // class's own methods) and `targetQueue` (external callers like the liveness probe); a
-    // subclass's own additional state should stay `targetQueue`-only wherever possible instead of
-    // adding more locked fields (see FeedRelayProxyDelegate's own pacing state for why that's safe).
+    // class's own methods) and `targetQueue` (external callers like the liveness probe); every
+    // other field below (including all the pacing state) stays `targetQueue`-only, never locked.
+    //
+    // Delivery pacing (buffer/draining/bytesReceived/bytesSent below), added 2026-09-13: originally
+    // lived only on the FEED-local-relay subclass, on the theory that libvlc's own sout httpd
+    // output (the transcode relay's source) is already correctly real-time-paced and a real
+    // network hop's delivery (the FEED relay's source) isn't. True for one viewer with no
+    // contention — but once a shared transcode session (VLCBridge.startTranscodeSession joins
+    // multiple viewers onto one encode, see that function's own doc comment) is also competing for
+    // CPU with everything else this Mac is doing, the encoder's own output can arrive in slightly
+    // uneven bursts too, and a viewer with no buffer of its own (a bare third-party VLC.app hitting
+    // `/auto/v<channel>?transcode=` directly, unlike this app's own FEED viewers, which always add
+    // their own client-side pacer regardless — see FeedRelayProxyDelegate below) gets that
+    // burstiness completely unsmoothed. Promoted here so every relay proxy in this file protects
+    // every viewer identically, instead of only the one path that happened to need it first.
     private class RelayProxyDelegateBase: NSObject, URLSessionDataDelegate {
         let conn: NWConnection
         let targetQueue: DispatchQueue
@@ -753,6 +765,31 @@ final class WebServer: @unchecked Sendable {
         let lock = NSLock()
         private var finished = false
         fileprivate var receivedAnyData = false
+
+        // Pacing state — deliberately NOT lock-protected like finished/receivedAnyData above:
+        // didReceive hops onto targetQueue before touching any of it, and drainIfNeeded (plus its
+        // conn.send completion, which also runs on targetQueue since conn was started with
+        // targetQueue) is the only other thing that touches it, so it's all single-serial-queue-
+        // confined already. A prior version locked this state with hand-written lock/unlock pairs
+        // and no `defer` — a future edit adding an early return between a lock and its unlock would
+        // have deadlocked the whole relay session silently; this shape has no locks to get wrong
+        // instead.
+        private weak var currentTask: URLSessionDataTask?
+        private var buffer = Data()
+        private var draining = false
+        private let startedAt = Date()
+        private var bytesReceived = 0
+        private var bytesSent = 0
+        // Seed/floor for the observed-rate average — avoids a wildly-low estimate (and therefore an
+        // overly aggressive hold-back) from the very first, possibly-tiny chunk. Mid-range OTA
+        // MPEG-2 guess, same value FeedRelayPacer's disk-based predecessor used.
+        private static let minAssumedBytesPerSecond: Double = 150_000
+        // How far ahead of a perfectly steady real-time pace delivery is allowed to run before this
+        // delegate starts holding chunks back — same value/reasoning as FeedRelayPacer's own.
+        private static let lookaheadSeconds: TimeInterval = 0.5
+        // Floor for the computed wait below, and the fallback interval if that computation would
+        // otherwise land on zero/negative — not a fixed poll cadence any more (see drainIfNeeded).
+        private static let minDrainRetryInterval: TimeInterval = 0.02
 
         init(conn: NWConnection, targetQueue: DispatchQueue, onFinished: @escaping () -> Void,
              onFailedBeforeAnyData: @escaping () -> Void) {
@@ -793,57 +830,6 @@ final class WebServer: @unchecked Sendable {
                 targetQueue.async { [weak self] in self?.finishOnce() }
             }
         }
-    }
-
-    // libvlc's sout httpd sends an open-ended stream with no natural end while the transcode keeps
-    // running — forwards each chunk straight through immediately, no pacing needed since the source
-    // is already correctly real-time-paced (unlike FeedRelayProxyDelegate's source, see that class's
-    // own comment).
-    private final class TranscodeProxyDelegate: RelayProxyDelegateBase {
-        func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
-            lock.lock(); receivedAnyData = true; lock.unlock()
-            targetQueue.async { [weak self] in
-                guard let self else { return }
-                self.conn.send(content: data, completion: .contentProcessed({ error in
-                    if error != nil {
-                        dataTask.cancel()
-                        self.finishOnce()
-                    }
-                }))
-            }
-        }
-    }
-
-    // FEED client-side local relay's consumer — same open-ended-stream shape as TranscodeProxyDelegate
-    // above, but adds delivery pacing: unlike libvlc's own sout httpd, the remote FEED URL's delivery
-    // cadence over a real network hop is NOT already smooth — see issues_resolved.md's "VLC-side FEED
-    // playback stalls" entry for the investigation this pacing fixes.
-    //
-    // Pacing state (buffer/draining/bytesReceived/bytesSent) is deliberately NOT lock-protected like
-    // the base class's finished/receivedAnyData — didReceive hops onto targetQueue before touching
-    // any of it, and drainIfNeeded (plus its conn.send completion, which also runs on targetQueue
-    // since conn was started with targetQueue) is the only other thing that touches it, so it's all
-    // single-serial-queue-confined already. A prior version locked this state with hand-written
-    // lock/unlock pairs and no `defer` — a future edit adding an early return between a lock and its
-    // unlock would have deadlocked the whole relay session silently; this shape has no locks to get
-    // wrong instead.
-    private final class FeedRelayProxyDelegate: RelayProxyDelegateBase {
-        private weak var currentTask: URLSessionDataTask?
-        private var buffer = Data()
-        private var draining = false
-        private let startedAt = Date()
-        private var bytesReceived = 0
-        private var bytesSent = 0
-        // Seed/floor for the observed-rate average — avoids a wildly-low estimate (and therefore an
-        // overly aggressive hold-back) from the very first, possibly-tiny chunk. Mid-range OTA
-        // MPEG-2 guess, same value FeedRelayPacer's disk-based predecessor used.
-        private static let minAssumedBytesPerSecond: Double = 150_000
-        // How far ahead of a perfectly steady real-time pace delivery is allowed to run before this
-        // delegate starts holding chunks back — same value/reasoning as FeedRelayPacer's own.
-        private static let lookaheadSeconds: TimeInterval = 0.5
-        // Floor for the computed wait below, and the fallback interval if that computation would
-        // otherwise land on zero/negative — not a fixed poll cadence any more (see drainIfNeeded).
-        private static let minDrainRetryInterval: TimeInterval = 0.02
 
         func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
             lock.lock(); receivedAnyData = true; lock.unlock()
@@ -901,6 +887,13 @@ final class WebServer: @unchecked Sendable {
             }))
         }
     }
+
+    // Two named, empty subclasses of the shared base above rather than instantiating it directly —
+    // kept distinct purely for readability at each call site and in this file's own extensive
+    // prose comments/docs/VirtualTunerService.md, which refer to "the transcode relay's delegate"
+    // vs. "the FEED relay's delegate" throughout; both now inherit identical paced behavior.
+    private final class TranscodeProxyDelegate: RelayProxyDelegateBase {}
+    private final class FeedRelayProxyDelegate: RelayProxyDelegateBase {}
 
     private static let feedRelayMaxConnectAttempts = 5
     private static let feedRelayRetryDelay: TimeInterval = 0.5
@@ -965,24 +958,27 @@ final class WebServer: @unchecked Sendable {
             startAttempt?()
         }))
 
-        // Periodic liveness probe — mirrors scheduleTranscodeLivenessProbe's identical reasoning: a
-        // viewer whose Mac sleeps or loses Wi-Fi without a clean TCP close leaves conn.send
-        // "succeeding" from this side for as long as the OS's own TCP retransmission timeout takes
-        // (many minutes), during which this proxy would otherwise keep pulling from the remote Mac
-        // with nothing to ever trigger cleanup.
-        scheduleFeedRelayLivenessProbe(conn: conn, delegate: delegate)
+        // Periodic liveness probe — a viewer whose Mac sleeps or loses Wi-Fi without a clean TCP
+        // close leaves conn.send "succeeding" from this side for as long as the OS's own TCP
+        // retransmission timeout takes (many minutes), during which this proxy would otherwise keep
+        // pulling from the remote Mac with nothing to ever trigger cleanup.
+        scheduleRelayLivenessProbe(conn: conn, delegate: delegate)
     }
 
-    private static let feedRelayLivenessProbeInterval: TimeInterval = 30
+    private static let relayLivenessProbeInterval: TimeInterval = 30
 
-    private func scheduleFeedRelayLivenessProbe(conn: NWConnection, delegate: FeedRelayProxyDelegate) {
-        queue.asyncAfter(deadline: .now() + Self.feedRelayLivenessProbeInterval) { [weak self] in
+    // Shared by both relay proxies below (FEED local relay + transcode relay) — identical logic,
+    // unified 2026-09-13 alongside the pacer promotion (both now take the same base delegate type),
+    // instead of two copies that could quietly drift apart. `RelayProxyDelegateBase`, not the two
+    // empty named subclasses, since neither call site needs anything subclass-specific here.
+    private func scheduleRelayLivenessProbe(conn: NWConnection, delegate: RelayProxyDelegateBase) {
+        queue.asyncAfter(deadline: .now() + Self.relayLivenessProbeInterval) { [weak self] in
             guard let self, !delegate.isFinished else { return }
             conn.send(content: Data(), completion: .contentProcessed({ error in
                 if error != nil {
                     delegate.notifyFinished()
                 } else {
-                    self.scheduleFeedRelayLivenessProbe(conn: conn, delegate: delegate)
+                    self.scheduleRelayLivenessProbe(conn: conn, delegate: delegate)
                 }
             }))
         }
@@ -1312,7 +1308,7 @@ final class WebServer: @unchecked Sendable {
         // nothing to ever trigger cleanup. A zero-byte probe still round-trips through the same TCP
         // stack a real send would, so it surfaces a genuinely dead connection (an already-received
         // RST, or a broken route) without emitting a stray byte into the live MPEG-TS stream.
-        scheduleTranscodeLivenessProbe(conn: conn, delegate: delegate)
+        scheduleRelayLivenessProbe(conn: conn, delegate: delegate)
 
         // Mirrors the raw-passthrough path's own `?duration=` deadline (pumpGrowingFile) — a client
         // requesting a bounded window on a transcoded stream gets the same self-terminate-after-N-
@@ -1328,21 +1324,6 @@ final class WebServer: @unchecked Sendable {
                 glog("[VirtualTuner] transcode relay show=\(showId) duration elapsed — closing stream")
                 delegate.notifyFinished()
             }
-        }
-    }
-
-    private static let transcodeLivenessProbeInterval: TimeInterval = 30
-
-    private func scheduleTranscodeLivenessProbe(conn: NWConnection, delegate: TranscodeProxyDelegate) {
-        queue.asyncAfter(deadline: .now() + Self.transcodeLivenessProbeInterval) { [weak self] in
-            guard let self, !delegate.isFinished else { return }
-            conn.send(content: Data(), completion: .contentProcessed({ error in
-                if error != nil {
-                    delegate.notifyFinished()
-                } else {
-                    self.scheduleTranscodeLivenessProbe(conn: conn, delegate: delegate)
-                }
-            }))
         }
     }
 
