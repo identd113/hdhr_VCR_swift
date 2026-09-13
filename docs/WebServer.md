@@ -4,6 +4,8 @@ Serves an interactive guide page and JSON API over HTTP. The page is consumed by
 
 The web server is primarily scoped to **scheduling and management**, with one narrow exception: `/api/watch-recording` relays a *currently-recording* show's on-disk file as an open-ended HTTP stream, powering the in-app "Watch Now!" relay (see below). It is not a general media server — finished recordings are not reachable through it.
 
+**Not the only thing sharing this port.** The virtual-tuner relay (`VirtualTunerService.swift`, the Recording FEED feature) also serves its own HTTP surface on this same `WebServer`/port — `/discover.json`, `/lineup.json`, `/status.json`, `/lineup_status.json`, `/auto/v<channel>` (raw/transcoded passthrough), and `/api/feed-local-relay` (the viewer-Mac side of the FEED client-side local relay) — routed through the same `accumulate`/`routeOnMain` dispatch as everything else in this file. None of that is described below; see `docs/VirtualTunerService.md`'s own "HTTP routes" and "Client-side local relay" sections instead, which own that detail — this file's own route table only covers the guide/scheduling API.
+
 ---
 
 ## API surface
