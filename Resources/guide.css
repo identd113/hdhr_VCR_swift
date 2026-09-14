@@ -351,6 +351,17 @@ html.lm .g-hdr-btn-now:hover{border-color:#c03030!important;color:#fff!important
 .g-prog{position:absolute;left:var(--gs);width:var(--gw);top:4px;bottom:4px;border-radius:5px;overflow:hidden;background:var(--pg);border:1px solid var(--pgb);min-width:3px;cursor:pointer;user-select:none}
 .g-prog:hover{filter:brightness(1.1);border-color:var(--t5);z-index:3}
 .g-prog.g-sel{border-color:var(--t0)!important;box-shadow:0 0 0 1px rgba(128,128,128,.5);z-index:4}
+/* Bonus Time preview — a faint wash of the sports genre color extending past a matching entry's
+   own listed end, over whatever time it would actually eat into if it ran long. Always the sports
+   color (genreImpliesBonusTime only ever matches a "sport"-containing genre) — var(--gg-sports),
+   not the static .gg-sports class, so this stays theme-aware (html.lm redefines --gg-sports for
+   light mode; the .gg-sports class itself is a hardcoded dark-mode value, an existing quirk this
+   deliberately doesn't inherit). z-index 2: above a plain .g-prog/.g-gap (implicit 0) and the
+   .g-now-bar line (1), so it's genuinely "on top" as intended, but still below :hover (3) and a
+   real selection (4) — an actual interaction with what's underneath always visually wins over this
+   passive annotation. pointer-events:none (plus aria-hidden on the element itself) keeps it fully
+   non-interactive, same reasoning as .g-gap/.g-now-bar above. */
+.g-bonus-overlay{position:absolute;left:var(--gs);width:var(--gw);top:4px;bottom:4px;border-radius:5px;background:var(--gg-sports);opacity:.3;z-index:2;pointer-events:none}
 /* ── Status ring + badge (scheduled/recording/skip/conflict) — independent of the
    g-prog-rec/-now/-sched background classes above, so genre colour stays untouched ── */
 :root{--vc-sched:#3b93ff;--vc-rec:#ff5a5a;--vc-skip:#8a92a3;--vc-conflict:#ff9500;--vc-inuse:#9b59b6}

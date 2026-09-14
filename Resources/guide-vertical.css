@@ -2,7 +2,7 @@
    Transposes the grid: channels become side-by-side columns (sticky-top headers), time
    becomes the shared vertical axis (a sticky-left ruler, scrolling down moves through time
    for every visible channel at once — same relationship as a calendar day/week view).
-   Every .g-prog/.g-gap/.g-now-bar/.g-tick position still comes from the SAME --gs/--gw
+   Every .g-prog/.g-gap/.g-now-bar/.g-tick/.g-bonus-overlay position still comes from the SAME --gs/--gw
    percentages buildGuideGridHTML() emits for horizontal mode (they express "how far into
    the time window", not a screen direction) — only which physical property they drive
    (left/width vs top/height) changes here. Composition mirrors the horizontal corner-sticky
@@ -98,6 +98,7 @@ html{--gg-dir:to bottom}
 html .g-now-bar{left:0;right:0;width:auto;top:var(--gs);bottom:auto;height:2px}
 html .g-gap{left:3px;right:3px;width:auto;top:var(--gs);height:var(--gw);bottom:auto}
 html .g-prog{left:3px;right:3px;width:auto;top:var(--gs);height:var(--gw);bottom:auto}
+html .g-bonus-overlay{left:3px;right:3px;width:auto;top:var(--gs);height:var(--gw);bottom:auto}
 html #g-hscroll{display:none}
 }
 /* ── Small-phone refinement: vertical mode's channel columns sit side by side (often several

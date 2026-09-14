@@ -3221,6 +3221,27 @@ final class WebServer: @unchecked Sendable {
                     // `tip` (already he()-escaped, already "Title · Episode (time) — status") rather than
                     // building a second description that could drift from the tooltip's wording.
                     blockParts.append("<div class=\"\(cls)\" style=\"--gs:\(pct(cs))%;--gw:\(pct(ce - cs))%\(extraStyle)\" title=\"\(tip)\" role=\"button\" tabindex=\"0\" aria-label=\"\(tip)\" \(da)\(showDA)\(infDA)\(newAttr)\(skipAttr) onclick=\"showInfo(this)\" ondblclick=\"recordFromDblClick(this)\" onkeydown=\"if(event.key==='Enter'||event.key===' '){event.preventDefault();showInfo(this);}\"><div class=\"g-pi\">\(titleHTML)\(subH)</div></div>")
+
+                    // Bonus Time preview overlay — a faint sports-colored wash extending past this
+                    // entry's own listed end, over however much of the next slot's time this show
+                    // would actually eat into if it ran long (Sports_padding_minutes). Genre-based,
+                    // same auto-detection every other client uses (Show.genreImpliesBonusTime) — not
+                    // gated on isMgd/isEntryRec, so it shows for any matching guide entry, scheduled
+                    // or not, by explicit design direction (2026-09-14): the point is showing what
+                    // time this slot is likely to steal even before/without anyone actually
+                    // scheduling it. Appended right after the entry's own block (not merged into it)
+                    // since it needs to render past that block's own edge, into the next one's
+                    // territory — .g-bonus-overlay's own z-index (guide.css) keeps it visually on
+                    // top of whatever's underneath while staying non-interactive (pointer-events:
+                    // none, aria-hidden) so click/keyboard behavior on the real blocks underneath is
+                    // completely unaffected.
+                    if state.config.Sports_padding_enabled, Show.genreImpliesBonusTime(e.firstGenre) {
+                        let bonusEndTs = e.EndTime + state.config.Sports_padding_minutes * 60
+                        let bce = min(bonusEndTs, winEnd) - winStart
+                        if bce > ce {
+                            blockParts.append("<div class=\"g-bonus-overlay\" style=\"--gs:\(pct(ce))%;--gw:\(pct(bce - ce))%\" aria-hidden=\"true\"></div>")
+                        }
+                    }
                 }
 
                 let gnameAttr = ChannelSignalStore.key(for: ch.GuideName)
