@@ -135,7 +135,13 @@ struct AddShowView: View {
 
     private var guideStep: some View {
         Group {
-            if state.webServerRunning {
+            // guidePageCacheWarm, not just webServerRunning — a listener bound but a still-cold
+            // GET / page cache would otherwise point this WKWebView at a request that falls back to
+            // a synchronous, multi-second @MainActor-blocking guide build (see AppState.startup()'s
+            // own prebuildPageHTML call, which makes this effectively always already true by the
+            // time a user could open this window; this is the defensive backstop for the rare case
+            // it isn't yet).
+            if state.webServerRunning && state.guidePageCacheWarm {
                 AddShowWebView(port: state.config.Web_server_port,
                                appearanceMode: state.config.Appearance_mode,
                                onAppearanceChanged: { mode in

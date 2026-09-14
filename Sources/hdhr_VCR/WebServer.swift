@@ -275,6 +275,10 @@ final class WebServer: @unchecked Sendable {
 
     @MainActor
     func prebuildPageHTML(state: AppState, prebuiltGrid: String? = nil) {
+        // Set on every exit path, not just success — this function has no failure branch (unlike
+        // e.g. a network fetch), so "ran once" and "cache is populated" are equivalent here. See
+        // AppState.guidePageCacheWarm's own doc comment.
+        defer { state.guidePageCacheWarm = true }
         // Computed once (it's the expensive part — 1300+ program blocks) and reused for both
         // variants below, which differ only in their <head>/<style>, not the grid itself.
         let grid = prebuiltGrid ?? buildGuideGridHTML(state: state)
@@ -716,13 +720,19 @@ final class WebServer: @unchecked Sendable {
             // recording volume can't stall the main thread — or the rest of the web server — on
             // every watch-recording connection (including every scrub-bar commit, which
             // reconnects through this same path).
-            // show_recording gates this on top of the path check: show_recording_path is set once
-            // when recording starts and is never cleared when it ends, so without this a finished
-            // recording's show_id (visible in plain data-show-id attributes across the served guide
-            // HTML) could be replayed to stream that file indefinitely to any LAN client, long after
-            // the "Watch Now!" relay this route exists for was ever actually live.
+            // recordingIsWatchable (show_recording, OR a still-open abnormal-stop grace window —
+            // AppState.swift) gates this on top of the path check: show_recording_path is set once
+            // when recording starts and is never cleared when it ends, so without a gate here a
+            // finished recording's show_id (visible in plain data-show-id attributes across the
+            // served guide HTML) could be replayed to stream that file indefinitely to any LAN
+            // client, long after the "Watch Now!" relay this route exists for was ever actually
+            // live. The grace window is a narrow, wall-clock-bounded exception to that — it only
+            // ever opens for a show whose tuner just died mid-recording (never a natural/manual/
+            // skip/delete stop), specifically so a scrub-bar seek, a pause/resume, or a player's own
+            // reconnect from an already-watching viewer doesn't get flatly rejected the instant
+            // show_recording flips false, when real content is still sitting on disk.
             guard let show = state.shows.first(where: { $0.show_id == showId }),
-                  show.show_recording, !show.show_recording_path.isEmpty else {
+                  state.recordingIsWatchable(show), !show.show_recording_path.isEmpty else {
                 self.send(.notFound("recording not found"), on: conn)
                 return
             }
@@ -1136,10 +1146,12 @@ final class WebServer: @unchecked Sendable {
                 return
             }
             glog("[VirtualTuner] /auto/v\(logChannel) requested dev=\(deviceId ?? "nil") transcode=\(transcode ?? "none")")
+            // recordingIsWatchable (show_recording, OR a still-open abnormal-stop grace window) —
+            // same reasoning as handleWatchRecording's own doc comment on this exact gate.
             guard let show = state.shows.first(where: {
-                $0.show_recording && $0.show_channel == channel && (deviceId == nil || $0.hdhr_record == deviceId)
+                state.recordingIsWatchable($0) && $0.show_channel == channel && (deviceId == nil || $0.hdhr_record == deviceId)
             }), !show.show_recording_path.isEmpty else {
-                let recordingChannels = state.shows.filter { $0.show_recording }.map { $0.show_channel }
+                let recordingChannels = state.shows.filter { state.recordingIsWatchable($0) }.map { $0.show_channel }
                 glog("[VirtualTuner] /auto/v\(logChannel) → 404 no matching active recording (currently recording: \(recordingChannels))", level: .warning)
                 // logChannel (already stripped of newlines/control characters above), not the raw
                 // channel — this is only ever echoed back as informational text, never used for

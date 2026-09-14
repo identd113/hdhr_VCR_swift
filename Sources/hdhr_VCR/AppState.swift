@@ -78,6 +78,14 @@ final class AppState: ObservableObject {
         // Per-show serialization for lifecycle-card sends — see fireDiscordCard's own comment for
         // why this chains rather than locks. Was: discordCardTasks[showId].
         var discordCardTask: Task<Void, Never>?
+        // Set only when teardownRecordingState's caller identifies this stop as ABNORMAL (the
+        // tuner/curl died mid-recording, idleLoop's crash-detection path) — never by a natural,
+        // manual, or explicit (skip/delete) stop. While set and unexpired, recordingIsWatchable(_:)
+        // treats this show as still watchable even though show_recording has flipped false, and
+        // teardownRecordingState defers force-killing its transcode session — see both functions'
+        // own doc comments. nil means no grace in effect (never set, already consumed by
+        // expireAbnormalStopGraceWindows(), or explicitly cleared by skip/delete/a fresh retry).
+        var abnormalStopGraceUntil: Date?
     }
     // Two write idioms coexist at call sites throughout this file: `showRuntime[id]?.field = v`
     // (no-op when `id` has no entry yet) and `showRuntime[id, default: ShowRuntimeState()].field
@@ -226,6 +234,21 @@ final class AppState: ObservableObject {
     @Published var activeStatusLight: StatusLightKind? = nil
     var isRecording: Bool      { shows.contains { $0.show_recording } }
     var recordingShows: [Show] { shows.filter { $0.show_recording && ($0.show_end ?? .distantPast) > Date() } }
+    // True while an abnormal (tuner/curl died mid-recording) stop's grace window is still open for
+    // this show_id — see ShowRuntimeState.abnormalStopGraceUntil's own doc comment. Never true for
+    // a natural/manual/skip/delete stop, since none of those set the field.
+    func isShowIdInAbnormalGrace(_ showId: String) -> Bool {
+        guard let until = showRuntime[showId]?.abnormalStopGraceUntil else { return false }
+        return until > Date()
+    }
+    // Single source of truth for "can a Watch Now / FEED request still be served for this show" —
+    // true while genuinely recording, OR while its abnormal-stop grace window is still open. Never
+    // true for a naturally/manually/skip/delete-stopped show — this is the one gate that must never
+    // let a truly-finished show be replayed indefinitely (see WebServer.handleWatchRecording's own
+    // doc comment on why show_recording_path is never cleared).
+    func recordingIsWatchable(_ show: Show) -> Bool {
+        show.show_recording || isShowIdInAbnormalGrace(show.show_id)
+    }
     var activeShows: [Show]    { shows.filter { $0.show_active && !$0.show_recording && !$0.show_paused }
                                       .sorted { ($0.show_next ?? .distantFuture) < ($1.show_next ?? .distantFuture) } }
     var pausedShows: [Show]    { shows.filter { $0.show_active && $0.show_paused } }
@@ -485,6 +508,14 @@ final class AppState: ObservableObject {
     }
     @Published var webServerRunning: Bool    = false
     @Published var webServerError:   String? = nil
+    // True once WebServer's cachedHTML/cachedHTMLGzip have been populated at least once, via
+    // WebServer.prebuildPageHTML (set there, @MainActor, no await between the assignment and this
+    // flag flipping). Monotonic — cachedHTML is never reset to nil after its first successful
+    // build, so this never needs to flip back false. Lets a consumer (AddShowView's guide step)
+    // wait for "GET / is guaranteed to be served from cache" rather than merely "the listener is
+    // bound" — see startup()'s own early prebuildPageHTML call, added specifically so this flips
+    // true well before anything could plausibly hit GET / for the first time.
+    @Published var guidePageCacheWarm: Bool = false
     private var internalWebServerUseCount = 0  // ref count: each open WKWebView guide window increments
     // True from the instant reconcileWebServerState() kicks off webServer.start() until its async
     // bind outcome (ready/failed/cancelled) lands in applyWebServerState. Closes the exact race that
@@ -612,6 +643,13 @@ final class AppState: ObservableObject {
     // (never by pauseShow's "Manually paused" or recordShowFailure's threshold text) so auto-resume
     // can identify — and only re-activate — shows it auto-paused itself, never a user's own pause.
     private static let autoPauseTunerMissingReason = "Tuner not detected"
+    // How long an abnormally-stopped (tuner/curl died mid-recording) show stays "watchable" — see
+    // ShowRuntimeState.abnormalStopGraceUntil's own doc comment — before this app falls back to
+    // today's hard cutoff. Bounded on purpose: long enough to survive a scrub-bar seek, a brief
+    // pause/resume, or a player's own reconnect retry; short enough that it can never be mistaken
+    // for "replay this finished show forever" — natural/manual/skip/delete stops never set this
+    // field at all, so this constant only ever bounds the one abnormal-stop code path.
+    private static let abnormalStopGraceWindow: TimeInterval = 120
     private var failThreshold: Int { config.Fail_count_setting }
     // var + internal (not private let) is a test seam: diskOK() checks this against the real
     // filesystem, so a test machine whose real disk happens to be over 93% used would otherwise
@@ -748,6 +786,18 @@ final class AppState: ObservableObject {
         //    Starting here means the server is up within ~1s of launch instead of waiting
         //    for the full discovery + guide fetch sequence to complete.
         setupWebServer()
+
+        // 3a. Warm the GET / page cache immediately — independent of device discovery/guide fetch
+        //     below (which can take 10+ seconds combined: a cloud guide.php round trip plus
+        //     discovery retries). Renders with whatever's known right now (typically zero devices/
+        //     guide data on a cold launch) — a nearly-empty but valid page; performFetchAllGuides
+        //     re-warms it for real once the guide loads, and every other guide-changing event keeps
+        //     it warm from then on. Closes the one documented window (docs/WebServer.md's HTML
+        //     cache section) where GET / falls back to a synchronous, @MainActor-blocking
+        //     buildGuideGridHTML() pass (a documented 2-4 second full main-thread freeze) —
+        //     previously reachable by anything hitting GET / before the first real guide load
+        //     finished, most commonly Add Show's own embedded WKWebView opened right after launch.
+        webServer.prebuildPageHTML(state: self)
 
         // 3b. Start listening for other instances' unsolicited FEED announces (see
         //     VirtualTunerService.beginPassiveListening's own doc comment) — independent of whether
@@ -1161,10 +1211,24 @@ final class AppState: ObservableObject {
     // mid-recording tears the relay down immediately rather than waiting for the next start/stop.
     // Internal, not private — SettingsView calls this directly on toggle change.
     func updateVirtualTunerPresence() {
+        // Derived from the same unfiltered `show_recording` check `isRecording` itself uses (not
+        // the show_end-filtered `recordingShows`) — in the window after a show's show_end passes
+        // but before idleLoop flips show_recording false, recordingShows can be empty while a
+        // recording is genuinely still in progress. Using recordingShows there let TunerCount read
+        // 0 on an ordinary (non-goodbye) announce — misread by peers' onFeedAnnounce as "gone" —
+        // and let the relay's stable DeviceID fall back to a random one on first start in that
+        // same window. See ISSUES.md's "updateVirtualTunerPresence... TunerCount=0" /
+        // "...relayDeviceID" entries. Also includes a show whose abnormal-stop grace window is
+        // still open (isShowIdInAbnormalGrace) — without this, the virtual tuner (and thus any
+        // FEED viewer's connection to it, via handleVirtualTunerStream's own
+        // activeVirtualTunerDeviceID guard) would tear down the instant a tuner drop flips the
+        // last truly-recording show's show_recording false, before recordingIsWatchable's own
+        // grace-aware gate in the WebServer routes is ever even reached.
+        let activelyRecordingShows = shows.filter { $0.show_recording || isShowIdInAbnormalGrace($0.show_id) }
         // FEED_feature_enabled gates this too (master hide switch, 2026-09-10) — belt-and-suspenders
         // alongside Virtual_tuner_relay_enabled itself no longer being reachable from any UI, in case
         // an existing config already has that sub-toggle set true from before the feature was hidden.
-        if isRecording && config.FEED_feature_enabled && config.Virtual_tuner_relay_enabled {
+        if !activelyRecordingShows.isEmpty && config.FEED_feature_enabled && config.Virtual_tuner_relay_enabled {
             // nil means no LAN interface was found (stale config.Network_interface after an adapter
             // switch, or a momentary interface-list gap) — see virtualTunerBaseURL's own doc
             // comment for why this must skip starting/refreshing the relay entirely rather than
@@ -1176,16 +1240,6 @@ final class AppState: ObservableObject {
                 glog("[VirtualTuner] no LAN interface found — skipping relay start/refresh this cycle", level: .warning)
                 return
             }
-            // Derived from the same unfiltered `show_recording` check `isRecording` itself uses
-            // (not the show_end-filtered `recordingShows`) — this function is only reached when
-            // isRecording is true, and in the window after a show's show_end passes but before
-            // idleLoop flips show_recording false, recordingShows can be empty while a recording
-            // is genuinely still in progress. Using recordingShows there let TunerCount read 0 on
-            // an ordinary (non-goodbye) announce — misread by peers' onFeedAnnounce as "gone" —
-            // and let the relay's stable DeviceID fall back to a random one on first start in that
-            // same window. See ISSUES.md's "updateVirtualTunerPresence... TunerCount=0" /
-            // "...relayDeviceID" entries.
-            let activelyRecordingShows = shows.filter { $0.show_recording }
             let tunerCount = activelyRecordingShows.count
             if let id = activeVirtualTunerDeviceID {
                 // Already running — refresh the advertised BaseURL/TunerCount in place (e.g. a
@@ -2557,7 +2611,7 @@ final class AppState: ObservableObject {
                 // stop() which clears the header file entry, losing the error before we can read it.
                 let hdhrReason = recordingManager.readAndClearHDHRError(showId: show.show_id)
                 let exitReason = recordingManager.readAndClearExitStatus(showId: show.show_id)
-                teardownRecordingState(index: i) // kills pid (harmless), releases assertion, clears caches
+                teardownRecordingState(index: i, reason: .abnormal) // kills pid (harmless), releases assertion, clears caches
                 let failReason = hdhrReason ?? exitReason ?? "curl exited unexpectedly"
                 recordShowFailure(index: i, reason: failReason)
                 showRuntime[show.show_id, default: ShowRuntimeState()].failedThisAttempt = true // consumed by stopRecording's empty-file check
@@ -2654,6 +2708,8 @@ final class AppState: ObservableObject {
         }
 
         if dirty { saveConfig() }
+
+        expireAbnormalStopGraceWindows()
 
         // One /status.json fetch per device covers both menu-header occupancy counts and
         // per-recording vstatus — avoids O(tunerCount) separate HTTP calls per recording.
@@ -2959,6 +3015,11 @@ final class AppState: ObservableObject {
         }
         shows[index].show_recording = true; shows[index].show_recording_path = path
         showRuntime[show.show_id]?.failedThisAttempt = false // fresh attempt — any earlier FAIL no longer describes "this" recording
+        // Same "fresh attempt" reasoning — a real retry landing inside an old abnormal-stop grace
+        // window makes the window redundant (recordingIsWatchable already prefers show_recording
+        // first regardless), but clearing it here keeps showRuntime tidy and matches this
+        // function's own per-attempt-reset idiom rather than leaving it to expire on its own.
+        showRuntime[show.show_id]?.abnormalStopGraceUntil = nil
         // Fire-and-forget off @MainActor — nothing after this reads the sidecar file, and its own
         // doc comment already treats a write failure as best-effort/non-fatal, so there's nothing
         // for the caller to await.
@@ -2999,6 +3060,12 @@ final class AppState: ObservableObject {
         // Clear signalDropoutTicks too, matching teardownRecordingState — skip doesn't route
         // through teardown, so otherwise a dropout tick count would linger past the skip.
         showRuntime[showId]?.signalDropoutTicks = 0
+        // Same reasoning for the abnormal-stop grace window — an explicit Skip must end any grace
+        // immediately regardless of whether this show happened to be mid-window at the moment the
+        // user skipped it (the transcode kill just below is already unconditional, so it doesn't
+        // need this, but the WebServer gates check this flag directly and must stop admitting
+        // reconnects for this show right now, not up to 120s later).
+        showRuntime[showId]?.abnormalStopGraceUntil = nil
         shows[i].show_recording = false
         shows[i].show_last = Date()
         shows[i].show_paused = true
@@ -3026,7 +3093,14 @@ final class AppState: ObservableObject {
         }
     }
 
-    private func teardownRecordingState(index: Int, alsoRebuildGrid: Bool = true) {
+    // Why a recording actually stopped — determines whether teardownRecordingState defers its
+    // transcode-session kill via an abnormal-stop grace window (see ShowRuntimeState's own doc
+    // comment) or tears everything down immediately, same as before this distinction existed.
+    // .abnormal is the one and only case that ever grants grace; every other case both clears any
+    // stale grace from a prior attempt and kills immediately, matching the pre-existing behavior.
+    private enum RecordingStopReason { case natural, manual, abnormal, explicit }
+
+    private func teardownRecordingState(index: Int, reason: RecordingStopReason, alsoRebuildGrid: Bool = true) {
         let show = shows[index]
         recordingManager.stop(showId: show.show_id)
         tunerStatus.removeValue(forKey: show.show_id)
@@ -3054,9 +3128,53 @@ final class AppState: ObservableObject {
         webServer.broadcastRecordingStopped(channel: show.show_channel, device: show.hdhr_record,
                                              state: self, alsoRebuildGrid: alsoRebuildGrid)
         updateVirtualTunerPresence()
-        // A transcode session must never outlive the recording it's transcoding — see
-        // VLCBridge.stopAllTranscodeSessions's own doc comment.
-        transcodeViewersCleared(VLCBridge.shared.stopAllTranscodeSessions(showId: show.show_id))
+        switch reason {
+        case .abnormal:
+            // Defer — see ShowRuntimeState.abnormalStopGraceUntil's own doc comment. The "must
+            // never outlive the recording" invariant (VLCBridge.stopAllTranscodeSessions's doc
+            // comment) is still honored, just after a bounded grace instead of instantly —
+            // enforced by expireAbnormalStopGraceWindows() below once the window actually elapses
+            // with nothing having resumed.
+            showRuntime[show.show_id, default: ShowRuntimeState()].abnormalStopGraceUntil =
+                Date().addingTimeInterval(Self.abnormalStopGraceWindow)
+            glog("[\(show.show_title)] abnormal stop — granting \(Int(Self.abnormalStopGraceWindow))s watch/transcode grace before full teardown", level: .warning)
+        case .natural, .manual, .explicit:
+            // Clears any stale grace from an unrelated prior abnormal attempt — a natural/manual/
+            // explicit stop always means "done," never leaves grace behind for a later reconnect
+            // to exploit.
+            showRuntime[show.show_id]?.abnormalStopGraceUntil = nil
+            // A transcode session must never outlive the recording it's transcoding — see
+            // VLCBridge.stopAllTranscodeSessions's own doc comment.
+            transcodeViewersCleared(VLCBridge.shared.stopAllTranscodeSessions(showId: show.show_id))
+        }
+    }
+
+    // Enforces the bounded side of abnormalStopGraceUntil: once a grace window actually expires
+    // with no fresh recording attempt having resumed for that show_id, force the deferred
+    // transcode teardown now (the "must never outlive the recording" invariant, just delayed) and
+    // let recordingIsWatchable go back to rejecting new connections/reconnects for it. Called once
+    // per idleLoop() tick, after Pass 2. No `await` anywhere in this function — safe to iterate
+    // `shows`/`showRuntime` directly without the idle-loop's usual by-show_id re-resolution dance.
+    private func expireAbnormalStopGraceWindows() {
+        let now = Date()
+        let expiredIds = showRuntime.compactMap { id, rt -> String? in
+            guard let until = rt.abnormalStopGraceUntil, until <= now else { return nil }
+            return id
+        }
+        guard !expiredIds.isEmpty else { return }
+        var anyExpired = false
+        for showId in expiredIds {
+            showRuntime[showId]?.abnormalStopGraceUntil = nil
+            // A fresh recording attempt already resumed for this show_id (show_recording flipped
+            // back true) — nothing to tear down, the grace served its purpose.
+            guard shows.first(where: { $0.show_id == showId })?.show_recording != true else { continue }
+            transcodeViewersCleared(VLCBridge.shared.stopAllTranscodeSessions(showId: showId))
+            anyExpired = true
+        }
+        // Re-checks whether the virtual tuner should still be advertised now that this show no
+        // longer counts as watchable — see updateVirtualTunerPresence's own activelyRecordingShows
+        // comment for why grace-covered shows count toward its gate.
+        if anyExpired { updateVirtualTunerPresence() }
     }
 
     func stopRecording(index: Int, natural: Bool) async {
@@ -3065,7 +3183,7 @@ final class AppState: ObservableObject {
         // check below could see it. Only relevant for natural stops (manual stop doesn't report
         // a failure reason).
         let hdhrReason = natural ? recordingManager.readAndClearHDHRError(showId: shows[index].show_id) : nil
-        teardownRecordingState(index: index)
+        teardownRecordingState(index: index, reason: natural ? .natural : .manual)
         let show = shows[index]
         refreshTunerOccupancy()
         shows[index].show_last = Date()
@@ -3608,7 +3726,7 @@ final class AppState: ObservableObject {
             // alsoRebuildGrid: false — the pushShowUpdate below rebuilds the grid again anyway
             // once the show is actually removed, so teardown's own intermediate rebuild (still
             // showing the about-to-be-deleted show, just no longer recording) would be pure waste.
-            teardownRecordingState(index: i, alsoRebuildGrid: false)
+            teardownRecordingState(index: i, reason: .explicit, alsoRebuildGrid: false)
         } else {
             recordingManager.stop(showId: show.show_id)
         }
@@ -3634,6 +3752,13 @@ final class AppState: ObservableObject {
         // connection's own onStreamEnded decrement isn't guaranteed to have already fired) would
         // otherwise leave a stale per-show entry behind forever, since show_id is never reused.
         relayRawViewerCounts.removeValue(forKey: show.show_id)
+        // Same "correct regardless of which path preceded this" reasoning again — a show deleted
+        // mid-abnormal-stop-grace-window (show_recording already false, so the branch above never
+        // reached teardownRecordingState at all) must still not leave a deferred transcode session
+        // running past an explicit delete. showRuntime.removeValue above already dropped the grace
+        // flag itself; this just makes sure nothing was still actively transcoding under it.
+        // Idempotent — returns 0 (a no-op transcodeViewersCleared call) if nothing was running.
+        transcodeViewersCleared(VLCBridge.shared.stopAllTranscodeSessions(showId: show.show_id))
         saveConfig()
         pushShowUpdate(type: "show_deleted", channel: show.show_channel, device: show.hdhr_record)
     }
