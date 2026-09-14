@@ -1642,3 +1642,77 @@ Two related pieces of work from the same session, both explicit user requests ra
 **Not fixed, flagged for later**: `MenuContent.nowWatchingInfo` (the menu header's "Now Watching" line) has the same "what's live now on this channel" shape and could show the same drift while watching a *remote* FEED relay of someone else's Bonus Time recording — but unlike the two cases above, it resolves purely by channel/URL match with no show identity (no `show_next` available to anchor to), so fixing it would need threading the source recording's own show identity through the relay session rather than a one-line anchor swap. Lower priority since it only affects the watcher's own header display, not the recording itself.
 
 **Resolving commit**: `30bf217`
+
+# 7 fixes from the 2026-09-12 full-app code review's open backlog — 2026-09-13
+
+A "what issues do we have left" status check found all 19 entries from that review's Open section still genuinely open (none already fixed, none duplicated against this file) but every file:line citation stale from the same day's earlier edits — re-verified each against current code before fixing. 5 correctness + 2 efficiency picked as the highest-impact; the remaining entries (live-reported/unreproducible bugs, and pure duplication cleanup with no live bug) stayed open — see `ISSUES.md`.
+
+## RESOLVED — `reactivatePausedShows()` could re-trigger the tuner-missing auto-pause/auto-resume flip-flop
+
+**File:** `AppState.swift`
+
+**Root cause**: Settings → Advanced's "Reactivate Paused Shows" bulk action un-paused and `clearFailures()`'d every paused show unconditionally, including one auto-paused via the exact `"Tuner not detected"` marker string `idleLoop`'s tuner-missing pass checks for. If the tuner was still genuinely absent, that pass re-paused the show on the very next tick — the flip-flop CLAUDE.md's "Auto-pause-on-missing-tuner marker" invariant documents as already solved for every other code path, just not this one.
+
+**Fix**: the loop now skips (via `continue`) any show whose `show_paused` is true and `show_fail_reason` is the tuner-missing marker — same exclusion the window-expiry auto-resume pass already applies. That pass's own symmetric auto-resume already un-pauses the show once the tuner is seen again.
+
+**Resolving commit**: `acdc5e9`
+
+## RESOLVED — `skipRecording` broadcast a stale channel/device captured before an await
+
+**File:** `AppState.swift`
+
+**Root cause**: `skipRecording(showId:)` captured `channel`/`device` from `shows[i]` before `await scheduleNextAir(index: i)`, then broadcast those pre-await values afterward instead of re-resolving by `show_id` — breaking this file's own "re-resolve `shows` by `show_id` after any `await`" contract every sibling caller (`stopRecording`, `idleLoop`, `updateShow`) already follows. `scheduleNextAir`'s internal guide fetch can reassign `show_channel`/`hdhr_record` for a `seriesAll` show whose next matching episode airs on a different channel/device.
+
+**Fix**: re-resolves the show by `show_id` after the await and broadcasts from that.
+
+**Resolving commit**: `acdc5e9`
+
+## RESOLVED — `quit()`/`relaunchForVLC()`'s "Recordings in progress" alert could show an empty list
+
+**File:** `AppState.swift`
+
+**Root cause**: the alert gated on raw `isRecording` but built its body from `recordingsListText`, which mapped the show_end-filtered `recordingShows` — in the window after a recording's `show_end` passes but before `idleLoop` flips `show_recording` false, the gate could fire with an empty list ("These recordings will be stopped:" followed by nothing) right when the user is deciding whether to quit.
+
+**Fix**: `recordingsListText` now builds from the same unfiltered `shows.filter { $0.show_recording }` set the gate itself uses.
+
+**Resolving commit**: `acdc5e9`
+
+## RESOLVED — Menu's per-tuner header showed a stale hardware-only tuner count for a moment after a recording/VLC stream started
+
+**File:** `Views/MenuContent.swift`
+
+**Root cause**: `liveCount` fell back to `appCount` only when no hardware data existed at all, otherwise using the raw (possibly stale) hardware count as the primary "N/slots" number — not `max(hw, appCount)` per `AppState.activeTunerCount(for:)`'s own documented contract. Right after a recording or in-app VLC stream started but before the next `status.json` poll landed, the headline number under-reported true occupancy, with the correction relegated to a secondary "⚠ app expects N" suffix.
+
+**Fix**: `liveCount` is now `max(hwCount, appCount)`; the mismatch warning still compares the raw `hwCount` (not the corrected `liveCount`) against `appCount`, so it keeps firing in both directions — hw briefly lower than expected, or hw higher (e.g. another process also using the tuner).
+
+**Resolving commit**: `acdc5e9`
+
+## RESOLVED — `idleLoop`'s untagged-guide-entry diagnostic scan iterated raw `devices`
+
+**File:** `AppState.swift`
+
+**Root cause**: a direct violation of CLAUDE.md's "default new device-facing code to `recordableDevices`" rule — currently inert since `GuideStore` never indexes guide entries for a virtual-relay device, but would start mattering the moment a future change (e.g. `TODO.md`'s floated FEED now-playing guide) populates guide data for one.
+
+**Fix**: switched the loop to `recordableDevices`, matching every other per-tick device loop in this file.
+
+**Resolving commit**: `acdc5e9`
+
+## RESOLVED — `refreshTunerOccupancy` fetched every device's status sequentially instead of concurrently
+
+**File:** `AppState.swift`
+
+**Root cause**: a plain `for`+`await` loop over `recordableDevices`, unlike the equivalent lineup-fetch and vstatus-poll loops elsewhere in the same file which both already use `withTaskGroup`. With N configured devices, total wait was the sum of N round-trips instead of the slowest one, needlessly delaying `releaseAssertionsIfIdle()`.
+
+**Fix**: switched to `withTaskGroup(of: Void.self)`, matching the file's own established pattern.
+
+**Resolving commit**: `acdc5e9`
+
+## RESOLVED — `computeRecordedTagsByShow` re-scanned every recorded episode file on the main thread on every guide-changing event
+
+**Files:** `WebServer.swift`
+
+**Root cause**: `buildGuideGridHTML` runs on `@MainActor` on every add/delete/pause/resume/edit/favorite-toggle/recording start/stop (CLAUDE.md's own documented cost model), and `computeRecordedTagsByShow` unconditionally re-walked every managed series' on-disk folder plus stat'd every recorded episode file on every single one of those calls — even an unrelated show's favorite toggle paid the same disk I/O as an actual new recording.
+
+**Fix**: cached, keyed by a signature of every active series show's `id:title:baseDir:length` plus the skip-enabled toggle — a show added/removed or a series' own title/folder/length changing is caught by the signature comparison alone. The one case the signature can't see — a new episode file landing with no show-identity change — is covered by an explicit `recordedTagsCacheNeedsRefresh` flag, set in `broadcastRecordingStopped` (natural/manual stop, delete-while-recording) and via a new `invalidateRecordedTagsCache()` poke from `AppState.skipRecording`, which does its own inline teardown rather than routing through the same function.
+
+**Resolving commit**: `77507da`
