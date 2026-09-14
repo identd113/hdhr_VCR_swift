@@ -2678,7 +2678,12 @@ final class AppState: ObservableObject {
         // discovery, not anything a program's actual air time depends on.
         if now.timeIntervalSince(lastNowAiringScan) > 300 {
             lastNowAiringScan = now
-            for device in devices {
+            // recordableDevices — a virtual relay device is watch-only with no real guide data
+            // (CLAUDE.md's "default new device-facing code to recordableDevices" rule); currently
+            // inert since GuideStore never indexes entries for one, but would start mattering the
+            // moment a future change (e.g. TODO.md's floated FEED now-playing guide) populates
+            // guide data for a relay device.
+            for device in recordableDevices {
                 for ch in (lineups[device.DeviceID] ?? []) {
                     let entries = guideStore.entries(deviceId: device.DeviceID, channelNum: ch.GuideNumber)
                     for e in entries where e.StartTime <= Int(now.timeIntervalSince1970) && e.EndTime > Int(now.timeIntervalSince1970) {
@@ -3002,13 +3007,23 @@ final class AppState: ObservableObject {
         // comment on signalDropoutTicks for the same gap) — call directly so a skip that happens
         // to be this app's last active recording still tears the virtual tuner down.
         updateVirtualTunerPresence()
+        // Same gap, for the recorded-episode-tags cache this time — whatever partial file the skip
+        // left behind is still a real on-disk candidate the next guide-grid rebuild should see.
+        webServer.invalidateRecordedTagsCache()
         // A transcode session must never outlive the recording it's transcoding — see
         // VLCBridge.stopAllTranscodeSessions's own doc comment.
         transcodeViewersCleared(VLCBridge.shared.stopAllTranscodeSessions(showId: showId))
-        let channel = shows[i].show_channel, device = shows[i].hdhr_record
         await scheduleNextAir(index: i)
         saveConfig()
-        pushShowUpdate(type: "show_updated", channel: channel, device: device, rebuildMenu: false)
+        // Re-resolved by show_id after the await, not captured beforehand — scheduleNextAir's own
+        // guide fetch can reassign show_channel/hdhr_record for a seriesAll show whose next
+        // matching episode airs on a different channel/device, same "re-resolve shows by show_id
+        // after any await" contract every sibling caller in this file follows (CLAUDE.md's
+        // "Idle-loop show-array safety" invariant). A stale pre-await capture here would broadcast
+        // the old channel/device instead of where the show is actually scheduled next.
+        if let updated = shows.first(where: { $0.show_id == showId }) {
+            pushShowUpdate(type: "show_updated", channel: updated.show_channel, device: updated.hdhr_record, rebuildMenu: false)
+        }
     }
 
     private func teardownRecordingState(index: Int, alsoRebuildGrid: Bool = true) {
@@ -3695,6 +3710,17 @@ final class AppState: ObservableObject {
 
     func reactivatePausedShows() {
         for i in shows.indices {
+            // Skip a show auto-paused for a still-missing tuner entirely — same exclusion the
+            // window-expiry auto-resume pass in idleLoop already applies (line ~2488). Without
+            // this, un-pausing here (and clearFailures() below wiping the exact marker string that
+            // pass checks for) reproduces the auto-pause/auto-resume flip-flop CLAUDE.md documents
+            // as already solved for every other code path: idleLoop's tuner-missing pass re-pauses
+            // it on the very next tick if the tuner is still genuinely absent. That pass's own
+            // symmetric auto-resume already un-pauses this show the moment the tuner is seen again —
+            // nothing here needs to duplicate that.
+            if shows[i].show_paused && shows[i].show_fail_reason == Self.autoPauseTunerMissingReason {
+                continue
+            }
             if shows[i].show_paused {
                 shows[i].show_paused = false
                 // Re-arm the "Up Next"/"Recording Soon" pre-notifications — same reasoning as
@@ -4648,8 +4674,17 @@ final class AppState: ObservableObject {
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 1_500_000_000)   // 1.5s — let device register the change
             captureResourceHeaders()
-            // recordableDevices — same reasoning as the idle-loop poll above.
-            for device in recordableDevices { await fetchDeviceStatus(for: device) }
+            // recordableDevices — same reasoning as the idle-loop poll above. Concurrent, not
+            // sequential — fetchDeviceStatus's actual work is a network await per device, so a
+            // plain `for`+`await` loop paid the sum of every device's round-trip instead of the
+            // slowest one, needlessly delaying releaseAssertionsIfIdle() below with N-1 devices.
+            // Matches the withTaskGroup shape every other multi-device fetch in this file already
+            // uses (lineup fetch, vstatus poll) — this loop was the one holdout still sequential.
+            await withTaskGroup(of: Void.self) { group in
+                for device in recordableDevices {
+                    group.addTask { await self.fetchDeviceStatus(for: device) }
+                }
+            }
             releaseAssertionsIfIdle()
         }
     }
@@ -5086,8 +5121,15 @@ final class AppState: ObservableObject {
     /// launched once the listener's teardown is actually confirmed (or a bounded 2s fallback).
     // Shared bullet list of active recordings for the "recordings in progress" alerts below —
     // quit() and relaunchForVLC() present the same shows, just with different surrounding copy.
+    // Built from the same unfiltered show_recording set `isRecording` uses to gate quit()'s and
+    // relaunchForVLC()'s "Recordings in progress" alert, not the show_end-filtered recordingShows —
+    // in the window after a recording's show_end passes but before idleLoop flips show_recording
+    // false, recordingShows can be empty while isRecording is still true, which used to show the
+    // warning alert with an empty list ("These recordings will be stopped:" followed by nothing)
+    // right when the user is deciding whether to quit.
     private var recordingsListText: String {
-        recordingShows.map { "• \($0.show_title) (Channel \($0.show_channel))" }.joined(separator: "\n")
+        shows.filter { $0.show_recording }
+            .map { "• \($0.show_title) (Channel \($0.show_channel))" }.joined(separator: "\n")
     }
 
     // Shared exit-path teardown for quit()/relaunchForVLC(): releases the VLC player, optionally

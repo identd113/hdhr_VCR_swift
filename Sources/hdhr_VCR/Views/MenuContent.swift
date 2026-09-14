@@ -97,8 +97,17 @@ struct MenuContent: View {
             let vlcUsing    = state.vlcOccupiesTuner(for: device.DeviceID) ? 1 : 0
             let appCount    = recordingShows.filter { $0.hdhr_record == device.DeviceID }.count + vlcUsing
             let liveInfo    = state.deviceTunerOccupancy[device.DeviceID]
-            let liveCount   = liveInfo?.filter { $0.VctNumber != nil }.count ?? appCount
-            let mismatch    = liveInfo != nil && liveCount != appCount
+            let hwCount     = liveInfo?.filter { $0.VctNumber != nil }.count ?? appCount
+            // max(hw, appCount), matching AppState.activeTunerCount(for:)'s documented contract —
+            // not hwCount alone. Right after a recording or in-app VLC stream starts but before the
+            // next status.json poll lands, hwCount is still the stale pre-start value; showing it
+            // as the headline number (with the correction relegated to the secondary "⚠ app expects
+            // N" suffix below) under-reported true occupancy for that window. mismatch still
+            // compares the raw hwCount, not this corrected liveCount, so the warning keeps firing in
+            // both directions — hw briefly lower than expected (this transient window) and hw
+            // higher than expected (e.g. another process/instance also using the tuner).
+            let liveCount   = max(hwCount, appCount)
+            let mismatch    = liveInfo != nil && hwCount != appCount
             let offline     = !device.isAvailable
             let noLineup    = !state.isStartingUp && !offline && (state.lineups[device.DeviceID]?.isEmpty ?? true)
             let noGuide     = !state.isStartingUp && !offline && (state.guideByDevice[device.DeviceID]?.isEmpty ?? true)
