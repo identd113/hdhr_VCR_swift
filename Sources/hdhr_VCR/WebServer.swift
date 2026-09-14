@@ -134,6 +134,27 @@ final class WebServer: @unchecked Sendable {
     // on every /api/guide.json hit (hdhr_guide polls this every 20s). nil only before the first
     // prebuildPageHTML ever runs, same lifecycle/staleness window as cachedGridHTML itself.
     private var cachedRecordedTagsByShow: [String: Set<String>]? = nil
+    // Signature of the series-show identities the cache above was actually computed against
+    // (show_id:title:baseDir:length per active managed series, plus the skip-enabled toggle) — see
+    // computeRecordedTagsByShow's own comment for how this and recordedTagsCacheNeedsRefresh
+    // together avoid re-scanning every recorded-episode file on disk for an event (a favorite
+    // toggle, an unrelated show's pause/resume) that can't possibly have changed what's on disk.
+    private var cachedRecordedTagsSignature: String? = nil
+    // Set true only where a recording actually stopping means a new episode file may now exist —
+    // broadcastRecordingStopped, the one call site that both means this and always rebuilds the
+    // grid right after. Left false for every other buildGuideGridHTML trigger (favorite toggle,
+    // pause/resume, an unrelated show's add/delete/edit) — the signature comparison alone already
+    // catches a change to a series' own title/folder/length or a series show being added/removed.
+    private var recordedTagsCacheNeedsRefresh = true
+
+    // Public poke for a stop path that doesn't route through broadcastRecordingStopped —
+    // AppState.skipRecording does its own inline teardown rather than calling
+    // teardownRecordingState, so it can't rely on that function's own invalidation. Whatever
+    // partial file a skip leaves behind is still a real on-disk candidate for skip-tracking.
+    @MainActor
+    func invalidateRecordedTagsCache() {
+        recordedTagsCacheNeedsRefresh = true
+    }
 
     // Separate cache for GET /vertical — identical grid/data, but with the vertical time-axis
     // <style> block included (see buildHTML(includeVerticalCSS:)) so portrait can transpose the
@@ -495,6 +516,12 @@ final class WebServer: @unchecked Sendable {
                                      state: state, refreshPageCache: false)
             return
         }
+        // A recording stopping is the one event the recordedTagsCacheSignature comparison alone
+        // can't see — a new episode file can land on disk with no series show's identity changing
+        // at all — so this is the one place that forces computeRecordedTagsByShow's own cache to
+        // actually re-scan on the buildGuideGridHTML call right below, instead of trusting a
+        // signature match that would otherwise still show this episode as "not yet recorded."
+        recordedTagsCacheNeedsRefresh = true
         let grid = buildGuideGridHTML(state: state)
         broadcastRecordingEvent(type: "recording_stopped", channel: channel, device: device,
                                  state: state, prebuiltGrid: grid)
@@ -2889,14 +2916,41 @@ final class WebServer: @unchecked Sendable {
     // shared by buildGuideGridHTML (via cachedRecordedTagsByShow) and buildGuideJSON's willSkip
     // gating so the two can't compute this differently.
     @MainActor
+    // Cached across calls — this used to do a synchronous FileManager directory scan plus
+    // per-file attributesOfItem stat for every managed series show, unconditionally, every time
+    // buildGuideGridHTML ran (which CLAUDE.md already flags as firing on every add/delete/pause/
+    // resume/edit/favorite-toggle/recording start/stop, directly on @MainActor). With several
+    // active series shows using season subfolders holding many recorded episodes, even an
+    // unrelated event like a single favorite toggle re-walked and stat'd every recorded episode
+    // file on the main thread, blocking SwiftUI/menu responsiveness and delaying the dependent SSE
+    // broadcast. The signature (every active series show's id/title/baseDir/length, plus the
+    // skip-enabled toggle) catches a show being added/removed or a series' own title/folder/length
+    // changing; recordedTagsCacheNeedsRefresh (set only by broadcastRecordingStopped) catches the
+    // one case the signature alone can't see — a new episode file landing on disk with no show
+    // identity change at all.
     private func computeRecordedTagsByShow(state: AppState, activeMgd: [Show], skipEnabled: Bool) -> [String: Set<String>] {
-        guard skipEnabled else { return [:] }
+        guard skipEnabled else {
+            cachedRecordedTagsByShow = [:]
+            cachedRecordedTagsSignature = nil
+            return [:]
+        }
+        let seriesShows = activeMgd.filter { $0.isSeries }
+        let signature = "skip=\(skipEnabled)|" + seriesShows
+            .map { "\($0.show_id):\($0.show_title):\($0.posixRecordDir):\($0.show_length)" }
+            .sorted().joined(separator: "|")
+        if !recordedTagsCacheNeedsRefresh, signature == cachedRecordedTagsSignature,
+           let cached = cachedRecordedTagsByShow {
+            return cached
+        }
         var result: [String: Set<String>] = [:]
-        for s in activeMgd where s.isSeries {
+        for s in seriesShows {
             let safe = s.show_title.replacingOccurrences(of: "/", with: "-")
             result[s.show_id] = state.recordedEpisodeTags(forTitle: safe, baseDir: s.posixRecordDir,
                                                             expectedMinutes: s.show_length)
         }
+        cachedRecordedTagsByShow = result
+        cachedRecordedTagsSignature = signature
+        recordedTagsCacheNeedsRefresh = false
         return result
     }
 
@@ -2995,10 +3049,10 @@ final class WebServer: @unchecked Sendable {
         // scan per series, off the per-block hot path) so a guide block whose episode we already
         // have can show a green "already recorded" corner flag instead of the gold "will record" one.
         let skipEnabled = state.config.Series_subfolder_enabled && state.config.Skip_recorded_episodes
+        // computeRecordedTagsByShow manages cachedRecordedTagsByShow itself now (see its own
+        // comment) — buildGuideJSON reuses whatever it left there instead of repeating this same
+        // disk scan on every /api/guide.json request.
         let recordedTagsByShow = computeRecordedTagsByShow(state: state, activeMgd: activeMgd, skipEnabled: skipEnabled)
-        // Reused by buildGuideJSON (see cachedRecordedTagsByShow's own comment) instead of it
-        // repeating this same disk scan on every /api/guide.json request.
-        cachedRecordedTagsByShow = recordedTagsByShow
         // ── Guide grid rows ────────────────────────────────────────────────────
         var rowParts: [String] = []
 
