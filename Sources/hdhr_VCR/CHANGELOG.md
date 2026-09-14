@@ -4,12 +4,15 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 
 ## Unreleased
 
+## v2.5.0 — 2026-09-14
+
 **Removed**
 - **"Watch in VLC"** — the button/menu item that opened a live channel or in-progress recording in a separate, external VLC.app window. Removed everywhere it appeared (Watch Now's action row, the menu bar's recording submenu, and the Settings toggle that controlled it) — it wasn't reliable enough to keep. This doesn't change what VLC is needed for: hdhrVCRplus still requires VLC.app to be installed for all of its own in-app playback, live TV and recordings alike.
 
 **Added**
 - **First-Run Wizard now explains the VLC requirement up front.** A new step checks whether VLC.app is installed and, if not, offers a one-click path to get it: an "Install VLC via Homebrew" button (when Homebrew is detected) that copies the install command to your clipboard and opens Terminal for you to paste and run, or a direct download link otherwise. Every watching feature elsewhere in the app already dims itself and explains "(Requires VLC)" when it's missing — this just surfaces that fact before you go looking for it.
 - **Terminal Guide (`hdhr_guide`) can now set "New Only" (skip reruns) and pick specific weekdays** for a recurring "Weekly" schedule directly from its recording summary screen, matching what the web guide's Record dialog already offered — previously schedule-only and locked to server defaults for both.
+- **The web guide now previews Bonus Time overlap directly in the grid.** A sports show gets a faint colored wash extending past its own listed end time, over however much of the next slot it would actually eat into if it ran long — a quick visual heads-up that a slot tends to run over, whether or not that particular airing is scheduled.
 
 **Updated**
 - **Fixed: adding a second show from the native Add Show window in one sitting could silently do nothing.** The window would close normally, looking successful, but the second show never actually got added — only happened when an earlier Add Show in that same still-open window had already succeeded.
