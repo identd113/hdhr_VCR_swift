@@ -2317,7 +2317,11 @@ final class AppState: ObservableObject {
         if isRecording { tier1.append(.recording) }
         if hasAvailableRemoteFeed { tier1.append(.feedAvailable) }
         if !tier1.isEmpty { return tier1 }
-        if let mins = nextShowMinutes, mins <= 30 { return [.upNext(minutes: Int(mins.rounded()))] }
+        // Fixed one-hour lead time, not the broader "next show today" definition used by Up Next
+        // listings elsewhere (MenuContent's Up Next section, the web guide's tuner dropdowns/
+        // summary panel — see their own comments) — the status light exists specifically as an
+        // imminent-start alert, not a running list, so it stays on its own tighter window.
+        if let mins = nextShowMinutes, mins <= 60 { return [.upNext(minutes: Int(mins.rounded()))] }
         return []
     }
 

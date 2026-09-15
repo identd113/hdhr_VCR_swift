@@ -59,6 +59,63 @@ Raised 2026-09-09: the user no longer remembers the specific reason this was add
 
 ## Player / Watch Now
 
+### Watch two live streams at once (Watch Now and/or FEED), picture-in-picture
+
+Live user request, 2026-09-14, scoped down through discussion from a full multi-window
+architecture to: keep the single reusable player window/`VLCBridge` singleton, but let
+it drive a second, deliberately minimal concurrent stream as a small muted
+picture-in-picture corner thumbnail, with tap-to-swap for which stream is "front" (full
+controls + audio). Works for any combination of Watch Now (a local in-progress
+recording) and FEED (another instance's relay) in either slot — both already funnel
+through the same `VLCPlayerWindowManager.open(url:title:device:appState:)` by the time
+either reaches the window manager, so no source-type branching is needed.
+
+**Confirmed feasible via code research, not yet built:**
+- `VLCBridge`'s libvlc calls (`setVolume`, `setAudioTrack`, `setSpuTrack`) are already
+  scoped per-`mediaPlayer` — the singleton-ness is only in the Swift wrapper's own
+  storage, not in libvlc itself.
+- One `vlcInstance` can already host two concurrent `mediaPlayer`s — proven live by
+  `TranscodeSession` (`VLCBridge.swift`, `startTranscodeSession`), which creates a
+  second `player = mpNewFn(inst)` against the same shared instance with refcounted
+  dict-based teardown. That session is headless (sout transcode chain, no drawable) —
+  a different code path than on-screen playback — but the lifecycle pattern (second
+  player/media pointer pair, same serial-queue teardown shape) is safe to reuse for a
+  second *visible* player.
+- No `libvlc_event_attach` anywhere — `VLCBridge` polls via one `Timer`
+  (`tickController()`); a second player only needs folding into that same tick, not a
+  second Timer.
+- The server-side FEED relay session store (`WebServer.feedRelaySessions`) is already
+  dictionary-keyed by session id — already supports N concurrent sessions. The only
+  singleton constraint is client-side: `VLCPlayerWindowManager`'s single
+  `currentFeedRemoteURL`/`currentFeedSessionId` fields, and `AppState
+  .startFeedLocalRelay` unconditionally unregistering the *previous* session before
+  starting a new one — both need to become slot-aware (primary/secondary), not a
+  server-side change.
+
+**Design**: primary fills the window with full existing controls (unchanged); secondary
+is a small fixed-size corner thumbnail, video only, always muted, no track
+picker/scrub/buffer overlay. Swap is a genuine reconnect — `play(url:)` the two
+streams' URLs across the primary/secondary `mediaPlayer`s, the same reconnect-by-URL
+pattern already used for channel switches/`toggleFeedTranscode`/`catchUpToLive` — a
+brief rebuffer on swap is expected, not a regression, and swap-in reuses the
+`posterHidden`/mute-reset path already fixed for the FEED audio-switch bug (see
+`CHANGELOG.md`), so the newly-primary stream un-mutes correctly for free. Entry point:
+whenever the window is already playing something watchable, every *other* watchable
+candidate's menu (Watch Now row or FEED row) gains a "Watch alongside current (PiP)"
+action next to its normal Watch button — never automatic.
+
+**Key files** (full plan, not yet implemented): `VLCBridge.swift` (second minimal
+player/drawable/`@Published` state, `ensureSecondaryPlayer`/`releaseSecondaryPlayer`/
+`setSecondaryDrawable`/`playSecondary`), `VLCPlayerView.swift`
+(`VLCSecondaryVideoSurface`, PiP overlay + tap-to-swap,
+`VLCPlayerWindowManager.swapPrimaryAndSecondary`/`openSecondary`, secondary-slot
+bookkeeping fields), `AppState.swift` (`startFeedLocalRelay` slot awareness,
+`watchAsSecondary`, `maintainVLCSleepAssertionIfNeeded` secondary check),
+`MenuContent.swift` (the "Watch alongside" menu action on both Watch Now and FEED
+rows).
+
+---
+
 ### More insistent tuner release for the yield-to-record flow — without killing anything
 
 Flagged 2026-09-11/12: the Watch Now yield-tuner-to-Record flow's tuner-free wait (`AppState.recordAfterYieldingWatchNow`'s tuner-free poll) is genuinely variable in practice — live-tested twice post-`yieldingWatchNowDeviceID`-fix, once resolving in ~1s, once taking 16s (cross-machine re-test, see `issues_resolved.md`'s follow-up on that entry) — because the real HDHomeRun device only frees a port-5004 tuner once it notices the underlying TCP connection actually closed, and that detection isn't instant. A raw `kill -9` on a recording's own curl process frees the same tuner immediately by comparison, but killing anything here isn't an option — `VLCBridge` is a shared, long-lived libvlc engine used for all playback in the app, not a disposable per-stream process like a recording's curl; killing it would tear down far more than just this one connection.

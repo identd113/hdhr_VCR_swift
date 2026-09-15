@@ -46,7 +46,7 @@ struct AppStateStatusLightTests {
 
     @Test @MainActor func upNextOnly_returnsUpNext() {
         var show = Show.testActive()
-        show.show_next = Date().addingTimeInterval(15 * 60)   // 15 min out — inside the 30-min window
+        show.show_next = Date().addingTimeInterval(15 * 60)   // 15 min out — inside the 1-hour window
         let state = makeTestAppState(shows: [show], devices: [], lineups: [:])
         #expect(state.statusLightCandidates == [.upNext(minutes: 15)])
     }

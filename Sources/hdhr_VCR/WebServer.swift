@@ -2709,7 +2709,10 @@ final class WebServer: @unchecked Sendable {
         let sortedActive = state.activeShows
             .filter(mine)
             .sorted { ($0.show_next?.timeIntervalSince1970 ?? .infinity) < ($1.show_next?.timeIntervalSince1970 ?? .infinity) }
-        let upNext     = sortedActive.first(where: { $0.show_next != nil })
+        // "Up Next" = the next show today, else nothing — see MenuContent.swift's Up Next
+        // section for the same standardized definition. A soonest-active show that isn't today
+        // just stays in Scheduled below instead of being pulled out here.
+        let upNext     = sortedActive.first(where: { $0.show_next != nil && Calendar.current.isDateInToday($0.show_next!) })
         let restActive = sortedActive.filter { $0.show_id != upNext?.show_id }
 
         if let next = upNext {
@@ -2866,13 +2869,15 @@ final class WebServer: @unchecked Sendable {
             guard let raw = state.channelImageURLs["\(deviceId):\(ch)"], !raw.isEmpty else { return "" }
             return "<img src=\"\(he(raw))\" loading=\"lazy\" onerror=\"this.style.display='none'\" style=\"width:36px;height:36px;object-fit:contain;border-radius:4px;flex-shrink:0;margin-right:12px;background:#ccc\">"
         }
+        // "Up Next" = the next show today, else nothing — same standardized definition as
+        // MenuContent.swift's Up Next section and buildTunerShowsHTML's above.
         if let rec = recording.first {
             var sub = ""
-            if let next = phSorted.first(where: { $0.show_next != nil && $0.show_id != rec.show_id }) {
+            if let next = phSorted.first(where: { $0.show_next != nil && $0.show_id != rec.show_id && Calendar.current.isDateInToday($0.show_next!) }) {
                 sub = "<div style=\"font-size:.7rem;color:var(--t4);margin-top:2px\"><span style=\"color:var(--ac)\">★</span> \(he(next.show_title)) · at \(he(state.shortTime(next.show_next)))</div>"
             }
             return "\(phLogo(rec.hdhr_record, rec.show_channel))<div><div style=\"font-size:.82rem;font-weight:600;color:var(--t0)\"><span style=\"color:#ff8080\">●</span> Recording: \(he(rec.show_title))</div>\(sub)</div>"
-        } else if let next = phSorted.first(where: { $0.show_next != nil }) {
+        } else if let next = phSorted.first(where: { $0.show_next != nil && Calendar.current.isDateInToday($0.show_next!) }) {
             return "\(phLogo(next.hdhr_record, next.show_channel))<div><div style=\"font-size:.82rem;font-weight:600;color:var(--t0)\"><span style=\"color:var(--ac)\">★</span> Up Next: \(he(next.show_title))</div><div style=\"font-size:.7rem;color:var(--t4);margin-top:2px\">at \(he(state.shortTime(next.show_next)))</div></div>"
         } else {
             return "<div style=\"font-size:.85rem;color:var(--t5)\">Select a show from the guide</div>"
@@ -3224,18 +3229,20 @@ final class WebServer: @unchecked Sendable {
 
                     // Bonus Time preview overlay — a faint sports-colored wash extending past this
                     // entry's own listed end, over however much of the next slot's time this show
-                    // would actually eat into if it ran long (Sports_padding_minutes). Genre-based,
-                    // same auto-detection every other client uses (Show.genreImpliesBonusTime) — not
-                    // gated on isMgd/isEntryRec, so it shows for any matching guide entry, scheduled
-                    // or not, by explicit design direction (2026-09-14): the point is showing what
-                    // time this slot is likely to steal even before/without anyone actually
-                    // scheduling it. Appended right after the entry's own block (not merged into it)
-                    // since it needs to render past that block's own edge, into the next one's
-                    // territory — .g-bonus-overlay's own z-index (guide.css) keeps it visually on
-                    // top of whatever's underneath while staying non-interactive (pointer-events:
-                    // none, aria-hidden) so click/keyboard behavior on the real blocks underneath is
+                    // would actually eat into if it ran long (Sports_padding_minutes). Gated on the
+                    // owning show's actual `show_bonus_time` flag (same gate the recording engine
+                    // itself uses — AppState.skipRecording's `config.Sports_padding_enabled &&
+                    // show.show_bonus_time`), not a genre guess — as of 2026-09-14, narrowed from an
+                    // earlier version keyed off Show.genreImpliesBonusTime(e.firstGenre) alone, which
+                    // showed spillover for any sports-genre entry even when it wasn't scheduled at
+                    // all, or was scheduled with Bonus Time explicitly turned off for that show.
+                    // Appended right after the entry's own block (not merged into it) since it needs
+                    // to render past that block's own edge, into the next one's territory —
+                    // .g-bonus-overlay's own z-index (guide.css) keeps it visually on top of
+                    // whatever's underneath while staying non-interactive (pointer-events: none,
+                    // aria-hidden) so click/keyboard behavior on the real blocks underneath is
                     // completely unaffected.
-                    if state.config.Sports_padding_enabled, Show.genreImpliesBonusTime(e.firstGenre) {
+                    if state.config.Sports_padding_enabled, owner?.show_bonus_time == true {
                         let bonusEndTs = e.EndTime + state.config.Sports_padding_minutes * 60
                         let bce = min(bonusEndTs, winEnd) - winStart
                         if bce > ce {

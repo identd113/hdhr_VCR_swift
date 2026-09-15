@@ -4,6 +4,10 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 
 ## Unreleased
 
+**Updated**
+- **Standardized what "Up Next" means across the app.** The menu bar's Up Next section and the web guide's per-tuner Up Next row/summary panel now all mean the same thing — the next show scheduled to record, as long as it's later today; nothing is shown once nothing's left today. (Previously the menu bar list was capped at a fixed 60-minute lookahead, and the web guide's version had no time bound at all — the two could disagree about what counted as "next.") The menu bar icon's own status light keeps a separate, fixed one-hour window, since it's meant as an imminent-start alert rather than a listing.
+- **Fixed: switching between two shows being watched via FEED (Recording FEED Beta) left audio muted on the second one.** The video correctly switched, but audio stayed silent until the player window was closed and reopened. Root cause: the player reuses one window/stream slot when switching between shows on the same source Mac, and a leftover "poster is already hidden" flag from the first show silently blocked the auto-unmute that runs once a FEED stream finishes buffering.
+
 ## v2.5.0 — 2026-09-14
 
 **Removed**
@@ -12,7 +16,7 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 **Added**
 - **First-Run Wizard now explains the VLC requirement up front.** A new step checks whether VLC.app is installed and, if not, offers a one-click path to get it: an "Install VLC via Homebrew" button (when Homebrew is detected) that copies the install command to your clipboard and opens Terminal for you to paste and run, or a direct download link otherwise. Every watching feature elsewhere in the app already dims itself and explains "(Requires VLC)" when it's missing — this just surfaces that fact before you go looking for it.
 - **Terminal Guide (`hdhr_guide`) can now set "New Only" (skip reruns) and pick specific weekdays** for a recurring "Weekly" schedule directly from its recording summary screen, matching what the web guide's Record dialog already offered — previously schedule-only and locked to server defaults for both.
-- **The web guide now previews Bonus Time overlap directly in the grid.** A sports show gets a faint colored wash extending past its own listed end time, over however much of the next slot it would actually eat into if it ran long — a quick visual heads-up that a slot tends to run over, whether or not that particular airing is scheduled.
+- **The web guide now previews Bonus Time overlap directly in the grid.** A scheduled show with Bonus Time enabled gets a faint colored wash extending past its own listed end time, over however much of the next slot it would actually eat into if it ran long — a quick visual heads-up that a scheduled recording tends to run over.
 
 **Updated**
 - **Fixed: adding a second show from the native Add Show window in one sitting could silently do nothing.** The window would close normally, looking successful, but the second show never actually got added — only happened when an earlier Add Show in that same still-open window had already succeeded.

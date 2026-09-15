@@ -44,6 +44,13 @@ struct VLCPlayerView: View {
 
     @State private var selectedChannel: LineupEntry?
     @State private var suppressNextChannelPlay = false
+    // Set alongside suppressNextChannelPlay only by syncChannel's recording-relay match branch
+    // (the live→disk yield handoff, matching the *same* show already playing under a synthetic
+    // entry) — distinguishes that relabel-only case from a genuine synced content change (e.g.
+    // switching which FEED show is playing via VLCPlayerWindowManager.open, which also sets
+    // suppressNextChannelPlay to avoid a redundant playChannel call, but IS new content and still
+    // needs the poster/mute reset below). See .onChange(of: selectedChannel)'s own comment.
+    @State private var suppressSameContent = false
     @State private var selectedAudioTrackId: Int32 = -1  // -1 = not yet loaded; set when audioTracks first appear
     @State private var selectedSpuTrackId:   Int32 = -1  // -1 = CC off (default)
     // -1 is also the Picker's own "Off" tag, so it can't by itself distinguish "user explicitly
@@ -950,18 +957,37 @@ struct VLCPlayerView: View {
                 selectedAudioTrackId = -1
                 selectedSpuTrackId   = -1
                 spuChoiceIsExplicit  = false
-                if suppressNextChannelPlay { suppressNextChannelPlay = false; return }
-                // Poster reset moved here, *after* the suppress check — root-caused 2026-09-11:
-                // syncChannel's own recording-relay match (the yield-to-record flow's live→disk
-                // handoff) sets suppressNextChannelPlay=true then reassigns selectedChannel to a
-                // synthetic "live:showId" entry for the *same* show already playing, purely so the
-                // channel picker's label updates. That's not a real channel switch, but this
-                // handler used to unconditionally blank posterNSImage/reopen posterHidden anyway —
-                // and since .task(id: currentGuideEntry?.ImageURL) only re-fires when the image URL
-                // actually changes (it doesn't here — currentGuideEntry's own synthetic-entry
-                // resolution deliberately maps back to the same real show), nothing ever
-                // repopulated it: the show's poster/logo was gone for the rest of that session.
-                // Only a genuine switch (the branch below) should ever clear it.
+                if suppressNextChannelPlay {
+                    suppressNextChannelPlay = false
+                    // The live→disk yield handoff (syncChannel's recording-relay match) is the one
+                    // suppressed case that ISN'T a genuine content change — it relabels the picker
+                    // for the *same* show already playing, so it alone also sets suppressSameContent
+                    // and must skip the poster/mute reset below — root-caused 2026-09-11: this
+                    // handler used to unconditionally blank posterNSImage/reopen posterHidden anyway,
+                    // and since .task(id: currentGuideEntry?.ImageURL) only re-fires when the image
+                    // URL actually changes (it doesn't here — currentGuideEntry's own synthetic-entry
+                    // resolution deliberately maps back to the same real show), nothing ever
+                    // repopulated it: the show's poster/logo was gone for the rest of that session.
+                    if suppressSameContent { suppressSameContent = false; return }
+                    // Any other suppressed switch IS genuine new content — most notably switching
+                    // which FEED show is playing (VLCPlayerWindowManager.open reuses this window/
+                    // view when the source device doesn't change, so no fresh .onAppear ever runs
+                    // for the new stream). Root-caused 2026-09-14, live report: without this reset,
+                    // posterHidden stayed true (left over from the *first* FEED show's successful
+                    // auto-play), so attemptFeedAutoPlay's `!posterHidden` guard silently failed for
+                    // every subsequent switch — the video genuinely changed (VLCBridge.play(url:)
+                    // loaded the new stream regardless) but audio stayed muted at the volume 0
+                    // VLCPlayerWindowManager.open sets before every play() call, forever. Falling
+                    // through to the same poster/mute reset the direct-picker path uses below lets
+                    // attemptFeedAutoPlay's delayed re-arm (.task(id: bridge.currentURL), already
+                    // correctly restarting on the new URL) actually restore volume once buffered —
+                    // playChannel/watchRecordingInApp itself must still stay skipped since the
+                    // caller (VLCPlayerWindowManager.open) already started this exact stream.
+                    posterHidden = false
+                    posterNSImage = nil
+                    VLCBridge.shared.setVolume(0)
+                    return
+                }
                 posterHidden = false
                 posterNSImage = nil
                 VLCBridge.shared.setVolume(0)
@@ -1391,6 +1417,7 @@ struct VLCPlayerView: View {
             MPNowPlayingInfoCenter.default().playbackState = .playing
             guard selectedChannel?.GuideNumber != entry.GuideNumber else { return }
             suppressNextChannelPlay = true
+            suppressSameContent     = true   // same show, relabel-only — see its own doc comment
             selectedChannel = entry
             return
         }

@@ -43,7 +43,7 @@ Immediately below the header: **Add Show…** button, **Watch Now** button (when
   - Only while at least one viewer on the remote Mac is actively transcoding that show, a `"Transcoding: N viewer(s)"` row.
   - **A `"Signal: N%"` row, added 2026-09-04** — the *source* Mac's own real tuner signal for the show being relayed (`LineupEntry.virtualRelaySignalQualityPercent`, decoded from `/lineup.json`'s non-standard `HdhrVCRplusSignalQualityPercent` field), omitted entirely rather than shown as "0%" when not yet known — see `docs/VirtualTunerService.md`'s "Estimated signal for FEED consumers" section.
 
-**Up Next** section (only visible when shows start within 60 min):
+**Up Next** section (only visible when shows are scheduled later today — standardized 2026-09-14 to match the web guide's own "Up Next" definition, see `docs/WebServer.md`; distinct from the menu bar status light's own fixed one-hour window, `docs/AppState.md`):
 - Same section header pattern: `"Up Next"` or `"Up Next · 105404BE"`
 - Within the section: shows bucketed by start time, each time slot rendered as a `Section` header (`"8:00 PM"`) with its shows below; show items have `"  ch 5.1"` appended to the title
 
@@ -153,7 +153,7 @@ Divider
 Section "Recording on Another Mac"   ← only when a different instance's virtual relay is discovered
   ["Recording on <title>" — play.tv.fill, Menu → Watch (raw, labeled "Watch (H.264)" instead when source is already modern), Watch (H.264) (second item, only when source isn't already modern; both disabled + " (Requires VLC)" when unavailable, else call state.watchRemoteRelay(...), the latter with &transcode=auto), Divider, Source codec row (always), optional Transcoding: N viewer(s), optional Signal: N%] …
 Divider
-Section "Up Next"                    ← shows starting within the next hour (single tuner)
+Section "Up Next"                    ← shows scheduled later today (single tuner)
 Section "Up Next · DeviceID"         ← per device when multiple tuners present
   Section "8:00 PM"                  ← time-slot Section groups shows by start minute
     scheduledMenu(show, showChannel:true) …   ← "ch 5.1" appended to label
@@ -236,7 +236,7 @@ Submenu — uses `showInfoHeader(show, entry:)` for the top block, then:
 
 ### Up Next section
 
-Shows in `activeShows` whose `show_next` falls within the **next 60 minutes** appear in the **"Up Next"** section above "Scheduled". Shows are bucketed by start time (rounded to the minute); each bucket renders as a nested `Section("8:00 PM")` containing its shows. Each show in Up Next has `showChannel: true` so the channel is visible in the row label. Shows in Up Next are excluded from the Scheduled section.
+Shows in `activeShows` whose `show_next` falls **later today** (standardized 2026-09-14 — previously a fixed 60-minute window) appear in the **"Up Next"** section above "Scheduled"; nothing appears at all once nothing's left today. Shows are bucketed by start time (rounded to the minute); each bucket renders as a nested `Section("8:00 PM")` containing its shows. Each show in Up Next has `showChannel: true` so the channel is visible in the row label. Shows in Up Next are excluded from the Scheduled section. This mirrors the web guide's own "Up Next" definition (`docs/WebServer.md`'s `buildTunerShowsHTML`/`buildSumPhHTML`) — same term, same meaning everywhere in the app, except the menu bar status light itself (`docs/AppState.md`), which is a one-hour imminent-start alert, not a listing.
 
 **Series filter:** series shows without a confirmed `menuScheduledEntry` (no guide entry was matched within the look-ahead window) are excluded from Up Next and remain in Scheduled. These shows are in retry/scan mode — `show_next` falls within the window only because of a prior episode, not because a real upcoming episode has been confirmed — and surfacing them in Up Next would mislead the user into thinking a recording is imminent.
 

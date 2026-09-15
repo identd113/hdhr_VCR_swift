@@ -294,18 +294,22 @@ struct MenuContent: View {
         }
 
         // ── Next Up ────────────────────────────────────────────────────────
-        // Shows starting within the next hour, grouped by start time (bucketed to minute).
+        // "Up Next" means any show scheduled to record later today — not a fixed lookahead
+        // window — grouped by start time (bucketed to minute). Standardized to match the same
+        // "next show today, else nothing" definition used by the web guide's tuner dropdowns and
+        // summary panel (WebServer.swift's buildTunerShowsHTML/buildSumPhHTML). This is distinct
+        // from the menu bar status light itself, which keeps its own fixed one-hour window (see
+        // AppState.statusLightCandidates) since it's an imminent-start alert, not a listing.
         let now = Date()
         let availableActive = activeShows.filter { !unavailableDeviceIDs.contains($0.hdhr_record) }
         let nextUpGroups: [(time: Date, shows: [Show])] = {
-            let cutoff = now + 60 * 60
             let cal = Calendar.current
+            let cutoff = cal.startOfDay(for: cal.date(byAdding: .day, value: 1, to: now) ?? now)
             var byMinute: [Date: [Show]] = [:]
             for show in availableActive {
-                guard let d = show.show_next, d > now, d <= cutoff else { continue }
+                guard let d = show.show_next, d > now, d < cutoff else { continue }
                 // Series shows without a confirmed guide entry are in retry/scan mode — keep
-                // them in Scheduled rather than Up Next so the section stays visible during the
-                // 60-min lead-up to the retry window (when no real episode is imminent).
+                // them in Scheduled rather than Up Next until a real episode is confirmed.
                 if show.isSeries, state.menuScheduledEntry[show.show_id] == nil { continue }
                 var c = cal.dateComponents([.year, .month, .day, .hour, .minute], from: d)
                 c.second = 0
