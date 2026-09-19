@@ -175,11 +175,20 @@ whether you're on Terminal.app or three hops away over SSH.
 
 ## What's New
 
-See **[RELEASES.md](RELEASES.md)** for what changed in the current release and every version
-before it, or the → [full changelog](Sources/hdhr_VCR/CHANGELOG.md) for the complete list.
+**v2.5.0's headline feature: Recording FEED (Beta).** While a show is recording, that Mac can
+rebroadcast it as a small virtual tuner on your LAN — any other hdhrVCRplus instance sees it show
+up under "Recording on Another Mac" and can watch it live, without opening a second real tuner.
+Off by default per Mac; turn it on in Settings → Sharing → "Rebroadcast In-Progress Recordings."
 
-Everything else (LAN web UI, Discord notifications, per-show bonus time, watching a recording in
-progress without a second tuner, etc.) is covered above under [Features](#features).
+Also new this release: **picture-in-picture** (watch two live streams at once, in a swappable,
+repositionable corner thumbnail) and an **Info button** on the player — press "i", like a TV
+remote, for the show name, episode title, and air date.
+
+See **[RELEASES.md](RELEASES.md)** for the rest of what changed in the current release and every
+version before it, or the → [full changelog](Sources/hdhr_VCR/CHANGELOG.md) for the complete list.
+
+Everything else (LAN web UI, Discord notifications, per-show bonus time, etc.) is covered above
+under [Features](#features).
 
 ---
 
