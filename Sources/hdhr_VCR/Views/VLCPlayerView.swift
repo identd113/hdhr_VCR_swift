@@ -250,6 +250,29 @@ struct VLCPlayerView: View {
             }
     }
 
+    // Synthetic row for a FEED (another Mac's in-progress recording) currently playing as primary
+    // whose source doesn't match this window's own bound `device` — the case recordingChannelEntries
+    // above can't cover, since it only ever looks at *this* device's own recordingShows. Reachable
+    // after a cross-device PiP swap (VLCBridge.swapSlots()/swapPrimaryAndSecondary()): this view's
+    // `device`/`lineup` stay bound to whichever device the window originally opened on (see
+    // docs/VLCPlayerView.md's "cross-device swap" note), so a swapped-in FEED from a different
+    // source Mac has no entry in `lineup` to resolve against at all — found live 2026-09-19, the
+    // channel picker just showed the plain favorites/rest list with nothing selected. A FEED opened
+    // directly (not via a swap) already works without this: device.isVirtualRelay is true then, so
+    // it resolves through the normal lineup-matching path in syncChannel(to:) instead — this entry
+    // only ever appears for the cross-device case, gated the same way in that function.
+    private static let liveFeedGuideNumberPrefix = "live-feed:"
+
+    private var feedChannelEntry: LineupEntry? {
+        guard let remoteURL = VLCPlayerWindowManager.shared.currentFeedRemoteURL,
+              let pair = state.remoteRelayEntries.first(where: { $0.entry.URL == remoteURL })
+        else { return nil }
+        let title = pair.entry.virtualRelayShowTitle ?? pair.entry.GuideName
+        let label = pair.entry.virtualRelaySourceHostname.map { "\(title) — \($0)" } ?? title
+        return LineupEntry(GuideNumber: "\(Self.liveFeedGuideNumberPrefix)\(remoteURL)",
+                            GuideName: "FEED  \(label)", URL: nil, HD: nil, Favorite: nil)
+    }
+
     // Media-key next/prev cycle order — recording rows first, then real channels in plain
     // ascending channel-number order. Deliberately NOT favorites-first like the picker's visual
     // order below: channel-up/down is a sequential-step gesture (user expects 5.1 → 5.2 → 6.1),
@@ -1228,7 +1251,7 @@ struct VLCPlayerView: View {
                 // (shouldn't normally happen once recordingChannelEntries covers every relay
                 // stream, but avoids ever rendering blank). Hidden entirely when nothing on this
                 // device is recording — there's no "Live" to fall back to in that case.
-                if !recordingChannelEntries.isEmpty {
+                if !recordingChannelEntries.isEmpty || feedChannelEntry != nil {
                     Text("Live").tag(Optional<LineupEntry>.none)
                 }
                 // One row per show currently recording on this device — GuideName already holds
@@ -1236,6 +1259,11 @@ struct VLCPlayerView: View {
                 // "GuideNumber  GuideName" template below, which would show the synthetic tag).
                 ForEach(recordingChannelEntries, id: \.GuideNumber) { entry in
                     Text(entry.GuideName).tag(Optional(entry))
+                }
+                // A cross-device FEED swapped in as primary — see feedChannelEntry's own doc
+                // comment for why this is separate from recordingChannelEntries above.
+                if let feedEntry = feedChannelEntry {
+                    Text(feedEntry.GuideName).tag(Optional(feedEntry))
                 }
                 // Favorites-first, matching WatchNowView's favTopBorder split and the web
                 // Guide's favRows/otherRows — a labeled Section reads as the closest
@@ -1707,6 +1735,28 @@ struct VLCPlayerView: View {
         // true remote URL before matching.
         let url = device.isVirtualRelay ? (VLCPlayerWindowManager.shared.currentFeedRemoteURL ?? rawSyncURL) : rawSyncURL
         let base = url.urlBase
+        // A FEED swapped in as primary from a *different* device than this window's own bound
+        // `device` — device.isVirtualRelay is false here (this window opened on a real tuner, not
+        // the FEED's source), so the substitution just above never fires and `lineup` has nothing
+        // to match against at all. feedChannelEntry's own doc comment has the full story; this is
+        // its resolution counterpart, checked via VLCPlayerWindowManager.currentFeedRemoteURL
+        // directly (a definitive "is a FEED primary right now" signal) rather than fuzzy URL
+        // matching, the same way the recording-relay branch below trusts bridge.recordingShowId
+        // over matching its own local relay URL.
+        if !device.isVirtualRelay, VLCPlayerWindowManager.shared.currentFeedRemoteURL != nil,
+           let entry = feedChannelEntry {
+            glog("[VLC] syncChannel matched cross-device FEED \(entry.GuideName) for url=\(base)")
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = [
+                MPMediaItemPropertyTitle:             entry.GuideName,
+                MPMediaItemPropertyArtist:            "Live",
+                MPNowPlayingInfoPropertyIsLiveStream: true
+            ]
+            MPNowPlayingInfoCenter.default().playbackState = .playing
+            guard selectedChannel?.GuideNumber != entry.GuideNumber else { return }
+            suppressNextChannelPlay = true
+            selectedChannel = entry
+            return
+        }
         // Recording-relay stream: match against this device's currently-recording shows instead
         // of the lineup — the relay URL (docs/WebServer.md) never matches a real channel URL.
         // AppState.watchRecordingInApp defers setting bridge.recordingShowId to the next run-loop

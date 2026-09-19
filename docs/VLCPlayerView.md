@@ -417,9 +417,14 @@ all — `nil` is the safe "don't show a wrong channel" choice for both the same-
 case alike. In practice the existing `.onChange(of: state.vlcCurrentURL)` → `syncChannel()` path
 (driven by `currentURL` itself changing) re-resolves `selectedChannel` correctly right afterward for
 a same-device swap (confirmed live: swapping in a Watch Now relay resynced the picker to its
-synthetic "Live" entry) — a cross-device swap's toolbar (channel list, tuner-scoped displays) is not
-fully re-scoped to the new device, a known deeper limitation of this view's per-window device
-binding, out of scope for the swap fix itself. Unlike the old reconnect-based version, this does
+synthetic "Live" entry). **A cross-device swap landing on a FEED is now also labeled correctly**
+(fixed 2026-09-19, found live: swapping in a Mac Mini FEED from a laptop Watch Now window left the
+channel picker showing the plain favorites/rest list with nothing selected) via `feedChannelEntry`/
+`syncChannel()`'s matching branch for it — see `feedChannelEntry`'s own doc comment. This is
+narrowly scoped to *labeling what's already playing*, not full re-scoping: the rest of a
+cross-device swap's toolbar (the channel list itself still only ever lists `device`'s own lineup,
+so you can't pick a *different* channel on the swapped-in device from here) remains the same known
+deeper limitation of this view's per-window device binding as before. Unlike the old reconnect-based version, this does
 **not** reset `posterHidden`/`posterNSImage` — the newly-primary stream was already playing with its
 poster long since dismissed, and forcing it back to `false` would wrongly show a Start-gate poster
 over an already-live stream. (The `.onChange(of: selectedChannel)` reuse-without-a-fresh-`.onAppear`
