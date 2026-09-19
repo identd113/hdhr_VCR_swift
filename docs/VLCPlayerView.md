@@ -362,12 +362,12 @@ its last frame forever with no indication at all), and a small "×" close button
 (`VLCPlayerWindowManager.closeSecondary()`) — the only way to stop the secondary without swapping
 it to primary first.
 
-**No in-place channel/source changes.** The thumbnail has no channel picker, no track picker, no
-controls beyond tap-to-swap and the "×" close button — by design, not an oversight. There is no way
-to retune what's playing in the secondary slot while it's running; the only ways to change it are
-(1) close it and open a different "Watch alongside (PiP)" selection for whatever you actually want,
-or (2) swap it to primary, where the full toolbar's channel picker is available, tune from there —
-at which point it's the primary, not PiP, and whatever was primary is now the muted corner instead.
+**No track picker, no scrub bar, no controls beyond tap-to-swap, the "×" close button, and — for a
+live-channel secondary — the right-click "Channel" submenu below.** A FEED or Watch Now secondary
+has no in-place way to retune (no channel lineup to switch within — `secondaryChannelNumber` is
+nil for both, see "Positioning the thumbnail" below); the only ways to change one of those are (1)
+close it and open a different "Watch alongside (PiP)" selection for whatever you actually want, or
+(2) swap it to primary, where the full toolbar's channel picker is available.
 
 **Tap-to-swap** (`VLCPlayerView.swapPrimaryAndSecondary()` → `VLCBridge.swapSlots()`): redesigned
 2026-09-19 after live feedback that an earlier reconnect-by-URL version (calling `play(url:slot:)`
@@ -432,6 +432,21 @@ checkmark on whichever is currently in effect. `pipOverlay`'s `VStack`/`HStack` 
 a `Spacer()` before or after the thumbnail based on `pipCorner.isTop`/`.isLeading` rather than a
 fixed `alignment:` — the same "pin to whichever edge" idiom already used for its own bottom-pinned
 placement, just parameterized. No drag-and-drop — corner-only, chosen explicitly by the user.
+
+**Changing the channel** (`pipChannelMenu`, same right-click menu as `pipCornerMenu` above, added
+below a `Divider()`): only rendered when `VLCPlayerWindowManager.shared.secondaryChannelNumber !=
+nil` — set only by `PiPPickerView`'s live-channel rows (`watchAsSecondary(channelNumber:)`), never
+by `watchRemoteRelayAsSecondary`/`watchRecordingInAppAsSecondary`, so a FEED or Watch Now secondary
+never shows a "Channel" submenu (neither has a lineup to switch within). Lists the secondary's own
+device's lineup (`state.lineups[secondaryDeviceID]`, favorites first) — not necessarily the
+primary's bound `device`, since a cross-device secondary is supported (see above). Picking a
+channel calls `VLCPlayerView.playSecondaryChannel(_:deviceId:)`, which reconnects just the
+secondary player (`VLCBridge.play(url:slot:.secondary)` — the primary is completely unaffected) and
+updates `VLCPlayerWindowManager.retuneSecondary(channelNumber:title:)` so a later tap-to-swap
+inherits the channel actually playing now, not whichever one the PiP was originally opened with.
+No tuner-availability re-check — same-device channel switches reuse the existing slot/connection,
+mirroring the primary toolbar channel picker's own "switching within an already-open player on the
+same device skips the check" rule (see `AppState.watchInApp`'s tuner-availability note above).
 
 ---
 

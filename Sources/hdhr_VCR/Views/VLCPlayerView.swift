@@ -555,12 +555,13 @@ struct VLCPlayerView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             // Right-click anywhere on the main video pane — a single simple entry that opens the
-            // shared PiPPickerView (also reachable from MenuContent's own "Add Picture-in-Picture…"
-            // button). Attached to this outer ZStack, not VLCVideoSurface alone, so it still
-            // triggers while the poster/error/idle overlay sits on top. Distinct from — and never
-            // shadows — pipOverlay's own .contextMenu { pipCornerMenu } below, which is scoped to
-            // the small corner thumbnail Button itself; SwiftUI resolves a right-click to whichever
-            // is deepest under the pointer.
+            // shared PiPPickerView (the only entry point now — MenuContent's redundant "Add
+            // Picture-in-Picture…" menu-bar button was removed 2026-09-19). Attached to this outer
+            // ZStack, not VLCVideoSurface alone, so it still triggers while the poster/error/idle
+            // overlay sits on top. Distinct from — and never shadows — pipOverlay's own
+            // .contextMenu { pipCornerMenu; pipChannelMenu } below, which is scoped to the small
+            // corner thumbnail Button itself; SwiftUI resolves a right-click to whichever is
+            // deepest under the pointer.
             .contextMenu {
                 Button {
                     NSApp.activate(ignoringOtherApps: true)
@@ -1090,7 +1091,10 @@ struct VLCPlayerView: View {
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("vlc-pip-thumbnail")
                     .accessibilityLabel("Swap to picture-in-picture stream")
-                    .contextMenu { pipCornerMenu }
+                    .contextMenu {
+                        pipCornerMenu
+                        pipChannelMenu
+                    }
 
                     Button {
                         VLCPlayerWindowManager.shared.closeSecondary()
@@ -1127,6 +1131,48 @@ struct VLCPlayerView: View {
                 }
             }
         }
+    }
+
+    // In-place channel switch for the PiP secondary, added to its right-click menu alongside
+    // pipCornerMenu above — live-channel secondaries only (secondaryChannelNumber is nil for a
+    // FEED or Watch Now secondary, see PiPPickerView/watchAsSecondary call sites; neither has a
+    // channel lineup to switch within). Reverses the original "no in-place channel/source changes"
+    // design (docs/VLCPlayerView.md) per explicit request — the corner-only right-click menu was
+    // the only way to reposition, so extending that same menu to also retune was the natural fit
+    // rather than a separate picker UI. Scoped to the secondary's own device (state.lineups[
+    // deviceId]), which may differ from the primary's bound device (cross-device secondaries are
+    // supported — see "The secondary is not restricted to the primary's own tuner/device" above).
+    @ViewBuilder
+    private var pipChannelMenu: some View {
+        let mgr = VLCPlayerWindowManager.shared
+        if let deviceId = mgr.secondaryDeviceID, mgr.secondaryChannelNumber != nil {
+            let all = (state.lineups[deviceId] ?? []).sorted {
+                $0.GuideNumber.localizedStandardCompare($1.GuideNumber) == .orderedAscending
+            }
+            let favs = all.filter(\.isFavorite)
+            let others = all.filter { !$0.isFavorite }
+            Divider()
+            Menu("Channel") {
+                ForEach(favs, id: \.GuideNumber) { ch in
+                    Button("\(ch.GuideNumber)  \(ch.GuideName)") { playSecondaryChannel(ch, deviceId: deviceId) }
+                }
+                if !favs.isEmpty && !others.isEmpty { Divider() }
+                ForEach(others, id: \.GuideNumber) { ch in
+                    Button("\(ch.GuideNumber)  \(ch.GuideName)") { playSecondaryChannel(ch, deviceId: deviceId) }
+                }
+            }
+        }
+    }
+
+    private func playSecondaryChannel(_ ch: LineupEntry, deviceId: String) {
+        guard let rawURL = ch.URL, !rawURL.isEmpty else {
+            glog("[VLC] playSecondaryChannel skipped — no URL for ch=\(ch.GuideNumber) \(ch.GuideName)", level: .warning)
+            return
+        }
+        let url = state.config.applyTranscode(rawURL)
+        glog("[VLC] playSecondaryChannel \(ch.GuideNumber) \(ch.GuideName) → \(url)")
+        VLCBridge.shared.play(url: url, slot: .secondary)
+        VLCPlayerWindowManager.shared.retuneSecondary(channelNumber: ch.GuideNumber, title: ch.GuideName)
     }
 
     // Shared styling for the Retry/Play Again overlay buttons above — identical appearance, kept
@@ -1961,6 +2007,16 @@ final class VLCPlayerWindowManager {
         VLCBridge.shared.ensurePlayer(slot: .secondary)
         VLCBridge.shared.setVolume(0, slot: .secondary)
         VLCBridge.shared.play(url: url, slot: .secondary)
+    }
+
+    /// In-place channel switch for an already-open secondary (PiP thumbnail's right-click "Channel"
+    /// submenu) — the caller has already reconnected the player itself via
+    /// VLCBridge.play(url:slot:.secondary); this just keeps secondaryChannelNumber/secondaryTitle in
+    /// sync so a later swap-to-primary, and the thumbnail's own bookkeeping, reflect the channel
+    /// actually playing now rather than whichever one the PiP was originally opened with.
+    func retuneSecondary(channelNumber: String, title: String) {
+        secondaryChannelNumber = channelNumber
+        secondaryTitle         = title
     }
 
     /// Stop and tear down just the secondary slot — the user-facing "close PiP without swapping

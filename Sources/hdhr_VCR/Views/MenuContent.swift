@@ -28,7 +28,6 @@ struct MenuContent: View {
             case "edit-show":  title = "Edit Show"
             case "settings":   title = "Settings"
             case "watch-now":  title = "Watch Now"
-            case "pip-picker": title = "Add Picture-in-Picture"
             default:          title = id
             }
             if let w = NSApp.windows.first(where: { $0.title == title }) {
@@ -154,13 +153,6 @@ struct MenuContent: View {
         Button { open("add-show") } label: { Label("Add Show…", systemImage: "plus") }
         // ── Watch Now ─────────────────────────────────────────────────────
         watchNowMenu
-        // ── Add Picture-in-Picture ────────────────────────────────────────
-        // Standalone-capable: unlike the inline "Watch alongside (PiP)" buttons elsewhere (gated on
-        // hasPlayablePrimarySession), this opens a picker that can start a PIP with nothing already
-        // playing — AppState.watchAsSecondary brings up an idle primary window for it as needed.
-        if !state.recordableDevices.isEmpty || !state.remoteRelayEntries.isEmpty {
-            Button { open("pip-picker") } label: { Label("Add Picture-in-Picture…", systemImage: "pip.fill") }
-        }
         Divider()
 
         Button("Settings…")    { open("settings") }

@@ -1,12 +1,14 @@
 import SwiftUI
 
-// Compact picker for starting a Picture-in-Picture (corner-thumbnail) stream — reachable both from
-// MenuContent's "Add Picture-in-Picture…" button and from VLCPlayerView's right-click context menu
-// on the main video pane. Always starts fresh (no remembered source): lists live-TV channels across
-// recordable tuners and any discovered FEED (another Mac's in-progress recording) sources, each with
-// a button that lands on AppState.watchAsSecondary/watchRemoteRelayAsSecondary — the same PIP slot
-// WatchNowView's per-row "Watch alongside (PiP)" buttons already use. Unlike those, this works with
-// no primary session open yet (see AppState.watchAsSecondary's ensureWindowForStandalonePiP branch).
+// Compact picker for starting a Picture-in-Picture (corner-thumbnail) stream — reachable via
+// VLCPlayerView's right-click context menu on the main video pane (the player window must already
+// be open; there's no menu-bar entry point, removed 2026-09-19 as redundant with this one). Always
+// starts fresh (no remembered source): lists live-TV channels across recordable tuners and any
+// discovered FEED (another Mac's in-progress recording) sources, each with a button that lands on
+// AppState.watchAsSecondary/watchRemoteRelayAsSecondary — the same PIP slot WatchNowView's per-row
+// "Watch alongside (PiP)" buttons already use. AppState.watchAsSecondary's
+// ensureWindowForStandalonePiP branch still matters here even with the window already open — the
+// primary can be open but idle/errored (hasPlayablePrimarySession false), not just literally absent.
 struct PiPPickerView: View {
     @EnvironmentObject var state: AppState
     @Environment(\.dismiss) private var dismiss
