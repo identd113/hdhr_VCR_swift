@@ -3162,7 +3162,6 @@ final class AppState: ObservableObject {
         // when the caller is about to remove the show and broadcast its own rebuild anyway.
         webServer.broadcastRecordingStopped(channel: show.show_channel, device: show.hdhr_record,
                                              state: self, alsoRebuildGrid: alsoRebuildGrid)
-        updateVirtualTunerPresence()
         switch reason {
         case .abnormal:
             // Defer — see ShowRuntimeState.abnormalStopGraceUntil's own doc comment. The "must
@@ -3182,6 +3181,14 @@ final class AppState: ObservableObject {
             // VLCBridge.stopAllTranscodeSessions's own doc comment.
             transcodeViewersCleared(VLCBridge.shared.stopAllTranscodeSessions(showId: show.show_id))
         }
+        // Must run AFTER the switch above, not before — updateVirtualTunerPresence()'s own
+        // activelyRecordingShows filter checks isShowIdInAbnormalGrace(show.show_id), which is
+        // only true once the .abnormal case just above has actually set abnormalStopGraceUntil.
+        // Calling this first (found in code review 2026-09-19) meant an abnormal stop of the last
+        // actively-recording show tore the virtual tuner relay down immediately — severing any
+        // FEED viewer's connection instantly instead of surviving the grace window this mechanism
+        // exists for.
+        updateVirtualTunerPresence()
     }
 
     // Enforces the bounded side of abnormalStopGraceUntil: once a grace window actually expires
@@ -4643,12 +4650,33 @@ final class AppState: ObservableObject {
     // `preventSleep` starts by releasing any stale assertion for the same id, re-arming a still-valid
     // one is harmless. The 300s duration is comfortably longer than the ~5s tick interval, so a
     // missed or delayed tick doesn't let the assertion lapse prematurely.
+    //
+    // Also covers a PiP *secondary* playing a local Watch-Now recording relay (found in code review
+    // 2026-09-19) — VLCBridge.recordingShowId is strictly primary-only (VLCPlayerView.swift's own
+    // doc comment), so watchRecordingInAppAsSecondary leaves no primary-slot signal at all for this
+    // check to see. Matched by URL shape instead (the same "/api/watch-recording" substring
+    // VLCBridge.play(url:slot:) itself keys its recording-relay minRate/pacing branch on), the same
+    // way VLCPlayerWindowManager.closeIfPlaying already matches a secondary recording relay when no
+    // recordingShowId exists to compare against.
     private func maintainVLCSleepAssertionIfNeeded() {
-        let isWatchingRecordingOrRelay = VLCBridge.shared.recordingShowId != nil
-            || VLCPlayerWindowManager.shared.currentFeedRemoteURL != nil
-            || VLCPlayerWindowManager.shared.secondaryFeedRemoteURL != nil
-        guard isWatchingRecordingOrRelay else { return }
+        guard Self.isWatchingRecordingOrRelay(
+            recordingShowId: VLCBridge.shared.recordingShowId,
+            currentFeedRemoteURL: VLCPlayerWindowManager.shared.currentFeedRemoteURL,
+            secondaryFeedRemoteURL: VLCPlayerWindowManager.shared.secondaryFeedRemoteURL,
+            secondaryURL: VLCBridge.shared.secondaryURL) else { return }
         recordingManager.preventSleep(id: "vlc", reason: "Watching recording/FEED relay", duration: 300)
+    }
+
+    /// Pure decision, extracted for unit testing — every signal maintainVLCSleepAssertionIfNeeded
+    /// treats as "something worth keeping this Mac awake for." A missing condition here is exactly
+    /// the bug class found in code review 2026-09-19 (the secondaryURL/watch-recording case was
+    /// absent entirely) — see the caller's own doc comment for the full reasoning per case.
+    nonisolated static func isWatchingRecordingOrRelay(recordingShowId: String?, currentFeedRemoteURL: String?,
+                                                        secondaryFeedRemoteURL: String?, secondaryURL: String?) -> Bool {
+        recordingShowId != nil
+            || currentFeedRemoteURL != nil
+            || secondaryFeedRemoteURL != nil
+            || (secondaryURL?.contains("/api/watch-recording") ?? false)
     }
 
     /// FEED client-side local relay (docs/VirtualTunerService.md) — registers `remoteURL` (another
