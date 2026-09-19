@@ -18,12 +18,34 @@ the program guide is free too, courtesy of SiliconDust, the same way it's always
 [![Proven since 2016](https://img.shields.io/badge/proven%20since-2016-lightgrey)](https://github.com/identd113/hdhr_VCR-AS)
 
 ### 📦 Latest: [v2.5.0](https://github.com/identd113/hdhr_VCR_swift/releases/download/v2.5.0/hdhrVCRplus-2.5.0.dmg)
-- New: watch an in-progress recording live from another Mac on your LAN (Recording FEED, Beta) — no second tuner needed
+- **New: Recording FEED (Beta)** — watch an in-progress recording live from another Mac on your LAN, no second tuner needed. See below.
 - New: watch two live streams at once (picture-in-picture) — swap, reposition, or switch channels on the fly
 - New: an Info button on the player shows the show/episode and air date, like a TV remote's "i"
 - Player toolbar decluttered, a First-Run Wizard crash is fixed, and several playback reliability fixes landed
 
 **[📋 Release Notes](RELEASES.md)** — what's new in each version, with download links.
+
+---
+
+### 📡 New: Recording FEED (Beta) — one tuner, every Mac in the house
+
+You've got one HDHomeRun tuner and more than one Mac. Normally that means whoever's not near the
+recording machine is out of luck until it's done. Recording FEED fixes that: while a show is
+recording, that Mac quietly rebroadcasts it as a small virtual tuner on your LAN — no disk copy,
+no second tuner opened, no waiting for the recording to finish.
+
+Any other Mac running hdhrVCRplus just sees it appear under **"Recording on Another Mac —
+`<hostname>`"** within about a second of the recording starting — pick a plain MPEG-2 **Watch**, or
+an on-the-fly-transcoded **Watch (H.264)** if the raw stream doesn't play nicely for you. A live
+viewer count and an estimated signal-strength reading (pulled from the *source* Mac's own tuner)
+ride along so you know what you're tuning into before you click.
+
+It's watch-only by construction — a FEED relay can never be used to start a new recording, only to
+watch one already in progress — and it's opt-in per Mac: off by default, turn it on in
+**Settings → Sharing → "Rebroadcast In-Progress Recordings."** Beta caveats: occasional playback
+hiccups, switching audio tracks mid-watch may not stick, and the transcoded option is best treated
+as one viewer at a time (several concurrent transcoded viewers plus a live recording can push CPU
+noticeably higher).
 
 ---
 
