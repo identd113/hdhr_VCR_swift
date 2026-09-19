@@ -230,7 +230,7 @@ private func startPlayChannel(_ ch: LineupEntry, url: String) {
 
 Uses `AppConfig.applyTranscode(_:override:)` — applies `Default_transcode` without a per-show override (the picker is device/lineup-level, not show-level). When transcode is `"none"` or empty the raw stream URL is used; VLC decodes MPEG-2 natively.
 
-**Pre-flight tuner check, added 2026-09-19** — found live: with the primary a FEED (0 tuners held on this device) and the device already at its real hardware limit from two *other* machines' recordings, picking a live channel here silently hung with no explanation instead of the "All Tuners Busy" alert every other channel-opening path (`AppState.watchInApp`) already shows. `playChannel` used to always start immediately, on the theory that a same-device channel switch just reuses the tuner slot already held (matching `watchInApp`'s own "switching within an already-open player on the same device skips the check" rule) — true for a genuine live-channel-to-live-channel switch, but false whenever the primary currently holds no real tuner slot on *this* device at all. `reusingExistingTunerHere` (`VLCPlayerView`, computed at the top of `playChannel`) captures that distinction: `VLCPlayerWindowManager.currentDeviceID == device.DeviceID && bridge.recordingShowId == nil && VLCPlayerWindowManager.currentFeedRemoteURL == nil && bridge.currentURL` non-empty. True → same behavior as always (start immediately, zero added latency for the common case). False (most commonly reachable via a PiP swap — see the "cross-device swap" note above) → awaits `AppState.tunerAvailable(device:context:)` first (the same fresh-status-poll-then-alert helper `watchInApp` uses for its own device-change path; made non-`private` for this cross-file call) before starting, showing a proper "All Tuners Busy" `NSAlert` instead of silently timing out against a device with no free tuner.
+**Pre-flight tuner check, added 2026-09-19** — found live: with the primary a FEED (0 tuners held on this device) and the device already at its real hardware limit from two *other* machines' recordings, picking a live channel here silently hung with no explanation instead of the "All Tuners Busy" alert every other channel-opening path (`AppState.watchInApp`) already shows. `playChannel` used to always start immediately, on the theory that a same-device channel switch just reuses the tuner slot already held (matching `watchInApp`'s own "switching within an already-open player on the same device skips the check" rule) — true for a genuine live-channel-to-live-channel switch, but false whenever the primary currently holds no real tuner slot on *this* device at all. `reusingExistingTunerHere` (`VLCPlayerView`, computed at the top of `playChannel`) captures that distinction: `VLCPlayerWindowManager.currentDeviceID == device.DeviceID && bridge.recordingShowId == nil && VLCPlayerWindowManager.currentFeedRemoteURL == nil && bridge.currentURL` non-empty. True → same behavior as always (start immediately, zero added latency for the common case). False (most commonly reachable via a PiP swap — see the "cross-device swap" note above) → awaits `AppState.tunerAvailable(device:context:)` first (the same fresh-status-poll-then-alert helper `watchInApp` uses for its own device-change path; made non-`private` for this cross-file call) before starting, showing a proper "All Tuners Busy" `NSAlert` instead of silently timing out against a device with no free tuner. The decision itself is a pure function, `reusesExistingTuner(currentDeviceID:targetDeviceID:recordingShowId:currentFeedRemoteURL:currentURL:)` — unit tested in `Tests/hdhr_VCRTests/Views/VLCPlayerViewTunerReuseTests.swift`.
 
 **Immediate buffering** (the `reusingExistingTunerHere` / already-checked-and-available path): `play()` is called synchronously, before the background Task that checks tuner occupancy. The poster overlay is visible from the moment the channel changes, so every millisecond of poster time is also buffer-build time. By the time the user reads the episode info and clicks Start, the stream has been filling at `minRate` since the picker change.
 
@@ -373,7 +373,9 @@ computed from `bridge.secondaryVideoPixelSize` — published by `tickSecondary()
 `videoNativeSize(slot: .secondary)` poll, mirroring `tickPrimary`'s `videoPixelSize`; falls back to
 16:9 before the first decoded frame, since libvlc hasn't reported real dimensions yet) rather than
 assuming every channel is 16:9 — a 4:3 source gets a 4:3 thumbnail, not letterboxed inside a wider
-box. Video-only (`VLCSecondaryVideoSurface`), a small spinner/error/
+box. The sizing math itself is a pure function, `pipThumbnailSize(nativePixelSize:maxWidth:)` —
+unit tested in `Tests/hdhr_VCRTests/Views/VLCPlayerViewPipThumbnailSizeTests.swift`. Video-only
+(`VLCSecondaryVideoSurface`), a small spinner/error/
 ended glyph keyed off `bridge.secondaryIsPlaying`/`secondaryHasError`/`secondaryHasEnded` (the
 `libvlc_Ended`, state-6 case — added 2026-09-19; `tickSecondary()` originally only checked for
 error and playing, so a secondary reaching EOF, e.g. a finished Watch Now recording, just froze on
@@ -434,7 +436,9 @@ a same-device swap (confirmed live: swapping in a Watch Now relay resynced the p
 synthetic "Live" entry). **A cross-device swap landing on a FEED is now also labeled correctly**
 (fixed 2026-09-19, found live: swapping in a Mac Mini FEED from a laptop Watch Now window left the
 channel picker showing the plain favorites/rest list with nothing selected) via `feedChannelEntry`/
-`syncChannel()`'s matching branch for it — see `feedChannelEntry`'s own doc comment. This is
+`syncChannel()`'s matching branch for it — see `feedChannelEntry`'s own doc comment. The
+matching/label logic is a pure function, `feedChannelEntry(remoteURL:remoteRelayEntries:)` — unit
+tested in `Tests/hdhr_VCRTests/Views/VLCPlayerViewFeedChannelEntryTests.swift`. This is
 narrowly scoped to *labeling what's already playing*, not full re-scoping: the rest of a
 cross-device swap's toolbar (the channel list itself still only ever lists `device`'s own lineup,
 so you can't pick a *different* channel on the swapped-in device from here) remains the same known
@@ -642,7 +646,19 @@ compares `recordingShowId` — reusing `PiPPickerView.isCurrentLiveChannel`/`isC
 `isCurrentRecording` directly rather than a second copy of the same comparisons, so the picker's
 own dimming and this functional guard can never drift apart. Device+channel (not raw URL) for the
 live-channel case specifically per explicit request — a transcode/query-param difference in the
-URL shouldn't defeat the guard.
+URL shouldn't defeat the guard. `PiPPickerView.isCurrentRecording(recordingShowId:showId:)`/
+`isCurrentLiveChannel(currentDeviceID:currentChannelNumber:targetDeviceID:targetChannelNumber:)`/
+`isCurrentFeed(currentFeedRemoteURL:entryURL:)` are pure functions, unit tested in
+`Tests/hdhr_VCRTests/Views/PiPPickerViewIsCurrentTests.swift` — including a real bug that testing
+`isCurrentFeed` found the same day: a bare `currentFeedRemoteURL == entryURL` is `true` when both
+are `nil` (no FEED playing, and a malformed lineup entry with no URL), which would have incorrectly
+dimmed/disabled a row with nothing to do with what's playing. Fixed with an explicit
+both-non-`nil` guard before comparing. The guard functions above are not independently unit
+tested — they call straight into these already-tested comparisons against live
+`VLCBridge.shared`/`VLCPlayerWindowManager.shared` state, and this suite deliberately doesn't
+drive those real singletons directly (see `Tests/hdhr_VCRTests/Recording/TunerOccupancyTests.swift`'s
+own comment on `VLCPlayerWindowManager.currentDeviceID` for the same scope boundary applied
+elsewhere).
 
 ---
 
