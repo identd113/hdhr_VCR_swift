@@ -15,6 +15,26 @@ let favAmber = Color(NSColor(name: nil) { appearance in
         : NSColor(srgbRed: 0xA0 / 255.0, green: 0x58 / 255.0, blue: 0x00 / 255.0, alpha: 1)
 })
 
+// Favorites-section header used above the first favorited row in a plain scrolling/List
+// layout — originally WatchNowView-only, now shared with PiPPickerView's Live TV list so every
+// favorites grouping in the app (this, the web Guide's ★ FAVORITES separator, VLCPlayerView's
+// toolbar channel picker Section) reads the same way.
+var favTopBorder: some View {
+    VStack(spacing: 0) {
+        Rectangle().fill(favAmber).frame(height: 2)
+        HStack(spacing: 5) {
+            Text("★  Favorites")
+                .font(.caption.bold())
+                .foregroundStyle(favAmber)
+            Spacer()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 5)
+        // 16% matches the Guide's color-mix(in srgb, var(--fav) 16%, var(--s1)) row wash.
+        .background(favAmber.opacity(0.16))
+    }
+}
+
 // MARK: - Quick-record menu
 
 // Kept in sync by hand with guide.js's recOpts[].d — same four strings, same order, describing

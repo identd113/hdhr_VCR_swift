@@ -146,7 +146,23 @@ struct PiPPickerView: View {
                     if channels.isEmpty {
                         Text("No channels available").foregroundStyle(.secondary)
                     } else {
-                        ForEach(channels, id: \.channel.id) { pair in
+                        // allChannels() is already favorites-first — split rather than resort, and
+                        // label the favorites the same way every other favorite grouping in the app
+                        // does (WatchNowView's favTopBorder, the web Guide's ★ FAVORITES separator,
+                        // VLCPlayerView's own toolbar channel picker) rather than leaving them as an
+                        // unlabeled top block indistinguishable from "the rest."
+                        let favorites = channels.filter { $0.channel.isFavorite }
+                        let others = channels.filter { !$0.channel.isFavorite }
+                        if !favorites.isEmpty {
+                            // Full-bleed edge to edge, matching WatchNowView's own favTopBorder —
+                            // List's default row insets would otherwise double up with the amber
+                            // band's own built-in horizontal padding.
+                            favTopBorder.listRowInsets(EdgeInsets())
+                        }
+                        ForEach(favorites, id: \.channel.id) { pair in
+                            liveChannelRow(pair, device: device)
+                        }
+                        ForEach(others, id: \.channel.id) { pair in
                             liveChannelRow(pair, device: device)
                         }
                     }

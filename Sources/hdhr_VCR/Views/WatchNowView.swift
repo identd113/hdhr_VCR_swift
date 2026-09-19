@@ -61,23 +61,8 @@ struct WatchNowView: View {
         .task { await recordedTagsRefreshLoop() }
     }
 
-    // favAmber lives in GuideViewHelpers.swift, shared with MenuContent/VLCPlayerView.
-
-    private var favTopBorder: some View {
-        VStack(spacing: 0) {
-            Rectangle().fill(favAmber).frame(height: 2)
-            HStack(spacing: 5) {
-                Text("★  Favorites")
-                    .font(.caption.bold())
-                    .foregroundStyle(favAmber)
-                Spacer()
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 5)
-            // 16% matches the Guide's color-mix(in srgb, var(--fav) 16%, var(--s1)) row wash.
-            .background(favAmber.opacity(0.16))
-        }
-    }
+    // favAmber and favTopBorder live in GuideViewHelpers.swift, shared with MenuContent/
+    // VLCPlayerView/PiPPickerView.
 
     // Recording sits above Favorites — a show already recording is a stronger claim on the
     // user's attention than a merely-favorited channel. Same visual language as favTopBorder,
