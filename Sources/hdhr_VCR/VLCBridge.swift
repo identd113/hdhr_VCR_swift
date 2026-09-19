@@ -273,6 +273,17 @@ final class VLCBridge: ObservableObject {
         spuTracksIsEmpty && attempts < max
     }
 
+    /// Pure decision, extracted for unit testing — the exact spuFetchAttempts update fetchTracks()
+    /// performs each tick it's allowed to poll. Must return `current + 1` regardless of
+    /// `descriptionWasNil`: a genuinely caption-less stream returns NULL from libvlc's SPU
+    /// description call on every tick, and if that never counted as an attempt,
+    /// spuFetchHasBudget(...) would never see the budget exhausted, so fetchTracks would keep
+    /// polling forever instead of settling on "caption-less" — found in code review 2026-09-19
+    /// (the old code only incremented inside `let ptr = _spuDesc?(mp)`).
+    nonisolated static func nextSpuFetchAttempts(current: Int, descriptionWasNil: Bool) -> Int {
+        current + 1
+    }
+
     // MARK: - Stall diagnostics (added 2026-09-06 for a live "pauses every few seconds" report)
     // Neither `isPlaying` nor a rate-change log line says anything about whether playback is
     // actually *advancing* — a network stall and a decode/render-side stall both leave libvlc
@@ -1252,10 +1263,12 @@ final class VLCBridge: ObservableObject {
                 tracksFetched = true
             }
         }
-        if tracksFetched, Self.spuFetchHasBudget(spuTracksIsEmpty: spuTracks.isEmpty, attempts: spuFetchAttempts),
-           let ptr = _spuDesc?(mp) {
-            spuFetchAttempts += 1
-            spuTracks = parseTrackDescriptions(ptr).filter { $0.id >= 0 }
+        if tracksFetched, Self.spuFetchHasBudget(spuTracksIsEmpty: spuTracks.isEmpty, attempts: spuFetchAttempts) {
+            let ptr = _spuDesc?(mp)
+            spuFetchAttempts = Self.nextSpuFetchAttempts(current: spuFetchAttempts, descriptionWasNil: ptr == nil)
+            if let ptr {
+                spuTracks = parseTrackDescriptions(ptr).filter { $0.id >= 0 }
+            }
             if !spuTracks.isEmpty {
                 glog("[VLC] spu tracks appeared on attempt \(spuFetchAttempts): \(spuTracks.map { "\($0.id):\($0.name)" }.joined(separator: ", "))")
             } else if spuFetchAttempts >= Self.maxSpuFetchAttempts {

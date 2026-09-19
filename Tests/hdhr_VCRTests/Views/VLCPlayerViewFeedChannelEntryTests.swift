@@ -19,19 +19,35 @@ struct VLCPlayerViewFeedChannelEntryTests {
         let device = makeDevice()
         let entries = [(device: device, entry: LineupEntry(GuideNumber: "2.1", GuideName: "KVUE",
                                                              URL: "http://192.168.1.50:5004/auto/v2.1", HD: 1, Favorite: nil))]
-        #expect(VLCPlayerView.feedChannelEntry(remoteURL: nil, remoteRelayEntries: entries) == nil)
+        #expect(VLCPlayerView.feedChannelEntry(deviceIsVirtualRelay: false, remoteURL: nil, remoteRelayEntries: entries) == nil)
     }
 
     @Test func noMatchingEntry_returnsNil() {
         let device = makeDevice()
         let entries = [(device: device, entry: LineupEntry(GuideNumber: "2.1", GuideName: "KVUE",
                                                              URL: "http://192.168.1.50:5004/auto/v2.1", HD: 1, Favorite: nil))]
-        let result = VLCPlayerView.feedChannelEntry(remoteURL: "http://192.168.1.50:5004/auto/v9.9", remoteRelayEntries: entries)
+        let result = VLCPlayerView.feedChannelEntry(deviceIsVirtualRelay: false,
+                                                      remoteURL: "http://192.168.1.50:5004/auto/v9.9", remoteRelayEntries: entries)
         #expect(result == nil)
     }
 
     @Test func emptyRemoteRelayEntries_returnsNil() {
-        #expect(VLCPlayerView.feedChannelEntry(remoteURL: "http://192.168.1.50:5004/auto/v2.1", remoteRelayEntries: []) == nil)
+        #expect(VLCPlayerView.feedChannelEntry(deviceIsVirtualRelay: false,
+                                                remoteURL: "http://192.168.1.50:5004/auto/v2.1", remoteRelayEntries: []) == nil)
+    }
+
+    // Found in code review 2026-09-19: a direct FEED open already has device.isVirtualRelay ==
+    // true and resolves through syncChannel(to:)'s own lineup-matching path instead — without this
+    // gate, the toolbar Picker would show a second, duplicate "FEED ..." row for the same content
+    // whenever a matching remoteRelayEntries URL happened to also equal currentFeedRemoteURL.
+    @Test func deviceIsVirtualRelay_returnsNilEvenWithAMatchingEntry() {
+        let device = makeDevice()
+        let url = "http://192.168.1.50:5004/auto/v2.1"
+        var entry = LineupEntry(GuideNumber: "2.1", GuideName: "KVUE", URL: url, HD: 1, Favorite: nil)
+        entry.virtualRelayShowTitle = "The Tonight Show"
+        let result = VLCPlayerView.feedChannelEntry(deviceIsVirtualRelay: true, remoteURL: url, remoteRelayEntries: [(device, entry)])
+
+        #expect(result == nil)
     }
 
     @Test func matchingEntry_usesVirtualRelayShowTitleWhenPresent() {
@@ -39,7 +55,7 @@ struct VLCPlayerViewFeedChannelEntryTests {
         let url = "http://192.168.1.50:5004/auto/v2.1"
         var entry = LineupEntry(GuideNumber: "2.1", GuideName: "KVUE", URL: url, HD: 1, Favorite: nil)
         entry.virtualRelayShowTitle = "The Tonight Show"
-        let result = VLCPlayerView.feedChannelEntry(remoteURL: url, remoteRelayEntries: [(device, entry)])
+        let result = VLCPlayerView.feedChannelEntry(deviceIsVirtualRelay: false, remoteURL: url, remoteRelayEntries: [(device, entry)])
 
         #expect(result?.GuideName == "FEED  The Tonight Show")
     }
@@ -48,7 +64,7 @@ struct VLCPlayerViewFeedChannelEntryTests {
         let device = makeDevice()
         let url = "http://192.168.1.50:5004/auto/v2.1"
         let entry = LineupEntry(GuideNumber: "2.1", GuideName: "KVUE", URL: url, HD: 1, Favorite: nil)
-        let result = VLCPlayerView.feedChannelEntry(remoteURL: url, remoteRelayEntries: [(device, entry)])
+        let result = VLCPlayerView.feedChannelEntry(deviceIsVirtualRelay: false, remoteURL: url, remoteRelayEntries: [(device, entry)])
 
         #expect(result?.GuideName == "FEED  KVUE")
     }
@@ -59,7 +75,7 @@ struct VLCPlayerViewFeedChannelEntryTests {
         var entry = LineupEntry(GuideNumber: "2.1", GuideName: "KVUE", URL: url, HD: 1, Favorite: nil)
         entry.virtualRelayShowTitle = "The Tonight Show"
         entry.virtualRelaySourceHostname = "woodflix.local"
-        let result = VLCPlayerView.feedChannelEntry(remoteURL: url, remoteRelayEntries: [(device, entry)])
+        let result = VLCPlayerView.feedChannelEntry(deviceIsVirtualRelay: false, remoteURL: url, remoteRelayEntries: [(device, entry)])
 
         #expect(result?.GuideName == "FEED  The Tonight Show — woodflix.local")
     }
@@ -70,7 +86,7 @@ struct VLCPlayerViewFeedChannelEntryTests {
         let device = makeDevice()
         let url = "http://192.168.1.50:5004/auto/v2.1"
         let entry = LineupEntry(GuideNumber: "2.1", GuideName: "KVUE", URL: url, HD: 1, Favorite: nil)
-        let result = VLCPlayerView.feedChannelEntry(remoteURL: url, remoteRelayEntries: [(device, entry)])
+        let result = VLCPlayerView.feedChannelEntry(deviceIsVirtualRelay: false, remoteURL: url, remoteRelayEntries: [(device, entry)])
 
         #expect(result?.GuideNumber == "\(VLCPlayerView.liveFeedGuideNumberPrefix)\(url)")
         #expect(result?.GuideNumber.hasPrefix(VLCPlayerView.liveFeedGuideNumberPrefix) == true)
@@ -86,7 +102,8 @@ struct VLCPlayerViewFeedChannelEntryTests {
         var entryB = LineupEntry(GuideNumber: "5.1", GuideName: "B", URL: urlB, HD: 1, Favorite: nil)
         entryB.virtualRelayShowTitle = "Show B"
 
-        let result = VLCPlayerView.feedChannelEntry(remoteURL: urlB, remoteRelayEntries: [(deviceA, entryA), (deviceB, entryB)])
+        let result = VLCPlayerView.feedChannelEntry(deviceIsVirtualRelay: false, remoteURL: urlB,
+                                                      remoteRelayEntries: [(deviceA, entryA), (deviceB, entryB)])
 
         #expect(result?.GuideName == "FEED  Show B")
     }

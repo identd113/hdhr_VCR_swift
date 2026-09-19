@@ -78,4 +78,38 @@ struct VLCBridgeAutoCatchUpTests {
         #expect(VLCBridge.spuFetchHasBudget(spuTracksIsEmpty: true, attempts: 1, max: 2) == true)
         #expect(VLCBridge.spuFetchHasBudget(spuTracksIsEmpty: true, attempts: 2, max: 2) == false)
     }
+
+    // MARK: nextSpuFetchAttempts
+
+    // Found in code review 2026-09-19: fetchTracks() used to only increment spuFetchAttempts
+    // inside `let ptr = _spuDesc?(mp)`, so a genuinely caption-less stream — where libvlc
+    // legitimately returns NULL every tick — never advanced the counter, and spuFetchHasBudget
+    // kept returning true forever instead of exhausting after maxSpuFetchAttempts.
+    @Test func attemptsAdvance_whenDescriptionIsNil() {
+        #expect(VLCBridge.nextSpuFetchAttempts(current: 0, descriptionWasNil: true) == 1)
+        #expect(VLCBridge.nextSpuFetchAttempts(current: 3, descriptionWasNil: true) == 4)
+    }
+
+    @Test func attemptsAdvance_whenDescriptionIsPresent() {
+        #expect(VLCBridge.nextSpuFetchAttempts(current: 0, descriptionWasNil: false) == 1)
+        #expect(VLCBridge.nextSpuFetchAttempts(current: 3, descriptionWasNil: false) == 4)
+    }
+
+    @Test func simulatedCaptionlessStream_exhaustsBudgetAfterMaxAttempts() {
+        // End-to-end simulation of the exact bug: every tick, libvlc hands back NULL (no
+        // captions), and the loop must still stop polling once budget runs out.
+        var attempts = 0
+        var stillPolling = true
+        var ticks = 0
+        while stillPolling && ticks < VLCBridge.maxSpuFetchAttempts + 10 {
+            guard VLCBridge.spuFetchHasBudget(spuTracksIsEmpty: true, attempts: attempts) else {
+                stillPolling = false
+                break
+            }
+            attempts = VLCBridge.nextSpuFetchAttempts(current: attempts, descriptionWasNil: true)
+            ticks += 1
+        }
+        #expect(ticks == VLCBridge.maxSpuFetchAttempts, "must exhaust after exactly maxSpuFetchAttempts ticks, not poll forever")
+        #expect(VLCBridge.spuFetchHasBudget(spuTracksIsEmpty: true, attempts: attempts) == false)
+    }
 }

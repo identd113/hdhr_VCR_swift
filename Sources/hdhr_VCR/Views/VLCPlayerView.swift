@@ -271,19 +271,27 @@ struct VLCPlayerView: View {
     // directly (not via a swap) already works without this: device.isVirtualRelay is true then, so
     // it resolves through the normal lineup-matching path in syncChannel(to:) instead — this entry
     // only ever appears for the cross-device case, gated the same way in that function.
-    // Not private: referenced by feedChannelEntry(remoteURL:remoteRelayEntries:)'s own unit tests.
+    // Not private: referenced by feedChannelEntry(deviceIsVirtualRelay:remoteURL:remoteRelayEntries:)'s
+    // own unit tests.
     nonisolated static let liveFeedGuideNumberPrefix = "live-feed:"
 
     private var feedChannelEntry: LineupEntry? {
-        Self.feedChannelEntry(remoteURL: VLCPlayerWindowManager.shared.currentFeedRemoteURL,
-                              remoteRelayEntries: state.remoteRelayEntries)
+        Self.feedChannelEntry(deviceIsVirtualRelay: device.isVirtualRelay,
+                               remoteURL: VLCPlayerWindowManager.shared.currentFeedRemoteURL,
+                               remoteRelayEntries: state.remoteRelayEntries)
     }
 
     /// Pure decision, extracted for unit testing — matches `remoteURL` against the discovered FEED
     /// entries and, if found, builds the synthetic picker row for it. See feedChannelEntry's own
     /// call site (the property above) for why this exists.
-    nonisolated static func feedChannelEntry(remoteURL: String?,
+    nonisolated static func feedChannelEntry(deviceIsVirtualRelay: Bool, remoteURL: String?,
                                               remoteRelayEntries: [(device: HDHRDevice, entry: LineupEntry)]) -> LineupEntry? {
+        // Cross-device-swap case only (see the doc comment above) — a direct FEED open already has
+        // device.isVirtualRelay == true and resolves through the normal lineup-matching path in
+        // syncChannel(to:) instead, so this must stay nil then or every call site (the toolbar
+        // Picker included) would show a duplicate synthetic row alongside the real, lineup-matched
+        // entry for the same content.
+        guard !deviceIsVirtualRelay else { return nil }
         guard let remoteURL, let pair = remoteRelayEntries.first(where: { $0.entry.URL == remoteURL })
         else { return nil }
         let title = pair.entry.virtualRelayShowTitle ?? pair.entry.GuideName
@@ -1253,9 +1261,36 @@ struct VLCPlayerView: View {
             return
         }
         let url = state.config.applyTranscode(rawURL)
-        glog("[VLC] playSecondaryChannel \(ch.GuideNumber) \(ch.GuideName) → \(url)")
-        VLCBridge.shared.play(url: url, slot: .secondary)
-        VLCPlayerWindowManager.shared.retuneSecondary(channelNumber: ch.GuideNumber, title: ch.GuideName)
+
+        // Same reuses-existing-tuner gate as playChannel (see its own doc comment) — the Channel
+        // submenu is always built from state.lineups[mgr.secondaryDeviceID], so deviceId here
+        // normally equals the device the secondary already holds (a same-device retune, safe to
+        // start immediately). Still checked the same way playChannel is, rather than assumed,
+        // in case a future caller ever routes a genuinely different device through this function.
+        let mgr = VLCPlayerWindowManager.shared
+        let reusingExistingTunerHere = Self.reusesExistingTuner(
+            currentDeviceID: mgr.secondaryDeviceID,
+            targetDeviceID: deviceId,
+            recordingShowId: nil,
+            currentFeedRemoteURL: mgr.secondaryFeedRemoteURL,
+            currentURL: VLCBridge.shared.secondaryURL)
+
+        func startPlaySecondaryChannel() {
+            glog("[VLC] playSecondaryChannel \(ch.GuideNumber) \(ch.GuideName) → \(url)")
+            VLCBridge.shared.play(url: url, slot: .secondary)
+            VLCPlayerWindowManager.shared.retuneSecondary(channelNumber: ch.GuideNumber, title: ch.GuideName)
+        }
+
+        if reusingExistingTunerHere {
+            startPlaySecondaryChannel()
+        } else if let target = state.recordableDevices.first(where: { $0.DeviceID == deviceId }) {
+            Task {
+                guard await state.tunerAvailable(target, context: ch.GuideName) else { return }
+                startPlaySecondaryChannel()
+            }
+        } else {
+            startPlaySecondaryChannel()
+        }
     }
 
     // Shared styling for the Retry/Play Again overlay buttons above — identical appearance, kept
