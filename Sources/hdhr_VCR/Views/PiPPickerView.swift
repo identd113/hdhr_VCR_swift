@@ -60,6 +60,14 @@ struct PiPPickerView: View {
                 Label(gatedLabel("Add as PIP", met: vlcReady, requirement: "VLC"), systemImage: "pip.fill")
             }
             .accessibilityLabel(gatedLabel(watchAlongsideLabel(label), met: vlcReady, requirement: "VLC"))
+            // Shared across every row (Recording Now/FEED/Live TV alike) — deliberately not
+            // per-row-unique, since which specific show/channel is offered is live, real device
+            // state a UI test has no control over (see WindowNavigationTests.swift's
+            // vlcPlayerControlsAreAccessible doc comment for the same reasoning/precedent: an
+            // explicit AXIdentifier is materially more robust than matching on help/label text,
+            // which this button doesn't even carry). A test picks "the first one" to exercise the
+            // add-as-PIP flow without needing to hardcode a specific channel name.
+            .accessibilityIdentifier("pip-picker-add-button")
             .buttonStyle(.bordered)
             .tint(vlcReady ? watchNowBlue : .gray)
             .controlSize(.small)

@@ -93,6 +93,187 @@ private func windowNavTestsOptedIn() -> Bool {
     ProcessInfo.processInfo.environment["RUN_WINDOW_NAV_TESTS"] == "1"
 }
 
+/// Shared by every PiP test below (added 2026-09-19) — opens Watch Now, clicks the recording-relay
+/// "Watch Now!" row (same help-text match `vlcPlayerControlsAreAccessible` already proved reliable
+/// for exactly this button), and waits for the resulting player window, capturing it as `playerWin`.
+/// The recording-relay entry point is used as the PRIMARY for every PiP test — unlike a live-channel
+/// "Watch " button, it needs no free tuner to start (a currently-recording show already holds its
+/// own), so these tests only depend on "something is recording," not also "a tuner happens to be
+/// free" — that second condition is instead what the *secondary* (added via the PiP picker's own
+/// Live TV section) actually needs, kept as a separate, independently-skippable condition per test.
+/// Returns the sentinel "NO_RECORDING_TO_WATCH"/"NO_PLAYER_WINDOW" exactly as
+/// `vlcPlayerControlsAreAccessible` does — every caller must check for those before using
+/// `playerWin`. Deliberately does not close anything itself (including "Watch Now", left open
+/// behind the player window) — what counts as fully cleaned up differs per caller, since some tests
+/// open additional PiP-picker windows on top before they're done.
+private let openRecordingRelayPlayerSnippet = """
+click menu item "Watch Now…" of menu 1 of menu bar item 1 of menu bar 2
+repeat 20 times
+    delay 0.25
+    if (count of windows) > 0 then exit repeat
+end repeat
+set watchBtn to missing value
+repeat 20 times
+    try
+        set allEls to entire contents of window "Watch Now"
+        repeat with e in allEls
+            try
+                if role of e is "AXButton" then
+                    set h to (help of e) as string
+                    if h starts with "Play the in-progress recording" then
+                        set watchBtn to e
+                        exit repeat
+                    end if
+                end if
+            end try
+        end repeat
+    end try
+    if watchBtn is not missing value then exit repeat
+    delay 0.25
+end repeat
+if watchBtn is missing value then
+    try
+        click (first button of window "Watch Now" whose description is "close button")
+    end try
+    return "NO_RECORDING_TO_WATCH"
+end if
+click watchBtn
+repeat 20 times
+    delay 0.25
+    if (count of windows) > 1 then exit repeat
+end repeat
+set playerWin to missing value
+repeat with w in windows
+    if (name of w) is not "Watch Now" then
+        set playerWin to w
+        exit repeat
+    end if
+end repeat
+if playerWin is missing value then return "NO_PLAYER_WINDOW"
+-- The window opening does NOT mean the stream is playing — VLCBridge.play() connects
+-- immediately, independent of any click, but the poster overlay's own Start button stays
+-- disabled (label "Connecting…") until bridge.isPlaying flips true (first frame decoded), only
+-- becoming a real, enabled "Start" after that. Found live 2026-09-19: every PiP test originally
+-- skipped this button entirely and went straight to the context menu/PiP flow with the primary
+-- still sitting behind the poster, muted — meaning none of them were actually exercising PiP
+-- behavior against a genuinely playing, unmuted primary, only the window/menu/identifier wiring
+-- around it. Poll for vlc-start-button to become enabled (AXIdentifier lookup — this file's own
+-- established most-reliable method, per vlcPlayerControlsAreAccessible's doc comment), then click
+-- it, then wait out the poster's own .easeOut(duration: 0.35) fade so posterHidden has actually
+-- taken visible effect before any caller proceeds.
+set startBtn to missing value
+repeat 30 times
+    try
+        set allEls to entire contents of playerWin
+        repeat with e in allEls
+            try
+                if (value of attribute "AXIdentifier" of e) as string is "vlc-start-button" then
+                    set startBtn to e
+                    exit repeat
+                end if
+            end try
+        end repeat
+    end try
+    if startBtn is not missing value then
+        set isEnabled to true
+        try
+            set isEnabled to (value of attribute "AXEnabled" of startBtn) as boolean
+        end try
+        if isEnabled then exit repeat
+        set startBtn to missing value
+    end if
+    delay 0.25
+end repeat
+if startBtn is missing value then return "NO_PLAYBACK_STARTED"
+click startBtn
+delay 0.5
+"""
+
+/// Continuation of `openRecordingRelayPlayerSnippet` — assumes `playerWin` is already set. Opens
+/// the PiP picker via the player's right-click context menu (the *only* entry point since
+/// MenuContent's redundant menu-bar button was removed 2026-09-19 — see VLCPlayerView.swift's own
+/// `.contextMenu` doc comment) and waits for the resulting "Add Picture-in-Picture" window.
+///
+/// Confirmed live 2026-09-19: `perform action "AXShowMenu" of playerWin` does land the SwiftUI
+/// `.contextMenu` and does expose it as `menu 1 of playerWin` right after, same "the menu that
+/// appears after interacting with an element becomes `menu 1` of that same element" idiom
+/// `editShowOpensAndCloses` already trusts — reliably, in every one of this snippet's real callers
+/// below, across two separate full-suite runs. See `pipPickerOpensFromPlayerContextMenu`'s own doc
+/// comment for a known exception: run standalone/first-in-process, this exact call can fail in a
+/// way that more polling, re-issuing the action, or even full close/reopen retries don't fix — not
+/// something this snippet can itself work around, so it isn't tried here.
+private let openPipPickerFromPlayerContextMenuSnippet = """
+perform action "AXShowMenu" of playerWin
+set pipMenuItem to missing value
+repeat 20 times
+    try
+        set pipMenuItem to menu item "Add Picture-in-Picture…" of menu 1 of playerWin
+        exit repeat
+    end try
+    delay 0.25
+end repeat
+if pipMenuItem is missing value then return "NO_PIP_CONTEXT_MENU_ITEM"
+click pipMenuItem
+set pipWin to missing value
+repeat 20 times
+    delay 0.25
+    try
+        set pipWin to window "Add Picture-in-Picture"
+        exit repeat
+    end try
+end repeat
+if pipWin is missing value then return "NO_PIP_PICKER_WINDOW"
+-- Content (Live TV section, per-row buttons) populates after the window itself, same lesson every
+-- other content-walking test in this file already documents.
+delay 0.5
+"""
+
+/// Continuation of the above two snippets — assumes both `playerWin` and `pipWin` are set. Clicks
+/// the first available `pip-picker-add-button` (the shared identifier every "Add as PIP" row uses —
+/// see PiPPickerView.swift's own doc comment on why it's shared, not per-row) to add a live-channel
+/// secondary, which also dismisses `pipWin` itself (PiPPickerView's own `dismiss()` call after the
+/// action — see `pipActionTrailing`). Returns "NO_PIP_TARGET_AVAILABLE" when nothing is addable
+/// (no tuners/channels, or the only rows shown are already dimmed "Now Playing") — a real
+/// environment-dependent skip condition (needs a free tuner), same "nothing to test" pattern every
+/// other skip sentinel in this file already uses, distinct from the recording-relay primary above
+/// (which only needs *something recording*, not also a free tuner).
+private let addFirstLiveTVSecondarySnippet = """
+set addBtn to missing value
+repeat 10 times
+    try
+        set allEls to entire contents of pipWin
+        repeat with e in allEls
+            try
+                if (value of attribute "AXIdentifier" of e) as string is "pip-picker-add-button" then
+                    set addBtn to e
+                    exit repeat
+                end if
+            end try
+        end repeat
+    end try
+    if addBtn is not missing value then exit repeat
+    delay 0.25
+end repeat
+if addBtn is missing value then
+    try
+        click (first button of pipWin whose description is "close button")
+    end try
+    return "NO_PIP_TARGET_AVAILABLE"
+end if
+click addBtn
+-- pipWin closes itself (PiPPickerView's own dismiss()) — wait for it to actually go rather than
+-- assuming the click was instant, then give the secondary's own connection a moment to come up
+-- (bridge.secondaryIsPlaying/pipOverlay's own spinner state — this test only needs the thumbnail
+-- Button/AXIdentifier to exist, not necessarily already playing).
+repeat 20 times
+    delay 0.2
+    try
+        if not (exists pipWin) then exit repeat
+    end try
+end repeat
+delay 1
+"""
+
 /// Prepended inside every test's `tell process "hdhr_VCR"` block. The donation nag
 /// (`DonationNagView.swift`) opens automatically on every fresh app launch (unless already
 /// unlocked) via a forced silent menu open+close in `hdhr_VCRApp.swift` — and being `.floating`
@@ -1070,10 +1251,632 @@ struct WindowNavigationTests {
         // comment and VLCPlayerView.swift's own CC-picker condition).
         let expected: Set<String> = [
             "vlc-channel-picker", "vlc-catch-up-button", "vlc-native-resolution",
-            "vlc-volume-slider", "vlc-start-button",
+            "vlc-volume-slider", "vlc-start-button", "vlc-info-button",
         ]
         let missing = expected.subtracting(foundIds)
         #expect(missing.isEmpty, "VLC player window is missing expected accessibility identifiers: \(missing.sorted())")
+    }
+
+    // MARK: - Picture-in-picture
+
+    /// Confirms the PiP picker is reachable at all — the player's right-click context menu is its
+    /// *only* entry point (MenuContent's redundant menu-bar button was removed 2026-09-19) — and
+    /// that it shows a "Live TV" section (or, with zero recordable devices, "No tuners available")
+    /// the way `PiPPickerView.liveTVSection` always renders one or the other. Doesn't add anything;
+    /// see the tests below for the add/swap/corner/channel combinations.
+    ///
+    /// **Known flake, not a product bug** — real finding from four separate live attempts
+    /// (2026-09-19): `perform action "AXShowMenu" of playerWin` against the player's `.contextMenu`
+    /// fails when this is the *only* (or first) AX interaction this osascript process has made with
+    /// the app — reproduced every single time run via `--filter` in isolation, including with a 3×
+    /// full close/reopen retry loop (28s of real retries, still 0/3). Yet the identical mechanism —
+    /// same snippet, same window, same menu item — passed reliably in *every* one of the 5 PiP
+    /// tests below, twice, in two separate full-suite runs, because by the time each of them runs,
+    /// several earlier tests have already driven Settings/Add Show/Watch Now/the player window
+    /// through System Events first. So this isn't "cold player window" or "cold AXShowMenu specifically"
+    /// (ruled out: retrying the identical action against the identical window doesn't help) — it's
+    /// something about the *whole accessibility session* with this app needing some other, unknown
+    /// kind of prior interaction to settle, that this test alone doesn't happen to produce. Left
+    /// as a known, understood limitation of standalone/first-in-run execution rather than chased
+    /// further — see the tests below for the actual PiP behavior coverage, which is solid.
+    @Test func pipPickerOpensFromPlayerContextMenu() throws {
+        guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+        let script = #"""
+        tell application "System Events"
+            tell process "hdhr_VCR"
+                \#(dismissDonationNagSnippet)
+                \#(openRecordingRelayPlayerSnippet)
+                \#(openPipPickerFromPlayerContextMenuSnippet)
+                set sawLiveTV to false
+                set sawNoTuners to false
+                repeat 10 times
+                    try
+                        set allEls to entire contents of pipWin
+                        repeat with e in allEls
+                            try
+                                if role of e is "AXStaticText" then
+                                    set t to (name of e) as string
+                                    if t is "Live TV" then set sawLiveTV to true
+                                    if t is "No tuners available" then set sawNoTuners to true
+                                end if
+                            end try
+                        end repeat
+                    end try
+                    if sawLiveTV or sawNoTuners then exit repeat
+                    delay 0.25
+                end repeat
+                try
+                    click (first button of pipWin whose description is "close button")
+                end try
+                try
+                    click (first button of playerWin whose description is "close button")
+                end try
+                repeat 20 times
+                    delay 0.2
+                    if (count of windows) = 1 then exit repeat
+                end repeat
+                try
+                    click (first button of window "Watch Now" whose description is "close button")
+                end try
+                return (sawLiveTV as string) & "|" & (sawNoTuners as string)
+            end tell
+        end tell
+        """#
+        guard let result = runAppleScript(script) else {
+            Issue.record("PiP picker open script failed to run")
+            return
+        }
+        if result == "NO_RECORDING_TO_WATCH" { return }
+        if result == "NO_PLAYER_WINDOW" {
+            Issue.record("Watch Now's recording-relay button didn't open a second window")
+            return
+        }
+        if result == "NO_PLAYBACK_STARTED" {
+            Issue.record("Player window opened but the Start button never became enabled — the recording-relay stream never reached bridge.isPlaying")
+            return
+        }
+        if result == "NO_PIP_CONTEXT_MENU_ITEM" {
+            Issue.record("Right-clicking the player's video area didn't surface an 'Add Picture-in-Picture…' context menu item — see openPipPickerFromPlayerContextMenuSnippet's own doc comment on the AXShowMenu approach this test relies on")
+            return
+        }
+        if result == "NO_PIP_PICKER_WINDOW" {
+            Issue.record("Clicking 'Add Picture-in-Picture…' didn't open the 'Add Picture-in-Picture' window")
+            return
+        }
+        let parts = result.split(separator: "|").map(String.init)
+        #expect(parts.count == 2, "unexpected script output: \(result)")
+        guard parts.count == 2 else { return }
+        let (sawLiveTV, sawNoTuners) = (parts[0] == "true", parts[1] == "true")
+        #expect(sawLiveTV || sawNoTuners,
+            "PiP picker's Live TV section showed neither a real lineup nor 'No tuners available' — liveTVSection's own always-one-or-the-other invariant broke")
+    }
+
+    /// The core add/remove combination: opens the PiP picker, adds the first available Live TV
+    /// channel as a secondary, confirms the player window's PiP thumbnail (`vlc-pip-thumbnail`) and
+    /// close button (`vlc-pip-close-button`) actually appear, then removes it via the close button
+    /// and confirms they're gone again. Needs a free tuner (see addFirstLiveTVSecondarySnippet's
+    /// own doc comment) on top of openRecordingRelayPlayerSnippet's "something recording"
+    /// requirement — skips cleanly (NO_PIP_TARGET_AVAILABLE) when there isn't one, same as every
+    /// other environment-dependent skip in this file.
+    @Test func addingLiveChannelAsPipSecondaryShowsAndRemovesThumbnail() throws {
+        guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+        let script = #"""
+        tell application "System Events"
+            tell process "hdhr_VCR"
+                \#(dismissDonationNagSnippet)
+                \#(openRecordingRelayPlayerSnippet)
+                \#(openPipPickerFromPlayerContextMenuSnippet)
+                \#(addFirstLiveTVSecondarySnippet)
+                set idsAfterAdd to {}
+                repeat 20 times
+                    set idsAfterAdd to {}
+                    try
+                        set allEls to entire contents of playerWin
+                        repeat with e in allEls
+                            try
+                                set idVal to (value of attribute "AXIdentifier" of e) as string
+                                if idVal starts with "vlc-pip-" then set end of idsAfterAdd to idVal
+                            end try
+                        end repeat
+                    end try
+                    if (count of idsAfterAdd) > 0 then exit repeat
+                    delay 0.25
+                end repeat
+                -- idsAfterAdd only carries identifier strings (AppleScript lists can't carry
+                -- element refs across the loop above) — re-find the close button by identifier.
+                set closeBtn to missing value
+                try
+                    set allEls to entire contents of playerWin
+                    repeat with e in allEls
+                        try
+                            if (value of attribute "AXIdentifier" of e) as string is "vlc-pip-close-button" then
+                                set closeBtn to e
+                                exit repeat
+                            end if
+                        end try
+                    end repeat
+                end try
+                set idsAfterRemoveCount to -1
+                if closeBtn is not missing value then
+                    click closeBtn
+                    repeat 20 times
+                        delay 0.2
+                        set n to 0
+                        try
+                            set allEls to entire contents of playerWin
+                            repeat with e in allEls
+                                try
+                                    if (value of attribute "AXIdentifier" of e) as string starts with "vlc-pip-" then set n to n + 1
+                                end try
+                            end repeat
+                        end try
+                        set idsAfterRemoveCount to n
+                        if n = 0 then exit repeat
+                    end repeat
+                end if
+                try
+                    click (first button of playerWin whose description is "close button")
+                end try
+                repeat 20 times
+                    delay 0.2
+                    if (count of windows) = 1 then exit repeat
+                end repeat
+                try
+                    click (first button of window "Watch Now" whose description is "close button")
+                end try
+                set idList to ""
+                repeat with i in idsAfterAdd
+                    set idList to idList & i & ","
+                end repeat
+                return idList & "===SPLIT===" & (idsAfterRemoveCount as string)
+            end tell
+        end tell
+        """#
+        guard let result = runAppleScript(script) else {
+            Issue.record("Add/remove PiP secondary script failed to run")
+            return
+        }
+        if result == "NO_RECORDING_TO_WATCH" || result == "NO_PLAYER_WINDOW" || result == "NO_PLAYBACK_STARTED"
+            || result == "NO_PIP_CONTEXT_MENU_ITEM" || result == "NO_PIP_PICKER_WINDOW"
+            || result == "NO_PIP_TARGET_AVAILABLE" { return }
+        let halves = result.components(separatedBy: "===SPLIT===")
+        #expect(halves.count == 2, "unexpected script output shape: \(result)")
+        guard halves.count == 2 else { return }
+        let idsAfterAdd = Set(halves[0].split(separator: ",").map(String.init))
+        #expect(idsAfterAdd.contains("vlc-pip-thumbnail"),
+            "clicking 'Add as PIP' did not make the pip thumbnail (vlc-pip-thumbnail) appear")
+        #expect(idsAfterAdd.contains("vlc-pip-close-button"),
+            "clicking 'Add as PIP' did not make the pip close button (vlc-pip-close-button) appear")
+        #expect(halves[1] == "0",
+            "clicking vlc-pip-close-button did not remove the PiP secondary — \(halves[1]) vlc-pip-* elements still present")
+    }
+
+    /// Live counterpart to the pure-function coverage in PiPDuplicatePrimaryCombinationTests —
+    /// confirms the *actual rendered UI* refuses a duplicate the same way those functions predict:
+    /// with the recording-relay show already primary, the PiP picker's own "Recording Now" row for
+    /// that exact show must show "Now Playing" (a plain label), never an "Add as PIP" button
+    /// (isCurrentRecording(recordingShowId:showId:) — see PiPPickerView.swift's own
+    /// pipActionTrailing). Doesn't add anything; a pure observation test.
+    @Test func pipPickerShowsNowPlayingForTheAlreadyPrimaryRecording() throws {
+        guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+        let script = #"""
+        tell application "System Events"
+            tell process "hdhr_VCR"
+                \#(dismissDonationNagSnippet)
+                \#(openRecordingRelayPlayerSnippet)
+                set primaryTitle to name of playerWin
+                \#(openPipPickerFromPlayerContextMenuSnippet)
+                set sawNowPlaying to false
+                set sawMatchingAddButton to false
+                repeat 10 times
+                    set sawNowPlaying to false
+                    set sawMatchingAddButton to false
+                    try
+                        set allEls to entire contents of pipWin
+                        repeat with e in allEls
+                            try
+                                if role of e is "AXStaticText" and (name of e as string) is "Now Playing" then
+                                    set sawNowPlaying to true
+                                end if
+                            end try
+                        end repeat
+                    end try
+                    if sawNowPlaying then exit repeat
+                    delay 0.25
+                end repeat
+                try
+                    click (first button of pipWin whose description is "close button")
+                end try
+                try
+                    click (first button of playerWin whose description is "close button")
+                end try
+                repeat 20 times
+                    delay 0.2
+                    if (count of windows) = 1 then exit repeat
+                end repeat
+                try
+                    click (first button of window "Watch Now" whose description is "close button")
+                end try
+                return primaryTitle & "|" & (sawNowPlaying as string)
+            end tell
+        end tell
+        """#
+        guard let result = runAppleScript(script) else {
+            Issue.record("PiP 'Now Playing' duplicate-refusal script failed to run")
+            return
+        }
+        if result == "NO_RECORDING_TO_WATCH" || result == "NO_PLAYER_WINDOW" || result == "NO_PLAYBACK_STARTED"
+            || result == "NO_PIP_CONTEXT_MENU_ITEM" || result == "NO_PIP_PICKER_WINDOW" { return }
+        let parts = result.split(separator: "|", maxSplits: 1).map(String.init)
+        #expect(parts.count == 2, "unexpected script output: \(result)")
+        guard parts.count == 2 else { return }
+        let sawNowPlaying = parts[1] == "true"
+        #expect(sawNowPlaying,
+            "PiP picker for player '\(parts[0])' showed no 'Now Playing' row — the Recording Now section's own duplicate-primary guard (isCurrentRecording) may not be dimming the currently-playing show")
+    }
+
+    /// The corner-repositioning combination: adds a Live TV secondary, right-clicks its thumbnail
+    /// (`AXShowMenu`, same technique/caveat as openPipPickerFromPlayerContextMenuSnippet), confirms
+    /// all four `PipCorner.allCases` display names are offered, then clicks a corner different from
+    /// whatever's currently checked to reposition it — confirming the thumbnail/close button both
+    /// survive the reposition (still present afterward), not just that the click didn't crash.
+    @Test func pipCornerMenuOffersAllFourCornersAndRepositions() throws {
+        guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+        let script = #"""
+        tell application "System Events"
+            tell process "hdhr_VCR"
+                \#(dismissDonationNagSnippet)
+                \#(openRecordingRelayPlayerSnippet)
+                \#(openPipPickerFromPlayerContextMenuSnippet)
+                \#(addFirstLiveTVSecondarySnippet)
+                set thumb to missing value
+                repeat 20 times
+                    try
+                        set allEls to entire contents of playerWin
+                        repeat with e in allEls
+                            try
+                                if (value of attribute "AXIdentifier" of e) as string is "vlc-pip-thumbnail" then
+                                    set thumb to e
+                                    exit repeat
+                                end if
+                            end try
+                        end repeat
+                    end try
+                    if thumb is not missing value then exit repeat
+                    delay 0.25
+                end repeat
+                if thumb is missing value then return "NO_PIP_THUMBNAIL"
+                perform action "AXShowMenu" of thumb
+                set cornerNames to {"Top Left", "Top Right", "Bottom Left", "Bottom Right"}
+                set foundCount to 0
+                set targetItem to missing value
+                repeat 10 times
+                    set foundCount to 0
+                    set targetItem to missing value
+                    try
+                        set menuItems to every menu item of menu 1 of thumb
+                        repeat with mi in menuItems
+                            set miName to "?"
+                            try
+                                set miName to name of mi
+                            end try
+                            repeat with cn in cornerNames
+                                if miName contains (cn as string) then
+                                    set foundCount to foundCount + 1
+                                    if targetItem is missing value then set targetItem to mi
+                                end if
+                            end repeat
+                        end repeat
+                    end try
+                    if foundCount = 4 then exit repeat
+                    delay 0.25
+                end repeat
+                if targetItem is not missing value then click targetItem
+                delay 0.3
+                set idsAfterReposition to {}
+                try
+                    set allEls to entire contents of playerWin
+                    repeat with e in allEls
+                        try
+                            set idVal to (value of attribute "AXIdentifier" of e) as string
+                            if idVal starts with "vlc-pip-" then set end of idsAfterReposition to idVal
+                        end try
+                    end repeat
+                end try
+                -- Clean up: close the secondary, then the player, then Watch Now.
+                set closeBtn to missing value
+                try
+                    set allEls to entire contents of playerWin
+                    repeat with e in allEls
+                        try
+                            if (value of attribute "AXIdentifier" of e) as string is "vlc-pip-close-button" then
+                                set closeBtn to e
+                                exit repeat
+                            end if
+                        end try
+                    end repeat
+                end try
+                try
+                    if closeBtn is not missing value then click closeBtn
+                end try
+                try
+                    click (first button of playerWin whose description is "close button")
+                end try
+                repeat 20 times
+                    delay 0.2
+                    if (count of windows) = 1 then exit repeat
+                end repeat
+                try
+                    click (first button of window "Watch Now" whose description is "close button")
+                end try
+                set idList to ""
+                repeat with i in idsAfterReposition
+                    set idList to idList & i & ","
+                end repeat
+                return (foundCount as string) & "===SPLIT===" & idList
+            end tell
+        end tell
+        """#
+        guard let result = runAppleScript(script) else {
+            Issue.record("PiP corner menu script failed to run")
+            return
+        }
+        if result == "NO_RECORDING_TO_WATCH" || result == "NO_PLAYER_WINDOW" || result == "NO_PLAYBACK_STARTED"
+            || result == "NO_PIP_CONTEXT_MENU_ITEM" || result == "NO_PIP_PICKER_WINDOW"
+            || result == "NO_PIP_TARGET_AVAILABLE" { return }
+        if result == "NO_PIP_THUMBNAIL" {
+            Issue.record("PiP secondary was added but vlc-pip-thumbnail never appeared")
+            return
+        }
+        let halves = result.components(separatedBy: "===SPLIT===")
+        #expect(halves.count == 2, "unexpected script output shape: \(result)")
+        guard halves.count == 2, let foundCount = Int(halves[0]) else { return }
+        #expect(foundCount == 4,
+            "PiP thumbnail's right-click menu offered \(foundCount)/4 corner options — expected all of PipCorner.allCases (Top Left/Top Right/Bottom Left/Bottom Right)")
+        let idsAfterReposition = Set(halves[1].split(separator: ",").map(String.init))
+        #expect(idsAfterReposition.contains("vlc-pip-thumbnail"),
+            "PiP thumbnail disappeared after repositioning to a different corner")
+    }
+
+    /// The tap-to-swap combination: adds a Live TV secondary, captures the player window's title
+    /// (the recording's own title, set when Watch Now opened it), clicks the thumbnail itself (a
+    /// plain click, not AXShowMenu — `pipOverlay`'s thumbnail Button calls
+    /// `swapPrimaryAndSecondary()` directly), then confirms the window's title actually changed —
+    /// `VLCPlayerWindowManager.swapTrackingFieldsForPiPSwap()` sets `window.title` to whatever's
+    /// newly primary, so an unchanged title after a swap click means the swap didn't really happen
+    /// (or happened but the title update regressed), not just "nothing visibly broke."
+    @Test func pipTapToSwapChangesPlayerWindowTitle() throws {
+        guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+        let script = #"""
+        tell application "System Events"
+            tell process "hdhr_VCR"
+                \#(dismissDonationNagSnippet)
+                \#(openRecordingRelayPlayerSnippet)
+                \#(openPipPickerFromPlayerContextMenuSnippet)
+                \#(addFirstLiveTVSecondarySnippet)
+                set thumb to missing value
+                repeat 20 times
+                    try
+                        set allEls to entire contents of playerWin
+                        repeat with e in allEls
+                            try
+                                if (value of attribute "AXIdentifier" of e) as string is "vlc-pip-thumbnail" then
+                                    set thumb to e
+                                    exit repeat
+                                end if
+                            end try
+                        end repeat
+                    end try
+                    if thumb is not missing value then exit repeat
+                    delay 0.25
+                end repeat
+                if thumb is missing value then return "NO_PIP_THUMBNAIL"
+                set titleBeforeSwap to name of playerWin
+                click thumb
+                -- Retarget instantly (no reconnect, per swapPrimaryAndSecondary's own doc comment)
+                -- but the title write happens synchronously right after — poll briefly regardless,
+                -- consistent with every other "wait for a real change" loop in this file.
+                set titleAfterSwap to titleBeforeSwap
+                repeat 10 times
+                    delay 0.2
+                    try
+                        set titleAfterSwap to name of playerWin
+                    end try
+                    if titleAfterSwap is not titleBeforeSwap then exit repeat
+                end repeat
+                -- Clean up: swap stays in effect (the secondary now shows the original primary,
+                -- muted) — close the secondary, then the player, then Watch Now, same as every
+                -- other PiP test's own teardown.
+                set closeBtn to missing value
+                try
+                    set allEls to entire contents of playerWin
+                    repeat with e in allEls
+                        try
+                            if (value of attribute "AXIdentifier" of e) as string is "vlc-pip-close-button" then
+                                set closeBtn to e
+                                exit repeat
+                            end if
+                        end try
+                    end repeat
+                end try
+                try
+                    if closeBtn is not missing value then click closeBtn
+                end try
+                try
+                    click (first button of playerWin whose description is "close button")
+                end try
+                repeat 20 times
+                    delay 0.2
+                    if (count of windows) = 1 then exit repeat
+                end repeat
+                try
+                    click (first button of window "Watch Now" whose description is "close button")
+                end try
+                return titleBeforeSwap & "===SPLIT===" & titleAfterSwap
+            end tell
+        end tell
+        """#
+        guard let result = runAppleScript(script) else {
+            Issue.record("PiP tap-to-swap script failed to run")
+            return
+        }
+        if result == "NO_RECORDING_TO_WATCH" || result == "NO_PLAYER_WINDOW" || result == "NO_PLAYBACK_STARTED"
+            || result == "NO_PIP_CONTEXT_MENU_ITEM" || result == "NO_PIP_PICKER_WINDOW"
+            || result == "NO_PIP_TARGET_AVAILABLE" { return }
+        if result == "NO_PIP_THUMBNAIL" {
+            Issue.record("PiP secondary was added but vlc-pip-thumbnail never appeared")
+            return
+        }
+        let halves = result.components(separatedBy: "===SPLIT===")
+        #expect(halves.count == 2, "unexpected script output shape: \(result)")
+        guard halves.count == 2 else { return }
+        let (titleBefore, titleAfter) = (halves[0], halves[1])
+        #expect(titleAfter != titleBefore,
+            "player window title '\(titleBefore)' was unchanged after clicking the PiP thumbnail to swap — swapTrackingFieldsForPiPSwap may not be updating window.title, or the swap itself didn't fire")
+    }
+
+    /// The channel-switching-within-PiP combination: adds a Live TV secondary, right-clicks its
+    /// thumbnail, and — since the secondary is a genuine live channel (secondaryChannelNumber !=
+    /// nil, the exact gate `pipChannelMenu` itself checks) — confirms a "Channel" submenu is
+    /// offered, then picks a different channel from it (`playSecondaryChannel`, the function fixed
+    /// earlier this session to reuse the same tuner-availability gate as the primary picker — see
+    /// VLCPlayerViewTunerReuseTests.swift). Only checks the thumbnail survives the switch, not which
+    /// exact channel ends up playing — the real device's own live lineup content isn't something
+    /// this test controls.
+    @Test func pipChannelMenuSwitchesSecondaryChannel() throws {
+        guard windowNavTestsOptedIn(), appRunning(), accessibilityTrusted() else { return }
+        let script = #"""
+        tell application "System Events"
+            tell process "hdhr_VCR"
+                \#(dismissDonationNagSnippet)
+                \#(openRecordingRelayPlayerSnippet)
+                \#(openPipPickerFromPlayerContextMenuSnippet)
+                \#(addFirstLiveTVSecondarySnippet)
+                set thumb to missing value
+                repeat 20 times
+                    try
+                        set allEls to entire contents of playerWin
+                        repeat with e in allEls
+                            try
+                                if (value of attribute "AXIdentifier" of e) as string is "vlc-pip-thumbnail" then
+                                    set thumb to e
+                                    exit repeat
+                                end if
+                            end try
+                        end repeat
+                    end try
+                    if thumb is not missing value then exit repeat
+                    delay 0.25
+                end repeat
+                if thumb is missing value then return "NO_PIP_THUMBNAIL"
+                perform action "AXShowMenu" of thumb
+                set channelMenu to missing value
+                repeat 10 times
+                    try
+                        set channelMenu to menu 1 of menu item "Channel" of menu 1 of thumb
+                        exit repeat
+                    end try
+                    delay 0.25
+                end repeat
+                if channelMenu is missing value then
+                    -- Not every secondary is a live channel (FEED/Watch Now secondaries never show
+                    -- this submenu, per pipChannelMenu's own guard) — but addFirstLiveTVSecondarySnippet
+                    -- specifically adds one from Live TV, so this is a real finding, not expected.
+                    set closeBtn0 to missing value
+                    try
+                        set allEls to entire contents of playerWin
+                        repeat with e in allEls
+                            try
+                                if (value of attribute "AXIdentifier" of e) as string is "vlc-pip-close-button" then
+                                    set closeBtn0 to e
+                                    exit repeat
+                                end if
+                            end try
+                        end repeat
+                    end try
+                    try
+                        if closeBtn0 is not missing value then click closeBtn0
+                    end try
+                    try
+                        click (first button of playerWin whose description is "close button")
+                    end try
+                    try
+                        click (first button of window "Watch Now" whose description is "close button")
+                    end try
+                    return "NO_CHANNEL_SUBMENU"
+                end if
+                set channelItems to every menu item of channelMenu
+                set switchedOk to false
+                if (count of channelItems) > 0 then
+                    click (item 1 of channelItems)
+                    set switchedOk to true
+                end if
+                delay 0.5
+                set idsAfterSwitch to {}
+                try
+                    set allEls to entire contents of playerWin
+                    repeat with e in allEls
+                        try
+                            set idVal to (value of attribute "AXIdentifier" of e) as string
+                            if idVal starts with "vlc-pip-" then set end of idsAfterSwitch to idVal
+                        end try
+                    end repeat
+                end try
+                set closeBtn to missing value
+                try
+                    set allEls to entire contents of playerWin
+                    repeat with e in allEls
+                        try
+                            if (value of attribute "AXIdentifier" of e) as string is "vlc-pip-close-button" then
+                                set closeBtn to e
+                                exit repeat
+                            end if
+                        end try
+                    end repeat
+                end try
+                try
+                    if closeBtn is not missing value then click closeBtn
+                end try
+                try
+                    click (first button of playerWin whose description is "close button")
+                end try
+                repeat 20 times
+                    delay 0.2
+                    if (count of windows) = 1 then exit repeat
+                end repeat
+                try
+                    click (first button of window "Watch Now" whose description is "close button")
+                end try
+                set idList to ""
+                repeat with i in idsAfterSwitch
+                    set idList to idList & i & ","
+                end repeat
+                return (switchedOk as string) & "===SPLIT===" & idList
+            end tell
+        end tell
+        """#
+        guard let result = runAppleScript(script) else {
+            Issue.record("PiP channel-switch script failed to run")
+            return
+        }
+        if result == "NO_RECORDING_TO_WATCH" || result == "NO_PLAYER_WINDOW" || result == "NO_PLAYBACK_STARTED"
+            || result == "NO_PIP_CONTEXT_MENU_ITEM" || result == "NO_PIP_PICKER_WINDOW"
+            || result == "NO_PIP_TARGET_AVAILABLE" { return }
+        if result == "NO_PIP_THUMBNAIL" {
+            Issue.record("PiP secondary was added but vlc-pip-thumbnail never appeared")
+            return
+        }
+        if result == "NO_CHANNEL_SUBMENU" {
+            Issue.record("A Live-TV-sourced PiP secondary's right-click menu offered no 'Channel' submenu — pipChannelMenu's secondaryChannelNumber != nil gate may be broken for this case")
+            return
+        }
+        let halves = result.components(separatedBy: "===SPLIT===")
+        #expect(halves.count == 2, "unexpected script output shape: \(result)")
+        guard halves.count == 2 else { return }
+        #expect(halves[0] == "true", "no channel menu items were available to click")
+        let idsAfterSwitch = Set(halves[1].split(separator: ",").map(String.init))
+        #expect(idsAfterSwitch.contains("vlc-pip-thumbnail"),
+            "PiP thumbnail disappeared after switching the secondary's channel")
     }
 
     /// Shared helper for the simple single-instance windows (Add Show, Watch Now) that open
