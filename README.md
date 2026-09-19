@@ -47,6 +47,14 @@ hiccups, switching audio tracks mid-watch may not stick, and the transcoded opti
 as one viewer at a time (several concurrent transcoded viewers plus a live recording can push CPU
 noticeably higher).
 
+**And it plugs straight into picture-in-picture.** A FEED is just another source PiP knows about —
+right alongside live TV and your own in-progress recordings — so any combination works: watch a
+friend's recording full-size while your own live channel plays in the corner, keep your own show
+front and center while peeking at what's recording on another Mac, or even two different Macs'
+FEEDs at once, one full-size and one in the corner. Tap the thumbnail to swap which one has full
+controls and audio, instantly. It's the closest thing to real multi-room DVR this app has —
+built from two independent features that happen to compose perfectly.
+
 ---
 
 ![Cable TV-style guide grid with show summary panel](docs/screenshots/guide.png)
