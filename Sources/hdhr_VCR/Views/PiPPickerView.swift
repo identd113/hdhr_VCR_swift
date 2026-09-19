@@ -161,6 +161,10 @@ struct PiPPickerView: View {
                         }
                         ForEach(favorites, id: \.channel.id) { pair in
                             liveChannelRow(pair, device: device)
+                                // Matches the web guide's .g-row[data-fav="1"] row wash — the
+                                // divider alone only marks where the group starts, not which rows
+                                // are actually in it once you're scrolled past the header.
+                                .listRowBackground(favAmber.opacity(0.16))
                         }
                         ForEach(others, id: \.channel.id) { pair in
                             liveChannelRow(pair, device: device)
