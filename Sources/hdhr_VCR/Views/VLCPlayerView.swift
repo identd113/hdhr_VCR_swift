@@ -271,15 +271,24 @@ struct VLCPlayerView: View {
     // directly (not via a swap) already works without this: device.isVirtualRelay is true then, so
     // it resolves through the normal lineup-matching path in syncChannel(to:) instead — this entry
     // only ever appears for the cross-device case, gated the same way in that function.
-    private static let liveFeedGuideNumberPrefix = "live-feed:"
+    // Not private: referenced by feedChannelEntry(remoteURL:remoteRelayEntries:)'s own unit tests.
+    nonisolated static let liveFeedGuideNumberPrefix = "live-feed:"
 
     private var feedChannelEntry: LineupEntry? {
-        guard let remoteURL = VLCPlayerWindowManager.shared.currentFeedRemoteURL,
-              let pair = state.remoteRelayEntries.first(where: { $0.entry.URL == remoteURL })
+        Self.feedChannelEntry(remoteURL: VLCPlayerWindowManager.shared.currentFeedRemoteURL,
+                              remoteRelayEntries: state.remoteRelayEntries)
+    }
+
+    /// Pure decision, extracted for unit testing — matches `remoteURL` against the discovered FEED
+    /// entries and, if found, builds the synthetic picker row for it. See feedChannelEntry's own
+    /// call site (the property above) for why this exists.
+    nonisolated static func feedChannelEntry(remoteURL: String?,
+                                              remoteRelayEntries: [(device: HDHRDevice, entry: LineupEntry)]) -> LineupEntry? {
+        guard let remoteURL, let pair = remoteRelayEntries.first(where: { $0.entry.URL == remoteURL })
         else { return nil }
         let title = pair.entry.virtualRelayShowTitle ?? pair.entry.GuideName
         let label = pair.entry.virtualRelaySourceHostname.map { "\(title) — \($0)" } ?? title
-        return LineupEntry(GuideNumber: "\(Self.liveFeedGuideNumberPrefix)\(remoteURL)",
+        return LineupEntry(GuideNumber: "\(liveFeedGuideNumberPrefix)\(remoteURL)",
                             GuideName: "FEED  \(label)", URL: nil, HD: nil, Favorite: nil)
     }
 
