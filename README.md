@@ -17,11 +17,11 @@ the program guide is free too, courtesy of SiliconDust, the same way it's always
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 [![Proven since 2016](https://img.shields.io/badge/proven%20since-2016-lightgrey)](https://github.com/identd113/hdhr_VCR-AS)
 
-### 📦 Latest: [v2.3.0](https://github.com/identd113/hdhr_VCR_swift/releases/download/v2.3.0/hdhrVCRplus-2.3.0.dmg)
-- New: Watch Now can yield its tuner to a blocked recording request instead of just blocking it
-- Fixed a rare bug that could silently double recordings and Discord notifications
-- Fixed a repeating "Tuner Conflict" notification and duplicate Login Items
-- VoiceOver accessibility labels added to the in-app video player and menu bar
+### 📦 Latest: [v2.5.0](https://github.com/identd113/hdhr_VCR_swift/releases/download/v2.5.0/hdhrVCRplus-2.5.0.dmg)
+- New: watch two live streams at once (picture-in-picture) — swap, reposition, or switch channels on the fly
+- New: an Info button on the player shows the show/episode and air date, like a TV remote's "i"
+- Player toolbar decluttered, and a First-Run Wizard crash on its last step is fixed
+- Several playback reliability fixes: stall auto-recovery, caption detection, tuner-busy warnings
 
 **[📋 Release Notes](RELEASES.md)** — what's new in each version, with download links.
 

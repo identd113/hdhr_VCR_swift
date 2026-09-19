@@ -6,6 +6,51 @@ What's new in each version. For the fuller list of changes within a version, see
 
 ---
 
+## v2.5.0 (2026-09-19)
+
+### Removed
+- **"Watch in VLC"** — the button/menu item that opened a live channel or in-progress recording in
+  a separate, external VLC.app window. hdhrVCRplus still requires VLC.app for all of its own
+  in-app playback, live TV and recordings alike.
+
+### Added
+- **Watch two live streams at once (picture-in-picture)** — any live channel, in-progress
+  recording, or another Mac's shared recording can play as a small muted corner thumbnail
+  alongside whatever's already playing. Click it to swap instantly, right-click to move it to any
+  corner or (for a live channel) switch what it's showing.
+- **An Info button on the player** ("i", like a TV remote) — shows the show name, episode title,
+  and either a "NEW" badge or its original air date in a temporary banner.
+- **First-Run Wizard now explains the VLC requirement up front**, with a one-click install path via
+  Homebrew or a direct download link.
+- **Terminal Guide can now set "New Only" and pick specific weekdays** for a recurring schedule,
+  matching the web guide's Record dialog.
+- **The web guide previews Bonus Time overlap directly in the grid.**
+
+### Updated
+- **Player toolbar decluttered** — audio track, captions, audio output, and display pickers moved
+  into one "More options" menu.
+- **Fixed: the First-Run Wizard could crash outright on its last step**, shown to every user.
+- **Standardized what "Up Next" means** across the menu bar and web guide.
+- **Fixed: switching channels in the player toolbar could hang with no explanation** when a tuner
+  turned out to be unavailable — now shows the same "All Tuners Busy" alert every other path does.
+- **Fixed: captions could go permanently undetected for a whole playback session.**
+- **Fixed: a live stream that stalled with zero new bytes had no auto-recovery** — now recovers on
+  its own, the same way a corrupted stream already did.
+- **Fixed: adding a second show from the native Add Show window in one sitting could silently do
+  nothing.**
+- **Fixed: a Bonus Time recording could show the wrong show's title/episode info** in the menu bar
+  and player once the channel moved on to its next program.
+- **Fixed: watching a recording (Watch Now or a shared FEED) no longer lets the Mac sleep
+  mid-playback**, and playback no longer cuts off immediately if the tuner drops.
+- **Fixed: "Add Show…" could feel slow to open**, especially right after launch.
+- **Discord's "Skipped — rerun (New Only)" notification now includes the episode's original air
+  date.**
+
+### In progress
+- **Recording FEED** — still not enabled by default. The client-side playback stall blocking it was
+  root-caused to a libvlc bug and worked around; a batch of other robustness fixes landed alongside
+  it. No user-facing change this release; watch for its own announcement once it's solid.
+
 ## v2.3.0 (2026-09-11)
 
 ### Added
