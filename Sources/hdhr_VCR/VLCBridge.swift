@@ -121,6 +121,15 @@ struct VLCBufferInfo {
 final class VLCBridge: ObservableObject {
     static let shared = VLCBridge()
 
+    /// Two concurrent playback slots share the one `vlcInstance` below — proven safe by the
+    /// headless TranscodeSession mechanism further down this file, which already runs a second
+    /// concurrent mediaPlayer against the same instance. `.primary` is the full-featured on-screen
+    /// player (rate ramp, recording-relay scrub anchor, track lists) used everywhere today;
+    /// `.secondary` is the minimal, always-muted picture-in-picture corner thumbnail — see
+    /// docs/VLCPlayerView.md's "Picture-in-picture" section. Most methods below default to
+    /// `.primary` so every pre-existing call site keeps compiling unchanged.
+    enum PlayerSlot: Sendable { case primary, secondary }
+
     /// Resolves the installed VLC.app via Launch Services (bundle identifier lookup) instead of
     /// assuming /Applications/VLC.app — works for Homebrew cask installs, ~/Applications, or any
     /// other location the user (or macOS) put it.
@@ -133,16 +142,24 @@ final class VLCBridge: ObservableObject {
     /// True when VLC.app is installed and libvlc loaded successfully.
     let isAvailable: Bool
 
-    private var vlcInstance:  OpaquePointer?
-    private var mediaPlayer:  OpaquePointer?
-    private var currentMedia: OpaquePointer?
+    private var vlcInstance: OpaquePointer?
 
-    /// Retained so channel switches can reattach the same NSView after stop/play.
-    private(set) var drawableView: NSView?
-    /// Extra strong reference keeping the drawable NSView alive until after _mpRelease drains libvlc callbacks.
-    private var retainedDrawable: NSView?
-    /// URL queued before the drawable view was ready; played in setDrawable().
-    private var pendingURL: String?
+    private struct PlayerState {
+        var mediaPlayer:  OpaquePointer?
+        var currentMedia: OpaquePointer?
+        /// Retained so channel switches can reattach the same NSView after stop/play.
+        var drawableView: NSView?
+        /// Extra strong reference keeping the drawable NSView alive until after _mpRelease drains libvlc callbacks.
+        var retainedDrawable: NSView?
+        /// URL queued before the drawable view was ready; played in setDrawable().
+        var pendingURL: String?
+    }
+    private var primaryState   = PlayerState()
+    private var secondaryState = PlayerState()
+    private subscript(_ slot: PlayerSlot) -> PlayerState {
+        get { slot == .primary ? primaryState : secondaryState }
+        set { if slot == .primary { primaryState = newValue } else { secondaryState = newValue } }
+    }
     private var deviceChangeContext: AudioDeviceChangeContext?
 
     // MARK: - Buffer rate controller state
@@ -162,6 +179,14 @@ final class VLCBridge: ObservableObject {
     @Published var spuTracks:   [(id: Int32, name: String)] = []  // CC/subtitle tracks; empty = none detected
     @Published private(set) var currentURL: String?
     @Published private(set) var videoPixelSize: CGSize? = nil  // physical pixels; nil until first decoded frame
+
+    // MARK: - PiP secondary slot (deliberately minimal — no track lists/rate-ramp/pixel-size/buffer
+    // info, matching the "video only, no track picker/scrub/buffer overlay" corner-thumbnail scope;
+    // see docs/VLCPlayerView.md's "Picture-in-picture" section).
+    @Published var secondaryHasError:  Bool = false
+    @Published var secondaryIsPlaying: Bool = false
+    @Published var secondaryHasEnded:  Bool = false
+    private(set) var secondaryURL: String?
 
     // MARK: - Recording-playback scrub anchor
     // Set by AppState.watchRecordingInApp(_:)/seekRecording(_:) when playing a recording through
@@ -374,11 +399,11 @@ final class VLCBridge: ObservableObject {
             await MainActor.run { [weak self] in
                 guard let self else { return }
                 self.vlcInstance = inst
-                self.mediaPlayer = mp
-                if mp != nil, let url = self.pendingURL, let view = self.drawableView {
-                    self.pendingURL = nil
+                self.primaryState.mediaPlayer = mp
+                if mp != nil, let url = self.primaryState.pendingURL, let view = self.primaryState.drawableView {
+                    self.primaryState.pendingURL = nil
                     self._mpSetNSO?(mp, Unmanaged.passUnretained(view).toOpaque())
-                    self.retainedDrawable = view
+                    self.primaryState.retainedDrawable = view
                     self.play(url: url)
                 }
             }
@@ -388,17 +413,18 @@ final class VLCBridge: ObservableObject {
     // MARK: - Drawable
 
     /// Attach an NSView for VLC to render video into.
-    /// Call this from VLCVideoSurface.makeNSView so it's set before the first play().
-    func setDrawable(_ view: NSView) {
-        glog("[VLC] setDrawable view=\(ObjectIdentifier(view)) mp=\(mediaPlayer != nil ? "ready" : "nil") pending=\(pendingURL != nil ? "yes" : "no")")
-        drawableView = view
-        guard let mp = mediaPlayer else { return }
+    /// Call this from VLCVideoSurface/VLCSecondaryVideoSurface.makeNSView so it's set before the
+    /// first play() for that slot.
+    func setDrawable(_ view: NSView, slot: PlayerSlot = .primary) {
+        glog("[VLC] setDrawable(\(slot)) view=\(ObjectIdentifier(view)) mp=\(self[slot].mediaPlayer != nil ? "ready" : "nil") pending=\(self[slot].pendingURL != nil ? "yes" : "no")")
+        self[slot].drawableView = view
+        guard let mp = self[slot].mediaPlayer else { return }
         _mpSetNSO?(mp, Unmanaged.passUnretained(view).toOpaque())
-        retainedDrawable = view
-        if let url = pendingURL {
-            pendingURL = nil
-            glog("[VLC] setDrawable firing pending play: \(url)")
-            play(url: url)
+        self[slot].retainedDrawable = view
+        if let url = self[slot].pendingURL {
+            self[slot].pendingURL = nil
+            glog("[VLC] setDrawable(\(slot)) firing pending play: \(url)")
+            play(url: url, slot: slot)
         }
     }
 
@@ -430,7 +456,7 @@ final class VLCBridge: ObservableObject {
     /// Applies a network cache (2s for a live tuner stream, 300ms for the /api/watch-recording
     /// disk relay — see the network-caching comment below), drops late/corrupt frames, and starts
     /// the rate controller.
-    func play(url: String) {
+    func play(url: String, slot: PlayerSlot = .primary) {
         // Auto-clear the scrub anchor for any URL that isn't the recording relay — covers every
         // call site that starts a live stream (playChannel, watchInApp) without each of them
         // needing to remember to clear it themselves. For a relay URL, refresh the wall-clock
@@ -445,45 +471,63 @@ final class VLCBridge: ObservableObject {
         // so it gets the same 300ms network-caching value (below) instead of the 2000ms live-
         // stream value it would otherwise fall into.
         let isRecordingRelay = url.contains("/api/watch-recording") || url.contains("/api/feed-local-relay")
-        if isRecordingRelay {
-            recordingReopenedAt = Date()
-            minRate = 1.0   // local loopback file read — no network jitter to buffer against
+        // minRate/rate-ramp and the recording-relay scrub anchor (recordingShowId) are strictly
+        // primary-only, regardless of this URL's shape — the secondary is a deliberately minimal,
+        // controls-free thumbnail with no buffer pill to ramp and no scrub bar to anchor; tap-to-
+        // swap exchanges URLs between slots, so the anchor must always describe whatever is
+        // *currently* in the primary slot, never get set for a secondary-slot recording relay.
+        let targetMinRate: Float
+        if slot == .primary {
+            if isRecordingRelay {
+                recordingReopenedAt = Date()
+                minRate = 1.0   // local loopback file read — no network jitter to buffer against
+            } else {
+                clearRecordingSeek()
+                minRate = liveMinRate
+            }
+            targetMinRate = minRate
         } else {
-            clearRecordingSeek()
-            minRate = liveMinRate
+            targetMinRate = 1.0
         }
-        guard drawableView != nil else {
-            glog("[VLC] play deferred — no drawable yet, queuing as pending: \(url)", level: .warning)
-            pendingURL = url
+        guard self[slot].drawableView != nil else {
+            glog("[VLC] play(\(slot)) deferred — no drawable yet, queuing as pending: \(url)", level: .warning)
+            self[slot].pendingURL = url
             return
         }
-        guard let vlcInst = vlcInstance, let playerMp = mediaPlayer else {
-            glog("[VLC] play deferred — vlcInstance=\(vlcInstance != nil ? "ok" : "nil") mediaPlayer=\(mediaPlayer != nil ? "ok" : "nil"), queuing: \(url)", level: .warning)
-            pendingURL = url
+        guard let vlcInst = vlcInstance, let playerMp = self[slot].mediaPlayer else {
+            glog("[VLC] play(\(slot)) deferred — vlcInstance=\(vlcInstance != nil ? "ok" : "nil") mediaPlayer=\(self[slot].mediaPlayer != nil ? "ok" : "nil"), queuing: \(url)", level: .warning)
+            self[slot].pendingURL = url
             return
         }
-        glog("[VLC] play url=\(url)")
-        stopStatsTimer()
-        hasError  = false
-        hasEnded  = false
-        isPlaying = false
-        // Reset track state for the new stream — tickController's fetchTracks() only runs once
-        // per !tracksFetched, so without this an ordinary channel switch would keep showing the
-        // previous channel's audio/CC tracks, and selecting one could call setAudioTrack/
-        // setSpuTrack with an id that doesn't exist on the new stream.
-        audioTracks    = []
-        spuTracks      = []
-        tracksFetched  = false
-        // currentURL updates synchronously (matching the old code's timing) — beginRecordingSeek
-        // is called by AppState.seekRecording immediately after this returns and depends on
-        // currentURL already reflecting this exact request to pass its staleness guard; it can't
-        // wait for the background reconnect below to actually finish.
-        currentURL = url
+        glog("[VLC] play(\(slot)) url=\(url)")
+        if slot == .primary {
+            stopStatsTimer()
+            hasError  = false
+            hasEnded  = false
+            isPlaying = false
+            // Reset track state for the new stream — tickController's fetchTracks() only runs once
+            // per !tracksFetched, so without this an ordinary channel switch would keep showing the
+            // previous channel's audio/CC tracks, and selecting one could call setAudioTrack/
+            // setSpuTrack with an id that doesn't exist on the new stream.
+            audioTracks    = []
+            spuTracks      = []
+            tracksFetched  = false
+            // currentURL updates synchronously (matching the old code's timing) — beginRecordingSeek
+            // is called by AppState.seekRecording immediately after this returns and depends on
+            // currentURL already reflecting this exact request to pass its staleness guard; it can't
+            // wait for the background reconnect below to actually finish.
+            currentURL = url
+        } else {
+            secondaryHasError  = false
+            secondaryIsPlaying = false
+            secondaryHasEnded  = false
+            secondaryURL = url
+        }
         // Claimed synchronously, same moment the old blocking _mpStop?(mp) used to run — so a
         // second play()/stop()/releasePlayer() landing before this call's background work finishes
         // can't also capture and release the same media pointer (a double-free otherwise).
-        let oldMediaCaptured = currentMedia
-        currentMedia = nil
+        let oldMediaCaptured = self[slot].currentMedia
+        self[slot].currentMedia = nil
 
         // C function pointers are Sendable (@convention(c), no captured state); OpaquePointers
         // aren't, but these are stable handles this instance already owns exclusively for the
@@ -500,7 +544,6 @@ final class VLCBridge: ObservableObject {
         nonisolated(unsafe) let mp       = playerMp
         nonisolated(unsafe) let inst     = vlcInst
         nonisolated(unsafe) let oldMedia = oldMediaCaptured
-        let targetMinRate = minRate
         // --no-audio-time-stretch prevents VLC from crashing audio init on MPEG-2 streams
         // where the sample rate is reported as 0 before the first audio frame arrives.
         // network-caching is tuned per source: a real tuner stream needs 2000ms to smooth over
@@ -579,8 +622,8 @@ final class VLCBridge: ObservableObject {
             }
             setMediaFn?(mp, media)
             let rc = playFn?(mp) ?? -1
-            if rc != 0 { glog("[VLC] WARNING: libvlc_media_player_play returned \(rc)", level: .warning) }
-            if targetMinRate < 1.0 {
+            if rc != 0 { glog("[VLC] WARNING: libvlc_media_player_play(\(slot)) returned \(rc)", level: .warning) }
+            if slot == .primary, targetMinRate < 1.0 {
                 _ = setRateFn?(mp, targetMinRate)
                 // Verify rate was accepted — live streams may ignore it on some VLC versions.
                 let actual = getRateFn?(mp) ?? 1.0
@@ -592,44 +635,55 @@ final class VLCBridge: ObservableObject {
             }
             nonisolated(unsafe) let mediaForCommit = media
             Task { @MainActor [weak self] in
-                guard let self, self.currentURL == url else {
+                guard let self else { return }
+                let stillCurrent = slot == .primary ? self.currentURL == url : self.secondaryURL == url
+                guard stillCurrent else {
                     // Superseded by a newer play() call before this one's reconnect landed —
                     // don't leak the native media object we just created for it.
                     mediaReleaseFn?(mediaForCommit)
                     return
                 }
-                self.currentMedia    = mediaForCommit
-                self.estimatedLagSec = 0.0
-                self.currentRate     = targetMinRate
-                self.lastCorrupted   = 0
-                self.lastTickTimeMs  = nil
-                self.lastTickReadBytes = nil
-                self.lastDisplayedPictures = nil
-                self.lastLostPictures = nil
-                self.consecutiveStalledTicks = 0
-                self.startStatsTimer()
+                self[slot].currentMedia = mediaForCommit
+                if slot == .primary {
+                    self.estimatedLagSec = 0.0
+                    self.currentRate     = targetMinRate
+                    self.lastCorrupted   = 0
+                    self.lastTickTimeMs  = nil
+                    self.lastTickReadBytes = nil
+                    self.lastDisplayedPictures = nil
+                    self.lastLostPictures = nil
+                    self.consecutiveStalledTicks = 0
+                    self.startStatsTimer()
+                } else if self.statsTimer == nil {
+                    // The secondary slot never stops/restarts the shared timer itself (see this
+                    // method's own slot == .primary branches above) — a swap or a first PiP open
+                    // just needs to make sure it's running at all.
+                    self.startStatsTimer()
+                }
             }
         }
     }
 
-    func stop() {
+    func stop(slot: PlayerSlot = .primary) {
         // Soft stop, resumable in place: drawableView is intentionally left attached (see
         // releasePlayer() below) so a later play() finds a live surface to render into instead
         // of queuing as pendingURL forever. Used for the remote-command Stop key.
-        glog("[VLC] stop called — drawable=\(drawableView != nil ? "had view" : "already nil") currentURL=\(currentURL ?? "none")")
-        stopAndClearState()
+        let urlDesc = slot == .primary ? (currentURL ?? "none") : (secondaryURL ?? "none")
+        glog("[VLC] stop(\(slot)) called — drawable=\(self[slot].drawableView != nil ? "had view" : "already nil") currentURL=\(urlDesc)")
+        stopAndClearState(slot: slot)
     }
 
     /// Full teardown called on window close — stops, releases, and nils the media player so
     /// libvlc drops its HTTP connection and frees the tuner immediately. ensurePlayer() must
     /// be called before the next play() session.
-    func releasePlayer() {
-        glog("[VLC] releasePlayer — stopping and releasing mediaPlayer, currentURL=\(currentURL ?? "none")")
-        stopAndClearState()
-        guard let oldMp = mediaPlayer else { return }
+    func releasePlayer(slot: PlayerSlot = .primary) {
+        let urlDesc = slot == .primary ? (currentURL ?? "none") : (secondaryURL ?? "none")
+        glog("[VLC] releasePlayer(\(slot)) — stopping and releasing mediaPlayer, currentURL=\(urlDesc)")
+        stopAndClearState(slot: slot)
+        guard let oldMp = self[slot].mediaPlayer else { return }
         // Claimed synchronously so a subsequent ensurePlayer() (e.g. a quick reopen) creates a
         // genuinely fresh player instead of finding this now-being-torn-down one still in place.
-        mediaPlayer = nil
+        self[slot].mediaPlayer = nil
         let releaseFn = _mpRelease
         nonisolated(unsafe) let mp = oldMp
         // Enqueued after stopAndClearState's own libvlcQueue work below (same serial queue — FIFO
@@ -640,7 +694,7 @@ final class VLCBridge: ObservableObject {
         // [weak self]).
         Self.libvlcQueue.async { [self] in
             releaseFn?(mp)
-            glog("[VLC] releasePlayer — mediaPlayer released, tuner freed")
+            glog("[VLC] releasePlayer(\(slot)) — mediaPlayer released, tuner freed")
             // retainedDrawable/drawableView must outlive the actual libvlc release: libvlc dispatches
             // drawable callbacks off the main thread and they can fire briefly after
             // libvlc_media_player_release returns, so nil'ing these before releaseFn ran (as this used
@@ -649,9 +703,9 @@ final class VLCBridge: ObservableObject {
             // only now that the release is actually done — and only if nothing (e.g. a quick reopen via
             // ensurePlayer()) has since attached a new mediaPlayer that's legitimately reusing this view.
             Task { @MainActor [weak self] in
-                guard let self, self.mediaPlayer == nil else { return }
-                self.retainedDrawable = nil
-                self.drawableView     = nil
+                guard let self, self[slot].mediaPlayer == nil else { return }
+                self[slot].retainedDrawable = nil
+                self[slot].drawableView     = nil
             }
         }
     }
@@ -659,21 +713,32 @@ final class VLCBridge: ObservableObject {
     /// Shared teardown: stops the stats timer, resets state flags, stops media, releases current media object.
     /// Does NOT release the media player itself — call releasePlayer() for full teardown.
     /// Deliberately does NOT clear drawableView — see stop()'s doc comment.
-    private func stopAndClearState() {
-        stopStatsTimer()
-        clearRecordingSeek()
-        hasError       = false
-        hasEnded       = false
-        isPlaying      = false
-        currentURL     = nil
-        pendingURL     = nil
-        audioTracks    = []
-        spuTracks      = []
-        tracksFetched  = false
-        videoPixelSize = nil
-        guard let playerMp = mediaPlayer else { return }
-        let oldMediaCaptured = currentMedia
-        currentMedia = nil
+    private func stopAndClearState(slot: PlayerSlot = .primary) {
+        // The shared stats timer serves both slots — only actually stop it if the *other* slot
+        // isn't mid-playback, so tearing down one slot never freezes the other's isPlaying/rate/
+        // stall reporting.
+        let otherActive = slot == .primary ? (secondaryURL != nil) : (currentURL != nil)
+        if !otherActive { stopStatsTimer() }
+        if slot == .primary {
+            clearRecordingSeek()
+            hasError       = false
+            hasEnded       = false
+            isPlaying      = false
+            currentURL     = nil
+            audioTracks    = []
+            spuTracks      = []
+            tracksFetched  = false
+            videoPixelSize = nil
+        } else {
+            secondaryHasError  = false
+            secondaryIsPlaying = false
+            secondaryHasEnded  = false
+            secondaryURL       = nil
+        }
+        self[slot].pendingURL = nil
+        guard let playerMp = self[slot].mediaPlayer else { return }
+        let oldMediaCaptured = self[slot].currentMedia
+        self[slot].currentMedia = nil
         let stopFn         = _mpStop
         let mediaReleaseFn = _mediaRelease
         nonisolated(unsafe) let mp       = playerMp
@@ -685,35 +750,110 @@ final class VLCBridge: ObservableObject {
     }
 
     /// Create a fresh media player from the already-loaded vlcInstance.
-    /// Called by VLCPlayerWindowManager.open() before each new player session.
-    func ensurePlayer() {
-        guard mediaPlayer == nil else { return }
+    /// Called by VLCPlayerWindowManager.open()/openSecondary() before each new player session.
+    func ensurePlayer(slot: PlayerSlot = .primary) {
+        guard self[slot].mediaPlayer == nil else { return }
         guard let inst = vlcInstance, let mpNewFn = _mpNew else {
-            glog("[VLC] ensurePlayer — vlcInstance or _mpNew not ready, will retry via pendingURL path", level: .warning)
+            glog("[VLC] ensurePlayer(\(slot)) — vlcInstance or _mpNew not ready, will retry via pendingURL path", level: .warning)
             return
         }
-        mediaPlayer = mpNewFn(inst)
-        glog("[VLC] ensurePlayer — new mediaPlayer created")
+        self[slot].mediaPlayer = mpNewFn(inst)
+        glog("[VLC] ensurePlayer(\(slot)) — new mediaPlayer created")
         // Re-attach drawable if it was set before the player was ready.
-        if let view = drawableView, let mp = mediaPlayer {
+        if let view = self[slot].drawableView, let mp = self[slot].mediaPlayer {
             _mpSetNSO?(mp, Unmanaged.passUnretained(view).toOpaque())
-            retainedDrawable = view
+            self[slot].retainedDrawable = view
         }
+        // The secondary slot never starts/stops the shared timer itself via play() (see play(url:
+        // slot:)'s own comment) — make sure it's at least running so tickSecondary() can report
+        // isPlaying/hasError once this player actually starts playing.
+        if slot == .secondary, statsTimer == nil { startStatsTimer() }
     }
 
     /// Discard buffered content and reconnect to the live edge. Resets the rate controller.
-    func catchUpToLive() {
-        guard let url = currentURL else {
-            glog("[VLC] catchUpToLive — no currentURL, ignoring")
+    func catchUpToLive(slot: PlayerSlot = .primary) {
+        let url = slot == .primary ? currentURL : secondaryURL
+        guard let url else {
+            glog("[VLC] catchUpToLive(\(slot)) — no currentURL, ignoring")
             return
         }
-        glog("[VLC] catchUpToLive — reconnecting to: \(url)")
-        play(url: url)
+        glog("[VLC] catchUpToLive(\(slot)) — reconnecting to: \(url)")
+        play(url: url, slot: slot)
+    }
+
+    /// PiP tap-to-swap, redesigned 2026-09-19 per live feedback that the original reconnect-by-URL
+    /// swap (play(url:slot:) on both slots) caused a visible rebuffer on every swap. Both slots are
+    /// already independently decoding by the time a swap is reachable, so there is no need to touch
+    /// libvlc's demux/decode pipeline at all: re-target each already-playing player's rendering
+    /// surface (libvlc_media_player_set_nsobject) onto the *other* slot's fixed NSView — the big
+    /// video area and the corner thumbnail never move in the SwiftUI tree, only which underlying
+    /// player renders into each — then swap the Swift-side bookkeeping to match. Both streams keep
+    /// playing/decoding uninterrupted throughout, so the transition is instant, not a reconnect.
+    /// Callers still need AppState.reanchorRecordingSeekForSwap(newPrimaryURL:) afterward — this
+    /// method leaves recordingShowId/recordingStartDate untouched (deliberately: those are derived
+    /// from the URL/Show, not swappable state) and just swaps currentURL/secondaryURL so that
+    /// derivation can run against the right URL.
+    func swapSlots() {
+        guard let oldPrimaryMP = primaryState.mediaPlayer, let oldSecondaryMP = secondaryState.mediaPlayer,
+              let primaryView = primaryState.drawableView, let secondaryView = secondaryState.drawableView
+        else { return }
+
+        // Capture "before" values before any mutation below.
+        let oldPrimaryMedia   = primaryState.currentMedia
+        let oldSecondaryMedia = secondaryState.currentMedia
+        let oldPrimaryURL     = currentURL
+        let oldSecondaryURL   = secondaryURL
+        let oldPrimaryIsPlaying   = isPlaying
+        let oldPrimaryHasError    = hasError
+        let oldPrimaryHasEnded    = hasEnded
+        let oldSecondaryIsPlaying = secondaryIsPlaying
+        let oldSecondaryHasError  = secondaryHasError
+        let oldSecondaryHasEnded  = secondaryHasEnded
+
+        // Live re-target on already-active players — no stop, no reconnect.
+        _mpSetNSO?(oldSecondaryMP, Unmanaged.passUnretained(primaryView).toOpaque())
+        _mpSetNSO?(oldPrimaryMP, Unmanaged.passUnretained(secondaryView).toOpaque())
+
+        primaryState.mediaPlayer    = oldSecondaryMP
+        primaryState.currentMedia   = oldSecondaryMedia
+        secondaryState.mediaPlayer  = oldPrimaryMP
+        secondaryState.currentMedia = oldPrimaryMedia
+
+        currentURL   = oldSecondaryURL
+        secondaryURL = oldPrimaryURL
+
+        // The newly-primary stream inherits the secondary slot's always-already-at-1.0 rate (the
+        // secondary never ramps — see play(url:slot:)'s own comment) — there's no fill phase to
+        // resume. Stall-tracking fields reset rather than compute a bogus delta against the other
+        // player's last-observed position/byte count.
+        minRate = 1.0
+        currentRate = 1.0
+        estimatedLagSec = 8.0
+        lastCorrupted = 0
+        lastTickTimeMs = nil
+        lastTickReadBytes = nil
+        lastDisplayedPictures = nil
+        lastLostPictures = nil
+        consecutiveStalledTicks = 0
+        audioTracks = []
+        spuTracks = []
+        tracksFetched = false   // cheap re-fetch on next tick, not a reconnect
+        videoPixelSize = nil    // recomputed on next tick
+
+        hasError  = oldSecondaryHasError
+        hasEnded  = oldSecondaryHasEnded
+        isPlaying = oldSecondaryIsPlaying
+        secondaryHasError  = oldPrimaryHasError
+        secondaryHasEnded  = oldPrimaryHasEnded
+        secondaryIsPlaying = oldPrimaryIsPlaying
+
+        glog("[VLC] swapSlots — primary↔secondary rendering targets and state swapped (no reconnect)")
     }
 
     /// Returns the video's native pixel dimensions once decoding has started; nil otherwise.
+    /// Primary only — the secondary thumbnail has no pixel-size-dependent UI (see the PiP MARK above).
     func videoNativeSize() -> CGSize? {
-        guard let mp = mediaPlayer, let fn = _videoGetSize else { return nil }
+        guard let mp = primaryState.mediaPlayer, let fn = _videoGetSize else { return nil }
         var w: UInt32 = 0
         var h: UInt32 = 0
         guard fn(mp, 0, &w, &h) == 0, w > 0, h > 0 else { return nil }
@@ -758,7 +898,10 @@ final class VLCBridge: ObservableObject {
         // the duration, e.g. "Connecting…" sticking until a menu closes. .common includes both
         // .default and .eventTracking, so the timer keeps firing through UI tracking.
         let timer = Timer(timeInterval: Self.statsTimerInterval, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in self?.tickController() }
+            Task { @MainActor [weak self] in
+                self?.tickPrimary()
+                self?.tickSecondary()
+            }
         }
         RunLoop.main.add(timer, forMode: .common)
         statsTimer = timer
@@ -769,8 +912,39 @@ final class VLCBridge: ObservableObject {
         statsTimer = nil
     }
 
-    private func tickController() {
-        guard let mp = mediaPlayer else { return }
+    /// Minimal polling for the PiP secondary player — deliberately no stats/rate-ramp/track-fetch/
+    /// pixel-size work (see the PiP MARK above: the secondary is a muted, controls-free corner
+    /// thumbnail with no audience for any of that primary-only diagnostics). Just enough state
+    /// (isPlaying/hasError) for the corner overlay to show a spinner or error glyph. No-ops via its
+    /// own guard whenever no secondary player exists, so calling this unconditionally every tick
+    /// costs nothing when PiP isn't active.
+    private func tickSecondary() {
+        guard let mp = secondaryState.mediaPlayer, let getState = _mpGetState else { return }
+        let state = getState(mp)
+        if state == 7 {  // libvlc_Error
+            if !secondaryHasError { glog("[VLC] secondary stream error state — publishing secondaryHasError", level: .error) }
+            secondaryHasError  = true
+            secondaryIsPlaying = false
+            return
+        }
+        if state == 6 {  // libvlc_Ended — e.g. a Watch Now secondary reaching EOF. Without this the
+            // corner thumbnail just freezes on the last frame forever with no indication at all
+            // (found live 2026-09-19 auditing tickPrimary's own state==6 handling, which this
+            // lacked entirely).
+            if !secondaryHasEnded { glog("[VLC] secondary stream ended (libvlc_Ended) — publishing secondaryHasEnded") }
+            secondaryHasEnded  = true
+            secondaryIsPlaying = false
+            return
+        }
+        if state == 3, !secondaryIsPlaying {  // libvlc_Playing
+            secondaryIsPlaying = true
+            secondaryHasEnded  = false
+            glog("[VLC] secondary stream playing confirmed")
+        }
+    }
+
+    private func tickPrimary() {
+        guard let mp = primaryState.mediaPlayer else { return }
 
         if let getState = _mpGetState {
             let state = getState(mp)
@@ -827,7 +1001,7 @@ final class VLCBridge: ObservableObject {
         var readBytes: Int32? = nil
         var displayedPictures: Int32? = nil
         var lostPictures: Int32? = nil
-        if let getStats = _mpGetStats, let media = currentMedia {
+        if let getStats = _mpGetStats, let media = primaryState.currentMedia {
             var s = VLCStats()
             let ok = withUnsafeMutableBytes(of: &s) { getStats(media, $0.baseAddress) }
             if ok == 1 {
@@ -873,7 +1047,7 @@ final class VLCBridge: ObservableObject {
             // fully covered, minimized, on an inactive Space, or the display is asleep — exactly
             // the conditions that would produce this pattern. Read on the MainActor (tickController
             // already runs there via the Timer's own Task { @MainActor in ... }), so no thread hop.
-            let windowVisible = drawableView?.window?.occlusionState.contains(.visible) ?? false
+            let windowVisible = primaryState.drawableView?.window?.occlusionState.contains(.visible) ?? false
             if let lastMs = lastTickTimeMs, let bytes = readBytes, let lastBytes = lastTickReadBytes {
                 let posDeltaMs   = nowMs - lastMs
                 let bytesDelta   = bytes - lastBytes
@@ -937,7 +1111,7 @@ final class VLCBridge: ObservableObject {
     /// Fetch audio and SPU track descriptions from libvlc. Called from tickController once
     /// playing; retries every 3s until audio tracks appear (they may not be ready immediately).
     func fetchTracks() {
-        guard let mp = mediaPlayer else { return }
+        guard let mp = primaryState.mediaPlayer else { return }
         if let ptr = _audioTrackDesc?(mp) {
             let filtered = parseTrackDescriptions(ptr).filter { $0.id >= 0 }
             if !filtered.isEmpty {
@@ -954,14 +1128,17 @@ final class VLCBridge: ObservableObject {
         }
     }
 
+    // Primary only, deliberately no slot parameter — the secondary never gets a track picker (see
+    // the PiP MARK above), so a future accidental call against it is a compile error, not a silent
+    // no-op against the wrong player.
     func setAudioTrack(id: Int32) {
-        guard let mp = mediaPlayer else { return }
+        guard let mp = primaryState.mediaPlayer else { return }
         _ = _audioSetTrack?(mp, id)
         glog("[VLC] setAudioTrack id=\(id)")
     }
 
     func setSpuTrack(id: Int32) {
-        guard let mp = mediaPlayer else { return }
+        guard let mp = primaryState.mediaPlayer else { return }
         _ = _spuSet?(mp, id)
         glog("[VLC] setSpuTrack id=\(id) (\(id < 0 ? "off" : "on"))")
     }
@@ -986,15 +1163,17 @@ final class VLCBridge: ObservableObject {
 
     // MARK: - Volume  (UI scale 0–100; VLC scale 0–200, unity = 100)
 
-    func setVolume(_ v: Int) {
-        guard let mp = mediaPlayer else { return }
+    func setVolume(_ v: Int, slot: PlayerSlot = .primary) {
+        guard let mp = self[slot].mediaPlayer else { return }
         _ = _audioSetVol?(mp, Int32(max(0, min(100, v)) * 2))
     }
 
     // MARK: - Audio device
 
+    // Primary only — by design the secondary is always muted (setVolume(0, slot: .secondary)), so
+    // audio output device routing only ever matters for whichever stream is actually audible.
     func setAudioDevice(output: String, deviceId: String) {
-        guard let mp = mediaPlayer else { return }
+        guard let mp = primaryState.mediaPlayer else { return }
         output.withCString { outp in
             deviceId.withCString { devp in
                 _adevSet?(mp, outp, devp)

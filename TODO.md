@@ -59,60 +59,19 @@ Raised 2026-09-09: the user no longer remembers the specific reason this was add
 
 ## Player / Watch Now
 
-### Watch two live streams at once (Watch Now and/or FEED), picture-in-picture
+### ~~Watch two live streams at once (Watch Now and/or FEED), picture-in-picture~~ — done 2026-09-17
 
-Live user request, 2026-09-14, scoped down through discussion from a full multi-window
-architecture to: keep the single reusable player window/`VLCBridge` singleton, but let
-it drive a second, deliberately minimal concurrent stream as a small muted
-picture-in-picture corner thumbnail, with tap-to-swap for which stream is "front" (full
-controls + audio). Works for any combination of Watch Now (a local in-progress
-recording) and FEED (another instance's relay) in either slot — both already funnel
-through the same `VLCPlayerWindowManager.open(url:title:device:appState:)` by the time
-either reaches the window manager, so no source-type branching is needed.
-
-**Confirmed feasible via code research, not yet built:**
-- `VLCBridge`'s libvlc calls (`setVolume`, `setAudioTrack`, `setSpuTrack`) are already
-  scoped per-`mediaPlayer` — the singleton-ness is only in the Swift wrapper's own
-  storage, not in libvlc itself.
-- One `vlcInstance` can already host two concurrent `mediaPlayer`s — proven live by
-  `TranscodeSession` (`VLCBridge.swift`, `startTranscodeSession`), which creates a
-  second `player = mpNewFn(inst)` against the same shared instance with refcounted
-  dict-based teardown. That session is headless (sout transcode chain, no drawable) —
-  a different code path than on-screen playback — but the lifecycle pattern (second
-  player/media pointer pair, same serial-queue teardown shape) is safe to reuse for a
-  second *visible* player.
-- No `libvlc_event_attach` anywhere — `VLCBridge` polls via one `Timer`
-  (`tickController()`); a second player only needs folding into that same tick, not a
-  second Timer.
-- The server-side FEED relay session store (`WebServer.feedRelaySessions`) is already
-  dictionary-keyed by session id — already supports N concurrent sessions. The only
-  singleton constraint is client-side: `VLCPlayerWindowManager`'s single
-  `currentFeedRemoteURL`/`currentFeedSessionId` fields, and `AppState
-  .startFeedLocalRelay` unconditionally unregistering the *previous* session before
-  starting a new one — both need to become slot-aware (primary/secondary), not a
-  server-side change.
-
-**Design**: primary fills the window with full existing controls (unchanged); secondary
-is a small fixed-size corner thumbnail, video only, always muted, no track
-picker/scrub/buffer overlay. Swap is a genuine reconnect — `play(url:)` the two
-streams' URLs across the primary/secondary `mediaPlayer`s, the same reconnect-by-URL
-pattern already used for channel switches/`toggleFeedTranscode`/`catchUpToLive` — a
-brief rebuffer on swap is expected, not a regression, and swap-in reuses the
-`posterHidden`/mute-reset path already fixed for the FEED audio-switch bug (see
-`CHANGELOG.md`), so the newly-primary stream un-mutes correctly for free. Entry point:
-whenever the window is already playing something watchable, every *other* watchable
-candidate's menu (Watch Now row or FEED row) gains a "Watch alongside current (PiP)"
-action next to its normal Watch button — never automatic.
-
-**Key files** (full plan, not yet implemented): `VLCBridge.swift` (second minimal
-player/drawable/`@Published` state, `ensureSecondaryPlayer`/`releaseSecondaryPlayer`/
-`setSecondaryDrawable`/`playSecondary`), `VLCPlayerView.swift`
-(`VLCSecondaryVideoSurface`, PiP overlay + tap-to-swap,
-`VLCPlayerWindowManager.swapPrimaryAndSecondary`/`openSecondary`, secondary-slot
-bookkeeping fields), `AppState.swift` (`startFeedLocalRelay` slot awareness,
-`watchAsSecondary`, `maintainVLCSleepAssertionIfNeeded` secondary check),
-`MenuContent.swift` (the "Watch alongside" menu action on both Watch Now and FEED
-rows).
+Live user request, 2026-09-14, scoped down through discussion to: keep the single
+reusable player window/`VLCBridge` singleton, but let it drive a second, deliberately
+minimal concurrent stream as a small muted picture-in-picture corner thumbnail, with
+tap-to-swap for which stream is "front" (full controls + audio). Implemented per the
+design/key-files plan this entry used to hold — see `docs/VLCPlayerView.md`'s
+"Picture-in-picture" and "AppState.watchAsSecondary" sections for the shipped design,
+and `CHANGELOG.md`'s Unreleased section for the user-facing summary. Not yet live-tested
+against real hardware (built and manually verified only via `swift build` in this
+session) — worth a real two-tuner-device pass (live+live, live+FEED, live+WatchNow,
+swap in both directions, tuner-occupancy accounting) before considering this fully
+closed out.
 
 ---
 

@@ -29,12 +29,50 @@ private struct VLCVideoSurface: NSViewRepresentable {
     func updateNSView(_ nsView: NSView, context: Context) {}
 }
 
+// ── VLCSecondaryVideoSurface ──────────────────────────────────────────────────
+// Same "attach once in makeNSView, never updateNSView" shape as VLCVideoSurface above, just wired
+// to VLCBridge's secondary slot — the muted picture-in-picture corner thumbnail (see
+// docs/VLCPlayerView.md's "Picture-in-picture" section).
+
+private struct VLCSecondaryVideoSurface: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let v = NSView()
+        v.wantsLayer = true
+        v.layer?.backgroundColor = CGColor(gray: 0, alpha: 1)
+        glog("[VLC] VLCSecondaryVideoSurface.makeNSView — new drawable view=\(ObjectIdentifier(v))")
+        VLCBridge.shared.setDrawable(v, slot: .secondary)
+        return v
+    }
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
+// ── PipCorner ─────────────────────────────────────────────────────────────────
+// Which corner of the video area the PiP thumbnail is pinned to — user-chosen via the thumbnail's
+// own right-click context menu (VLCPlayerView.pipCornerMenu), persisted across sessions the same
+// way `volume` is (@AppStorage). RawRepresentable (String) so @AppStorage can store it directly.
+enum PipCorner: String, CaseIterable {
+    case topLeading, topTrailing, bottomLeading, bottomTrailing
+
+    var isTop:     Bool { self == .topLeading    || self == .topTrailing }
+    var isLeading: Bool { self == .topLeading    || self == .bottomLeading }
+
+    var displayName: String {
+        switch self {
+        case .topLeading:     return "Top Left"
+        case .topTrailing:    return "Top Right"
+        case .bottomLeading:  return "Bottom Left"
+        case .bottomTrailing: return "Bottom Right"
+        }
+    }
+}
+
 // ── VLCPlayerView ─────────────────────────────────────────────────────────────
 // SwiftUI content for the VLC player window.
 // Hosted in an NSHostingView inside VLCPlayerWindowManager's NSWindow.
 
 struct VLCPlayerView: View {
     @EnvironmentObject var state: AppState
+    @Environment(\.openWindow) private var openWindow
 
     // The device whose lineup populates the channel picker.
     // Fixed at window-open time — no device switching in the player toolbar.
@@ -61,6 +99,8 @@ struct VLCPlayerView: View {
     // channel's explicit choice forever.
     @State private var spuChoiceIsExplicit:  Bool  = false
     @AppStorage("vlcVolume") private var volume: Double = 50
+    // PiP thumbnail's pinned corner — set via its own right-click context menu (pipCornerMenu).
+    @AppStorage("vlcPipCorner") private var pipCorner: PipCorner = .bottomTrailing
     @State private var systemDevices: [(id: String, name: String)] = []
     @State private var selectedDevice: String = ""
     @State private var availableScreens: [NSScreen] = []
@@ -315,6 +355,14 @@ struct VLCPlayerView: View {
         (VLCPlayerWindowManager.shared.currentFeedRemoteURL ?? "").contains("transcode=")
     }
 
+    // True only for the standalone-PIP window (VLCPlayerWindowManager.ensureWindowForStandalonePiP):
+    // primary never received a URL to play (initialURL empty, syncChannel's own guard on non-empty
+    // rawSyncURL means selectedChannel stays nil), so bridge.isPlaying can never flip true — the
+    // ordinary Start/Connecting… button below would otherwise render permanently disabled.
+    private var isPrimaryIdle: Bool {
+        initialURL.isEmpty && selectedChannel == nil && bridge.recordingShowId == nil
+    }
+
     // Mirrors MenuContent's own `alreadyModern` check — unset/"unknown" VideoCodec (older
     // firmware, or a source lineup entry that never set it) is treated as "not confirmed modern,"
     // same as there, so the toggle is offered rather than hidden.
@@ -333,6 +381,65 @@ struct VLCPlayerView: View {
         glog("[VLC] FEED transcode toggle → \(wantsTranscode ? "H.264" : "raw"): \(newRemoteURL)")
         let localURL = state.startFeedLocalRelay(remoteURL: newRemoteURL, device: device)
         bridge.play(url: localURL)
+    }
+
+    // MARK: - Picture-in-picture tap-to-swap
+    //
+    // Tap the corner thumbnail to make it the front (full controls + audio) stream, and demote
+    // whatever was previously front to the muted corner — a genuine reconnect, the same
+    // reconnect-by-URL shape as toggleFeedTranscode/catchUpToLive above: mutate which URL each
+    // slot's already-alive player is pointed at, no window/view recreation. A brief rebuffer on
+    // swap is expected, not a regression.
+    private func swapPrimaryAndSecondary() {
+        let mgr = VLCPlayerWindowManager.shared
+        guard bridge.secondaryURL != nil, mgr.secondaryDeviceID != nil else { return }
+
+        // Re-targets each already-playing player's rendering surface onto the other slot's fixed
+        // view — no stop/reconnect, so this is instant, not a rebuffer (see swapSlots' own doc
+        // comment for the full reasoning; this replaced an earlier reconnect-by-URL design after
+        // live feedback that it caused a visible rebuffer on every swap).
+        bridge.swapSlots()
+
+        // recordingShowId is strictly primary-only and derived from the URL, not swappable state
+        // (swapSlots() deliberately leaves it alone) — re-anchor it now that currentURL reflects
+        // whatever is newly primary, or every recordingShowId-gated check (vlcOccupiesTuner, the
+        // scrub bar, the disk-relay color indicator) keeps describing the pre-swap primary.
+        state.reanchorRecordingSeekForSwap(newPrimaryURL: bridge.currentURL ?? "")
+
+        mgr.swapTrackingFieldsForPiPSwap()
+
+        // New primary gets real audio, new secondary goes silent. Both players are already alive,
+        // so these are live volume changes, not part of any mute-before-play/unmute-after-buffered
+        // dance — there's no reconnect here for that dance to apply to.
+        bridge.setVolume(0, slot: .secondary)
+        bridge.setVolume(Int(volume), slot: .primary)
+
+        // No posterHidden/posterNSImage reset needed (unlike the old reconnect-based swap) — the
+        // newly-primary stream was already playing with its poster long since dismissed; forcing
+        // posterHidden back to false here would wrongly show a Start-gate poster over an
+        // already-live stream.
+
+        // Toolbar UI state doesn't auto-follow a swap (there's no fresh .onAppear/user picker
+        // interaction driving it) — reset it directly so the channel/track pickers stop describing
+        // the pre-swap primary. Found live 2026-09-19 alongside the window-title fix above.
+        // selectedChannel = nil rather than resolving the new primary's actual entry: this
+        // VLCPlayerView instance's own `device`/`lineup` stay bound to whichever device the window
+        // was *originally* opened on, so a same-device swap could in principle resolve the right
+        // LineupEntry, but a cross-device swap (the secondary can be on a different tuner) has no
+        // correct entry to resolve against this view's own lineup at all — nil is the safe
+        // "don't show a wrong channel" choice for both cases alike; a deeper fix would need this
+        // view's own device binding to become swappable too, out of scope here.
+        // suppressNextChannelPlay + suppressSameContent make this a no-op for .onChange(of:
+        // selectedChannel)'s own handler (no playChannel call, no poster/mute reset — this swap
+        // already set the correct final volumes above).
+        selectedAudioTrackId = -1
+        selectedSpuTrackId   = -1
+        spuChoiceIsExplicit  = false
+        suppressNextChannelPlay = true
+        suppressSameContent     = true
+        selectedChannel = nil
+
+        state.refreshTunerOccupancy()
     }
 
     // The Native-resolution icon's color now also encodes whether the current stream is being
@@ -441,8 +548,31 @@ struct VLCPlayerView: View {
                     }
                     .transition(.opacity)
                 }
+                if VLCPlayerWindowManager.shared.secondaryDeviceID != nil {
+                    pipOverlay
+                        .transition(.opacity)
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // Right-click anywhere on the main video pane — a single simple entry that opens the
+            // shared PiPPickerView (also reachable from MenuContent's own "Add Picture-in-Picture…"
+            // button). Attached to this outer ZStack, not VLCVideoSurface alone, so it still
+            // triggers while the poster/error/idle overlay sits on top. Distinct from — and never
+            // shadows — pipOverlay's own .contextMenu { pipCornerMenu } below, which is scoped to
+            // the small corner thumbnail Button itself; SwiftUI resolves a right-click to whichever
+            // is deepest under the pointer.
+            .contextMenu {
+                Button {
+                    NSApp.activate(ignoringOtherApps: true)
+                    if let w = NSApp.windows.first(where: { $0.title == "Add Picture-in-Picture" }) {
+                        w.makeKeyAndOrderFront(nil)
+                    } else {
+                        openWindow(id: "pip-picker")
+                    }
+                } label: {
+                    Label("Add Picture-in-Picture…", systemImage: "pip.fill")
+                }
+            }
             .animation(.easeOut(duration: 0.35), value: posterHidden)
             .animation(.easeOut(duration: 0.35), value: bridge.hasError)
             .animation(.easeOut(duration: 0.35), value: bridge.hasEnded)
@@ -800,6 +930,21 @@ struct VLCPlayerView: View {
                         .foregroundStyle(.white.opacity(0.45))
                         .accessibilityLabel("hdhrVCRplus — buffering, playback will start automatically")
                         .padding(.top, 4)
+                    } else if isPrimaryIdle {
+                        // Standalone PIP path (VLCPlayerWindowManager.ensureWindowForStandalonePiP):
+                        // the window exists but primary was never handed a URL to play, so
+                        // bridge.isPlaying can never become true — without this branch the plain
+                        // Button below would show a permanently-disabled "Connecting…" spinner,
+                        // reading as stuck rather than intentionally idle.
+                        Text("Nothing playing — pick something from the menu bar, or right-click for Picture-in-Picture")
+                            .font(.title3.bold())
+                            .padding(.horizontal, 22)
+                            .padding(.vertical, 12)
+                            .background(.ultraThinMaterial)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .foregroundStyle(.white.opacity(0.6))
+                            .multilineTextAlignment(.center)
+                            .padding(.top, 4)
                     } else {
                         Button {
                             startPlayback(auto: false)
@@ -894,6 +1039,94 @@ struct VLCPlayerView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
+    }
+
+    // MARK: - Picture-in-picture corner overlay
+    //
+    // Small, fixed-size, video-only, always-muted corner thumbnail for whatever is playing in
+    // VLCBridge's secondary slot — see TODO.md's "Watch two live streams at once" entry for the
+    // full design. Deliberately minimal: no track picker, no scrub bar, no buffer overlay. Pinned
+    // to whichever corner `pipCorner` holds (right-click the thumbnail to change it) using the
+    // same "Spacer()+padding+.ultraThinMaterial" idiom as the recording scrub bar/fullscreen
+    // toolbar overlays above, not new chrome.
+    private static let pipThumbnailSize = CGSize(width: 192, height: 108)   // fixed 16:9
+
+    private var pipOverlay: some View {
+        VStack {
+            if !pipCorner.isTop { Spacer() }
+            HStack {
+                if !pipCorner.isLeading { Spacer() }
+                ZStack(alignment: .topTrailing) {
+                    // A real Button, not .onTapGesture — every other clickable control in this file
+                    // (Start, Retry, Play Again, the close button right below) is a Button for this
+                    // exact reason: a bare .onTapGesture over a hosted NSViewRepresentable doesn't
+                    // expose any actionable accessibility element (confirmed live: VoiceOver/AX
+                    // automation could find and click the close button below by its identifier, but
+                    // never found any element at all for a .onTapGesture-only thumbnail) — a plain
+                    // Button gets that for free.
+                    Button {
+                        swapPrimaryAndSecondary()
+                    } label: {
+                        ZStack {
+                            VLCSecondaryVideoSurface()
+                            if bridge.secondaryHasError {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundStyle(.yellow)
+                            } else if bridge.secondaryHasEnded {
+                                Image(systemName: "stop.circle")
+                                    .foregroundStyle(.white.opacity(0.8))
+                            } else if !bridge.secondaryIsPlaying {
+                                ProgressView()
+                                    .controlSize(.small)
+                                    .tint(.white)
+                            }
+                        }
+                        .frame(width: Self.pipThumbnailSize.width, height: Self.pipThumbnailSize.height)
+                        .background(Color.black)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.white.opacity(0.25)))
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("vlc-pip-thumbnail")
+                    .accessibilityLabel("Swap to picture-in-picture stream")
+                    .contextMenu { pipCornerMenu }
+
+                    Button {
+                        VLCPlayerWindowManager.shared.closeSecondary()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 16))
+                            .foregroundStyle(.white, .black.opacity(0.6))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(4)
+                    .accessibilityIdentifier("vlc-pip-close-button")
+                    .accessibilityLabel("Close picture-in-picture")
+                }
+                if pipCorner.isLeading { Spacer() }
+            }
+            if pipCorner.isTop { Spacer() }
+        }
+        .padding(16)
+    }
+
+    // Right-click menu on the PiP thumbnail — the user-facing way to move it, per an explicit
+    // request (TODO.md's PiP entry). A checkmark marks the corner currently in effect, matching
+    // the convention a native macOS pull-down/context menu uses for a single-choice setting.
+    @ViewBuilder
+    private var pipCornerMenu: some View {
+        ForEach(PipCorner.allCases, id: \.self) { corner in
+            Button {
+                pipCorner = corner
+            } label: {
+                if corner == pipCorner {
+                    Label(corner.displayName, systemImage: "checkmark")
+                } else {
+                    Text(corner.displayName)
+                }
+            }
+        }
     }
 
     // Shared styling for the Retry/Play Again overlay buttons above — identical appearance, kept
@@ -1520,6 +1753,19 @@ final class VLCPlayerWindowManager {
     // holds the local http://127.0.0.1:<port>/api/feed-local-relay?... URL, not the real one.
     private(set) var currentFeedRemoteURL: String?
     private(set) var currentFeedSessionId: String?
+
+    // MARK: - PiP secondary slot tracking — mirrors the four primary fields just above, but for
+    // whatever is playing in VLCBridge's secondary slot (the muted corner thumbnail). Lives inside
+    // the same window as the primary — there is no second NSWindow for PiP.
+    private(set) var secondaryDeviceID: String?
+    private(set) var secondaryChannelNumber: String?
+    private(set) var secondaryFeedRemoteURL: String?
+    private(set) var secondaryFeedSessionId: String?
+    // The window's own `.title` is the primary's title (set at open()/swap time) — there's no
+    // separate `currentTitle` var to mirror, so this is the one extra field the secondary needs
+    // that the primary doesn't.
+    private(set) var secondaryTitle: String?
+
     private weak var appState: AppState?
     // Local NSEvent monitor for arrow-key seek + Esc-to-exit-fullscreen — installed once per real
     // window (created in `open()`'s new-window branch), torn down in `playerWindowDidClose()`.
@@ -1538,6 +1784,13 @@ final class VLCPlayerWindowManager {
         currentFeedSessionId = sessionId
     }
 
+    /// Secondary-slot counterpart to setFeedRelayTracking above — same purpose, for a PiP corner
+    /// FEED relay instead of the primary stream. Cleared in closeSecondary()/playerWindowDidClose().
+    func setSecondaryFeedRelayTracking(remoteURL: String, sessionId: String) {
+        secondaryFeedRemoteURL = remoteURL
+        secondaryFeedSessionId = sessionId
+    }
+
     /// Bring the player window to the front without switching the stream.
     func focus() {
         guard let win = window else { return }
@@ -1549,10 +1802,23 @@ final class VLCPlayerWindowManager {
     /// stream URL, or (Watch Now! relay playback) VLCBridge.recordingShowId matching the show's ID,
     /// since the relay plays a local /api/watch-recording URL that never equals show_url.
     func closeIfPlaying(showId: String, url: String) {
-        let matchesURL   = !url.isEmpty && VLCBridge.shared.currentURL?.urlBase == url
-        let matchesRelay = !showId.isEmpty && VLCBridge.shared.recordingShowId == showId
-        guard matchesURL || matchesRelay else { return }
-        window?.close()   // triggers windowWillClose → playerWindowDidClose
+        let matchesPrimaryURL   = !url.isEmpty && VLCBridge.shared.currentURL?.urlBase == url
+        let matchesPrimaryRelay = !showId.isEmpty && VLCBridge.shared.recordingShowId == showId
+        if matchesPrimaryURL || matchesPrimaryRelay {
+            window?.close()   // triggers windowWillClose → playerWindowDidClose
+            return
+        }
+        // The show could instead be playing only in the PiP secondary slot (watchAsSecondary/
+        // watchRecordingInAppAsSecondary/watchRemoteRelayAsSecondary) — recordingShowId is
+        // strictly primary-only (VLCBridge.play(url:slot:)'s own doc comment), so match by URL
+        // shape directly, the same way AppState.secondaryVlcOccupiesTuner already does. Tears down
+        // only the secondary, not the whole window — the primary (if any) is unrelated and should
+        // keep playing.
+        let matchesSecondaryURL   = !url.isEmpty && VLCBridge.shared.secondaryURL?.urlBase == url
+        let matchesSecondaryRelay = !showId.isEmpty && (VLCBridge.shared.secondaryURL?.contains("show=\(showId)") ?? false)
+        if matchesSecondaryURL || matchesSecondaryRelay {
+            closeSecondary()
+        }
     }
 
     /// Open (or bring forward) the player window and start playing url on device.
@@ -1628,6 +1894,107 @@ final class VLCPlayerWindowManager {
         NSApp.activate(ignoringOtherApps: true)
         self.window = win
         installKeyMonitor(for: win)
+    }
+
+    /// Brings up the singleton player window with primary left idle (no URL handed to VLCBridge,
+    /// currentDeviceID/currentChannelNumber left nil) so AppState.watchAsSecondary can populate the
+    /// PIP corner thumbnail even when nothing was already playing. No-ops if a window already
+    /// exists — covers both "primary already playing" and "an idle placeholder window is already
+    /// up from a previous standalone-PIP call," never double-creating. Deliberately duplicates
+    /// open()'s new-window construction rather than calling through it, since open() unconditionally
+    /// calls VLCBridge.shared.play(url:) and sets currentDeviceID — both must NOT happen here, or a
+    /// later real open() call would see deviceChanged == false and skip re-syncing the hosted view.
+    func ensureWindowForStandalonePiP(placeholderDevice: HDHRDevice, appState: AppState) {
+        guard window == nil else { return }
+        self.appState = appState
+        glog("[VLC] WindowManager.ensureWindowForStandalonePiP — creating idle primary window, placeholder device=\(placeholderDevice.DeviceID)")
+
+        let playerView = AnyView(
+            VLCPlayerView(device: placeholderDevice, initialURL: "")
+                .environmentObject(appState)
+                .id(placeholderDevice.DeviceID)
+        )
+
+        let win = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 1080, height: 600),
+            styleMask: [.titled, .closable, .resizable, .miniaturizable],
+            backing: .buffered,
+            defer: false
+        )
+        win.title = "hdhrVCRplus"
+        let hosting = NSHostingView(rootView: playerView)
+        win.contentView = hosting
+        self.hostingView = hosting
+        win.isReleasedWhenClosed = false   // retain for reuse on next open()
+        win.collectionBehavior.insert(.fullScreenPrimary)
+        let observer = WindowCloseObserver(manager: self)
+        closeObserver = observer
+        win.delegate = observer
+        win.center()
+        win.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        self.window = win
+        installKeyMonitor(for: win)
+    }
+
+    /// Start `url` playing as the PiP secondary (muted corner thumbnail) alongside whatever's
+    /// already primary. Unlike open(), never creates/reuses an NSWindow — the thumbnail lives
+    /// inside the existing primary window's VLCPlayerView (see the ZStack's pipOverlay). Callers
+    /// (AppState.watchAsSecondary) are responsible for confirming a primary session is already open
+    /// — this is a defensive backstop, not the real gate.
+    func openSecondary(url: String, title: String, device: HDHRDevice, channelNumber: String? = nil) {
+        guard window != nil else {
+            glog("[VLC] WindowManager.openSecondary — no primary window open, ignoring", level: .warning)
+            return
+        }
+        secondaryDeviceID      = device.DeviceID
+        secondaryChannelNumber = channelNumber
+        secondaryTitle         = title
+        glog("[VLC] WindowManager.openSecondary — device=\(device.DeviceID) url=\(url)")
+        // ensurePlayer BEFORE setVolume, not after — setVolume(_:slot:) is a no-op when that
+        // slot's mediaPlayer is still nil (its own guard), and unlike the primary (already created
+        // by VLCBridge's own init() at app launch, well before any open() call), the secondary
+        // player only ever comes into existence right here. Muting before the player exists
+        // silently did nothing, then ensurePlayer created a fresh player at libvlc's own default
+        // (audible) volume and nothing ever muted it afterward — found live 2026-09-19 (PiP audio
+        // was audibly coming from the corner thumbnail instead of the primary).
+        VLCBridge.shared.ensurePlayer(slot: .secondary)
+        VLCBridge.shared.setVolume(0, slot: .secondary)
+        VLCBridge.shared.play(url: url, slot: .secondary)
+    }
+
+    /// Stop and tear down just the secondary slot — the user-facing "close PiP without swapping
+    /// first" affordance (the corner thumbnail's own × button). Leaves the primary untouched.
+    func closeSecondary() {
+        glog("[VLC] WindowManager.closeSecondary")
+        VLCBridge.shared.releasePlayer(slot: .secondary)
+        if let sessionId = secondaryFeedSessionId {
+            appState?.webServer.unregisterFeedRelaySession(id: sessionId)
+        }
+        secondaryDeviceID      = nil
+        secondaryChannelNumber = nil
+        secondaryFeedRemoteURL = nil
+        secondaryFeedSessionId = nil
+        secondaryTitle         = nil
+        appState?.refreshTunerOccupancy()
+    }
+
+    /// Atomically swaps every primary/secondary tracking field — called by VLCPlayerView's
+    /// swapPrimaryAndSecondary() right after it has already reconnected each slot's libvlc player
+    /// to the other's URL. Atomic (one method, not eight individual setters) so no half-swapped
+    /// state is ever visible to a reader in between — matters for AppState's tuner-occupancy checks
+    /// (vlcOccupiesTuner/secondaryVlcOccupiesTuner), which key off these exact fields. Also updates
+    /// the window's own `.title` to the newly-primary stream's title (found live 2026-09-19: the
+    /// title previously stayed whatever the window opened with, regardless of any later swap).
+    func swapTrackingFieldsForPiPSwap() {
+        (currentDeviceID, secondaryDeviceID)           = (secondaryDeviceID, currentDeviceID)
+        (currentChannelNumber, secondaryChannelNumber) = (secondaryChannelNumber, currentChannelNumber)
+        (currentFeedRemoteURL, secondaryFeedRemoteURL) = (secondaryFeedRemoteURL, currentFeedRemoteURL)
+        (currentFeedSessionId, secondaryFeedSessionId) = (secondaryFeedSessionId, currentFeedSessionId)
+        if let newPrimaryTitle = secondaryTitle {
+            secondaryTitle = window?.title
+            window?.title = newPrimaryTitle
+        }
     }
 
     // Arrow-key seek (recording playback only) + Esc to exit fullscreen. A local monitor rather
@@ -1748,6 +2115,7 @@ final class VLCPlayerWindowManager {
         // so without this the CoreAudio callback fires into a partially torn-down view.
         VLCBridge.shared.stopDeviceChangeMonitoring()
         VLCBridge.shared.releasePlayer() // full teardown — releases mediaPlayer and nils currentURL; Combine auto-clears vlcCurrentURL
+        VLCBridge.shared.releasePlayer(slot: .secondary) // PiP secondary shares this one window — tear it down too
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
         keyMonitor = nil
         pendingSeekDelta = 0   // in case the window closed mid-hold, before a matching keyUp arrived
@@ -1760,10 +2128,18 @@ final class VLCPlayerWindowManager {
         if let sessionId = currentFeedSessionId {
             appState?.webServer.unregisterFeedRelaySession(id: sessionId)
         }
+        if let sessionId = secondaryFeedSessionId {
+            appState?.webServer.unregisterFeedRelaySession(id: sessionId)
+        }
         currentFeedRemoteURL = nil
         currentFeedSessionId = nil
         currentDeviceID = nil
         currentChannelNumber = nil
+        secondaryFeedRemoteURL = nil
+        secondaryFeedSessionId = nil
+        secondaryDeviceID = nil
+        secondaryChannelNumber = nil
+        secondaryTitle = nil
         window = nil
         hostingView = nil
         // Release the VLC sleep assertion immediately rather than waiting for releaseAllAssertions()

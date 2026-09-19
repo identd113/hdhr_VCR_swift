@@ -612,6 +612,19 @@ struct WatchNowRow: View {
                 .tint(vlcReady ? watchNowBlue : .gray)
                 .controlSize(.small)
                 .disabled(!vlcReady)
+                if state.hasPlayablePrimarySession {
+                    Button {
+                        state.watchRecordingInAppAsSecondary(show)
+                    } label: {
+                        Label(gatedLabel("Watch alongside (PiP)", met: vlcReady, requirement: "VLC"), systemImage: "pip.fill").font(.caption.bold())
+                    }
+                    .accessibilityLabel(watchAlongsideLabel(entry.Title))
+                    .help(vlcReady ? "Play the in-progress recording of \(entry.Title) as a small muted thumbnail alongside what's already open" : "Requires VLC to be installed")
+                    .buttonStyle(.bordered)
+                    .tint(vlcReady ? watchNowBlue : .gray)
+                    .controlSize(.small)
+                    .disabled(!vlcReady)
+                }
             } else {
                 Button {
                     state.watchInApp(url: channel.URL ?? "", title: entry.Title, deviceId: device.DeviceID,
@@ -625,6 +638,24 @@ struct WatchNowRow: View {
                 .tint(vlcReady ? watchNowBlue : .gray)
                 .controlSize(.small)
                 .disabled(!vlcReady)
+                // Any live channel on any tuner/device can become the PiP secondary — this is the
+                // one entry point for that (Recording Now/FEED menu rows cover the no-tuner-cost
+                // sources; this covers a genuine live-tuner watch). watchAsSecondary itself runs
+                // the same tunerAvailable gate watchInApp's live-channel path uses.
+                if state.hasPlayablePrimarySession {
+                    Button {
+                        state.watchAsSecondary(url: channel.URL ?? "", title: entry.Title, device: device,
+                                                channelNumber: channel.GuideNumber)
+                    } label: {
+                        Label(gatedLabel("Watch alongside (PiP)", met: vlcReady, requirement: "VLC"), systemImage: "pip.fill").font(.caption.bold())
+                    }
+                    .accessibilityLabel(watchAlongsideLabel(entry.Title))
+                    .help(vlcReady ? "Watch \(entry.Title) as a small muted thumbnail alongside what's already open" : "Requires VLC to be installed")
+                    .buttonStyle(.bordered)
+                    .tint(vlcReady ? watchNowBlue : .gray)
+                    .controlSize(.small)
+                    .disabled(!vlcReady)
+                }
             }
         }
     }

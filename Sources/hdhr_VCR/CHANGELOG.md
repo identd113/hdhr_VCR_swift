@@ -4,6 +4,9 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 
 ## Unreleased
 
+**Added**
+- **New: watch two live streams at once (picture-in-picture).** Whenever the in-app player already has something playing, Recording Now, "Recording on Another Mac" (FEED), and Watch Now rows now offer a "Watch alongside (PiP)" action — opens the second stream as a small muted corner thumbnail. Click it to swap which stream has full controls and audio — instant, no rebuffer — or right-click it to move it to any of the four corners. Works for any combination of a live channel (on any tuner, any device), an in-progress recording (Watch Now), or another Mac's shared recording.
+
 **Updated**
 - **Standardized what "Up Next" means across the app.** The menu bar's Up Next section and the web guide's per-tuner Up Next row/summary panel now all mean the same thing — the next show scheduled to record, as long as it's later today; nothing is shown once nothing's left today. (Previously the menu bar list was capped at a fixed 60-minute lookahead, and the web guide's version had no time bound at all — the two could disagree about what counted as "next.") The menu bar icon's own status light keeps a separate, fixed one-hour window, since it's meant as an imminent-start alert rather than a listing.
 - **Fixed: switching between two shows being watched via FEED (Recording FEED Beta) left audio muted on the second one.** The video correctly switched, but audio stayed silent until the player window was closed and reopened. Root cause: the player reuses one window/stream slot when switching between shows on the same source Mac, and a leftover "poster is already hidden" flag from the first show silently blocked the auto-unmute that runs once a FEED stream finishes buffering.

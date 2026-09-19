@@ -198,6 +198,9 @@ func watchInAppH264Label(_ title: String) -> String { "Watch \(title) in H.264" 
 // isAlreadyModernCodec returns true for both, so the accessibility label must too or VoiceOver
 // announces "H.264" for a stream that's actually HEVC.
 func watchInAppCodecLabel(_ title: String, codec: String) -> String { "Watch \(title) in \(codec)" }
+// Accessibility label for the "Watch alongside current (PiP)" rows (Recording Now and Recording
+// on Another Mac menus) — MenuContent.swift.
+func watchAlongsideLabel(_ title: String) -> String { "Watch \(title) alongside current playback" }
 
 func guideTimeRange(_ entry: GuideEntry) -> String {
     "\(timeRangeFormatter.string(from: entry.startDate)) – \(timeRangeFormatter.string(from: entry.endDate))"

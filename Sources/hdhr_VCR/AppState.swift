@@ -4613,6 +4613,7 @@ final class AppState: ObservableObject {
     private func maintainVLCSleepAssertionIfNeeded() {
         let isWatchingRecordingOrRelay = VLCBridge.shared.recordingShowId != nil
             || VLCPlayerWindowManager.shared.currentFeedRemoteURL != nil
+            || VLCPlayerWindowManager.shared.secondaryFeedRemoteURL != nil
         guard isWatchingRecordingOrRelay else { return }
         recordingManager.preventSleep(id: "vlc", reason: "Watching recording/FEED relay", duration: 300)
     }
@@ -4628,18 +4629,28 @@ final class AppState: ObservableObject {
     /// only ever reproduced under — the identical relay code plays flawlessly forever over
     /// loopback. Callers must not fall back to `remoteURL` on failure, since that would silently
     /// reintroduce the exact bug this exists to avoid.
-    func startFeedLocalRelay(remoteURL: String, device: HDHRDevice) -> String {
+    /// `slot` picks which of VLCPlayerWindowManager's two independent feed-tracking pairs (primary
+    /// vs. the PiP secondary corner thumbnail) this session belongs to — without it, starting a
+    /// secondary-slot FEED relay would read/tear down the *primary's* currentFeedSessionId below,
+    /// silently killing whatever the primary was watching the moment a PiP FEED relay started.
+    func startFeedLocalRelay(remoteURL: String, device: HDHRDevice, slot: VLCBridge.PlayerSlot = .primary) -> String {
         let mgr = VLCPlayerWindowManager.shared
-        // Unregister any previous session before starting a new one — e.g. switching raw↔H.264 or
-        // re-watching a different relay reuses this same singleton player window.
-        if let previousSessionId = mgr.currentFeedSessionId {
+        // Unregister any previous session (for this same slot only) before starting a new one —
+        // e.g. switching raw↔H.264 or re-watching a different relay reuses this same singleton
+        // player window/slot.
+        let previousSessionId = slot == .primary ? mgr.currentFeedSessionId : mgr.secondaryFeedSessionId
+        if let previousSessionId {
             webServer.unregisterFeedRelaySession(id: previousSessionId)
         }
         // The UUID (not just device id) ensures switching raw↔H.264, or re-watching, never aliases
         // two different sessions onto the same id.
         let sessionId = "\(device.DeviceID)-\(UUID().uuidString)"
         webServer.registerFeedRelaySession(id: sessionId, remoteURL: remoteURL)
-        mgr.setFeedRelayTracking(remoteURL: remoteURL, sessionId: sessionId)
+        if slot == .primary {
+            mgr.setFeedRelayTracking(remoteURL: remoteURL, sessionId: sessionId)
+        } else {
+            mgr.setSecondaryFeedRelayTracking(remoteURL: remoteURL, sessionId: sessionId)
+        }
         return "http://127.0.0.1:\(webServer.activePort)/api/feed-local-relay?session=\(sessionId)"
     }
 
@@ -4665,6 +4676,80 @@ final class AppState: ObservableObject {
         let localURL = startFeedLocalRelay(remoteURL: url, device: device)
         glog("[Watch] remote relay '\(title)' on \(device.DeviceID) via local relay")
         mgr.open(url: localURL, title: title, device: device, appState: self)
+    }
+
+    // MARK: - Picture-in-picture secondary slot
+    //
+    // True whenever the player window already has something watchable open — the gate for
+    // MenuContent's "Watch alongside current (PiP)" rows (there's nothing to be secondary *to*
+    // otherwise) and for watchAsSecondary's own defensive no-op below.
+    var hasPlayablePrimarySession: Bool {
+        VLCPlayerWindowManager.shared.currentDeviceID != nil
+    }
+
+    /// Starts `url` playing as the secondary (muted corner PiP thumbnail) alongside whatever's
+    /// already primary — the shared landing point for both watchRemoteRelayAsSecondary and
+    /// watchRecordingInAppAsSecondary below, mirroring how watchInApp/watchRemoteRelay/
+    /// watchRecordingInApp all fan out from one eventual VLCPlayerWindowManager.open() call.
+    /// Deliberately does not branch on Watch-Now-vs-FEED-vs-live-tuner itself — by the time either
+    /// reaches here, `url` is already the correct local relay/loopback URL (see the two wrappers).
+    /// A genuine live-tuner URL (not a recording/FEED relay) runs the same tunerAvailable gate
+    /// watchInApp's live-channel path uses, since a secondary real-tuner stream occupies a tuner
+    /// exactly like the primary would (see secondaryVlcOccupiesTuner below).
+    func watchAsSecondary(url: String, title: String, device: HDHRDevice, channelNumber: String? = nil) {
+        guard VLCBridge.shared.isAvailable, !url.isEmpty else { return }
+        let mgr = VLCPlayerWindowManager.shared
+        if !hasPlayablePrimarySession {
+            // Standalone PIP (PiPPickerView / right-click "Add Picture-in-Picture…") — nothing was
+            // already playing, so bring up the singleton window with primary left idle rather than
+            // refusing. Existing callers (WatchNowRow, MenuContent's remote-relay submenu) only ever
+            // reach this method when their own hasPlayablePrimarySession UI gate is already true, so
+            // this branch never fires for them.
+            let placeholder = recordableDevices.first { !$0.isVirtualRelay } ?? device
+            mgr.ensureWindowForStandalonePiP(placeholderDevice: placeholder, appState: self)
+        }
+        let rawBase = url.urlBase
+        if mgr.secondaryDeviceID == device.DeviceID && (VLCBridge.shared.secondaryURL?.urlBase ?? "") == rawBase {
+            return   // already the secondary — no window/focus concept for a thumbnail to re-trigger
+        }
+        let isLocalRelay = url.contains("/api/watch-recording") || url.contains("/api/feed-local-relay")
+        Task {
+            if !isLocalRelay, !isVirtualRelayDevice(device.DeviceID) {
+                guard await tunerAvailable(device, context: title) else { return }
+            }
+            glog("[Watch] '\(title)' on \(device.DeviceID) as secondary (PiP)")
+            mgr.openSecondary(url: url, title: title, device: device, channelNumber: channelNumber)
+            refreshTunerOccupancy()
+        }
+    }
+
+    /// FEED-relay counterpart to watchRemoteRelay — resolves the local-relay indirection for the
+    /// secondary slot first, then hands off to watchAsSecondary like every other secondary source.
+    func watchRemoteRelayAsSecondary(url: String, title: String, device: HDHRDevice) {
+        guard VLCBridge.shared.isAvailable, !url.isEmpty else { return }
+        let localURL = startFeedLocalRelay(remoteURL: url, device: device, slot: .secondary)
+        watchAsSecondary(url: localURL, title: title, device: device)
+    }
+
+    /// Watch-Now counterpart to watchRecordingInApp — same URL construction, but lands on
+    /// watchAsSecondary instead of VLCPlayerWindowManager.open() so it becomes the muted corner
+    /// thumbnail rather than replacing whatever's already primary.
+    func watchRecordingInAppAsSecondary(_ show: Show, fromBeginning: Bool = false) {
+        guard VLCBridge.shared.isAvailable else { return }
+        let device = recordableDevices.first { $0.DeviceID == show.hdhr_record } ?? recordableDevices.first
+        guard let device else { return }
+        guard !show.show_recording_path.isEmpty,
+              FileManager.default.fileExists(atPath: show.show_recording_path) else {
+            watchAsSecondary(url: show.show_url, title: show.show_title, device: device)
+            return
+        }
+        recordingRelayClaim.claim { ensureWebServerRunning() }
+        let elapsed      = recordingElapsedSeconds(show)
+        let startSeconds = fromBeginning ? 0 : max(0, elapsed - Self.recordingLiveEdgeBackoffSeconds)
+        let startOffset  = recordingByteOffset(for: show, atSeconds: startSeconds) ?? 0
+        let relayURL = "http://127.0.0.1:\(config.Web_server_port)/api/watch-recording?show=\(show.show_id)&start=\(startOffset)"
+        glog("[Watch] '\(show.show_title)' from disk via local relay as secondary (PiP): \(show.show_recording_path)")
+        watchAsSecondary(url: relayURL, title: show.show_title, device: device)
     }
 
     // A currently-recording show is already occupying a tuner; re-requesting the same channel
@@ -4785,6 +4870,31 @@ final class AppState: ObservableObject {
         guard let show = shows.first(where: { $0.show_id == showId }) else { return }
         let elapsed = recordingElapsedSeconds(show)
         seekRecording(showId: showId, toSeconds: max(0, elapsed - Self.recordingLiveEdgeBackoffSeconds))
+    }
+
+    /// Re-anchors VLCBridge's recording-relay scrub state after a PiP swap
+    /// (VLCPlayerView.swapPrimaryAndSecondary) moves `url` into the primary slot.
+    /// VLCBridge.recordingShowId is strictly primary-only (VLCBridge.play(url:slot:)'s own doc
+    /// comment — play() itself never sets it, regardless of which slot or URL shape), so a swap
+    /// must set it explicitly here or every recordingShowId-gated check (AppState.vlcOccupiesTuner,
+    /// the scrub bar, the disk-relay color indicator) keeps describing whatever was primary
+    /// *before* the swap. Approximates the swapped-in stream's position as "elapsed time since the
+    /// recording started" (matching watchRecordingInApp's own near-live default) rather than
+    /// recovering the exact byte offset embedded in the URL's now-stale &start= — consistent with
+    /// this app's existing "approximate scrub, not frame-accurate" scope (recordingByteOffset's own
+    /// doc comment). Clears the anchor entirely for anything that isn't a /api/watch-recording URL
+    /// (a live channel or a FEED relay swapping into primary) — recordingShowId is meaningless for
+    /// either, and play() itself only clears it for a genuine live-tuner URL, not a FEED one.
+    func reanchorRecordingSeekForSwap(newPrimaryURL url: String) {
+        guard url.contains("/api/watch-recording"),
+              let showId = URLComponents(string: url)?.queryItems?.first(where: { $0.name == "show" })?.value,
+              let show = shows.first(where: { $0.show_id == showId }) else {
+            VLCBridge.shared.clearRecordingSeek()
+            return
+        }
+        let recordingStart = show.show_next ?? Date()
+        VLCBridge.shared.beginRecordingSeek(showId: showId, recordingStart: recordingStart,
+                                             seekBaseSeconds: recordingElapsedSeconds(show))
     }
 
     private func alertTunerFull(tunerCount: Int, deviceId: String) {
@@ -5138,6 +5248,20 @@ final class AppState: ObservableObject {
         return VLCPlayerWindowManager.shared.currentDeviceID == deviceId && VLCBridge.shared.recordingShowId == nil
     }
 
+    // Secondary-slot counterpart to vlcOccupiesTuner above, for the PiP corner thumbnail. Can't
+    // reuse VLCBridge.recordingShowId the way the primary check does — that field deliberately
+    // stays primary-only regardless of which slot's URL looks like a recording relay (so tap-to-
+    // swap's scrub-bar anchor always describes whatever is *currently* primary, never the
+    // secondary) — so this classifies the secondary's own URL shape directly instead, the same two
+    // substrings VLCBridge.play(url:) itself already uses to decide isRecordingRelay.
+    func secondaryVlcOccupiesTuner(for deviceId: String) -> Bool {
+        guard !isVirtualRelayDevice(deviceId) else { return false }
+        guard VLCPlayerWindowManager.shared.secondaryDeviceID == deviceId else { return false }
+        guard let url = VLCBridge.shared.secondaryURL else { return false }
+        let isLocalRelay = url.contains("/api/watch-recording") || url.contains("/api/feed-local-relay")
+        return !isLocalRelay
+    }
+
     // Channel this app itself is live-watching on deviceId via the in-app player (not the
     // no-tuner watch-recording relay — vlcOccupiesTuner already excludes that). Callers computing
     // "a hardware tuner is locked to a channel this app didn't initiate" (the in-use-by-other-tuner
@@ -5165,7 +5289,10 @@ final class AppState: ObservableObject {
     func activeTunerCount(for deviceId: String) -> Int {
         let hw  = deviceTunerOccupancy[deviceId]?.filter { $0.VctNumber != nil }.count ?? 0
         let rec = recordingShows.filter { $0.hdhr_record == deviceId }.count
-        let vlc = vlcOccupiesTuner(for: deviceId) ? 1 : 0
+        // Both slots can independently occupy a tuner on the same device (a device with ≥2 tuners
+        // showing live channels in both primary and PiP secondary) — sum them; each is scoped to
+        // this exact deviceId so a secondary elsewhere never leaks into this count.
+        let vlc = (vlcOccupiesTuner(for: deviceId) ? 1 : 0) + (secondaryVlcOccupiesTuner(for: deviceId) ? 1 : 0)
         return max(hw, rec + vlc)
     }
 

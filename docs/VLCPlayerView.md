@@ -320,6 +320,113 @@ ZStack (black background, fills video area)
 
 ---
 
+## Picture-in-picture
+
+Lets the single reusable player window drive a second, deliberately minimal concurrent stream — a
+small muted corner thumbnail — alongside the primary, full-controls stream. Works for any
+combination of Watch Now (local in-progress recording) and FEED (another instance's relay) in
+either slot; both funnel through the same `AppState.watchAsSecondary` entry point once resolved to
+their local relay URL. Entry point: whenever the player window already has something watchable
+open, the Recording Now and "Recording on Another Mac" menu rows each gain a "Watch alongside
+current (PiP)" action (`pip.fill` icon) next to their normal Watch button — never automatic.
+`WatchNowView`'s per-channel rows get the same action too (see `docs/WatchNowView.md`), which is
+the entry point for a genuine live channel as the secondary.
+
+**The secondary is not restricted to the primary's own tuner/device** — playback works correctly
+for any combination, same-device or cross-device. The only cross-device caveat is cosmetic and
+toolbar-only (see "Tap-to-swap" below): after swapping in a stream from a *different* device, the
+toolbar's channel picker doesn't re-list that device's channels until the window is reopened.
+Nothing about opening, watching, or swapping the stream itself is affected.
+
+**Second player, not a second window.** `VLCBridge` holds two independent libvlc
+player/media/drawable triples internally (`PlayerSlot.primary`/`.secondary`, both sharing the one
+`vlcInstance` — the same pattern already proven safe by the headless `TranscodeSession` mechanism).
+`.secondary` is polled by a separate, much smaller `tickSecondary()` — no stats/rate-ramp/track-
+fetch/pixel-size work, since the thumbnail has no buffer pill, track picker, or scrub bar to drive.
+It is always muted (`VLCPlayerWindowManager.openSecondary`'s `ensurePlayer(slot: .secondary)` →
+`setVolume(0, slot: .secondary)` → `play(url:slot:.secondary)`, in that order — `setVolume` is a
+no-op against a not-yet-created player, and unlike the primary, whose player already exists from
+`VLCBridge.init()` at app launch, the secondary's only ever comes into existence right there;
+muting before `ensurePlayer` silently did nothing and left the secondary audible at libvlc's
+default volume, found live 2026-09-19) and never sets `recordingShowId` (that field stays strictly
+primary-only, so a swap's scrub-bar anchor always describes whichever URL is *currently* primary).
+
+**Layout**: composited as a `ZStack` sibling in `VLCPlayerView.body`, pinned to whichever corner
+`pipCorner` holds via the same `Spacer()+padding+.ultraThinMaterial` idiom as the recording scrub
+bar / fullscreen toolbar overlays — not new chrome (see "Positioning the thumbnail" below). Fixed 192×108
+(16:9) size (`pipThumbnailSize`), video-only (`VLCSecondaryVideoSurface`), a small spinner/error/
+ended glyph keyed off `bridge.secondaryIsPlaying`/`secondaryHasError`/`secondaryHasEnded` (the
+`libvlc_Ended`, state-6 case — added 2026-09-19; `tickSecondary()` originally only checked for
+error and playing, so a secondary reaching EOF, e.g. a finished Watch Now recording, just froze on
+its last frame forever with no indication at all), and a small "×" close button
+(`VLCPlayerWindowManager.closeSecondary()`) — the only way to stop the secondary without swapping
+it to primary first.
+
+**No in-place channel/source changes.** The thumbnail has no channel picker, no track picker, no
+controls beyond tap-to-swap and the "×" close button — by design, not an oversight. There is no way
+to retune what's playing in the secondary slot while it's running; the only ways to change it are
+(1) close it and open a different "Watch alongside (PiP)" selection for whatever you actually want,
+or (2) swap it to primary, where the full toolbar's channel picker is available, tune from there —
+at which point it's the primary, not PiP, and whatever was primary is now the muted corner instead.
+
+**Tap-to-swap** (`VLCPlayerView.swapPrimaryAndSecondary()` → `VLCBridge.swapSlots()`): redesigned
+2026-09-19 after live feedback that an earlier reconnect-by-URL version (calling `play(url:slot:)`
+on both slots, the same shape `toggleFeedTranscode`/`catchUpToLive` use) caused a visible rebuffer
+on every swap. Both slots are already independently decoding by the time a swap is reachable, so
+`swapSlots()` never touches libvlc's demux/decode pipeline at all — it re-targets each
+already-playing player's rendering surface (`libvlc_media_player_set_nsobject`) onto the *other*
+slot's fixed `NSView` (the big video area and the corner thumbnail never move in the SwiftUI tree,
+only which player renders into each) and swaps the Swift-side bookkeeping (`currentURL`/
+`secondaryURL`, `hasError`/`isPlaying`/`hasEnded`, track lists, rate-ramp/stall-tracking state — the
+newly-primary stream inherits the secondary's always-already-1.0 rate, since the secondary slot
+never ramps). Both streams keep playing/decoding uninterrupted throughout, so the transition is
+instant. `VLCPlayerView.swapPrimaryAndSecondary()` then calls `AppState
+.reanchorRecordingSeekForSwap(newPrimaryURL:)` (`recordingShowId` is derived from the URL/Show, not
+swappable state, so `swapSlots()` deliberately leaves it alone),
+`VLCPlayerWindowManager.swapTrackingFieldsForPiPSwap()` (also updates the window's own `.title` to
+the newly-primary stream's — found live 2026-09-19 that the title previously stayed whatever the
+window opened with, regardless of any later swap), and sets final per-slot volumes (live changes on
+already-active players, not part of any mute-before-play dance — there's no reconnect for that
+dance to apply to). `swapPrimaryAndSecondary()` also resets `selectedAudioTrackId`/
+`selectedSpuTrackId`/`spuChoiceIsExplicit` and `selectedChannel` (via `suppressNextChannelPlay`/
+`suppressSameContent` so `.onChange(of: selectedChannel)`'s own handler treats the `nil` as a no-op,
+not a real channel switch) — otherwise the toolbar's pickers keep describing the pre-swap primary;
+`nil` rather than resolving the new primary's actual `LineupEntry` since this view's own `device`/
+`lineup` stay bound to whichever device the window originally opened on, so a cross-device swap (the
+secondary can be on a different tuner) has no correct entry to resolve against this view's lineup at
+all — `nil` is the safe "don't show a wrong channel" choice for both the same- and cross-device
+case alike. In practice the existing `.onChange(of: state.vlcCurrentURL)` → `syncChannel()` path
+(driven by `currentURL` itself changing) re-resolves `selectedChannel` correctly right afterward for
+a same-device swap (confirmed live: swapping in a Watch Now relay resynced the picker to its
+synthetic "Live" entry) — a cross-device swap's toolbar (channel list, tuner-scoped displays) is not
+fully re-scoped to the new device, a known deeper limitation of this view's per-window device
+binding, out of scope for the swap fix itself. Unlike the old reconnect-based version, this does
+**not** reset `posterHidden`/`posterNSImage` — the newly-primary stream was already playing with its
+poster long since dismissed, and forcing it back to `false` would wrongly show a Start-gate poster
+over an already-live stream. (The `.onChange(of: selectedChannel)` reuse-without-a-fresh-`.onAppear`
+trap that reset applied to for a *reconnect* doesn't apply here, since nothing reconnects.)
+
+**Tuner occupancy**: a secondary stream watching a real live-tuner channel occupies a tuner exactly
+like the primary would (`AppState.secondaryVlcOccupiesTuner`, summed into `activeTunerCount`); a
+secondary FEED or Watch-Now relay does not, matching the primary's own `vlcOccupiesTuner` rule.
+
+**Selecting which device/tuner becomes the secondary**: there's no tuner picker — selection is
+implicit in which "Watch alongside (PiP)" button you click. Recording Now and "Recording on
+Another Mac" (FEED) menu rows each get one (any device), and `WatchNowView`'s per-channel rows get
+one too (any live channel on whichever device its own tuner `Picker` currently has selected) — see
+`docs/WatchNowView.md`'s action-row entry. Matches this app's existing device-only (never per-port)
+tuner addressing — there's no way to pick "tuner0 vs tuner1" on the same multi-tuner device, for
+the secondary any more than for the primary.
+
+**Positioning the thumbnail** (`pipCorner`, `@AppStorage("vlcPipCorner")`, persisted like `volume`):
+right-clicking the thumbnail shows `pipCornerMenu` — four corners (`PipCorner.allCases`), a
+checkmark on whichever is currently in effect. `pipOverlay`'s `VStack`/`HStack` conditionally place
+a `Spacer()` before or after the thumbnail based on `pipCorner.isTop`/`.isLeading` rather than a
+fixed `alignment:` — the same "pin to whichever edge" idiom already used for its own bottom-pinned
+placement, just parameterized. No drag-and-drop — corner-only, chosen explicitly by the user.
+
+---
+
 ## VLCPlayerWindowManager
 
 ```swift
@@ -453,6 +560,19 @@ private(set) var currentDeviceID: String?
 Set to `device.DeviceID` in `open()`, cleared to `nil` in `playerWindowDidClose()`. Read by `watchInApp` to skip the tuner availability check when the player already occupies a slot on the target device (channel switching should always be allowed without a free-tuner check).
 
 `playerWindowDidClose()` calls `releasePlayer()`, which nils `VLCBridge.currentURL`; the Combine chain in `AppState` picks this up and clears `vlcCurrentURL` — the "Now Watching" indicator disappears without any explicit assignment in the close path.
+
+## AppState.watchAsSecondary
+
+The picture-in-picture counterpart to `watchInApp`/`watchRemoteRelay`/`watchRecordingInApp` above —
+see the "Picture-in-picture" section earlier in this doc for the full design. `watchAsSecondary(url
+:title:device:channelNumber:)` requires `hasPlayablePrimarySession` (a primary session already
+open) and lands on `VLCPlayerWindowManager.openSecondary(...)` instead of `open(...)`, so it becomes
+the muted corner thumbnail rather than replacing whatever's primary. `watchRemoteRelayAsSecondary`
+and `watchRecordingInAppAsSecondary` are thin wrappers resolving a FEED/local-recording URL to its
+correct relay form first, mirroring `watchRemoteRelay`/`watchRecordingInApp`'s own URL construction,
+then handing off to `watchAsSecondary`. A genuine live-tuner URL runs the same `tunerAvailable`
+gate `watchInApp` uses, since a secondary real-tuner stream occupies a tuner exactly like the
+primary would.
 
 ---
 

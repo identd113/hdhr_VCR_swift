@@ -28,6 +28,7 @@ struct MenuContent: View {
             case "edit-show":  title = "Edit Show"
             case "settings":   title = "Settings"
             case "watch-now":  title = "Watch Now"
+            case "pip-picker": title = "Add Picture-in-Picture"
             default:          title = id
             }
             if let w = NSApp.windows.first(where: { $0.title == title }) {
@@ -94,7 +95,11 @@ struct MenuContent: View {
         // "Recording on Another Mac" section below.
         ForEach(state.recordableDevices) { device in
             let slots       = device.TunerCount ?? 1
-            let vlcUsing    = state.vlcOccupiesTuner(for: device.DeviceID) ? 1 : 0
+            // Sums both slots, matching AppState.activeTunerCount(for:)'s own vlc term — a PiP
+            // secondary stream watching a real live-tuner channel occupies a tuner exactly like
+            // the primary would (docs/VLCPlayerView.md's "Picture-in-picture" section).
+            let vlcUsing    = (state.vlcOccupiesTuner(for: device.DeviceID) ? 1 : 0)
+                            + (state.secondaryVlcOccupiesTuner(for: device.DeviceID) ? 1 : 0)
             let appCount    = recordingShows.filter { $0.hdhr_record == device.DeviceID }.count + vlcUsing
             let liveInfo    = state.deviceTunerOccupancy[device.DeviceID]
             let hwCount     = liveInfo?.filter { $0.VctNumber != nil }.count ?? appCount
@@ -149,6 +154,13 @@ struct MenuContent: View {
         Button { open("add-show") } label: { Label("Add Show…", systemImage: "plus") }
         // ── Watch Now ─────────────────────────────────────────────────────
         watchNowMenu
+        // ── Add Picture-in-Picture ────────────────────────────────────────
+        // Standalone-capable: unlike the inline "Watch alongside (PiP)" buttons elsewhere (gated on
+        // hasPlayablePrimarySession), this opens a picker that can start a PIP with nothing already
+        // playing — AppState.watchAsSecondary brings up an idle primary window for it as needed.
+        if !state.recordableDevices.isEmpty || !state.remoteRelayEntries.isEmpty {
+            Button { open("pip-picker") } label: { Label("Add Picture-in-Picture…", systemImage: "pip.fill") }
+        }
         Divider()
 
         Button("Settings…")    { open("settings") }
@@ -253,6 +265,15 @@ struct MenuContent: View {
                             }
                             .disabled(!vlcReady)
                             .accessibilityLabel(gatedLabel(watchInAppH264Label(title), met: vlcReady, requirement: "VLC"))
+                        }
+                        if state.hasPlayablePrimarySession {
+                            Button {
+                                state.watchRemoteRelayAsSecondary(url: pair.entry.URL ?? "", title: title, device: pair.device)
+                            } label: {
+                                Label(gatedLabel("Watch alongside current (PiP)", met: vlcReady, requirement: "VLC"), systemImage: "pip.fill")
+                            }
+                            .disabled(!vlcReady)
+                            .accessibilityLabel(gatedLabel(watchAlongsideLabel(title), met: vlcReady, requirement: "VLC"))
                         }
                         Divider()
                         menuInfo("Source: \(codec)", font: .footnote, secondary: true)
@@ -495,6 +516,14 @@ struct MenuContent: View {
             }
             .disabled(!vlcReady)
             .accessibilityLabel(gatedLabel(watchFromBeginningLabel(show.show_title), met: vlcReady, requirement: "VLC"))
+            if state.hasPlayablePrimarySession {
+                Button(action: { state.watchRecordingInAppAsSecondary(show) }) {
+                    Label { Text(gatedLabel("Watch alongside current (PiP)", met: vlcReady, requirement: "VLC")).foregroundColor(vlcReady ? watchNowBlue : Color(NSColor.disabledControlTextColor)) }
+                          icon: { Image(systemName: "pip.fill").foregroundColor(vlcReady ? watchNowBlue : Color(NSColor.disabledControlTextColor)) }
+                }
+                .disabled(!vlcReady)
+                .accessibilityLabel(gatedLabel(watchAlongsideLabel(show.show_title), met: vlcReady, requirement: "VLC"))
+            }
             Button("Skip", role: .destructive) { Task { await state.skipRecording(showId: show.show_id) } }
             Button("Delete…", role: .destructive) { state.confirmAndDeleteShow(show) }
             if !show.show_recording_path.isEmpty {

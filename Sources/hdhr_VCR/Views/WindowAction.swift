@@ -10,14 +10,23 @@ import AppKit
 // instead of writing a third copy.
 //
 // `trigger` is whatever value should cause `action` to reapply on a SwiftUI re-render — pass a
-// constant (e.g. `true`) for an action that's cheap/idempotent to reapply on every render (like
-// setting a window level), or a real changing value (e.g. a wizard's current step) to scope
-// reapplication to specific changes. Either way `action` also always re-runs in `updateNSView`,
-// not just once in `makeNSView` — for the constant-trigger case this widens FloatingWindowLevelSetter's
-// original once-only behavior slightly, accepted since re-setting `.level` on every render is free.
+// constant (e.g. `true`) for an action that only ever needs to run once (like setting a window
+// level), or a real changing value (e.g. a wizard's current step) to scope reapplication to
+// specific changes. `action` always runs once via `makeNSView`; `updateNSView` re-runs it only
+// when `trigger` actually changes since the last call (tracked in `Coordinator`), not on every
+// unrelated SwiftUI re-render — found live 2026-09-18: FirstRunWizardView's `trigger: step` usage
+// re-centered the window on *any* re-render (moving a Stepper, clicking a button), not just a
+// step change, since the original version fired `action` unconditionally from `updateNSView`.
 struct WindowAction<Trigger: Equatable>: NSViewRepresentable {
     var trigger: Trigger
     let action: (NSWindow) -> Void
+
+    final class Coordinator {
+        var lastTrigger: Trigger
+        init(trigger: Trigger) { lastTrigger = trigger }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(trigger: trigger) }
 
     func makeNSView(context: Context) -> NSView {
         let v = NSView()
@@ -26,6 +35,8 @@ struct WindowAction<Trigger: Equatable>: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
+        guard context.coordinator.lastTrigger != trigger else { return }
+        context.coordinator.lastTrigger = trigger
         DispatchQueue.main.async { if let w = nsView.window { action(w) } }
     }
 }

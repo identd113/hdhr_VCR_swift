@@ -236,6 +236,19 @@ struct hdhr_VCRApp: App {
         // menu) — "Watch from Beginning" was clipping. Still user-resizable/shrinkable below this.
         .defaultSize(width: 480, height: 620)
 
+        // Add Picture-in-Picture picker — single instance; lets the user start a PIP corner
+        // thumbnail directly (Live TV or a discovered FEED source), without anything already
+        // playing in the primary pane. Opened from MenuContent's "Add Picture-in-Picture…" button
+        // and from VLCPlayerView's right-click context menu on the main video pane.
+        Window("Add Picture-in-Picture", id: "pip-picker") {
+            PiPPickerView()
+                .environmentObject(appState)
+                .preferredColorScheme(resolvedColorScheme)
+        }
+        .windowStyle(.titleBar)
+        .windowResizability(.contentSize)
+        .defaultSize(width: 420, height: 520)
+
         // Donation nag — single instance; opened via openDonationNagIfNeeded() on launch and
         // after a show is added (native or web), see DonationNagView.swift / docs/DonationNagView.md.
         // hiddenTitleBar (no title text, traffic lights remain) + DonationNagView's own

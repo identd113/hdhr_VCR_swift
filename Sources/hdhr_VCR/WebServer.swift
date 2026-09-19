@@ -702,6 +702,17 @@ final class WebServer: @unchecked Sendable {
     // `start` is an app-level byte offset (not an RFC 7233 Range header) computed by
     // AppState.seekRecording(_:) from an approximate bytes-per-second estimate — the recording
     // has no index, so this is an approximate scrub, not a frame-accurate seek.
+    // Shared stillActiveCheck body for both handleWatchRecording below and the VirtualTuner raw-
+    // passthrough relay (handleVirtualTunerStream) — recordingIsWatchable, not raw show_recording,
+    // so an already-connected viewer survives the abnormalStopGraceUntil window a tuner drop opens
+    // (AppState.swift) instead of being disconnected the instant show_recording flips false, the
+    // same gate each call site already applies to the *initial* connection request just above it.
+    @MainActor
+    private func stillWatchable(showId: String) -> Bool {
+        guard let appState, let show = appState.shows.first(where: { $0.show_id == showId }) else { return false }
+        return appState.recordingIsWatchable(show)
+    }
+
     private func handleWatchRecording(showId: String, startOffset: Int, conn: NWConnection) {
         guard !showId.isEmpty, let state = appState else {
             send(.badRequest("missing show id"), on: conn); return
@@ -744,7 +755,7 @@ final class WebServer: @unchecked Sendable {
                 }
                 self.streamGrowingFile(path: path, showId: showId, startOffset: startOffset, conn: conn,
                                         stillActiveCheck: { [weak self] in
-                    self?.appState?.shows.first(where: { $0.show_id == showId })?.show_recording ?? false
+                    self?.stillWatchable(showId: showId) ?? false
                 })
             }
         }
@@ -1248,7 +1259,7 @@ final class WebServer: @unchecked Sendable {
                                         durationSeconds: durationSeconds,
                                         knownFileSizeAtOffsetComputation: currentSize,
                                         stillActiveCheck: { [weak self] in
-                    self?.appState?.shows.first(where: { $0.show_id == showId })?.show_recording ?? false
+                    self?.stillWatchable(showId: showId) ?? false
                 },
                                         onStreamEnded: { [weak state] in
                     Task { @MainActor in state?.relayRawViewerDisconnected(showId: showId) }
