@@ -198,7 +198,9 @@ func play(url: String) {
 - The tail's final MainActor commit re-checks `currentURL == url` before writing `currentMedia`/starting the timer — if a newer `play()` call has since changed it, this call was superseded; it releases the media object it just created instead of leaking it, and does not resurrect stale state.
 - The sequence inside the tail — stop → release old media → add options → set on player → play → set rate — is still the correct libvlc pattern; `libvlc_media_add_option` still must be called before `libvlc_media_player_set_media`.
 
-`audioTracks`/`spuTracks`/`tracksFetched` are reset in the synchronous prefix (not just in `stopAndClearState()`/`releasePlayer()`) — `tickController` only calls `fetchTracks()` when `!tracksFetched`, so without this reset an ordinary channel switch would leave the *previous* channel's track lists showing in the toolbar pickers, and selecting one could call `setAudioTrack`/`setSpuTrack` with an id that doesn't exist on the new stream.
+`audioTracks`/`spuTracks`/`tracksFetched`/`spuFetchAttempts` are reset in the synchronous prefix (not just in `stopAndClearState()`/`releasePlayer()`) — without this reset an ordinary channel switch would leave the *previous* channel's track lists showing in the toolbar pickers, and selecting one could call `setAudioTrack`/`setSpuTrack` with an id that doesn't exist on the new stream.
+
+**SPU/CC fetch retried independently of audio, added 2026-09-19** — found live: the Captions menu (`docs/VLCPlayerView.md`'s "More options menu") could go permanently missing for a stream that genuinely had captions. Root cause: `fetchTracks()` used to read `spuTracks` exactly once, gated on `tracksFetched` — which itself flips to `true` the moment `audioTracks` is first found, in that *same* call. CEA-608/708 captions are embedded in the video stream's own `user_data`, so libvlc can't enumerate them until the video decoder has actually started, unlike audio tracks (visible from the PMT alone, often ready immediately) — if SPU genuinely wasn't enumerable yet at that exact tick, `spuTracks` stayed empty forever, since the call site (`tickController`) never called `fetchTracks()` again once `tracksFetched` was `true`. Fixed with `spuFetchAttempts` (`Int`, reset alongside `tracksFetched`): the call site now keeps invoking `fetchTracks()` while `spuTracks.isEmpty && spuFetchAttempts < maxSpuFetchAttempts` (5), even after `tracksFetched` itself is `true`, and `fetchTracks()` only counts an attempt when it actually queries `_spuDesc` (an empty stream with genuinely no captions still stops retrying once the budget's spent, rather than polling forever).
 
 ---
 
@@ -256,7 +258,7 @@ func setVolume(_ v: Int)                                      // 0–100
 func setAudioDevice(output: String, deviceId: String)         // output = "auhal"; deviceId = CoreAudio device UID
 func systemAudioOutputDevices() -> [(id: String, name: String)]  // all CoreAudio output devices (built-in, BT, AirPlay, USB)
 func systemDefaultOutputUID() -> String?                      // UID of current system-default output device
-func fetchTracks()                                            // poll libvlc for audio/SPU track descriptions; called from tickController; retries until audio found
+func fetchTracks()                                            // poll libvlc for audio/SPU track descriptions; called from tickController; retries until audio found, then retries SPU independently up to maxSpuFetchAttempts
 func setAudioTrack(id: Int32)                                 // select audio track by libvlc track id
 func setSpuTrack(id: Int32)                                   // select CC/subtitle track; −1 = off
 ```

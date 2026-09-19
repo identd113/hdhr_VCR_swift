@@ -255,6 +255,17 @@ final class VLCBridge: ObservableObject {
     private var lastCorrupted:   Int32  = 0
     private var catchUpCooldown: Date   = .distantPast
     private var tracksFetched:   Bool   = false
+    // Audio tracks are typically enumerable within the first tick or two of playback; SPU/CC
+    // tracks can lag well behind — CEA-608/708 captions are embedded in the video stream's own
+    // user_data, so libvlc can't enumerate them until the video decoder itself has started, unlike
+    // audio tracks (visible from the PMT alone). Found live 2026-09-19: fetchTracks() used to read
+    // spuTracks exactly once, in the same tick audioTracks first became non-empty — if captions
+    // genuinely weren't enumerable yet at that exact instant, spuTracks stayed permanently empty
+    // for the whole session (nothing ever retried), silently hiding the Captions menu for a stream
+    // that did have them. Retried independently for up to maxSpuFetchAttempts ticks so a genuinely
+    // caption-less stream still stops polling eventually.
+    private var spuFetchAttempts: Int = 0
+    private static let maxSpuFetchAttempts = 5
 
     // MARK: - Stall diagnostics (added 2026-09-06 for a live "pauses every few seconds" report)
     // Neither `isPlaying` nor a rate-change log line says anything about whether playback is
@@ -552,6 +563,7 @@ final class VLCBridge: ObservableObject {
             audioTracks    = []
             spuTracks      = []
             tracksFetched  = false
+            spuFetchAttempts = 0
             // currentURL updates synchronously (matching the old code's timing) — beginRecordingSeek
             // is called by AppState.seekRecording immediately after this returns and depends on
             // currentURL already reflecting this exact request to pass its staleness guard; it can't
@@ -768,6 +780,7 @@ final class VLCBridge: ObservableObject {
             audioTracks    = []
             spuTracks      = []
             tracksFetched  = false
+            spuFetchAttempts = 0
             videoPixelSize = nil
         } else {
             secondaryHasError  = false
@@ -905,6 +918,7 @@ final class VLCBridge: ObservableObject {
         audioTracks = []
         spuTracks = []
         tracksFetched = false   // cheap re-fetch on next tick, not a reconnect
+        spuFetchAttempts = 0
         videoPixelSize = nil    // recomputed on next tick
         secondaryVideoPixelSize = nil   // ditto — the newly-secondary stream has its own aspect ratio
 
@@ -1047,7 +1061,11 @@ final class VLCBridge: ObservableObject {
             }
         }
         // Fetch track descriptions once playing; retry every tick until audio tracks appear.
-        if isPlaying && !tracksFetched { fetchTracks() }
+        // Keep calling while audio hasn't been found yet, OR audio is found but spu still has
+        // retry budget left and hasn't turned up anything — see spuFetchAttempts' own doc comment.
+        if isPlaying, !tracksFetched || (spuTracks.isEmpty && spuFetchAttempts < Self.maxSpuFetchAttempts) {
+            fetchTracks()
+        }
 
         // Adaptive rate: ramp from minRate toward 1.0 linearly over 8 real seconds. `estimatedLagSec`
         // must advance by a fixed amount each tick (the timer's own real interval) — a version of
@@ -1203,7 +1221,9 @@ final class VLCBridge: ObservableObject {
     // MARK: - Track selection (audio tracks and CC/subtitle tracks)
 
     /// Fetch audio and SPU track descriptions from libvlc. Called from tickController once
-    /// playing; retries every 3s until audio tracks appear (they may not be ready immediately).
+    /// playing; retries every 3s until audio tracks appear (they may not be ready immediately),
+    /// and independently retries SPU/CC for up to maxSpuFetchAttempts ticks after that — captions
+    /// can still lag behind audio's own readiness (see spuFetchAttempts' own doc comment).
     func fetchTracks() {
         guard let mp = primaryState.mediaPlayer else { return }
         if let ptr = _audioTrackDesc?(mp) {
@@ -1213,8 +1233,15 @@ final class VLCBridge: ObservableObject {
                 tracksFetched = true
             }
         }
-        if tracksFetched, let ptr = _spuDesc?(mp) {
+        if tracksFetched, spuTracks.isEmpty, spuFetchAttempts < Self.maxSpuFetchAttempts,
+           let ptr = _spuDesc?(mp) {
+            spuFetchAttempts += 1
             spuTracks = parseTrackDescriptions(ptr).filter { $0.id >= 0 }
+            if !spuTracks.isEmpty {
+                glog("[VLC] spu tracks appeared on attempt \(spuFetchAttempts): \(spuTracks.map { "\($0.id):\($0.name)" }.joined(separator: ", "))")
+            } else if spuFetchAttempts >= Self.maxSpuFetchAttempts {
+                glog("[VLC] no spu tracks found after \(spuFetchAttempts) attempts — treating as caption-less")
+            }
         }
         if !audioTracks.isEmpty {
             glog("[VLC] tracks — audio: \(audioTracks.map { "\($0.id):\($0.name)" }.joined(separator: ", "))" +

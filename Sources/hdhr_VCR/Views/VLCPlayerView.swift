@@ -1468,21 +1468,9 @@ struct VLCPlayerView: View {
             if hasAudioTrackChoice || hasCaptionChoice || hasOutputChoice || hasDisplayChoice {
                 Divider().frame(height: 18)
                 Menu {
-                    if hasAudioTrackChoice {
-                        Menu {
-                            ForEach(bridge.audioTracks, id: \.id) { track in
-                                Button {
-                                    selectedAudioTrackId = track.id
-                                    VLCBridge.shared.setAudioTrack(id: track.id)
-                                } label: {
-                                    if track.id == selectedAudioTrackId { Label(track.name, systemImage: "checkmark") }
-                                    else { Text(track.name) }
-                                }
-                            }
-                        } label: { Label("Audio Track", systemImage: "headphones") }
-                        .accessibilityIdentifier("vlc-audio-track-picker")
-                    }
-                    // Never for a recording-relay session (bridge.recordingShowId != nil):
+                    // Captions listed first — moved to the top 2026-09-19 per explicit request
+                    // ("crowded, and not well placed"); previously sorted after Audio Track. Never
+                    // shown for a recording-relay session (bridge.recordingShowId != nil):
                     // switching SPU tracks while reading the relay's on-disk file back doesn't
                     // produce a visible result, so a menu that looks like it does something but
                     // doesn't would be worse than not offering it at all.
@@ -1509,6 +1497,20 @@ struct VLCPlayerView: View {
                             }
                         } label: { Label("Captions", systemImage: "captions.bubble") }
                         .accessibilityIdentifier("vlc-cc-picker")
+                    }
+                    if hasAudioTrackChoice {
+                        Menu {
+                            ForEach(bridge.audioTracks, id: \.id) { track in
+                                Button {
+                                    selectedAudioTrackId = track.id
+                                    VLCBridge.shared.setAudioTrack(id: track.id)
+                                } label: {
+                                    if track.id == selectedAudioTrackId { Label(track.name, systemImage: "checkmark") }
+                                    else { Text(track.name) }
+                                }
+                            }
+                        } label: { Label("Audio Track", systemImage: "headphones") }
+                        .accessibilityIdentifier("vlc-audio-track-picker")
                     }
                     if hasOutputChoice {
                         Menu {
