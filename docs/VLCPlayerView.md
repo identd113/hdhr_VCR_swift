@@ -627,6 +627,23 @@ then handing off to `watchAsSecondary`. A genuine live-tuner URL runs the same `
 gate `watchInApp` uses, since a secondary real-tuner stream occupies a tuner exactly like the
 primary would.
 
+**Refuses to duplicate the primary, added 2026-09-19** — reported live: watching the same show/
+channel in both the primary window and the PiP thumbnail was still reachable from every "Watch
+alongside (PiP)" entry point *except* `PiPPickerView` (which had already gained "dim and disable if
+this is what's already playing" checks the same day — see its own doc comment). MenuContent's
+Recording Now/FEED rows and `WatchNowView`'s per-channel rows all call straight through to
+`watchAsSecondary`/`watchRemoteRelayAsSecondary`/`watchRecordingInAppAsSecondary` with no such
+check, so any of them could still add a second, muted connection to content already playing full-
+size. Each of the three now refuses at the top, before doing anything else (in
+`watchRemoteRelayAsSecondary`'s case, before even starting the local relay session that duplicate
+would have needed): `watchAsSecondary` compares device+channel for a live channel,
+`watchRemoteRelayAsSecondary` compares the FEED's remote URL, `watchRecordingInAppAsSecondary`
+compares `recordingShowId` — reusing `PiPPickerView.isCurrentLiveChannel`/`isCurrentFeed`/
+`isCurrentRecording` directly rather than a second copy of the same comparisons, so the picker's
+own dimming and this functional guard can never drift apart. Device+channel (not raw URL) for the
+live-channel case specifically per explicit request — a transcode/query-param difference in the
+URL shouldn't defeat the guard.
+
 ---
 
 ## Logging Reference

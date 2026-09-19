@@ -4723,6 +4723,21 @@ final class AppState: ObservableObject {
     func watchAsSecondary(url: String, title: String, device: HDHRDevice, channelNumber: String? = nil) {
         guard VLCBridge.shared.isAvailable, !url.isEmpty else { return }
         let mgr = VLCPlayerWindowManager.shared
+        // Refuse a live channel that's already the primary — watching the same channel twice (once
+        // big, once as a muted thumbnail) wastes a second tuner for nothing selectable in the UI.
+        // Scoped by device+channel (not URL — a transcode/query-param difference shouldn't defeat
+        // this), matching PiPPickerView.isCurrentLiveChannel exactly; reused here rather than a
+        // second copy of the same comparison, so the picker's own dimming and this functional
+        // guard can never drift apart. Only PiPPickerView enforced this before 2026-09-19 — every
+        // OTHER "Watch alongside (PiP)" entry point (MenuContent's Recording Now/FEED rows,
+        // WatchNowView's per-channel rows) called straight through to this function with no check
+        // at all, so the same duplicate was still reachable from any of them.
+        if let channelNumber,
+           PiPPickerView.isCurrentLiveChannel(currentDeviceID: mgr.currentDeviceID, currentChannelNumber: mgr.currentChannelNumber,
+                                               targetDeviceID: device.DeviceID, targetChannelNumber: channelNumber) {
+            glog("[Watch] watchAsSecondary refused — '\(title)' (ch \(channelNumber) on \(device.DeviceID)) is already the primary stream", level: .warning)
+            return
+        }
         if !hasPlayablePrimarySession {
             // Standalone PIP (PiPPickerView / right-click "Add Picture-in-Picture…") — nothing was
             // already playing, so bring up the singleton window with primary left idle rather than
@@ -4751,6 +4766,14 @@ final class AppState: ObservableObject {
     /// secondary slot first, then hands off to watchAsSecondary like every other secondary source.
     func watchRemoteRelayAsSecondary(url: String, title: String, device: HDHRDevice) {
         guard VLCBridge.shared.isAvailable, !url.isEmpty else { return }
+        // Refuse the exact FEED that's already primary — checked against the *remote* URL, before
+        // resolving the local-relay indirection below, so a duplicate never even starts a second
+        // relay session just to be rejected. Same reasoning/reuse as watchAsSecondary's own
+        // live-channel guard — see its doc comment.
+        if PiPPickerView.isCurrentFeed(currentFeedRemoteURL: VLCPlayerWindowManager.shared.currentFeedRemoteURL, entryURL: url) {
+            glog("[Watch] watchRemoteRelayAsSecondary refused — '\(title)' is already the primary FEED stream", level: .warning)
+            return
+        }
         let localURL = startFeedLocalRelay(remoteURL: url, device: device, slot: .secondary)
         watchAsSecondary(url: localURL, title: title, device: device)
     }
@@ -4760,6 +4783,12 @@ final class AppState: ObservableObject {
     /// thumbnail rather than replacing whatever's already primary.
     func watchRecordingInAppAsSecondary(_ show: Show, fromBeginning: Bool = false) {
         guard VLCBridge.shared.isAvailable else { return }
+        // Refuse the exact recording that's already primary — same reasoning/reuse as
+        // watchAsSecondary's own live-channel guard, see its doc comment.
+        if PiPPickerView.isCurrentRecording(recordingShowId: VLCBridge.shared.recordingShowId, showId: show.show_id) {
+            glog("[Watch] watchRecordingInAppAsSecondary refused — '\(show.show_title)' is already the primary stream", level: .warning)
+            return
+        }
         let device = recordableDevices.first { $0.DeviceID == show.hdhr_record } ?? recordableDevices.first
         guard let device else { return }
         guard !show.show_recording_path.isEmpty,
