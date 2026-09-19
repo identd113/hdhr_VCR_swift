@@ -79,8 +79,26 @@ struct PiPPickerView: View {
         }
     }
 
+    /// Pure decisions, extracted for unit testing — see each row's own call site for context.
+    nonisolated static func isCurrentRecording(recordingShowId: String?, showId: String) -> Bool {
+        recordingShowId == showId
+    }
+    nonisolated static func isCurrentLiveChannel(currentDeviceID: String?, currentChannelNumber: String?,
+                                                  targetDeviceID: String, targetChannelNumber: String) -> Bool {
+        currentDeviceID == targetDeviceID && currentChannelNumber == targetChannelNumber
+    }
+    nonisolated static func isCurrentFeed(currentFeedRemoteURL: String?, entryURL: String?) -> Bool {
+        // Explicit nil guards, not a bare `==` — two nils are NOT "the same feed": nil
+        // currentFeedRemoteURL means no FEED is playing at all, and a row with a nil entryURL
+        // (a malformed/incomplete lineup entry) has nothing to do with it. Found while writing
+        // this function's own unit tests 2026-09-19 — a bare `currentFeedRemoteURL == entryURL`
+        // would have made that row incorrectly read as "currently playing."
+        guard let currentFeedRemoteURL, let entryURL else { return false }
+        return currentFeedRemoteURL == entryURL
+    }
+
     private func recordingRow(_ show: Show) -> some View {
-        let isCurrent = VLCBridge.shared.recordingShowId == show.show_id
+        let isCurrent = Self.isCurrentRecording(recordingShowId: VLCBridge.shared.recordingShowId, showId: show.show_id)
         return HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text(show.show_title).font(.subheadline.bold())
@@ -139,8 +157,9 @@ struct PiPPickerView: View {
 
     private func liveChannelRow(_ pair: (channel: LineupEntry, entry: GuideEntry?), device: HDHRDevice) -> some View {
         let title = pair.entry?.Title ?? pair.channel.GuideName
-        let isCurrent = VLCPlayerWindowManager.shared.currentDeviceID == device.DeviceID
-            && VLCPlayerWindowManager.shared.currentChannelNumber == pair.channel.GuideNumber
+        let isCurrent = Self.isCurrentLiveChannel(currentDeviceID: VLCPlayerWindowManager.shared.currentDeviceID,
+                                                   currentChannelNumber: VLCPlayerWindowManager.shared.currentChannelNumber,
+                                                   targetDeviceID: device.DeviceID, targetChannelNumber: pair.channel.GuideNumber)
         return HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Ch \(pair.channel.GuideNumber)  \(pair.channel.GuideName)")
@@ -175,7 +194,8 @@ struct PiPPickerView: View {
 
     private func feedRow(_ pair: (device: HDHRDevice, entry: LineupEntry)) -> some View {
         let title = pair.entry.virtualRelayShowTitle ?? pair.entry.GuideName
-        let isCurrent = VLCPlayerWindowManager.shared.currentFeedRemoteURL == pair.entry.URL
+        let isCurrent = Self.isCurrentFeed(currentFeedRemoteURL: VLCPlayerWindowManager.shared.currentFeedRemoteURL,
+                                           entryURL: pair.entry.URL)
         return HStack {
             VStack(alignment: .leading, spacing: 2) {
                 if let hostname = pair.entry.virtualRelaySourceHostname {

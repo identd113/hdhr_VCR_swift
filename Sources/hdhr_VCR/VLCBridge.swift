@@ -265,7 +265,13 @@ final class VLCBridge: ObservableObject {
     // that did have them. Retried independently for up to maxSpuFetchAttempts ticks so a genuinely
     // caption-less stream still stops polling eventually.
     private var spuFetchAttempts: Int = 0
-    private static let maxSpuFetchAttempts = 5
+    nonisolated static let maxSpuFetchAttempts = 5
+
+    /// Pure decision, extracted for unit testing — true while it's still worth asking libvlc for
+    /// SPU tracks again (empty so far, and budget remains).
+    nonisolated static func spuFetchHasBudget(spuTracksIsEmpty: Bool, attempts: Int, max: Int = maxSpuFetchAttempts) -> Bool {
+        spuTracksIsEmpty && attempts < max
+    }
 
     // MARK: - Stall diagnostics (added 2026-09-06 for a live "pauses every few seconds" report)
     // Neither `isPlaying` nor a rate-change log line says anything about whether playback is
@@ -452,7 +458,9 @@ final class VLCBridge: ObservableObject {
     /// autoresizing (the parent's own layout — SwiftUI's for a fresh container, or a plain window
     /// resize thereafter — drives `container`'s frame; this just keeps `content` matching it).
     /// Removing any previous subview first keeps a re-parent (swapSlots()) from ever showing two.
-    private static func fill(container: NSView, with content: NSView) {
+    /// Not private: unit-tested directly (VLCBridgeFillContainerTests) — pure AppKit view
+    /// manipulation, no libvlc/window needed.
+    static func fill(container: NSView, with content: NSView) {
         guard content.superview !== container else { return }
         content.removeFromSuperview()
         content.frame = container.bounds
@@ -1063,7 +1071,7 @@ final class VLCBridge: ObservableObject {
         // Fetch track descriptions once playing; retry every tick until audio tracks appear.
         // Keep calling while audio hasn't been found yet, OR audio is found but spu still has
         // retry budget left and hasn't turned up anything — see spuFetchAttempts' own doc comment.
-        if isPlaying, !tracksFetched || (spuTracks.isEmpty && spuFetchAttempts < Self.maxSpuFetchAttempts) {
+        if isPlaying, !tracksFetched || Self.spuFetchHasBudget(spuTracksIsEmpty: spuTracks.isEmpty, attempts: spuFetchAttempts) {
             fetchTracks()
         }
 
@@ -1194,7 +1202,7 @@ final class VLCBridge: ObservableObject {
         // so a relay never even arms it. (recordingShowId is nil for live-tuner playback.)
         guard recordingShowId == nil else { return }
         guard Date() > catchUpCooldown else { return }
-        if corruptDelta > 15 {
+        if Self.shouldCatchUpForCorruption(corruptDelta: corruptDelta) {
             catchUpCooldown = Date().addingTimeInterval(30)
             glog("[VLC] stream corruption detected (i_demux_corrupted delta=\(corruptDelta)) — catching up to live")
             catchUpToLive()
@@ -1210,12 +1218,23 @@ final class VLCBridge: ObservableObject {
         // position alone while decode continues fine, and reconnecting for that would be a false
         // positive. Only act here once that explanation is ruled out.
         let windowVisibleNow = primaryState.drawableView?.window?.occlusionState.contains(.visible) ?? false
-        if consecutiveStalledTicks >= 3, windowVisibleNow {
+        if Self.shouldCatchUpForSustainedStall(consecutiveStalledTicks: consecutiveStalledTicks, windowVisible: windowVisibleNow) {
             catchUpCooldown = Date().addingTimeInterval(30)
             glog("[VLC] sustained stall (\(consecutiveStalledTicks) consecutive ticks, window visible) — catching up to live")
             consecutiveStalledTicks = 0
             catchUpToLive()
         }
+    }
+
+    /// Pure decision, extracted for unit testing (matching rampedFillRate's own precedent) — see
+    /// tickPrimary()'s own comment on why corruption alone can't catch a zero-bytes stall.
+    nonisolated static let sustainedStallThreshold = 3
+    nonisolated static func shouldCatchUpForCorruption(corruptDelta: Int32, threshold: Int32 = 15) -> Bool {
+        corruptDelta > threshold
+    }
+    nonisolated static func shouldCatchUpForSustainedStall(consecutiveStalledTicks: Int, windowVisible: Bool,
+                                                            threshold: Int = sustainedStallThreshold) -> Bool {
+        consecutiveStalledTicks >= threshold && windowVisible
     }
 
     // MARK: - Track selection (audio tracks and CC/subtitle tracks)
@@ -1233,7 +1252,7 @@ final class VLCBridge: ObservableObject {
                 tracksFetched = true
             }
         }
-        if tracksFetched, spuTracks.isEmpty, spuFetchAttempts < Self.maxSpuFetchAttempts,
+        if tracksFetched, Self.spuFetchHasBudget(spuTracksIsEmpty: spuTracks.isEmpty, attempts: spuFetchAttempts),
            let ptr = _spuDesc?(mp) {
             spuFetchAttempts += 1
             spuTracks = parseTrackDescriptions(ptr).filter { $0.id >= 0 }

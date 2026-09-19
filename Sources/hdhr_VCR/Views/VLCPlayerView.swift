@@ -1113,11 +1113,17 @@ struct VLCPlayerView: View {
     private static let pipThumbnailMaxWidth: CGFloat = 192
 
     private var pipThumbnailSize: CGSize {
-        guard let native = bridge.secondaryVideoPixelSize, native.width > 0, native.height > 0 else {
-            return CGSize(width: Self.pipThumbnailMaxWidth, height: (Self.pipThumbnailMaxWidth * 9 / 16).rounded())
+        Self.pipThumbnailSize(nativePixelSize: bridge.secondaryVideoPixelSize, maxWidth: Self.pipThumbnailMaxWidth)
+    }
+
+    /// Pure decision, extracted for unit testing. `nativePixelSize` invalid/unknown (nil, or either
+    /// dimension <= 0) → 16:9 fallback, since libvlc hasn't reported real dimensions yet.
+    nonisolated static func pipThumbnailSize(nativePixelSize: CGSize?, maxWidth: CGFloat) -> CGSize {
+        guard let native = nativePixelSize, native.width > 0, native.height > 0 else {
+            return CGSize(width: maxWidth, height: (maxWidth * 9 / 16).rounded())
         }
-        let height = (Self.pipThumbnailMaxWidth * native.height / native.width).rounded()
-        return CGSize(width: Self.pipThumbnailMaxWidth, height: height)
+        let height = (maxWidth * native.height / native.width).rounded()
+        return CGSize(width: maxWidth, height: height)
     }
 
     private var pipOverlay: some View {
@@ -1853,10 +1859,12 @@ struct VLCPlayerView: View {
         // live 2026-09-19: FEED (0 tuners on this device) → live-channel switch, on a device
         // already at capacity from two other machines' recordings, silently hung with no
         // explanation instead of the "All Tuners Busy" alert every other entry point shows.
-        let reusingExistingTunerHere = VLCPlayerWindowManager.shared.currentDeviceID == device.DeviceID
-            && bridge.recordingShowId == nil
-            && VLCPlayerWindowManager.shared.currentFeedRemoteURL == nil
-            && !(bridge.currentURL ?? "").isEmpty
+        let reusingExistingTunerHere = Self.reusesExistingTuner(
+            currentDeviceID: VLCPlayerWindowManager.shared.currentDeviceID,
+            targetDeviceID: device.DeviceID,
+            recordingShowId: bridge.recordingShowId,
+            currentFeedRemoteURL: VLCPlayerWindowManager.shared.currentFeedRemoteURL,
+            currentURL: bridge.currentURL)
 
         if reusingExistingTunerHere {
             startPlayChannel(ch, url: url)
@@ -1866,6 +1874,19 @@ struct VLCPlayerView: View {
                 startPlayChannel(ch, url: url)
             }
         }
+    }
+
+    /// Pure decision, extracted for unit testing — true when switching to a channel on
+    /// `targetDeviceID` would reuse a tuner slot already held there, false when it's a genuinely
+    /// new tuner request that needs a pre-flight availability check first. See playChannel's own
+    /// doc comment for the full reasoning.
+    nonisolated static func reusesExistingTuner(currentDeviceID: String?, targetDeviceID: String,
+                                                 recordingShowId: String?, currentFeedRemoteURL: String?,
+                                                 currentURL: String?) -> Bool {
+        currentDeviceID == targetDeviceID
+            && recordingShowId == nil
+            && currentFeedRemoteURL == nil
+            && !(currentURL ?? "").isEmpty
     }
 
     private func startPlayChannel(_ ch: LineupEntry, url: String) {
