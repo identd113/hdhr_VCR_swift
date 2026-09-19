@@ -458,14 +458,19 @@ struct AppConfig: Equatable {
 
     // Master hide switch for the entire Recording FEED / virtual-tuner-relay feature (both the
     // publish side below and the consume side — MenuContent's "Recording on Another Mac" section,
-    // AppState.remoteRelayEntries/hasAvailableRemoteFeed). Defaults to `false` and is config-file-
-    // only (no UI sets it) — flagged 2026-09-10 as needing more work, hidden rather than removed to
-    // keep the code and an easy path back. `feature/recording-feed`'s VLC playback-stall bug is now
-    // fixed (see issues_resolved.md's "VLC-side FEED playback stalls" entry) as of this branch's
-    // merge into `main`, but audio/CC track switching on a FEED session is still open (ISSUES.md) —
-    // deliberately kept `false` here rather than merging that branch's own default-to-`true` flip
-    // (`ff90cda`) until that one closes too.
-    var FEED_feature_enabled: Bool = false
+    // AppState.remoteRelayEntries/hasAvailableRemoteFeed). Config-file-only (no UI sets this
+    // specific flag — it's what makes the real per-user "Rebroadcast In-Progress Recordings" toggle,
+    // Virtual_tuner_relay_enabled below, actually show up in Settings at all). Flagged 2026-09-10 as
+    // needing more work and set to `false`, hidden rather than removed to keep the code and an easy
+    // path back — flipped to `true` (banner feature, v2.5.0) now that the VLC playback-stall bug is
+    // fixed (issues_resolved.md's "VLC-side FEED playback stalls" entry) and CC track switching is
+    // confirmed working (ISSUES.md, 2026-09-13 re-test). Known remaining limitation, shipped anyway
+    // per explicit direction: audio track switching on a FEED session hasn't been re-confirmed
+    // working since the stall fix landed (ISSUES.md's "Switching audio track on a FEED" entry, still
+    // open) — documented as a Beta caveat in the Settings InfoButton/README rather than blocking on
+    // it. Virtual_tuner_relay_enabled itself still defaults to `false` regardless — this flag only
+    // controls whether the *option* to turn FEED on is visible, never opts any Mac in by itself.
+    var FEED_feature_enabled: Bool = true
 
     // Recording-relay virtual tuner (VirtualTunerService.swift, docs/VirtualTunerService.md) — while
     // ≥1 show is recording, advertises a temporary HDHomeRun-like tuner on the LAN (UDP discovery +
@@ -569,11 +574,11 @@ extension AppConfig: Codable {
         Web_server_enabled      = (try? c.decode(Bool.self,   forKey: .Web_server_enabled))      ?? false
         Web_server_port         = (try? c.decode(Int.self,    forKey: .Web_server_port))         ?? 1980
         Terminal_guide_enabled  = (try? c.decode(Bool.self,   forKey: .Terminal_guide_enabled))  ?? false
-        // ?? true on this branch (feature/recording-feed) only — matches the struct default's
-        // own flip above; ?? false on main. A config file that already has this key explicitly
-        // saved (e.g. `false`, from before this branch re-enabled it) still wins either way — this
-        // fallback only matters for a config with no saved value at all.
-        FEED_feature_enabled    = (try? c.decode(Bool.self,   forKey: .FEED_feature_enabled))    ?? false
+        // ?? true (flipped for v2.5.0, matching the struct default's own doc comment above) — a
+        // config file that already has this key explicitly saved (true or false) always wins
+        // regardless; this fallback only matters for a config with no saved value at all, i.e. a
+        // brand-new config or one saved before this key existed and never touched since.
+        FEED_feature_enabled    = (try? c.decode(Bool.self,   forKey: .FEED_feature_enabled))    ?? true
         Virtual_tuner_relay_enabled = (try? c.decode(Bool.self, forKey: .Virtual_tuner_relay_enabled)) ?? false
         Virtual_tuner_relay_default_transcode = (try? c.decode(String.self, forKey: .Virtual_tuner_relay_default_transcode)) ?? "heavy"
         Signal_quality_enabled      = (try? c.decode(Bool.self, forKey: .Signal_quality_enabled))      ?? false

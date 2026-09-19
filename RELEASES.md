@@ -14,6 +14,12 @@ What's new in each version. For the fuller list of changes within a version, see
   in-app playback, live TV and recordings alike.
 
 ### Added
+- **Watch an in-progress recording live from another Mac on your LAN (Recording FEED, Beta)** —
+  a Mac that's recording can rebroadcast it as a small virtual tuner on your network, so any other
+  hdhrVCRplus instance can watch without opening a second real tuner. Off by default per Mac —
+  turn it on in Settings → Sharing → "Rebroadcast In-Progress Recordings." Beta: occasional
+  playback hiccups and switching audio tracks mid-watch are known limitations; the transcoded
+  option is best treated as one viewer at a time.
 - **Watch two live streams at once (picture-in-picture)** — any live channel, in-progress
   recording, or another Mac's shared recording can play as a small muted corner thumbnail
   alongside whatever's already playing. Click it to swap instantly, right-click to move it to any
@@ -45,11 +51,6 @@ What's new in each version. For the fuller list of changes within a version, see
 - **Fixed: "Add Show…" could feel slow to open**, especially right after launch.
 - **Discord's "Skipped — rerun (New Only)" notification now includes the episode's original air
   date.**
-
-### In progress
-- **Recording FEED** — still not enabled by default. The client-side playback stall blocking it was
-  root-caused to a libvlc bug and worked around; a batch of other robustness fixes landed alongside
-  it. No user-facing change this release; watch for its own announcement once it's solid.
 
 ## v2.3.0 (2026-09-11)
 

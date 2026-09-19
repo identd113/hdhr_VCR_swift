@@ -769,13 +769,14 @@ struct SettingsView: View {
                 }
             }
 
-            // Hidden while the feature needs more work (2026-09-10, config-file only —
-            // AppConfig.FEED_feature_enabled's own doc comment). Flip that flag by hand-editing the
-            // config JSON to bring this whole section back exactly as it was.
+            // Visible by default as of v2.5.0 (AppConfig.FEED_feature_enabled's own doc comment) —
+            // was hidden 2026-09-10 while the feature needed more work; the VLC playback-stall bug
+            // is now fixed and CC track switching is confirmed working. Flip that flag false by
+            // hand-editing the config JSON to hide this section again if ever needed.
             if state.config.FEED_feature_enabled {
             Section("Recording FEED (Beta)") {
                 Toggle(isOn: $draft.Virtual_tuner_relay_enabled) {
-                    HStack { Text("Rebroadcast In-Progress Recordings"); InfoButton("While a show is recording, this Mac briefly advertises itself as an extra HDHomeRun-style tuner on the local network, so another Mac running hdhrVCRplus can watch the recording without tying up a second real tuner. Off by default. It can never be used to start a new recording — only to watch one already in progress — and works independently of Web LAN above. Beta: occasional playback hiccups on the watching Mac, and switching audio/CC tracks while watching, are known limitations still being worked on.") }
+                    HStack { Text("Rebroadcast In-Progress Recordings"); InfoButton("While a show is recording, this Mac briefly advertises itself as an extra HDHomeRun-style tuner on the local network, so another Mac running hdhrVCRplus can watch the recording without tying up a second real tuner. Off by default. It can never be used to start a new recording — only to watch one already in progress — and works independently of Web LAN above. Beta: occasional playback hiccups on the watching Mac, and switching audio tracks while watching, are known limitations still being worked on.") }
                 }
                 if draft.Virtual_tuner_relay_enabled {
                     Picker(selection: $draft.Virtual_tuner_relay_default_transcode) {

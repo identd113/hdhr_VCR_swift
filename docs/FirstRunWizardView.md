@@ -410,19 +410,19 @@ off) still works correctly across the step boundary — both bools are the same 
 config-commit details.
 
 ### Step 5 — Recording FEED (Beta)
-**Hidden as of 2026-09-10** — `orderedSteps` (see "Steps" below) omits `.recordingRelay` entirely
-unless `state.config.FEED_feature_enabled` is `true` (default `false`, config-file only — see
-`docs/VirtualTunerService.md`'s top note), so a first-run user today never sees this step at all and
-the wizard is one step shorter. The rest of this entry describes it as it renders once that flag is
-on; nothing about the screen itself changed.
+**Visible by default as of v2.5.0** — `orderedSteps` (see "Steps" below) includes `.recordingRelay`
+whenever `state.config.FEED_feature_enabled` is `true` (default as of v2.5.0, config-file only —
+see `docs/VirtualTunerService.md`'s top note); was hidden from 2026-09-10 until then, and a
+first-run user during that window never saw this step at all. Nothing about the screen itself
+changed either way.
 
 An animated diagram (`NetworkFlowDiagram`) showing two devices connected by a line — signal rings
 broadcasting from the recording Mac, small packets flowing along the line to the watching one —
 above two short paragraphs of plain-language explanation and one `Toggle`. The headline and both
 the screen's own body text and the toggle's `InfoButton` carry a "(Beta)"/beta-caveat callout,
-added 2026-09-07, naming occasional playback hiccups and non-working audio/CC track switching as
-known limitations on the watching Mac — see `ISSUES.md`. See "Steps" below for the config-commit
-details.
+added 2026-09-07 — the playback-hiccups and CC-track-switching parts of that original caveat are
+resolved (CC confirmed working 2026-09-13), but audio track switching on the watching Mac is still
+an open, unconfirmed question — see `ISSUES.md`. See "Steps" below for the config-commit details.
 
 ### Step 6 — Notification Timing
 Up Next / Recording Soon lead-time minutes, same `Stepper` controls and warning banner (shown when
@@ -463,7 +463,8 @@ enum Step: Int, CaseIterable { case intro, recordingDefaults, vlcRequired, webLA
 
 Navigation (`goNext()`/`goBack()`) walks a single `orderedSteps` — an **instance** computed
 property (not a static array), so it can conditionally drop `.recordingRelay` when
-`FEED_feature_enabled` is off (default). **Derived from `Step.allCases` with an opt-*out* filter,
+`FEED_feature_enabled` is off (no longer the default as of v2.5.0). **Derived from `Step.allCases`
+with an opt-*out* filter,
 not a hand-typed literal array, as of 2026-09-11** (`Step` gained `CaseIterable` the same commit):
 `Step.allCases.filter { switch $0 { case .intro: false; case .recordingRelay:
 config.FEED_feature_enabled; default: true } }` — `.intro` always excluded (shown separately,
