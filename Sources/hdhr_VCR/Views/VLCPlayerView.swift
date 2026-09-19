@@ -1830,6 +1830,36 @@ struct VLCPlayerView: View {
         }
         // VLC handles MPEG-2 natively — no forced transcode; "none" = raw stream
         let url = state.config.applyTranscode(rawURL)
+
+        // A genuine live-channel-to-live-channel switch on this device reuses the tuner slot
+        // already held by whatever's currently playing — matches AppState.watchInApp's own
+        // "switching channels within an already-open player on the same device skips the check
+        // entirely (reuses the existing slot)" rule, so it's safe to start immediately just like
+        // always. But the primary might currently hold no real tuner slot on THIS device at all —
+        // a FEED or Watch Now relay (recordingShowId/currentFeedRemoteURL non-nil), or a live
+        // channel from a *different* device (currentDeviceID != device.DeviceID) — most commonly
+        // reachable here via a PiP swap (see docs/VLCPlayerView.md's "cross-device swap" note). In
+        // that case this genuinely is a brand-new tuner request, and needs the same pre-flight
+        // availability check watchInApp already does before opening on a different device — found
+        // live 2026-09-19: FEED (0 tuners on this device) → live-channel switch, on a device
+        // already at capacity from two other machines' recordings, silently hung with no
+        // explanation instead of the "All Tuners Busy" alert every other entry point shows.
+        let reusingExistingTunerHere = VLCPlayerWindowManager.shared.currentDeviceID == device.DeviceID
+            && bridge.recordingShowId == nil
+            && VLCPlayerWindowManager.shared.currentFeedRemoteURL == nil
+            && !(bridge.currentURL ?? "").isEmpty
+
+        if reusingExistingTunerHere {
+            startPlayChannel(ch, url: url)
+        } else {
+            Task {
+                guard await state.tunerAvailable(device, context: ch.GuideName) else { return }
+                startPlayChannel(ch, url: url)
+            }
+        }
+    }
+
+    private func startPlayChannel(_ ch: LineupEntry, url: String) {
         glog("[VLC] playChannel \(ch.GuideNumber) \(ch.GuideName) → \(url)")
 
         // Start buffering immediately — the poster overlay is visible so the user

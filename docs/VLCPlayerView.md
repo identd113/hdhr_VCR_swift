@@ -209,6 +209,14 @@ private func playChannel(_ ch: LineupEntry) {
     guard let rawURL = ch.URL, !rawURL.isEmpty else { return }
     let url = state.config.applyTranscode(rawURL)   // "none"/empty → raw; otherwise appends ?transcode=…
 
+    // Reusing an already-held tuner slot on this device → start immediately, same as always.
+    // Anything else (a FEED/Watch Now relay, or a different device — see below) → pre-flight
+    // AppState.tunerAvailable(_:context:) check first, same as watchInApp's device-change path.
+    if reusingExistingTunerHere { startPlayChannel(ch, url: url) }
+    else { Task { if await state.tunerAvailable(device, context: ch.GuideName) { startPlayChannel(ch, url: url) } } }
+}
+
+private func startPlayChannel(_ ch: LineupEntry, url: String) {
     // Buffer immediately — stream starts the moment the poster appears.
     VLCBridge.shared.play(url: url)
     updateNowPlaying(channel: ch)
@@ -220,11 +228,13 @@ private func playChannel(_ ch: LineupEntry) {
 
 Uses `AppConfig.applyTranscode(_:override:)` — applies `Default_transcode` without a per-show override (the picker is device/lineup-level, not show-level). When transcode is `"none"` or empty the raw stream URL is used; VLC decodes MPEG-2 natively.
 
-**Immediate buffering**: `play()` is called synchronously, before the background Task that checks tuner occupancy. The poster overlay is visible from the moment the channel changes, so every millisecond of poster time is also buffer-build time. By the time the user reads the episode info and clicks Start, the stream has been filling at `minRate` since the picker change.
+**Pre-flight tuner check, added 2026-09-19** — found live: with the primary a FEED (0 tuners held on this device) and the device already at its real hardware limit from two *other* machines' recordings, picking a live channel here silently hung with no explanation instead of the "All Tuners Busy" alert every other channel-opening path (`AppState.watchInApp`) already shows. `playChannel` used to always start immediately, on the theory that a same-device channel switch just reuses the tuner slot already held (matching `watchInApp`'s own "switching within an already-open player on the same device skips the check" rule) — true for a genuine live-channel-to-live-channel switch, but false whenever the primary currently holds no real tuner slot on *this* device at all. `reusingExistingTunerHere` (`VLCPlayerView`, computed at the top of `playChannel`) captures that distinction: `VLCPlayerWindowManager.currentDeviceID == device.DeviceID && bridge.recordingShowId == nil && VLCPlayerWindowManager.currentFeedRemoteURL == nil && bridge.currentURL` non-empty. True → same behavior as always (start immediately, zero added latency for the common case). False (most commonly reachable via a PiP swap — see the "cross-device swap" note above) → awaits `AppState.tunerAvailable(device:context:)` first (the same fresh-status-poll-then-alert helper `watchInApp` uses for its own device-change path; made non-`private` for this cross-file call) before starting, showing a proper "All Tuners Busy" `NSAlert` instead of silently timing out against a device with no free tuner.
+
+**Immediate buffering** (the `reusingExistingTunerHere` / already-checked-and-available path): `play()` is called synchronously, before the background Task that checks tuner occupancy. The poster overlay is visible from the moment the channel changes, so every millisecond of poster time is also buffer-build time. By the time the user reads the episode info and clicks Start, the stream has been filling at `minRate` since the picker change.
 
 **Now Watching sync**: `VLCBridge.play(url:)` sets `currentURL` synchronously (drawable already exists for an open window). The Combine sink in `AppState` picks this up immediately and updates `vlcCurrentURL` — no manual assignment needed in `playChannel`.
 
-**Background tuner check**: after `play()` returns, a `Task` fetches `status.json` and logs `[VLC] post-switch tuner status ch X.X: N/M active (ours=N other=N)`. If all non-VLC slots appear occupied it logs a warning. No alert is shown — the stream is already running and the HDHR may succeed regardless.
+**Background tuner check**: after `play()` returns (inside `startPlayChannel`), a `Task` fetches `status.json` and logs `[VLC] post-switch tuner status ch X.X: N/M active (ours=N other=N)`. If all non-VLC slots appear occupied it logs a warning — this diagnostic-only check is unchanged; it's not what the pre-flight check above replaces (that check happens *before* `startPlayChannel`/`play()` runs at all, and only for the not-`reusingExistingTunerHere` case).
 
 **Tuner occupancy refresh**: `state.refreshTunerOccupancy()` is called after every channel switch so the menu header reflects the new tuner state within ~1.5 s.
 

@@ -4548,7 +4548,9 @@ final class AppState: ObservableObject {
     // Fresh hw poll folded into tunersFull's max(hw, recordingShows+vlc) — a raw status.json
     // read alone misses a just-started recording (docs/AppState.md). Alerts the user and returns
     // false if every tuner on `device` is busy; callers should bail out without proceeding.
-    private func tunerAvailable(_ device: HDHRDevice, context: String? = nil) async -> Bool {
+    // Not private: VLCPlayerView.playChannel (a different file) also calls this — see its own
+    // doc comment for why the in-window toolbar channel picker needs this same pre-flight check.
+    func tunerAvailable(_ device: HDHRDevice, context: String? = nil) async -> Bool {
         await fetchDeviceStatus(for: device)
         guard tunersFull(for: device.DeviceID) else { return true }
         let tunerCount = device.TunerCount ?? 2
