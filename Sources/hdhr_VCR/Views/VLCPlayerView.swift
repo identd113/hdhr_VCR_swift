@@ -164,6 +164,9 @@ struct VLCPlayerView: View {
     // passed since the current stream opened — set by a .task(id: bridge.currentURL) below, so a
     // channel switch mid-session restarts the wait for the newly-opened stream.
     @State private var feedAutoPlayDelayElapsed = false
+    // Toolbar "Info" button ("i" on a TV remote) — toggled true/false; a `.task(id:)` below
+    // auto-hides it infoOverlayAutoHideSeconds after it's shown. See infoBanner's own doc comment.
+    @State private var infoOverlayVisible = false
 
     private var currentGuideEntry: GuideEntry? {
         guard let ch = selectedChannel else { return nil }
@@ -563,6 +566,10 @@ struct VLCPlayerView: View {
                     endedOverlay
                         .transition(.opacity)
                 }
+                if infoOverlayVisible {
+                    infoBanner
+                        .transition(.opacity)
+                }
                 if posterHidden, !bridge.hasError, !bridge.hasEnded,
                    let showId = bridge.recordingShowId, let startDate = bridge.recordingStartDate {
                     VStack {
@@ -649,6 +656,7 @@ struct VLCPlayerView: View {
             .animation(.easeOut(duration: 0.35), value: posterHidden)
             .animation(.easeOut(duration: 0.35), value: bridge.hasError)
             .animation(.easeOut(duration: 0.35), value: bridge.hasEnded)
+            .animation(.easeOut(duration: 0.25), value: infoOverlayVisible)
             .animation(.easeInOut(duration: 0.2), value: bridge.recordingShowId)
             .onReceive(NotificationCenter.default.publisher(for: .vlcFullScreenChanged)) { note in
                 isFullScreen = (note.userInfo?["isFullScreen"] as? Bool) ?? false
@@ -729,6 +737,17 @@ struct VLCPlayerView: View {
             guard !Task.isCancelled else { return }
             feedAutoPlayDelayElapsed = true
             attemptFeedAutoPlay()
+        }
+        // Auto-hides the info banner — keyed on infoOverlayVisible itself, so toggling it false
+        // manually (pressing Info again) cancels this pending sleep via .task(id:)'s own identity
+        // change rather than needing a separately-tracked Task handle to cancel by hand; toggling
+        // it true again (while already true, or after a prior auto-hide) always restarts a fresh
+        // window rather than reusing whatever time was left on an old one.
+        .task(id: infoOverlayVisible) {
+            guard infoOverlayVisible else { return }
+            try? await Task.sleep(for: .seconds(Self.infoOverlayAutoHideSeconds))
+            guard !Task.isCancelled else { return }
+            infoOverlayVisible = false
         }
         .onChange(of: state.vlcCurrentURL) { _, rawURL in
             // Sync picker when watchInApp is called while the window is already open.
@@ -851,6 +870,87 @@ struct VLCPlayerView: View {
     private func attemptFeedAutoPlay() {
         guard device.isVirtualRelay, bridge.isPlaying, feedAutoPlayDelayElapsed, !posterHidden else { return }
         startPlayback(auto: true)
+    }
+
+    // MARK: - Info overlay ("i" button)
+
+    // How long the info banner stays up before auto-hiding — the toolbar Info button (and its "i"
+    // keyboard shortcut) flip infoOverlayVisible true, and the .task(id: infoOverlayVisible) in
+    // body sleeps this long then flips it back false, mirroring a TV remote's "i" button (a quick
+    // glance at what's playing, then it goes away on its own — pressing it again dismisses early).
+    private static let infoOverlayAutoHideSeconds: Double = 6
+
+    // Non-interactive (allowsHitTesting(false)) top-pinned banner — deliberately not sharing space
+    // with the bottom-pinned recording scrub bar (posterHidden's own overlay above in body), which
+    // is hover-revealed rather than a toggle and would otherwise visually collide with this when
+    // watching a recording. Prefers currentGuideEntry (works for both a live channel and a Watch
+    // Now recording relay — see its own doc comment on why both anchor correctly) and falls back to
+    // the FEED relay's lineup extras the same way posterOverlay already does; a FEED session has no
+    // OriginalAirdate data at all, so the NEW/air-date row is simply omitted then rather than
+    // guessed at.
+    private var infoBanner: some View {
+        let entry = currentGuideEntry
+        let feedEntry = (entry == nil && device.isVirtualRelay) ? currentFeedEntry : nil
+
+        let title = entry?.Title ?? feedEntry?.virtualRelayShowTitle ?? selectedChannel?.GuideName ?? "Unknown"
+        let episodeInfo: String? = entry?.episodeInfoLabel ?? feedEntry.flatMap { fe in
+            let parts = [fe.virtualRelayEpisodeNumber, fe.virtualRelayEpisodeTitle].compactMap { s -> String? in
+                guard let s, !s.isEmpty else { return nil }
+                return s
+            }
+            return parts.isEmpty ? nil : parts.joined(separator: " · ")
+        }
+
+        return VStack {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                    if let episodeInfo {
+                        Text(episodeInfo)
+                            .font(.subheadline)
+                            .foregroundStyle(.white.opacity(0.8))
+                            .lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 12)
+                if let entry {
+                    infoBannerAirDate(entry)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
+            .padding(20)
+            Spacer()
+        }
+        .allowsHitTesting(false)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title)\(episodeInfo.map { ", \($0)" } ?? "")")
+    }
+
+    // Same "NEW" visual language as WatchNowView's badge (isNewEpisode/green pill) — falls back to
+    // the episode's original air date (origAirdateFormatter, GuideViewHelpers.swift) when it isn't
+    // a new episode, so the banner always shows one or the other, never both.
+    @ViewBuilder
+    private func infoBannerAirDate(_ entry: GuideEntry) -> some View {
+        if isNewEpisode(entry) {
+            Text("NEW")
+                .font(.system(size: 11, weight: .heavy))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(Color(red: 0.18, green: 0.65, blue: 0.35))
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+                .accessibilityLabel("New episode")
+        } else if let oad = entry.OriginalAirdate {
+            Text("Originally aired \(origAirdateFormatter.string(from: Date(timeIntervalSince1970: TimeInterval(oad))))")
+                .font(.caption)
+                .foregroundStyle(.white.opacity(0.7))
+                .fixedSize()
+        }
     }
 
     // MARK: - Poster overlay
@@ -1479,6 +1579,20 @@ struct VLCPlayerView: View {
             .accessibilityIdentifier("vlc-native-resolution")
             .onHover { if $0 { recordingSizeSnapshot = recordingSizeText; nativeResHovered = true } }
             .popover(isPresented: $nativeResHovered, arrowEdge: .bottom) { nativeResPopover }
+
+            // Info ("i" on a TV remote) — toggles a temporary banner over the video with the show
+            // name, episode title, and either a "NEW" badge or the episode's original air date. See
+            // infoBanner's own doc comment for what it shows per source type.
+            Button {
+                infoOverlayVisible.toggle()
+            } label: {
+                Image(systemName: "info.circle")
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut("i", modifiers: [])
+            .help("Show info")
+            .accessibilityLabel("Show info")
+            .accessibilityIdentifier("vlc-info-button")
 
             // Group dividers, added 2026-09-19 (reported "crowded") — purely visual breathing room
             // between logical clusters (stream state: buffer/catch-up/H.264/native — clock — volume
