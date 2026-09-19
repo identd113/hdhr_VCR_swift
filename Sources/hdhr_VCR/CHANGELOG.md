@@ -2,11 +2,17 @@
 
 Every entry is tagged **Added** (something new), **Updated** (existing behavior changed, improved, or fixed), **Removed** (something taken away), or **Info** (a note — nothing to do, nothing visibly different).
 
-## Unreleased
+## v2.5.0 — 2026-09-19
+
+**Removed**
+- **"Watch in VLC"** — the button/menu item that opened a live channel or in-progress recording in a separate, external VLC.app window. Removed everywhere it appeared (Watch Now's action row, the menu bar's recording submenu, and the Settings toggle that controlled it) — it wasn't reliable enough to keep. This doesn't change what VLC is needed for: hdhrVCRplus still requires VLC.app to be installed for all of its own in-app playback, live TV and recordings alike.
 
 **Added**
 - **New: watch two live streams at once (picture-in-picture).** Whenever the in-app player already has something playing, Recording Now, "Recording on Another Mac" (FEED), and Watch Now rows now offer a "Watch alongside (PiP)" action — opens the second stream as a small muted corner thumbnail, sized to match its own native aspect ratio. Click it to swap which stream has full controls and audio — instant, no rebuffer. Right-click it to move it to any of the four corners, or — for a live-channel secondary — switch which channel it's showing without touching the primary. The picker itself lists Recording Now, then FEED, then Live TV, and dims whatever's already playing as the primary (with a "Now Playing" label in place of the button) so it's never offered as its own alongside-companion. Works for any combination of a live channel (on any tuner, any device), an in-progress recording (Watch Now), or another Mac's shared recording.
 - **New: an Info button on the player ("i", like a TV remote).** Toggles a temporary banner over the video with the show name, episode title, and either a "NEW" badge or the episode's original air date — auto-hides after a few seconds, or dismiss it early with a second press. Also bound to the "i" key.
+- **First-Run Wizard now explains the VLC requirement up front.** A new step checks whether VLC.app is installed and, if not, offers a one-click path to get it: an "Install VLC via Homebrew" button (when Homebrew is detected) that copies the install command to your clipboard and opens Terminal for you to paste and run, or a direct download link otherwise. Every watching feature elsewhere in the app already dims itself and explains "(Requires VLC)" when it's missing — this just surfaces that fact before you go looking for it.
+- **Terminal Guide (`hdhr_guide`) can now set "New Only" (skip reruns) and pick specific weekdays** for a recurring "Weekly" schedule directly from its recording summary screen, matching what the web guide's Record dialog already offered — previously schedule-only and locked to server defaults for both.
+- **The web guide now previews Bonus Time overlap directly in the grid.** A scheduled show with Bonus Time enabled gets a faint colored wash extending past its own listed end time, over however much of the next slot it would actually eat into if it ran long — a quick visual heads-up that a scheduled recording tends to run over.
 
 **Updated**
 - **Standardized what "Up Next" means across the app.** The menu bar's Up Next section and the web guide's per-tuner Up Next row/summary panel now all mean the same thing — the next show scheduled to record, as long as it's later today; nothing is shown once nothing's left today. (Previously the menu bar list was capped at a fixed 60-minute lookahead, and the web guide's version had no time bound at all — the two could disagree about what counted as "next.") The menu bar icon's own status light keeps a separate, fixed one-hour window, since it's meant as an imminent-start alert rather than a listing.
@@ -15,18 +21,6 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 - **Fixed: a live stream that stalled with literally zero new bytes arriving had no auto-recovery**, only the manual Catch Up button — the existing auto-catch-up trigger only fired on stream corruption, which a true dead-air stall has none of to detect. Now recovers on its own after a few seconds of a frozen position, the same way a corrupted stream already did.
 - **Fixed: captions (CC) could go permanently undetected for a whole playback session.** Caption tracks can take a moment longer to become enumerable than audio tracks; the player used to check for them exactly once, at the same instant it found audio, and never looked again if that was too early. It now keeps checking independently for a few seconds before giving up on a genuinely caption-less stream. Captions also moved to the top of the player's "More options" menu.
 - **Fixed: switching channels in the player toolbar could hang with no explanation** if doing so needed a tuner that turned out to be unavailable (most reachable via a PiP swap bringing in content from a different device/source) — now shows the same "All Tuners Busy" alert every other tuner-request path already shows.
-
-## v2.5.0 — 2026-09-14
-
-**Removed**
-- **"Watch in VLC"** — the button/menu item that opened a live channel or in-progress recording in a separate, external VLC.app window. Removed everywhere it appeared (Watch Now's action row, the menu bar's recording submenu, and the Settings toggle that controlled it) — it wasn't reliable enough to keep. This doesn't change what VLC is needed for: hdhrVCRplus still requires VLC.app to be installed for all of its own in-app playback, live TV and recordings alike.
-
-**Added**
-- **First-Run Wizard now explains the VLC requirement up front.** A new step checks whether VLC.app is installed and, if not, offers a one-click path to get it: an "Install VLC via Homebrew" button (when Homebrew is detected) that copies the install command to your clipboard and opens Terminal for you to paste and run, or a direct download link otherwise. Every watching feature elsewhere in the app already dims itself and explains "(Requires VLC)" when it's missing — this just surfaces that fact before you go looking for it.
-- **Terminal Guide (`hdhr_guide`) can now set "New Only" (skip reruns) and pick specific weekdays** for a recurring "Weekly" schedule directly from its recording summary screen, matching what the web guide's Record dialog already offered — previously schedule-only and locked to server defaults for both.
-- **The web guide now previews Bonus Time overlap directly in the grid.** A scheduled show with Bonus Time enabled gets a faint colored wash extending past its own listed end time, over however much of the next slot it would actually eat into if it ran long — a quick visual heads-up that a scheduled recording tends to run over.
-
-**Updated**
 - **Fixed: adding a second show from the native Add Show window in one sitting could silently do nothing.** The window would close normally, looking successful, but the second show never actually got added — only happened when an earlier Add Show in that same still-open window had already succeeded.
 - **Fixed: a recording that ran past its scheduled end time (Bonus Time) could start showing the wrong show's title/episode info** in the menu bar and in-app player once whatever aired next on that channel began — the recording itself kept capturing the right thing the whole time; only the display was ever affected.
 - **Fixed: watching an in-progress recording (Watch Now), or another Mac's shared recording once FEED ships, no longer lets the Mac go to sleep mid-playback.**
