@@ -407,6 +407,28 @@ final class AppState: ObservableObject {
             }
     }
 
+    // Every channel in the device's lineup, each paired with its current guide entry when one
+    // exists — unlike onAirNow above, a channel with no matching guide slot right now is still
+    // included rather than dropped. onAirNow's "only what's airing" semantics are correct for its
+    // own callers (WatchNowView, WebServer's now.json, FirstRunWizardView's poster warm-up), but
+    // PiPPickerView needs to offer every tunable channel as a PiP secondary, not just ones the EPG
+    // happens to cover this minute — a channel with stale/missing guide data is still perfectly
+    // watchable.
+    func allChannels(for device: HDHRDevice, at date: Date = Date()) -> [(channel: LineupEntry, entry: GuideEntry?)] {
+        var seen = Set<String>()
+        return (lineups[device.DeviceID] ?? [])
+            .compactMap { ch -> (channel: LineupEntry, entry: GuideEntry?)? in
+                guard seen.insert(ch.GuideNumber).inserted else { return nil }
+                let entry = guideEntries(deviceId: device.DeviceID, channelNum: ch.GuideNumber)
+                    .first(where: { $0.startDate <= date && $0.endDate > date })
+                return (ch, entry)
+            }
+            .sorted { a, b in
+                if a.channel.isFavorite != b.channel.isFavorite { return a.channel.isFavorite }
+                return a.channel.GuideNumber.channelSortKey < b.channel.GuideNumber.channelSortKey
+            }
+    }
+
     var nextShowMinutes: Double? {
         activeShows
             .compactMap { $0.show_next.map { $0.timeIntervalSince(Date()) / 60 } }

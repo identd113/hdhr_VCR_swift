@@ -62,9 +62,9 @@ struct PiPPickerView: View {
                     .pickerStyle(.segmented)
                 }
                 if let device = selectedDevice {
-                    let channels = state.onAirNow(for: device, at: Date())
+                    let channels = state.allChannels(for: device, at: Date())
                     if channels.isEmpty {
-                        Text("Nothing on right now").foregroundStyle(.secondary)
+                        Text("No channels available").foregroundStyle(.secondary)
                     } else {
                         ForEach(channels, id: \.channel.id) { pair in
                             liveChannelRow(pair, device: device)
@@ -75,25 +75,28 @@ struct PiPPickerView: View {
         }
     }
 
-    private func liveChannelRow(_ pair: (channel: LineupEntry, entry: GuideEntry), device: HDHRDevice) -> some View {
+    private func liveChannelRow(_ pair: (channel: LineupEntry, entry: GuideEntry?), device: HDHRDevice) -> some View {
         let vlcReady = VLCBridge.shared.isAvailable
+        let title = pair.entry?.Title ?? pair.channel.GuideName
         return HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Ch \(pair.channel.GuideNumber)  \(pair.channel.GuideName)")
                     .font(.subheadline.bold())
-                Text(pair.entry.Title)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if let entry = pair.entry {
+                    Text(entry.Title)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
             Spacer()
             Button {
-                state.watchAsSecondary(url: pair.channel.URL ?? "", title: pair.entry.Title, device: device,
+                state.watchAsSecondary(url: pair.channel.URL ?? "", title: title, device: device,
                                         channelNumber: pair.channel.GuideNumber)
                 dismiss()
             } label: {
                 Label(gatedLabel("Add as PIP", met: vlcReady, requirement: "VLC"), systemImage: "pip.fill")
             }
-            .accessibilityLabel(gatedLabel(watchAlongsideLabel(pair.entry.Title), met: vlcReady, requirement: "VLC"))
+            .accessibilityLabel(gatedLabel(watchAlongsideLabel(title), met: vlcReady, requirement: "VLC"))
             .buttonStyle(.bordered)
             .tint(vlcReady ? watchNowBlue : .gray)
             .controlSize(.small)

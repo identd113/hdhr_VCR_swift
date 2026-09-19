@@ -376,7 +376,15 @@ on every swap. Both slots are already independently decoding by the time a swap 
 `swapSlots()` never touches libvlc's demux/decode pipeline at all — it re-targets each
 already-playing player's rendering surface (`libvlc_media_player_set_nsobject`) onto the *other*
 slot's fixed `NSView` (the big video area and the corner thumbnail never move in the SwiftUI tree,
-only which player renders into each) and swaps the Swift-side bookkeeping (`currentURL`/
+only which player renders into each). **Nil-then-set retarget** (found live 2026-09-19, same day):
+a single `set_nsobject` call straight to the new view correctly swapped audio (which follows
+`mediaPlayer` object identity, reassigned right after) but left the picture on whichever view the
+vout attached to at its *first* `play()` — macOS's vout module reads `drawable-nsobject` once at
+attach and doesn't reliably react to it changing while already rendering. `swapSlots()` now clears
+each player's drawable to `nil` before setting the new view, so the variable genuinely changes
+value on the second call (setting the same pointer twice in a row is indistinguishable from a
+no-op to the vout's own change detection) and its callback actually fires. Swaps the Swift-side
+bookkeeping (`currentURL`/
 `secondaryURL`, `hasError`/`isPlaying`/`hasEnded`, track lists, rate-ramp/stall-tracking state — the
 newly-primary stream inherits the secondary's always-already-1.0 rate, since the secondary slot
 never ramps). Both streams keep playing/decoding uninterrupted throughout, so the transition is

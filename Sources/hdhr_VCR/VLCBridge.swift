@@ -810,9 +810,22 @@ final class VLCBridge: ObservableObject {
         let oldSecondaryHasError  = secondaryHasError
         let oldSecondaryHasEnded  = secondaryHasEnded
 
-        // Live re-target on already-active players — no stop, no reconnect.
+        // Live re-target on already-active players — no stop, no reconnect. Found live
+        // 2026-09-19: a single set_nsobject call to the new view swapped audio (which follows
+        // mediaPlayer object identity, reassigned just below) but left the picture on whichever
+        // view the vout attached to at its *first* play() — macOS's vout module reads
+        // "drawable-nsobject" once at attach and doesn't reliably react to it changing while
+        // already rendering. Clearing to nil first, then setting the new view, forces the
+        // variable to genuinely change value on the second call (a set to the same pointer twice
+        // in a row is indistinguishable from a no-op to the vout's own change detection) so its
+        // callback actually fires and reparents the live rendering surface.
+        glog("[VLC] swapSlots() retargeting: secondary→primaryView=\(ObjectIdentifier(primaryView)) primary→secondaryView=\(ObjectIdentifier(secondaryView))")
+        _mpSetNSO?(oldSecondaryMP, nil)
         _mpSetNSO?(oldSecondaryMP, Unmanaged.passUnretained(primaryView).toOpaque())
+        _mpSetNSO?(oldPrimaryMP, nil)
         _mpSetNSO?(oldPrimaryMP, Unmanaged.passUnretained(secondaryView).toOpaque())
+        primaryView.needsDisplay = true
+        secondaryView.needsDisplay = true
 
         primaryState.mediaPlayer    = oldSecondaryMP
         primaryState.currentMedia   = oldSecondaryMedia
