@@ -2944,9 +2944,18 @@ final class AppState: ObservableObject {
             // both are "this instance was skipped as an unwanted rerun" events, and SettingsView's
             // combined "Problems" toggle already describes and controls them together. There's no
             // New-Only-specific setting to route this to instead.
+            var skipExtra: [(name: String, value: String, inline: Bool)] =
+                [("Reason", "Not flagged as new by the guide", false)]
+            // Requested explicitly — a "not new" skip is otherwise unexplained without knowing when
+            // the episode actually first aired. Omitted (not "Unknown") when the guide entry itself
+            // has no OriginalAirdate, same graceful-omission shape as VLCPlayerView's info banner
+            // for the identical field.
+            if let oad = guideEntry.OriginalAirdate {
+                skipExtra.append(("Originally Aired", origAirdateFormatter.string(from: Date(timeIntervalSince1970: TimeInterval(oad))), true))
+            }
             fireDiscordCard(showId: show.show_id, event: "🔁 Skipped — rerun (New Only)",
                             color: 0x95A5A6, enabled: config.Discord_on_duplicate,
-                            extra: [("Reason", "Not flagged as new by the guide", false)])
+                            extra: skipExtra)
             await scheduleNextAir(index: index)
             return
         }
