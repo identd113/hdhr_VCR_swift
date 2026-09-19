@@ -3,12 +3,18 @@ import SwiftUI
 // Compact picker for starting a Picture-in-Picture (corner-thumbnail) stream — reachable via
 // VLCPlayerView's right-click context menu on the main video pane (the player window must already
 // be open; there's no menu-bar entry point, removed 2026-09-19 as redundant with this one). Always
-// starts fresh (no remembered source): lists live-TV channels across recordable tuners and any
-// discovered FEED (another Mac's in-progress recording) sources, each with a button that lands on
-// AppState.watchAsSecondary/watchRemoteRelayAsSecondary — the same PIP slot WatchNowView's per-row
-// "Watch alongside (PiP)" buttons already use. AppState.watchAsSecondary's
+// starts fresh (no remembered source): lists shows currently recording, any discovered FEED
+// (another Mac's in-progress recording) sources, and live-TV channels across recordable tuners, in
+// that order — recording first since it's the most likely thing someone wants alongside whatever
+// they're already watching, then FEED, then Live TV (itself favorites-first, then the rest, via
+// AppState.allChannels — unchanged). Each row's action lands on AppState.watchAsSecondary/
+// watchRemoteRelayAsSecondary/watchRecordingInAppAsSecondary — the same PIP slot WatchNowView's
+// per-row "Watch alongside (PiP)" buttons already use. AppState.watchAsSecondary's
 // ensureWindowForStandalonePiP branch still matters here even with the window already open — the
 // primary can be open but idle/errored (hasPlayablePrimarySession false), not just literally absent.
+// Whatever's already playing as the PRIMARY stream shows dimmed and unselectable (a "Now Playing"
+// label instead of the Add button) rather than offering to add itself alongside itself — see
+// pipActionTrailing(label:isCurrent:action:) and each row's own isCurrent check.
 struct PiPPickerView: View {
     @EnvironmentObject var state: AppState
     @Environment(\.dismiss) private var dismiss
@@ -24,8 +30,9 @@ struct PiPPickerView: View {
             header
             Divider()
             List {
-                liveTVSection
+                recordingSection
                 feedSection
+                liveTVSection
             }
             .listStyle(.inset)
         }
@@ -33,6 +40,59 @@ struct PiPPickerView: View {
             selectedDeviceId = state.recordableDevices.first?.DeviceID ?? ""
         }
         .frame(minWidth: 380, minHeight: 300)
+    }
+
+    // Shared trailing control for every row below — either the normal "Add as PIP" button, or, when
+    // this row is what's already playing as the primary stream, a plain "Now Playing" label in its
+    // place (no button at all, so it can't be re-selected).
+    @ViewBuilder
+    private func pipActionTrailing(label: String, isCurrent: Bool, action: @escaping () -> Void) -> some View {
+        if isCurrent {
+            Text("Now Playing")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } else {
+            let vlcReady = VLCBridge.shared.isAvailable
+            Button {
+                action()
+                dismiss()
+            } label: {
+                Label(gatedLabel("Add as PIP", met: vlcReady, requirement: "VLC"), systemImage: "pip.fill")
+            }
+            .accessibilityLabel(gatedLabel(watchAlongsideLabel(label), met: vlcReady, requirement: "VLC"))
+            .buttonStyle(.bordered)
+            .tint(vlcReady ? watchNowBlue : .gray)
+            .controlSize(.small)
+            .disabled(!vlcReady)
+        }
+    }
+
+    @ViewBuilder
+    private var recordingSection: some View {
+        let shows = state.recordingShows
+        if !shows.isEmpty {
+            Section("Recording Now") {
+                ForEach(shows, id: \.show_id) { show in
+                    recordingRow(show)
+                }
+            }
+        }
+    }
+
+    private func recordingRow(_ show: Show) -> some View {
+        let isCurrent = VLCBridge.shared.recordingShowId == show.show_id
+        return HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(show.show_title).font(.subheadline.bold())
+                Text("Ch \(show.show_channel)").font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            pipActionTrailing(label: show.show_title, isCurrent: isCurrent) {
+                state.watchRecordingInAppAsSecondary(show)
+            }
+        }
+        .padding(.vertical, 2)
+        .opacity(isCurrent ? 0.4 : 1.0)
     }
 
     private var header: some View {
@@ -78,8 +138,9 @@ struct PiPPickerView: View {
     }
 
     private func liveChannelRow(_ pair: (channel: LineupEntry, entry: GuideEntry?), device: HDHRDevice) -> some View {
-        let vlcReady = VLCBridge.shared.isAvailable
         let title = pair.entry?.Title ?? pair.channel.GuideName
+        let isCurrent = VLCPlayerWindowManager.shared.currentDeviceID == device.DeviceID
+            && VLCPlayerWindowManager.shared.currentChannelNumber == pair.channel.GuideNumber
         return HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Ch \(pair.channel.GuideNumber)  \(pair.channel.GuideName)")
@@ -91,20 +152,13 @@ struct PiPPickerView: View {
                 }
             }
             Spacer()
-            Button {
+            pipActionTrailing(label: title, isCurrent: isCurrent) {
                 state.watchAsSecondary(url: pair.channel.URL ?? "", title: title, device: device,
                                         channelNumber: pair.channel.GuideNumber)
-                dismiss()
-            } label: {
-                Label(gatedLabel("Add as PIP", met: vlcReady, requirement: "VLC"), systemImage: "pip.fill")
             }
-            .accessibilityLabel(gatedLabel(watchAlongsideLabel(title), met: vlcReady, requirement: "VLC"))
-            .buttonStyle(.bordered)
-            .tint(vlcReady ? watchNowBlue : .gray)
-            .controlSize(.small)
-            .disabled(!vlcReady)
         }
         .padding(.vertical, 2)
+        .opacity(isCurrent ? 0.4 : 1.0)
     }
 
     @ViewBuilder
@@ -120,8 +174,8 @@ struct PiPPickerView: View {
     }
 
     private func feedRow(_ pair: (device: HDHRDevice, entry: LineupEntry)) -> some View {
-        let vlcReady = VLCBridge.shared.isAvailable
         let title = pair.entry.virtualRelayShowTitle ?? pair.entry.GuideName
+        let isCurrent = VLCPlayerWindowManager.shared.currentFeedRemoteURL == pair.entry.URL
         return HStack {
             VStack(alignment: .leading, spacing: 2) {
                 if let hostname = pair.entry.virtualRelaySourceHostname {
@@ -131,18 +185,11 @@ struct PiPPickerView: View {
                 }
             }
             Spacer()
-            Button {
+            pipActionTrailing(label: title, isCurrent: isCurrent) {
                 state.watchRemoteRelayAsSecondary(url: pair.entry.URL ?? "", title: title, device: pair.device)
-                dismiss()
-            } label: {
-                Label(gatedLabel("Add as PIP", met: vlcReady, requirement: "VLC"), systemImage: "pip.fill")
             }
-            .accessibilityLabel(gatedLabel(watchAlongsideLabel(title), met: vlcReady, requirement: "VLC"))
-            .buttonStyle(.bordered)
-            .tint(vlcReady ? watchNowBlue : .gray)
-            .controlSize(.small)
-            .disabled(!vlcReady)
         }
         .padding(.vertical, 2)
+        .opacity(isCurrent ? 0.4 : 1.0)
     }
 }
