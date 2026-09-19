@@ -1175,11 +1175,29 @@ final class VLCBridge: ObservableObject {
         // catch-up button routes relays to seekRecordingToLiveEdge instead. Checked before the cooldown
         // so a relay never even arms it. (recordingShowId is nil for live-tuner playback.)
         guard recordingShowId == nil else { return }
-        guard corruptDelta > 15 else { return }
         guard Date() > catchUpCooldown else { return }
-        catchUpCooldown = Date().addingTimeInterval(30)
-        glog("[VLC] stream corruption detected (i_demux_corrupted delta=\(corruptDelta)) — catching up to live")
-        catchUpToLive()
+        if corruptDelta > 15 {
+            catchUpCooldown = Date().addingTimeInterval(30)
+            glog("[VLC] stream corruption detected (i_demux_corrupted delta=\(corruptDelta)) — catching up to live")
+            catchUpToLive()
+            return
+        }
+        // A sustained stall has no recovery path above when it involves zero new bytes — there's
+        // nothing to corrupt, so corruptDelta never trips for it (confirmed live 2026-09-19: a
+        // real "no new bytes either — network-side" stall on a live-tuner stream sat frozen with
+        // no auto-recovery, only the manual Catch Up button could fix it). Gated on the window
+        // actually being visible/composited, matching why corruption (not this position-based
+        // signal) was chosen as the *only* auto-catch-up trigger in the first place — see this
+        // tick's own windowVisible comment above: a backgrounded window can look "stalled" on
+        // position alone while decode continues fine, and reconnecting for that would be a false
+        // positive. Only act here once that explanation is ruled out.
+        let windowVisibleNow = primaryState.drawableView?.window?.occlusionState.contains(.visible) ?? false
+        if consecutiveStalledTicks >= 3, windowVisibleNow {
+            catchUpCooldown = Date().addingTimeInterval(30)
+            glog("[VLC] sustained stall (\(consecutiveStalledTicks) consecutive ticks, window visible) — catching up to live")
+            consecutiveStalledTicks = 0
+            catchUpToLive()
+        }
     }
 
     // MARK: - Track selection (audio tracks and CC/subtitle tracks)
