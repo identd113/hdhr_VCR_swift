@@ -104,6 +104,16 @@ struct VLCPlayerView: View {
     // suppressNextChannelPlay to avoid a redundant playChannel call, but IS new content and still
     // needs the poster/mute reset below). See .onChange(of: selectedChannel)'s own comment.
     @State private var suppressSameContent = false
+    // Set only by swapPrimaryAndSecondary(), consumed (read-and-cleared) at the top of the very
+    // next syncChannel(to:) call — tells its plain-lineup-match branch (shared with a genuine
+    // open()-driven channel switch, which legitimately does want the poster/mute reset) that THIS
+    // particular resolution is a swap relabel, not new content. The recording-relay and
+    // cross-device-FEED match branches don't need this: both are reachable only via a swap already
+    // (see feedChannelEntry's own doc comment), so they set suppressSameContent unconditionally.
+    // Found live 2026-09-19: without this, swapping to a live channel (not a recording/FEED) wrongly
+    // re-triggered the poster/mute reset, dropping the poster/summary and re-muting an
+    // already-live stream — see swapPrimaryAndSecondary's own comment for the full story.
+    @State private var suppressPosterResetForSwap = false
     @State private var selectedAudioTrackId: Int32 = -1  // -1 = not yet loaded; set when audioTracks first appear
     @State private var selectedSpuTrackId:   Int32 = -1  // -1 = CC off (default)
     // -1 is also the Picker's own "Off" tag, so it can't by itself distinguish "user explicitly
@@ -476,6 +486,13 @@ struct VLCPlayerView: View {
         suppressNextChannelPlay = true
         suppressSameContent     = true
         selectedChannel = nil
+        // This nil assignment's own onChange is already fully suppressed by the two flags just
+        // above — but currentURL changing (inside bridge.swapSlots() earlier) independently fires
+        // .onChange(of: state.vlcCurrentURL) → syncChannel(to:), which resolves selectedChannel to
+        // the new primary's *real* entry a moment later. That later resolution needs its own
+        // poster/mute-reset suppression, which this flag carries across to it — see the flag's own
+        // doc comment for why only the plain-lineup-match branch needs to consume it.
+        suppressPosterResetForSwap = true
 
         state.refreshTunerOccupancy()
     }
@@ -1727,6 +1744,9 @@ struct VLCPlayerView: View {
 
     private func syncChannel(to rawSyncURL: String) {
         guard !rawSyncURL.isEmpty else { return }
+        // Read-and-clear once per call — see the flag's own doc comment.
+        let wasSwap = suppressPosterResetForSwap
+        suppressPosterResetForSwap = false
         // FEED's client-side local relay (docs/VirtualTunerService.md) means every caller of this
         // function — .onAppear's initialURL, state.vlcCurrentURL, bridge.recordingShowId's onChange
         // — now hands this a LOCAL http://127.0.0.1/api/feed-local-relay?... URL for a virtual
@@ -1753,7 +1773,17 @@ struct VLCPlayerView: View {
             ]
             MPNowPlayingInfoCenter.default().playbackState = .playing
             guard selectedChannel?.GuideNumber != entry.GuideNumber else { return }
+            // This branch is only ever reachable via a PiP swap — device.isVirtualRelay is false
+            // means this window opened on a real device, and the only way currentFeedRemoteURL can
+            // be non-nil then is swapPrimaryAndSecondary() having brought a FEED in as primary (a
+            // direct FEED open always sets device to the virtual relay itself, taking the normal
+            // lineup-match branch below instead). Always "relabel only," never genuine new content
+            // — the stream is already playing/decoding, unlike an open()-driven switch — so
+            // suppressSameContent is safe unconditionally here (found live 2026-09-19 without it:
+            // the poster/mute reset below wrongly fired, re-gating an already-live swapped-in
+            // stream behind a Start button and dropping its poster/summary).
             suppressNextChannelPlay = true
+            suppressSameContent     = true
             selectedChannel = entry
             return
         }
@@ -1786,6 +1816,7 @@ struct VLCPlayerView: View {
             // and swallowing the next user-initiated picker selection.
             guard selectedChannel?.GuideNumber != match.GuideNumber else { return }
             suppressNextChannelPlay = true
+            if wasSwap { suppressSameContent = true }
             selectedChannel = match
         } else {
             glog("[VLC] syncChannel no match in \(lineup.count)-entry lineup for url=\(base)", level: .warning)
