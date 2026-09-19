@@ -19,12 +19,11 @@ private extension Notification.Name {
 
 private struct VLCVideoSurface: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView {
-        let v = NSView()
-        v.wantsLayer = true
-        v.layer?.backgroundColor = CGColor(gray: 0, alpha: 1)
-        glog("[VLC] VLCVideoSurface.makeNSView — new drawable view=\(ObjectIdentifier(v))")
-        VLCBridge.shared.setDrawable(v)
-        return v
+        let (container, content) = makeVLCVideoContainerAndContent()
+        glog("[VLC] VLCVideoSurface.makeNSView — container=\(ObjectIdentifier(container)) content=\(ObjectIdentifier(content))")
+        VLCBridge.shared.setContainer(container)
+        VLCBridge.shared.setDrawable(content)
+        return container
     }
     func updateNSView(_ nsView: NSView, context: Context) {}
 }
@@ -36,14 +35,30 @@ private struct VLCVideoSurface: NSViewRepresentable {
 
 private struct VLCSecondaryVideoSurface: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView {
-        let v = NSView()
-        v.wantsLayer = true
-        v.layer?.backgroundColor = CGColor(gray: 0, alpha: 1)
-        glog("[VLC] VLCSecondaryVideoSurface.makeNSView — new drawable view=\(ObjectIdentifier(v))")
-        VLCBridge.shared.setDrawable(v, slot: .secondary)
-        return v
+        let (container, content) = makeVLCVideoContainerAndContent()
+        glog("[VLC] VLCSecondaryVideoSurface.makeNSView — container=\(ObjectIdentifier(container)) content=\(ObjectIdentifier(content))")
+        VLCBridge.shared.setContainer(container, slot: .secondary)
+        VLCBridge.shared.setDrawable(content, slot: .secondary)
+        return container
     }
     func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
+// Shared by both surfaces above. `container` is the view SwiftUI actually manages (positioned by
+// the big pane's ZStack or the thumbnail's fixed-size overlay, never reparented again); `content`
+// is the one libvlc's _mpSetNSO actually targets, added as container's sole, bounds-filling
+// subview. Splitting these is what lets VLCBridge.swapSlots() move `content` between containers
+// via a plain AppKit addSubview/removeFromSuperview instead of re-targeting an already-playing
+// player's rendering surface — see swapSlots()'s own doc comment for why the latter doesn't work
+// live on macOS's vout module.
+private func makeVLCVideoContainerAndContent() -> (container: NSView, content: NSView) {
+    let container = NSView()
+    container.wantsLayer = true
+    container.layer?.backgroundColor = CGColor(gray: 0, alpha: 1)
+    let content = NSView()
+    content.wantsLayer = true
+    content.layer?.backgroundColor = CGColor(gray: 0, alpha: 1)
+    return (container, content)
 }
 
 // ── PipCorner ─────────────────────────────────────────────────────────────────

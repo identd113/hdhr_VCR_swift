@@ -147,12 +147,23 @@ final class VLCBridge: ObservableObject {
     private struct PlayerState {
         var mediaPlayer:  OpaquePointer?
         var currentMedia: OpaquePointer?
-        /// Retained so channel switches can reattach the same NSView after stop/play.
+        /// The actual view libvlc renders into via _mpSetNSO — retained so channel switches can
+        /// reattach it after stop/play. Distinct from containerView below: this one follows the
+        /// PLAYER (swapped along with mediaPlayer/currentMedia in swapSlots()), never re-targeted
+        /// via _mpSetNSO after its first attach.
         var drawableView: NSView?
         /// Extra strong reference keeping the drawable NSView alive until after _mpRelease drains libvlc callbacks.
         var retainedDrawable: NSView?
         /// URL queued before the drawable view was ready; played in setDrawable().
         var pendingURL: String?
+        /// Fixed, permanent host view for this slot's on-screen POSITION (the big video pane for
+        /// .primary, the corner thumbnail for .secondary) — set once by VLCVideoSurface/
+        /// VLCSecondaryVideoSurface's makeNSView via setContainer() and never reassigned again, in
+        /// particular never touched by swapSlots(). SwiftUI owns this view's frame/superview
+        /// relationship, so it must never be manually reparented; drawableView (which swapSlots()
+        /// DOES move) is instead inserted/removed as its subview. See swapSlots()'s own doc comment
+        /// for why this two-layer split exists.
+        var containerView: NSView?
     }
     private var primaryState   = PlayerState()
     private var secondaryState = PlayerState()
@@ -412,12 +423,38 @@ final class VLCBridge: ObservableObject {
 
     // MARK: - Drawable
 
+    /// Register the fixed, permanent host view for this slot's on-screen position — call once from
+    /// VLCVideoSurface/VLCSecondaryVideoSurface.makeNSView, before setDrawable(). See
+    /// PlayerState.containerView's own doc comment for why this is a separate view from the one
+    /// libvlc actually renders into.
+    func setContainer(_ view: NSView, slot: PlayerSlot = .primary) {
+        self[slot].containerView = view
+        if let content = self[slot].drawableView {
+            Self.fill(container: view, with: content)
+        }
+    }
+
+    /// Inserts `content` as `container`'s only subview, sized to fill it and tracking its size via
+    /// autoresizing (the parent's own layout — SwiftUI's for a fresh container, or a plain window
+    /// resize thereafter — drives `container`'s frame; this just keeps `content` matching it).
+    /// Removing any previous subview first keeps a re-parent (swapSlots()) from ever showing two.
+    private static func fill(container: NSView, with content: NSView) {
+        guard content.superview !== container else { return }
+        content.removeFromSuperview()
+        content.frame = container.bounds
+        content.autoresizingMask = [.width, .height]
+        container.addSubview(content)
+    }
+
     /// Attach an NSView for VLC to render video into.
     /// Call this from VLCVideoSurface/VLCSecondaryVideoSurface.makeNSView so it's set before the
     /// first play() for that slot.
     func setDrawable(_ view: NSView, slot: PlayerSlot = .primary) {
         glog("[VLC] setDrawable(\(slot)) view=\(ObjectIdentifier(view)) mp=\(self[slot].mediaPlayer != nil ? "ready" : "nil") pending=\(self[slot].pendingURL != nil ? "yes" : "no")")
         self[slot].drawableView = view
+        if let container = self[slot].containerView {
+            Self.fill(container: container, with: view)
+        }
         guard let mp = self[slot].mediaPlayer else { return }
         _mpSetNSO?(mp, Unmanaged.passUnretained(view).toOpaque())
         self[slot].retainedDrawable = view
@@ -782,25 +819,33 @@ final class VLCBridge: ObservableObject {
     }
 
     /// PiP tap-to-swap, redesigned 2026-09-19 per live feedback that the original reconnect-by-URL
-    /// swap (play(url:slot:) on both slots) caused a visible rebuffer on every swap. Both slots are
-    /// already independently decoding by the time a swap is reachable, so there is no need to touch
-    /// libvlc's demux/decode pipeline at all: re-target each already-playing player's rendering
-    /// surface (libvlc_media_player_set_nsobject) onto the *other* slot's fixed NSView — the big
-    /// video area and the corner thumbnail never move in the SwiftUI tree, only which underlying
-    /// player renders into each — then swap the Swift-side bookkeeping to match. Both streams keep
-    /// playing/decoding uninterrupted throughout, so the transition is instant, not a reconnect.
-    /// Callers still need AppState.reanchorRecordingSeekForSwap(newPrimaryURL:) afterward — this
-    /// method leaves recordingShowId/recordingStartDate untouched (deliberately: those are derived
-    /// from the URL/Show, not swappable state) and just swaps currentURL/secondaryURL so that
-    /// derivation can run against the right URL.
+    /// swap (play(url:slot:) on both slots) caused a visible rebuffer on every swap, then redesigned
+    /// again the same day after a libvlc_media_player_set_nsobject-based live retarget (still no
+    /// reconnect) turned out not to reliably move the picture either — see PlayerState's own doc
+    /// comment on containerView/drawableView for the two-layer view split this settled on. Both
+    /// slots are already independently decoding by the time a swap is reachable, so there is no
+    /// need to touch libvlc's demux/decode pipeline, or its drawable attachment, at all: each
+    /// slot's already-playing player keeps rendering into the exact same NSView it always has, and
+    /// swapSlots() just moves that view (via fill(container:with:), the same helper setDrawable/
+    /// setContainer use for initial attach) into the *other* slot's fixed container — the
+    /// containers themselves (the big video area, the corner thumbnail) never move in the SwiftUI
+    /// tree. Both streams keep playing/decoding uninterrupted throughout, so the transition is
+    /// instant, not a reconnect, and doesn't depend on libvlc's vout module honoring a live
+    /// drawable change. Callers still need AppState.reanchorRecordingSeekForSwap(newPrimaryURL:)
+    /// afterward — this method leaves recordingShowId/recordingStartDate untouched (deliberately:
+    /// those are derived from the URL/Show, not swappable state) and just swaps currentURL/
+    /// secondaryURL so that derivation can run against the right URL.
     func swapSlots() {
         guard let oldPrimaryMP = primaryState.mediaPlayer, let oldSecondaryMP = secondaryState.mediaPlayer,
-              let primaryView = primaryState.drawableView, let secondaryView = secondaryState.drawableView
+              let oldPrimaryView = primaryState.drawableView, let oldSecondaryView = secondaryState.drawableView,
+              let primaryContainer = primaryState.containerView, let secondaryContainer = secondaryState.containerView
         else { return }
 
         // Capture "before" values before any mutation below.
         let oldPrimaryMedia   = primaryState.currentMedia
         let oldSecondaryMedia = secondaryState.currentMedia
+        let oldPrimaryRetained   = primaryState.retainedDrawable
+        let oldSecondaryRetained = secondaryState.retainedDrawable
         let oldPrimaryURL     = currentURL
         let oldSecondaryURL   = secondaryURL
         let oldPrimaryIsPlaying   = isPlaying
@@ -810,27 +855,32 @@ final class VLCBridge: ObservableObject {
         let oldSecondaryHasError  = secondaryHasError
         let oldSecondaryHasEnded  = secondaryHasEnded
 
-        // Live re-target on already-active players — no stop, no reconnect. Found live
-        // 2026-09-19: a single set_nsobject call to the new view swapped audio (which follows
-        // mediaPlayer object identity, reassigned just below) but left the picture on whichever
-        // view the vout attached to at its *first* play() — macOS's vout module reads
-        // "drawable-nsobject" once at attach and doesn't reliably react to it changing while
-        // already rendering. Clearing to nil first, then setting the new view, forces the
-        // variable to genuinely change value on the second call (a set to the same pointer twice
-        // in a row is indistinguishable from a no-op to the vout's own change detection) so its
-        // callback actually fires and reparents the live rendering surface.
-        glog("[VLC] swapSlots() retargeting: secondary→primaryView=\(ObjectIdentifier(primaryView)) primary→secondaryView=\(ObjectIdentifier(secondaryView))")
-        _mpSetNSO?(oldSecondaryMP, nil)
-        _mpSetNSO?(oldSecondaryMP, Unmanaged.passUnretained(primaryView).toOpaque())
-        _mpSetNSO?(oldPrimaryMP, nil)
-        _mpSetNSO?(oldPrimaryMP, Unmanaged.passUnretained(secondaryView).toOpaque())
-        primaryView.needsDisplay = true
-        secondaryView.needsDisplay = true
+        // Move each already-playing player's actual rendering view into the OTHER slot's fixed
+        // container — no stop, no reconnect, and critically no re-targeting of libvlc's own
+        // drawable. Found live 2026-09-19: a live libvlc_media_player_set_nsobject call to a new
+        // view swapped audio (which follows mediaPlayer object identity, reassigned just below)
+        // but left the picture on whichever view the vout attached to at its *first* play() —
+        // macOS's vout module reads "drawable-nsobject" once at attach and doesn't reliably react
+        // to it changing while already rendering, even with a nil-then-set retry. Sidestepping
+        // that entirely: drawableView/retainedDrawable (the view libvlc is attached to) travel
+        // with their player through the state swap below exactly like mediaPlayer/currentMedia
+        // already did; containerView (the fixed, SwiftUI-owned host for each on-screen position —
+        // see PlayerState's own doc comment) never moves. Plain AppKit addSubview/
+        // removeFromSuperview, handled by fill(container:with:), makes this both instant (both
+        // streams keep decoding uninterrupted) and reliable (no dependency on libvlc's vout
+        // honoring a live retarget).
+        glog("[VLC] swapSlots() reparenting: secondary view→primary container, primary view→secondary container")
+        Self.fill(container: primaryContainer, with: oldSecondaryView)
+        Self.fill(container: secondaryContainer, with: oldPrimaryView)
 
-        primaryState.mediaPlayer    = oldSecondaryMP
-        primaryState.currentMedia   = oldSecondaryMedia
-        secondaryState.mediaPlayer  = oldPrimaryMP
-        secondaryState.currentMedia = oldPrimaryMedia
+        primaryState.mediaPlayer      = oldSecondaryMP
+        primaryState.currentMedia     = oldSecondaryMedia
+        primaryState.drawableView     = oldSecondaryView
+        primaryState.retainedDrawable = oldSecondaryRetained
+        secondaryState.mediaPlayer      = oldPrimaryMP
+        secondaryState.currentMedia     = oldPrimaryMedia
+        secondaryState.drawableView     = oldPrimaryView
+        secondaryState.retainedDrawable = oldPrimaryRetained
 
         currentURL   = oldSecondaryURL
         secondaryURL = oldPrimaryURL
