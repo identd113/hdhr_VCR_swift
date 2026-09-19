@@ -92,6 +92,30 @@ struct VLCPlayerViewFeedChannelEntryTests {
         #expect(result?.GuideNumber.hasPrefix(VLCPlayerView.liveFeedGuideNumberPrefix) == true)
     }
 
+    // MARK: - Cross-product: deviceIsVirtualRelay × remoteURL state
+
+    @Test(arguments: [true, false], ["nil", "matching", "nonMatching"])
+    func deviceIsVirtualRelayCrossedWithURLState(_ deviceIsVirtualRelay: Bool, _ urlState: String) {
+        let device = makeDevice()
+        let url = "http://192.168.1.50:5004/auto/v2.1"
+        let entry = LineupEntry(GuideNumber: "2.1", GuideName: "KVUE", URL: url, HD: 1, Favorite: nil)
+        let remoteURL: String?
+        switch urlState {
+        case "nil":         remoteURL = nil
+        case "matching":    remoteURL = url
+        default:            remoteURL = "http://192.168.1.50:5004/auto/v9.9"
+        }
+
+        let result = VLCPlayerView.feedChannelEntry(deviceIsVirtualRelay: deviceIsVirtualRelay,
+                                                      remoteURL: remoteURL, remoteRelayEntries: [(device, entry)])
+
+        if deviceIsVirtualRelay || urlState != "matching" {
+            #expect(result == nil, "deviceIsVirtualRelay=\(deviceIsVirtualRelay) urlState=\(urlState)")
+        } else {
+            #expect(result != nil, "deviceIsVirtualRelay=\(deviceIsVirtualRelay) urlState=\(urlState)")
+        }
+    }
+
     @Test func matchesTheCorrectEntryAmongMultipleRelays() {
         let deviceA = makeDevice(id: "MACA")
         let deviceB = makeDevice(id: "MACB")

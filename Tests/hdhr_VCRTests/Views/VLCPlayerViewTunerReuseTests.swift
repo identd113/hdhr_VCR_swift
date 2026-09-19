@@ -66,4 +66,62 @@ struct VLCPlayerViewTunerReuseTests {
             recordingShowId: nil, currentFeedRemoteURL: nil, currentURL: "http://1.2.3.4:5004/auto/v5.1")
         #expect(result == false)
     }
+
+    // MARK: - Full truth table (all 16 combinations of the 4 boolean-ish inputs)
+
+    // The individual-scenario tests above document *why* each of the four conditions matters; this
+    // exhaustively cross-products all of them together (2^4 = 16 rows) against the function's own
+    // definition (deviceMatches && recordingShowId == nil && currentFeedRemoteURL == nil &&
+    // !currentURL.isEmpty), so a future edit that accidentally short-circuits on the wrong
+    // combination of conditions (e.g. an `||` typo'd for `&&`) fails immediately rather than only on
+    // whichever single combination a hand-picked case happened to cover. Shared by both playChannel
+    // (primary) and playSecondaryChannel (secondary, added 2026-09-19) — see each call site's own
+    // doc comment.
+    private struct TunerReuseCase: CustomStringConvertible, Sendable {
+        let deviceMatches: Bool
+        let recordingShowIdSet: Bool
+        let feedURLSet: Bool
+        let currentURLSet: Bool
+        var description: String {
+            "device=\(deviceMatches) recording=\(recordingShowIdSet) feed=\(feedURLSet) url=\(currentURLSet)"
+        }
+        var expectedReuse: Bool { deviceMatches && !recordingShowIdSet && !feedURLSet && currentURLSet }
+    }
+
+    private static let allTunerReuseCases: [TunerReuseCase] = {
+        var cases: [TunerReuseCase] = []
+        for deviceMatches in [true, false] {
+            for recordingShowIdSet in [true, false] {
+                for feedURLSet in [true, false] {
+                    for currentURLSet in [true, false] {
+                        cases.append(TunerReuseCase(deviceMatches: deviceMatches, recordingShowIdSet: recordingShowIdSet,
+                                                     feedURLSet: feedURLSet, currentURLSet: currentURLSet))
+                    }
+                }
+            }
+        }
+        return cases
+    }()
+
+    @Test(arguments: allTunerReuseCases)
+    private func fullTruthTable_matchesDefinitionExactly(_ c: TunerReuseCase) {
+        let result = VLCPlayerView.reusesExistingTuner(
+            currentDeviceID: c.deviceMatches ? targetDevice : "OTHER_DEVICE",
+            targetDeviceID: targetDevice,
+            recordingShowId: c.recordingShowIdSet ? "show-123" : nil,
+            currentFeedRemoteURL: c.feedURLSet ? "http://mac-mini.local:5004/auto/v2.1" : nil,
+            currentURL: c.currentURLSet ? "http://1.2.3.4:5004/auto/v5.1" : nil)
+        #expect(result == c.expectedReuse, "\(c)")
+    }
+
+    @Test func exactlyOneOfSixteenCombinationsReusesTheTuner() {
+        // Only device-matches + nothing-else-set + a real currentURL should ever skip the
+        // availability check — every other one of the 16 combinations must run it.
+        let reusing = Self.allTunerReuseCases.filter(\.expectedReuse)
+        #expect(reusing.count == 1)
+        #expect(reusing.first?.deviceMatches == true)
+        #expect(reusing.first?.recordingShowIdSet == false)
+        #expect(reusing.first?.feedURLSet == false)
+        #expect(reusing.first?.currentURLSet == true)
+    }
 }
