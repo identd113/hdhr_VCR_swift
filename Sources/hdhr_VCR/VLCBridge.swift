@@ -191,12 +191,15 @@ final class VLCBridge: ObservableObject {
     @Published private(set) var currentURL: String?
     @Published private(set) var videoPixelSize: CGSize? = nil  // physical pixels; nil until first decoded frame
 
-    // MARK: - PiP secondary slot (deliberately minimal — no track lists/rate-ramp/pixel-size/buffer
-    // info, matching the "video only, no track picker/scrub/buffer overlay" corner-thumbnail scope;
-    // see docs/VLCPlayerView.md's "Picture-in-picture" section).
+    // MARK: - PiP secondary slot (deliberately minimal — no track lists/rate-ramp/buffer info,
+    // matching the "video only, no track picker/scrub/buffer overlay" corner-thumbnail scope; see
+    // docs/VLCPlayerView.md's "Picture-in-picture" section). secondaryVideoPixelSize is the one
+    // exception — needed so the thumbnail's own box can match the secondary stream's real aspect
+    // ratio instead of assuming 16:9 (see pipThumbnailSize in VLCPlayerView.swift).
     @Published var secondaryHasError:  Bool = false
     @Published var secondaryIsPlaying: Bool = false
     @Published var secondaryHasEnded:  Bool = false
+    @Published private(set) var secondaryVideoPixelSize: CGSize? = nil  // physical pixels; nil until first decoded frame
     private(set) var secondaryURL: String?
 
     // MARK: - Recording-playback scrub anchor
@@ -771,6 +774,7 @@ final class VLCBridge: ObservableObject {
             secondaryIsPlaying = false
             secondaryHasEnded  = false
             secondaryURL       = nil
+            secondaryVideoPixelSize = nil
         }
         self[slot].pendingURL = nil
         guard let playerMp = self[slot].mediaPlayer else { return }
@@ -902,6 +906,7 @@ final class VLCBridge: ObservableObject {
         spuTracks = []
         tracksFetched = false   // cheap re-fetch on next tick, not a reconnect
         videoPixelSize = nil    // recomputed on next tick
+        secondaryVideoPixelSize = nil   // ditto — the newly-secondary stream has its own aspect ratio
 
         hasError  = oldSecondaryHasError
         hasEnded  = oldSecondaryHasEnded
@@ -913,10 +918,12 @@ final class VLCBridge: ObservableObject {
         glog("[VLC] swapSlots — primary↔secondary rendering targets and state swapped (no reconnect)")
     }
 
-    /// Returns the video's native pixel dimensions once decoding has started; nil otherwise.
-    /// Primary only — the secondary thumbnail has no pixel-size-dependent UI (see the PiP MARK above).
-    func videoNativeSize() -> CGSize? {
-        guard let mp = primaryState.mediaPlayer, let fn = _videoGetSize else { return nil }
+    /// Returns the given slot's video native pixel dimensions once decoding has started; nil
+    /// otherwise. Defaults to .primary (its only caller before 2026-09-19); tickSecondary() also
+    /// calls this with .secondary to publish secondaryVideoPixelSize for the PiP thumbnail's own
+    /// aspect ratio (see the PiP MARK above).
+    func videoNativeSize(slot: PlayerSlot = .primary) -> CGSize? {
+        guard let mp = self[slot].mediaPlayer, let fn = _videoGetSize else { return nil }
         var w: UInt32 = 0
         var h: UInt32 = 0
         guard fn(mp, 0, &w, &h) == 0, w > 0, h > 0 else { return nil }
@@ -1004,6 +1011,12 @@ final class VLCBridge: ObservableObject {
             secondaryHasEnded  = false
             glog("[VLC] secondary stream playing confirmed")
         }
+        // Cheap single libvlc call (matching tickPrimary's own videoNativeSize() poll) — needed so
+        // the thumbnail's own box can be sized to the secondary stream's actual aspect ratio
+        // instead of assuming 16:9 (see pipThumbnailSize, VLCPlayerView.swift). nil before the
+        // first decoded frame, same as videoPixelSize for the primary.
+        let newSize = videoNativeSize(slot: .secondary)
+        if newSize != secondaryVideoPixelSize { secondaryVideoPixelSize = newSize }
     }
 
     private func tickPrimary() {

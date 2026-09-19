@@ -1065,7 +1065,20 @@ struct VLCPlayerView: View {
     // to whichever corner `pipCorner` holds (right-click the thumbnail to change it) using the
     // same "Spacer()+padding+.ultraThinMaterial" idiom as the recording scrub bar/fullscreen
     // toolbar overlays above, not new chrome.
-    private static let pipThumbnailSize = CGSize(width: 192, height: 108)   // fixed 16:9
+    // Sized to the secondary stream's own native aspect ratio once known
+    // (bridge.secondaryVideoPixelSize — published by tickSecondary(), nil until the first decoded
+    // frame) rather than assuming 16:9, so a 4:3 (or any other) channel's thumbnail is shaped to
+    // match instead of always being letterboxed/pillarboxed inside a fixed 16:9 box. Width fixed;
+    // height follows the ratio. Falls back to 16:9 before real dimensions are known.
+    private static let pipThumbnailMaxWidth: CGFloat = 192
+
+    private var pipThumbnailSize: CGSize {
+        guard let native = bridge.secondaryVideoPixelSize, native.width > 0, native.height > 0 else {
+            return CGSize(width: Self.pipThumbnailMaxWidth, height: (Self.pipThumbnailMaxWidth * 9 / 16).rounded())
+        }
+        let height = (Self.pipThumbnailMaxWidth * native.height / native.width).rounded()
+        return CGSize(width: Self.pipThumbnailMaxWidth, height: height)
+    }
 
     private var pipOverlay: some View {
         VStack {
@@ -1097,7 +1110,7 @@ struct VLCPlayerView: View {
                                     .tint(.white)
                             }
                         }
-                        .frame(width: Self.pipThumbnailSize.width, height: Self.pipThumbnailSize.height)
+                        .frame(width: pipThumbnailSize.width, height: pipThumbnailSize.height)
                         .background(Color.black)
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.white.opacity(0.25)))

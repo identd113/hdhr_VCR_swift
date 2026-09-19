@@ -353,8 +353,13 @@ primary-only, so a swap's scrub-bar anchor always describes whichever URL is *cu
 
 **Layout**: composited as a `ZStack` sibling in `VLCPlayerView.body`, pinned to whichever corner
 `pipCorner` holds via the same `Spacer()+padding+.ultraThinMaterial` idiom as the recording scrub
-bar / fullscreen toolbar overlays — not new chrome (see "Positioning the thumbnail" below). Fixed 192×108
-(16:9) size (`pipThumbnailSize`), video-only (`VLCSecondaryVideoSurface`), a small spinner/error/
+bar / fullscreen toolbar overlays — not new chrome (see "Positioning the thumbnail" below). Fixed
+192pt-wide, height following the secondary stream's own native aspect ratio (`pipThumbnailSize`,
+computed from `bridge.secondaryVideoPixelSize` — published by `tickSecondary()`'s own
+`videoNativeSize(slot: .secondary)` poll, mirroring `tickPrimary`'s `videoPixelSize`; falls back to
+16:9 before the first decoded frame, since libvlc hasn't reported real dimensions yet) rather than
+assuming every channel is 16:9 — a 4:3 source gets a 4:3 thumbnail, not letterboxed inside a wider
+box. Video-only (`VLCSecondaryVideoSurface`), a small spinner/error/
 ended glyph keyed off `bridge.secondaryIsPlaying`/`secondaryHasError`/`secondaryHasEnded` (the
 `libvlc_Ended`, state-6 case — added 2026-09-19; `tickSecondary()` originally only checked for
 error and playing, so a secondary reaching EOF, e.g. a finished Watch Now recording, just froze on
