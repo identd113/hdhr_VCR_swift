@@ -1430,6 +1430,11 @@ struct VLCPlayerView: View {
             .onHover { if $0 { recordingSizeSnapshot = recordingSizeText; nativeResHovered = true } }
             .popover(isPresented: $nativeResHovered, arrowEdge: .bottom) { nativeResPopover }
 
+            // Group dividers, added 2026-09-19 (reported "crowded") — purely visual breathing room
+            // between logical clusters (stream state: buffer/catch-up/H.264/native — clock — volume
+            // — the existing pre-overflow divider below), no functional change to any control.
+            Divider().frame(height: 18)
+
             // Live wall-clock time. The recording scrub bar lives in a hover overlay on the video
             // instead (see body's ZStack) rather than here — it needs more room than this toolbar
             // has to spare alongside everything else.
@@ -1439,6 +1444,8 @@ struct VLCPlayerView: View {
                     .foregroundStyle(.secondary)
                     .frame(minWidth: 70)
             }
+
+            Divider().frame(height: 18)
 
             // Volume
             Image(systemName: "speaker.wave.2")
