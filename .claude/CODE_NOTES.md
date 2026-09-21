@@ -1131,6 +1131,37 @@ TODO text describing the same change); `321fdb5` is a pure doc correction, zero 
   remaining real callers already pass one trivially and reverting would be pure churn. Verified this
   self-assessment is accurate; not re-flagging as unaddressed dead-parameter risk since the team
   already reasoned through and documented the tradeoff.
+## 2026-09-20 — Standalone perf audit (idle-loop/memory/disk/CPU)
+
+- Confirmed the steady-state hot paths (`AppState.idleLoop`, `WebServer.broadcastGuideChangeEvent`/
+  `prebuildPageHTML`, `GuideStore`'s index, `ChannelIconCache`, `ChannelSignalStore`,
+  `HDHRManager`/`VirtualTunerService` discovery) are already heavily tuned — nearly every candidate
+  micro-optimization I looked for (formatter caching, `@Published` batching, dedup'd SSE
+  gzip via `concurrentMap`, cooldowns on tuner-count churn, deferred series-index sort) has already
+  been done, each with an explanatory comment citing the original `ISSUES.md`/perf-history entry.
+  Confirmed via grep (`static let ... Formatter`, `menuOpenTunerWriteCooldown`,
+  `guideOccupancyBroadcastCooldown`, `DispatchQueue.concurrentPerform` in `WebServer.swift`).
+- `AppState.startSignalScan` (`AppState.swift:5241` `batchSize = 1`, flush at `:5286`) calls
+  `ChannelSignalStore.shared.flush()` once per *single channel* rather than per batch — each flush
+  re-encodes and atomically rewrites the *entire* `channel_signal_history.json` (measured ~104KB on
+  a 106-channel lineup on this machine), so a full/forced scan does one full-file rewrite per
+  channel instead of one for the whole scan. Not steady-state (only runs on startup-resume, the
+  manual "Measure Signal" button, or the `/api` force route), and the scan itself is already
+  minutes-long from the 3×500ms per-channel network polls, so this is disk-wear/IO-count waste more
+  than a perceptible latency issue — flagged to main agent as a real but low-priority finding rather
+  than fixed here.
+- `GuideStore.fetchAndIndex` (`GuideStore.swift:160`) decodes the guide JSON and runs `buildIndex`
+  synchronously on `@MainActor` — measured in production log at ~1.4MB / ~2500 entries per device,
+  once per hour (`AppState.idleLoop`'s hour-boundary `refreshGuides()`). Not wrapped in
+  `Task.detached` unlike other CPU-bound work in this codebase (`ps` parsing, metadata sidecar
+  writes). Low frequency (hourly) but real MainActor-blocking JSON decode of a payload the same size
+  class CLAUDE.md's own efficiency guidance calls out — flagged to main agent, not fixed.
+- `ChannelIconCache.fetchAndCache`'s mem-cache overflow guard (`ChannelIconCache.swift:97`,
+  `if mem.count > 600 { mem.removeAll() }`) wipes the *entire* in-memory dict rather than evicting
+  oldest-first (unlike the disk-cache cap right below it, which does evict oldest-by-mtime). Per its
+  own comment this essentially never fires in practice (~2000 icons settle under the 600 mem-cache
+  count is actually already generous per typical lineup size) — noted as a minor inconsistency, not
+  worth a fix given how rarely it's hit.
 - Overall: FEED relay teardown (`VLCPlayerWindowManager.playerWindowDidClose`) unregisters the
   session id but doesn't force-cancel an in-flight `FeedRelayProxyDelegate`/`URLSession` directly —
   verified this is fine by design: the active proxy's cleanup is triggered transitively once
@@ -1142,3 +1173,38 @@ TODO text describing the same change); `321fdb5` is a pure doc correction, zero 
   "fires from conn.cancel() below" but there's no literal `conn.cancel()` call in that function —
   it's describing the transitive effect of `releasePlayer()` a few lines above, not a call "below."
   Cosmetic comment-accuracy nit only, not a functional issue.
+
+## 2026-09-20 — WebServer.swift standalone perf audit
+- Full-file read (4211 lines) confirmed this file is unusually well-instrumented for perf: every
+  cache invalidation point (`cachedHTML`/`cachedGridHTML`/`cachedRecordedTagsByShow`/`lastTXTDict`)
+  carries a doc comment explaining exactly which event forces a recompute and why. No new hot-path
+  issues found beyond two low-impact items (see ISSUES.md-worthy findings below, reported to main
+  agent, not written there by me).
+- `routeOnMain` case `/favicon.ico` (`WebServer.swift:2295-2300`) is the one static-asset route that
+  does NOT follow the file's own `cachedGuideCSS`/`cachedIconPNG`-style load-once pattern — it calls
+  `Data(contentsOf:)` on `Bundle.main`'s `favicon.ico` on every single hit. Low real-world impact
+  (browsers cache favicons aggressively client-side even with no `Cache-Control` header sent here,
+  and the file is tiny), but it's the one inconsistency with an otherwise-universal precedent in this
+  file — trivial fix would be a `lazy var cachedFaviconICO: Data?` mirroring `cachedIconPNG` exactly.
+- `isLocalAddress(_:)` (`WebServer.swift:4126`) calls `getifaddrs()` (a real syscall enumerating every
+  network interface) once per *newly accepted TCP connection* (not per HTTP request — keep-alive
+  means one call covers a whole browser session's worth of requests) for any non-loopback client.
+  Interfaces essentially never change at runtime, so this is a real, if minor, repeated-syscall cost
+  that a short-TTL cache (invalidated on network-change notification, or just re-checked every ~30s)
+  could eliminate — not flagged as high-impact since connection-accept rate from LAN browsers/SSE
+  clients is low relative to what this Mac idles at 24/7, but worth noting as the one per-connection
+  (not per-render/per-tick) syscall in the file that isn't cached the way everything else here is.
+- Verified clean (no leak): `feedRelaySessions` (`WebServer.swift:105`) is registered in
+  `AppState.startFeedLocalRelay` and unregistered both on session replacement (switching raw↔H.264)
+  and on player-window close (`VLCPlayerView.swift:2511-2516`, both primary and secondary slots) —
+  no path found where a session is registered and never reachably unregistered.
+- Verified clean (no extra cost): `/api/guide.json`'s per-request work (`buildGuideJSON`,
+  `WebServer.swift:3787`) still does a fresh `owner(for:)`/`isSkippedAiring`/`isNewTest` pass over
+  every entry in one device's guide window on every ~20s hdhr_guide poll (not cached) — this is
+  intentional, not an oversight: `isRecording`/`isNew` need to reflect "as of now," and the one
+  genuinely expensive sub-step (`computeRecordedTagsByShow`'s per-series disk scan) is already
+  reused from `cachedRecordedTagsByShow` per the function's own comment. `/api/now.json`
+  (`buildNowJSON`, `WebServer.swift:3532`) uses `JSONEncoder().outputFormatting = .prettyPrinted`
+  (unlike `guide.json`'s compact encoding) — confirmed intentional per `docs/WebServer.md:924`'s own
+  contrast note, and this endpoint is on-air-entries-only (small) and not polled on the same cadence,
+  so the pretty-print overhead is negligible.
