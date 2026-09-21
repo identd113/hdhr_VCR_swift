@@ -28,7 +28,7 @@ Up to **50 samples** are kept per channel (oldest dropped). Writes are debounced
 |---|---|
 | `load()` | Reads history from disk at startup. Called from `AppState.startup()`. |
 | `record(guideName:snq:)` | Appends a sample, caps at 50, updates `buckets[key]` immediately, schedules a debounced save. |
-| `flush()` | Cancels any pending debounced save and writes immediately via `Task.detached`. Called after each scan batch so partial progress survives a quit. |
+| `flush()` | Cancels any pending debounced save and writes immediately via `Task.detached`. Called by the scan loop every 10 channels (plus once more at the end) so partial progress survives a quit — see "Scan behaviour" below. |
 | `needsSample(guideName:) -> Bool` | Adaptive re-sample gate: poor → 1 day, fair → 3 days, good → 7 days. Returns `true` when no data. |
 | `stats(guideName:) -> SignalStats?` | Read-only snapshot for the tap-to-inspect popover, computed over the same last-20 window as the bucket: `bucket`, `last` SNQ, `lastSampled` (freshness), `avg`/`min`/`max`, `windowCount`, `totalCount`. `nil` when no samples. |
 
@@ -73,7 +73,7 @@ func cancelSignalScan()                    // cancels in-flight scan Task, clear
 **Scan behaviour:**
 - Processes channels **one at a time** (`batchSize = 1`) — one tuner used per step, no cross-channel interference.
 - Takes **3 SNQ readings per channel** at 500 ms intervals (~1.5 s lock time per channel).
-- Calls `flush()` after each channel so progress is saved incrementally.
+- Calls `flush()` every 10 channels (plus a final flush once the scan completes), not after every single channel — `flush()` forces an immediate full-file rewrite of `channel_signal_history.json`, so flushing per-channel meant a full scan (e.g. 106 channels) paid for ~106 full rewrites of the same file instead of ~11. Batching still bounds the "lost on crash mid-scan" window to at most 10 channels, which just re-sample on the next scan — inconsequential for this historical metadata. Fixed 2026-09-20.
 - Skips channels where `needsSample()` returns `false` (already fresh) unless `force: true`.
 - Channels that never lock a signal across all 3 polls are recorded with `snq=0` (via `record(guideName:snq: 0)`) rather than left with no data — this renders as a red 1-bar indicator instead of staying invisible, so a channel that fails to lock is visibly distinguished from one that just hasn't been scanned yet.
 - At startup, if `Signal_quality_enabled` and the store already has data (a prior scan was started), any channels still needing samples are scanned automatically.

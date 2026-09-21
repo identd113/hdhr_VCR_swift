@@ -5236,6 +5236,7 @@ final class AppState: ObservableObject {
             guard total > 0 else { glog("[Signal] scan: nothing to do (all channels fresh)"); return }
             glog("[Signal] scan starting — \(total) channel(s) need samples")
             var scanned = 0
+            var unflushedCount = 0
 
             outer: for (device, entries) in pendingByDevice {
                 let batchSize = 1
@@ -5282,8 +5283,16 @@ final class AppState: ObservableObject {
                         ChannelSignalStore.shared.record(guideName: entry.GuideName, snq: 0)
                     }
 
-                    // Flush after each batch so partial progress survives a quit.
-                    ChannelSignalStore.shared.flush()
+                    // Flush every 10 channels (not every single one) so partial progress still
+                    // survives a quit without rewriting the whole history file per channel —
+                    // flush() forces an immediate full-file write, and doing that per-channel
+                    // meant a full scan (e.g. 106 channels) cost ~106 full rewrites of the same
+                    // file instead of ~11.
+                    unflushedCount += batch.count
+                    if unflushedCount >= 10 {
+                        ChannelSignalStore.shared.flush()
+                        unflushedCount = 0
+                    }
 
                     for entry in batch {
                         let key = ChannelSignalStore.key(for: entry.GuideName)
@@ -5294,6 +5303,9 @@ final class AppState: ObservableObject {
                 }
             }
 
+            if unflushedCount > 0 {
+                ChannelSignalStore.shared.flush()
+            }
             glog("[Signal] scan complete — \(scanned) channel(s) sampled")
             await MainActor.run { signalScanProgress = nil }
         }
