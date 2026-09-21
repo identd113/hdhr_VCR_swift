@@ -2,7 +2,7 @@
 
 Single source of truth for all guide data. `AppState` holds `let guideStore = GuideStore()` and mirrors channel data into `@Published var guideByDevice` after each load.
 
-All methods run on `@MainActor`. Network calls yield the actor during I/O; state is only written after the response arrives.
+All methods run on `@MainActor`, with one deliberate exception: `prepareIndex(deviceId:channels:)` (see "Fetch → Index Pipeline" below) is `nonisolated static` and runs off the actor, specifically so a large guide decode/sort doesn't block the actor that also serves WebServer requests. Network calls yield the actor during I/O; state is only written after the response arrives.
 
 ---
 
@@ -26,7 +26,7 @@ Returns `nil` if neither DeviceAuth nor LocalIP is available (logs a diagnostic)
 
 | Index | Key | Value |
 |---|---|---|
-| `channelsByDevice` | `deviceId` | `[GuideChannel]` — mirrored into `AppState.guideByDevice`; Guide arrays are pre-sorted by `StartTime` by `buildIndex`; each entry has `deviceId` and `channelNum` stamped on it |
+| `channelsByDevice` | `deviceId` | `[GuideChannel]` — mirrored into `AppState.guideByDevice`; Guide arrays are pre-sorted by `StartTime` by `prepareIndex` (see "Fetch → Index Pipeline" below); each entry has `deviceId` and `channelNum` stamped on it |
 | `channelEntryIndex` | `"deviceId:channelNum"` | `[GuideEntry]` sorted by `StartTime` |
 | `seriesIndex` | `seriesID` | `[SeriesMatch]` sorted by `StartTime` (lazily — sorted on first query per series, not at build time); each carries `deviceId`, `channelNum`, `entry` |
 | `unsortedSeries` | — | `Set<String>` of series IDs needing sort on next `nextEpisode`/`nextEpisodes`/`currentEpisode` call |
@@ -52,9 +52,20 @@ func invalidateAll()
 
 `load()` logs: URL fetched, HTTP status + byte count + ms, channel count + total entry count, and a warning if all channels have zero entries. On parse failure the full raw response (up to 2000 chars) is logged at `.error`. No verbose/debug mode — there is no `verbose` flag.
 
+## Fetch → Index Pipeline
+
+`fetchAndIndex(id:url:parse:)` (the shared scaffolding behind `load()`/`loadXMLTV()`) splits the actual indexing work into two functions, added 2026-09-20 specifically to keep a large guide decode/sort off the main actor:
+
+- **`prepareIndex(deviceId:channels:)`** — `nonisolated static`, pure. Sorts each channel's `Guide` array by `StartTime`, stamps `deviceId`/`channelNum` on every entry (see "Entry Stamping" below), and builds this device's own slice of `channelEntryIndex`/`seriesIndex` entries into a plain `PreparedIndex` value. Touches no `GuideStore` instance state, so it's safe to run inside `Task.detached` — which is exactly what `fetchAndIndex` does, after the JSON/XMLTV `parse` closure runs, so the CPU-heavy decode+sort for a payload that can be ~1.4MB/~2500 entries never blocks the actor that also serves nearly every `WebServer` request.
+- **`applyIndex(_:)`** — instance method, `@MainActor`. Takes the `PreparedIndex` from the background task and does the actual merge: prunes this device's stale entries from `channelEntryIndex`/`seriesIndex`, then writes in the fresh ones and assigns `channelsByDevice[deviceId]`. Cheap (dictionary inserts over one device's own entries) compared to the sort/decode that already happened, so it's fine to run on the actor.
+
+**`buildIndex(deviceId:channels:)` still exists but is off the live fetch path** — it's now just `applyIndex(Self.prepareIndex(deviceId: deviceId, channels: channels))`, kept as a synchronous, single-call convenience specifically for tests that want to seed guide data directly (see its own doc comment — `SnapshotTests.swift`'s `watchNowOnAir` case is the reason it's `internal`, not `private`). Production loads (`fetchAndIndex`, and therefore every `load()`/`loadXMLTV()`/`loadAll()` call) go through `prepareIndex`/`applyIndex` directly, not through `buildIndex`. Any reference elsewhere in the docs to "`buildIndex` stamps/sorts/atomically replaces…" describing the *live* guide-refresh path should be read as `prepareIndex`+`applyIndex` together — `buildIndex` the symbol is only still exercised by tests.
+
+---
+
 `currentEntryByTitle`/`nextEntryByTitle` compare `Show.seriesTitle(from: $0.Title) == title`, not raw equality — `title` is the stored `show_title`, which for a series show has already had any episode-specific suffix stripped by `Show.seriesTitle(from:)` (see `docs/AddShowView.md`'s `save()` entry), but an individual guide entry missing SeriesID can still carry that suffix on its raw `Title`. Stripping `entry.Title` the same way before comparing keeps both sides in series-name-only form — an exact `$0.Title == title` would otherwise never match once the stored title is stripped.
 
-`channelNum`/`deviceId` are applied *independently*, like `currentEpisode`/`nextEpisode` — each defaults `nil` to mean "any," and only a genuinely non-nil pair takes the fast per-channel `"deviceId:channelNum"` bucket lookup (`channelEntryIndex[...]`); any other combination (both `nil`, or just one set) falls through to a scan of `titleFallbackScanKeys(deviceId:)` (private) — that device's channels in lineup order, or every known device (sorted by ID, each in its own lineup order) when `deviceId` is also `nil` — filtering on each matching `GuideEntry`'s own stamped `deviceId`/`channelNum` fields only for whichever side was actually supplied. This matters for SeriesID(All) shows, which pass a fixed `deviceId` (their one assigned tuner) but `channelNum: nil` (any channel on it) — an earlier version only applied either filter when *both* were non-nil, which would have silently ignored `deviceId` entirely for that combination and scanned every device instead of just the assigned one. `titleFallbackScanKeys` exists specifically for determinism: an earlier version scanned `channelEntryIndex.values.flatMap` directly — dictionary iteration order, which can reorder across `buildIndex` rebuilds — so a multi-channel simulcast tie (e.g. "Local News" airing on two channels of one tuner) could silently pick a different channel on different guide reloads; `currentEntryByTitle` also gained a `preferUnrecorded`/`preferFavorite` tie-break (checked across every candidate for `currentEntryByTitle`, since all are inherently concurrent; narrowed to the StartTime-tied prefix first for `nextEntryByTitle`) mirroring `currentEpisode`/`nextEpisode`'s own — see `issues_resolved.md`'s "`GuideStore.currentEntryByTitle`/`nextEntryByTitle` picked a non-deterministic channel" entry.
+`channelNum`/`deviceId` are applied *independently*, like `currentEpisode`/`nextEpisode` — each defaults `nil` to mean "any," and only a genuinely non-nil pair takes the fast per-channel `"deviceId:channelNum"` bucket lookup (`channelEntryIndex[...]`); any other combination (both `nil`, or just one set) falls through to a scan of `titleFallbackScanKeys(deviceId:)` (private) — that device's channels in lineup order, or every known device (sorted by ID, each in its own lineup order) when `deviceId` is also `nil` — filtering on each matching `GuideEntry`'s own stamped `deviceId`/`channelNum` fields only for whichever side was actually supplied. This matters for SeriesID(All) shows, which pass a fixed `deviceId` (their one assigned tuner) but `channelNum: nil` (any channel on it) — an earlier version only applied either filter when *both* were non-nil, which would have silently ignored `deviceId` entirely for that combination and scanned every device instead of just the assigned one. `titleFallbackScanKeys` exists specifically for determinism: an earlier version scanned `channelEntryIndex.values.flatMap` directly — dictionary iteration order, which can reorder across guide rebuilds — so a multi-channel simulcast tie (e.g. "Local News" airing on two channels of one tuner) could silently pick a different channel on different guide reloads; `currentEntryByTitle` also gained a `preferUnrecorded`/`preferFavorite` tie-break (checked across every candidate for `currentEntryByTitle`, since all are inherently concurrent; narrowed to the StartTime-tied prefix first for `nextEntryByTitle`) mirroring `currentEpisode`/`nextEpisode`'s own — see `issues_resolved.md`'s "`GuideStore.currentEntryByTitle`/`nextEntryByTitle` picked a non-deterministic channel" entry.
 
 `nextEpisodes` gained the same `channelNum`/`deviceId` filter pair 2026-08-20 (both default `nil`, unfiltered — the original signature's behavior). `AppState.rebuildMenuEntries()`'s `menuUpcomingSlots` computation passes the show's own `channelNum`/`hdhr_record` so the menu bar's "Upcoming" preview can't surface a same-SeriesID airing that belongs to a *different* device — before this, a SeriesID shared across two HDHomeRuns could leak an unrelated device's slot into a show's own preview, unlabeled. `AppState.upcomingGuideEpisodes(seriesID:)` (→ `/api/airings/{seriesId}`, `AddShowView`'s "Other Upcoming Airings") deliberately keeps calling it unfiltered — that preview is meant to span every device, and labels each result with `device` in its output. The `(channelNum, StartTime)` dedup below only matters for that unfiltered case; a device-scoped call can't have more than one match per `(channelNum, StartTime)` to begin with.
 
@@ -62,7 +73,7 @@ func invalidateAll()
 
 ## Lazy Series Sort
 
-`buildIndex` appends entries into `seriesIndex` but does **not** sort them — it marks affected series in `unsortedSeries` instead. `sortIfNeeded(_:)` is called at the top of `nextEpisode`, `nextEpisodes`, and `currentEpisode`; it sorts only the queried series on first access, then removes it from `unsortedSeries`. This defers the O(series × entries log entries) sort cost from guide-load time (main-actor, synchronous) to first-query time (typically spread across the first idle-loop `rebuildMenuEntries` call after load).
+`applyIndex(_:)` appends entries into `seriesIndex` but does **not** sort them — it marks affected series in `unsortedSeries` instead. `sortIfNeeded(_:)` is called at the top of `nextEpisode`, `nextEpisodes`, and `currentEpisode`; it sorts only the queried series on first access, then removes it from `unsortedSeries`. This defers the O(series × entries log entries) sort cost from guide-load time (main-actor, synchronous) to first-query time (typically spread across the first idle-loop `rebuildMenuEntries` call after load).
 
 `invalidateAll()` clears `unsortedSeries` entirely. (A prior `invalidate(deviceId:)` did the equivalent per-device prune, but was removed as dead code — it had no production call sites, only `invalidateAll()` is used.)
 
@@ -70,7 +81,7 @@ func invalidateAll()
 
 ## Multi-Channel Tie-Break: Unrecorded, then Favorite
 
-A SeriesID(All) show can have candidates airing on multiple channels of one device at the identical time — either the *same* episode (simulcast, or a rerun scheduled to overlap) or, on a multi-tuner device, genuinely *different* episodes of the same series airing concurrently on two channels. `seriesIndex[seriesID]` is sorted by `StartTime` only (stable sort) — with neither tie-break closure supplied, `.first` on a tie resolves to whichever channel happened to be inserted first while `buildIndex` walked that device's guide-fetch response, which is incidental, not a deliberate preference.
+A SeriesID(All) show can have candidates airing on multiple channels of one device at the identical time — either the *same* episode (simulcast, or a rerun scheduled to overlap) or, on a multi-tuner device, genuinely *different* episodes of the same series airing concurrently on two channels. `seriesIndex[seriesID]` is sorted by `StartTime` only (stable sort) — with neither tie-break closure supplied, `.first` on a tie resolves to whichever channel happened to be inserted first while `prepareIndex` walked that device's guide-fetch response, which is incidental, not a deliberate preference.
 
 `nextEpisode`/`currentEpisode` accept two optional tie-break closures, checked in this order — but the two functions now diverge on the "all candidates are already recorded" case (2026-08-19, closing a tight reschedule loop — see `issues_resolved.md`):
 
@@ -85,7 +96,7 @@ A SeriesID(All) show can have candidates airing on multiple channels of one devi
 
 ## Entry Stamping
 
-`buildIndex` stamps two non-Codable fields on every `GuideEntry` after sorting:
+`prepareIndex` stamps two non-Codable fields on every `GuideEntry` after sorting:
 
 - `entry.deviceId` — set to the owning device's `DeviceID`
 - `entry.channelNum` — set to the channel's `GuideNumber`

@@ -157,7 +157,7 @@ final class GuideStore {
     /// guards stay in each caller (not here) so their exact glog lines/ordering are unaffected by
     /// this refactor. `parse` returns nil on failure — it owns its own failure logging, since the
     /// JSON and XMLTV parse-failure messages intentionally read differently.
-    private func fetchAndIndex(id: String, url: URL, parse: (Data) -> [GuideChannel]?) async -> Bool {
+    private func fetchAndIndex(id: String, url: URL, parse: @escaping @Sendable (Data) -> [GuideChannel]?) async -> Bool {
         loadingDevices.insert(id)
         defer { loadingDevices.remove(id) }
 
@@ -180,9 +180,17 @@ final class GuideStore {
                 return false
             }
 
-            guard let channels = parse(data) else { return false }
+            // JSON/XMLTV decode + per-channel sort scale with GuideHours/lineup size (~1.4MB,
+            // ~2500 entries per device isn't unusual) — run off the main actor so a big guide
+            // fetch (this runs hourly per device) doesn't block WebServer requests or the UI for
+            // the duration of the parse. Only the final dictionary merge (applyIndex) needs
+            // MainActor, since it reads/mutates existing instance state.
+            guard let prepared = await Task.detached(priority: .utility, operation: { () -> PreparedIndex? in
+                guard let channels = parse(data) else { return nil }
+                return Self.prepareIndex(deviceId: id, channels: channels)
+            }).value else { return false }
 
-            buildIndex(deviceId: id, channels: channels)
+            applyIndex(prepared)
             loadTimestamps[id] = Date()
             glog("[\(id)] index built and timestamp set — guide ready")
             return true
@@ -218,32 +226,33 @@ final class GuideStore {
     // internal (not private) so tests can seed real on-air guide entries directly — needed to
     // exercise WatchNowView's ScrollView branch, which only appears once onAirNow() finds a
     // currently-airing entry. See SnapshotTests.swift's watchNowOnAir case.
+    //
+    // Split into prepareIndex (pure, off-actor-safe — the CPU-heavy sort) + applyIndex (the
+    // MainActor merge into existing instance state) so fetchAndIndex can run the heavy part in
+    // Task.detached; buildIndex itself just chains them synchronously for callers (tests) that
+    // want the old all-at-once behavior.
     func buildIndex(deviceId: String, channels: [GuideChannel]) {
-        // Drop stale entries for this device from series index
-        for key in seriesIndex.keys {
-            seriesIndex[key]?.removeAll { $0.deviceId == deviceId }
-        }
-        seriesIndex = seriesIndex.filter { !$1.isEmpty }
+        applyIndex(Self.prepareIndex(deviceId: deviceId, channels: channels))
+    }
 
-        // Drop this device's channelEntryIndex keys for channels no longer in the fresh fetch —
-        // same idea as the seriesIndex prune above. Without this, a channel dropped from a
-        // device's lineup between fetches left its old "device:channel" entry lingering with
-        // stale data instead of being cleared, for up to the last fetch's GuideHours window.
-        let freshChannelNumbers = Set(channels.map(\.GuideNumber))
-        let devicePrefix = "\(deviceId):"
-        for key in channelEntryIndex.keys where key.hasPrefix(devicePrefix) {
-            let channelNum = String(key.dropFirst(devicePrefix.count))
-            if !freshChannelNumbers.contains(channelNum) {
-                channelEntryIndex.removeValue(forKey: key)
-            }
-        }
+    // A device's fetch result, pre-sorted and pre-indexed but not yet merged into GuideStore's
+    // instance dictionaries. Plain Sendable data so it can cross the actor boundary from
+    // Task.detached back to applyIndex.
+    private struct PreparedIndex {
+        let deviceId: String
+        let sortedChannels: [GuideChannel]
+        let channelEntryIndex: [String: [GuideEntry]]  // this device's channels only
+        let seriesEntries: [String: [SeriesMatch]]      // seriesID → matches, this device only
+    }
 
-        glog("[\(deviceId)] buildIndex: \(channels.count) channels")
-
-        // Sort each channel's Guide in-place so consumers read pre-sorted data.
+    // Sort each channel's Guide and build this device's slice of the two indexes. No access to
+    // GuideStore's instance state — safe to run off the main actor.
+    nonisolated private static func prepareIndex(deviceId: String, channels: [GuideChannel]) -> PreparedIndex {
         var sortedChannels = channels
+        var channelEntryIndex: [String: [GuideEntry]] = [:]
+        var seriesEntries: [String: [SeriesMatch]] = [:]
         for i in sortedChannels.indices {
-            let key    = "\(deviceId):\(sortedChannels[i].GuideNumber)"
+            let key = "\(deviceId):\(sortedChannels[i].GuideNumber)"
             guard let guide = sortedChannels[i].Guide else {
                 channelEntryIndex[key] = []
                 continue
@@ -257,13 +266,50 @@ final class GuideStore {
             channelEntryIndex[key]  = sorted
             for entry in sorted {
                 guard let sid = entry.SeriesID else { continue }
-                seriesIndex[sid, default: []].append(
-                    SeriesMatch(deviceId: deviceId, channelNum: sortedChannels[i].GuideNumber, entry: entry)
+                seriesEntries[sid, default: []].append(
+                    SeriesMatch(deviceId: deviceId, channelNum: chNum, entry: entry)
                 )
-                unsortedSeries.insert(sid)
             }
         }
-        channelsByDevice[deviceId] = sortedChannels
+        return PreparedIndex(deviceId: deviceId, sortedChannels: sortedChannels,
+                              channelEntryIndex: channelEntryIndex, seriesEntries: seriesEntries)
+    }
+
+    // Merges a prepared device fetch into the shared indexes. Cheap (dictionary inserts over
+    // this device's own entries) compared to the sort/decode that already happened — fine to run
+    // on the main actor.
+    private func applyIndex(_ prepared: PreparedIndex) {
+        let deviceId = prepared.deviceId
+
+        // Drop stale entries for this device from series index
+        for key in seriesIndex.keys {
+            seriesIndex[key]?.removeAll { $0.deviceId == deviceId }
+        }
+        seriesIndex = seriesIndex.filter { !$1.isEmpty }
+
+        // Drop this device's channelEntryIndex keys for channels no longer in the fresh fetch —
+        // same idea as the seriesIndex prune above. Without this, a channel dropped from a
+        // device's lineup between fetches left its old "device:channel" entry lingering with
+        // stale data instead of being cleared, for up to the last fetch's GuideHours window.
+        let freshChannelNumbers = Set(prepared.sortedChannels.map(\.GuideNumber))
+        let devicePrefix = "\(deviceId):"
+        for key in channelEntryIndex.keys where key.hasPrefix(devicePrefix) {
+            let channelNum = String(key.dropFirst(devicePrefix.count))
+            if !freshChannelNumbers.contains(channelNum) {
+                channelEntryIndex.removeValue(forKey: key)
+            }
+        }
+
+        glog("[\(deviceId)] buildIndex: \(prepared.sortedChannels.count) channels")
+
+        for (key, entries) in prepared.channelEntryIndex {
+            channelEntryIndex[key] = entries
+        }
+        for (sid, matches) in prepared.seriesEntries {
+            seriesIndex[sid, default: []].append(contentsOf: matches)
+            unsortedSeries.insert(sid)
+        }
+        channelsByDevice[deviceId] = prepared.sortedChannels
         // Series sort is deferred to first query via sortIfNeeded(_:) — avoids
         // O(series × entries log entries) on the main actor at guide load time.
     }
