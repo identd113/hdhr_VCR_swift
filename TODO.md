@@ -75,6 +75,35 @@ closed out.
 
 ---
 
+### Chromecast casting + AirPlay discoverability — built 2026-09-20, not yet live-tested against real hardware
+
+Next step in the same "watch your stuff from more places" theme as FEED/PiP. AirPlay
+*video* via a clean one-click native API (`AVRoutePickerView`) was investigated and
+found infeasible without replacing the whole VLC-based playback engine with `AVPlayer`
+— a separate, much larger project, out of scope. What shipped instead:
+
+- Real Chromecast casting for Watch Now/FEED via libvlc's own built-in `"chromecast"`
+  renderer-discovery module (mDNS-based — the same mechanism VLC's desktop app uses).
+  New "Cast" entry in the player's "…" overflow menu. See `docs/VLCBridge.md`'s
+  "Chromecast / Renderer Discovery" section and `docs/VLCPlayerView.md`'s toolbar
+  section for the full design.
+- AirPlay speakers are now labeled `" (AirPlay)"` in the existing Audio Output picker
+  (`systemAudioOutputDevices()` now reports `isAirPlay` via CoreAudio's transport-type
+  property).
+- The existing (already-working) AirPlay-video flow — Control Center → Screen
+  Mirroring, then this app's own Display submenu moves the window onto that display —
+  is now easier to find: a tip row inside the Display submenu plus a `.help()` tooltip.
+
+Built and manually verified only via `swift build`/`swift test` (including new pure-
+function coverage in `Tests/hdhr_VCRTests/VLC/VLCBridgeCastDeviceListTests.swift`) —
+**not yet tested against a real Chromecast**. Before considering this closed out, run
+through `docs/VLCBridge.md`'s manual verification list with an actual device on the
+LAN: device discovery latency, actually casting, switching channels while casting,
+returning to local playback, the device disappearing mid-cast, and relaunch leaving no
+stale casting state.
+
+---
+
 ### More insistent tuner release for the yield-to-record flow — without killing anything
 
 Flagged 2026-09-11/12: the Watch Now yield-tuner-to-Record flow's tuner-free wait (`AppState.recordAfterYieldingWatchNow`'s tuner-free poll) is genuinely variable in practice — live-tested twice post-`yieldingWatchNowDeviceID`-fix, once resolving in ~1s, once taking 16s (cross-machine re-test, see `issues_resolved.md`'s follow-up on that entry) — because the real HDHomeRun device only frees a port-5004 tuner once it notices the underlying TCP connection actually closed, and that detection isn't instant. A raw `kill -9` on a recording's own curl process frees the same tuner immediately by comparison, but killing anything here isn't an option — `VLCBridge` is a shared, long-lived libvlc engine used for all playback in the app, not a disposable per-stream process like a recording's curl; killing it would tear down far more than just this one connection.

@@ -126,7 +126,7 @@ struct VLCPlayerView: View {
     @AppStorage("vlcVolume") private var volume: Double = 50
     // PiP thumbnail's pinned corner — set via its own right-click context menu (pipCornerMenu).
     @AppStorage("vlcPipCorner") private var pipCorner: PipCorner = .bottomTrailing
-    @State private var systemDevices: [(id: String, name: String)] = []
+    @State private var systemDevices: [(id: String, name: String, isAirPlay: Bool)] = []
     @State private var selectedDevice: String = ""
     @State private var availableScreens: [NSScreen] = []
     @State private var posterHidden: Bool = false
@@ -704,6 +704,7 @@ struct VLCPlayerView: View {
             VLCBridge.shared.setVolume(0)   // muted until Start is clicked
             refreshAudioDevices()
             VLCBridge.shared.startDeviceChangeMonitoring { refreshAudioDevices() }
+            VLCBridge.shared.startCastDiscovery()
             syncChannel(to: initialURL)
             let cc = MPRemoteCommandCenter.shared()
             cc.stopCommand.isEnabled = true
@@ -820,6 +821,7 @@ struct VLCPlayerView: View {
             glog("[VLC] VLCPlayerView.onDisappear")
             VLCBridge.shared.releasePlayer()
             VLCBridge.shared.stopDeviceChangeMonitoring()
+            VLCBridge.shared.stopCastDiscovery()
             MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
             MPNowPlayingInfoCenter.default().playbackState  = .stopped
             let cc = MPRemoteCommandCenter.shared()
@@ -1636,7 +1638,13 @@ struct VLCPlayerView: View {
             let hasCaptionChoice = !bridge.spuTracks.isEmpty && bridge.recordingShowId == nil
             let hasOutputChoice = !systemDevices.isEmpty
             let hasDisplayChoice = availableScreens.count > 1
-            if hasAudioTrackChoice || hasCaptionChoice || hasOutputChoice || hasDisplayChoice {
+            // Unlike the other three, this doesn't hide when empty — Chromecast discovery is
+            // async LAN mDNS and can take several seconds, so a menu entry that sometimes exists
+            // and sometimes doesn't (purely based on discovery timing) would read as broken
+            // rather than "not applicable." Always offered once VLC itself is available;
+            // discovery result only affects the submenu's *contents*.
+            let hasCastEntry = bridge.isAvailable
+            if hasAudioTrackChoice || hasCaptionChoice || hasOutputChoice || hasDisplayChoice || hasCastEntry {
                 Divider().frame(height: 18)
                 Menu {
                     // Captions listed first — moved to the top 2026-09-19 per explicit request
@@ -1686,28 +1694,63 @@ struct VLCPlayerView: View {
                     if hasOutputChoice {
                         Menu {
                             ForEach(systemDevices, id: \.id) { dev in
+                                // AirPlay speakers get a name suffix, not a second icon — a Menu
+                                // row only renders one Label/systemImage slot (checkmark or
+                                // plain), so a second badge glyph has nowhere to go.
+                                let label = dev.isAirPlay ? "\(dev.name) (AirPlay)" : dev.name
                                 Button {
                                     selectedDevice = dev.id
                                     VLCBridge.shared.setAudioDevice(output: "auhal", deviceId: dev.id)
                                 } label: {
-                                    if dev.id == selectedDevice { Label(dev.name, systemImage: "checkmark") }
-                                    else { Text(dev.name) }
+                                    if dev.id == selectedDevice { Label(label, systemImage: "checkmark") }
+                                    else { Text(label) }
                                 }
                             }
                         } label: { Label("Audio Output", systemImage: "airplayaudio") }
                         .accessibilityIdentifier("vlc-audio-output-picker")
                     }
-                    // Move-to-display — connect an AirPlay display via Control Center → Screen
-                    // Mirroring first for it to show up here.
                     if hasDisplayChoice {
                         Menu {
+                            // Plain, non-interactive tip row — a Button (e.g. InfoButton) here
+                            // would dismiss this submenu the instant it's tapped, since any
+                            // Button inside a SwiftUI Menu closes the enclosing menu. A bare Text
+                            // with no action renders inert, same idea as a disabled row.
+                            Text("Tip: connect via Control Center → Screen Mirroring first")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                             ForEach(availableScreens, id: \.displayID) { screen in
                                 Button(screen.localizedName) {
                                     VLCPlayerWindowManager.shared.moveToScreen(screen)
                                 }
                             }
                         } label: { Label("Display", systemImage: "airplayvideo") }
+                        .help("Connect an Apple TV or AirPlay-capable TV via Control Center → Screen Mirroring first, then pick it here to move playback to that display.")
                         .accessibilityIdentifier("vlc-display-menu")
+                    }
+                    if hasCastEntry {
+                        Menu {
+                            if bridge.castDevices.isEmpty {
+                                Text("No devices found").foregroundStyle(.secondary)
+                            } else {
+                                // "This Mac" is the explicit off-state row (same shape as the
+                                // Captions picker's own "Off" row above), not a separate action.
+                                Button {
+                                    VLCBridge.shared.stopCasting()
+                                } label: {
+                                    if bridge.castingDeviceID == nil { Label("This Mac", systemImage: "checkmark") }
+                                    else { Text("This Mac") }
+                                }
+                                ForEach(bridge.castDevices, id: \.id) { dev in
+                                    Button {
+                                        VLCBridge.shared.castTo(deviceID: dev.id)
+                                    } label: {
+                                        if dev.id == bridge.castingDeviceID { Label(dev.name, systemImage: "checkmark") }
+                                        else { Text(dev.name) }
+                                    }
+                                }
+                            }
+                        } label: { Label("Cast", systemImage: "tv") }
+                        .accessibilityIdentifier("vlc-cast-picker")
                     }
                 } label: {
                     Image(systemName: "ellipsis.circle")
@@ -1715,7 +1758,7 @@ struct VLCPlayerView: View {
                 }
                 .menuStyle(.borderlessButton)
                 .frame(maxWidth: 24)
-                .help("Audio, captions, output, and display options")
+                .help("Audio, captions, output, display, and cast options")
                 .accessibilityLabel("More options")
                 .accessibilityIdentifier("vlc-more-options-menu")
             }
@@ -2497,6 +2540,7 @@ final class VLCPlayerWindowManager {
         // Stop audio listener before releasing the player — windowWillClose fires before onDisappear,
         // so without this the CoreAudio callback fires into a partially torn-down view.
         VLCBridge.shared.stopDeviceChangeMonitoring()
+        VLCBridge.shared.stopCastDiscovery()
         VLCBridge.shared.releasePlayer() // full teardown — releases mediaPlayer and nils currentURL; Combine auto-clears vlcCurrentURL
         VLCBridge.shared.releasePlayer(slot: .secondary) // PiP secondary shares this one window — tear it down too
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }

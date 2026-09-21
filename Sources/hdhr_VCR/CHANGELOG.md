@@ -2,6 +2,15 @@
 
 Every entry is tagged **Added** (something new), **Updated** (existing behavior changed, improved, or fixed), **Removed** (something taken away), or **Info** (a note — nothing to do, nothing visibly different).
 
+## Unreleased
+
+**Added**
+- **Cast to Chromecast.** The in-app player's "…" menu now has a "Cast" entry that finds Chromecast devices on your LAN and sends Watch Now/FEED playback to them — pick "This Mac" to return to local playback. Not yet tested against a real Chromecast (built and verified via `swift build`/`swift test` only).
+
+**Updated**
+- **AirPlay speakers are now labeled in the Audio Output menu** (e.g. "Living Room (AirPlay)") instead of showing just a plain device name.
+- **The player's Display menu (for AirPlay video via Screen Mirroring) now explains itself in-app** — a short tip and tooltip pointing at Control Center → Screen Mirroring, instead of relying on you already knowing that step.
+
 ## v2.5.0 — 2026-09-19
 
 **Removed**

@@ -89,6 +89,85 @@ private func vlcLogCallback(_ data: UnsafeMutableRawPointer?, _ level: Int32, _ 
     glog("[VLC-core L\(level)] \(message)")
 }
 
+// ── Renderer discoverer (Chromecast casting) ─────────────────────────────────
+// First use of libvlc's generic event-manager API in this file — no other symbol here goes
+// through libvlc_event_attach/_detach. Renderer discovery finds Chromecast (and other
+// libvlc-supported renderer) targets via mDNS through libvlc's own bundled "chromecast" module —
+// the exact mechanism VLC's own desktop app uses for its Playback → Renderer menu, not a
+// reimplementation of the Cast protocol. Verified 2026-09-20 against the actual installed VLC
+// 3.0.23: `libstream_out_chromecast_plugin.dylib` exists in VLC.app's plugins dir with a
+// "chromecast" name string, and every symbol below resolves via `nm` against the real
+// libvlc.dylib.
+
+private typealias vlc_rd_new_fn       = @convention(c) (OpaquePointer?, UnsafePointer<CChar>?) -> OpaquePointer?  // libvlc_renderer_discoverer_new(instance, name)
+private typealias vlc_rd_release_fn   = @convention(c) (OpaquePointer?) -> Void                                   // libvlc_renderer_discoverer_release
+private typealias vlc_rd_start_fn     = @convention(c) (OpaquePointer?) -> Int32                                  // libvlc_renderer_discoverer_start
+private typealias vlc_rd_stop_fn      = @convention(c) (OpaquePointer?) -> Void                                   // libvlc_renderer_discoverer_stop
+private typealias vlc_rd_event_mgr_fn = @convention(c) (OpaquePointer?) -> OpaquePointer?                         // libvlc_renderer_discoverer_event_manager
+private typealias vlc_event_cb        = @convention(c) (UnsafeRawPointer?, UnsafeMutableRawPointer?) -> Void      // libvlc_callback_t: void(*)(const libvlc_event_t*, void*)
+private typealias vlc_event_attach_fn = @convention(c) (OpaquePointer?, Int32, vlc_event_cb?, UnsafeMutableRawPointer?) -> Int32  // libvlc_event_attach
+private typealias vlc_event_detach_fn = @convention(c) (OpaquePointer?, Int32, vlc_event_cb?, UnsafeMutableRawPointer?) -> Void   // libvlc_event_detach
+private typealias vlc_ri_hold_fn      = @convention(c) (OpaquePointer?) -> OpaquePointer?         // libvlc_renderer_item_hold — extends lifetime past the callback
+private typealias vlc_ri_release_fn   = @convention(c) (OpaquePointer?) -> Void                    // libvlc_renderer_item_release
+private typealias vlc_ri_name_fn      = @convention(c) (OpaquePointer?) -> UnsafePointer<CChar>?   // libvlc_renderer_item_name
+private typealias vlc_mp_set_renderer_fn = @convention(c) (OpaquePointer?, OpaquePointer?) -> Int32  // libvlc_media_player_set_renderer(mp, item); item=nil restores local playback — must be called while the player is stopped, before the next play()
+
+// libvlc_event_e values from libvlc_events.h — verified 2026-09-20 directly against
+// videolan/vlc's own source at tag 3.0.23 (the exact version this app's dlopen target reported),
+// not just the commonly-cited value: libvlc_MediaDiscovererStarted=0x500 (explicit in the header),
+// libvlc_MediaDiscovererEnded=0x501, libvlc_RendererDiscovererItemAdded=0x502,
+// libvlc_RendererDiscovererItemDeleted=0x503 (both implicit/sequential, no explicit assignment in
+// the enum, but stable — a C header enum used across compiled binaries can't renumber without
+// breaking every existing VLC-3.x-linked caller). These are the one spot in this section where a
+// wrong guess would be a real crash (see LibVLCEvent below), not a silent no-op like a bad symbol
+// name elsewhere in this file — reverify against the installed VLC's own source tag if VLC is
+// ever upgraded past the 3.x series.
+private let libvlc_RendererDiscovererItemAdded: Int32 = 0x502
+private let libvlc_RendererDiscovererItemDeleted: Int32 = 0x503
+
+/// Mirrors libvlc_event_t's layout for the fields this file needs: `int type; void *p_obj;` then
+/// the union. Verified 2026-09-20 against videolan/vlc's source at tag 3.0.23:
+/// `renderer_discoverer_item_added`/`_deleted` both hold exactly one field,
+/// `libvlc_renderer_item_t *item`, as the first (and only) member of their union case — so
+/// reading a single pointer at the union's start correctly captures the item regardless of which
+/// of the two event types fired. Do not extend this struct to read any other union member without
+/// re-verifying its offset; other cases in the real union have different shapes (e.g. an Int64 or
+/// a Float instead of a second pointer), and this mirror's field count must stay in sync with
+/// whichever member the switch below actually branches on — same reasoning as VLCStats' own doc
+/// comment on mirroring a real struct's full/relevant layout rather than guessing offsets.
+private struct LibVLCEvent {
+    var type: Int32
+    var _pad: Int32                          // alignment padding before the 8-byte-aligned pointer
+    var p_obj: UnsafeMutableRawPointer?
+    var rendererItem: OpaquePointer?         // renderer_discoverer_item_added/_deleted's sole field
+}
+
+private final class RendererDiscovererContext {
+    let onItemAdded:   (OpaquePointer) -> Void
+    let onItemDeleted: (OpaquePointer) -> Void
+    init(onItemAdded: @escaping (OpaquePointer) -> Void, onItemDeleted: @escaping (OpaquePointer) -> Void) {
+        self.onItemAdded = onItemAdded
+        self.onItemDeleted = onItemDeleted
+    }
+}
+
+// Fires on an arbitrary libvlc-internal thread — same category as audioDeviceChangeProc below.
+// Hops to MainActor via Task (this file's dominant idiom elsewhere, e.g. play(url:)'s commit
+// tail) rather than DispatchQueue.main.async (audioDeviceChangeProc's own local choice), so any
+// @Published state touched by the closures below is only ever written from MainActor-isolated
+// code, matching every other @Published mutation in this class.
+private let rendererDiscovererEventProc: vlc_event_cb = { eventPtr, clientData in
+    guard let clientData, let eventPtr else { return }
+    let ctx = Unmanaged<RendererDiscovererContext>.fromOpaque(clientData).takeUnretainedValue()
+    let event = eventPtr.assumingMemoryBound(to: LibVLCEvent.self).pointee
+    guard let item = event.rendererItem else { return }
+    switch event.type {
+    case libvlc_RendererDiscovererItemAdded:   ctx.onItemAdded(item)
+    case libvlc_RendererDiscovererItemDeleted: ctx.onItemDeleted(item)
+    default: break
+    }
+}
+
 // ── CoreAudio device change monitoring ───────────────────────────────────────
 
 private final class AudioDeviceChangeContext {
@@ -172,6 +251,24 @@ final class VLCBridge: ObservableObject {
         set { if slot == .primary { primaryState = newValue } else { secondaryState = newValue } }
     }
     private var deviceChangeContext: AudioDeviceChangeContext?
+
+    // MARK: - Chromecast casting (renderer discovery)
+    private var rendererDiscoverer: OpaquePointer?
+    private var rendererDiscovererContext: RendererDiscovererContext?
+    // startCastDiscovery() called before libvlc_new() finishes (e.g. a Watch Now window opened
+    // during the very first VLC init of the session) would otherwise silently no-op forever —
+    // this instance's onAppear only fires once per window lifecycle, so there'd be no later retry.
+    // Mirrors the existing pendingURL idiom: init()'s Task.detached retries this once vlcInstance
+    // is actually set.
+    private var castDiscoveryPending = false
+    // Held (libvlc_renderer_item_hold'd) items, keyed by a stable per-item string id — released on
+    // stopCastDiscovery()/item-deleted. Casting is primary-slot only: the PiP secondary is a
+    // deliberately minimal, controls-free thumbnail with no toolbar of its own to host a second
+    // cast picker, and a Chromecast receiving two independent streams at once isn't a real use case.
+    private var castItemsByID: [String: OpaquePointer] = [:]
+    private var castRendererItem: OpaquePointer?   // currently applied to the primary slot, if any
+    @Published private(set) var castDevices: [(id: String, name: String)] = []
+    @Published private(set) var castingDeviceID: String? = nil   // nil = local (not casting)
 
     // MARK: - Buffer rate controller state
     /// Configured fill-phase floor for **live** streams (from AppConfig, set by VLCPlayerView).
@@ -325,6 +422,17 @@ final class VLCBridge: ObservableObject {
     private let _spuSet:           vlc_track_set_fn?   // libvlc_video_set_spu
     private let _trackDescRelease: vlc_track_rel_fn?   // libvlc_track_description_list_release
     private let _logSet:           vlc_log_set_fn?     // libvlc_log_set
+    private let _rdNew:            vlc_rd_new_fn?
+    private let _rdRelease:        vlc_rd_release_fn?
+    private let _rdStart:          vlc_rd_start_fn?
+    private let _rdStop:           vlc_rd_stop_fn?
+    private let _rdEventMgr:       vlc_rd_event_mgr_fn?
+    private let _eventAttach:      vlc_event_attach_fn?
+    private let _eventDetach:      vlc_event_detach_fn?
+    private let _riHold:           vlc_ri_hold_fn?
+    private let _riRelease:        vlc_ri_release_fn?
+    private let _riName:           vlc_ri_name_fn?
+    private let _mpSetRenderer:    vlc_mp_set_renderer_fn?
 
     private init() {
         let vlcAppURL = Self.locateApp()
@@ -376,6 +484,17 @@ final class VLCBridge: ObservableObject {
         _spuDesc          = sym("libvlc_video_get_spu_description")
         _spuSet           = sym("libvlc_video_set_spu")
         _trackDescRelease = sym("libvlc_track_description_list_release")
+        _rdNew        = sym("libvlc_renderer_discoverer_new")
+        _rdRelease    = sym("libvlc_renderer_discoverer_release")
+        _rdStart      = sym("libvlc_renderer_discoverer_start")
+        _rdStop       = sym("libvlc_renderer_discoverer_stop")
+        _rdEventMgr   = sym("libvlc_renderer_discoverer_event_manager")
+        _eventAttach  = sym("libvlc_event_attach")
+        _eventDetach  = sym("libvlc_event_detach")
+        _riHold       = sym("libvlc_renderer_item_hold")
+        _riRelease    = sym("libvlc_renderer_item_release")
+        _riName       = sym("libvlc_renderer_item_name")
+        _mpSetRenderer = sym("libvlc_media_player_set_renderer")
 
         isAvailable = h != nil && _new != nil && _mpNew != nil
         guard isAvailable else { return }
@@ -448,6 +567,7 @@ final class VLCBridge: ObservableObject {
                     self.primaryState.retainedDrawable = view
                     self.play(url: url)
                 }
+                if self.castDiscoveryPending { self.startCastDiscovery() }
             }
         }
     }
@@ -612,6 +732,10 @@ final class VLCBridge: ObservableObject {
         let playFn         = _mpPlay
         let setRateFn      = _mpSetRate
         let getRateFn      = _mpGetRate
+        let setRendererFn  = _mpSetRenderer
+        // Renderer only ever applies to the primary slot — see castRendererItem's own doc comment
+        // for why casting isn't a per-slot concept.
+        nonisolated(unsafe) let rendererToApply: OpaquePointer? = slot == .primary ? castRendererItem : nil
         nonisolated(unsafe) let mp       = playerMp
         nonisolated(unsafe) let inst     = vlcInst
         nonisolated(unsafe) let oldMedia = oldMediaCaptured
@@ -692,6 +816,9 @@ final class VLCBridge: ObservableObject {
                 opt.withCString { mediaAddOptFn?(media, $0) }
             }
             setMediaFn?(mp, media)
+            // libvlc requires the renderer be set while the player is stopped, before the next
+            // play() — this is exactly that point (stopFn already ran above, playFn hasn't yet).
+            if slot == .primary { _ = setRendererFn?(mp, rendererToApply) }
             let rc = playFn?(mp) ?? -1
             if rc != 0 { glog("[VLC] WARNING: libvlc_media_player_play(\(slot)) returned \(rc)", level: .warning) }
             if slot == .primary, targetMinRate < 1.0 {
@@ -1337,9 +1464,9 @@ final class VLCBridge: ObservableObject {
     // MARK: - System Audio Devices (CoreAudio HAL)
 
     /// All CoreAudio output devices: built-in speakers, USB, Bluetooth (AirPods etc.), AirPlay receivers.
-    /// Returns (id: CoreAudio device UID, name: display name).
+    /// Returns (id: CoreAudio device UID, name: display name, isAirPlay: transport type is AirPlay).
     /// Pass the UID to setAudioDevice(output: "auhal", deviceId: uid) to route VLC there.
-    func systemAudioOutputDevices() -> [(id: String, name: String)] {
+    func systemAudioOutputDevices() -> [(id: String, name: String, isAirPlay: Bool)] {
         var addr = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices,
                                               mScope:    kAudioObjectPropertyScopeGlobal,
                                               mElement:  kAudioObjectPropertyElementMain)
@@ -1359,7 +1486,14 @@ final class VLCBridge: ObservableObject {
                   streamSize > 0 else { return nil }
             guard let uid  = coreAudioString(deviceID, kAudioDevicePropertyDeviceUID),
                   let name = coreAudioString(deviceID, kAudioObjectPropertyName) else { return nil }
-            return (id: uid, name: name)
+            var transportAddr = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyTransportType,
+                                                            mScope:    kAudioObjectPropertyScopeGlobal,
+                                                            mElement:  kAudioObjectPropertyElementMain)
+            var transportType: UInt32 = 0
+            var transportSize = UInt32(MemoryLayout<UInt32>.size)
+            let isAirPlay = AudioObjectGetPropertyData(deviceID, &transportAddr, 0, nil, &transportSize, &transportType) == noErr
+                && transportType == kAudioDeviceTransportTypeAirPlay
+            return (id: uid, name: name, isAirPlay: isAirPlay)
         }
     }
 
@@ -1399,6 +1533,124 @@ final class VLCBridge: ObservableObject {
                                           audioDeviceChangeProc,
                                           Unmanaged.passUnretained(ctx).toOpaque())
         deviceChangeContext = nil
+    }
+
+    // MARK: - Chromecast casting
+
+    /// Starts listening for Chromecast devices on the LAN via libvlc's built-in "chromecast"
+    /// renderer-discovery module (mDNS-based — the same mechanism VLC's own desktop app uses).
+    /// Idempotent, same guard shape as startDeviceChangeMonitoring above. Called from
+    /// VLCPlayerView.onAppear; paired with stopCastDiscovery() on .onDisappear.
+    func startCastDiscovery() {
+        guard isAvailable else { return }
+        guard let inst = vlcInstance else {
+            // VLC hasn't finished loading yet (first-ever use this session) — retried once
+            // vlcInstance is actually set, see init()'s Task.detached tail.
+            castDiscoveryPending = true
+            return
+        }
+        castDiscoveryPending = false
+        guard rendererDiscoverer == nil else { return }
+        guard let rd = "chromecast".withCString({ _rdNew?(inst, $0) }) else {
+            glog("[VLC] startCastDiscovery — libvlc_renderer_discoverer_new(\"chromecast\") returned nil (module unavailable in this libvlc build)", level: .warning)
+            return
+        }
+        let ctx = RendererDiscovererContext(
+            onItemAdded:   { [weak self] item in Task { @MainActor [weak self] in self?.handleCastItemAdded(item) } },
+            onItemDeleted: { [weak self] item in Task { @MainActor [weak self] in self?.handleCastItemDeleted(item) } })
+        rendererDiscovererContext = ctx
+        if let em = _rdEventMgr?(rd) {
+            let ud = Unmanaged.passUnretained(ctx).toOpaque()
+            _ = _eventAttach?(em, libvlc_RendererDiscovererItemAdded, rendererDiscovererEventProc, ud)
+            _ = _eventAttach?(em, libvlc_RendererDiscovererItemDeleted, rendererDiscovererEventProc, ud)
+        }
+        rendererDiscoverer = rd
+        let rc = _rdStart?(rd) ?? -1
+        if rc != 0 { glog("[VLC] startCastDiscovery — libvlc_renderer_discoverer_start returned \(rc)", level: .warning) }
+    }
+
+    /// Stops discovery, releases every held renderer item, and — if something was actively
+    /// casting — falls back to local playback rather than leaving a dangling renderer reference.
+    func stopCastDiscovery() {
+        castDiscoveryPending = false
+        guard let rd = rendererDiscoverer else { return }
+        if let em = _rdEventMgr?(rd), let ctx = rendererDiscovererContext {
+            let ud = Unmanaged.passUnretained(ctx).toOpaque()
+            _eventDetach?(em, libvlc_RendererDiscovererItemAdded, rendererDiscovererEventProc, ud)
+            _eventDetach?(em, libvlc_RendererDiscovererItemDeleted, rendererDiscovererEventProc, ud)
+        }
+        _rdStop?(rd)
+        _rdRelease?(rd)
+        rendererDiscoverer = nil
+        rendererDiscovererContext = nil
+        for (_, item) in castItemsByID { _riRelease?(item) }
+        castItemsByID = [:]
+        castDevices = []
+        // Every held item was just released above — stopCasting() unconditionally clears
+        // castRendererItem/castingDeviceID even when there's nothing to reconnect to, so this
+        // can't leave either field pointing at a since-released item (see stopCasting's own doc
+        // comment; found in code review 2026-09-20).
+        stopCasting()
+    }
+
+    /// Casts the primary slot's current stream to the given discovered device. Reconnects through
+    /// the same play(url:) path (with the renderer now applied) rather than a separate pipeline.
+    func castTo(deviceID: String) {
+        guard let item = castItemsByID[deviceID], let url = currentURL else { return }
+        castRendererItem = item
+        castingDeviceID  = deviceID
+        play(url: url, slot: .primary)
+    }
+
+    /// Returns the primary slot to local playback. Always clears castRendererItem/castingDeviceID
+    /// when something was casting, even if there's nothing currently playing to reconnect —
+    /// every caller (stopCastDiscovery's release loop, handleCastItemDeleted's device-vanished
+    /// case) depends on this being unconditional. A version of this that also required
+    /// `currentURL != nil` to reset state left both fields stale (pointing at a since-released
+    /// item) whenever it no-op'd, which the next play() call anywhere would hand to
+    /// libvlc_media_player_set_renderer as a dangling pointer — found in code review 2026-09-20.
+    func stopCasting() {
+        guard castingDeviceID != nil else { return }
+        castRendererItem = nil
+        castingDeviceID  = nil
+        if let url = currentURL { play(url: url, slot: .primary) }
+    }
+
+    private func handleCastItemAdded(_ rawItem: OpaquePointer) {
+        guard let held = _riHold?(rawItem) else {
+            glog("[VLC] handleCastItemAdded — libvlc_renderer_item_hold returned nil; discovered device dropped", level: .warning)
+            return
+        }
+        let name = _riName?(held).map { String(cString: $0) } ?? "Chromecast"
+        let id = String(UInt(bitPattern: held))   // stable for this held item's lifetime
+        castItemsByID[id] = held
+        castDevices = Self.applyCastItemAdded(id: id, name: name, to: castDevices)
+    }
+
+    private func handleCastItemDeleted(_ rawItem: OpaquePointer) {
+        let id = String(UInt(bitPattern: rawItem))
+        if let held = castItemsByID.removeValue(forKey: id) {
+            if castRendererItem == held { stopCasting() }   // the device we were casting to just vanished
+            _riRelease?(held)
+        }
+        castDevices = Self.applyCastItemDeleted(id: id, from: castDevices)
+    }
+
+    /// Pure, extracted for unit testing — matches this file's own precedent (rampedFillRate,
+    /// shouldCatchUpForCorruption, spuFetchHasBudget). Renames in place if the id was already
+    /// present (a rediscovery/rename), otherwise appends.
+    nonisolated static func applyCastItemAdded(id: String, name: String, to devices: [(id: String, name: String)]) -> [(id: String, name: String)] {
+        if let idx = devices.firstIndex(where: { $0.id == id }) {
+            var updated = devices
+            updated[idx].name = name
+            return updated
+        }
+        return devices + [(id: id, name: name)]
+    }
+
+    /// Pure, extracted for unit testing. No-ops if the id isn't present.
+    nonisolated static func applyCastItemDeleted(id: String, from devices: [(id: String, name: String)]) -> [(id: String, name: String)] {
+        devices.filter { $0.id != id }
     }
 
     private func coreAudioString(_ objectID: AudioObjectID, _ selector: AudioObjectPropertySelector) -> String? {
