@@ -592,9 +592,13 @@ final class AppState: ObservableObject {
 
     private var idleTimer: Timer?
     private var statusLightTimer: Timer?
-    private var lastRefreshHour: Int?     = nil  // hour on which guide was last refreshed; triggers new refresh when hour changes
+    // When the guide was last refreshed; idleLoop triggers a new refresh once
+    // config.Guide_refresh_interval_minutes has elapsed since this (default 60 — was previously a
+    // fixed clock-hour-boundary check; now a plain elapsed-time gate so any configured interval,
+    // not just 60, is honored the same way).
+    private var lastGuideRefreshAt: Date? = nil
     // Guards the fast lineup-only retry below — separate from guideRefreshInFlight (refreshGuides'
-    // own guard) since this fires on every idle tick, not just the hourly boundary, and a
+    // own guard) since this fires on every idle tick, not just the periodic guide-refresh gate, and a
     // permission-blocked fetch is exactly the kind of call that could plausibly hang past one tick.
     private var lineupConfirmRetryInFlight = false
     // Escalating retry delay for the same fast lineup-only retry (reuses APIBackoff's 1min→5min→
@@ -1600,9 +1604,9 @@ final class AppState: ObservableObject {
             else  { guideApiBackoff[deviceId, default: APIBackoff()].recordFailure() }
         }
         let loadedCount = guideByDevice.values.reduce(0) { $0 + $1.count }
-        // Stamp the refresh hour so the first idle-loop tick doesn't immediately
+        // Stamp the refresh time so the first idle-loop tick doesn't immediately
         // re-fetch the guide that startup just loaded.
-        if loadedCount > 0 { guideRevision += 1; lastRefreshHour = Calendar.current.component(.hour, from: Date()) }
+        if loadedCount > 0 { guideRevision += 1; lastGuideRefreshAt = Date() }
         statusMessage = "\(shows.count) show(s) — \(availableDeviceCount) tuner(s) ready"
         let allChannels = guideByDevice.values.flatMap { $0 }
         Task { await prefetchChannelIcons(allChannels) }
@@ -1613,7 +1617,8 @@ final class AppState: ObservableObject {
         guard !guideRefreshInFlight else { return }
         guideRefreshInFlight = true
         // Per-device retries are handled separately by ensureGuideLoaded with exponential backoff.
-        // Hourly refresh boundary in idleLoop naturally prevents retry storms.
+        // idleLoop's periodic refresh gate (config.Guide_refresh_interval_minutes) naturally
+        // prevents retry storms.
         defer { guideRefreshInFlight = false }
         // Deliberately no guideStore.invalidateAll() here (unlike SettingsView's user-initiated
         // rescan/setting-change callers, where an immediate wipe-then-reload is expected and the
@@ -2481,10 +2486,11 @@ final class AppState: ObservableObject {
             }
         }
 
-        // Refresh lineup + guide at each hour boundary (aligned with web UI's 30-min window slide)
-        let currentHour = Calendar.current.component(.hour, from: now)
-        if lastRefreshHour != currentHour {
-            lastRefreshHour = currentHour
+        // Refresh lineup + guide once config.Guide_refresh_interval_minutes has elapsed (default 60,
+        // matching the web UI's own roughly-hourly window slide).
+        let intervalSec = TimeInterval(config.Guide_refresh_interval_minutes * 60)
+        if lastGuideRefreshAt == nil || now.timeIntervalSince(lastGuideRefreshAt!) >= intervalSec {
+            lastGuideRefreshAt = now
             Task { await refreshGuides() }
         }
         // While Local Network permission hasn't been confirmed working yet, retry the lineup
@@ -4015,7 +4021,8 @@ final class AppState: ObservableObject {
         // cleared eagerly right above (unlike refreshGuides()'s own guideStore, which is left in
         // place until fresh data lands) because this is a user-initiated "Update Guides Now" action
         // (SettingsView) — an immediate visual clear is expected here, unlike the silent automatic
-        // hourly refresh. The idle loop checks hour boundaries, so concurrent calls are naturally throttled.
+        // periodic refresh. The idle loop gates that on config.Guide_refresh_interval_minutes elapsed,
+        // so concurrent calls are naturally throttled.
         await discoverDevices()
         await refreshGuides()
     }

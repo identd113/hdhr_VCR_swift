@@ -391,6 +391,11 @@ struct AppConfig: Equatable {
     // Guide
     var GuideHours: Int          = 24       // hours ahead to fetch
     var Guide_use_xml: Bool      = false    // use XMLTV endpoint instead of JSON; triggers guide refresh on toggle
+    // How often the background auto-refresh re-fetches lineup+guide (AppState.idleLoop), independent
+    // of GuideHours (which only controls how far ahead each fetch looks). Minutes, clamped 15...240;
+    // default 60 matches the app's pre-existing fixed-hourly behavior exactly. "Update Guides Now" in
+    // Settings always bypasses this for an immediate manual refresh.
+    var Guide_refresh_interval_minutes: Int = 60
 
     // Recording
     var Default_transcode: String   = "none"  // none | heavy | mobile | internet720
@@ -543,6 +548,10 @@ extension AppConfig: Codable {
         // app on every page render (and at startup during prebuildPageHTML), not just a bad UI value.
         GuideHours            = max(1, min(28, (try? c.decode(Int.self, forKey: .GuideHours)) ?? 24))
         Guide_use_xml         = (try? c.decode(Bool.self,   forKey: .Guide_use_xml))         ?? false
+        // Clamp 15...240 — floor guards against a corrupt/hand-edited 0 or negative value driving
+        // idleLoop's elapsed-time check into refreshing on every tick; ceiling keeps a very stale
+        // setting from silently going hours longer than any UI control would ever let you pick.
+        Guide_refresh_interval_minutes = max(15, min(240, (try? c.decode(Int.self, forKey: .Guide_refresh_interval_minutes)) ?? 60))
         Default_transcode     = (try? c.decode(String.self,  forKey: .Default_transcode))     ?? "none"
         Fail_count_setting    = (try? c.decode(Int.self,     forKey: .Fail_count_setting))    ?? 3
         Min_disk_free_gb      = (try? c.decode(Double.self,  forKey: .Min_disk_free_gb))      ?? 30.0

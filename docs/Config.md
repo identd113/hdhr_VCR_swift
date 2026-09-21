@@ -28,8 +28,9 @@
 ```
 Notify_upnext           Double  35.0    minutes before show to send "Up Next" notification
 Notify_recording        Double  15.5    minutes before recording to send "Recording Soon" notification
-GuideHours              Int     24      hours of guide to fetch; also controls refresh interval; clamped to 1...28 (Settings Stepper range, and min(28,...) on decode of an old saved value) — GuideStore.load() makes a single API call and the cloud guide.php endpoint silently truncates any Duration beyond ~29h regardless of what's requested (docs/HDHRFindings.md)
+GuideHours              Int     24      hours of guide to fetch ahead — window size only, does NOT control refresh cadence (see Guide_refresh_interval_minutes below); clamped to 1...28 (Settings Stepper range, and min(28,...) on decode of an old saved value) — GuideStore.load() makes a single API call and the cloud guide.php endpoint silently truncates any Duration beyond ~29h regardless of what's requested (docs/HDHRFindings.md)
 Guide_use_xml           Bool    false   use XMLTV endpoint instead of JSON; triggers guide refresh on toggle; devices without DeviceAuth fall back to JSON
+Guide_refresh_interval_minutes Int 60   how often AppState.idleLoop's background auto-refresh re-fetches lineup+guide, independent of GuideHours; clamped 15...240; "Update Guides Now" bypasses this for an immediate manual refresh
 Default_transcode       String  "none"  none | heavy | mobile | internet720
 Fail_count_setting      Int     3       pause show after N consecutive failures
 Min_disk_free_gb        Double  30.0    refuse to record below this free space (GB)

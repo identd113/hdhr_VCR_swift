@@ -206,6 +206,9 @@ struct SettingsView: View {
         if draft.Discord_enabled     != old.Discord_enabled     { glog("[Settings] DiscordEnabled: \(old.Discord_enabled) → \(draft.Discord_enabled)") }
         if draft.Hdhr_setup_folder   != old.Hdhr_setup_folder   { glog("[Settings] SaveFolder: '\(old.Hdhr_setup_folder)' → '\(draft.Hdhr_setup_folder)'") }
         if draft.GuideHours          != old.GuideHours          { glog("[Settings] GuideHours: \(old.GuideHours) → \(draft.GuideHours)") }
+        if draft.Guide_refresh_interval_minutes != old.Guide_refresh_interval_minutes {
+            glog("[Settings] GuideRefreshIntervalMinutes: \(old.Guide_refresh_interval_minutes) → \(draft.Guide_refresh_interval_minutes)")
+        }
         if draft.Default_transcode   != old.Default_transcode   { glog("[Settings] DefaultTranscode: '\(old.Default_transcode)' → '\(draft.Default_transcode)'") }
         if draft.Virtual_tuner_relay_default_transcode != old.Virtual_tuner_relay_default_transcode {
             glog("[Settings] RelayDefaultTranscode: '\(old.Virtual_tuner_relay_default_transcode)' → '\(draft.Virtual_tuner_relay_default_transcode)'")
@@ -412,7 +415,10 @@ struct SettingsView: View {
                 // of what's requested (confirmed in docs/HDHRFindings.md) — a higher setting would
                 // look accepted but never actually fetch further out, with no error surfaced.
                 Stepper(value: $draft.GuideHours, in: 1...28) {
-                    HStack { Text("Show next \(draft.GuideHours) hours"); InfoButton("How far ahead guide data is fetched. Longer windows let you schedule further out. Capped at 28h — the cloud guide API silently truncates single-call requests beyond ~29h. The guide itself always re-fetches every hour regardless of this setting, to roll the window forward and pick up any schedule changes.") }
+                    HStack { Text("Show next \(draft.GuideHours) hours"); InfoButton("How far ahead guide data is fetched. Longer windows let you schedule further out. Capped at 28h — the cloud guide API silently truncates single-call requests beyond ~29h. See the auto-refresh interval below for how often this actually re-fetches.") }
+                }
+                Stepper(value: $draft.Guide_refresh_interval_minutes, in: 15...240, step: 15) {
+                    HStack { Text("Auto-refresh every \(draft.Guide_refresh_interval_minutes) min"); InfoButton("How often guide data is automatically re-fetched in the background, independent of the window size above. Shorter intervals catch schedule changes sooner but mean more fetches; longer intervals mean fewer fetches but schedule changes and the display window take longer to update. Default 60 min. \"Update Guides Now\" always refreshes immediately regardless of this setting.") }
                 }
                 Stepper(value: $draft.Series_scan_retry_hours, in: 1...24) {
                     HStack { Text("Series scan retry: \(draft.Series_scan_retry_hours) hr"); InfoButton("How long to wait before re-checking the guide when a series show has no matching air time yet.") }
