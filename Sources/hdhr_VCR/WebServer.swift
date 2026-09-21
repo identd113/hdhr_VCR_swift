@@ -183,6 +183,12 @@ final class WebServer: @unchecked Sendable {
         return bmp.representation(using: .png, properties: [:])
     }()
 
+    // Bundled resource, never changes at runtime — loaded once and reused, same as cachedIconPNG.
+    private lazy var cachedFaviconICO: Data? = {
+        guard let url = Bundle.main.url(forResource: "favicon", withExtension: "ico") else { return nil }
+        return try? Data(contentsOf: url)
+    }()
+
     // Guide page CSS/JS/HTML-skeleton, loaded once and reused across every buildHTML() call —
     // these are real files under Resources/ (see templateURL(_:_:)) rather than Swift string
     // literals, so they get normal syntax highlighting/linting and don't need Swift-string
@@ -2293,8 +2299,7 @@ final class WebServer: @unchecked Sendable {
             return .ok(contentType: "application/json", body: data)
 
         case "/favicon.ico":
-            if let url = Bundle.main.url(forResource: "favicon", withExtension: "ico"),
-               let data = try? Data(contentsOf: url) {
+            if let data = cachedFaviconICO {
                 return .ok(contentType: "image/x-icon", body: data)
             }
             return .notFound("favicon not found")
