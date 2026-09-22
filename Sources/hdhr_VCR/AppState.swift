@@ -5302,6 +5302,19 @@ final class AppState: ObservableObject {
             var unflushedCount = 0
 
             outer: for (device, entries) in pendingByDevice {
+                // device.statusURL is built from a discovered device's LocalIP (not fully
+                // app-controlled) — guarded rather than force-unwrapped, matching
+                // fetchDeviceStatusUncached's identical construction, so a malformed value skips
+                // this device instead of crashing the whole scan. Checked once per device, before
+                // any of its channels are counted into `scanned` — checking it per-batch instead
+                // (as a first attempt at this fix did) let `scanned` claim a channel was scanned
+                // when it was actually abandoned with no sample recorded, undercounting the final
+                // "N channel(s) sampled" log and leaving needsSample() permanently true for a
+                // channel this pass never actually touched. Found in code review 2026-09-21.
+                guard let statusURL = URL(string: device.statusURL) else {
+                    glog("[Signal] scan: skipping device \(device.DeviceID) — invalid statusURL '\(device.statusURL)'", level: .warning)
+                    continue outer
+                }
                 let batchSize = 1
                 var j = 0
                 while j < entries.count {
@@ -5317,14 +5330,6 @@ final class AppState: ObservableObject {
                     // Open one stream per channel in the batch concurrently (locks each tuner),
                     // then read status.json 3 times (500ms apart) to collect 3 SNQ samples per
                     // channel — gives the rolling average enough data on the first scan.
-                    // device.statusURL is built from a discovered device's LocalIP (not fully
-                    // app-controlled) — guarded rather than force-unwrapped, matching
-                    // fetchDeviceStatusUncached's identical construction, so a malformed value
-                    // skips this device instead of crashing the whole scan.
-                    guard let statusURL = URL(string: device.statusURL) else {
-                        glog("[Signal] scan: skipping device \(device.DeviceID) — invalid statusURL '\(device.statusURL)'", level: .warning)
-                        continue outer
-                    }
                     var gotSample = Set<String>()
                     await withTaskGroup(of: Void.self) { group in
                         for entry in batch {
