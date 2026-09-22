@@ -626,14 +626,26 @@ final class AppState: ObservableObject {
         return (nominal - jitterWindow) + jitterWindow * unitRandom
     }
 
+    /// Combines guideRefreshIntervalSeconds's nominal-interval floor with jitteredGuideRefreshIntervalSeconds's
+    /// randomization, then re-applies that same 30-minute floor to the FINAL result. Necessary because
+    /// jitteredGuideRefreshIntervalSeconds alone can return a value below the floor for any nominal
+    /// under 5400s (90 min): its jitter window can extend down to `nominal - 3600`, which dips under
+    /// 1800s for any nominal in [1800, 5400) — e.g. GuideHours=1÷divisor=8 floors nominal at exactly
+    /// 1800s, and jittering that alone can return anywhere from 0 to 1800s, defeating the floor's
+    /// entire anti-thrash purpose (an unlucky draw could re-fetch mere seconds after the last one).
+    /// Found in code review 2026-09-21. Pure, extracted for unit testing.
+    nonisolated static func effectiveGuideRefreshIntervalSeconds(guideHours: Int, divisor: Int, unitRandom: Double) -> TimeInterval {
+        let nominal = guideRefreshIntervalSeconds(guideHours: guideHours, divisor: divisor)
+        return max(30 * 60, jitteredGuideRefreshIntervalSeconds(nominal: nominal, unitRandom: unitRandom))
+    }
+
     /// Draws a fresh randomized target for the next guide refresh and stamps `lastGuideRefreshAt`.
     /// Called once per refresh cycle (startup load and every periodic refresh) — never per idle
     /// tick, so the random target stays fixed for the whole cycle instead of jittering under the
     /// elapsed-time comparison itself.
     private func armNextGuideRefresh(at now: Date) {
         lastGuideRefreshAt = now
-        let nominal = Self.guideRefreshIntervalSeconds(guideHours: config.GuideHours, divisor: config.Guide_refresh_interval_divisor)
-        guideRefreshTargetSeconds = Self.jitteredGuideRefreshIntervalSeconds(nominal: nominal, unitRandom: Double.random(in: 0..<1))
+        guideRefreshTargetSeconds = Self.effectiveGuideRefreshIntervalSeconds(guideHours: config.GuideHours, divisor: config.Guide_refresh_interval_divisor, unitRandom: Double.random(in: 0..<1))
     }
     // Guards the fast lineup-only retry below — separate from guideRefreshInFlight (refreshGuides'
     // own guard) since this fires on every idle tick, not just the periodic guide-refresh gate, and a
