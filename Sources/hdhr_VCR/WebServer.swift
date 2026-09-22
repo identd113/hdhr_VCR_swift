@@ -2669,6 +2669,17 @@ final class WebServer: @unchecked Sendable {
 
     // MARK: - HTML / JSON generation
 
+    // "Up Next" = the next show today, else nothing — the standardized definition shared by
+    // buildTunerShowsHTML and buildSumPhHTML below (and, independently, MenuContent.swift's own
+    // Up Next section — see that file's comment for why it isn't literally the same function:
+    // it additionally excludes series shows still in retry/scan mode, a menu-bar-only concept).
+    // Extracted so this file's own three copies of the same force-unwrap-after-nil-check
+    // expression can't independently drift out of sync with each other.
+    private func isUpNextToday(_ show: Show) -> Bool {
+        guard let next = show.show_next else { return false }
+        return Calendar.current.isDateInToday(next)
+    }
+
     // Per-tuner show list for one device's ▾ dropdown: that tuner's own
     // Recording / Up Next / Scheduled / Paused shows. Empty → a friendly note.
     @MainActor
@@ -2728,7 +2739,7 @@ final class WebServer: @unchecked Sendable {
         // "Up Next" = the next show today, else nothing — see MenuContent.swift's Up Next
         // section for the same standardized definition. A soonest-active show that isn't today
         // just stays in Scheduled below instead of being pulled out here.
-        let upNext     = sortedActive.first(where: { $0.show_next != nil && Calendar.current.isDateInToday($0.show_next!) })
+        let upNext     = sortedActive.first(where: isUpNextToday)
         let restActive = sortedActive.filter { $0.show_id != upNext?.show_id }
 
         if let next = upNext {
@@ -2889,11 +2900,11 @@ final class WebServer: @unchecked Sendable {
         // MenuContent.swift's Up Next section and buildTunerShowsHTML's above.
         if let rec = recording.first {
             var sub = ""
-            if let next = phSorted.first(where: { $0.show_next != nil && $0.show_id != rec.show_id && Calendar.current.isDateInToday($0.show_next!) }) {
+            if let next = phSorted.first(where: { $0.show_id != rec.show_id && isUpNextToday($0) }) {
                 sub = "<div style=\"font-size:.7rem;color:var(--t4);margin-top:2px\"><span style=\"color:var(--ac)\">★</span> \(he(next.show_title)) · at \(he(state.shortTime(next.show_next)))</div>"
             }
             return "\(phLogo(rec.hdhr_record, rec.show_channel))<div><div style=\"font-size:.82rem;font-weight:600;color:var(--t0)\"><span style=\"color:#ff8080\">●</span> Recording: \(he(rec.show_title))</div>\(sub)</div>"
-        } else if let next = phSorted.first(where: { $0.show_next != nil && Calendar.current.isDateInToday($0.show_next!) }) {
+        } else if let next = phSorted.first(where: isUpNextToday) {
             return "\(phLogo(next.hdhr_record, next.show_channel))<div><div style=\"font-size:.82rem;font-weight:600;color:var(--t0)\"><span style=\"color:var(--ac)\">★</span> Up Next: \(he(next.show_title))</div><div style=\"font-size:.7rem;color:var(--t4);margin-top:2px\">at \(he(state.shortTime(next.show_next)))</div></div>"
         } else {
             return "<div style=\"font-size:.85rem;color:var(--t5)\">Select a show from the guide</div>"
