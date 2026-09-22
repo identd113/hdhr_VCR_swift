@@ -68,10 +68,13 @@ struct MenuContent: View {
     // THIS Mac watching another instance's FEED right now — the "tuner is a shared resource"
     // counterpart to the header's per-device rows above (which only ever reflect this Mac's own
     // real tuners) and the separate "FEED: N watching" line below (which only reflects OTHER Macs
-    // watching THIS Mac's own relay). Added 2026-09-12, explicit request. Reuses nowWatchingInfo's
-    // already-corrected URL matching rather than re-deriving device/channel identity a second way.
-    private var watchingRemoteFeedHostname: String? {
-        guard let info = nowWatchingInfo, info.device.isVirtualRelay else { return nil }
+    // watching THIS Mac's own relay). Added 2026-09-12, explicit request. Takes the already-
+    // computed nowWatchingInfo as a parameter (hoisted once in body, 2026-09-21) rather than
+    // recomputing it a second time per render — it does a state.devices scan plus a guide-entry
+    // lookup, cheap in absolute terms but genuine duplicate work on the menu-rebuild-churn-
+    // sensitive render path CLAUDE.md's own invariant flags.
+    private func watchingRemoteFeedHostname(for info: (device: HDHRDevice, channel: LineupEntry, entry: GuideEntry?)?) -> String? {
+        guard let info, info.device.isVirtualRelay else { return nil }
         return info.channel.virtualRelaySourceHostname ?? info.device.DeviceID
     }
 
@@ -85,6 +88,7 @@ struct MenuContent: View {
         let unavailableShows     = state.unavailableDeviceShows
         let unavailableDeviceIDs = state.unavailableDeviceIDs
         let availableDevices     = state.recordableDevices.filter { $0.isAvailable }
+        let watchingInfo         = nowWatchingInfo
 
         // ── Header ────────────────────────────────────────────────────────
         // recordableDevices — a discovered virtual relay device has no real lineup/guide data (see
@@ -128,7 +132,7 @@ struct MenuContent: View {
                                  liveCount > 0 ? Color(NSColor.labelColor) :
                                                  Color(NSColor.secondaryLabelColor))
         }
-        if let hostname = watchingRemoteFeedHostname {
+        if let hostname = watchingRemoteFeedHostname(for: watchingInfo) {
             Text("Watching FEED from \(hostname)")
                 .foregroundStyle(Color(NSColor.secondaryLabelColor))
         }
@@ -166,7 +170,7 @@ struct MenuContent: View {
         Divider()
 
         // ── Now Watching ──────────────────────────────────────────────────
-        if let info = nowWatchingInfo {
+        if let info = watchingInfo {
             let watchDeviceId = VLCPlayerWindowManager.shared.currentDeviceID ?? ""
             Section("Watching" + (watchDeviceId.isEmpty ? "" : " · \(watchDeviceId)")) {
                 Button {
