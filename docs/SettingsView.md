@@ -161,7 +161,7 @@ Sidebar entries (with SF Symbol icons):
 | Guide | `tv` | Guide hours, series scan retry |
 | Notifications | `bell.badge` | Up Next timing, Recording alert timing |
 | Advanced | `terminal` | Network interface, logging + verbose curl + config file path, check for updates, signal quality |
-| Sharing | `globe` | Enable/disable LAN web server, port, access URL, recording-relay rebroadcast |
+| Sharing | `globe` | Enable/disable LAN web server, port, access URL, Home Assistant status endpoint, recording-relay rebroadcast |
 | Maintenance | `wrench.and.screwdriver` | Show maintenance, guide/device ops |
 | About | `info.circle` | App logo, version, history, GitHub link |
 
@@ -298,6 +298,18 @@ Three independent sharing *methods* — **Web LAN** (the LAN web server itself),
   even under a future App Sandbox (`docs/MAS_COMPLIANCE.md`). Handing an executable's URL to
   Terminal.app this way makes Terminal run it directly (verified live), the same mechanism
   Finder's "New Terminal at Folder" service uses for a folder URL.
+- **Home Assistant section** — same shape and gating as Terminal Guide immediately above: always
+  visible, its **Enable status endpoint** `Toggle` (bound to `draft.Home_assistant_status_enabled`,
+  defaults `false`) is `.disabled(!draft.Web_server_enabled)` with the same `" (Requires Web
+  LAN)"`-suffixed label via `gatedLabel`. **Unlike** Terminal Guide's toggle, though, this one is a
+  *real* security-relevant gate, not a courtesy one: `GET /api/tuner-status.json`
+  (`docs/WebServer.md`) 404s outright whenever `Home_assistant_status_enabled` is false, even with
+  Web LAN fully on — the route has no other consumer that needs it always-reachable the way
+  `/api/guide.json` does for `hdhr_guide`. When both toggles are on and the server is actually live
+  (`state.config.Web_server_enabled && state.webServerRunning`), shows the endpoint's full URL
+  (`http://{ip}:{port}/api/tuner-status.json`, same `lanIP()` helper the Web LAN Access row uses) as
+  selectable monospaced text with an **Open** `Link`; otherwise (draft toggled on but not yet Saved)
+  shows a `"Save to activate…"` placeholder, matching Terminal Guide's identical not-live-yet case.
 - **Recording FEED (Beta) section** — visible by default as of v2.5.0, wrapped in `if state.config.FEED_feature_enabled` (default `true`, config-file only — see `docs/VirtualTunerService.md`'s top note); was hidden from 2026-09-10 until then. section header is `"Recording FEED (Beta)"`, the "(Beta)" suffix added 2026-09-07 — the playback-stall issue is fixed and CC track switching confirmed working, but audio track switching on the watching Mac is still an open, unconfirmed question (see `ISSUES.md`); while the section is showing, its toggle is never disabled by Web LAN being off — deliberately, not an oversight: unlike Terminal Guide, the relay holds its **own** internal web-server claim (`AppState.ensureWebServerRunning()`/`releaseInternalWebServer()`, folded into the same `wantRunning` check above) for as long as a recording is active, so it keeps working with Web LAN off. Gating it on Web LAN would remove real, working, intentionally-independent functionality, not just reorganize the UI. Contains a **Rebroadcast In-Progress Recordings** `Toggle` bound to `draft.Virtual_tuner_relay_enabled` (defaults `false` — changed 2026-09-04, was `true`). See `docs/VirtualTunerService.md` for the full mechanism; on Save, `SettingsView.save()` compares this against the pre-edit value and, if changed, calls `state.updateVirtualTunerPresence()` directly so toggling it off tears the relay down immediately if a recording happens to be in progress, rather than waiting for that recording to end. Also explained on first launch by `FirstRunWizardView`'s dedicated Recording FEED (Beta) step (same wording as this toggle's `InfoButton`, including the beta caveat).
   - While the toggle is on, a **Default transcode level** `Picker` (bound to `draft.Virtual_tuner_relay_default_transcode`, defaults `"heavy"`) offers the seven real EXTEND-only profile names — Heavy, Internet 720, Internet 540, Internet 480, Internet 360, Internet 240, Mobile (`VLCBridge.transcodeBitrateKbps(for:)`'s own doc comment has the sourcing: the original AppleScript app's 2016+ production list plus SiliconDust's current `info.hdhomerun.com/info/http_api` docs). This is the *only* level the relay ever actually transcodes at — `WebServer.handleVirtualTunerStream` uses a viewer's own requested `?transcode=` profile string only to decide whether to transcode at all, never which bitrate, by explicit design (mirrors how a transcode session is already shared by show alone regardless of which profile each viewer individually requested). The picker itself is disabled and its label suffixed `" (Requires VLC)"` when `vlcInstalled` is false — a requested transcode is served as untranscoded passthrough bytes instead (`WebServer.handleVirtualTunerStream` logs this fallback) — the rebroadcast toggle above stays fully enabled regardless, since the raw relay never touches VLC at all.
 - **Error banner** — shown when `state.webServerError` is non-nil (port in use, OS cancellation, etc.).

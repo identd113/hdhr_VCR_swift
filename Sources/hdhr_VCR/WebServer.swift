@@ -2226,6 +2226,14 @@ final class WebServer: @unchecked Sendable {
             let data = buildNowJSON(state: state)
             return .ok(contentType: "application/json", body: data)
 
+        case "/api/tuner-status.json":
+            // Unlike Terminal_guide_enabled (a courtesy gate over data already reachable elsewhere),
+            // this is a real gate — see Home_assistant_status_enabled's own doc comment (Models.swift).
+            guard state.config.Home_assistant_status_enabled else {
+                return .notFound("Home Assistant status endpoint is disabled — enable it in Settings → Sharing")
+            }
+            return .ok(contentType: "application/json", body: buildTunerStatusJSON(state: state))
+
         case "/api/guide.json":
             return .ok(contentType: "application/json", body: buildGuideJSON(state: state, deviceId: nil))
 
@@ -3589,6 +3597,114 @@ final class WebServer: @unchecked Sendable {
         let enc = JSONEncoder()
         enc.outputFormatting = .prettyPrinted
         return (try? enc.encode(entries)) ?? Data("[]".utf8)
+    }
+
+    // Structured counterpart to the #dev-bar tuner boxes (buildDevBarHTML/buildTunerShowsHTML) —
+    // same per-device online/offline + occupancy + Recording/Up Next/Scheduled/Paused breakdown,
+    // as JSON instead of HTML, for external consumers (e.g. a Home Assistant REST sensor) that
+    // want tuner status without scraping the guide page. Reuses computeDevTuners so this can never
+    // disagree with the dev-bar's own occupancy badge.
+    @MainActor
+    private func buildTunerStatusJSON(state: AppState) -> Data {
+        struct ShowRef: Encodable { var showId, title, channel: String; var poster: String? }
+        struct RecordingRef: Encodable { var showId, title, channel: String; var end: Int?; var poster: String? }
+        struct UpNextRef: Encodable { var showId, title, channel: String; var next: Int; var poster: String? }
+
+        // show_logo_url is the SiliconDust guide entry's own ImageURL, captured at add time
+        // (AppState.addShowFromGuide sets show.show_logo_url = entry.ImageURL) — same source
+        // /api/now.json's imageURL and the Discord card's thumbnail both already use. Empty
+        // string (not recorded, or the guide entry had none) maps to omitted, matching NowEntry's
+        // own imageURL: String? pattern rather than serializing a misleading "".
+        func poster(_ s: Show) -> String? { s.show_logo_url.isEmpty ? nil : s.show_logo_url }
+        struct TunerEntry: Encodable {
+            var deviceId, name: String
+            var online: Bool
+            var tunerTotal, tunerActive: Int
+            var tunerFull: Bool
+            // Breaks tunerActive down by *why* it's occupied — CLAUDE.md's "Tuner occupancy"
+            // invariant: activeTunerCount = max(hardware-polled count, this app's own
+            // recordings + in-app VLC stream). recording.count already answers "is this app
+            // actively capturing something here"; watchingLive/otherOccupancy answer the
+            // remaining question — is a slot busy for a reason that ISN'T this app recording.
+            var watchingLive: Bool    // this Mac's own in-app player is watching this tuner live
+                                       // (primary or PiP secondary) — not the no-tuner recording-
+                                       // playback relay, which occupies nothing (vlcOccupiesTuner)
+            var otherOccupancy: Int   // hardware-reported busy tuners this app can't explain by its
+                                       // own recording/VLC use — another device, or another instance
+                                       // of this app, actively using the physical tuner
+            var recording: [RecordingRef]
+            var upNext: UpNextRef?
+            var scheduled: [ShowRef]
+            var paused: [ShowRef]
+        }
+
+        func mine(_ deviceId: String) -> (Show) -> Bool { { $0.hdhr_record == deviceId } }
+
+        func entry(deviceId: String, online: Bool, devTuners: DevTuners?) -> TunerEntry {
+            let recs = state.recordingShows.filter(mine(deviceId))
+                .map { RecordingRef(showId: $0.show_id, title: $0.show_title, channel: $0.show_channel,
+                                     end: $0.show_end.map { Int($0.timeIntervalSince1970) }, poster: poster($0)) }
+
+            // Same components activeTunerCount(for:) itself combines — not read from that call
+            // directly since we need the pieces separately, not just their max().
+            let vlcCount = (state.vlcOccupiesTuner(for: deviceId) ? 1 : 0)
+                         + (state.secondaryVlcOccupiesTuner(for: deviceId) ? 1 : 0)
+            let hwOccupied = online ? (state.deviceTunerOccupancy[deviceId]?.filter { $0.VctNumber != nil }.count ?? 0) : 0
+            let otherOccupancy = max(0, hwOccupied - (recs.count + vlcCount))
+
+            let sortedActive = state.activeShows.filter(mine(deviceId))
+                .sorted { ($0.show_next?.timeIntervalSince1970 ?? .infinity) < ($1.show_next?.timeIntervalSince1970 ?? .infinity) }
+            let upNextShow = sortedActive.first(where: isUpNextToday)
+            let upNext = upNextShow.flatMap { s -> UpNextRef? in
+                guard let next = s.show_next else { return nil }
+                return UpNextRef(showId: s.show_id, title: s.show_title, channel: s.show_channel,
+                                  next: Int(next.timeIntervalSince1970), poster: poster(s))
+            }
+            let scheduled = sortedActive
+                .filter { $0.show_id != upNextShow?.show_id }
+                .map { ShowRef(showId: $0.show_id, title: $0.show_title, channel: $0.show_channel, poster: poster($0)) }
+
+            let paused = state.pausedShows.filter(mine(deviceId))
+                .map { ShowRef(showId: $0.show_id, title: $0.show_title, channel: $0.show_channel, poster: poster($0)) }
+
+            return TunerEntry(deviceId: deviceId, name: "HDHR-\(deviceId.uppercased())", online: online,
+                               tunerTotal: devTuners?.total ?? 0, tunerActive: devTuners?.active ?? 0,
+                               tunerFull: devTuners?.isFull ?? false,
+                               watchingLive: vlcCount > 0, otherOccupancy: otherOccupancy,
+                               recording: recs, upNext: upNext, scheduled: scheduled, paused: paused)
+        }
+
+        // Same online/offline split as buildDevBarHTML: every recordable device that's currently
+        // usable, plus (per CLAUDE.md's "Web guide offline devices" invariant) any device that's
+        // never been discovered at all but still owns a scheduled show — never silently omit those.
+        let devTuners = Self.computeDevTuners(state: state)
+        let onlineIDs = Set(state.devices.map { $0.DeviceID })
+        let deviceIDsWithShows = Set(state.shows.map { $0.hdhr_record })
+        let offlineIDs = deviceIDsWithShows.subtracting(onlineIDs).filter { !$0.isEmpty }
+        let usableIDs = state.usableDeviceIDs
+
+        var tuners: [TunerEntry] = []
+        for d in state.recordableDevices {
+            let isUsable = usableIDs.contains(d.DeviceID)
+            guard isUsable || deviceIDsWithShows.contains(d.DeviceID) else { continue }
+            // computeDevTuners computes active/total for every recordable device regardless of
+            // usability (shared with buildHTML's client-side tuners map) — its occupancy source,
+            // deviceTunerOccupancy, only clears on full "forgotten" removal, not on the first
+            // unreachable tick, so a briefly-offline device's entry can still hold stale nonzero
+            // counts. The HTML dev-bar never surfaces that (tunerCountSpan is only ever called on
+            // the `active` branch — an unusable device renders a bare "offline" span, no numbers at
+            // all); passing nil here for `!isUsable` matches that same suppression instead of
+            // reporting a stale tunerActive the rest of this entry (recording: [], otherOccupancy:
+            // 0) can't account for.
+            tuners.append(entry(deviceId: d.DeviceID, online: isUsable, devTuners: isUsable ? devTuners[d.DeviceID] : nil))
+        }
+        for id in offlineIDs.sorted() {
+            tuners.append(entry(deviceId: id, online: false, devTuners: nil))
+        }
+
+        let enc = JSONEncoder()
+        enc.outputFormatting = .prettyPrinted
+        return (try? enc.encode(["tuners": tuners])) ?? Data("{\"tuners\":[]}".utf8)
     }
 
     // MARK: - Virtual tuner (VirtualTunerService's HTTP surface)

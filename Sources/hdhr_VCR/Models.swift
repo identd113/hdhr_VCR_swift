@@ -464,6 +464,17 @@ struct AppConfig: Equatable {
     // same day, not one combined "Sharing" step).
     var Terminal_guide_enabled: Bool = false
 
+    // Sub-switch under Web_server_enabled, same shape as Terminal_guide_enabled above but gating a
+    // real endpoint rather than a separate client: when false, GET /api/tuner-status.json (the
+    // per-tuner occupancy + Recording/Up Next/Scheduled/Paused JSON, built for external pollers
+    // like a Home Assistant REST sensor — docs/WebServer.md) 404s instead of responding, even
+    // though the LAN web server itself and every other route are unaffected. Unlike
+    // Terminal_guide_enabled, this genuinely changes what's reachable — the route has no other
+    // consumer requiring it always-on — so someone who wants Web LAN shared with the household but
+    // doesn't want a machine-readable status feed sitting there for anything on the LAN to poll can
+    // turn just this off. Off by default, same "every LAN-facing Sharing toggle defaults off" reasoning.
+    var Home_assistant_status_enabled: Bool = false
+
     // Master hide switch for the entire Recording FEED / virtual-tuner-relay feature (both the
     // publish side below and the consume side — MenuContent's "Recording on Another Mac" section,
     // AppState.remoteRelayEntries/hasAvailableRemoteFeed). Config-file-only (no UI sets this
@@ -587,6 +598,7 @@ extension AppConfig: Codable {
         Web_server_enabled      = (try? c.decode(Bool.self,   forKey: .Web_server_enabled))      ?? false
         Web_server_port         = (try? c.decode(Int.self,    forKey: .Web_server_port))         ?? 1980
         Terminal_guide_enabled  = (try? c.decode(Bool.self,   forKey: .Terminal_guide_enabled))  ?? false
+        Home_assistant_status_enabled = (try? c.decode(Bool.self, forKey: .Home_assistant_status_enabled)) ?? false
         // ?? true (flipped for v2.5.0, matching the struct default's own doc comment above) — a
         // config file that already has this key explicitly saved (true or false) always wins
         // regardless; this fallback only matters for a config with no saved value at all, i.e. a

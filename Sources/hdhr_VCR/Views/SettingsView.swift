@@ -696,19 +696,7 @@ struct SettingsView: View {
                     }
                 }
                 if state.config.Web_server_enabled && state.webServerRunning {
-                    let ip: String = {
-                        let ifaces = availableNetworkInterfaces()
-                        // Explicit interface selected — use its IP
-                        if !state.config.Network_interface.isEmpty,
-                           let match = ifaces.first(where: { $0.name == state.config.Network_interface }) {
-                            return match.ip
-                        }
-                        // Auto — prefer physical Ethernet/Wi-Fi (en*, wlan*), then any non-VPN
-                        return ifaces.first(where: { $0.name.hasPrefix("en") || $0.name.hasPrefix("wlan") })?.ip
-                            ?? ifaces.first(where: { !isPointToPointInterface($0.name) })?.ip
-                            ?? "localhost"
-                    }()
-                    let urlStr = "http://\(ip):\(state.config.Web_server_port)"
+                    let urlStr = "http://\(lanIP()):\(state.config.Web_server_port)"
                     HStack {
                         Text(urlStr)
                             .font(.system(.body, design: .monospaced))
@@ -784,6 +772,36 @@ struct SettingsView: View {
                         // connect to. Matches this same "not live yet" distinction the Access
                         // section above already draws between draft and `state.config`/`webServerRunning`.
                         Text("Save to activate — the terminal client can connect once Web LAN is running.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            // Same shape/gating as Terminal Guide above — a sub-switch under Web LAN that's
+            // .disabled (not hidden) while Web LAN is off, dimmed via gatedLabel's own
+            // "(Requires Web LAN)" suffix. Unlike Terminal Guide's toggle, though, this one is a
+            // real security-relevant gate, not just a courtesy one — see
+            // Home_assistant_status_enabled's doc comment (Models.swift) for why.
+            Section("Home Assistant") {
+                Toggle(isOn: $draft.Home_assistant_status_enabled) {
+                    HStack {
+                        Text(gatedLabel("Enable status endpoint", met: lanEnabled, requirement: "Web LAN"))
+                        InfoButton("Exposes /api/tuner-status.json — per-tuner occupancy plus Recording/Up Next/Scheduled/Paused shows, as JSON, for polling by something like a Home Assistant REST sensor. Off by default. Requires Web LAN above to be on: this rides the exact same local web server, not a separate one. There's no further authentication — anything on your local network can read it once both toggles are on, same as the rest of Web LAN.") }
+                }
+                .disabled(!lanEnabled)
+                if draft.Home_assistant_status_enabled && lanEnabled {
+                    if state.config.Web_server_enabled && state.webServerRunning {
+                        let urlStr = "http://\(lanIP()):\(state.config.Web_server_port)/api/tuner-status.json"
+                        HStack {
+                            Text(urlStr)
+                                .font(.system(.body, design: .monospaced))
+                                .textSelection(.enabled)
+                            Spacer()
+                            Link("Open", destination: URL(string: urlStr)!)
+                        }
+                    } else {
+                        Text("Save to activate — the endpoint responds once Web LAN is running.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -986,6 +1004,20 @@ struct SettingsView: View {
 
     private var vlcInstalled: Bool {
         VLCBridge.locateApp() != nil
+    }
+
+    // Best-effort LAN IP for the Web LAN / Home Assistant "Open"/copy rows — shared so both agree
+    // on the same address instead of each resolving it independently. Prefers the explicitly
+    // configured interface, else physical Ethernet/Wi-Fi, else any non-VPN interface.
+    private func lanIP() -> String {
+        let ifaces = availableNetworkInterfaces()
+        if !state.config.Network_interface.isEmpty,
+           let match = ifaces.first(where: { $0.name == state.config.Network_interface }) {
+            return match.ip
+        }
+        return ifaces.first(where: { $0.name.hasPrefix("en") || $0.name.hasPrefix("wlan") })?.ip
+            ?? ifaces.first(where: { !isPointToPointInterface($0.name) })?.ip
+            ?? "localhost"
     }
 
     // MARK: - About

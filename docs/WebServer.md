@@ -39,6 +39,7 @@ func refreshPageAndBroadcastGuideChange(type:state:)  // @MainActor — thin wra
 | GET | `/api/events` | SSE stream — kept open; server pushes JSON events on state changes |
 | GET | `/api/guide-refresh` | JSON `{grid, sumph, tdrop}`, always plain (uncompressed) — full rebuilt guide grid + summary panel + per-device tuner-dropdown fragments, the same `buildGuideRefreshPayload` an SSE guide-change event's `grid`/`gridZ` also comes from. A normal `.ok` HTTP response, so it's still transparently gzip'd/decompressed at the transport level by `fetch()` when the client's `Accept-Encoding` allows it — unlike the SSE push, which has no such layer and gzip+base64's these fields itself instead (see "Payload size and shared-queue contention" below). Used by the client's manual **↺** refresh button and as the SSE `onmessage` fallback for an unrecognized event shape |
 | GET | `/api/now.json` | JSON array of on-air entries (see schema below) |
+| GET | `/api/tuner-status.json` | JSON `{tuners: [...]}` — one entry per tuner (online + offline-but-referenced), each with occupancy and its Recording/Up Next/Scheduled/Paused shows (see schema below). Structured counterpart to `#dev-bar`'s tuner boxes, for external consumers (e.g. a Home Assistant REST sensor) that want tuner status without scraping the guide page. **Gated on `Home_assistant_status_enabled`** (Settings → Sharing → Home Assistant, default off) — unlike every other route here, this one 404s (`"Home Assistant status endpoint is disabled…"`) when its own toggle is off, even while Web LAN itself is on |
 | GET | `/api/guide.json` (or `/api/guide.json/{deviceId}`) | JSON `{deviceId, winStart, winSec, devices, channels, sportsPaddingEnabled, terminalGuideEnabled}` — structured (non-HTML) guide data for one tuner's full window, every entry not just on-air (see schema below). No deviceId segment picks the first usable device, mirroring the web guide's own `defaultDev` choice. `sportsPaddingEnabled` mirrors `Sports_padding_enabled` (`state.config`) — the same value guide.js's HTML-baked `SPORTS_PADDING_ENABLED` template token carries, exposed here so a non-HTML JSON client (`hdhr_guide`, `Sources/hdhr_guide/`) can gate its own sports-genre auto-Bonus-Time detection on it too, matching every other client's `genreImpliesBonusTime && Sports_padding_enabled` pattern instead of always assuming the setting is on. `terminalGuideEnabled` mirrors `Terminal_guide_enabled` (state.config, Settings → Sharing → Terminal Guide's own sub-toggle) — `hdhr_guide` checks it right after its first fetch and exits if false; a courtesy gate only, since this same JSON is unaffected by the flag and already reachable to any LAN caller once `Web_server_enabled` is on |
 | GET | `/api/signal` | JSON object `{guideName: "good"|"fair"|"poor"|"noData"}` — snapshot of `ChannelSignalStore.shared.buckets` keyed by `guideName.lowercased()` |
 | POST | `/api/record` | Schedule a recording |
@@ -874,6 +875,37 @@ Encoded with `JSONEncoder` `.prettyPrinted`.
 
 ---
 
+## JSON schema — `/api/tuner-status.json`
+
+```swift
+struct TunerEntry: Encodable {
+    var deviceId, name: String
+    var online: Bool                  // false = discovered-but-unreachable OR never-discovered-but-referenced
+    var tunerTotal, tunerActive: Int  // same values as the dev-bar's "active/total" badge (computeDevTuners)
+    var tunerFull: Bool
+    var watchingLive: Bool            // this Mac's own in-app player is watching this tuner live
+                                       // (primary or PiP secondary) — NOT the no-tuner recording-
+                                       // playback relay (vlcOccupiesTuner), which occupies nothing
+    var otherOccupancy: Int           // hardware-reported busy tuners this app can't explain by its
+                                       // own recording/VLC use — another device, or another instance
+                                       // of this app, actively using the physical tuner. Always 0
+                                       // for an offline entry (no hardware status to poll)
+    var recording: [RecordingRef]     // currently-recording shows on this tuner
+    var upNext: UpNextRef?            // the next show airing later today, if any (isUpNextToday)
+    var scheduled: [ShowRef]          // other active shows, excluding upNext
+    var paused: [ShowRef]
+}
+struct RecordingRef: Encodable { var showId, title, channel: String; var end: Int?; var poster: String? }   // end: Unix timestamp
+struct UpNextRef: Encodable { var showId, title, channel: String; var next: Int; var poster: String? }      // next: Unix timestamp
+struct ShowRef: Encodable { var showId, title, channel: String; var poster: String? }
+```
+
+Top-level shape: `{"tuners": [TunerEntry, ...]}`. Built by `buildTunerStatusJSON(state:)` — reuses `computeDevTuners` (same occupancy source as the dev-bar badge and `/api/guide.json`'s `devices[].active/total`, so none of the three can drift apart) and the same online/offline device union `buildDevBarHTML` uses, including the "Web guide offline devices" invariant (a device referenced by `hdhr_record` but never discovered still gets an entry, `online: false`, `tunerTotal`/`tunerActive` both `0`). **`online: false` always forces `tunerTotal`/`tunerActive`/`tunerFull` to `0`/`0`/`false`**, whether the device was never discovered at all or is a previously-usable one that's since gone briefly unreachable — `computeDevTuners`'s own occupancy source (`deviceTunerOccupancy`) only clears on a full "forgotten" removal, not on the first unusable tick, so a briefly-offline device's raw entry can still hold a stale nonzero count; `buildTunerStatusJSON` deliberately discards it for any `!isUsable` device rather than reporting it, matching the HTML dev-bar's own suppression (`tunerCountSpan` is only ever rendered on the `active` branch — an offline `tunerBox` shows a bare "offline" span, no numbers). `watchingLive`/`otherOccupancy` decompose the same three components `activeTunerCount(for:)` itself already `max()`s together (CLAUDE.md's "Tuner occupancy" invariant) — `recording.count` covers this app's own active recordings, `watchingLive` covers this Mac's own in-app live watch, and `otherOccupancy` is whatever hardware-reported occupancy neither of those explains (another device, or another instance of this app on the same physical tuner) — so a consumer can tell "this app is recording it" apart from "the tuner is merely busy for some other reason" instead of only seeing the combined `tunerActive` count. `poster` is `show.show_logo_url` — the SiliconDust guide entry's own `ImageURL`, captured at add time (same source `/api/now.json`'s `imageURL` and the Discord card's thumbnail already use) — omitted (`null`) when the show has none. Encoded with `JSONEncoder` `.prettyPrinted`.
+
+Route itself requires `Home_assistant_status_enabled` (`AppConfig`, default `false`) — see the routes table above and "AppConfig fields" below.
+
+---
+
 ## JSON schema — `/api/guide.json`
 
 ```swift
@@ -1072,6 +1104,7 @@ func quit()             // calls webServer.stop()
 ```swift
 var Web_server_enabled: Bool = false
 var Web_server_port:    Int  = 1980
+var Home_assistant_status_enabled: Bool = false   // gates GET /api/tuner-status.json — see above
 ```
 
 ---
