@@ -318,7 +318,7 @@ final class WebServer: @unchecked Sendable {
         glog("[WebServer] page HTML cached (\(html.count / 1024)KB, \(gzKB)KB gzip'd)")
     }
 
-    // Kept as a distinctly-named entry point for the hourly guide refresh (its one caller) even
+    // Kept as a distinctly-named entry point for the periodic guide refresh (its one caller) even
     // though broadcastGuideChangeEvent now does the same cachedHTML rebuild for every guide-change
     // event — the name documents that this specific call site's `state` reflects a freshly-loaded
     // guide window, not just a schedule tweak.
@@ -505,7 +505,7 @@ final class WebServer: @unchecked Sendable {
         ])
         // Connected tabs get the class-toggle patch above without a grid rebuild, but the cached
         // full-page HTML (served to any *new* page load — a fresh tab, hard refresh, or reopening
-        // the native Guide window) was previously only rebuilt on the hourly guide refresh, so a
+        // the native Guide window) was previously only rebuilt on the periodic guide refresh, so a
         // just-started recording wouldn't show its marker until then. Keep it in sync here too.
         guard refreshPageCache else { return }
         prebuildPageHTML(state: state, prebuiltGrid: prebuiltGrid)
@@ -624,7 +624,7 @@ final class WebServer: @unchecked Sendable {
         if !tdropZ.isEmpty { event["tdropZ"] = tdropZ }
         broadcastEvent(event)
         // Keep the cached full-page HTML (served to any new page load) in sync with every
-        // guide-changing event, not just the hourly refresh — see broadcastRecordingEvent for
+        // guide-changing event, not just the periodic refresh — see broadcastRecordingEvent for
         // the same reasoning on the recording-start/stop path.
         prebuildPageHTML(state: state, prebuiltGrid: grid)
     }
@@ -660,7 +660,7 @@ final class WebServer: @unchecked Sendable {
     // already broadcasts a full guide-change event so the grid's .g-st-inuse ring stays in sync,
     // but that payload never touches #dev-bar (see buildGuideRefreshPayload), so without this call
     // the tuner box's own live-count badge would sit stale until the next recording start/stop or
-    // the hourly refresh, even while the grid ring updated immediately.
+    // the next periodic refresh, even while the grid ring updated immediately.
     @MainActor
     func pushFreshTunerCounts() async {
         guard let state = appState else { return }

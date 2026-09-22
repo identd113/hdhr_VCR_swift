@@ -238,7 +238,7 @@ struct AddShowView: View {
         var seriesId: String, isSeries: Bool, channelScoped: Bool, channel: String, next: Date?, guideGeneration: Int
     }
     private var otherAiringsKey: OtherAiringsKey {
-        // guideGeneration included so the ~hourly background guide refresh forces a recompute even
+        // guideGeneration included so the periodic background guide refresh forces a recompute even
         // when none of this show's own fields changed — otherwise the wizard could keep showing a
         // stale "Other Upcoming Airings" list (a moved/cancelled/newly-visible airing) for as long
         // as it's left open across that refresh. channelScoped included so toggling the Scope

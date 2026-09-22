@@ -182,7 +182,7 @@ final class GuideStore {
 
             // JSON/XMLTV decode + per-channel sort scale with GuideHours/lineup size (~1.4MB,
             // ~2500 entries per device isn't unusual) — run off the main actor so a big guide
-            // fetch (this runs hourly per device) doesn't block WebServer requests or the UI for
+            // fetch (this runs periodically per device — cadence configurable, ~3h by default) doesn't block WebServer requests or the UI for
             // the duration of the parse. Only the final dictionary merge (applyIndex) needs
             // MainActor, since it reads/mutates existing instance state.
             guard let prepared = await Task.detached(priority: .utility, operation: { () -> PreparedIndex? in

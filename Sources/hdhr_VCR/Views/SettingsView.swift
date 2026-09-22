@@ -224,7 +224,7 @@ struct SettingsView: View {
         // (cachedRecordedTagsByShow, warmed by buildGuideGridHTML) rather than repeating it on
         // every /api/guide.json poll — see that property's own comment. Toggling either setting
         // changes what buildGuideJSON's willSkip should compute from, but the cache itself only
-        // refreshes on a guide-changing event/hourly refresh, none of which this save triggers on
+        // refreshes on a guide-changing event/periodic refresh, none of which this save triggers on
         // its own — without an explicit rebuild here, hdhr_guide (TUI) could keep showing/omitting
         // the "already recorded" skip badge based on the pre-toggle state for up to an hour.
         let skipConfigChanged = draft.Skip_recorded_episodes  != old.Skip_recorded_episodes

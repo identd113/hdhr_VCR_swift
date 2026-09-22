@@ -14,7 +14,7 @@ final class AppState: ObservableObject {
         // background guide refresh assigns guideByDevice while the menu is open.
         didSet { guideGeneration += 1; if !menuIsOpen { rebuildChannelImageURLs(); rebuildMenuEntries() } }
     }
-    // Bumped every time guideByDevice is reassigned (~hourly, or on-demand) — a cheap freshness
+    // Bumped every time guideByDevice is reassigned (periodic — see effectiveGuideRefreshIntervalSeconds — or on-demand) — a cheap freshness
     // signal for views that cache a guide-derived computation and need to know when to recompute,
     // without re-deriving from guideByDevice's actual contents (AddShowView's otherAiringsCache).
     @Published var guideGeneration: Int = 0
@@ -506,7 +506,7 @@ final class AppState: ObservableObject {
     // connects to or disconnects from the relay — a discovering instance's near-real-time FEED
     // push (VirtualTunerService's "Unsolicited FEED announces") previously only fired on the
     // relay's own appear/disappear/TunerCount-change, leaving a viewer-count change invisible
-    // until the next hourly refreshGuides() lineup re-fetch. No-op (and cheap to call
+    // until the next periodic refreshGuides() lineup re-fetch. No-op (and cheap to call
     // unconditionally) when no relay is currently advertised. See AppState.onFeedAnnounce's
     // matching receiving-side fix for why an announce alone isn't enough — the discovering side
     // also needs to actually re-fetch this device's /lineup.json on it.
@@ -913,7 +913,7 @@ final class AppState: ObservableObject {
                 await self.probeForNewDevices()
                 // probeForNewDevices() above only fetches /lineup.json for a genuinely *new*
                 // device (its own newDevices branch) — an already-known relay's lineup is
-                // otherwise only refreshed on the hourly refreshGuides() pass, far too slow to
+                // otherwise only refreshed on the periodic refreshGuides() pass, far too slow to
                 // pick up a viewer-count or show-metadata change this same announce mechanism now
                 // also fires on (see refreshVirtualTunerAnnounceIfActive). Re-fetch immediately
                 // instead. Skipped on a goodbye announce — the relay just said it's gone, so its
@@ -1785,7 +1785,7 @@ final class AppState: ObservableObject {
 
 
     // O(1) channel logo URL lookup for channelMenu — depends only on guideByDevice, which
-    // changes on guide load (~hourly), not per idle tick. Called from guideByDevice's didSet
+    // changes on guide load (periodic, not hourly — see effectiveGuideRefreshIntervalSeconds), not per idle tick. Called from guideByDevice's didSet
     // and once after fetchAllGuides — deliberately NOT from rebuildMenuEntries() itself, since
     // that also runs every idle tick and guideByDevice won't have changed on most of those.
     private func rebuildChannelImageURLs() {
@@ -2550,7 +2550,7 @@ final class AppState: ObservableObject {
             Task { await refreshGuides() }
         }
         // While Local Network permission hasn't been confirmed working yet, retry the lineup
-        // fetch on every idle-loop tick instead of only the hourly boundary above — see TODO.md's
+        // fetch on every idle-loop tick instead of only the periodic refresh gate above — see TODO.md's
         // "Show Stoppers" entry. The system's permission prompt can be granted at any moment
         // independent of anything this app does (confirmed: a reboot triggered it once), and
         // there's no public API to detect that directly; polling on the existing idle cadence
@@ -3367,7 +3367,7 @@ final class AppState: ObservableObject {
                     glog("[\(show.show_title)] OVERRIDE CLEARED — duplicate-recording override used up")
                     // Flips the exact flag WebServer's willSkip reads for the green/gold corner
                     // flag — without this, an open web guide window keeps showing the stale flag
-                    // until the next unrelated rebuild (hourly refresh, another show's edit, etc.).
+                    // until the next unrelated rebuild (periodic guide refresh, another show's edit, etc.).
                     pushShowUpdate(type: "show_updated", channel: show.show_channel, device: show.hdhr_record, rebuildMenu: false)
                 }
             }
@@ -3389,8 +3389,8 @@ final class AppState: ObservableObject {
         let completedShow = shows[curIndex]
         // Reflects the new show_next/show_channel/hdhr_record for any open web guide — without
         // this, a finished recurring show's tuner dropdown/badges keep showing the just-finished
-        // airing's stale time/channel until some unrelated event (another show's edit, the hourly
-        // refresh) happens to rebuild the page.
+        // airing's stale time/channel until some unrelated event (another show's edit, the periodic
+        // guide refresh) happens to rebuild the page.
         pushShowUpdate(type: "show_updated", channel: completedShow.show_channel, device: completedShow.hdhr_record, rebuildMenu: false)
         // Route through fireDiscordCard (not the old direct discordShow(editMessageId:) call) so
         // this terminal event is chained behind any in-flight send like every other lifecycle
@@ -5180,7 +5180,7 @@ final class AppState: ObservableObject {
             // stopping, not one of this app's own show lifecycle events, so none of the *other*
             // broadcastGuideChangeEvent call sites (add/edit/delete/favorite-toggle/recording
             // start-stop) would otherwise catch it. Without this, that data could sit stale for up
-            // to the hourly refresh despite deviceTunerOccupancy itself updating within one idle
+            // to the next periodic refresh despite deviceTunerOccupancy itself updating within one idle
             // tick — found 2026-08-11 while live-verifying the tuner-popover title fix (Part C).
             // Throttled independently of the menu-open write above — see lastGuideOccupancyBroadcast.
             let guideCooldownElapsed = lastGuideOccupancyBroadcast[device.DeviceID].map {
@@ -5193,7 +5193,7 @@ final class AppState: ObservableObject {
                 // broadcastGuideChangeEvent's payload (grid/sumph/tdrop) never touches #dev-bar, so
                 // without this the tuner box's own live-count badge stays stale on a hardware-only
                 // occupancy change (another Mac/TV/this app's own Watch Now locking or freeing the
-                // tuner) until a recording start/stop or the hourly refresh happens to touch it —
+                // tuner) until a recording start/stop or the periodic refresh happens to touch it —
                 // see pushFreshTunerCounts's own doc comment.
                 await webServer.pushFreshTunerCounts()
             }

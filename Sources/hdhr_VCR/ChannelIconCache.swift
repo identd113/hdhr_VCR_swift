@@ -105,7 +105,7 @@ actor ChannelIconCache {
     // almost never fires. Evicts oldest-by-mtime first when it does.
     private let maxDiskCacheBytes: UInt64 = 150 * 1024 * 1024
 
-    // Called once per prefetch batch (AppState.prefetchChannelIcons — startup, the hourly guide
+    // Called once per prefetch batch (AppState.prefetchChannelIcons — startup, the periodic guide
     // refresh, and on-demand per-device retries) rather than after every individual disk write:
     // a bulk prefetch fans out one concurrent write per missing icon via withTaskGroup (up to the
     // ~2000-file cap), and since this cache is an actor, checking per-write would serialize every
