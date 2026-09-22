@@ -105,7 +105,6 @@ final class AppState: ObservableObject {
     private var sigtermSource: DispatchSourceSignal?
     // O(1) channel logo lookup for channelMenu — "deviceId:channelNum" → ImageURL — rebuilt alongside menu entries.
     var channelImageURLs: [String: String] = [:]
-    @Published var guideRevision: Int = 0                        // increments each time guide data successfully loads
     @Published var config = AppConfig()
     @Published var statusMessage = "Starting…"
     @Published var notifyPermission = false
@@ -1684,7 +1683,6 @@ final class AppState: ObservableObject {
             }
         }
         let anyLoaded = guideByDevice.values.contains(where: { !$0.isEmpty })
-        if anyLoaded { guideRevision += 1 }
         glog("[Guide] Refresh complete")
         let allChannels = guideByDevice.values.flatMap { $0 }
         Task { await prefetchChannelIcons(allChannels) }
