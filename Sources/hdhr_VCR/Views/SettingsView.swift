@@ -206,8 +206,8 @@ struct SettingsView: View {
         if draft.Discord_enabled     != old.Discord_enabled     { glog("[Settings] DiscordEnabled: \(old.Discord_enabled) → \(draft.Discord_enabled)") }
         if draft.Hdhr_setup_folder   != old.Hdhr_setup_folder   { glog("[Settings] SaveFolder: '\(old.Hdhr_setup_folder)' → '\(draft.Hdhr_setup_folder)'") }
         if draft.GuideHours          != old.GuideHours          { glog("[Settings] GuideHours: \(old.GuideHours) → \(draft.GuideHours)") }
-        if draft.Guide_refresh_interval_minutes != old.Guide_refresh_interval_minutes {
-            glog("[Settings] GuideRefreshIntervalMinutes: \(old.Guide_refresh_interval_minutes) → \(draft.Guide_refresh_interval_minutes)")
+        if draft.Guide_refresh_interval_divisor != old.Guide_refresh_interval_divisor {
+            glog("[Settings] GuideRefreshIntervalDivisor: 1/\(old.Guide_refresh_interval_divisor) → 1/\(draft.Guide_refresh_interval_divisor)")
         }
         if draft.Default_transcode   != old.Default_transcode   { glog("[Settings] DefaultTranscode: '\(old.Default_transcode)' → '\(draft.Default_transcode)'") }
         if draft.Virtual_tuner_relay_default_transcode != old.Virtual_tuner_relay_default_transcode {
@@ -417,8 +417,12 @@ struct SettingsView: View {
                 Stepper(value: $draft.GuideHours, in: 1...28) {
                     HStack { Text("Show next \(draft.GuideHours) hours"); InfoButton("How far ahead guide data is fetched. Longer windows let you schedule further out. Capped at 28h — the cloud guide API silently truncates single-call requests beyond ~29h. See the auto-refresh interval below for how often this actually re-fetches.") }
                 }
-                Stepper(value: $draft.Guide_refresh_interval_minutes, in: 15...240, step: 15) {
-                    HStack { Text("Auto-refresh every \(draft.Guide_refresh_interval_minutes) min"); InfoButton("How often guide data is automatically re-fetched in the background, independent of the window size above. Shorter intervals catch schedule changes sooner but mean more fetches; longer intervals mean fewer fetches but schedule changes and the display window take longer to update. Default 60 min. \"Update Guides Now\" always refreshes immediately regardless of this setting.") }
+                Picker(selection: $draft.Guide_refresh_interval_divisor) {
+                    Text("1/2 (~\(formattedGuideRefreshInterval(divisor: 2)))").tag(2)
+                    Text("1/4 (~\(formattedGuideRefreshInterval(divisor: 4)))").tag(4)
+                    Text("1/8 (~\(formattedGuideRefreshInterval(divisor: 8)))").tag(8)
+                } label: {
+                    HStack { Text("Auto-refresh"); InfoButton("How often guide data is automatically re-fetched in the background, as a fraction of the window size above — e.g. 1/8 of a 24-hour window refreshes roughly every 3 hours. A wider window can afford to refresh less often before running dry; a narrower one refreshes more often. The exact timing is randomized within the final hour of that window (or, for a window an hour or shorter, sometime within the whole window) each time, rather than always landing at the same predictable offset. \"Update Guides Now\" always refreshes immediately regardless of this setting.") }
                 }
                 Stepper(value: $draft.Series_scan_retry_hours, in: 1...24) {
                     HStack { Text("Series scan retry: \(draft.Series_scan_retry_hours) hr"); InfoButton("How long to wait before re-checking the guide when a series show has no matching air time yet.") }
@@ -432,6 +436,17 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .navigationTitle("Guide")
+    }
+
+    // Live preview for the auto-refresh Picker's option labels — reuses the exact same
+    // calculation idleLoop uses (AppState.guideRefreshIntervalSeconds), so the displayed value
+    // can never drift from what the app actually does, and updates live as draft.GuideHours changes.
+    private func formattedGuideRefreshInterval(divisor: Int) -> String {
+        let seconds = AppState.guideRefreshIntervalSeconds(guideHours: draft.GuideHours, divisor: divisor)
+        let minutes = seconds / 60
+        guard minutes >= 60 else { return "\(Int(minutes.rounded())) min" }
+        let hours = minutes / 60
+        return hours.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(hours)) hr" : String(format: "%.1f hr", hours)
     }
 
     // MARK: - Notifications

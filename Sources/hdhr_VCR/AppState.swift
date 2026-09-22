@@ -593,10 +593,49 @@ final class AppState: ObservableObject {
     private var idleTimer: Timer?
     private var statusLightTimer: Timer?
     // When the guide was last refreshed; idleLoop triggers a new refresh once
-    // config.Guide_refresh_interval_minutes has elapsed since this (default 60 — was previously a
-    // fixed clock-hour-boundary check; now a plain elapsed-time gate so any configured interval,
-    // not just 60, is honored the same way).
+    // guideRefreshTargetSeconds (below, fixed for the current cycle) has elapsed since this (was
+    // previously a fixed clock-hour-boundary check; now a plain elapsed-time gate).
     private var lastGuideRefreshAt: Date? = nil
+    // The actual (jittered) interval to wait before the next refresh, drawn fresh each time a
+    // refresh is armed (armNextGuideRefresh) — deliberately NOT recomputed on every idle tick, or
+    // the random target would keep changing underneath the comparison and effectively never fire.
+    private var guideRefreshTargetSeconds: TimeInterval?
+
+    // Pure, extracted for unit testing (matches this file's own precedent for small decision
+    // functions elsewhere in the codebase). Deliberately ties refresh cadence to GuideHours rather
+    // than an independent duration: a wider fetch-ahead window can afford to refresh less often
+    // (more of it stays unconsumed before the next fetch), a narrower one needs to refresh more
+    // often to avoid running dry before the next fetch lands. Floors at 30 minutes so a small
+    // GuideHours combined with the /8 divisor (e.g. GuideHours=1 → 7.5 min) can't drive the idle
+    // loop into refreshing too aggressively.
+    nonisolated static func guideRefreshIntervalSeconds(guideHours: Int, divisor: Int) -> TimeInterval {
+        let hours = Double(guideHours) / Double(divisor)
+        return max(30 * 60, hours * 3600)
+    }
+
+    /// Applies "fuzzy" jitter to a nominal interval: the refresh should land sometime within the
+    /// final hour of the window (e.g. a 3h nominal interval refreshes sometime between 2h and 3h),
+    /// or — for a window an hour or shorter — sometime within the whole window, rather than always
+    /// exactly at the boundary. This is deliberate: always requesting a fresh guide at a
+    /// predictable, round wall-clock-relative offset means every install with the same setting
+    /// tends toward the same request pattern against SiliconDust's cloud API; randomizing avoids
+    /// that without changing the *average* cadence in any way that matters practically.
+    /// `unitRandom` must be in `0..<1` — callers pass `Double.random(in: 0..<1)` at the real call
+    /// site (armNextGuideRefresh); a fixed value here keeps this pure and testable.
+    nonisolated static func jitteredGuideRefreshIntervalSeconds(nominal: TimeInterval, unitRandom: Double) -> TimeInterval {
+        let jitterWindow = min(3600, nominal)
+        return (nominal - jitterWindow) + jitterWindow * unitRandom
+    }
+
+    /// Draws a fresh randomized target for the next guide refresh and stamps `lastGuideRefreshAt`.
+    /// Called once per refresh cycle (startup load and every periodic refresh) — never per idle
+    /// tick, so the random target stays fixed for the whole cycle instead of jittering under the
+    /// elapsed-time comparison itself.
+    private func armNextGuideRefresh(at now: Date) {
+        lastGuideRefreshAt = now
+        let nominal = Self.guideRefreshIntervalSeconds(guideHours: config.GuideHours, divisor: config.Guide_refresh_interval_divisor)
+        guideRefreshTargetSeconds = Self.jitteredGuideRefreshIntervalSeconds(nominal: nominal, unitRandom: Double.random(in: 0..<1))
+    }
     // Guards the fast lineup-only retry below — separate from guideRefreshInFlight (refreshGuides'
     // own guard) since this fires on every idle tick, not just the periodic guide-refresh gate, and a
     // permission-blocked fetch is exactly the kind of call that could plausibly hang past one tick.
@@ -1604,9 +1643,9 @@ final class AppState: ObservableObject {
             else  { guideApiBackoff[deviceId, default: APIBackoff()].recordFailure() }
         }
         let loadedCount = guideByDevice.values.reduce(0) { $0 + $1.count }
-        // Stamp the refresh time so the first idle-loop tick doesn't immediately
-        // re-fetch the guide that startup just loaded.
-        if loadedCount > 0 { guideRevision += 1; lastGuideRefreshAt = Date() }
+        // Stamp the refresh time (and draw a fresh jittered target) so the first idle-loop tick
+        // doesn't immediately re-fetch the guide that startup just loaded.
+        if loadedCount > 0 { armNextGuideRefresh(at: Date()) }
         statusMessage = "\(shows.count) show(s) — \(availableDeviceCount) tuner(s) ready"
         let allChannels = guideByDevice.values.flatMap { $0 }
         Task { await prefetchChannelIcons(allChannels) }
@@ -1617,8 +1656,8 @@ final class AppState: ObservableObject {
         guard !guideRefreshInFlight else { return }
         guideRefreshInFlight = true
         // Per-device retries are handled separately by ensureGuideLoaded with exponential backoff.
-        // idleLoop's periodic refresh gate (config.Guide_refresh_interval_minutes) naturally
-        // prevents retry storms.
+        // idleLoop's periodic refresh gate (guideRefreshIntervalSeconds) naturally prevents retry
+        // storms.
         defer { guideRefreshInFlight = false }
         // Deliberately no guideStore.invalidateAll() here (unlike SettingsView's user-initiated
         // rescan/setting-change callers, where an immediate wipe-then-reload is expected and the
@@ -2486,11 +2525,18 @@ final class AppState: ObservableObject {
             }
         }
 
-        // Refresh lineup + guide once config.Guide_refresh_interval_minutes has elapsed (default 60,
-        // matching the web UI's own roughly-hourly window slide).
-        let intervalSec = TimeInterval(config.Guide_refresh_interval_minutes * 60)
-        if lastGuideRefreshAt == nil || now.timeIntervalSince(lastGuideRefreshAt!) >= intervalSec {
-            lastGuideRefreshAt = now
+        // Refresh lineup + guide once the current cycle's jittered target has elapsed (armed by
+        // armNextGuideRefresh — a fresh random target within the final hour of the GuideHours/
+        // divisor-derived window, e.g. sometime between 2h and 3h for the 24h÷8=3h default).
+        if let target = guideRefreshTargetSeconds, let last = lastGuideRefreshAt {
+            if now.timeIntervalSince(last) >= target {
+                armNextGuideRefresh(at: now)
+                Task { await refreshGuides() }
+            }
+        } else {
+            // Never refreshed this session — trigger immediately rather than waiting out a full
+            // cycle, matching the pre-jitter behavior.
+            armNextGuideRefresh(at: now)
             Task { await refreshGuides() }
         }
         // While Local Network permission hasn't been confirmed working yet, retry the lineup
@@ -4021,8 +4067,8 @@ final class AppState: ObservableObject {
         // cleared eagerly right above (unlike refreshGuides()'s own guideStore, which is left in
         // place until fresh data lands) because this is a user-initiated "Update Guides Now" action
         // (SettingsView) — an immediate visual clear is expected here, unlike the silent automatic
-        // periodic refresh. The idle loop gates that on config.Guide_refresh_interval_minutes elapsed,
-        // so concurrent calls are naturally throttled.
+        // periodic refresh. The idle loop gates that on guideRefreshIntervalSeconds elapsed, so
+        // concurrent calls are naturally throttled.
         await discoverDevices()
         await refreshGuides()
     }

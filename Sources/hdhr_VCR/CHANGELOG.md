@@ -6,6 +6,7 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 
 **Added**
 - **Cast to Chromecast.** The in-app player's "…" menu now has a "Cast" entry that finds Chromecast devices on your LAN and sends Watch Now/FEED playback to them — pick "This Mac" to return to local playback. Not yet tested against a real Chromecast (built and verified via `swift build`/`swift test` only).
+- **Guide auto-refresh cadence is now adjustable, tied to how far ahead you fetch.** Settings → Guide has a new "Auto-refresh" picker — 1/2, 1/4, or 1/8 of the "Show next N hours" window (default 1/8, e.g. ~3 hours for the default 24-hour window). A wider guide window can afford to refresh less often; a narrower one refreshes more often. The exact timing is deliberately fuzzy — it lands sometime within the final hour of that window rather than at a fixed offset, so guide fetches don't all cluster at the same predictable moment. Replaces the previous fixed hourly cadence.
 
 **Updated**
 - **AirPlay speakers are now labeled in the Audio Output menu** (e.g. "Living Room (AirPlay)") instead of showing just a plain device name.
