@@ -82,7 +82,6 @@ final class RecordingManager {
         }
         pids[showId] = pid
 
-        // Prevent system sleep for the recording duration + 5-min buffer.
         preventSleep(id: showId, reason: "Recording: \(title)", duration: TimeInterval(durationSeconds + 300))
 
         glog("[Rec] Started \(showId) pid=\(pid) verbose=\(verbose): \(streamURL) → \(outputPath)")

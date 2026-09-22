@@ -2929,7 +2929,6 @@ final class AppState: ObservableObject {
                 return
             }
         }
-        // Enforce tuner limit: skip if all slots on this device are already occupied
         if tunersFull(for: show.hdhr_record) {
             let tunerCount = device.TunerCount ?? 0
             glog("[\(show.show_title)] TUNER FULL \(show.hdhr_record) — skipping start", level: .warning)

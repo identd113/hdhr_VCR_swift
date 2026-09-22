@@ -53,7 +53,6 @@ final class WebServer: @unchecked Sendable {
     private let acceptQueue = DispatchQueue(label: "hdhrVCRplus.webserver.accept", qos: .userInitiated)
     private weak var appState: AppState?
 
-    // SSE: open connections waiting for push events
     private var sseConns: [NWConnection] = []
     private let sseLock  = NSLock()
 
@@ -461,7 +460,6 @@ final class WebServer: @unchecked Sendable {
         glog("[WebServer] Stopped")
     }
 
-    // Push a JSON event to all open SSE clients.
     func broadcastEvent(_ event: [String: Any]) {
         guard let data = try? JSONSerialization.data(withJSONObject: event),
               let json = String(data: data, encoding: .utf8) else { return }
@@ -1902,7 +1900,6 @@ final class WebServer: @unchecked Sendable {
                 return
             }
 
-            // Locate the header/body separator
             guard let sepRange = data.range(of: Self.httpSep) else {
                 // Headers not complete yet — keep reading
                 self.accumulate(conn: conn, buffer: data)
@@ -4033,7 +4030,6 @@ final class WebServer: @unchecked Sendable {
         switch response {
         case .ok(let ct, let b):
             status = "200 OK"
-            // Compress text responses when the client supports it.
             if acceptsGzip, b.count >= 1400, let gz = Self.gzip(b) {
                 headers = [("Content-Type", ct), ("Content-Encoding", "gzip"),
                            ("Vary", "Accept-Encoding"), ("Content-Length", "\(gz.count)")]

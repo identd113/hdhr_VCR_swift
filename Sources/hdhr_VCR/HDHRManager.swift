@@ -381,7 +381,6 @@ final class HDHRManager {
                 continue
             }
 
-            // Convert source address to IP string
             let ipStr: String = withUnsafePointer(to: from.sin_addr) { addrPtr in
                 var strBuf = [CChar](repeating: 0, count: Int(INET_ADDRSTRLEN))
                 inet_ntop(AF_INET, addrPtr, &strBuf, socklen_t(INET_ADDRSTRLEN))

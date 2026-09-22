@@ -102,7 +102,6 @@ final class GuideStore {
                 channels = try JSONDecoder().decode([GuideChannel].self, from: data)
             } catch {
                 glog("[\(id)] PARSE ERROR: \(error)", level: .error)
-                // Log more of the raw response on parse failure for diagnosis
                 if let full = String(data: data.prefix(2000), encoding: .utf8) {
                     glog("[\(id)] raw response (2000 chars): \(full)", level: .error)
                 }

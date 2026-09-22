@@ -18,7 +18,6 @@ final class ConfigManager {
 
     func load() -> ConfigFile? {
         let decoder = Self.makeDecoder()
-        // Try main config
         if let data = try? Data(contentsOf: configURL),
            let file = try? decoder.decode(ConfigFile.self, from: data) {
             return maybeUpgrade(file)
