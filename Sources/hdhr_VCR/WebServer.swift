@@ -2005,7 +2005,7 @@ final class WebServer: @unchecked Sendable {
                 let channel = String(cleanPath.dropFirst("/auto/v".count)).removingPercentEncoding
                     ?? String(cleanPath.dropFirst("/auto/v".count))
                 let query = URLComponents(string: path)?.queryItems ?? []
-                let duration = query.first(where: { $0.name == "duration" }).flatMap { Int($0.value ?? "") }
+                let duration = query.first(where: { $0.name == "duration" }).flatMap { Int($0.value ?? "") }.map { max(0, $0) }
                 let transcode = query.first(where: { $0.name == "transcode" })?.value
                 // dev= (buildVirtualTunerLineupJSON's own addition) disambiguates two real devices
                 // sharing a channel number — see handleVirtualTunerStream's own comment. Absent for
@@ -2777,6 +2777,21 @@ final class WebServer: @unchecked Sendable {
     // directly with synthetic AppState, same testability pattern as the other builders here.
     struct DevTuners { let total: Int; let active: Int; var isFull: Bool { total > 0 && active >= total } }
 
+    // The "online vs. offline" device-ID split shared by every dev-bar/tuner-listing builder:
+    // devices this instance currently has discovered (state.devices) vs. devices no scan has
+    // found at all but that a show still references via hdhr_record — CLAUDE.md's "Web guide
+    // offline devices — never silently omit them" invariant. Previously reimplemented
+    // independently in buildDevBarHTML, buildTunerStatusJSON, and buildGuideJSON (two of the three
+    // with comments admitting they just "mirror" this one) — a future change to the invariant
+    // applied to one call site and missed in the others was the exact drift risk that shape
+    // invited. Internal, not private — same testability precedent as computeDevTuners below.
+    @MainActor
+    static func onlineOfflineDeviceIDs(state: AppState) -> (online: Set<String>, offline: Set<String>) {
+        let onlineIDs = Set(state.devices.map { $0.DeviceID })
+        let offlineIDs = Set(state.shows.map { $0.hdhr_record }).subtracting(onlineIDs).filter { !$0.isEmpty }
+        return (onlineIDs, offlineIDs)
+    }
+
     @MainActor
     // `recordableDevices`, when given, is used as-is instead of re-deriving `state.recordableDevices`
     // (a computed property that re-filters `devices` on every access) — buildHTML already hoists one
@@ -2832,9 +2847,8 @@ final class WebServer: @unchecked Sendable {
             return "<span id=\"tun-\(he(devId))\" class=\"\(cls)\">\(label)</span>"
         }
 
-        let onlineIDs  = Set(state.devices.map { $0.DeviceID })
+        let (_, offlineIDs) = Self.onlineOfflineDeviceIDs(state: state)
         let deviceIDsWithShows = Set(state.shows.map { $0.hdhr_record })
-        let offlineIDs = deviceIDsWithShows.subtracting(onlineIDs).filter { !$0.isEmpty }
         let usableIDs  = state.usableDeviceIDs
 
         func tunerBox(_ devId: String, active: Bool, uiURL: String?) -> String {
@@ -3678,9 +3692,8 @@ final class WebServer: @unchecked Sendable {
         // usable, plus (per CLAUDE.md's "Web guide offline devices" invariant) any device that's
         // never been discovered at all but still owns a scheduled show — never silently omit those.
         let devTuners = Self.computeDevTuners(state: state)
-        let onlineIDs = Set(state.devices.map { $0.DeviceID })
+        let (_, offlineIDs) = Self.onlineOfflineDeviceIDs(state: state)
         let deviceIDsWithShows = Set(state.shows.map { $0.hdhr_record })
-        let offlineIDs = deviceIDsWithShows.subtracting(onlineIDs).filter { !$0.isEmpty }
         let usableIDs = state.usableDeviceIDs
 
         var tuners: [TunerEntry] = []
@@ -3970,8 +3983,7 @@ final class WebServer: @unchecked Sendable {
         // dashed "not detected" box. An offline device was never discovered, so it has no real
         // tuner-occupancy data — active/total both report 0, same as devTuners' own missing-key
         // fallback for any device already in state.devices.
-        let onlineIDs = Set(state.devices.map { $0.DeviceID })
-        let offlineIDs = Set(state.shows.map { $0.hdhr_record }).subtracting(onlineIDs).filter { !$0.isEmpty }
+        let (_, offlineIDs) = Self.onlineOfflineDeviceIDs(state: state)
         // recordableDevices (not state.devices) — a discovered virtual relay device has no real
         // lineup/guide data and can't be recorded from, so hdhr_guide's Tab/switchDevice() (which
         // only ever iterates this list) shouldn't be able to switch to it in the first place.
