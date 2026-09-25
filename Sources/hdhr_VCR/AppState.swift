@@ -1377,7 +1377,24 @@ final class AppState: ObservableObject {
             do {
                 let found = excludingOwnVirtualTuner(
                     try await hdhrManager.discoverDevices(knownHosts: knownHosts, interface: config.Network_interface))
-                devices = found
+                // Merge into the existing list rather than a raw overwrite — a single lossy UDP
+                // round can miss a device that's still genuinely present, and unlike
+                // probeForNewDevices (this function's periodic sibling), this call has no
+                // missed-probes grace period of its own. Dropping a missed device here immediately
+                // would show it "not detected" the instant one Rediscover click catches a bad
+                // round, instead of only after 3 missed probes like every other discovery path.
+                // A device this round DID find gets its record refreshed/replaced outright
+                // (missedProbes resets to 0, its default); one this round missed keeps its prior
+                // entry untouched, so eventual removal still only ever happens via
+                // probeForNewDevices's own threshold.
+                let foundByID = Dictionary(uniqueKeysWithValues: found.map { ($0.DeviceID, $0) })
+                var merged = devices
+                for i in merged.indices {
+                    if let fresh = foundByID[merged[i].DeviceID] { merged[i] = fresh }
+                }
+                let existingIDs = Set(devices.map { $0.DeviceID })
+                merged.append(contentsOf: found.filter { !existingIDs.contains($0.DeviceID) })
+                devices = merged
                 await fetchAllLineups(for: found)
                 statusMessage = "\(devices.count) tuner(s) found"
                 glog("[Discovery] \(devices.count) tuner(s): \(devices.map { "\($0.DeviceID) \($0.LocalIP)" }.joined(separator: ", "))")
@@ -2035,7 +2052,8 @@ final class AppState: ObservableObject {
     @discardableResult
     func quickRecord(type: ShowState, entry: GuideEntry, device: HDHRDevice, channel: LineupEntry) -> Bool {
         guard !tunersFull(for: device.DeviceID) else { return false }
-        addShowFromGuide(entry: entry, type: type, device: device, channel: channel)
+        let bonusTime = Show.genreImpliesBonusTime(entry.firstGenre) && config.Sports_padding_enabled
+        addShowFromGuide(entry: entry, type: type, device: device, channel: channel, bonusTime: bonusTime)
         return true
     }
 
@@ -2153,7 +2171,8 @@ final class AppState: ObservableObject {
         yieldingWatchNowDeviceID = device.DeviceID
         defer { yieldingWatchNowDeviceID = nil }
         setYieldProgress("Scheduling the recording…", generation: generation)
-        let showId = addShowFromGuide(entry: entry, type: type, device: device, channel: channel)
+        let bonusTime = Show.genreImpliesBonusTime(entry.firstGenre) && config.Sports_padding_enabled
+        let showId = addShowFromGuide(entry: entry, type: type, device: device, channel: channel, bonusTime: bonusTime)
         // First attempt: addShow's own "start immediately if airing now" Task may already be
         // racing to call startRecording concurrently — that's fine, startRecording's own
         // recordingManager.isRunning(showId:) resync guard makes a second concurrent call here
@@ -2974,6 +2993,7 @@ final class AppState: ObservableObject {
                             clearIdAfter: true)
             showRuntime[show.show_id]?.conflictNotifiedEpoch = nil
             showRuntime[show.show_id]?.missedStartNotifiedEpoch = nil
+            pushShowUpdate(type: "show_updated", channel: show.show_channel, device: show.hdhr_record, rebuildMenu: false)
             return
         }
         guard diskOK(for: show) else {
@@ -2983,6 +3003,7 @@ final class AppState: ObservableObject {
             fireDiscordCard(showId: show.show_id, event: "💾 Recording Skipped", color: 0xE67E22,
                             enabled: config.Discord_on_skipped,
                             extra: [("Reason", "Disk over \(Int(maxDiskPct))% — free up space", false)])
+            pushShowUpdate(type: "show_updated", channel: show.show_channel, device: show.hdhr_record, rebuildMenu: false)
             return
         }
         // Fetched once and shared by the series-subfolder episode tag below and the metadata
@@ -3598,7 +3619,7 @@ final class AppState: ObservableObject {
         let airIndices = show.show_air_date.compactMap { dayNames.firstIndex(of: $0.lowercased()) }
         guard !airIndices.isEmpty else { return [] }
         let hours   = Int(show.show_time)
-        let minutes = Int((show.show_time - Double(hours)) * 60)
+        let minutes = Int(((show.show_time - Double(hours)) * 60).rounded())
         let baseWeekday = cal.component(.weekday, from: after) - 1  // 0 = Sunday
         let weeksNeeded = max(2, (count / max(1, airIndices.count)) + 2)
         var candidates: [Date] = []
@@ -5322,8 +5343,15 @@ final class AppState: ObservableObject {
                     j       += batchSize
                     scanned += batch.count
 
-                    await MainActor.run {
-                        signalScanProgress = "Scanning \(batch[0].GuideName) (\(scanned)/\(total))…"
+                    // Gated on menuIsOpen like every other high-frequency @Published writer in this
+                    // file (see fetchDeviceStatusUncached's identical reasoning) — a scan can run
+                    // across dozens of channels, and an ungated write here fires objectWillChange on
+                    // the whole AppState once per channel, reintroducing the documented menu-rebuild-
+                    // churn bug for as long as the menu happens to be open while a scan is in progress.
+                    if !menuIsOpen {
+                        await MainActor.run {
+                            signalScanProgress = "Scanning \(batch[0].GuideName) (\(scanned)/\(total))…"
+                        }
                     }
 
                     // Open one stream per channel in the batch concurrently (locks each tuner),
