@@ -999,6 +999,21 @@ final class VLCBridge: ObservableObject {
     /// those are derived from the URL/Show, not swappable state) and just swaps currentURL/
     /// secondaryURL so that derivation can run against the right URL.
     func swapSlots() {
+        // The renderer (castRendererItem) is only ever applied to whichever mediaPlayer object
+        // libvlc_media_player_set_renderer was last called on — it travels with that mediaPlayer
+        // object, not with "the primary slot" as a concept. Swapping mediaPlayer references below
+        // without also touching this would leave the actual Chromecast output on the demoted
+        // (now-secondary) player while castingDeviceID/the UI still call the new primary "casting" —
+        // and re-targeting the renderer live isn't an option (must be called while stopped, per
+        // _mpSetRenderer's own doc comment) without the exact rebuffering reconnect this whole
+        // instant-swap redesign exists to avoid. Simplest correct option: stop casting (back to
+        // local playback, honest state) before swapping, same as any other operation that can't
+        // preserve an active cast across it.
+        if castingDeviceID != nil {
+            glog("[VLC] swapSlots() — stopping active cast first (cast is tied to a specific player, not swappable)")
+            stopCasting()
+        }
+
         guard let oldPrimaryMP = primaryState.mediaPlayer, let oldSecondaryMP = secondaryState.mediaPlayer,
               let oldPrimaryView = primaryState.drawableView, let oldSecondaryView = secondaryState.drawableView,
               let primaryContainer = primaryState.containerView, let secondaryContainer = secondaryState.containerView
