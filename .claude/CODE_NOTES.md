@@ -1208,3 +1208,34 @@ TODO text describing the same change); `321fdb5` is a pure doc correction, zero 
   (unlike `guide.json`'s compact encoding) — confirmed intentional per `docs/WebServer.md:924`'s own
   contrast note, and this endpoint is on-air-entries-only (small) and not polled on the same cadence,
   so the pretty-print overhead is negligible.
+
+## 2026-09-24 — full-codebase quality pass (not diff-scoped)
+- `WebServer.swift` now has three independent copies of "online/offline device ID set" derivation
+  (`buildDevBarHTML` lines 2835-2838, `buildTunerStatusJSON` lines 3681-3684 added 2026-09-22, and
+  the hdhr_guide TUI JSON builder lines 3973-3974) — `let onlineIDs = Set(state.devices.map {
+  $0.DeviceID })` + `deviceIDsWithShows`/`offlineIDs` subtract-and-filter, byte-for-byte identical
+  in two of the three. Each site's own comment explicitly says "mirrors buildDevBarHTML's own
+  offlineIDs," so the duplication is acknowledged, not accidental — just never factored into a
+  shared `WebServer.onlineOfflineDeviceIDs(state:)`-style helper. Reported to main agent as a REUSE
+  finding rather than fixed (find-only pass).
+- `Views/AddShowView.swift`'s `applyPendingEntry` (386-415) and `applyWebGuideEntry` (417-463) are
+  two near-identical ~25-line blocks that populate the same `@State show`'s fields from a guide
+  entry (show_id/title/channel/length/next/end/seriesid/logo/genre/bonus_time/hdhr_record/url/time,
+  airDays, seriesType). This exact duplication already caused a real bug once — commit `fc40f75d`
+  ("applyPendingEntry had the same missing-show_id-reset bug as applyWebGuideEntry") patched both
+  copies in parallel with cross-referencing comments rather than consolidating into one shared
+  populate-from-guide-entry function, so the underlying duplication (and risk of a third such
+  divergence) is still there. Reported as an ALTITUDE finding (symptom patched twice instead of the
+  shared-infrastructure root cause).
+- `DiscordNotifier.swift`'s `sendDiscordEmbed`/`sendDiscordEmbedCapturing`/`editDiscordEmbed` (lines
+  42-179) each independently build the `URLRequest`, JSON-encode-or-log-and-bail on failure, and
+  handle the HTTP response (cast to `HTTPURLResponse`, status-code check, paired glog+discordLog
+  lines) — ~90% identical across all three, already showing minor divergence (`< 200 || >= 300` vs
+  `(200..<300).contains`). Not previously flagged in this file's own history. Reported as a
+  REUSE/SIMPLIFICATION finding, not fixed.
+- `Views/PiPPickerView.swift:153` (`liveTVSection`, new 2026-09-18 PiP feature) calls
+  `state.allChannels(for: device, at: Date())` directly inside the view body on every SwiftUI
+  render of this modal (e.g. moving the tuner segmented-picker) instead of caching the result —
+  `allChannels` does a per-channel `guideEntries(...).first(where:)` scan plus a sort over the
+  whole lineup. Modal-scoped (not a 24/7 hot path) so kept as a lower-severity EFFICIENCY note
+  rather than top-tier.
