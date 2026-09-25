@@ -118,6 +118,37 @@ func waitUntil(timeout: TimeInterval = 3, _ condition: () -> Bool) async {
     }
 }
 
+// Spawns `executablePath` as a real, detached process that is NOT a child of this test process —
+// needed to exercise RecordingManager.isRunning()'s ECHILD/orphan-reattach branch (waitpid only
+// hits ECHILD for a pid that genuinely isn't this process's own child). A plain Process()/
+// posix_spawn launch would make the spawned process our direct child, hitting the "our child,
+// still running" branch instead — the opposite of what reattach() is meant to simulate.
+// Standard shell double-detach instead of a raw fork() (which is fork-in-a-multithreaded-process
+// hazardous inside an XCTest/swift-testing host): `sh -c` starts `executablePath` in the
+// background, writes its pid to a scratch file, then exits — once the shell (our actual child)
+// exits, the backgrounded process is reparented away from it to launchd, so it's never our child
+// at all. The pid is round-tripped through a temp file rather than a Pipe on `standardOutput` —
+// found live that a Pipe there reliably kills the backgrounded grandchild almost immediately
+// (reproducible outside this harness too), for reasons not fully chased down; a plain file write
+// has none of that behavior.
+func spawnDetachedOrphan(executablePath: String, arguments: [String] = []) throws -> Int32 {
+    let pidFile = NSTemporaryDirectory() + "hdhrVCRplus-orphanpid-\(UUID().uuidString).txt"
+    defer { try? FileManager.default.removeItem(atPath: pidFile) }
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/bin/sh")
+    let quotedArgs = ([executablePath] + arguments).map { "'\($0)'" }.joined(separator: " ")
+    process.arguments = ["-c", "\(quotedArgs) & echo $! > '\(pidFile)'"]
+    try process.run()
+    process.waitUntilExit()
+    guard let str = try? String(contentsOfFile: pidFile, encoding: .utf8)
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+          let pid = Int32(str) else {
+        struct SpawnError: Error {}
+        throw SpawnError()
+    }
+    return pid
+}
+
 // MARK: - HDHRDevice
 
 extension HDHRDevice {

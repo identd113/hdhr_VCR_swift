@@ -204,16 +204,36 @@ struct RecordingManagerTests {
     // MARK: - reattach (startup resume)
 
     @Test @MainActor func reattach_registersPidAndMakesIsRunningTrue() throws {
-        let manager = RecordingManager()
+        // isRunning()'s ECHILD/orphan branch now also confirms the live process at the reattached
+        // pid is actually the curl binary this manager was configured with — a pid can be recycled
+        // to an unrelated process across an app restart (see RecordingManager's isCurlProcess doc
+        // comment) — so this needs a real, detached (not-our-child, so waitpid genuinely hits
+        // ECHILD) process whose executable matches curlExecutablePath, rather than the old
+        // getpid()-as-a-stand-in trick (this test process is obviously never curl).
+        let manager = RecordingManager(curlExecutablePath: "/bin/sleep")
         let showId = "test-\(UUID().uuidString)"
-        // Any real, currently-running process works here — reattach only needs a live pid,
-        // it doesn't spawn one itself. This process's own pid is guaranteed alive for the test's
-        // duration.
-        let selfPid = getpid()
-        manager.reattach(showId: showId, pid: selfPid, title: "Resumed Show",
+        let pid = try spawnDetachedOrphan(executablePath: "/bin/sleep", arguments: ["30"])
+        defer { kill(pid, SIGKILL) }
+        manager.reattach(showId: showId, pid: pid, title: "Resumed Show",
                           endDate: Date().addingTimeInterval(120))
         #expect(manager.isRunning(showId: showId) == true)
         // Clean up the sleep assertion this creates without killing our own test process.
+        manager.releaseAssertion(id: showId)
+    }
+
+    @Test @MainActor func isRunning_orphanPidReusedByUnrelatedProcess_returnsFalse() throws {
+        // The actual bug this guards: an orphan-reattached pid that's still alive but has been
+        // recycled by the kernel to a completely unrelated process (e.g. after a long-uptime
+        // restart) must not be reported as still running just because kill(pid,0) succeeds.
+        let manager = RecordingManager(curlExecutablePath: "/bin/sleep")
+        let showId = "test-\(UUID().uuidString)"
+        // /bin/cat with no args reads stdin forever without exiting — a live, non-curl process to
+        // stand in for "something else now occupies this recycled pid".
+        let pid = try spawnDetachedOrphan(executablePath: "/bin/cat")
+        defer { kill(pid, SIGKILL) }
+        manager.reattach(showId: showId, pid: pid, title: "Resumed Show",
+                          endDate: Date().addingTimeInterval(120))
+        #expect(manager.isRunning(showId: showId) == false)
         manager.releaseAssertion(id: showId)
     }
 

@@ -202,9 +202,28 @@ final class RecordingManager {
             return false
         }
         // ECHILD: not our child — orphaned to launchd after an app restart.
-        // launchd auto-reaps orphan zombies so kill(pid,0) is reliable here.
-        if kill(pid, 0) == 0 { return true }
-        pids.removeValue(forKey: showId); return false
+        // launchd auto-reaps orphan zombies so kill(pid,0) is reliable for "is *some* process
+        // still alive at this pid" — but pids recycle. On a long-uptime Mac, this exact pid can
+        // have exited and been reassigned by the kernel to a totally unrelated process before
+        // this check ever runs again, which would otherwise report the recording as running
+        // forever (the idle loop's natural-stop path depends on !isRunning to ever fire).
+        // Confirm the live process at this pid is actually the curl binary this show's recording
+        // was launched from, not just that the pid number is currently occupied by something.
+        guard kill(pid, 0) == 0, isCurlProcess(pid: pid) else {
+            pids.removeValue(forKey: showId); return false
+        }
+        return true
+    }
+
+    /// Confirms the process at `pid` is the curl binary this manager launches recordings from
+    /// (by executable path basename, so the injectable test double still matches) — see
+    /// isRunning's own doc comment for why kill(pid,0) alone can't be trusted after a pid recycle.
+    private func isCurlProcess(pid: Int32) -> Bool {
+        var buffer = [Int8](repeating: 0, count: Int(4 * MAXPATHLEN))  // PROC_PIDPATHINFO_MAXSIZE's value — the macro itself is marked unavailable to Swift
+        let len = proc_pidpath(pid, &buffer, UInt32(buffer.count))
+        guard len > 0 else { return false }
+        let path = String(cString: buffer)
+        return (path as NSString).lastPathComponent == (curlExecutablePath as NSString).lastPathComponent
     }
 
     /// Reads and clears the raw wait-status captured the last time `isRunning` reaped this
