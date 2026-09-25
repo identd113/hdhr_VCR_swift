@@ -317,7 +317,14 @@ final class HDHRManager {
         var seenIPs = Set<String>()
 
         let bufCapacity = buf.count
-        while true {
+        // SO_RCVTIMEO only bounds the gap *between* packets — each new reply that arrives before
+        // the 2s timeout elapses resets it, so a device (or anything else on this LAN — no auth
+        // beyond subnet matching, per this app's own posture) sending well-formed-enough
+        // DISCOVER_REPLY packets faster than every 2s would otherwise keep this loop, and
+        // whatever awaits discoverDevices()'s `async let udpDevices` branch, blocked indefinitely.
+        // An explicit overall wall-clock budget bounds total discovery time regardless of reply rate.
+        let overallDeadline = Date().addingTimeInterval(10)
+        while Date() < overallDeadline {
             // fromLen must reset before each recvfrom; the syscall may reduce it
             var fromLen = socklen_t(MemoryLayout<sockaddr_in>.size)
             let n = buf.withUnsafeMutableBytes { raw -> Int in
