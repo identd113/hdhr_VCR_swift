@@ -2647,7 +2647,17 @@ final class AppState: ObservableObject {
                 // identical in shape to the tight skip/reschedule loop fixed 2026-08-19 (see
                 // issues_resolved.md's "Lyla in the Loop"-adjacent entry).
                 guard show.show_fail_reason != Self.autoPauseTunerMissingReason else { continue }
-                if endDate <= now {
+                // Never reschedule out from under a still-open abnormal-stop grace window
+                // (isShowIdInAbnormalGrace) — teardownRecordingState(.abnormal) deliberately keeps
+                // the virtual-tuner relay and show_recording_path alive for a short window so an
+                // in-progress Watch Now/FEED viewer can keep watching. scheduleNextAir below
+                // reassigns show_next/show_end/show_channel/show_url to the *next* episode, which
+                // would otherwise yank that still-open viewer to a different episode's data mid-grace.
+                // Deferring the whole resume (not just the reschedule) is deliberate — un-pausing
+                // without rescheduling would just leave a stale show_next for another tick; this
+                // same branch naturally re-fires once expireAbnormalStopGraceWindows() clears the
+                // grace, with no special-casing needed here.
+                if endDate <= now, !isShowIdInAbnormalGrace(show.show_id) {
                     shows[i].show_paused = false
                     shows[i].clearFailures()
                     showRuntime[show.show_id]?.retryAfter = nil
@@ -2768,7 +2778,8 @@ final class AppState: ObservableObject {
                     let remainingMin = max(0, show.show_end.map { Int($0.timeIntervalSince(now) / 60) } ?? (totalMin - elapsedMin))
                     let progressText = "\(elapsedMin)m elapsed · \(remainingMin)m remaining"
                     let embed = buildDiscordShowEmbed(event: "⏺ Recording In Progress", show: show,
-                                                     color: 0xE67E22, extra: [("Progress", progressText, false)])
+                                                     color: 0xE67E22, extra: [("Progress", progressText, false)],
+                                                     snapshot: resolvedDiscordEpisodeSnapshot(for: show))
                     editDiscordEmbed(webhookURL: config.Discord_webhook_url,
                                      messageId: show.discord_start_msg_id, embed: embed)
                 }
@@ -2776,7 +2787,12 @@ final class AppState: ObservableObject {
             // Advance shows stranded with a past window and show_recording = false.
             // Happens when the app restarts after curl exits normally but before the idle loop
             // fires the natural-stop handler above (which requires show_recording == true).
-            if !show.show_recording, endDate <= now, nextDate < now {
+            // isShowIdInAbnormalGrace excluded for the same reason as the auto-resume branch
+            // above — an abnormal stop near the show's own natural end time can satisfy
+            // endDate <= now within seconds, well inside the grace window teardownRecordingState
+            // just opened; scheduleNextAir must not reassign this show's episode data out from
+            // under a still-open grace-covered viewer. Naturally re-fires once grace expires.
+            if !show.show_recording, endDate <= now, nextDate < now, !isShowIdInAbnormalGrace(show.show_id) {
                 glog("[\(show.show_title)] stranded show_next in past — advancing", level: .warning)
                 await scheduleNextAir(index: i)
                 // Re-resolve by show_id — see the auto-resume branch above for why.
@@ -4453,19 +4469,31 @@ final class AppState: ObservableObject {
         )
     }
 
-    // Builds the embed dict for a show event. Shared by discordShow and the async capturing path.
-    private func buildDiscordShowEmbed(event: String, show: Show, color: Int,
-                                       extra: [(name: String, value: String, inline: Bool)]) -> [String: Any] {
-        // Prefer the snapshot captured when this recording's lifecycle started (still accurate)
-        // over a fresh guide lookup — by the time a later card in the same lifecycle (in-progress,
-        // complete, failed) fires, scheduleNextAir may have already moved show.show_next on to the
-        // *next* airing, which would make a live guideEntryForShow(show) silently resolve to the
-        // wrong episode (or nothing at all). No snapshot exists yet for events that fire before a
-        // recording starts (Show Added, Up Next, Recording Soon, Tuner Conflict) — those still
-        // resolve live, which is correct since show_next is accurate at that point.
-        let snapshot = showRuntime[show.show_id]?.discordEpisodeSnapshot
+    // Resolves the episode-content snapshot for `show` the way every buildDiscordShowEmbed caller
+    // wants it: prefer the snapshot captured when this recording's lifecycle started (still
+    // accurate) over a fresh guide lookup — by the time a later card in the same lifecycle
+    // (in-progress, complete, failed) fires, scheduleNextAir may have already moved show.show_next
+    // on to the *next* airing, which would make a live guideEntryForShow(show) silently resolve to
+    // the wrong episode (or nothing at all). No snapshot exists yet for events that fire before a
+    // recording starts (Show Added, Up Next, Recording Soon, Tuner Conflict) — those still resolve
+    // live, which is correct since show_next is accurate at that point.
+    //
+    // Callers must resolve this at the moment the event actually happens, not lazily inside a
+    // deferred/chained Task — fireDiscordCard's own doc comment covers why (found in code review
+    // 2026-09-25: a card chained behind a slow webhook send could otherwise read whatever snapshot
+    // happens to be current when it finally runs, which by then may belong to a newer recording
+    // attempt for the same show_id that already overwrote it).
+    private func resolvedDiscordEpisodeSnapshot(for show: Show) -> DiscordEpisodeSnapshot {
+        showRuntime[show.show_id]?.discordEpisodeSnapshot
             ?? discordEpisodeSnapshot(entry: guideEntryForShow(show), show: show)
+    }
 
+    // Builds the embed dict for a show event. Shared by discordShow and the async capturing path.
+    // `snapshot` must be resolved by the caller via resolvedDiscordEpisodeSnapshot(for:) at the
+    // moment the event actually happens — see that function's own doc comment.
+    private func buildDiscordShowEmbed(event: String, show: Show, color: Int,
+                                       extra: [(name: String, value: String, inline: Bool)],
+                                       snapshot: DiscordEpisodeSnapshot) -> [String: Any] {
         let channel = guideStore.channels(deviceId: show.hdhr_record)
                                 .first { $0.GuideNumber == show.show_channel }
 
@@ -4534,11 +4562,12 @@ final class AppState: ObservableObject {
     // a fresh card — so a failure → start → end shows as a single, updated card.
     @MainActor
     private func discordRecordingCard(showId: String, event: String, color: Int, enabled: Bool,
-                                      extra: [(name: String, value: String, inline: Bool)] = []) async {
+                                      extra: [(name: String, value: String, inline: Bool)] = [],
+                                      snapshot: DiscordEpisodeSnapshot) async {
         guard let url = discordEffectiveURL(enabled: enabled, webhookURL: nil),
               let i = shows.firstIndex(where: { $0.show_id == showId }) else { return }
         glog("[Discord] \(event) — \(shows[i].show_title)")
-        let embed = buildDiscordShowEmbed(event: event, show: shows[i], color: color, extra: extra)
+        let embed = buildDiscordShowEmbed(event: event, show: shows[i], color: color, extra: extra, snapshot: snapshot)
         let existing = shows[i].discord_start_msg_id
         if !existing.isEmpty {
             editDiscordEmbed(webhookURL: url, messageId: existing, embed: embed)
@@ -4568,10 +4597,20 @@ final class AppState: ObservableObject {
     private func fireDiscordCard(showId: String, event: String, color: Int, enabled: Bool,
                                  extra: [(name: String, value: String, inline: Bool)] = [],
                                  clearIdAfter: Bool = false) {
+        // Resolved NOW, synchronously, not inside the Task below — this call always happens right
+        // at the moment `event` is actually true for this show. Capturing the snapshot into the
+        // Task closure (rather than letting discordRecordingCard re-read showRuntime lazily once
+        // it actually runs) is what keeps a card chained behind a slow webhook send describing the
+        // recording attempt it was actually fired for, even if a newer attempt for the same
+        // show_id starts and overwrites showRuntime's snapshot before this card's Task executes.
+        // See resolvedDiscordEpisodeSnapshot's own doc comment.
+        let snapshot = shows.first(where: { $0.show_id == showId })
+            .map(resolvedDiscordEpisodeSnapshot(for:))
+            ?? DiscordEpisodeSnapshot(epNum: "", epTitle: "", synopsis: "", tags: [], isNew: false)
         let previous = showRuntime[showId]?.discordCardTask
         showRuntime[showId, default: ShowRuntimeState()].discordCardTask = Task { @MainActor in
             _ = await previous?.value
-            await self.discordRecordingCard(showId: showId, event: event, color: color, enabled: enabled, extra: extra)
+            await self.discordRecordingCard(showId: showId, event: event, color: color, enabled: enabled, extra: extra, snapshot: snapshot)
             if clearIdAfter {
                 if let j = self.shows.firstIndex(where: { $0.show_id == showId }) {
                     self.shows[j].discord_start_msg_id = ""
@@ -4590,7 +4629,8 @@ final class AppState: ObservableObject {
                              editMessageId: String? = nil) {
         guard let url = discordEffectiveURL(enabled: enabled, webhookURL: webhookURL) else { return }
         glog("[Discord] \(event) — \(show.show_title)")
-        let embed = buildDiscordShowEmbed(event: event, show: show, color: color, extra: extra)
+        let embed = buildDiscordShowEmbed(event: event, show: show, color: color, extra: extra,
+                                          snapshot: resolvedDiscordEpisodeSnapshot(for: show))
         if let msgId = editMessageId, !msgId.isEmpty {
             editDiscordEmbed(webhookURL: url, messageId: msgId, embed: embed)
         } else {

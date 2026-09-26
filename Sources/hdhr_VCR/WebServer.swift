@@ -531,8 +531,14 @@ final class WebServer: @unchecked Sendable {
         // signature match that would otherwise still show this episode as "not yet recorded."
         recordedTagsCacheNeedsRefresh = true
         let grid = buildGuideGridHTML(state: state)
+        // refreshPageCache: false — broadcastGuideChangeEvent right below unconditionally calls
+        // prebuildPageHTML(prebuiltGrid: grid) itself with this same grid, so letting this call
+        // also refresh the cache was a full, identical MainActor-blocking page-HTML+gzip rebuild
+        // run twice on every recording stop for no reason — exactly the class of double-build
+        // CLAUDE.md's "New cached page variant" rule warns against, just reintroduced across these
+        // two call sites instead of within one (found in code review 2026-09-25).
         broadcastRecordingEvent(type: "recording_stopped", channel: channel, device: device,
-                                 state: state, prebuiltGrid: grid)
+                                 state: state, prebuiltGrid: grid, refreshPageCache: false)
         broadcastGuideChangeEvent(type: "recording_stopped",
                                    extra: ["channel": channel, "device": device],
                                    state: state, prebuiltGrid: grid)
@@ -2614,7 +2620,18 @@ final class WebServer: @unchecked Sendable {
         // no auth beyond LAN-subnet matching, so accepting an arbitrary write path from any LAN host
         // is a security risk (redirecting where recordings land). Directory changes require local app
         // access. Any `saveDir` in the request body is ignored.
-        if let airDays = obj["airDays"] as? [String] { updated.show_air_date = airDays }
+        if let airDays = obj["airDays"] as? [String] {
+            // Same reject-on-invalid posture as channel/length/transcode above — this endpoint has
+            // no auth beyond LAN-subnet matching. Unfiltered garbage here doesn't fail loudly: it
+            // silently empties airIndices in AppState.nextDateTimeOccurrences (which drops
+            // unrecognized entries via compactMap), and since show_air_date is non-empty the
+            // "empty means all 7 days" fallback never kicks in either — the show just silently
+            // auto-pauses next tick with "No air days configured." Filter to the same weekday-name
+            // whitelist guide.js's own day-picker buttons are built from (Show.weekdayNames).
+            let validDays = airDays.filter { Show.weekdayNames.contains($0) }
+            guard !validDays.isEmpty else { return .badRequest("airDays must contain at least one valid weekday name") }
+            updated.show_air_date = validDays
+        }
         if let reset = obj["resetFailures"] as? Bool, reset { updated.clearFailures(); updated.show_active = true }
 
         state.updateShow(updated) // broadcasts "show_updated" itself
@@ -2903,6 +2920,12 @@ final class WebServer: @unchecked Sendable {
     @MainActor
     func broadcastDeviceBarEvent(type: String, deviceId: String, state: AppState) {
         broadcastEvent(["type": type, "deviceId": deviceId, "devbar": buildDevBarHTML(state: state, devTuners: Self.computeDevTuners(state: state))])
+        // Keep the cached full-page HTML (served to any new page load / GET /) in sync with this
+        // device transition too — same reasoning as broadcastRecordingEvent/broadcastGuideChangeEvent's
+        // own prebuildPageHTML calls. Without this, a tuner going offline/online only updated
+        // already-open SSE tabs; a freshly opened tab or reloaded native Guide window kept serving
+        // the stale cached dev-bar state until some unrelated guide-changing event rebuilt it.
+        prebuildPageHTML(state: state)
     }
 
     @MainActor
