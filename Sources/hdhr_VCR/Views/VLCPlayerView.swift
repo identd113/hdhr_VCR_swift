@@ -191,7 +191,20 @@ struct VLCPlayerView: View {
         // "Recording Now" row showed an unrelated news-magazine episode mid-Bonus-Time-recording).
         // Plain live-channel selections (recordingShow == nil) keep using wall-clock `now`, unchanged.
         let anchorTime = recordingShow?.show_next ?? now
-        return state.guideEntries(deviceId: device.DeviceID, channelNum: channelNum)
+        // The channel/recording selectedChannel resolves to isn't necessarily on THIS view's own
+        // bound `device` anymore — a cross-device PiP swap (syncChannel's own cross-device branches)
+        // can leave it pointing at a different device's channel or recording entirely. Query THAT
+        // device's guide data, not device.DeviceID unconditionally, or this returns nil for a
+        // perfectly resolvable channel just because the wrong device's guide was checked. Found live
+        // 2026-09-26, right after the cross-device syncChannel fix shipped: selectedChannel now
+        // resolved correctly, but the info banner still showed no show title/episode at all (having
+        // silently swapped one symptom, "Unknown", for another, blank) because this line still
+        // queried device.DeviceID — for a FEED window with a real channel swapped into primary,
+        // that's the virtual relay, which never has real guide data at all. A same-device selection
+        // (the common case, and same-device PiP swaps) is unaffected: currentDeviceID already equals
+        // device.DeviceID then.
+        let guideDeviceId = recordingShow?.hdhr_record ?? VLCPlayerWindowManager.shared.currentDeviceID ?? device.DeviceID
+        return state.guideEntries(deviceId: guideDeviceId, channelNum: channelNum)
             .first { $0.startDate <= anchorTime && $0.endDate > anchorTime }
     }
 
@@ -992,6 +1005,15 @@ struct VLCPlayerView: View {
             let remoteURL = String(ch.GuideNumber.dropFirst(Self.liveFeedGuideNumberPrefix.count))
             let hostname = state.remoteRelayEntries.first { $0.entry.URL == remoteURL }?.entry.virtualRelaySourceHostname
             return "FEED · \(hostname ?? "another Mac")"
+        }
+        // Cross-device PiP swap (the branch above resolves selectedChannel to it, but doesn't say
+        // so) — name the actual tuner this channel is playing from, the same way the FEED lines
+        // above name theirs, rather than reading identically to a same-device live channel. Found
+        // live 2026-09-26 alongside the currentGuideEntry cross-device fix: without this, "Live OTA
+        // · Ch 5.1 KMSP" gave no hint the picture was actually coming from a different device than
+        // the one this window opened on.
+        if let otherDeviceId = VLCPlayerWindowManager.shared.currentDeviceID, otherDeviceId != device.DeviceID {
+            return "Live OTA · \(otherDeviceId) · Ch \(ch.GuideNumber)  \(ch.GuideName)"
         }
         return "Live OTA · Ch \(ch.GuideNumber)  \(ch.GuideName)"
     }
