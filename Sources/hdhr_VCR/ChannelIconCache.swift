@@ -46,6 +46,13 @@ actor ChannelIconCache {
         return urlStrings.filter { url in
             guard !url.isEmpty else { return false }
             if mem[url] != nil { return false }
+            // A URL that already failed once isn't "missing" in any sense a re-fetch would fix —
+            // image(for:) short-circuits it to nil without even attempting the network call (see
+            // its own failedURLs check above). Without this, a single URL that 404s once gets
+            // counted as missing on every future prefetch pass forever, keeping AppState on the
+            // "cold cache" branch (re-showing "Caching N channel icon(s)…") for nothing on every
+            // guide refresh (found in code review 2026-09-25).
+            if failedURLs.contains(url) { return false }
             return !onDisk.contains(cacheFileName(for: url))
         }.count
     }
