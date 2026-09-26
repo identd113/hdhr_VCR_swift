@@ -1736,3 +1736,57 @@ A "what issues do we have left" status check found all 19 entries from that revi
 **Fix**: `AppState.startup()` now calls `webServer.prebuildPageHTML(state: self)` immediately after `setupWebServer()`, independent of device discovery/guide fetch — confirmed live via the startup log: `"page HTML cached (187KB, 52KB gzip'd)"` now appears within ~1s of launch, right after `"WebServer Listening on port 1980"` and before `"discovering — knownHosts=..."` even starts. A new `AppState.guidePageCacheWarm` flag (set the moment `prebuildPageHTML` completes) additionally gates `AddShowView`'s guide step alongside `webServerRunning`, as a defensive backstop for the rare case the early warm-call hasn't run yet. Bundled in: a stale `docs/AddShowView.md` claim (`state.devices.isEmpty` → actual code uses `state.recordableDevices.isEmpty`) found and fixed during this same investigation.
 
 **Resolving commit**: `99c8a2c`
+
+# VLC player "i" info overlay / PiP session — 2026-09-26
+
+A single session of live-reported bugs, each found by trying the previous fix rather than a planned audit — several are fixes of fixes, noted where relevant.
+
+## RESOLVED — Menu's "Watching" entry disappeared whenever nothing was on the primary slot
+
+**File:** `Views/MenuContent.swift`
+
+**Root cause**: `nowWatchingInfo`/the "Watching" section were keyed purely off the primary VLC slot. The "standalone PiP" state (`AppState.watchAsSecondary`'s `ensureWindowForStandalonePiP` branch, reachable via `PiPPickerView` even for a FEED source) leaves the primary genuinely idle while a PiP secondary plays — the entry vanished entirely in that case, and also for a Watch Now (own-recording) primary session `nowWatchingInfo`'s lineup-based lookup could never resolve.
+
+**Fix**: `watchingDisplay(for:)` now falls back to `VLCPlayerWindowManager.currentTitle` (a primary session lineup-lookup can't resolve) or `secondaryTitle` (no primary at all) before giving up, with a `pip.fill` icon for the secondary-only case.
+
+**Resolving commit**: `c3f352e`
+
+## RESOLVED — Info banner showed a raw synthetic picker-row ID instead of the real channel
+
+**File:** `Views/VLCPlayerView.swift`
+
+**Root cause**: `selectedChannel` can be one of two synthetic picker rows (`recordingChannelEntries`'s `"live:showId"`, `feedChannelEntry`'s `"live-feed:url"`) whose `GuideNumber` is an ID/URL, not a real channel number — the info banner's source line showed it raw, e.g. `"Ch live:df96c6d09fe74afd9a7f379163f51ea0  Live 9.6  The Carol Burnett Show"`.
+
+**Fix**: `infoBannerSourceLine(feedEntry:)` resolves each synthetic case back to real detail — the recording's own `show_channel`, or the FEED entry's already-formatted `GuideName`.
+
+**Resolving commit**: `680ab13`
+
+## RESOLVED — Audio unmuted ~350ms before the picture appeared; startup also had up to 3s of avoidable dead time
+
+**Files:** `VLCPlayerView.swift`, `VLCBridge.swift`
+
+**Root cause**: (1) `startPlayback(auto:)` set `posterHidden = true` (which fades over 0.35s via the view's `.animation(value:)`) and called `setVolume` (instant, no ramp) in the same call, so the picture visibly lagged the already-unmuted audio. (2) The Start button / FEED auto-play are gated on `bridge.isPlaying`, which only updated on the 3-second stats/rate-ramp timer's own tick — a repeating `Timer` fires *after* its interval, so up to 3 real seconds could pass after libvlc actually started decoding before anything noticed.
+
+**Fix**: (1) wraps the `posterHidden` mutation in a `Transaction` with `disablesAnimations = true` so that specific reveal is instant. (2) adds a separate 0.25s `startFastStatePoll` that only reads state (`detectPrimaryTerminalState(_:)`, shared with `tickPrimary`) and self-stops once known — kept separate from the 3s timer because `rampedFillRate`'s buffer-fill math assumes each tick represents exactly `statsTimerInterval` real seconds; polling that faster would double-count ramp progress.
+
+**Resolving commit**: `86218e0`
+
+## RESOLVED — Three issues found reviewing the above: a timer leak, a stale-timer race, and doubled menu-rebuild work
+
+**Files:** `VLCBridge.swift`, `Views/MenuContent.swift`
+
+**Root cause**: (1) `stopAndClearState` only invalidated the new `fastPollTimer` when `stopStatsTimer()` actually ran, which is gated behind `otherActive` (correct for the shared `statsTimer`, wrong for `fastPollTimer`, which is primary-only) — stopping the primary while a PiP secondary was active left it polling a stopped player forever, able to briefly resurrect `isPlaying = true` right after `stop()` set it false. (2) `startFastStatePoll`'s `Timer` callback hops through `Task { @MainActor in }`, which enqueues rather than running synchronously — a stale tick from a superseded timer (e.g. a rapid channel switch) could clear a *newer* timer's `fastPollTimer` reference. (3) `MenuContent.watchingDisplay` recomputed `nowWatchingInfo` (a `state.devices` scan + guide-entry lookup) instead of taking the already-hoisted local as a parameter, doubling that cost on every menu rebuild.
+
+**Fix**: (1) `stopAndClearState` now invalidates `fastPollTimer` unconditionally for `slot == .primary`, separate from the `otherActive`-gated `stopStatsTimer()` call. (2) identity-guards (`self.fastPollTimer === timer`) before either invalidating or nil-ing it. (3) `watchingDisplay` now takes `nowWatchingInfo` as a parameter, matching the sibling `watchingRemoteFeedHostname(for:)`.
+
+**Resolving commit**: `192cebc`
+
+## RESOLVED — "i" shortcut sometimes did nothing; info banner showed "Unknown"/blank after a cross-device PiP swap
+
+**Files:** `Views/VLCPlayerView.swift`
+
+**Root cause**: (1) the toolbar Info button's `.keyboardShortcut("i", modifiers: [])` only reaches SwiftUI if no other focused control claims the bare letter first — the channel picker (an `NSPopUpButton` under the hood) intercepts a plain letter keystroke for its own type-ahead item-jump behavior whenever it holds first-responder status. (2) `syncChannel(to:)` only ever resolved `selectedChannel` against this window's own bound `device`; a cross-device PiP swap (`watchAsSecondary`'s device picker, or a Watch Now recording on a different device) landing on a plain live channel or a recording relay left `selectedChannel` nil indefinitely (only the FEED case had a cross-device branch, fixed 2026-09-19) — the info banner's title fell all the way back to `"Unknown"`. (3) An initial fix for (2) added a redundant `!device.isVirtualRelay` guard on the new branch that broke the single most relevant case — a FEED window (whose own `device` *is* the virtual relay) with a real channel swapped into primary — confirmed via the laptop's own log: `swapSlots()` → `syncChannel: <real channel URL>` → `"no match in 1-entry lineup"`. (4) Once (2)/(3) let `selectedChannel` resolve correctly, `currentGuideEntry` still unconditionally queried `device.DeviceID` for guide data instead of whichever device the channel actually belonged to — trading "Unknown" for a blank show name/episode, since a FEED window's own device (the virtual relay) never has real guide data.
+
+**Fix**: (1) moved "i" into `VLCPlayerWindowManager.installKeyMonitor` (the same local `NSEvent` monitor already used for arrow-key seek/Esc, which runs before responder-chain dispatch), bridged to the View struct's `@State` via a new `.vlcToggleInfoOverlay` notification. (2) added a `syncChannel` branch that looks up the swapped-in device's own lineup directly (`state.lineups[otherDeviceId]`), and made the recording-relay branch match `bridge.recordingShowId` against *all* `state.recordingShows` instead of only this device's own. (3) removed the incorrect `!device.isVirtualRelay` guard — `otherDeviceId != device.DeviceID` alone already correctly excludes an untouched-FEED-primary. (4) `currentGuideEntry` now queries the recording's own `hdhr_record` device, or `VLCPlayerWindowManager.currentDeviceID`, instead of `device.DeviceID` unconditionally; the source line's "Live OTA" case also now names the actual tuner when it differs from this window's own device.
+
+**Resolving commits**: `6be0aba`, `6705e9a`, `59f6759`
