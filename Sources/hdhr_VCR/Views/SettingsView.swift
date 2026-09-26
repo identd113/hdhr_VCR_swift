@@ -67,6 +67,13 @@ struct SettingsView: View {
         // Strip the file title; return only the version sections
         return String(raw[range.lowerBound...]).trimmingCharacters(in: .newlines)
     }()
+    // Computed once (like changelogText above), not inside aboutView's computed-property body —
+    // aboutView re-runs on every SwiftUI re-render of the whole SettingsView (this observes
+    // @EnvironmentObject state, so any @Published AppState mutation while the About tab happens to
+    // be open re-triggers it: idle-loop ticks, tuner-status polls, guide refreshes, signal-scan
+    // progress, all firing continuously in this 24/7 menu-bar app), yet changelogText/its parsed
+    // sections never change after launch (found in code review 2026-09-25).
+    private static let parsedChangelogSections: [String] = parseChangelog(changelogText).sections
     @State private var maintenanceStatus: String = ""
     @State private var maintenanceBusy: Bool = false
     @State private var configIOStatus: String = ""
@@ -1023,7 +1030,7 @@ struct SettingsView: View {
     // MARK: - About
 
     private var aboutView: some View {
-        let (sections, _) = Self.parseChangelog(Self.changelogText)
+        let sections = Self.parsedChangelogSections
         let currentSection = sections.first
         let olderSections = sections.dropFirst().joined(separator: "\n\n")
 
@@ -1327,7 +1334,19 @@ private struct MarkdownView: NSViewRepresentable {
         return tv
     }
 
+    // Tracks the markdown string last actually rendered, across updateNSView calls — SwiftUI calls
+    // updateNSView on every re-render of whatever ancestor view hosts this (e.g. the whole About
+    // tab, which observes @EnvironmentObject state and so re-renders on any @Published AppState
+    // mutation while it's open), not just when `markdown` itself changed. Without this, the
+    // markdown-to-NSAttributedString rebuild below — and its layout-measuring height recompute —
+    // reran on every unrelated idle-loop tick/poll/refresh while this tab happened to be visible
+    // (found in code review 2026-09-25).
+    final class Coordinator { var lastRendered: String? }
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
     func updateNSView(_ textView: NSTextView, context: Context) {
+        guard context.coordinator.lastRendered != markdown else { return }
+        context.coordinator.lastRendered = markdown
         textView.textStorage?.setAttributedString(Self.render(markdown))
 
         DispatchQueue.main.async {
