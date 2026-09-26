@@ -194,19 +194,11 @@ struct MenuContent: View {
         // ── Recording now ─────────────────────────────────────────────────
         let availableRecording = recordingShows.filter { !unavailableDeviceIDs.contains($0.hdhr_record) }
         if !availableRecording.isEmpty {
-            if state.recordableDevices.count > 1 {
-                ForEach(availableDevices) { device in
-                    let recs = availableRecording.filter { $0.hdhr_record == device.DeviceID }
-                    if !recs.isEmpty {
-                        Section("Recording · \(device.DeviceID)") {
-                            ForEach(recs) { recordingMenu($0) }
-                        }
-                    }
-                }
-            } else {
-                Section("Recording Now") {
-                    ForEach(availableRecording) { recordingMenu($0) }
-                }
+            groupedByDeviceSection(singleTitle: "Recording Now", multiTitlePrefix: "Recording",
+                                    items: availableRecording, devices: availableDevices,
+                                    multiDevice: state.recordableDevices.count > 1,
+                                    filter: { $0.hdhr_record == $1.DeviceID ? $0 : nil }) { recs in
+                ForEach(recs) { recordingMenu($0) }
             }
             Divider()
         }
@@ -339,27 +331,16 @@ struct MenuContent: View {
         let remainingActive = availableActive.filter { !nextUpIds.contains($0.show_id) }
 
         if !nextUpGroups.isEmpty {
-            if state.recordableDevices.count > 1 {
-                ForEach(availableDevices) { device in
-                    let deviceGroups = nextUpGroups
-                        .map { (time: $0.time, shows: $0.shows.filter { $0.hdhr_record == device.DeviceID }) }
-                        .filter { !$0.shows.isEmpty }
-                    if !deviceGroups.isEmpty {
-                        Section("Up Next · \(device.DeviceID)") {
-                            ForEach(deviceGroups, id: \.time) { group in
-                                Section(Self.timeFormatter.string(from: group.time)) {
-                                    ForEach(group.shows) { scheduledMenu($0, showChannel: true) }
-                                }
-                            }
-                        }
-                    }
-                }
-            } else {
-                Section("Up Next") {
-                    ForEach(nextUpGroups, id: \.time) { group in
-                        Section(Self.timeFormatter.string(from: group.time)) {
-                            ForEach(group.shows) { scheduledMenu($0, showChannel: true) }
-                        }
+            groupedByDeviceSection(singleTitle: "Up Next", multiTitlePrefix: "Up Next",
+                                    items: nextUpGroups, devices: availableDevices,
+                                    multiDevice: state.recordableDevices.count > 1,
+                                    filter: { group, device -> (time: Date, shows: [Show])? in
+                                        let filtered = group.shows.filter { $0.hdhr_record == device.DeviceID }
+                                        return filtered.isEmpty ? nil : (time: group.time, shows: filtered)
+                                    }) { groups in
+                ForEach(groups, id: \.time) { group in
+                    Section(Self.timeFormatter.string(from: group.time)) {
+                        ForEach(group.shows) { scheduledMenu($0, showChannel: true) }
                     }
                 }
             }
@@ -372,35 +353,19 @@ struct MenuContent: View {
             Text("No shows scheduled").foregroundStyle(.secondary)
         } else {
             if !remainingActive.isEmpty {
-                if state.recordableDevices.count > 1 {
-                    ForEach(availableDevices) { device in
-                        let deviceShows = remainingActive.filter { $0.hdhr_record == device.DeviceID }
-                        if !deviceShows.isEmpty {
-                            Section("Scheduled · \(device.DeviceID)") {
-                                ForEach(deviceShows) { scheduledMenu($0) }
-                            }
-                        }
-                    }
-                } else {
-                    Section("Scheduled") {
-                        ForEach(remainingActive) { scheduledMenu($0) }
-                    }
+                groupedByDeviceSection(singleTitle: "Scheduled", multiTitlePrefix: "Scheduled",
+                                        items: remainingActive, devices: availableDevices,
+                                        multiDevice: state.recordableDevices.count > 1,
+                                        filter: { $0.hdhr_record == $1.DeviceID ? $0 : nil }) { shows in
+                    ForEach(shows) { scheduledMenu($0) }
                 }
             }
             if !availablePaused.isEmpty {
-                if state.recordableDevices.count > 1 {
-                    ForEach(availableDevices) { device in
-                        let devicePaused = availablePaused.filter { $0.hdhr_record == device.DeviceID }
-                        if !devicePaused.isEmpty {
-                            Section("Paused · \(device.DeviceID)") {
-                                ForEach(devicePaused) { pausedMenu($0) }
-                            }
-                        }
-                    }
-                } else {
-                    Section("Paused") {
-                        ForEach(availablePaused) { pausedMenu($0) }
-                    }
+                groupedByDeviceSection(singleTitle: "Paused", multiTitlePrefix: "Paused",
+                                        items: availablePaused, devices: availableDevices,
+                                        multiDevice: state.recordableDevices.count > 1,
+                                        filter: { $0.hdhr_record == $1.DeviceID ? $0 : nil }) { shows in
+                    ForEach(shows) { pausedMenu($0) }
                 }
             }
         }
@@ -409,28 +374,51 @@ struct MenuContent: View {
         if !unavailableShows.isEmpty {
             Divider()
             let unavailableDevices = state.devices.filter { !$0.isAvailable }
-            if unavailableDevices.count > 1 {
-                ForEach(unavailableDevices) { device in
-                    let deviceShows = unavailableShows.filter { $0.hdhr_record == device.DeviceID }
-                    if !deviceShows.isEmpty {
-                        Section("Unavailable Tuner · \(device.DeviceID)") {
-                            ForEach(deviceShows) { show in
-                                if show.show_recording { recordingMenu(show) } else { scheduledMenu(show) }
-                            }
-                        }
-                    }
-                }
-            } else {
-                Section("Unavailable Tuner") {
-                    ForEach(unavailableShows) { show in
-                        if show.show_recording { recordingMenu(show) } else { scheduledMenu(show) }
-                    }
+            groupedByDeviceSection(singleTitle: "Unavailable Tuner", multiTitlePrefix: "Unavailable Tuner",
+                                    items: unavailableShows, devices: unavailableDevices,
+                                    multiDevice: unavailableDevices.count > 1,
+                                    filter: { $0.hdhr_record == $1.DeviceID ? $0 : nil }) { shows in
+                ForEach(shows) { show in
+                    if show.show_recording { recordingMenu(show) } else { scheduledMenu(show) }
                 }
             }
         }
         Divider()
 
         Button("Quit hdhrVCRplus", role: .destructive) { state.quit() }
+    }
+
+    // Shared shape behind five near-identical menu sections (Recording Now, Up Next, Scheduled,
+    // Paused, Unavailable Tuner): with more than one recordable tuner, split into one Section per
+    // device (titled "<multiTitlePrefix> · <deviceId>"); with just one, a single flat Section
+    // titled `singleTitle`. `filter` maps one item to its per-device slice (return nil to exclude
+    // it from that device's group) — a plain Show for the four simple sections, or a
+    // (time, [Show]) pair for Up Next's own extra time-bucketing layer, which re-filters the
+    // group's inner shows array rather than matching the group as a single unit. Extracted after
+    // this exact multi/single split had been copy-pasted five times (found in code review
+    // 2026-09-25) — this codebase's own applyPendingEntry/applyWebGuideEntry history is a case
+    // study in that shape reliably causing at least one copy to be missed on a future change.
+    @ViewBuilder
+    private func groupedByDeviceSection<Item, Content: View>(
+        singleTitle: String, multiTitlePrefix: String,
+        items: [Item], devices: [HDHRDevice], multiDevice: Bool,
+        filter: @escaping (Item, HDHRDevice) -> Item?,
+        @ViewBuilder content: @escaping ([Item]) -> Content
+    ) -> some View {
+        if multiDevice {
+            ForEach(devices) { device in
+                let deviceItems = items.compactMap { filter($0, device) }
+                if !deviceItems.isEmpty {
+                    Section("\(multiTitlePrefix) · \(device.DeviceID)") {
+                        content(deviceItems)
+                    }
+                }
+            }
+        } else {
+            Section(singleTitle) {
+                content(items)
+            }
+        }
     }
 
     // MARK: ── Watch Now ───────────────────────────────────────────────────
