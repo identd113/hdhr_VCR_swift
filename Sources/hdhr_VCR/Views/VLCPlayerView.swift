@@ -899,8 +899,12 @@ struct VLCPlayerView: View {
     // no-collision intent while moving into the reference's lower band. Prefers currentGuideEntry
     // (works for both a live channel and a Watch Now recording relay — see its own doc comment on
     // why both anchor correctly) and falls back to the FEED relay's lineup extras the same way
-    // posterOverlay already does; a FEED session has no OriginalAirdate data at all, so the NEW/
-    // air-date tag line is simply omitted then rather than guessed at.
+    // posterOverlay already does. Exactly three lines, per explicit request 2026-09-26: show name,
+    // episode info (SxxEyy convention, from GuideEntry.episodeInfoLabel), and a last line that
+    // describes the *source* rather than the channel alone — "Live OTA"/"Recording"/"FEED", plus
+    // whichever channel/hostname detail identifies it (infoBannerSourceLine below). The earlier
+    // separate NEW/Originally-aired tag line was dropped to keep to exactly this last line — that
+    // info can come back as part of it later if wanted.
     private var infoBanner: some View {
         let entry = currentGuideEntry
         let feedEntry = (entry == nil && device.isVirtualRelay) ? currentFeedEntry : nil
@@ -914,7 +918,6 @@ struct VLCPlayerView: View {
             return parts.isEmpty ? nil : parts.joined(separator: " · ")
         }
         let sourceLine = infoBannerSourceLine(feedEntry: feedEntry)
-        let tagLine = entry.flatMap(infoBannerTagLine)
 
         return VStack(alignment: .leading, spacing: 0) {
             Spacer()
@@ -929,11 +932,6 @@ struct VLCPlayerView: View {
                 }
                 if let sourceLine {
                     Text(sourceLine)
-                        .font(.system(size: 21, weight: .medium, design: .serif))
-                        .lineLimit(1)
-                }
-                if let tagLine {
-                    Text(tagLine)
                         .font(.system(size: 17, weight: .regular, design: .serif))
                         .italic()
                         .lineLimit(1)
@@ -950,39 +948,38 @@ struct VLCPlayerView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .allowsHitTesting(false)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(title)\(episodeInfo.map { ", \($0)" } ?? "")\(sourceLine.map { ", \($0)" } ?? "")\(tagLine.map { ", \($0)" } ?? "")")
+        .accessibilityLabel("\(title)\(episodeInfo.map { ", \($0)" } ?? "")\(sourceLine.map { ", \($0)" } ?? "")")
     }
 
-    // The card's "label" line (Death Row Records, in the Dr. Dre reference) — the channel this is
-    // airing on, or the source Mac for a FEED relay (which has no real channel of its own).
-    // selectedChannel can also hold one of two synthetic picker rows (recordingChannelEntries'
-    // "live:showId" or feedChannelEntry's "live-feed:url", both above) whose GuideNumber is an ID/
-    // URL, not a real channel number — showing it raw ("Ch live:df96c6d0…") would be gibberish, so
-    // each resolves back to a real label instead: the recording's own show_channel (mirroring
-    // currentGuideEntry's identical showId(fromLiveGuideNumber:) resolution, so this line and the
-    // title/episode lines above it always agree on which channel they're describing), or the
-    // synthetic FEED entry's own already-formatted GuideName ("FEED  <title> — <hostname>").
+    // The card's closing line — what kind of source this is, not just which channel. Live/Recording/
+    // FEED are the three sources this app can ever be watching (docs/VLCPlayerView.md's own "Live
+    // TV"/"Watch Now"/"FEED" vocabulary), so this always starts with exactly one of those three
+    // words, followed by whichever detail identifies it (channel for Live/Recording, source
+    // hostname for FEED) — added 2026-09-26 per explicit request that the last line read as
+    // descriptive ("Live OTA/Recording/FEED, etc"), not just a bare channel number. selectedChannel
+    // can also hold one of two synthetic picker rows (recordingChannelEntries' "live:showId" or
+    // feedChannelEntry's "live-feed:url", both above) whose GuideNumber is an ID/URL, not a real
+    // channel number — showing it raw ("Ch live:df96c6d0…") would be gibberish, so each resolves
+    // back to real detail instead: the recording's own show_channel (mirroring currentGuideEntry's
+    // identical showId(fromLiveGuideNumber:) resolution, so this line and the title/episode lines
+    // above it always agree on which channel they're describing), or — for a cross-device-swap FEED
+    // entry (docs/VLCPlayerView.md's "cross-device swap" note) — the same remoteRelayEntries lookup
+    // feedChannelEntry itself used to build that synthetic row, so both paths report the same
+    // hostname for the same FEED rather than one showing it and the other falling back to a plain
+    // channel label.
     private func infoBannerSourceLine(feedEntry: LineupEntry?) -> String? {
-        if let hostname = feedEntry?.virtualRelaySourceHostname { return "FEED from \(hostname)" }
+        if let hostname = feedEntry?.virtualRelaySourceHostname { return "FEED · \(hostname)" }
         guard let ch = selectedChannel else { return nil }
         if let recordingShowId = showId(fromLiveGuideNumber: ch.GuideNumber),
            let show = state.recordingShows.first(where: { $0.show_id == recordingShowId }) {
             return "Recording · Ch \(show.show_channel)"
         }
-        if ch.GuideNumber.hasPrefix(Self.liveFeedGuideNumberPrefix) { return ch.GuideName }
-        return "Ch \(ch.GuideNumber)  \(ch.GuideName)"
-    }
-
-    // Same "NEW" language as WatchNowView's badge (isNewEpisode), as a plain caption-style tag line
-    // now instead of a pill — falls back to the episode's original air date (origAirdateFormatter,
-    // GuideViewHelpers.swift) when it isn't a new episode, so the card always shows one or the
-    // other, never both, the same "Promo Only"-style single closing line the reference card uses.
-    private func infoBannerTagLine(_ entry: GuideEntry) -> String? {
-        if isNewEpisode(entry) { return "New Episode" }
-        if let oad = entry.OriginalAirdate {
-            return "Originally Aired \(origAirdateFormatter.string(from: Date(timeIntervalSince1970: TimeInterval(oad))))"
+        if ch.GuideNumber.hasPrefix(Self.liveFeedGuideNumberPrefix) {
+            let remoteURL = String(ch.GuideNumber.dropFirst(Self.liveFeedGuideNumberPrefix.count))
+            let hostname = state.remoteRelayEntries.first { $0.entry.URL == remoteURL }?.entry.virtualRelaySourceHostname
+            return "FEED · \(hostname ?? "another Mac")"
         }
-        return nil
+        return "Live OTA · Ch \(ch.GuideNumber)  \(ch.GuideName)"
     }
 
     // MARK: - Poster overlay
