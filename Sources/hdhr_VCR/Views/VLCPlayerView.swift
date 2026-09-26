@@ -2080,11 +2080,20 @@ struct VLCPlayerView: View {
         // own bound `device`, so a live channel actually belonging to a *different* device (reached
         // via watchAsSecondary's device picker, PiPPickerView's "Live TV" section) has nothing in it
         // to match `base` against — docs/VLCPlayerView.md's "cross-device swap" note explicitly
-        // called this an accepted deeper limitation, unlike the FEED case fixed 2026-09-19. Fixed
+        // called this an accepted deeper limitation, unlike the FEED case fixed 2026-09-19.
+        // Deliberately NOT gated on `!device.isVirtualRelay` (an earlier version of this fix was,
+        // and shipped broken) — `device` being the virtual relay itself doesn't mean the CURRENT
+        // primary still is: a FEED window (device.isVirtualRelay == true) with a real live channel
+        // swapped into primary via PiP is exactly this same gap, confirmed live via the laptop's own
+        // log right after this fix's first deploy: `swapSlots()` → `syncChannel: <real channel URL>`
+        // → `"no match in 1-entry lineup"` (the FEED device's own 1-entry synthetic lineup, which a
+        // real channel from an unrelated device obviously isn't in). `otherDeviceId != device.DeviceID`
+        // alone already correctly excludes the untouched-FEED-primary case (currentDeviceID still
+        // equals device.DeviceID then), so the extra check was both redundant and wrong. Fixed
         // 2026-09-26, live report: left selectedChannel nil indefinitely, showing "Unknown" in the
         // info banner (and a blank picker) for as long as the swap lasted. Looks up the swapped-in
         // device's own lineup directly rather than this view's `lineup`.
-        if !device.isVirtualRelay, let otherDeviceId = VLCPlayerWindowManager.shared.currentDeviceID,
+        if let otherDeviceId = VLCPlayerWindowManager.shared.currentDeviceID,
            otherDeviceId != device.DeviceID,
            let match = (state.lineups[otherDeviceId] ?? []).first(where: { ($0.URL ?? "").urlBase == base }) {
             glog("[VLC] syncChannel matched cross-device live channel \(match.GuideNumber) \(match.GuideName) on \(otherDeviceId) for url=\(base)")

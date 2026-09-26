@@ -451,7 +451,13 @@ indefinitely — `watchAsSecondary`'s device picker and `watchRecordingInAppAsSe
 PiP secondary on a *different* device than the window's own bound `device`, and neither case had a
 `syncChannel()` branch for it before this). The live-channel case looks up the swapped-in device's
 own lineup directly (`state.lineups[otherDeviceId]`, matched by `.urlBase`) rather than this view's
-own `lineup`; the recording case now matches `bridge.recordingShowId` against *all*
+own `lineup`, gated only on `otherDeviceId != device.DeviceID` — **not** also on
+`!device.isVirtualRelay` (a first version of this fix added that redundant extra check and shipped
+broken, confirmed via the laptop's own log: watching a Mac Mini FEED with a real channel swapped in
+as primary via PiP logged `swapSlots()` → `syncChannel: <real channel URL>` → `"no match in 1-entry
+lineup"` — the FEED window's own `device` *is* the virtual relay, so `!device.isVirtualRelay` blocked
+this exact case; `otherDeviceId != device.DeviceID` alone already correctly excludes an
+untouched-FEED-primary, since `currentDeviceID` still equals `device.DeviceID` then); the recording case now matches `bridge.recordingShowId` against *all*
 `state.recordingShows` instead of only the ones filtered to this window's `device`
 (`recordingChannelEntries` itself, used by the picker's own "Live" rows, stays device-filtered — the
 fix is in `syncChannel()`'s lookup only, via the newly-extracted `liveRecordingEntry(for:)`, which
