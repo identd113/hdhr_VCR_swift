@@ -918,7 +918,21 @@ final class VLCBridge: ObservableObject {
         // isn't mid-playback, so tearing down one slot never freezes the other's isPlaying/rate/
         // stall reporting.
         let otherActive = slot == .primary ? (secondaryURL != nil) : (currentURL != nil)
-        if !otherActive { stopStatsTimer() }
+        if !otherActive {
+            stopStatsTimer()
+        } else if slot == .primary {
+            // fastPollTimer only ever monitors the PRIMARY slot's mediaPlayer (startFastStatePoll),
+            // unlike statsTimer which is shared with the secondary — so it must stop whenever the
+            // primary itself is torn down even when otherActive keeps statsTimer alive for the
+            // secondary. Found in review 2026-09-26: without this, stopping the primary while a PiP
+            // secondary was active left fastPollTimer polling primaryState.mediaPlayer (deliberately
+            // left non-nil by stop(), only releasePlayer() nils it) every 0.25s indefinitely —
+            // including racing the just-issued async stopFn?(mp) below, which could briefly still
+            // read libvlc state as Playing and resurrect isPlaying = true right after this method
+            // set it false.
+            fastPollTimer?.invalidate()
+            fastPollTimer = nil
+        }
         if slot == .primary {
             clearRecordingSeek()
             hasError       = false
@@ -1255,7 +1269,21 @@ final class VLCBridge: ObservableObject {
         fastPollTimer?.invalidate()
         let timer = Timer(timeInterval: Self.fastPollInterval, repeats: true) { [weak self] timer in
             Task { @MainActor [weak self] in
-                guard let self, let mp = self.primaryState.mediaPlayer else { timer.invalidate(); return }
+                // Identity-guarded against a stale fire: the Timer callback already runs on the
+                // main run loop, but wrapping it in Task { @MainActor } still enqueues rather than
+                // running synchronously, so an already-fired-but-not-yet-executed tick from an OLDER
+                // timer can land after a newer startFastStatePoll() call has replaced
+                // self.fastPollTimer — without this guard, that stale tick's `self.fastPollTimer =
+                // nil` below would wipe out the reference to the newer, still-running timer instead
+                // of its own (already-invalidated-by-startFastStatePoll) one, leaving the newer
+                // timer both live and untracked (a future stopStatsTimer() can no longer reach it).
+                // Found in review 2026-09-26.
+                guard let self, self.fastPollTimer === timer else { return }
+                guard let mp = self.primaryState.mediaPlayer else {
+                    timer.invalidate()
+                    self.fastPollTimer = nil
+                    return
+                }
                 if self.detectPrimaryTerminalState(mp) || self.isPlaying {
                     timer.invalidate()
                     self.fastPollTimer = nil

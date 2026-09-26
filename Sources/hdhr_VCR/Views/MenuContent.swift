@@ -76,10 +76,14 @@ struct MenuContent: View {
     // added 2026-09-26, explicit request that Watching must always show, even with FEED, and that
     // a PiP swap (VLCPlayerView.swapPrimaryAndSecondary(), which swaps currentDeviceID/
     // currentFeedRemoteURL/window.title onto the newly-primary stream) is enough on its own to
-    // flip which show this reflects — no separate swap-tracking needed here.
-    private var watchingDisplay: (deviceId: String, title: String, isPiPOnly: Bool)? {
+    // flip which show this reflects — no separate swap-tracking needed here. Takes the already-
+    // computed nowWatchingInfo as a parameter (hoisted once in body) rather than recomputing it —
+    // same reasoning/precedent as watchingRemoteFeedHostname(for:) below, which exists specifically
+    // to avoid this exact duplicate state.devices-scan-plus-guide-entry-lookup on every menu
+    // rebuild (CLAUDE.md's "Menu rebuild churn" invariant).
+    private func watchingDisplay(for info: (device: HDHRDevice, channel: LineupEntry, entry: GuideEntry?)?) -> (deviceId: String, title: String, isPiPOnly: Bool)? {
         let mgr = VLCPlayerWindowManager.shared
-        if let info = nowWatchingInfo {
+        if let info {
             // entry is always nil for a remote FEED device (guideByDevice[relayId] never
             // populates — see docs/VirtualTunerService.md's "Known limitation"); falls back to
             // the relay's own lineup extra instead of showing just the bare channel with no show
@@ -202,7 +206,7 @@ struct MenuContent: View {
         Divider()
 
         // ── Now Watching ──────────────────────────────────────────────────
-        if let display = watchingDisplay {
+        if let display = watchingDisplay(for: watchingInfo) {
             Section("Watching" + (display.deviceId.isEmpty ? "" : " · \(display.deviceId)")) {
                 Button {
                     DispatchQueue.main.async { VLCPlayerWindowManager.shared.focus() }
