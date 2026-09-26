@@ -3099,7 +3099,10 @@ final class AppState: ObservableObject {
             fireDiscordCard(showId: show.show_id, event: "🔁 Skipped — rerun (New Only)",
                             color: 0x95A5A6, enabled: config.Discord_on_duplicate,
                             extra: skipExtra)
-            await scheduleNextAir(index: index)
+            // skipCurrentlyAiring: true — the airing that just failed this check IS "what's on air
+            // right now"; without this, scheduleNextAir would just re-match it and loop forever for
+            // the rest of its runtime. See scheduleNextAir's own doc comment.
+            await scheduleNextAir(index: index, skipCurrentlyAiring: true)
             return
         }
         var seriesSubfolder: String? = nil
@@ -3135,7 +3138,9 @@ final class AppState: ObservableObject {
                 fireDiscordCard(showId: show.show_id, event: "🔁 Skipped — already recorded",
                                 color: 0x95A5A6, enabled: config.Discord_on_duplicate,
                                 extra: [("Episode", tag, true)])
-                await scheduleNextAir(index: index)   // like a completed airing — no fail-count change
+                // skipCurrentlyAiring: true — same reasoning as the New Only skip above; the
+                // already-recorded episode just rejected is what's on air right now.
+                await scheduleNextAir(index: index, skipCurrentlyAiring: true)   // like a completed airing — no fail-count change
                 return
             }
         } else if let tag = episodeTag, config.Skip_recorded_episodes,
@@ -3550,7 +3555,19 @@ final class AppState: ObservableObject {
 
     // MARK: - Next-air scheduling
 
-    func scheduleNextAir(index: Int) async {
+    // skipCurrentlyAiring: true from the New-Only and already-recorded skip branches in
+    // startRecording() — after either determines the airing that just matched is unwanted, the
+    // default "check for a currently-airing episode first" behavior below would just re-match that
+    // exact same still-airing entry, set show_next right back to itself, and get immediately
+    // re-picked up by the idle loop on the next tick — an infinite skip/reschedule loop for the
+    // entire remaining runtime of that airing (live-caught 2026-09-25: "The Tonight Show Starring
+    // Jimmy Fallon" spammed a Discord edit and a config save every ~10s idle-loop tick for the rest
+    // of its hour, and the web guide showed it as recording the whole time since the recording
+    // window — show_next past, show_end future — was, by definition, genuinely still open). Every
+    // other caller (a natural completed recording, a failed reconfirmation, etc.) wants the default
+    // false — checking what's on air right now is exactly the point there, e.g. a marathon's very
+    // next episode starting back-to-back.
+    func scheduleNextAir(index: Int, skipCurrentlyAiring: Bool = false) async {
         guard index < shows.count else { return }
         let show = shows[index]
         // Working index, re-resolved by show_id after any await below — `shows` can be mutated
@@ -3618,7 +3635,7 @@ final class AppState: ObservableObject {
                         shows[idx].show_url = url
                     }
                 }
-                if let match = guideStore.currentEpisode(seriesID: show.show_seriesid, channelNum: chFilter, deviceId: devFilter, at: now, preferUnrecorded: preferUnrecordedEpisode(for: show), preferFavorite: isFavoriteChannel) {
+                if !skipCurrentlyAiring, let match = guideStore.currentEpisode(seriesID: show.show_seriesid, channelNum: chFilter, deviceId: devFilter, at: now, preferUnrecorded: preferUnrecordedEpisode(for: show), preferFavorite: isFavoriteChannel) {
                     glog("[\(show.show_title)] NEXT now (on-air) ch=\(match.channelNum) \(match.entry.Title)")
                     applyMatch(match); return
                 }
@@ -3633,7 +3650,7 @@ final class AppState: ObservableObject {
                 // Fallback: title match — handles guide entries where SeriesID is absent.
                 // chFilter is nil for SeriesID(All) (scans every channel on devFilter's device);
                 // devFilter is always set, so this never scans devices beyond the assigned one.
-                if let match = guideStore.currentEntryByTitle(show.show_title, channelNum: chFilter, deviceId: devFilter, at: now, preferUnrecorded: preferUnrecordedEpisode(for: show), preferFavorite: isFavoriteChannel) {
+                if !skipCurrentlyAiring, let match = guideStore.currentEntryByTitle(show.show_title, channelNum: chFilter, deviceId: devFilter, at: now, preferUnrecorded: preferUnrecordedEpisode(for: show), preferFavorite: isFavoriteChannel) {
                     glog("[\(show.show_title)] NEXT now (title match, on-air) ch=\(match.channelNum)")
                     applyMatch(match); return
                 }

@@ -76,6 +76,33 @@ struct AppStateSeriesSchedulingTests {
         #expect(updated.show_end?.timeIntervalSince1970 == Double(now + 300))
     }
 
+    @Test @MainActor func seriesChannel_skipCurrentlyAiring_jumpsToFutureEpisodeInstead() async {
+        // Regression test for the live 2026-09-25 infinite-loop bug: startRecording's New-Only and
+        // already-recorded skip branches call scheduleNextAir(skipCurrentlyAiring: true) specifically
+        // because the airing that just failed their check IS "what's currently on air" — without
+        // this flag, scheduleNextAir would (as the sibling test above confirms) re-match that exact
+        // same still-airing entry, set show_next right back to itself, and get immediately re-picked
+        // up by the idle loop on the very next tick: an infinite skip/reschedule loop, plus a
+        // continuously "open" recording window that made the web guide show a red "recording"
+        // indicator the entire time despite never actually recording.
+        let device = HDHRDevice.test(id: "AABBCCDD", tuners: 2)
+        let show = makeSeriesShow(all: false, channel: "5.1", device: device.DeviceID)
+        let now = Int(Date().timeIntervalSince1970)
+        let json = """
+        [{"GuideNumber":"5.1","GuideName":"Test Channel","Guide":[
+            {"StartTime":\(now - 300),"EndTime":\(now + 300),"Title":"Tier Order Show","SeriesID":"series123","EpisodeTitle":"On Air"},
+            {"StartTime":\(now + 3600),"EndTime":\(now + 5400),"Title":"Tier Order Show","SeriesID":"series123","EpisodeTitle":"Future"}
+        ]}]
+        """
+        let state = await makeStateWithGuide(show: show, device: device, json: json)
+
+        await state.scheduleNextAir(index: 0, skipCurrentlyAiring: true)
+
+        let updated = state.shows[0]
+        #expect(updated.show_next?.timeIntervalSince1970 == Double(now + 3600))
+        #expect(updated.show_end?.timeIntervalSince1970 == Double(now + 5400))
+    }
+
     @Test @MainActor func seriesChannel_fallsBackToNextEpisodeWhenNoneCurrentlyAiring() async {
         let device = HDHRDevice.test(id: "AABBCCDD", tuners: 2)
         let show = makeSeriesShow(all: false, channel: "5.1", device: device.DeviceID)
