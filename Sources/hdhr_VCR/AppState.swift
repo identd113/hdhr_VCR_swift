@@ -719,6 +719,15 @@ final class AppState: ObservableObject {
     // (never by pauseShow's "Manually paused" or recordShowFailure's threshold text) so auto-resume
     // can identify — and only re-activate — shows it auto-paused itself, never a user's own pause.
     private static let autoPauseTunerMissingReason = "Tuner not detected"
+    // show_fail_reason marker written only by scheduleNextAir's .dateTime "no valid air day" branch
+    // — checked by updateShow so editing air days back in reactivates the show automatically. This
+    // branch deactivates (show_active = false) rather than pausing specifically so idleLoop's Pass 2
+    // per-show loop — gated on `guard show.show_active else { continue }` — never sees it at all: a
+    // paused .dateTime show with no valid air day was found live 2026-09-26 posting a brand-new
+    // Discord "Show Paused" message (not an edit — no message id to reuse) every idle-loop tick
+    // forever, since nothing about its stale show_end (always <= now, never advanced by this branch)
+    // ever stopped the auto-resume-on-expired-window path from immediately re-triggering it.
+    private static let noAirDaysReason = "No air days configured"
     // How long an abnormally-stopped (tuner/curl died mid-recording) show stays "watchable" — see
     // ShowRuntimeState.abnormalStopGraceUntil's own doc comment — before this app falls back to
     // today's hard cutoff. Bounded on purpose: long enough to survive a scrub-bar seek, a brief
@@ -3589,12 +3598,23 @@ final class AppState: ObservableObject {
                 shows[idx].show_end  = next.addingTimeInterval(Double(show.show_length) * 60)
                 glog("[\(show.show_title)] NEXT \(shortTime(next)) ch=\(show.show_channel)")
             } else {
-                // No matching air day found (show_air_date is empty or invalid) — pause rather than loop forever
-                glog("[\(show.show_title)] PAUSED — no air days configured", level: .warning)
-                shows[idx].show_paused = true
-                shows[idx].show_fail_reason = "No air days configured"
-                notify("Show Paused", body: show.show_title, subtitle: "No air days configured — edit show to fix")
-                discordShow("⏸ Show Paused", show: show, color: 0xE67E22, enabled: config.Discord_on_paused,
+                // No matching air day found (show_air_date is empty or invalid) — deactivate rather
+                // than pause. Pausing here (the original behavior) looped forever: idleLoop's Pass 2
+                // auto-resume-on-expired-window path un-pauses any paused show whose show_end is
+                // stale, calls scheduleNextAir right back into this same branch, which re-pauses it
+                // — and since nothing here ever advances show_end away from the past, that resume
+                // check stayed true on every subsequent tick, posting a brand-new "Show Paused"
+                // Discord message (not an edit) every ~10s indefinitely (found live 2026-09-26).
+                // Deactivating sidesteps this structurally: idleLoop's Pass 2 loop starts with
+                // `guard show.show_active else { continue }`, so an inactive show is never
+                // re-evaluated at all until something explicitly reactivates it — see updateShow's
+                // own reactivate-on-airDays-edit check, keyed on Self.noAirDaysReason below.
+                glog("[\(show.show_title)] DEACTIVATED — no air days configured", level: .warning)
+                shows[idx].show_active = false
+                shows[idx].show_paused = false
+                shows[idx].show_fail_reason = Self.noAirDaysReason
+                notify("Show Deactivated", body: show.show_title, subtitle: "No air days configured — edit show to fix")
+                discordShow("⏹ Show Deactivated", show: show, color: 0xE67E22, enabled: config.Discord_on_paused,
                             extra: [("Reason", "No air days configured — edit show to fix", false)])
             }
         case .seriesChannel, .seriesAll:
@@ -3790,6 +3810,18 @@ final class AppState: ObservableObject {
         if isVirtualRelayDevice(show.hdhr_record) {
             glog("[Show] Refused edit of '\(show.show_title)' — \(show.hdhr_record) is a virtual relay tuner (watch-only)", level: .warning)
             return
+        }
+        var show = show
+        // Reactivate a show that scheduleNextAir's .dateTime branch deactivated for having no valid
+        // air day (Self.noAirDaysReason) the moment an edit actually supplies one — see that
+        // branch's own doc comment for why it deactivates (show_active = false) rather than pauses.
+        // Never fires for any other deactivation reason (e.g. a completed .single show finishing
+        // its one airing) — those aren't meant to spring back to life just because some unrelated
+        // field in this same edit happened to change.
+        if !shows[i].show_active, shows[i].show_fail_reason == Self.noAirDaysReason, !show.show_air_date.isEmpty {
+            show.show_active = true
+            show.clearFailures()
+            glog("[\(show.show_title)] REACTIVATED — air days now configured")
         }
         glog("[Show] Updated '\(show.show_title)'")
         shows[i] = show; saveConfig()

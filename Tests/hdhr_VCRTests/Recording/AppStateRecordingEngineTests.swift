@@ -586,7 +586,14 @@ struct AppStateRecordingEngineTests {
         #expect(updated.show_end == next.addingTimeInterval(Double(show.show_length) * 60))
     }
 
-    @Test @MainActor func scheduleNextAir_dateTime_noAirDays_pausesShow() async {
+    @Test @MainActor func scheduleNextAir_dateTime_noAirDays_deactivatesShow() async {
+        // Deactivates (not pauses) as of 2026-09-26 — pausing looped forever, since idleLoop's
+        // Pass 2 auto-resume-on-expired-window path un-pauses ANY paused show whose show_end is
+        // stale (never advanced here), immediately re-entering this exact branch on every tick and
+        // posting a brand-new "Show Paused" Discord message each time (found live). Deactivating
+        // sidesteps that structurally: Pass 2's very first guard is `show.show_active`, so an
+        // inactive show is never re-evaluated until updateShow's own reactivate-on-airDays-edit
+        // check (see the test below) explicitly brings it back.
         var show = makeShow(recordDir: tempRecordDir(), next: Date(), end: Date().addingTimeInterval(1800))
         show.show_is_series = true
         show.show_use_seriesid = false
@@ -597,7 +604,48 @@ struct AppStateRecordingEngineTests {
 
         await state.scheduleNextAir(index: 0)
 
-        #expect(state.shows[0].show_paused == true)
-        #expect(state.shows[0].show_fail_reason == "No air days configured")
+        let updated = state.shows[0]
+        #expect(updated.show_active == false)
+        #expect(updated.show_paused == false)
+        #expect(updated.show_fail_reason == "No air days configured")
+    }
+
+    @Test @MainActor func updateShow_editingAirDaysBackIn_reactivatesADeactivatedShow() async {
+        // Companion to the deactivation test above — proves the other half of the fix: a show
+        // deactivated for having no valid air day must come back the moment an edit actually
+        // supplies one, via updateShow's reactivate check (keyed on the exact fail_reason
+        // scheduleNextAir's .dateTime branch writes), not stay silently deactivated forever.
+        var show = makeShow(recordDir: tempRecordDir(), next: Date(), end: Date().addingTimeInterval(1800))
+        show.show_is_series = true
+        show.show_use_seriesid = false
+        show.show_use_seriesid_all = false
+        show.show_air_date = []
+        let state = makeTestAppState(shows: [show])
+        await state.scheduleNextAir(index: 0)
+        #expect(state.shows[0].show_active == false)   // sanity: deactivated first
+
+        var edited = state.shows[0]
+        edited.show_air_date = ["monday", "wednesday", "friday"]
+        state.updateShow(edited)
+
+        let updated = state.shows[0]
+        #expect(updated.show_active == true)
+        #expect(updated.show_fail_reason.isEmpty)
+    }
+
+    @Test @MainActor func updateShow_deactivatedForAnotherReason_neverReactivatedByAnEdit() async {
+        // The reactivate check must be keyed specifically on the no-air-days fail_reason — a show
+        // deactivated for an unrelated reason (e.g. a completed .single show) must not spring back
+        // to life just because some other field happened to change in the same edit.
+        var show = makeShow(recordDir: tempRecordDir(), next: Date(), end: Date().addingTimeInterval(1800))
+        show.show_active = false
+        show.show_fail_reason = "Some other reason"
+        let state = makeTestAppState(shows: [show])
+
+        var edited = state.shows[0]
+        edited.show_air_date = ["monday"]
+        state.updateShow(edited)
+
+        #expect(state.shows[0].show_active == false)
     }
 }
