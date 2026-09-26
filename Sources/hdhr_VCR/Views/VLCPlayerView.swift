@@ -10,6 +10,11 @@ private extension Notification.Name {
     // toggleFullScreen(nil) call) alike, since they all funnel through the same NSWindow delegate
     // methods regardless of trigger.
     static let vlcFullScreenChanged = Notification.Name("vlcFullScreenChanged")
+    // Posted by VLCPlayerWindowManager's installKeyMonitor (below) on a bare "i" keydown — see its
+    // own doc comment for why the info banner needs this same local-monitor treatment the arrow
+    // keys/Esc already get, instead of relying on the toolbar Info button's own
+    // .keyboardShortcut("i", modifiers: []).
+    static let vlcToggleInfoOverlay = Notification.Name("vlcToggleInfoOverlay")
 }
 
 // ── VLCVideoSurface ───────────────────────────────────────────────────────────
@@ -249,6 +254,16 @@ struct VLCPlayerView: View {
         return String(guideNumber.dropFirst(Self.liveGuideNumberPrefix.count))
     }
 
+    // Builds the synthetic "live:showId" picker row for one recording — extracted out of
+    // recordingChannelEntries below so syncChannel's cross-device recording-relay match (added
+    // 2026-09-26) can build the same shape for a show on a DIFFERENT device than this window's own
+    // bound `device`, without duplicating the literal.
+    private static func liveRecordingEntry(for show: Show) -> LineupEntry {
+        LineupEntry(GuideNumber: "\(liveGuideNumberPrefix)\(show.show_id)",
+                    GuideName: "Live \(show.show_channel)  \(show.show_title)",
+                    URL: nil, HD: nil, Favorite: nil)
+    }
+
     // One synthetic row per show currently recording on this player's device — lets the picker
     // switch directly between simultaneous recordings via the relay (docs/WebServer.md), the same
     // way it switches between live channels.
@@ -256,11 +271,7 @@ struct VLCPlayerView: View {
         state.recordingShows
             .filter { $0.hdhr_record == device.DeviceID }
             .sorted { $0.show_channel.localizedStandardCompare($1.show_channel) == .orderedAscending }
-            .map { show in
-                LineupEntry(GuideNumber: "\(Self.liveGuideNumberPrefix)\(show.show_id)",
-                            GuideName: "Live \(show.show_channel)  \(show.show_title)",
-                            URL: nil, HD: nil, Favorite: nil)
-            }
+            .map(Self.liveRecordingEntry)
     }
 
     // Synthetic row for a FEED (another Mac's in-progress recording) currently playing as primary
@@ -843,6 +854,9 @@ struct VLCPlayerView: View {
             guard let ch = selectedChannel,
                   let idx = order.firstIndex(where: { $0.GuideNumber == ch.GuideNumber }) else { return }
             selectedChannel = order[idx > 0 ? idx - 1 : order.count - 1]
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .vlcToggleInfoOverlay)) { _ in
+            infoOverlayVisible.toggle()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in
             availableScreens = NSScreen.screens
@@ -1610,15 +1624,17 @@ struct VLCPlayerView: View {
             .popover(isPresented: $nativeResHovered, arrowEdge: .bottom) { nativeResPopover }
 
             // Info ("i" on a TV remote) — toggles a temporary banner over the video with the show
-            // name, episode title, and either a "NEW" badge or the episode's original air date. See
-            // infoBanner's own doc comment for what it shows per source type.
+            // name, episode info, and a source-type closing line. See infoBanner's own doc comment
+            // for what it shows per source type. The "i" key itself is handled by
+            // VLCPlayerWindowManager's installKeyMonitor (a local NSEvent monitor, not
+            // .keyboardShortcut here) — see that method's own doc comment for why a bare-letter
+            // SwiftUI shortcut wasn't reliable; this button's click action stays the same either way.
             Button {
                 infoOverlayVisible.toggle()
             } label: {
                 Image(systemName: "info.circle")
             }
             .buttonStyle(.plain)
-            .keyboardShortcut("i", modifiers: [])
             .help("Show info")
             .accessibilityLabel("Show info")
             .accessibilityIdentifier("vlc-info-button")
@@ -2030,14 +2046,22 @@ struct VLCPlayerView: View {
             selectedChannel = entry
             return
         }
-        // Recording-relay stream: match against this device's currently-recording shows instead
-        // of the lineup — the relay URL (docs/WebServer.md) never matches a real channel URL.
+        // Recording-relay stream: match against bridge.recordingShowId directly against ALL
+        // recording shows, not just this device's own (recordingChannelEntries) — the relay URL
+        // (docs/WebServer.md) never matches a real channel URL, and bridge.recordingShowId already
+        // uniquely identifies the exact show regardless of which device it's recording on, so no
+        // device filter is needed here at all. Fixed 2026-09-26, live report ("Unknown" in the info
+        // banner): watchRecordingInAppAsSecondary lets a PiP secondary be a recording on a
+        // *different* device (PiPPickerView's recording list isn't scoped to one device) — the old
+        // device-filtered recordingChannelEntries lookup silently missed that show entirely once a
+        // swap made it primary, same root cause as the cross-device live-channel branch below.
         // AppState.watchRecordingInApp defers setting bridge.recordingShowId to the next run-loop
         // turn (see its comment — a SwiftUI render-timing fix), so this can miss on the very first
         // call from .onAppear; the .onChange(of: bridge.recordingShowId) handler below re-runs it
         // once that lands.
         if base.contains("/api/watch-recording"), let showId = bridge.recordingShowId,
-           let entry = recordingChannelEntries.first(where: { self.showId(fromLiveGuideNumber: $0.GuideNumber) == showId }) {
+           let show = state.recordingShows.first(where: { $0.show_id == showId }) {
+            let entry = Self.liveRecordingEntry(for: show)
             glog("[VLC] syncChannel matched recording \(entry.GuideName) for url=\(base)")
             MPNowPlayingInfoCenter.default().nowPlayingInfo = [
                 MPMediaItemPropertyTitle:             entry.GuideName,
@@ -2049,6 +2073,26 @@ struct VLCPlayerView: View {
             suppressNextChannelPlay = true
             suppressSameContent     = true   // same show, relabel-only — see its own doc comment
             selectedChannel = entry
+            return
+        }
+        // Cross-device swap landing on a plain LIVE channel (not FEED, not a recording relay) — the
+        // one case feedChannelEntry doesn't cover. `lineup` below only ever reflects this window's
+        // own bound `device`, so a live channel actually belonging to a *different* device (reached
+        // via watchAsSecondary's device picker, PiPPickerView's "Live TV" section) has nothing in it
+        // to match `base` against — docs/VLCPlayerView.md's "cross-device swap" note explicitly
+        // called this an accepted deeper limitation, unlike the FEED case fixed 2026-09-19. Fixed
+        // 2026-09-26, live report: left selectedChannel nil indefinitely, showing "Unknown" in the
+        // info banner (and a blank picker) for as long as the swap lasted. Looks up the swapped-in
+        // device's own lineup directly rather than this view's `lineup`.
+        if !device.isVirtualRelay, let otherDeviceId = VLCPlayerWindowManager.shared.currentDeviceID,
+           otherDeviceId != device.DeviceID,
+           let match = (state.lineups[otherDeviceId] ?? []).first(where: { ($0.URL ?? "").urlBase == base }) {
+            glog("[VLC] syncChannel matched cross-device live channel \(match.GuideNumber) \(match.GuideName) on \(otherDeviceId) for url=\(base)")
+            updateNowPlaying(channel: match)
+            guard selectedChannel?.GuideNumber != match.GuideNumber else { return }
+            suppressNextChannelPlay = true
+            suppressSameContent     = true   // already playing/decoding via the swap, not a fresh switch
+            selectedChannel = match
             return
         }
         if let match = lineup.first(where: { ($0.URL ?? "").hasPrefix(base) || base.hasPrefix($0.URL ?? "") }) {
@@ -2458,10 +2502,27 @@ final class VLCPlayerWindowManager {
         }
     }
 
-    // Arrow-key seek (recording playback only) + Esc to exit fullscreen. A local monitor rather
-    // than a SwiftUI .onKeyPress so it isn't at the mercy of which toolbar control currently has
-    // focus, and scoped to this exact window (`event.window === win`) so it can never fire for a
-    // keystroke intended for some other window (e.g. Settings) that happens to be key at the time.
+    // Arrow-key seek (recording playback only) + Esc to exit fullscreen + "i" for the info banner.
+    // A local monitor rather than a SwiftUI .onKeyPress/.keyboardShortcut so none of these are at
+    // the mercy of which toolbar control currently has focus, and scoped to this exact window
+    // (`event.window === win`) so it can never fire for a keystroke intended for some other window
+    // (e.g. Settings) that happens to be key at the time.
+    //
+    // "i" moved here 2026-09-26, live report: the toolbar Info button's own
+    // `.keyboardShortcut("i", modifiers: [])` sometimes didn't fire at all. A bare, unmodified
+    // letter key equivalent like that only reaches SwiftUI's shortcut system if nothing else in the
+    // responder chain claims it first — the toolbar's own channel-picker `Picker` (an NSPopUpButton
+    // under the hood) intercepts a plain letter keystroke for its own type-ahead "jump to item
+    // starting with this letter" behavior whenever it (or another focusable control) currently held
+    // first-responder status, silently consuming the "i" before it ever reached the button's
+    // shortcut. A local monitor runs *before* responder-chain dispatch, so it can't lose that race —
+    // exactly the same reasoning arrow-key seek below already relied on for this same class of bug.
+    // Posts `.vlcToggleInfoOverlay` (matched in `body`'s `.onReceive`) rather than mutating
+    // `infoOverlayVisible` directly — that's `@State` on the View struct, this method lives on
+    // VLCPlayerWindowManager (a persistent class singleton with no reference to whichever View
+    // struct instance SwiftUI currently has live), the same reason `vlcChannelNext`/`vlcChannelPrev`
+    // already bridge this class's remote-command handlers into View-struct state via notification
+    // rather than a direct call.
     //
     // Arrow keys accumulate into `pendingSeekDelta` on keyDown and only actually commit (one
     // relay reconnect, via seekRecordingRelative) on keyUp — matching the scrub-bar slider's own
@@ -2474,6 +2535,16 @@ final class VLCPlayerWindowManager {
     private func installKeyMonitor(for win: NSWindow) {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self, weak win] event in
             guard let self, let win, event.window === win else { return event }
+            // Bare "i" only — charactersIgnoringModifiers (not keyCode) so this matches by the same
+            // layout-independent character SwiftUI's KeyEquivalent("i") itself would have used, and
+            // the modifier check keeps Cmd/Option/Control/Shift-I from also triggering this (Shift
+            // would type "I", a different KeyEquivalent than the bare "i" the toolbar button asked
+            // for — .keyboardShortcut("i", modifiers: []) never matched that either).
+            if event.type == .keyDown, event.charactersIgnoringModifiers?.lowercased() == "i",
+               event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty {
+                NotificationCenter.default.post(name: .vlcToggleInfoOverlay, object: nil)
+                return nil
+            }
             switch (event.type, event.keyCode) {
             case (.keyDown, 123), (.keyDown, 124):
                 // Only meaningful for an on-disk recording — a live broadcast has nothing to seek
