@@ -2207,6 +2207,14 @@ final class VLCPlayerWindowManager {
         secondaryFeedSessionId = sessionId
     }
 
+    /// The primary stream's display title — the window's own `.title`, which `open()`/
+    /// `swapTrackingFieldsForPiPSwap()` always keep pointed at whatever is currently primary.
+    /// Exposed for callers (MenuContent's "Watching" menu entry) that need a plain display name
+    /// without re-deriving one from currentDeviceID/currentFeedRemoteURL — that lineup-based
+    /// lookup can't resolve a Watch Now (own in-progress recording) session, since its
+    /// /api/watch-recording relay URL never matches a real lineup channel.
+    var currentTitle: String? { window?.title }
+
     /// Bring the player window to the front without switching the stream.
     func focus() {
         guard let win = window else { return }

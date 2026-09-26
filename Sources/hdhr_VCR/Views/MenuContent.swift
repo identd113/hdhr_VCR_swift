@@ -65,6 +65,38 @@ struct MenuContent: View {
         return nil
     }
 
+    // What the menu's "Watching" section actually shows — always the PRIMARY stream's name when
+    // one is playing (nowWatchingInfo's rich device/channel/entry detail when it resolves, else a
+    // plain fallback via VLCPlayerWindowManager.currentTitle for a primary session it can't
+    // resolve, e.g. a Watch Now own-recording relay), and only falls back to the PiP secondary's
+    // name when there is NO primary at all — the "standalone PiP" state (AppState.watchAsSecondary's
+    // ensureWindowForStandalonePiP branch, reachable via PiPPickerView, including a FEED source).
+    // Without this fallback chain the whole section silently vanished whenever nowWatchingInfo
+    // couldn't resolve a lineup match, most visibly the standalone-PiP-with-idle-primary case —
+    // added 2026-09-26, explicit request that Watching must always show, even with FEED, and that
+    // a PiP swap (VLCPlayerView.swapPrimaryAndSecondary(), which swaps currentDeviceID/
+    // currentFeedRemoteURL/window.title onto the newly-primary stream) is enough on its own to
+    // flip which show this reflects — no separate swap-tracking needed here.
+    private var watchingDisplay: (deviceId: String, title: String, isPiPOnly: Bool)? {
+        let mgr = VLCPlayerWindowManager.shared
+        if let info = nowWatchingInfo {
+            // entry is always nil for a remote FEED device (guideByDevice[relayId] never
+            // populates — see docs/VirtualTunerService.md's "Known limitation"); falls back to
+            // the relay's own lineup extra instead of showing just the bare channel with no show
+            // name, same source VLCPlayerView's poster overlay fallback already uses.
+            let showName = info.entry?.Title ?? (info.device.isVirtualRelay ? info.channel.virtualRelayShowTitle : nil)
+            let title = "Ch \(info.channel.GuideNumber)  \(info.channel.GuideName)" + (showName.map { " · \($0)" } ?? "")
+            return (mgr.currentDeviceID ?? "", title, false)
+        }
+        if let deviceId = mgr.currentDeviceID, let title = mgr.currentTitle {
+            return (deviceId, title, false)
+        }
+        if let deviceId = mgr.secondaryDeviceID, let title = mgr.secondaryTitle {
+            return (deviceId, title, true)
+        }
+        return nil
+    }
+
     // THIS Mac watching another instance's FEED right now — the "tuner is a shared resource"
     // counterpart to the header's per-device rows above (which only ever reflect this Mac's own
     // real tuners) and the separate "FEED: N watching" line below (which only reflects OTHER Macs
@@ -170,23 +202,16 @@ struct MenuContent: View {
         Divider()
 
         // ── Now Watching ──────────────────────────────────────────────────
-        if let info = watchingInfo {
-            let watchDeviceId = VLCPlayerWindowManager.shared.currentDeviceID ?? ""
-            Section("Watching" + (watchDeviceId.isEmpty ? "" : " · \(watchDeviceId)")) {
+        if let display = watchingDisplay {
+            Section("Watching" + (display.deviceId.isEmpty ? "" : " · \(display.deviceId)")) {
                 Button {
                     DispatchQueue.main.async { VLCPlayerWindowManager.shared.focus() }
                 } label: {
                     Label {
-                        // entry is always nil for a remote FEED device (guideByDevice[relayId]
-                        // never populates — see docs/VirtualTunerService.md's "Known limitation");
-                        // falls back to the relay's own lineup extra instead of showing just the
-                        // bare channel with no show name, same source VLCPlayerView's poster
-                        // overlay fallback already uses.
-                        let showName = info.entry?.Title ?? (info.device.isVirtualRelay ? info.channel.virtualRelayShowTitle : nil)
-                        Text("Ch \(info.channel.GuideNumber)  \(info.channel.GuideName)" +
-                             (showName.map { " · \($0)" } ?? ""))
+                        Text(display.title)
                     } icon: {
-                        Image(systemName: "play.tv.fill").foregroundStyle(watchNowBlue)
+                        Image(systemName: display.isPiPOnly ? "pip.fill" : "play.tv.fill")
+                            .foregroundStyle(watchNowBlue)
                     }
                 }
             }
