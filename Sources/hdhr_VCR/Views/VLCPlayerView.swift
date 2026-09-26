@@ -882,14 +882,16 @@ struct VLCPlayerView: View {
     // glance at what's playing, then it goes away on its own — pressing it again dismisses early).
     private static let infoOverlayAutoHideSeconds: Double = 6
 
-    // Non-interactive (allowsHitTesting(false)) top-pinned banner — deliberately not sharing space
-    // with the bottom-pinned recording scrub bar (posterHidden's own overlay above in body), which
-    // is hover-revealed rather than a toggle and would otherwise visually collide with this when
-    // watching a recording. Prefers currentGuideEntry (works for both a live channel and a Watch
-    // Now recording relay — see its own doc comment on why both anchor correctly) and falls back to
-    // the FEED relay's lineup extras the same way posterOverlay already does; a FEED session has no
-    // OriginalAirdate data at all, so the NEW/air-date row is simply omitted then rather than
-    // guessed at.
+    // Styled after the classic MTV/VH1 music-video ID card (per-request reference 2026-09-26): a
+    // stack of plain serif lines directly over the picture — no card/material background — sitting
+    // lower-left rather than the old top-pinned material banner. Deliberately still clears the
+    // bottom-pinned recording scrub bar (posterHidden's own overlay above in body, hover-revealed)
+    // via bottomClearance below rather than sharing its exact edge, preserving the original
+    // no-collision intent while moving into the reference's lower band. Prefers currentGuideEntry
+    // (works for both a live channel and a Watch Now recording relay — see its own doc comment on
+    // why both anchor correctly) and falls back to the FEED relay's lineup extras the same way
+    // posterOverlay already does; a FEED session has no OriginalAirdate data at all, so the NEW/
+    // air-date tag line is simply omitted then rather than guessed at.
     private var infoBanner: some View {
         let entry = currentGuideEntry
         let feedEntry = (entry == nil && device.isVirtualRelay) ? currentFeedEntry : nil
@@ -902,57 +904,62 @@ struct VLCPlayerView: View {
             }
             return parts.isEmpty ? nil : parts.joined(separator: " · ")
         }
+        // The card's "label" line (Death Row Records, in the Dr. Dre reference) — the channel this
+        // is airing on, or the source Mac for a FEED relay (which has no real channel of its own).
+        let sourceLine: String? = {
+            if let hostname = feedEntry?.virtualRelaySourceHostname { return "FEED from \(hostname)" }
+            if let ch = selectedChannel { return "Ch \(ch.GuideNumber)  \(ch.GuideName)" }
+            return nil
+        }()
+        let tagLine = entry.flatMap(infoBannerTagLine)
 
-        return VStack {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(title)
-                        .font(.headline)
-                        .foregroundStyle(.white)
-                        .lineLimit(2)
-                    if let episodeInfo {
-                        Text(episodeInfo)
-                            .font(.subheadline)
-                            .foregroundStyle(.white.opacity(0.8))
-                            .lineLimit(1)
-                    }
+        return VStack(alignment: .leading, spacing: 0) {
+            Spacer()
+            VStack(alignment: .leading, spacing: 6) {
+                Text(title)
+                    .font(.system(size: 30, weight: .bold, design: .serif))
+                    .lineLimit(2)
+                if let episodeInfo {
+                    Text(episodeInfo)
+                        .font(.system(size: 21, weight: .medium, design: .serif))
+                        .lineLimit(1)
                 }
-                Spacer(minLength: 12)
-                if let entry {
-                    infoBannerAirDate(entry)
+                if let sourceLine {
+                    Text(sourceLine)
+                        .font(.system(size: 21, weight: .medium, design: .serif))
+                        .lineLimit(1)
+                }
+                if let tagLine {
+                    Text(tagLine)
+                        .font(.system(size: 17, weight: .regular, design: .serif))
+                        .italic()
+                        .lineLimit(1)
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
-            .padding(20)
-            Spacer()
+            .foregroundStyle(Color(white: 0.94))
+            .shadow(color: .black.opacity(0.9), radius: 2, x: 1, y: 1)
+            .padding(.leading, 44)
+            // Clears the recording scrub bar's own 20pt outer padding + its own vertical padding/
+            // content height (posterHidden's overlay above) rather than sitting flush on the edge —
+            // same no-collision intent the old top-pinned placement had, just satisfied from below.
+            .padding(.bottom, 88)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .allowsHitTesting(false)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(title)\(episodeInfo.map { ", \($0)" } ?? "")")
+        .accessibilityLabel("\(title)\(episodeInfo.map { ", \($0)" } ?? "")\(sourceLine.map { ", \($0)" } ?? "")\(tagLine.map { ", \($0)" } ?? "")")
     }
 
-    // Same "NEW" visual language as WatchNowView's badge (isNewEpisode/green pill) — falls back to
-    // the episode's original air date (origAirdateFormatter, GuideViewHelpers.swift) when it isn't
-    // a new episode, so the banner always shows one or the other, never both.
-    @ViewBuilder
-    private func infoBannerAirDate(_ entry: GuideEntry) -> some View {
-        if isNewEpisode(entry) {
-            Text("NEW")
-                .font(.system(size: 11, weight: .heavy))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .background(Color(red: 0.18, green: 0.65, blue: 0.35))
-                .clipShape(RoundedRectangle(cornerRadius: 4))
-                .accessibilityLabel("New episode")
-        } else if let oad = entry.OriginalAirdate {
-            Text("Originally aired \(origAirdateFormatter.string(from: Date(timeIntervalSince1970: TimeInterval(oad))))")
-                .font(.caption)
-                .foregroundStyle(.white.opacity(0.7))
-                .fixedSize()
+    // Same "NEW" language as WatchNowView's badge (isNewEpisode), as a plain caption-style tag line
+    // now instead of a pill — falls back to the episode's original air date (origAirdateFormatter,
+    // GuideViewHelpers.swift) when it isn't a new episode, so the card always shows one or the
+    // other, never both, the same "Promo Only"-style single closing line the reference card uses.
+    private func infoBannerTagLine(_ entry: GuideEntry) -> String? {
+        if isNewEpisode(entry) { return "New Episode" }
+        if let oad = entry.OriginalAirdate {
+            return "Originally Aired \(origAirdateFormatter.string(from: Date(timeIntervalSince1970: TimeInterval(oad))))"
         }
+        return nil
     }
 
     // MARK: - Poster overlay
