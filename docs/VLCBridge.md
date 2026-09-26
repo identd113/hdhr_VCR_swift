@@ -103,6 +103,12 @@ Each `tickController` tick calls `libvlc_media_player_get_state` before the rate
 
 `hasError`, `hasEnded`, and `isPlaying` are reset to `false` in `play()`, `stop()`, and `releasePlayer()` so state is clean on every new stream attempt.
 
+### Startup state poll
+
+Added 2026-09-26, per a request to speed up perceived start time. The state check above (now `detectPrimaryTerminalState(_:)`, extracted out of `tickPrimary()` so both call sites share one implementation) used to be reachable only via the 3-second `statsTimer`, and a repeating `Timer` fires *after* its interval, not immediately — so even once libvlc had already reached `libvlc_Playing`, the Start button (and FEED auto-play, both gated on `isPlaying`) could sit dark for up to a full 3 real seconds on top of however long decode itself took, purely waiting for the next scheduled tick to notice.
+
+`startFastStatePoll()` runs a second, separate `Timer` at a 0.25s interval, started alongside `statsTimer` (right after it, in `play()`'s commit block, primary slot only) and torn down together with it in `stopStatsTimer()`. It calls only `detectPrimaryTerminalState(_:)` — never the rate-ramp/stats body `tickPrimary()` also runs — and self-invalidates the moment state is known (`isPlaying`, `hasError`, or `hasEnded`). It is deliberately a *separate* timer rather than just shortening `statsTimerInterval` itself: `rampedFillRate`'s buffer-fill math (above) assumes each call advances `estimatedLagSec` by exactly one real `statsTimerInterval`-sized step — running that at 0.25s intervals would reach the 8-second fill cap in 2 real seconds instead of 8, silently undermining the buffer cushion `feedAutoPlayMinDelay` (`VLCPlayerView.swift`) is tuned to match.
+
 ### Logging
 
 Every significant controller event is logged to `hdhrVCRplus.log`:

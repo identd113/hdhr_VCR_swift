@@ -347,6 +347,7 @@ final class VLCBridge: ObservableObject {
     }
 
     private var statsTimer:      Timer?
+    private var fastPollTimer:   Timer?   // startFastStatePoll's own timer — see its doc comment
     private var currentRate:     Float  = 1.0
     private var estimatedLagSec: Double = 0.0
     private var lastCorrupted:   Int32  = 0
@@ -852,6 +853,7 @@ final class VLCBridge: ObservableObject {
                     self.lastLostPictures = nil
                     self.consecutiveStalledTicks = 0
                     self.startStatsTimer()
+                    self.startFastStatePoll()
                 } else if self.statsTimer == nil {
                     // The secondary slot never stops/restarts the shared timer itself (see this
                     // method's own slot == .primary branches above) — a swap or a first PiP open
@@ -1155,6 +1157,8 @@ final class VLCBridge: ObservableObject {
     private func stopStatsTimer() {
         statsTimer?.invalidate()
         statsTimer = nil
+        fastPollTimer?.invalidate()
+        fastPollTimer = nil
     }
 
     /// Minimal polling for the PiP secondary player — deliberately no stats/rate-ramp/track-fetch/
@@ -1194,33 +1198,77 @@ final class VLCBridge: ObservableObject {
         if newSize != secondaryVideoPixelSize { secondaryVideoPixelSize = newSize }
     }
 
-    private func tickPrimary() {
-        guard let mp = primaryState.mediaPlayer else { return }
+    /// Reads libvlc's current player state (Error/Ended/Playing) and updates hasError/hasEnded/
+    /// isPlaying — tickPrimary's own state check, extracted so the short-interval startup poll
+    /// (startFastStatePoll below) can share it instead of a second, drift-prone copy of the same
+    /// three state numbers. Returns true only for Error/Ended — the signal tickPrimary uses to skip
+    /// the rest of its own tick body that call, unchanged from before this extraction. Playing does
+    /// NOT return true here (tickPrimary still has track-fetch/ramp/stats work to do that tick);
+    /// startFastStatePoll instead checks `isPlaying` itself right after calling this to decide when
+    /// to stop.
+    private func detectPrimaryTerminalState(_ mp: OpaquePointer) -> Bool {
+        guard let getState = _mpGetState else { return false }
+        let state = getState(mp)
+        if state == 7 {  // libvlc_Error: connection refused, no route to host, etc.
+            glog("[VLC] stream error state — publishing hasError", level: .error)
+            hasError  = true
+            isPlaying = false
+            stopStatsTimer()
+            return true
+        }
+        if state == 6 {  // libvlc_Ended: stream reached EOF (a finished recording relay read to its
+            // final byte, or a live source closed). Without handling this, isPlaying stays true and
+            // the stats timer polls a stopped player forever, freezing on the last frame with no
+            // indication. Publish hasEnded so the view shows an "ended" overlay, and stop polling.
+            glog("[VLC] stream ended (libvlc_Ended) — publishing hasEnded")
+            hasEnded  = true
+            isPlaying = false
+            stopStatsTimer()
+            return true
+        }
+        if state == 3 && !isPlaying {  // libvlc_Playing: first confirmed decode tick
+            isPlaying = true
+            glog("[VLC] stream playing confirmed")
+        }
+        return false
+    }
 
-        if let getState = _mpGetState {
-            let state = getState(mp)
-            if state == 7 {  // libvlc_Error: connection refused, no route to host, etc.
-                glog("[VLC] stream error state — publishing hasError", level: .error)
-                hasError  = true
-                isPlaying = false
-                stopStatsTimer()
-                return
-            }
-            if state == 6 {  // libvlc_Ended: stream reached EOF (a finished recording relay read to its
-                // final byte, or a live source closed). Without handling this, isPlaying stays true and
-                // the stats timer polls a stopped player forever, freezing on the last frame with no
-                // indication. Publish hasEnded so the view shows an "ended" overlay, and stop polling.
-                glog("[VLC] stream ended (libvlc_Ended) — publishing hasEnded")
-                hasEnded  = true
-                isPlaying = false
-                stopStatsTimer()
-                return
-            }
-            if state == 3 && !isPlaying {  // libvlc_Playing: first confirmed decode tick
-                isPlaying = true
-                glog("[VLC] stream playing confirmed")
+    // Short-interval startup poll — narrows the "libvlc already started decoding but nothing has
+    // noticed yet" window that otherwise cost up to a full statsTimerInterval (3s) of dead time:
+    // Timer(repeats:) fires only AFTER its interval elapses, so before this existed, the Start
+    // button and FEED auto-play (both gated on bridge.isPlaying — VLCPlayerView.swift) could sit
+    // dark for up to 3 real seconds after decode had already begun, on top of however long decode
+    // itself actually took. Deliberately a SEPARATE timer rather than just shortening
+    // statsTimerInterval itself: rampedFillRate's buffer-fill math assumes each tickPrimary call
+    // represents exactly statsTimerInterval real seconds elapsing (see its own doc comment on the
+    // self-referential-ramp bug this already burned once, 2026-09-06) — polling that loop faster
+    // would double-count ramp progress and finish the fill phase early, undermining the
+    // deliberately-tuned buffer cushion FEED auto-play's own fixed wait (feedAutoPlayMinDelay,
+    // VLCPlayerView.swift) depends on lining up with. This timer only ever reads state via
+    // detectPrimaryTerminalState (shared with tickPrimary, so the two can't disagree on what counts
+    // as "playing") and never touches the ramp/stats fields tickPrimary owns. Self-stops the moment
+    // state is known either way; also torn down alongside the main stats timer (stopStatsTimer),
+    // and started fresh by play() right after startStatsTimer() for every new primary stream.
+    private static let fastPollInterval: TimeInterval = 0.25
+
+    private func startFastStatePoll() {
+        fastPollTimer?.invalidate()
+        let timer = Timer(timeInterval: Self.fastPollInterval, repeats: true) { [weak self] timer in
+            Task { @MainActor [weak self] in
+                guard let self, let mp = self.primaryState.mediaPlayer else { timer.invalidate(); return }
+                if self.detectPrimaryTerminalState(mp) || self.isPlaying {
+                    timer.invalidate()
+                    self.fastPollTimer = nil
+                }
             }
         }
+        RunLoop.main.add(timer, forMode: .common)
+        fastPollTimer = timer
+    }
+
+    private func tickPrimary() {
+        guard let mp = primaryState.mediaPlayer else { return }
+        if detectPrimaryTerminalState(mp) { return }
         // Fetch track descriptions once playing; retry every tick until audio tracks appear.
         // Keep calling while audio hasn't been found yet, OR audio is found but spu still has
         // retry budget left and hasn't turned up anything — see spuFetchAttempts' own doc comment.

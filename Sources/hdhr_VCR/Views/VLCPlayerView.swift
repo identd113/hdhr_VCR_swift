@@ -858,7 +858,16 @@ struct VLCPlayerView: View {
     private func startPlayback(auto: Bool) {
         let lag = VLCBridge.shared.bufferInfo.lagSec
         glog("[VLC] \(auto ? "FEED auto-play" : "Start clicked") — buffer ~\(String(format: "%.1f", lag))s built before unmute")
-        posterHidden = true
+        // Instant, not the poster overlay's usual 0.35s crossfade (.animation(value: posterHidden)
+        // in body) — the video has already been decoding/rendering underneath the poster this whole
+        // time (mute only silences audio), so an instant reveal exactly matches setVolume's own
+        // instant, un-ramped unmute just below. Without this, the poster's fade left the picture
+        // visibly appearing ~350ms after audio already started — reported live 2026-09-26.
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            posterHidden = true
+        }
         VLCBridge.shared.setVolume(Int(volume))
     }
 
