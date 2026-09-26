@@ -109,18 +109,32 @@ final class ChannelSignalStore {
         return SignalBucket(avg)
     }
 
-    // Immediate save — call after a user-triggered scan so data survives a quick quit.
-    func flush() {
-        savePending?.cancel()
+    // Immediate save — call after a user-triggered scan so data survives a quick quit. Async: if a
+    // periodic scheduleSave() write is already in flight, this AWAITS it to actually finish first,
+    // rather than trying to cancel it — cancel() alone can't stop it. scheduleSave()'s own
+    // `try? await Task.sleep(...)` swallows the CancellationError a cancel() would raise, so a
+    // cancelled-mid-sleep task falls straight through into its write anyway; and even if it's
+    // already past sleep and mid-write, that write runs inside a Task.detached child, which never
+    // inherits or observes the outer task's cancellation at all. Without awaiting it here, that
+    // write (of a snapshot up to 60s stale) and this call's own fresher write raced with no
+    // ordering guarantee — if the stale one's atomic rename happened to land after this one's, the
+    // on-disk file silently reverted to stale data despite flush() being called specifically so
+    // fresh data survives a quick quit (found in code review 2026-09-25). Awaiting it first
+    // guarantees this call's own write — always issued after — lands last.
+    func flush() async {
+        if let pending = savePending {
+            pending.cancel()   // best-effort: shortens the wait if it's still sleeping
+            await pending.value
+        }
         savePending = nil
         let snapshot = history
         let path     = filePath
-        Task.detached(priority: .utility) {
+        await Task.detached(priority: .utility) {
             let enc = JSONEncoder()
             enc.dateEncodingStrategy = .secondsSince1970
             guard let data = try? enc.encode(snapshot) else { return }
             try? data.write(to: path, options: .atomic)
-        }
+        }.value
     }
 
     private func scheduleSave() {

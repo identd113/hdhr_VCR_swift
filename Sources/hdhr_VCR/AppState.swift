@@ -5392,7 +5392,7 @@ final class AppState: ObservableObject {
                     // file instead of ~11.
                     unflushedCount += batch.count
                     if unflushedCount >= 10 {
-                        ChannelSignalStore.shared.flush()
+                        await ChannelSignalStore.shared.flush()
                         unflushedCount = 0
                     }
 
@@ -5406,7 +5406,7 @@ final class AppState: ObservableObject {
             }
 
             if unflushedCount > 0 {
-                ChannelSignalStore.shared.flush()
+                await ChannelSignalStore.shared.flush()
             }
             glog("[Signal] scan complete — \(scanned) channel(s) sampled")
             await MainActor.run { signalScanProgress = nil }

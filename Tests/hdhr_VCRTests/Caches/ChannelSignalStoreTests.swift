@@ -92,9 +92,9 @@ struct ChannelSignalStoreTests {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let store1 = ChannelSignalStore(appSupportDir: dir)
         store1.record(guideName: "KFOO-HD", snq: 72)
-        store1.flush()
-        // flush() writes on a detached Task — give it a beat to land before reading it back.
-        try? await Task.sleep(nanoseconds: 200_000_000)
+        // flush() is async and now awaits its own write completing (see its doc comment on why —
+        // this is no longer a "fire and hope it lands" write), so no arbitrary sleep-and-hope needed.
+        await store1.flush()
 
         let store2 = ChannelSignalStore(appSupportDir: dir)
         await store2.load()
