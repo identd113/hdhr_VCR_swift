@@ -3806,7 +3806,7 @@ final class WebServer: @unchecked Sendable {
             state.devices.first(where: { $0.DeviceID == show.hdhr_record })
         }
         let friendlyName = sourceDevice?.FriendlyName.map { "\($0)-FEED" } ?? "hdhrVCRplus (Recording FEED)"
-        return [
+        var dict: [String: Any] = [
             "DeviceID": deviceID,
             "FriendlyName": friendlyName,
             "ModelNumber": "HDVR-RELAY",
@@ -3818,6 +3818,14 @@ final class WebServer: @unchecked Sendable {
             // HDHRDevice decoder recognizes it (see that type's isVirtualRelay doc comment).
             VirtualTunerService.virtualRelayMarkerKey: true,
         ]
+        // See VirtualTunerService.recordingStartedAtKey's own doc comment — lets another instance
+        // resolve the rare two-Macs-relaying-the-same-tuner race by "whichever started recording
+        // first wins." Omitted only in the same edge case friendlyName's own fallback above covers
+        // (no show currently recording at the exact instant this is built).
+        if let earliest = recordingShows.compactMap({ $0.show_next }).min() {
+            dict[VirtualTunerService.recordingStartedAtKey] = earliest.timeIntervalSince1970
+        }
+        return dict
     }
 
     @MainActor

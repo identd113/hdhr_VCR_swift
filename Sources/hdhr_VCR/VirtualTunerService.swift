@@ -71,6 +71,16 @@ final class VirtualTunerService {
     static let episodeNumberKey = "HdhrVCRplusEpisodeNumber"
     static let synopsisKey = "HdhrVCRplusSynopsis"
     static let imageURLKey = "HdhrVCRplusImageURL"
+    // Added 2026-09-25, explicit user request: only one hdhrVCRplus instance should ever have a
+    // live FEED relay for a given source tuner on the network at a time. Device-level (set on
+    // /discover.json, decoded onto HDHRDevice — see that property's own doc comment), not per-show
+    // like the lineup-only keys above, since it describes when THIS RELAY itself started, not any
+    // one specific show. Epoch seconds of the earliest currently-recording show driving this relay
+    // (Show.show_next — this app's own anchor time for "when did this recording actually start").
+    // Lets AppState.updateVirtualTunerPresence() resolve the rare race where two Macs both start
+    // relaying the same source tuner before either sees the other: whichever started recording
+    // first keeps the relay, the later one backs off (see that function's own doc comment).
+    static let recordingStartedAtKey = "HdhrVCRplusRecordingStartedAt"
 
     private let queue = DispatchQueue(label: "hdhrVCRplus.virtualtuner.udp", qos: .utility)
     private var sock: Int32 = -1
@@ -511,10 +521,34 @@ final class VirtualTunerService {
     /// happen in practice, since this is only ever called from
     /// `AppState.updateVirtualTunerPresence()`'s `isRecording`-gated branch against a real,
     /// HTTP-discovered device).
+    ///
+    /// Deliberately NOT mixed with this Mac's own hostname/identity — only one machine is ever
+    /// expected to be relaying a given physical source tuner at a time, by design, so two Macs
+    /// minting the same relay DeviceID for the same source tuner is not a real-world case this
+    /// needs to disambiguate (explicit user correction 2026-09-25, reverting an earlier attempt to
+    /// "fix" exactly this as a cross-machine collision).
     static func relayDeviceID(sourceDeviceID: String?) -> String {
         guard let sourceDeviceID, sourceDeviceID.count == 8,
               UInt32(sourceDeviceID, radix: 16) != nil
         else { return makeDeviceID() }
         return "FEED\(sourceDeviceID.suffix(4).uppercased())"
+    }
+
+    /// Resolves the rare race where two Macs both start relaying the same source tuner before
+    /// either sees the other (only one hdhrVCRplus instance's FEED should ever be live for a given
+    /// source tuner at a time — explicit user direction 2026-09-25). Whichever side started
+    /// recording that tuner first keeps the relay; a tie (including both nil — e.g. neither side's
+    /// recordingStartedAtKey ever made it across, or an exact-same-instant start) falls back to
+    /// hostname so at least one side deterministically backs off instead of both, or neither, doing
+    /// so. Pure — extracted for unit testing, same precedent as relayDeviceID/makeDeviceID above
+    /// (this file's own tests can't exercise the real network-bound caller, AppState.
+    /// updateVirtualTunerPresence(), the same way VirtualTunerServiceTests.swift's own header
+    /// comment already documents for the rest of this class).
+    static func conflictShouldYield(ourStart: Date?, theirStart: Date?,
+                                     ourHostname: String, theirHostname: String) -> Bool {
+        if let ourStart, let theirStart, ourStart != theirStart {
+            return ourStart > theirStart
+        }
+        return ourHostname > theirHostname
     }
 }

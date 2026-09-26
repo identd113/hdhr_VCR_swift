@@ -673,6 +673,13 @@ struct HDHRDevice: Identifiable, Equatable {
     // AppState, keyed on DeviceID, not this flag — this flag alone can't distinguish "mine" from
     // "another instance's."
     var isVirtualRelay: Bool = false
+    // Non-standard field only hdhrVCRplus's own /discover.json ever sets, alongside
+    // isVirtualRelay above (VirtualTunerService.recordingStartedAtKey) — epoch seconds of the
+    // earliest currently-recording show driving that relay. nil for every real device and for a
+    // relay that hasn't set it (shouldn't happen in practice — always emitted alongside the marker
+    // above). Used by AppState.updateVirtualTunerPresence() to resolve the rare race where two
+    // Macs both start relaying the same source tuner before either sees the other.
+    var recordingStartedAt: TimeInterval?
 
     // Runtime-only: incremented each probe cycle when the device is not seen; reset when seen.
     // Not persisted — resets to 0 (available) on every launch.
@@ -699,6 +706,7 @@ extension HDHRDevice: Codable {
     enum CodingKeys: String, CodingKey {
         case DeviceID, LocalIP, BaseURL, TunerCount, FirmwareVersion, DeviceAuth, ModelNumber, FriendlyName
         case isVirtualRelay = "HdhrVCRplusVirtualRelay"
+        case recordingStartedAt = "HdhrVCRplusRecordingStartedAt"
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -710,6 +718,7 @@ extension HDHRDevice: Codable {
         ModelNumber     = try? c.decode(String.self, forKey: .ModelNumber)
         FriendlyName    = try? c.decode(String.self, forKey: .FriendlyName)
         isVirtualRelay  = (try? c.decode(Bool.self,  forKey: .isVirtualRelay)) ?? false
+        recordingStartedAt = try? c.decode(TimeInterval.self, forKey: .recordingStartedAt)
         // Cloud response includes LocalIP directly; mDNS/device response omits it — extract host from BaseURL
         if let ip = try? c.decode(String.self, forKey: .LocalIP) {
             LocalIP = ip

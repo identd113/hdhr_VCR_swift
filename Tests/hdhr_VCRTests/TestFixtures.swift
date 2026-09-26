@@ -157,12 +157,13 @@ extension HDHRDevice {
     // UDP-only discovery — and so is conservatively supportsTranscode == false, same as production.
     static func test(id: String = "FFFFFFFF", ip: String = "192.168.1.100", tuners: Int = 4,
                       modelNumber: String? = nil, isVirtualRelay: Bool = false,
-                      friendlyName: String? = nil) -> HDHRDevice {
+                      friendlyName: String? = nil, recordingStartedAt: TimeInterval? = nil) -> HDHRDevice {
         let modelJSON = modelNumber.map { ",\"ModelNumber\":\"\($0)\"" } ?? ""
         let relayJSON = isVirtualRelay ? ",\"HdhrVCRplusVirtualRelay\":true" : ""
         let friendlyJSON = friendlyName.map { ",\"FriendlyName\":\"\($0)\"" } ?? ""
+        let startedJSON = recordingStartedAt.map { ",\"HdhrVCRplusRecordingStartedAt\":\($0)" } ?? ""
         let json = """
-        {"DeviceID":"\(id)","LocalIP":"\(ip)","TunerCount":\(tuners),"FirmwareVersion":"20240101"\(modelJSON)\(relayJSON)\(friendlyJSON)}
+        {"DeviceID":"\(id)","LocalIP":"\(ip)","TunerCount":\(tuners),"FirmwareVersion":"20240101"\(modelJSON)\(relayJSON)\(friendlyJSON)\(startedJSON)}
         """
         return try! JSONDecoder().decode(HDHRDevice.self, from: Data(json.utf8))
     }
@@ -172,14 +173,15 @@ extension HDHRDevice {
 
 extension LineupEntry {
     static func test(number: String = "5.1", name: String = "KFOO", favorite: Bool = false,
-                      showTitle: String? = nil) -> LineupEntry {
+                      showTitle: String? = nil, sourceHostname: String? = nil) -> LineupEntry {
         LineupEntry(
             GuideNumber: number,
             GuideName: name,
             URL: "http://192.168.1.100:5004/auto/v\(number)",
             HD: 1,
             Favorite: favorite ? 1 : nil,
-            virtualRelayShowTitle: showTitle
+            virtualRelayShowTitle: showTitle,
+            virtualRelaySourceHostname: sourceHostname
         )
     }
 }

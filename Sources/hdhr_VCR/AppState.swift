@@ -1305,19 +1305,47 @@ final class AppState: ObservableObject {
         // alongside Virtual_tuner_relay_enabled itself no longer being reachable from any UI, in case
         // an existing config already has that sub-toggle set true from before the feature was hidden.
         if !activelyRecordingShows.isEmpty && config.FEED_feature_enabled && config.Virtual_tuner_relay_enabled {
-            // nil means no LAN interface was found (stale config.Network_interface after an adapter
-            // switch, or a momentary interface-list gap) — see virtualTunerBaseURL's own doc
-            // comment for why this must skip starting/refreshing the relay entirely rather than
-            // falling back to a "127.0.0.1" BaseURL that would be advertised to the whole LAN and
-            // is unreachable from any other machine. Leaves any already-running relay as-is (its
-            // last-known-good BaseURL) rather than tearing it down over a possibly-transient gap;
-            // the next state change that calls this again picks up a fresh interface list.
-            guard let baseURL = webServer.virtualTunerBaseURL(preferredInterface: config.Network_interface) else {
-                glog("[VirtualTuner] no LAN interface found — skipping relay start/refresh this cycle", level: .warning)
-                return
-            }
             let tunerCount = activelyRecordingShows.count
             if let id = activeVirtualTunerDeviceID {
+                // Only one hdhrVCRplus instance's FEED should ever be live for a given source tuner
+                // on the network at a time (explicit user direction 2026-09-25). `devices` here is
+                // always this instance's own self-excluded view (excludingOwnVirtualTuner strips our
+                // own active relay's entry at the point discoverDevices/probeForNewDevices assigns
+                // into it) — so ANY isVirtualRelay entry still matching our own `id` is unambiguously
+                // a different machine, not an echo of ourselves. Detects the rare race where two Macs
+                // both start relaying the same source tuner before either sees the other (both passed
+                // the pre-start check below in the same probe window) — the pre-start check alone
+                // can't catch this, since it only runs once, before either side has anything to see.
+                // Checked before touching the network below — this decision needs nothing but the
+                // already-known device list.
+                if let conflict = devices.first(where: { $0.DeviceID == id && $0.isVirtualRelay }) {
+                    let ourStart = activelyRecordingShows.compactMap { $0.show_next }.min()
+                    let theirStart = conflict.recordingStartedAt.map { Date(timeIntervalSince1970: $0) }
+                    let theirHostname = lineups[conflict.DeviceID]?.first?.virtualRelaySourceHostname ?? ""
+                    let weLose = VirtualTunerService.conflictShouldYield(
+                        ourStart: ourStart, theirStart: theirStart,
+                        ourHostname: ProcessInfo.processInfo.hostName, theirHostname: theirHostname)
+                    if weLose {
+                        glog("[VirtualTuner] another instance (\(theirHostname.isEmpty ? conflict.LocalIP : theirHostname)) is already relaying this source tuner and started first — yielding our own FEED", level: .warning)
+                        virtualTuner.stop()
+                        activeVirtualTunerDeviceID = nil
+                        virtualTunerWebServerClaim.release { releaseInternalWebServer() }
+                        return
+                    }
+                    // We started first — keep running; the other side will detect this same
+                    // conflict on its own next check and back off instead.
+                }
+                // nil means no LAN interface was found (stale config.Network_interface after an
+                // adapter switch, or a momentary interface-list gap) — see virtualTunerBaseURL's own
+                // doc comment for why this must skip the refresh entirely rather than falling back
+                // to a "127.0.0.1" BaseURL that would be advertised to the whole LAN and is
+                // unreachable from any other machine. Leaves the relay running with its last-known-
+                // good BaseURL rather than tearing it down over a possibly-transient gap; the next
+                // state change that calls this again picks up a fresh interface list.
+                guard let baseURL = webServer.virtualTunerBaseURL(preferredInterface: config.Network_interface) else {
+                    glog("[VirtualTuner] no LAN interface found — skipping relay refresh this cycle", level: .warning)
+                    return
+                }
                 // Already running — refresh the advertised BaseURL/TunerCount in place (e.g. a
                 // second show started or stopped recording after the relay came up) without a
                 // rebind or a new DeviceID. See VirtualTunerService.start's own doc comment.
@@ -1330,6 +1358,23 @@ final class AppState: ObservableObject {
             // stale-device pruning (deviceUnavailableSince/staleDeviceForgetAfter) for the other half
             // of the same fix.
             let id = VirtualTunerService.relayDeviceID(sourceDeviceID: activelyRecordingShows.first?.hdhr_record)
+            // Only one instance's FEED should ever be live for a given source tuner at a time
+            // (explicit user direction 2026-09-25) — don't mint a second one if the network already
+            // has one. Checked against the currently-known device list (kept fresh by the ongoing
+            // UDP discovery/probe loop, not a fresh synchronous probe forced here — this function
+            // runs on every recording start/stop/etc., so a blocking UDP round trip on every call
+            // would be far too expensive) — good enough in every case except a genuine simultaneous-
+            // start race, which the check in the "already running" branch above resolves once both
+            // sides' next probe cycle actually sees the other. Checked before touching the network
+            // below, same reasoning as the "already running" branch's own conflict check.
+            if devices.contains(where: { $0.DeviceID == id && $0.isVirtualRelay }) {
+                glog("[VirtualTuner] another instance is already relaying this source tuner (id \(id)) — not starting our own FEED", level: .warning)
+                return
+            }
+            guard let baseURL = webServer.virtualTunerBaseURL(preferredInterface: config.Network_interface) else {
+                glog("[VirtualTuner] no LAN interface found — skipping relay start this cycle", level: .warning)
+                return
+            }
             activeVirtualTunerDeviceID = id
             // The relay's HTTP JSON routes and stream endpoint live on this same WebServer
             // instance, which only actually runs its NWListener when Web_server_enabled is on or

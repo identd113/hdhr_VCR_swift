@@ -226,4 +226,37 @@ struct VirtualTunerServiceTests {
             #expect(id.count == 8)
         }
     }
+
+    // MARK: - conflictShouldYield — only-one-FEED-on-the-network tie-break
+
+    @Test func conflictShouldYield_laterStart_yields() {
+        let earlier = Date(timeIntervalSince1970: 1000)
+        let later   = Date(timeIntervalSince1970: 2000)
+        #expect(VirtualTunerService.conflictShouldYield(
+            ourStart: later, theirStart: earlier, ourHostname: "a", theirHostname: "b") == true)
+        #expect(VirtualTunerService.conflictShouldYield(
+            ourStart: earlier, theirStart: later, ourHostname: "a", theirHostname: "b") == false)
+    }
+
+    @Test func conflictShouldYield_exactTie_fallsBackToHostname() {
+        let same = Date(timeIntervalSince1970: 1000)
+        // Alphabetically-later hostname yields, matching relayDeviceID's own "deterministic without
+        // coordination" spirit — both sides compute the identical answer independently.
+        #expect(VirtualTunerService.conflictShouldYield(
+            ourStart: same, theirStart: same, ourHostname: "zzz", theirHostname: "aaa") == true)
+        #expect(VirtualTunerService.conflictShouldYield(
+            ourStart: same, theirStart: same, ourHostname: "aaa", theirHostname: "zzz") == false)
+    }
+
+    @Test func conflictShouldYield_missingStartOnEitherSide_fallsBackToHostname() {
+        // A relay that somehow never advertised recordingStartedAtKey (shouldn't happen in
+        // practice, but must not crash or always-win/always-lose) falls to the same hostname
+        // tie-break as an exact timestamp tie.
+        #expect(VirtualTunerService.conflictShouldYield(
+            ourStart: nil, theirStart: Date(), ourHostname: "zzz", theirHostname: "aaa") == true)
+        #expect(VirtualTunerService.conflictShouldYield(
+            ourStart: Date(), theirStart: nil, ourHostname: "aaa", theirHostname: "zzz") == false)
+        #expect(VirtualTunerService.conflictShouldYield(
+            ourStart: nil, theirStart: nil, ourHostname: "aaa", theirHostname: "zzz") == false)
+    }
 }

@@ -84,6 +84,43 @@ struct VirtualTunerGuardrailTests {
         #expect(id == nil)
     }
 
+    // MARK: - Only one hdhrVCRplus instance's FEED per source tuner (explicit user direction 2026-09-25)
+
+    @Test func updateVirtualTunerPresence_anotherInstanceAlreadyRelayingThisTuner_doesNotStartOurOwn() async {
+        // The pre-start conflict check runs before virtualTunerBaseURL/VirtualTunerService.start()
+        // are ever touched, so — unlike the "enabled" branch generally — this specific path is safe
+        // to exercise without a live network interface or UDP bind.
+        let show = Show.testRecording(title: "Live Now")   // hdhr_record defaults to "FFFFFFFF"
+        // VirtualTunerService.relayDeviceID(sourceDeviceID: "FFFFFFFF") == "FEEDFFFF" — the exact id
+        // this instance would itself mint for the same source tuner.
+        let conflictingRelay = HDHRDevice.test(id: "FEEDFFFF", isVirtualRelay: true)
+        let state = await makeTestAppState(shows: [show], devices: [conflictingRelay])
+        await MainActor.run { state.config.Virtual_tuner_relay_enabled = true }
+        await state.updateVirtualTunerPresence()
+        let id = await MainActor.run { state.activeVirtualTunerDeviceID }
+        #expect(id == nil)
+    }
+
+    @Test func updateVirtualTunerPresence_raceWithAnotherInstance_laterStarterYields() async {
+        // The rare race: both sides already believe they're running (activeVirtualTunerDeviceID
+        // set directly here, standing in for a prior successful start), each with the identical
+        // deterministic id, before either saw the other. The conflict check backing off runs before
+        // any network touch, so this is safe without a live bind — unlike the "we keep running"
+        // tail (which does call through to a real start()), deliberately not exercised here.
+        var show = Show.testRecording(title: "Live Now")
+        show.show_next = Date().addingTimeInterval(-300)   // we started 300s ago
+        let earlierConflict = HDHRDevice.test(id: "FEEDFFFF", isVirtualRelay: true,
+                                               recordingStartedAt: Date().addingTimeInterval(-600).timeIntervalSince1970)   // they started 600s ago — first
+        let state = await makeTestAppState(shows: [show], devices: [earlierConflict])
+        await MainActor.run {
+            state.config.Virtual_tuner_relay_enabled = true
+            state.activeVirtualTunerDeviceID = "FEEDFFFF"
+        }
+        await state.updateVirtualTunerPresence()
+        let id = await MainActor.run { state.activeVirtualTunerDeviceID }
+        #expect(id == nil)   // yielded — they started first
+    }
+
     // MARK: - vlcOccupiesTuner never counts a virtual relay
 
     @Test func vlcOccupiesTuner_falseForAVirtualRelayDevice() async {
