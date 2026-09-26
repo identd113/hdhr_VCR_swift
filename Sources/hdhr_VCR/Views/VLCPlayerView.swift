@@ -965,7 +965,17 @@ struct VLCPlayerView: View {
                 }
             }
             .foregroundStyle(Color(white: 0.94))
-            .shadow(color: .black.opacity(0.9), radius: 2, x: 1, y: 1)
+            // Omnidirectional halo, not a single offset drop shadow — found live 2026-09-26 via a
+            // batch of screenshots across several live channels: a directional shadow (x:1,y:1) only
+            // darkens one edge of each glyph, which reads fine over mid-to-dark content (a football
+            // field, a dim interior scene) but nearly disappears over a bright/white broadcast
+            // graphic (a golf stats card, a QVC product shot) — exactly the white-text-on-white-ish-
+            // background case captions/lower-thirds solve with a full outline, not a shadow. SwiftUI
+            // has no text-stroke modifier, so two stacked zero-offset `.shadow` passes approximate
+            // one: a tight, near-opaque inner halo plus a softer, wider outer one, both centered
+            // (x:0,y:0) so they surround every glyph evenly instead of favoring one side.
+            .shadow(color: .black.opacity(0.95), radius: 2, x: 0, y: 0)
+            .shadow(color: .black.opacity(0.85), radius: 5, x: 0, y: 0)
             .padding(.leading, 44)
             // Clears the recording scrub bar's own 20pt outer padding + its own vertical padding/
             // content height (posterHidden's overlay above) rather than sitting flush on the edge —
