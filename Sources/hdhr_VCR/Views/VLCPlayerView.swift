@@ -904,13 +904,7 @@ struct VLCPlayerView: View {
             }
             return parts.isEmpty ? nil : parts.joined(separator: " · ")
         }
-        // The card's "label" line (Death Row Records, in the Dr. Dre reference) — the channel this
-        // is airing on, or the source Mac for a FEED relay (which has no real channel of its own).
-        let sourceLine: String? = {
-            if let hostname = feedEntry?.virtualRelaySourceHostname { return "FEED from \(hostname)" }
-            if let ch = selectedChannel { return "Ch \(ch.GuideNumber)  \(ch.GuideName)" }
-            return nil
-        }()
+        let sourceLine = infoBannerSourceLine(feedEntry: feedEntry)
         let tagLine = entry.flatMap(infoBannerTagLine)
 
         return VStack(alignment: .leading, spacing: 0) {
@@ -948,6 +942,26 @@ struct VLCPlayerView: View {
         .allowsHitTesting(false)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(title)\(episodeInfo.map { ", \($0)" } ?? "")\(sourceLine.map { ", \($0)" } ?? "")\(tagLine.map { ", \($0)" } ?? "")")
+    }
+
+    // The card's "label" line (Death Row Records, in the Dr. Dre reference) — the channel this is
+    // airing on, or the source Mac for a FEED relay (which has no real channel of its own).
+    // selectedChannel can also hold one of two synthetic picker rows (recordingChannelEntries'
+    // "live:showId" or feedChannelEntry's "live-feed:url", both above) whose GuideNumber is an ID/
+    // URL, not a real channel number — showing it raw ("Ch live:df96c6d0…") would be gibberish, so
+    // each resolves back to a real label instead: the recording's own show_channel (mirroring
+    // currentGuideEntry's identical showId(fromLiveGuideNumber:) resolution, so this line and the
+    // title/episode lines above it always agree on which channel they're describing), or the
+    // synthetic FEED entry's own already-formatted GuideName ("FEED  <title> — <hostname>").
+    private func infoBannerSourceLine(feedEntry: LineupEntry?) -> String? {
+        if let hostname = feedEntry?.virtualRelaySourceHostname { return "FEED from \(hostname)" }
+        guard let ch = selectedChannel else { return nil }
+        if let recordingShowId = showId(fromLiveGuideNumber: ch.GuideNumber),
+           let show = state.recordingShows.first(where: { $0.show_id == recordingShowId }) {
+            return "Recording · Ch \(show.show_channel)"
+        }
+        if ch.GuideNumber.hasPrefix(Self.liveFeedGuideNumberPrefix) { return ch.GuideName }
+        return "Ch \(ch.GuideNumber)  \(ch.GuideName)"
     }
 
     // Same "NEW" language as WatchNowView's badge (isNewEpisode), as a plain caption-style tag line
