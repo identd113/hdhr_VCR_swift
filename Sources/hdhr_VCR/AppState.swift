@@ -1993,9 +1993,18 @@ final class AppState: ObservableObject {
     // (add/update/pause/resume/delete, plus the mid-flight re-broadcasts after scheduleNextAir
     // resolves real data) does this same pair so the web guide's conflict badge and schedule
     // reflect the change immediately instead of waiting for the next unrelated rebuild.
-    func pushShowUpdate(type: String, channel: String, device: String, rebuildMenu: Bool = true) {
+    //
+    // affectedDeviceIds: nil (the default) rebuilds every device's tuner dropdown, same as always
+    // — the only safe choice for a caller that can't prove a show's device didn't change (most
+    // notably updateShow, which can reassign hdhr_record, e.g. a seriesChannel edit or reschedule
+    // landing on a different tuner). Pass the exact device(s) actually affected only from a call
+    // site where that's provable by construction — pause/resume/delete/add never move a show to a
+    // different device — to skip rebuilding every *other* device's dropdown for nothing (found in
+    // code review 2026-09-26; see buildGuideRefreshPayload's own doc comment for why omitting an
+    // unaffected device here is safe, not just an optimization that happens not to break anything).
+    func pushShowUpdate(type: String, channel: String, device: String, rebuildMenu: Bool = true, affectedDeviceIds: Set<String>? = nil) {
         if rebuildMenu, !menuIsOpen { rebuildMenuEntries() }
-        webServer.broadcastGuideChangeEvent(type: type, extra: ["channel": channel, "device": device], state: self)
+        webServer.broadcastGuideChangeEvent(type: type, extra: ["channel": channel, "device": device], state: self, onlyDevices: affectedDeviceIds)
     }
 
     func upcomingGuideEpisodes(seriesID: String, channelNum: String? = nil, after: Date = Date(), limit: Int = 4) -> [(channel: String, entry: GuideEntry)] {
@@ -3786,7 +3795,10 @@ final class AppState: ObservableObject {
         // Broadcast here (not left to each caller) so every path that adds a show — the guide's
         // "Record" action, the native Add Show wizard, any future caller — pushes to the web UI
         // unconditionally instead of depending on the caller remembering to.
-        pushShowUpdate(type: "show_added", channel: show.show_channel, device: show.hdhr_record)
+        // affectedDeviceIds scoped to just this show's own device — a brand-new show can only ever
+        // appear in its own device's dropdown, never any other device's.
+        pushShowUpdate(type: "show_added", channel: show.show_channel, device: show.hdhr_record,
+                       affectedDeviceIds: [show.hdhr_record])
         // Donation nag — covers both the native wizard and the web guide's Record action
         // (addShowFromGuide ends by calling this same function), so a single hook here reaches
         // both. No-op once the shared unlock code has been entered.
@@ -3918,7 +3930,10 @@ final class AppState: ObservableObject {
         shows[i].show_paused = true
         shows[i].show_fail_reason = reason
         if broadcast {
-            pushShowUpdate(type: "show_updated", channel: shows[i].show_channel, device: shows[i].hdhr_record)
+            // affectedDeviceIds scoped to just this show's own device — pausing never reassigns
+            // hdhr_record, so no other device's dropdown can possibly be affected.
+            pushShowUpdate(type: "show_updated", channel: shows[i].show_channel, device: shows[i].hdhr_record,
+                           affectedDeviceIds: [shows[i].hdhr_record])
         }
     }
     private func applyResume(index i: Int, broadcast: Bool = true) {
@@ -3934,7 +3949,10 @@ final class AppState: ObservableObject {
         shows[i].notify_upnext_time = nil
         shows[i].notify_recording_time = nil
         if broadcast {
-            pushShowUpdate(type: "show_updated", channel: shows[i].show_channel, device: shows[i].hdhr_record)
+            // affectedDeviceIds scoped to just this show's own device — same reasoning as
+            // applyPause's identical scoping above; resuming never reassigns hdhr_record either.
+            pushShowUpdate(type: "show_updated", channel: shows[i].show_channel, device: shows[i].hdhr_record,
+                           affectedDeviceIds: [shows[i].hdhr_record])
         }
     }
 
@@ -3994,7 +4012,10 @@ final class AppState: ObservableObject {
         // Idempotent — returns 0 (a no-op transcodeViewersCleared call) if nothing was running.
         transcodeViewersCleared(VLCBridge.shared.stopAllTranscodeSessions(showId: show.show_id))
         saveConfig()
-        pushShowUpdate(type: "show_deleted", channel: show.show_channel, device: show.hdhr_record)
+        // affectedDeviceIds scoped to just this show's own device — deleting only removes it from
+        // the one dropdown it was ever listed under.
+        pushShowUpdate(type: "show_deleted", channel: show.show_channel, device: show.hdhr_record,
+                       affectedDeviceIds: [show.hdhr_record])
     }
 
     func confirmAndDeleteShow(_ show: Show, then completion: @escaping () -> Void = {}) {

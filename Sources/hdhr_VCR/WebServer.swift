@@ -568,12 +568,28 @@ final class WebServer: @unchecked Sendable {
         return usableRecordable.union(state.shows.map(\.hdhr_record).filter { !$0.isEmpty })
     }
 
+    // `onlyDevices`, when non-nil, restricts the tdrop rebuild to that set (intersected with
+    // tdropDeviceIDs, so an id that isn't a real dropdown target is harmless) instead of every
+    // known device — found in code review 2026-09-26: every guide-changing broadcast (any show
+    // add/edit/delete/pause/resume/favorite-toggle, any recording start/stop/reschedule) rebuilt
+    // ALL devices' dropdown HTML and the full cross-device summary panel regardless of which single
+    // device the triggering event actually touched, scaling with tuner count for zero benefit on
+    // every guide interaction. guide.js's applyGuidePayload only updates the DOM for keys actually
+    // present in the pushed tdrop map (`Object.keys(d.tdrop).forEach(...)`) and leaves any omitted
+    // device's dropdown untouched — never clears or stales it — so omitting an unaffected device
+    // here is safe by construction, not just an optimization that happens not to break anything.
+    // nil (the default, used by every call site that can't prove a device didn't change — most
+    // notably updateShow, which can reassign hdhr_record) preserves the original always-rebuild-
+    // everything behavior; only pass a set from a call site that can prove exactly which device(s)
+    // are affected (see pushShowUpdate's own `affectedDeviceIds` parameter).
+    // Internal, not private — same testability precedent as computeDevTuners/buildDevBarHTML above.
     @MainActor
-    private func buildGuideRefreshPayload(state: AppState, prebuiltGrid: String? = nil) -> [String: Any] {
+    func buildGuideRefreshPayload(state: AppState, prebuiltGrid: String? = nil, onlyDevices: Set<String>? = nil) -> [String: Any] {
         let grid = prebuiltGrid ?? buildGuideGridHTML(state: state)
         let sumph = buildSumPhHTML(state: state)
         var tdropBodies: [String: String] = [:]
-        for dev in tdropDeviceIDs(state: state) {
+        let targetDevices = onlyDevices.map { tdropDeviceIDs(state: state).intersection($0) } ?? tdropDeviceIDs(state: state)
+        for dev in targetDevices {
             tdropBodies[dev] = buildTunerShowsHTML(state: state, deviceId: dev)
         }
         return ["grid": grid, "sumph": sumph, "tdrop": tdropBodies]
@@ -583,13 +599,14 @@ final class WebServer: @unchecked Sendable {
     // once here instead of every connected tab independently re-fetching /api/guide-refresh
     // and rebuilding the same grid. Mirrors broadcastRecordingEvent's fragment-embedding pattern.
     // `extra` carries whatever identifying fields the caller used before (channel/device,
-    // or device/guideNumber for favorite_toggled) — merged in verbatim.
+    // or device/guideNumber for favorite_toggled) — merged in verbatim. `onlyDevices` — see
+    // buildGuideRefreshPayload's own doc comment.
     @MainActor
-    func broadcastGuideChangeEvent(type: String, extra: [String: Any] = [:], state: AppState, prebuiltGrid: String? = nil) {
+    func broadcastGuideChangeEvent(type: String, extra: [String: Any] = [:], state: AppState, prebuiltGrid: String? = nil, onlyDevices: Set<String>? = nil) {
         let grid = prebuiltGrid ?? buildGuideGridHTML(state: state)
         var event = extra
         event["type"] = type
-        let payload = buildGuideRefreshPayload(state: state, prebuiltGrid: grid)
+        let payload = buildGuideRefreshPayload(state: state, prebuiltGrid: grid, onlyDevices: onlyDevices)
         // Compress the HTML fragments before pushing over SSE, unlike buildGuideRefreshPayload's
         // other caller (GET /api/guide-refresh, ~line 945 below) — that's a normal .ok response,
         // already transparently gzip'd/decompressed by fetch() at the transport level (see send(_:

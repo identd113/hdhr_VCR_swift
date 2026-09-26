@@ -68,6 +68,60 @@ struct TdropDeviceIDsTests {
     }
 }
 
+// MARK: - buildGuideRefreshPayload(onlyDevices:) — found in code review 2026-09-26: every
+// guide-changing broadcast rebuilt EVERY device's tuner-dropdown HTML regardless of which single
+// device the triggering event actually touched. onlyDevices lets a call site that can prove
+// exactly which device(s) changed (pause/resume/add/delete — never a device reassignment) skip
+// rebuilding every other device's dropdown for nothing. guide.js's applyGuidePayload only updates
+// the DOM for keys actually present in the pushed tdrop map, so omitting an unaffected device here
+// is safe by construction — the client leaves that dropdown exactly as it was.
+
+@Suite("buildGuideRefreshPayload — onlyDevices scoping")
+struct BuildGuideRefreshPayloadOnlyDevicesTests {
+
+    private func device(_ id: String) -> HDHRDevice {
+        HDHRDevice(DeviceID: id, LocalIP: "10.0.0.1", BaseURL: "http://10.0.0.1",
+                   TunerCount: 2, FirmwareVersion: nil, DeviceAuth: nil)
+    }
+
+    @MainActor
+    @Test func nilOnlyDevices_rebuildsEveryDevice() {
+        let state = makeTestAppState(devices: [device("AAAAAAAA"), device("BBBBBBBB")])
+        let payload = WebServer().buildGuideRefreshPayload(state: state, prebuiltGrid: "")
+        let tdrop = payload["tdrop"] as? [String: String] ?? [:]
+        #expect(Set(tdrop.keys) == ["AAAAAAAA", "BBBBBBBB"])
+    }
+
+    @MainActor
+    @Test func onlyDevices_restrictsToTheGivenSet() {
+        let state = makeTestAppState(devices: [device("AAAAAAAA"), device("BBBBBBBB")])
+        let payload = WebServer().buildGuideRefreshPayload(state: state, prebuiltGrid: "", onlyDevices: ["AAAAAAAA"])
+        let tdrop = payload["tdrop"] as? [String: String] ?? [:]
+        #expect(Set(tdrop.keys) == ["AAAAAAAA"])
+    }
+
+    @MainActor
+    @Test func onlyDevices_intersectsWithRealDropdownTargets_ignoringAnythingElse() {
+        // A device id that isn't actually a valid tdrop target (not discovered, no show referencing
+        // it) must be silently dropped from the intersection rather than leaking a bogus key into
+        // the payload guide.js would then have nowhere to render.
+        let state = makeTestAppState(devices: [device("AAAAAAAA"), device("BBBBBBBB")])
+        let payload = WebServer().buildGuideRefreshPayload(state: state, prebuiltGrid: "", onlyDevices: ["AAAAAAAA", "NOTAREALDEVICE"])
+        let tdrop = payload["tdrop"] as? [String: String] ?? [:]
+        #expect(Set(tdrop.keys) == ["AAAAAAAA"])
+    }
+
+    @MainActor
+    @Test func onlyDevices_stillIncludesGridAndSumph() {
+        // Scoping tdrop must never accidentally scope the grid/summary fields too — those are
+        // always whole-guide, never per-device.
+        let state = makeTestAppState(devices: [device("AAAAAAAA")])
+        let payload = WebServer().buildGuideRefreshPayload(state: state, prebuiltGrid: "<grid>", onlyDevices: ["AAAAAAAA"])
+        #expect(payload["grid"] as? String == "<grid>")
+        #expect(payload["sumph"] != nil)
+    }
+}
+
 // MARK: - timeRemaining(until:)
 
 @Suite("timeRemaining(until:) duration formatting")
