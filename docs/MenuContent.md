@@ -24,9 +24,10 @@ Clicking the icon opens a native macOS cascading menu (NSMenu style). The menu h
 
 Immediately below the header: **Add Show…** button, **Watch Now** button (when devices present), then **Settings…**, then — only when `state.updateCheckResult` is non-nil — an **"Update Available: vX.Y.Z"** button (`arrow.down.circle.fill` icon) that opens the GitHub release page via `NSWorkspace.shared.open(_:)`, then a divider.
 
-**Watching** section (only visible when VLC player is open, appears directly above Recording Now):
+**Watching** section (appears directly above Recording Now), rendered by `watchingDisplay(for:)`:
 - Section header: `"Watching"` (single device) or `"Watching · 105404BE"` (shows which device's tuner is in use)
 - One button: `"Ch 5.1  NBC · Show Title"` with a `play.tv.fill` icon in blue; clicking it focuses the VLC player window
+- Added 2026-09-26, explicit request that this section must always show something whenever anything is playing, even a "standalone PiP" session with no primary at all (reachable via `PiPPickerView`, including a FEED source — `AppState.watchAsSecondary`'s `ensureWindowForStandalonePiP` branch): the section now also appears with just `mgr.currentTitle` (a primary session `nowWatchingInfo` can't lineup-resolve, e.g. Watch Now) or `mgr.secondaryTitle` (no primary at all) as the button's plain title, with a `pip.fill` icon (not `play.tv.fill`) for the secondary-only case — see `docs/VLCPlayerView.md`'s "cross-device swap"/PiP notes for how `currentTitle`/`secondaryTitle` stay accurate. The section is genuinely absent, not just empty, only when nothing at all is playing.
 
 **Recording Now** section (only visible when recording):
 - Section header: `"Recording Now"` (single tuner) or `"Recording · 105404BE"` (per device, multiple tuners) — macOS section label style, uppercase gray small text with separator
@@ -254,11 +255,11 @@ Submenu — uses `showInfoHeader(show, entry:)`, then: show type + channel, paus
 
 ---
 
-## Now Watching — `nowWatchingInfo`
+## Now Watching — `nowWatchingInfo` / `watchingDisplay(for:)`
 
-A `Button` shown when `nowWatchingInfo` resolves to non-`nil` (i.e. the VLC player window is active). Clicking it calls `VLCPlayerWindowManager.shared.focus()` — brings the player window to the front without switching the stream.
+A `Button` shown when `watchingDisplay(for: nowWatchingInfo)` resolves to non-`nil` — not `nowWatchingInfo` alone as of 2026-09-26 (see "Watching section" above for the standalone-PiP/Watch Now fallback chain that wraps it). Clicking it calls `VLCPlayerWindowManager.shared.focus()` — brings the player window to the front without switching the stream.
 
-Label format: `"Ch 5.1  NBC · Show Title"` where the channel comes from matching the resolved URL against the device lineups (exact-equality comparison against the stripped base URL, strips query params), and the show title is the currently-airing `GuideEntry` for that channel, falling back to `LineupEntry.virtualRelayShowTitle` (added 2026-09-12) when the matched device is a FEED relay — `entry` is always `nil` there, since `guideByDevice[relayId]` never populates (see `docs/VirtualTunerService.md`'s "Known limitation"). The `· Show Title` suffix is omitted only when neither source has one. Icon: `play.tv.fill` in `watchNowBlue`.
+Label format when `nowWatchingInfo` itself resolves: `"Ch 5.1  NBC · Show Title"` where the channel comes from matching the resolved URL against the device lineups (exact-equality comparison against the stripped base URL, strips query params), and the show title is the currently-airing `GuideEntry` for that channel, falling back to `LineupEntry.virtualRelayShowTitle` (added 2026-09-12) when the matched device is a FEED relay — `entry` is always `nil` there, since `guideByDevice[relayId]` never populates (see `docs/VirtualTunerService.md`'s "Known limitation"). The `· Show Title` suffix is omitted only when neither source has one. Icon: `play.tv.fill` in `watchNowBlue`. When `nowWatchingInfo` itself is `nil`, `watchingDisplay(for:)` instead shows a plain title (`VLCPlayerWindowManager.currentTitle`/`secondaryTitle`, `play.tv.fill`/`pip.fill` respectively) — see "Watching section" above.
 
 `nowWatchingInfo` is a private computed property that:
 1. Resolves the URL to match: `VLCPlayerWindowManager.currentFeedRemoteURL` when set (an active FEED session — see below), otherwise `state.vlcCurrentURL`. Returns `nil` if that's empty.
