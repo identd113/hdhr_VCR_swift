@@ -368,9 +368,13 @@ struct MenuContent: View {
                                         return filtered.isEmpty ? nil : (time: group.time, shows: filtered)
                                     }) { groups in
                 ForEach(groups, id: \.time) { group in
-                    Section(Self.timeFormatter.string(from: group.time)) {
-                        ForEach(group.shows) { scheduledMenu($0, showChannel: true) }
-                    }
+                    // Inlined into each row's own label (`timePrefix`) rather than wrapping each
+                    // time bucket in its own Section — tightened 2026-09-26, live report that the
+                    // menu felt loose: a separate Section per bucket meant every single "Up Next"
+                    // show (nearly always one per bucket) paid for a full section-header's worth of
+                    // vertical padding on top of its own row, for a label that was just a time.
+                    let timeStr = Self.timeFormatter.string(from: group.time)
+                    ForEach(group.shows) { scheduledMenu($0, showChannel: true, timePrefix: timeStr) }
                 }
             }
             Divider()
@@ -550,11 +554,11 @@ struct MenuContent: View {
     }
 
     @ViewBuilder
-    private func scheduledMenu(_ show: Show, showChannel: Bool = false) -> some View {
+    private func scheduledMenu(_ show: Show, showChannel: Bool = false, timePrefix: String? = nil) -> some View {
         // Pre-computed in AppState.rebuildMenuEntries() every idle tick and after guide loads —
         // avoids O(series entries) scan per show per menu open.
         let conflict  = state.showRuntime[show.show_id]?.isConflicting == true
-        let prefix    = conflict ? "⚠️ " : ""
+        let prefix    = (timePrefix.map { "\($0)  " } ?? "") + (conflict ? "⚠️ " : "")
         let schEntry  = state.menuScheduledEntry[show.show_id]
         let schEp     = schEntry.flatMap { $0.episodeInfoLabel }
         let chSuffix  = showChannel ? "  ch \(show.show_channel)" : ""

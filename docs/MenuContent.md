@@ -156,8 +156,7 @@ Section "Recording on Another Mac"   ← only when a different instance's virtua
 Divider
 Section "Up Next"                    ← shows scheduled later today (single tuner)
 Section "Up Next · DeviceID"         ← per device when multiple tuners present
-  Section "8:00 PM"                  ← time-slot Section groups shows by start minute
-    scheduledMenu(show, showChannel:true) …   ← "ch 5.1" appended to label
+  scheduledMenu(show, showChannel:true, timePrefix:"8:00 PM") …  ← time + "ch 5.1" inlined onto the row, no nested Section
 Divider
 Section "Scheduled"                  ← remaining active shows (single tuner)
 Section "Scheduled · DeviceID"       ← per device when multiple tuners
@@ -221,7 +220,9 @@ Source: `state.activeShows` — sorted by `show_next` ascending.
 
 `showChannel: Bool = false` — when `true` (used in Up Next), `"  ch 5.1"` is appended to the menu label so the channel is visible without opening the submenu.
 
-Menu label: `[stateIcon] [Title]` (+ optional `  ch 5.1`) — prefixed with `⚠️` when a tuner conflict is detected.
+`timePrefix: String? = nil` — added 2026-09-26 (see "Up Next section" above): when set, prepended as `"8:00 PM  "` onto the row label, replacing the earlier per-time-bucket `Section` wrapper.
+
+Menu label: `[timePrefix] [stateIcon] [Title]` (+ optional `  ch 5.1`) — prefixed with `⚠️` when a tuner conflict is detected (after any `timePrefix`).
 
 State icons: `1️⃣` Single · `📅` DateTime · `🔂` SeriesID(Channel) · `🔁` SeriesID(All)
 
@@ -237,7 +238,7 @@ Submenu — uses `showInfoHeader(show, entry:)` for the top block, then:
 
 ### Up Next section
 
-Shows in `activeShows` whose `show_next` falls **later today** (standardized 2026-09-14 — previously a fixed 60-minute window) appear in the **"Up Next"** section above "Scheduled"; nothing appears at all once nothing's left today. Shows are bucketed by start time (rounded to the minute); each bucket renders as a nested `Section("8:00 PM")` containing its shows. Each show in Up Next has `showChannel: true` so the channel is visible in the row label. Shows in Up Next are excluded from the Scheduled section. This mirrors the web guide's own "Up Next" definition (`docs/WebServer.md`'s `buildTunerShowsHTML`/`buildSumPhHTML`) — same term, same meaning everywhere in the app, except the menu bar status light itself (`docs/AppState.md`), which is a one-hour imminent-start alert, not a listing.
+Shows in `activeShows` whose `show_next` falls **later today** (standardized 2026-09-14 — previously a fixed 60-minute window) appear in the **"Up Next"** section above "Scheduled"; nothing appears at all once nothing's left today. Shows are bucketed by start time (rounded to the minute); each bucket's time is inlined as a `timePrefix` onto each show's own row label (`scheduledMenu`'s `timePrefix` parameter) rather than wrapped in a nested `Section("8:00 PM")` — tightened 2026-09-26, live report that the menu felt loose: with almost always one show per bucket, a full `Section` per bucket meant every "Up Next" row paid for a section header's own vertical padding just to display a single time. Each show in Up Next has `showChannel: true` so the channel is visible in the row label. Shows in Up Next are excluded from the Scheduled section. This mirrors the web guide's own "Up Next" definition (`docs/WebServer.md`'s `buildTunerShowsHTML`/`buildSumPhHTML`) — same term, same meaning everywhere in the app, except the menu bar status light itself (`docs/AppState.md`), which is a one-hour imminent-start alert, not a listing.
 
 **Series filter:** series shows without a confirmed `menuScheduledEntry` (no guide entry was matched within the look-ahead window) are excluded from Up Next and remain in Scheduled. These shows are in retry/scan mode — `show_next` falls within the window only because of a prior episode, not because a real upcoming episode has been confirmed — and surfacing them in Up Next would mislead the user into thinking a recording is imminent.
 
