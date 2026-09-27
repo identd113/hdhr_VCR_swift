@@ -3175,6 +3175,17 @@ final class AppState: ObservableObject {
         } catch {
             glog("[\(show.show_title)] createDirectory failed for \(recordDir): \(error)", level: .error)
         }
+        // "perFolder" mode — tag the show's own containing folder once; Time Machine skips an
+        // excluded folder's contents entirely rather than walking into it, so this also covers
+        // every future episode written under it (a new season subfolder included) without needing
+        // to re-tag anything later. Harmless to call again on a folder that's already excluded.
+        // Guarded on the directory actually existing — excludeFromTimeMachine needs a real inode to
+        // tag (see its own doc comment); createDirectory above already logged its own error if it
+        // failed, so this just avoids a second, guaranteed-to-fail, redundant warning for the same
+        // root cause.
+        if config.TimeMachine_exclude_mode == "perFolder", FileManager.default.fileExists(atPath: recordDir) {
+            excludeFromTimeMachine(recordDir)
+        }
         if !show.show_dir.isEmpty, show.posixRecordDir != show.show_dir {
             glog("[\(show.show_title)] Primary folder unavailable — recording to fallback: \(show.posixRecordDir)", level: .warning)
         }
@@ -3204,7 +3215,8 @@ final class AppState: ObservableObject {
                                        outputPath: path, durationSeconds: remainingSecs,
                                        transcode: effectiveTranscode, showEnd: endDate,
                                        verbose: config.Verbose_curl,
-                                       networkInterface: config.Network_interface)
+                                       networkInterface: config.Network_interface,
+                                       excludeFromBackup: config.TimeMachine_exclude_mode == "perFile")
         } catch {
             glog("[\(show.show_title)] LAUNCH ERROR: \(error)", level: .error)
             recordShowFailure(index: index, reason: "Launch failed: \(error.localizedDescription)")

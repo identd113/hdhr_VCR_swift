@@ -1,6 +1,6 @@
 import SwiftUI
 
-// Shared by SettingsView's Recording section and FirstRunWizardView's Step 1 — same four fields,
+// Shared by SettingsView's Recording section and FirstRunWizardView's Step 1 — same fields,
 // same copy (including InfoButton help text) previously duplicated verbatim between the two files.
 // Kept as one view so a future edit to any of it (a new transcode option, revised wording, a
 // changed Stepper range) can't silently drift between Settings and the wizard. Bindings only —
@@ -15,6 +15,7 @@ struct RecordingDefaultsFields: View {
     @Binding var transcode: String
     @Binding var minFreeDiskGB: Double
     @Binding var failThreshold: Int
+    @Binding var timeMachineExcludeMode: String
     // Distinguishes the two call sites' controls for UI automation (e.g. "settings-recording" vs
     // "wizard-recording") — see WindowNavigationTests.swift for why these matter more for
     // AppleScript/System Events automation than accessibilityLabel alone.
@@ -56,6 +57,15 @@ struct RecordingDefaultsFields: View {
                 HStack { Text("Pause after \(failThreshold) failure(s)"); InfoButton("A show is automatically paused after this many consecutive failures. Restore it via Maintenance → Reactivate Paused Shows.") }
             }
             .accessibilityIdentifier("\(idPrefix)-fail-threshold")
+
+            Picker(selection: $timeMachineExcludeMode) {
+                Text("Off").tag("off")
+                Text("Each Recording").tag("perFile")
+                Text("Show's Folder").tag("perFolder")
+            } label: {
+                HStack { Text("Exclude from Time Machine"); InfoButton("Keeps TV recordings out of Time Machine backups. \"Each Recording\" tags every file individually. \"Show's Folder\" tags the containing folder once instead — Time Machine skips an excluded folder entirely, so this also covers future episodes automatically, but any other files you keep in that same folder are excluded too.") }
+            }
+            .accessibilityIdentifier("\(idPrefix)-tm-exclude")
         }
     }
 }

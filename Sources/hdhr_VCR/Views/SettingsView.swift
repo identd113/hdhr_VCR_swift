@@ -359,6 +359,7 @@ struct SettingsView: View {
                     transcode: $draft.Default_transcode,
                     minFreeDiskGB: $draft.Min_disk_free_gb,
                     failThreshold: $draft.Fail_count_setting,
+                    timeMachineExcludeMode: $draft.TimeMachine_exclude_mode,
                     idPrefix: "settings-recording"
                 )
 

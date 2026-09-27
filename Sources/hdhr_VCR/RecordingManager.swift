@@ -36,7 +36,8 @@ final class RecordingManager {
 
     func start(showId: String, title: String, url: String, outputPath: String,
                durationSeconds: Int, transcode: String, showEnd: Date,
-               verbose: Bool = false, networkInterface: String = "") throws {
+               verbose: Bool = false, networkInterface: String = "",
+               excludeFromBackup: Bool = false) throws {
         guard pids[showId] == nil else { return }
 
         let profile      = transcode.lowercased().trimmingCharacters(in: .whitespaces)
@@ -58,6 +59,18 @@ final class RecordingManager {
 
         let dir = (outputPath as NSString).deletingLastPathComponent
         try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        // "perFile" mode (AppConfig.TimeMachine_exclude_mode) — the caller already resolved the
+        // mode into this plain Bool; "perFolder" mode is applied by the caller itself against
+        // `dir`'s own parent-directory-creation point instead (AppState), not here, so a show
+        // using that mode doesn't also redundantly tag every individual file. excludeFromTimeMachine
+        // needs `outputPath` to already exist (see its own doc comment on excludeByPath: false), so
+        // this pre-creates an empty file there before curl ever runs — curl's `-o` opens and
+        // truncates an existing file rather than unlinking and recreating it, so the xattr just
+        // written survives once curl starts actually writing into it.
+        if excludeFromBackup {
+            FileManager.default.createFile(atPath: outputPath, contents: nil)
+            excludeFromTimeMachine(outputPath)
+        }
 
         if verbose {
             rotateCurlVerboseLogIfNeeded(path: effectiveCurlLogPath)

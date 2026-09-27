@@ -49,6 +49,7 @@ struct FirstRunWizardView: View {
     @State private var transcode: String = "none"
     @State private var minFreeDiskGB: Double = 30.0
     @State private var failThreshold: Int = 3
+    @State private var timeMachineExcludeMode: String = "off"
     @State private var upNextMinutes: Double = 35.0
     @State private var recordingSoonMinutes: Double = 15.5
 
@@ -392,6 +393,7 @@ struct FirstRunWizardView: View {
                     transcode: $transcode,
                     minFreeDiskGB: $minFreeDiskGB,
                     failThreshold: $failThreshold,
+                    timeMachineExcludeMode: $timeMachineExcludeMode,
                     idPrefix: "wizard-recording"
                 )
             }
@@ -860,6 +862,7 @@ struct FirstRunWizardView: View {
         transcode            = state.config.Default_transcode
         minFreeDiskGB         = state.config.Min_disk_free_gb
         failThreshold         = state.config.Fail_count_setting
+        timeMachineExcludeMode = state.config.TimeMachine_exclude_mode
         upNextMinutes         = state.config.Notify_upnext
         recordingSoonMinutes  = state.config.Notify_recording
         saveFolder            = UserDefaults.standard.string(forKey: "defaultSaveDirectory")
@@ -873,6 +876,7 @@ struct FirstRunWizardView: View {
         state.config.Default_transcode      = transcode
         state.config.Min_disk_free_gb       = minFreeDiskGB
         state.config.Fail_count_setting     = failThreshold
+        state.config.TimeMachine_exclude_mode = timeMachineExcludeMode
         state.config.Notify_upnext          = upNextMinutes
         state.config.Notify_recording       = recordingSoonMinutes
         let webServerChanged = sharingEnabled != state.config.Web_server_enabled

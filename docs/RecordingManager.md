@@ -7,7 +7,7 @@ Launches and tracks `curl` processes directly. Prevents sleep during recordings 
 ## API
 
 ```swift
-func start(showId:, title:, url:, outputPath:, durationSeconds:, transcode:, showEnd:, verbose:, networkInterface:)
+func start(showId:, title:, url:, outputPath:, durationSeconds:, transcode:, showEnd:, verbose:, networkInterface:, excludeFromBackup:)
 func reattach(showId:, pid:, title:, endDate:)    // register an existing PID without launching (boot-resume)
 func stop(showId:)
 func readHDHRResource(showId:) -> String?          // reads X-HDHomeRun-Resource without deleting the file
@@ -19,6 +19,8 @@ func releaseAllAssertions()                        // release all; called when s
 ```
 
 `networkInterface: String = ""` — when non-empty, appends `--interface <name>` to curl args, binding the stream to a specific NIC. Sourced from `AppConfig.Network_interface`; empty string means auto-select (curl default).
+
+`excludeFromBackup: Bool = false` — added 2026-09-27, resolved by the caller (`AppState`) from `config.TimeMachine_exclude_mode == "perFile"`. When true, `start()` pre-creates an empty file at `outputPath` (right after creating its parent directory) and excludes it from Time Machine (`excludeFromTimeMachine(_:)`, `Models.swift`) before curl ever runs — `CSBackupSetItemExcluded` needs a real existing file to tag (live-verified 2026-09-27: `excludeByPath: true`, which Apple's header says tolerates a not-yet-existing path, actually fails with a permissions error on this app's signing/entitlements; `excludeByPath: false` works but requires the target to already exist, hence the pre-create). curl's `-o` then opens and truncates that same file rather than unlinking and recreating it, so the xattr survives. The `"perFolder"` mode is *not* handled here at all — `AppState` tags the containing directory itself, at its own directory-creation point, before ever calling `start()`.
 
 ---
 

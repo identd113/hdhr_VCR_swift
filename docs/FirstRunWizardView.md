@@ -348,9 +348,10 @@ posters whichever screen the user reaches once the wizard hands off (Watch Now, 
 etc.), not anything visible during the splash itself.
 
 Save folder (`NSOpenPanel` picker, same control shape as `SettingsView`'s Recording tab), default
-transcode profile, min free disk (GB), and failure threshold — each with an `InfoButton` popover
-explaining what it does. This wizard and `SettingsView`'s Recording section now share these four
-rows via one view, `RecordingDefaultsFields` (`Views/RecordingDefaultsFields.swift`) — no separate
+transcode profile, min free disk (GB), failure threshold, and Time Machine exclusion mode
+(off/per-recording/per-show-folder — added 2026-09-27) — each with an `InfoButton` popover
+explaining what it does. This wizard and `SettingsView`'s Recording section now share these rows
+via one view, `RecordingDefaultsFields` (`Views/RecordingDefaultsFields.swift`) — no separate
 doc for it since it has no independent visual identity beyond what's described here and in
 `docs/SettingsView.md`'s Recording section.
 
@@ -494,8 +495,8 @@ reads the current value from the same `"defaultSaveDirectory"` `UserDefaults` ke
 and `SettingsView` already use (falling back to `Hdhr_setup_folder`, matching
 `AppState.defaultSaveDir`'s own chain minus the final `localFallbackDir` step — an empty result
 here just means "use the default," same as everywhere else); `finish()` writes it back to that
-same key. Transcode/min-disk/fail-threshold commit to `state.config.Default_transcode` /
-`.Min_disk_free_gb` / `.Fail_count_setting` on Finish the same way.
+same key. Transcode/min-disk/fail-threshold/Time-Machine-mode commit to `state.config.Default_transcode` /
+`.Min_disk_free_gb` / `.Fail_count_setting` / `.TimeMachine_exclude_mode` on Finish the same way.
 
 ### Step 2 — VLC Required
 No `@State` field commits anywhere in `finish()` — `vlcInstalled`/`vlcInstallCopyFeedback` are

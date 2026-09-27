@@ -1,5 +1,6 @@
 import Foundation
 import OSLog
+import CoreServices  // CSBackupSetItemExcluded — see excludeFromTimeMachine(_:) below
 
 // MARK: - LogLevel
 
@@ -409,6 +410,14 @@ struct AppConfig: Equatable {
     var Skip_recorded_episodes: Bool = false    // skip a series episode already on disk (needs Series_subfolder_enabled + SxxExx guide data)
     var Post_recording_script: String = ""      // POSIX path to script run after each successful recording
     var Write_metadata_sidecar: Bool = false    // write a Kodi-style .nfo alongside each recording (guide synopsis/season/episode/air date)
+    // "off" | "perFile" | "perFolder" — excludes recordings from Time Machine via
+    // excludeFromTimeMachine(_:) below (RecordingManager.start()/AppState's own recordDir creation)
+    // so TB-scale TV recordings don't silently bloat a Time Machine backup. "perFolder" tags the
+    // show's own containing folder once (also covers future episodes written under it, since Time
+    // Machine skips an excluded folder's contents entirely rather than walking into it); "perFile"
+    // tags each recording individually instead, for someone who wants other files sharing that
+    // folder (an .nfo, a poster) still backed up.
+    var TimeMachine_exclude_mode: String = "off"
 
     // Series
     var Series_scan_retry_hours: Int = 4     // hours to wait before retrying guide scan
@@ -613,6 +622,7 @@ extension AppConfig: Codable {
         Skip_recorded_episodes      = (try? c.decode(Bool.self,   forKey: .Skip_recorded_episodes))      ?? false
         Post_recording_script       = (try? c.decode(String.self, forKey: .Post_recording_script))       ?? ""
         Write_metadata_sidecar      = (try? c.decode(Bool.self,   forKey: .Write_metadata_sidecar))       ?? false
+        TimeMachine_exclude_mode    = (try? c.decode(String.self, forKey: .TimeMachine_exclude_mode))     ?? "off"
         Donation_unlocked           = (try? c.decode(Bool.self,   forKey: .Donation_unlocked))            ?? false
         Donation_unlock_code        = (try? c.decode(String.self, forKey: .Donation_unlock_code))          ?? ""
         Dock_icon_mode              = (try? c.decode(String.self, forKey: .Dock_icon_mode))                ?? "auto"
@@ -644,6 +654,33 @@ extension ConfigFile {
             glog("[Config] shows array present but failed to decode — starting with an empty list; check config file for corruption", level: .error)
         }
         shows = decodedShows ?? []
+    }
+}
+
+// MARK: - Time Machine exclusion
+
+/// Excludes `path` (a file or a folder, which must already exist — see below) from Time Machine
+/// backups via the standard, documented `CSBackupSetItemExcluded` API (`CoreServices`/
+/// `CarbonCore`'s `BackupCore.h`, available since 10.5) — driven by `AppConfig.
+/// TimeMachine_exclude_mode` (RecordingManager.start()'s per-file case, AppState's
+/// recordDir-creation per-folder case).
+///
+/// `excludeByPath: false`, deliberately — the header doc's own "OK to pass a URL that does not
+/// exist yet" claim only holds for `excludeByPath: true`, which live-verified on this exact
+/// machine (2026-09-27) returns `wrPermErr` (-61) unconditionally, regardless of location or
+/// whether the caller is a compiled/signed binary — that mode apparently needs a privilege this
+/// app (and even a bare command-line tool) doesn't have. `excludeByPath: false` instead tags the
+/// actual existing inode directly (a plain xattr write, confirmed via `xattr -l` afterward) and
+/// works with no special privilege — but per Apple's own doc for *that* mode, `path` must already
+/// exist, or the call fails (verified: a nonexistent path returns error 100002). Both call sites
+/// satisfy this already: AppState calls this only after `FileManager.createDirectory` for the
+/// per-folder case, and RecordingManager.start() pre-creates an empty file at `outputPath` before
+/// calling this for the per-file case (curl's `-o` then opens-and-truncates that same file rather
+/// than unlinking and recreating it, so the xattr this call just wrote survives).
+func excludeFromTimeMachine(_ path: String) {
+    let status = CSBackupSetItemExcluded(URL(fileURLWithPath: path) as CFURL, true, false)
+    if status != noErr {
+        glog("[TM] CSBackupSetItemExcluded failed (status \(status)) for \(path)", level: .warning)
     }
 }
 
