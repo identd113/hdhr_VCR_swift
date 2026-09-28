@@ -224,36 +224,7 @@ See `docs/TUIGuide.md`'s "Deferred ideas" section for open feature gaps and know
 
 ## Distribution
 
-### Universal binary — build-side change done 2026-08-19, real signed release not yet cut
-
-`deploy_release.sh` now builds `swift build -c release --arch arm64 --arch x86_64` — SwiftPM itself
-combines both slices into one fat Mach-O (no manual `lipo -create` needed, unlike originally
-scoped). Output path is resolved via `swift build --show-bin-path` (same flags) rather than
-hardcoded — it moved once already, from the old single-arch `.build/release/hdhr_VCR` to
-`.build/apple/Products/Release/hdhr_VCR` under the classic SwiftPM "native" build system, then
-again to `.build/out/Products/Release/hdhr_VCR` once Xcode 26+'s newer "swiftbuild" engine became
-the default (2026-08-28) — asking the tool avoids a third hardcoded-path breakage next time this
-changes. Verified: `lipo -info` on the built binary shows both `x86_64 arm64` slices; the x86_64
-slice launches cleanly under Rosetta from within a real `.app` bundle (a bare binary outside one
-crashes on *both* architectures identically at `UNUserNotificationCenter` — needs a real bundle
-proxy — so that alone isn't an arch-specific signal; had to control for it).
-`deploy.sh` (the fast local dev loop, ad-hoc signed, not shipped) deliberately stays single-arch —
-doubling every local build for Intel coverage nothing local needs isn't worth the iteration-speed
-cost; only what actually ships needed to change.
-
-**Not yet done, needs a human**: an actual signed + notarized universal release has never been cut
-— Developer ID codesign needs physical Touch ID presence each run (`tools/setup_signing.sh` /
-`deploy_release.sh` without `--adhoc`), so this could only be build-verified, not released, in an
-unattended session. `--adhoc` mode *would* run start-to-finish without Touch ID (ad-hoc `codesign
---sign -`, skips notarization), but was deliberately not run here either — it replaces the live
-`hdhrVCRplus.app` bundle in place and stamps a real `CFBundleShortVersionString`/`CFBundleVersion`
-into `Info.plist`, i.e. actually cutting a release artifact, not just verifying the build mechanism.
-Next real release should confirm the universal binary end-to-end: `lipo -info` on the final signed
-artifact, and ideally an actual smoke test on real Intel hardware (Rosetta translation isn't a
-substitute — it proves the x86_64 slice's instructions are valid, not that everything the app does
-behaves identically on real Intel silicon).
-
-**Key file**: `deploy_release.sh` (build + binary-copy steps).
+(No open items — universal-binary/Intel support was dropped 2026-09-28; see `CHANGELOG.md`'s Unreleased "Removed" entry.)
 
 ---
 

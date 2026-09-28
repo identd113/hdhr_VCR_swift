@@ -162,7 +162,7 @@ whether you're on Terminal.app or three hops away over SSH.
 - **Fully automated** — scheduling, recording, tuner management, and failure recovery all happen silently in the background.
 - **Survives restarts** — reattaches to in-progress recordings after a crash or relaunch. Shows that fail too often are automatically paused.
 - **Auto-pause when a tuner goes missing, auto-resume when it's back** — a show scheduled on a tuner that stops responding pauses itself instead of quietly failing over and over; picks back up the moment the tuner reappears. Never touches a show you paused yourself.
-- **Universal binary** — runs natively on both Apple Silicon and Intel Macs, no Rosetta.
+- **Native Apple Silicon** — built for arm64.
 
 ### Scheduling
 
@@ -224,7 +224,7 @@ under [Features](#features).
 
 ## Requirements
 
-- **macOS 15.0** (Sequoia) or later
+- **macOS 15.0** (Sequoia) or later, on **Apple Silicon** (Intel Macs are not supported)
 - An **HDHomeRun** network tuner (CONNECT, PRIME, EXTEND, FLEX, etc.) on your local network
 - **VLC** (`/Applications/VLC.app`) — optional, for Watch Now! playback
 

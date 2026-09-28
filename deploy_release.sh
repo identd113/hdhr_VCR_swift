@@ -88,29 +88,24 @@ _PLIST="$APP/Contents/Info.plist"
 echo "    Build stamp:  $APP_VERSION"
 echo "    Release:      $RELEASE_VERSION (CFBundleVersion $_BUILD_NUM)"
 
-echo "==> Building (release, universal arm64+x86_64)…"
-# --arch passed twice builds both slices and has SwiftPM itself combine them into one fat Mach-O
-# (same mechanism Xcode uses for a universal macOS target) — no manual lipo step needed. Verified
-# via `lipo -info` that the result actually carries both slices, and smoke-tested the x86_64 slice
-# launches cleanly under Rosetta from within a real .app bundle (a bare binary outside one crashes
-# on both architectures identically — UNUserNotificationCenter needs a real bundle proxy — so that
-# in isolation isn't an arch-specific signal). codesign/notarize/staple below are unchanged: all
-# three already operate transparently on a universal binary.
-swift build -c release --arch arm64 --arch x86_64
+echo "==> Building (release, arm64)…"
+# Apple Silicon only — Intel support (a universal arm64+x86_64 build via double --arch, SwiftPM
+# combining the slices itself) was dropped 2026-09-28; see CHANGELOG.md's Unreleased "Removed" entry.
+swift build -c release --arch arm64
 # Resolved via --show-bin-path (same flags as the build above) instead of a hardcoded
 # .build/apple/Products/Release/ — that path was specific to the classic SwiftPM "native" build
 # system; the newer default "swiftbuild" engine (Xcode 26+) puts the same output under
 # .build/out/Products/Release/ instead. Asking the tool avoids re-breaking this every time the
 # active toolchain's build-system default or output layout changes again.
-BIN_PATH="$(swift build --show-bin-path -c release --arch arm64 --arch x86_64)"
+BIN_PATH="$(swift build --show-bin-path -c release --arch arm64)"
 
 echo "==> Deploying binary…"
 cp "$BIN_PATH/hdhr_VCR" "$BINARY"
 lipo -info "$BINARY"
 
 echo "==> Deploying CLI helper…"
-# hdhr_guide (docs/TUIGuide.md) — bundled terminal guide client, universal like the main binary
-# (same `swift build` invocation above already built both). Signed individually below, inside-out,
+# hdhr_guide (docs/TUIGuide.md) — bundled terminal guide client, same arm64-only build as the main
+# binary (same `swift build` invocation above already built both). Signed individually below, inside-out,
 # before the whole-bundle codesign — see deploy.sh's matching step for why.
 mkdir -p "$APP/Contents/Helpers"
 cp "$BIN_PATH/hdhr_guide" "$APP/Contents/Helpers/hdhr_guide"
