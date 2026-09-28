@@ -266,6 +266,21 @@ struct HDHRManagerTests {
         #expect(devices[0].DeviceAuth == "auth123")
     }
 
+    // One malformed device (missing DeviceID — the one field HDHRDevice.init(from:) doesn't
+    // try?/fall back on) must not zero out every other device in the same response. Found in code
+    // review 2026-09-28 — see HDHRManager.decodeDeviceArrayLossily's own doc comment.
+    @Test func cloudDiscover_oneMalformedDevice_othersStillDecode() async throws {
+        HDHRMockURLProtocol.requestHandler = { req in
+            let json = """
+            [{"DeviceID":"AAAAAAAA","LocalIP":"10.0.0.2"},{"LocalIP":"10.0.0.3"},{"DeviceID":"CCCCCCCC","LocalIP":"10.0.0.4"}]
+            """
+            return (hdhrOKResponse(for: req.url!), Data(json.utf8))
+        }
+        let manager = makeHDHRManager()
+        let devices = try await manager.cloudDiscover()
+        #expect(devices.map { $0.DeviceID } == ["AAAAAAAA", "CCCCCCCC"])
+    }
+
     // MARK: - knownHostsDiscover (concurrent fetch/merge)
 
     @Test func knownHostsDiscover_dedupesByDeviceID() async {
@@ -281,6 +296,29 @@ struct HDHRManagerTests {
         let found = await manager.knownHostsDiscover(ips: ["10.0.0.10", "10.0.0.11"])
         #expect(found.count == 1)
         #expect(found[0].DeviceID == "SAMEID01")
+    }
+
+    // A higher-priority source's entry missing a field (e.g. ModelNumber, which gates
+    // supportsTranscode) must pick it up from a lower-priority source's entry for the same
+    // DeviceID, instead of the whole entry being discarded/kept as-is. Found in code review
+    // 2026-09-28 — see HDHRManager.mergeDevice's own doc comment.
+    @Test func mergeDevice_fillsMissingFieldFromLowerPrioritySource_keepsExistingWhenBothHaveIt() {
+        var found = [HDHRDevice.test(id: "ABCD1234", modelNumber: nil)]
+        let fuller = HDHRDevice.test(id: "ABCD1234", modelNumber: "HDTC-2US")
+        HDHRManager.mergeDevice(fuller, into: &found)
+        #expect(found.count == 1)
+        #expect(found[0].ModelNumber == "HDTC-2US")
+
+        // Existing ModelNumber is NOT overwritten by a second, differently-valued source.
+        let differing = HDHRDevice.test(id: "ABCD1234", modelNumber: "HDTC-OTHER")
+        HDHRManager.mergeDevice(differing, into: &found)
+        #expect(found[0].ModelNumber == "HDTC-2US")
+    }
+
+    @Test func mergeDevice_newDeviceID_isAppended() {
+        var found = [HDHRDevice.test(id: "ABCD1234")]
+        HDHRManager.mergeDevice(HDHRDevice.test(id: "EEEE5678"), into: &found)
+        #expect(found.map { $0.DeviceID } == ["ABCD1234", "EEEE5678"])
     }
 
     @Test func knownHostsDiscover_emptyInput_noNetworkCall() async {

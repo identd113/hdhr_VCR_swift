@@ -53,3 +53,29 @@ struct GuideEntryColorTests {
         #expect(offAir == onAir.opacity(0.75))
     }
 }
+
+// MARK: - he() HTML escaping
+//
+// ' added alongside &<>" in code review 2026-09-28 — not yet exploitable (every current call site
+// lands in a double-quoted attribute), but a future call site interpolating he() output into a
+// single-quoted attribute or inline-JS string (this file already uses those for fixed literals)
+// would otherwise reopen an attribute/script-breakout path via a crafted show title, on a route
+// CLAUDE.md itself flags as having no auth beyond LAN-subnet matching.
+@Suite("he() HTML escaping")
+struct HTMLEscapeTests {
+    @Test func plainTextIsUnchanged() {
+        #expect(he("Plain Show Title") == "Plain Show Title")
+    }
+
+    @Test func escapesAngleBracketsAmpersandAndDoubleQuote() {
+        #expect(he("<script>&\"") == "&lt;script&gt;&amp;&quot;")
+    }
+
+    @Test func escapesSingleQuote() {
+        #expect(he("It's a Show") == "It&#39;s a Show")
+    }
+
+    @Test func escapesEveryCharacterTogether() {
+        #expect(he("<a href='x' onclick=\"y\">&") == "&lt;a href=&#39;x&#39; onclick=&quot;y&quot;&gt;&amp;")
+    }
+}

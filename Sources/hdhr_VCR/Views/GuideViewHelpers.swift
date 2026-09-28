@@ -263,7 +263,13 @@ func isNewEpisode(_ entry: GuideEntry) -> Bool {
 // the common case avoids paying for 4 no-op scans. Called on the order of a dozen times per grid
 // entry across ~1300+ program blocks per rebuild (buildGuideGridHTML, buildTunerShowsHTML,
 // buildDevBarHTML, buildSumPhHTML), on @MainActor.
-private let htmlEscapeChars = CharacterSet(charactersIn: "&<>\"")
+// Includes ' alongside &<>" (added in code review 2026-09-28) — not yet exploitable (every current
+// call site embedding LAN-writable content, e.g. a show title from handleEdit/handleRecord, lands
+// in a double-quoted attribute), but this file already uses single-quoted JS string arguments in
+// onclick handlers elsewhere for fixed literals, so a future call site interpolating he() output
+// into one of those would otherwise reopen an attribute/script-breakout path via a crafted title —
+// this is the one route CLAUDE.md itself flags as having no auth beyond LAN-subnet matching.
+private let htmlEscapeChars = CharacterSet(charactersIn: "&<>\"'")
 
 func he(_ s: String) -> String {
     guard s.rangeOfCharacter(from: htmlEscapeChars) != nil else { return s }
@@ -271,6 +277,7 @@ func he(_ s: String) -> String {
             .replacingOccurrences(of: "<",  with: "&lt;")
             .replacingOccurrences(of: ">",  with: "&gt;")
             .replacingOccurrences(of: "\"", with: "&quot;")
+            .replacingOccurrences(of: "'",  with: "&#39;")
 }
 
 // MARK: - Guide ring/badge (native equivalent of the web guide's .g-st-* status ring)

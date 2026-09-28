@@ -107,14 +107,20 @@ struct VirtualTunerGuardrailTests {
         // deterministic id, before either saw the other. The conflict check backing off runs before
         // any network touch, so this is safe without a live bind — unlike the "we keep running"
         // tail (which does call through to a real start()), deliberately not exercised here.
-        var show = Show.testRecording(title: "Live Now")
-        show.show_next = Date().addingTimeInterval(-300)   // we started 300s ago
+        //
+        // ourStart is showRuntime[showId].recordingLaunchedAt (real wall-clock launch time), not
+        // show_next (the guide's scheduled air time) as of code review 2026-09-28 — show_next alone
+        // can't distinguish "who started recording first" since two instances scheduling the same
+        // guide-sourced airing produce byte-identical show_next by construction. Set directly here,
+        // standing in for what startRecording()'s own success path sets in real use.
+        let show = Show.testRecording(title: "Live Now")
         let earlierConflict = HDHRDevice.test(id: "FEEDFFFF", isVirtualRelay: true,
                                                recordingStartedAt: Date().addingTimeInterval(-600).timeIntervalSince1970)   // they started 600s ago — first
         let state = await makeTestAppState(shows: [show], devices: [earlierConflict])
         await MainActor.run {
             state.config.Virtual_tuner_relay_enabled = true
             state.activeVirtualTunerDeviceID = "FEEDFFFF"
+            state.showRuntime[show.show_id, default: AppState.ShowRuntimeState()].recordingLaunchedAt = Date().addingTimeInterval(-300)   // we started 300s ago
         }
         await state.updateVirtualTunerPresence()
         let id = await MainActor.run { state.activeVirtualTunerDeviceID }

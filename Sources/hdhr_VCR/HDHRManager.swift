@@ -44,8 +44,8 @@ final class HDHRManager {
         let fromUDP   = await udpDevices
 
         var found = fromKnown
-        for dev in fromMDNS where !found.contains(where: { $0.DeviceID == dev.DeviceID }) { found.append(dev) }
-        for dev in fromUDP  where !found.contains(where: { $0.DeviceID == dev.DeviceID }) { found.append(dev) }
+        for dev in fromMDNS { Self.mergeDevice(dev, into: &found) }
+        for dev in fromUDP  { Self.mergeDevice(dev, into: &found) }
         glog("[Discovery] known=\(fromKnown.count) mDNS=\(fromMDNS.count) UDP=\(fromUDP.count) merged=\(found.count)")
 
         if found.isEmpty {
@@ -114,6 +114,33 @@ final class HDHRManager {
         }
     }
 
+    /// Merges `dev` into `found`: if a device with the same DeviceID is already present (from a
+    /// higher-priority source, per discoverDevices' known-hosts > mDNS > UDP order), fills in any
+    /// field the existing entry is missing from `dev` instead of discarding `dev` wholesale —
+    /// appends it as a new entry otherwise. Previously ID-dedup-only (first source wins entirely),
+    /// so a higher-priority source's entry missing a field (e.g. ModelNumber, which gates
+    /// supportsTranscode) had no way to pick it up from a lower-priority source that happened to
+    /// have it, even within the same discovery pass — DeviceAuth was the sole exception, via the
+    /// separate supplementDeviceAuth pass below, itself now redundant with this for the local-only
+    /// case (kept as-is since it also supplements from cloud, which this doesn't reach). DeviceID/
+    /// LocalIP/isVirtualRelay are never touched — DeviceID is the merge key, LocalIP is required
+    /// (never nil to begin with), and isVirtualRelay has no meaningful "missing" state to fill in
+    /// from a lower-priority source. Found in code review 2026-09-28 — no live report yet.
+    /// Internal, not private — pure function, no I/O, directly unit-testable, same precedent as
+    /// supplementDeviceAuth below.
+    static func mergeDevice(_ dev: HDHRDevice, into found: inout [HDHRDevice]) {
+        guard let idx = found.firstIndex(where: { $0.DeviceID == dev.DeviceID }) else {
+            found.append(dev)
+            return
+        }
+        found[idx].BaseURL         = found[idx].BaseURL         ?? dev.BaseURL
+        found[idx].TunerCount      = found[idx].TunerCount      ?? dev.TunerCount
+        found[idx].FirmwareVersion = found[idx].FirmwareVersion ?? dev.FirmwareVersion
+        found[idx].DeviceAuth      = found[idx].DeviceAuth      ?? dev.DeviceAuth
+        found[idx].ModelNumber     = found[idx].ModelNumber     ?? dev.ModelNumber
+        found[idx].FriendlyName    = found[idx].FriendlyName    ?? dev.FriendlyName
+    }
+
     /// Copy DeviceAuth into locally-discovered devices that are missing it.
     /// Prefers auth already present on another local device (same network = same SiliconDust
     /// account) over the cloud's per-device auth — cloud may return a device-specific token
@@ -130,13 +157,40 @@ final class HDHRManager {
         }
     }
 
+    /// Decodes a JSON array of `HDHRDevice` leniently, skipping any element that fails to decode
+    /// (e.g. a malformed/missing DeviceID — the one field HDHRDevice.init(from:) doesn't try?/
+    /// fall back on, since a device with no usable ID genuinely can't be kept) instead of discarding
+    /// the whole array — a plain `[HDHRDevice]` decode is all-or-nothing per element, so one bad
+    /// device in a multi-device response (most reachable via cloudDiscover's SiliconDust account
+    /// listing) would otherwise silently zero out every *other* device from that same source. Same
+    /// shape as GuideChannel.init(from:)'s lossy decode of its own nested Guide array — superDecoder()
+    /// always advances the container's index, unlike a raw decode(_:) that can leave it stuck on a
+    /// throw. Found in code review 2026-09-28 — no live report yet.
+    private static func decodeDeviceArrayLossily(from data: Data) throws -> [HDHRDevice] {
+        struct LossyDeviceArray: Decodable {
+            var devices: [HDHRDevice] = []
+            init(from decoder: Decoder) throws {
+                var container = try decoder.unkeyedContainer()
+                while !container.isAtEnd {
+                    let elementDecoder = try container.superDecoder()
+                    if let device = try? HDHRDevice(from: elementDecoder) {
+                        devices.append(device)
+                    } else {
+                        glog("HDHRManager: skipping one malformed device entry", level: .warning)
+                    }
+                }
+            }
+        }
+        return try JSONDecoder().decode(LossyDeviceArray.self, from: data).devices
+    }
+
     /// mDNS discovery via the well-known hdhomerun.local multicast hostname.
     /// Internal (not private) so HDHRManagerTests can exercise it directly against a mocked session.
     func mDNSDiscover() async throws -> [HDHRDevice] {
         guard let url = URL(string: "http://hdhomerun.local/discover.json") else { throw URLError(.badURL) }
         let (data, _) = try await session.data(from: url)
         // Response may be a single object or an array
-        if let arr = try? JSONDecoder().decode([HDHRDevice].self, from: data), !arr.isEmpty {
+        if let arr = try? Self.decodeDeviceArrayLossily(from: data), !arr.isEmpty {
             return arr
         }
         let single = try JSONDecoder().decode(HDHRDevice.self, from: data)
@@ -146,7 +200,7 @@ final class HDHRManager {
     // Internal (not private) so HDHRManagerTests can exercise it directly against a mocked session.
     func cloudDiscover() async throws -> [HDHRDevice] {
         let (data, _) = try await session.data(from: cloudDiscoveryURL)
-        return try JSONDecoder().decode([HDHRDevice].self, from: data)
+        return try Self.decodeDeviceArrayLossily(from: data)
     }
 
     /// Fetch full device info from the device's own HTTP API. `baseURL`, when given, supplies the

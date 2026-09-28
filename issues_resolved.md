@@ -1800,3 +1800,187 @@ A single session of live-reported bugs, each found by trying the previous fix ra
 **Fix**: replaced the single instantaneous `#expect(manager.isRunning(showId: showId) == true)` with the same `waitUntil { ... }` poll (`TestFixtures.swift`) every other lifecycle test in this file already uses, then the original `#expect` to assert the now-settled state — matches how production's own `isRunning()` is never checked this close to a reattach (idle-loop polling, not immediate). Confirmed passing locally.
 
 **Resolving commit**: issue logged in `61f29b0`, fixed same day
+
+# Full-app 4-agent code review — 2026-09-28
+
+Four parallel review passes covering the whole app (scheduling/recording engine, web server +
+virtual tuner routes, VLC playback bridge/player, guide/device data layer + config), each scoped
+to a subsystem and asked to hunt specifically for complex/deep-route bugs rather than style nits.
+12 findings total; all fixed same day. Grouped by subsystem below.
+
+## RESOLVED — Chromecast renderer-item hold deferred past the libvlc callback (use-after-free window)
+
+**File:** `VLCBridge.swift`
+
+**Root cause**: `libvlc_renderer_item_hold` is documented as needing to run synchronously inside the
+`ItemAdded` callback — the item pointer is only guaranteed valid for the callback's duration
+otherwise. `startCastDiscovery`'s `onItemAdded` closure instead just enqueued a `Task { @MainActor
+in self?.handleCastItemAdded(item) }` and held the item later, inside that deferred task. A
+Chromecast dropping quickly, or the player window closing (`stopCastDiscovery()` tearing down the
+whole discoverer), could free the item before the deferred hold ever ran — a real use-after-free
+call into libvlc, not just a logic bug.
+
+**Fix**: `onItemAdded` now calls `_riHold?(item)` synchronously, before creating the `Task`, and
+passes the already-held pointer through to `handleCastItemAdded`, which no longer holds it itself.
+`_riHold` needed no special isolation annotation to be called from that non-actor-isolated
+closure — the compiler confirmed a `let` of Sendable type (a bare `@convention(c)` function
+pointer) is already safely nonisolated-readable.
+
+## RESOLVED — Yield-to-record cleanup `defer` not generation-gated (reopened a previously-fixed bug class)
+
+**File:** `AppState.swift`
+
+**Root cause**: `recordAfterYieldingWatchNow`'s `defer { yieldingWatchNowDeviceID = nil }` was the
+only write in the function not gated on `yieldRecordingGeneration`, unlike `setYieldProgress`.
+Closing the player window mid-poll cancels the task and clears `yieldRecordingTask` synchronously,
+but the cancelled task's own body only notices at its next cooperative checkpoint — an immediate
+re-trigger for the same show could start a fresh attempt whose `yieldingWatchNowDeviceID` then got
+wiped out by the stale predecessor's deferred cleanup, reopening the "structurally could never
+actually succeed" bug (see this file's earlier 2026-09-11 entry) via a narrower variant that fix
+never covered.
+
+**Fix**: the `defer` now checks `yieldRecordingGeneration == generation` before clearing, same
+pattern as `setYieldProgress`.
+
+## RESOLVED — `GuideStore.invalidateAll()` had no guard against a stale in-flight fetch landing afterward
+
+**File:** `GuideStore.swift`
+
+**Root cause**: `invalidateAll()` cleared all guide state synchronously but had no way to invalidate
+an already-in-flight `fetchAndIndex`'s `Task.detached`. If that task's `applyIndex` landed after a
+fresh, correct reload had already repopulated the store (e.g. a `Guide_use_xml`/network-interface
+Settings change racing a periodic background fetch for the same device), it would silently
+overwrite the fresh data with stale/possibly wrong-format data and stamp a fresh `loadTimestamps`
+entry, making `isFresh()` report the corrupted data as good for up to the next refresh interval.
+
+**Fix**: added `invalidationEpoch`, bumped by `invalidateAll()`. `fetchAndIndex` captures the epoch
+before its network+decode `await` and discards its own result (logging a warning) if the epoch
+changed by the time it resumes, instead of applying it.
+
+## RESOLVED — `scheduleNextAir` reverted a concurrent edit to the show it was rescheduling
+
+**File:** `AppState.swift`
+
+**Root cause**: the `.seriesChannel`/`.seriesAll` branch re-resolved the shows array *index* by
+show_id after its guide-reload `await` (guarding against deletion), but never re-read the `show`
+snapshot or recomputed `chFilter`/`devFilter` from it. A user editing that exact show's tuner or
+channel assignment while the reload was in flight got silently reverted, because the match still
+searched using the pre-edit filters and wrote `hdhr_record`/`show_channel` straight from them.
+
+**Fix**: `show` is now a `var`; after re-resolving the index, the branch also re-reads
+`show = shows[idx]` and recomputes `chFilter`/`devFilter` from the fresh value (bailing out if the
+edit also moved the show to a device that's since vanished). Existing `AppStateSeriesSchedulingTests`
+and stale-index tests still pass unchanged.
+
+## RESOLVED — PiP swap during an active Chromecast cast permanently froze the demoted stream's stats
+
+**File:** `VLCBridge.swift`
+
+**Root cause**: `swapSlots()` called `stopCasting()` (which triggers an async `play()` reconnect
+with a deferred MainActor commit) *before* capturing "before" snapshots and swapping
+`currentURL`/`secondaryURL`. This meant (a) the "before" `currentMedia` snapshot was already the
+`nil` that `play()`'s synchronous half had just set, and (b) even if that weren't true, the
+reconnect's deferred commit staleness check (`currentURL == url`) was guaranteed to fail once the
+swap relabeled `currentURL` out from under it — so the reconnected media was released instead of
+ever being committed to the demoted slot.
+
+**Fix**: `swapSlots()` no longer calls `stopCasting()` up front. It captures `wasCasting`/
+`castingURL`, performs the plain field-swap with real (not-yet-nulled) state, and only afterward —
+once the relabeling is final and won't change again — reconnects locally via
+`play(url: castingURL, slot: .secondary)`, targeting the demoted stream's actual final position so
+the deferred commit's staleness check matches.
+
+## RESOLVED — One malformed guide entry discarded a whole device's guide fetch
+
+**File:** `Models.swift`
+
+**Root cause**: `GuideChannel`/`GuideEntry` used synthesized (non-custom) `Codable`. Swift's array
+`Decodable` conformance is all-or-nothing per element, so one guide entry with a wrong-typed field
+(e.g. `StartTime` as a string — a known class of upstream glitch this app defends against
+elsewhere) discarded the entire device's guide fetch, not just the bad row — and since the same
+malformed entry is typically served on every refresh cycle until it ages out, this could leave a
+device with zero fresh guide data for hours.
+
+**Fix**: `GuideChannel` now has a custom `init(from:)` that decodes its `Guide` array
+element-by-element via `superDecoder()` (which always advances the container's index, unlike a raw
+`decode(_:)` that can leave it stuck on a throw), skipping only the malformed element(s). An
+explicit memberwise init preserves `XmltvParser.swift`'s existing construction syntax; `encode(to:)`
+stays compiler-synthesized. Covered by new `GuideChannelDecodingTests.swift` (6 tests).
+
+## RESOLVED — One malformed device entry zeroed out an entire discovery source
+
+**File:** `Models.swift`, `HDHRManager.swift`
+
+**Root cause**: `HDHRDevice.DeviceID` is decoded with `try` (required) — the one field in that
+initializer without every other field's `try?`-with-fallback pattern (previously fixed for exactly
+this trap in `Show.init(from:)`'s own `show_id`). `mDNSDiscover`/`cloudDiscover` each decoded their
+`[HDHRDevice]` response in one shot, so a single malformed device (e.g. a deregistered unit in a
+SiliconDust cloud account) made the whole array decode fail, silently zeroing out every *other*
+device from that source via the `try?` at each call site.
+
+**Fix**: added `HDHRManager.decodeDeviceArrayLossily(from:)`, same lossy-decode shape as
+`GuideChannel`'s fix above, used by both `mDNSDiscover` and `cloudDiscover`. Covered by a new
+`cloudDiscover_oneMalformedDevice_othersStillDecode` test.
+
+## RESOLVED — FEED conflict tie-break degraded to hostname in the common case, not the rare one
+
+**Files:** `AppState.swift`, `WebServer.swift`
+
+**Root cause**: `VirtualTunerService.conflictShouldYield`'s "earliest recording start wins" rule
+compared `show_next` (the guide's scheduled air time) on both sides — but two instances scheduling
+the *same* guide-sourced airing produce byte-identical `show_next` by construction, so the
+comparison could never actually discriminate in the scenario that motivated the feature; it always
+fell through to the hostname tie-break instead.
+
+**Fix**: added `AppState.ShowRuntimeState.recordingLaunchedAt`, a real wall-clock `Date` set when
+`startRecording` successfully launches curl (or when a recording is reattached after a restart).
+Both `updateVirtualTunerPresence`'s own comparison and `buildVirtualTunerDiscoverJSON`'s advertised
+`HdhrVCRplusRecordingStartedAt` now use this instead of `show_next`. Updated
+`updateVirtualTunerPresence_raceWithAnotherInstance_laterStarterYields` (was silently passing for
+the wrong reason — the hostname tie-break, not the intended start-time comparison — since it never
+populated any per-show launch time) to set `recordingLaunchedAt` directly.
+
+## RESOLVED — `onlineOfflineDeviceIDs` didn't filter virtual relays (latent)
+
+**File:** `WebServer.swift`
+
+**Root cause**: computed its "online" set from raw `state.devices` instead of
+`state.recordableDevices`, contrary to this file's own convention everywhere else. Currently
+harmless (every call site discards the online half), but a latent trap for a future caller that
+doesn't, given the function's own doc comment frames it as the shared source of truth.
+
+**Fix**: uses `state.recordableDevices` now.
+
+## RESOLVED — Device discovery merge was first-source-wins, not field-level
+
+**File:** `HDHRManager.swift`
+
+**Root cause**: `discoverDevices()`'s known-hosts/mDNS/UDP merge was ID-dedup-only — if a
+higher-priority source's entry for a device was missing a field (e.g. `ModelNumber`, which gates
+`supportsTranscode`) that a lower-priority source for the same device actually had, the sparser
+entry was kept wholesale. Only `DeviceAuth` had an equivalent recovery path (`supplementDeviceAuth`,
+cloud-only).
+
+**Fix**: added `HDHRManager.mergeDevice(_:into:)`, filling in any nil field on the existing entry
+from a duplicate found by a later source instead of discarding it. Covered by two new tests.
+
+## RESOLVED — `he()` didn't escape single quotes (defensive hardening)
+
+**File:** `Views/GuideViewHelpers.swift`
+
+Not exploitable today (every current call site lands in a double-quoted attribute), but a future
+call site interpolating `he()` output into a single-quoted attribute or inline-JS string (this file
+already uses those for fixed literals) would reopen an attribute/script-breakout path via a crafted
+show title, on a route CLAUDE.md flags as having no auth beyond LAN-subnet matching. Added `'` to
+the escaped character set (`&#39;`). Covered by new `HTMLEscapeTests` in `GuideViewHelpersTests.swift`.
+
+## RESOLVED — Duplicated device+channel lookup in `handleRecord`/`handleToggleFavorite`
+
+**File:** `WebServer.swift`
+
+The entry logged 2026-09-12 (this file, above) — `handleRecord` and `handleToggleFavorite` each
+independently re-implemented an identical device+channel lookup and `isVirtualRelay` guard block.
+Extracted into a shared `resolveDeviceAndChannel`/`DeviceChannelLookup` helper both handlers now
+call; each keeps its own caller-specific virtual-relay rejection message.
+
+**Resolving commit**: all twelve above fixed in one session, 2026-09-28.

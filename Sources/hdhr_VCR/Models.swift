@@ -870,6 +870,50 @@ struct GuideChannel: Codable {
     var Affiliate: String?
     var ImageURL: String?
     var Guide: [GuideEntry]?
+
+    /// Explicit — defining init(from decoder:) below suppresses Swift's automatic memberwise
+    /// init, which XmltvParser.swift's construction relies on.
+    init(GuideNumber: String, GuideName: String, Affiliate: String? = nil, ImageURL: String? = nil, Guide: [GuideEntry]? = nil) {
+        self.GuideNumber = GuideNumber
+        self.GuideName = GuideName
+        self.Affiliate = Affiliate
+        self.ImageURL = ImageURL
+        self.Guide = Guide
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case GuideNumber, GuideName, Affiliate, ImageURL, Guide
+    }
+
+    /// Custom decode so one malformed guide entry — a known class of upstream glitch (a field
+    /// arriving as the wrong JSON type) — doesn't discard this whole channel's guide, let alone,
+    /// before GuideStore.load's own catch, the entire device's fetch. A plain `[GuideEntry]`'s
+    /// synthesized Decodable is all-or-nothing per element; decoding element-by-element via
+    /// superDecoder() (which always advances the container's index, unlike a raw decode(_:) that
+    /// can leave it stuck on a throw) skips only the bad element(s) instead. Found in code review
+    /// 2026-09-28 — no live report yet. encode(to:) stays compiler-synthesized (Encodable is
+    /// unaffected by this Decodable-only customization).
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        GuideNumber = try c.decode(String.self, forKey: .GuideNumber)
+        GuideName   = try c.decode(String.self, forKey: .GuideName)
+        Affiliate   = try? c.decode(String.self, forKey: .Affiliate)
+        ImageURL    = try? c.decode(String.self, forKey: .ImageURL)
+        if var unkeyed = try? c.nestedUnkeyedContainer(forKey: .Guide) {
+            var entries: [GuideEntry] = []
+            while !unkeyed.isAtEnd {
+                let elementDecoder = try unkeyed.superDecoder()
+                if let entry = try? GuideEntry(from: elementDecoder) {
+                    entries.append(entry)
+                } else {
+                    glog("GuideChannel \(GuideNumber): skipping one malformed guide entry", level: .warning)
+                }
+            }
+            Guide = entries
+        } else {
+            Guide = nil
+        }
+    }
 }
 
 // MARK: - TunerStatus

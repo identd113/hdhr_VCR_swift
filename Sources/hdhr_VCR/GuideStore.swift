@@ -29,6 +29,10 @@ final class GuideStore {
     private var unsortedSeries: Set<String> = []                   // series needing sort on next query
     private var loadingDevices: Set<String> = []
     private var loadTimestamps: [String: Date] = [:]
+    /// Bumped by invalidateAll() — lets fetchAndIndex detect that an in-flight fetch it started
+    /// before the invalidation was requested is now stale, and should not resurrect old data after
+    /// the fact. See invalidateAll()'s own doc comment.
+    private var invalidationEpoch = 0
 
     // Injected at init so tests can supply a mock session
     private let session: URLSession
@@ -159,6 +163,9 @@ final class GuideStore {
     private func fetchAndIndex(id: String, url: URL, parse: @escaping @Sendable (Data) -> [GuideChannel]?) async -> Bool {
         loadingDevices.insert(id)
         defer { loadingDevices.remove(id) }
+        // Captured before the network+decode await below — see the epochAtStart guard right
+        // before applyIndex for why.
+        let epochAtStart = invalidationEpoch
 
         glog("[\(id)] GET \(Self.redactingDeviceAuth(url.absoluteString))")
         let t0 = Date()
@@ -188,6 +195,18 @@ final class GuideStore {
                 guard let channels = parse(data) else { return nil }
                 return Self.prepareIndex(deviceId: id, channels: channels)
             }).value else { return false }
+
+            // A call to invalidateAll() while the fetch/decode above was suspended means this
+            // result is now stale — a fresh, correct reload for this device may have already
+            // started or completed in response to whatever triggered the invalidation (e.g. a
+            // Guide_use_xml/network-interface Settings change). Applying it anyway would silently
+            // resurrect old (possibly wrong-format) data with a fresh loadTimestamps entry, making
+            // isFresh() report the corrupted data as good for up to the next refresh interval —
+            // found in code review 2026-09-28, no live report yet.
+            guard invalidationEpoch == epochAtStart else {
+                glog("[\(id)] guide cache was invalidated while this fetch was in flight — discarding stale result", level: .warning)
+                return false
+            }
 
             applyIndex(prepared)
             loadTimestamps[id] = Date()
@@ -590,6 +609,11 @@ final class GuideStore {
     // MARK: - Invalidation
 
     func invalidateAll() {
+        // Bumped first, before clearing anything else — any fetchAndIndex already in flight
+        // captured the old epoch before its network+decode await and will discard its own result
+        // instead of applying it after this invalidation, once it resumes. See fetchAndIndex's own
+        // epochAtStart guard.
+        invalidationEpoch += 1
         loadingDevices.removeAll()
         channelsByDevice = [:]
         channelEntryIndex = [:]

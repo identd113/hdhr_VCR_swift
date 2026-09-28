@@ -10,10 +10,7 @@ Historical record of bugs encountered during development. Used as a "don't repea
 
 ## Open
 
-*(Found 2026-09-12 by a full-app multi-angle code review, `/code-review` on the whole codebase — not a diff-scoped pass. Each finding verified against source directly, not agent-reported blind. The security finding — unvalidated `transcode` param — was fixed 2026-09-13, and 7 more (5 correctness, 2 efficiency) were fixed the same day after a staleness re-check confirmed they were all still live; see `issues_resolved.md`. Only the duplication entry below remains from this batch.)*
-
-- **`WebServer.handleToggleFavorite` and `handleRecord` both re-implement an identical device+channel lookup and error-handling block instead of sharing one helper.** (`WebServer.swift:2495`, `:2326`.) CLAUDE.md notes two prior full audits were needed to find every call site missing the virtual-relay watch-only backstop — duplicated lookup logic like this is exactly the pattern that keeps requiring a fresh audit instead of making a missed guardrail structurally impossible.
-  **Fix, if ever picked up**: extract one shared device+channel-resolution helper (baking in the `isVirtualRelay` backstop) both handlers call.
+*(Found 2026-09-12 by a full-app multi-angle code review, `/code-review` on the whole codebase — not a diff-scoped pass. Each finding verified against source directly, not agent-reported blind. The security finding — unvalidated `transcode` param — was fixed 2026-09-13, and 7 more (5 correctness, 2 efficiency) were fixed the same day after a staleness re-check confirmed they were all still live; the duplication entry from this batch was fixed 2026-09-28 — see `issues_resolved.md` for both.)*
 
 *(Found 2026-09-07, live — a real cross-machine FEED test session, watching a FEED with its H.264/CC pickers visible.)*
 

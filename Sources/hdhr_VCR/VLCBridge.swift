@@ -430,7 +430,12 @@ final class VLCBridge: ObservableObject {
     private let _rdEventMgr:       vlc_rd_event_mgr_fn?
     private let _eventAttach:      vlc_event_attach_fn?
     private let _eventDetach:      vlc_event_detach_fn?
-    private let _riHold:           vlc_ri_hold_fn?
+    // Called synchronously (no actor-isolation annotation needed — a `let` of Sendable type, and a
+    // bare C function pointer is trivially Sendable) from rendererDiscovererEventProc's
+    // onItemAdded closure below, which runs on an arbitrary libvlc-internal thread — libvlc's own
+    // contract requires the hold to happen inside that callback, before any hop back to MainActor
+    // (see startCastDiscovery's onItemAdded for why).
+    private let _riHold: vlc_ri_hold_fn?
     private let _riRelease:        vlc_ri_release_fn?
     private let _riName:           vlc_ri_name_fn?
     private let _mpSetRenderer:    vlc_mp_set_renderer_fn?
@@ -1022,13 +1027,25 @@ final class VLCBridge: ObservableObject {
         // (now-secondary) player while castingDeviceID/the UI still call the new primary "casting" —
         // and re-targeting the renderer live isn't an option (must be called while stopped, per
         // _mpSetRenderer's own doc comment) without the exact rebuffering reconnect this whole
-        // instant-swap redesign exists to avoid. Simplest correct option: stop casting (back to
-        // local playback, honest state) before swapping, same as any other operation that can't
-        // preserve an active cast across it.
-        if castingDeviceID != nil {
-            glog("[VLC] swapSlots() — stopping active cast first (cast is tied to a specific player, not swappable)")
-            stopCasting()
-        }
+        // instant-swap redesign exists to avoid.
+        //
+        // Deliberately NOT calling stopCasting() here (as this used to do) before the swap below —
+        // stopCasting()'s own play(url:slot:.primary) call queues its real work onto libvlcQueue and
+        // only commits self[.primary].currentMedia later, via a Task whose staleness check compares
+        // against currentURL/secondaryURL at the time it finally runs. Calling it *before* this
+        // function's own synchronous currentURL/secondaryURL relabeling below meant that check
+        // always failed by the time it ran (comparing against a since-swapped URL), releasing the
+        // reconnected media instead of ever committing it — and even before that, the "before"
+        // snapshot two blocks down would capture currentMedia as the nil that play() had *already*
+        // synchronously cleared, moving that nil into the demoted slot regardless of the race.
+        // Net effect: the demoted (now-secondary) stream's currentMedia was left permanently nil,
+        // silently freezing its stats/corruption-based auto-catch-up forever (found in code review
+        // 2026-09-28). Fixed by capturing the intent here, doing the plain field-swap below with
+        // real (not-yet-nulled) state, and only *afterward* reconnecting locally — targeting
+        // `.secondary`, the demoted stream's real final position, so the deferred commit's
+        // staleness check matches state that never changes again after this function returns.
+        let wasCasting = castingDeviceID != nil
+        let castingURL = currentURL
 
         guard let oldPrimaryMP = primaryState.mediaPlayer, let oldSecondaryMP = secondaryState.mediaPlayer,
               let oldPrimaryView = primaryState.drawableView, let oldSecondaryView = secondaryState.drawableView,
@@ -1107,6 +1124,18 @@ final class VLCBridge: ObservableObject {
         secondaryIsPlaying = oldPrimaryIsPlaying
 
         glog("[VLC] swapSlots — primary↔secondary rendering targets and state swapped (no reconnect)")
+
+        // Now that the relabeling above is done and won't change again, reconnect the demoted
+        // stream to local playback if it was casting — targeting .secondary (its real, final
+        // position) so play(url:slot:)'s deferred commit staleness check (secondaryURL == url)
+        // matches. See this function's own top-of-function doc comment for why this must happen
+        // after the swap, not before.
+        if wasCasting {
+            glog("[VLC] swapSlots() — demoted stream was casting; reconnecting it locally in the secondary slot")
+            castRendererItem = nil
+            castingDeviceID  = nil
+            if let castingURL { play(url: castingURL, slot: .secondary) }
+        }
     }
 
     /// Returns the given slot's video native pixel dimensions once decoding has started; nil
@@ -1647,7 +1676,21 @@ final class VLCBridge: ObservableObject {
             return
         }
         let ctx = RendererDiscovererContext(
-            onItemAdded:   { [weak self] item in Task { @MainActor [weak self] in self?.handleCastItemAdded(item) } },
+            // Holds synchronously, on whatever libvlc-internal thread this callback fires on — per
+            // libvlc's documented contract, the item pointer is only guaranteed valid for the
+            // duration of this callback unless held here. Deferring the hold into the Task below
+            // (as this used to do) left a real use-after-free window: stopCastDiscovery() tearing
+            // down the whole discoverer (or the peer sending ItemDeleted) could free the item
+            // before the deferred hold ever ran. _riHold is nonisolated(unsafe) specifically so it
+            // can be called from this non-actor-isolated closure.
+            onItemAdded: { [weak self] item in
+                guard let self else { return }
+                guard let held = self._riHold?(item) else {
+                    glog("[VLC] startCastDiscovery — libvlc_renderer_item_hold returned nil; discovered device dropped", level: .warning)
+                    return
+                }
+                Task { @MainActor [weak self] in self?.handleCastItemAdded(held) }
+            },
             onItemDeleted: { [weak self] item in Task { @MainActor [weak self] in self?.handleCastItemDeleted(item) } })
         rendererDiscovererContext = ctx
         if let em = _rdEventMgr?(rd) {
@@ -1707,14 +1750,12 @@ final class VLCBridge: ObservableObject {
         if let url = currentURL { play(url: url, slot: .primary) }
     }
 
-    private func handleCastItemAdded(_ rawItem: OpaquePointer) {
-        guard let held = _riHold?(rawItem) else {
-            glog("[VLC] handleCastItemAdded — libvlc_renderer_item_hold returned nil; discovered device dropped", level: .warning)
-            return
-        }
-        let name = _riName?(held).map { String(cString: $0) } ?? "Chromecast"
-        let id = String(UInt(bitPattern: held))   // stable for this held item's lifetime
-        castItemsByID[id] = held
+    /// `heldItem` has already been `libvlc_renderer_item_hold`'d synchronously inside the
+    /// discovery callback (see startCastDiscovery's onItemAdded) — this just files it away.
+    private func handleCastItemAdded(_ heldItem: OpaquePointer) {
+        let name = _riName?(heldItem).map { String(cString: $0) } ?? "Chromecast"
+        let id = String(UInt(bitPattern: heldItem))   // stable for this held item's lifetime
+        castItemsByID[id] = heldItem
         castDevices = Self.applyCastItemAdded(id: id, name: name, to: castDevices)
     }
 

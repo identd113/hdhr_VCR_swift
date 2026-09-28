@@ -75,6 +75,21 @@ final class AppState: ObservableObject {
         // Cooldown deadline set by recordShowFailure — the idle loop's readyIndices filter won't
         // retry this show again until this passes. Was: showRetryAfter[showId].
         var retryAfter: Date?
+        // Real wall-clock moment THIS instance's curl process for this show's current recording
+        // attempt actually launched (startRecording success) or was reattached to after a restart —
+        // deliberately NOT show_next (the guide's scheduled air time). Used only by
+        // updateVirtualTunerPresence's discover.json advertisement and its own
+        // VirtualTunerService.conflictShouldYield comparison, to decide which of two instances
+        // relaying the same physical tuner actually started recording first. show_next was used for
+        // both sides of that comparison until code review 2026-09-28 found it silently degraded the
+        // "earliest start wins" rule to always fall through to the hostname tie-break in the
+        // scenario that motivated the feature in the first place — two instances scheduling the
+        // *same* guide-sourced airing produce byte-identical show_next by construction, so it could
+        // never actually discriminate between them. A reattach after an app restart resets this to
+        // the restart moment rather than the process's true original start time (not persisted
+        // across restarts) — a narrow, accepted imprecision for a rare tie-break, not the primary
+        // tuner-occupancy safety mechanism.
+        var recordingLaunchedAt: Date?
         // Per-show serialization for lifecycle-card sends — see fireDiscordCard's own comment for
         // why this chains rather than locks. Was: discordCardTasks[showId].
         var discordCardTask: Task<Void, Never>?
@@ -1218,6 +1233,9 @@ final class AppState: ObservableObject {
                 shows[i].show_recording = true
                 shows[i].show_tuner_resource = ""   // will be re-captured by captureResourceHeaders()
                 recordingManager.reattach(showId: showId, pid: pid, title: shows[i].show_title, endDate: endDate)
+                // See ShowRuntimeState.recordingLaunchedAt's own doc comment for why this uses
+                // `now` (the restart moment) rather than the curl process's true original start.
+                showRuntime[showId, default: ShowRuntimeState()].recordingLaunchedAt = now
                 glog("[Startup] Reattached '\(shows[i].show_title)' pid=\(pid) ends \(endDate)")
             } else {
                 // No matching show in config (deleted while recording, config reset, etc.) or past end —
@@ -1328,7 +1346,13 @@ final class AppState: ObservableObject {
                 // Checked before touching the network below — this decision needs nothing but the
                 // already-known device list.
                 if let conflict = devices.first(where: { $0.DeviceID == id && $0.isVirtualRelay }) {
-                    let ourStart = activelyRecordingShows.compactMap { $0.show_next }.min()
+                    // recordingLaunchedAt (this instance's own real wall-clock launch time), not
+                    // show_next (the guide's scheduled air time) — two instances scheduling the same
+                    // guide-sourced airing produce byte-identical show_next by construction, which
+                    // silently degraded "earliest start wins" to always fall through to the hostname
+                    // tie-break in exactly the scenario that motivated it. Found in code review
+                    // 2026-09-28 — see ShowRuntimeState.recordingLaunchedAt's own doc comment.
+                    let ourStart = activelyRecordingShows.compactMap { showRuntime[$0.show_id]?.recordingLaunchedAt }.min()
                     let theirStart = conflict.recordingStartedAt.map { Date(timeIntervalSince1970: $0) }
                     let theirHostname = lineups[conflict.DeviceID]?.first?.virtualRelaySourceHostname ?? ""
                     let weLose = VirtualTunerService.conflictShouldYield(
@@ -2231,8 +2255,17 @@ final class AppState: ObservableObject {
         // See yieldingWatchNowDeviceID's own doc comment — without this, tunersFull/startRecording's
         // Tuner Conflict gate would never see this device as anything but full for the rest of this
         // function, no matter what actually frees up. Cleared via defer on every exit from here.
+        //
+        // Generation-gated same as setYieldProgress above — found live: cancelYieldRecordingIfInProgress
+        // sets yieldRecordingTask = nil synchronously, so startYieldingWatchNowToRecord's `== nil`
+        // guard lets a fresh trigger for the same device start immediately, while the cancelled
+        // predecessor's own body is still cooperatively unwinding (only checked at its next
+        // Task.isCancelled checkpoint). An ungated defer here would let that stale predecessor's
+        // cleanup clear the *new* attempt's yieldingWatchNowDeviceID out from under it, right back
+        // to "structurally could never actually succeed" (issues_resolved.md) via this narrower
+        // cancel-then-immediate-retrigger variant.
         yieldingWatchNowDeviceID = device.DeviceID
-        defer { yieldingWatchNowDeviceID = nil }
+        defer { if yieldRecordingGeneration == generation { yieldingWatchNowDeviceID = nil } }
         setYieldProgress("Scheduling the recording…", generation: generation)
         let bonusTime = Show.genreImpliesBonusTime(entry.firstGenre) && config.Sports_padding_enabled
         let showId = addShowFromGuide(entry: entry, type: type, device: device, channel: channel, bonusTime: bonusTime)
@@ -3227,6 +3260,10 @@ final class AppState: ObservableObject {
             return
         }
         shows[index].show_recording = true; shows[index].show_recording_path = path
+        // See ShowRuntimeState.recordingLaunchedAt's own doc comment — must be set before
+        // updateVirtualTunerPresence() below so the very first discover.json advertisement for this
+        // recording already carries a real launch time, not a stale one from a previous attempt.
+        showRuntime[show.show_id, default: ShowRuntimeState()].recordingLaunchedAt = Date()
         showRuntime[show.show_id]?.failedThisAttempt = false // fresh attempt — any earlier FAIL no longer describes "this" recording
         // Same "fresh attempt" reasoning — a real retry landing inside an old abnormal-stop grace
         // window makes the window redundant (recordingIsWatchable already prefers show_recording
@@ -3599,7 +3636,10 @@ final class AppState: ObservableObject {
     // next episode starting back-to-back.
     func scheduleNextAir(index: Int, skipCurrentlyAiring: Bool = false) async {
         guard index < shows.count else { return }
-        let show = shows[index]
+        // var, not let — the .seriesChannel/.seriesAll branch's guide-reload await re-reads this
+        // (and the filters derived from it) after resuming, since a concurrent edit to this exact
+        // show can land while it's suspended. See that branch's own comment.
+        var show = shows[index]
         // Working index, re-resolved by show_id after any await below — `shows` can be mutated
         // (e.g. this show deleted by an interleaved web-UI request) while this function is
         // suspended on the guide-load call further down, which would leave the original `index`
@@ -3647,8 +3687,8 @@ final class AppState: ObservableObject {
                 // reschedule — applyMatch below always sets hdhr_record = match.deviceId, which
                 // would otherwise silently migrate the show to whichever device happened to have
                 // the next matching episode, risking two tuners recording the same series at once.
-                let chFilter = show.state == .seriesAll ? nil : show.show_channel
-                let devFilter = device.DeviceID
+                var chFilter = show.state == .seriesAll ? nil : show.show_channel
+                var devFilter = device.DeviceID
                 // If guide is stale or absent, reload before searching
                 if !guideStore.isFresh(deviceId: device.DeviceID) {
                     await guideStore.load(for: device, hours: config.GuideHours, useXML: config.Guide_use_xml)
@@ -3657,6 +3697,20 @@ final class AppState: ObservableObject {
                     // while the guide fetch was in flight.
                     guard let reIdx = shows.firstIndex(where: { $0.show_id == show.show_id }) else { return }
                     idx = reIdx
+                    // Re-read the show and recompute its filters from the fresh value — found in
+                    // code review 2026-09-28: a concurrent edit to this exact show (e.g. the user
+                    // moving it to a different tuner/channel after a flaky-device report) landing
+                    // while the guide reload above was in flight was silently reverted, because the
+                    // match below still searched using the pre-edit device/channel and applyMatch
+                    // writes hdhr_record/show_channel straight from that stale filter.
+                    show = shows[idx]
+                    guard let freshDevice = devices.first(where: { $0.DeviceID == show.hdhr_record }) else {
+                        // The edit also moved it to a device that's since vanished — nothing sane
+                        // left to schedule against this tick; a later idle-loop pass retries.
+                        return
+                    }
+                    chFilter = show.state == .seriesAll ? nil : show.show_channel
+                    devFilter = freshDevice.DeviceID
                 }
                 // Check for a currently-airing episode first (e.g. marathon, back-to-back airings).
                 let now = Date()

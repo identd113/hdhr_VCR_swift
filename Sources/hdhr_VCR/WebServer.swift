@@ -2456,6 +2456,32 @@ final class WebServer: @unchecked Sendable {
         return try? JSONSerialization.jsonObject(with: body) as? [String: Any]
     }
 
+    /// Result of resolveDeviceAndChannel below.
+    private enum DeviceChannelLookup {
+        case notFound
+        case isVirtualRelay(HDHRDevice)
+        case found(HDHRDevice, LineupEntry)
+    }
+
+    /// Shared device+channel lookup, baking in the isVirtualRelay backstop — extracted from
+    /// handleRecord/handleToggleFavorite, which used to each independently re-implement this
+    /// identical lookup+guard block (ISSUES.md flagged this as the exact duplication pattern
+    /// that had already required two full codebase audits to keep the recordableDevices/
+    /// isVirtualRelay guardrail everywhere it applies — a shared helper makes the guard
+    /// structurally impossible to miss at a future call site instead of relying on remembering to
+    /// copy it correctly). The virtual-relay rejection message differs per caller, so callers still
+    /// build their own error response for that case; only the identical "not found"/lookup logic
+    /// is centralized here.
+    @MainActor
+    private func resolveDeviceAndChannel(state: AppState, deviceId: String, guideNum: String) -> DeviceChannelLookup {
+        guard let device = state.devices.first(where: { $0.DeviceID == deviceId }),
+              let ch     = state.lineups[deviceId]?.first(where: { $0.GuideNumber == guideNum })
+        else { return .notFound }
+        // Virtual relay tuners (VirtualTunerService.swift) are watch-only by design.
+        guard !device.isVirtualRelay else { return .isVirtualRelay(device) }
+        return .found(device, ch)
+    }
+
     @MainActor
     // Not `private` — exercised directly (not just through the private `route(_:_:_:)` dispatcher)
     // by RecordFlowTests.swift, which posts hdhr_guide's exact request shape in-process rather than
@@ -2469,14 +2495,18 @@ final class WebServer: @unchecked Sendable {
               let startTime = obj["startTime"]   as? Int
         else { return .badRequest("Missing required fields: deviceId, guideNumber, startTime") }
 
-        guard let device = state.devices.first(where: { $0.DeviceID == deviceId }),
-              let ch     = state.lineups[deviceId]?.first(where: { $0.GuideNumber == guideNum })
-        else { return json(["ok": false, "error": "Device or channel not found"]) }
-        // Virtual relay tuners (VirtualTunerService.swift) are watch-only by design — the real
-        // enforcement is AppState.addShow's own hard backstop, but rejecting here gives the web
-        // guide a clear error instead of a silent no-op from addShowFromGuide.
-        guard !device.isVirtualRelay else {
+        let device: HDHRDevice
+        let ch: LineupEntry
+        switch resolveDeviceAndChannel(state: state, deviceId: deviceId, guideNum: guideNum) {
+        case .notFound:
+            return json(["ok": false, "error": "Device or channel not found"])
+        case .isVirtualRelay:
+            // Real enforcement is AppState.addShow's own hard backstop — rejecting here gives the
+            // web guide a clear error instead of a silent no-op from addShowFromGuide.
             return json(["ok": false, "error": "This tuner is a temporary recording FEED and can't be recorded from — watch it directly instead."])
+        case .found(let d, let c):
+            device = d
+            ch = c
         }
 
         // distantPast so currently-airing shows (StartTime < now) are also matchable
@@ -2668,14 +2698,18 @@ final class WebServer: @unchecked Sendable {
               let guideNum = obj["guideNumber"] as? String
         else { return .badRequest("Missing required fields: deviceId, guideNumber") }
 
-        guard let device = state.devices.first(where: { $0.DeviceID == deviceId }),
-              let ch     = state.lineups[deviceId]?.first(where: { $0.GuideNumber == guideNum })
-        else { return json(["ok": false, "error": "Device or channel not found"]) }
-        // Same virtual-relay backstop as handleRecord above — a discovered relay's fabricated
-        // lineup entries must not be forwarded to hdhrManager.setFavorite against a device that
-        // isn't real.
-        guard !device.isVirtualRelay else {
+        let device: HDHRDevice
+        let ch: LineupEntry
+        switch resolveDeviceAndChannel(state: state, deviceId: deviceId, guideNum: guideNum) {
+        case .notFound:
+            return json(["ok": false, "error": "Device or channel not found"])
+        case .isVirtualRelay:
+            // A discovered relay's fabricated lineup entries must not be forwarded to
+            // hdhrManager.setFavorite against a device that isn't real.
             return json(["ok": false, "error": "This tuner is a temporary recording FEED and has no favorites of its own."])
+        case .found(let d, let c):
+            device = d
+            ch = c
         }
 
         let newFav = !ch.isFavorite   // ch is a struct copy; capture before toggleFavorite mutates lineups
@@ -2821,7 +2855,12 @@ final class WebServer: @unchecked Sendable {
     // invited. Internal, not private — same testability precedent as computeDevTuners below.
     @MainActor
     static func onlineOfflineDeviceIDs(state: AppState) -> (online: Set<String>, offline: Set<String>) {
-        let onlineIDs = Set(state.devices.map { $0.DeviceID })
+        // recordableDevices (excludes any virtual relay), not raw state.devices — this instance's
+        // own FEED relay (or another instance's) must never count as "online" for scheduling
+        // purposes, matching every other builder in this file per CLAUDE.md's guardrail. Every
+        // current caller of this function discards the online half, so this had no live effect —
+        // found in code review 2026-09-28 as a latent trap for a future caller that doesn't.
+        let onlineIDs = Set(state.recordableDevices.map { $0.DeviceID })
         let offlineIDs = Set(state.shows.map { $0.hdhr_record }).subtracting(onlineIDs).filter { !$0.isEmpty }
         return (onlineIDs, offlineIDs)
     }
@@ -3839,7 +3878,14 @@ final class WebServer: @unchecked Sendable {
         // resolve the rare two-Macs-relaying-the-same-tuner race by "whichever started recording
         // first wins." Omitted only in the same edge case friendlyName's own fallback above covers
         // (no show currently recording at the exact instant this is built).
-        if let earliest = recordingShows.compactMap({ $0.show_next }).min() {
+        //
+        // recordingLaunchedAt (this instance's real wall-clock launch time), not show_next (the
+        // guide's scheduled air time) — two instances scheduling the same guide-sourced airing
+        // produce byte-identical show_next by construction, which silently degraded "earliest start
+        // wins" to always fall through to the hostname tie-break in exactly the scenario that
+        // motivated it. Found in code review 2026-09-28 — see AppState.ShowRuntimeState.
+        // recordingLaunchedAt's own doc comment.
+        if let earliest = recordingShows.compactMap({ state.showRuntime[$0.show_id]?.recordingLaunchedAt }).min() {
             dict[VirtualTunerService.recordingStartedAtKey] = earliest.timeIntervalSince1970
         }
         return dict
