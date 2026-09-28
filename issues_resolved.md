@@ -1790,3 +1790,13 @@ A single session of live-reported bugs, each found by trying the previous fix ra
 **Fix**: (1) moved "i" into `VLCPlayerWindowManager.installKeyMonitor` (the same local `NSEvent` monitor already used for arrow-key seek/Esc, which runs before responder-chain dispatch), bridged to the View struct's `@State` via a new `.vlcToggleInfoOverlay` notification. (2) added a `syncChannel` branch that looks up the swapped-in device's own lineup directly (`state.lineups[otherDeviceId]`), and made the recording-relay branch match `bridge.recordingShowId` against *all* `state.recordingShows` instead of only this device's own. (3) removed the incorrect `!device.isVirtualRelay` guard — `otherDeviceId != device.DeviceID` alone already correctly excludes an untouched-FEED-primary. (4) `currentGuideEntry` now queries the recording's own `hdhr_record` device, or `VLCPlayerWindowManager.currentDeviceID`, instead of `device.DeviceID` unconditionally; the source line's "Live OTA" case also now names the actual tuner when it differs from this window's own device.
 
 **Resolving commits**: `6be0aba`, `6705e9a`, `59f6759`
+
+## RESOLVED — `RecordingManagerTests.reattach_registersPidAndMakesIsRunningTrue()` flaked intermittently on GitHub Actions CI
+
+**File:** `Tests/hdhr_VCRTests/Recording/RecordingManagerTests.swift`
+
+**Root cause, not fully confirmed**: failed on 2 of 5 consecutive CI runs on 2026-09-28 (`Expectation failed: (manager.isRunning(showId: showId) → false) == true`), then passed clean on an immediate rerun with no code change — never reproduced locally. The test spawns a real detached `/bin/sleep` (`spawnDetachedOrphan`, `TestFixtures.swift`) then immediately calls `RecordingManager.isRunning`, which for a non-child pid falls through to `kill(pid, 0)` + `proc_pidpath`-based verification (`isCurlProcess`). Most likely: the shared CI runner under load delays the forked `sleep` process actually becoming visible to those two syscalls in the instant right after `spawnDetachedOrphan` returns — a real race inherent to spawn-then-immediately-verify, narrow enough to rarely lose locally but common enough on a loaded shared runner to hit ~40% of the time.
+
+**Fix**: replaced the single instantaneous `#expect(manager.isRunning(showId: showId) == true)` with the same `waitUntil { ... }` poll (`TestFixtures.swift`) every other lifecycle test in this file already uses, then the original `#expect` to assert the now-settled state — matches how production's own `isRunning()` is never checked this close to a reattach (idle-loop polling, not immediate). Confirmed passing locally.
+
+**Resolving commit**: issue logged in `61f29b0`, fixed same day

@@ -203,7 +203,7 @@ struct RecordingManagerTests {
 
     // MARK: - reattach (startup resume)
 
-    @Test @MainActor func reattach_registersPidAndMakesIsRunningTrue() throws {
+    @Test @MainActor func reattach_registersPidAndMakesIsRunningTrue() async throws {
         // isRunning()'s ECHILD/orphan branch now also confirms the live process at the reattached
         // pid is actually the curl binary this manager was configured with — a pid can be recycled
         // to an unrelated process across an app restart (see RecordingManager's isCurlProcess doc
@@ -216,6 +216,13 @@ struct RecordingManagerTests {
         defer { kill(pid, SIGKILL) }
         manager.reattach(showId: showId, pid: pid, title: "Resumed Show",
                           endDate: Date().addingTimeInterval(120))
+        // waitUntil, not a single instantaneous #expect — found flaking intermittently in CI
+        // (ISSUES.md), most likely the just-detached process not yet visible to kill(pid,0)/
+        // proc_pidpath on a loaded shared runner in the instant right after spawnDetachedOrphan
+        // returns. Production's own isRunning() is never checked this close to a reattach (idle-
+        // loop polling, not immediate), so a brief poll window here matches real usage rather than
+        // papering over a real bug.
+        await waitUntil { manager.isRunning(showId: showId) }
         #expect(manager.isRunning(showId: showId) == true)
         // Clean up the sleep assertion this creates without killing our own test process.
         manager.releaseAssertion(id: showId)
