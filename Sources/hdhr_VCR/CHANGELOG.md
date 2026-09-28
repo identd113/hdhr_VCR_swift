@@ -7,10 +7,13 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 **Added**
 - **Cast to Chromecast.** The in-app player's "…" menu now has a "Cast" entry that finds Chromecast devices on your LAN and sends Watch Now/FEED playback to them — pick "This Mac" to return to local playback. Not yet tested against a real Chromecast (built and verified via `swift build`/`swift test` only).
 - **Guide auto-refresh cadence is now adjustable, tied to how far ahead you fetch.** Settings → Guide has a new "Auto-refresh" picker — 1/2, 1/4, or 1/8 of the "Show next N hours" window (default 1/8, e.g. ~3 hours for the default 24-hour window). A wider guide window can afford to refresh less often; a narrower one refreshes more often. The exact timing is deliberately fuzzy — it lands sometime within the final hour of that window rather than at a fixed offset, so guide fetches don't all cluster at the same predictable moment. Replaces the previous fixed hourly cadence.
+- **Exclude recordings from Time Machine.** Settings → Recording (and the first-run wizard) has a new "Exclude from Time Machine" option — Off, Each Recording, or Show's Folder — so TB-scale recordings don't silently bloat someone's backup. "Show's Folder" tags the containing directory once and automatically covers future episodes; "Each Recording" tags every output file individually, for anyone who wants other files sharing that folder (an `.nfo`, a poster) still backed up.
+- **`/api/tuner-status.json`** — a structured JSON endpoint giving per-tuner occupancy (recording/watching-live/other breakdown) and Recording/Up Next/Scheduled/Paused shows with poster art, for external pollers like Home Assistant. Off by default — enable in Settings → Sharing → Home Assistant.
 
 **Updated**
 - **AirPlay speakers are now labeled in the Audio Output menu** (e.g. "Living Room (AirPlay)") instead of showing just a plain device name.
 - **The player's Display menu (for AirPlay video via Screen Mirroring) now explains itself in-app** — a short tip and tooltip pointing at Control Center → Screen Mirroring, instead of relying on you already knowing that step.
+- **Only one Mac's Recording FEED relay can now be live for a given physical tuner on the network at a time.** Previously, if two Macs both recorded from the same shared tuner, both could advertise a relay for it; now whichever started recording first keeps the relay and the other backs off automatically.
 
 ## v2.5.0 — 2026-09-19
 
