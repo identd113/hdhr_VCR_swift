@@ -670,16 +670,27 @@ struct VLCPlayerView: View {
             // .contextMenu { pipCornerMenu; pipChannelMenu } below, which is scoped to the small
             // corner thumbnail Button itself; SwiftUI resolves a right-click to whichever is
             // deepest under the pointer.
+            //
+            // Only offered while no secondary is open — there's only ever one PiP slot
+            // (VLCBridge.PlayerSlot has exactly .primary/.secondary, no third slot to "add" into),
+            // so showing "Add Picture-in-Picture…" while one's already active is misleading: picking
+            // a new source there doesn't add a second thumbnail, it silently replaces the existing
+            // one (AppState.watchAsSecondary just overwrites the single secondary slot). To change or
+            // remove the current PiP, close it first via its own "×" button (or the thumbnail's own
+            // right-click "Channel" submenu, for a live-channel secondary — see docs/VLCPlayerView.md's
+            // "Picture-in-picture" section). Found in code review 2026-09-28.
             .contextMenu {
-                Button {
-                    NSApp.activate(ignoringOtherApps: true)
-                    if let w = NSApp.windows.first(where: { $0.title == "Add Picture-in-Picture" }) {
-                        w.makeKeyAndOrderFront(nil)
-                    } else {
-                        openWindow(id: "pip-picker")
+                if VLCPlayerWindowManager.shared.secondaryDeviceID == nil {
+                    Button {
+                        NSApp.activate(ignoringOtherApps: true)
+                        if let w = NSApp.windows.first(where: { $0.title == "Add Picture-in-Picture" }) {
+                            w.makeKeyAndOrderFront(nil)
+                        } else {
+                            openWindow(id: "pip-picker")
+                        }
+                    } label: {
+                        Label("Add Picture-in-Picture…", systemImage: "pip.fill")
                     }
-                } label: {
-                    Label("Add Picture-in-Picture…", systemImage: "pip.fill")
                 }
             }
             .animation(.easeOut(duration: 0.35), value: posterHidden)

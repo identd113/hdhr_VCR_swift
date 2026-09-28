@@ -2,7 +2,10 @@ import SwiftUI
 
 // Compact picker for starting a Picture-in-Picture (corner-thumbnail) stream — reachable via
 // VLCPlayerView's right-click context menu on the main video pane (the player window must already
-// be open; there's no menu-bar entry point, removed 2026-09-19 as redundant with this one). Always
+// be open; there's no menu-bar entry point, removed 2026-09-19 as redundant with this one). That
+// menu item only appears while no secondary is already open (added 2026-09-28) — there's only one
+// PiP slot, so "Add" while one's active would actually replace it, not add a second thumbnail;
+// close the existing one first (its own "×" button) to reach this picker again. Always
 // starts fresh (no remembered source): lists shows currently recording, any discovered FEED
 // (another Mac's in-progress recording) sources, and live-TV channels across recordable tuners, in
 // that order — recording first since it's the most likely thing someone wants alongside whatever
