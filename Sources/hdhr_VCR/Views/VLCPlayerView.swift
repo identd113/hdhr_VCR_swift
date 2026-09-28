@@ -564,8 +564,13 @@ struct VLCPlayerView: View {
         bridge.videoPixelSize != nil && VLCPlayerWindowManager.shared.nativeVideoFitsCurrentScreen()
     }
 
+    // body is split into staged `let` bindings (core → withDialogs → withTasks → return) rather
+    // than one continuous chained expression — as one expression this ~300-line VStack/ZStack +
+    // .alert/.confirmationDialog/.onAppear/.task×2/.onChange×6/.onDisappear/.onReceive×4 chain
+    // pushed the type-checker past its time budget ("unable to type-check this expression in
+    // reasonable time"), failing `swift build` intermittently in CI depending on runner speed.
     var body: some View {
-        VStack(spacing: 0) {
+        let core: some View = VStack(spacing: 0) {
             // Windowed mode: toolbar is a normal, always-visible top row, same as always. In true
             // fullscreen it moves into the ZStack below instead (see the isFullScreen block there)
             // — a floating hover-reveal overlay, not a row that would permanently claim space from
@@ -690,6 +695,8 @@ struct VLCPlayerView: View {
                 posterNSImage = await ChannelIconCache.shared.image(for: url)
             }
         }
+
+        let withDialogs: some View = core
         .alert("All Tuners Busy", isPresented: $showTunerFullAlert) {
             Button("OK", role: .cancel) { }
         } message: {
@@ -744,6 +751,8 @@ struct VLCPlayerView: View {
             cc.previousTrackCommand.isEnabled = true
             cc.previousTrackCommand.addTarget { _ in NotificationCenter.default.post(name: .vlcChannelPrev, object: nil); return .success }
         }
+
+        let withTasks: some View = withDialogs
         .onChange(of: bridge.isPlaying) { _, _ in
             // Auto-play for a remote FEED session only — see attemptFeedAutoPlay's own doc
             // comment for the full gate (isPlaying alone isn't enough; also needs
@@ -791,6 +800,8 @@ struct VLCPlayerView: View {
             glog("[VLC] Player_buffer_min_rate changed → \(pct)%")
             VLCBridge.shared.liveMinRate = Float(pct) / 100.0
         }
+
+        return withTasks
         .onChange(of: bridge.audioTracks.count) { _, count in
             // When audio tracks first appear, sync picker to first track (VLC already plays it).
             guard count > 0, selectedAudioTrackId < 0 else { return }
