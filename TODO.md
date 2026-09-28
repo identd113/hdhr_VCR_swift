@@ -230,14 +230,21 @@ See `docs/TUIGuide.md`'s "Deferred ideas" section for open feature gaps and know
 
 ## Swift 6 strict concurrency migration — started 2026-09-28, scoped not yet fixed
 
-CI now runs `swift build --target hdhr_VCR -Xswiftc -strict-concurrency=complete` and the same for
-`hdhr_guide_core` (see `.github/workflows/ci.yml`'s "Strict concurrency check" step) as a
-non-blocking, warnings-only canary — the actual language mode is still Swift 5 everywhere
+CI runs `swift build --target hdhr_VCR/hdhr_guide_core/hdhr_guide -Xswiftc
+-strict-concurrency=complete` (see `.github/workflows/ci.yml`'s "Strict concurrency check" step) as
+a non-blocking, warnings-only canary — the actual language mode is still Swift 5 everywhere
 (`Package.swift`'s `swift-tools-version: 5.9`), so nothing here fails a build yet.
 
-**Current state** (measured 2026-09-28, `swift build --target hdhr_VCR -Xswiftc
--strict-concurrency=complete`): 0 errors, ~110 distinct warning sites, over half concentrated in
-one file:
+**Current state** (measured 2026-09-28): `hdhr_guide_core` and `hdhr_guide` are both fully clean (0
+errors, 0 warnings). `hdhr_guide` got there via `nonisolated(unsafe)` on its global UI/terminal
+state (`main.swift`'s ~18 top-level vars, `Terminal.swift`'s two static vars) and its two
+signal-handler flags (`interrupted`/`resized`) and `API.swift`'s semaphore-synchronized `result` —
+each site has its own comment explaining why it's genuinely safe (a single-threaded terminal
+script with no async/await anywhere, so the attribute states the actual truth rather than
+suppressing a real risk), not just fixed to silence the checker.
+
+`hdhr_VCR` (`swift build --target hdhr_VCR -Xswiftc -strict-concurrency=complete`): 0 errors, ~110
+distinct warning sites, over half concentrated in one file:
 
 - `WebServer.swift` — ~60, the clear place to start. Almost certainly `NWConnection` receive/send
   completion closures capturing non-Sendable state (`AppState`, guide data) across the network
@@ -250,22 +257,10 @@ one file:
 - `Models.swift`, `DiscordNotifier.swift`, `ConfigManager.swift` — 4 each
 - `Views/SettingsView.swift`, `Views/AddShowView.swift` — 2 each
 
-`hdhr_guide_core` is already fully clean (0 warnings) — no work needed there.
-
-**Not included in the CI check**: `hdhr_guide` (the terminal client) has *hard errors* under
-`-strict-concurrency=complete`, not just warnings — e.g. `main.swift`'s `var interrupted = false`
-(mutated from a `signal()` handler, read from a plain global function) and `API.swift`'s
-`syncData(_:)` (a `DispatchSemaphore`-based sync-over-async bridge mutating a captured `var result`
-from inside a `URLSession` completion closure). Both predate any actor-isolation design in this
-file and need real fixes (likely `nonisolated(unsafe)` with a comment explaining the signal-handler
-case specifically — a signal handler doesn't run on any actor Swift's checker knows about, so
-`@MainActor` would be the wrong fix there) — not scoped further yet.
-
-**Next real step, not done**: work through `WebServer.swift`'s ~60 sites first (biggest single
-payoff), then the rest of `hdhr_VCR`, then fix `hdhr_guide` and add it to the CI check too. Once
-everything is warning-clean, flip `Package.swift`'s `swift-tools-version` to 6.0+ (or add
-`swiftLanguageMode(.v6)` per target) to make it real — a warnings-only canary that never gets acted
-on doesn't accomplish anything past documentation.
+**Next real step, not done**: work through `WebServer.swift`'s ~60 sites (biggest single payoff),
+then the rest of `hdhr_VCR`. Once everything is warning-clean, flip `Package.swift`'s
+`swift-tools-version` to 6.0+ (or add `swiftLanguageMode(.v6)` per target) to make it real — a
+warnings-only canary that never gets acted on doesn't accomplish anything past documentation.
 
 **Key files**: `.github/workflows/ci.yml`, `Sources/hdhr_VCR/WebServer.swift`, `Package.swift`.
 

@@ -84,7 +84,12 @@ let secondsPerSlot = 1800
 
 enum Mode { case normal, recordSummary, search }
 
-var interrupted = false
+// nonisolated(unsafe): written from a signal handler, which runs in a context Swift's actor
+// isolation has no model for at all (not the main actor, not any thread the compiler can reason
+// about) — a real, deliberate escape from strict-concurrency checking, not a workaround for
+// something that's actually unsafe. A single Bool flag set from a signal handler and polled from
+// the main loop is the standard, safe pattern this attribute exists for.
+nonisolated(unsafe) var interrupted = false
 signal(SIGINT) { _ in interrupted = true }
 signal(SIGTERM) { _ in interrupted = true }
 
@@ -93,7 +98,8 @@ signal(SIGTERM) { _ in interrupted = true }
 // rather than calling anything directly) — the main loop checks it and redraws. Without this,
 // render() only re-reads the new size on the next keypress or the 20s poll tick, so a resize
 // could sit unreflected (a stale, possibly now too-small-or-too-large frame) for up to that long.
-var resized = false
+// Same nonisolated(unsafe) reasoning as `interrupted` above.
+nonisolated(unsafe) var resized = false
 signal(SIGWINCH) { _ in resized = true }
 
 guard let initial = API.fetchGuide(device: nil) else {
@@ -114,13 +120,24 @@ if initial.channels.isEmpty && initial.deviceId.isEmpty {
     exit(1)
 }
 
-var payload = initial
-var signalMap = API.fetchSignal() ?? [:]   // {guideName.lowercased(): "good"|"fair"|"poor"|"noData"}
-var currentDeviceId: String? = nil   // nil = "server default" — set once the user explicitly Tabs
-var selRow = 0
-var rowScroll = 0
-var selEntry = 0
-var colStart = 0
+// nonisolated(unsafe) throughout this file's global state (this block and the search-mode block
+// below): this whole program is single-threaded top-level script code with no async/await, no
+// Task, no DispatchQueue — the only concurrency anywhere in hdhr_guide is API.swift's syncData
+// (its own nonisolated(unsafe), separately justified) and the SIGINT/SIGTERM/SIGWINCH handlers
+// above (also separately justified). Swift's strict-concurrency checker still infers these globals
+// as main-actor-isolated by default, but the plain top-level `while` loop and free functions
+// (render/handle/etc.) that read and write them are themselves inferred *nonisolated* (no
+// implicit-MainActor treatment applies to a main.swift with no async content) — so satisfying the
+// checker "properly" would mean threading @MainActor through every one of ~30 free functions and
+// the top-level loop for a state model that's already provably never touched from more than one
+// thread. nonisolated(unsafe) says exactly that, honestly, instead of papering over it.
+nonisolated(unsafe) var payload = initial
+nonisolated(unsafe) var signalMap = API.fetchSignal() ?? [:]   // {guideName.lowercased(): "good"|"fair"|"poor"|"noData"}
+nonisolated(unsafe) var currentDeviceId: String? = nil   // nil = "server default" — set once the user explicitly Tabs
+nonisolated(unsafe) var selRow = 0
+nonisolated(unsafe) var rowScroll = 0
+nonisolated(unsafe) var selEntry = 0
+nonisolated(unsafe) var colStart = 0
 // The time being tracked across a *run* of consecutive vertical moves (selectRow's own anchor
 // parameter) — nil between runs, so the first ↑/↓ in a new run seeds it from the actual current
 // selection. Deliberately NOT recomputed from the entry each move lands on: without this,
@@ -131,10 +148,10 @@ var colStart = 0
 // 2 AM back to 10 PM this way. Reset on any *explicit* selection change (an actual ←/→ page, or a
 // direct jump) so the next vertical run starts fresh from wherever the user just deliberately put
 // the cursor, instead of re-anchoring on a run that's already three channels stale.
-var verticalAnchorTime: Int? = nil
-var mode: Mode = .normal
-var statusMsg = "Loaded \(payload.channels.count) channels on HDHR-\(payload.deviceId.uppercased())."
-var lastPoll = Date()
+nonisolated(unsafe) var verticalAnchorTime: Int? = nil
+nonisolated(unsafe) var mode: Mode = .normal
+nonisolated(unsafe) var statusMsg = "Loaded \(payload.channels.count) channels on HDHR-\(payload.deviceId.uppercased())."
+nonisolated(unsafe) var lastPoll = Date()
 let pollInterval: TimeInterval = 20
 
 // Record summary screen (Mode.recordSummary) toggles — mirror the web Record modal's "New Only"
@@ -145,8 +162,8 @@ let pollInterval: TimeInterval = 20
 // (single/seriesChannel/seriesAll all ignore airDays server-side, see addShowFromGuide's own
 // switch in AppState.swift) — reset to the entry's own weekday, and pendingNewOnly to false,
 // every time Enter opens this screen fresh for an unmanaged entry (handle(_:)'s .enter case).
-var pendingNewOnly = false
-var pendingDays: Set<Int> = []
+nonisolated(unsafe) var pendingNewOnly = false
+nonisolated(unsafe) var pendingDays: Set<Int> = []
 // (name, key) pairs, index-aligned with Show.weekdayNames — single letters chosen to avoid any
 // collision with this screen's other live keys (1-4, d/D, Esc); u/m/t/w/h/f/s is otherwise
 // unused in Mode.recordSummary.
@@ -170,10 +187,10 @@ func dayIndex(for c: Character) -> Int? {
 // prefix included when present — `isChannelJumpQuery` below is the single place that decides which
 // of the two sub-modes a query is, so main.swift's handle()/render() never re-derive that check
 // independently and risk drifting apart on what counts as "channel mode" vs "show mode."
-var searchQuery = ""
-var searchResults: [SearchResult] = []
-var searchHi = -1        // which show (index into searchResults) — moved by ↑/↓
-var searchAiringHi = 0   // which of that show's airings (index into searchResults[searchHi].airings) — moved by ←/→
+nonisolated(unsafe) var searchQuery = ""
+nonisolated(unsafe) var searchResults: [SearchResult] = []
+nonisolated(unsafe) var searchHi = -1        // which show (index into searchResults) — moved by ↑/↓
+nonisolated(unsafe) var searchAiringHi = 0   // which of that show's airings (index into searchResults[searchHi].airings) — moved by ←/→
 // Held across a run of consecutive ↑/↓ show-switches, same "sticky anchor" shape as the grid's own
 // verticalAnchorTime (main.swift) and for the identical reason: re-deriving the anchor from
 // wherever each hop lands (nearestAiringIndex's own pick) would let a chain of switches drift the
@@ -181,12 +198,12 @@ var searchAiringHi = 0   // which of that show's airings (index into searchResul
 // moment actually being looked at. nil between runs — seeded from the current airing's own start
 // time on the first ↑/↓ in a new run, cleared by any ←/→ (an explicit airing pick) or a fresh
 // search, since those name an exact moment on their own.
-var searchShowAnchorTime: Int? = nil
+nonisolated(unsafe) var searchShowAnchorTime: Int? = nil
 // Last time searchQuery changed — armSearchStrayTimer's TUI counterpart (Resources/guide.js) but
 // needs no timer/thread of its own: the main loop already wakes on a ~300ms cadence even with no
 // key pressed (Terminal.pollStdin(timeoutMs: 300) below), so the idle check just compares against
 // this on every iteration, the same way `lastPoll`/`pollInterval` already drive the 20s guide poll.
-var lastSearchKeyTime = Date()
+nonisolated(unsafe) var lastSearchKeyTime = Date()
 let searchStrayTimeout: TimeInterval = 5
 // 3, matching the web guide's own "Type 3+ letters" convention (docs/WebServer.md's Show search
 // section / the web help popover text) — no reason to pick a different number just because this

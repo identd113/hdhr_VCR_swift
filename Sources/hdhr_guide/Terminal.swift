@@ -12,8 +12,10 @@ enum Key: Equatable {
 // scope call in the approved plan (the grid is small enough that a full-frame redraw per tick
 // doesn't need a curses-style diffing renderer).
 enum Terminal {
-    private static var saved = termios()
-    private static var rawModeActive = false
+    // nonisolated(unsafe): same reasoning as main.swift's global state block — this whole tool is
+    // single-threaded, these are only ever touched from the main loop.
+    private nonisolated(unsafe) static var saved = termios()
+    private nonisolated(unsafe) static var rawModeActive = false
 
     static func enterRawScreen() {
         tcgetattr(STDIN_FILENO, &saved)

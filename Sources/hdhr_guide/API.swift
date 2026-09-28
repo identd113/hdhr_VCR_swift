@@ -97,7 +97,10 @@ enum API {
     // happens-before relationship to that write). Only `.success` is guaranteed ordered after it,
     // since that's exactly what `sem.signal()`/`sem.wait()` synchronizes.
     private static func syncData(_ req: URLRequest) -> Data? {
-        var result: Data?
+        // nonisolated(unsafe): mutated from the completion closure below (a different thread), but
+        // only ever read after `sem.wait() == .success` — the semaphore itself is the
+        // synchronization the compiler can't see, per this function's own doc comment above.
+        nonisolated(unsafe) var result: Data?
         let sem = DispatchSemaphore(value: 0)
         URLSession.shared.dataTask(with: req) { data, _, _ in
             result = data
