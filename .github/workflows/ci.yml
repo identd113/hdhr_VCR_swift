@@ -21,7 +21,17 @@ jobs:
           xcodebuild -version
 
       - name: Build
-        run: swift build
+        # -warn-long-function-bodies/-warn-long-expression-type-checking (both -Xfrontend, so
+        # double -Xswiftc) are a canary for the class of bug that broke CI 2026-09-26 through
+        # 2026-09-28: VLCPlayerView.body grew into one ~300-line chained SwiftUI expression until
+        # the type-checker gave up outright ("unable to type-check this expression in reasonable
+        # time"). 250ms sits just under VLCPlayerView.body's own post-fix time (488ms — it's the
+        # slowest in the codebase and worth watching, not yet worth splitting further) and just
+        # above the next-slowest legitimate bodies (MenuContent.body ~275ms, VLCPlayerView.toolbar
+        # ~291ms) at the time this was added — so it'll flag those plus any new one that joins
+        # them, without being so tight it fires on every ordinary view. Warnings only, deliberately
+        # non-blocking (no -warnings-as-errors) — a canary to watch, not a merge gate.
+        run: swift build -Xswiftc -Xfrontend -Xswiftc -warn-long-function-bodies=250 -Xswiftc -Xfrontend -Xswiftc -warn-long-expression-type-checking=250
 
       - name: Test
         # Tests/hdhr_VCRTests needs full Xcode (not just Command Line Tools) — GitHub-hosted
