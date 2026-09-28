@@ -228,6 +228,49 @@ See `docs/TUIGuide.md`'s "Deferred ideas" section for open feature gaps and know
 
 ---
 
+## Swift 6 strict concurrency migration — started 2026-09-28, scoped not yet fixed
+
+CI now runs `swift build --target hdhr_VCR -Xswiftc -strict-concurrency=complete` and the same for
+`hdhr_guide_core` (see `.github/workflows/ci.yml`'s "Strict concurrency check" step) as a
+non-blocking, warnings-only canary — the actual language mode is still Swift 5 everywhere
+(`Package.swift`'s `swift-tools-version: 5.9`), so nothing here fails a build yet.
+
+**Current state** (measured 2026-09-28, `swift build --target hdhr_VCR -Xswiftc
+-strict-concurrency=complete`): 0 errors, ~110 distinct warning sites, over half concentrated in
+one file:
+
+- `WebServer.swift` — ~60, the clear place to start. Almost certainly `NWConnection` receive/send
+  completion closures capturing non-Sendable state (`AppState`, guide data) across the network
+  callback boundary — the single biggest chunk of real work in this migration.
+- `AppState.swift` — 10
+- `VirtualTunerService.swift`, `Views/VLCPlayerView.swift`, `VLCBridge.swift` — 6 each (VLCBridge's
+  are worth extra care — dlsym'd C callback trampolines crossing into Swift, a different flavor of
+  unsafe than a plain closure capture)
+- `HDHRManager.swift` — 5
+- `Models.swift`, `DiscordNotifier.swift`, `ConfigManager.swift` — 4 each
+- `Views/SettingsView.swift`, `Views/AddShowView.swift` — 2 each
+
+`hdhr_guide_core` is already fully clean (0 warnings) — no work needed there.
+
+**Not included in the CI check**: `hdhr_guide` (the terminal client) has *hard errors* under
+`-strict-concurrency=complete`, not just warnings — e.g. `main.swift`'s `var interrupted = false`
+(mutated from a `signal()` handler, read from a plain global function) and `API.swift`'s
+`syncData(_:)` (a `DispatchSemaphore`-based sync-over-async bridge mutating a captured `var result`
+from inside a `URLSession` completion closure). Both predate any actor-isolation design in this
+file and need real fixes (likely `nonisolated(unsafe)` with a comment explaining the signal-handler
+case specifically — a signal handler doesn't run on any actor Swift's checker knows about, so
+`@MainActor` would be the wrong fix there) — not scoped further yet.
+
+**Next real step, not done**: work through `WebServer.swift`'s ~60 sites first (biggest single
+payoff), then the rest of `hdhr_VCR`, then fix `hdhr_guide` and add it to the CI check too. Once
+everything is warning-clean, flip `Package.swift`'s `swift-tools-version` to 6.0+ (or add
+`swiftLanguageMode(.v6)` per target) to make it real — a warnings-only canary that never gets acted
+on doesn't accomplish anything past documentation.
+
+**Key files**: `.github/workflows/ci.yml`, `Sources/hdhr_VCR/WebServer.swift`, `Package.swift`.
+
+---
+
 ### Mac App Store distribution requires a sandbox rewrite
 
 **Flagged 2026-08-12 as worth actively working on next**, not just a background item. Full blocker-by-blocker analysis already lives in **`docs/MAS_COMPLIANCE.md`** — do not duplicate it here, keep this pointer up to date instead. Direct-distribution notarization (Developer ID cert + `notarytool`, see `tools/setup_signing.sh` / `deploy_release.sh`, and `docs/Distribution.md`) does **not** require sandboxing and is the in-progress track as of 2026-08-08. MAS is a separate, larger track: App Sandbox is mandatory for submission, and `docs/MAS_COMPLIANCE.md` tracks the open blockers (curl subprocess spawning — three options weighed: URLSession/XPC-helper/bundled-curl, no decision made yet; VLC dlopen; security-scoped bookmarks for the recording directory, refined 2026-08-19 into a two-tier plan — see its own entry there) plus what's already done (Launch at Login via `SMAppService`, Privacy Manifest, narrowed ATS exception, and — as of 2026-08-19 — the `Process()` brew-install blocker, resolved by removing that UI entirely rather than reworking it for MAS).

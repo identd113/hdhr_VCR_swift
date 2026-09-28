@@ -41,3 +41,23 @@ jobs:
         # machines/GPUs — there's no baseline for a fresh CI checkout to compare against, so this
         # suite is meant to be run and reviewed locally, not gated in CI.
         run: swift test --skip SnapshotTests
+
+      - name: Strict concurrency check (hdhr_VCR, hdhr_guide_core)
+        # Start of a Swift 6 strict-concurrency migration (2026-09-28) — kept as a separate,
+        # CI-only, warnings-only pass rather than added to Package.swift, so it doesn't spam every
+        # local `swift build`/`./deploy.sh` with ~110 warnings on top of the normal zero. Only
+        # these two targets are included: as of 2026-09-28 both build under
+        # -strict-concurrency=complete with warnings only (0 errors) — hdhr_VCR has ~110 warning
+        # sites, over half in WebServer.swift (NWConnection callback closures capturing
+        # non-Sendable state), the rest scattered across AppState/VirtualTunerService/
+        # VLCPlayerView/VLCBridge/HDHRManager/Models/DiscordNotifier/ConfigManager/SettingsView/
+        # AddShowView — hdhr_guide_core is already fully clean. `hdhr_guide` itself is
+        # deliberately excluded: it has real hard errors under this flag (global mutable state —
+        # e.g. a `signal()`-handler-set `interrupted` var — predating any actor isolation, see
+        # TODO.md's "Swift 6 strict concurrency migration" entry), not just warnings, so including
+        # it would fail this step outright. Non-blocking by construction: warnings never fail
+        # `swift build`, so this step passing says nothing about whether the warning count grew —
+        # watch the log, don't just watch the checkmark.
+        run: |
+          swift build --target hdhr_VCR -Xswiftc -strict-concurrency=complete
+          swift build --target hdhr_guide_core -Xswiftc -strict-concurrency=complete
