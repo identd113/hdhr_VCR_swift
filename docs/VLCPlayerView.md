@@ -417,7 +417,14 @@ ended glyph keyed off `bridge.secondaryIsPlaying`/`secondaryHasError`/`secondary
 error and playing, so a secondary reaching EOF, e.g. a finished Watch Now recording, just froze on
 its last frame forever with no indication at all), and a small "×" close button
 (`VLCPlayerWindowManager.closeSecondary()`) — the only way to stop the secondary without swapping
-it to primary first.
+it to primary first. **Hover-revealed, added 2026-09-29** — hidden (opacity, not conditional
+rendering — same idiom as the recording scrub bar/fullscreen toolbar overlays above) until
+`.onHover` on the thumbnail's own `ZStack` reports true, so the corner stays visually clean until
+you're actually near it; hovering the thumbnail itself reveals it, not just the button, so there's
+no chicken-and-egg problem where the close button would need to already be visible to be hovered.
+Also gained a `.help()` tooltip naming what's currently in the secondary slot
+(`VLCPlayerWindowManager.secondaryTitle`), and the frame change on a window-resize-driven size
+change (see divisor snapping above) now animates instead of popping between quantized sizes.
 
 **No track picker, no scrub bar, no controls beyond tap-to-swap, the "×" close button, and — for a
 live-channel secondary — the right-click "Channel" submenu below.** A FEED or Watch Now secondary

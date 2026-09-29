@@ -165,6 +165,7 @@ struct VLCPlayerView: View {
     @State private var yieldWatchNowConfirm: QuickRecordYieldRequest? = nil
     @State private var isFullScreen = false      // driven by WindowCloseObserver's NSWindowDelegate callbacks
     @State private var toolbarHovered = false     // reveals the toolbar overlay while isFullScreen (see body)
+    @State private var pipHovered = false         // reveals the PiP thumbnail's close button on hover (see pipOverlay)
     // Gates FEED auto-play (see startPlayback's own doc comment) until this much real time has
     // passed since the current stream opened — set by a .task(id: bridge.currentURL) below, so a
     // channel switch mid-session restarts the wait for the newly-opened stream.
@@ -1408,15 +1409,26 @@ struct VLCPlayerView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.white.opacity(0.25)))
                         .contentShape(Rectangle())
+                        // Smooths the jump between quantized divisor sizes (see
+                        // pipThumbnailSize) while dragging the window to resize it, rather than
+                        // popping straight from one clean fraction to the next.
+                        .animation(.easeOut(duration: 0.15), value: pipThumbnailSize(containerWidth: geo.size.width))
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("vlc-pip-thumbnail")
                     .accessibilityLabel("Swap to picture-in-picture stream")
+                    .help(VLCPlayerWindowManager.shared.secondaryTitle.map { "\($0) (picture-in-picture)" } ?? "Picture-in-picture")
                     .contextMenu {
                         pipCornerMenu
                         pipChannelMenu
                     }
 
+                    // Hover-revealed (opacity, not conditional rendering — the same "hidden but
+                    // still hoverable" idiom the recording scrub bar/fullscreen toolbar overlays
+                    // use above) rather than always-on, so the corner stays clean until you're
+                    // actually near it. .onHover is on the outer ZStack below, not this button
+                    // alone, so moving onto the thumbnail itself also reveals it — no chicken-
+                    // and-egg problem where the button must already be visible to be hovered.
                     Button {
                         VLCPlayerWindowManager.shared.closeSecondary()
                     } label: {
@@ -1428,7 +1440,10 @@ struct VLCPlayerView: View {
                     .padding(4)
                     .accessibilityIdentifier("vlc-pip-close-button")
                     .accessibilityLabel("Close picture-in-picture")
+                    .opacity(pipHovered ? 1 : 0)
+                    .animation(.easeInOut(duration: 0.2), value: pipHovered)
                 }
+                .onHover { pipHovered = $0 }
                 if pipCorner.isLeading { Spacer() }
             }
             if pipCorner.isTop { Spacer() }
