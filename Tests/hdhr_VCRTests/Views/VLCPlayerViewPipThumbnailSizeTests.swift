@@ -2,76 +2,87 @@ import Testing
 import CoreGraphics
 @testable import hdhr_VCR
 
-// Coverage for VLCPlayerView.pipThumbnailSize(nativePixelSize:maxWidth:) — added 2026-09-19 so the
-// PiP thumbnail's own box matches the secondary stream's real aspect ratio instead of always
+// Coverage for VLCPlayerView.pipThumbnailSize(nativePixelSize:targetWidth:) — added 2026-09-19 so
+// the PiP thumbnail's own box matches the secondary stream's real aspect ratio instead of always
 // assuming 16:9 (a 4:3 source used to letterbox/pillarbox inside a fixed 16:9 box). Falls back to
 // 16:9 before libvlc has reported real dimensions (nativePixelSize nil, or before the first
 // decoded frame).
+//
+// Redesigned 2026-09-29: rather than scaling to `targetWidth` exactly, the result now snaps to
+// whichever `pipThumbnailDivisors` entry (4/8/16/32) divides the *native* size into a width closest
+// to `targetWidth` — dividing both axes by the same integer, a clean binning ratio rather than an
+// arbitrary scale factor, after a live report of slight moiré on some content at the old exact-width
+// behavior. `targetWidth` is now a hint the snap aims for, not a guarantee.
 @Suite("VLCPlayerView.pipThumbnailSize")
 struct VLCPlayerViewPipThumbnailSizeTests {
 
-    private let maxWidth: CGFloat = 192
+    private let targetWidth: CGFloat = 192
 
     @Test func nilNativeSize_fallsBackTo16x9() {
-        let size = VLCPlayerView.pipThumbnailSize(nativePixelSize: nil, maxWidth: maxWidth)
-        #expect(size.width == maxWidth)
-        #expect(size.height == (maxWidth * 9 / 16).rounded())
+        let size = VLCPlayerView.pipThumbnailSize(nativePixelSize: nil, targetWidth: targetWidth)
+        #expect(size.width == targetWidth)
+        #expect(size.height == (targetWidth * 9 / 16).rounded())
     }
 
     @Test func zeroWidthOrHeight_fallsBackTo16x9() {
-        #expect(VLCPlayerView.pipThumbnailSize(nativePixelSize: CGSize(width: 0, height: 1080), maxWidth: maxWidth).height
-                == (maxWidth * 9 / 16).rounded())
-        #expect(VLCPlayerView.pipThumbnailSize(nativePixelSize: CGSize(width: 1920, height: 0), maxWidth: maxWidth).height
-                == (maxWidth * 9 / 16).rounded())
+        #expect(VLCPlayerView.pipThumbnailSize(nativePixelSize: CGSize(width: 0, height: 1080), targetWidth: targetWidth).height
+                == (targetWidth * 9 / 16).rounded())
+        #expect(VLCPlayerView.pipThumbnailSize(nativePixelSize: CGSize(width: 1920, height: 0), targetWidth: targetWidth).height
+                == (targetWidth * 9 / 16).rounded())
     }
 
     @Test func negativeDimensions_fallBackTo16x9() {
-        let size = VLCPlayerView.pipThumbnailSize(nativePixelSize: CGSize(width: -1, height: -1), maxWidth: maxWidth)
-        #expect(size.height == (maxWidth * 9 / 16).rounded())
+        let size = VLCPlayerView.pipThumbnailSize(nativePixelSize: CGSize(width: -1, height: -1), targetWidth: targetWidth)
+        #expect(size.height == (targetWidth * 9 / 16).rounded())
     }
 
-    @Test func genuine16x9Source_matchesFallbackExactly() {
-        let size = VLCPlayerView.pipThumbnailSize(nativePixelSize: CGSize(width: 1920, height: 1080), maxWidth: maxWidth)
-        #expect(size.width == maxWidth)
-        #expect(size.height == (maxWidth * 9 / 16).rounded())
+    @Test func genuine16x9Source_snapsToClosestDivisor() {
+        // 1920x1080 @ target 192: candidates are /4=480, /8=240, /16=120, /32=60 — 240 is closest.
+        let size = VLCPlayerView.pipThumbnailSize(nativePixelSize: CGSize(width: 1920, height: 1080), targetWidth: targetWidth)
+        #expect(size.width == 240)
+        #expect(size.height == 135)   // 1080/8, exact — same divisor applied to both axes
     }
 
     @Test func fourByThreeSource_isShapedFourByThree_notLetterboxed() {
-        // 640x480 (4:3) — height should be noticeably taller than the 16:9 fallback would give.
-        let size = VLCPlayerView.pipThumbnailSize(nativePixelSize: CGSize(width: 640, height: 480), maxWidth: maxWidth)
-        let expectedHeight = (maxWidth * 480 / 640).rounded()   // 144
-        #expect(size.width == maxWidth)
-        #expect(size.height == expectedHeight)
-        #expect(size.height > (maxWidth * 9 / 16).rounded(), "4:3 must be taller than 16:9 at the same width")
+        // 640x480 (4:3) @ target 192: candidates are /4=160, /8=80, /16=40, /32=20 — 160 is closest.
+        let size = VLCPlayerView.pipThumbnailSize(nativePixelSize: CGSize(width: 640, height: 480), targetWidth: targetWidth)
+        #expect(size.width == 160)
+        #expect(size.height == 120)   // 480/4, exact 4:3 — never letterboxed into a 16:9 box
     }
 
     @Test func portraitSource_tallerThanWide() {
         // A vertical/portrait stream (e.g. 1080x1920) should produce a height greater than the width.
-        let size = VLCPlayerView.pipThumbnailSize(nativePixelSize: CGSize(width: 1080, height: 1920), maxWidth: maxWidth)
+        let size = VLCPlayerView.pipThumbnailSize(nativePixelSize: CGSize(width: 1080, height: 1920), targetWidth: targetWidth)
         #expect(size.height > size.width)
     }
 
-    @Test func widthAlwaysFixedAtMaxWidth_regardlessOfSourceShape() {
-        for native in [CGSize(width: 1920, height: 1080), CGSize(width: 640, height: 480),
-                       CGSize(width: 720, height: 480), CGSize(width: 3840, height: 2160)] {
-            #expect(VLCPlayerView.pipThumbnailSize(nativePixelSize: native, maxWidth: maxWidth).width == maxWidth)
+    @Test func result_isAlwaysAnExactDivisorOfNativeSize_neverAnArbitraryScale() {
+        // The whole point of the redesign: whatever size comes out, both axes must be the native
+        // size divided by the exact same integer from pipThumbnailDivisors — never independently
+        // scaled/rounded, which is what would reintroduce the reported moiré.
+        let native = CGSize(width: 1920, height: 1080)
+        for target: CGFloat in [80, 140, 192, 240, 340, 500] {
+            let size = VLCPlayerView.pipThumbnailSize(nativePixelSize: native, targetWidth: target)
+            let divisor = native.width / size.width
+            #expect([4, 8, 16, 32].contains(Int(divisor.rounded())), "target=\(target) produced non-clean divisor \(divisor)")
+            #expect(size.height == (native.height / divisor).rounded(), "target=\(target) height must use the same divisor as width")
         }
     }
 
-    @Test func respectsCustomMaxWidth() {
-        let size = VLCPlayerView.pipThumbnailSize(nativePixelSize: CGSize(width: 1920, height: 1080), maxWidth: 300)
-        #expect(size.width == 300)
-        #expect(size.height == (300 * 9 / 16).rounded())
+    @Test func neverExceedsNativeSize_evenForAWideTarget() {
+        // Smallest divisor is 4, so the result can never upscale past 1/4 of native — no target,
+        // however large, should produce a thumbnail bigger than that.
+        let native = CGSize(width: 640, height: 480)
+        let size = VLCPlayerView.pipThumbnailSize(nativePixelSize: native, targetWidth: 10_000)
+        #expect(size.width == 160)   // 640/4 — the largest available clean fraction
+        #expect(size.height == 120)
     }
 
-    // MARK: - Cross-product: every common source shape × every maxWidth this app actually uses
+    // MARK: - Cross-product: every common source shape × every target width this app actually uses
 
-    // The individual tests above pin specific known values (16:9 fallback, 4:3, portrait); this
-    // cross-products a broader set of real-world source aspect ratios against every maxWidth the
-    // app passes (thumbnail corner sizes at different window scales) and checks the one invariant
-    // that must hold for all of them: width is always pinned exactly to maxWidth, and height is
-    // always exactly source-aspect-ratio-derived from it — never independently clamped/rounded in a
-    // way that drifts from the source shape.
+    // Checks the invariants that must hold for every combination: width/height are always the same
+    // exact native-size divisor (never independently derived), and that divisor is always one of
+    // pipThumbnailDivisors.
     private static let sourceShapes: [(name: String, size: CGSize)] = [
         ("16:9 HD",       CGSize(width: 1920, height: 1080)),
         ("16:9 SD",       CGSize(width: 1280, height: 720)),
@@ -81,13 +92,47 @@ struct VLCPlayerViewPipThumbnailSizeTests {
         ("portrait 9:16", CGSize(width: 1080, height: 1920)),
         ("square 1:1",    CGSize(width: 1000, height: 1000)),
     ]
-    private static let maxWidths: [CGFloat] = [120, 192, 240, 320]
+    private static let targetWidths: [CGFloat] = [140, 192, 240, 340]
 
-    @Test(arguments: sourceShapes, maxWidths)
-    func everySourceShape_everyMaxWidth_heightMatchesAspectRatioExactly(_ shape: (name: String, size: CGSize), maxWidth: CGFloat) {
-        let result = VLCPlayerView.pipThumbnailSize(nativePixelSize: shape.size, maxWidth: maxWidth)
-        let expectedHeight = (maxWidth * shape.size.height / shape.size.width).rounded()
-        #expect(result.width == maxWidth, "\(shape.name) @ maxWidth=\(maxWidth)")
-        #expect(result.height == expectedHeight, "\(shape.name) @ maxWidth=\(maxWidth)")
+    @Test(arguments: sourceShapes, targetWidths)
+    func everySourceShape_everyTargetWidth_usesOneCleanDivisorForBothAxes(_ shape: (name: String, size: CGSize), targetWidth: CGFloat) {
+        let result = VLCPlayerView.pipThumbnailSize(nativePixelSize: shape.size, targetWidth: targetWidth)
+        let divisor = shape.size.width / result.width
+        #expect([4, 8, 16, 32].contains(Int(divisor.rounded())), "\(shape.name) @ target=\(targetWidth) → non-clean divisor \(divisor)")
+        let expectedHeight = (shape.size.height / divisor).rounded()
+        #expect(result.height == expectedHeight, "\(shape.name) @ target=\(targetWidth)")
+    }
+}
+
+// Coverage for VLCPlayerView.pipThumbnailMaxWidth(containerWidth:) — added 2026-09-29 so the PiP
+// thumbnail's *target* scales with the video pane's actual size (bigger window/screen → bigger
+// thumbnail) instead of a single fixed pixel width that only looked right near the default
+// ~1080pt window. This target then feeds pipThumbnailSize's divisor snap above — it's a hint, not
+// the literal rendered width.
+@Suite("VLCPlayerView.pipThumbnailMaxWidth")
+struct VLCPlayerViewPipThumbnailMaxWidthTests {
+
+    @Test func defaultWindowWidth_closeToLegacyFixedValue() {
+        // At the app's default ~1080pt window width, the proportional result should land close to
+        // the old fixed 192pt constant so existing default-size windows don't visibly jump.
+        let width = VLCPlayerView.pipThumbnailMaxWidth(containerWidth: 1080)
+        #expect(abs(width - 194.4) < 0.5)
+    }
+
+    @Test func verySmallContainer_clampsToMinimum() {
+        #expect(VLCPlayerView.pipThumbnailMaxWidth(containerWidth: 300) == 140)
+        #expect(VLCPlayerView.pipThumbnailMaxWidth(containerWidth: 0) == 140)
+    }
+
+    @Test func veryLargeContainer_clampsToMaximum() {
+        // A window resized toward a 4K/5K native size shouldn't grow the thumbnail unbounded.
+        #expect(VLCPlayerView.pipThumbnailMaxWidth(containerWidth: 3840) == 340)
+        #expect(VLCPlayerView.pipThumbnailMaxWidth(containerWidth: 5120) == 340)
+    }
+
+    @Test func midRangeContainer_scalesProportionally() {
+        let narrow = VLCPlayerView.pipThumbnailMaxWidth(containerWidth: 900)
+        let wide = VLCPlayerView.pipThumbnailMaxWidth(containerWidth: 1600)
+        #expect(wide > narrow, "a wider video pane should produce a wider (or equal, once clamped) thumbnail")
     }
 }

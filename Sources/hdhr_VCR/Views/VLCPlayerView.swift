@@ -1319,28 +1319,60 @@ struct VLCPlayerView: View {
     // to whichever corner `pipCorner` holds (right-click the thumbnail to change it) using the
     // same "Spacer()+padding+.ultraThinMaterial" idiom as the recording scrub bar/fullscreen
     // toolbar overlays above, not new chrome.
-    // Sized to the secondary stream's own native aspect ratio once known
-    // (bridge.secondaryVideoPixelSize — published by tickSecondary(), nil until the first decoded
-    // frame) rather than assuming 16:9, so a 4:3 (or any other) channel's thumbnail is shaped to
-    // match instead of always being letterboxed/pillarboxed inside a fixed 16:9 box. Width fixed;
-    // height follows the ratio. Falls back to 16:9 before real dimensions are known.
-    private static let pipThumbnailMaxWidth: CGFloat = 192
+    //
+    // Target width scales with the video pane's own current size, not a single fixed pixel value —
+    // a fixed 192pt (the pre-2026-09-29 behavior) looked reasonable only near the default ~1080pt
+    // window width: tiny on a window resized up toward a 4K/5K native size, oversized on a window
+    // shrunk down small. `pipThumbnailWidthFraction` of the pane's current width, clamped to
+    // [pipThumbnailMinWidth, pipThumbnailMaxWidthCap] so it never drops below a usable hit-target/
+    // readability floor or grows large enough to compete with the primary video.
+    nonisolated private static let pipThumbnailWidthFraction: CGFloat = 0.18
+    nonisolated private static let pipThumbnailMinWidth: CGFloat = 140
+    nonisolated private static let pipThumbnailMaxWidthCap: CGFloat = 340
 
-    private var pipThumbnailSize: CGSize {
-        Self.pipThumbnailSize(nativePixelSize: bridge.secondaryVideoPixelSize, maxWidth: Self.pipThumbnailMaxWidth)
+    /// Pure decision, extracted for unit testing.
+    nonisolated static func pipThumbnailMaxWidth(containerWidth: CGFloat) -> CGFloat {
+        max(pipThumbnailMinWidth, min(pipThumbnailMaxWidthCap, containerWidth * pipThumbnailWidthFraction))
     }
 
-    /// Pure decision, extracted for unit testing. `nativePixelSize` invalid/unknown (nil, or either
-    /// dimension <= 0) → 16:9 fallback, since libvlc hasn't reported real dimensions yet.
-    nonisolated static func pipThumbnailSize(nativePixelSize: CGSize?, maxWidth: CGFloat) -> CGSize {
+    // The *actual* rendered size snaps to a clean power-of-two fraction of the secondary stream's
+    // own native pixel size (nativeWidth/4, /8, /16, /32 — same integer applied to both axes) rather
+    // than scaling to an arbitrary target width. Reported live 2026-09-29: a plain "scale to
+    // targetWidth px" (the original design) produces a non-clean downscale ratio against the
+    // source's real resolution, which introduced a slight moiré on some content (fine grids/text)
+    // — an arbitrary ratio doesn't land on pixel-aligned sample boundaries the way a clean binning
+    // ratio does. Dividing width and height by the *same* integer also guarantees the aspect ratio
+    // is preserved exactly (no separate rounding of each axis to drift apart), and — since the
+    // smallest divisor is 4 — this can only ever downscale, never upscale past native, however small
+    // the window gets.
+    nonisolated private static let pipThumbnailDivisors: [Int] = [4, 8, 16, 32]
+
+    private func pipThumbnailSize(containerWidth: CGFloat) -> CGSize {
+        Self.pipThumbnailSize(nativePixelSize: bridge.secondaryVideoPixelSize,
+                               targetWidth: Self.pipThumbnailMaxWidth(containerWidth: containerWidth))
+    }
+
+    /// Pure decision, extracted for unit testing. Picks whichever `pipThumbnailDivisors` entry
+    /// divides the native size into a width closest to `targetWidth`, then divides *both* axes by
+    /// that same integer. `nativePixelSize` invalid/unknown (nil, or either dimension <= 0, i.e.
+    /// before libvlc has reported real dimensions) falls back to a plain 16:9 box sized exactly to
+    /// `targetWidth` — there's no native size yet to snap against.
+    nonisolated static func pipThumbnailSize(nativePixelSize: CGSize?, targetWidth: CGFloat) -> CGSize {
         guard let native = nativePixelSize, native.width > 0, native.height > 0 else {
-            return CGSize(width: maxWidth, height: (maxWidth * 9 / 16).rounded())
+            return CGSize(width: targetWidth, height: (targetWidth * 9 / 16).rounded())
         }
-        let height = (maxWidth * native.height / native.width).rounded()
-        return CGSize(width: maxWidth, height: height)
+        let bestDivisor = pipThumbnailDivisors.min { a, b in
+            abs(native.width / CGFloat(a) - targetWidth) < abs(native.width / CGFloat(b) - targetWidth)
+        } ?? pipThumbnailDivisors[0]
+        let width = (native.width / CGFloat(bestDivisor)).rounded()
+        let height = (native.height / CGFloat(bestDivisor)).rounded()
+        return CGSize(width: width, height: height)
     }
 
+    // GeometryReader added 2026-09-29 (alongside the fixed→proportional maxWidth change above) —
+    // the only reason this overlay needs its container's actual size at all.
     private var pipOverlay: some View {
+        GeometryReader { geo in
         VStack {
             if !pipCorner.isTop { Spacer() }
             HStack {
@@ -1370,7 +1402,8 @@ struct VLCPlayerView: View {
                                     .tint(.white)
                             }
                         }
-                        .frame(width: pipThumbnailSize.width, height: pipThumbnailSize.height)
+                        .frame(width: pipThumbnailSize(containerWidth: geo.size.width).width,
+                               height: pipThumbnailSize(containerWidth: geo.size.width).height)
                         .background(Color.black)
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.white.opacity(0.25)))
@@ -1401,6 +1434,7 @@ struct VLCPlayerView: View {
             if pipCorner.isTop { Spacer() }
         }
         .padding(16)
+        }
     }
 
     // Right-click menu on the PiP thumbnail — the user-facing way to move it, per an explicit

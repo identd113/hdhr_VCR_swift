@@ -351,7 +351,15 @@ their local relay URL. Entry point: whenever the player window already has somet
 open, the Recording Now and "Recording on Another Mac" menu rows each gain a "Watch alongside
 current (PiP)" action (`pip.fill` icon) next to their normal Watch button — never automatic.
 `WatchNowView`'s per-channel rows get the same action too (see `docs/WatchNowView.md`), which is
-the entry point for a genuine live channel as the secondary.
+the entry point for a genuine live channel as the secondary. **A fourth entry point**: right-
+clicking the main video pane offers "Add Picture-in-Picture…", opening `PiPPickerView` (a separate
+window, always starting fresh — see its own doc comment) with the same three source categories
+(recording, FEED, live channel). Only offered while `VLCPlayerWindowManager.shared
+.secondaryDeviceID == nil` (added 2026-09-28) — there's only one PiP secondary slot, so picking a
+new source while one's already active would silently replace it rather than add a second
+thumbnail, which "Add…" would misleadingly suggest; close the existing secondary first via its own
+"×" button (or, for a live-channel secondary, the thumbnail's own right-click "Channel" submenu —
+see "Changing the channel" below) to reach this picker again.
 
 **The secondary is not restricted to the primary's own tuner/device** — playback works correctly
 for any combination, same-device or cross-device. The only cross-device caveat is cosmetic and
@@ -374,14 +382,35 @@ primary-only, so a swap's scrub-bar anchor always describes whichever URL is *cu
 
 **Layout**: composited as a `ZStack` sibling in `VLCPlayerView.body`, pinned to whichever corner
 `pipCorner` holds via the same `Spacer()+padding+.ultraThinMaterial` idiom as the recording scrub
-bar / fullscreen toolbar overlays — not new chrome (see "Positioning the thumbnail" below). Fixed
-192pt-wide, height following the secondary stream's own native aspect ratio (`pipThumbnailSize`,
-computed from `bridge.secondaryVideoPixelSize` — published by `tickSecondary()`'s own
-`videoNativeSize(slot: .secondary)` poll, mirroring `tickPrimary`'s `videoPixelSize`; falls back to
-16:9 before the first decoded frame, since libvlc hasn't reported real dimensions yet) rather than
-assuming every channel is 16:9 — a 4:3 source gets a 4:3 thumbnail, not letterboxed inside a wider
-box. The sizing math itself is a pure function, `pipThumbnailSize(nativePixelSize:maxWidth:)` —
-unit tested in `Tests/hdhr_VCRTests/Views/VLCPlayerViewPipThumbnailSizeTests.swift`. Video-only
+bar / fullscreen toolbar overlays — not new chrome (see "Positioning the thumbnail" below).
+
+**Sizing, redesigned 2026-09-29 in two layers.** *Target* width scales with the video pane's own
+current size (via a `GeometryReader` wrapping `pipOverlay`) rather than a single fixed pixel value
+— a fixed 192pt (the original 2026-09-19 behavior) looked reasonable only near the default ~1080pt
+window width: tiny on a window resized up toward a 4K/5K native size, oversized on a window shrunk
+down small. `pipThumbnailMaxWidth(containerWidth:)` takes 18% of the pane's width
+(`pipThumbnailWidthFraction`), clamped to `[140, 340]` (`pipThumbnailMinWidth`/
+`pipThumbnailMaxWidthCap`) so it never drops below a usable hit-target/readability floor or grows
+large enough to compete with the primary video — at the default window width this lands at ~194pt,
+close to the old fixed value, so existing default-size windows don't visibly jump.
+
+That target width is a *hint*, not the literal rendered size: `pipThumbnailSize(nativePixelSize
+:targetWidth:)` snaps the actual thumbnail to whichever of `pipThumbnailDivisors` (`[4, 8, 16, 32]`)
+divides the secondary stream's own **native** pixel size (`bridge.secondaryVideoPixelSize` —
+published by `tickSecondary()`'s own `videoNativeSize(slot: .secondary)` poll, mirroring
+`tickPrimary`'s `videoPixelSize`) into a width closest to the target, then divides *both* width and
+height by that same integer. Reported live 2026-09-29: scaling to an arbitrary target width (the
+original design) produces a non-clean downscale ratio against the source's real resolution, which
+introduced a slight moiré on some content (fine grids/text) — an arbitrary ratio doesn't land on
+pixel-aligned sample boundaries the way a clean binning ratio does. Dividing both axes by the same
+integer also guarantees the aspect ratio is preserved exactly (never independently rounded per axis,
+so a 4:3 source is never letterboxed into a 16:9 box), and — since the smallest divisor is 4 — the
+thumbnail can only ever be downscaled, never upscaled past native, however small the window gets or
+however wide the target. Falls back to a plain 16:9 box sized exactly to the target width before the
+first decoded frame (native size not yet known — `nativePixelSize` nil or either dimension `<= 0`).
+The sizing math is two pure functions, `pipThumbnailMaxWidth(containerWidth:)` and
+`pipThumbnailSize(nativePixelSize:targetWidth:)` — unit tested in
+`Tests/hdhr_VCRTests/Views/VLCPlayerViewPipThumbnailSizeTests.swift`. Video-only
 (`VLCSecondaryVideoSurface`), a small spinner/error/
 ended glyph keyed off `bridge.secondaryIsPlaying`/`secondaryHasError`/`secondaryHasEnded` (the
 `libvlc_Ended`, state-6 case — added 2026-09-19; `tickSecondary()` originally only checked for
