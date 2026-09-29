@@ -339,14 +339,16 @@ struct hdhr_VCRApp: App {
                           accessibilityLabel: "hdhrVCRplus — recording starting in \(minsInt) minute\(minsInt == 1 ? "" : "s")")
         case .feedAvailable:
             // Same baked-artwork treatment as recording/up-next (app-feed.jpg — the same mark,
-            // just a blue status dot instead of red/amber), so a FEED being available reads as
+            // just a blue status dot instead of red/amber), so a FEED being watched reads as
             // clearly "part of the same family" of status lights rather than a generic system
             // glyph. "play.tv.fill" + watchNowBlue remain as the bundle-less fallback, matching the
             // same Watch-button icon/color MenuContent's own "Recording on Another Mac" entries use.
+            // AppState.hasAvailableRemoteFeed requires a real viewer, not just an existing relay
+            // (resolved 2026-09-29) — this label reflects that: someone is actually watching.
             blinkableIcon(litImage: appIconMenuBarFeed,
                           litSystemName: "play.tv.fill",
                           litColor: watchNowBlue,
-                          accessibilityLabel: "hdhrVCRplus — a recording is available to watch from another Mac")
+                          accessibilityLabel: "hdhrVCRplus — a recording from another Mac is being watched")
         case nil:
             if let icon = appIconMenuBar {
                 Image(nsImage: icon)

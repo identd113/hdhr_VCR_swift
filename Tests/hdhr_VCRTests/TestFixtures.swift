@@ -173,7 +173,8 @@ extension HDHRDevice {
 
 extension LineupEntry {
     static func test(number: String = "5.1", name: String = "KFOO", favorite: Bool = false,
-                      showTitle: String? = nil, sourceHostname: String? = nil) -> LineupEntry {
+                      showTitle: String? = nil, sourceHostname: String? = nil,
+                      rawViewers: Int? = nil, transcodeViewers: Int? = nil) -> LineupEntry {
         LineupEntry(
             GuideNumber: number,
             GuideName: name,
@@ -181,6 +182,8 @@ extension LineupEntry {
             HD: 1,
             Favorite: favorite ? 1 : nil,
             virtualRelayShowTitle: showTitle,
+            virtualRelayTranscodeViewers: transcodeViewers,
+            virtualRelayRawViewers: rawViewers,
             virtualRelaySourceHostname: sourceHostname
         )
     }

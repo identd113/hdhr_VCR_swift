@@ -21,9 +21,14 @@ import Foundation
 @Suite("AppState.statusLightCandidates — tier priority")
 struct AppStateStatusLightTests {
 
-    private func makeRemoteRelay(showTitle: String = "Remote Show") -> (device: HDHRDevice, lineup: [String: [LineupEntry]]) {
+    // rawViewers defaults to 1 — hasAvailableRemoteFeed requires a real viewer (raw + transcode
+    // summed > 0), not just an existing relay (resolved 2026-09-29, see TODO.md's "FEED-available
+    // status light" entry) — so a relay built by this helper reads as feedAvailable by default,
+    // matching what most of these tests actually want to exercise (the tier/priority logic, not
+    // the viewer-count gate itself — that gate gets its own dedicated test below).
+    private func makeRemoteRelay(showTitle: String = "Remote Show", rawViewers: Int? = 1) -> (device: HDHRDevice, lineup: [String: [LineupEntry]]) {
         let device = HDHRDevice.test(id: "FEEDBEEF", isVirtualRelay: true)
-        let entry = LineupEntry.test(number: "9.9", showTitle: showTitle)
+        let entry = LineupEntry.test(number: "9.9", showTitle: showTitle, rawViewers: rawViewers)
         return (device, [device.DeviceID: [entry]])
     }
 
@@ -83,5 +88,24 @@ struct AppStateStatusLightTests {
         let state = makeTestAppState(shows: [], devices: [device], lineups: lineups)
         state.config.FEED_feature_enabled = true   // isolate the isAvailable guard from the master hide switch (also off)
         #expect(state.statusLightCandidates.isEmpty)
+    }
+
+    // Resolved 2026-09-29 (TODO.md's "FEED-available status light" entry): a relay merely existing
+    // is no longer enough — someone has to actually be watching it (raw + transcode viewer count
+    // summed > 0). A relay with a show attached but zero of either must not light the blue dot.
+    @Test @MainActor func remoteRelayWithNoViewers_doesNotCountAsFeedAvailable() {
+        let (device, lineups) = makeRemoteRelay(rawViewers: nil)
+        let state = makeTestAppState(shows: [], devices: [device], lineups: lineups)
+        state.config.FEED_feature_enabled = true
+        #expect(state.statusLightCandidates.isEmpty)
+    }
+
+    // Transcode viewers count the same as raw viewers — either alone is enough.
+    @Test @MainActor func remoteRelayWithTranscodeViewerOnly_countsAsFeedAvailable() {
+        let device = HDHRDevice.test(id: "FEEDBEEF", isVirtualRelay: true)
+        let entry = LineupEntry.test(number: "9.9", showTitle: "Remote Show", rawViewers: nil, transcodeViewers: 1)
+        let state = makeTestAppState(shows: [], devices: [device], lineups: [device.DeviceID: [entry]])
+        state.config.FEED_feature_enabled = true
+        #expect(state.statusLightCandidates == [.feedAvailable])
     }
 }

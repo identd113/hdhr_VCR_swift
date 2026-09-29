@@ -309,11 +309,23 @@ final class AppState: ObservableObject {
     // remoteRelayEntries' full filter+flatMap array every second, even while FEED is disabled or no
     // remote relay exists, is unnecessary allocation on an infinite hot loop. Mirrors
     // remoteRelayEntries' own FEED_feature_enabled gate rather than re-checking it separately.
+    //
+    // Requires a real viewer (raw + transcode summed > 0), not just an existing relay — resolved
+    // 2026-09-29 per TODO.md's "FEED-available status light" entry: a relay merely existing is a
+    // much weaker signal ("a relay happens to be up") than someone actually watching it ("something
+    // needs your attention"), and per-show virtualRelayTranscodeViewers/virtualRelayRawViewers have
+    // been published and kept fresh (viewer-count-triggered announces) since 2026-09-13 specifically
+    // to make this possible. remoteRelayEntries (MenuContent's "Recording on Another Mac" list)
+    // deliberately still lists every available relay regardless of viewer count — that section is
+    // "what could I watch," a different question from the status light's "does this need my eyes."
     var hasAvailableRemoteFeed: Bool {
         guard config.FEED_feature_enabled else { return false }
         return devices.contains { device in
             device.isVirtualRelay && device.isAvailable
-                && (lineups[device.DeviceID] ?? []).contains { $0.virtualRelayShowTitle != nil }
+                && (lineups[device.DeviceID] ?? []).contains { entry in
+                    entry.virtualRelayShowTitle != nil
+                        && ((entry.virtualRelayTranscodeViewers ?? 0) + (entry.virtualRelayRawViewers ?? 0)) > 0
+                }
         }
     }
 

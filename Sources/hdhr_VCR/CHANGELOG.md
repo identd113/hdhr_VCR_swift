@@ -14,6 +14,7 @@ Every entry is tagged **Added** (something new), **Updated** (existing behavior 
 - **`/api/tuner-status.json`** — a structured JSON endpoint giving per-tuner occupancy (recording/watching-live/other breakdown) and Recording/Up Next/Scheduled/Paused shows with poster art, for external pollers like Home Assistant. Off by default — enable in Settings → Sharing → Home Assistant.
 
 **Updated**
+- **The menu bar's blue "FEED available" light now only lights up while someone is actually watching another Mac's shared recording**, not just whenever one exists to watch. "Recording on Another Mac" in the menu still lists every available relay regardless of viewers — only the status light's meaning changed.
 - **AirPlay speakers are now labeled in the Audio Output menu** (e.g. "Living Room (AirPlay)") instead of showing just a plain device name.
 - **The player's Display menu (for AirPlay video via Screen Mirroring) now explains itself in-app** — a short tip and tooltip pointing at Control Center → Screen Mirroring, instead of relying on you already knowing that step.
 - **Only one Mac's Recording FEED relay can now be live for a given physical tuner on the network at a time.** Previously, if two Macs both recorded from the same shared tuner, both could advertise a relay for it; now whichever started recording first keeps the relay and the other backs off automatically.
