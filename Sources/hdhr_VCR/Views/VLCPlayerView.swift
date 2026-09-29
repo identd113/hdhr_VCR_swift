@@ -15,6 +15,10 @@ private extension Notification.Name {
     // keys/Esc already get, instead of relying on the toolbar Info button's own
     // .keyboardShortcut("i", modifiers: []).
     static let vlcToggleInfoOverlay = Notification.Name("vlcToggleInfoOverlay")
+    // Posted by installKeyMonitor on a bare Tab keydown, but only while a PiP secondary is open —
+    // same reasoning as vlcToggleInfoOverlay: the swap lives on VLCPlayerView (needs `state`/
+    // `bridge`/toolbar @State), not on VLCPlayerWindowManager where the key monitor itself lives.
+    static let vlcSwapPiP = Notification.Name("vlcSwapPiP")
 }
 
 // ── VLCVideoSurface ───────────────────────────────────────────────────────────
@@ -894,6 +898,9 @@ struct VLCPlayerView: View {
         .onReceive(NotificationCenter.default.publisher(for: .vlcToggleInfoOverlay)) { _ in
             infoOverlayVisible.toggle()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .vlcSwapPiP)) { _ in
+            swapPrimaryAndSecondary()
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in
             availableScreens = NSScreen.screens
         }
@@ -1421,6 +1428,13 @@ struct VLCPlayerView: View {
                     .contextMenu {
                         pipCornerMenu
                         pipChannelMenu
+                        Divider()
+                        // A second, always-discoverable way to close the secondary — the "×"
+                        // button itself is hover-revealed (see above), so this covers anyone who
+                        // right-clicks before ever hovering long enough to see it.
+                        Button("Close Picture-in-Picture") {
+                            VLCPlayerWindowManager.shared.closeSecondary()
+                        }
                     }
 
                     // Hover-revealed (opacity, not conditional rendering — the same "hidden but
@@ -2675,6 +2689,17 @@ final class VLCPlayerWindowManager {
                                     // plain Esc elsewhere (e.g. dismissing a popover) still works.
                 guard win.styleMask.contains(.fullScreen) else { return event }
                 win.toggleFullScreen(nil)
+                return nil
+            case (.keyDown, 48):   // tab — swaps primary/secondary PiP, added 2026-09-29. Only
+                                    // consumed while a secondary is actually open (self
+                                    // .secondaryDeviceID != nil); otherwise Tab passes through
+                                    // untouched so normal focus-cycling among toolbar controls
+                                    // keeps working the rest of the time, when there's nothing to
+                                    // swap anyway. Bare Tab only — Shift-Tab (reverse focus-cycle)
+                                    // and any other modifier combo pass through unconsumed too.
+                guard self.secondaryDeviceID != nil,
+                      event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty else { return event }
+                NotificationCenter.default.post(name: .vlcSwapPiP, object: nil)
                 return nil
             default:
                 return event

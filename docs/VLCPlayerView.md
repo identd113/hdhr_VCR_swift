@@ -416,15 +416,20 @@ ended glyph keyed off `bridge.secondaryIsPlaying`/`secondaryHasError`/`secondary
 `libvlc_Ended`, state-6 case — added 2026-09-19; `tickSecondary()` originally only checked for
 error and playing, so a secondary reaching EOF, e.g. a finished Watch Now recording, just froze on
 its last frame forever with no indication at all), and a small "×" close button
-(`VLCPlayerWindowManager.closeSecondary()`) — the only way to stop the secondary without swapping
-it to primary first. **Hover-revealed, added 2026-09-29** — hidden (opacity, not conditional
-rendering — same idiom as the recording scrub bar/fullscreen toolbar overlays above) until
-`.onHover` on the thumbnail's own `ZStack` reports true, so the corner stays visually clean until
-you're actually near it; hovering the thumbnail itself reveals it, not just the button, so there's
-no chicken-and-egg problem where the close button would need to already be visible to be hovered.
-Also gained a `.help()` tooltip naming what's currently in the secondary slot
-(`VLCPlayerWindowManager.secondaryTitle`), and the frame change on a window-resize-driven size
-change (see divisor snapping above) now animates instead of popping between quantized sizes.
+(`VLCPlayerWindowManager.closeSecondary()`) — one of two ways to stop the secondary without
+swapping it to primary first (the other is the right-click menu's own "Close Picture-in-Picture"
+item, see "Positioning the thumbnail" below). **Hover-revealed, added 2026-09-29** — hidden
+(opacity, not conditional rendering — same idiom as the recording scrub bar/fullscreen toolbar
+overlays above) until `.onHover` on the thumbnail's own `ZStack` reports true, so the corner stays
+visually clean until you're actually near it; hovering the thumbnail itself reveals it, not just
+the button, so there's no chicken-and-egg problem where the close button would need to already be
+visible to be hovered. Since hiding it behind hover costs some discoverability, the right-click
+menu's "Close Picture-in-Picture" item (added the same day, below `pipChannelMenu`) is a second,
+always-discoverable path to the same `closeSecondary()` call, for anyone who right-clicks before
+ever hovering long enough to see the "×". Also gained a `.help()` tooltip naming what's currently
+in the secondary slot (`VLCPlayerWindowManager.secondaryTitle`), and the frame change on a
+window-resize-driven size change (see divisor snapping above) now animates instead of popping
+between quantized sizes.
 
 **No track picker, no scrub bar, no controls beyond tap-to-swap, the "×" close button, and — for a
 live-channel secondary — the right-click "Channel" submenu below.** A FEED or Watch Now secondary
@@ -433,8 +438,17 @@ nil for both, see "Positioning the thumbnail" below); the only ways to change on
 close it and open a different "Watch alongside (PiP)" selection for whatever you actually want, or
 (2) swap it to primary, where the full toolbar's channel picker is available.
 
-**Tap-to-swap** (`VLCPlayerView.swapPrimaryAndSecondary()` → `VLCBridge.swapSlots()`): redesigned
-twice on 2026-09-19. First redesign, after live feedback that the original reconnect-by-URL version
+**Tap-to-swap, or Tab** (`VLCPlayerView.swapPrimaryAndSecondary()` → `VLCBridge.swapSlots()`): a
+bare Tab keypress (added 2026-09-29) does the same swap as clicking the thumbnail, without needing
+the mouse. Handled the same way the arrow-key seek/Esc-fullscreen/bare-"i" shortcuts already are —
+a local `NSEvent` monitor in `VLCPlayerWindowManager.installKeyMonitor` posts `.vlcSwapPiP`,
+consumed by this view's own `.onReceive` (the swap itself needs `state`/`bridge`/toolbar `@State`
+that only the view has, not the window manager — same reason `.vlcToggleInfoOverlay` is a
+notification round-trip rather than a direct call). Only consumed while a PiP secondary is actually
+open (`secondaryDeviceID != nil`) and with no modifier keys held — bare Tab passes through
+untouched the rest of the time, so normal focus-cycling among toolbar controls is unaffected
+whenever there's nothing to swap. Redesigned twice on 2026-09-19. First redesign, after
+live feedback that the original reconnect-by-URL version
 (calling `play(url:slot:)` on both slots, the same shape `toggleFeedTranscode`/`catchUpToLive` use)
 caused a visible rebuffer on every swap: re-target each already-playing player's rendering surface
 (`libvlc_media_player_set_nsobject`) onto the *other* slot's view live, no reconnect. Found live the
