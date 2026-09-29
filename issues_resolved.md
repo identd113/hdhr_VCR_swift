@@ -2013,3 +2013,41 @@ isIncluded`); one existing test's fixture timing was adjusted to keep isolating 
 exclusion specifically rather than incidentally also tripping the new grace-window cutoff.
 
 **Resolving commit**: fixed 2026-09-28.
+
+## RESOLVED (by architecture, not a forced exact repro) — Recording-relay seek deadlock
+
+**Files:** `VLCBridge.swift`, `AppState.swift`, `VLCPlayerView.swift`
+
+**Original finding** (2026-08-19 parallel-agent sweep, later confirmed by code reading): the main
+thread could block synchronously inside a VLC `input_Close` → `pthread_join` → `__ulock_wait` call,
+hanging the whole app (unresponsive UI, no crash) until externally killed — caught live via a crash
+report, ~11 minutes hung (`VLCPlayerView.seekRelative(_:)` → `AppState.seekRecording(showId:
+toSeconds:)` → `input_Close`, on `com.apple.main-thread`).
+
+**Root cause**: `VLCBridge.play(url:)` called `libvlc_media_player_stop` — a synchronous, blocking
+libvlc call — directly on the MainActor. `WebServer.pumpGrowingFile` (the recording-relay's data
+pump), once caught up to the live edge, needs a `Task { @MainActor in ... }` hop just to check
+`show_recording` before sending the next chunk. If `_mpStop` ran on the MainActor at the exact
+instant VLC's own input thread was blocked reading that next chunk, neither side could unblock the
+other — a genuine mutual deadlock, not just a slow operation.
+
+**Fix shipped 2026-08-15**: `_mpStop`/`_mpRelease` moved off the MainActor onto a private serial
+background queue (`VLCBridge.libvlcQueue`) across `play()`/`stop()`/`releasePlayer()`/
+`stopAndClearState()` — the MainActor stays free to service the relay's poll-hop while VLC's
+teardown runs, breaking the circular wait at its structural root. External call sites' signatures
+stayed unchanged; a `currentMedia`-claim-on-capture pattern and a `currentURL`-staleness check in
+the background commit prevent a double-release or a superseded call clobbering newer state.
+
+**Verification, 2026-08-24**: live stress test (a real recording, ~500 rapid arrow-key seeks via
+Accessibility scripting against the player window while a background probe watched for a hang) drove
+the vulnerable state repeatedly and hard — zero deadlocks, two brief self-recovering blips read as
+ordinary scheduler contention, confirmed via `VLCBridge.swift`'s `libvlcQueue` handoffs being `.async`
+everywhere (no `.sync` left anywhere in the file). A separate visual smoke test through the normal,
+non-adversarial flow found no defects either.
+
+**Accepted without a surgical exact-timing repro**: nobody forced the *exact* original nanosecond-
+level race (VLC's input thread blocked mid-read at the precise instant `_mpStop` fires) — that would
+require fault-injecting a delay inside libvlc's own internals, not reachable from this app's Swift
+code. Moved here 2026-09-28 on the strength of the architectural fix (the circular-wait mechanism is
+structurally gone, not just less likely) plus the stress/visual verification above, rather than
+leaving it open indefinitely chasing a repro with a poor effort-to-confidence payoff.
