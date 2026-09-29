@@ -328,10 +328,21 @@ final class AppState: ObservableObject {
     func activeRecordingChannels(for deviceId: String) -> Set<String> {
         Set(recordingShows.filter { $0.hdhr_record == deviceId }.map { $0.show_channel })
     }
-    // Channels whose managed show's recording window has opened (show_next has passed, show_end
-    // hasn't) but show_recording hasn't flipped true yet — the brief, normal startup lag between
-    // a show's scheduled time and RecordingManager actually flipping the flag. Treated the same as
+    // Channels whose managed show's recording window has opened (show_next has passed) but
+    // show_recording hasn't flipped true yet — the brief, normal startup lag between a show's
+    // scheduled time and RecordingManager actually flipping the flag. Treated the same as
     // activeRecordingChannels for ring/badge purposes.
+    //
+    // Bounded to pendingRecordingGraceSeconds past show_next, not the whole show_next...show_end
+    // window — found live 2026-09-19: if startRecording never gets a clean run at all for that
+    // window (confirmed live: show_recording false, show_fail_count 0, show_fail_reason empty, zero
+    // curl processes — idle loop apparently never got a chance, e.g. repeated deploy.sh restarts
+    // landing mid-window during development), this read as "recording" for the show's *entire*
+    // scheduled window with no way to tell "about to start" from "never actually started and never
+    // will." Past the grace period, falls through to whatever it actually resolves to instead
+    // (scheduled/conflict) exactly like the retry-backoff/duplicate-skip exclusions below already
+    // do — no new "missed" UI state invented, just stops lying indefinitely. See ISSUES.md's
+    // "channel-level recording indicator" entry.
     //
     // Excludes a show currently sitting out a missed-start retry backoff (showRuntime[id]?.retryAfter
     // set to a future date — only happens after a real recordShowFailure, never during ordinary
@@ -347,13 +358,24 @@ final class AppState: ObservableObject {
     // duplicate (willSkipCurrentAiring below, added 2026-08-21) — same reasoning as the retry-
     // backoff exclusion above: show_recording never flips true there either, deliberately, so it
     // must resolve to the skip badge instead of a false "recording".
+    private static let pendingRecordingGraceSeconds: TimeInterval = 120
     func pendingRecordingChannels(for deviceId: String) -> Set<String> {
         let now = Date()
         return Set(shows.filter {
-            $0.show_active && !$0.show_paused && !$0.show_recording &&
+            guard let nextAir = $0.show_next else { return false }
+            let retryAfter = showRuntime[$0.show_id]?.retryAfter
+            // Grace window is anchored to whichever is later: the original scheduled time, or a
+            // since-elapsed retry backoff. A retry becoming eligible again is its own fresh "about
+            // to start" moment — anchoring purely on show_next would otherwise cut off a show still
+            // legitimately retrying long after its original air time (found while fixing the
+            // never-attempted-at-all case below; pendingRecordingChannels_expiredRetryBackoff_
+            // isIncluded caught it). retryAfter is guaranteed <= now here whenever it's non-nil,
+            // since the very next check below excludes any show still in a future backoff.
+            let anchor = max(nextAir, retryAfter ?? .distantPast)
+            return $0.show_active && !$0.show_paused && !$0.show_recording &&
             $0.hdhr_record == deviceId &&
-            ($0.show_next ?? .distantFuture) <= now && ($0.show_end ?? .distantPast) > now &&
-            (showRuntime[$0.show_id]?.retryAfter.map { $0 <= now } ?? true) &&
+            nextAir <= now && now < anchor.addingTimeInterval(Self.pendingRecordingGraceSeconds) &&
+            (retryAfter.map { $0 <= now } ?? true) &&
             !willSkipCurrentAiring($0)
         }.map { $0.show_channel })
     }

@@ -177,6 +177,30 @@ struct TunerOccupancyTests {
         #expect(await state.pendingRecordingChannels(for: "DEV1").isEmpty)
     }
 
+    // Found live 2026-09-19 (ISSUES.md): if startRecording never gets a clean run at all for a
+    // show's window (e.g. repeated deploy.sh restarts interrupting the idle loop mid-window during
+    // development), show_recording never flips true and no failure is ever registered either — the
+    // old unbounded show_next...show_end window then read as "recording" for the show's entire
+    // scheduled length with no way to tell "about to start" from "never actually started and never
+    // will." Still well inside show_next...show_end (1720s left), but past the 120s grace period.
+    @Test func pendingRecordingChannels_pastGraceWindowStillNeverStarted_isExcluded() async {
+        var show = Show.testActive(title: "Never Actually Started", channel: "5.1")
+        show.hdhr_record = "DEV1"
+        show.show_next = Date().addingTimeInterval(-125)   // just past the 120s grace period
+        show.show_end  = Date().addingTimeInterval(1600)   // window is still very much open
+        let state = await makeTestAppState(shows: [show], devices: [.test(id: "DEV1", tuners: 2)])
+        #expect(await state.pendingRecordingChannels(for: "DEV1").isEmpty)
+    }
+
+    @Test func pendingRecordingChannels_justInsideGraceWindow_isIncluded() async {
+        var show = Show.testActive(title: "Still Within Grace", channel: "5.1")
+        show.hdhr_record = "DEV1"
+        show.show_next = Date().addingTimeInterval(-115)   // just inside the 120s grace period
+        show.show_end  = Date().addingTimeInterval(1600)
+        let state = await makeTestAppState(shows: [show], devices: [.test(id: "DEV1", tuners: 2)])
+        #expect(await state.pendingRecordingChannels(for: "DEV1") == ["5.1"])
+    }
+
     @Test func pendingRecordingChannels_paused_isExcluded() async {
         var show = Show.testActive(title: "Paused Show", channel: "5.1")
         show.hdhr_record = "DEV1"
@@ -190,11 +214,13 @@ struct TunerOccupancyTests {
     @Test func pendingRecordingChannels_stuckRetryBackoff_isExcluded() async {
         // A real recordShowFailure has already fired and set showRuntime[id]?.retryAfter to a future cooldown —
         // this show isn't capturing anything to disk, so it must fall out of the "recording" set
-        // (letting it resolve to whatever's actually true instead: scheduled or conflict).
+        // (letting it resolve to whatever's actually true instead: scheduled or conflict). show_next
+        // kept inside pendingRecordingGraceSeconds (120s) so this isolates the retryAfter exclusion
+        // specifically, rather than also tripping the separate grace-window cutoff below.
         var show = Show.testActive(title: "Stuck Retrying", channel: "5.1")
         show.hdhr_record = "DEV1"
-        show.show_next = Date().addingTimeInterval(-300)
-        show.show_end  = Date().addingTimeInterval(1500)
+        show.show_next = Date().addingTimeInterval(-30)
+        show.show_end  = Date().addingTimeInterval(1770)
         let showId = show.show_id
         let state = await makeTestAppState(shows: [show], devices: [.test(id: "DEV1", tuners: 2)])
         await MainActor.run { state.showRuntime[showId, default: AppState.ShowRuntimeState()].retryAfter = Date().addingTimeInterval(60) }

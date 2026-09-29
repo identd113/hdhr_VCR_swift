@@ -1984,3 +1984,32 @@ Extracted into a shared `resolveDeviceAndChannel`/`DeviceChannelLookup` helper b
 call; each keeps its own caller-specific virtual-relay rejection message.
 
 **Resolving commit**: all twelve above fixed in one session, 2026-09-28.
+
+## RESOLVED — Channel "recording" indicator could stay lit indefinitely when a recording never actually started
+
+**File:** `AppState.swift` — `pendingRecordingChannels(for:)`
+
+**Root cause**: `pendingRecordingChannels` lit up a channel's "recording" ring/badge/Stop-&-Delete
+button the instant `show_next <= now`, with no upper bound other than `show_end` — intended as a
+brief grace period covering the normal lag between a show's scheduled start and `RecordingManager`
+actually flipping `show_recording` true. Found live 2026-09-19: if `startRecording` never got a
+clean run at all for a window (several `deploy.sh` restarts landing inside the same record window
+during active development, each interrupting the idle loop right as it was about to attempt the
+recording), `show_recording` stayed false with no failure ever registered either — the channel then
+read as "recording" for that show's *entire* scheduled window, with no way to distinguish "about to
+start" from "never actually started and never will."
+
+**Fix**: bounded the grace period to `pendingRecordingGraceSeconds` (120s). The anchor is
+`max(show_next, retryAfter)` rather than `show_next` alone — a retry becoming eligible again (after
+an earlier real failure's backoff expires) is its own fresh "about to start" moment, and anchoring
+purely on the original `show_next` would otherwise cut off a show still legitimately retrying long
+after its original air time (caught by an existing test, `pendingRecordingChannels_
+expiredRetryBackoff_isIncluded`, while fixing this). Past the grace period, the show simply falls
+out of the pending set — same as the existing retry-backoff/duplicate-skip exclusions already do —
+letting it resolve to whatever's actually true (scheduled/conflict) instead of inventing a new
+"missed" UI state. Covered by two new tests (`pendingRecordingChannels_
+pastGraceWindowStillNeverStarted_isExcluded`, `pendingRecordingChannels_justInsideGraceWindow_
+isIncluded`); one existing test's fixture timing was adjusted to keep isolating the retry-backoff
+exclusion specifically rather than incidentally also tripping the new grace-window cutoff.
+
+**Resolving commit**: fixed 2026-09-28.
