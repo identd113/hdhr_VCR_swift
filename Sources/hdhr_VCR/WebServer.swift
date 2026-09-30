@@ -810,12 +810,19 @@ final class WebServer: @unchecked Sendable {
                     return
                 }
                 self.fileIOQueue.async {
-                    guard FileManager.default.fileExists(atPath: cachePath) else {
+                    guard let attrs = try? FileManager.default.attributesOfItem(atPath: cachePath) else {
                         self.queue.async { self.send(.notFound("recording not found"), on: conn) }
                         return
                     }
+                    // Fresh FeedRelayPacer per connection (a catchUpToLive/scrub reconnect gets a
+                    // clean pacing state, not one polluted by the just-abandoned connection's own
+                    // bytesSent/rate history) — see that class's own doc comment for why this FEED-
+                    // cache session needs delivery smoothing that Watch Now's own real-Show path
+                    // (which passes no pacer at all) doesn't.
+                    let initialSize = (attrs[.size] as? Int) ?? 0
                     self.streamGrowingFile(path: cachePath, showId: showId, startOffset: startOffset,
-                                            conn: conn, stillActiveCheck: { [weak self] in
+                                            conn: conn, pacer: FeedRelayPacer(initialFileSize: initialSize),
+                                            stillActiveCheck: { [weak self] in
                         self?.feedCacheStillActive(sessionId: showId) ?? false
                     })
                 }
@@ -1589,9 +1596,94 @@ final class WebServer: @unchecked Sendable {
     // can track how many relay viewers are currently connected without needing its own separate
     // connection-lifecycle bookkeeping; local Watch Now (handleWatchRecording) passes nil and isn't
     // counted, since it's this Mac's own playback, not an outbound stream to another machine.
+    // Smooths delivery to VLC for a FEED local-disk-cache session only (docs/VirtualTunerService.md
+    // — passed by handleWatchRecording's FEED-cache fallback branch, nil for every other
+    // streamGrowingFile caller, in particular the real-Show/Watch Now path, whose file already
+    // grows at a genuinely steady, tuner-paced rate and has never needed this).
+    //
+    // Resurrected 2026-09-30 after a live report reproduced the exact historical "VLC-side FEED
+    // playback stalls" signature (issues_resolved.md) on this new path: "no reference clock" PCR
+    // loss, repeating every few seconds, while watching a FEED whose SOURCE Mac was simultaneously
+    // recording and running a second local tuner. Root cause: the FEED-cache puller
+    // (RecordingManager.startFeedCachePull) writes to its local cache file exactly as unevenly as
+    // curl's own network reads land — a real cross-machine hop, now materially different from a
+    // real recording's own steady tuner-fed growth — and this function's own "forward immediately,
+    // no artificial delay" philosophy (see the removed-2026-09-07 constant-rate-pacing comment
+    // below) is only correct for that steady-growth case. This exact class (byte-for-byte, modulo
+    // doc comments) lived here once before, 2026-09-12, serving the same purpose for a since-
+    // removed in-memory FEED proxy design — removed the same day only because that proxy design
+    // itself was replaced with one that paced delivery upstream of this function instead; nothing
+    // about the pacer itself was ever found wrong. This is not a repeat of the reverted 744372d
+    // "constant-rate pacing" attempt either: that one added a guessed-bitrate delay on top of an
+    // already-correctly-paced tuner-fed source and made things worse; this applies pacing only
+    // where the source genuinely isn't paced yet.
+    //
+    // Deliberately does NOT throttle a genuine backlog drain (a fresh scrub-bar seek can be tens of
+    // seconds behind the live edge, per streamGrowingFile's own hasBacklog fast-path) — only once a
+    // connection has already transitioned to the small, cadence-matched watchRecordingChunkSize
+    // (handleGrowingFileChunk's own one-way "caught up to live edge" signal) does
+    // handleGrowingFileChunk consult this pacer before scheduling the next send. Applying it during
+    // backlog drain would throttle a multi-minute-old reconnect down to the observed real-time
+    // bitrate, taking minutes to catch up instead of the fast drain that already works fine.
+    // @unchecked Sendable — same posture as WebServer itself. A given instance is only ever touched
+    // sequentially (fileIOQueue's read step, then queue's send/schedule step, one at a time per
+    // connection, never concurrently) even though those two hops run on different queues.
+    private final class FeedRelayPacer: @unchecked Sendable {
+        private let startedAt = Date()
+        private var bytesSent = 0
+        private var lastMeasuredAt = Date()
+        private var lastMeasuredSize: Int
+        // Seeded with a mid-range OTA MPEG-2 guess (2.4 Mbps) so early delivery isn't held back
+        // before the first real measurement lands — refined below from the file's own true growth,
+        // independent of anything already throttled through this pacer (measuring what's actually
+        // been *sent* would make the estimate circular).
+        private var observedBytesPerSecond: Double = 300_000
+        private static let measureInterval: TimeInterval = 2.0
+        // How far ahead of a perfectly steady real-time pace delivery is allowed to run before this
+        // pacer starts holding chunks back — small enough to actually smooth out a burst, large
+        // enough not to add a second, separately-perceptible lag on top of the relay's existing
+        // "few seconds behind live" delay (docs/VirtualTunerService.md's Known limitation).
+        private static let lookaheadSeconds: TimeInterval = 0.5
+
+        init(initialFileSize: Int) { lastMeasuredSize = initialFileSize }
+
+        // Called from pumpGrowingFile's fileIOQueue closure with a fresh stat of the file — cheap,
+        // and called unconditionally on every tick (this method's own 2s internal gate makes that a
+        // no-op the rest of the time), so it self-throttles regardless of how often pumpGrowingFile
+        // itself ticks (every 20ms once caught up to the live edge).
+        func maybeUpdateObservedRate(currentFileSize: Int) {
+            let now = Date()
+            let elapsed = now.timeIntervalSince(lastMeasuredAt)
+            guard elapsed >= Self.measureInterval else { return }
+            let delta = currentFileSize - lastMeasuredSize
+            if delta > 0 {
+                // EWMA, not a straight replace — one noisy 2s window (a transient hiccup on the
+                // puller's own network read) shouldn't swing the target rate wildly on its own.
+                observedBytesPerSecond = observedBytesPerSecond * 0.7 + (Double(delta) / elapsed) * 0.3
+            }
+            lastMeasuredAt = now
+            lastMeasuredSize = currentFileSize
+        }
+
+        // How long to hold `chunkBytes` before actually sending it, so that the cumulative sent
+        // total tracks a steady real-time pace (plus lookaheadSeconds of slack) instead of whatever
+        // moment the underlying disk read happened to succeed. Returns 0 (send immediately) whenever
+        // delivery is already at or behind pace — this only ever holds bytes back, never speeds
+        // anything up beyond what pumpGrowingFile's own read cadence already provides.
+        func delayBeforeSending(chunkBytes: Int) -> TimeInterval {
+            let projected = bytesSent + chunkBytes
+            let wallClockNeeded = Double(projected) / observedBytesPerSecond - Self.lookaheadSeconds
+            let targetInstant = startedAt.addingTimeInterval(wallClockNeeded)
+            return max(0, targetInstant.timeIntervalSinceNow)
+        }
+
+        func recordSent(_ n: Int) { bytesSent += n }
+    }
+
     private func streamGrowingFile(path: String, showId: String, startOffset: Int, conn: NWConnection,
                                     durationSeconds: Int? = nil,
                                     knownFileSizeAtOffsetComputation: Int? = nil,
+                                    pacer: FeedRelayPacer? = nil,
                                     stillActiveCheck: @escaping @MainActor () -> Bool,
                                     onStreamEnded: (() -> Void)? = nil) {
         guard let handle = FileHandle(forReadingAtPath: path) else {
@@ -1663,7 +1755,7 @@ final class WebServer: @unchecked Sendable {
                 }
                 self.pumpGrowingFile(handle: handle, showId: showId, conn: conn, path: path,
                                       bytesSent: initialBytes, waitStreak: 0, waitStartedAt: nil, deadline: deadline,
-                                      chunkSize: initialChunkSize,
+                                      chunkSize: initialChunkSize, pacer: pacer,
                                       stillActiveCheck: stillActiveCheck, onStreamEnded: onStreamEnded)
             }
         }
@@ -1750,6 +1842,7 @@ final class WebServer: @unchecked Sendable {
     private func pumpGrowingFile(handle: FileHandle, showId: String, conn: NWConnection, path: String,
                                   bytesSent: Int, waitStreak: Int, waitStartedAt: Date?, deadline: Date? = nil,
                                   chunkSize: Int = watchRecordingChunkSize,
+                                  pacer: FeedRelayPacer? = nil,
                                   stillActiveCheck: @escaping @MainActor () -> Bool,
                                   onStreamEnded: (() -> Void)? = nil) {
         // Checked once per recursion (covers both the "have data" and "waiting" paths below) —
@@ -1776,11 +1869,20 @@ final class WebServer: @unchecked Sendable {
         }
         fileIOQueue.async { [weak self] in
             guard let self else { return }
+            // Refreshes the pacer's own observed-bitrate estimate from a fresh stat every ~2s
+            // (maybeUpdateObservedRate's own internal gate — this call is unconditional and cheap
+            // the rest of the time), regardless of how much has actually been read/sent this
+            // iteration. See FeedRelayPacer's own doc comment for why this must come from the true
+            // file size, not from anything already throttled through the pacer itself.
+            if let pacer {
+                let trueSize = (try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? Int ?? bytesSent
+                pacer.maybeUpdateObservedRate(currentFileSize: trueSize)
+            }
             let chunk = handle.readData(ofLength: chunkSize)
             self.queue.async {
                 self.handleGrowingFileChunk(chunk, handle: handle, showId: showId, conn: conn, path: path,
                                              bytesSent: bytesSent, waitStreak: waitStreak, waitStartedAt: waitStartedAt,
-                                             deadline: deadline, chunkSize: chunkSize,
+                                             deadline: deadline, chunkSize: chunkSize, pacer: pacer,
                                              stillActiveCheck: stillActiveCheck, onStreamEnded: onStreamEnded)
             }
         }
@@ -1794,6 +1896,7 @@ final class WebServer: @unchecked Sendable {
     private func handleGrowingFileChunk(_ chunk: Data, handle: FileHandle, showId: String, conn: NWConnection, path: String,
                                          bytesSent: Int, waitStreak: Int, waitStartedAt: Date?, deadline: Date? = nil,
                                          chunkSize: Int,
+                                         pacer: FeedRelayPacer? = nil,
                                          stillActiveCheck: @escaping @MainActor () -> Bool,
                                          onStreamEnded: (() -> Void)? = nil) {
         guard !chunk.isEmpty else {
@@ -1829,7 +1932,7 @@ final class WebServer: @unchecked Sendable {
                 self.queue.asyncAfter(deadline: .now() + Self.liveEdgePollInterval) { [weak self] in
                     self?.pumpGrowingFile(handle: handle, showId: showId, conn: conn, path: path,
                                            bytesSent: bytesSent, waitStreak: waitStreak + 1, waitStartedAt: startedAt,
-                                           deadline: deadline, chunkSize: Self.watchRecordingChunkSize,
+                                           deadline: deadline, chunkSize: Self.watchRecordingChunkSize, pacer: pacer,
                                            stillActiveCheck: stillActiveCheck, onStreamEnded: onStreamEnded)
                 }
                 return
@@ -1841,7 +1944,7 @@ final class WebServer: @unchecked Sendable {
                     self.queue.asyncAfter(deadline: .now() + Self.liveEdgePollInterval) { [weak self] in
                         self?.pumpGrowingFile(handle: handle, showId: showId, conn: conn, path: path,
                                                bytesSent: bytesSent, waitStreak: waitStreak + 1, waitStartedAt: startedAt,
-                                               deadline: deadline, chunkSize: Self.watchRecordingChunkSize,
+                                               deadline: deadline, chunkSize: Self.watchRecordingChunkSize, pacer: pacer,
                                                stillActiveCheck: stillActiveCheck, onStreamEnded: onStreamEnded)
                     }
                 } else {
@@ -1873,11 +1976,11 @@ final class WebServer: @unchecked Sendable {
         if newTotal / (5 * 1_048_576) > bytesSent / (5 * 1_048_576) {
             glog("[WebServer] watch-recording show=\(showId) sent \(newTotal / 1_048_576) MB so far")
         }
-        // No artificial pacing delay here — removed 2026-09-07 (was added in 744372d, "constant-
-        // rate pacing"). The recording file's own growth is already paced in real time by curl
-        // reading from the tuner; re-imposing a *second*, separately-computed, guessed-bitrate
-        // delay via a GCD timer on top of an already-correctly-paced source only added jitter
-        // instead of removing it. Live `--file-logging` VLC captures the same day showed the
+        // No artificial pacing delay by default — removed 2026-09-07 (was added in 744372d,
+        // "constant-rate pacing"). A real recording file's own growth is already paced in real time
+        // by curl reading from the tuner; re-imposing a *second*, separately-computed, guessed-
+        // bitrate delay via a GCD timer on top of an already-correctly-paced source only added
+        // jitter instead of removing it. Live `--file-logging` VLC captures the same day showed the
         // real failure mode was never insufficient average throughput — it was multi-second PCR
         // jitter (`ES_OUT_SET_(GROUP_)PCR is called too late`) causing repeated decoder buffer
         // resets, reproduced identically on both a 51-81%-signal channel and a 97%-signal one
@@ -1886,31 +1989,45 @@ final class WebServer: @unchecked Sendable {
         // source's own real-time cadence directly instead of a second, less accurate guess at
         // it. See ISSUES.md's FEED throughput/stall entry for the full trail this reverses.
         //
-        // A FEED-specific pacer briefly lived here 2026-09-12 (see issues_resolved.md's "VLC-side
-        // FEED playback stalls" entry) but was superseded the same day by moving FEED's client-side
-        // local relay to an in-memory proxy (WebServer.FeedRelayProxyDelegate) that paces delivery
-        // itself, upstream of this function — this file's own growth (a real recording, tuner-fed)
-        // never needed pacing and still doesn't.
-        sendWithTimeout(chunk, on: conn, timeout: Self.growingFileNoTimeout) { [weak self] reason in
-            guard let self, reason == nil else {
-                self?.fileIOQueue.async { handle.closeFile() }
-                // Explicit cancel — a real send error usually means the OS already knows the
-                // connection is dead, but the synthetic timeout case (the peer stopped draining
-                // its receive window without the socket itself ever erroring) does not; without
-                // this, a stalled connection stays open indefinitely from this side even after
-                // giving up on it. cancel() is idempotent (WebServer.stop()'s own comment), so
-                // calling it here even when the connection may already be dying is harmless.
-                conn.cancel()
-                glog("[WebServer] watch-recording show=\(showId) client disconnected after \(newTotal) bytes: \(reason ?? "unknown")")
-                onStreamEnded?()
-                return
+        // `pacer`, only ever non-nil for a FEED local-disk-cache session (FeedRelayPacer's own doc
+        // comment), is the one deliberate exception — and only once a connection has reached the
+        // small cadence-matched chunkSize (never during a genuine backlog drain, same reasoning as
+        // above: a scrub-bar seek reconnect should still fast-drain, not get throttled down to
+        // real-time for however long the backlog takes to replay). Unlike the reverted 744372d
+        // attempt, a FEED-cache file's growth is NOT already correctly paced (it's the output of a
+        // second, cross-machine network hop, not a direct tuner read), so smoothing delivery here
+        // is a materially different case, not a repeat of that mistake.
+        let pacingDelay = (pacer != nil && chunkSize == Self.watchRecordingChunkSize)
+            ? pacer!.delayBeforeSending(chunkBytes: chunk.count) : 0
+        let sendNow = { [weak self] in
+            guard let self else { return }
+            pacer?.recordSent(chunk.count)
+            self.sendWithTimeout(chunk, on: conn, timeout: Self.growingFileNoTimeout) { [weak self] reason in
+                guard let self, reason == nil else {
+                    self?.fileIOQueue.async { handle.closeFile() }
+                    // Explicit cancel — a real send error usually means the OS already knows the
+                    // connection is dead, but the synthetic timeout case (the peer stopped draining
+                    // its receive window without the socket itself ever erroring) does not; without
+                    // this, a stalled connection stays open indefinitely from this side even after
+                    // giving up on it. cancel() is idempotent (WebServer.stop()'s own comment), so
+                    // calling it here even when the connection may already be dying is harmless.
+                    conn.cancel()
+                    glog("[WebServer] watch-recording show=\(showId) client disconnected after \(newTotal) bytes: \(reason ?? "unknown")")
+                    onStreamEnded?()
+                    return
+                }
+                self.queue.async {
+                    self.pumpGrowingFile(handle: handle, showId: showId, conn: conn, path: path,
+                                          bytesSent: newTotal, waitStreak: 0, waitStartedAt: nil, deadline: deadline,
+                                          chunkSize: nextChunkSize, pacer: pacer,
+                                          stillActiveCheck: stillActiveCheck, onStreamEnded: onStreamEnded)
+                }
             }
-            self.queue.async {
-                self.pumpGrowingFile(handle: handle, showId: showId, conn: conn, path: path,
-                                      bytesSent: newTotal, waitStreak: 0, waitStartedAt: nil, deadline: deadline,
-                                      chunkSize: nextChunkSize,
-                                      stillActiveCheck: stillActiveCheck, onStreamEnded: onStreamEnded)
-            }
+        }
+        if pacingDelay > 0 {
+            queue.asyncAfter(deadline: .now() + pacingDelay, execute: sendNow)
+        } else {
+            sendNow()
         }
     }
 
