@@ -16,6 +16,12 @@ func readAndClearExitStatus(showId:) -> String?    // decodes curl's own exit co
 func preventSleep(id:, reason:, duration:)         // create or replace a tracked sleep assertion
 func releaseAssertion(id:)                         // release one assertion by key
 func releaseAllAssertions()                        // release all; called when status check confirms idle
+
+// FEED local disk cache puller — see its own section below
+func startFeedCachePull(sessionId:, url:, outputPath:, networkInterface:) throws
+func stopFeedCachePull(sessionId:)
+func isFeedCachePullRunning(sessionId:) -> Bool
+func stopAllFeedCachePulls()
 ```
 
 `networkInterface: String = ""` — when non-empty, appends `--interface <name>` to curl args, binding the stream to a specific NIC. Sourced from `AppConfig.Network_interface`; empty string means auto-select (curl default).
@@ -42,6 +48,18 @@ Each recording produces **one ps line**: a direct `curl` process in its own POSI
 `stop()` sends `SIGKILL` to the curl PID, removes the PID from `pids`, releases its sleep assertion, then reaps the zombie via `waitpid(pid, nil, 0)` on a background utility queue — **not** inline. `SIGKILL` is normally reaped in microseconds, but it can't be delivered while curl sits in an uninterruptible (D-state) syscall — e.g. blocked writing to a stalled network mount, a perfectly valid recording target. A blocking `waitpid` here would freeze the menu-bar UI (`RecordingManager` is `@MainActor`, and `stopAll()` loops this over every recording) until the mount recovered. Backgrounding it is safe because `pids[showId]` is already cleared before the async reap runs, and `isRunning()` guards on `pids` — so no other `waitpid` call can ever race this pid.
 
 `SIGKILL` is used (not `SIGTERM`) because curl processes spawned with `POSIX_SPAWN_SETSID` may have `SIGTERM` masked from a previous bad app state, and `SIGKILL` cannot be ignored or blocked.
+
+---
+
+## FEED local disk cache puller
+
+A second, deliberately separate `curl`-spawning subsystem — `startFeedCachePull(sessionId:url:outputPath:networkInterface:)`/`stopFeedCachePull(sessionId:)`/`isFeedCachePullRunning(sessionId:)`/`stopAllFeedCachePulls()` — added for the "FEED scrub via local disk cache" feature (`docs/VirtualTunerService.md`'s own section), which lets scrubbing work for FEED (watching another Mac's in-progress recording) the same way it already works for Watch Now. Not built on `start()`/`stop()`/`pids` above: that pair's signature is tailored to a real recording — `?duration=&transcode=` appended to the stream URL, `show_id`/`show_end` headers, `--max-time`/sleep-assertion duration sized off `durationSeconds` — none of which fits a FEED pull (an already-complete URL with no known end time, and no sleep-assertion need since the *source* Mac is the one actually recording, not this one).
+
+- **Tracked in `feedCachePullPids: [String: Int32]`, a dictionary kept deliberately separate from `pids`** — unlike a real recording curl (`POSIX_SPAWN_SETSID`'d specifically so it survives a force-quit and gets reattached next launch, per "Process Model" above), a FEED cache puller must never get that treatment: once this process's `WebServer` is gone, nothing could ever serve its cache file again. `stopAllFeedCachePulls()` is called unconditionally — not gated on any "keep recordings running" flag, since that's about the user's own recordings and doesn't apply here — from both `AppState.teardownForExit` and the SIGTERM handler.
+- **curl args**: `--connect-timeout 10 -H appname:hdhrVCRplus -H feed_cache:<sessionId> [--interface <if>] <url> -o <outputPath>` — no `--max-time` (runs until explicitly killed, or the remote closes the connection on its own), no `--dump-header` (nothing reads HDHomeRun error headers from a FEED pull; that's the *source* Mac's own recording's concern, not this Mac's). The `-H feed_cache:<sessionId>` marker exists purely so `AppState.sweepOrphanedFeedCachePullers()` can positively identify these processes at startup via `ps`, mirroring how `reattachRecordings()` (see "Checking Live Status" below) identifies real recording curls by their own `-H show_id:` marker.
+- **`isFeedCachePullRunning(sessionId:)`** mirrors `isRunning(showId:)`'s exact `waitpid(WNOHANG)` reap pattern (no `ECHILD`/orphan-reattach fallback needed — a FEED cache puller is always this process's own direct child, never reattached across a restart).
+- **No sleep assertion, no header file, no exit-status decoding** — none of those concepts apply: nothing here needs to keep the Mac awake beyond what `AppState.maintainVLCSleepAssertionIfNeeded()`'s existing `"vlc"`-keyed assertion already covers (see "Sleep Prevention" below, which already includes FEED playback), there's no HDHomeRun device on the other end of this connection to report an error, and a puller that dies is simply treated as "no data, retry/fail" by `AppState.startFeedCacheSession`'s own liveness poll rather than decoded into a specific reason.
+- **Startup orphan sweep**: `AppState.sweepOrphanedFeedCachePullers()`, called once from `startup()` right after `reattachRecordings()` — unlike that function's own `ps` scan, which *reattaches* a still-valid recording, this one needs no liveness check at all and unconditionally kills every match, since a FEED cache puller is never reattached in the first place. See `docs/VirtualTunerService.md`'s own section for the full design.
 
 ---
 
@@ -132,3 +150,9 @@ ps -Aa | grep show_id | grep -v grep   # one line per active recording
 ```
 
 One curl PID per recording (`pids`). At startup, `reattachRecordings()` populates `pids` by scanning `ps -Axo pid,args` for lines containing `show_id:` + `/usr/bin/curl` + `hdhrVCRplus`, then looks up the show ID in `shows[]`. If found and `show_end` is still future, calls `reattach(showId:pid:title:endDate:)` which stores the PID and re-arms the sleep assertion for the remaining duration.
+
+```bash
+ps -Aa | grep feed_cache | grep -v grep   # one line per active FEED cache puller
+```
+
+Same `ps -Axo pid,args` scan shape, but for `feed_cache:` markers instead of `show_id:` — `AppState.sweepOrphanedFeedCachePullers()` runs this once at startup (see "FEED local disk cache puller" above) and unconditionally kills every match, rather than reattaching it the way a real recording curl gets reattached.

@@ -68,18 +68,27 @@ func mockOKResponse(for url: URL, statusCode: Int = 200, headers: [String: Strin
 // lets a test assert on exactly what RecordingManager.start(...) invoked curl with (e.g. the
 // `transcode=` value baked into the stream URL), same instant-instead-of-real-I/O tradeoff as the
 // header-file write below.
+// `outputBytes`, when > 0, has the script also write that many zero bytes to whatever path follows
+// `-o` in its argv, immediately (before sleeping) — needed for anything that polls the `-o` target
+// for "has data started arriving yet" (e.g. AppState.startFeedCacheSession's own startup liveness
+// poll), which the plain header-only shape above never satisfies on its own.
 func writeMockCurlScript(headerLines: [String] = [], sleepSeconds: Double = 30,
-                          exitCode: Int32 = 0, argsLogPath: String? = nil) throws -> String {
+                          exitCode: Int32 = 0, argsLogPath: String? = nil, outputBytes: Int = 0) throws -> String {
     let path = NSTemporaryDirectory() + "hdhrVCRplus-mockcurl-\(UUID().uuidString).sh"
     var script = "#!/bin/bash\n"
     script += "hdr=\"\"\n"
+    script += "out=\"\"\n"
     script += "args=(\"$@\")\n"
     if let argsLogPath {
         script += "printf '%s\\n' \"$@\" > \"\(argsLogPath)\"\n"
     }
     script += "for ((i=0; i<${#args[@]}; i++)); do\n"
     script += "  if [[ \"${args[$i]}\" == \"--dump-header\" ]]; then hdr=\"${args[$((i+1))]}\"; fi\n"
+    script += "  if [[ \"${args[$i]}\" == \"-o\" ]]; then out=\"${args[$((i+1))]}\"; fi\n"
     script += "done\n"
+    if outputBytes > 0 {
+        script += "if [[ -n \"$out\" ]]; then head -c \(outputBytes) /dev/zero > \"$out\"; fi\n"
+    }
     // printf '...\r\n' (not echo, which only appends \n) — a real HTTP response's headers are
     // CRLF-terminated, and curl's --dump-header writes them exactly as received off the wire.
     // RecordingManager's own header parsing was trimming with .whitespaces (which doesn't include

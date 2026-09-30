@@ -468,16 +468,25 @@ struct VLCPlayerView: View {
     }
 
     // Tears down and reopens the current FEED connection with (or without) &transcode=auto — routed
-    // through state.startFeedLocalRelay (same as watchRemoteRelay's initial open) rather than
+    // through state.startFeedCacheSession (same as watchRemoteRelay's initial open) rather than
     // calling bridge.play(url:) directly against the raw remote URL: doing that would reconnect
     // libvlc straight to the remote Mac and reintroduce the exact cross-machine stall bug the FEED
-    // client-side local relay exists to avoid, just for this one interaction.
+    // local disk cache exists to avoid, just for this one interaction. Necessarily starts a fresh
+    // cache file at byte 0 (the old one is deleted) — no scrub-position continuity across the
+    // raw↔H.264 switch, matching this toggle's existing reconnect-on-switch behavior.
     private func toggleFeedTranscode(to wantsTranscode: Bool) {
         guard wantsTranscode != feedIsTranscoding, let rawURL = currentFeedEntry?.URL else { return }
         let newRemoteURL = wantsTranscode ? rawURL + "&transcode=auto" : rawURL
         glog("[VLC] FEED transcode toggle → \(wantsTranscode ? "H.264" : "raw"): \(newRemoteURL)")
-        let localURL = state.startFeedLocalRelay(remoteURL: newRemoteURL, device: device)
-        bridge.play(url: localURL)
+        Task {
+            guard let session = await state.startFeedCacheSession(
+                remoteURL: newRemoteURL, device: device,
+                title: VLCPlayerWindowManager.shared.currentTitle ?? device.FriendlyName ?? "FEED") else { return }
+            bridge.play(url: session.url)
+            DispatchQueue.main.async {
+                VLCBridge.shared.beginRecordingSeek(showId: session.sessionId, recordingStart: session.startedAt, seekBaseSeconds: 0)
+            }
+        }
     }
 
     // MARK: - Picture-in-picture tap-to-swap
@@ -2599,7 +2608,10 @@ final class VLCPlayerWindowManager {
     func closeSecondary() {
         glog("[VLC] WindowManager.closeSecondary")
         VLCBridge.shared.releasePlayer(slot: .secondary)
+        // Tries both teardown paths — see playerWindowDidClose's identical pattern/doc comment for
+        // why (a tap-to-swap can move a primary FEED-cache session's id into this slot).
         if let sessionId = secondaryFeedSessionId {
+            appState?.stopFeedCacheSession(sessionId: sessionId)
             appState?.webServer.unregisterFeedRelaySession(id: sessionId)
         }
         secondaryDeviceID      = nil
@@ -2789,16 +2801,22 @@ final class VLCPlayerWindowManager {
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
         keyMonitor = nil
         pendingSeekDelta = 0   // in case the window closed mid-hold, before a matching keyUp arrived
-        // FEED client-side local relay teardown — guarded so a normal live-tuner/Watch-Now close
-        // pays no new cost. Unregistering the session is enough: FeedRelayProxyDelegate's own
-        // cleanup (invalidating its URLSession) fires from conn.cancel() below closing the
-        // NWConnection it's forwarding into — there's no separate process or temp file to tear down
-        // now that this relay is in-memory (see issues_resolved.md's "VLC-side FEED playback
-        // stalls" entry for the 2026-09-12 simplification).
+        // FEED teardown — guarded so a normal live-tuner/Watch-Now close pays no new cost. A
+        // primary FEED session is a local disk cache (AppState.stopFeedCacheSession — kills the
+        // puller, deletes the cache file); a secondary one is still the plain in-memory proxy
+        // (unregistering is enough — FeedRelayProxyDelegate's own cleanup fires from conn.cancel()
+        // closing the NWConnection it's forwarding into, no process/file of its own to tear down).
+        // Both teardown calls are tried for BOTH ids, not just their "usual" slot: a tap-to-swap
+        // (swapTrackingFieldsForPiPSwap) can move a primary FEED-cache session's id into
+        // secondaryFeedSessionId and vice versa, and each teardown call already no-ops harmlessly
+        // for an id it doesn't recognize, so trying both is simpler and safer than tracking which
+        // kind of session each slot currently holds through every possible swap.
         if let sessionId = currentFeedSessionId {
+            appState?.stopFeedCacheSession(sessionId: sessionId)
             appState?.webServer.unregisterFeedRelaySession(id: sessionId)
         }
         if let sessionId = secondaryFeedSessionId {
+            appState?.stopFeedCacheSession(sessionId: sessionId)
             appState?.webServer.unregisterFeedRelaySession(id: sessionId)
         }
         currentFeedRemoteURL = nil

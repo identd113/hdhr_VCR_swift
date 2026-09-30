@@ -93,7 +93,7 @@ final class WebServer: @unchecked Sendable {
     }
 
     // FEED client-side local relay (viewer-Mac side, see docs/VirtualTunerService.md) — an in-
-    // memory proxy, not a disk round-trip (simplified 2026-09-12 from the original puller-curl-to-
+    // memory proxy, not a disk round-trip (simplified 2026-09-12 from an earlier puller-curl-to-
     // temp-file design once FeedRelayPacer's delivery-smoothing fix was confirmed live — see
     // issues_resolved.md's "VLC-side FEED playback stalls" entry). A session is just an opaque id
     // mapping to the remote FEED URL to proxy, registered by AppState.startFeedLocalRelay right
@@ -101,6 +101,13 @@ final class WebServer: @unchecked Sendable {
     // ?url= — same posture as /api/watch-recording's show=<id> lookup (CLAUDE.md: no auth beyond
     // LAN-subnet matching, so a mutating/data route must validate via a server-side lookup rather
     // than trusting client-supplied input).
+    //
+    // As of the "FEED scrub via local disk cache" feature, this in-memory path is used only by
+    // PiP-secondary FEED viewing (AppState.watchRemoteRelayAsSecondary) — primary-window FEED
+    // viewing now goes through feedCacheSessions below instead, a *second*, deliberately separate
+    // reintroduction of a disk-backed design, for a different reason than the original one this
+    // simplified away: scrubbing needs an actual local seekable file, which an in-memory proxy
+    // structurally cannot provide, regardless of how well its pacer performs.
     private var feedRelaySessions: [String: String] = [:]
     private let feedRelayLock = NSLock()
     func registerFeedRelaySession(id: String, remoteURL: String) {
@@ -113,6 +120,29 @@ final class WebServer: @unchecked Sendable {
         feedRelayLock.lock()
         defer { feedRelayLock.unlock() }
         return feedRelaySessions[id]
+    }
+
+    // FEED local disk cache (primary-window viewer side, see docs/VirtualTunerService.md's "FEED
+    // scrub via local disk cache" section) — a session maps an opaque id (minted by
+    // AppState.startFeedCacheSession) to the local cache file a background curl puller
+    // (RecordingManager.startFeedCachePull) is continuously writing, plus a liveness check.
+    // handleWatchRecording falls back to this registry whenever `show=` doesn't match a real Show
+    // (see that function) — reusing /api/watch-recording's own route/query shape and
+    // streamGrowingFile unchanged, rather than a second dedicated route, so every existing
+    // "/api/watch-recording"-string-matching call site (VLCBridge.beginRecordingSeek,
+    // AppState.reanchorRecordingSeekForSwap, etc.) keeps working with zero changes.
+    private var feedCacheSessions: [String: (path: String, isStillActive: @MainActor () -> Bool)] = [:]
+    private let feedCacheLock = NSLock()
+    func registerFeedCacheSession(id: String, path: String, isStillActive: @escaping @MainActor () -> Bool) {
+        feedCacheLock.lock(); feedCacheSessions[id] = (path, isStillActive); feedCacheLock.unlock()
+    }
+    func unregisterFeedCacheSession(id: String) {
+        feedCacheLock.lock(); feedCacheSessions.removeValue(forKey: id); feedCacheLock.unlock()
+    }
+    private func feedCacheSession(id: String) -> (path: String, isStillActive: @MainActor () -> Bool)? {
+        feedCacheLock.lock()
+        defer { feedCacheLock.unlock() }
+        return feedCacheSessions[id]
     }
 
     // Pre-built page HTML cache — rebuilt after guide refresh, served instantly on GET /.
@@ -771,7 +801,24 @@ final class WebServer: @unchecked Sendable {
             // show_recording flips false, when real content is still sitting on disk.
             guard let show = state.shows.first(where: { $0.show_id == showId }),
                   state.recordingIsWatchable(show), !show.show_recording_path.isEmpty else {
-                self.send(.notFound("recording not found"), on: conn)
+                // Not a real Show — try a FEED local-disk-cache session instead (see
+                // feedCacheSessions' own doc comment above for why this reuses this same route
+                // rather than a dedicated one). `showId` here is really "an opaque id that's
+                // either a real Show's show_id or a FEED cache session id" — the two id spaces
+                // never collide (a show_id is always a UUID string; a FEED session id is always
+                // "<deviceId>-<UUID>", per AppState.startFeedCacheSession).
+                guard let session = self.feedCacheSession(id: showId) else {
+                    self.send(.notFound("recording not found"), on: conn)
+                    return
+                }
+                self.fileIOQueue.async {
+                    guard FileManager.default.fileExists(atPath: session.path) else {
+                        self.queue.async { self.send(.notFound("recording not found"), on: conn) }
+                        return
+                    }
+                    self.streamGrowingFile(path: session.path, showId: showId, startOffset: startOffset,
+                                            conn: conn, stillActiveCheck: session.isStillActive)
+                }
                 return
             }
             let path = show.show_recording_path

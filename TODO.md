@@ -63,6 +63,25 @@ Raised 2026-09-09: the user no longer remembers the specific reason this was add
 
 ## Player / Watch Now
 
+### FEED scrub extended to the PiP secondary, and space bar to pause/resume
+
+Live user request, 2026-09-29, scoped down through discussion to a first pass covering
+only the primary player window — see `docs/VirtualTunerService.md`'s "FEED scrub via
+local disk cache" section and `CHANGELOG.md`'s Unreleased section for what shipped.
+Two explicitly deferred follow-ons from that same discussion:
+
+- **PiP secondary scrub bar.** The corner thumbnail has no scrub anchor today
+  (`VLCBridge.recordingShowId`/`recordingStartDate` are strictly primary-only, by
+  design) and very little room for one (140–340pt wide). `watchRemoteRelayAsSecondary`
+  still uses the plain in-memory FEED relay, with no cache file to scrub within even if
+  a UI were added. Would need a second anchor pair (mirroring the primary's) and a new,
+  cramped affordance that doesn't collide with the existing tap-to-swap gesture.
+- **Space bar to pause/resume.** Explicitly flagged by the user as heavier — this app
+  has no pause concept anywhere today (`VLCBridge` has `play`/`stop`, no
+  `libvlc_media_player_pause`), and "pause" doesn't map cleanly onto a wall-clock-
+  estimated relay position (`recordingPlaybackSeconds`) the way it would onto a real
+  local-file seek. Would need a real design pass, not a one-line key binding.
+
 ### ~~Watch two live streams at once (Watch Now and/or FEED), picture-in-picture~~ — done 2026-09-17
 
 Live user request, 2026-09-14, scoped down through discussion to: keep the single

@@ -8,6 +8,17 @@ final class RecordingManager {
     private var assertionIds: [String: IOPMAssertionID]  = [:]   // IOKit assertion per show (+ "vlc")
     private var lastExitStatus: [String: Int32]           = [:]   // raw waitpid status, set when isRunning() reaps a dead curl
 
+    // FEED local disk cache pullers (docs/VirtualTunerService.md's "FEED scrub via local disk
+    // cache" section) — a separate dictionary from `pids` on purpose: unlike a real recording curl
+    // (which deliberately survives a force-quit via POSIX_SPAWN_SETSID so it can be reattached on
+    // next launch, see spawnDetached's own comment), a FEED cache puller must NEVER get that
+    // treatment. Once this app's own WebServer is gone, nothing can ever serve the local cache file
+    // it's writing to again, so keeping this in a distinct dictionary makes "always kill these on
+    // exit" a structural fact (stopAllFeedCachePulls, called unconditionally from
+    // AppState.teardownForExit and the SIGTERM handler) rather than a filter someone has to
+    // remember to apply to `pids`.
+    private var feedCachePullPids: [String: Int32] = [:]
+
     static var curlLogPath: String { curlVerboseLogFilePath }
 
     // Path to the curl binary spawned by start(). Injectable for tests only — every production
@@ -271,6 +282,69 @@ final class RecordingManager {
 
     func stopAll() {
         for id in Array(pids.keys) { stop(showId: id) }
+    }
+
+    // MARK: - FEED local disk cache puller
+
+    // Pulls a remote FEED URL (another Mac's in-progress recording) to a local cache file so VLC
+    // can scrub within it the same way Watch Now already scrubs a real recording — see
+    // AppState.startFeedCacheSession and docs/VirtualTunerService.md. Deliberately not built on
+    // start()/pids: start()'s signature is tailored to a real recording (?duration=&transcode=
+    // appended, show_id/show_end headers, --max-time/sleep-assertion sized off durationSeconds) —
+    // none of which fits a FEED pull (already-complete URL, no known end time, no sleep-assertion
+    // need since the source Mac is the one actually recording).
+    func startFeedCachePull(sessionId: String, url: String, outputPath: String, networkInterface: String = "") throws {
+        guard feedCachePullPids[sessionId] == nil else { return }
+
+        var curlArgs: [String] = [
+            "--connect-timeout", "10",
+            "-H", "appname:hdhrVCRplus",
+            // Positively identifies this specific process to sweepOrphanedFeedCachePullers's `ps`
+            // scan at next startup, mirroring reattachRecordings' own show_id: marker for real
+            // recordings — see that sweep's own doc comment for why every match found there is
+            // unconditionally killed rather than reattached.
+            "-H", "feed_cache:\(sessionId)",
+        ]
+        if !networkInterface.isEmpty { curlArgs += ["--interface", networkInterface] }
+        // No --max-time — this runs until explicitly killed (stopFeedCachePull, on window close /
+        // transcode toggle / app exit) or the remote closes the connection on its own (curl exits,
+        // caught by isFeedCachePullRunning's reap), mirroring streamGrowingFile's own
+        // growingFileNoTimeout philosophy on the serving side.
+        curlArgs += [url, "-o", outputPath]
+
+        let dir = (outputPath as NSString).deletingLastPathComponent
+        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+
+        let pid = try spawnDetached(executablePath: curlExecutablePath, arguments: curlArgs, stderrPath: nil)
+        feedCachePullPids[sessionId] = pid
+        glog("[Rec] FEED cache pull started session=\(sessionId) pid=\(pid): \(url) → \(outputPath)")
+    }
+
+    func stopFeedCachePull(sessionId: String) {
+        guard let pid = feedCachePullPids.removeValue(forKey: sessionId) else { return }
+        kill(pid, SIGKILL)
+        // Same detached-reap reasoning as stop(showId:) above — never block the main actor waiting
+        // on a child that may be stuck in an uninterruptible syscall.
+        DispatchQueue.global(qos: .utility).async { waitpid(pid, nil, 0) }
+        glog("[Rec] FEED cache pull stopped session=\(sessionId)")
+    }
+
+    // Same waitpid(WNOHANG) reap pattern as isRunning() above.
+    func isFeedCachePullRunning(sessionId: String) -> Bool {
+        guard let pid = feedCachePullPids[sessionId] else { return false }
+        var status: Int32 = 0
+        let wret = waitpid(pid, &status, WNOHANG)
+        if wret == 0 { return true }
+        if wret > 0 { feedCachePullPids.removeValue(forKey: sessionId); return false }
+        if kill(pid, 0) == 0 { return true }
+        feedCachePullPids.removeValue(forKey: sessionId); return false
+    }
+
+    // Called unconditionally (not gated on any "keep recordings running" flag — that's about the
+    // user's own recordings, unrelated to an unresumable FEED cache session) from both
+    // AppState.teardownForExit and the SIGTERM handler.
+    func stopAllFeedCachePulls() {
+        for id in Array(feedCachePullPids.keys) { stopFeedCachePull(sessionId: id) }
     }
 
     // MARK: - Detached spawn

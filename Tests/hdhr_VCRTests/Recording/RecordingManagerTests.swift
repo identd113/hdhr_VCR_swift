@@ -102,6 +102,99 @@ struct RecordingManagerTests {
         #expect(showIds.allSatisfy { manager.isRunning(showId: $0) == false })
     }
 
+    // MARK: - FEED local disk cache puller (startFeedCachePull / stopFeedCachePull /
+    // isFeedCachePullRunning / stopAllFeedCachePulls) — same mock-curl-script seam as the real-
+    // recording lifecycle tests above; this puller never passes --dump-header, so the plain
+    // sleep-then-exit shape (no headerLines) already exercises it fully.
+
+    @Test @MainActor func startFeedCachePull_thenIsRunning_true_thenStop_makesItFalse() async throws {
+        let scriptPath = try writeMockCurlScript(sleepSeconds: 30)
+        defer { cleanup(scriptPath) }
+        let manager = RecordingManager(curlExecutablePath: scriptPath)
+        let outputPath = NSTemporaryDirectory() + "hdhrVCRplus-test-feedcache-\(UUID().uuidString).ts"
+        defer { cleanup(outputPath) }
+        let sessionId = "test-\(UUID().uuidString)"
+
+        try manager.startFeedCachePull(sessionId: sessionId, url: "http://192.0.2.1/auto/v5.1?dev=ABC", outputPath: outputPath)
+
+        await waitUntil { manager.isFeedCachePullRunning(sessionId: sessionId) }
+        #expect(manager.isFeedCachePullRunning(sessionId: sessionId) == true)
+
+        manager.stopFeedCachePull(sessionId: sessionId)
+        #expect(manager.isFeedCachePullRunning(sessionId: sessionId) == false)
+    }
+
+    @Test @MainActor func startFeedCachePull_isIdempotent_secondCallForSameSessionIdNoOps() async throws {
+        let scriptPath = try writeMockCurlScript(sleepSeconds: 30)
+        defer { cleanup(scriptPath) }
+        let manager = RecordingManager(curlExecutablePath: scriptPath)
+        let outputPath1 = NSTemporaryDirectory() + "hdhrVCRplus-test-feedcache-\(UUID().uuidString).ts"
+        let outputPath2 = NSTemporaryDirectory() + "hdhrVCRplus-test-feedcache-\(UUID().uuidString).ts"
+        defer { cleanup(outputPath1, outputPath2) }
+        let sessionId = "test-\(UUID().uuidString)"
+
+        try manager.startFeedCachePull(sessionId: sessionId, url: "http://192.0.2.1/auto/v5.1", outputPath: outputPath1)
+        await waitUntil { manager.isFeedCachePullRunning(sessionId: sessionId) }
+
+        try manager.startFeedCachePull(sessionId: sessionId, url: "http://192.0.2.1/auto/v9.1", outputPath: outputPath2)
+        #expect(manager.isFeedCachePullRunning(sessionId: sessionId) == true)
+
+        manager.stopFeedCachePull(sessionId: sessionId)
+    }
+
+    @Test @MainActor func isFeedCachePullRunning_unknownSessionId_returnsFalse() {
+        let manager = RecordingManager()
+        #expect(manager.isFeedCachePullRunning(sessionId: "never-started") == false)
+    }
+
+    @Test @MainActor func stopAllFeedCachePulls_stopsEveryTrackedPuller() async throws {
+        let scriptPath = try writeMockCurlScript(sleepSeconds: 30)
+        defer { cleanup(scriptPath) }
+        let manager = RecordingManager(curlExecutablePath: scriptPath)
+        let sessionIds = (0..<3).map { _ in "test-\(UUID().uuidString)" }
+        var outputPaths: [String] = []
+        defer { cleanup(contentsOf: outputPaths) }
+        for id in sessionIds {
+            let out = NSTemporaryDirectory() + "hdhrVCRplus-test-feedcache-\(UUID().uuidString).ts"
+            outputPaths.append(out)
+            try manager.startFeedCachePull(sessionId: id, url: "http://192.0.2.1/auto/v5.1", outputPath: out)
+        }
+        for id in sessionIds { await waitUntil { manager.isFeedCachePullRunning(sessionId: id) } }
+        #expect(sessionIds.allSatisfy { manager.isFeedCachePullRunning(sessionId: $0) })
+
+        manager.stopAllFeedCachePulls()
+
+        #expect(sessionIds.allSatisfy { manager.isFeedCachePullRunning(sessionId: $0) == false })
+    }
+
+    @Test @MainActor func startFeedCachePull_andStart_useSeparatePidDictionaries() async throws {
+        // The whole point of feedCachePullPids being a distinct dictionary from pids (see its own
+        // doc comment) — a real recording and a FEED cache puller with the same id string must
+        // never alias or interfere with each other's lifecycle.
+        let scriptPath = try writeMockCurlScript(sleepSeconds: 30)
+        defer { cleanup(scriptPath) }
+        let manager = RecordingManager(curlExecutablePath: scriptPath)
+        let sharedId = "shared-\(UUID().uuidString)"
+        let recordingOut = NSTemporaryDirectory() + "hdhrVCRplus-test-\(UUID().uuidString).ts"
+        let feedOut = NSTemporaryDirectory() + "hdhrVCRplus-test-feedcache-\(UUID().uuidString).ts"
+        defer { cleanup(recordingOut, feedOut) }
+
+        try manager.start(showId: sharedId, title: "Test", url: "http://192.0.2.1/auto/v5.1",
+                           outputPath: recordingOut, durationSeconds: 60, transcode: "none",
+                           showEnd: Date().addingTimeInterval(60))
+        try manager.startFeedCachePull(sessionId: sharedId, url: "http://192.0.2.1/auto/v9.1", outputPath: feedOut)
+
+        await waitUntil { manager.isRunning(showId: sharedId) && manager.isFeedCachePullRunning(sessionId: sharedId) }
+        #expect(manager.isRunning(showId: sharedId) == true)
+        #expect(manager.isFeedCachePullRunning(sessionId: sharedId) == true)
+
+        manager.stop(showId: sharedId)
+        // Stopping the recording must not also stop the FEED puller sharing the same id string.
+        #expect(manager.isFeedCachePullRunning(sessionId: sharedId) == true)
+
+        manager.stopFeedCachePull(sessionId: sharedId)
+    }
+
     // MARK: - HDHomeRun error header parsing (readHDHRResource / readAndClearHDHRError)
 
     @Test @MainActor func readHDHRResource_parsesHeaderWithoutDeletingFile() async throws {
