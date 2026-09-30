@@ -123,27 +123,17 @@ final class WebServer: @unchecked Sendable {
     }
 
     // FEED local disk cache (primary-window viewer side, see docs/VirtualTunerService.md's "FEED
-    // scrub via local disk cache" section) — a session maps an opaque id (minted by
-    // AppState.startFeedCacheSession) to the local cache file a background curl puller
-    // (RecordingManager.startFeedCachePull) is continuously writing, plus a liveness check.
-    // handleWatchRecording falls back to this registry whenever `show=` doesn't match a real Show
-    // (see that function) — reusing /api/watch-recording's own route/query shape and
-    // streamGrowingFile unchanged, rather than a second dedicated route, so every existing
+    // scrub via local disk cache" section) — handleWatchRecording falls back to
+    // AppState.feedCacheSessionPath(id:)/isFeedCacheSessionStillActive(id:) whenever `show=` doesn't
+    // match a real Show (see that function), reusing /api/watch-recording's own route/query shape
+    // and streamGrowingFile unchanged rather than a second dedicated route, so every existing
     // "/api/watch-recording"-string-matching call site (VLCBridge.beginRecordingSeek,
-    // AppState.reanchorRecordingSeekForSwap, etc.) keeps working with zero changes.
-    private var feedCacheSessions: [String: (path: String, isStillActive: @MainActor () -> Bool)] = [:]
-    private let feedCacheLock = NSLock()
-    func registerFeedCacheSession(id: String, path: String, isStillActive: @escaping @MainActor () -> Bool) {
-        feedCacheLock.lock(); feedCacheSessions[id] = (path, isStillActive); feedCacheLock.unlock()
-    }
-    func unregisterFeedCacheSession(id: String) {
-        feedCacheLock.lock(); feedCacheSessions.removeValue(forKey: id); feedCacheLock.unlock()
-    }
-    private func feedCacheSession(id: String) -> (path: String, isStillActive: @MainActor () -> Bool)? {
-        feedCacheLock.lock()
-        defer { feedCacheLock.unlock() }
-        return feedCacheSessions[id]
-    }
+    // AppState.reanchorRecordingSeekForSwap, etc.) keeps working with zero changes. No separate
+    // WebServer-side registry here (unlike feedRelaySessions above) — simplified in code review:
+    // AppState already owns this session dictionary, and mirroring it into a second, hand-synced
+    // one purely so WebServer could read it was one more place every teardown path had to
+    // remember to keep in sync, for no real benefit over reading appState's own copy directly, the
+    // same way stillWatchable(showId:) already reads appState.shows just below.
 
     // Pre-built page HTML cache — rebuilt after guide refresh, served instantly on GET /.
     // Desktop and mobile share the same guide window size (see guideWindow(state:)) — one
@@ -770,6 +760,14 @@ final class WebServer: @unchecked Sendable {
         return appState.recordingIsWatchable(show)
     }
 
+    // FEED-cache counterpart to stillWatchable above — same shape, reading AppState's own
+    // feedCacheSessions directly rather than a mirrored WebServer-side registry (see
+    // "FEED local disk cache" comment above).
+    @MainActor
+    private func feedCacheStillActive(sessionId: String) -> Bool {
+        appState?.isFeedCacheSessionStillActive(id: sessionId) ?? false
+    }
+
     private func handleWatchRecording(showId: String, startOffset: Int, conn: NWConnection) {
         guard !showId.isEmpty, let state = appState else {
             send(.badRequest("missing show id"), on: conn); return
@@ -802,22 +800,24 @@ final class WebServer: @unchecked Sendable {
             guard let show = state.shows.first(where: { $0.show_id == showId }),
                   state.recordingIsWatchable(show), !show.show_recording_path.isEmpty else {
                 // Not a real Show — try a FEED local-disk-cache session instead (see
-                // feedCacheSessions' own doc comment above for why this reuses this same route
+                // "FEED local disk cache" comment above for why this reuses this same route
                 // rather than a dedicated one). `showId` here is really "an opaque id that's
                 // either a real Show's show_id or a FEED cache session id" — the two id spaces
                 // never collide (a show_id is always a UUID string; a FEED session id is always
                 // "<deviceId>-<UUID>", per AppState.startFeedCacheSession).
-                guard let session = self.feedCacheSession(id: showId) else {
+                guard let cachePath = state.feedCacheSessionPath(id: showId) else {
                     self.send(.notFound("recording not found"), on: conn)
                     return
                 }
                 self.fileIOQueue.async {
-                    guard FileManager.default.fileExists(atPath: session.path) else {
+                    guard FileManager.default.fileExists(atPath: cachePath) else {
                         self.queue.async { self.send(.notFound("recording not found"), on: conn) }
                         return
                     }
-                    self.streamGrowingFile(path: session.path, showId: showId, startOffset: startOffset,
-                                            conn: conn, stillActiveCheck: session.isStillActive)
+                    self.streamGrowingFile(path: cachePath, showId: showId, startOffset: startOffset,
+                                            conn: conn, stillActiveCheck: { [weak self] in
+                        self?.feedCacheStillActive(sessionId: showId) ?? false
+                    })
                 }
                 return
             }
@@ -2716,15 +2716,21 @@ final class WebServer: @unchecked Sendable {
         // access. Any `saveDir` in the request body is ignored.
         if let airDays = obj["airDays"] as? [String] {
             // Same reject-on-invalid posture as channel/length/transcode above — this endpoint has
-            // no auth beyond LAN-subnet matching. Unfiltered garbage here doesn't fail loudly: it
+            // no auth beyond LAN-subnet matching. Unvalidated garbage here doesn't fail loudly: it
             // silently empties airIndices in AppState.nextDateTimeOccurrences (which drops
             // unrecognized entries via compactMap), and since show_air_date is non-empty the
             // "empty means all 7 days" fallback never kicks in either — the show just silently
-            // auto-pauses next tick with "No air days configured." Filter to the same weekday-name
-            // whitelist guide.js's own day-picker buttons are built from (Show.weekdayNames).
-            let validDays = airDays.filter { Show.weekdayNames.contains($0) }
-            guard !validDays.isEmpty else { return .badRequest("airDays must contain at least one valid weekday name") }
-            updated.show_air_date = validDays
+            // auto-pauses next tick with "No air days configured." Reject the whole request if ANY
+            // entry isn't in the same weekday-name whitelist guide.js's own day-picker buttons are
+            // built from (Show.weekdayNames) — found in code review: a prior version silently
+            // filtered out just the invalid entries and only rejected once *every* entry was
+            // invalid, so a single typo'd/malicious entry alongside otherwise-valid days saved
+            // silently with that one entry dropped and no error ever returned to the caller.
+            guard !airDays.isEmpty else { return .badRequest("airDays must contain at least one valid weekday name") }
+            guard airDays.allSatisfy({ Show.weekdayNames.contains($0) }) else {
+                return .badRequest("airDays contains an invalid weekday name")
+            }
+            updated.show_air_date = airDays
         }
         if let reset = obj["resetFailures"] as? Bool, reset { updated.clearFailures(); updated.show_active = true }
 
@@ -2800,6 +2806,37 @@ final class WebServer: @unchecked Sendable {
         return Calendar.current.isDateInToday(next)
     }
 
+    // Per-device Recording/Up-Next/Scheduled/Paused grouping — shared by buildTunerShowsHTML (the
+    // web guide's own tuner dropdown, below) and buildTunerStatusJSON's `entry` closure (the Home
+    // Assistant /api/tuner-status.json route, further down) so the two can never define "which
+    // bucket does this show fall into" differently (found in code review: each independently
+    // reimplemented the identical filter/sort/upNext-split). Each caller maps these plain `Show`
+    // values into its own presentation shape (HTML rows vs. JSON structs) — this only owns the
+    // classification, not the rendering.
+    struct TunerShowGroups {
+        let recording: [Show]
+        let upNext: Show?
+        let scheduled: [Show]   // active shows minus upNext, sorted by soonest show_next first
+        let paused: [Show]
+    }
+
+    @MainActor
+    private func tunerShowGroups(state: AppState, deviceId: String) -> TunerShowGroups {
+        func mine(_ s: Show) -> Bool { s.hdhr_record == deviceId }
+        let recs = state.recordingShows.filter(mine)
+        // Sort by next air time ascending; shows without a date sort to the end.
+        let sortedActive = state.activeShows
+            .filter(mine)
+            .sorted { ($0.show_next?.timeIntervalSince1970 ?? .infinity) < ($1.show_next?.timeIntervalSince1970 ?? .infinity) }
+        // "Up Next" = the next show today, else nothing — see MenuContent.swift's Up Next section
+        // for the same standardized definition. A soonest-active show that isn't today just stays
+        // in Scheduled instead of being pulled out here.
+        let upNext = sortedActive.first(where: isUpNextToday)
+        let scheduled = sortedActive.filter { $0.show_id != upNext?.show_id }
+        let paused = state.pausedShows.filter(mine)
+        return TunerShowGroups(recording: recs, upNext: upNext, scheduled: scheduled, paused: paused)
+    }
+
     // Per-tuner show list for one device's ▾ dropdown: that tuner's own
     // Recording / Up Next / Scheduled / Paused shows. Empty → a friendly note.
     @MainActor
@@ -2842,42 +2879,29 @@ final class WebServer: @unchecked Sendable {
                  + "</div>"
         }
 
-        func mine(_ s: Show) -> Bool { s.hdhr_record == deviceId }
-
         var parts: [String] = []
+        let groups = tunerShowGroups(state: state, deviceId: deviceId)
 
-        let recs = state.recordingShows.filter(mine)
-        if !recs.isEmpty {
-            let rows = recs.map { showRow($0, recording: true, prefix: "<span class=\"sp-rec\">●</span> ") }.joined()
+        if !groups.recording.isEmpty {
+            let rows = groups.recording.map { showRow($0, recording: true, prefix: "<span class=\"sp-rec\">●</span> ") }.joined()
             parts.append("<div class=\"sp-sec\"><div class=\"sp-hdr\">Recording</div>\(rows)</div>")
         }
 
-        // Sort by next air time ascending; shows without a date sort to the end.
-        let sortedActive = state.activeShows
-            .filter(mine)
-            .sorted { ($0.show_next?.timeIntervalSince1970 ?? .infinity) < ($1.show_next?.timeIntervalSince1970 ?? .infinity) }
-        // "Up Next" = the next show today, else nothing — see MenuContent.swift's Up Next
-        // section for the same standardized definition. A soonest-active show that isn't today
-        // just stays in Scheduled below instead of being pulled out here.
-        let upNext     = sortedActive.first(where: isUpNextToday)
-        let restActive = sortedActive.filter { $0.show_id != upNext?.show_id }
-
-        if let next = upNext {
+        if let next = groups.upNext {
             if !parts.isEmpty { parts.append("<div class=\"sp-div\"></div>") }
             let detail = "<span style=\"color:var(--ac)\">at \(he(state.shortTime(next.show_next)))</span>"
             parts.append("<div class=\"sp-sec\"><div class=\"sp-hdr\">Up Next</div>\(showRow(next, chDetail: detail))</div>")
         }
 
-        if !restActive.isEmpty {
+        if !groups.scheduled.isEmpty {
             if !parts.isEmpty { parts.append("<div class=\"sp-div\"></div>") }
-            let rows = restActive.map { showRow($0) }.joined()
+            let rows = groups.scheduled.map { showRow($0) }.joined()
             parts.append("<div class=\"sp-sec\"><div class=\"sp-hdr\">Scheduled</div>\(rows)</div>")
         }
 
-        let paused = state.pausedShows.filter(mine)
-        if !paused.isEmpty {
+        if !groups.paused.isEmpty {
             if !parts.isEmpty { parts.append("<div class=\"sp-div\"></div>") }
-            let rows = paused.map { showRow($0, prefix: "<span style=\"color:var(--t4)\">⏸</span> ") }.joined()
+            let rows = groups.paused.map { showRow($0, prefix: "<span style=\"color:var(--t4)\">⏸</span> ") }.joined()
             parts.append("<div class=\"sp-sec\"><div class=\"sp-hdr\">Paused</div>\(rows)</div>")
         }
 
@@ -3778,10 +3802,9 @@ final class WebServer: @unchecked Sendable {
             var paused: [ShowRef]
         }
 
-        func mine(_ deviceId: String) -> (Show) -> Bool { { $0.hdhr_record == deviceId } }
-
         func entry(deviceId: String, online: Bool, devTuners: DevTuners?) -> TunerEntry {
-            let recs = state.recordingShows.filter(mine(deviceId))
+            let groups = tunerShowGroups(state: state, deviceId: deviceId)
+            let recs = groups.recording
                 .map { RecordingRef(showId: $0.show_id, title: $0.show_title, channel: $0.show_channel,
                                      end: $0.show_end.map { Int($0.timeIntervalSince1970) }, poster: poster($0)) }
 
@@ -3792,19 +3815,15 @@ final class WebServer: @unchecked Sendable {
             let hwOccupied = online ? (state.deviceTunerOccupancy[deviceId]?.filter { $0.VctNumber != nil }.count ?? 0) : 0
             let otherOccupancy = max(0, hwOccupied - (recs.count + vlcCount))
 
-            let sortedActive = state.activeShows.filter(mine(deviceId))
-                .sorted { ($0.show_next?.timeIntervalSince1970 ?? .infinity) < ($1.show_next?.timeIntervalSince1970 ?? .infinity) }
-            let upNextShow = sortedActive.first(where: isUpNextToday)
-            let upNext = upNextShow.flatMap { s -> UpNextRef? in
+            let upNext = groups.upNext.flatMap { s -> UpNextRef? in
                 guard let next = s.show_next else { return nil }
                 return UpNextRef(showId: s.show_id, title: s.show_title, channel: s.show_channel,
                                   next: Int(next.timeIntervalSince1970), poster: poster(s))
             }
-            let scheduled = sortedActive
-                .filter { $0.show_id != upNextShow?.show_id }
+            let scheduled = groups.scheduled
                 .map { ShowRef(showId: $0.show_id, title: $0.show_title, channel: $0.show_channel, poster: poster($0)) }
 
-            let paused = state.pausedShows.filter(mine(deviceId))
+            let paused = groups.paused
                 .map { ShowRef(showId: $0.show_id, title: $0.show_title, channel: $0.show_channel, poster: poster($0)) }
 
             return TunerEntry(deviceId: deviceId, name: "HDHR-\(deviceId.uppercased())", online: online,

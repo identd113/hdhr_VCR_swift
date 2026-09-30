@@ -1390,6 +1390,10 @@ struct VLCPlayerView: View {
     // the only reason this overlay needs its container's actual size at all.
     private var pipOverlay: some View {
         GeometryReader { geo in
+        // Computed once per body evaluation rather than re-derived at each of its three use sites
+        // below (found in code review: the same min/max-clamp + divisor-search math was redone
+        // three times for the same geo.size.width).
+        let thumbSize = pipThumbnailSize(containerWidth: geo.size.width)
         VStack {
             if !pipCorner.isTop { Spacer() }
             HStack {
@@ -1419,8 +1423,7 @@ struct VLCPlayerView: View {
                                     .tint(.white)
                             }
                         }
-                        .frame(width: pipThumbnailSize(containerWidth: geo.size.width).width,
-                               height: pipThumbnailSize(containerWidth: geo.size.width).height)
+                        .frame(width: thumbSize.width, height: thumbSize.height)
                         .background(Color.black)
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.white.opacity(0.25)))
@@ -1428,7 +1431,7 @@ struct VLCPlayerView: View {
                         // Smooths the jump between quantized divisor sizes (see
                         // pipThumbnailSize) while dragging the window to resize it, rather than
                         // popping straight from one clean fraction to the next.
-                        .animation(.easeOut(duration: 0.15), value: pipThumbnailSize(containerWidth: geo.size.width))
+                        .animation(.easeOut(duration: 0.15), value: thumbSize)
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("vlc-pip-thumbnail")

@@ -3756,6 +3756,18 @@ final class AppState: ObservableObject {
                     }
                     chFilter = show.state == .seriesAll ? nil : show.show_channel
                     devFilter = freshDevice.DeviceID
+                    // The concurrent edit above may have reassigned this show to a DIFFERENT
+                    // device than the one just reloaded — found in code review: only `device`'s
+                    // guide was refreshed above, so matching against `freshDevice` could silently
+                    // run against ITS OWN stale guide with no reload ever attempted for it this
+                    // tick, quietly falling through to "no episode found" even though a fetch just
+                    // happened (for the wrong device). One extra check/reload here, same as above.
+                    if freshDevice.DeviceID != device.DeviceID, !guideStore.isFresh(deviceId: freshDevice.DeviceID) {
+                        await guideStore.load(for: freshDevice, hours: config.GuideHours, useXML: config.Guide_use_xml)
+                        guideByDevice = guideStore.channelsByDevice
+                        guard let reIdx2 = shows.firstIndex(where: { $0.show_id == show.show_id }) else { return }
+                        idx = reIdx2
+                    }
                 }
                 // Check for a currently-airing episode first (e.g. marathon, back-to-back airings).
                 let now = Date()
@@ -5048,6 +5060,24 @@ final class AppState: ObservableObject {
     }
     private var feedCacheSessions: [String: FeedCacheSession] = [:]   // primary-only, non-persisted
 
+    /// WebServer's own read access into feedCacheSessions, for handleWatchRecording's FEED-cache
+    /// fallback (see that function's own doc comment) — AppState stays the single owner of this
+    /// dictionary. Simplified in code review: WebServer previously mirrored the same session into
+    /// a second, hand-synced registry of its own (registerFeedCacheSession/unregisterFeedCacheSession),
+    /// existing purely so it could serve requests off information AppState already had — a third
+    /// parallel store (alongside this one and RecordingManager.feedCachePullPids) that every
+    /// teardown path had to remember to keep in sync. These two accessors are now the only access
+    /// WebServer needs; RecordingManager.feedCachePullPids stays separate, same as a real
+    /// recording's own process handle (RecordingManager.pids) stays separate from its AppState-side
+    /// show_recording bool — an already-accepted split for "process handle" vs. "app-level state."
+    func feedCacheSessionPath(id: String) -> String? {
+        feedCacheSessions[id]?.cachePath
+    }
+
+    func isFeedCacheSessionStillActive(id: String) -> Bool {
+        feedCacheSessions[id] != nil && recordingManager.isFeedCachePullRunning(sessionId: id)
+    }
+
     private static let feedCacheStartupPollInterval: TimeInterval = 0.15
     private static let feedCacheStartupTimeout: TimeInterval = 2.0
     // Longer grace for a transcode-profile FEED — the source's own transcode-session join/retry
@@ -5089,7 +5119,6 @@ final class AppState: ObservableObject {
 
         func fail() -> (url: String, sessionId: String, startedAt: Date)? {
             recordingManager.stopFeedCachePull(sessionId: sessionId)
-            webServer.unregisterFeedCacheSession(id: sessionId)
             feedCacheSessions.removeValue(forKey: sessionId)
             try? FileManager.default.removeItem(atPath: cachePath)
             let alert = NSAlert()
@@ -5109,9 +5138,6 @@ final class AppState: ObservableObject {
             return fail()
         }
         let startedAt = Date()
-        webServer.registerFeedCacheSession(id: sessionId, path: cachePath) { [weak self] in
-            self?.recordingManager.isFeedCachePullRunning(sessionId: sessionId) ?? false
-        }
         feedCacheSessions[sessionId] = FeedCacheSession(id: sessionId, remoteURL: remoteURL, device: device,
                                                          title: title, cachePath: cachePath, startedAt: startedAt)
 
@@ -5147,7 +5173,6 @@ final class AppState: ObservableObject {
     func stopFeedCacheSession(sessionId: String) {
         guard let session = feedCacheSessions.removeValue(forKey: sessionId) else { return }
         recordingManager.stopFeedCachePull(sessionId: sessionId)
-        webServer.unregisterFeedCacheSession(id: sessionId)
         try? FileManager.default.removeItem(atPath: session.cachePath)
         glog("[Watch] FEED cache session stopped: \(sessionId)")
     }
@@ -5433,6 +5458,48 @@ final class AppState: ObservableObject {
         return Self.byteOffset(forTargetSeconds: targetSeconds, elapsedSeconds: elapsed, fileSizeBytes: size)
     }
 
+    // What a `/api/watch-recording`-style showId resolves to — either a real Show (Watch Now) or a
+    // FEED local-disk-cache session. Extracted so seekRecording/seekRecordingToLiveEdge/
+    // reanchorRecordingSeekForSwap share one "try shows, else feedCacheSessions, else nil" lookup
+    // instead of each hand-rolling the identical fork (found in code review).
+    private enum RecordingRelaySource {
+        case show(Show)
+        case feedCache(FeedCacheSession)
+
+        var recordingStart: Date {
+            switch self {
+            case .show(let show): return show.show_next ?? Date()
+            case .feedCache(let session): return session.startedAt
+            }
+        }
+        var title: String {
+            switch self {
+            case .show(let show): return show.show_title
+            case .feedCache(let session): return session.title
+            }
+        }
+    }
+
+    private func recordingRelaySource(showId: String) -> RecordingRelaySource? {
+        if let show = shows.first(where: { $0.show_id == showId }) { return .show(show) }
+        if let session = feedCacheSessions[showId] { return .feedCache(session) }
+        return nil
+    }
+
+    private func recordingRelayElapsedSeconds(_ source: RecordingRelaySource) -> Double {
+        switch source {
+        case .show(let show): return recordingElapsedSeconds(show)
+        case .feedCache(let session): return max(1, Date().timeIntervalSince(session.startedAt))
+        }
+    }
+
+    private func recordingRelayByteOffset(_ source: RecordingRelaySource, atSeconds seconds: Double) -> Int? {
+        switch source {
+        case .show(let show): return recordingByteOffset(for: show, atSeconds: seconds)
+        case .feedCache(let session): return feedCacheByteOffset(for: session, atSeconds: seconds)
+        }
+    }
+
     // fromBeginning: false (default) starts ~recordingLiveEdgeBackoffSeconds behind live, matching
     // the menu bar's existing "Watch Now!" behavior. true starts at byte/second 0, the actual
     // beginning of the recording — the relay (WebServer.swift's streamGrowingFile/pumpGrowingFile)
@@ -5494,28 +5561,14 @@ final class AppState: ObservableObject {
     /// VLCPlayerWindowManager.open), so it doesn't re-mute or re-show the Start overlay the way a
     /// channel switch does.
     func seekRecording(showId: String, toSeconds seconds: Double) {
-        if let show = shows.first(where: { $0.show_id == showId }) {
-            guard !show.show_recording_path.isEmpty,
-                  let byteOffset = recordingByteOffset(for: show, atSeconds: seconds) else { return }
-            let started        = show.show_next ?? Date()
-            let clampedSeconds  = max(0, min(seconds, recordingElapsedSeconds(show)))
-            let relayURL = "http://127.0.0.1:\(config.Web_server_port)/api/watch-recording?show=\(showId)&start=\(byteOffset)"
-            glog("[Watch] seeking '\(show.show_title)' to \(Int(clampedSeconds))s (byte \(byteOffset))")
-            VLCBridge.shared.play(url: relayURL)
-            VLCBridge.shared.beginRecordingSeek(showId: showId, recordingStart: started, seekBaseSeconds: clampedSeconds)
-            return
-        }
-        // Not a real Show — try a FEED local-disk-cache session instead (see FeedCacheSession's
-        // own doc comment). Same reconnect-by-byte-offset shape as the real-Show branch above,
-        // just against the cache file's own growth instead of the real recording's.
-        guard let session = feedCacheSessions[showId],
-              let byteOffset = feedCacheByteOffset(for: session, atSeconds: seconds) else { return }
-        let elapsed = max(1, Date().timeIntervalSince(session.startedAt))
+        guard let source = recordingRelaySource(showId: showId),
+              let byteOffset = recordingRelayByteOffset(source, atSeconds: seconds) else { return }
+        let elapsed = recordingRelayElapsedSeconds(source)
         let clampedSeconds = max(0, min(seconds, elapsed))
         let relayURL = "http://127.0.0.1:\(config.Web_server_port)/api/watch-recording?show=\(showId)&start=\(byteOffset)"
-        glog("[Watch] seeking FEED '\(session.title)' to \(Int(clampedSeconds))s (byte \(byteOffset))")
+        glog("[Watch] seeking '\(source.title)' to \(Int(clampedSeconds))s (byte \(byteOffset))")
         VLCBridge.shared.play(url: relayURL)
-        VLCBridge.shared.beginRecordingSeek(showId: showId, recordingStart: session.startedAt, seekBaseSeconds: clampedSeconds)
+        VLCBridge.shared.beginRecordingSeek(showId: showId, recordingStart: source.recordingStart, seekBaseSeconds: clampedSeconds)
     }
 
     /// Jumps a recording-relay session back to the live edge (the same ~30s-behind-live default
@@ -5526,13 +5579,8 @@ final class AppState: ObservableObject {
     /// FEED cache session too (fallback below) — its own background puller never stops writing, so
     /// the same "~30s behind whatever's been captured so far" default applies identically.
     func seekRecordingToLiveEdge(showId: String) {
-        if let show = shows.first(where: { $0.show_id == showId }) {
-            let elapsed = recordingElapsedSeconds(show)
-            seekRecording(showId: showId, toSeconds: max(0, elapsed - Self.recordingLiveEdgeBackoffSeconds))
-            return
-        }
-        guard let session = feedCacheSessions[showId] else { return }
-        let elapsed = max(1, Date().timeIntervalSince(session.startedAt))
+        guard let source = recordingRelaySource(showId: showId) else { return }
+        let elapsed = recordingRelayElapsedSeconds(source)
         seekRecording(showId: showId, toSeconds: max(0, elapsed - Self.recordingLiveEdgeBackoffSeconds))
     }
 
@@ -5550,26 +5598,17 @@ final class AppState: ObservableObject {
     /// (a live channel or a FEED relay swapping into primary) — recordingShowId is meaningless for
     /// either, and play() itself only clears it for a genuine live-tuner URL, not a FEED one.
     func reanchorRecordingSeekForSwap(newPrimaryURL url: String) {
+        // The FEED-cache branch here is a narrow edge case: it can only happen via an explicit
+        // tap-to-swap of an already-primary FEED cache session, never via watchRemoteRelayAsSecondary,
+        // which never touches feedCacheSessions at all.
         guard url.contains("/api/watch-recording"),
-              let showId = URLComponents(string: url)?.queryItems?.first(where: { $0.name == "show" })?.value else {
+              let showId = URLComponents(string: url)?.queryItems?.first(where: { $0.name == "show" })?.value,
+              let source = recordingRelaySource(showId: showId) else {
             VLCBridge.shared.clearRecordingSeek()
             return
         }
-        if let show = shows.first(where: { $0.show_id == showId }) {
-            let recordingStart = show.show_next ?? Date()
-            VLCBridge.shared.beginRecordingSeek(showId: showId, recordingStart: recordingStart,
-                                                 seekBaseSeconds: recordingElapsedSeconds(show))
-            return
-        }
-        // Not a real Show — a FEED cache session swapped into primary (narrow edge case: this can
-        // only happen via an explicit tap-to-swap of an already-primary FEED cache session, never
-        // via watchRemoteRelayAsSecondary, which never touches feedCacheSessions at all).
-        guard let session = feedCacheSessions[showId] else {
-            VLCBridge.shared.clearRecordingSeek()
-            return
-        }
-        let elapsed = max(1, Date().timeIntervalSince(session.startedAt))
-        VLCBridge.shared.beginRecordingSeek(showId: showId, recordingStart: session.startedAt, seekBaseSeconds: elapsed)
+        VLCBridge.shared.beginRecordingSeek(showId: showId, recordingStart: source.recordingStart,
+                                             seekBaseSeconds: recordingRelayElapsedSeconds(source))
     }
 
     private func alertTunerFull(tunerCount: Int, deviceId: String) {

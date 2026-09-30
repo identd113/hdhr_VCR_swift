@@ -537,18 +537,28 @@ final class VirtualTunerService {
     /// Resolves the rare race where two Macs both start relaying the same source tuner before
     /// either sees the other (only one hdhrVCRplus instance's FEED should ever be live for a given
     /// source tuner at a time — explicit user direction 2026-09-25). Whichever side started
-    /// recording that tuner first keeps the relay; a tie (including both nil — e.g. neither side's
-    /// recordingStartedAtKey ever made it across, or an exact-same-instant start) falls back to
-    /// hostname so at least one side deterministically backs off instead of both, or neither, doing
-    /// so. Pure — extracted for unit testing, same precedent as relayDeviceID/makeDeviceID above
-    /// (this file's own tests can't exercise the real network-bound caller, AppState.
-    /// updateVirtualTunerPresence(), the same way VirtualTunerServiceTests.swift's own header
-    /// comment already documents for the rest of this class).
+    /// recording that tuner first keeps the relay; an exact tie (both known and equal, or both
+    /// nil — e.g. neither side's recordingStartedAtKey ever made it across, or a genuine same-
+    /// instant start) falls back to hostname so at least one side deterministically backs off
+    /// instead of both, or neither, doing so. Pure — extracted for unit testing, same precedent as
+    /// relayDeviceID/makeDeviceID above (this file's own tests can't exercise the real network-
+    /// bound caller, AppState.updateVirtualTunerPresence(), the same way VirtualTunerServiceTests.
+    /// swift's own header comment already documents for the rest of this class).
+    ///
+    /// **A known start always beats an unknown one** (found in code review — a prior version fell
+    /// straight to the hostname tie-break whenever *either* side was nil, even when the other side
+    /// had a real, known-earlier start): a side with no confirmed start time has no evidence it
+    /// started first, so it must not get to win purely on alphabetical hostname luck against a side
+    /// that can actually prove a start time, however early or late that side's real start turns out
+    /// to be. Still fully symmetric — swapping ourStart/theirStart (and the hostnames) always flips
+    /// the answer, so exactly one side ever backs off, never both or neither.
     static func conflictShouldYield(ourStart: Date?, theirStart: Date?,
                                      ourHostname: String, theirHostname: String) -> Bool {
         if let ourStart, let theirStart, ourStart != theirStart {
             return ourStart > theirStart
         }
+        if ourStart == nil, theirStart != nil { return true }
+        if ourStart != nil, theirStart == nil { return false }
         return ourHostname > theirHostname
     }
 }

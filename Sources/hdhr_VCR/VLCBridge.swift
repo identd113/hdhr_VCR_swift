@@ -824,7 +824,16 @@ final class VLCBridge: ObservableObject {
             setMediaFn?(mp, media)
             // libvlc requires the renderer be set while the player is stopped, before the next
             // play() — this is exactly that point (stopFn already ran above, playFn hasn't yet).
-            if slot == .primary { _ = setRendererFn?(mp, rendererToApply) }
+            // Unconditional, not gated on slot == .primary (found in code review: an earlier version
+            // gated this, which meant swapSlots()'s own reconnect-to-local-after-cast — targeting
+            // .secondary, per that function's own doc comment — never cleared the Chromecast
+            // renderer still applied to that mediaPlayer object from when it *was* primary and
+            // casting; the object kept silently outputting to the Chromecast after the swap even
+            // though castingDeviceID/the UI both said casting had stopped). Safe regardless of slot:
+            // rendererToApply is already forced nil for anything but .primary (see its own comment
+            // just above), so this only ever clears a stale renderer on a non-primary player, never
+            // sets a new one.
+            _ = setRendererFn?(mp, rendererToApply)
             let rc = playFn?(mp) ?? -1
             if rc != 0 { glog("[VLC] WARNING: libvlc_media_player_play(\(slot)) returned \(rc)", level: .warning) }
             if slot == .primary, targetMinRate < 1.0 {

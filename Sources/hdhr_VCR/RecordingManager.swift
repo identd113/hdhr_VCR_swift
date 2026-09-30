@@ -9,14 +9,22 @@ final class RecordingManager {
     private var lastExitStatus: [String: Int32]           = [:]   // raw waitpid status, set when isRunning() reaps a dead curl
 
     // FEED local disk cache pullers (docs/VirtualTunerService.md's "FEED scrub via local disk
-    // cache" section) — a separate dictionary from `pids` on purpose: unlike a real recording curl
-    // (which deliberately survives a force-quit via POSIX_SPAWN_SETSID so it can be reattached on
-    // next launch, see spawnDetached's own comment), a FEED cache puller must NEVER get that
-    // treatment. Once this app's own WebServer is gone, nothing can ever serve the local cache file
-    // it's writing to again, so keeping this in a distinct dictionary makes "always kill these on
-    // exit" a structural fact (stopAllFeedCachePulls, called unconditionally from
-    // AppState.teardownForExit and the SIGTERM handler) rather than a filter someone has to
-    // remember to apply to `pids`.
+    // cache" section) — a separate dictionary from `pids` on purpose: unlike a real recording curl,
+    // which is deliberately meant to outlive a force-quit/crash so it can be reattached on next
+    // launch, a FEED cache puller is never reattached — once this app's own WebServer is gone,
+    // nothing can ever serve the local cache file it's writing to again. Keeping this in a distinct
+    // dictionary makes "always kill these on a controlled exit" a structural fact
+    // (stopAllFeedCachePulls, called unconditionally from AppState.teardownForExit and the SIGTERM
+    // handler) rather than a filter someone has to remember to apply to `pids`. It still spawns via
+    // the same POSIX_SPAWN_SETSID `spawnDetached` a real recording uses (found in code review: an
+    // earlier version of this comment claimed a puller "must NEVER" survive an *uncontrolled*
+    // crash/SIGKILL of this process, which isn't actually true or even meaningfully preventable —
+    // SETSID governs process-group membership, not parent/child death, and nothing in POSIX ties a
+    // spawned child's lifetime to its parent's regardless of that flag) — an uncontrolled exit can
+    // still leave one running as a transient orphan, exactly like a real recording curl can.
+    // `sweepOrphanedFeedCachePullers()` (`AppState.swift`, run at every startup) is what actually
+    // bounds this: unlike a real recording, a leftover puller is never reattached, just
+    // unconditionally killed, since nothing was lost by not resuming it.
     private var feedCachePullPids: [String: Int32] = [:]
 
     static var curlLogPath: String { curlVerboseLogFilePath }
@@ -329,15 +337,22 @@ final class RecordingManager {
         glog("[Rec] FEED cache pull stopped session=\(sessionId)")
     }
 
-    // Same waitpid(WNOHANG) reap pattern as isRunning() above.
+    // Same waitpid(WNOHANG) reap pattern as isRunning() above — including the same isCurlProcess
+    // pid-recycle guard on the ECHILD/orphan fallback path (found in code review: this session's
+    // own puller is never actually orphaned like a reattached recording, but it's polled
+    // continuously for the session's whole lifetime via WebServer's isStillActive closure, so a
+    // bare kill(pid,0) here has the same window to misreport a recycled pid as still-alive that
+    // isRunning() was hardened against).
     func isFeedCachePullRunning(sessionId: String) -> Bool {
         guard let pid = feedCachePullPids[sessionId] else { return false }
         var status: Int32 = 0
         let wret = waitpid(pid, &status, WNOHANG)
         if wret == 0 { return true }
         if wret > 0 { feedCachePullPids.removeValue(forKey: sessionId); return false }
-        if kill(pid, 0) == 0 { return true }
-        feedCachePullPids.removeValue(forKey: sessionId); return false
+        guard kill(pid, 0) == 0, isCurlProcess(pid: pid) else {
+            feedCachePullPids.removeValue(forKey: sessionId); return false
+        }
+        return true
     }
 
     // Called unconditionally (not gated on any "keep recordings running" flag — that's about the

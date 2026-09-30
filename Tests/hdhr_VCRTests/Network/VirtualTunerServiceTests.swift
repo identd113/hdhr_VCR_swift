@@ -248,14 +248,24 @@ struct VirtualTunerServiceTests {
             ourStart: same, theirStart: same, ourHostname: "aaa", theirHostname: "zzz") == false)
     }
 
-    @Test func conflictShouldYield_missingStartOnEitherSide_fallsBackToHostname() {
-        // A relay that somehow never advertised recordingStartedAtKey (shouldn't happen in
-        // practice, but must not crash or always-win/always-lose) falls to the same hostname
-        // tie-break as an exact timestamp tie.
+    @Test func conflictShouldYield_oneSideMissingStart_theKnownSideAlwaysWins() {
+        // Corrected in code review: a known start beats an unknown one outright, regardless of
+        // hostname — a side with no confirmed start time has no evidence it started first, so it
+        // must not win purely on alphabetical luck against a side that can actually prove one.
+        // Hostnames deliberately set so the OLD (hostname-fallback) behavior would have picked the
+        // opposite answer in both cases below, proving this isn't just coincidentally consistent.
         #expect(VirtualTunerService.conflictShouldYield(
-            ourStart: nil, theirStart: Date(), ourHostname: "zzz", theirHostname: "aaa") == true)
+            ourStart: nil, theirStart: Date(), ourHostname: "aaa", theirHostname: "zzz") == true)
         #expect(VirtualTunerService.conflictShouldYield(
-            ourStart: Date(), theirStart: nil, ourHostname: "aaa", theirHostname: "zzz") == false)
+            ourStart: Date(), theirStart: nil, ourHostname: "zzz", theirHostname: "aaa") == false)
+    }
+
+    @Test func conflictShouldYield_bothSidesMissingStart_fallsBackToHostname() {
+        // Neither side has any evidence at all (e.g. recordingStartedAtKey never made it across for
+        // either) — no real basis to prefer one over the other, so this is the same deterministic
+        // hostname tie-break an exact timestamp tie uses.
+        #expect(VirtualTunerService.conflictShouldYield(
+            ourStart: nil, theirStart: nil, ourHostname: "zzz", theirHostname: "aaa") == true)
         #expect(VirtualTunerService.conflictShouldYield(
             ourStart: nil, theirStart: nil, ourHostname: "aaa", theirHostname: "zzz") == false)
     }
