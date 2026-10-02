@@ -4,6 +4,34 @@ Deferred features and improvements. Add items here when a task is punted. Remove
 
 ---
 
+## Next up
+
+### "Give up" fallback if FEED buffering persists: roll back to before the FEED pacing change, then cherry-pick the unrelated fixes
+
+Buffering when watching a FEED seems to have started with the change to how the FEED file is paced (logged 2026-10-01). If the `bfd513e` pacer fix doesn't hold up live, roll back past the change instead of continuing to iterate on it.
+
+- **The commit that changed it:** `2b05c18` ("feat: scrub back/forward while watching a FEED, via a local disk cache", 2026-09-29). It moved primary-window FEED viewing from the paced in-memory `/api/feed-local-relay` proxy to a curl puller writing a local cache file, served back unpaced through `streamGrowingFile`. `bfd513e` later added `FeedRelayPacer` back to that path.
+- **Roll back to:** `2736843` (its parent, the last commit with the old in-memory paced FEED relay for the primary window).
+- **Cherry-pick on top:**
+  - `767a411` (10 code-review findings) — only **partially**. A trial `git cherry-pick -n 767a411` onto `2736843` conflicts in `AppState.swift`, `RecordingManager.swift`, `WebServer.swift` and both docs. Keep the parts independent of the scrub feature:
+    - `VLCBridge.play(url:slot:)` clearing the Chromecast renderer for every slot
+    - `conflictShouldYield`: a known start time beats an unknown one
+    - `handleEdit` rejecting the whole request on any invalid `airDays` entry
+    - `scheduleNextAir` re-checking guide freshness for a reassigned device
+    - `tunerShowGroups` extraction
+    - `pipThumbnailSize` computed once
+  - Drop the parts that exist only for the scrub feature:
+    - `isFeedCachePullRunning` guard
+    - `feedCachePullPids` comment
+    - removal of the WebServer FEED-cache registry mirror
+    - `RecordingRelaySource`
+  - `3fe30b9` (docs): keep only the hunks for the kept fixes above (VLCBridge, conflictShouldYield, airDays, tunerShowGroups).
+  - `bfd513e`: drop entirely (pacer for the cache path only).
+  - The uncommitted `/code-review --fix` edits from 2026-10-01 (FEED-cache session lifecycle in `AppState.swift`/`VLCPlayerView.swift`) are all scrub-feature-only; drop them too.
+- **Cost:** losing scrub back/forward while watching a FEED (Watch Now's own scrub is unaffected — it predates `2b05c18`). Move the FEED-scrub idea back into this file as deferred if we do this.
+
+---
+
 ## Accepted — not our bug / not scheduled
 
 ### macOS Local Network permission block — lineup fetch can silently fail on launch
