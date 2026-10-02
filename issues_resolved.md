@@ -19,7 +19,7 @@ A 5-way whole-file correctness sweep of all `Sources/` files (not just the recen
 
 **Fix**: `WebServer.start(port:)` sets `NWProtocolIP.Options.version = .v4`. IPv6 dropped (a second v6-only listener on the same port fails with `EADDRINUSE`, even with `allowLocalEndpointReuse`); nothing depends on it. Candidate for a Feedback Assistant report — the 30-line repro reproduces it.
 
-**Resolving commit**: (this commit)
+**Resolving commit**: `5ec43ff`
 
 ---
 
