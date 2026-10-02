@@ -46,6 +46,7 @@ private typealias vlc_audio_set_vol_fn   = @convention(c) (OpaquePointer?, Int32
 private typealias vlc_adev_set_fn        = @convention(c) (OpaquePointer?, UnsafePointer<CChar>?, UnsafePointer<CChar>?) -> Void
 private typealias vlc_media_add_opt_fn   = @convention(c) (OpaquePointer?, UnsafePointer<CChar>?) -> Void
 private typealias vlc_mp_set_rate_fn     = @convention(c) (OpaquePointer?, Float) -> Int32
+private typealias vlc_mp_set_pause_fn    = @convention(c) (OpaquePointer?, Int32) -> Void   // libvlc_media_player_set_pause — 1 pause, 0 resume
 private typealias vlc_mp_get_rate_fn     = @convention(c) (OpaquePointer?) -> Float
 private typealias vlc_mp_get_state_fn    = @convention(c) (OpaquePointer?) -> Int32
 private typealias vlc_mp_get_time_fn     = @convention(c) (OpaquePointer?) -> Int64   // libvlc_media_player_get_time — ms
@@ -331,6 +332,47 @@ final class VLCBridge: ObservableObject {
         glog("[VLC] beginRecordingSeek — showId=\(showId) recordingStart=\(recordingStart) seekBase=\(seekBaseSeconds)s")
     }
 
+    // MARK: - Pause (Space bar, added 2026-10-01)
+    // Primary only, and only for a disk-backed stream (recordingShowId != nil — Watch Now or a FEED
+    // local-disk-cache session), the same scope as arrow-key seek: those have a file to resume
+    // from. A live tuner stream isn't pausable — pausing stops libvlc reading the HDHomeRun
+    // connection, which can drop it, and there's no live-TV timeshift to resume into.
+    // While paused, tickPrimary skips its stall detection entirely (a deliberately frozen playhead
+    // would otherwise log STALL and, once sustained, trigger an automatic catchUpToLive()
+    // reconnect), and recordingPlaybackSeconds stops advancing (pausedAt) so the scrub bar holds
+    // its position; resume shifts recordingReopenedAt forward by the paused span. Any new play()
+    // on primary, and swapSlots(), clear it.
+    @Published private(set) var isPaused = false
+    private var pausedAt: Date? = nil
+
+    var canPause: Bool { recordingShowId != nil && isPlaying && _mpSetPause != nil }
+
+    func togglePause() {
+        guard let mp = primaryState.mediaPlayer, let setPause = _mpSetPause else { return }
+        if isPaused {
+            setPause(mp, 0)
+            if let pausedAt { recordingReopenedAt = recordingReopenedAt.addingTimeInterval(Date().timeIntervalSince(pausedAt)) }
+            pausedAt = nil
+            isPaused = false
+            glog("[VLC] resumed (Space)")
+        } else {
+            guard canPause else { return }
+            setPause(mp, 1)
+            pausedAt = Date()
+            isPaused = true
+            glog("[VLC] paused (Space)")
+        }
+    }
+
+    /// Resets pause bookkeeping without touching libvlc — for callers about to replace or move the
+    /// primary player's stream anyway (play(url:), swapSlots()). A paused player that gets a new
+    /// media + play() starts playing regardless.
+    private func clearPauseState() {
+        guard isPaused || pausedAt != nil else { return }
+        isPaused = false
+        pausedAt = nil
+    }
+
     func clearRecordingSeek() {
         guard recordingShowId != nil else { return }
         glog("[VLC] clearRecordingSeek — was showId=\(recordingShowId ?? "?")")
@@ -343,7 +385,7 @@ final class VLCBridge: ObservableObject {
     /// Estimated position within the recording — seek base plus wall-clock time since the last
     /// (re)connect. Meaningless unless recordingShowId is non-nil.
     var recordingPlaybackSeconds: Double {
-        recordingSeekBaseSeconds + Date().timeIntervalSince(recordingReopenedAt)
+        recordingSeekBaseSeconds + (pausedAt ?? Date()).timeIntervalSince(recordingReopenedAt)
     }
 
     private var statsTimer:      Timer?
@@ -411,6 +453,7 @@ final class VLCBridge: ObservableObject {
     private let _adevSet:      vlc_adev_set_fn?
     private let _mediaAddOpt:  vlc_media_add_opt_fn?
     private let _mpSetRate:     vlc_mp_set_rate_fn?
+    private let _mpSetPause:    vlc_mp_set_pause_fn?
     private let _mpGetRate:     vlc_mp_get_rate_fn?
     private let _mpGetState:    vlc_mp_get_state_fn?
     private let _mpGetStats:    vlc_media_get_stats_fn?
@@ -467,6 +510,7 @@ final class VLCBridge: ObservableObject {
         _adevSet      = sym("libvlc_audio_output_device_set")
         _mediaAddOpt  = sym("libvlc_media_add_option")
         _mpSetRate    = sym("libvlc_media_player_set_rate")
+        _mpSetPause   = sym("libvlc_media_player_set_pause")
         _mpGetRate    = sym("libvlc_media_player_get_rate")
         _mpGetState   = sym("libvlc_media_player_get_state")
         // NOT "libvlc_media_player_get_stats" — that symbol has never existed in libvlc (confirmed
@@ -674,6 +718,7 @@ final class VLCBridge: ObservableObject {
         // *currently* in the primary slot, never get set for a secondary-slot recording relay.
         let targetMinRate: Float
         if slot == .primary {
+            clearPauseState()
             if isRecordingRelay {
                 recordingReopenedAt = Date()
                 minRate = 1.0   // local loopback file read — no network jitter to buffer against
@@ -928,6 +973,7 @@ final class VLCBridge: ObservableObject {
     /// Does NOT release the media player itself — call releasePlayer() for full teardown.
     /// Deliberately does NOT clear drawableView — see stop()'s doc comment.
     private func stopAndClearState(slot: PlayerSlot = .primary) {
+        if slot == .primary { clearPauseState() }   // stop()/releasePlayer() — no stale "Paused" glyph next open
         // The shared stats timer serves both slots — only actually stop it if the *other* slot
         // isn't mid-playback, so tearing down one slot never freezes the other's isPlaying/rate/
         // stall reporting.
@@ -1029,6 +1075,9 @@ final class VLCBridge: ObservableObject {
     /// those are derived from the URL/Show, not swappable state) and just swaps currentURL/
     /// secondaryURL so that derivation can run against the right URL.
     func swapSlots() {
+        // Resume a paused primary before it's demoted — the corner thumbnail has no pause state
+        // or control of its own, so it must never land there frozen (see togglePause).
+        if isPaused { togglePause() }
         // The renderer (castRendererItem) is only ever applied to whichever mediaPlayer object
         // libvlc_media_player_set_renderer was last called on — it travels with that mediaPlayer
         // object, not with "the primary slot" as a concept. Swapping mediaPlayer references below
@@ -1335,6 +1384,15 @@ final class VLCBridge: ObservableObject {
     private func tickPrimary() {
         guard let mp = primaryState.mediaPlayer else { return }
         if detectPrimaryTerminalState(mp) { return }
+        // Deliberately paused (togglePause) — skip stall detection and the sustained-stall
+        // catch-up below entirely, and drop the tick baselines so the first tick after resume
+        // doesn't compare against a pre-pause position.
+        if isPaused {
+            lastTickTimeMs = nil
+            lastTickReadBytes = nil
+            consecutiveStalledTicks = 0
+            return
+        }
         // Fetch track descriptions once playing; retry every tick until audio tracks appear.
         // Keep calling while audio hasn't been found yet, OR audio is found but spu still has
         // retry budget left and hasn't turned up anything — see spuFetchAttempts' own doc comment.

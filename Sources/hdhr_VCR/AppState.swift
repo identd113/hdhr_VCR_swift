@@ -2898,6 +2898,19 @@ final class AppState: ObservableObject {
                 let endsStr = shortTime(shows[i].show_end ?? Date())
                 fireDiscordCard(showId: show.show_id, event: "🔴 Recording Started", color: 0x2ECC71,
                                 enabled: true, extra: [("Ends", endsStr, true)])
+            } else if show.show_recording, showRuntime[show.show_id]?.discordEpisodeSnapshot == nil,
+                      showRuntime[show.show_id]?.pendingDiscordStart != true,
+                      recordingManager.isRunning(showId: show.show_id),
+                      let entry = guideEntryForShow(show) {
+                // A recording reattached at launch (reattachRecordings) never passes through the
+                // "Recording Started" branch above, so it had no snapshot — and the FEED lineup
+                // (WebServer's HdhrVCRplusEpisodeTitle/EpisodeNumber/Synopsis) and later Discord
+                // cards read only that. Found 2026-10-01: after an app restart mid-game, a FEED
+                // viewer saw "MLB Baseball" with no "Phillies at Braves" episode title. Captured
+                // only once a real guide entry resolves (the guide may not be loaded yet right
+                // after launch), so an empty snapshot can never stick; retried each tick until then.
+                showRuntime[show.show_id, default: ShowRuntimeState()].discordEpisodeSnapshot =
+                    discordEpisodeSnapshot(entry: entry, show: show)
             }
 
             // Discord progress update — edit start embed once per 5-min boundary during active recordings

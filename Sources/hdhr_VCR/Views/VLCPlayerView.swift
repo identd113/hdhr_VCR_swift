@@ -632,6 +632,18 @@ struct VLCPlayerView: View {
                     infoBanner
                         .transition(.opacity)
                 }
+                // Space-bar pause (VLCBridge.togglePause, disk-backed streams only) — a centered,
+                // non-interactive glyph so a deliberately frozen frame never reads as a stall.
+                if bridge.isPaused {
+                    Image(systemName: "pause.fill")
+                        .font(.system(size: 34, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(26)
+                        .background(.ultraThinMaterial, in: Circle())
+                        .allowsHitTesting(false)
+                        .accessibilityLabel("Paused")
+                        .transition(.opacity)
+                }
                 if posterHidden, !bridge.hasError, !bridge.hasEnded,
                    let showId = bridge.recordingShowId, let startDate = bridge.recordingStartDate {
                     VStack {
@@ -2698,7 +2710,8 @@ final class VLCPlayerWindowManager {
         }
     }
 
-    // Arrow-key seek (recording playback only) + Esc to exit fullscreen + "i" for the info banner.
+    // Arrow-key seek (recording playback only) + Space to pause/resume (same scope) + Esc to exit
+    // fullscreen + "i" for the info banner.
     // A local monitor rather than a SwiftUI .onKeyPress/.keyboardShortcut so none of these are at
     // the mercy of which toolbar control currently has focus, and scoped to this exact window
     // (`event.window === win`) so it can never fire for a keystroke intended for some other window
@@ -2754,6 +2767,14 @@ final class VLCPlayerWindowManager {
                 guard self.pendingSeekDelta != 0 else { return event }
                 self.seekRecordingRelative(self.pendingSeekDelta)
                 self.pendingSeekDelta = 0
+                return nil
+            case (.keyDown, 49):   // space — pause/resume, added 2026-10-01. Disk-backed streams
+                                    // only (VLCBridge.canPause: Watch Now or a FEED cache session,
+                                    // the same scope as arrow-key seek above); a live channel
+                                    // passes the key through untouched. Bare Space only.
+                guard event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty,
+                      VLCBridge.shared.isPaused || VLCBridge.shared.canPause else { return event }
+                VLCBridge.shared.togglePause()
                 return nil
             case (.keyDown, 53):   // escape — only consumed while actually in fullscreen, so a
                                     // plain Esc elsewhere (e.g. dismissing a popover) still works.
