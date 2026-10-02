@@ -170,6 +170,8 @@ struct WebServerPerfTests {
         func toggleFavorite() async -> Bool {
             var req = URLRequest(url: URL(string: "http://127.0.0.1:1980/api/toggle-favorite")!)
             req.httpMethod = "POST"
+            // Required since the 2026-10-01 cross-site guard (WebServer.requestRejectionReason).
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
             req.httpBody = try? JSONSerialization.data(withJSONObject: ["deviceId": devId, "guideNumber": num])
             guard let (_, resp) = try? await URLSession.shared.data(for: req) else { return false }
             return (resp as? HTTPURLResponse)?.statusCode == 200
@@ -243,6 +245,8 @@ struct WebServerPerfTests {
         func toggleFavorite() async -> Bool {
             var req = URLRequest(url: URL(string: "http://127.0.0.1:1980/api/toggle-favorite")!)
             req.httpMethod = "POST"
+            // Required since the 2026-10-01 cross-site guard (WebServer.requestRejectionReason).
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
             req.httpBody = try? JSONSerialization.data(withJSONObject: ["deviceId": devId, "guideNumber": num])
             guard let (_, resp) = try? await URLSession.shared.data(for: req) else { return false }
             return (resp as? HTTPURLResponse)?.statusCode == 200
