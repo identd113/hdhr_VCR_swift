@@ -957,7 +957,6 @@ struct VLCPlayerView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .vlcToggleInfoOverlay)) { _ in
             infoOverlayVisible.toggle()
-            glog("[VLC] info banner \(infoOverlayVisible ? "shown" : "hidden")")
         }
         .onReceive(NotificationCenter.default.publisher(for: .vlcSwapPiP)) { _ in
             swapPrimaryAndSecondary()
@@ -2825,14 +2824,7 @@ final class VLCPlayerWindowManager {
     // ~15s earlier than the last (exactly this feature's left-arrow step), while testing it.
     private func installKeyMonitor(for win: NSWindow) {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self, weak win] event in
-            guard let self, let win, event.window === win else {
-                // Diagnostic (2026-10-02, "i stopped working"): a bare "i" that never reaches the
-                // handler below because it was addressed to some other window.
-                if event.type == .keyDown, event.charactersIgnoringModifiers?.lowercased() == "i" {
-                    glog("[VLC] 'i' key ignored — event window '\(event.window?.title ?? "nil")' is not the player window")
-                }
-                return event
-            }
+            guard let self, let win, event.window === win else { return event }
             // Bare "i" only — charactersIgnoringModifiers (not keyCode) so this matches by the same
             // layout-independent character SwiftUI's KeyEquivalent("i") itself would have used, and
             // the modifier check keeps Cmd/Option/Control/Shift-I from also triggering this (Shift
@@ -2840,7 +2832,6 @@ final class VLCPlayerWindowManager {
             // for — .keyboardShortcut("i", modifiers: []) never matched that either).
             if event.type == .keyDown, event.charactersIgnoringModifiers?.lowercased() == "i",
                event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty {
-                glog("[VLC] 'i' key — toggling info banner")
                 NotificationCenter.default.post(name: .vlcToggleInfoOverlay, object: nil)
                 return nil
             }
