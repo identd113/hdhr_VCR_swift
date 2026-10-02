@@ -2464,6 +2464,17 @@ final class VLCPlayerWindowManager {
         // that) from "reusing the window across devices" (ISSUES.md: previously left the hosted
         // view's device/lineup/recording-relay rows silently pointing at the old tuner).
         let deviceChanged = currentDeviceID != device.DeviceID
+        // Opening anything other than the current primary FEED session's own relay URL (a live
+        // channel or Watch Now from the menu) replaces it — tear it down now rather than at window
+        // close, or a FEED-cache puller keeps writing the remote stream to disk for as long as this
+        // window stays open on something else. (watchRemoteRelay sets tracking to the new session
+        // before calling open(), so its own URL always contains the current id.)
+        if let staleId = currentFeedSessionId, !url.contains(staleId) {
+            appState.stopFeedCacheSession(sessionId: staleId)
+            appState.webServer.unregisterFeedRelaySession(id: staleId)
+            currentFeedRemoteURL = nil
+            currentFeedSessionId = nil
+        }
         currentDeviceID = device.DeviceID
         currentChannelNumber = channelNumber
         VLCBridge.shared.liveMinRate = Float(appState.config.Player_buffer_min_rate) / 100.0
@@ -2579,6 +2590,15 @@ final class VLCPlayerWindowManager {
         guard window != nil else {
             glog("[VLC] WindowManager.openSecondary — no primary window open, ignoring", level: .warning)
             return
+        }
+        // Same stale-FEED teardown as open() above, for the secondary slot — replacing a FEED
+        // secondary (possibly a FEED-cache session moved here by a PiP swap) with a live channel
+        // or recording would otherwise leave its relay/puller running until window close.
+        if let staleId = secondaryFeedSessionId, !url.contains(staleId) {
+            appState?.stopFeedCacheSession(sessionId: staleId)
+            appState?.webServer.unregisterFeedRelaySession(id: staleId)
+            secondaryFeedRemoteURL = nil
+            secondaryFeedSessionId = nil
         }
         secondaryDeviceID      = device.DeviceID
         secondaryChannelNumber = channelNumber

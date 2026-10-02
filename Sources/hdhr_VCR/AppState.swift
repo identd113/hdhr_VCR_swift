@@ -5104,13 +5104,6 @@ final class AppState: ObservableObject {
     func startFeedCacheSession(remoteURL: String, device: HDHRDevice, title: String) async
         -> (url: String, sessionId: String, startedAt: Date)? {
         let mgr = VLCPlayerWindowManager.shared
-        // Stop any previous primary session first — e.g. switching raw↔H.264 or re-watching a
-        // different relay reuses this same singleton player window. No-ops harmlessly if
-        // currentFeedSessionId isn't actually a cache session (e.g. nil, or somehow still an
-        // in-memory-relay id from before this feature existed).
-        if let previousSessionId = mgr.currentFeedSessionId {
-            stopFeedCacheSession(sessionId: previousSessionId)
-        }
         // The UUID (not just device id) ensures switching raw↔H.264, or re-watching, never aliases
         // two different sessions onto the same cache file.
         let sessionId = "\(device.DeviceID)-\(UUID().uuidString)"
@@ -5162,6 +5155,19 @@ final class AppState: ObservableObject {
             return fail()
         }
 
+        // Stop the previous primary session only now that the new one is confirmed good — e.g.
+        // switching raw↔H.264 or re-watching a different relay reuses this same singleton player
+        // window. Deferred to here (not done up front) for two reasons found in code review: (1) a
+        // failed start (e.g. a transcode toggle whose source never produced bytes) must not have
+        // already killed the still-working stream the user was watching; (2) currentFeedSessionId
+        // is read *after* the startup wait, so two overlapping calls (a double-click on the menu
+        // row during that 2–5s wait) still tear down whichever session landed first instead of
+        // both reading the same stale id and leaking one puller until app exit. Tries both
+        // teardown paths — a PiP swap can leave an in-memory relay id in the primary slot.
+        if let previousSessionId = mgr.currentFeedSessionId, previousSessionId != sessionId {
+            stopFeedCacheSession(sessionId: previousSessionId)
+            webServer.unregisterFeedRelaySession(id: previousSessionId)
+        }
         mgr.setFeedRelayTracking(remoteURL: remoteURL, sessionId: sessionId)
         return ("http://127.0.0.1:\(webServer.activePort)/api/watch-recording?show=\(sessionId)&start=0", sessionId, startedAt)
     }
@@ -5255,6 +5261,10 @@ final class AppState: ObservableObject {
         // player window/slot.
         let previousSessionId = slot == .primary ? mgr.currentFeedSessionId : mgr.secondaryFeedSessionId
         if let previousSessionId {
+            // Also tries the FEED-cache teardown — a PiP swap can move a primary FEED-cache
+            // session's id into this slot, and replacing it here would otherwise orphan its puller
+            // and cache file until app exit (no-op for an in-memory relay id).
+            stopFeedCacheSession(sessionId: previousSessionId)
             webServer.unregisterFeedRelaySession(id: previousSessionId)
         }
         // The UUID (not just device id) ensures switching raw↔H.264, or re-watching, never aliases
