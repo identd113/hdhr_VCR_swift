@@ -10,6 +10,11 @@ Historical record of bugs encountered during development. Used as a "don't repea
 
 ## Open
 
+*(Found 2026-10-01 running the full `swift test` suite — both pre-existing, neither caused by that day's FEED/PiP changes.)*
+
+- **`UI Snapshots` → "MenuContent — ready with scheduled and paused shows" fails `diff <= tolerance`** — reproduces on a clean tree with the day's changes stashed, so the reference image or the rendered menu drifted earlier. Needs a look at the diff image before deciding between a real menu regression and a stale reference (`RECORD_SNAPSHOTS=1` only after confirming the new render is correct).
+- **`WebServerLifecycleTests.backToBackTriggers_atLaunch_doNotRaceASecondBind` flakes under full-suite load** — `webServerRunning` still false after its 2s poll (100 × 20ms). Passes 3/3 in isolation. Likely just the poll window being too short when ~600 tests share the machine; widen it, or poll on the listener's `.ready` directly.
+
 *(Found 2026-09-12 by a full-app multi-angle code review, `/code-review` on the whole codebase — not a diff-scoped pass. Each finding verified against source directly, not agent-reported blind. The security finding — unvalidated `transcode` param — was fixed 2026-09-13, and 7 more (5 correctness, 2 efficiency) were fixed the same day after a staleness re-check confirmed they were all still live; the duplication entry from this batch was fixed 2026-09-28 — see `issues_resolved.md` for both.)*
 
 *(Found 2026-09-07, live — a real cross-machine FEED test session, watching a FEED with its H.264/CC pickers visible.)*

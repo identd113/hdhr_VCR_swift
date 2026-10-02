@@ -18,7 +18,10 @@ import Foundation
 // at a scratch directory, mirroring how RecordingManagerTests cleans up real NSTemporaryDirectory()
 // paths it doesn't control either.
 
-@Suite("AppState FEED local disk cache session")
+// .serialized: startFeedCacheSession reads/writes VLCPlayerWindowManager.shared's per-slot feed
+// session ids (a real singleton) and stops "the previous session" for its slot — run in parallel,
+// one test's primary session could tear down another test's still-in-use puller.
+@Suite("AppState FEED local disk cache session", .serialized)
 struct FeedCacheSessionTests {
 
     private func makeDevice() -> HDHRDevice { .test(id: "FEEDCAFE", tuners: 1) }
@@ -100,5 +103,31 @@ struct FeedCacheSessionTests {
         await waitUntil { manager.isFeedCachePullRunning(sessionId: second.sessionId) }
         #expect(second.sessionId != first.sessionId)
         #expect(manager.isFeedCachePullRunning(sessionId: second.sessionId) == true)
+    }
+
+    @Test @MainActor func secondarySlotSession_leavesPrimarySessionRunning() async throws {
+        // A PiP FEED (slot: .secondary, added 2026-10-01 so it stays scrubbable after a swap to
+        // primary) must only replace the secondary slot's own previous session — never the
+        // primary's, or opening a PiP FEED would kill whatever's playing full-size.
+        let scriptPath = try writeMockCurlScript(sleepSeconds: 30, outputBytes: 4096)
+        defer { cleanup(scriptPath) }
+        let manager = RecordingManager(curlExecutablePath: scriptPath)
+        let state = makeTestAppState(devices: [makeDevice()], recordingManager: manager)
+        let device = makeDevice()
+        let mgr = VLCPlayerWindowManager.shared
+
+        let primary = try #require(await state.startFeedCacheSession(
+            remoteURL: "http://192.0.2.1/auto/v5.1?dev=FEEDCAFE", device: device, title: "Primary"))
+        defer { state.stopFeedCacheSession(sessionId: primary.sessionId) }
+        let secondary = try #require(await state.startFeedCacheSession(
+            remoteURL: "http://192.0.2.1/auto/v9.1?dev=FEEDCAFE", device: device, title: "PiP", slot: .secondary))
+        defer { state.stopFeedCacheSession(sessionId: secondary.sessionId) }
+
+        await waitUntil { manager.isFeedCachePullRunning(sessionId: secondary.sessionId) }
+        #expect(manager.isFeedCachePullRunning(sessionId: primary.sessionId) == true)
+        #expect(manager.isFeedCachePullRunning(sessionId: secondary.sessionId) == true)
+        #expect(mgr.currentFeedSessionId == primary.sessionId)
+        #expect(mgr.secondaryFeedSessionId == secondary.sessionId)
+        #expect(secondary.url.contains("/api/watch-recording?show=\(secondary.sessionId)"))
     }
 }

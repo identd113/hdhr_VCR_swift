@@ -313,6 +313,25 @@ struct VLCPlayerView: View {
                                remoteRelayEntries: state.remoteRelayEntries)
     }
 
+    // Every discovered FEED (another Mac's in-progress recording) as a synthetic "live-feed:" row —
+    // non-nil only in exactly the case feedChannelEntry covers: a FEED is primary in a window bound
+    // to a *real* tuner (opened on a live channel / Watch Now / standalone PiP, then a FEED swapped
+    // in). The picker then lists only these instead of that real tuner's whole lineup (reported
+    // 2026-10-01: "in a FEED view the pull-down shows all options, not just feed ones"). A window
+    // opened directly on a FEED is already FEED-only (its `lineup` is the virtual relay's own).
+    private var feedOnlyEntries: [LineupEntry]? {
+        guard feedChannelEntry != nil else { return nil }
+        let relays = state.remoteRelayEntries
+        return relays.compactMap { pair in
+            pair.entry.URL.flatMap { Self.feedChannelEntry(deviceIsVirtualRelay: false, remoteURL: $0, remoteRelayEntries: relays) }
+        }
+    }
+
+    private func remoteURL(fromLiveFeedGuideNumber guideNumber: String) -> String? {
+        guard guideNumber.hasPrefix(Self.liveFeedGuideNumberPrefix) else { return nil }
+        return String(guideNumber.dropFirst(Self.liveFeedGuideNumberPrefix.count))
+    }
+
     /// Pure decision, extracted for unit testing — matches `remoteURL` against the discovered FEED
     /// entries and, if found, builds the synthetic picker row for it. See feedChannelEntry's own
     /// call site (the property above) for why this exists.
@@ -337,7 +356,7 @@ struct VLCPlayerView: View {
     // order below: channel-up/down is a sequential-step gesture (user expects 5.1 → 5.2 → 6.1),
     // and reordering it to favorites-first would make each press jump unpredictably between a
     // favorite and its numeric neighbors instead of stepping through the dial in order.
-    private var channelCycleOrder: [LineupEntry] { recordingChannelEntries + lineup }
+    private var channelCycleOrder: [LineupEntry] { feedOnlyEntries ?? (recordingChannelEntries + lineup) }
 
     // HDHomeRun raw streams are always MPEG-2/AC-3. Every real, actually-applied transcode
     // path — a real device EXTEND hardware profile (heavy/mobile/internet*) *and* this app's own
@@ -1600,22 +1619,26 @@ struct VLCPlayerView: View {
                     Text(entry.GuideName).tag(Optional(entry))
                 }
                 // A cross-device FEED swapped in as primary — see feedChannelEntry's own doc
-                // comment for why this is separate from recordingChannelEntries above.
-                if let feedEntry = feedChannelEntry {
-                    Text(feedEntry.GuideName).tag(Optional(feedEntry))
-                }
-                // Favorites-first, matching WatchNowView's favTopBorder split and the web
-                // Guide's favRows/otherRows — a labeled Section reads as the closest
-                // Picker-compatible equivalent to those views' visual "★ Favorites" divider.
-                if !favoriteLineup.isEmpty {
-                    Section("★ Favorites") {
-                        ForEach(favoriteLineup, id: \.GuideNumber) { ch in
-                            Text("\(ch.GuideNumber)  \(ch.GuideName)").tag(Optional(ch))
+                // comment. FEED-only then: every discovered FEED, never this window's bound real
+                // tuner's channels (see feedOnlyEntries).
+                if let feeds = feedOnlyEntries {
+                    ForEach(feeds, id: \.GuideNumber) { entry in
+                        Text(entry.GuideName).tag(Optional(entry))
+                    }
+                } else {
+                    // Favorites-first, matching WatchNowView's favTopBorder split and the web
+                    // Guide's favRows/otherRows — a labeled Section reads as the closest
+                    // Picker-compatible equivalent to those views' visual "★ Favorites" divider.
+                    if !favoriteLineup.isEmpty {
+                        Section("★ Favorites") {
+                            ForEach(favoriteLineup, id: \.GuideNumber) { ch in
+                                Text("\(ch.GuideNumber)  \(ch.GuideName)").tag(Optional(ch))
+                            }
                         }
                     }
-                }
-                ForEach(otherLineup, id: \.GuideNumber) { ch in
-                    Text("\(ch.GuideNumber)  \(ch.GuideName)").tag(Optional(ch))
+                    ForEach(otherLineup, id: \.GuideNumber) { ch in
+                        Text("\(ch.GuideNumber)  \(ch.GuideName)").tag(Optional(ch))
+                    }
                 }
             }
             .labelsHidden()
@@ -1666,7 +1689,14 @@ struct VLCPlayerView: View {
                 posterNSImage = nil
                 VLCBridge.shared.setVolume(0)
                 guard let ch else { return }
-                if let showId = showId(fromLiveGuideNumber: ch.GuideNumber) {
+                if let feedURL = remoteURL(fromLiveFeedGuideNumber: ch.GuideNumber) {
+                    // Switch to a different FEED (feedOnlyEntries) — the same path MenuContent's
+                    // "Recording on Another Mac" Watch row takes. watchRemoteRelay dedups against
+                    // the FEED already playing, and rebinds the window to the FEED's own device.
+                    guard let pair = state.remoteRelayEntries.first(where: { $0.entry.URL == feedURL }) else { return }
+                    state.watchRemoteRelay(url: feedURL, title: pair.entry.virtualRelayShowTitle ?? pair.entry.GuideName,
+                                           device: pair.device)
+                } else if let showId = showId(fromLiveGuideNumber: ch.GuideNumber) {
                     guard let show = state.shows.first(where: { $0.show_id == showId }) else { return }
                     state.watchRecordingInApp(show)
                 } else {
@@ -1929,7 +1959,12 @@ struct VLCPlayerView: View {
                         .foregroundStyle(.secondary)
                 }
                 .menuStyle(.borderlessButton)
-                .frame(maxWidth: 24)
+                // Chevron hidden + intrinsic sizing (2026-10-01, reported "crowded"): the old
+                // .frame(maxWidth: 24) squeezed the icon *and* .borderlessButton's own dropdown
+                // chevron into 24pt, jammed right up against the volume slider. The ellipsis icon
+                // already reads as "more", so the chevron was redundant.
+                .menuIndicator(.hidden)
+                .fixedSize()
                 .help("Audio, captions, output, display, and cast options")
                 .accessibilityLabel("More options")
                 .accessibilityIdentifier("vlc-more-options-menu")

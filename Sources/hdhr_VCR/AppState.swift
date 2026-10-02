@@ -5095,13 +5095,16 @@ final class AppState: ObservableObject {
     /// FEED-cache branch) — so the historical FEED delivery-pacer stall bug (which only ever
     /// reproduced under a real cross-machine network seek/reconnect, see issues_resolved.md's
     /// "VLC-side FEED playback stalls" entry) can't recur here: that in-memory pacer isn't used by
-    /// this path at all. Primary-window only — the PiP secondary keeps using the plain in-memory
-    /// startFeedLocalRelay below, which has no scrub bar and no cache file to manage. Returns nil on
+    /// this path at all. Used for both slots (`slot:`) since 2026-10-01 — the PiP secondary used
+    /// the in-memory startFeedLocalRelay below until then, so a Tab/tap swap bringing a PiP FEED
+    /// to primary landed on a stream with no local file and the scrub bar vanished
+    /// (reanchorRecordingSeekForSwap only recognizes /api/watch-recording URLs). Returns nil on
     /// failure (after showing an alert and cleaning up); callers must not fall back to `remoteURL`
     /// on nil, since that would defeat the whole point of this indirection. Also sets
-    /// VLCPlayerWindowManager's primary feed-tracking fields on success, same as the old
+    /// VLCPlayerWindowManager's feed-tracking fields for `slot` on success, same as the old
     /// startFeedLocalRelay did — callers don't need to do that themselves.
-    func startFeedCacheSession(remoteURL: String, device: HDHRDevice, title: String) async
+    func startFeedCacheSession(remoteURL: String, device: HDHRDevice, title: String,
+                                slot: VLCBridge.PlayerSlot = .primary) async
         -> (url: String, sessionId: String, startedAt: Date)? {
         let mgr = VLCPlayerWindowManager.shared
         // The UUID (not just device id) ensures switching raw↔H.264, or re-watching, never aliases
@@ -5164,11 +5167,18 @@ final class AppState: ObservableObject {
         // row during that 2–5s wait) still tear down whichever session landed first instead of
         // both reading the same stale id and leaking one puller until app exit. Tries both
         // teardown paths — a PiP swap can leave an in-memory relay id in the primary slot.
-        if let previousSessionId = mgr.currentFeedSessionId, previousSessionId != sessionId {
+        // Scoped to `slot` — tearing down the *other* slot's session here would silently kill
+        // whatever it's playing.
+        let previousSessionId = slot == .primary ? mgr.currentFeedSessionId : mgr.secondaryFeedSessionId
+        if let previousSessionId, previousSessionId != sessionId {
             stopFeedCacheSession(sessionId: previousSessionId)
             webServer.unregisterFeedRelaySession(id: previousSessionId)
         }
-        mgr.setFeedRelayTracking(remoteURL: remoteURL, sessionId: sessionId)
+        if slot == .primary {
+            mgr.setFeedRelayTracking(remoteURL: remoteURL, sessionId: sessionId)
+        } else {
+            mgr.setSecondaryFeedRelayTracking(remoteURL: remoteURL, sessionId: sessionId)
+        }
         return ("http://127.0.0.1:\(webServer.activePort)/api/watch-recording?show=\(sessionId)&start=0", sessionId, startedAt)
     }
 
@@ -5250,10 +5260,10 @@ final class AppState: ObservableObject {
     /// vs. the PiP secondary corner thumbnail) this session belongs to — without it, starting a
     /// secondary-slot FEED relay would read/tear down the *primary's* currentFeedSessionId below,
     /// silently killing whatever the primary was watching the moment a PiP FEED relay started.
-    /// As of the "FEED scrub via local disk cache" feature, only ever called for `slot: .secondary`
-    /// (watchRemoteRelayAsSecondary) — primary-window FEED viewing goes through
-    /// startFeedCacheSession above instead, which needs an actual local seekable file this
-    /// in-memory-only path structurally can't provide.
+    /// No longer called as of 2026-10-01 — both slots now go through startFeedCacheSession above
+    /// (a PiP FEED needs a seekable local file too, so it stays scrubbable after a swap to
+    /// primary). Kept, along with WebServer's /api/feed-local-relay route, as the in-memory
+    /// alternative for A/B testing FEED delivery against the disk-cache path.
     func startFeedLocalRelay(remoteURL: String, device: HDHRDevice, slot: VLCBridge.PlayerSlot = .primary) -> String {
         let mgr = VLCPlayerWindowManager.shared
         // Unregister any previous session (for this same slot only) before starting a new one —
@@ -5373,8 +5383,10 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// FEED-relay counterpart to watchRemoteRelay — resolves the local-relay indirection for the
-    /// secondary slot first, then hands off to watchAsSecondary like every other secondary source.
+    /// FEED-relay counterpart to watchRemoteRelay — resolves the local disk-cache indirection for
+    /// the secondary slot first (the same startFeedCacheSession primary uses, so the stream stays
+    /// scrubbable once swapped to primary), then hands off to watchAsSecondary like every other
+    /// secondary source.
     func watchRemoteRelayAsSecondary(url: String, title: String, device: HDHRDevice) {
         guard VLCBridge.shared.isAvailable, !url.isEmpty else { return }
         // Refuse the exact FEED that's already primary — checked against the *remote* URL, before
@@ -5385,8 +5397,15 @@ final class AppState: ObservableObject {
             glog("[Watch] watchRemoteRelayAsSecondary refused — '\(title)' is already the primary FEED stream", level: .warning)
             return
         }
-        let localURL = startFeedLocalRelay(remoteURL: url, device: device, slot: .secondary)
-        watchAsSecondary(url: localURL, title: title, device: device)
+        // Dedup against the secondary's own true remote URL — once a session starts, secondaryURL
+        // holds the LOCAL cache URL, so watchAsSecondary's own URL-based dedup can't catch a
+        // repeat click on the same FEED (it would start a second puller for nothing).
+        if VLCPlayerWindowManager.shared.secondaryFeedRemoteURL == url { return }
+        Task {
+            guard let session = await startFeedCacheSession(remoteURL: url, device: device, title: title,
+                                                            slot: .secondary) else { return }
+            watchAsSecondary(url: session.url, title: title, device: device)
+        }
     }
 
     /// Watch-Now counterpart to watchRecordingInApp — same URL construction, but lands on
