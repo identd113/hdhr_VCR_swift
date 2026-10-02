@@ -11,6 +11,26 @@ Every entry below was re-verified against the current codebase on 2026-08-10 bef
 A 5-way whole-file correctness sweep of all `Sources/` files (not just the recent diff). Crasher + all four medium findings fixed this pass.
 
 
+
+## RESOLVED — 2026-10-01 full-app review, High findings #1–9
+
+Found by the 2026-10-01 4-agent full-app review (see `ISSUES.md` for the remaining Medium/Low findings #10–27). Entries as logged:
+
+1. ✓ **`startRecording` reuses a captured index after an `await`** — `AppState.swift` ~3144: the preemption grace branch's `await fetchDeviceStatus(for:)` then falls through to `shows[index]`/`show` writes (`show_url`, `show_end`, `show_recording`, path, `recordShowFailure`, curl launch). A web-UI delete/add during that round trip → wrong show marked recording, curl for a deleted show, or index-out-of-range crash. Violates CLAUDE.md idle-loop show-array safety. Fix: don't continue after the await (return; next tick retries), or re-resolve by `show_id` and re-check active/paused/recording/isRunning.
+2. ✓ **Editing a DateTime show skips tonight's airing** — `updateShow` → `scheduleNextAir` → `nextDateTime` (`AppState.swift` ~3911) always searches from start of *tomorrow*. Edit any field at 08:00 for a 21:00 show → `show_next` jumps to the next air day. Fix: search from `now` when `show_next` is still in the future.
+3. ✓ **DateTime recording that ends after midnight skips the next night** — same `nextDateTime`: "skip today" is judged at stop time. Mon 23:35 show stopping Tue 00:37 → next = Wed. Fix: when `show_next <= now`, search from `max(now, show_next + 60s)`.
+4. ✓ **Edit window saves a stale full `Show` snapshot** — `EditShowView.swift` `loadShow` only runs on first `onAppear` or a *different* `editingShowId`; `saveWithoutDismiss` → `updateShow` replaces the live show wholesale. Reopening Edit on a since-started recording and saving resets `show_recording`/`show_end` (loses Bonus Time)/`show_recording_path`/`discord_start_msg_id`/`notify_*`. Fix: apply only form-edited fields onto the live show; reload when the window becomes key and nothing is dirty.
+5. ✓ **Imported config lost on quit** — `ConfigManager.importConfig` writes the file but not in-memory state; `teardownForExit`'s `saveConfig()` (and idle dirty saves) overwrite it with the old config. Fix: no-save latch + terminate after import, or hot-load into `state.config`/`shows`.
+6. ✓ **`FeedRelayPacer` can stall 10+ s after a scrub** — `WebServer.swift` `FeedRelayPacer`: `recordSent` counts unpaced backlog-drain bytes, anchor is connection start, seed rate 300 KB/s (HD ≈ 1.4 MB/s), rate refreshed only every 2 s in the pump. A ~7 MB scrub backlog → first live chunk held ~20 s. Likely the post-seek stall seen live 2026-10-01. Fix: start pacing (anchor + byte count) only once on small chunks; seed rate from the cache file's size/age; update rate inside `delayBeforeSending`.
+7. agent **In-window channel switch never updates `VLCPlayerWindowManager.currentDeviceID`** — `VLCPlayerView.startPlayChannel` only calls `noteLiveChannelSwitch`. After a cross-device PiP swap, picking a channel on the window's own device leaves `currentDeviceID` on the other device → `vlcOccupiesTuner` miscounts both, and the new scheduled-recording preemption can `stop()` the user's stream on the wrong device. Also no `ensurePlayer()` (standalone-PiP window after a prior close → primary `play()` stuck as `pendingURL`) and no stale-FEED teardown. Fix: route through a manager method that sets device, ensures player, and runs `open()`'s FEED teardown.
+8. agent **FEED window: picking another FEED in the picker bypasses the disk cache** — `device.isVirtualRelay` window's lineup entries fall through to `playChannel` → `tunerAvailable(<virtual device>)` and/or a direct raw `/auto/v` connection (no scrub/pause, historical cross-machine stall path); old puller keeps running; `syncChannel` snaps the picker back to the stale FEED. Fix: in `onChange(selectedChannel)`, route virtual-relay entries to `state.watchRemoteRelay`.
+9. ✓ **PiP "already the secondary" dedup ignores the query string** — `AppState.watchAsSecondary` compares `urlBase`; all `/api/watch-recording?show=…` (and `/api/feed-local-relay?session=…`) URLs on one device compare equal. Switching the PiP between two FEEDs from the same source Mac kills the old puller then never starts the new stream; Watch Now X→Y on one device is silently ignored. Fix: compare full URL / id for local relay URLs.
+
+
+**Resolving commit**: `f3b1bb5`
+
+---
+
 ## RESOLVED — FEED starvation: dual-stack NWListener sent ~500× slower to IPv4 LAN clients
 
 **Symptom**: FEED viewing on the laptop (Wi-Fi) from the Mac Mini (wired 2.5GbE) loaded, played a few seconds, then stalled repeatedly — under both the in-memory relay and the newer FEED-cache curl design. The laptop's cache file grew at ~1 Mbps against an ~11 Mbps raw MPEG-2 recording; the Mac Mini's sender never caught up to the live edge.
