@@ -406,13 +406,17 @@ struct MenuContent: View {
         // ── Unavailable Tuner ──────────────────────────────────────────────
         if !unavailableShows.isEmpty {
             Divider()
-            let unavailableDevices = state.devices.filter { !$0.isAvailable }
-            groupedByDeviceSection(singleTitle: "Unavailable Tuner", multiTitlePrefix: "Unavailable Tuner",
-                                    items: unavailableShows, devices: unavailableDevices,
-                                    multiDevice: unavailableDevices.count > 1,
-                                    filter: { $0.hdhr_record == $1.DeviceID ? $0 : nil }) { shows in
-                ForEach(shows) { show in
-                    if show.show_recording { recordingMenu(show) } else { scheduledMenu(show) }
+            // Grouped by device ID rather than via groupedByDeviceSection's [HDHRDevice] — a tuner
+            // that was never discovered has no HDHRDevice at all (2026-10-01 review #19).
+            let unavailableIDs = unavailableDeviceIDs.sorted()
+            ForEach(unavailableIDs, id: \.self) { deviceId in
+                let deviceShows = unavailableShows.filter { $0.hdhr_record == deviceId }
+                if !deviceShows.isEmpty {
+                    Section(unavailableIDs.count > 1 ? "Unavailable Tuner · \(deviceId)" : "Unavailable Tuner") {
+                        ForEach(deviceShows) { show in
+                            if show.show_recording { recordingMenu(show) } else { scheduledMenu(show) }
+                        }
+                    }
                 }
             }
         }

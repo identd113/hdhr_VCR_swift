@@ -139,7 +139,7 @@ private var isDirty: Bool {
 
 - `.onAppear` seeds `draft = state.config`
 - All controls bind to `$draft.*` — not to `state.config` directly
-- **Save** → `applyAndSave()` sets `state.config = draft`, calls `state.saveConfig()`, and applies side effects: if `Network_interface` changed, invalidates the guide cache and triggers `state.rediscoverDevices()` + `state.refreshGuide()` in a background Task so the new NIC is active immediately
+- **Save** → `applyAndSave()` sets `state.config` to `codableApplyingEdits(live: state.config, original: draftBaseline, edited: draft)` — only the fields edited in this window are applied onto the live config (2026-10-01 review #22: saving the whole draft reverted anything changed elsewhere meanwhile, e.g. the donation unlock or the guide's appearance bridge), then resets `draft`/`draftBaseline` to that merged value — calls `state.saveConfig()`, and applies side effects: if `Network_interface` changed, invalidates the guide cache and triggers `state.rediscoverDevices()` + `state.refreshGuide()` in a background Task so the new NIC is active immediately
 - **Save & Close** → if `canSave` (`isDirty && !webhookNeedsTest && !webPortInvalid`), calls `applyAndSave()`, then always closes the window regardless. **Disabled** (not always enabled) when the Discord webhook needs testing or the web port is out of range — closing without saving in that state is still possible via the window's own close button, just not this one. Rightmost button, `.borderedProminent`, triggered by Return (`.defaultAction`). Turns orange when `canSave` is true.
 - **Discard** → `draft = state.config`
 - **Close with unsaved changes** → `WindowCloseInterceptor` intercepts and shows an NSAlert: Save / Discard / Cancel

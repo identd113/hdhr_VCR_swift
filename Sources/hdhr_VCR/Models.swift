@@ -284,24 +284,7 @@ struct Show: Identifiable, Equatable {
     /// via the Codable representation so a new Show field is covered automatically. Falls back to
     /// `edited` only if encoding fails (never expected).
     func applyingEdits(from original: Show, to edited: Show) -> Show {
-        let enc = JSONEncoder()
-        guard let o = try? JSONSerialization.jsonObject(with: enc.encode(original)) as? [String: Any],
-              let e = try? JSONSerialization.jsonObject(with: enc.encode(edited)) as? [String: Any],
-              var live = try? JSONSerialization.jsonObject(with: enc.encode(self)) as? [String: Any]
-        else { return edited }
-        for (key, value) in e where !Self.jsonEqual(o[key], value) { live[key] = value }
-        for key in o.keys where e[key] == nil { live.removeValue(forKey: key) }
-        guard let data = try? JSONSerialization.data(withJSONObject: live),
-              let merged = try? JSONDecoder().decode(Show.self, from: data) else { return edited }
-        return merged
-    }
-
-    private static func jsonEqual(_ a: Any?, _ b: Any?) -> Bool {
-        switch (a, b) {
-        case (nil, nil): return true
-        case let (a?, b?): return (a as AnyObject).isEqual(b as AnyObject)
-        default: return false
-        }
+        codableApplyingEdits(live: self, original: original, edited: edited) ?? edited
     }
 
     static func blank(channel: String = "", device: String = "") -> Show {
@@ -1164,4 +1147,27 @@ extension GuideEntry {
         }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
+}
+
+/// `live` with only the top-level Codable fields that differ between `original` and `edited`
+/// applied — for an edit form holding its own possibly-stale copy (Show.applyingEdits for Edit
+/// Show, SettingsView's save for AppConfig; 2026-10-01 review #4/#22). Diffing the encoded form
+/// means a newly added field is covered automatically. nil only if encoding/decoding fails.
+func codableApplyingEdits<T: Codable>(live: T, original: T, edited: T) -> T? {
+    let enc = JSONEncoder()
+    guard let o = try? JSONSerialization.jsonObject(with: enc.encode(original)) as? [String: Any],
+          let e = try? JSONSerialization.jsonObject(with: enc.encode(edited)) as? [String: Any],
+          var merged = try? JSONSerialization.jsonObject(with: enc.encode(live)) as? [String: Any]
+    else { return nil }
+    func same(_ a: Any?, _ b: Any?) -> Bool {
+        switch (a, b) {
+        case (nil, nil): return true
+        case let (a?, b?): return (a as AnyObject).isEqual(b as AnyObject)
+        default: return false
+        }
+    }
+    for (key, value) in e where !same(o[key], value) { merged[key] = value }
+    for key in o.keys where e[key] == nil { merged.removeValue(forKey: key) }
+    guard let data = try? JSONSerialization.data(withJSONObject: merged) else { return nil }
+    return try? JSONDecoder().decode(T.self, from: data)
 }

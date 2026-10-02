@@ -237,12 +237,17 @@ struct SettingsView: View {
         let skipConfigChanged = draft.Skip_recorded_episodes  != old.Skip_recorded_episodes
                              || draft.Series_subfolder_enabled != old.Series_subfolder_enabled
         let relayEnabledChanged = draft.Virtual_tuner_relay_enabled != old.Virtual_tuner_relay_enabled
-        state.config = draft
+        // Apply only what was edited in this window onto the live config — saving the whole draft
+        // reverted anything changed elsewhere since it loaded (Donation unlock, the embedded
+        // guide's appearance bridge, Local_network_confirmed…; 2026-10-01 review #22).
+        let merged = codableApplyingEdits(live: state.config, original: draftBaseline, edited: draft) ?? draft
+        state.config = merged
         state.saveConfig()
         // Keep the baseline in lockstep with what was just saved — otherwise resyncIfUntouched()
         // would see draft != draftBaseline forever after any save (since draft was never reset to
         // match) and wrongly treat every future reopen as having a real pending edit to protect.
-        draftBaseline = draft
+        draft = merged
+        draftBaseline = merged
         // Apply an explicit Dock-icon override immediately rather than waiting for next launch —
         // "auto" is left alone here since its own switch-to-accessory point is
         // AppState.confirmLocalNetworkAccessIfNeeded, not a settings save.

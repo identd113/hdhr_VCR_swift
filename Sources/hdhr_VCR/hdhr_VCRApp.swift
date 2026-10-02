@@ -188,7 +188,11 @@ struct hdhr_VCRApp: App {
                     }
                 }
         } label: {
-            statusLabel
+            // Observes only appState.statusLight (not AppState itself) for the blink — see
+            // AppState.statusLight's comment (review #21).
+            StatusLightObserver(light: appState.statusLight) { kind, on in
+                statusLabel(kind: kind, lightOn: on)
+            }
         }
         .menuBarExtraStyle(.menu)
 
@@ -325,15 +329,15 @@ struct hdhr_VCRApp: App {
     // between recording/feed when both are true; this view only has to render whichever one it's
     // told.
     @ViewBuilder
-    private var statusLabel: some View {
-        switch appState.activeStatusLight {
+    private func statusLabel(kind: AppState.StatusLightKind?, lightOn: Bool) -> some View {
+        switch kind {
         case .recording:
-            blinkableIcon(litImage: appIconMenuBarRecording,
+            blinkableIcon(lightOn: lightOn, litImage: appIconMenuBarRecording,
                           litSystemName: "record.circle.fill",
                           litColor: .red,
                           accessibilityLabel: "hdhrVCRplus — recording in progress")
         case .upNext(let minsInt):
-            blinkableIcon(litImage: appIconMenuBarUpNext,
+            blinkableIcon(lightOn: lightOn, litImage: appIconMenuBarUpNext,
                           litSystemName: "clock.badge.fill",
                           litColor: .orange,
                           accessibilityLabel: "hdhrVCRplus — recording starting in \(minsInt) minute\(minsInt == 1 ? "" : "s")")
@@ -345,7 +349,7 @@ struct hdhr_VCRApp: App {
             // same Watch-button icon/color MenuContent's own "Recording on Another Mac" entries use.
             // AppState.hasAvailableRemoteFeed requires a real viewer, not just an existing relay
             // (resolved 2026-09-29) — this label reflects that: someone is actually watching.
-            blinkableIcon(litImage: appIconMenuBarFeed,
+            blinkableIcon(lightOn: lightOn, litImage: appIconMenuBarFeed,
                           litSystemName: "play.tv.fill",
                           litColor: watchNowBlue,
                           accessibilityLabel: "hdhrVCRplus — a recording from another Mac is being watched")
@@ -368,9 +372,9 @@ struct hdhr_VCRApp: App {
     // a view-local TimelineView: a TimelineView inside the MenuBarExtra label broke click-to-open
     // (AppKit's NSStatusItem stopped forwarding clicks once the label free-ran its own render loop).
     @ViewBuilder
-    private func blinkableIcon(litImage: NSImage?, litSystemName: String, litColor: Color,
+    private func blinkableIcon(lightOn: Bool, litImage: NSImage?, litSystemName: String, litColor: Color,
                                 accessibilityLabel: String) -> some View {
-        blinkFrame(lightOn: appState.statusLightOn, litImage: litImage, litSystemName: litSystemName, litColor: litColor)
+        blinkFrame(lightOn: lightOn, litImage: litImage, litSystemName: litSystemName, litColor: litColor)
             .accessibilityLabel(accessibilityLabel)
     }
 
@@ -393,4 +397,11 @@ struct hdhr_VCRApp: App {
                 .opacity(0.3)
         }
     }
+}
+
+/// Re-renders the menu-bar label from AppState.statusLight alone — see AppState.statusLight.
+struct StatusLightObserver<Content: View>: View {
+    @ObservedObject var light: StatusLightModel
+    let content: (AppState.StatusLightKind?, Bool) -> Content
+    var body: some View { content(light.active, light.on) }
 }

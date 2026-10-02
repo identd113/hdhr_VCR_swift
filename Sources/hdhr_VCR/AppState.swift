@@ -2,6 +2,12 @@ import Foundation
 import UserNotifications
 import AppKit
 import SwiftUI
+/// Menu-bar status light state — see AppState.statusLight.
+@MainActor final class StatusLightModel: ObservableObject {
+    @Published var on: Bool = true
+    @Published var active: AppState.StatusLightKind? = nil
+}
+
 @MainActor
 final class AppState: ObservableObject {
     @Published var shows: [Show] = []
@@ -252,11 +258,22 @@ final class AppState: ObservableObject {
         case feedAvailable
         case upNext(minutes: Int)
     }
-    @Published var statusLightOn: Bool = true
+    // The blink state lives in its own small ObservableObject (StatusLightModel), observed only by
+    // the menu-bar label — as @Published properties *on AppState* every blink fired AppState's
+    // objectWillChange and rebuilt an open MenuContent (CLAUDE.md "Menu rebuild churn"; 2026-10-01
+    // review #21). These forwarders keep tickStatusLight and its tests unchanged.
+    let statusLight = StatusLightModel()
+    var statusLightOn: Bool {
+        get { statusLight.on }
+        set { statusLight.on = newValue }
+    }
     // Which status the light is currently showing (nil = idle, no light) — recomputed every tick
     // alongside statusLightOn. hdhr_VCRApp's statusLabel switches on this instead of re-deriving
     // its own priority order, so the cycling logic lives in exactly one place.
-    @Published var activeStatusLight: StatusLightKind? = nil
+    var activeStatusLight: StatusLightKind? {
+        get { statusLight.active }
+        set { statusLight.active = newValue }
+    }
     var isRecording: Bool      { shows.contains { $0.show_recording } }
     var recordingShows: [Show] { shows.filter { $0.show_recording && ($0.show_end ?? .distantPast) > Date() } }
     // True while an abnormal (tuner/curl died mid-recording) stop's grace window is still open for
@@ -278,7 +295,21 @@ final class AppState: ObservableObject {
                                       .sorted { ($0.show_next ?? .distantFuture) < ($1.show_next ?? .distantFuture) } }
     var pausedShows: [Show]    { shows.filter { $0.show_active && $0.show_paused } }
     var inactiveShows: [Show]  { shows.filter { !$0.show_active } }
-    var unavailableDeviceIDs: Set<String> { Set(devices.filter { !$0.isAvailable }.map { $0.DeviceID }) }
+    // Discovered-but-unavailable devices, plus (once startup discovery has finished) device IDs that
+    // shows are assigned to but that were never discovered at all — previously only the former, so
+    // with more than one tuner a never-seen tuner's shows matched no menu group and vanished from
+    // the menu entirely (2026-10-01 review #19; the web guide already shows such devices, per
+    // CLAUDE.md "Web guide offline devices"). Gated on !isStartingUp so every show doesn't flash
+    // into "Unavailable Tuner" before the first discovery pass completes.
+    var unavailableDeviceIDs: Set<String> {
+        var ids = Set(devices.filter { !$0.isAvailable }.map { $0.DeviceID })
+        guard !isStartingUp else { return ids }
+        let known = Set(devices.map { $0.DeviceID })
+        for show in shows where !show.hdhr_record.isEmpty && !known.contains(show.hdhr_record) {
+            ids.insert(show.hdhr_record)
+        }
+        return ids
+    }
 
     // Single shared lookup for "does this recording device support hardware transcode" — used by
     // WebServer's Show.effectiveVideoCodec call sites (handleWatchRecording's re-transcode check,
@@ -6073,11 +6104,18 @@ final class AppState: ObservableObject {
                 // nothing will ever clear again (the show is gone, so deleteShow never runs on it
                 // a second time).
                 guard shows.contains(where: { $0.show_id == showId }) else { continue }
-                tunerStatus[showId] = TunerStatus(
+                let status = TunerStatus(
                     signalStrength: Int(kv["ss"]  ?? "0") ?? 0,
                     lockType:       lock,
                     bitrateMbps:    Double(kv["bps"] ?? "0").map { $0 / 1_000_000 } ?? 0
                 )
+                // @Published — every assignment fires objectWillChange and rebuilds an open menu
+                // (CLAUDE.md "Menu rebuild churn"; review #20: this ran every idle tick per
+                // recording). Hold the displayed value while the menu is open (a first value still
+                // lands), and skip writes that wouldn't change what's shown.
+                if menuIsOpen, tunerStatus[showId] != nil { continue }
+                if tunerStatus[showId]?.displayString == status.displayString { continue }
+                tunerStatus[showId] = status
             }
         }
     }
