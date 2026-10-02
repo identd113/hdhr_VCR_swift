@@ -245,6 +245,10 @@ Uses `AppConfig.applyTranscode(_:override:)` — applies `Default_transcode` wit
 
 **Background tuner check**: after `play()` returns (inside `startPlayChannel`), a `Task` fetches `status.json` and logs `[VLC] post-switch tuner status ch X.X: N/M active (ours=N other=N)`. If all non-VLC slots appear occupied it logs a warning — this diagnostic-only check is unchanged; it's not what the pre-flight check above replaces (that check happens *before* `startPlayChannel`/`play()` runs at all, and only for the not-`reusingExistingTunerHere` case).
 
+**Currently-recording channel → disk, added 2026-10-01**: if the picked channel is being recorded on this device right now (`state.recordingShows`, matched by `hdhr_record` + `show_channel`), `playChannel` calls `state.watchRecordingInApp(_:)` instead — the same as picking its "Live …" row — rather than opening a second, redundant live tuner connection for that channel. Covers the plain lineup row and channel up/down (`channelCycleOrder`) alike.
+
+**`currentChannelNumber` sync, 2026-10-01**: `startPlayChannel` calls `VLCPlayerWindowManager.noteLiveChannelSwitch(channelNumber:)` — `open()` was the only setter before, so after a picker switch it still named the channel the window opened on, which `AppState.vlcLiveChannel`, `PiPPickerView.isCurrentLiveChannel` and the scheduled-recording preemption's same-channel check all read.
+
 **Tuner occupancy refresh**: `state.refreshTunerOccupancy()` is called after every channel switch so the menu header reflects the new tuner state within ~1.5 s.
 
 **Start button — gated on `isPlaying`**: the Start button is disabled and shows a spinner + "Connecting…" until `VLCBridge.shared.isPlaying` becomes `true` (first `libvlc_Playing` state confirmation — see `docs/VLCBridge.md`'s "Startup state poll" for how quickly that now happens). Once enabled it shows the normal play icon + "Start". This prevents the user from unmuting before any data has arrived.

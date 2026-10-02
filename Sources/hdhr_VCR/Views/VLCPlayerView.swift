@@ -2300,6 +2300,17 @@ struct VLCPlayerView: View {
             glog("[VLC] playChannel skipped — no URL for ch=\(ch.GuideNumber) \(ch.GuideName)", level: .warning)
             return
         }
+        // This channel is being recorded on this device right now — play the recording's file
+        // through the disk relay instead of opening a second, redundant live tuner connection for
+        // the same channel (fixed 2026-10-01: picking the plain "11.1 KARE-HD" row, or reaching it
+        // via channel up/down, used to do exactly that). Same as picking its "Live …" row.
+        if let recording = state.recordingShows.first(where: {
+            $0.hdhr_record == device.DeviceID && $0.show_channel == ch.GuideNumber
+        }) {
+            glog("[VLC] playChannel \(ch.GuideNumber) — currently recording '\(recording.show_title)', playing from disk instead of a second live tuner")
+            state.watchRecordingInApp(recording)
+            return
+        }
         // VLC handles MPEG-2 natively — no forced transcode; "none" = raw stream
         let url = state.config.applyTranscode(rawURL)
 
@@ -2355,6 +2366,10 @@ struct VLCPlayerView: View {
         // rate=minRate, so the rate controller begins filling the buffer right away.
         VLCBridge.shared.play(url: url)
         updateNowPlaying(channel: ch)
+        // open() is the only other place this is set, so a picker switch left it naming whatever
+        // channel the window first opened on — read by PiPPickerView.isCurrentLiveChannel and the
+        // scheduled-recording preemption same-channel check (AppState.ownLiveWatchIsSameChannel).
+        VLCPlayerWindowManager.shared.noteLiveChannelSwitch(channelNumber: ch.GuideNumber)
         state.refreshTunerOccupancy()
 
         // Check tuner occupancy in the background — stream is already started, this
@@ -2419,6 +2434,22 @@ final class VLCPlayerWindowManager {
     /// watching this exact channel" apart from "some other tuner on this device is in use", so the
     /// in-use-by-other-tuner marker doesn't flag your own live Watch session as someone else's.
     private(set) var currentChannelNumber: String?
+
+    /// VLCPlayerView.startPlayChannel's in-window channel switch — see its call site.
+    func noteLiveChannelSwitch(channelNumber: String) { currentChannelNumber = channelNumber }
+
+    /// Non-blocking notice as a sheet on the player window (AppState's scheduled-recording
+    /// preemption heads-up/stop notices) — a sheet, not runModal(), so it never blocks the idle
+    /// loop that raises it. No-op without a window, or while another sheet is already showing.
+    func presentNotice(title: String, message: String) {
+        guard let win = window, win.attachedSheet == nil else { return }
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "OK")
+        alert.beginSheetModal(for: win)
+    }
     // FEED client-side local relay (docs/VirtualTunerService.md) — set by AppState.
     // startFeedLocalRelay right before it hands VLC the local relay URL, so VLCPlayerView can
     // still tell which remote Mac/URL is actually being watched even though bridge.currentURL now

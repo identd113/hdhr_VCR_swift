@@ -47,6 +47,9 @@ final class AppState: ObservableObject {
         var conflictNotifiedEpoch: TimeInterval?
         // Same pattern, for MISSED START warnings. Was: missedStartNotifiedEpochs[showId].
         var missedStartNotifiedEpoch: TimeInterval?
+        // Same pattern, for the "your live TV will stop when this starts recording" heads-up
+        // (warnOfLiveWatchPreemptionIfNeeded) — once per airing.
+        var liveWatchPreemptWarnedEpoch: TimeInterval?
         // Set when this show's recording was interrupted by an app quit and will be relaunched
         // this session — suppresses the duplicate Discord "Recording Started" on the first
         // relaunch after startup. Was: suppressStartDiscord (Set<String>).
@@ -184,6 +187,14 @@ final class AppState: ObservableObject {
     // needs to see as unchanged when the reconnect actually happens, or the "stuck on Connecting"
     // bug that fix exists to prevent comes back.
     private var yieldingWatchNowDeviceID: String? = nil
+    // Scheduled-recording preemption of this instance's own live Watch Now (preemptOwnLiveWatch).
+    // deviceId: excluded from vlcOccupiesTuner while the player stays stopped (currentURL == nil),
+    // since stop() leaves currentDeviceID set. at: bounds how long startRecording holds back its
+    // "Tuner Conflict" notice while the HDHomeRun's own status.json catches up to the dropped
+    // connection (measured 1–45s, see recordAfterYieldingWatchNow).
+    private var preemptedLiveWatch: (deviceId: String, at: Date)? = nil
+    private static let liveWatchPreemptWarningLeadSeconds: TimeInterval = 180
+    private static let liveWatchPreemptGraceSeconds: TimeInterval = 60
     @Published var pendingAddEntry: (device: HDHRDevice, channel: LineupEntry, entry: GuideEntry)? = nil
     @Published var pendingAddEntryGeneration: Int = 0   // bumped each time a new entry is set; drives onChange in AddShowView
     @Published var pendingAddChannel: (device: HDHRDevice, channel: LineupEntry)? = nil
@@ -2617,6 +2628,7 @@ final class AppState: ObservableObject {
         idleLoopRunning = true
         defer { idleLoopRunning = false }
         maintainVLCSleepAssertionIfNeeded()
+        warnOfLiveWatchPreemptionIfNeeded()
         let now = Date()
         var dirty = false
 
@@ -3116,6 +3128,24 @@ final class AppState: ObservableObject {
                     pushShowUpdate(type: "show_updated", channel: updated.show_channel, device: updated.hdhr_record, rebuildMenu: false)
                 }
                 return
+            }
+        }
+        // Blocked only by this instance's own live (non-recording) Watch Now on this device — the
+        // scheduled recording wins: stop that live stream now (the user was warned a few minutes
+        // ahead by warnOfLiveWatchPreemptionIfNeeded). The device's status.json lags the dropped
+        // connection, so this tick still reads full; later ticks retry, and the conflict notice
+        // below is held back for liveWatchPreemptGraceSeconds while that catches up.
+        if tunerBlockedOnlyByOwnWatchNow(for: show.hdhr_record) {
+            preemptOwnLiveWatch(for: show)
+        }
+        if tunersFull(for: show.hdhr_record) {
+            if let p = preemptedLiveWatch, p.deviceId == show.hdhr_record,
+               Date().timeIntervalSince(p.at) < Self.liveWatchPreemptGraceSeconds {
+                await fetchDeviceStatus(for: device)
+                if tunersFull(for: show.hdhr_record) {
+                    glog("[\(show.show_title)] waiting for \(show.hdhr_record) to release the stopped live stream's tuner (\(Int(Date().timeIntervalSince(p.at)))s)")
+                    return
+                }
             }
         }
         if tunersFull(for: show.hdhr_record) {
@@ -5551,7 +5581,15 @@ final class AppState: ObservableObject {
         guard VLCBridge.shared.isAvailable else { return }
         guard !show.show_recording_path.isEmpty,
               FileManager.default.fileExists(atPath: show.show_recording_path) else {
-            watchInApp(url: show.show_url, title: show.show_title, deviceId: show.hdhr_record, transcode: show.show_transcode)
+            // Recording, but curl hasn't written its first bytes yet (the file only appears then) —
+            // wait for it rather than falling back to the live channel, which would open a second,
+            // redundant tuner connection for a channel this app is already recording (fixed
+            // 2026-10-01). Only a show that isn't recording at all still goes live.
+            if show.show_recording {
+                waitForRecordingFileThenWatch(showId: show.show_id, fromBeginning: fromBeginning)
+            } else {
+                watchInApp(url: show.show_url, title: show.show_title, deviceId: show.hdhr_record, transcode: show.show_transcode)
+            }
             return
         }
         // recordableDevices — show.hdhr_record can never legitimately be a relay device (addShow/
@@ -5588,6 +5626,108 @@ final class AppState: ObservableObject {
         // makes it a distinct SwiftUI update the toolbar reliably picks up.
         DispatchQueue.main.async {
             VLCBridge.shared.beginRecordingSeek(showId: show.show_id, recordingStart: recordingStart, seekBaseSeconds: startSeconds)
+        }
+    }
+
+    private static let recordingFileWaitSeconds: TimeInterval = 10
+
+    private func waitForRecordingFileThenWatch(showId: String, fromBeginning: Bool) {
+        Task {
+            var waited: TimeInterval = 0
+            while waited < Self.recordingFileWaitSeconds {
+                guard let show = shows.first(where: { $0.show_id == showId }), show.show_recording else { return }
+                if !show.show_recording_path.isEmpty, FileManager.default.fileExists(atPath: show.show_recording_path) {
+                    glog("[Watch] '\(show.show_title)' recording file appeared after \(String(format: "%.1f", waited))s — playing from disk")
+                    watchRecordingInApp(show, fromBeginning: fromBeginning)
+                    return
+                }
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                waited += 0.5
+            }
+            let title = shows.first(where: { $0.show_id == showId })?.show_title ?? "This show"
+            glog("[Watch] '\(title)' recording file still missing after \(Int(Self.recordingFileWaitSeconds))s — not opening a second live tuner", level: .warning)
+            let alert = NSAlert()
+            alert.messageText = "Recording Not Ready Yet"
+            alert.informativeText = "\"\(title)\" has started recording but hasn't written any video yet. Try Watch Now again in a moment."
+            alert.alertStyle = .informational
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+        }
+    }
+
+    // MARK: - Scheduled recording vs. this instance's own live Watch Now
+
+    /// Whether `show` is the same channel this window is watching live — then playback can move to
+    /// the recording's file instead of just stopping.
+    private func ownLiveWatchIsSameChannel(as show: Show) -> Bool {
+        let mgr = VLCPlayerWindowManager.shared
+        return mgr.currentDeviceID == show.hdhr_record && mgr.currentChannelNumber == show.show_channel
+    }
+
+    /// A few minutes before a recording that would be blocked only by this instance's own live
+    /// Watch Now, warn the viewer that live TV will stop (or switch to the recording, same channel)
+    /// when it starts — nothing is stopped until then (preemptOwnLiveWatch, from startRecording).
+    /// Only for a real live tuner stream (vlcOccupiesTuner — a disk relay or FEED holds no tuner).
+    /// Skipped when one of this instance's own recordings on that device ends by the start time,
+    /// since a tuner frees up anyway. Once per airing (liveWatchPreemptWarnedEpoch).
+    private func warnOfLiveWatchPreemptionIfNeeded() {
+        let now = Date()
+        for show in shows where show.show_active && !show.show_paused && !show.show_recording {
+            guard let next = show.show_next, next > now,
+                  next.timeIntervalSince(now) <= Self.liveWatchPreemptWarningLeadSeconds else { continue }
+            let epoch = next.timeIntervalSince1970
+            guard showRuntime[show.show_id]?.liveWatchPreemptWarnedEpoch != epoch,
+                  tunerBlockedOnlyByOwnWatchNow(for: show.hdhr_record) else { continue }
+            let freesUpAnyway = recordingShows.contains {
+                $0.hdhr_record == show.hdhr_record && ($0.show_end ?? .distantFuture) <= next
+            }
+            guard !freesUpAnyway else { continue }
+            showRuntime[show.show_id, default: ShowRuntimeState()].liveWatchPreemptWarnedEpoch = epoch
+            let when = shortTime(next)
+            let sameChannel = ownLiveWatchIsSameChannel(as: show)
+            let message = sameChannel
+                ? "\"\(show.show_title)\" starts recording on this channel at \(when). All tuners on \(show.hdhr_record) are in use, so playback will switch to the recording then (a brief interruption)."
+                : "\"\(show.show_title)\" starts recording on channel \(show.show_channel) at \(when). All tuners on \(show.hdhr_record) are in use, so live TV in this window will stop then to free a tuner."
+            glog("[Watch] preemption heads-up for '\(show.show_title)' at \(when) (sameChannel=\(sameChannel))")
+            notify("Live TV Will Stop at \(when)", body: show.show_title, subtitle: sameChannel ? "Switching to the recording" : "Tuner needed for a recording")
+            VLCPlayerWindowManager.shared.presentNotice(title: "Recording Starts at \(when)", message: message)
+        }
+    }
+
+    /// Stops this instance's own live Watch Now on `show`'s device so the scheduled recording can
+    /// take its tuner (called from startRecording only when tunerBlockedOnlyByOwnWatchNow). Same
+    /// channel: once the recording's file exists, playback reopens from it (from the beginning —
+    /// i.e. right where live left off). Different channel: the window shows a notice.
+    private func preemptOwnLiveWatch(for show: Show) {
+        let sameChannel = ownLiveWatchIsSameChannel(as: show)
+        glog("[Watch] stopping own live Watch Now on \(show.hdhr_record) — tuner needed to record '\(show.show_title)' (sameChannel=\(sameChannel))")
+        // stop(), not releasePlayer() — keeps the drawable attached so a same-channel handoff's
+        // play() can render; see recordAfterYieldingWatchNow's identical choice.
+        VLCBridge.shared.stop()
+        preemptedLiveWatch = (show.hdhr_record, Date())
+        refreshTunerOccupancy()
+        guard sameChannel else {
+            notify("Live TV Stopped", body: show.show_title, subtitle: "Tuner needed for this recording")
+            VLCPlayerWindowManager.shared.presentNotice(
+                title: "Live TV Stopped",
+                message: "\"\(show.show_title)\" is now recording on \(show.hdhr_record), which needed this tuner.")
+            return
+        }
+        let showId = show.show_id
+        Task {
+            for _ in 0..<90 {   // ~45s: covers the device's own slow tuner release plus curl's first bytes
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                // Give up if the viewer moved on (played anything else, or closed the window).
+                guard VLCBridge.shared.currentURL == nil,
+                      VLCPlayerWindowManager.shared.currentDeviceID == show.hdhr_record else { return }
+                if let s = shows.first(where: { $0.show_id == showId }), s.show_recording,
+                   !s.show_recording_path.isEmpty, FileManager.default.fileExists(atPath: s.show_recording_path) {
+                    glog("[Watch] '\(s.show_title)' now recording — switching playback from live to the recording file")
+                    watchRecordingInApp(s, fromBeginning: true)
+                    return
+                }
+            }
+            glog("[Watch] preemption handoff: '\(show.show_title)' file never appeared within ~45s — leaving playback stopped", level: .warning)
         }
     }
 
@@ -6032,6 +6172,10 @@ final class AppState: ObservableObject {
         // already called VLCBridge.shared.stop() on — see that property's own doc comment for why
         // this can't instead be read off currentDeviceID/recordingShowId alone.
         guard yieldingWatchNowDeviceID != deviceId else { return false }
+        // A live stream preemptOwnLiveWatch stopped for a scheduled recording — stopped means no
+        // tuner held, even though currentDeviceID stays set. Self-limiting: the moment anything
+        // plays again (currentURL non-nil), normal counting resumes.
+        if preemptedLiveWatch?.deviceId == deviceId, VLCBridge.shared.currentURL == nil { return false }
         return VLCPlayerWindowManager.shared.currentDeviceID == deviceId && VLCBridge.shared.recordingShowId == nil
     }
 
