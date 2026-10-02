@@ -372,6 +372,19 @@ final class WebServer: @unchecked Sendable {
         let tcpOpts = NWProtocolTCP.Options()
         tcpOpts.noDelay = true
         let tcpParams = NWParameters(tls: nil, tcp: tcpOpts)
+        // IPv4-only listener (2026-10-01). The default dual-stack listener (one IPv6 socket that
+        // also accepts IPv4 clients as v4-mapped addresses) ran ~500x slower for every IPv4 LAN
+        // client under Network.framework's user-space TCP stack — measured Mac Mini (wired) →
+        // laptop (Wi-Fi): ~0.2 MB/s with ~40% of bytes retransmitted, vs ~100 MB/s IPv4-only on
+        // the same link, reproduced with a standalone 30-line NWListener (not app code). That
+        // starved every FEED viewer (an ~11 Mbps raw stream) and slowed remote guide loads.
+        // Native IPv6 clients were unaffected, but Network.framework won't bind a second v6-only
+        // listener on the same port, so IPv6 is dropped: every in-app URL uses 127.0.0.1, the
+        // virtual tuner advertises an IPv4 BaseURL, and browsers fall back from IPv6 to IPv4.
+        // See issues_resolved.md's "FEED starvation: dual-stack NWListener" entry.
+        if let ipOpts = tcpParams.defaultProtocolStack.internetProtocol as? NWProtocolIP.Options {
+            ipOpts.version = .v4
+        }
         guard let l = try? NWListener(using: tcpParams, on: nwPort) else {
             glog("[WebServer] Failed to create listener on port \(clamped)", level: .error)
             DispatchQueue.main.async { onState("Port \(clamped) unavailable") }

@@ -10,6 +10,19 @@ Every entry below was re-verified against the current codebase on 2026-08-10 bef
 
 A 5-way whole-file correctness sweep of all `Sources/` files (not just the recent diff). Crasher + all four medium findings fixed this pass.
 
+
+## RESOLVED — FEED starvation: dual-stack NWListener sent ~500× slower to IPv4 LAN clients
+
+**Symptom**: FEED viewing on the laptop (Wi-Fi) from the Mac Mini (wired 2.5GbE) loaded, played a few seconds, then stalled repeatedly — under both the in-memory relay and the newer FEED-cache curl design. The laptop's cache file grew at ~1 Mbps against an ~11 Mbps raw MPEG-2 recording; the Mac Mini's sender never caught up to the live edge.
+
+**Root cause**: not pacing, chunk size, disk, transcode or app priority. *Every* response from the app's port 1980 to the laptop ran at ~0.2 MB/s (even a single 2.3 MB guide-page send), with ~40% of bytes retransmitted — while a Python/BSD-socket server on the same Mac, interface and link did 100–140 MB/s with zero retransmits. Reproduced with a standalone 30-line Swift `NWListener` (same ~0.2 MB/s; unchanged by `noDelay`, QoS, `disableECN`, MSS 536–1400, `serviceClass`, `noPush`, `requiredInterfaceType`). The trigger is the default **dual-stack** listener: IPv4 clients arrive as v4-mapped connections on an IPv6 socket, and under Network.framework's user-space TCP stack (default since macOS 12, no public opt-out; the firewall no longer forces sockets since macOS 15) that path collapses. Native IPv6 clients to the same listener: ~17 MB/s. IPv4-only listener: ~97–102 MB/s.
+
+**Fix**: `WebServer.start(port:)` sets `NWProtocolIP.Options.version = .v4`. IPv6 dropped (a second v6-only listener on the same port fails with `EADDRINUSE`, even with `allowLocalEndpointReuse`); nothing depends on it. Candidate for a Feedback Assistant report — the 30-line repro reproduces it.
+
+**Resolving commit**: (this commit)
+
+---
+
 ## RESOLVED — `GuideHours == 0` in a corrupt config crashes the app on every page render (division by zero)
 
 **File:** `Models.swift` — `AppConfig.init(from:)`; trap surfaces in `WebServer.pct()`
