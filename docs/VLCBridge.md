@@ -294,6 +294,10 @@ func play(url: String)                                        // stop + switch t
 func stop()                                                   // soft/resumable stop: stop + release media; cancels stats timer; clears hasError, isPlaying — deliberately leaves drawableView attached so a later play() renders immediately (used by the remote-Stop key); native stop work deferred to libvlcQueue
 func releasePlayer()                                          // full teardown; releases mediaPlayer; clears hasError, isPlaying — window close only; ensurePlayer() must run before the next play(); native stop/release work deferred to libvlcQueue; retainedDrawable/drawableView are cleared separately, asynchronously, only after the libvlc release actually completes (see "retainedDrawable" below)
 func catchUpToLive()                                          // discard buffer, reconnect at live edge
+@Published private(set) var isPaused: Bool                     // Space-bar pause state (primary only) — see "Recording-Relay Seek State"
+var canPause: Bool                                             // recordingShowId != nil && isPlaying — disk-backed streams only
+func togglePause()                                             // libvlc_media_player_set_pause on the primary; freezes recordingPlaybackSeconds while paused
+@discardableResult func swapSlots() -> Bool                    // PiP primary↔secondary swap; false (and no change) when a slot isn't ready
 func videoNativeSize() -> CGSize?                             // pixel dims from libvlc_video_get_size; nil until decoding
 func setVolume(_ v: Int)                                      // 0–100
 func setAudioDevice(output: String, deviceId: String)         // output = "auhal"; deviceId = CoreAudio device UID
