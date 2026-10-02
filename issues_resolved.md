@@ -1433,7 +1433,7 @@ A title-based fallback (`Show.seriesTitle(from: entry.Title) == show.show_title`
 
 **Fix**: resurrected `WebServer.FeedRelayPacer` — the identical class (rate-observing EWMA + lookahead-slack delay) from the intermediate `96c72eb` disk-backed design, byte-for-byte apart from doc comments — as an optional `pacer:` parameter threaded back through `streamGrowingFile`/`pumpGrowingFile`/`handleGrowingFileChunk`, engaged only by `handleWatchRecording`'s FEED-cache-session branch (a fresh instance per connection); Watch Now's real-`Show` branch passes none and is unaffected. This is not "the same disk-backed prototype that already failed" — that prototype (`96c72eb`) was itself paced and reportedly working before being superseded same-day purely for simplicity once the in-memory proxy proved sufficient for the live-only case it was built for; what actually failed in between was *this* feature's own first cut, which resurrected the disk half without the pacer half. Not yet independently re-confirmed live post-fix as of this writing (see `docs/VirtualTunerService.md`'s "FEED scrub via local disk cache" section for the reasoning) — verify next: reproduce the original trigger (source Mac recording + a second local tuner active) and confirm no repeating STALL lines in the watching Mac's log.
 
-**Resolving commit**: (pending — fixed same session, not yet committed as of this note)
+**Resolving commit**: `bfd513e`
 
 ---
 
