@@ -233,8 +233,21 @@ struct VLCPlayerView: View {
     // WatchNowView (favs/others, ~line 226) and the web Guide (favRows/otherRows,
     // WebServer.swift ~line 1556) already use, so all three surfaces agree on ordering.
     // Each half stays in `lineup`'s existing ascending-channel-number order.
-    private var favoriteLineup: [LineupEntry] { lineup.filter(\.isFavorite) }
-    private var otherLineup: [LineupEntry] { lineup.filter { !$0.isFavorite } }
+    // The real tuner whose channels the picker lists — this window's own device, or for a window
+    // bound to a FEED (virtual relay, no channels of its own) the first real tuner, so the picker
+    // always offers the full Recording → FEED → Favorites → rest stack (2026-10-02, explicit
+    // request). With several real tuners only the first is listed here.
+    private var channelSourceDevice: HDHRDevice? {
+        device.isVirtualRelay ? state.recordableDevices.first : device
+    }
+    private var channelLineup: [LineupEntry] {
+        guard let src = channelSourceDevice else { return [] }
+        return (state.lineups[src.DeviceID] ?? []).sorted {
+            $0.GuideNumber.localizedStandardCompare($1.GuideNumber) == .orderedAscending
+        }
+    }
+    private var favoriteLineup: [LineupEntry] { channelLineup.filter(\.isFavorite) }
+    private var otherLineup: [LineupEntry] { channelLineup.filter { !$0.isFavorite } }
 
     // Rough estimate of the native fullscreen title-bar reveal strip's height (traffic lights +
     // title, drawn by AppKit above app content when the cursor nears the top of a true-fullscreen
@@ -307,24 +320,22 @@ struct VLCPlayerView: View {
     // own unit tests.
     nonisolated static let liveFeedGuideNumberPrefix = "live-feed:"
 
-    private var feedChannelEntry: LineupEntry? {
-        Self.feedChannelEntry(deviceIsVirtualRelay: device.isVirtualRelay,
-                               remoteURL: VLCPlayerWindowManager.shared.currentFeedRemoteURL,
-                               remoteRelayEntries: state.remoteRelayEntries)
-    }
 
     // Every discovered FEED (another Mac's in-progress recording) as a synthetic "live-feed:" row —
-    // non-nil only in exactly the case feedChannelEntry covers: a FEED is primary in a window bound
-    // to a *real* tuner (opened on a live channel / Watch Now / standalone PiP, then a FEED swapped
-    // in). The picker then lists only these instead of that real tuner's whole lineup (reported
-    // 2026-10-01: "in a FEED view the pull-down shows all options, not just feed ones"). A window
-    // opened directly on a FEED is already FEED-only (its `lineup` is the virtual relay's own).
-    private var feedOnlyEntries: [LineupEntry]? {
-        guard feedChannelEntry != nil else { return nil }
+    // the picker's FEED section, in every window (2026-10-02: the picker always offers the full
+    // stack; it briefly showed *only* FEEDs in a FEED view, 2026-10-01).
+    private var allFeedEntries: [LineupEntry] {
         let relays = state.remoteRelayEntries
         return relays.compactMap { pair in
             pair.entry.URL.flatMap { Self.feedChannelEntry(deviceIsVirtualRelay: false, remoteURL: $0, remoteRelayEntries: relays) }
         }
+    }
+
+    // The FEED row for whatever FEED is primary right now, if any — what syncChannel selects.
+    private var currentFeedRow: LineupEntry? {
+        Self.feedChannelEntry(deviceIsVirtualRelay: false,
+                               remoteURL: VLCPlayerWindowManager.shared.currentFeedRemoteURL,
+                               remoteRelayEntries: state.remoteRelayEntries)
     }
 
     private func remoteURL(fromLiveFeedGuideNumber guideNumber: String) -> String? {
@@ -356,13 +367,13 @@ struct VLCPlayerView: View {
     // order below: channel-up/down is a sequential-step gesture (user expects 5.1 → 5.2 → 6.1),
     // and reordering it to favorites-first would make each press jump unpredictably between a
     // favorite and its numeric neighbors instead of stepping through the dial in order.
-    // Plain rows for a channel that's recording on this device are left out — their "Live …" row
-    // covers them, and stepping onto the plain row redirected to that "Live" row at index 0, so
-    // up/down could never get past it (2026-10-01 review #13).
+    // Same order as the picker: Recording, FEED, then the channels (plain ascending, not
+    // favorites-first — see above). Plain rows for a channel recording on this device are left
+    // out — their "Live …" row covers them, and stepping onto the plain row redirected to that
+    // "Live" row, so up/down could never get past it (2026-10-01 review #13).
     private var channelCycleOrder: [LineupEntry] {
-        if let feeds = feedOnlyEntries { return feeds }
         let recordingChannels = Set(state.recordingShows.filter { $0.hdhr_record == device.DeviceID }.map(\.show_channel))
-        return recordingChannelEntries + lineup.filter { !recordingChannels.contains($0.GuideNumber) }
+        return recordingChannelEntries + allFeedEntries + channelLineup.filter { !recordingChannels.contains($0.GuideNumber) }
     }
 
     // HDHomeRun raw streams are always MPEG-2/AC-3. Every real, actually-applied transcode
@@ -946,6 +957,7 @@ struct VLCPlayerView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .vlcToggleInfoOverlay)) { _ in
             infoOverlayVisible.toggle()
+            glog("[VLC] info banner \(infoOverlayVisible ? "shown" : "hidden")")
         }
         .onReceive(NotificationCenter.default.publisher(for: .vlcSwapPiP)) { _ in
             swapPrimaryAndSecondary()
@@ -1630,33 +1642,37 @@ struct VLCPlayerView: View {
                 // (shouldn't normally happen once recordingChannelEntries covers every relay
                 // stream, but avoids ever rendering blank). Hidden entirely when nothing on this
                 // device is recording — there's no "Live" to fall back to in that case.
-                if !recordingChannelEntries.isEmpty || feedChannelEntry != nil {
+                if !recordingChannelEntries.isEmpty || currentFeedRow != nil {
                     Text("Live").tag(Optional<LineupEntry>.none)
                 }
-                // One row per show currently recording on this device — GuideName already holds
-                // the full "Live 5.1  Title" label, so it's rendered directly (not the
-                // "GuideNumber  GuideName" template below, which would show the synthetic tag).
-                ForEach(recordingChannelEntries, id: \.GuideNumber) { entry in
-                    Text(entry.GuideName).tag(Optional(entry))
-                }
-                // A cross-device FEED swapped in as primary — see feedChannelEntry's own doc
-                // comment. FEED-only then: every discovered FEED, never this window's bound real
-                // tuner's channels (see feedOnlyEntries).
-                if let feeds = feedOnlyEntries {
-                    ForEach(feeds, id: \.GuideNumber) { entry in
-                        Text(entry.GuideName).tag(Optional(entry))
-                    }
-                } else {
-                    // Favorites-first, matching WatchNowView's favTopBorder split and the web
-                    // Guide's favRows/otherRows — a labeled Section reads as the closest
-                    // Picker-compatible equivalent to those views' visual "★ Favorites" divider.
-                    if !favoriteLineup.isEmpty {
-                        Section("★ Favorites") {
-                            ForEach(favoriteLineup, id: \.GuideNumber) { ch in
-                                Text("\(ch.GuideNumber)  \(ch.GuideName)").tag(Optional(ch))
-                            }
+                // The standard stack (2026-10-02, explicit request) — Recording, then FEED, then
+                // Favorites, then the rest — in every window, FEED views included.
+                if !recordingChannelEntries.isEmpty {
+                    Section("Recording") {
+                        // GuideName already holds the full "Live 5.1  Title" label.
+                        ForEach(recordingChannelEntries, id: \.GuideNumber) { entry in
+                            Text(entry.GuideName).tag(Optional(entry))
                         }
                     }
+                }
+                if !allFeedEntries.isEmpty {
+                    Section("FEED") {
+                        ForEach(allFeedEntries, id: \.GuideNumber) { entry in
+                            Text(entry.GuideName).tag(Optional(entry))
+                        }
+                    }
+                }
+                // Favorites-first, matching WatchNowView's favTopBorder split and the web
+                // Guide's favRows/otherRows — a labeled Section reads as the closest
+                // Picker-compatible equivalent to those views' visual "★ Favorites" divider.
+                if !favoriteLineup.isEmpty {
+                    Section("★ Favorites") {
+                        ForEach(favoriteLineup, id: \.GuideNumber) { ch in
+                            Text("\(ch.GuideNumber)  \(ch.GuideName)").tag(Optional(ch))
+                        }
+                    }
+                }
+                Section(favoriteLineup.isEmpty ? "" : "Channels") {
                     ForEach(otherLineup, id: \.GuideNumber) { ch in
                         Text("\(ch.GuideNumber)  \(ch.GuideName)").tag(Optional(ch))
                     }
@@ -1711,22 +1727,21 @@ struct VLCPlayerView: View {
                 VLCBridge.shared.setVolume(0)
                 guard let ch else { return }
                 if let feedURL = remoteURL(fromLiveFeedGuideNumber: ch.GuideNumber) {
-                    // Switch to a different FEED (feedOnlyEntries) — the same path MenuContent's
+                    // Switch to a FEED row (allFeedEntries) — the same path MenuContent's
                     // "Recording on Another Mac" Watch row takes. watchRemoteRelay dedups against
                     // the FEED already playing, and rebinds the window to the FEED's own device.
                     guard let pair = state.remoteRelayEntries.first(where: { $0.entry.URL == feedURL }) else { return }
                     state.watchRemoteRelay(url: feedURL, title: pair.entry.virtualRelayShowTitle ?? pair.entry.GuideName,
                                            device: pair.device)
-                } else if device.isVirtualRelay, let feedURL = ch.URL, !feedURL.isEmpty {
-                    // A window opened directly on a FEED lists the source Mac's relayed recordings
-                    // as its lineup — switching between them must go through watchRemoteRelay (the
-                    // local disk cache: scrub/pause, old puller torn down), never playChannel, which
-                    // ran a tuner check against the virtual device and/or connected VLC straight to
-                    // the raw remote /auto/v URL (2026-10-01 review finding #8).
-                    state.watchRemoteRelay(url: feedURL, title: ch.virtualRelayShowTitle ?? ch.GuideName, device: device)
                 } else if let showId = showId(fromLiveGuideNumber: ch.GuideNumber) {
                     guard let show = state.shows.first(where: { $0.show_id == showId }) else { return }
                     state.watchRecordingInApp(show)
+                } else if device.isVirtualRelay, let src = channelSourceDevice {
+                    // A real channel picked from a FEED-bound window — open it on the real tuner
+                    // (watchInApp's tuner check; open() rebinds this window to that device).
+                    // FEED rows themselves never get here: they're all "live-feed:" rows above,
+                    // routed through watchRemoteRelay/the disk cache (review #8).
+                    state.watchInApp(url: ch.URL ?? "", title: ch.GuideName, deviceId: src.DeviceID, guideNumber: ch.GuideNumber)
                 } else {
                     playChannel(ch)
                 }
@@ -2214,8 +2229,9 @@ struct VLCPlayerView: View {
         // directly (a definitive "is a FEED primary right now" signal) rather than fuzzy URL
         // matching, the same way the recording-relay branch below trusts bridge.recordingShowId
         // over matching its own local relay URL.
-        if !device.isVirtualRelay, VLCPlayerWindowManager.shared.currentFeedRemoteURL != nil,
-           let entry = feedChannelEntry {
+        // Any primary FEED (a FEED-bound window or a cross-device swap) selects its FEED row —
+        // the picker lists FEEDs only as those synthetic rows now (2026-10-02).
+        if VLCPlayerWindowManager.shared.currentFeedRemoteURL != nil, let entry = currentFeedRow {
             glog("[VLC] syncChannel matched cross-device FEED \(entry.GuideName) for url=\(base)")
             MPNowPlayingInfoCenter.default().nowPlayingInfo = [
                 MPMediaItemPropertyTitle:             entry.GuideName,
@@ -2809,7 +2825,14 @@ final class VLCPlayerWindowManager {
     // ~15s earlier than the last (exactly this feature's left-arrow step), while testing it.
     private func installKeyMonitor(for win: NSWindow) {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self, weak win] event in
-            guard let self, let win, event.window === win else { return event }
+            guard let self, let win, event.window === win else {
+                // Diagnostic (2026-10-02, "i stopped working"): a bare "i" that never reaches the
+                // handler below because it was addressed to some other window.
+                if event.type == .keyDown, event.charactersIgnoringModifiers?.lowercased() == "i" {
+                    glog("[VLC] 'i' key ignored — event window '\(event.window?.title ?? "nil")' is not the player window")
+                }
+                return event
+            }
             // Bare "i" only — charactersIgnoringModifiers (not keyCode) so this matches by the same
             // layout-independent character SwiftUI's KeyEquivalent("i") itself would have used, and
             // the modifier check keeps Cmd/Option/Control/Shift-I from also triggering this (Shift
@@ -2817,6 +2840,7 @@ final class VLCPlayerWindowManager {
             // for — .keyboardShortcut("i", modifiers: []) never matched that either).
             if event.type == .keyDown, event.charactersIgnoringModifiers?.lowercased() == "i",
                event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty {
+                glog("[VLC] 'i' key — toggling info banner")
                 NotificationCenter.default.post(name: .vlcToggleInfoOverlay, object: nil)
                 return nil
             }
