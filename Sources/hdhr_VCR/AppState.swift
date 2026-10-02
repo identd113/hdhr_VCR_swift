@@ -3130,40 +3130,6 @@ final class AppState: ObservableObject {
                 return
             }
         }
-        // Blocked only by this instance's own live (non-recording) Watch Now on this device — the
-        // scheduled recording wins: stop that live stream now (the user was warned a few minutes
-        // ahead by warnOfLiveWatchPreemptionIfNeeded). The device's status.json lags the dropped
-        // connection, so this tick still reads full; later ticks retry, and the conflict notice
-        // below is held back for liveWatchPreemptGraceSeconds while that catches up.
-        if tunerBlockedOnlyByOwnWatchNow(for: show.hdhr_record) {
-            preemptOwnLiveWatch(for: show)
-        }
-        if tunersFull(for: show.hdhr_record),
-           let p = preemptedLiveWatch, p.deviceId == show.hdhr_record,
-           Date().timeIntervalSince(p.at) < Self.liveWatchPreemptGraceSeconds {
-            // Refresh the device's status in the background and let the next tick retry — never
-            // `await` here: everything below writes shows[index]/uses `show`, and an await would
-            // let a concurrent delete/add shift `shows` underneath that captured index (CLAUDE.md
-            // "Idle-loop show-array safety"; 2026-10-01 review finding #1).
-            Task { await self.fetchDeviceStatus(for: device) }
-            glog("[\(show.show_title)] waiting for \(show.hdhr_record) to release the stopped live stream's tuner (\(Int(Date().timeIntervalSince(p.at)))s)")
-            return
-        }
-        if tunersFull(for: show.hdhr_record) {
-            let tunerCount = device.TunerCount ?? 0
-            glog("[\(show.show_title)] TUNER FULL \(show.hdhr_record) — skipping start", level: .warning)
-            // Fire conflict notification once per show+episode window to avoid per-tick spam.
-            let conflictEpoch = show.show_next?.timeIntervalSince1970 ?? 0
-            if showRuntime[show.show_id]?.conflictNotifiedEpoch != conflictEpoch {
-                showRuntime[show.show_id, default: ShowRuntimeState()].conflictNotifiedEpoch = conflictEpoch
-                notify("Tuner Conflict", body: show.show_title,
-                       subtitle: "All tuners on \(show.hdhr_record) are busy")
-                discordShow("⚠️ Tuner Conflict", show: show, color: 0xF1C40F,
-                            enabled: config.Discord_on_conflict,
-                            extra: [("Note", "All \(tunerCount) tuners on \(show.hdhr_record) are busy", false)])
-            }
-            return
-        }
         if show.show_url.isEmpty {
             if let lu = lineups[show.hdhr_record],
                let url = hdhrManager.streamURL(for: show.show_channel, lineup: lu) {
@@ -3290,6 +3256,43 @@ final class AppState: ObservableObject {
                                      baseDir: show.posixRecordDir, expectedMinutes: show.show_length,
                                      renameTruncatedTag: tag)
         }
+        // Tuner check — deliberately *after* every skip check above (fail threshold, disk, New Only,
+        // already-recorded): those can still decide this airing won't record at all, and live TV
+        // must never be stopped for a recording that then doesn't happen (2026-10-01 review #10).
+        // Blocked only by this instance's own live (non-recording) Watch Now on this device — the
+        // scheduled recording wins: stop that live stream now (the user was warned a few minutes
+        // ahead by warnOfLiveWatchPreemptionIfNeeded). The device's status.json lags the dropped
+        // connection, so this tick still reads full; later ticks retry, and the conflict notice
+        // below is held back for liveWatchPreemptGraceSeconds while that catches up.
+        if tunerBlockedOnlyByOwnWatchNow(for: show.hdhr_record) {
+            preemptOwnLiveWatch(for: show)
+        }
+        if tunersFull(for: show.hdhr_record),
+           let p = preemptedLiveWatch, p.deviceId == show.hdhr_record,
+           Date().timeIntervalSince(p.at) < Self.liveWatchPreemptGraceSeconds {
+            // Refresh the device's status in the background and let the next tick retry — never
+            // `await` here: everything below writes shows[index]/uses `show`, and an await would
+            // let a concurrent delete/add shift `shows` underneath that captured index (CLAUDE.md
+            // "Idle-loop show-array safety"; 2026-10-01 review finding #1).
+            Task { await self.fetchDeviceStatus(for: device) }
+            glog("[\(show.show_title)] waiting for \(show.hdhr_record) to release the stopped live stream's tuner (\(Int(Date().timeIntervalSince(p.at)))s)")
+            return
+        }
+        if tunersFull(for: show.hdhr_record) {
+            let tunerCount = device.TunerCount ?? 0
+            glog("[\(show.show_title)] TUNER FULL \(show.hdhr_record) — skipping start", level: .warning)
+            // Fire conflict notification once per show+episode window to avoid per-tick spam.
+            let conflictEpoch = show.show_next?.timeIntervalSince1970 ?? 0
+            if showRuntime[show.show_id]?.conflictNotifiedEpoch != conflictEpoch {
+                showRuntime[show.show_id, default: ShowRuntimeState()].conflictNotifiedEpoch = conflictEpoch
+                notify("Tuner Conflict", body: show.show_title,
+                       subtitle: "All tuners on \(show.hdhr_record) are busy")
+                discordShow("⚠️ Tuner Conflict", show: show, color: 0xF1C40F,
+                            enabled: config.Discord_on_conflict,
+                            extra: [("Note", "All \(tunerCount) tuners on \(show.hdhr_record) are busy", false)])
+            }
+            return
+        }
         let path = show.outputPath(date: show.show_next ?? Date(), subfolder: seriesSubfolder, episodeTag: episodeTag)
         let recordDir = (path as NSString).deletingLastPathComponent
         do {
@@ -3354,6 +3357,11 @@ final class AppState: ObservableObject {
         // recording already carries a real launch time, not a stale one from a previous attempt.
         showRuntime[show.show_id, default: ShowRuntimeState()].recordingLaunchedAt = Date()
         showRuntime[show.show_id]?.failedThisAttempt = false // fresh attempt — any earlier FAIL no longer describes "this" recording
+        // Fresh attempt — drop the previous airing's episode snapshot. Only a clearIdAfter Discord card
+        // used to clear it, so with Discord off (the default) the idle-loop backfill never replaced
+        // it and the FEED lineup kept the *previous* episode's title/synopsis (2026-10-01 review #15).
+        // Re-captured by the "Recording Started" branch or the idle-loop backfill.
+        showRuntime[show.show_id]?.discordEpisodeSnapshot = nil
         // Same "fresh attempt" reasoning — a real retry landing inside an old abnormal-stop grace
         // window makes the window redundant (recordingIsWatchable already prefers show_recording
         // first regardless), but clearing it here keeps showRuntime tidy and matches this
@@ -5701,11 +5709,13 @@ final class AppState: ObservableObject {
             let epoch = next.timeIntervalSince1970
             guard showRuntime[show.show_id]?.liveWatchPreemptWarnedEpoch != epoch,
                   tunerBlockedOnlyByOwnWatchNow(for: show.hdhr_record) else { continue }
+            // Evaluated once per airing either way (marked below) — the duplicate check scans disk.
+            showRuntime[show.show_id, default: ShowRuntimeState()].liveWatchPreemptWarnedEpoch = epoch
+            guard !scheduledRecordingWillBeSkipped(show) else { continue }
             let freesUpAnyway = recordingShows.contains {
                 $0.hdhr_record == show.hdhr_record && ($0.show_end ?? .distantFuture) <= next
             }
             guard !freesUpAnyway else { continue }
-            showRuntime[show.show_id, default: ShowRuntimeState()].liveWatchPreemptWarnedEpoch = epoch
             let when = shortTime(next)
             let sameChannel = ownLiveWatchIsSameChannel(as: show)
             let message = sameChannel
@@ -5715,6 +5725,20 @@ final class AppState: ObservableObject {
             notify("Live TV Will Stop at \(when)", body: show.show_title, subtitle: sameChannel ? "Switching to the recording" : "Tuner needed for a recording")
             VLCPlayerWindowManager.shared.presentNotice(title: "Recording Starts at \(when)", message: message)
         }
+    }
+
+    /// Mirrors startRecording's skip checks (fail threshold, disk, New Only, already-recorded
+    /// episode) so the heads-up never warns about a recording that will be skipped anyway —
+    /// startRecording itself now only preempts after those checks pass (2026-10-01 review #10).
+    private func scheduledRecordingWillBeSkipped(_ show: Show) -> Bool {
+        if show.show_fail_count >= failThreshold || !diskOK(for: show) { return true }
+        let entry = guideEntryForShow(show)
+        if show.show_new_only, show.state != .single, let entry, !isNewEpisode(entry) { return true }
+        if config.Series_subfolder_enabled, show.isSeries, !show.show_ignore_duplicate_once,
+           let tag = entry?.EpisodeNumber,
+           duplicateEpisodeTag(title: show.show_title, episodeTag: tag, baseDir: show.posixRecordDir,
+                               expectedMinutes: show.show_length) != nil { return true }
+        return false
     }
 
     /// Stops this instance's own live Watch Now on `show`'s device so the scheduled recording can
