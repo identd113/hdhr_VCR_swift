@@ -20,6 +20,7 @@ final class WebServer: @unchecked Sendable {
         case notFound(String)
         case badRequest(String)
         case payloadTooLarge(String)
+        case forbidden(String)
     }
 
     private var listener:      NWListener?
@@ -925,6 +926,14 @@ final class WebServer: @unchecked Sendable {
     // class's own methods) and `targetQueue` (external callers like the liveness probe); every
     // other field below (including all the pacing state) stays `targetQueue`-only, never locked.
     //
+    // **Correction, 2026-10-01 (review #18): the "pacing" described next never actually held
+    // anything back.** Its rate was the cumulative average of bytes *received*, so its target was
+    // always ≥ what had arrived — the whole buffer went out every time. It's been removed; what's
+    // left (and what the live tests credited below actually exercised) is a coalescing,
+    // one-send-in-flight drain. Real delivery smoothing exists only in FeedRelayPacer (FEED disk
+    // cache path), and the 2026-10-01 "FEED starvation" root cause was the dual-stack listener,
+    // not missing pacing here. History kept for context:
+    //
     // Delivery pacing (buffer/draining/bytesReceived/bytesSent below), added 2026-09-13: originally
     // lived only on the FEED-local-relay subclass, on the theory that libvlc's own sout httpd
     // output (the transcode relay's source) is already correctly real-time-paced and a real
@@ -962,19 +971,6 @@ final class WebServer: @unchecked Sendable {
         private weak var currentTask: URLSessionDataTask?
         private var buffer = Data()
         private var draining = false
-        private let startedAt = Date()
-        private var bytesReceived = 0
-        private var bytesSent = 0
-        // Seed/floor for the observed-rate average — avoids a wildly-low estimate (and therefore an
-        // overly aggressive hold-back) from the very first, possibly-tiny chunk. Mid-range OTA
-        // MPEG-2 guess, same value FeedRelayPacer's disk-based predecessor used.
-        private static let minAssumedBytesPerSecond: Double = 150_000
-        // How far ahead of a perfectly steady real-time pace delivery is allowed to run before this
-        // delegate starts holding chunks back — same value/reasoning as FeedRelayPacer's own.
-        private static let lookaheadSeconds: TimeInterval = 0.5
-        // Floor for the computed wait below, and the fallback interval if that computation would
-        // otherwise land on zero/negative — not a fixed poll cadence any more (see drainIfNeeded).
-        private static let minDrainRetryInterval: TimeInterval = 0.02
 
         init(conn: NWConnection, targetQueue: DispatchQueue, onFinished: @escaping () -> Void,
              onFailedBeforeAnyData: @escaping () -> Void) {
@@ -1022,43 +1018,19 @@ final class WebServer: @unchecked Sendable {
                 guard let self else { return }
                 self.currentTask = dataTask
                 self.buffer.append(data)
-                self.bytesReceived += data.count
                 self.drainIfNeeded()
             }
         }
 
-        // Sends as much of the buffered backlog as a steady real-time pace currently allows, then
-        // re-schedules itself if bytes remain buffered but aren't allowed out yet. Must only ever be
-        // called on targetQueue (didReceive's own hop, and this function's own conn.send completion,
-        // both guarantee that). `allowed` mirrors FeedRelayPacer's own math: "how many bytes should
-        // have gone out by (now + lookaheadSeconds) at the observed rate," minus what's already been
-        // sent — 0 or negative means delivery is already at/ahead of pace, so this just waits.
+        // Sends everything buffered in one send, one send in flight at a time; data arriving
+        // meanwhile coalesces into the next send. Must only be called on targetQueue (didReceive's
+        // own hop, and the conn.send completion, both guarantee that).
         private func drainIfNeeded() {
             guard !isFinished, !draining, !buffer.isEmpty else { return }
-            let elapsed = Date().timeIntervalSince(startedAt)
-            let observedRate = elapsed > 0
-                ? max(Self.minAssumedBytesPerSecond, Double(bytesReceived) / elapsed)
-                : Self.minAssumedBytesPerSecond
-            let targetByNow = observedRate * (elapsed + Self.lookaheadSeconds)
-            let allowed = max(0, Int(targetByNow) - bytesSent)
-            let toSend = min(allowed, buffer.count)
-            guard toSend > 0 else {
-                // Compute exactly when `allowed` will next turn positive instead of polling on a
-                // fixed interval — a fixed 20ms poll could wake/re-check up to ~25 times for one real
-                // send whenever the hold-back is close to the full lookaheadSeconds window (e.g.
-                // right after a network burst). New data arriving still re-triggers drainIfNeeded
-                // sooner via didReceive regardless, so this is only the worst-case fallback wake-up.
-                let neededElapsed = (Double(bytesSent) + 1) / observedRate - Self.lookaheadSeconds
-                let wait = max(Self.minDrainRetryInterval, neededElapsed - elapsed)
-                targetQueue.asyncAfter(deadline: .now() + wait) { [weak self] in self?.drainIfNeeded() }
-                return
-            }
-            let chunk = buffer.prefix(toSend)
-            buffer.removeFirst(toSend)
-            bytesSent += toSend
+            let chunk = buffer
+            buffer.removeAll(keepingCapacity: true)
             draining = true
-            let hasMore = !buffer.isEmpty
-            conn.send(content: Data(chunk), completion: .contentProcessed({ [weak self] error in
+            conn.send(content: chunk, completion: .contentProcessed({ [weak self] error in
                 guard let self else { return }
                 self.draining = false
                 if error != nil {
@@ -1066,9 +1038,7 @@ final class WebServer: @unchecked Sendable {
                     self.finishOnce()
                     return
                 }
-                // Keep draining the rest of what's already buffered before waiting on the pace
-                // again — this recursion is bounded by buffer.count strictly decreasing each call.
-                if hasMore { self.drainIfNeeded() }
+                self.drainIfNeeded()
             }))
         }
     }
@@ -1100,6 +1070,7 @@ final class WebServer: @unchecked Sendable {
         // server's connection-handling queue. A nil call here is still a real bug (retry silently
         // doing nothing instead of retrying), but no longer a crash.
         var startAttempt: (() -> Void)?
+        var finishViaDelegate: (() -> Void)?   // see pumpTranscodeProxy's identical box (review #17)
         let delegate = FeedRelayProxyDelegate(conn: conn, targetQueue: queue, onFinished: cleanup,
                                                onFailedBeforeAnyData: { [weak self] in
             guard let self else { return }
@@ -1112,7 +1083,7 @@ final class WebServer: @unchecked Sendable {
                 connectAttempt += 1
                 guard connectAttempt < Self.feedRelayMaxConnectAttempts else {
                     glog("[VirtualTuner] FEED local relay session=\(sessionId) remote not answering after \(connectAttempt) attempts — giving up", level: .warning)
-                    cleanup()
+                    if let finishViaDelegate { finishViaDelegate() } else { cleanup() }
                     return
                 }
                 glog("[VirtualTuner] FEED local relay session=\(sessionId) remote not ready yet (attempt \(connectAttempt)) — retrying in \(Self.feedRelayRetryDelay)s")
@@ -1126,6 +1097,7 @@ final class WebServer: @unchecked Sendable {
         config.timeoutIntervalForResource = 86400
         let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
         urlSession = session
+        finishViaDelegate = { [weak delegate] in delegate?.notifyFinished() }
         startAttempt = { session.dataTask(with: remoteURL).resume() }
         // Connection: close — see streamGrowingFile's identical header for why keep-alive is wrong
         // here too (no Content-Length/chunked framing on an open-ended stream). Sent before starting
@@ -1475,6 +1447,12 @@ final class WebServer: @unchecked Sendable {
         // one delegate instance) never need to be duplicated per attempt. Optional, not an
         // implicitly-unwrapped `!` — see beginFeedRelayProxy's identical field for why.
         var startAttempt: (() -> Void)?
+        // Give-up goes through the delegate's once-only finishOnce(), never cleanup() directly
+        // (2026-10-01 review #17): a direct call left the delegate unfinished, so the liveness
+        // probe later failed its send on the cancelled connection and ran cleanup() a *second*
+        // time — releasing the shared transcode session twice, which could kill a retrying
+        // viewer's encode. Boxed because the delegate is created in this same statement.
+        var finishViaDelegate: (() -> Void)?
         let delegate = TranscodeProxyDelegate(conn: conn, targetQueue: queue, onFinished: cleanup,
                                                onFailedBeforeAnyData: { [weak self] in
             guard let self else { return }
@@ -1490,7 +1468,7 @@ final class WebServer: @unchecked Sendable {
                 connectAttempt += 1
                 guard connectAttempt < Self.transcodeProxyMaxConnectAttempts else {
                     glog("[VirtualTuner] transcode relay show=\(showId) local httpd still not accepting connections after \(connectAttempt) attempts — giving up", level: .warning)
-                    cleanup()
+                    if let finishViaDelegate { finishViaDelegate() } else { cleanup() }
                     return
                 }
                 glog("[VirtualTuner] transcode relay show=\(showId) local httpd not ready yet (attempt \(connectAttempt)) — retrying in \(Self.transcodeProxyRetryDelay)s")
@@ -1507,6 +1485,7 @@ final class WebServer: @unchecked Sendable {
         config.timeoutIntervalForResource = 86400
         let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
         urlSession = session
+        finishViaDelegate = { [weak delegate] in delegate?.notifyFinished() }
         startAttempt = { session.dataTask(with: localURL).resume() }
         startAttempt?()
 
@@ -2134,8 +2113,16 @@ final class WebServer: @unchecked Sendable {
             var contentLength = 0
             var acceptsGzip   = false
             var explicitClose = false
+            var hostHeader: String?, originHeader: String?, secFetchSite: String?, contentType: String?
+            func headerValue(_ lower: String, _ name: String) -> String {
+                String(lower.dropFirst(name.count)).trimmingCharacters(in: .whitespaces)
+            }
             for line in headerText.components(separatedBy: "\r\n").dropFirst() {
                 let lower = line.lowercased()
+                if lower.hasPrefix("host:") { hostHeader = headerValue(lower, "host:") }
+                else if lower.hasPrefix("origin:") { originHeader = headerValue(lower, "origin:") }
+                else if lower.hasPrefix("sec-fetch-site:") { secFetchSite = headerValue(lower, "sec-fetch-site:") }
+                else if lower.hasPrefix("content-type:") { contentType = headerValue(lower, "content-type:") }
                 if lower.hasPrefix("content-length:") {
                     contentLength = Int(lower.dropFirst("content-length:".count)
                                            .trimmingCharacters(in: .whitespaces)) ?? 0
@@ -2174,6 +2161,17 @@ final class WebServer: @unchecked Sendable {
             let httpVersion = parts.count >= 3 ? parts[2] : "HTTP/1.0"
             let cleanPath   = path.components(separatedBy: "?").first ?? path
             let body: Data? = contentLength > 0 ? Data(bodyBytes.prefix(contentLength)) : nil
+
+            // Browser-driven attacks from a *website* the user visits (2026-10-01 review #16) —
+            // the subnet check alone passes them, since the browser's own connection comes from
+            // a LAN address. See requestRejectionReason.
+            if let reason = Self.requestRejectionReason(method: method, host: hostHeader, origin: originHeader,
+                                                        secFetchSite: secFetchSite, contentType: contentType,
+                                                        localHostNames: Self.localHostNames) {
+                glog("[WebServer] rejected \(method) \(cleanPath) from \(conn.endpoint): \(reason)", level: .warning)
+                self.send(.forbidden(reason), on: conn)
+                return
+            }
 
             // Leftover bytes past this request's body (contentLength is guaranteed 0…bodyBytes.count
             // by the checks above, so dropFirst can't trap). Their presence means the client sent
@@ -4489,6 +4487,7 @@ final class WebServer: @unchecked Sendable {
         case .notFound(let msg):      (status, headers, body) = errorParts("404 Not Found",         msg); keepAlive = false
         case .badRequest(let msg):    (status, headers, body) = errorParts("400 Bad Request",       msg); keepAlive = false
         case .payloadTooLarge(let msg):(status, headers, body) = errorParts("413 Content Too Large", msg); keepAlive = false
+        case .forbidden(let msg):     (status, headers, body) = errorParts("403 Forbidden",         msg); keepAlive = false
         }
 
         var raw = "HTTP/1.1 \(status)\r\n"
@@ -4567,6 +4566,63 @@ final class WebServer: @unchecked Sendable {
         s.replacingOccurrences(of: "<",  with: "\\u003c")
          .replacingOccurrences(of: ">",  with: "\\u003e")
          .replacingOccurrences(of: "&",  with: "\\u0026")
+    }
+
+    // MARK: - Cross-site / DNS-rebinding guard
+
+    /// This Mac's own host names, lowercased — accepted as a `Host` header alongside the generic
+    /// LAN forms in requestRejectionReason.
+    static let localHostNames: Set<String> = {
+        let full = ProcessInfo.processInfo.hostName.lowercased()
+        var names: Set<String> = [full]
+        if let first = full.split(separator: ".").first { names.insert(String(first)) }
+        return names
+    }()
+
+    /// Why a request must be refused, or nil. Pure — unit tested. Added 2026-10-01 (review #16):
+    /// the only gate was the TCP peer's subnet, which a browser on the LAN always passes — so any
+    /// website could POST /api/delete etc. through it (a `text/plain` no-cors fetch needs no
+    /// preflight), and after DNS-rebinding its own hostname to this Mac, read responses too.
+    /// - `Host` must name this machine the way a LAN client would: an IP literal, `localhost`, a
+    ///   single-label name, a LAN-only suffix, or this Mac's own host name. A rebinding attack's
+    ///   Host is the attacker's public domain. Missing Host (HTTP/1.0) is allowed.
+    /// - POSTs: a cross-site `Sec-Fetch-Site`, or an `Origin` that doesn't match `Host`, is refused;
+    ///   and the body must be declared `application/json` — every real client (guide.js, the
+    ///   hdhr_guide TUI, tools/mock_scenario.py) sends it, and it forces a CORS preflight that
+    ///   this server never answers, so a cross-site page can't send one.
+    nonisolated static func requestRejectionReason(method: String, host: String?, origin: String?,
+                                                   secFetchSite: String?, contentType: String?,
+                                                   localHostNames: Set<String>) -> String? {
+        if let host, !host.isEmpty, !isAcceptableHost(host, localHostNames: localHostNames) {
+            return "unrecognized Host header"
+        }
+        guard method == "POST" else { return nil }
+        if secFetchSite == "cross-site" { return "cross-site request" }
+        if let origin, !origin.isEmpty {
+            let originHostPort = origin.lowercased()
+                .replacingOccurrences(of: "http://", with: "").replacingOccurrences(of: "https://", with: "")
+            if originHostPort == "null" || originHostPort != (host ?? "").lowercased() {
+                return "Origin does not match Host"
+            }
+        }
+        guard let contentType, contentType.lowercased().hasPrefix("application/json") else {
+            return "Content-Type must be application/json"
+        }
+        return nil
+    }
+
+    nonisolated static func isAcceptableHost(_ hostHeader: String, localHostNames: Set<String>) -> Bool {
+        var name = hostHeader.lowercased()
+        if name.hasPrefix("[") {   // [IPv6]:port
+            return name.contains("]")
+        }
+        if let colon = name.lastIndex(of: ":") { name = String(name[..<colon]) }
+        if name.hasSuffix(".") { name.removeLast() }
+        if name == "localhost" || localHostNames.contains(name) || !name.contains(".") { return true }
+        let labels = name.split(separator: ".")
+        if labels.count == 4, labels.allSatisfy({ UInt8($0) != nil }) { return true }   // IPv4 literal
+        let lanSuffixes = [".local", ".lan", ".home", ".home.arpa", ".internal", ".localdomain", ".localhost"]
+        return lanSuffixes.contains { name.hasSuffix($0) }
     }
 
     // MARK: - Subnet guard

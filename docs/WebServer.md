@@ -991,6 +991,8 @@ All values are truncated to 120 characters. The TXT record is refreshed on `.rea
 
 ## Security
 
+**Cross-site / DNS-rebinding guard (2026-10-01, review #16):** the subnet guard below can't stop a *website* the user visits — the browser's own connection comes from a LAN address. `accumulate` therefore also parses `Host`, `Origin`, `Sec-Fetch-Site` and `Content-Type` and runs `requestRejectionReason(...)` (pure, `WebServerRequestGuardTests`) before routing; a rejection gets `403 Forbidden` and a `[WebServer] rejected …` log line. Rules: `Host` must be an IP literal, `localhost`, a single-label name, a LAN suffix (`.local`, `.lan`, `.home`, `.home.arpa`, `.internal`, `.localdomain`, `.localhost`) or this Mac's own host name (`localHostNames`) — a DNS-rebinding attack's Host is the attacker's public domain; missing Host (HTTP/1.0) is allowed. POSTs additionally: `Sec-Fetch-Site: cross-site` or an `Origin` (incl. `null`) that doesn't match `Host` is refused, and `Content-Type` must be `application/json` — every real client (guide.js's `post()`, the `hdhr_guide` TUI, `tools/mock_scenario.py`) sends it, and a cross-site page can't without a CORS preflight this server never answers. Opening the guide via some other custom DNS name would be refused by the Host rule — add its suffix to `isAcceptableHost` if that's ever needed.
+
 **Subnet guard:** `NWListener` binds to all interfaces. Every incoming connection is checked in `isLocalAddress()` before any data is read. Non-LAN IPs get `conn.cancel()` with zero bytes returned.
 
 `isLocalAddress()` handles both IPv4 and IPv6:
