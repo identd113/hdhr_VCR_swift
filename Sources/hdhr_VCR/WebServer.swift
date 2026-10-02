@@ -822,6 +822,7 @@ final class WebServer: @unchecked Sendable {
                     self.send(.notFound("recording not found"), on: conn)
                     return
                 }
+                let sessionStartedAt = state.feedCacheSessionStartedAt(id: showId)
                 self.fileIOQueue.async {
                     guard let attrs = try? FileManager.default.attributesOfItem(atPath: cachePath) else {
                         self.queue.async { self.send(.notFound("recording not found"), on: conn) }
@@ -833,8 +834,12 @@ final class WebServer: @unchecked Sendable {
                     // cache session needs delivery smoothing that Watch Now's own real-Show path
                     // (which passes no pacer at all) doesn't.
                     let initialSize = (attrs[.size] as? Int) ?? 0
+                    // Seed from the cache file's own average growth once the session has a few
+                    // seconds of history (scrub/catch-up reconnects nearly always do).
+                    let age = sessionStartedAt.map { Date().timeIntervalSince($0) } ?? 0
+                    let seed: Double? = age >= 3 && initialSize > 0 ? Double(initialSize) / age : nil
                     self.streamGrowingFile(path: cachePath, showId: showId, startOffset: startOffset,
-                                            conn: conn, pacer: FeedRelayPacer(initialFileSize: initialSize),
+                                            conn: conn, pacer: FeedRelayPacer(initialFileSize: initialSize, seedBytesPerSecond: seed),
                                             stillActiveCheck: { [weak self] in
                         self?.feedCacheStillActive(sessionId: showId) ?? false
                     })
@@ -1642,15 +1647,22 @@ final class WebServer: @unchecked Sendable {
     // sequentially (fileIOQueue's read step, then queue's send/schedule step, one at a time per
     // connection, never concurrently) even though those two hops run on different queues.
     private final class FeedRelayPacer: @unchecked Sendable {
-        private let startedAt = Date()
-        private var bytesSent = 0
+        // Anchored at the first *paced* send, and only paced bytes are counted (2026-10-01 review
+        // finding #6). Anchoring at connection start and counting the unpaced backlog drain (e.g.
+        // ~7 MB right after a scrub) made the first live chunk wait out that whole backlog at the
+        // estimated rate — a ~20s hold on an HD FEED while VLC had ~5s buffered.
+        private var pacedSince: Date?
+        private var pacedBytes = 0
         private var lastMeasuredAt = Date()
         private var lastMeasuredSize: Int
-        // Seeded with a mid-range OTA MPEG-2 guess (2.4 Mbps) so early delivery isn't held back
-        // before the first real measurement lands — refined below from the file's own true growth,
-        // independent of anything already throttled through this pacer (measuring what's actually
-        // been *sent* would make the estimate circular).
-        private var observedBytesPerSecond: Double = 300_000
+        // Seeded from the cache file's own average growth when the session is old enough to have
+        // one (handleWatchRecording), else a fallback; refined below from the file's true growth,
+        // independent of anything throttled through this pacer (measuring what's been *sent* would
+        // make the estimate circular). The old fixed 300 KB/s seed was ~5x below an HD OTA
+        // stream (~1.4 MB/s), so every new connection started badly throttled.
+        private var observedBytesPerSecond: Double
+        private var hasRealMeasurement: Bool
+        private static let fallbackSeedBytesPerSecond: Double = 1_000_000
         private static let measureInterval: TimeInterval = 2.0
         // How far ahead of a perfectly steady real-time pace delivery is allowed to run before this
         // pacer starts holding chunks back — small enough to actually smooth out a burst, large
@@ -1658,7 +1670,11 @@ final class WebServer: @unchecked Sendable {
         // "few seconds behind live" delay (docs/VirtualTunerService.md's Known limitation).
         private static let lookaheadSeconds: TimeInterval = 0.5
 
-        init(initialFileSize: Int) { lastMeasuredSize = initialFileSize }
+        init(initialFileSize: Int, seedBytesPerSecond: Double?) {
+            lastMeasuredSize = initialFileSize
+            observedBytesPerSecond = seedBytesPerSecond ?? Self.fallbackSeedBytesPerSecond
+            hasRealMeasurement = seedBytesPerSecond != nil
+        }
 
         // Called from pumpGrowingFile's fileIOQueue closure with a fresh stat of the file — cheap,
         // and called unconditionally on every tick (this method's own 2s internal gate makes that a
@@ -1672,7 +1688,10 @@ final class WebServer: @unchecked Sendable {
             if delta > 0 {
                 // EWMA, not a straight replace — one noisy 2s window (a transient hiccup on the
                 // puller's own network read) shouldn't swing the target rate wildly on its own.
-                observedBytesPerSecond = observedBytesPerSecond * 0.7 + (Double(delta) / elapsed) * 0.3
+                // The first real measurement replaces a fallback seed outright rather than blending.
+                let measured = Double(delta) / elapsed
+                observedBytesPerSecond = hasRealMeasurement ? observedBytesPerSecond * 0.7 + measured * 0.3 : measured
+                hasRealMeasurement = true
             }
             lastMeasuredAt = now
             lastMeasuredSize = currentFileSize
@@ -1684,13 +1703,14 @@ final class WebServer: @unchecked Sendable {
         // delivery is already at or behind pace — this only ever holds bytes back, never speeds
         // anything up beyond what pumpGrowingFile's own read cadence already provides.
         func delayBeforeSending(chunkBytes: Int) -> TimeInterval {
-            let projected = bytesSent + chunkBytes
-            let wallClockNeeded = Double(projected) / observedBytesPerSecond - Self.lookaheadSeconds
-            let targetInstant = startedAt.addingTimeInterval(wallClockNeeded)
-            return max(0, targetInstant.timeIntervalSinceNow)
+            let now = Date()
+            let since = pacedSince ?? now
+            pacedSince = since
+            let wallClockNeeded = Double(pacedBytes + chunkBytes) / observedBytesPerSecond - Self.lookaheadSeconds
+            return max(0, since.addingTimeInterval(wallClockNeeded).timeIntervalSince(now))
         }
 
-        func recordSent(_ n: Int) { bytesSent += n }
+        func recordPacedSend(_ n: Int) { pacedBytes += n }
     }
 
     private func streamGrowingFile(path: String, showId: String, startOffset: Int, conn: NWConnection,
@@ -2010,11 +2030,11 @@ final class WebServer: @unchecked Sendable {
         // attempt, a FEED-cache file's growth is NOT already correctly paced (it's the output of a
         // second, cross-machine network hop, not a direct tuner read), so smoothing delivery here
         // is a materially different case, not a repeat of that mistake.
-        let pacingDelay = (pacer != nil && chunkSize == Self.watchRecordingChunkSize)
-            ? pacer!.delayBeforeSending(chunkBytes: chunk.count) : 0
+        let isPaced = pacer != nil && chunkSize == Self.watchRecordingChunkSize
+        let pacingDelay = isPaced ? pacer!.delayBeforeSending(chunkBytes: chunk.count) : 0
         let sendNow = { [weak self] in
             guard let self else { return }
-            pacer?.recordSent(chunk.count)
+            if isPaced { pacer?.recordPacedSend(chunk.count) }
             self.sendWithTimeout(chunk, on: conn, timeout: Self.growingFileNoTimeout) { [weak self] reason in
                 guard let self, reason == nil else {
                     self?.fileIOQueue.async { handle.closeFile() }

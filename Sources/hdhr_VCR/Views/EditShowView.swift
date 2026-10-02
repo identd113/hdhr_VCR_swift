@@ -72,7 +72,7 @@ struct EditShowView: View {
         // isn't exposed to the same background-drift staleness — see WindowCloseInterceptor's doc
         // comment. Retargeting to a different show is already handled correctly, independent of
         // window focus, by the onChange(of: state.editingShowId) below.
-        .background(WindowCloseInterceptor(isDirty: isDirty, canSave: canSave, onSave: saveWithoutDismiss, onBecomeKey: {}))
+        .background(WindowCloseInterceptor(isDirty: isDirty, canSave: canSave, onSave: saveWithoutDismiss, onBecomeKey: { if !isDirty { loadShow() } }))
         .onAppear { loadShow() }
         // The window is a single reusable instance, so onAppear won't fire when it's merely
         // re-focused for a different show — reload whenever the target show id changes.
@@ -235,6 +235,12 @@ struct EditShowView: View {
             // an external drive or NAS) went offline — on every single Edit Show save, whether or
             // not the user actually touched the folder picker. See Show.localFallbackDir.
             s.show_temp_dir = Show.localFallbackDir
+        }
+        // Apply only what the form changed onto the *live* show, never the form's whole copy —
+        // it can be hours old (single-instance window), and runtime fields like show_recording/
+        // show_end/show_recording_path must come from the live show (review finding #4).
+        if let original = originalShow, let live = state.shows.first(where: { $0.show_id == s.show_id }) {
+            s = live.applyingEdits(from: original, to: s)
         }
         state.updateShow(s)
         // Both show and originalShow must be reset to the normalized s — show alone was never

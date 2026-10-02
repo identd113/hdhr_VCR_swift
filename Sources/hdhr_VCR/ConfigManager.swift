@@ -42,7 +42,18 @@ final class ConfigManager {
         return nil
     }
 
+    // Set by importConfig — from then until the app restarts, every save is skipped. Without this
+    // the next idle-loop dirty save, or teardownForExit's save on Quit, wrote the old in-memory
+    // config/shows straight back over the just-imported file (2026-10-01 review finding #5).
+    private let importLock = NSLock()
+    private var _savesSuppressedAfterImport = false
+    var savesSuppressedAfterImport: Bool { importLock.withLock { _savesSuppressedAfterImport } }
+
     func save(_ file: ConfigFile) throws {
+        if savesSuppressedAfterImport {
+            glog("[Config] Save skipped — a config was imported this session; restart to load it")
+            return
+        }
         let backup = configURL.appendingPathExtension("bak")
         try? FileManager.default.removeItem(at: backup)
         try? FileManager.default.copyItem(at: configURL, to: backup)
@@ -109,11 +120,16 @@ final class ConfigManager {
     func importConfig(from url: URL) throws {
         let data = try Data(contentsOf: url)
         _ = try Self.makeDecoder().decode(ConfigFile.self, from: data)
-        let backup = configURL.appendingPathExtension("bak")
-        try? FileManager.default.removeItem(at: backup)
-        try? FileManager.default.copyItem(at: configURL, to: backup)
-        try data.write(to: configURL, options: .atomic)
-        glog("[Config] Imported config from \(url.lastPathComponent)")
+        // On saveQueue so a saveAsync already queued can't land *after* the import and overwrite
+        // it; the suppression flag is set in the same step for every save after it.
+        try saveQueue.sync {
+            let backup = configURL.appendingPathExtension("bak")
+            try? FileManager.default.removeItem(at: backup)
+            try? FileManager.default.copyItem(at: configURL, to: backup)
+            try data.write(to: configURL, options: .atomic)
+            importLock.withLock { _savesSuppressedAfterImport = true }
+        }
+        glog("[Config] Imported config from \(url.lastPathComponent) — saves suppressed until restart")
     }
 
     // MARK: - Private

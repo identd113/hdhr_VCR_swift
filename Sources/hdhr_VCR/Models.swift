@@ -276,6 +276,34 @@ struct Show: Identifiable, Equatable {
         "none", "heavy", "mobile", "internet720", "internet540", "internet480", "internet360", "internet240"
     ]
 
+    /// `self` (the live show) with only the fields that differ between `original` and `edited`
+    /// applied — for an edit form holding its own copy of a Show (EditShowView). Added 2026-10-01
+    /// (review finding #4): saving the form's whole copy via updateShow wrote back every runtime
+    /// field (show_recording, show_end incl. Bonus Time, show_recording_path, discord_start_msg_id,
+    /// notify_*…) as it was when the form loaded — stale if a recording had started since. Diffed
+    /// via the Codable representation so a new Show field is covered automatically. Falls back to
+    /// `edited` only if encoding fails (never expected).
+    func applyingEdits(from original: Show, to edited: Show) -> Show {
+        let enc = JSONEncoder()
+        guard let o = try? JSONSerialization.jsonObject(with: enc.encode(original)) as? [String: Any],
+              let e = try? JSONSerialization.jsonObject(with: enc.encode(edited)) as? [String: Any],
+              var live = try? JSONSerialization.jsonObject(with: enc.encode(self)) as? [String: Any]
+        else { return edited }
+        for (key, value) in e where !Self.jsonEqual(o[key], value) { live[key] = value }
+        for key in o.keys where e[key] == nil { live.removeValue(forKey: key) }
+        guard let data = try? JSONSerialization.data(withJSONObject: live),
+              let merged = try? JSONDecoder().decode(Show.self, from: data) else { return edited }
+        return merged
+    }
+
+    private static func jsonEqual(_ a: Any?, _ b: Any?) -> Bool {
+        switch (a, b) {
+        case (nil, nil): return true
+        case let (a?, b?): return (a as AnyObject).isEqual(b as AnyObject)
+        default: return false
+        }
+    }
+
     static func blank(channel: String = "", device: String = "") -> Show {
         Show(
             show_id: UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased(),

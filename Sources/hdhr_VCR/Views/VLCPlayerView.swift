@@ -1708,6 +1708,13 @@ struct VLCPlayerView: View {
                     guard let pair = state.remoteRelayEntries.first(where: { $0.entry.URL == feedURL }) else { return }
                     state.watchRemoteRelay(url: feedURL, title: pair.entry.virtualRelayShowTitle ?? pair.entry.GuideName,
                                            device: pair.device)
+                } else if device.isVirtualRelay, let feedURL = ch.URL, !feedURL.isEmpty {
+                    // A window opened directly on a FEED lists the source Mac's relayed recordings
+                    // as its lineup — switching between them must go through watchRemoteRelay (the
+                    // local disk cache: scrub/pause, old puller torn down), never playChannel, which
+                    // ran a tuner check against the virtual device and/or connected VLC straight to
+                    // the raw remote /auto/v URL (2026-10-01 review finding #8).
+                    state.watchRemoteRelay(url: feedURL, title: ch.virtualRelayShowTitle ?? ch.GuideName, device: device)
                 } else if let showId = showId(fromLiveGuideNumber: ch.GuideNumber) {
                     guard let show = state.shows.first(where: { $0.show_id == showId }) else { return }
                     state.watchRecordingInApp(show)
@@ -2364,12 +2371,11 @@ struct VLCPlayerView: View {
         // hasn't clicked Start yet; we want the buffer building the whole time they
         // are reading the poster info. VLCBridge.play() resets estimatedLagSec=0 and
         // rate=minRate, so the rate controller begins filling the buffer right away.
+        // Before play(): ensures a player exists and the manager's device/channel/FEED tracking
+        // describe this stream — see prepareInWindowLiveSwitch.
+        VLCPlayerWindowManager.shared.prepareInWindowLiveSwitch(device: device, channelNumber: ch.GuideNumber, url: url)
         VLCBridge.shared.play(url: url)
         updateNowPlaying(channel: ch)
-        // open() is the only other place this is set, so a picker switch left it naming whatever
-        // channel the window first opened on — read by PiPPickerView.isCurrentLiveChannel and the
-        // scheduled-recording preemption same-channel check (AppState.ownLiveWatchIsSameChannel).
-        VLCPlayerWindowManager.shared.noteLiveChannelSwitch(channelNumber: ch.GuideNumber)
         state.refreshTunerOccupancy()
 
         // Check tuner occupancy in the background — stream is already started, this
@@ -2435,8 +2441,24 @@ final class VLCPlayerWindowManager {
     /// in-use-by-other-tuner marker doesn't flag your own live Watch session as someone else's.
     private(set) var currentChannelNumber: String?
 
-    /// VLCPlayerView.startPlayChannel's in-window channel switch — see its call site.
-    func noteLiveChannelSwitch(channelNumber: String) { currentChannelNumber = channelNumber }
+    /// VLCPlayerView.startPlayChannel's in-window live channel switch — the bookkeeping open()
+    /// does, minus the window/view setup (2026-10-01 review finding #7). Before this, only
+    /// open() set currentDeviceID/currentChannelNumber, so after a cross-device PiP swap a picker
+    /// switch back to this window's own device left currentDeviceID naming the *other* device
+    /// (vlcOccupiesTuner miscounted both, and scheduled-recording preemption could stop the wrong
+    /// stream); a stale FEED session kept its puller running; and a standalone-PiP window whose
+    /// primary player had been released never recreated it, so play() sat queued forever.
+    func prepareInWindowLiveSwitch(device: HDHRDevice, channelNumber: String, url: String) {
+        if let staleId = currentFeedSessionId, !url.contains(staleId) {
+            appState?.stopFeedCacheSession(sessionId: staleId)
+            appState?.webServer.unregisterFeedRelaySession(id: staleId)
+            currentFeedRemoteURL = nil
+            currentFeedSessionId = nil
+        }
+        currentDeviceID = device.DeviceID
+        currentChannelNumber = channelNumber
+        VLCBridge.shared.ensurePlayer()
+    }
 
     /// Non-blocking notice as a sheet on the player window (AppState's scheduled-recording
     /// preemption heads-up/stop notices) — a sheet, not runModal(), so it never blocks the idle

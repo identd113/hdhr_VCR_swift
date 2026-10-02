@@ -163,7 +163,7 @@ The web server is stopped explicitly in all three `quit()` exit branches before 
 | `nextGuideEpisode(for show:)` | Delegates to `guideStore.nextEpisode()`; respects channel/device filters |
 | `upcomingGuideEpisodes(seriesID:channelNum:after:limit:)` | Up to `limit` upcoming `(channel, entry)` tuples, optionally filtered to one channel (`channelNum`, default `nil` = every channel); always spans every device. Used by `AddShowView`'s "Other Upcoming Airings" panel (`docs/AddShowView.md`, passes `channelNum` for SeriesID(Channel)) and `WebServer`'s `GET /api/airings/{seriesId}` (`docs/WebServer.md`, always unfiltered — the web Record modal filters client-side instead, in `renderAirings()`) |
 | `nextDateTimeOccurrences(for:after:count:)` | Returns up to `count` DateTime occurrences after `after`. Pass `after: Date()` to include today's airing (menu display); pass `after: startOfTomorrow` to skip today (rescheduling after a completed recording). Uses modulo arithmetic over air-day indices. |
-| `nextDateTime(for:)` | One-liner wrapper — calls `nextDateTimeOccurrences(for:after:startOfTomorrow, count:1).first`. Always skips today so a completed recording never re-schedules to the same day. |
+| `nextDateTime(for:now:)` | Calls `nextDateTimeOccurrences(for:after:count:1).first` from `nextDateTimeSearchStart(currentNext:now:)` (pure, unit tested in `NextDateTimeTests`): `now` when `show_next` is still in the future (an edit keeps an airing still upcoming today), else `max(now, show_next + 60s)` (never the same airing again, but the very next one, even across midnight). Was "always start of tomorrow" until 2026-10-01, which skipped tonight's airing on any edit and skipped the next night after a recording that ended past midnight. |
 
 ---
 

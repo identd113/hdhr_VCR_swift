@@ -3138,15 +3138,16 @@ final class AppState: ObservableObject {
         if tunerBlockedOnlyByOwnWatchNow(for: show.hdhr_record) {
             preemptOwnLiveWatch(for: show)
         }
-        if tunersFull(for: show.hdhr_record) {
-            if let p = preemptedLiveWatch, p.deviceId == show.hdhr_record,
-               Date().timeIntervalSince(p.at) < Self.liveWatchPreemptGraceSeconds {
-                await fetchDeviceStatus(for: device)
-                if tunersFull(for: show.hdhr_record) {
-                    glog("[\(show.show_title)] waiting for \(show.hdhr_record) to release the stopped live stream's tuner (\(Int(Date().timeIntervalSince(p.at)))s)")
-                    return
-                }
-            }
+        if tunersFull(for: show.hdhr_record),
+           let p = preemptedLiveWatch, p.deviceId == show.hdhr_record,
+           Date().timeIntervalSince(p.at) < Self.liveWatchPreemptGraceSeconds {
+            // Refresh the device's status in the background and let the next tick retry — never
+            // `await` here: everything below writes shows[index]/uses `show`, and an await would
+            // let a concurrent delete/add shift `shows` underneath that captured index (CLAUDE.md
+            // "Idle-loop show-array safety"; 2026-10-01 review finding #1).
+            Task { await self.fetchDeviceStatus(for: device) }
+            glog("[\(show.show_title)] waiting for \(show.hdhr_record) to release the stopped live stream's tuner (\(Int(Date().timeIntervalSince(p.at)))s)")
+            return
         }
         if tunersFull(for: show.hdhr_record) {
             let tunerCount = device.TunerCount ?? 0
@@ -3908,11 +3909,20 @@ final class AppState: ObservableObject {
         return Array(candidates.sorted().prefix(count))
     }
 
-    func nextDateTime(for show: Show) -> Date? {
-        // Always skip today — a completed recording should never reschedule to the same day.
-        let tomorrow = Calendar.current.date(byAdding: .day, value: 1,
-                           to: Calendar.current.startOfDay(for: Date()))!
-        return nextDateTimeOccurrences(for: show, after: tomorrow).first
+    func nextDateTime(for show: Show, now: Date = Date()) -> Date? {
+        nextDateTimeOccurrences(for: show, after: Self.nextDateTimeSearchStart(currentNext: show.show_next, now: now)).first
+    }
+
+    /// Where the next DateTime occurrence search starts. Pure — unit tested.
+    /// Was "always the start of tomorrow" until 2026-10-01 (review findings #2/#3), which (a) on an
+    /// edit (updateShow → scheduleNextAir) skipped an airing still upcoming *today*, and (b) after a
+    /// recording that ended past midnight skipped the *next* night, since "today" was judged at stop
+    /// time. Now: an airing still in the future is searched from `now` (an edit keeps tonight); an
+    /// airing that already started/finished is searched from just after its own start (never the
+    /// same airing again, but the very next one — even across midnight), and never before `now`.
+    nonisolated static func nextDateTimeSearchStart(currentNext: Date?, now: Date) -> Date {
+        guard let currentNext, currentNext <= now else { return now }
+        return max(now, currentNext.addingTimeInterval(60))
     }
 
     // MARK: - Show CRUD
@@ -5117,6 +5127,10 @@ final class AppState: ObservableObject {
         feedCacheSessions[id]?.cachePath
     }
 
+    func feedCacheSessionStartedAt(id: String) -> Date? {
+        feedCacheSessions[id]?.startedAt
+    }
+
     func isFeedCacheSessionStillActive(id: String) -> Bool {
         feedCacheSessions[id] != nil && recordingManager.isFeedCachePullRunning(sessionId: id)
     }
@@ -5411,11 +5425,20 @@ final class AppState: ObservableObject {
             let placeholder = recordableDevices.first { !$0.isVirtualRelay } ?? device
             mgr.ensureWindowForStandalonePiP(placeholderDevice: placeholder, appState: self)
         }
-        let rawBase = url.urlBase
-        if mgr.secondaryDeviceID == device.DeviceID && (VLCBridge.shared.secondaryURL?.urlBase ?? "") == rawBase {
-            return   // already the secondary — no window/focus concept for a thumbnail to re-trigger
-        }
         let isLocalRelay = url.contains("/api/watch-recording") || url.contains("/api/feed-local-relay")
+        // Already the secondary — no window/focus concept for a thumbnail to re-trigger. A local
+        // relay URL identifies its stream only by its query (?show=/?session=), so it's compared
+        // whole; urlBase alone made every recording/FEED relay on one device look identical, so
+        // switching the PiP between two FEEDs from the same Mac (or two recordings on one tuner)
+        // was silently dropped — after startFeedCacheSession had already killed the old one's
+        // puller (2026-10-01 review finding #9). A live URL still compares by base, so a
+        // transcode/query difference doesn't defeat the dedup.
+        let sameStream = isLocalRelay
+            ? VLCBridge.shared.secondaryURL == url
+            : (VLCBridge.shared.secondaryURL?.urlBase ?? "") == url.urlBase
+        if mgr.secondaryDeviceID == device.DeviceID && sameStream {
+            return
+        }
         Task {
             if !isLocalRelay, !isVirtualRelayDevice(device.DeviceID) {
                 guard await tunerAvailable(device, context: title) else { return }

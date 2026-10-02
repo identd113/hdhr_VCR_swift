@@ -74,6 +74,29 @@ struct ConfigManagerExportImportTests {
         #expect(reloaded?.shows.first?.show_title == "Imported Show")
     }
 
+    // 2026-10-01 review finding #5 — a save after import (idle-loop dirty save, Quit's
+    // teardownForExit) used to write the old in-memory config straight back over the import.
+    @Test func importConfig_laterSaveOfOldStateDoesNotOverwriteImport() throws {
+        let (mgr, dir) = makeManager()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try write(#"""
+        {"config": {"Config_version": "2"},
+         "shows": [{"show_id": "original", "show_title": "Original Show"}]}
+        """#, to: mgr)
+        let oldInMemory = try #require(mgr.load())
+
+        let importSrc = dir.appendingPathComponent("import-me.json")
+        try Data(#"""
+        {"config": {"Config_version": "2"},
+         "shows": [{"show_id": "imported", "show_title": "Imported Show"}]}
+        """#.utf8).write(to: importSrc)
+        try mgr.importConfig(from: importSrc)
+
+        try mgr.save(oldInMemory)
+        #expect(mgr.savesSuppressedAfterImport)
+        #expect(mgr.load()?.shows.first?.show_id == "imported")
+    }
+
     @Test func importConfig_createsBackupOfPreviousConfig() throws {
         let (mgr, dir) = makeManager()
         defer { try? FileManager.default.removeItem(at: dir) }

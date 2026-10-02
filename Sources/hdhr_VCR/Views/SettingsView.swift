@@ -1247,7 +1247,7 @@ struct SettingsView: View {
             // reconciled against an arbitrary imported file mid-session (see importConfig's own
             // comment in ConfigManager.swift). Simplest safe option: write the file, restart to
             // pick it up — matches how a manually-copied-in config file already had to be applied.
-            configIOStatus = "Imported — restart hdhrVCRplus for the change to take effect"
+            configIOStatus = "Imported — restart hdhrVCRplus to load it. Changes made before restarting won't be saved."
         } catch {
             configIOStatus = "Error: \(error.localizedDescription)"
         }
