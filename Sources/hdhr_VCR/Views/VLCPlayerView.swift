@@ -530,7 +530,9 @@ struct VLCPlayerView: View {
         // view — no stop/reconnect, so this is instant, not a rebuffer (see swapSlots' own doc
         // comment for the full reasoning; this replaced an earlier reconnect-by-URL design after
         // live feedback that it caused a visible rebuffer on every swap).
-        bridge.swapSlots()
+        // Nothing below may run for a swap that didn't happen (review #12) — it would describe the
+        // corner stream as primary while libvlc still plays them the other way round.
+        guard bridge.swapSlots() else { return }
 
         // recordingShowId is strictly primary-only and derived from the URL, not swappable state
         // (swapSlots() deliberately leaves it alone) — re-anchor it now that currentURL reflects
@@ -2659,6 +2661,10 @@ final class VLCPlayerWindowManager {
         guard window == nil else { return }
         self.appState = appState
         glog("[VLC] WindowManager.ensureWindowForStandalonePiP — creating idle primary window, placeholder device=\(placeholderDevice.DeviceID)")
+        // A previous window close released the primary player (releasePlayer); recreate it like
+        // open() does, or a later picker channel/Tab swap in this window has no primary to use
+        // (2026-10-01 review #12).
+        VLCBridge.shared.ensurePlayer()
 
         let playerView = AnyView(
             VLCPlayerView(device: placeholderDevice, initialURL: "")

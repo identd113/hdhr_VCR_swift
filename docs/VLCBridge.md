@@ -218,6 +218,8 @@ func play(url: String) {
 
 ## Recording-Relay Seek State
 
+**Shared stats timer vs. a terminal primary (2026-10-01 review #11).** When the primary reaches Ended/Error, `detectPrimaryTerminalState` calls `stopTimersForPrimaryTerminalState()`: the shared stats timer stops only when no secondary is playing (otherwise just the primary-only `fastPollTimer`), matching `stopAndClearState`'s rule — it used to stop unconditionally, freezing the PiP's `tickSecondary`. `tickPrimary` returns early while `hasEnded || hasError` so a kept-alive timer doesn't re-log the same terminal state each tick, and `swapSlots()` (now `-> Bool`, `false` when it couldn't swap) restarts the timer if it had stopped, so the newly-primary stream gets track lists, pixel size and stall detection.
+
 **Pause (added 2026-10-01, Space bar).** `togglePause()` calls `libvlc_media_player_set_pause` (`_mpSetPause`) on the primary only, and only when `canPause` (`recordingShowId != nil && isPlaying` — a Watch Now or FEED disk-cache stream; a live tuner stream isn't pausable, since stopping reads can drop the HDHomeRun connection and there's no timeshift to resume into). `@Published isPaused` drives `VLCPlayerView`'s centered pause glyph. While paused, `tickPrimary()` returns early, skipping stall detection and the sustained-stall `catchUpToLive()` (a frozen playhead would otherwise log STALL and trigger a reconnect), and `recordingPlaybackSeconds` freezes at `pausedAt`; resuming shifts `recordingReopenedAt` forward by the paused span so the scrub position stays right. Cleared without touching libvlc by any primary `play(url:)` (a seek/catch-up/new stream starts playing anyway) and by `stop()`/`releasePlayer()`; `swapSlots()` resumes first, so the corner thumbnail never lands frozen.
 
 

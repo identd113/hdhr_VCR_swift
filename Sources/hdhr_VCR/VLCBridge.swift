@@ -1074,7 +1074,8 @@ final class VLCBridge: ObservableObject {
     /// afterward — this method leaves recordingShowId/recordingStartDate untouched (deliberately:
     /// those are derived from the URL/Show, not swappable state) and just swaps currentURL/
     /// secondaryURL so that derivation can run against the right URL.
-    func swapSlots() {
+    @discardableResult
+    func swapSlots() -> Bool {
         // Resume a paused primary before it's demoted — the corner thumbnail has no pause state
         // or control of its own, so it must never land there frozen (see togglePause).
         if isPaused { togglePause() }
@@ -1108,7 +1109,12 @@ final class VLCBridge: ObservableObject {
         guard let oldPrimaryMP = primaryState.mediaPlayer, let oldSecondaryMP = secondaryState.mediaPlayer,
               let oldPrimaryView = primaryState.drawableView, let oldSecondaryView = secondaryState.drawableView,
               let primaryContainer = primaryState.containerView, let secondaryContainer = secondaryState.containerView
-        else { return }
+        else {
+            // Reported to the caller (2026-10-01 review #12) — swapPrimaryAndSecondary used to go on
+            // swapping the window's tracking fields/title/volumes for a swap that never happened.
+            glog("[VLC] swapSlots() — skipped: a slot has no player/drawable/container yet", level: .warning)
+            return false
+        }
 
         // Capture "before" values before any mutation below.
         let oldPrimaryMedia   = primaryState.currentMedia
@@ -1194,6 +1200,11 @@ final class VLCBridge: ObservableObject {
             castingDeviceID  = nil
             if let castingURL { play(url: castingURL, slot: .secondary) }
         }
+        // A primary that had reached Ended/Error before the swap may have stopped the shared stats
+        // timer (see stopTimersForPrimaryTerminalState) — restart it so the new primary gets
+        // tickPrimary's track lists, pixel size and stall detection (2026-10-01 review #11).
+        if statsTimer == nil, currentURL != nil || secondaryURL != nil { startStatsTimer() }
+        return true
     }
 
     /// Returns the given slot's video native pixel dimensions once decoding has started; nil
@@ -1314,7 +1325,7 @@ final class VLCBridge: ObservableObject {
             glog("[VLC] stream error state — publishing hasError", level: .error)
             hasError  = true
             isPlaying = false
-            stopStatsTimer()
+            stopTimersForPrimaryTerminalState()
             return true
         }
         if state == 6 {  // libvlc_Ended: stream reached EOF (a finished recording relay read to its
@@ -1324,7 +1335,7 @@ final class VLCBridge: ObservableObject {
             glog("[VLC] stream ended (libvlc_Ended) — publishing hasEnded")
             hasEnded  = true
             isPlaying = false
-            stopStatsTimer()
+            stopTimersForPrimaryTerminalState()
             return true
         }
         if state == 3 && !isPlaying {  // libvlc_Playing: first confirmed decode tick
@@ -1381,8 +1392,24 @@ final class VLCBridge: ObservableObject {
         fastPollTimer = timer
     }
 
+    /// The stats timer is shared with the secondary slot — a primary reaching Ended/Error only
+    /// stops it when no secondary is playing; otherwise just the primary-only fastPollTimer
+    /// (2026-10-01 review #11: stopping it unconditionally froze the PiP's tickSecondary, and after
+    /// a Tab swap the new primary never got tickPrimary at all). Same rule as stopAndClearState.
+    private func stopTimersForPrimaryTerminalState() {
+        if secondaryURL == nil {
+            stopStatsTimer()
+        } else {
+            fastPollTimer?.invalidate()
+            fastPollTimer = nil
+        }
+    }
+
     private func tickPrimary() {
         guard let mp = primaryState.mediaPlayer else { return }
+        // Already terminal — with the timer kept alive for a PiP secondary, don't re-detect (and
+        // re-log) the same Ended/Error every tick.
+        if hasEnded || hasError { return }
         if detectPrimaryTerminalState(mp) { return }
         // Deliberately paused (togglePause) — skip stall detection and the sustained-stall
         // catch-up below entirely, and drop the tick baselines so the first tick after resume
