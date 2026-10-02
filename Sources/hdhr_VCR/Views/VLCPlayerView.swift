@@ -356,7 +356,14 @@ struct VLCPlayerView: View {
     // order below: channel-up/down is a sequential-step gesture (user expects 5.1 → 5.2 → 6.1),
     // and reordering it to favorites-first would make each press jump unpredictably between a
     // favorite and its numeric neighbors instead of stepping through the dial in order.
-    private var channelCycleOrder: [LineupEntry] { feedOnlyEntries ?? (recordingChannelEntries + lineup) }
+    // Plain rows for a channel that's recording on this device are left out — their "Live …" row
+    // covers them, and stepping onto the plain row redirected to that "Live" row at index 0, so
+    // up/down could never get past it (2026-10-01 review #13).
+    private var channelCycleOrder: [LineupEntry] {
+        if let feeds = feedOnlyEntries { return feeds }
+        let recordingChannels = Set(state.recordingShows.filter { $0.hdhr_record == device.DeviceID }.map(\.show_channel))
+        return recordingChannelEntries + lineup.filter { !recordingChannels.contains($0.GuideNumber) }
+    }
 
     // HDHomeRun raw streams are always MPEG-2/AC-3. Every real, actually-applied transcode
     // path — a real device EXTEND hardware profile (heavy/mobile/internet*) *and* this app's own

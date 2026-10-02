@@ -5497,7 +5497,25 @@ final class AppState: ObservableObject {
         guard let device else { return }
         guard !show.show_recording_path.isEmpty,
               FileManager.default.fileExists(atPath: show.show_recording_path) else {
-            watchAsSecondary(url: show.show_url, title: show.show_title, device: device)
+            // Recording but no file yet — wait briefly rather than opening a second live tuner on
+            // the channel already recording (2026-10-01 review #14; the primary path got this fix
+            // the same day). Only a show that isn't recording at all goes live.
+            guard show.show_recording else {
+                watchAsSecondary(url: show.show_url, title: show.show_title, device: device)
+                return
+            }
+            let showId = show.show_id
+            Task {
+                for _ in 0..<20 {
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    guard let s = shows.first(where: { $0.show_id == showId }), s.show_recording else { return }
+                    if !s.show_recording_path.isEmpty, FileManager.default.fileExists(atPath: s.show_recording_path) {
+                        watchRecordingInAppAsSecondary(s, fromBeginning: fromBeginning)
+                        return
+                    }
+                }
+                glog("[Watch] '\(show.show_title)' PiP: recording file still missing after 10s — not opening a second live tuner", level: .warning)
+            }
             return
         }
         recordingRelayClaim.claim { ensureWebServerRunning() }
