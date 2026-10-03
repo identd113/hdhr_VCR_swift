@@ -6,6 +6,12 @@ Every entry below was re-verified against the current codebase on 2026-08-10 bef
 
 ---
 
+# FEED cache: unbounded growth + HTTP error bodies cached as TS — 2026-10-03
+
+From the 2026-10-02 FEED review. **(a) No `--fail`:** a remote 404 body ("no active recording on channel …") was written into the cache file and passed `startFeedCacheSession`'s `size > 0` startup check, handing VLC plain text as TS. `startFeedCachePull` now passes `--fail`, so curl exits non-zero with nothing written and the startup check reports a failed start. **(b) Unbounded cache (~5 GB/h):** the cache is naturally bounded by the show's remaining runtime (the source closes the connection when its recording ends), but the file lived until the window closed. `AppState.maintainFeedCacheSessions()` (idle loop) now (1) kills a running puller, keeping its file, when free space on the cache volume falls below `Min_disk_free_gb` (same threshold as `diskOK`; also refuses to start a session below it), and (2) deletes a session whose puller has exited once playback reached EOF or no player slot references it. A viewer still scrubbing a finished show keeps the file; "Play Again" after the release has no cache to replay. Auto-reconnect of the puller remains open (`TODO.md`).
+
+---
+
 # Full-source review — 2026-07-17
 
 A 5-way whole-file correctness sweep of all `Sources/` files (not just the recent diff). Crasher + all four medium findings fixed this pass.

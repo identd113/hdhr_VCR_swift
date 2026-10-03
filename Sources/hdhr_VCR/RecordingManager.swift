@@ -318,7 +318,10 @@ final class RecordingManager {
         // transcode toggle / app exit) or the remote closes the connection on its own (curl exits,
         // caught by isFeedCachePullRunning's reap), mirroring streamGrowingFile's own
         // no-send-timeout philosophy (WebServer.sendStreamChunk) on the serving side.
-        curlArgs += [url, "-o", outputPath]
+        // --fail: a remote 4xx (e.g. "no active recording on channel …" because the show ended just
+        // as the user clicked) must exit non-zero with nothing written, not land its plain-text
+        // error body in the cache file where the startup size>0 check would mistake it for TS.
+        curlArgs += ["--fail", url, "-o", outputPath]
 
         let dir = (outputPath as NSString).deletingLastPathComponent
         try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)

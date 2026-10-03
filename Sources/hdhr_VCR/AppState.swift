@@ -2676,6 +2676,7 @@ final class AppState: ObservableObject {
         defer { idleLoopRunning = false }
         maintainVLCSleepAssertionIfNeeded()
         warnOfLiveWatchPreemptionIfNeeded()
+        maintainFeedCacheSessions()
         let now = Date()
         var dirty = false
 
@@ -5240,18 +5241,24 @@ final class AppState: ObservableObject {
         // to do it later.
         recordingRelayClaim.claim { ensureWebServerRunning() }
 
-        func fail() -> (url: String, sessionId: String, startedAt: Date)? {
+        func fail(_ message: String = "Could not connect to the remote recording — try again from the source Mac's menu.")
+            -> (url: String, sessionId: String, startedAt: Date)? {
             recordingManager.stopFeedCachePull(sessionId: sessionId)
             feedCacheSessions.removeValue(forKey: sessionId)
             try? FileManager.default.removeItem(atPath: cachePath)
             if mgr.currentTitle == nil { releaseRecordingRelayIfNeeded() }
             let alert = NSAlert()
             alert.messageText = "Couldn't Start FEED Relay"
-            alert.informativeText = "Could not connect to the remote recording — try again from the source Mac's menu."
+            alert.informativeText = message
             alert.alertStyle = .warning
             alert.addButton(withTitle: "OK")
             alert.runModal()
             return nil
+        }
+
+        if feedCacheDiskLow() {
+            glog("[Watch] FEED cache not started — free space under the \(config.Min_disk_free_gb) GB minimum", level: .warning)
+            return fail("Not enough free disk space for the FEED cache (below the \(Int(config.Min_disk_free_gb)) GB minimum set in Settings).")
         }
 
         do {
@@ -5314,6 +5321,45 @@ final class AppState: ObservableObject {
     /// session. Safe to call for an id that isn't a cache session at all (no-op) — every teardown
     /// site (playerWindowDidClose, a fresh startFeedCacheSession's own "stop previous" step) calls
     /// this unconditionally rather than first checking whether the id is actually a cache session.
+    /// True when the volume holding the FEED cache has less free space than the same
+    /// `Min_disk_free_gb` minimum that gates real recordings (`diskOK`). Unreadable stats → false,
+    /// matching diskOK's own "assume OK" fallback.
+    private func feedCacheDiskLow() -> Bool {
+        let dir = NSHomeDirectory() + "/Library/Caches/hdhrVCRplus"
+        let probe = FileManager.default.fileExists(atPath: dir) ? dir : NSHomeDirectory()
+        guard let attrs = try? FileManager.default.attributesOfFileSystem(forPath: probe),
+              let free = attrs[.systemFreeSize] as? Double else { return false }
+        return free < config.Min_disk_free_gb * 1_073_741_824
+    }
+
+    /// Once per idle tick. (1) Disk guard: stops a still-running puller (keeping its file, so what's
+    /// already cached stays scrubbable) when free space drops below `Min_disk_free_gb`. (2) Release:
+    /// a session whose puller has exited (the show ended, or the guard fired) and that the player
+    /// has played through to the end — or that no player slot references any more — is deleted, so
+    /// a window left sitting on a finished show doesn't hold its multi-GB cache until closed.
+    /// A still-scrubbing viewer (puller done, playback not at EOF) keeps the file.
+    private func maintainFeedCacheSessions() {
+        guard !feedCacheSessions.isEmpty else { return }
+        let mgr = VLCPlayerWindowManager.shared
+        let bridge = VLCBridge.shared
+        for id in Array(feedCacheSessions.keys) {
+            if recordingManager.isFeedCachePullRunning(sessionId: id) {
+                if feedCacheDiskLow() {
+                    glog("[Watch] FEED cache session \(id): free space under the \(config.Min_disk_free_gb) GB minimum — stopping the puller", level: .warning)
+                    recordingManager.stopFeedCachePull(sessionId: id)
+                }
+                continue
+            }
+            let inPrimary   = mgr.currentFeedSessionId == id
+            let inSecondary = mgr.secondaryFeedSessionId == id
+            let finished = (inPrimary && bridge.hasEnded) || (inSecondary && bridge.secondaryHasEnded)
+            if finished || (!inPrimary && !inSecondary) {
+                glog("[Watch] FEED cache session \(id): show over and playback finished — releasing the cache")
+                stopFeedCacheSession(sessionId: id)
+            }
+        }
+    }
+
     func stopFeedCacheSession(sessionId: String) {
         guard let session = feedCacheSessions.removeValue(forKey: sessionId) else { return }
         recordingManager.stopFeedCachePull(sessionId: sessionId)
