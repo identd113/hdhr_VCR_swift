@@ -2,6 +2,10 @@
 """
 mock_hdhr.py — Mock HDHomeRun device for testing hdhr_VCR with multiple tuners.
 
+(See also tools/mock_tuner.py — a standalone emulator that needs no real device and reproduces
+the real EXTEND's wire behavior byte-for-byte; this script remains the *proxy* variant used by
+tools/run_test_scenarios.sh's --guide-file flow.)
+
 By default appears on loopback (127.0.0.2) — visible only to processes on this
 same Mac, never to other devices on the LAN. Pass --lan to instead advertise the
 mock at this Mac's own real LAN address, so it's discoverable by anything on the

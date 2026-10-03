@@ -547,6 +547,38 @@ same dead names.
 
 ---
 
+## Device Emulation Ground Truth — live-captured 2026-10-03
+
+Captured against the real EXTEND (`105404BE`, `HDTC-2US`, firmware `hdhomeruntc_atsc` `20260313`, 10.0.2.101) while trying to make the Recording FEED pass real third-party clients. That mode was removed the same day; see `docs/VirtualTunerService.md`'s "Third-party HDHomeRun clients". `tools/mock_tuner.py` reproduces everything below.
+
+**HTTP (port 80)**
+- Every response: `Server: HDHomeRun/1.0`, `Connection: close` (no keep-alive). JSON: `Content-Type: application/json; charset="utf-8"`, `Cache-Control: no-cache`, `Access-Control-Allow-Origin: *`.
+- `/discover.json` key order: `FriendlyName, ModelNumber, FirmwareName, FirmwareVersion, DeviceID, DeviceAuth, BaseURL, LineupURL, TunerCount`. **No `LocalIP`.** `BaseURL` has no port (`http://10.0.2.101`). Slashes are *not* escaped.
+- `/lineup.json` entry order: `GuideNumber, GuideName, VideoCodec, AudioCodec, HD, Favorite, URL`. `HD` and `Favorite` appear only when 1. `URL` is `http://<ip>:5004/auto/v<ch>`, no query. `?show=found` returns the same list (it would include disabled channels with `"Enabled":0`).
+- `/lineup.xml` (`text/xml; charset="utf-8"`): `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`, then `<Lineup>`, one `<Program>` per line with the same fields, then `</Lineup>`.
+- `/lineup.m3u` (`text/plain`): `#EXTM3U`, then per channel `#EXTINF:-1 channel-id="2.1" channel-number="2.1" tvg-name="TPT 2",2.1 TPT 2` followed by the URL.
+- `/lineup_status.json` (idle): `{"ScanInProgress":0,"ScanPossible":1,"Source":"Antenna","SourceList":["Antenna","Cable"]}`. A client scan is `POST /lineup.post?scan=start&source=Antenna`. While scanning, a real device reports `{"ScanInProgress":1,"Progress":N,"Found":M}`. `POST /lineup.post` with no arguments returns `400`.
+- `/status.json`: one row per tuner, `{"Resource":"tuner0","VctNumber":"4.1","VctName":"WCCO-DT","Frequency":581000000,"SignalStrengthPercent":96,"SignalQualityPercent":90,"SymbolQualityPercent":100,"TargetIP":"10.0.2.100","NetworkRate":6797760}`. An idle tuner is just `{"Resource":"tuner1"}`.
+- `/guide.json` returns `404`. Unknown paths return `404` with `text/html; charset="utf-8"`. `/`, `/tuners.html` and `/system.html` serve HTML.
+- **Port 443 is closed** (connection refused).
+
+**Streams (port 5004)**
+- `200` header: `Server: HDHomeRun/1.0`, `Connection: close`, `Content-Type: video/mpeg`, `Cache-Control: no-cache`, `Access-Control-Allow-Origin: *`, `transferMode.dlna.org: Streaming`. No `Content-Length`.
+- Unknown channel: `404`, `Content-Length: 0`, `X-HDHomeRun-Error: 801 Unknown Channel`.
+
+**UDP discovery (65001)**
+- Reply TLV order: `DeviceType(0x01)=1, DeviceID(0x02), DeviceAuth(0x2B), BaseURL(0x2A)="http://<ip>:80"` (explicit `:80`, unlike the JSON form), `TunerCount(0x10), LineupURL(0x27)="http://<ip>:80/lineup.json"`.
+- **It replies to every request**, including a "storage" (type 5) request, a request for a foreign DeviceID, and one with a bad CRC. When the request's filter doesn't match the device (storage type or foreign ID), it inserts a `0x2D` TLV listing its own types (`00000001`) right after DeviceType.
+- Client request shapes seen: the HDHomeRun iOS app sends **only** `0x2D` (multi-type: `00000001 00000005`, tuner + storage) to `255.255.255.255`. Channels iOS sends `DeviceType=1, DeviceID=FFFFFFFF` to the subnet broadcast. Neither uses TCP 65001, SSDP or other protocols for discovery. Channels also browses mDNS `_channels_dvr._tcp` / `_channels_app._tcp`, which is for its own DVR server, not tuners.
+
+**DeviceAuth**
+- It rotates every few minutes: four different values seen over about 40 minutes. Older values stay valid for a while (`guide.php` and `api/account` → 200).
+- The cloud maps any current key to its device: `GET https://ipv4-api.hdhomerun.com/discover?DeviceAuth=<key>` (`api.hdhomerun.com` 301-redirects there) returns `[{"DeviceID":"105404BE","LocalIP":"10.0.2.101","Transcode":1,"BaseURL":…,"DiscoverURL":…,"LineupURL":…}]`. **This is why a relay that borrows the key under another DeviceID fails the HDHomeRun app's guide check ("No guide access").** Also note `Transcode:1`, the real per-device transcode capability flag (see "Transcode capability" above).
+
+**Client behavior, from captures**
+- **Channels (iOS):** tries `https://<ip>:443` (no SNI, ALPN `h2,http/1.1`) right after each UDP reply, then sends **all HTTP to `<ip>:80`, ignoring `BaseURL`'s port**. Its sequence is `/lineup_status.json` → `POST /lineup.post?scan=start&source=Antenna` → progress polls. Against a device whose DeviceAuth belongs to another DeviceID, it stops there and never requests `/lineup.json`.
+- **HDHomeRun app (iOS):** honors `BaseURL`. It reads `/discover.json`, then `/lineup.json?show=found`, then gets its guide from the cloud using DeviceAuth (refused with "No guide access" if the key belongs to another DeviceID). It also tries 443 first.
+
 ## Known Open Source Implementations (for reference)
 
 - **libhdhomerun** (github.com/Silicondust/libhdhomerun) — official C library; canonical source for control protocol details

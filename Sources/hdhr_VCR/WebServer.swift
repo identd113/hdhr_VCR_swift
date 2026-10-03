@@ -1175,7 +1175,7 @@ final class WebServer: @unchecked Sendable {
     // IP), separate from routeOnMain's own per-case outcome logging just below each case.
     static func isVirtualTunerHTTPPath(_ cleanPath: String) -> Bool {
         switch cleanPath {
-        case "/discover.json", "/lineup.json", "/status.json", "/lineup_status.json":
+        case "/discover.json", "/lineup.json", "/status.json":
             return true
         default:
             return cleanPath.hasPrefix("/auto/v")
@@ -2449,22 +2449,6 @@ final class WebServer: @unchecked Sendable {
             glog("[VirtualTuner] /status.json → 200 \(tuners.count) tuner rows")
             let statusBody = (try? JSONSerialization.data(withJSONObject: tuners)) ?? Data("[]".utf8)
             return .ok(contentType: "application/json", body: statusBody)
-
-        case "/lineup_status.json":
-            guard state.activeVirtualTunerDeviceID != nil else {
-                glog("[VirtualTuner] /lineup_status.json → 404 (not recording)", level: .warning)
-                return .notFound("not recording")
-            }
-            glog("[VirtualTuner] /lineup_status.json → 200")
-            // ScanPossible: 0 is honest — this relay never runs a real channel scan; its lineup is
-            // always already current, reflecting whatever's actively recording right now (see
-            // /lineup.json). Trying ScanPossible:1 (matching a real device's own reported shape) was
-            // part of a 2026-09-03 investigation into why a real Channels DVR client never fetched
-            // /lineup.json — see FAILED_APPROACHES.md's "Channels DVR compatibility for the virtual-
-            // tuner relay" entry for the full trail. Reverted: it didn't change Channels' behavior at
-            // all (still zero lineup fetches) but did cause it to surface a confusing "Unable to scan
-            // Antenna" error to the user for a scan this relay was never really going to need anyway.
-            return jsonResponse(["ScanInProgress": 0, "ScanPossible": 0, "Source": "Cable"])
 
         case "/api/signal":
             var out: [String: String] = [:]
