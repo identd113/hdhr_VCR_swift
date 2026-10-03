@@ -10,6 +10,18 @@ Historical record of bugs encountered during development. Used as a "don't repea
 
 ## Open
 
+### 2026-10-02 FEED / relay plumbing / video windows deep review — 4 fixed, 7 open
+
+*(Single-session review of `VirtualTunerService`, `WebServer`'s relay routes, `AppState`'s FEED/Watch Now sessions, `RecordingManager`'s FEED cache puller, `VLCBridge`, `VLCPlayerView`/`VLCPlayerWindowManager`, `PiPPickerView`. Fixed the same day: **(1)** (`82f3584`) per-chunk 24h `asyncAfter` timer leak in `sendWithTimeout` — confirmed live via `heap` (94k `dispatch_source_t`), replaced by `sendStreamChunk`; **(2)** FEED sessions never claimed the internal web server (FEED broken with Sharing off) (`bfc8437`); **(3)** device-change window reuse — superseded `VLCPlayerView.onDisappear` released the just-started stream (`hostToken` guard) (`9f017e9`); **(4)** self-exclusion by DeviceID alone made the two-Macs FEED conflict yield unreachable (now ID + own IP) (`bfc8437`). Still open below.)*
+
+- **FEED cache puller never reconnects.** `RecordingManager.startFeedCachePull` is a one-shot curl; a single network blip (or the source relay restarting) makes `isFeedCachePullRunning` false, `streamGrowingFile` drains the cache and closes, and playback ends. The error/ended overlay's Retry replays the cache file but never restarts the puller. See `TODO.md`'s "FEED cache puller auto-reconnect".
+- **FEED cache file is unbounded.** `~/Library/Caches/hdhrVCRplus/feed-cache/<session>.ts` grows ~5 GB/hour for an HD FEED with no cap or free-space check; only deleted on window close / app exit / next-launch sweep. A long session can fill the boot volume.
+- **FEED puller has no `--fail`.** A remote 404 body (e.g. "no active recording on channel …" when the recording ended just as you clicked) is written into the cache file; `startFeedCacheSession`'s startup check only tests `size > 0`, so VLC is handed plain text as TS.
+- **Relay URL port inconsistency.** `watchRecordingInApp`, `watchRecordingInAppAsSecondary`, `seekRecording` build URLs from `config.Web_server_port`; FEED paths use `webServer.activePort`, which `WebServer.start` clamps to 1025…65534 — a configured port <1025 breaks Watch Now's relay (and a pending port change can briefly mismatch).
+- **PiP swap during the live fill phase leaves the demoted player at <1.0× forever.** `VLCBridge.swapSlots` resets `minRate`/`currentRate` bookkeeping but never calls `libvlc_media_player_set_rate(1.0)` on the old primary's `mediaPlayer`; swap within ~9s of starting live TV (rate 0.93–0.99) and that stream plays slow in the PiP corner (and stays slow if swapped back, since the ramp only runs while `minRate < 1`).
+- **`FeedRelayPacer` data race.** `maybeUpdateObservedRate` runs on `fileIOQueue`, `delayBeforeSending`/`recordPacedSend` on `queue`; the class is `@unchecked Sendable` with no lock around `observedBytesPerSecond`/`lastMeasured*`.
+- **`RelayProxyDelegateBase.buffer` has no backpressure.** `didReceive` appends unconditionally; if the outbound `NWConnection` drains slower than the source (a transcode viewer on weak Wi-Fi) the buffer grows without bound. Suspending the data task above a threshold would bound it.
+
 ### 2026-10-01 full-app code review (4 agents) — 27 findings, High #1–9 and Medium #10–22 fixed
 
 *(Four parallel reviewers: recording engine, web server/relay, player/PiP, CLAUDE.md invariants + remaining files. "✓" = re-verified against source by the main session; "agent" = verified by the finding agent only — re-confirm before fixing. #1, #9, #10, #13 regress from that day's own commits.)*

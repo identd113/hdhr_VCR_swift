@@ -63,6 +63,9 @@ Raised 2026-09-09: the user no longer remembers the specific reason this was add
 
 ## Player / Watch Now
 
+### FEED cache puller auto-reconnect (and a size cap)
+*(From the 2026-10-02 FEED review — see `ISSUES.md`.)* `startFeedCachePull` is a single curl run: any drop ends the FEED for good, and Retry can't revive it. Sketch: when `isFeedCachePullRunning` goes false while the session is still tracked by a window, respawn curl appending to the same cache file (`curl ... >> cachePath` semantics — `-o` truncates, so needs `--output` to an fd opened `O_APPEND`, or a second segment file the relay concatenates) with bounded backoff; only report the session inactive after N failed respawns. The remote join point is the live edge, so the gap is lost — acceptable (insert nothing; VLC resyncs on the next PCR). Pair with a cache cap (drop/rotate the oldest bytes past e.g. 2h, shrinking the scrub range) and `--fail` so an HTTP error never lands in the cache as TS.
+
 ### FEED scrub extended to the PiP secondary, and space bar to pause/resume
 
 Live user request, 2026-09-29, scoped down through discussion to a first pass covering
