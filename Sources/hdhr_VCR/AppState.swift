@@ -1610,7 +1610,10 @@ final class AppState: ObservableObject {
                 let wasUnavailable = !devices[i].isAvailable
                 devices[i].missedProbes = 0
                 if fresh.DeviceAuth != nil { devices[i].DeviceAuth = fresh.DeviceAuth }
-                if !fresh.LocalIP.isEmpty  { devices[i].LocalIP    = fresh.LocalIP    }
+                // Never trade a numeric address for an mDNS hostname (HDHRManager.mergeDevice).
+                if !fresh.LocalIP.isEmpty, HDHRManager.isIPv4(fresh.LocalIP) || !HDHRManager.isIPv4(devices[i].LocalIP) {
+                    devices[i].LocalIP = fresh.LocalIP
+                }
                 // Restore hardware capacity when a probe reaches the device's HTTP server. A
                 // UDP-only startup (device HTTP briefly down) caches a bare device with
                 // TunerCount == nil; without re-applying it here it stays nil for the whole
@@ -5065,6 +5068,13 @@ final class AppState: ObservableObject {
         }
         let streamURL = config.applyTranscode(url, override: transcode)
         let mgr = VLCPlayerWindowManager.shared
+        let sameAsPiP = guideNumber.map { mgr.secondaryIsShowing(deviceID: device.DeviceID, channelNumber: $0) }
+            ?? (mgr.secondaryDeviceID == device.DeviceID && mgr.secondaryFeedRemoteURL == nil
+                && (VLCBridge.shared.secondaryURL?.urlBase ?? "") == url.urlBase)
+        if sameAsPiP {
+            mgr.promoteSecondaryToPrimary(reason: "'\(title)' on \(device.DeviceID) is already in the PiP")
+            return
+        }
 
         Task {
             // If this exact channel is already playing, just surface the window — don't restart
@@ -5421,6 +5431,10 @@ final class AppState: ObservableObject {
     func watchRemoteRelay(url: String, title: String, device: HDHRDevice) {
         guard VLCBridge.shared.isAvailable, !url.isEmpty else { return }
         let mgr = VLCPlayerWindowManager.shared
+        if mgr.secondaryIsShowing(feedRemoteURL: url) {
+            mgr.promoteSecondaryToPrimary(reason: "FEED '\(title)' is already in the PiP")
+            return
+        }
         // Dedup against the true remote URL, not bridge.currentURL — once startFeedCacheSession
         // succeeds below, currentURL holds the LOCAL relay URL, not this one.
         if mgr.currentDeviceID == device.DeviceID && mgr.currentFeedRemoteURL == url {
@@ -5707,6 +5721,12 @@ final class AppState: ObservableObject {
         let startOffset     = recordingByteOffset(for: show, atSeconds: startSeconds) ?? 0
         let relayURL = "http://127.0.0.1:\(config.Web_server_port)/api/watch-recording?show=\(show.show_id)&start=\(startOffset)"
         let mgr = VLCPlayerWindowManager.shared
+        // Already in the PiP → promote it (Tab) instead of a duplicate primary. "From the
+        // beginning" is a deliberate different position, so it still opens normally.
+        if !fromBeginning, mgr.secondaryIsShowing(recordingShowId: show.show_id) {
+            mgr.promoteSecondaryToPrimary(reason: "recording '\(show.show_title)' is already in the PiP")
+            return
+        }
 
         // Compares by show id, not the relay URL — startOffset moves every call (it's derived
         // from live elapsed time), so comparing full URLs would almost never match even when this

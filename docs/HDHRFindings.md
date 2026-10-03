@@ -547,6 +547,10 @@ same dead names.
 
 ---
 
+## mDNS discovery yields a hostname — prefer the IP (2026-10-03)
+
+`HDHRManager.mDNSDiscover` fetches `http://hdhomerun.local/discover.json`. A device asked by hostname answers with a hostname `BaseURL` (`http://hdhr-105404be.local`), so `LocalIP`, `lineup.json` and every stream URL inherited `hdhr-105404be.local` whenever mDNS answered before UDP in the discovery merge. On the laptop `getaddrinfo` takes **5.0s** for that name with the default (IPv4+IPv6) family, and **0.00s** IPv4-only. VLC stalled 5s on `resolving hdhr-105404be.local ...` before every live-TV start (curl recordings presumably paid the same). Fix: `HDHRManager.mergeDevice` prefers a numeric IPv4 `LocalIP`/`BaseURL` from any source; `resolvingHostnameToIPv4` resolves an mDNS-only device once, IPv4-only; and `AppState.probeForNewDevices` never replaces a numeric `LocalIP` with a hostname.
+
 ## Device Emulation Ground Truth — live-captured 2026-10-03
 
 Captured against the real EXTEND (`105404BE`, `HDTC-2US`, firmware `hdhomeruntc_atsc` `20260313`, 10.0.2.101) while trying to make the Recording FEED pass real third-party clients. That mode was removed the same day; see `docs/VirtualTunerService.md`'s "Third-party HDHomeRun clients". `tools/mock_tuner.py` reproduces everything below.

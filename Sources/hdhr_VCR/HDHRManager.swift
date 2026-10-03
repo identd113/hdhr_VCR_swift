@@ -46,6 +46,7 @@ final class HDHRManager {
         var found = fromKnown
         for dev in fromMDNS { Self.mergeDevice(dev, into: &found) }
         for dev in fromUDP  { Self.mergeDevice(dev, into: &found) }
+        found = found.map(Self.resolvingHostnameToIPv4)
         glog("[Discovery] known=\(fromKnown.count) mDNS=\(fromMDNS.count) UDP=\(fromUDP.count) merged=\(found.count)")
 
         if found.isEmpty {
@@ -133,12 +134,56 @@ final class HDHRManager {
             found.append(dev)
             return
         }
+        // Prefer a numeric address over an mDNS hostname (2026-10-03). The mDNS source fetches
+        // http://hdhomerun.local/discover.json, and a device asked by hostname answers with a
+        // hostname BaseURL — so LocalIP, lineup.json and every stream URL became
+        // "hdhr-xxxxxxxx.local", and resolving that took ~5s per connection on the laptop (VLC and
+        // curl both wait on getaddrinfo). Whichever source answered first used to win the merge.
+        if !isIPv4(found[idx].LocalIP), isIPv4(dev.LocalIP) {
+            found[idx].LocalIP = dev.LocalIP
+            found[idx].BaseURL = dev.BaseURL ?? found[idx].BaseURL.map { replacingHost(in: $0, with: dev.LocalIP) }
+        }
         found[idx].BaseURL         = found[idx].BaseURL         ?? dev.BaseURL
         found[idx].TunerCount      = found[idx].TunerCount      ?? dev.TunerCount
         found[idx].FirmwareVersion = found[idx].FirmwareVersion ?? dev.FirmwareVersion
         found[idx].DeviceAuth      = found[idx].DeviceAuth      ?? dev.DeviceAuth
         found[idx].ModelNumber     = found[idx].ModelNumber     ?? dev.ModelNumber
         found[idx].FriendlyName    = found[idx].FriendlyName    ?? dev.FriendlyName
+    }
+
+    static func isIPv4(_ s: String) -> Bool {
+        var addr = in_addr()
+        return inet_pton(AF_INET, s, &addr) == 1
+    }
+
+    static func replacingHost(in urlString: String, with host: String) -> String {
+        guard var c = URLComponents(string: urlString) else { return urlString }
+        c.host = host
+        return c.string ?? urlString
+    }
+
+    /// Last resort for a device only mDNS found (no UDP/known-host IP to merge): resolve its
+    /// hostname once, IPv4-only (the AAAA lookup is what takes ~5s for a .local name), and use the
+    /// numeric address — see mergeDevice's comment.
+    static func resolvingHostnameToIPv4(_ dev: HDHRDevice) -> HDHRDevice {
+        guard !isIPv4(dev.LocalIP), !dev.LocalIP.isEmpty else { return dev }
+        var hints = addrinfo(ai_flags: 0, ai_family: AF_INET, ai_socktype: SOCK_STREAM, ai_protocol: 0,
+                             ai_addrlen: 0, ai_canonname: nil, ai_addr: nil, ai_next: nil)
+        var res: UnsafeMutablePointer<addrinfo>?
+        guard getaddrinfo(dev.LocalIP, nil, &hints, &res) == 0, let first = res else { return dev }
+        defer { freeaddrinfo(res) }
+        var buf = [CChar](repeating: 0, count: Int(INET_ADDRSTRLEN))
+        guard let sa = first.pointee.ai_addr else { return dev }
+        let ip: String? = sa.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { sin in
+            var a = sin.pointee.sin_addr
+            return inet_ntop(AF_INET, &a, &buf, socklen_t(INET_ADDRSTRLEN)) != nil ? String(cString: buf) : nil
+        }
+        guard let ip else { return dev }
+        var out = dev
+        glog("[Discovery] \(dev.DeviceID): mDNS hostname \(dev.LocalIP) → \(ip)")
+        out.LocalIP = ip
+        out.BaseURL = dev.BaseURL.map { replacingHost(in: $0, with: ip) }
+        return out
     }
 
     /// Copy DeviceAuth into locally-discovered devices that are missing it.

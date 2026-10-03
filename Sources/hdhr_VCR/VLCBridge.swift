@@ -292,8 +292,16 @@ final class VLCBridge: ObservableObject {
     /// running ahead of a blank screen. Polled at fastPollInterval (startFastStatePoll), not the
     /// 3s stats tick. Reset on every play(url:) and teardown.
     @Published private(set) var hasVideoFrame = false
+    /// The auto-start gate VLCPlayerView watches: true once the first video frame is decoded, OR
+    /// once playback has been running firstFrameWaitSeconds with no frame (an audio-only stream).
+    /// Owned here (not a view-side timer) so the wait is measured from when playback actually
+    /// started — live-found 2026-10-03: a tuner that took 7s to deliver its first bytes tripped a
+    /// view-side 6s-from-play() timer the instant playback began, so audio started before video.
+    @Published private(set) var readyToReveal = false
     private var playStartedAt = Date.distantPast
-    /// How long the fast poll waits for a first video frame after playback starts before giving up
+    private var playingSince: Date?
+    /// How long the fast poll waits for a first video frame after playback *starts* (isPlaying), not
+    /// after play(url:), before giving up
     /// (an audio-only stream, or a decoder that never reports a size) — VLCPlayerView has its own
     /// matching fallback so the poster can't get stuck.
     nonisolated static let firstFrameWaitSeconds: TimeInterval = 6
@@ -736,7 +744,9 @@ final class VLCBridge: ObservableObject {
             minRate = 1.0
             targetMinRate = minRate
             hasVideoFrame = false
+            readyToReveal = false
             playStartedAt = Date()
+            playingSince = nil
         } else {
             targetMinRate = 1.0
         }
@@ -1024,6 +1034,8 @@ final class VLCBridge: ObservableObject {
             spuFetchAttempts = 0
             videoPixelSize = nil
             hasVideoFrame = false
+            readyToReveal = false
+            playingSince = nil
         } else {
             secondaryHasError  = false
             secondaryIsPlaying = false
@@ -1199,6 +1211,12 @@ final class VLCBridge: ObservableObject {
         spuFetchAttempts = 0
         videoPixelSize = nil    // recomputed on next tick
         hasVideoFrame = oldSecondaryIsPlaying   // the promoted stream was already decoding/visible
+        readyToReveal = oldSecondaryIsPlaying
+        playingSince = oldSecondaryIsPlaying ? Date() : nil
+        playStartedAt = Date()
+        // A promoted stream that wasn't playing yet still needs the first-frame poll to ever flip
+        // readyToReveal (the auto-start gate).
+        if !oldSecondaryIsPlaying { startFastStatePoll() }
         secondaryVideoPixelSize = nil   // ditto — the newly-secondary stream has its own aspect ratio
 
         hasError  = oldSecondaryHasError
@@ -1411,15 +1429,18 @@ final class VLCBridge: ObservableObject {
                 // audio-only give-up), so hasVideoFrame flips within ~0.25s of the frame instead of
                 // waiting for the 3s stats tick.
                 guard self.isPlaying else { return }
+                let playingSince = self.playingSince ?? Date()
+                self.playingSince = playingSince
                 if let size = self.videoNativeSize() {
                     self.videoPixelSize = size
                     self.hasVideoFrame = true
-                    glog("[VLC] first video frame \(Int(size.width))x\(Int(size.height)) after \(String(format: "%.2f", Date().timeIntervalSince(self.playStartedAt)))s")
-                } else if Date().timeIntervalSince(self.playStartedAt) < Self.firstFrameWaitSeconds {
+                    glog("[VLC] first video frame \(Int(size.width))x\(Int(size.height)) after \(String(format: "%.2f", Date().timeIntervalSince(self.playStartedAt)))s (playing for \(String(format: "%.2f", Date().timeIntervalSince(playingSince)))s)")
+                } else if Date().timeIntervalSince(playingSince) < Self.firstFrameWaitSeconds {
                     return
                 } else {
-                    glog("[VLC] no video frame within \(Int(Self.firstFrameWaitSeconds))s of play — treating as audio-only", level: .warning)
+                    glog("[VLC] no video frame within \(Int(Self.firstFrameWaitSeconds))s of playback starting — treating as audio-only", level: .warning)
                 }
+                self.readyToReveal = true
                 timer.invalidate()
                 self.fastPollTimer = nil
             }

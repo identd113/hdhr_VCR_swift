@@ -177,10 +177,6 @@ struct VLCPlayerView: View {
     @State private var isFullScreen = false      // driven by WindowCloseObserver's NSWindowDelegate callbacks
     @State private var toolbarHovered = false     // reveals the toolbar overlay while isFullScreen (see body)
     @State private var pipHovered = false         // reveals the PiP thumbnail's close button on hover (see pipOverlay)
-    // Audio-only fallback for auto-start: set VLCBridge.firstFrameWaitSeconds after the current
-    // stream opened (a .task(id: bridge.currentURL) below), so a stream that never produces a video
-    // frame still starts instead of leaving the poster up forever.
-    @State private var videoWaitExpired = false
     // Toolbar "Info" button ("i" on a TV remote) — toggled true/false; a `.task(id:)` below
     // auto-hides it infoOverlayAutoHideSeconds after it's shown. See infoBanner's own doc comment.
     @State private var infoOverlayVisible = false
@@ -831,18 +827,11 @@ struct VLCPlayerView: View {
         }
 
         let withTasks: some View = withDialogs
-        .onChange(of: bridge.isPlaying) { _, _ in attemptAutoStart() }
-        .onChange(of: bridge.hasVideoFrame) { _, _ in attemptAutoStart() }
-        // Arms the audio-only fallback — keyed on bridge.currentURL so a channel switch (a new
-        // stream; posterHidden reset by playChannel) restarts it, and .task(id:) cancellation
-        // tears the old wait down so it never fires against the new stream.
-        .task(id: bridge.currentURL) {
-            videoWaitExpired = false
-            try? await Task.sleep(for: .seconds(VLCBridge.firstFrameWaitSeconds))
-            guard !Task.isCancelled else { return }
-            videoWaitExpired = true
-            attemptAutoStart()
-        }
+        .onChange(of: bridge.readyToReveal) { _, _ in attemptAutoStart() }
+        // The poster can come back over a stream that's already decoded (a Tab swap or FEED
+        // switch resets it) — reveal straight away then, rather than waiting for readyToReveal to
+        // change, which it won't (live-found 2026-10-03: a 6s blank after every Tab).
+        .onChange(of: posterHidden) { _, hidden in if !hidden { attemptAutoStart() } }
         // Auto-hides the info banner — keyed on infoOverlayVisible itself, so toggling it false
         // manually (pressing Info again) cancels this pending sleep via .task(id:)'s own identity
         // change rather than needing a separately-tracked Task handle to cancel by hand; toggling
@@ -980,11 +969,10 @@ struct VLCPlayerView: View {
         VLCBridge.shared.setVolume(Int(volume))
     }
 
-    // Auto-start gate — called when isPlaying or hasVideoFrame flips, and when the audio-only
-    // fallback elapses, since any of them can be the last condition to become true.
+    // Auto-start gate — called when VLCBridge.readyToReveal flips (first frame decoded, or the
+    // bridge's audio-only give-up) and whenever the poster reappears.
     private func attemptAutoStart() {
-        guard bridge.isPlaying, !posterHidden, !isPrimaryIdle,
-              bridge.hasVideoFrame || videoWaitExpired else { return }
+        guard bridge.isPlaying, bridge.readyToReveal, !posterHidden, !isPrimaryIdle else { return }
         startPlayback(reason: bridge.hasVideoFrame ? "first video frame decoded" : "no video frame (audio-only fallback)")
     }
 
@@ -2302,6 +2290,11 @@ struct VLCPlayerView: View {
     }
 
     private func playChannel(_ ch: LineupEntry) {
+        if VLCPlayerWindowManager.shared.secondaryIsShowing(deviceID: device.DeviceID, channelNumber: ch.GuideNumber) {
+            glog("[VLC] playChannel \(ch.GuideNumber) — already in the PiP, swapping instead")
+            swapPrimaryAndSecondary()
+            return
+        }
         guard let rawURL = ch.URL, !rawURL.isEmpty else {
             glog("[VLC] playChannel skipped — no URL for ch=\(ch.GuideNumber) \(ch.GuideName)", level: .warning)
             return
@@ -2754,6 +2747,30 @@ final class VLCPlayerWindowManager {
     /// (vlcOccupiesTuner/secondaryVlcOccupiesTuner), which key off these exact fields. Also updates
     /// the window's own `.title` to the newly-primary stream's title (found live 2026-09-19: the
     /// title previously stayed whatever the window opened with, regardless of any later swap).
+    /// Whether the PiP corner is already playing exactly what a "watch X" request asks for — used
+    /// by AppState's watch entry points and the in-player picker to promote the PiP (the Tab swap)
+    /// instead of opening a duplicate primary of the same show (live-found 2026-10-03: picking the
+    /// FEED already in the PiP from the menu opened a second cache session of it as primary).
+    func secondaryIsShowing(feedRemoteURL: String? = nil, deviceID: String? = nil, channelNumber: String? = nil,
+                            recordingShowId: String? = nil) -> Bool {
+        guard secondaryDeviceID != nil else { return false }
+        if let feedRemoteURL { return secondaryFeedRemoteURL == feedRemoteURL }
+        if let recordingShowId {
+            return VLCBridge.shared.secondaryURL?.contains("/api/watch-recording?show=\(recordingShowId)") ?? false
+        }
+        if let deviceID, let channelNumber {
+            return secondaryFeedRemoteURL == nil && secondaryDeviceID == deviceID && secondaryChannelNumber == channelNumber
+        }
+        return false
+    }
+
+    /// Promotes the PiP to primary — the same swap Tab performs (VLCPlayerView.swapPrimaryAndSecondary).
+    func promoteSecondaryToPrimary(reason: String) {
+        glog("[VLC] promoting PiP to primary instead of opening a duplicate — \(reason)")
+        NotificationCenter.default.post(name: .vlcSwapPiP, object: nil)
+        focus()
+    }
+
     func swapTrackingFieldsForPiPSwap() {
         (currentDeviceID, secondaryDeviceID)           = (secondaryDeviceID, currentDeviceID)
         (currentChannelNumber, secondaryChannelNumber) = (secondaryChannelNumber, currentChannelNumber)
