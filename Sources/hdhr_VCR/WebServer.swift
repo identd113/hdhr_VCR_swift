@@ -1676,7 +1676,22 @@ final class WebServer: @unchecked Sendable {
             // the recording restarted) can't seek past EOF — it'll just enter the normal
             // wait-for-more-data poll below instead of erroring.
             let clamped = min(startOffset, currentSizeAtConnect ?? startOffset)
-            let aligned = Self.alignedToTSPacketBoundary(clamped)
+            var aligned = Self.alignedToTSPacketBoundary(clamped)
+            // Back up to the nearest earlier video keyframe (2026-10-03) so the first bytes VLC
+            // sees are decodable video — otherwise audio plays immediately while the picture waits
+            // for the next keyframe (up to a GOP: ~0.5s MPEG-2, seconds for H.264). Costs at most
+            // one GOP of extra delay behind the requested point; no keyframe within the scan
+            // window → unchanged.
+            let window = min(aligned, Self.keyframeScanWindowBytes)
+            if window > 0 {
+                handle.seek(toFileOffset: UInt64(aligned - window))
+                let data = handle.readData(ofLength: window)
+                if let keyframe = Self.lastKeyframePacketOffset(in: data) {
+                    let newStart = aligned - window + keyframe
+                    glog("[WebServer] watch-recording show=\(showId) keyframe-aligned start \(aligned) → \(newStart) (−\((aligned - newStart) / 1024) KB)")
+                    aligned = newStart
+                }
+            }
             handle.seek(toFileOffset: UInt64(aligned))
             initialBytes = aligned
         }
@@ -1794,6 +1809,56 @@ final class WebServer: @unchecked Sendable {
     // beat, stalls, fragments of audio" report looks like. Extracted as a pure function (rather than
     // inlined in streamGrowingFile) so this arithmetic itself is directly unit-testable, matching
     // sourceIsAlreadyModernCodec/effectiveTranscodeProfile's own testability shape in this file.
+    /// How far back `streamGrowingFile` searches for a keyframe — ~2.7s of a 12 Mbps stream,
+    /// comfortably more than one broadcast GOP (MPEG-2 ≈ 0.5s; H.264 subchannels up to a few s).
+    static let keyframeScanWindowBytes = tsPacketSize * 22_000   // ≈ 4.1 MB
+
+    /// Offset (within `data`, a run of whole 188-byte TS packets starting on a packet boundary) of
+    /// the LAST packet that starts a video random-access point, or nil. A packet qualifies when it
+    /// begins a video PES (payload_unit_start, stream_id 0xE0–0xEF) and either carries the
+    /// adaptation-field random_access_indicator or its PES payload (within this packet) contains a
+    /// sequence-level start code: MPEG-2 sequence header (00 00 01 B3), H.264 SPS/IDR NAL (type 7
+    /// or 5), or HEVC VPS (NAL header 0x40 0x01). HEVC IDR types are deliberately not matched —
+    /// their header bytes collide with H.264 SEI. Pure, for unit tests.
+    static func lastKeyframePacketOffset(in data: Data) -> Int? {
+        let n = data.count / tsPacketSize
+        guard n > 0 else { return nil }
+        return data.withUnsafeBytes { (raw: UnsafeRawBufferPointer) -> Int? in
+            let b = raw.bindMemory(to: UInt8.self)
+            for i in stride(from: n - 1, through: 0, by: -1) {
+                let p = i * tsPacketSize
+                guard b[p] == 0x47, b[p + 1] & 0x40 != 0 else { continue }   // sync + payload_unit_start
+                let afc = (b[p + 3] >> 4) & 0x3
+                guard afc & 0x1 != 0 else { continue }                       // has payload
+                var payload = p + 4
+                var randomAccess = false
+                if afc & 0x2 != 0 {
+                    let afl = Int(b[p + 4])
+                    if afl > 0, p + 5 < p + tsPacketSize { randomAccess = b[p + 5] & 0x40 != 0 }
+                    payload += 1 + afl
+                }
+                let end = p + tsPacketSize
+                guard payload + 9 <= end, b[payload] == 0, b[payload + 1] == 0, b[payload + 2] == 1,
+                      (0xE0...0xEF).contains(b[payload + 3]) else { continue }   // video PES start
+                if randomAccess { return p }
+                var j = payload + 9 + Int(b[payload + 8])                         // past PES header
+                while j + 4 < end {
+                    if b[j] == 0, b[j + 1] == 0, b[j + 2] == 1 {
+                        let c = b[j + 3]
+                        if c == 0xB3 { return p }                                 // MPEG-2 sequence header
+                        let h264 = c & 0x1F
+                        if c & 0x80 == 0, h264 == 7 || h264 == 5 { return p }    // H.264 SPS / IDR
+                        if c == 0x40, b[j + 4] == 0x01 { return p }               // HEVC VPS
+                        j += 3
+                    } else {
+                        j += 1
+                    }
+                }
+            }
+            return nil
+        }
+    }
+
     static func alignedToTSPacketBoundary(_ offset: Int) -> Int {
         (max(0, offset) / tsPacketSize) * tsPacketSize
     }

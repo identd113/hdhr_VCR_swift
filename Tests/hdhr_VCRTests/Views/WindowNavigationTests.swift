@@ -150,42 +150,31 @@ repeat with w in windows
     end if
 end repeat
 if playerWin is missing value then return "NO_PLAYER_WINDOW"
--- The window opening does NOT mean the stream is playing — VLCBridge.play() connects
--- immediately, independent of any click, but the poster overlay's own Start button stays
--- disabled (label "Connecting…") until bridge.isPlaying flips true (first frame decoded), only
--- becoming a real, enabled "Start" after that. Found live 2026-09-19: every PiP test originally
--- skipped this button entirely and went straight to the context menu/PiP flow with the primary
--- still sitting behind the poster, muted — meaning none of them were actually exercising PiP
--- behavior against a genuinely playing, unmuted primary, only the window/menu/identifier wiring
--- around it. Poll for vlc-start-button to become enabled (AXIdentifier lookup — this file's own
--- established most-reliable method, per vlcPlayerControlsAreAccessible's doc comment), then click
--- it, then wait out the poster's own .easeOut(duration: 0.35) fade so posterHidden has actually
--- taken visible effect before any caller proceeds.
-set startBtn to missing value
-repeat 30 times
+-- The window opening does NOT mean the stream is playing. Since 2026-10-03 there is no Start
+-- button: the poster shows a non-interactive status (AXIdentifier vlc-start-status, "Connecting…"
+-- then "Starting…") and the stream reveals + unmutes by itself once the first video frame is
+-- decoded (VLCPlayerView.attemptAutoStart). Wait for that status element to disappear — the
+-- poster is gone and the primary is genuinely playing, unmuted — before any caller proceeds.
+-- (Found live 2026-09-19 that PiP tests must not proceed while the primary is still behind the
+-- poster, muted.) 60 × 0.25s = 15s: a cold start is ~2–3s, plus a slow tuner's connect.
+set stillStarting to true
+repeat 60 times
+    set stillStarting to false
     try
         set allEls to entire contents of playerWin
         repeat with e in allEls
             try
-                if (value of attribute "AXIdentifier" of e) as string is "vlc-start-button" then
-                    set startBtn to e
+                if (value of attribute "AXIdentifier" of e) as string is "vlc-start-status" then
+                    set stillStarting to true
                     exit repeat
                 end if
             end try
         end repeat
     end try
-    if startBtn is not missing value then
-        set isEnabled to true
-        try
-            set isEnabled to (value of attribute "AXEnabled" of startBtn) as boolean
-        end try
-        if isEnabled then exit repeat
-        set startBtn to missing value
-    end if
+    if not stillStarting then exit repeat
     delay 0.25
 end repeat
-if startBtn is missing value then return "NO_PLAYBACK_STARTED"
-click startBtn
+if stillStarting then return "NO_PLAYBACK_STARTED"
 delay 0.5
 """
 
@@ -1251,7 +1240,7 @@ struct WindowNavigationTests {
         // comment and VLCPlayerView.swift's own CC-picker condition).
         let expected: Set<String> = [
             "vlc-channel-picker", "vlc-catch-up-button", "vlc-native-resolution",
-            "vlc-volume-slider", "vlc-start-button", "vlc-info-button",
+            "vlc-volume-slider", "vlc-info-button",
         ]
         let missing = expected.subtracting(foundIds)
         #expect(missing.isEmpty, "VLC player window is missing expected accessibility identifiers: \(missing.sorted())")

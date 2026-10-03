@@ -50,10 +50,12 @@ On success, init creates:
 
 ## Buffered Playback & Rate Controller
 
+**2026-10-03 — no fill ramp; start buffer + first-frame signal.** By explicit decision playback now always runs at exactly 1.0×: `minRate` is fixed at 1.0 for every stream (`liveMinRate` and `AppConfig.Player_buffer_min_rate` are no longer read), so the fill-phase ramp, `rampedFillRate` and the toolbar buffer pill below are dormant (`bufferInfo.enabled` stays false). With `--no-audio-time-stretch` required, any rate < 1.0 also lowers the pitch, which is why growth wasn't kept. The **start buffer** is VLC's own `--network-caching` — how much it buffers before playback begins, and with no ramp also the steady-state cushion — capped at ≤3s: **2000ms** live, **1500ms** for a FEED disk-cache session (`/api/watch-recording?show=<DeviceID>-<UUID>` or `/api/feed-local-relay`; its cross-machine cache file fills in bursts), **300ms** for local Watch Now. **`hasVideoFrame`** (`@Published`) flips true once `libvlc_video_get_size` reports a size for the primary — `startFastStatePoll` keeps polling past `isPlaying` until then (or `firstFrameWaitSeconds`, 6s, for audio-only), logging `[VLC] first video frame WxH after N.NNs`; reset on every `play(url:)`/teardown, carried over on `swapSlots`. It is `VLCPlayerView`'s auto-start trigger. The text below describes the pre-2026-10-03 ramp.
+
 Every `play(url:)` call applies five per-media options before starting:
 
 ```swift
-"--network-caching=\(networkCachingMs)"      // 2000ms for a live stream, 300ms for the recording relay — see below
+"--network-caching=\(networkCachingMs)"      // the start buffer: 2000ms live, 1500ms FEED disk-cache session, 300ms local Watch Now relay — see below
 "--prefetch-buffer-size=\(prefetchBufferKiB)" // 1024 KiB, down from VLC's own 16384 KiB default — added 2026-09-07
 "--drop-late-frames"         // drop corrupt/late frames rather than showing artifacts
 "--avcodec-hurry-up"         // drop non-essential B-frames under decode pressure
@@ -274,7 +276,8 @@ No `AppConfig` toggle gates this feature, unlike `FEED_feature_enabled`/`Virtual
 
 ```swift
 var isAvailable: Bool                                          // false when VLC not installed
-var liveMinRate: Float                                         // fill-phase floor for live streams (0.90–1.0); set from AppConfig — external code sets this, never minRate
+@Published hasVideoFrame: Bool                                // first video frame decoded (auto-start gate) — 2026-10-03
+// (removed 2026-10-03) var liveMinRate: Float                  // fill-phase floor for live streams (0.90–1.0); set from AppConfig — external code sets this, never minRate
 @Published var currentURL: String?                            // URL currently playing; nil when stopped
 @Published var bufferInfo: VLCBufferInfo                      // rate/lag/bitrate snapshot; published every 3s tick
 @Published var hasError:    Bool                              // true when libvlc_Error (state 7) detected; cleared on play/stop/release

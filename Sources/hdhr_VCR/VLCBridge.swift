@@ -272,13 +272,12 @@ final class VLCBridge: ObservableObject {
     @Published private(set) var castingDeviceID: String? = nil   // nil = local (not casting)
 
     // MARK: - Buffer rate controller state
-    /// Configured fill-phase floor for **live** streams (from AppConfig, set by VLCPlayerView).
-    /// 1.0 = disabled. Not used directly — play(url:) copies it into `minRate` for a live URL, or
-    /// forces `minRate = 1.0` for the recording relay (a local loopback file read has no network
-    /// jitter to buffer against, so the ramp — and the toolbar's buffer pill — would be theatre).
-    var liveMinRate: Float = 0.93
-    /// The floor actually in effect for the current stream — live-appropriate or forced to 1.0 for
-    /// the recording relay. Set by play(url:); do not set externally.
+    /// The fill-phase rate floor for the current stream. Always 1.0 since 2026-10-03: playback
+    /// starts once VLC's own start buffer (network-caching, see play(url:)) is full and the first
+    /// video frame is decoded, then runs at exactly real time — no sub-1.0× cushion-building ramp,
+    /// by explicit decision (with --no-audio-time-stretch required, any rate < 1.0 also lowers the
+    /// audio pitch). The ramp machinery below (rampedFillRate, the buffer pill) stays dormant
+    /// behind `minRate < 1.0`. AppConfig.Player_buffer_min_rate is no longer read.
     private var minRate: Float = 1.0
     @Published var bufferInfo = VLCBufferInfo()
     @Published var hasError:   Bool = false
@@ -288,6 +287,16 @@ final class VLCBridge: ObservableObject {
     @Published var spuTracks:   [(id: Int32, name: String)] = []  // CC/subtitle tracks; empty = none detected
     @Published private(set) var currentURL: String?
     @Published private(set) var videoPixelSize: CGSize? = nil  // physical pixels; nil until first decoded frame
+    /// True once the primary stream's first video frame is decoded (VLC reports a video size) —
+    /// VLCPlayerView's auto-start gate, so picture and sound start together instead of audio
+    /// running ahead of a blank screen. Polled at fastPollInterval (startFastStatePoll), not the
+    /// 3s stats tick. Reset on every play(url:) and teardown.
+    @Published private(set) var hasVideoFrame = false
+    private var playStartedAt = Date.distantPast
+    /// How long the fast poll waits for a first video frame after playback starts before giving up
+    /// (an audio-only stream, or a decoder that never reports a size) — VLCPlayerView has its own
+    /// matching fallback so the poster can't get stuck.
+    nonisolated static let firstFrameWaitSeconds: TimeInterval = 6
 
     // MARK: - PiP secondary slot (deliberately minimal — no track lists/rate-ramp/buffer info,
     // matching the "video only, no track picker/scrub/buffer overlay" corner-thumbnail scope; see
@@ -721,12 +730,13 @@ final class VLCBridge: ObservableObject {
             clearPauseState()
             if isRecordingRelay {
                 recordingReopenedAt = Date()
-                minRate = 1.0   // local loopback file read — no network jitter to buffer against
             } else {
                 clearRecordingSeek()
-                minRate = liveMinRate
             }
+            minRate = 1.0
             targetMinRate = minRate
+            hasVideoFrame = false
+            playStartedAt = Date()
         } else {
             targetMinRate = 1.0
         }
@@ -802,7 +812,16 @@ final class VLCBridge: ObservableObject {
         // demuxer a couple of chunks to sync on the PAT/PMT before it starts decoding, without
         // paying for 1.7s of buffering the relay path doesn't need — this is what lets Watch Now
         // catch up to the live edge (and start playback) much faster than a live tuner stream.
-        let networkCachingMs = isRecordingRelay ? 300 : 2000
+        //
+        // The start buffer (2026-10-03): network-caching is how much VLC buffers before playback
+        // begins, and since playback now runs at exactly 1.0× (no fill ramp) it is also the
+        // steady-state cushion. Capped at ≤3s by explicit direction. A FEED disk-cache session
+        // (show id "<DeviceID>-<UUID>", the only /api/watch-recording ids with a dash) gets 1500ms:
+        // its cache file is written by a cross-machine curl whose arrival is bursty, so it needs
+        // more than local Watch Now's 300ms — the old 8s FEED auto-play wait used to hide that.
+        let isFeedCache = url.contains("/api/feed-local-relay")
+            || url.range(of: #"/api/watch-recording\?show=[0-9A-Fa-f]{8}-"#, options: .regularExpression) != nil
+        let networkCachingMs = isFeedCache ? 1500 : isRecordingRelay ? 300 : 2000
         // prefetch-buffer-size (KiB) — VLC 3.0.23's "prefetch" stream_filter defaults to 16384
         // KiB (16MB), confirmed via `VLC --longhelp --advanced`. ISSUES.md's "FEED playback still
         // stalls in VLC specifically" entry's --file-logging captures named this exact module as
@@ -1004,6 +1023,7 @@ final class VLCBridge: ObservableObject {
             tracksFetched  = false
             spuFetchAttempts = 0
             videoPixelSize = nil
+            hasVideoFrame = false
         } else {
             secondaryHasError  = false
             secondaryIsPlaying = false
@@ -1178,6 +1198,7 @@ final class VLCBridge: ObservableObject {
         tracksFetched = false   // cheap re-fetch on next tick, not a reconnect
         spuFetchAttempts = 0
         videoPixelSize = nil    // recomputed on next tick
+        hasVideoFrame = oldSecondaryIsPlaying   // the promoted stream was already decoding/visible
         secondaryVideoPixelSize = nil   // ditto — the newly-secondary stream has its own aspect ratio
 
         hasError  = oldSecondaryHasError
@@ -1347,16 +1368,15 @@ final class VLCBridge: ObservableObject {
 
     // Short-interval startup poll — narrows the "libvlc already started decoding but nothing has
     // noticed yet" window that otherwise cost up to a full statsTimerInterval (3s) of dead time:
-    // Timer(repeats:) fires only AFTER its interval elapses, so before this existed, the Start
-    // button and FEED auto-play (both gated on bridge.isPlaying — VLCPlayerView.swift) could sit
-    // dark for up to 3 real seconds after decode had already begun, on top of however long decode
-    // itself actually took. Deliberately a SEPARATE timer rather than just shortening
+    // Timer(repeats:) fires only AFTER its interval elapses, so before this existed, playback start
+    // (gated on bridge.isPlaying — VLCPlayerView.swift) could sit dark for up to 3 real seconds
+    // after decode had already begun. Since 2026-10-03 it also keeps polling past isPlaying until
+    // the first video frame is decoded (hasVideoFrame — the auto-start gate). Deliberately a SEPARATE timer rather than just shortening
     // statsTimerInterval itself: rampedFillRate's buffer-fill math assumes each tickPrimary call
     // represents exactly statsTimerInterval real seconds elapsing (see its own doc comment on the
     // self-referential-ramp bug this already burned once, 2026-09-06) — polling that loop faster
-    // would double-count ramp progress and finish the fill phase early, undermining the
-    // deliberately-tuned buffer cushion FEED auto-play's own fixed wait (feedAutoPlayMinDelay,
-    // VLCPlayerView.swift) depends on lining up with. This timer only ever reads state via
+    // would double-count ramp progress (dormant since 2026-10-03 — minRate is always 1.0 — but
+    // kept correct). This timer only ever reads state via
     // detectPrimaryTerminalState (shared with tickPrimary, so the two can't disagree on what counts
     // as "playing") and never touches the ramp/stats fields tickPrimary owns. Self-stops the moment
     // state is known either way; also torn down alongside the main stats timer (stopStatsTimer),
@@ -1382,10 +1402,26 @@ final class VLCBridge: ObservableObject {
                     self.fastPollTimer = nil
                     return
                 }
-                if self.detectPrimaryTerminalState(mp) || self.isPlaying {
+                if self.detectPrimaryTerminalState(mp) {
                     timer.invalidate()
                     self.fastPollTimer = nil
+                    return
                 }
+                // Keeps polling past isPlaying until the first video frame is decoded (or the
+                // audio-only give-up), so hasVideoFrame flips within ~0.25s of the frame instead of
+                // waiting for the 3s stats tick.
+                guard self.isPlaying else { return }
+                if let size = self.videoNativeSize() {
+                    self.videoPixelSize = size
+                    self.hasVideoFrame = true
+                    glog("[VLC] first video frame \(Int(size.width))x\(Int(size.height)) after \(String(format: "%.2f", Date().timeIntervalSince(self.playStartedAt)))s")
+                } else if Date().timeIntervalSince(self.playStartedAt) < Self.firstFrameWaitSeconds {
+                    return
+                } else {
+                    glog("[VLC] no video frame within \(Int(Self.firstFrameWaitSeconds))s of play — treating as audio-only", level: .warning)
+                }
+                timer.invalidate()
+                self.fastPollTimer = nil
             }
         }
         RunLoop.main.add(timer, forMode: .common)

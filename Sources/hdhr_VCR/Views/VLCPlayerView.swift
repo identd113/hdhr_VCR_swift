@@ -177,10 +177,10 @@ struct VLCPlayerView: View {
     @State private var isFullScreen = false      // driven by WindowCloseObserver's NSWindowDelegate callbacks
     @State private var toolbarHovered = false     // reveals the toolbar overlay while isFullScreen (see body)
     @State private var pipHovered = false         // reveals the PiP thumbnail's close button on hover (see pipOverlay)
-    // Gates FEED auto-play (see startPlayback's own doc comment) until this much real time has
-    // passed since the current stream opened — set by a .task(id: bridge.currentURL) below, so a
-    // channel switch mid-session restarts the wait for the newly-opened stream.
-    @State private var feedAutoPlayDelayElapsed = false
+    // Audio-only fallback for auto-start: set VLCBridge.firstFrameWaitSeconds after the current
+    // stream opened (a .task(id: bridge.currentURL) below), so a stream that never produces a video
+    // frame still starts instead of leaving the poster up forever.
+    @State private var videoWaitExpired = false
     // Toolbar "Info" button ("i" on a TV remote) — toggled true/false; a `.task(id:)` below
     // auto-hides it infoOverlayAutoHideSeconds after it's shown. See infoBanner's own doc comment.
     @State private var infoOverlayVisible = false
@@ -262,23 +262,13 @@ struct VLCPlayerView: View {
     // macOS doesn't expose the real strip height, so this may need tuning after an actual look.
     private static let fullScreenTopInset: CGFloat = 32
 
-    // Minimum real time a remote FEED session must sit buffering before auto-play unhides the
-    // poster and unmutes — requested 2026-09-04 after auto-play's own isPlaying-only gate turned
-    // out to fire too early (~3s, first confirmed decode) to build up a meaningful cushion against
-    // Player_buffer_min_rate's slow ramp (see docs/VLCPlayerView.md's "Auto-play for a remote FEED
-    // session"). One constant for both halves of startPlayback(auto:) — the poster reveal and the
-    // volume restore/unmute fire together, always have — so there's no separate "audio delay" to
-    // track apart from this.
-    //
-    // Was 10 until 2026-09-12: the fill-phase ramp itself was fixed 2026-09-06 (rampedFillRate's
-    // linearity fix, VLCBridge.swift) to reliably finish in its own maxLagSec (8.0, default param
-    // of rampedFillRate) real seconds instead of the pre-fix's occasional multi-minute crawl, but
-    // this constant was never revisited afterward — 10s was leaving 2s of pure dead air on top of
-    // an already-reliable 8s ramp. Dropped to match maxLagSec exactly so the poster reveals right
-    // as the ramp completes rather than after. Not live-tested against a real FEED session yet —
-    // revert to 10 if a live check shows video revealing visibly mid-ramp (a few seconds of
-    // subtly-slow-motion playback) rather than right at 1.0× rate.
-    private static let feedAutoPlayMinDelay: TimeInterval = 8
+    // Auto-start (2026-10-03): every stream — live TV, FEED, Watch Now — reveals and unmutes on
+    // its own as soon as VLC has decoded the first video frame (bridge.hasVideoFrame), replacing
+    // the live-TV Start button and FEED's fixed 8s wait (which only existed to cover the old
+    // 0.93× fill ramp, removed the same day; see VLCBridge.minRate). The start buffer itself is
+    // VLC's network-caching (≤3s, set per source in VLCBridge.play). Gating on the first frame,
+    // not just isPlaying, keeps audio from starting over a blank screen while the video decoder
+    // waits for a keyframe.
 
     // MARK: - "Live" recording entries in the channel picker
     //
@@ -814,7 +804,6 @@ struct VLCPlayerView: View {
             glog("[VLC] VLCPlayerView.onAppear device=\(device.DeviceID) initialURL=\(initialURL)")
             refreshCachedLocalRelayCodecs(showId: bridge.recordingShowId)
             availableScreens = NSScreen.screens   // NSScreen.screens is main-thread-only; safe here
-            VLCBridge.shared.liveMinRate = Float(state.config.Player_buffer_min_rate) / 100.0
             VLCBridge.shared.setVolume(0)   // muted until Start is clicked
             refreshAudioDevices()
             VLCBridge.shared.startDeviceChangeMonitoring { refreshAudioDevices() }
@@ -842,24 +831,17 @@ struct VLCPlayerView: View {
         }
 
         let withTasks: some View = withDialogs
-        .onChange(of: bridge.isPlaying) { _, _ in
-            // Auto-play for a remote FEED session only — see attemptFeedAutoPlay's own doc
-            // comment for the full gate (isPlaying alone isn't enough; also needs
-            // feedAutoPlayDelayElapsed, set by the .task(id: bridge.currentURL) below).
-            attemptFeedAutoPlay()
-        }
-        // Arms feedAutoPlayDelayElapsed feedAutoPlayMinDelay seconds after the current stream
-        // opened — keyed on bridge.currentURL so a channel switch mid-session (a genuinely new
-        // stream, posterHidden reset to false by playChannel) restarts the wait; SwiftUI's own
-        // .task(id:) cancellation means the old wait is torn down automatically, never firing late
-        // against the new stream.
+        .onChange(of: bridge.isPlaying) { _, _ in attemptAutoStart() }
+        .onChange(of: bridge.hasVideoFrame) { _, _ in attemptAutoStart() }
+        // Arms the audio-only fallback — keyed on bridge.currentURL so a channel switch (a new
+        // stream; posterHidden reset by playChannel) restarts it, and .task(id:) cancellation
+        // tears the old wait down so it never fires against the new stream.
         .task(id: bridge.currentURL) {
-            guard device.isVirtualRelay else { return }
-            feedAutoPlayDelayElapsed = false
-            try? await Task.sleep(for: .seconds(Self.feedAutoPlayMinDelay))
+            videoWaitExpired = false
+            try? await Task.sleep(for: .seconds(VLCBridge.firstFrameWaitSeconds))
             guard !Task.isCancelled else { return }
-            feedAutoPlayDelayElapsed = true
-            attemptFeedAutoPlay()
+            videoWaitExpired = true
+            attemptAutoStart()
         }
         // Auto-hides the info banner — keyed on infoOverlayVisible itself, so toggling it false
         // manually (pressing Info again) cancels this pending sleep via .task(id:)'s own identity
@@ -884,10 +866,6 @@ struct VLCPlayerView: View {
             refreshCachedLocalRelayCodecs(showId: showId)
             guard showId != nil, let url = bridge.currentURL else { return }
             syncChannel(to: url)
-        }
-        .onChange(of: state.config.Player_buffer_min_rate) { _, pct in
-            glog("[VLC] Player_buffer_min_rate changed → \(pct)%")
-            VLCBridge.shared.liveMinRate = Float(pct) / 100.0
         }
 
         return withTasks
@@ -985,20 +963,15 @@ struct VLCPlayerView: View {
         }
     }
 
-    // Unhides the poster and restores the saved volume — shared by the manual Start click and the
-    // remote-FEED auto-play path below, so the two can never drift apart (e.g. one restoring
-    // volume, the other forgetting to). `auto` only changes the log line, not the behavior: a FEED
-    // session skips the click entirely (see the onChange(of: bridge.isPlaying) handler in body),
-    // but still needs the exact same pre-buffer window a manual Start gets — this only fires once
-    // bridge.isPlaying is already true, same as the button's own `.disabled(!bridge.isPlaying)`.
-    private func startPlayback(auto: Bool) {
-        let lag = VLCBridge.shared.bufferInfo.lagSec
-        glog("[VLC] \(auto ? "FEED auto-play" : "Start clicked") — buffer ~\(String(format: "%.1f", lag))s built before unmute")
+    // Unhides the poster and restores the saved volume — the one place a stream becomes visible
+    // and audible (auto-start, see attemptAutoStart).
+    private func startPlayback(reason: String) {
+        glog("[VLC] auto-start — \(reason)")
         // Instant, not the poster overlay's usual 0.35s crossfade (.animation(value: posterHidden)
-        // in body) — the video has already been decoding/rendering underneath the poster this whole
-        // time (mute only silences audio), so an instant reveal exactly matches setVolume's own
-        // instant, un-ramped unmute just below. Without this, the poster's fade left the picture
-        // visibly appearing ~350ms after audio already started — reported live 2026-09-26.
+        // in body) — the video has already been decoding/rendering underneath the poster (mute only
+        // silences audio), so an instant reveal exactly matches setVolume's own instant, un-ramped
+        // unmute just below. Without this, the poster's fade left the picture visibly appearing
+        // ~350ms after audio already started — reported live 2026-09-26.
         var transaction = Transaction()
         transaction.disablesAnimations = true
         withTransaction(transaction) {
@@ -1007,16 +980,12 @@ struct VLCPlayerView: View {
         VLCBridge.shared.setVolume(Int(volume))
     }
 
-    // Gate for the FEED auto-play path — called both when bridge.isPlaying flips and when the
-    // feedAutoPlayMinDelay timer (the .task(id: bridge.currentURL) in body) elapses, since either
-    // one can be the last condition to become true. Requested 2026-09-04: isPlaying alone (first
-    // confirmed decode, ~3s) fired auto-play too early to build a real cushion against
-    // Player_buffer_min_rate's slow ramp — feedAutoPlayDelayElapsed adds a flat minimum real-time
-    // wait on top, same value for both the poster reveal and the volume restore/unmute (they fire
-    // together in startPlayback — there's no separate "audio delay" to track apart from this).
-    private func attemptFeedAutoPlay() {
-        guard device.isVirtualRelay, bridge.isPlaying, feedAutoPlayDelayElapsed, !posterHidden else { return }
-        startPlayback(auto: true)
+    // Auto-start gate — called when isPlaying or hasVideoFrame flips, and when the audio-only
+    // fallback elapses, since any of them can be the last condition to become true.
+    private func attemptAutoStart() {
+        guard bridge.isPlaying, !posterHidden, !isPrimaryIdle,
+              bridge.hasVideoFrame || videoWaitExpired else { return }
+        startPlayback(reason: bridge.hasVideoFrame ? "first video frame decoded" : "no video frame (audio-only fallback)")
     }
 
     // MARK: - Info overlay ("i" button)
@@ -1202,7 +1171,7 @@ struct VLCPlayerView: View {
                         // populates a discoverer's guideByDevice[relayId] today (a known,
                         // documented gap, TODO.md's "FEED consumers should get a minimal,
                         // locally-sourced 'now playing' guide/lineup"). Without this fallback the
-                        // poster showed nothing at all for the full feedAutoPlayMinDelay wait.
+                        // poster showed nothing at all while the stream started.
                         // These fields (added 2026-09-12) mirror AppState.DiscordEpisodeSnapshot,
                         // carried over the relay's own /lineup.json — see
                         // VirtualTunerService.episodeTitleKey's own doc comment. Same layout as the
@@ -1242,15 +1211,9 @@ struct VLCPlayerView: View {
                         }
                     }
 
-                    // FEED sessions never need a click — attemptFeedAutoPlay() always fires once
-                    // buffered, whether or not this is on screen — so rendering a *clickable*
-                    // Button here would be actively misleading (it looks actionable but clicking
-                    // it does nothing auto-play wasn't already about to do on its own). Requested
-                    // 2026-09-07 after a live cross-machine test made this visible: the button
-                    // rendered for the several real seconds attemptFeedAutoPlay's own buffer/delay
-                    // gate takes, reading as "click here" rather than "buffering, please wait."
-                    // Same visual content, just non-interactive — the buffering feedback itself
-                    // (spinner + label) stays, only the affordance-that-does-nothing goes away.
+                    // No session needs a click (2026-10-03): every stream auto-starts on its first
+                    // decoded video frame (attemptAutoStart), so everything below is
+                    // non-interactive status — spinner + label, no button.
                     if let yieldProgress = state.yieldRecordingProgress {
                         // Same non-interactive "buffering" treatment as the FEED case just below —
                         // nothing to click here either, this resolves on its own once the new
@@ -1303,27 +1266,20 @@ struct VLCPlayerView: View {
                             .multilineTextAlignment(.center)
                             .padding(.top, 4)
                     } else {
-                        Button {
-                            startPlayback(auto: false)
-                        } label: {
-                            HStack(spacing: 8) {
-                                if bridge.isPlaying {
-                                    Image(systemName: "play.fill")
-                                } else {
-                                    ProgressView().controlSize(.small)
-                                }
-                                Text(bridge.isPlaying ? "Start" : "Connecting…")
-                            }
-                            .font(.title3.bold())
-                            .padding(.horizontal, 22)
-                            .padding(.vertical, 12)
-                            .background(.ultraThinMaterial)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                            .foregroundStyle(bridge.isPlaying ? .white : .white.opacity(0.45))
+                        // Status only (2026-10-03): playback starts by itself once the first video
+                        // frame is decoded (attemptAutoStart) — this replaced the Start button.
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text(bridge.isPlaying ? "Starting…" : "Connecting…")
                         }
-                        .buttonStyle(.plain)
-                        .disabled(!bridge.isPlaying)
-                        .accessibilityIdentifier("vlc-start-button")
+                        .font(.title3.bold())
+                        .padding(.horizontal, 22)
+                        .padding(.vertical, 12)
+                        .background(.ultraThinMaterial)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .foregroundStyle(.white.opacity(0.6))
+                        .accessibilityElement(children: .combine)
+                        .accessibilityIdentifier("vlc-start-status")
                         .padding(.top, 4)
                     }
                 }
@@ -1726,13 +1682,13 @@ struct VLCPlayerView: View {
                     // view when the source device doesn't change, so no fresh .onAppear ever runs
                     // for the new stream). Root-caused 2026-09-14, live report: without this reset,
                     // posterHidden stayed true (left over from the *first* FEED show's successful
-                    // auto-play), so attemptFeedAutoPlay's `!posterHidden` guard silently failed for
+                    // auto-play), so the auto-start gate's `!posterHidden` guard silently failed for
                     // every subsequent switch — the video genuinely changed (VLCBridge.play(url:)
                     // loaded the new stream regardless) but audio stayed muted at the volume 0
                     // VLCPlayerWindowManager.open sets before every play() call, forever. Falling
                     // through to the same poster/mute reset the direct-picker path uses below lets
-                    // attemptFeedAutoPlay's delayed re-arm (.task(id: bridge.currentURL), already
-                    // correctly restarting on the new URL) actually restore volume once buffered —
+                    // attemptAutoStart fire again for the new stream (play(url:) resets
+                    // hasVideoFrame, so its first frame re-triggers the gate) and restore volume —
                     // playChannel/watchRecordingInApp itself must still stay skipped since the
                     // caller (VLCPlayerWindowManager.open) already started this exact stream.
                     posterHidden = false
@@ -2632,7 +2588,6 @@ final class VLCPlayerWindowManager {
         }
         currentDeviceID = device.DeviceID
         currentChannelNumber = channelNumber
-        VLCBridge.shared.liveMinRate = Float(appState.config.Player_buffer_min_rate) / 100.0
         VLCBridge.shared.setVolume(0)   // mute before buffering starts; Start click unmutes
         VLCBridge.shared.ensurePlayer() // create fresh player if previous session released it
         VLCBridge.shared.play(url: url)
