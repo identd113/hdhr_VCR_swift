@@ -103,6 +103,13 @@ struct VLCPlayerView: View {
     let device: HDHRDevice
     // Stream URL active when the window opened; used to pre-select the channel picker.
     let initialURL: String
+    // Identifies this hosted instance to VLCPlayerWindowManager (hostedViewToken). open() swaps
+    // rootView to a fresh VLCPlayerView on a device change *after* already calling play(url:), and
+    // the superseded view's onDisappear lands after that — without this check its releasePlayer()
+    // tore down the stream that had just been started (and could also unhook the new view's
+    // device-change monitor / media-key targets if its onAppear ran first). nil (tests/previews)
+    // means "always the current view".
+    var hostToken: UUID? = nil
 
     @State private var selectedChannel: LineupEntry?
     @State private var suppressNextChannelPlay = false
@@ -814,6 +821,12 @@ struct VLCPlayerView: View {
             VLCBridge.shared.startCastDiscovery()
             syncChannel(to: initialURL)
             let cc = MPRemoteCommandCenter.shared()
+            // Drop any targets a previous hosted view registered (a device-change rootView swap
+            // skips the old view's onDisappear teardown — see hostToken) so media keys never fire
+            // twice (a doubled next-track would skip two channels).
+            cc.stopCommand.removeTarget(nil)
+            cc.nextTrackCommand.removeTarget(nil)
+            cc.previousTrackCommand.removeTarget(nil)
             cc.stopCommand.isEnabled = true
             cc.stopCommand.addTarget { _ in
                 // Remote stop (media key / Now Playing widget) — calls VLCBridge.stop(), a soft
@@ -929,6 +942,12 @@ struct VLCPlayerView: View {
             // Safety-net for window close — releasePlayer() is idempotent so calling it here
             // after playerWindowDidClose() already ran is fine. Catches any path where the
             // window delegate didn't fire (e.g. window deallocated without close()).
+            // A view superseded by open()'s device-change rootView swap must not tear anything
+            // down — see hostToken.
+            if let hostToken, VLCPlayerWindowManager.shared.hostedViewToken != hostToken {
+                glog("[VLC] VLCPlayerView.onDisappear — superseded by a newer hosted view, skipping teardown")
+                return
+            }
             glog("[VLC] VLCPlayerView.onDisappear")
             VLCBridge.shared.releasePlayer()
             VLCBridge.shared.stopDeviceChangeMonitoring()
@@ -2455,6 +2474,18 @@ final class VLCPlayerWindowManager {
     // modifiers (an unspellable-by-hand generic), not VLCPlayerView itself.
     private var hostingView: NSHostingView<AnyView>?
     private var closeObserver: WindowCloseObserver?  // strong ref — NSWindow.delegate is weak
+    // Token of the VLCPlayerView currently hosted in `window` — see VLCPlayerView.hostToken.
+    private(set) var hostedViewToken = UUID()
+
+    private func makeHostedPlayerView(device: HDHRDevice, initialURL: String, appState: AppState) -> AnyView {
+        let token = UUID()
+        hostedViewToken = token
+        return AnyView(
+            VLCPlayerView(device: device, initialURL: initialURL, hostToken: token)
+                .environmentObject(appState)
+                .id(device.DeviceID)
+        )
+    }
 
     /// DeviceID of the tuner currently occupied by the player window; nil when closed.
     private(set) var currentDeviceID: String?
@@ -2619,11 +2650,7 @@ final class VLCPlayerWindowManager {
                 // device — re-syncing audio devices, media-key targets, and the channel picker,
                 // the same setup a truly fresh window's first appearance already does.
                 glog("[VLC] WindowManager.open — device changed on reuse, swapping hosted view to device=\(device.DeviceID)")
-                hostingView?.rootView = AnyView(
-                    VLCPlayerView(device: device, initialURL: url)
-                        .environmentObject(appState)
-                        .id(device.DeviceID)
-                )
+                hostingView?.rootView = makeHostedPlayerView(device: device, initialURL: url, appState: appState)
             }
             win.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
@@ -2631,11 +2658,7 @@ final class VLCPlayerWindowManager {
         }
         glog("[VLC] WindowManager.open — creating new window, device=\(device.DeviceID) url=\(url)")
 
-        let playerView = AnyView(
-            VLCPlayerView(device: device, initialURL: url)
-                .environmentObject(appState)
-                .id(device.DeviceID)
-        )
+        let playerView = makeHostedPlayerView(device: device, initialURL: url, appState: appState)
 
         let win = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1080, height: 600),
@@ -2681,11 +2704,7 @@ final class VLCPlayerWindowManager {
         // (2026-10-01 review #12).
         VLCBridge.shared.ensurePlayer()
 
-        let playerView = AnyView(
-            VLCPlayerView(device: placeholderDevice, initialURL: "")
-                .environmentObject(appState)
-                .id(placeholderDevice.DeviceID)
-        )
+        let playerView = makeHostedPlayerView(device: placeholderDevice, initialURL: "", appState: appState)
 
         let win = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1080, height: 600),

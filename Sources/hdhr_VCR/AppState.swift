@@ -661,7 +661,7 @@ final class AppState: ObservableObject {
             stop()
         }
     }
-    private var recordingRelayClaim = WebServerClaimFlag()      // held while watchRecordingInApp's relay session is open
+    private var recordingRelayClaim = WebServerClaimFlag()      // held while a Watch Now or FEED relay session is open
     private var virtualTunerWebServerClaim = WebServerClaimFlag()  // held while updateVirtualTunerPresence's relay is advertised
 
     // Exponential backoff for repeated guide API failures per device.
@@ -1424,15 +1424,16 @@ final class AppState: ObservableObject {
                 // Only one hdhrVCRplus instance's FEED should ever be live for a given source tuner
                 // on the network at a time (explicit user direction 2026-09-25). `devices` here is
                 // always this instance's own self-excluded view (excludingOwnVirtualTuner strips our
-                // own active relay's entry at the point discoverDevices/probeForNewDevices assigns
-                // into it) — so ANY isVirtualRelay entry still matching our own `id` is unambiguously
-                // a different machine, not an echo of ourselves. Detects the rare race where two Macs
+                // own active relay's entry — matched by ID *and* our own IP, so another Mac's
+                // same-ID relay survives — at the point discoverDevices/probeForNewDevices assigns
+                // into it) — so ANY available isVirtualRelay entry still matching our own `id` is a
+                // different machine, not an echo of ourselves. Detects the rare race where two Macs
                 // both start relaying the same source tuner before either sees the other (both passed
                 // the pre-start check below in the same probe window) — the pre-start check alone
                 // can't catch this, since it only runs once, before either side has anything to see.
                 // Checked before touching the network below — this decision needs nothing but the
                 // already-known device list.
-                if let conflict = devices.first(where: { $0.DeviceID == id && $0.isVirtualRelay }) {
+                if let conflict = devices.first(where: { $0.DeviceID == id && $0.isVirtualRelay && $0.isAvailable }) {
                     // recordingLaunchedAt (this instance's own real wall-clock launch time), not
                     // show_next (the guide's scheduled air time) — two instances scheduling the same
                     // guide-sourced airing produce byte-identical show_next by construction, which
@@ -1526,14 +1527,26 @@ final class AppState: ObservableObject {
 
     // Never merge this instance's own currently-active virtual tuner back into `devices` via
     // normal discovery — see VirtualTunerService's own doc comment. Another instance's virtual
-    // tuner (a different DeviceID) is deliberately NOT filtered here; only self-exclusion is
-    // required (see the "Rebroadcast an in-progress recording" plan's Guardrails).
+    // tuner is deliberately NOT filtered here; only self-exclusion is required (see the
+    // "Rebroadcast an in-progress recording" plan's Guardrails).
+    //
+    // Matches on DeviceID *and* host (2026-10-02): relay DeviceIDs are deterministic per source
+    // tuner (VirtualTunerService.relayDeviceID), so another Mac relaying the same physical tuner
+    // advertises the exact same ID. Filtering on ID alone stripped that Mac's relay too, which made
+    // updateVirtualTunerPresence()'s two-Macs conflict check (conflictShouldYield) unreachable in
+    // the very race it exists for — both kept relaying forever. A same-ID entry whose LocalIP is
+    // one of this Mac's own addresses (or unknown — conservatively assumed ours) is us; any other
+    // LocalIP is a different machine and is kept.
     // Internal, not private: exercised directly by VirtualTunerGuardrailTests (no live UDP/network
     // discovery available in a unit test — this is the one seam that lets self-exclusion be
-    // asserted without one).
-    func excludingOwnVirtualTuner(_ discovered: [HDHRDevice]) -> [HDHRDevice] {
+    // asserted without one). `ownIPs` is injectable for the same reason.
+    func excludingOwnVirtualTuner(_ discovered: [HDHRDevice], ownIPs: Set<String>? = nil) -> [HDHRDevice] {
         guard let id = activeVirtualTunerDeviceID else { return discovered }
-        return discovered.filter { $0.DeviceID != id }
+        let mine = ownIPs ?? Set(availableNetworkInterfaces().map(\.ip) + ["127.0.0.1"])
+        return discovered.filter { d in
+            guard d.DeviceID == id else { return true }
+            return !(d.LocalIP.isEmpty || mine.contains(d.LocalIP))
+        }
     }
 
     func discoverDevices(knownHosts: [String] = [], attempts: Int = 3) async {
@@ -1586,7 +1599,7 @@ final class AppState: ObservableObject {
         // Use a nil `found` to mean discovery itself failed (network error) — still counts as a miss
         // so a device that's offline AND causing discovery failures still reaches the unavailable threshold.
         let found = (try? await hdhrManager.discoverDevices(knownHosts: knownHostsFromShows(), interface: config.Network_interface))
-            .map(excludingOwnVirtualTuner)
+            .map { excludingOwnVirtualTuner($0) }
         let existingIDs = Set(devices.map { $0.DeviceID })
 
         // Merge-update DeviceAuth + LocalIP on seen devices; increment missedProbes on unseen ones.
@@ -5209,10 +5222,19 @@ final class AppState: ObservableObject {
         let cacheDir  = NSHomeDirectory() + "/Library/Caches/hdhrVCRplus/feed-cache"
         let cachePath = "\(cacheDir)/\(sessionId).ts"
 
+        // The returned URL is served by this Mac's own web server — claim it the same way
+        // watchRecordingInApp does, or with Sharing off (and no recording/guide window holding a
+        // claim) nothing is listening on 127.0.0.1 and VLC just errors out. Claimed before the
+        // startup poll below so the async NWListener bind has that window to finish. Released by
+        // playerWindowDidClose (releaseRecordingRelayIfNeeded), or in fail() if no window is open
+        // to do it later.
+        recordingRelayClaim.claim { ensureWebServerRunning() }
+
         func fail() -> (url: String, sessionId: String, startedAt: Date)? {
             recordingManager.stopFeedCachePull(sessionId: sessionId)
             feedCacheSessions.removeValue(forKey: sessionId)
             try? FileManager.default.removeItem(atPath: cachePath)
+            if mgr.currentTitle == nil { releaseRecordingRelayIfNeeded() }
             let alert = NSAlert()
             alert.messageText = "Couldn't Start FEED Relay"
             alert.informativeText = "Could not connect to the remote recording — try again from the source Mac's menu."
@@ -5376,6 +5398,7 @@ final class AppState: ObservableObject {
         // The UUID (not just device id) ensures switching raw↔H.264, or re-watching, never aliases
         // two different sessions onto the same id.
         let sessionId = "\(device.DeviceID)-\(UUID().uuidString)"
+        recordingRelayClaim.claim { ensureWebServerRunning() }   // see startFeedCacheSession's identical claim
         webServer.registerFeedRelaySession(id: sessionId, remoteURL: remoteURL)
         if slot == .primary {
             mgr.setFeedRelayTracking(remoteURL: remoteURL, sessionId: sessionId)
@@ -5827,7 +5850,8 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Balances the ensureWebServerRunning() call in watchRecordingInApp(_:) — called from
+    /// Balances the ensureWebServerRunning() claim taken by watchRecordingInApp(_:) and the FEED
+    /// session starters (startFeedCacheSession/startFeedLocalRelay) — called from
     /// VLCPlayerWindowManager.playerWindowDidClose() on every player window close, a no-op unless
     /// this session actually used the recording relay.
     func releaseRecordingRelayIfNeeded() {

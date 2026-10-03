@@ -240,8 +240,8 @@ struct VirtualTunerLiveStreamTests {
     // showed a perfectly healthy client can legitimately stop draining its socket for well over a
     // minute (its own player buffering ahead), so a real, working connection kept getting killed and
     // forced to reconnect at a new live-edge offset — the actual mechanism behind a "the relay
-    // doesn't work" report. Removed entirely (see WebServer.swift's growingFileNoTimeout doc
-    // comment): every streamGrowingFile caller now shares one effectively-unbounded timeout, relying
+    // doesn't work" report. Removed entirely (see WebServer.swift's sendStreamChunk doc
+    // comment): every streamGrowingFile send is now untimed, relying
     // on real conn.state transitions to detect a genuinely dead peer instead of guessing from send
     // timing. This test proves it holds: a raw-socket client that stops calling recv() entirely for
     // 75s — comfortably longer than either retired threshold — while the source file keeps growing

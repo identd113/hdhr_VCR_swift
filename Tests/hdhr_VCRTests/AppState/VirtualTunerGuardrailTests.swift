@@ -14,9 +14,28 @@ struct VirtualTunerGuardrailTests {
     @Test func excludingOwnVirtualTuner_dropsDeviceMatchingOwnActiveID() async {
         let state = await makeTestAppState()
         await MainActor.run { state.activeVirtualTunerDeviceID = "FEEDABCD" }
-        let discovered = [HDHRDevice.test(id: "FEEDABCD"), HDHRDevice.test(id: "1010ABCD")]
-        let filtered = await MainActor.run { state.excludingOwnVirtualTuner(discovered) }
+        let discovered = [HDHRDevice.test(id: "FEEDABCD", ip: "192.168.1.100"), HDHRDevice.test(id: "1010ABCD")]
+        let filtered = await MainActor.run { state.excludingOwnVirtualTuner(discovered, ownIPs: ["192.168.1.100"]) }
         #expect(filtered.map { $0.DeviceID } == ["1010ABCD"])
+    }
+
+    // Relay DeviceIDs are deterministic per *source* tuner, so a second Mac relaying the same
+    // physical tuner advertises our exact ID. It must survive self-exclusion, or
+    // updateVirtualTunerPresence()'s conflict-yield check can never see it (both Macs relay forever).
+    @Test func excludingOwnVirtualTuner_keepsSameIDRelayFromAnotherMac() async {
+        let state = await makeTestAppState()
+        await MainActor.run { state.activeVirtualTunerDeviceID = "FEEDABCD" }
+        let otherMac = HDHRDevice.test(id: "FEEDABCD", ip: "192.168.1.50", isVirtualRelay: true)
+        let filtered = await MainActor.run { state.excludingOwnVirtualTuner([otherMac], ownIPs: ["192.168.1.100"]) }
+        #expect(filtered.map { $0.LocalIP } == ["192.168.1.50"])
+    }
+
+    @Test func excludingOwnVirtualTuner_dropsSameIDWithUnknownIP() async {
+        let state = await makeTestAppState()
+        await MainActor.run { state.activeVirtualTunerDeviceID = "FEEDABCD" }
+        let unknown = HDHRDevice.test(id: "FEEDABCD", ip: "", isVirtualRelay: true)
+        let filtered = await MainActor.run { state.excludingOwnVirtualTuner([unknown], ownIPs: ["192.168.1.100"]) }
+        #expect(filtered.isEmpty)
     }
 
     @Test func excludingOwnVirtualTuner_keepsAnotherInstancesRelay() async {
@@ -158,7 +177,7 @@ struct VirtualTunerGuardrailTests {
 
     @Test func relayRawViewerCount_disconnectNeverGoesNegative() async {
         // A stray extra disconnect (e.g. both a real send-error path and a timeout racing to fire
-        // for the same connection, however unlikely given sendWithTimeout's own single-fire guard)
+        // for the same connection, however unlikely given conn.send's single completion)
         // must clamp at 0, not underflow into a negative count that would then need two connects to
         // recover from.
         let state = await makeTestAppState()

@@ -1516,67 +1516,21 @@ final class WebServer: @unchecked Sendable {
         }
     }
 
-    // Bounds a single conn.send(...) completion — Network.framework's own send has no built-in
-    // timeout, so a peer that stops draining its TCP receive window (rather than cleanly closing)
-    // leaves .contentProcessed's completion pending forever, with zero error/disconnect ever
-    // surfacing on this side. `growingFileNoTimeout` (below) is the one value every streamGrowingFile
-    // caller uses — a finite-but-huge stand-in rather than literally infinite, matching this file's
-    // own established idiom for "unbounded" (pumpTranscodeProxy's URLSessionConfiguration timeouts,
-    // 86400 = one day) rather than risking DispatchTime overflow from an actually-infinite deadline.
-    // A genuinely dead peer still self-heals eventually via `conn.state` transitioning to
-    // `.cancelled`/`.failed` (checked once per recursion in pumpGrowingFile) once the OS's own TCP
-    // retransmission timeout gives up on it — this wrapper exists only to bound the case where
-    // Network.framework's completion itself never fires at all, not to second-guess a still-alive
-    // connection that's merely slow to drain.
+    // Sends `content` on `conn`, calling `completion(failureReason)` once the send's own completion
+    // fires (nil on success, the error's description on failure). Deliberately no send timeout:
+    // a per-send deadline short enough to catch a truly-frozen peer also catches perfectly healthy
+    // ones (a player legitimately stops draining its socket once its buffer is ahead — tried at 15s
+    // and 60s, dropped 2026-09-05, see issues_resolved.md); a genuinely dead peer still self-heals
+    // via `conn.state` going `.cancelled`/`.failed`, checked once per pumpGrowingFile recursion.
     //
-    // A shorter, caller-specific timeout for the actual outbound relay to a real remote viewer
-    // (handleVirtualTunerStream) was tried twice — 15s, then 60s after 15s proved too tight — and
-    // dropped entirely 2026-09-05: any per-send deadline short enough to catch a truly-frozen peer
-    // in reasonable time is also short enough to catch a perfectly healthy one. Live-testing a real
-    // raw (untranscoded) FEED viewer showed the "timed out" line firing routinely — 5 times in one
-    // short session — against a connection that had just sent real data moments before: the player
-    // on the receiving end (this app's own VLCBridge, playing the relay like any other stream)
-    // legitimately stops draining the socket for a stretch once its own buffer is comfortably ahead,
-    // the same "can legitimately go quiet" behavior VLCBridge's own headless transcode-source fetch
-    // already forced this file to special-case once before (a first version of the 15s timeout also
-    // caught that source connection uniformly, tearing down active transcode sessions the same way).
-    // Killing a relay connection over this doesn't recover anything a real failure wouldn't already
-    // surface via `conn.state` — it just forces an unnecessary reconnect at a new live-edge offset,
-    // which is what a "the relay doesn't work" report actually looked like: stutters and skips ahead
-    // every 15-30s, not a stream that never starts. The correct model for a growing recording file
-    // is to keep reading and polling it until the connection is genuinely over — not to guess "hung"
-    // from send timing — so every streamGrowingFile caller now shares this same generous value.
-    private static let growingFileNoTimeout: TimeInterval = 86400
-
-    // Sends `content` on `conn`, calling `completion(failureReason)` exactly once — either when the
-    // send's own completion fires (nil on success, the error's description on failure), or after
-    // `timeout` seconds if the completion never fires at all (a synthetic "timed out ..." reason —
-    // see growingFileNoTimeout's own doc comment for why this exists). Whichever fires first
-    // wins; the other is silently dropped. Both the send completion and the timeout timer run on
-    // `queue` (every NWConnection in this file is started with `queue`, see handleConnection), so
-    // guarding against double-firing needs no lock.
-    // The timeout fallback is a cancellable DispatchWorkItem, not a bare asyncAfter closure — the
-    // overwhelmingly common case is the real send completing well before `timeout` fires (up to
-    // 86400s for growingFileNoTimeout's callers), and an uncancelled asyncAfter leaves that closure
-    // (retaining its captures) sitting on `queue` until it finally fires and no-ops. Cancelling it
-    // right on the success path releases that promptly instead of letting them pile up across a
-    // long streaming session's many chunks. Found in review 2026-09-04 — new with sendWithTimeout
-    // itself, not a regression in older code.
-    private func sendWithTimeout(_ content: Data, on conn: NWConnection, timeout: TimeInterval,
-                                  completion: @escaping (String?) -> Void) {
-        var finished = false
-        let timeoutWork = DispatchWorkItem {
-            guard !finished else { return }
-            finished = true
-            completion("timed out after \(Int(timeout))s waiting for client to accept data")
-        }
+    // This used to be `sendWithTimeout(timeout: 86400)`, arming a cancellable 24h DispatchWorkItem
+    // per send. Cancelling a work item does NOT release its asyncAfter timer — libdispatch keeps the
+    // timer source and closure alive until the deadline — so every ~1.5KB chunk leaked ~600 bytes
+    // for a day (94k live dispatch_source_t observed after a few minutes of streaming, 2026-10-02).
+    private func sendStreamChunk(_ content: Data, on conn: NWConnection, completion: @escaping (String?) -> Void) {
         conn.send(content: content, completion: .contentProcessed { err in
-            guard !finished else { return }
-            finished = true
-            timeoutWork.cancel()
             completion(err.map { String(describing: $0) })
         })
-        queue.asyncAfter(deadline: .now() + timeout, execute: timeoutWork)
     }
 
     // Called on fileIOQueue (see handleWatchRecording) — FileHandle open/seek/attributesOfItem
@@ -1757,7 +1711,7 @@ final class WebServer: @unchecked Sendable {
         glog("[WebServer] watch-recording OPEN show=\(showId) path=\(path) startOffset=\(initialBytes)")
         queue.async { [weak self] in
             guard let self else { return }
-            self.sendWithTimeout(Data(header.utf8), on: conn, timeout: Self.growingFileNoTimeout) { [weak self] reason in
+            self.sendStreamChunk(Data(header.utf8), on: conn) { [weak self] reason in
                 guard let self, reason == nil else {
                     self?.fileIOQueue.async { handle.closeFile() }
                     conn.cancel()
@@ -2014,15 +1968,12 @@ final class WebServer: @unchecked Sendable {
         let sendNow = { [weak self] in
             guard let self else { return }
             if isPaced { pacer?.recordPacedSend(chunk.count) }
-            self.sendWithTimeout(chunk, on: conn, timeout: Self.growingFileNoTimeout) { [weak self] reason in
+            self.sendStreamChunk(chunk, on: conn) { [weak self] reason in
                 guard let self, reason == nil else {
                     self?.fileIOQueue.async { handle.closeFile() }
-                    // Explicit cancel — a real send error usually means the OS already knows the
-                    // connection is dead, but the synthetic timeout case (the peer stopped draining
-                    // its receive window without the socket itself ever erroring) does not; without
-                    // this, a stalled connection stays open indefinitely from this side even after
-                    // giving up on it. cancel() is idempotent (WebServer.stop()'s own comment), so
-                    // calling it here even when the connection may already be dying is harmless.
+                    // Explicit cancel — a send error usually means the OS already knows the
+                    // connection is dead, but cancel() is idempotent (WebServer.stop()'s own
+                    // comment), so calling it here is harmless and guarantees teardown.
                     conn.cancel()
                     glog("[WebServer] watch-recording show=\(showId) client disconnected after \(newTotal) bytes: \(reason ?? "unknown")")
                     onStreamEnded?()

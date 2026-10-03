@@ -317,7 +317,7 @@ final class RecordingManager {
         // No --max-time — this runs until explicitly killed (stopFeedCachePull, on window close /
         // transcode toggle / app exit) or the remote closes the connection on its own (curl exits,
         // caught by isFeedCachePullRunning's reap), mirroring streamGrowingFile's own
-        // growingFileNoTimeout philosophy on the serving side.
+        // no-send-timeout philosophy (WebServer.sendStreamChunk) on the serving side.
         curlArgs += [url, "-o", outputPath]
 
         let dir = (outputPath as NSString).deletingLastPathComponent
