@@ -58,7 +58,6 @@ struct AppStateRecordingEngineTests {
         let manager = RecordingManager(curlExecutablePath: scriptPath)
         let show = makeShow(recordDir: tempRecordDir(), next: Date().addingTimeInterval(-5), end: Date().addingTimeInterval(1800))
         let state = makeTestAppState(shows: [show], devices: [makeDevice()], recordingManager: manager)
-        state.maxDiskPct = 100
         state.config.Min_disk_free_gb = 0  // real free space on the test machine is irrelevant to this test  // real disk-usage % on the test machine is irrelevant to this test
 
         await state.startRecording(index: 0)
@@ -80,7 +79,6 @@ struct AppStateRecordingEngineTests {
         let manager = RecordingManager(curlExecutablePath: scriptPath)
         let show = makeShow(recordDir: tempRecordDir(), next: Date().addingTimeInterval(-5), end: Date().addingTimeInterval(1800))
         let state = makeTestAppState(shows: [show], devices: [makeDevice()], recordingManager: manager)
-        state.maxDiskPct = 100
         state.config.Min_disk_free_gb = 0
 
         await state.startRecording(index: 0)
@@ -132,7 +130,6 @@ struct AppStateRecordingEngineTests {
 
         let managerUnsupported = RecordingManager(curlExecutablePath: scriptUnsupported)
         let stateUnsupported = makeTestAppState(shows: [showUnsupported], devices: [unsupportedDevice], recordingManager: managerUnsupported)
-        stateUnsupported.maxDiskPct = 100
         stateUnsupported.config.Min_disk_free_gb = 0
         await stateUnsupported.startRecording(index: 0)
         // Generous timeout — under a loaded test run (many suites spawning real subprocesses in
@@ -146,7 +143,6 @@ struct AppStateRecordingEngineTests {
 
         let managerSupported = RecordingManager(curlExecutablePath: scriptSupported)
         let stateSupported = makeTestAppState(shows: [showSupported], devices: [supportedDevice], recordingManager: managerSupported)
-        stateSupported.maxDiskPct = 100
         stateSupported.config.Min_disk_free_gb = 0
         await stateSupported.startRecording(index: 0)
         await waitUntil(timeout: 8) { FileManager.default.fileExists(atPath: argsLogSupported) }
@@ -161,7 +157,6 @@ struct AppStateRecordingEngineTests {
         let manager = RecordingManager(curlExecutablePath: scriptPath)
         let show = makeShow(recordDir: tempRecordDir(), next: Date().addingTimeInterval(-5), end: Date().addingTimeInterval(1800))
         let state = makeTestAppState(shows: [show], devices: [makeDevice()], recordingManager: manager)
-        state.maxDiskPct = 100
         state.config.Min_disk_free_gb = 0
         state.config.Write_metadata_sidecar = true
 
@@ -187,7 +182,6 @@ struct AppStateRecordingEngineTests {
         let manager = RecordingManager(curlExecutablePath: scriptPath)
         let show = makeShow(recordDir: tempRecordDir(), next: Date().addingTimeInterval(-5), end: Date().addingTimeInterval(1800))
         let state = makeTestAppState(shows: [show], devices: [makeDevice()], recordingManager: manager)
-        state.maxDiskPct = 100
         state.config.Min_disk_free_gb = 0
         state.config.Write_metadata_sidecar = false  // default
 
@@ -203,7 +197,6 @@ struct AppStateRecordingEngineTests {
         let manager = RecordingManager(curlExecutablePath: "/no/such/binary-\(UUID().uuidString)")
         let show = makeShow(recordDir: tempRecordDir(), next: Date().addingTimeInterval(-5), end: Date().addingTimeInterval(1800))
         let state = makeTestAppState(shows: [show], devices: [makeDevice()], recordingManager: manager)
-        state.maxDiskPct = 100
         state.config.Min_disk_free_gb = 0  // real free space on the test machine is irrelevant to this test  // real disk-usage % on the test machine is irrelevant to this test
 
         await state.startRecording(index: 0)
@@ -239,7 +232,6 @@ struct AppStateRecordingEngineTests {
         var show = makeShow(recordDir: tempRecordDir(), next: Date().addingTimeInterval(-5), end: guideEnd)
         show.show_bonus_time = true
         let state = makeTestAppState(shows: [show], devices: [makeDevice()], recordingManager: manager)
-        state.maxDiskPct = 100
         state.config.Min_disk_free_gb = 0  // real free space on the test machine is irrelevant to this test
         state.config.Sports_padding_enabled = true
         state.config.Sports_padding_minutes = 30
@@ -256,7 +248,6 @@ struct AppStateRecordingEngineTests {
         var show = makeShow(recordDir: tempRecordDir(), next: Date().addingTimeInterval(-5), end: guideEnd)
         show.show_bonus_time = true
         let state = makeTestAppState(shows: [show], devices: [makeDevice()], recordingManager: manager)
-        state.maxDiskPct = 100
         state.config.Min_disk_free_gb = 0  // real free space on the test machine is irrelevant to this test
         state.config.Sports_padding_enabled = false  // master toggle off — per-show flag alone isn't enough
         state.config.Sports_padding_minutes = 30
@@ -272,7 +263,6 @@ struct AppStateRecordingEngineTests {
         var show = makeShow(recordDir: tempRecordDir(), next: Date().addingTimeInterval(-5), end: guideEnd)
         show.show_bonus_time = false  // this show opted out — a global padding toggle can't override that
         let state = makeTestAppState(shows: [show], devices: [makeDevice()], recordingManager: manager)
-        state.maxDiskPct = 100
         state.config.Min_disk_free_gb = 0  // real free space on the test machine is irrelevant to this test
         state.config.Sports_padding_enabled = true
         state.config.Sports_padding_minutes = 30
@@ -375,7 +365,6 @@ struct AppStateRecordingEngineTests {
         let manager = RecordingManager(curlExecutablePath: scriptPath)
         let show = makeShow(recordDir: tempRecordDir(), next: Date().addingTimeInterval(-5), end: Date().addingTimeInterval(120))
         let state = makeTestAppState(shows: [show], devices: [makeDevice()], recordingManager: manager)
-        state.maxDiskPct = 100
         state.config.Min_disk_free_gb = 0  // real free space on the test machine is irrelevant to this test  // real disk-usage % on the test machine is irrelevant to this test
 
         await state.idleLoop()

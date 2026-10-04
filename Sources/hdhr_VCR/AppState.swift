@@ -827,11 +827,6 @@ final class AppState: ObservableObject {
     // field at all, so this constant only ever bounds the one abnormal-stop code path.
     private static let abnormalStopGraceWindow: TimeInterval = 120
     private var failThreshold: Int { config.Fail_count_setting }
-    // var + internal (not private let) is a test seam: diskOK() checks this against the real
-    // filesystem, so a test machine whose real disk happens to be over 93% used would otherwise
-    // fail every startRecording/idleLoop test regardless of the actual behavior under test. Real
-    // app behavior is unchanged — nothing else in the app ever sets this away from the default.
-    var maxDiskPct: Double = 93
     // Set true while the MenuBarExtra menu is open (tracked via MenuContent onAppear/onDisappear).
     // Guards guideByDevice.didSet and idle-loop rebuilds so @Published changes don't redraw the menu.
     var menuIsOpen: Bool = false
@@ -3242,11 +3237,11 @@ final class AppState: ObservableObject {
         }
         guard diskOK(for: show) else {
             glog("[\(show.show_title)] DISK FULL — skipping recording", level: .warning)
-            recordShowFailure(index: index, reason: "Disk over \(Int(maxDiskPct))% — free up space")
-            notify("Recording Skipped", body: show.show_title, subtitle: "Disk over \(Int(maxDiskPct))%")
+            recordShowFailure(index: index, reason: "Less than \(config.Min_disk_free_gb) GB free — free up space")
+            notify("Recording Skipped", body: show.show_title, subtitle: "Less than \(config.Min_disk_free_gb) GB free")
             fireDiscordCard(showId: show.show_id, event: "💾 Recording Skipped", color: 0xE67E22,
                             enabled: config.Discord_on_skipped,
-                            extra: [("Reason", "Disk over \(Int(maxDiskPct))% — free up space", false)])
+                            extra: [("Reason", "Less than \(config.Min_disk_free_gb) GB free — free up space", false)])
             pushShowUpdate(type: "show_updated", channel: show.show_channel, device: show.hdhr_record, rebuildMenu: false)
             return
         }
@@ -4508,7 +4503,7 @@ final class AppState: ObservableObject {
         if free < minFreeBytes * 2 {
             glog("[\(show.show_title)] DISK LOW — \(String(format: "%.1f", freeGB)) GB free (threshold \(config.Min_disk_free_gb) GB)", level: .warning)
         }
-        return ((total - free) / total * 100) < maxDiskPct && free > minFreeBytes
+        return free > minFreeBytes
     }
 
     func notify(_ title: String, body: String, subtitle: String,
@@ -5692,7 +5687,7 @@ final class AppState: ObservableObject {
         let elapsed      = recordingElapsedSeconds(show)
         let startSeconds = fromBeginning ? 0 : max(0, elapsed - Self.recordingLiveEdgeBackoffSeconds)
         let startOffset  = recordingByteOffset(for: show, atSeconds: startSeconds) ?? 0
-        let relayURL = "http://127.0.0.1:\(config.Web_server_port)/api/watch-recording?show=\(show.show_id)&start=\(startOffset)"
+        let relayURL = "http://127.0.0.1:\(webServer.activePort)/api/watch-recording?show=\(show.show_id)&start=\(startOffset)"
         glog("[Watch] '\(show.show_title)' from disk via local relay as secondary (PiP): \(show.show_recording_path)")
         watchAsSecondary(url: relayURL, title: show.show_title, device: device)
     }
@@ -5821,7 +5816,7 @@ final class AppState: ObservableObject {
         let elapsed         = recordingElapsedSeconds(show)
         let startSeconds    = fromBeginning ? 0 : max(0, elapsed - Self.recordingLiveEdgeBackoffSeconds)
         let startOffset     = recordingByteOffset(for: show, atSeconds: startSeconds) ?? 0
-        let relayURL = "http://127.0.0.1:\(config.Web_server_port)/api/watch-recording?show=\(show.show_id)&start=\(startOffset)"
+        let relayURL = "http://127.0.0.1:\(webServer.activePort)/api/watch-recording?show=\(show.show_id)&start=\(startOffset)"
         let mgr = VLCPlayerWindowManager.shared
         // Already in the PiP → promote it (Tab) instead of a duplicate primary. "From the
         // beginning" is a deliberate different position, so it still opens normally.
@@ -5989,7 +5984,7 @@ final class AppState: ObservableObject {
               let byteOffset = recordingRelayByteOffset(source, atSeconds: seconds) else { return }
         let elapsed = recordingRelayElapsedSeconds(source)
         let clampedSeconds = max(0, min(seconds, elapsed))
-        let relayURL = "http://127.0.0.1:\(config.Web_server_port)/api/watch-recording?show=\(showId)&start=\(byteOffset)"
+        let relayURL = "http://127.0.0.1:\(webServer.activePort)/api/watch-recording?show=\(showId)&start=\(byteOffset)"
         glog("[Watch] seeking '\(source.title)' to \(Int(clampedSeconds))s (byte \(byteOffset))")
         VLCBridge.shared.play(url: relayURL)
         VLCBridge.shared.beginRecordingSeek(showId: showId, recordingStart: source.recordingStart, seekBaseSeconds: clampedSeconds)
