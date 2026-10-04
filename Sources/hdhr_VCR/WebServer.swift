@@ -1595,6 +1595,9 @@ final class WebServer: @unchecked Sendable {
         // stream (~1.4 MB/s), so every new connection started badly throttled.
         private var observedBytesPerSecond: Double
         private var hasRealMeasurement: Bool
+        // maybeUpdateObservedRate runs on fileIOQueue; delayBeforeSending/recordPacedSend on the
+        // server queue — every access to the mutable fields above goes through this lock.
+        private let lock = NSLock()
         private static let fallbackSeedBytesPerSecond: Double = 1_000_000
         private static let measureInterval: TimeInterval = 2.0
         // How far ahead of a perfectly steady real-time pace delivery is allowed to run before this
@@ -1614,6 +1617,7 @@ final class WebServer: @unchecked Sendable {
         // no-op the rest of the time), so it self-throttles regardless of how often pumpGrowingFile
         // itself ticks (every 20ms once caught up to the live edge).
         func maybeUpdateObservedRate(currentFileSize: Int) {
+            lock.lock(); defer { lock.unlock() }
             let now = Date()
             let elapsed = now.timeIntervalSince(lastMeasuredAt)
             guard elapsed >= Self.measureInterval else { return }
@@ -1636,6 +1640,7 @@ final class WebServer: @unchecked Sendable {
         // delivery is already at or behind pace — this only ever holds bytes back, never speeds
         // anything up beyond what pumpGrowingFile's own read cadence already provides.
         func delayBeforeSending(chunkBytes: Int) -> TimeInterval {
+            lock.lock(); defer { lock.unlock() }
             let now = Date()
             let since = pacedSince ?? now
             pacedSince = since
@@ -1643,7 +1648,7 @@ final class WebServer: @unchecked Sendable {
             return max(0, since.addingTimeInterval(wallClockNeeded).timeIntervalSince(now))
         }
 
-        func recordPacedSend(_ n: Int) { pacedBytes += n }
+        func recordPacedSend(_ n: Int) { lock.lock(); pacedBytes += n; lock.unlock() }
     }
 
     private func streamGrowingFile(path: String, showId: String, startOffset: Int, conn: NWConnection,
@@ -3817,7 +3822,7 @@ final class WebServer: @unchecked Sendable {
             ("SIGNAL_QUALITY_ENABLED", String(state.config.Signal_quality_enabled)),
             ("SKIP_DUP_ENABLED", String(state.config.Series_subfolder_enabled && state.config.Skip_recorded_episodes)),
             ("DEFAULT_TRANSCODE", validTranscode),
-            ("DEFAULT_DEV", jsEscapeForScript(defaultDev)),
+            ("DEFAULT_DEV", jsEscapeForSingleQuotedString(defaultDev)),
             ("WIN_START", String(winStart)),
             ("WIN_SEC", String(winSec)),
             ("APP_VERSION", appVersion),
@@ -4562,6 +4567,28 @@ final class WebServer: @unchecked Sendable {
     // replaced with their \uXXXX equivalents before inserting JSON into HTML.
     // Internal (not private) so WebServerHelperTests can exercise this directly — it's the
     // </script>-breakout guard for every JSON literal embedded in the page (tuners, etc.).
+    /// Escapes `s` for use *inside* a single-quoted JS string literal (guide.js's `setDev('{{DEFAULT_DEV}}')`).
+    /// `jsEscapeForScript` only stops a `</script>` breakout; a quote/backslash in a LAN-advertised
+    /// DeviceID would still end the literal early and inject code (2026-10-01 review #25).
+    func jsEscapeForSingleQuotedString(_ s: String) -> String {
+        var out = ""
+        for u in s.unicodeScalars {
+            switch u {
+            case "\\": out += "\\\\"
+            case "'":  out += "\\u0027"
+            case "\"": out += "\\u0022"
+            case "<":  out += "\\u003c"
+            case ">":  out += "\\u003e"
+            case "&":  out += "\\u0026"
+            default:
+                if u.value < 0x20 || u.value == 0x2028 || u.value == 0x2029 {
+                    out += String(format: "\\u%04x", u.value)
+                } else { out.unicodeScalars.append(u) }
+            }
+        }
+        return out
+    }
+
     func jsEscapeForScript(_ s: String) -> String {
         s.replacingOccurrences(of: "<",  with: "\\u003c")
          .replacingOccurrences(of: ">",  with: "\\u003e")

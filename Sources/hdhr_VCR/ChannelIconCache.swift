@@ -9,7 +9,10 @@ actor ChannelIconCache {
     static let shared = ChannelIconCache()
 
     private var mem: [String: NSImage] = [:]
-    private var failedURLs: Set<String> = []
+    // URL → when it last failed. A failure suppresses re-fetching only for `failureRetryInterval`
+    // (e.g. the app launched before Wi-Fi was up must not leave logos blank until relaunch).
+    private var failedURLs: [String: Date] = [:]
+    private static let failureRetryInterval: TimeInterval = 600
     private let dir: URL
     // De-dupes concurrent callers requesting the same cold URL — without this, several views
     // referencing the same not-yet-cached icon (e.g. multiple shows sharing a station logo) could
@@ -52,7 +55,7 @@ actor ChannelIconCache {
             // counted as missing on every future prefetch pass forever, keeping AppState on the
             // "cold cache" branch (re-showing "Caching N channel icon(s)…") for nothing on every
             // guide refresh (found in code review 2026-09-25).
-            if failedURLs.contains(url) { return false }
+            if hasRecentFailure(url) { return false }
             return !onDisk.contains(cacheFileName(for: url))
         }.count
     }
@@ -67,9 +70,18 @@ actor ChannelIconCache {
         return result
     }
 
+    /// True while `url`'s last failure is inside the retry window; an expired entry is dropped so
+    /// the next call re-attempts the download.
+    private func hasRecentFailure(_ url: String) -> Bool {
+        guard let at = failedURLs[url] else { return false }
+        if Date().timeIntervalSince(at) < Self.failureRetryInterval { return true }
+        failedURLs.removeValue(forKey: url)
+        return false
+    }
+
     func image(for urlString: String) async -> NSImage? {
         if let hit = mem[urlString] { return hit }
-        if failedURLs.contains(urlString) { return nil }
+        if hasRecentFailure(urlString) { return nil }
 
         // A second (or third...) concurrent caller for the same cold URL awaits the same in-flight
         // fetch instead of starting its own — see `inFlight`'s declaration for why.
@@ -95,7 +107,7 @@ actor ChannelIconCache {
               let (data, resp) = try? await URLSession.shared.data(from: url),
               (resp as? HTTPURLResponse)?.statusCode == 200,
               let img = NSImage(data: data) else {
-            failedURLs.insert(urlString)
+            failedURLs[urlString] = Date()
             glog("[Icons] download failed: \(urlString)", level: .warning)
             return nil
         }

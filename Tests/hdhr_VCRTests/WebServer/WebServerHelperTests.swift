@@ -43,6 +43,20 @@ struct WebServerHelperTests {
         #expect(ws.jsEscapeForScript(row.input) == row.expected)
     }
 
+    // MARK: jsEscapeForSingleQuotedString() — setDev('…') literal breakout guard
+
+    @Test(arguments: [
+        ("1234ABCD", "1234ABCD"),                                  // plainIDUntouched
+        ("x');alert(1);//", "x\\u0027);alert(1);//"),               // singleQuoteCannotEndLiteral
+        ("a\\b", "a\\\\b"),                                        // backslashEscaped
+        ("</script>", "\\u003c/script\\u003e"),                    // scriptCloseBroken
+        ("a\nb", "a\\u000ab"),                                    // newlineEscaped
+    ] as [(input: String, expected: String)])
+    func jsEscapeSingleQuoted(_ row: (input: String, expected: String)) {
+        let ws = WebServer()
+        #expect(ws.jsEscapeForSingleQuotedString(row.input) == row.expected)
+    }
+
     // MARK: showTypeStr / showStateFromString — round-trip against ShowState
 
     // Mirrors Show.state's own derivation exactly (Models.swift): !is_series → single;
