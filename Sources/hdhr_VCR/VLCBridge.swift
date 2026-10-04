@@ -1067,6 +1067,8 @@ final class VLCBridge: ObservableObject {
         }
         self[slot].mediaPlayer = mpNewFn(inst)
         glog("[VLC] ensurePlayer(\(slot)) — new mediaPlayer created")
+        lastLoggedVolume[slot] = nil   // a fresh player's first setVolume must be logged
+        if slot == .primary { reapplyChosenAudioDevice() }
         // Re-attach drawable if it was set before the player was ready.
         if let view = self[slot].drawableView, let mp = self[slot].mediaPlayer {
             _mpSetNSO?(mp, Unmanaged.passUnretained(view).toOpaque())
@@ -1149,6 +1151,8 @@ final class VLCBridge: ObservableObject {
         }
 
         // Capture "before" values before any mutation below.
+        let oldPrimaryPixelSize = videoPixelSize
+        let oldSecondaryPixelSize = secondaryVideoPixelSize
         let oldPrimaryMedia   = primaryState.currentMedia
         let oldSecondaryMedia = secondaryState.currentMedia
         let oldPrimaryRetained   = primaryState.retainedDrawable
@@ -1209,7 +1213,7 @@ final class VLCBridge: ObservableObject {
         spuTracks = []
         tracksFetched = false   // cheap re-fetch on next tick, not a reconnect
         spuFetchAttempts = 0
-        videoPixelSize = nil    // recomputed on next tick
+        videoPixelSize = oldSecondaryPixelSize   // swapped, not nil — no fallback-aspect gap for up to 3s
         hasVideoFrame = oldSecondaryIsPlaying   // the promoted stream was already decoding/visible
         readyToReveal = oldSecondaryIsPlaying
         playingSince = oldSecondaryIsPlaying ? Date() : nil
@@ -1217,7 +1221,7 @@ final class VLCBridge: ObservableObject {
         // A promoted stream that wasn't playing yet still needs the first-frame poll to ever flip
         // readyToReveal (the auto-start gate).
         if !oldSecondaryIsPlaying { startFastStatePoll() }
-        secondaryVideoPixelSize = nil   // ditto — the newly-secondary stream has its own aspect ratio
+        secondaryVideoPixelSize = oldPrimaryPixelSize   // ditto
 
         hasError  = oldSecondaryHasError
         hasEnded  = oldSecondaryHasEnded
@@ -1243,6 +1247,7 @@ final class VLCBridge: ObservableObject {
         // timer (see stopTimersForPrimaryTerminalState) — restart it so the new primary gets
         // tickPrimary's track lists, pixel size and stall detection (2026-10-01 review #11).
         if statsTimer == nil, currentURL != nil || secondaryURL != nil { startStatsTimer() }
+        reapplyChosenAudioDevice()
         return true
     }
 
@@ -1295,6 +1300,11 @@ final class VLCBridge: ObservableObject {
         // resize/drag) — isPlaying/hasError detection and the rate ramp would silently freeze for
         // the duration, e.g. "Connecting…" sticking until a menu closes. .common includes both
         // .default and .eventTracking, so the timer keeps firing through UI tracking.
+        // Never leave a previous timer running untracked: play(.primary)'s async commit, the secondary's
+        // ensurePlayer and swapSlots can all call this, and a second live timer double-ticks
+        // tickPrimary (halved position deltas → false STALL logs, spurious catchUpToLive — code
+        // review 2026-10-03).
+        statsTimer?.invalidate()
         let timer = Timer(timeInterval: Self.statsTimerInterval, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.tickPrimary()
@@ -1735,7 +1745,22 @@ final class VLCBridge: ObservableObject {
 
     // Primary only — by design the secondary is always muted (setVolume(0, slot: .secondary)), so
     // audio output device routing only ever matters for whichever stream is actually audible.
+    /// The user's chosen output, remembered so it can be re-applied to whichever player is primary:
+    /// `swapSlots()` swaps the player objects, so the promoted one otherwise plays through libvlc's
+    /// default device while the muted, demoted one keeps the user's choice (wrong output after a
+    /// PiP swap — code review 2026-10-03), and `ensurePlayer` creates players with no device set.
+    private var chosenAudioOutput: (output: String, deviceId: String)?
+
+    private func reapplyChosenAudioDevice() {
+        guard let chosen = chosenAudioOutput, let mp = primaryState.mediaPlayer else { return }
+        chosen.output.withCString { outp in
+            chosen.deviceId.withCString { devp in _adevSet?(mp, outp, devp) }
+        }
+        glog("[VLC] reapplied audio device \(chosen.deviceId) to the primary player")
+    }
+
     func setAudioDevice(output: String, deviceId: String) {
+        chosenAudioOutput = (output, deviceId)
         guard let mp = primaryState.mediaPlayer else { return }
         glog("[VLC] setAudioDevice output=\(output) device=\(deviceId)")
         output.withCString { outp in

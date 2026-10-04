@@ -166,6 +166,12 @@ struct VLCPlayerView: View {
     @AppStorage("vlcPipCorner") private var pipCorner: PipCorner = .bottomTrailing
     // Bumped per live channel pick so a switch still waiting on a tuner can tell a newer pick replaced it.
     @State private var switchGeneration = 0
+    // The in-flight tuner-wait switch (cancelled on a newer pick / window close), and whether it has
+    // stopped our own stream — while it has, a second pick still counts as "reusing our tuner"
+    // (currentURL is nil then, so reusesExistingTuner alone would send it down the pre-flight branch,
+    // where AppState.vlcOccupiesTuner still counts the stopped stream → a false "All Tuners Busy").
+    @State private var switchTask: Task<Void, Never>?
+    @State private var ownStreamStoppedForSwitch = false
     // User-chosen PiP size as a fraction of the video pane's width (0 = automatic sizing), set by
     // dragging the thumbnail's inner-corner handle. A fraction (not points) so it keeps scaling with
     // the window like the automatic size does. Aspect ratio is always the stream's native one.
@@ -561,6 +567,13 @@ struct VLCPlayerView: View {
     // slot's already-alive player is pointed at, no window/view recreation. A brief rebuffer on
     // swap is expected, not a regression.
     private func swapPrimaryAndSecondary() {
+        // A Tab-swap during a tuner-wait switch would demote the stopped primary slot — cancel the
+        // pending switch (code review 2026-10-03).
+        if ownStreamStoppedForSwitch {
+            switchGeneration += 1
+            switchTask?.cancel()
+            ownStreamStoppedForSwitch = false
+        }
         let mgr = VLCPlayerWindowManager.shared
         guard bridge.secondaryURL != nil, mgr.secondaryDeviceID != nil else { return }
 
@@ -965,6 +978,10 @@ struct VLCPlayerView: View {
             }
         }
         .onDisappear {
+            // A pending tuner-wait switch must not outlive its window: it would otherwise call
+            // startPlayChannel on a closed window (phantom currentDeviceID, queued pendingURL).
+            switchTask?.cancel()
+            ownStreamStoppedForSwitch = false
             // Safety-net for window close — releasePlayer() is idempotent so calling it here
             // after playerWindowDidClose() already ran is fine. Catches any path where the
             // window delegate didn't fire (e.g. window deallocated without close()).
@@ -1897,6 +1914,10 @@ struct VLCPlayerView: View {
                     VLCBridge.shared.setVolume(0)
                     return
                 }
+                // Any user pick supersedes a pending tuner-wait switch — including picks that go through
+                // watchInApp/watchRemoteRelay/watchRecordingInApp, which never touch switchGeneration.
+                switchGeneration += 1
+                switchTask?.cancel()
                 posterHidden = false
                 posterNSImage = nil
                 VLCBridge.shared.setVolume(0)
@@ -2539,7 +2560,7 @@ struct VLCPlayerView: View {
         // live 2026-09-19: FEED (0 tuners on this device) → live-channel switch, on a device
         // already at capacity from two other machines' recordings, silently hung with no
         // explanation instead of the "All Tuners Busy" alert every other entry point shows.
-        let reusingExistingTunerHere = Self.reusesExistingTuner(
+        let reusingExistingTunerHere = ownStreamStoppedForSwitch || Self.reusesExistingTuner(
             currentDeviceID: VLCPlayerWindowManager.shared.currentDeviceID,
             targetDeviceID: device.DeviceID,
             recordingShowId: bridge.recordingShowId,
@@ -2555,9 +2576,25 @@ struct VLCPlayerView: View {
             // wait for its tuner to actually free before opening the new channel.
             switchGeneration += 1
             let generation = switchGeneration
-            Task {
-                await waitForOwnTunerToFreeIfNeeded()
-                guard generation == switchGeneration else { return }   // a newer pick superseded this one
+            switchTask?.cancel()
+            switchTask = Task {
+                let outcome = await waitForOwnTunerToFreeIfNeeded()
+                // Superseded by a newer pick, or the window went away (cancelled) — the newer pick /
+                // close owns cleanup, including the stopped-stream flag.
+                guard !Task.isCancelled, generation == switchGeneration else { return }
+                // Some other entry point (menu Watch, WatchNow, a FEED row) started a stream while we
+                // waited — don't play over it.
+                if outcome != .notNeeded, bridge.currentURL != nil {
+                    ownStreamStoppedForSwitch = false
+                    return
+                }
+                if outcome == .timedOut {
+                    // Every tuner is held by someone else: say so (the standard "All Tuners Busy" alert)
+                    // instead of opening a stream the device will refuse with 805 and a "Playback Ended".
+                    ownStreamStoppedForSwitch = false
+                    guard await state.tunerAvailable(device, context: ch.GuideName) else { return }
+                    guard !Task.isCancelled, generation == switchGeneration else { return }
+                }
                 // Re-arm the auto-start gate + mute exactly as the picker handler did — but it ran
                 // BEFORE this async hop, and in the gap the still-true readyToReveal of the OLD stream
                 // let attemptAutoStart reveal it and restore the volume. Without this, the new
@@ -2568,6 +2605,7 @@ struct VLCPlayerView: View {
                 // synchronous readyToReveal reset lands before the onChange callback evaluates.
                 posterHidden = false
                 VLCBridge.shared.setVolume(0)
+                ownStreamStoppedForSwitch = false
                 startPlayChannel(ch, url: url)
             }
         } else {
@@ -2597,27 +2635,33 @@ struct VLCPlayerView: View {
         return tuners.filter { $0.VctNumber != nil }.count
     }
 
+    enum TunerWaitOutcome { case notNeeded, freed, timedOut }
+
     /// If the device is at capacity, stops our primary stream (closing its HTTP connection) and
-    /// polls status.json until a tuner is actually free, up to `tunerFreeWaitTimeout` — then returns
-    /// either way, so a stuck status never blocks the switch forever (it just falls back to the old
-    /// behavior). A failed status fetch also skips the wait.
-    private func waitForOwnTunerToFreeIfNeeded() async {
+    /// polls status.json until a tuner is actually free, up to `tunerFreeWaitTimeout`. `.timedOut`
+    /// means every tuner is held by someone else (the caller shows the "All Tuners Busy" alert). A
+    /// failed status fetch skips the wait (`.notNeeded`). Sets `ownStreamStoppedForSwitch` once it
+    /// has stopped the stream; the caller clears it.
+    private func waitForOwnTunerToFreeIfNeeded() async -> TunerWaitOutcome {
         let tunerCount = device.TunerCount ?? 2
         guard let before = await activeTunerCount(),
-              Self.mustFreeTunerBeforeSwitch(activeTuners: before, tunerCount: tunerCount) else { return }
+              Self.mustFreeTunerBeforeSwitch(activeTuners: before, tunerCount: tunerCount) else { return .notNeeded }
         glog("[VLC] channel switch: \(before)/\(tunerCount) tuners busy — stopping our stream and waiting for a tuner to free")
         VLCBridge.shared.stop()
+        ownStreamStoppedForSwitch = true
         let started = Date()
         while Date().timeIntervalSince(started) < Self.tunerFreeWaitTimeout {
             try? await Task.sleep(nanoseconds: UInt64(Self.tunerFreePollInterval * 1_000_000_000))
+            if Task.isCancelled { return .timedOut }
             if let now = await activeTunerCount(), now < tunerCount {
                 glog("[VLC] channel switch: status.json shows a free tuner after \(String(format: "%.1f", Date().timeIntervalSince(started)))s (\(now)/\(tunerCount) active) — settling \(Self.tunerFreeSettleDelay)s")
                 try? await Task.sleep(nanoseconds: UInt64(Self.tunerFreeSettleDelay * 1_000_000_000))
                 glog("[VLC] channel switch: ready — opening new channel")
-                return
+                return .freed
             }
         }
-        glog("[VLC] channel switch: no tuner freed within \(Int(Self.tunerFreeWaitTimeout))s — trying anyway", level: .warning)
+        glog("[VLC] channel switch: no tuner freed within \(Int(Self.tunerFreeWaitTimeout))s — every tuner is held elsewhere", level: .warning)
+        return .timedOut
     }
 
     /// Pure decision, extracted for unit testing — true when switching to a channel on
