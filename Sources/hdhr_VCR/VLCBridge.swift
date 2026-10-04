@@ -1203,7 +1203,19 @@ final class VLCBridge: ObservableObject {
         minRate = 1.0
         currentRate = 1.0
         estimatedLagSec = 8.0
+        // `i_demux_corrupted` is cumulative and was never sampled while this stream sat in the PiP
+        // slot, so seed the baseline from its current value — resetting to 0 made the first tick's
+        // delta its whole lifetime count and could trip a false catch-up reconnect.
         lastCorrupted = 0
+        if let getStats = _mpGetStats, let media = oldSecondaryMedia {
+            var s = VLCStats()
+            if withUnsafeMutableBytes(of: &s, { getStats(media, $0.baseAddress) }) == 1 {
+                lastCorrupted = s.i_demux_corrupted
+            }
+        }
+        // The demoted stream may still be mid fill-ramp (rate 0.93–0.99); the ramp only runs for the
+        // primary, so without this it would stay slow in the corner. Rate 1.0 is a no-op otherwise.
+        _ = _mpSetRate?(oldPrimaryMP, 1.0)
         lastTickTimeMs = nil
         lastTickReadBytes = nil
         lastDisplayedPictures = nil
