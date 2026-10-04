@@ -26,6 +26,21 @@ final class RecordingManager {
     // bounds this: unlike a real recording, a leftover puller is never reattached, just
     // unconditionally killed, since nothing was lost by not resuming it.
     private var feedCachePullPids: [String: Int32] = [:]
+    // Auto-reconnect bookkeeping for a FEED cache puller (see handleFeedCachePullExit). A session
+    // is only in `feedCachePullSpecs` while it's still wanted — stopFeedCachePull (window close,
+    // disk guard, transcode toggle, app exit) removes it, which is what ends any further respawn.
+    private struct FeedCachePullSpec { let url: String; let outputPath: String; let networkInterface: String }
+    private var feedCachePullSpecs: [String: FeedCachePullSpec] = [:]
+    private var feedCachePullStartedAt: [String: Date] = [:]
+    private var feedCacheReconnectAttempts: [String: Int] = [:]
+    private var feedCacheRetryAt: [String: Date] = [:]
+    static let feedCacheMaxReconnects = 5
+    /// A pull that stayed up this long counts as healthy, resetting the consecutive-failure count.
+    static let feedCacheHealthyPullSeconds: TimeInterval = 30
+    /// Backoff before the Nth consecutive respawn (1-based): 1, 2, 4, 8, then 15 s.
+    static func feedCacheReconnectDelay(attempt: Int) -> TimeInterval {
+        min(15, pow(2, Double(max(0, attempt - 1))))
+    }
 
     static var curlLogPath: String { curlVerboseLogFilePath }
 
@@ -328,10 +343,87 @@ final class RecordingManager {
 
         let pid = try spawnDetached(executablePath: curlExecutablePath, arguments: curlArgs, stderrPath: nil)
         feedCachePullPids[sessionId] = pid
+        feedCachePullSpecs[sessionId] = FeedCachePullSpec(url: url, outputPath: outputPath, networkInterface: networkInterface)
+        feedCachePullStartedAt[sessionId] = Date()
+        feedCacheReconnectAttempts[sessionId] = 0
+        feedCacheRetryAt[sessionId] = nil
         glog("[Rec] FEED cache pull started session=\(sessionId) pid=\(pid): \(url) → \(outputPath)")
     }
 
+    /// Respawns a dropped puller *appending* to the same cache file. `-o` would truncate, so curl
+    /// writes to stdout and a one-line `sh` redirects it with `>>`; `exec` makes the pid curl's own
+    /// (isCurlProcess and the `ps` orphan sweep both still match). The remote joins at its live
+    /// edge, so the gap is simply lost — VLC resyncs on the next PCR.
+    private func respawnFeedCachePull(sessionId: String, spec: FeedCachePullSpec) throws {
+        var curlArgs: [String] = [
+            "--connect-timeout", "10",
+            "-H", "appname:hdhrVCRplus",
+            "-H", "feed_cache:\(sessionId)",
+        ]
+        if !spec.networkInterface.isEmpty { curlArgs += ["--interface", spec.networkInterface] }
+        curlArgs += ["--fail", spec.url]
+        let pid = try spawnDetached(
+            executablePath: "/bin/sh",
+            arguments: ["-c", "out=$1; shift; exec \"$@\" >> \"$out\"", "sh", spec.outputPath, curlExecutablePath] + curlArgs,
+            stderrPath: nil)
+        feedCachePullPids[sessionId] = pid
+        feedCachePullStartedAt[sessionId] = Date()
+        glog("[Rec] FEED cache pull reconnected session=\(sessionId) pid=\(pid) (attempt \(feedCacheReconnectAttempts[sessionId] ?? 0)/\(Self.feedCacheMaxReconnects))")
+    }
+
+    /// Decides what a puller exit means. Returns true when a respawn is now pending (the session
+    /// still counts as running so the relay keeps serving the cache instead of closing). A clean
+    /// exit (remote finished) or an HTTP error (`--fail` → curl 22, e.g. the show ended) is final;
+    /// so is a pull that never wrote anything (the startup wait owns that failure) and running out
+    /// of consecutive retries. `status` is the raw waitpid status, nil when unknown (orphan path).
+    private func handleFeedCachePullExit(sessionId: String, status: Int32?) -> Bool {
+        guard let spec = feedCachePullSpecs[sessionId] else { return false }
+        func giveUp(_ why: String) -> Bool {
+            glog("[Rec] FEED cache pull session=\(sessionId) not reconnecting: \(why)")
+            feedCachePullSpecs[sessionId] = nil; feedCachePullStartedAt[sessionId] = nil
+            feedCacheReconnectAttempts[sessionId] = nil; feedCacheRetryAt[sessionId] = nil
+            return false
+        }
+        if let status, (status & 0x7f) == 0 {
+            let code = (status >> 8) & 0xff
+            if code == 0 { return giveUp("remote closed the stream cleanly") }
+            if code == 22 { return giveUp("remote refused (HTTP error) — show likely over") }
+        }
+        let size = (try? FileManager.default.attributesOfItem(atPath: spec.outputPath))?[.size] as? Int ?? 0
+        if size == 0 { return giveUp("nothing was cached yet") }
+        if let started = feedCachePullStartedAt[sessionId],
+           Date().timeIntervalSince(started) >= Self.feedCacheHealthyPullSeconds {
+            feedCacheReconnectAttempts[sessionId] = 0
+        }
+        let attempt = (feedCacheReconnectAttempts[sessionId] ?? 0) + 1
+        if attempt > Self.feedCacheMaxReconnects { return giveUp("\(Self.feedCacheMaxReconnects) consecutive reconnects failed") }
+        feedCacheReconnectAttempts[sessionId] = attempt
+        feedCacheRetryAt[sessionId] = Date().addingTimeInterval(Self.feedCacheReconnectDelay(attempt: attempt))
+        glog("[Rec] FEED cache pull session=\(sessionId) dropped (status \(status.map(String.init) ?? "?")) — reconnect \(attempt)/\(Self.feedCacheMaxReconnects) in \(Int(Self.feedCacheReconnectDelay(attempt: attempt)))s", level: .warning)
+        return true
+    }
+
+    /// Called from isFeedCachePullRunning while a respawn is pending: waits out the backoff, then
+    /// spawns. A failed spawn counts as another failed attempt.
+    private func serviceFeedCacheReconnect(sessionId: String) -> Bool {
+        guard let retryAt = feedCacheRetryAt[sessionId], let spec = feedCachePullSpecs[sessionId] else { return false }
+        if Date() < retryAt { return true }
+        feedCacheRetryAt[sessionId] = nil
+        do {
+            try respawnFeedCachePull(sessionId: sessionId, spec: spec)
+            return true
+        } catch {
+            glog("[Rec] FEED cache pull respawn failed session=\(sessionId): \(error)", level: .warning)
+            return handleFeedCachePullExit(sessionId: sessionId, status: 1 << 8 | 0)
+        }
+    }
+
     func stopFeedCachePull(sessionId: String) {
+        // Dropping the spec first is what cancels any pending/future reconnect for this session.
+        feedCachePullSpecs[sessionId] = nil
+        feedCachePullStartedAt[sessionId] = nil
+        feedCacheReconnectAttempts[sessionId] = nil
+        feedCacheRetryAt[sessionId] = nil
         guard let pid = feedCachePullPids.removeValue(forKey: sessionId) else { return }
         kill(pid, SIGKILL)
         // Same detached-reap reasoning as stop(showId:) above — never block the main actor waiting
@@ -347,13 +439,17 @@ final class RecordingManager {
     // bare kill(pid,0) here has the same window to misreport a recycled pid as still-alive that
     // isRunning() was hardened against).
     func isFeedCachePullRunning(sessionId: String) -> Bool {
-        guard let pid = feedCachePullPids[sessionId] else { return false }
+        guard let pid = feedCachePullPids[sessionId] else { return serviceFeedCacheReconnect(sessionId: sessionId) }
         var status: Int32 = 0
         let wret = waitpid(pid, &status, WNOHANG)
         if wret == 0 { return true }
-        if wret > 0 { feedCachePullPids.removeValue(forKey: sessionId); return false }
+        if wret > 0 {
+            feedCachePullPids.removeValue(forKey: sessionId)
+            return handleFeedCachePullExit(sessionId: sessionId, status: status)
+        }
         guard kill(pid, 0) == 0, isCurlProcess(pid: pid) else {
-            feedCachePullPids.removeValue(forKey: sessionId); return false
+            feedCachePullPids.removeValue(forKey: sessionId)
+            return handleFeedCachePullExit(sessionId: sessionId, status: nil)
         }
         return true
     }

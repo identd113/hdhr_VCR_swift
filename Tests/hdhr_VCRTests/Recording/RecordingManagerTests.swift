@@ -124,6 +124,78 @@ struct RecordingManagerTests {
         #expect(manager.isFeedCachePullRunning(sessionId: sessionId) == false)
     }
 
+    // MARK: FEED puller auto-reconnect
+
+    /// Starts a puller whose mock curl writes `outputBytes`, lingers briefly, then exits `exitCode`.
+    @MainActor private func startDroppingPuller(exitCode: Int32, outputBytes: Int, argsLog: String? = nil)
+        throws -> (manager: RecordingManager, sessionId: String, scriptPath: String, outputPath: String) {
+        let scriptPath = try writeMockCurlScript(sleepSeconds: 0.3, exitCode: exitCode, argsLogPath: argsLog, outputBytes: outputBytes)
+        let manager = RecordingManager(curlExecutablePath: scriptPath)
+        let outputPath = NSTemporaryDirectory() + "hdhrVCRplus-test-feedcache-\(UUID().uuidString).ts"
+        let sessionId = "test-\(UUID().uuidString)"
+        try manager.startFeedCachePull(sessionId: sessionId, url: "http://192.0.2.1/auto/v5.1", outputPath: outputPath)
+        return (manager, sessionId, scriptPath, outputPath)
+    }
+
+    @Test @MainActor func feedCachePull_networkDrop_respawnsAppendingToSameFile() async throws {
+        let argsLog = NSTemporaryDirectory() + "hdhrVCRplus-test-feedargs-\(UUID().uuidString).txt"
+        let p = try startDroppingPuller(exitCode: 56, outputBytes: 100, argsLog: argsLog)
+        defer { p.manager.stopFeedCachePull(sessionId: p.sessionId); cleanup(p.scriptPath, p.outputPath, argsLog) }
+
+        // First spawn logged "-o"; the respawn goes through `sh … >> out` and must not pass -o.
+        await waitUntil(timeout: 6) {
+            _ = p.manager.isFeedCachePullRunning(sessionId: p.sessionId)
+            let args = (try? String(contentsOfFile: argsLog, encoding: .utf8)) ?? ""
+            return !args.isEmpty && !args.contains("-o")
+        }
+        let args = try String(contentsOfFile: argsLog, encoding: .utf8)
+        #expect(!args.contains("-o"))
+        #expect(args.contains("feed_cache:\(p.sessionId)"))
+        #expect(p.manager.isFeedCachePullRunning(sessionId: p.sessionId) == true)
+    }
+
+    @Test @MainActor func feedCachePull_dropWithPendingRetry_stillReportsRunning() async throws {
+        let p = try startDroppingPuller(exitCode: 56, outputBytes: 100)
+        defer { p.manager.stopFeedCachePull(sessionId: p.sessionId); cleanup(p.scriptPath, p.outputPath) }
+        // Reaped by the first poll after the script exits; the 1 s backoff window keeps it "running".
+        try await Task.sleep(nanoseconds: 600_000_000)
+        #expect(p.manager.isFeedCachePullRunning(sessionId: p.sessionId) == true)
+    }
+
+    @Test @MainActor func feedCachePull_cleanExit_isFinal() async throws {
+        let p = try startDroppingPuller(exitCode: 0, outputBytes: 100)
+        defer { cleanup(p.scriptPath, p.outputPath) }
+        await waitUntil { !p.manager.isFeedCachePullRunning(sessionId: p.sessionId) }
+        #expect(p.manager.isFeedCachePullRunning(sessionId: p.sessionId) == false)
+    }
+
+    @Test @MainActor func feedCachePull_httpRefusal_isFinal() async throws {
+        let p = try startDroppingPuller(exitCode: 22, outputBytes: 100)
+        defer { cleanup(p.scriptPath, p.outputPath) }
+        await waitUntil { !p.manager.isFeedCachePullRunning(sessionId: p.sessionId) }
+        #expect(p.manager.isFeedCachePullRunning(sessionId: p.sessionId) == false)
+    }
+
+    @Test @MainActor func feedCachePull_dropBeforeAnyData_isNotRetried() async throws {
+        let p = try startDroppingPuller(exitCode: 56, outputBytes: 0)
+        defer { cleanup(p.scriptPath, p.outputPath) }
+        await waitUntil { !p.manager.isFeedCachePullRunning(sessionId: p.sessionId) }
+        #expect(p.manager.isFeedCachePullRunning(sessionId: p.sessionId) == false)
+    }
+
+    @Test @MainActor func feedCachePull_stopCancelsPendingReconnect() async throws {
+        let p = try startDroppingPuller(exitCode: 56, outputBytes: 100)
+        defer { cleanup(p.scriptPath, p.outputPath) }
+        try await Task.sleep(nanoseconds: 600_000_000)
+        #expect(p.manager.isFeedCachePullRunning(sessionId: p.sessionId) == true)   // retry now pending
+        p.manager.stopFeedCachePull(sessionId: p.sessionId)
+        #expect(p.manager.isFeedCachePullRunning(sessionId: p.sessionId) == false)
+    }
+
+    @Test @MainActor func feedCacheReconnectDelay_backsOffThenCaps() {
+        #expect((1...6).map { RecordingManager.feedCacheReconnectDelay(attempt: $0) } == [1, 2, 4, 8, 15, 15])
+    }
+
     @Test @MainActor func startFeedCachePull_isIdempotent_secondCallForSameSessionIdNoOps() async throws {
         let scriptPath = try writeMockCurlScript(sleepSeconds: 30)
         defer { cleanup(scriptPath) }
