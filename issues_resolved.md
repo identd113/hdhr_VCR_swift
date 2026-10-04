@@ -6,6 +6,19 @@ Every entry below was re-verified against the current codebase on 2026-08-10 bef
 
 ---
 
+# Stale-issue sweep: 9 open items fixed — 2026-10-04
+
+Audited `ISSUES.md` against the code and fixed what was still real:
+- **Recordings refused on a large, mostly-full volume** (`7b4aa87`): dropped the hard-coded `maxDiskPct = 93` rule from `AppState.diskOK(for:)`; `Min_disk_free_gb` alone gates recording (a 5.5 TB array at 94% used still had 389 GB free and lost two recordings). The skip message now names the GB threshold; the `maxDiskPct` test seam is gone.
+- **Relay URL port inconsistency** (`7b4aa87`): Watch Now's three relay URLs use `webServer.activePort`, like the FEED paths, so a configured port <1025 (clamped by `WebServer.start`) no longer breaks them.
+- **PiP swap during the live fill phase left the demoted player below 1.0×** and **`swapSlots` reset `lastCorrupted` to 0** (`5a1b533`): `swapSlots` now sets the demoted player's rate to 1.0 and seeds `lastCorrupted` from the promoted stream's cumulative `i_demux_corrupted` (the 0 baseline made the first tick's delta its whole lifetime count → a false catch-up reconnect).
+- **`DEFAULT_DEV` XSS** (`ec54ec4`): emitted through new `jsEscapeForSingleQuotedString` (quotes, backslash, control/line-separator chars, `<>&`), with tests.
+- **`FeedRelayPacer` data race** (`ec54ec4`): an `NSLock` around all mutable state.
+- **`ChannelIconCache` blacklisted failed URLs forever** (`ec54ec4`): failures now expire after 10 minutes (the CHANGELOG already claimed this).
+- **FEED cache puller never reconnected** (`0499364`): a non-clean curl exit (not 0, not 22, and only once something was cached) respawns the puller appending to the same cache file (`sh -c 'exec curl … >> out'`), 1/2/4/8/15 s backoff, ≤5 consecutive failures (a 30 s healthy pull resets the count); `isFeedCachePullRunning` stays true while a respawn is pending and `stopFeedCachePull` cancels it. The remote joins at its live edge, so the gap is lost and VLC resyncs. Tests in `RecordingManagerTests`.
+
+---
+
 # FEED cache: unbounded growth + HTTP error bodies cached as TS — 2026-10-03
 
 From the 2026-10-02 FEED review. **(a) No `--fail`:** a remote 404 body ("no active recording on channel …") was written into the cache file and passed `startFeedCacheSession`'s `size > 0` startup check, handing VLC plain text as TS. `startFeedCachePull` now passes `--fail`, so curl exits non-zero with nothing written and the startup check reports a failed start. **(b) Unbounded cache (~5 GB/h):** the cache is naturally bounded by the show's remaining runtime (the source closes the connection when its recording ends), but the file lived until the window closed. `AppState.maintainFeedCacheSessions()` (idle loop) now (1) kills a running puller, keeping its file, when free space on the cache volume falls below `Min_disk_free_gb` (same threshold as `diskOK`; also refuses to start a session below it), and (2) deletes a session whose puller has exited once playback reached EOF or no player slot references it. A viewer still scrubbing a finished show keeps the file; "Play Again" after the release has no cache to replay. Auto-reconnect of the puller remains open (`TODO.md`).
