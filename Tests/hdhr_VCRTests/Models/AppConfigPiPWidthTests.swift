@@ -19,3 +19,25 @@ struct AppConfigPiPWidthTests {
         #expect(back.PiP_width_fraction == 0.37)
     }
 }
+
+// AppState.freeSpaceIsLow — the FEED cache's start/stop disk guard (thresholds are fixed constants,
+// deliberately not the recordings volume's Min_disk_free_gb).
+@Suite("AppState.freeSpaceIsLow")
+struct FeedCacheFreeSpaceTests {
+    private let gb = 1_073_741_824.0
+
+    @Test func belowThreshold_isLow() {
+        #expect(AppState.freeSpaceIsLow(freeBytes: 9 * gb, minFreeGB: AppState.feedCacheStartMinFreeGB))
+        #expect(AppState.freeSpaceIsLow(freeBytes: 2 * gb, minFreeGB: AppState.feedCacheStopMinFreeGB))
+    }
+    @Test func aboveThreshold_isNotLow() {
+        #expect(!AppState.freeSpaceIsLow(freeBytes: 11 * gb, minFreeGB: AppState.feedCacheStartMinFreeGB))
+        #expect(!AppState.freeSpaceIsLow(freeBytes: 4 * gb, minFreeGB: AppState.feedCacheStopMinFreeGB))
+    }
+    @Test func startThresholdIsHigherThanStop_forHysteresis() {
+        #expect(AppState.feedCacheStartMinFreeGB > AppState.feedCacheStopMinFreeGB)
+        // A disk with 5 GB free can't START a session but also isn't stopped while running.
+        #expect(AppState.freeSpaceIsLow(freeBytes: 5 * gb, minFreeGB: AppState.feedCacheStartMinFreeGB))
+        #expect(!AppState.freeSpaceIsLow(freeBytes: 5 * gb, minFreeGB: AppState.feedCacheStopMinFreeGB))
+    }
+}

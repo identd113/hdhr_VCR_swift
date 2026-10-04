@@ -5285,9 +5285,9 @@ final class AppState: ObservableObject {
             return nil
         }
 
-        if feedCacheDiskLow() {
-            glog("[Watch] FEED cache not started — free space under the \(config.Min_disk_free_gb) GB minimum", level: .warning)
-            return fail("Not enough free disk space for the FEED cache (below the \(Int(config.Min_disk_free_gb)) GB minimum set in Settings).")
+        if feedCacheDiskLow(minFreeGB: Self.feedCacheStartMinFreeGB) {
+            glog("[Watch] FEED cache not started — free space under \(Int(Self.feedCacheStartMinFreeGB)) GB on the cache volume", level: .warning)
+            return fail("Not enough free disk space for the FEED cache (it needs about \(Int(Self.feedCacheStartMinFreeGB)) GB free on your startup disk).")
         }
 
         do {
@@ -5350,19 +5350,32 @@ final class AppState: ObservableObject {
     /// session. Safe to call for an id that isn't a cache session at all (no-op) — every teardown
     /// site (playerWindowDidClose, a fresh startFeedCacheSession's own "stop previous" step) calls
     /// this unconditionally rather than first checking whether the id is actually a cache session.
-    /// True when the volume holding the FEED cache has less free space than the same
-    /// `Min_disk_free_gb` minimum that gates real recordings (`diskOK`). Unreadable stats → false,
-    /// matching diskOK's own "assume OK" fallback.
-    private func feedCacheDiskLow() -> Bool {
+    /// Free space the cache volume (the startup disk, `~/Library/Caches`) must have to START a FEED
+    /// session, and the lower floor below which a running one is stopped. Deliberately NOT
+    /// `Min_disk_free_gb` (default 30 GB) — that's the *recordings* volume's setting, and applying it
+    /// here meant a laptop with <30 GB free could never start a FEED (code review 2026-10-03). The
+    /// cache grows ~3-5 GB/hour; the gap between the two is hysteresis so a session isn't stopped the
+    /// moment it starts.
+    static let feedCacheStartMinFreeGB: Double = 10
+    static let feedCacheStopMinFreeGB: Double = 3
+
+    /// True when the volume holding the FEED cache has less than `minFreeGB` free. Unreadable stats
+    /// → false (assume OK), matching diskOK's own fallback.
+    private func feedCacheDiskLow(minFreeGB: Double) -> Bool {
         let dir = NSHomeDirectory() + "/Library/Caches/hdhrVCRplus"
         let probe = FileManager.default.fileExists(atPath: dir) ? dir : NSHomeDirectory()
         guard let attrs = try? FileManager.default.attributesOfFileSystem(forPath: probe),
               let free = attrs[.systemFreeSize] as? Double else { return false }
-        return free < config.Min_disk_free_gb * 1_073_741_824
+        return Self.freeSpaceIsLow(freeBytes: free, minFreeGB: minFreeGB)
+    }
+
+    /// Pure, for testing.
+    nonisolated static func freeSpaceIsLow(freeBytes: Double, minFreeGB: Double) -> Bool {
+        freeBytes < minFreeGB * 1_073_741_824
     }
 
     /// Once per idle tick. (1) Disk guard: stops a still-running puller (keeping its file, so what's
-    /// already cached stays scrubbable) when free space drops below `Min_disk_free_gb`. (2) Release:
+    /// already cached stays scrubbable) when free space on the cache volume drops below `feedCacheStopMinFreeGB`. (2) Release:
     /// a session whose puller has exited (the show ended, or the guard fired) and that the player
     /// has played through to the end — or that no player slot references any more — is deleted, so
     /// a window left sitting on a finished show doesn't hold its multi-GB cache until closed.
@@ -5373,12 +5386,26 @@ final class AppState: ObservableObject {
         let bridge = VLCBridge.shared
         for id in Array(feedCacheSessions.keys) {
             if recordingManager.isFeedCachePullRunning(sessionId: id) {
-                if feedCacheDiskLow() {
-                    glog("[Watch] FEED cache session \(id): free space under the \(config.Min_disk_free_gb) GB minimum — stopping the puller", level: .warning)
+                if feedCacheDiskLow(minFreeGB: Self.feedCacheStopMinFreeGB) {
+                    glog("[Watch] FEED cache session \(id): free space under \(Int(Self.feedCacheStopMinFreeGB)) GB on the cache volume — stopping the puller", level: .warning)
                     recordingManager.stopFeedCachePull(sessionId: id)
                 }
                 continue
             }
+            guard let session = feedCacheSessions[id] else { continue }
+            // Still inside startFeedCacheSession's own startup wait (the session is registered before
+            // it's tracked in either window slot) — a quick puller exit there is that function's
+            // own failure path to handle, not ours to delete under it.
+            if Date().timeIntervalSince(session.startedAt) < Self.feedCacheStartupTimeoutTranscode + 5 { continue }
+            // "Puller exited" does not mean "show over": a network drop or the disk guard ends it too,
+            // and then the cache is the only way to scrub back. While the source relay is still
+            // advertising this exact stream the show is still airing, so keep the file; it's released
+            // once the relay is gone (or the window closes / the session is replaced — those paths
+            // stop the session themselves).
+            // Compared without the query string — the session URL can carry `transcode=…`/`dev=` the
+            // lineup entry's own URL doesn't.
+            let sessionBase = session.remoteURL.split(separator: "?").first.map(String.init)
+            if remoteRelayEntries.contains(where: { $0.entry.URL?.split(separator: "?").first.map(String.init) == sessionBase }) { continue }
             let inPrimary   = mgr.currentFeedSessionId == id
             let inSecondary = mgr.secondaryFeedSessionId == id
             let finished = (inPrimary && bridge.hasEnded) || (inSecondary && bridge.secondaryHasEnded)
