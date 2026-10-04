@@ -1714,9 +1714,21 @@ final class VLCBridge: ObservableObject {
 
     // MARK: - Volume  (UI scale 0–100; VLC scale 0–200, unity = 100)
 
+    private var lastLoggedVolume: [PlayerSlot: Int] = [:]
+
     func setVolume(_ v: Int, slot: PlayerSlot = .primary) {
-        guard let mp = self[slot].mediaPlayer else { return }
-        _ = _audioSetVol?(mp, Int32(max(0, min(100, v)) * 2))
+        guard let mp = self[slot].mediaPlayer else {
+            glog("[VLC] setVolume(\(v), \(slot)) ignored — no mediaPlayer", level: .warning)
+            return
+        }
+        let clamped = max(0, min(100, v))
+        // Logged on change only (a slider drag would otherwise flood) — diagnostic for intermittent
+        // "audio muted/not playing" reports (2026-10-03): shows exactly who muted/unmuted and when.
+        if lastLoggedVolume[slot] != clamped {
+            lastLoggedVolume[slot] = clamped
+            glog("[VLC] setVolume \(clamped) slot=\(slot) url=\((slot == .primary ? currentURL : secondaryURL) ?? "none")")
+        }
+        _ = _audioSetVol?(mp, Int32(clamped * 2))
     }
 
     // MARK: - Audio device
@@ -1725,6 +1737,7 @@ final class VLCBridge: ObservableObject {
     // audio output device routing only ever matters for whichever stream is actually audible.
     func setAudioDevice(output: String, deviceId: String) {
         guard let mp = primaryState.mediaPlayer else { return }
+        glog("[VLC] setAudioDevice output=\(output) device=\(deviceId)")
         output.withCString { outp in
             deviceId.withCString { devp in
                 _adevSet?(mp, outp, devp)

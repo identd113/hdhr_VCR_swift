@@ -836,6 +836,34 @@ final class AppState: ObservableObject {
     // Guards guideByDevice.didSet and idle-loop rebuilds so @Published changes don't redraw the menu.
     var menuIsOpen: Bool = false
 
+    // Any ROOT NSMenu being tracked — including the player window's SwiftUI right-click menus (the
+    // PiP thumbnail's corner/channel menu, "Add Picture-in-Picture…"), which MenuContent's
+    // onAppear/onDisappear never sees. Those menus live in views that observe this whole AppState,
+    // so an unrelated @Published write (the ~10s tuner-status update while a recording runs) used to
+    // rebuild the open menu under the pointer. Reuses menuIsOpen's existing gating (every
+    // high-frequency @Published writer already holds its writes while it's true), and runs the same
+    // catch-up rebuild MenuContent.onDisappear does once tracking ends. Root menus only
+    // (`supermenu == nil`): a submenu's begin/end can't unbalance it.
+    private var menuTrackingObservers: [NSObjectProtocol] = []
+    private func installMenuTrackingObservers() {
+        guard menuTrackingObservers.isEmpty else { return }
+        let nc = NotificationCenter.default
+        menuTrackingObservers.append(nc.addObserver(forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main) { [weak self] note in
+            guard let menu = note.object as? NSMenu, menu.supermenu == nil else { return }
+            glog("[Menu] tracking began — \(menu.items.count) item(s) first=\(menu.items.first?.title ?? "-") playing=\(VLCBridge.shared.isPlaying)")
+            MainActor.assumeIsolated { self?.menuIsOpen = true }
+        })
+        menuTrackingObservers.append(nc.addObserver(forName: NSMenu.didEndTrackingNotification, object: nil, queue: .main) { [weak self] note in
+            guard let menu = note.object as? NSMenu, menu.supermenu == nil else { return }
+            glog("[Menu] tracking ended — first=\(menu.items.first?.title ?? "-") playing=\(VLCBridge.shared.isPlaying)")
+            MainActor.assumeIsolated {
+                guard let self, self.menuIsOpen else { return }
+                self.menuIsOpen = false
+                self.rebuildMenuEntries()
+            }
+        })
+    }
+
     // configManager/recordingManager params are test seams only — real app startup
     // (hdhr_VCRApp.swift) always uses the defaults, which point at the real on-disk config and
     // the real /usr/bin/curl; see ConfigManager.init's and RecordingManager.init's own comments.
@@ -907,6 +935,7 @@ final class AppState: ObservableObject {
             return
         }
         startupCalled = true
+        installMenuTrackingObservers()
         glog("[Startup] instance \(launchInstanceID) starting, pid=\(ProcessInfo.processInfo.processIdentifier)")
         // Intercept SIGTERM (pkill, launchd stop) to flush config before the process dies.
         // Re-raises SIGTERM with the default handler so the process exits normally without

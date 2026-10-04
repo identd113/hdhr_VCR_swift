@@ -72,7 +72,7 @@ private func makeVLCVideoContainerAndContent() -> (container: NSView, content: N
 
 // ── PipCorner ─────────────────────────────────────────────────────────────────
 // Which corner of the video area the PiP thumbnail is pinned to — user-chosen via the thumbnail's
-// own right-click context menu (VLCPlayerView.pipCornerMenu), persisted across sessions the same
+// own right-click context menu (VLCPlayerView.makePipNSMenu), persisted across sessions the same
 // way `volume` is (@AppStorage). RawRepresentable (String) so @AppStorage can store it directly.
 enum PipCorner: String, CaseIterable {
     case topLeading, topTrailing, bottomLeading, bottomTrailing
@@ -87,6 +87,28 @@ enum PipCorner: String, CaseIterable {
         case .bottomLeading:  return "Bottom Left"
         case .bottomTrailing: return "Bottom Right"
         }
+    }
+}
+
+/// Three short parallel diagonal lines — the standard window-resize grip — hugging one corner of
+/// its rect. `atTop`/`atLeading` say which corner of the *thumbnail* it sits in (the lines always run
+/// perpendicular to the corner's diagonal, pointing at it).
+struct PipResizeGrip: Shape {
+    var atTop: Bool
+    var atLeading: Bool
+
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        // Drawn for the bottom-trailing corner, then mirrored via x/y flips for the others.
+        func x(_ v: CGFloat) -> CGFloat { atLeading ? rect.minX + (rect.maxX - v) : v }
+        func y(_ v: CGFloat) -> CGFloat { atTop ? rect.minY + (rect.maxY - v) : v }
+        let w = rect.width, h = rect.height
+        for i in 0..<3 {
+            let o = CGFloat(i) * (min(w, h) / 3.2)      // offset of each line from the corner
+            p.move(to: CGPoint(x: x(rect.maxX), y: y(rect.minY + o)))
+            p.addLine(to: CGPoint(x: x(rect.minX + o), y: y(rect.maxY)))
+        }
+        return p
     }
 }
 
@@ -140,8 +162,20 @@ struct VLCPlayerView: View {
     // channel's explicit choice forever.
     @State private var spuChoiceIsExplicit:  Bool  = false
     @AppStorage("vlcVolume") private var volume: Double = 50
-    // PiP thumbnail's pinned corner — set via its own right-click context menu (pipCornerMenu).
+    // PiP thumbnail's pinned corner — set via its own right-click menu (makePipNSMenu).
     @AppStorage("vlcPipCorner") private var pipCorner: PipCorner = .bottomTrailing
+    // Bumped per live channel pick so a switch still waiting on a tuner can tell a newer pick replaced it.
+    @State private var switchGeneration = 0
+    // User-chosen PiP size as a fraction of the video pane's width (0 = automatic sizing), set by
+    // dragging the thumbnail's inner-corner handle. A fraction (not points) so it keeps scaling with
+    // the window like the automatic size does. Aspect ratio is always the stream's native one.
+    // Local @State while dragging; committed to AppConfig.PiP_width_fraction (the config file, so it
+    // survives quits AND reinstalls, unlike an @AppStorage default) only when the drag ends — writing
+    // the @Published config on every drag tick would churn the menu/save on each frame.
+    @State private var pipWidthFraction: Double = 0
+    @State private var pipResizeStartWidth: CGFloat?
+    // True only while the pointer is near the resize handle's corner (its own hover zone, not the whole thumbnail).
+    @State private var pipHandleHovered = false
     @State private var systemDevices: [(id: String, name: String, isAirPlay: Bool)] = []
     @State private var selectedDevice: String = ""
     @State private var availableScreens: [NSScreen] = []
@@ -627,7 +661,13 @@ struct VLCPlayerView: View {
                 toolbar
             }
             ZStack {
+                // Aspect-fit to the stream's native shape as an ordinary SwiftUI frame — the same way the
+                // PiP thumbnail is sized — so resizing the window just rescales this pane. Always
+                // applied (16:9 until the first frame reports a size): a conditional wrapper would
+                // change the view's identity and rebuild the surface mid-playback.
                 VLCVideoSurface()
+                    .aspectRatio(bridge.videoPixelSize.flatMap { $0.height > 0 ? $0.width / $0.height : nil } ?? 16.0 / 9.0,
+                                 contentMode: .fit)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 if !posterHidden && !bridge.hasError && !bridge.hasEnded {
                     posterOverlay
@@ -643,7 +683,8 @@ struct VLCPlayerView: View {
                 }
                 if infoOverlayVisible {
                     infoBanner
-                        .transition(.opacity)
+                        // Slides in from the left edge with its backdrop (2026-10-03).
+                        .transition(.move(edge: .leading).combined(with: .opacity))
                 }
                 // Space-bar pause (VLCBridge.togglePause, disk-backed streams only) — a centered,
                 // non-interactive glyph so a deliberately frozen frame never reads as a stall.
@@ -725,7 +766,7 @@ struct VLCPlayerView: View {
             // Picture-in-Picture…" menu-bar button was removed 2026-09-19). Attached to this outer
             // ZStack, not VLCVideoSurface alone, so it still triggers while the poster/error/idle
             // overlay sits on top. Distinct from — and never shadows — pipOverlay's own
-            // .contextMenu { pipCornerMenu; pipChannelMenu } below, which is scoped to the small
+            // .overlay { NativeContextMenuHost { makePipNSMenu() } } below, which is scoped to the small
             // corner thumbnail Button itself; SwiftUI resolves a right-click to whichever is
             // deepest under the pointer.
             //
@@ -740,6 +781,11 @@ struct VLCPlayerView: View {
             .contextMenu {
                 if VLCPlayerWindowManager.shared.secondaryDeviceID == nil {
                     Button {
+                        // The PiP opens in the quadrant of the pane that was right-clicked
+                        // (captured by VLCPlayerWindowManager's rightMouseDown monitor — a SwiftUI
+                        // .contextMenu doesn't expose the click point). Persisted via pipCorner like a
+                        // manual choice; the thumbnail's own right-click menu can still move it.
+                        if let corner = VLCPlayerWindowManager.shared.lastRightClickCorner { pipCorner = corner }
                         NSApp.activate(ignoringOtherApps: true)
                         if let w = NSApp.windows.first(where: { $0.title == "Add Picture-in-Picture" }) {
                             w.makeKeyAndOrderFront(nil)
@@ -754,7 +800,7 @@ struct VLCPlayerView: View {
             .animation(.easeOut(duration: 0.35), value: posterHidden)
             .animation(.easeOut(duration: 0.35), value: bridge.hasError)
             .animation(.easeOut(duration: 0.35), value: bridge.hasEnded)
-            .animation(.easeOut(duration: 0.25), value: infoOverlayVisible)
+            .animation(.easeOut(duration: 0.35), value: infoOverlayVisible)
             .animation(.easeInOut(duration: 0.2), value: bridge.recordingShowId)
             .onReceive(NotificationCenter.default.publisher(for: .vlcFullScreenChanged)) { note in
                 isFullScreen = (note.userInfo?["isFullScreen"] as? Bool) ?? false
@@ -827,7 +873,14 @@ struct VLCPlayerView: View {
         }
 
         let withTasks: some View = withDialogs
-        .onChange(of: bridge.readyToReveal) { _, _ in attemptAutoStart() }
+        .onChange(of: bridge.readyToReveal) { _, ready in
+            attemptAutoStart()
+            // Self-heal: a stream's first frame always re-asserts the user's volume once the poster
+            // gate is open. Some paths mute (setVolume(0)) and then leave posterHidden true, so the
+            // gate above never runs startPlayback and the audio stays silent until the slider is
+            // touched. Never fires while the poster/Start gate is still showing.
+            if ready, posterHidden, !isPrimaryIdle { VLCBridge.shared.setVolume(Int(volume)) }
+        }
         // The poster can come back over a stream that's already decoded (a Tab swap or FEED
         // switch resets it) — reveal straight away then, rather than waiting for readyToReveal to
         // change, which it won't (live-found 2026-10-03: a 6s blank after every Tab).
@@ -847,6 +900,12 @@ struct VLCPlayerView: View {
             // Sync picker when watchInApp is called while the window is already open.
             glog("[VLC] vlcCurrentURL changed → syncChannel: \(rawURL.isEmpty ? "(empty)" : rawURL)")
             syncChannel(to: rawURL)
+        }
+        // Keep the window's shape matching the picture when the stream's native size changes (e.g. a
+        // 16:9 HD channel → a 4:3 SD one) — see VLCPlayerWindowManager.conformWindowToVideoAspect.
+        .onChange(of: bridge.videoPixelSize) { _, new in
+            guard new != nil else { return }
+            VLCPlayerWindowManager.shared.conformWindowToVideoAspect()
         }
         .onChange(of: bridge.recordingShowId) { _, showId in
             // AppState.watchRecordingInApp defers setting this to the next run-loop turn, so the
@@ -1042,7 +1101,13 @@ struct VLCPlayerView: View {
             // (x:0,y:0) so they surround every glyph evenly instead of favoring one side.
             .shadow(color: .black.opacity(0.95), radius: 2, x: 0, y: 0)
             .shadow(color: .black.opacity(0.85), radius: 5, x: 0, y: 0)
+            // Neutral backdrop panel behind the text (2026-10-03, explicit request) — slides in with
+            // the banner. The leading padding is inside the panel, so it runs flush to the window's
+            // left edge with the text inset 44pt as before.
             .padding(.leading, 44)
+            .padding(.trailing, 64)
+            .padding(.vertical, 18)
+            .background(alignment: .leading) { infoBannerBackdrop }
             // Clears the recording scrub bar's own 20pt outer padding + its own vertical padding/
             // content height (posterHidden's overlay above) rather than sitting flush on the edge —
             // same no-collision intent the old top-pinned placement had, just satisfied from below.
@@ -1052,6 +1117,23 @@ struct VLCPlayerView: View {
         .allowsHitTesting(false)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(title)\(episodeInfo.map { ", \($0)" } ?? "")\(sourceLine.map { ", \($0)" } ?? "")")
+    }
+
+    /// Greyscale lower-third panel — charcoal gradient with a thin pale accent bar, no colour so it
+    /// sits behind any channel's picture. Rounded only on its trailing corners (it bleeds off the
+    /// window's left edge).
+    private var infoBannerBackdrop: some View {
+        ZStack(alignment: .leading) {
+            UnevenRoundedRectangle(bottomTrailingRadius: 14, topTrailingRadius: 14)
+                .fill(LinearGradient(colors: [Color(white: 0.08).opacity(0.90), Color(white: 0.18).opacity(0.80)],
+                                     startPoint: .leading, endPoint: .trailing))
+            Rectangle()
+                .fill(Color(white: 0.85).opacity(0.9))
+                .frame(width: 3)
+                .padding(.vertical, 16)
+                .padding(.leading, 28)
+        }
+        .shadow(color: .black.opacity(0.45), radius: 10, x: 2, y: 0)
     }
 
     // The card's closing line — what kind of source this is, not just which channel. Live/Recording/
@@ -1357,9 +1439,11 @@ struct VLCPlayerView: View {
     // shrunk down small. `pipThumbnailWidthFraction` of the pane's current width, clamped to
     // [pipThumbnailMinWidth, pipThumbnailMaxWidthCap] so it never drops below a usable hit-target/
     // readability floor or grows large enough to compete with the primary video.
-    nonisolated private static let pipThumbnailWidthFraction: CGFloat = 0.18
-    nonisolated private static let pipThumbnailMinWidth: CGFloat = 140
-    nonisolated private static let pipThumbnailMaxWidthCap: CGFloat = 340
+    // 2026-10-03 (explicit user request: bigger, scaling with the window): 0.18 → 0.32, [140, 340] →
+    // [200, 640].
+    nonisolated private static let pipThumbnailWidthFraction: CGFloat = 0.32
+    nonisolated private static let pipThumbnailMinWidth: CGFloat = 200
+    nonisolated private static let pipThumbnailMaxWidthCap: CGFloat = 640
 
     /// Pure decision, extracted for unit testing.
     nonisolated static func pipThumbnailMaxWidth(containerWidth: CGFloat) -> CGFloat {
@@ -1377,6 +1461,13 @@ struct VLCPlayerView: View {
     // smallest divisor is 4 — this can only ever downscale, never upscale past native, however small
     // the window gets.
     nonisolated private static let pipThumbnailDivisors: [Int] = [4, 8, 16, 32]
+    // 2026-10-03: power-of-two steps alone jump 2× at a time (480→240 wide on a 1080p source), so a
+    // bigger thumbnail stopped tracking the window smoothly. These extra integers are also clean
+    // binning ratios, but only used when they divide BOTH native axes exactly (1920×1080 → 2, 3, 5,
+    // 6, 10, 12 all qualify; 1280×720 skips 3), so neither axis is ever rounded. Candidates are the
+    // union with `pipThumbnailDivisors`, so a source with no exact extras (e.g. 1366×768) behaves
+    // exactly as before. Smallest is 2, so still never upscales past native.
+    nonisolated private static let pipThumbnailExtraDivisors: [Int] = [2, 3, 5, 6, 10, 12]
 
     private func pipThumbnailSize(containerWidth: CGFloat) -> CGSize {
         Self.pipThumbnailSize(nativePixelSize: bridge.secondaryVideoPixelSize,
@@ -1392,7 +1483,12 @@ struct VLCPlayerView: View {
         guard let native = nativePixelSize, native.width > 0, native.height > 0 else {
             return CGSize(width: targetWidth, height: (targetWidth * 9 / 16).rounded())
         }
-        let bestDivisor = pipThumbnailDivisors.min { a, b in
+        let exactExtras = pipThumbnailExtraDivisors.filter {
+            native.width.truncatingRemainder(dividingBy: CGFloat($0)) == 0
+                && native.height.truncatingRemainder(dividingBy: CGFloat($0)) == 0
+        }
+        let candidates = pipThumbnailDivisors + exactExtras
+        let bestDivisor = candidates.min { a, b in
             abs(native.width / CGFloat(a) - targetWidth) < abs(native.width / CGFloat(b) - targetWidth)
         } ?? pipThumbnailDivisors[0]
         let width = (native.width / CGFloat(bestDivisor)).rounded()
@@ -1407,12 +1503,18 @@ struct VLCPlayerView: View {
         // Computed once per body evaluation rather than re-derived at each of its three use sites
         // below (found in code review: the same min/max-clamp + divisor-search math was redone
         // three times for the same geo.size.width).
-        let thumbSize = pipThumbnailSize(containerWidth: geo.size.width)
+        let thumbSize = pipWidthFraction > 0
+            ? Self.pipUserThumbnailSize(nativePixelSize: bridge.secondaryVideoPixelSize,
+                                        containerSize: geo.size, widthFraction: pipWidthFraction)
+            : pipThumbnailSize(containerWidth: geo.size.width)
+        let thumbAspect = thumbSize.height > 0 ? thumbSize.width / thumbSize.height : 16.0 / 9.0
         VStack {
             if !pipCorner.isTop { Spacer() }
             HStack {
                 if !pipCorner.isLeading { Spacer() }
-                ZStack(alignment: .topTrailing) {
+                // The resize handle sits on the thumbnail's inner corner; bottomLeading's inner corner
+                // is top-trailing, where the close button lives, so the close button moves to top-leading.
+                ZStack(alignment: pipCorner == .bottomLeading ? .topLeading : .topTrailing) {
                     // A real Button, not .onTapGesture — every other clickable control in this file
                     // (Start, Retry, Play Again, the close button right below) is a Button for this
                     // exact reason: a bare .onTapGesture over a hosted NSViewRepresentable doesn't
@@ -1445,23 +1547,15 @@ struct VLCPlayerView: View {
                         // Smooths the jump between quantized divisor sizes (see
                         // pipThumbnailSize) while dragging the window to resize it, rather than
                         // popping straight from one clean fraction to the next.
-                        .animation(.easeOut(duration: 0.15), value: thumbSize)
+                        .animation(pipResizeStartWidth == nil ? .easeOut(duration: 0.15) : nil, value: thumbSize)
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("vlc-pip-thumbnail")
                     .accessibilityLabel("Swap to picture-in-picture stream")
                     .help(VLCPlayerWindowManager.shared.secondaryTitle.map { "\($0) (picture-in-picture)" } ?? "Picture-in-picture")
-                    .contextMenu {
-                        pipCornerMenu
-                        pipChannelMenu
-                        Divider()
-                        // A second, always-discoverable way to close the secondary — the "×"
-                        // button itself is hover-revealed (see above), so this covers anyone who
-                        // right-clicks before ever hovering long enough to see it.
-                        Button("Close Picture-in-Picture") {
-                            VLCPlayerWindowManager.shared.closeSecondary()
-                        }
-                    }
+                    // Native NSMenu, not .contextMenu — see NativeContextMenuHost (a SwiftUI context
+                    // menu reloaded every few seconds while open, on VLCBridge/AppState publishes).
+                    .overlay { NativeContextMenuHost { makePipNSMenu() } }
 
                     // Hover-revealed (opacity, not conditional rendering — the same "hidden but
                     // still hoverable" idiom the recording scrub bar/fullscreen toolbar overlays
@@ -1483,6 +1577,9 @@ struct VLCPlayerView: View {
                     .opacity(pipHovered ? 1 : 0)
                     .animation(.easeInOut(duration: 0.2), value: pipHovered)
                 }
+                .overlay(alignment: pipResizeHandleAlignment) {
+                    pipResizeHandle(startWidth: thumbSize.width, aspect: thumbAspect, containerSize: geo.size)
+                }
                 .onHover { pipHovered = $0 }
                 if pipCorner.isLeading { Spacer() }
             }
@@ -1490,37 +1587,146 @@ struct VLCPlayerView: View {
         }
         .padding(16)
         }
+        // Load the saved size each time the PiP appears (not mid-drag).
+        .onAppear { if pipResizeStartWidth == nil { pipWidthFraction = state.config.PiP_width_fraction } }
     }
 
-    // Right-click menu on the PiP thumbnail — the user-facing way to move it, per an explicit
-    // request (TODO.md's PiP entry). A checkmark marks the corner currently in effect, matching
-    // the convention a native macOS pull-down/context menu uses for a single-choice setting.
-    @ViewBuilder
-    private var pipCornerMenu: some View {
-        ForEach(PipCorner.allCases, id: \.self) { corner in
-            Button {
-                pipCorner = corner
-            } label: {
-                if corner == pipCorner {
-                    Label(corner.displayName, systemImage: "checkmark")
-                } else {
-                    Text(corner.displayName)
-                }
-            }
+    // MARK: PiP resize handle (2026-10-03, explicit request)
+
+    /// The thumbnail corner facing the video pane's centre — dragging it outward/inward grows/shrinks
+    /// the thumbnail while the opposite (pinned) corner stays put.
+    private func commitPipWidthFraction() {
+        guard state.config.PiP_width_fraction != pipWidthFraction else { return }
+        state.config.PiP_width_fraction = pipWidthFraction
+        state.saveConfig()
+    }
+
+    private var pipResizeHandleAlignment: Alignment {
+        switch pipCorner {
+        case .bottomTrailing: return .topLeading
+        case .bottomLeading:  return .topTrailing
+        case .topTrailing:    return .bottomLeading
+        case .topLeading:     return .bottomTrailing
         }
     }
 
-    // In-place channel switch for the PiP secondary, added to its right-click menu alongside
-    // pipCornerMenu above — live-channel secondaries only (secondaryChannelNumber is nil for a
-    // FEED or Watch Now secondary, see PiPPickerView/watchAsSecondary call sites; neither has a
-    // channel lineup to switch within). Reverses the original "no in-place channel/source changes"
-    // design (docs/VLCPlayerView.md) per explicit request — the corner-only right-click menu was
-    // the only way to reposition, so extending that same menu to also retune was the natural fit
-    // rather than a separate picker UI. Scoped to the secondary's own device (state.lineups[
-    // deviceId]), which may differ from the primary's bound device (cross-device secondaries are
-    // supported — see "The secondary is not restricted to the primary's own tuner/device" above).
+    private var pipResizePointerPosition: FrameResizePosition {
+        switch pipCorner {
+        case .bottomTrailing: return .topLeading
+        case .bottomLeading:  return .topTrailing
+        case .topTrailing:    return .bottomLeading
+        case .topLeading:     return .bottomTrailing
+        }
+    }
+
     @ViewBuilder
-    private var pipChannelMenu: some View {
+    private func pipResizeHandle(startWidth: CGFloat, aspect: CGFloat, containerSize: CGSize) -> some View {
+        let atTop = pipResizeHandleAlignment == .topLeading || pipResizeHandleAlignment == .topTrailing
+        let atLeading = pipResizeHandleAlignment == .topLeading || pipResizeHandleAlignment == .bottomLeading
+        let visible = pipHandleHovered || pipResizeStartWidth != nil
+        // Invisible hover/hit zone (a clear Color with a contentShape — a fully transparent *visible*
+        // view isn't a reliable hover target) larger than the grip, so the grip fades in as the
+        // pointer approaches the corner and clicks on it never reach the swap Button underneath.
+        Color.clear
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
+            .overlay(alignment: Self.pipGripAlignment(atTop: atTop, atLeading: atLeading)) {
+                PipResizeGrip(atTop: atTop, atLeading: atLeading)
+                    .stroke(.white, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                    .shadow(color: .black.opacity(0.8), radius: 1.5)
+                    .frame(width: 18, height: 18)
+                    .padding(5)
+                    .opacity(visible ? 1 : 0)
+                    .animation(.easeInOut(duration: 0.15), value: visible)
+                    .allowsHitTesting(false)
+            }
+            .onHover { pipHandleHovered = $0 }
+            .pointerStyle(.frameResize(position: pipResizePointerPosition))
+            .accessibilityElement()
+            .accessibilityIdentifier("vlc-pip-resize-handle")
+            .accessibilityLabel("Resize picture-in-picture")
+            .help("Drag to resize (keeps the stream's aspect ratio) — double-click to reset")
+            // Double first so it wins over the single (swallow-only) tap below.
+            .onTapGesture(count: 2) { pipWidthFraction = 0; commitPipWidthFraction() }
+            .onTapGesture { }
+            .gesture(
+                DragGesture(minimumDistance: 2, coordinateSpace: .global)
+                    .onChanged { drag in
+                        let base = pipResizeStartWidth ?? startWidth
+                        pipResizeStartWidth = base
+                        let width = Self.pipResizedWidth(startWidth: base, translation: drag.translation,
+                                                         corner: pipCorner, aspect: aspect)
+                        let clamped = Self.pipClampedWidth(width, aspect: aspect, containerSize: containerSize)
+                        if containerSize.width > 0 { pipWidthFraction = Double(clamped / containerSize.width) }
+                    }
+                    .onEnded { _ in
+                        pipResizeStartWidth = nil
+                        commitPipWidthFraction()
+                    }
+            )
+    }
+
+    /// Grip sits flush in the thumbnail's own corner within the 44pt zone.
+    nonisolated private static func pipGripAlignment(atTop: Bool, atLeading: Bool) -> Alignment {
+        switch (atTop, atLeading) {
+        case (true, true):   return .topLeading
+        case (true, false):  return .topTrailing
+        case (false, true):  return .bottomLeading
+        case (false, false): return .bottomTrailing
+        }
+    }
+
+    nonisolated private static let pipUserMinWidth: CGFloat = 120
+    nonisolated private static let pipUserMaxPaneFraction: CGFloat = 0.8
+
+    /// Pure: new thumbnail width after dragging the inner-corner handle by `translation` (screen
+    /// points, y down). Dragging away from the pinned corner grows it; a height delta counts as
+    /// `aspect`× its size in width, and the two axes are averaged so a diagonal drag feels natural.
+    nonisolated static func pipResizedWidth(startWidth: CGFloat, translation: CGSize,
+                                            corner: PipCorner, aspect: CGFloat) -> CGFloat {
+        let sx: CGFloat = corner.isLeading ? 1 : -1
+        let sy: CGFloat = corner.isTop ? 1 : -1
+        return startWidth + (sx * translation.width + sy * translation.height * aspect) / 2
+    }
+
+    /// Pure: keeps the thumbnail between a usable minimum and 80% of the pane in both axes.
+    nonisolated static func pipClampedWidth(_ width: CGFloat, aspect: CGFloat, containerSize: CGSize) -> CGFloat {
+        let a = aspect > 0 ? aspect : 16.0 / 9.0
+        let maxW = max(pipUserMinWidth, min(containerSize.width * pipUserMaxPaneFraction,
+                                            containerSize.height * pipUserMaxPaneFraction * a))
+        return max(pipUserMinWidth, min(maxW, width))
+    }
+
+    /// Pure: the rendered size for a user-chosen `widthFraction` of the pane — exactly the stream's
+    /// native aspect ratio (16:9 until the first decoded frame), never stretched. Not snapped to the
+    /// clean divisors the automatic size uses: the user picked this size.
+    nonisolated static func pipUserThumbnailSize(nativePixelSize: CGSize?, containerSize: CGSize,
+                                                 widthFraction: Double) -> CGSize {
+        let aspect: CGFloat
+        if let n = nativePixelSize, n.width > 0, n.height > 0 { aspect = n.width / n.height } else { aspect = 16.0 / 9.0 }
+        let width = pipClampedWidth(containerSize.width * CGFloat(widthFraction), aspect: aspect, containerSize: containerSize)
+        return CGSize(width: width.rounded(), height: (width / aspect).rounded())
+    }
+
+    // Right-click menu on the PiP thumbnail — the user-facing way to move it, resize-reset, retune
+    // (live-channel secondaries only) and close it. Built imperatively at right-click time as a
+    // native NSMenu (NativeContextMenuHost) so SwiftUI re-evaluations can't reload it while open.
+    //
+    // Channel submenu: reverses the original "no in-place channel/source changes" design
+    // (docs/VLCPlayerView.md) per explicit request. Live-channel secondaries only
+    // (secondaryChannelNumber is nil for a FEED or Watch Now secondary — neither has a channel
+    // lineup to switch within). Scoped to the secondary's own device (state.lineups[deviceId]),
+    // which may differ from the primary's bound device (cross-device secondaries are supported).
+    // A checkmark marks the corner currently in effect, matching native single-choice menus.
+    private func makePipNSMenu() -> NSMenu {
+        let menu = NSMenu()
+        if pipWidthFraction > 0 {
+            menu.addItem(ClosureMenuItem(title: "Reset Size") { pipWidthFraction = 0; commitPipWidthFraction() })
+            menu.addItem(.separator())
+        }
+        for corner in PipCorner.allCases {
+            menu.addItem(ClosureMenuItem(title: corner.displayName, checked: corner == pipCorner) { pipCorner = corner })
+        }
         let mgr = VLCPlayerWindowManager.shared
         if let deviceId = mgr.secondaryDeviceID, mgr.secondaryChannelNumber != nil {
             let all = (state.lineups[deviceId] ?? []).sorted {
@@ -1528,17 +1734,24 @@ struct VLCPlayerView: View {
             }
             let favs = all.filter(\.isFavorite)
             let others = all.filter { !$0.isFavorite }
-            Divider()
-            Menu("Channel") {
-                ForEach(favs, id: \.GuideNumber) { ch in
-                    Button("\(ch.GuideNumber)  \(ch.GuideName)") { playSecondaryChannel(ch, deviceId: deviceId) }
-                }
-                if !favs.isEmpty && !others.isEmpty { Divider() }
-                ForEach(others, id: \.GuideNumber) { ch in
-                    Button("\(ch.GuideNumber)  \(ch.GuideName)") { playSecondaryChannel(ch, deviceId: deviceId) }
-                }
+            let sub = NSMenu()
+            for ch in favs {
+                sub.addItem(ClosureMenuItem(title: "\(ch.GuideNumber)  \(ch.GuideName)") { playSecondaryChannel(ch, deviceId: deviceId) })
             }
+            if !favs.isEmpty && !others.isEmpty { sub.addItem(.separator()) }
+            for ch in others {
+                sub.addItem(ClosureMenuItem(title: "\(ch.GuideNumber)  \(ch.GuideName)") { playSecondaryChannel(ch, deviceId: deviceId) })
+            }
+            menu.addItem(.separator())
+            let channelItem = NSMenuItem(title: "Channel", action: nil, keyEquivalent: "")
+            channelItem.submenu = sub
+            menu.addItem(channelItem)
         }
+        menu.addItem(.separator())
+        // A second, always-discoverable way to close the secondary — the "×" button itself is
+        // hover-revealed, so this covers anyone who right-clicks before hovering long enough to see it.
+        menu.addItem(ClosureMenuItem(title: "Close Picture-in-Picture") { VLCPlayerWindowManager.shared.closeSecondary() })
+        return menu
     }
 
     private func playSecondaryChannel(_ ch: LineupEntry, deviceId: String) {
@@ -2334,13 +2547,77 @@ struct VLCPlayerView: View {
             currentURL: bridge.currentURL)
 
         if reusingExistingTunerHere {
-            startPlayChannel(ch, url: url)
+            // Not unconditionally "reuses the slot": HDHomeRun frees the old stream's tuner only
+            // once its HTTP connection actually closes, and libvlc can open the new /auto request
+            // first. With every other tuner busy (e.g. a recording on a 2-tuner device) that new
+            // request gets 805 "All Tuners In Use" and the player shows "Playback Ended" (found
+            // live 2026-10-03). So when the device is at capacity, stop our own stream first and
+            // wait for its tuner to actually free before opening the new channel.
+            switchGeneration += 1
+            let generation = switchGeneration
+            Task {
+                await waitForOwnTunerToFreeIfNeeded()
+                guard generation == switchGeneration else { return }   // a newer pick superseded this one
+                // Re-arm the auto-start gate + mute exactly as the picker handler did — but it ran
+                // BEFORE this async hop, and in the gap the still-true readyToReveal of the OLD stream
+                // let attemptAutoStart reveal it and restore the volume. Without this, the new
+                // stream's first frame found posterHidden already true, the gate's `!posterHidden`
+                // guard skipped it, and (combined with the handler's setVolume(0)) audio could stay
+                // silent until the volume slider was touched (found live 2026-10-03: FEED primary +
+                // OTA PiP, Tab-swap, then a channel switch). Set before play() so play()'s
+                // synchronous readyToReveal reset lands before the onChange callback evaluates.
+                posterHidden = false
+                VLCBridge.shared.setVolume(0)
+                startPlayChannel(ch, url: url)
+            }
         } else {
             Task {
                 guard await state.tunerAvailable(device, context: ch.GuideName) else { return }
                 startPlayChannel(ch, url: url)
             }
         }
+    }
+
+    /// True when the device has no free tuner, so a live→live switch has to release our own first.
+    /// Pure decision, extracted for unit testing.
+    nonisolated static func mustFreeTunerBeforeSwitch(activeTuners: Int, tunerCount: Int) -> Bool {
+        tunerCount > 0 && activeTuners >= tunerCount
+    }
+
+    private static let tunerFreeWaitTimeout: TimeInterval = 6.0
+    private static let tunerFreePollInterval: TimeInterval = 0.25
+    // Extra beat after status.json first reports a free tuner — the device can still be tearing down
+    // the old stream's session for a moment after it stops listing it (user suggestion 2026-10-03).
+    private static let tunerFreeSettleDelay: TimeInterval = 1.0
+
+    private func activeTunerCount() async -> Int? {
+        guard let url = URL(string: device.statusURL),
+              let (data, _) = try? await URLSession.shared.data(from: url),
+              let tuners = try? JSONDecoder().decode([DeviceTunerInfo].self, from: data) else { return nil }
+        return tuners.filter { $0.VctNumber != nil }.count
+    }
+
+    /// If the device is at capacity, stops our primary stream (closing its HTTP connection) and
+    /// polls status.json until a tuner is actually free, up to `tunerFreeWaitTimeout` — then returns
+    /// either way, so a stuck status never blocks the switch forever (it just falls back to the old
+    /// behavior). A failed status fetch also skips the wait.
+    private func waitForOwnTunerToFreeIfNeeded() async {
+        let tunerCount = device.TunerCount ?? 2
+        guard let before = await activeTunerCount(),
+              Self.mustFreeTunerBeforeSwitch(activeTuners: before, tunerCount: tunerCount) else { return }
+        glog("[VLC] channel switch: \(before)/\(tunerCount) tuners busy — stopping our stream and waiting for a tuner to free")
+        VLCBridge.shared.stop()
+        let started = Date()
+        while Date().timeIntervalSince(started) < Self.tunerFreeWaitTimeout {
+            try? await Task.sleep(nanoseconds: UInt64(Self.tunerFreePollInterval * 1_000_000_000))
+            if let now = await activeTunerCount(), now < tunerCount {
+                glog("[VLC] channel switch: status.json shows a free tuner after \(String(format: "%.1f", Date().timeIntervalSince(started)))s (\(now)/\(tunerCount) active) — settling \(Self.tunerFreeSettleDelay)s")
+                try? await Task.sleep(nanoseconds: UInt64(Self.tunerFreeSettleDelay * 1_000_000_000))
+                glog("[VLC] channel switch: ready — opening new channel")
+                return
+            }
+        }
+        glog("[VLC] channel switch: no tuner freed within \(Int(Self.tunerFreeWaitTimeout))s — trying anyway", level: .warning)
     }
 
     /// Pure decision, extracted for unit testing — true when switching to a channel on
@@ -2499,6 +2776,10 @@ final class VLCPlayerWindowManager {
     // Local NSEvent monitor for arrow-key seek + Esc-to-exit-fullscreen — installed once per real
     // window (created in `open()`'s new-window branch), torn down in `playerWindowDidClose()`.
     private var keyMonitor: Any?
+    private var rightClickMonitor: Any?
+    /// Quadrant of the player window's content that was last right-clicked (nil until one is) — read
+    /// by the video pane's "Add Picture-in-Picture…" action to place the PiP where the user clicked.
+    private(set) var lastRightClickCorner: PipCorner?
     // Accumulates arrow-key presses between keyDown and keyUp — see installKeyMonitor's doc
     // comment for why this can't just commit a reconnect on every keyDown.
     private var pendingSeekDelta: Double = 0
@@ -2814,6 +3095,20 @@ final class VLCPlayerWindowManager {
     // rewind/skip. Found live 2026-08-22: a burst of 6 reconnects in ~2 seconds, each landing
     // ~15s earlier than the last (exactly this feature's left-arrow step), while testing it.
     private func installKeyMonitor(for win: NSWindow) {
+        // Separate from keyMonitor below: that closure reads event.keyCode, which raises on a
+        // non-key NSEvent.
+        if let rightClickMonitor { NSEvent.removeMonitor(rightClickMonitor) }
+        rightClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.rightMouseDown]) { [weak self, weak win] event in
+            if let self, let win, event.window === win, let size = win.contentView?.bounds.size,
+               size.width > 0, size.height > 0 {
+                let p = event.locationInWindow   // origin bottom-left
+                let isTop = p.y > size.height / 2
+                let isLeading = p.x < size.width / 2
+                self.lastRightClickCorner = isTop ? (isLeading ? .topLeading : .topTrailing)
+                                                  : (isLeading ? .bottomLeading : .bottomTrailing)
+            }
+            return event
+        }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self, weak win] event in
             guard let self, let win, event.window === win else { return event }
             // Bare "i" only — charactersIgnoringModifiers (not keyCode) so this matches by the same
@@ -2938,8 +3233,106 @@ final class VLCPlayerWindowManager {
         win.center()
     }
 
+    // MARK: Aspect lock (2026-10-03, explicit request: window resizing keeps the stream's native shape)
+
+    /// Height of the toolbar strip above the video — the same fixed 44pt sizeToNativeVideo and
+    /// isAtNativeResolution already assume.
+    nonisolated static let playerToolbarHeight: CGFloat = 44
+    nonisolated static let playerMinContentWidth: CGFloat = 640
+
+    /// Pure: content size whose video area (content minus the toolbar strip) has the stream's native
+    /// aspect at the requested `width`, clamped to `minContentWidth` and `maxContent` (the screen).
+    nonisolated static func contentSize(width: CGFloat, nativePixelSize native: CGSize,
+                                        toolbarHeight: CGFloat = playerToolbarHeight,
+                                        minContentWidth: CGFloat = playerMinContentWidth,
+                                        maxContent: CGSize? = nil) -> CGSize {
+        let aspect = native.width / native.height
+        var w = width
+        if let maxContent { w = min(w, maxContent.width, max(0, maxContent.height - toolbarHeight) * aspect) }
+        w = max(w, minContentWidth)
+        return CGSize(width: w.rounded(), height: (w / aspect + toolbarHeight).rounded())
+    }
+
+    /// Pure: the content size to use for a window resize. The video area is held to the stream's
+    /// native aspect ratio. Whichever axis the user moved more (in width-equivalent terms) drives the
+    /// other, so dragging a top/bottom edge changes the width and a side edge the height. Unknown
+    /// native size → the proposal is returned untouched.
+    nonisolated static func aspectLockedContentSize(proposed: CGSize, current: CGSize, nativePixelSize: CGSize?,
+                                                    toolbarHeight: CGFloat = playerToolbarHeight,
+                                                    minContentWidth: CGFloat = playerMinContentWidth,
+                                                    maxContent: CGSize? = nil) -> CGSize {
+        guard let native = nativePixelSize, native.width > 0, native.height > 0 else { return proposed }
+        let aspect = native.width / native.height
+        let proposedVideoH = proposed.height - toolbarHeight
+        guard proposedVideoH > 0 else { return proposed }
+        let widthDelta = abs(proposed.width - current.width)
+        let heightDeltaAsWidth = abs(proposedVideoH - (current.height - toolbarHeight)) * aspect
+        let width = widthDelta >= heightDeltaAsWidth ? proposed.width : proposedVideoH * aspect
+        return contentSize(width: width, nativePixelSize: native, toolbarHeight: toolbarHeight,
+                           minContentWidth: minContentWidth, maxContent: maxContent)
+    }
+
+    private func screenMaxContent(for win: NSWindow) -> CGSize? {
+        guard let vis = (win.screen ?? NSScreen.main)?.visibleFrame else { return nil }
+        return win.contentRect(forFrameRect: NSRect(origin: .zero, size: vis.size)).size
+    }
+
+    private var liveResizeStartContent: CGSize?
+    /// The native size `conformWindowToVideoAspect` last acted on — it re-fits once per picture-shape
+    /// change, not on every republish of an unchanged (or window-size-dependent) value.
+    private var lastConformedNative: CGSize?
+
+    /// NSWindowDelegate.windowWillStartLiveResize — remembers where the drag began, so the snap on
+    /// release can tell which axis the user was actually changing.
+    func windowWillStartLiveResize(_ win: NSWindow) {
+        guard win === window else { return }
+        liveResizeStartContent = win.contentView?.frame.size
+    }
+
+    /// NSWindowDelegate.windowDidEndLiveResize — the window moves freely during the drag (the video
+    /// pane just rescales inside it, like the PiP does, so nothing fights the drag), then settles to
+    /// the stream's native aspect once, on release: whichever axis you moved more drives the other
+    /// (`aspectLockedContentSize`), keeping the top-left corner fixed.
+    func windowDidEndLiveResize(_ win: NSWindow) {
+        defer { liveResizeStartContent = nil }
+        guard win === window, !win.styleMask.contains(.fullScreen),
+              let native = VLCBridge.shared.videoPixelSize, native.width > 0, native.height > 0,
+              let end = win.contentView?.frame.size else { return }
+        let start = liveResizeStartContent ?? end
+        let target = Self.aspectLockedContentSize(proposed: end, current: start, nativePixelSize: native,
+                                                  maxContent: screenMaxContent(for: win))
+        applyContentSize(target, to: win, animate: true)
+    }
+
+    private func applyContentSize(_ content: CGSize, to win: NSWindow, animate: Bool) {
+        guard let current = win.contentView?.frame.size,
+              abs(current.width - content.width) > 0.5 || abs(current.height - content.height) > 0.5 else { return }
+        var frame = win.frameRect(forContentRect: NSRect(origin: .zero, size: content))
+        frame.origin = NSPoint(x: win.frame.minX, y: win.frame.maxY - frame.height)   // keep the top edge fixed
+        win.setFrame(frame, display: true, animate: animate)
+    }
+
+    /// Re-fits the window to the stream's native aspect (keeping its width and top-left corner) when
+    /// the picture's shape changes — e.g. switching from a 16:9 HD channel to a 4:3 SD one. No-op if
+    /// already within 0.5%, in fullscreen, or before the first decoded frame.
+    func conformWindowToVideoAspect() {
+        // Never during a user drag (it would fight the resize), and only once per distinct native size.
+        guard let win = window, !win.styleMask.contains(.fullScreen), !win.inLiveResize,
+              let native = VLCBridge.shared.videoPixelSize, native.width > 0, native.height > 0,
+              native != lastConformedNative,
+              let current = win.contentView?.frame.size else { return }
+        lastConformedNative = native
+        glog("[VLC] conformWindowToVideoAspect: native \(Int(native.width))×\(Int(native.height)), content \(Int(current.width))×\(Int(current.height))")
+        let aspect = native.width / native.height
+        let videoH = current.height - Self.playerToolbarHeight
+        guard videoH > 0, abs(current.width / videoH - aspect) / aspect > 0.005 else { return }
+        let content = Self.contentSize(width: current.width, nativePixelSize: native, maxContent: screenMaxContent(for: win))
+        applyContentSize(content, to: win, animate: false)
+    }
+
     fileprivate func playerWindowDidClose() {
         glog("[VLC] WindowManager.playerWindowDidClose")
+        lastConformedNative = nil   // a reopened window starts at its default shape and needs re-fitting
         // Cancel any in-flight "yield tuner to record" wait before it can reopen a window the user
         // just closed — see AppState.cancelYieldRecordingIfInProgress's own doc comment.
         appState?.cancelYieldRecordingIfInProgress()
@@ -2951,6 +3344,8 @@ final class VLCPlayerWindowManager {
         VLCBridge.shared.releasePlayer(slot: .secondary) // PiP secondary shares this one window — tear it down too
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
         keyMonitor = nil
+        if let rightClickMonitor { NSEvent.removeMonitor(rightClickMonitor) }
+        rightClickMonitor = nil
         pendingSeekDelta = 0   // in case the window closed mid-hold, before a matching keyUp arrived
         // FEED teardown — guarded so a normal live-tuner/Watch-Now close pays no new cost. A
         // primary FEED session is a local disk cache (AppState.stopFeedCacheSession — kills the
@@ -2993,6 +3388,14 @@ private final class WindowCloseObserver: NSObject, NSWindowDelegate {
     weak var manager: VLCPlayerWindowManager?
     init(manager: VLCPlayerWindowManager) { self.manager = manager }
     func windowWillClose(_ notification: Notification) { manager?.playerWindowDidClose() }
+    // Settles the window to the stream's native aspect ratio when a resize drag ends — see
+    // VLCPlayerWindowManager.windowDidEndLiveResize.
+    func windowWillStartLiveResize(_ notification: Notification) {
+        if let win = notification.object as? NSWindow { manager?.windowWillStartLiveResize(win) }
+    }
+    func windowDidEndLiveResize(_ notification: Notification) {
+        if let win = notification.object as? NSWindow { manager?.windowDidEndLiveResize(win) }
+    }
     // Lets VLCPlayerView hide its own toolbar by default in true fullscreen (see body's ZStack) —
     // without this, our toolbar and macOS's own top-of-screen hover-reveal menu bar compete for
     // the same real estate, since both sit at the top edge of a fullscreen window/space.
