@@ -51,6 +51,7 @@ Views/
   StarburstBadge.swift     Animated starburst badge for Bonus Time
   DonationNagView.swift    Honor-system donation nag window
   GuideViewHelpers.swift   Shared guide-view utilities + SignalBarsView
+  NativeContextMenu.swift  NSMenu-at-click-time right-click host (immune to SwiftUI re-renders)
 ```
 
 ---
@@ -113,7 +114,7 @@ Systems: [AppState](docs/AppState.md) · [GuideStore](docs/GuideStore.md) · [Re
 
 **Auto-pause-on-missing-tuner marker** — `idleLoop()` auto-pauses any active show whose `hdhr_record` isn't in `usableDeviceIDs`, and auto-resumes it once that device is usable again, by writing/checking the exact `show_fail_reason` string `"Tuner not detected"` (`AppState.autoPauseTunerMissingReason`). Pass 2's separate, older generic "paused window expired" auto-resume (same function, keyed off `show_end`/`show_next` looking stale rather than tuner state) explicitly skips any show carrying that marker — without that exclusion the two mechanisms fight: the window-expiry pass un-pauses it, the tuner check re-pauses it next tick, forever. Any future pass that iterates `pausedShows` and unconditionally flips `show_paused` must add the same exclusion, or reintroduce that loop.
 
-**Menu rebuild churn** — frequent `@Published` mutations while the NSMenu is open cause rebuild glitches; batch/coalesce assignments (see `prefetchChannelIcons`).
+**Menu rebuild churn** — frequent `@Published` mutations while the NSMenu is open cause rebuild glitches; batch/coalesce assignments (see `prefetchChannelIcons`). `AppState.menuIsOpen` is true for *any* open root NSMenu (`NSMenu.didBegin/EndTrackingNotification`, installed in `startup()`), not just the menu-bar one — new high-frequency `@Published` writers must gate on it. A SwiftUI `.contextMenu` inside a view that observes `VLCBridge`/`AppState` is rebuilt on every publish (the player's PiP menu reloaded every few seconds), so menus there are native `NSMenu`s built at click time via `NativeContextMenuHost` (`Views/NativeContextMenu.swift`) — don't convert them back to `.contextMenu`.
 
 **Testing recordings** — set `show_next = now+30s`, `show_end = now+2min`; check `show_fail_reason`; enable verbose curl (Settings → Advanced).
 
