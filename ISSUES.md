@@ -18,13 +18,11 @@ Detailed write-ups for most rows are in the sections below (search the file/line
 
 | # | Area | Item | Where | Ver | Simp | UI | Stab |
 |---|---|---|---|---|---|---|---|
-| T01 | Web guide | Baked-in 2 h page expiry: on a quiet system every open tab/new load past 2 h reloads itself **every minute** until the next rebuild (live page expires ~17 min from the check) | `WebServer.swift:3833`, `guide.js:1633` | ✓ | 5 | 4 | 3 |
 | T02 | Recording | `posixRecordDir` treats a volume **root** (e.g. `/Volumes/Raid6`) as mounted: if it's unmounted the show records to the boot disk under `/Volumes/Raid6/…` | `Models.swift` `posixRecordDir` | ✓ | 3 | 2 | 4 |
 | T03 | Config | Config + `.bak` are keyed by `ProcessInfo.hostName` (changes with VPN/SSID/Bonjour suffix) → looks like a fresh install; call can also block on DNS | `ConfigManager.swift:14` | ✓ | 3 | 4 | 4 |
 | T04 | Config | `loadConfig` drops every inactive show, including ones deactivated with a "fix me" reason | `AppState.swift:1309` | ✓ | 4 | 3 | 3 |
 | T05 | Discovery | `discoverDevices` replaces a known device with a degraded UDP-only hit → loses TunerCount/ModelNumber/DeviceAuth → conflict gate bypassed, transcode forced off | `AppState.swift:1601` | ✓ | 4 | 2 | 4 |
 | T06 | Guide | A skipped "already loading" guide load is reported as a **failure** → backoff + spurious "Guide Load Failed" notification/Discord card | `GuideStore.swift:101`, `AppState.swift:1915` | ✓ | 4 | 3 | 3 |
-| T07 | Discovery | `Dictionary(uniqueKeysWithValues:)` over device lists (9 sites in AppState/WebServer) traps on a duplicate DeviceID → crash loop | `AppState.swift` ×5, `WebServer.swift` ×4 | ✓ | 5 | 1 | 3 |
 | T08 | Player | `watchInApp` skips its tuner pre-flight when the primary is a zero-tuner relay on the same device → 805 / "Playback Ended" with no Busy alert | `AppState.swift:~5130` | A | 3 | 3 | 3 |
 | T09 | Settings | Opening Settings clears and saves `Network_interface` if that NIC is momentarily down | `SettingsView.swift:~175` | A | 4 | 3 | 3 |
 | T10 | Add Show | `save()` dismisses the window even if `addShow()` refused the show | `AddShowView.swift:~381` | A | 4 | 3 | 2 |
@@ -38,7 +36,6 @@ Detailed write-ups for most rows are in the sections below (search the file/line
 | T18 | Web server | No concurrent-connection / SSE-subscriber cap; no SSE backpressure; `removeSSE` never cancels; transcode relay proxy buffer unbounded (LAN-only) | `WebServer.swift:504, 694, 2086` | ✓ | 3 | 1 | 3 |
 | T19 | Web server | `/api/record` forwards unvalidated `airDays`; record/edit accept unbounded/uncleaned `title`; `?duration=` unclamped | `WebServer.swift:2745, 2743, 2265` | ✓ | 4 | 1 | 2 |
 | T20 | Discord | No 429/Retry-After handling; `http://` webhook accepted; edit URL breaks with `?thread_id=` | `DiscordNotifier.swift:30–60, 156` | ✓ | 4 | 2 | 2 |
-| T21 | Guide | `fetchLineup`/`setFavorite` use the 60 s `URLSession.shared`; one dead tuner delays the whole periodic guide refresh | `HDHRManager.swift:511, 530` | ✓ | 5 | 2 | 2 |
 | T22 | Player | Dormant `bufferInfo` publishes every 3 s (its only consumer is always off) and each publish re-sorts the lineup several times | `VLCBridge.swift:~1620`, `VLCPlayerView.swift:~269` | ✓ | 4 | 2 | 2 |
 | T23 | Player | Tuner-wait leftovers: `ownStreamStoppedForSwitch` leaks true when another pick supersedes a wait; after a timeout the primary stays stopped under "Connecting…" | `VLCPlayerView.swift:~1919, 2591` | A | 3 | 3 | 2 |
 | T24 | Player | Window geometry: no origin clamp on resize/re-fit (can push video under the Dock); fullscreen HD→SD re-fit never retried; 640 min applied after screen clamp | `VLCPlayerView.swift:~3233–3330` | A | 3 | 3 | 2 |
@@ -52,9 +49,7 @@ Detailed write-ups for most rows are in the sections below (search the file/line
 | T32 | Security | `hdhrvcrplus://watch` can be triggered by any web page; FEED UDP announce handler accepts spoofed `TunerCount=0` (marks a relay unavailable) | `hdhr_VCRApp.swift:~49`, `AppState.swift:~1050` | A | 3 | 2 | 2 |
 | T33 | Guide | Guide disk cache: never pruned (one multi-MB file per device/kind/hours ever used), written inline on the main actor, and `invalidateAll()` ("Clear Guide Cache") leaves it in place | `GuideStore.swift` | ✓ | 4 | 1 | 2 |
 | T34 | Engine | `prefetchChannelIcons` assigns `@Published` state even when unchanged / menu open; `AppState` keeps every decoded icon uncapped | `AppState.swift:~1966–1995` | ✓ | 4 | 1 | 2 |
-| T35 | Engine | `RecordingManager.stop()` SIGKILLs a stored pid without the `isCurlProcess` check (pid-recycle) | `RecordingManager.swift:141, 432` | ✓ | 5 | 1 | 2 |
 | T36 | FEED | Puller respawn appends at an arbitrary byte, shifting the 188-byte TS alignment of everything after (VLC resyncs — cosmetic) | `RecordingManager.swift:~357` | A | 3 | 1 | 1 |
-| T37 | Web guide | Edit modal opened from the grid never receives `dev` (so the "transcode will be ignored" warning is dead there) | `guide.js:587–595` | ✓ | 5 | 2 | 1 |
 | T38 | Web guide | Nits: attribute selectors without `CSS.escape`; `_heavyCache` never evicted; FEED pacer stats the file every 20 ms; loopback relay URL doesn't escape `showId`; HEAD/Range on `/auto/v*` | `guide.js`, `WebServer.swift` | A | 4 | 1 | 1 |
 | T39 | Tests | Flaky under full-suite load: `WebServerLifecycleTests.backToBackTriggers…` and `RecordingManagerTests.reattach_…`; MenuContent snapshots depend on time of day; `GuideJSONNewEpisodeTests` uses local midnight as "UTC" | `Tests/` | ✓ | 4 | 1 | 2 |
 | T40 | Docs | Drift from the 2026-10-03 docs audit (14 items: VLCPlayerView.md, AppState.md, VirtualTunerService.md, Config.md, WebServer.md, CLAUDE.md tuner-occupancy text) + CLAUDE.md claims an "hourly `guide_refreshed`" (it's 2–3 h) | `docs/`, `CLAUDE.md` | ✓ | 4 | 1 | 1 |
@@ -69,7 +64,7 @@ Detailed write-ups for most rows are in the sections below (search the file/line
 | T49 | Test-only | Add Show web-guide search box doesn't expose typed text through WKWebView's AX bridge (automation gap, not user-facing) | see 2026-09-04 entry | A | 1 | 1 | 1 |
 | T50 | FEED | FEED audio-track switching on cross-machine sessions not confirmed (CC works; may have been the old stall bug) | see 2026-09-07 entry | P | 2 | 2 | 1 |
 
-**Suggested order** (value ÷ effort): **T01** (5/4/3), **T07** (5/1/3), **T21**, **T35**, **T37** · then **T06, T04, T05, T09, T10, T11** · then the larger-value-but-moderate **T03, T02, T17, T08** · and leave **T41–T44** for a quiet day.
+**Suggested order** (value ÷ effort): ~~T01, T07, T21, T35, T37~~ *(fixed 2026-10-05)* · next **T06, T04, T05, T09, T10, T11** · then the larger-value-but-moderate **T03, T02, T17, T08** · and leave **T41–T44** for a quiet day.
 **Closed by this triage:** the "Web guide feels laggy" entry (moved to `issues_resolved.md`), the stale `ChannelIconCache.failedURLs` growth note, all fixed review findings (see `issues_resolved.md`), and the review agents' "FIXED (pending commit)" / "assessed not a bug" bullets. **Moved to Accepted:** the deliberate FEED keyframe back-up burst (it is what stops FEED audio running ahead of video; revisit only if FEED stalls return).
 
 

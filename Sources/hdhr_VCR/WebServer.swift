@@ -3407,10 +3407,10 @@ final class WebServer: @unchecked Sendable {
         // AppState.activeRecordingChannels/pendingRecordingChannels — same shared definition
         // WatchNowView's Watch Now window uses, so the two surfaces can't drift apart.
         let recChannelsByDevice: [String: Set<String>] = Dictionary(
-            uniqueKeysWithValues: recordableDevices.map { ($0.DeviceID, state.activeRecordingChannels(for: $0.DeviceID)) }
+            firstWinsOf: recordableDevices.map { ($0.DeviceID, state.activeRecordingChannels(for: $0.DeviceID)) }
         )
         let pendingRecChannelsByDevice: [String: Set<String>] = Dictionary(
-            uniqueKeysWithValues: recordableDevices.map { ($0.DeviceID, state.pendingRecordingChannels(for: $0.DeviceID)) }
+            firstWinsOf: recordableDevices.map { ($0.DeviceID, state.pendingRecordingChannels(for: $0.DeviceID)) }
         )
         // Channels a hardware tuner is actively locked to but this app didn't initiate — e.g. the
         // "app expects 1, hw shows 2" case (another machine running this app against the same
@@ -3420,7 +3420,7 @@ final class WebServer: @unchecked Sendable {
         // clicking Watch on a live channel would immediately flag that same channel as "in use by
         // another tuner" for the person watching it.
         let hwOtherChannelsByDevice: [String: Set<String>] = Dictionary(
-            uniqueKeysWithValues: recordableDevices.map { device in
+            firstWinsOf: recordableDevices.map { device in
                 let hwChannels = Set((state.deviceTunerOccupancy[device.DeviceID] ?? []).compactMap { $0.VctNumber })
                 var ours = recChannelsByDevice[device.DeviceID] ?? []
                 if let liveCh = state.vlcLiveChannel(for: device.DeviceID) { ours.insert(liveCh) }
@@ -3707,7 +3707,7 @@ final class WebServer: @unchecked Sendable {
         // recordableDevices — a virtual relay device's lineup is synthetic (its own recording's
         // channel only), not something guide.js's device picker should ever resolve names against.
         let channelNameLookup: [String: [String: String]] = Dictionary(
-            uniqueKeysWithValues: recordableDevices.map { d in
+            firstWinsOf: recordableDevices.map { d in
                 let map = Dictionary(
                     (state.lineups[d.DeviceID] ?? []).map { ($0.GuideNumber, $0.GuideName) },
                     uniquingKeysWith: { first, _ in first })
@@ -3830,7 +3830,6 @@ final class WebServer: @unchecked Sendable {
         ])
         let validTranscode = Show.validTranscodeProfiles.contains(state.config.Default_transcode)
             ? state.config.Default_transcode : "none"
-        let verExpTs = Int(Date().addingTimeInterval(2 * 3600).timeIntervalSince1970) * 1000
         let jsFilled = fillTemplate(cachedGuideJS ?? "console.error('guide.js failed to load');", [
             ("TUNER_JS", tunerJS),
             ("RECS_BY_DEV_JS", recsByDevJS),
@@ -3843,7 +3842,6 @@ final class WebServer: @unchecked Sendable {
             ("WIN_START", String(winStart)),
             ("WIN_SEC", String(winSec)),
             ("APP_VERSION", appVersion),
-            ("VER_EXP_TS", String(verExpTs)),
             // Also requires cachedGuideVerticalCSS to have actually loaded — includeVerticalCSS
             // alone just means "this is the /vertical route," not "the vertical stylesheet is
             // really embedded." If the template failed to load, verticalStyleBlock above falls

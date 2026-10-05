@@ -138,7 +138,7 @@ final class RecordingManager {
 
     func stop(showId: String) {
         if let pid = pids[showId] {
-            kill(pid, SIGKILL)
+            killIfStillCurl(pid)
             pids.removeValue(forKey: showId)
             // Reap the zombie OFF the main actor. SIGKILL is normally reaped in microseconds, but it
             // can't be delivered while the target sits in an uninterruptible (D-state) syscall — e.g.
@@ -265,6 +265,28 @@ final class RecordingManager {
     /// Confirms the process at `pid` is the curl binary this manager launches recordings from
     /// (by executable path basename, so the injectable test double still matches) — see
     /// isRunning's own doc comment for why kill(pid,0) alone can't be trusted after a pid recycle.
+    /// SIGKILLs `pid` only if it is still the curl binary we spawned. A stored pid can outlive its
+    /// process: curl exits, the pid is recycled to an unrelated process, and the next poll that would
+    /// notice (isRunning, every idle tick) hasn't run yet — a bare kill() in that window would kill
+    /// someone else's process. (If it is gone, or already a zombie of ours, there is nothing to kill; the
+    /// callers' detached waitpid still reaps it.) 2026-10-05 triage T35.
+    private func killIfStillCurl(_ pid: Int32) {
+        guard isCurlProcess(pid: pid) || isOurChild(pid: pid) else {
+            glog("[Rec] not killing pid \(pid): it is no longer \((curlExecutablePath as NSString).lastPathComponent) (already exited, or the pid was recycled)")
+            return
+        }
+        kill(pid, SIGKILL)
+    }
+
+    /// True if `pid` is a live (or not-yet-reaped) child of THIS process. A pid we spawned and haven't
+    /// reaped cannot have been recycled — so for our own children the process-name check is unnecessary
+    /// (and wrong for a script-based test double, whose process image is /bin/bash, not the script).
+    private func isOurChild(pid: Int32) -> Bool {
+        var info = proc_bsdinfo()
+        let n = proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, Int32(MemoryLayout<proc_bsdinfo>.size))
+        return n == Int32(MemoryLayout<proc_bsdinfo>.size) && info.pbi_ppid == UInt32(getpid())
+    }
+
     private func isCurlProcess(pid: Int32) -> Bool {
         var buffer = [Int8](repeating: 0, count: Int(4 * MAXPATHLEN))  // PROC_PIDPATHINFO_MAXSIZE's value — the macro itself is marked unavailable to Swift
         let len = proc_pidpath(pid, &buffer, UInt32(buffer.count))
@@ -429,7 +451,7 @@ final class RecordingManager {
         feedCacheReconnectAttempts[sessionId] = nil
         feedCacheRetryAt[sessionId] = nil
         guard let pid = feedCachePullPids.removeValue(forKey: sessionId) else { return }
-        kill(pid, SIGKILL)
+        killIfStillCurl(pid)
         // Same detached-reap reasoning as stop(showId:) above — never block the main actor waiting
         // on a child that may be stuck in an uninterruptible syscall.
         DispatchQueue.global(qos: .utility).async { waitpid(pid, nil, 0) }

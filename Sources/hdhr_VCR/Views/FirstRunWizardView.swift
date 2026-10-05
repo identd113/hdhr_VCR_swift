@@ -103,7 +103,7 @@ struct FirstRunWizardView: View {
             guard !state.recordableDevices.isEmpty else {
                 return TunerDiscoveryStatus(kind: .notFound)
             }
-            let counts = Dictionary(uniqueKeysWithValues: state.recordableDevices.map {
+            let counts = Dictionary(firstWinsOf: state.recordableDevices.map {
                 ($0.DeviceID, state.lineups[$0.DeviceID]?.count ?? 0)
             })
             return TunerDiscoveryStatus(kind: state.recordableDevices.count > 1 ? .foundMultiple : .foundSingle,

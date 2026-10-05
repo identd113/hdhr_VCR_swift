@@ -413,6 +413,43 @@ struct RecordingManagerTests {
         manager.releaseAssertion(id: showId)
     }
 
+    // 2026-10-05 triage T35: stop() used to SIGKILL the stored pid unconditionally.
+    @Test @MainActor func stop_doesNotKillAnUnrelatedProcessThatNowOwnsTheStoredPid() async throws {
+        let manager = RecordingManager(curlExecutablePath: "/usr/bin/curl")
+        let showId = "test-\(UUID().uuidString)"
+        let pid = try spawnDetachedOrphan(executablePath: "/bin/sleep", arguments: ["30"])   // a live non-curl process standing in for the recycled pid
+        defer { kill(pid, SIGKILL) }
+        manager.reattach(showId: showId, pid: pid, title: "Resumed Show", endDate: Date().addingTimeInterval(120))
+
+        manager.stop(showId: showId)
+        try await Task.sleep(nanoseconds: 300_000_000)
+
+        #expect(kill(pid, 0) == 0, "stop() must not kill a process that is not curl")
+        manager.releaseAssertion(id: showId)
+    }
+
+    @Test @MainActor func stop_stillKillsItsOwnChildProcess_evenWhenItsImageIsAScriptInterpreter() async throws {
+        // The mock "curl" is a bash script, so the process image is /bin/bash, not the script's name —
+        // our own child must still be killed (an unreaped child's pid cannot have been recycled).
+        let scriptPath = try writeMockCurlScript(sleepSeconds: 30)
+        defer { cleanup(scriptPath) }
+        let manager = RecordingManager(curlExecutablePath: scriptPath)
+        let outputPath = NSTemporaryDirectory() + "hdhrVCRplus-test-stopkill-\(UUID().uuidString).ts"
+        defer { cleanup(outputPath) }
+        let sessionId = "test-\(UUID().uuidString)"
+        try manager.startFeedCachePull(sessionId: sessionId, url: "http://192.0.2.1/auto/v5.1", outputPath: outputPath)
+        await waitUntil { manager.isFeedCachePullRunning(sessionId: sessionId) }
+        manager.stopFeedCachePull(sessionId: sessionId)
+        try await Task.sleep(nanoseconds: 500_000_000)
+        let leftover = Process()
+        leftover.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        leftover.arguments = ["-f", scriptPath]
+        let pipe = Pipe(); leftover.standardOutput = pipe
+        try leftover.run(); leftover.waitUntilExit()
+        let out = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        #expect(out.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, "the stopped puller process must be gone")
+    }
+
     // MARK: - sleep assertions
 
     @Test @MainActor func preventSleep_thenReleaseAssertion_doesNotCrash() {

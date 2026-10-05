@@ -12,7 +12,18 @@ final class HDHRManager {
     private let dataSession: URLSession
     private let cloudDiscoveryURL = URL(string: "http://discover.hdhomerun.com/discover.json")!
 
-    init(session: URLSession? = nil, dataSession: URLSession = .shared) {
+    /// Session for the device's own lineup / favorite calls: 10 s request timeout (LANFetch.requestTimeout)
+    /// instead of URLSession.shared's 60 s, so one unreachable tuner can't hold up the whole periodic
+    /// guide refresh (`refreshGuides` fetches every device's lineup before loading any guide).
+    static let lanDataSession: URLSession = {
+        let c = URLSessionConfiguration.default
+        c.timeoutIntervalForRequest  = LANFetch.requestTimeout
+        c.timeoutIntervalForResource = LANFetch.requestTimeout * 2
+        c.waitsForConnectivity = false
+        return URLSession(configuration: c)
+    }()
+
+    init(session: URLSession? = nil, dataSession: URLSession = HDHRManager.lanDataSession) {
         if let session {
             self.session = session
         } else {

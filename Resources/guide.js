@@ -585,7 +585,7 @@ function doEditFromGuide(){
   if(!sel||!sel.dataset.showId)return;
   var sd=sel.dataset;
   openEditShow({dataset:{
-    id:sd.showId, title:sd.title, ch:sd.num, chname:sd.chname,
+    id:sd.showId, title:sd.title, ch:sd.num, chname:sd.chname, dev:sd.device||'',
     type:sd.showType||'single', paused:sd.showPaused||'0',
     recording:sd.showRecording||'0', length:sd.showLength||'60',
     bonus:sd.showBonus||'0', transcode:sd.showTranscode||'none',
@@ -1628,11 +1628,14 @@ requestAnimationFrame(function(){
 // refresh cycle), not the moment this specific browser actually loaded it.
 updateNowLine();
 setInterval(updateNowLine,60000);
-// Page-staleness: reload if the server version changes (redeploy) or the baked-in expiry has passed.
+// Page-staleness: reload if the server version changes (redeploy) or this page has been open 2 hours.
+// The 2 h is measured from when THIS page loaded (client clock), not from a timestamp baked into the
+// served HTML: the server caches that HTML and only rebuilds it on guide-changing events, so a baked-in
+// expiry went stale in the cache and every load after it expired reloaded itself every minute.
 (function(){
-  var _ver='{{APP_VERSION}}',_exp={{VER_EXP_TS}};
+  var _ver='{{APP_VERSION}}',_t0=Date.now(),_maxAge=2*3600*1000;
   function checkFreshness(){
-    if(Date.now()>_exp){location.reload();return;}
+    if(Date.now()-_t0>_maxAge){location.reload();return;}
     fetch('/api/ping').then(function(r){return r.json();}).then(function(j){
       if(j.version&&j.version!==_ver)location.reload();
     }).catch(function(){});

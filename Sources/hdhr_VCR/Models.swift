@@ -940,6 +940,16 @@ extension String {
     var urlBase: String { components(separatedBy: "?").first ?? self }
 }
 
+extension Dictionary {
+    /// `Dictionary(uniqueKeysWithValues:)` TRAPS on a duplicate key. For dictionaries keyed by a LAN
+    /// device's `DeviceID` — which comes off the network and is not guaranteed unique (two discovery
+    /// paths returning the same tuner, a cloned or spoofed device) — a trap would crash the app on
+    /// every page rebuild/idle tick. First entry wins instead (2026-10-05 triage T07).
+    init<S: Sequence>(firstWinsOf pairs: S) where S.Element == (Key, Value) {
+        self.init(pairs, uniquingKeysWith: { first, _ in first })
+    }
+}
+
 extension Collection where Element == LineupEntry {
     /// The lineup entry whose stream URL is the one being played (ignoring any `?transcode=…` query).
     /// Exact match on the query-stripped URL — NOT a prefix match: channel URLs are

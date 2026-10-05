@@ -1595,7 +1595,7 @@ final class AppState: ObservableObject {
                 // (missedProbes resets to 0, its default); one this round missed keeps its prior
                 // entry untouched, so eventual removal still only ever happens via
                 // probeForNewDevices's own threshold.
-                let foundByID = Dictionary(uniqueKeysWithValues: found.map { ($0.DeviceID, $0) })
+                let foundByID = Dictionary(firstWinsOf: found.map { ($0.DeviceID, $0) })
                 var merged = devices
                 for i in merged.indices {
                     if let fresh = foundByID[merged[i].DeviceID] { merged[i] = fresh }
@@ -1634,7 +1634,7 @@ final class AppState: ObservableObject {
 
         // Merge-update DeviceAuth + LocalIP on seen devices; increment missedProbes on unseen ones.
         // freshByID is empty when discovery threw — all existing devices count as unseen this cycle.
-        let freshByID = Dictionary(uniqueKeysWithValues: (found ?? []).map { ($0.DeviceID, $0) })
+        let freshByID = Dictionary(firstWinsOf: (found ?? []).map { ($0.DeviceID, $0) })
         for i in devices.indices {
             if let fresh = freshByID[devices[i].DeviceID] {
                 let wasUnavailable = !devices[i].isAvailable
@@ -1824,7 +1824,7 @@ final class AppState: ObservableObject {
 
     private func updateShowURLsFromLineups() {
         var dirty = false
-        let deviceMap = Dictionary(uniqueKeysWithValues: devices.map { ($0.DeviceID, $0) })
+        let deviceMap = Dictionary(firstWinsOf: devices.map { ($0.DeviceID, $0) })
         for i in shows.indices {
             let show = shows[i]
             guard !show.show_url.isEmpty,
@@ -2101,7 +2101,7 @@ final class AppState: ObservableObject {
         // mirroring the real recording-start priority (see the favorite-first sort below in
         // this same function). Not a lookahead optimizer — real arbitration is retry-based at
         // runtime — but this tracks the same priority signal the real system uses.
-        let deviceMap = Dictionary(uniqueKeysWithValues: devices.compactMap { d -> (String, Int)? in
+        let deviceMap = Dictionary(firstWinsOf: devices.compactMap { d -> (String, Int)? in
             guard let t = d.TunerCount, t > 0 else { return nil }
             return (d.DeviceID, t)
         })

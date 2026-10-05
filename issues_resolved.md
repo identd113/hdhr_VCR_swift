@@ -6,6 +6,16 @@ Every entry below was re-verified against the current codebase on 2026-08-10 bef
 
 ---
 
+# Triage batch 1 fixed — 2026-10-05 (T01, T07, T21, T35, T37)
+
+- **T01 web page reload loop:** the 2 h page expiry was a timestamp baked into the *cached* HTML, so once it passed every tab/load reloaded itself every minute until the next rebuild. `guide.js` now measures 2 h from when the page loaded (`_t0`); the `VER_EXP_TS` token is gone.
+- **T07 duplicate-DeviceID trap:** nine `Dictionary(uniqueKeysWithValues:)` sites over device lists now use `Dictionary(firstWinsOf:)` (first entry wins) — no crash loop if two discovery paths return the same DeviceID.
+- **T21 lineup timeouts:** `HDHRManager`'s lineup/favorite calls use a 10 s session (`lanDataSession`) instead of `URLSession.shared`'s 60 s, so one dead tuner can't hold up the periodic guide refresh.
+- **T35 stop() SIGKILL:** `RecordingManager` only kills a stored pid if it is still curl **or** our own unreaped child (`isOurChild`, since a script-based test double's image is /bin/bash). Found while testing: a first version that only checked the process name left mock processes running.
+- **T37 web edit modal:** `doEditFromGuide` now passes `dev`, so the "transcode will be ignored" warning works for shows edited from the grid.
+
+---
+
 # Web guide laggy under load — resolved (moved from ISSUES.md 2026-10-05 triage)
 
 Root-caused 2026-08-24 (a ~2.2 MB un-gzipped SSE grid payload fanned out to every client starved normal requests); fixed by gzip+base64 SSE payloads (2026-08-31), a separate accept queue (2026-09-11) and the async config save (2026-09-11). Full history:

@@ -63,3 +63,26 @@ struct ShowPrimaryDirTests {
         #expect(s.posixPrimaryDir == Show.localFallbackDir)
     }
 }
+
+@Suite("Triage T07 / T21 helpers")
+struct TriageHelperTests {
+    @Test func firstWinsOf_doesNotTrapOnADuplicateKey_andKeepsTheFirst() {
+        let pairs = [("DEV1", 1), ("DEV2", 2), ("DEV1", 99)]
+        let d = Dictionary(firstWinsOf: pairs)
+        #expect(d.count == 2)
+        #expect(d["DEV1"] == 1)
+        #expect(d["DEV2"] == 2)
+    }
+
+    @Test func firstWinsOf_emptySequence() {
+        let d: [String: Int] = Dictionary(firstWinsOf: [(String, Int)]())
+        #expect(d.isEmpty)
+    }
+
+    @Test func lanDataSession_hasShortTimeouts_notTheSixtySecondDefault() {
+        let c = HDHRManager.lanDataSession.configuration
+        #expect(c.timeoutIntervalForRequest == LANFetch.requestTimeout)
+        #expect(c.timeoutIntervalForRequest < 60)
+        #expect(c.timeoutIntervalForResource == LANFetch.requestTimeout * 2)
+    }
+}
