@@ -41,3 +41,25 @@ struct SecretAndPathSafetyTests {
         }
     }
 }
+
+@Suite("Show.posixPrimaryDir")
+struct ShowPrimaryDirTests {
+    @Test func offlineVolume_posixRecordDirFallsBack_butPosixPrimaryDirKeepsTheConfiguredFolder() {
+        var s = Show.blank()
+        s.show_dir = "/Volumes/DefinitelyNotMounted-\(UUID().uuidString)/DVR"
+        s.show_temp_dir = Show.localFallbackDir
+        #expect(s.posixRecordDir == Show.localFallbackDir)          // recording falls back while the volume is gone…
+        #expect(s.posixPrimaryDir == s.show_dir)                    // …but the Edit form must keep showing/saving the real folder
+    }
+
+    @Test func legacyHFSPath_isConvertedToPosix() {
+        var s = Show.blank()
+        s.show_dir = "Raid6:DVR Tests:"
+        #expect(s.posixPrimaryDir == "/Volumes/Raid6/DVR Tests")
+    }
+
+    @Test func emptyShowDir_meansLocalFallback() {
+        var s = Show.blank(); s.show_dir = ""
+        #expect(s.posixPrimaryDir == Show.localFallbackDir)
+    }
+}

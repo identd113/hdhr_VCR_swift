@@ -205,6 +205,11 @@ struct Show: Identifiable, Equatable {
     // legacy HFS colon-separated strings needing toPosix().
     static let localFallbackDir = NSHomeDirectory() + "/Movies/hdhr_videos"
 
+    /// The folder this show is *configured* to record to, as a POSIX path (legacy HFS strings converted)
+    /// — unlike `posixRecordDir`, never swapped for the local fallback when the volume is offline.
+    /// What the Edit Show form must display and preserve (empty `show_dir` → the local fallback).
+    var posixPrimaryDir: String { Self.toPosix(show_dir.isEmpty ? Self.localFallbackDir : show_dir) }
+
     var posixRecordDir: String {
         let primary  = Self.toPosix(show_dir.isEmpty      ? Self.localFallbackDir : show_dir)
         let fallback = Self.toPosix(show_temp_dir.isEmpty ? Self.localFallbackDir : show_temp_dir)

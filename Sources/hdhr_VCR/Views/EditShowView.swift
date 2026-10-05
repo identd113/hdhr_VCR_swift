@@ -9,6 +9,11 @@ struct EditShowView: View {
     @State private var seriesType: ShowState = .single
     @State private var airDays: Set<String> = []
     @State private var recordFolder: URL? = nil
+    // The folder as loaded — Save only writes show_dir/show_temp_dir when the user actually changed it.
+    // (recordFolder used to be seeded from posixRecordDir, which is the *fallback* folder while the
+    // show's NAS/external volume is offline, so any save — even a title edit — silently re-pointed
+    // the show at the local fallback. 2026-10-05 review.)
+    @State private var loadedRecordFolder: URL? = nil
 
     private var isDirty: Bool { show != nil && show != originalShow }
 
@@ -183,11 +188,14 @@ struct EditShowView: View {
         seriesType = s.state
         airDays = Set(s.show_air_date)
         // Use show's existing dir, fall back to default setting, then ~/Movies
-        if !s.posixRecordDir.isEmpty {
+        if !s.show_dir.isEmpty {
+            recordFolder = URL(fileURLWithPath: s.posixPrimaryDir)   // the configured folder, even if its volume is offline right now
+        } else if !s.posixRecordDir.isEmpty {
             recordFolder = URL(fileURLWithPath: s.posixRecordDir)
         } else {
             recordFolder = state.defaultSaveDir
         }
+        loadedRecordFolder = recordFolder
     }
 
     private func applySeriesType() {
@@ -227,7 +235,7 @@ struct EditShowView: View {
         s.show_is_series        = seriesType != .single
         s.show_use_seriesid     = seriesType.isSeries
         s.show_use_seriesid_all = seriesType == .seriesAll
-        if let folder = recordFolder {
+        if let folder = recordFolder, folder != loadedRecordFolder {
             s.show_dir      = folder.path
             // A local fallback distinct from show_dir, not a copy of it — this used to set
             // show_temp_dir to the same folder as show_dir, which silently destroyed the local
@@ -249,6 +257,7 @@ struct EditShowView: View {
         // for edit in this same reused window.
         show = s
         originalShow = s   // reset dirty tracking after save
+        loadedRecordFolder = recordFolder
     }
 
     private func save() {

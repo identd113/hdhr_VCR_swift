@@ -377,6 +377,17 @@ struct AddShowView: View {
 
     // MARK: - Logic
 
+    /// Starts every guide pick from a brand-new `Show`. This Window is single-instance and `@State show`
+    /// outlives a wizard session, so resetting only `show_id` (and transcode) let the previous show's other
+    /// per-show choices — `show_ignore_duplicate_once`, `show_new_only`, `show_bonus_time`, the Discord and
+    /// failure fields, the recording folder fallback — ride along into the next show; a leftover
+    /// `show_ignore_duplicate_once` could even bypass Skip-already-recorded (2026-10-05 review). Callers fill
+    /// in everything the guide entry supplies right after.
+    private func resetShowForNewEntry() {
+        show = Show.blank()
+        show.show_transcode = state.config.Default_transcode
+    }
+
     private func applyPendingChannel(_ pending: (device: HDHRDevice, channel: LineupEntry)) {
         selectedDevice = pending.device
         step = .guide
@@ -391,7 +402,7 @@ struct AddShowView: View {
         // Same fix as applyWebGuideEntry's own doc comment below — this is the wizard's other,
         // independent entry point into the same @State show (right-click/quick-add flows that
         // skip the guide step via state.pendingAddEntry), so it needs the identical show_id reset.
-        show.show_id             = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+        resetShowForNewEntry()   // fresh Show (new id AND every flag back to its default) — see its doc comment
         show.show_title          = entry.Title
         show.show_channel        = channel.GuideNumber
         show.show_length         = entry.durationMinutes
@@ -428,7 +439,7 @@ struct AddShowView: View {
         // the one place every guide pick funnels through (the "record" WKScriptMessage handler's
         // only call site), so regenerating the ID here guarantees a fresh identity regardless of
         // whatever kept the surrounding View state alive.
-        show.show_id          = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+        resetShowForNewEntry()   // fresh Show (new id AND every flag back to its default) — see its doc comment
         show.show_title      = title
         show.show_channel    = guideNumber
         show.show_length     = (endTime - startTime) / 60
