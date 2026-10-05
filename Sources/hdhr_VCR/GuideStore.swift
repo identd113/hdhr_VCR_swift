@@ -252,7 +252,7 @@ final class GuideStore {
     /// One file per device + format + window length — a GuideHours or XMLTV/JSON setting change
     /// never reuses a differently-shaped response. nil when the disk cache is disabled.
     private func cacheFile(id: String, kind: String, hours: Int) -> URL? {
-        diskCacheDir?.appendingPathComponent("\(id)-\(kind)-\(hours)h.guide")
+        diskCacheDir?.appendingPathComponent("\(id.safeFileComponent)-\(kind)-\(hours)h.guide")
     }
 
     nonisolated private static func readFreshCache(_ file: URL, maxAge: TimeInterval) -> (data: Data, modified: Date)? {

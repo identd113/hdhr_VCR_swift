@@ -1696,15 +1696,24 @@ final class WebServer: @unchecked Sendable {
             // window → unchanged.
             let window = min(aligned, Self.keyframeScanWindowBytes)
             if window > 0 {
-                handle.seek(toFileOffset: UInt64(aligned - window))
-                let data = handle.readData(ofLength: window)
+                // try? + the throwing FileHandle API (not seek(toFileOffset:)/readData(ofLength:)): the
+                // legacy calls raise an uncatchable NSException on an I/O error — e.g. an external
+                // recording volume unmounting mid-stream — which would abort the whole app.
+                try? handle.seek(toOffset: UInt64(aligned - window))
+                let data = (try? handle.read(upToCount: window)) ?? Data()
                 if let keyframe = Self.lastKeyframePacketOffset(in: data) {
                     let newStart = aligned - window + keyframe
                     glog("[WebServer] watch-recording show=\(showId) keyframe-aligned start \(aligned) → \(newStart) (−\((aligned - newStart) / 1024) KB)")
                     aligned = newStart
                 }
             }
-            handle.seek(toFileOffset: UInt64(aligned))
+            do { try handle.seek(toOffset: UInt64(aligned)) } catch {
+                glog("[WebServer] watch-recording show=\(showId) seek to \(aligned) failed: \(error.localizedDescription)", level: .warning)
+                try? handle.close()
+                queue.async { self.send(.notFound("could not read recording file"), on: conn) }
+                onStreamEnded?()
+                return
+            }
             initialBytes = aligned
         }
         // Backlog vs. live-edge: handleVirtualTunerStream's FEED path always joins at the file's
@@ -1740,7 +1749,7 @@ final class WebServer: @unchecked Sendable {
             guard let self else { return }
             self.sendStreamChunk(Data(header.utf8), on: conn) { [weak self] reason in
                 guard let self, reason == nil else {
-                    self?.fileIOQueue.async { handle.closeFile() }
+                    self?.fileIOQueue.async { try? handle.close() }
                     conn.cancel()
                     glog("[WebServer] watch-recording header send failed show=\(showId): \(reason ?? "unknown")", level: .warning)
                     onStreamEnded?()
@@ -1895,7 +1904,7 @@ final class WebServer: @unchecked Sendable {
         switch conn.state {
         case .cancelled, .failed:
             glog("[WebServer] watch-recording show=\(showId) connection no longer alive at \(bytesSent) bytes — stopping")
-            fileIOQueue.async { handle.closeFile() }
+            fileIOQueue.async { try? handle.close() }
             onStreamEnded?()
             return
         default:
@@ -1905,7 +1914,7 @@ final class WebServer: @unchecked Sendable {
         // stream once the requested window elapses, regardless of whether more data is available.
         if let deadline, Date() >= deadline {
             glog("[WebServer] watch-recording show=\(showId) duration elapsed at \(bytesSent) bytes — closing stream")
-            fileIOQueue.async { handle.closeFile() }
+            fileIOQueue.async { try? handle.close() }
             conn.cancel()
             onStreamEnded?()
             return
@@ -1921,7 +1930,9 @@ final class WebServer: @unchecked Sendable {
                 let trueSize = (try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? Int ?? bytesSent
                 pacer.maybeUpdateObservedRate(currentFileSize: trueSize)
             }
-            let chunk = handle.readData(ofLength: chunkSize)
+            // Throwing read: an I/O error (volume gone) yields an empty chunk — "nothing new" — and the
+            // existing no-growth/deadline logic ends the stream, instead of an NSException killing the app.
+            let chunk = (try? handle.read(upToCount: chunkSize)) ?? Data()
             self.queue.async {
                 self.handleGrowingFileChunk(chunk, handle: handle, showId: showId, conn: conn, path: path,
                                              bytesSent: bytesSent, waitStreak: waitStreak, waitStartedAt: waitStartedAt,
@@ -1992,7 +2003,7 @@ final class WebServer: @unchecked Sendable {
                     }
                 } else {
                     glog("[WebServer] watch-recording show=\(showId) recording finished, drained \(bytesSent) bytes — closing stream")
-                    self.fileIOQueue.async { handle.closeFile() }
+                    self.fileIOQueue.async { try? handle.close() }
                     conn.cancel()
                     onStreamEnded?()
                 }
@@ -2047,7 +2058,7 @@ final class WebServer: @unchecked Sendable {
             if isPaced { pacer?.recordPacedSend(chunk.count) }
             self.sendStreamChunk(chunk, on: conn) { [weak self] reason in
                 guard let self, reason == nil else {
-                    self?.fileIOQueue.async { handle.closeFile() }
+                    self?.fileIOQueue.async { try? handle.close() }
                     // Explicit cancel — a send error usually means the OS already knows the
                     // connection is dead, but cancel() is idempotent (WebServer.stop()'s own
                     // comment), so calling it here is harmless and guarantees teardown.
@@ -4511,6 +4522,11 @@ final class WebServer: @unchecked Sendable {
             raw += "Connection: close\r\n"
         }
         raw += "Permissions-Policy: geolocation=(), camera=(), microphone=(), interest-cohort=()\r\n"
+        // Same-origin framing only: stops another website framing the guide and tricking a click onto
+        // Record/Delete (clickjacking — the cross-site POST guards don't see a click made inside a
+        // frame of this very origin). The app's own WKWebView loads the guide top-level, unaffected.
+        raw += "X-Frame-Options: SAMEORIGIN\r\n"
+        raw += "Content-Security-Policy: frame-ancestors 'self'\r\n"
         for (k, v) in headers { raw += "\(k): \(v)\r\n" }
         raw += "\r\n"
 

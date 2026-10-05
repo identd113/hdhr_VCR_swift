@@ -104,7 +104,41 @@ func rotateCurlVerboseLogIfNeeded(path: String = curlVerboseLogFilePath) {
     try? fm.moveItem(atPath: path, toPath: backupPath)
 }
 
+/// Masks the value of any `DeviceAuth=` query parameter. DeviceAuth is a live SiliconDust cloud
+/// bearer token; a URLError's description, a request URL or a debug line can carry it, and glog
+/// mirrors every line to the unified log with `privacy: .public` and to a file users are asked to
+/// share. Applied inside glog so no individual call site has to remember (2026-10-05 review).
+func redactingSecrets(_ s: String) -> String {
+    guard s.contains("DeviceAuth=") else { return s }   // cheap fast path: nearly every line
+    var out = ""
+    var rest = Substring(s)
+    while let r = rest.range(of: "DeviceAuth=") {
+        out += rest[..<r.upperBound]
+        let after = rest[r.upperBound...]
+        let end = after.firstIndex(where: { "&\" '\n)\\".contains($0) || $0.isWhitespace }) ?? after.endIndex
+        out += "REDACTED"
+        rest = after[end...]
+    }
+    return out + rest
+}
+
+extension String {
+    /// A form of this string that is safe as one component of a file name or path (and in an HTTP
+    /// header value): ASCII letters, digits, `-` and `_` only, at most 64 characters, never empty.
+    /// Used for IDs that arrive from the network (a LAN device's `DeviceID`) before they are placed
+    /// in a cache path / curl argument — an ID like "../../x" or one containing a newline must not
+    /// be able to steer a write or inject a header.
+    var safeFileComponent: String {
+        let kept = String(unicodeScalars.lazy
+            .filter { ($0.value >= 48 && $0.value <= 57) || ($0.value >= 65 && $0.value <= 90)
+                      || ($0.value >= 97 && $0.value <= 122) || $0 == "-" || $0 == "_" }
+            .prefix(64).map(Character.init))
+        return kept.isEmpty ? "device" : kept
+    }
+}
+
 func glog(_ msg: String, level: LogLevel = .info) {
+    let msg = redactingSecrets(msg)
     switch level {
     case .info:    appLog.notice("\(msg, privacy: .public)")
     case .warning: appLog.warning("\(msg, privacy: .public)")

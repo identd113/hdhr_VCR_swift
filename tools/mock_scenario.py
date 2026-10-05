@@ -366,7 +366,7 @@ def do_clean(port, shows):
         if not root or not os.path.isdir(root):
             continue
         for ext in REC_EXTS:
-            for pat in (f"*_{SIGNATURE}{ext}", f"{MOCK_PREFIX}*{ext}"):
+            for pat in (f"*_{glob.escape(SIGNATURE)}{ext}", f"{glob.escape(MOCK_PREFIX)}*{ext}"):   # escape: "[MOCK]" is otherwise a glob character class that matches real files
                 for path in glob.glob(os.path.join(root, "**", pat), recursive=True):
                     try:
                         os.remove(path)

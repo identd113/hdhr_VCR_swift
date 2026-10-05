@@ -1083,7 +1083,7 @@ final class AppState: ObservableObject {
         // pollutes deviceTunerOccupancy with data about another machine's recording activity.
         for device in recordableDevices { Task { await fetchDeviceStatus(for: device) } }
         for d in devices {
-            glog("[Startup]   \(d.DeviceID)  LocalIP='\(d.LocalIP)'  DeviceAuth=\(d.DeviceAuth ?? "nil")")
+            glog("[Startup]   \(d.DeviceID)  LocalIP='\(d.LocalIP)'  DeviceAuth=\(d.DeviceAuth == nil ? "nil" : "present")")
         }
 
         // 7. Guide — only if tuners found; idleLoop will retry if this fails
@@ -5262,7 +5262,7 @@ final class AppState: ObservableObject {
         let mgr = VLCPlayerWindowManager.shared
         // The UUID (not just device id) ensures switching raw↔H.264, or re-watching, never aliases
         // two different sessions onto the same cache file.
-        let sessionId = "\(device.DeviceID)-\(UUID().uuidString)"
+        let sessionId = "\(device.DeviceID.safeFileComponent)-\(UUID().uuidString)"
         let cacheDir  = NSHomeDirectory() + "/Library/Caches/hdhrVCRplus/feed-cache"
         let cachePath = "\(cacheDir)/\(sessionId).ts"
 
@@ -5513,7 +5513,7 @@ final class AppState: ObservableObject {
         }
         // The UUID (not just device id) ensures switching raw↔H.264, or re-watching, never aliases
         // two different sessions onto the same id.
-        let sessionId = "\(device.DeviceID)-\(UUID().uuidString)"
+        let sessionId = "\(device.DeviceID.safeFileComponent)-\(UUID().uuidString)"
         recordingRelayClaim.claim { ensureWebServerRunning() }   // see startFeedCacheSession's identical claim
         webServer.registerFeedRelaySession(id: sessionId, remoteURL: remoteURL)
         if slot == .primary {

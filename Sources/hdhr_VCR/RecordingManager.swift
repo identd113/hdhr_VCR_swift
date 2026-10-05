@@ -321,6 +321,8 @@ final class RecordingManager {
 
         var curlArgs: [String] = [
             "--connect-timeout", "10",
+            // The URL comes from another LAN host's relay announcement — speak only http(s), never file:/ftp:/etc.
+            "--proto", "=http,https",
             "-H", "appname:hdhrVCRplus",
             // Positively identifies this specific process to sweepOrphanedFeedCachePullers's `ps`
             // scan at next startup, mirroring reattachRecordings' own show_id: marker for real
@@ -357,6 +359,8 @@ final class RecordingManager {
     private func respawnFeedCachePull(sessionId: String, spec: FeedCachePullSpec) throws {
         var curlArgs: [String] = [
             "--connect-timeout", "10",
+            // The URL comes from another LAN host's relay announcement — speak only http(s), never file:/ftp:/etc.
+            "--proto", "=http,https",
             "-H", "appname:hdhrVCRplus",
             "-H", "feed_cache:\(sessionId)",
         ]
@@ -565,8 +569,8 @@ final class RecordingManager {
         }
         guard let fh = FileHandle(forWritingAtPath: path) else { return }
         defer { try? fh.close() }
-        fh.seekToEndOfFile()
+        try? fh.seekToEnd()
         let header = "\n[CURL] \(showId) → \(outputPath) | \(curlArgs.joined(separator: " "))\n"
-        fh.write(header.data(using: .utf8) ?? Data())
+        try? fh.write(contentsOf: header.data(using: .utf8) ?? Data())
     }
 }
