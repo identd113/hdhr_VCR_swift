@@ -9,10 +9,17 @@ actor ChannelIconCache {
     static let shared = ChannelIconCache()
 
     private var mem: [String: NSImage] = [:]
-    // URL → when it last failed. A failure suppresses re-fetching only for `failureRetryInterval`
-    // (e.g. the app launched before Wi-Fi was up must not leave logos blank until relaunch).
-    private var failedURLs: [String: Date] = [:]
-    private static let failureRetryInterval: TimeInterval = 600
+    // URL → when it last failed and how long to leave it alone. Logos live on a public CDN, so a
+    // *permanent* failure (the server answered 404/403/410, or sent something that isn't an image)
+    // is retried only after a day — long enough that dead URLs aren't re-requested on every guide
+    // refresh nor re-counted as "missing" by countMissing — while a *transient* one (no network, a
+    // 5xx, a timeout — e.g. the app launched before Wi-Fi was up) retries after ten minutes so logos
+    // don't stay blank until relaunch.
+    private var failedURLs: [String: (at: Date, retryAfter: TimeInterval)] = [:]
+    static let transientRetryInterval: TimeInterval = 600
+    static let permanentRetryInterval: TimeInterval = 24 * 3600
+    private let session: URLSession
+    private let now: @Sendable () -> Date
     private let dir: URL
     // De-dupes concurrent callers requesting the same cold URL — without this, several views
     // referencing the same not-yet-cached icon (e.g. multiple shows sharing a station logo) could
@@ -24,7 +31,10 @@ actor ChannelIconCache {
     // ~/Library/Caches/. Same shape as ConfigManager(appSupportDir:); without this, any test
     // touching countMissing/image(for:)/pruneDiskCacheIfNeeded would read/write the live user's
     // icon cache.
-    init(cacheDir: URL? = nil) {
+    // session/now are test seams (a mocked session, a controllable clock); production uses the defaults.
+    init(cacheDir: URL? = nil, session: URLSession = .shared, now: @escaping @Sendable () -> Date = { Date() }) {
+        self.session = session
+        self.now = now
         let base = cacheDir ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
         dir = base.appendingPathComponent("hdhr_VCR/channel_icons", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -70,13 +80,20 @@ actor ChannelIconCache {
         return result
     }
 
-    /// True while `url`'s last failure is inside the retry window; an expired entry is dropped so
+    /// True while `url`'s last failure is inside its retry window; an expired entry is dropped so
     /// the next call re-attempts the download.
     private func hasRecentFailure(_ url: String) -> Bool {
-        guard let at = failedURLs[url] else { return false }
-        if Date().timeIntervalSince(at) < Self.failureRetryInterval { return true }
+        guard let f = failedURLs[url] else { return false }
+        if now().timeIntervalSince(f.at) < f.retryAfter { return true }
         failedURLs.removeValue(forKey: url)
         return false
+    }
+
+    /// 404/403/410 and "200 but not an image" won't fix themselves; everything else might.
+    nonisolated static func isPermanentFailure(statusCode: Int?, gotImageData: Bool) -> Bool {
+        guard let statusCode else { return false }                  // no HTTP response at all: network trouble
+        if statusCode == 200 { return !gotImageData }
+        return [403, 404, 410].contains(statusCode)
     }
 
     func image(for urlString: String) async -> NSImage? {
@@ -103,12 +120,17 @@ actor ChannelIconCache {
             return img
         }
 
-        guard let url = URL(string: urlString),
-              let (data, resp) = try? await URLSession.shared.data(from: url),
-              (resp as? HTTPURLResponse)?.statusCode == 200,
-              let img = NSImage(data: data) else {
-            failedURLs[urlString] = Date()
-            glog("[Icons] download failed: \(urlString)", level: .warning)
+        guard let url = URL(string: urlString) else {
+            failedURLs[urlString] = (now(), Self.permanentRetryInterval)
+            glog("[Icons] bad URL, not retrying for a day: \(urlString)", level: .warning)
+            return nil
+        }
+        let fetched = try? await session.data(from: url)
+        let status = (fetched?.1 as? HTTPURLResponse)?.statusCode
+        guard status == 200, let data = fetched?.0, let img = NSImage(data: data) else {
+            let permanent = Self.isPermanentFailure(statusCode: status, gotImageData: false)
+            failedURLs[urlString] = (now(), permanent ? Self.permanentRetryInterval : Self.transientRetryInterval)
+            glog("[Icons] download failed (\(status.map { "HTTP \($0)" } ?? "no response"), retry in \(permanent ? "24h" : "10m")): \(urlString)", level: .warning)
             return nil
         }
 
