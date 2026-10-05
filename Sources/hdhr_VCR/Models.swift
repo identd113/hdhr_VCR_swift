@@ -815,6 +815,32 @@ struct HDHRDevice: Identifiable, Equatable {
     var supportsTranscode: Bool { (ModelNumber ?? "").hasPrefix("HDTC") }
 }
 
+extension HDHRDevice {
+    /// This (already-known) device updated with a freshly discovered record for the same DeviceID.
+    /// The fresh record wins field by field, but a field the fresh record doesn't carry keeps its known
+    /// value: a UDP-only hit (the device's HTTP /discover.json briefly failed) has no TunerCount /
+    /// ModelNumber / FirmwareVersion / FriendlyName / DeviceAuth, and replacing the record outright with it
+    /// wiped them — which disabled the tuner-conflict gate (`tunersFull` needs TunerCount) and forced
+    /// transcode off (`supportsTranscode` needs ModelNumber) until the next successful probe. A numeric
+    /// address is never traded for an mDNS hostname, and a relay stays a relay. `missedProbes` resets.
+    /// (2026-10-05 triage T05.)
+    func mergingFresh(_ fresh: HDHRDevice) -> HDHRDevice {
+        var merged = fresh
+        merged.TunerCount      = fresh.TunerCount      ?? TunerCount
+        merged.FirmwareVersion = fresh.FirmwareVersion ?? FirmwareVersion
+        merged.DeviceAuth      = fresh.DeviceAuth      ?? DeviceAuth
+        merged.ModelNumber     = fresh.ModelNumber     ?? ModelNumber
+        merged.FriendlyName    = fresh.FriendlyName    ?? FriendlyName
+        merged.isVirtualRelay  = fresh.isVirtualRelay || isVirtualRelay
+        let keepOldAddress = fresh.LocalIP.isEmpty
+            || (!HDHRManager.isIPv4(fresh.LocalIP) && HDHRManager.isIPv4(LocalIP))
+        if keepOldAddress { merged.LocalIP = LocalIP }
+        if fresh.BaseURL == nil, merged.LocalIP == LocalIP { merged.BaseURL = BaseURL }
+        merged.missedProbes = 0
+        return merged
+    }
+}
+
 extension HDHRDevice: Codable {
     enum CodingKeys: String, CodingKey {
         case DeviceID, LocalIP, BaseURL, TunerCount, FirmwareVersion, DeviceAuth, ModelNumber, FriendlyName

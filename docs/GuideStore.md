@@ -36,7 +36,7 @@ Returns `nil` if neither DeviceAuth nor LocalIP is available (logs a diagnostic)
 ## Key Methods
 
 ```swift
-func load(for device: HDHRDevice, hours: Int, useXML: Bool = false, maxCacheAge: TimeInterval? = nil)    // fetch + index one device; useXML routes to XMLTV endpoint if DeviceAuth present; maxCacheAge (nil = always network) lets a recent on-disk copy stand in — see "On-disk guide cache"
+func load(for device: HDHRDevice, hours: Int, useXML: Bool = false, maxCacheAge: TimeInterval? = nil)    // a second caller for a device whose load is in flight JOINS it and gets its real result (no more "false" = spurious failure; `inFlightLoads`); fetch + index one device; useXML routes to XMLTV endpoint if DeviceAuth present; maxCacheAge (nil = always network) lets a recent on-disk copy stand in — see "On-disk guide cache"
 func loadAll(devices: [HDHRDevice], hours: Int, useXML: Bool = false, maxCacheAge: TimeInterval? = nil)  // parallel load for all devices
 func channels(deviceId: String) -> [GuideChannel]
 func entries(deviceId: String, channelNum: String, after: Date) -> [GuideEntry]

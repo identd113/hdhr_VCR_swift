@@ -168,17 +168,11 @@ struct SettingsView: View {
         .background(WindowCloseInterceptor(isDirty: isDirty, canSave: !webhookNeedsTest && !webPortInvalid, onSave: applyAndSave, onBecomeKey: resyncIfUntouched))
         .onAppear {
             resetDrafts()
-            // Clear a stale saved interface: if the named NIC isn't available right now
-            // (e.g. VPN disconnected), reset to Auto immediately in both draft AND live
-            // config. Without the live-config clear, a Discard-and-close would leave the
-            // dead interface name in state.config, causing every subsequent curl recording
-            // to fail with "interface not found" until the user manually Saves.
-            let available = Set(availableNetworkInterfaces().map { $0.name })
-            if !draft.Network_interface.isEmpty && !available.contains(draft.Network_interface) {
-                draft.Network_interface = ""
-                state.config.Network_interface = ""
-                state.saveConfig()
-            }
+            // A saved interface that isn't connected right now (VPN down, adapter unplugged) is NO LONGER
+            // cleared here: merely opening Settings used to wipe the user's choice from the saved config,
+            // so it was gone when the VPN came back. The app instead falls back to Auto at the point of
+            // use (AppState.effectiveNetworkInterface — discovery, recordings, FEED pulls) and the saved
+            // name is kept until the user changes it (2026-10-05 triage T09).
         }
     }
 
@@ -581,7 +575,13 @@ struct SettingsView: View {
             Section("Network") {
                 Picker(selection: $draft.Network_interface) {
                     Text("Auto").tag("")
-                    ForEach(availableNetworkInterfaces()) { iface in
+                    let available = availableNetworkInterfaces()
+                    // The saved interface isn't connected right now: keep it selectable (so the Picker has a
+                    // matching tag and the choice isn't lost) and say it is currently falling back to Auto.
+                    if !draft.Network_interface.isEmpty, !available.contains(where: { $0.name == draft.Network_interface }) {
+                        Text("\(draft.Network_interface) — not connected (using Auto)").tag(draft.Network_interface)
+                    }
+                    ForEach(available) { iface in
                         Text(iface.displayLabel).tag(iface.name)
                     }
                 } label: {

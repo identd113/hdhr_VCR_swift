@@ -524,8 +524,26 @@ struct AddShowView: View {
            let channel = state.lineups[device.DeviceID]?.first(where: { $0.GuideNumber == show.show_channel }) {
             state.resolveSeriesAir(show: &show, device: device, isAll: show.show_use_seriesid_all, channel: channel)
         }
-        state.addShow(show)
-        dismiss()
+        // Only close the wizard if the show was actually added — addShow refuses a duplicate id or a
+        // watch-only relay tuner, and closing unconditionally made a refused Record look like it worked
+        // (2026-10-05 triage T10).
+        switch state.addShow(show) {
+        case .added:
+            dismiss()
+        case .alreadyExists:
+            showAddRefusal("This show was already added (the wizard kept an earlier show's identity). Close this window and start again from the guide.")
+        case .watchOnlyTuner:
+            showAddRefusal("That tuner is a watch-only relay of another Mac's recording, so it can't record. Pick a real tuner in the guide and try again.")
+        }
+    }
+
+    private func showAddRefusal(_ message: String) {
+        let alert = NSAlert()
+        alert.messageText = "Couldn't Add Show"
+        alert.informativeText = message
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 }
 

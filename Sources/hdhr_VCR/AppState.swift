@@ -1302,11 +1302,32 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// The interface name to bind discovery and curl to: the saved `Network_interface` if that NIC is
+    /// connected right now, otherwise "" (Auto). A saved-but-disconnected interface (VPN down, adapter
+    /// unplugged) used to be wiped from the config when Settings opened; now it is kept and simply not
+    /// used while absent — binding curl to a dead interface fails every recording with "interface not
+    /// found", and a dead name makes UDP discovery find nothing. Logged at most once per 10 minutes.
+    var effectiveNetworkInterface: String {
+        let saved = config.Network_interface
+        guard !saved.isEmpty else { return "" }
+        if availableNetworkInterfaces().contains(where: { $0.name == saved }) { return saved }
+        if Date().timeIntervalSince(lastDeadInterfaceLogAt) > 600 {
+            lastDeadInterfaceLogAt = Date()
+            glog("[Network] saved interface '\(saved)' is not connected — using Auto until it returns", level: .warning)
+        }
+        return ""
+    }
+    private var lastDeadInterfaceLogAt = Date.distantPast
+
     func loadConfig() {
         guard let file = configManager.load() else { statusMessage = "No config found"; return }
         config = file.config
         let allShows = file.shows.map { var s = $0; s.show_recording = false; return s }
-        let filtered = allShows.filter { $0.show_active }
+        // Auto-clean only completed/dead ONE-TIME shows. An inactive series or date/time show is kept:
+        // scheduleNextAir deactivates a .dateTime show with no valid air days ("edit show to fix"), and
+        // dropping it here deleted it on the next launch — before the user could fix it (and made the
+        // reactivate-on-edit path unreachable across a restart). 2026-10-05 triage T04.
+        let filtered = allShows.filter { $0.show_active || $0.state != .single }
         shows = filtered
         if filtered.count < allShows.count { saveConfig() }
         statusMessage = "\(shows.count) shows loaded"
@@ -1584,7 +1605,7 @@ final class AppState: ObservableObject {
             statusMessage = attempt == 1 ? "Searching for tuners…" : "Searching for tuners (\(attempt)/\(attempts))…"
             do {
                 let found = excludingOwnVirtualTuner(
-                    try await hdhrManager.discoverDevices(knownHosts: knownHosts, interface: config.Network_interface))
+                    try await hdhrManager.discoverDevices(knownHosts: knownHosts, interface: effectiveNetworkInterface))
                 // Merge into the existing list rather than a raw overwrite — a single lossy UDP
                 // round can miss a device that's still genuinely present, and unlike
                 // probeForNewDevices (this function's periodic sibling), this call has no
@@ -1598,7 +1619,7 @@ final class AppState: ObservableObject {
                 let foundByID = Dictionary(firstWinsOf: found.map { ($0.DeviceID, $0) })
                 var merged = devices
                 for i in merged.indices {
-                    if let fresh = foundByID[merged[i].DeviceID] { merged[i] = fresh }
+                    if let fresh = foundByID[merged[i].DeviceID] { merged[i] = merged[i].mergingFresh(fresh) }
                 }
                 let existingIDs = Set(devices.map { $0.DeviceID })
                 merged.append(contentsOf: found.filter { !existingIDs.contains($0.DeviceID) })
@@ -1628,7 +1649,7 @@ final class AppState: ObservableObject {
         defer { probeInFlight = false }
         // Use a nil `found` to mean discovery itself failed (network error) — still counts as a miss
         // so a device that's offline AND causing discovery failures still reaches the unavailable threshold.
-        let found = (try? await hdhrManager.discoverDevices(knownHosts: knownHostsFromShows(), interface: config.Network_interface))
+        let found = (try? await hdhrManager.discoverDevices(knownHosts: knownHostsFromShows(), interface: effectiveNetworkInterface))
             .map { excludingOwnVirtualTuner($0) }
         let existingIDs = Set(devices.map { $0.DeviceID })
 
@@ -3435,7 +3456,7 @@ final class AppState: ObservableObject {
                                        outputPath: path, durationSeconds: remainingSecs,
                                        transcode: effectiveTranscode, showEnd: endDate,
                                        verbose: config.Verbose_curl,
-                                       networkInterface: config.Network_interface,
+                                       networkInterface: effectiveNetworkInterface,
                                        excludeFromBackup: config.TimeMachine_exclude_mode == "perFile")
         } catch {
             glog("[\(show.show_title)] LAUNCH ERROR: \(error)", level: .error)
@@ -3896,6 +3917,14 @@ final class AppState: ObservableObject {
                     // match below still searched using the pre-edit device/channel and applyMatch
                     // writes hdhr_record/show_channel straight from that stale filter.
                     show = shows[idx]
+                    // The callers only checked `!show_recording` BEFORE calling. If the idle loop started this
+                    // show's recording while the guide reload above was in flight, rescheduling now would
+                    // rewrite show_end (dropping Bonus Time padding → cut off early) and could move its
+                    // channel/device under a live recording. The recording's own completion reschedules it.
+                    guard !show.show_recording else {
+                        glog("[\(show.show_title)] scheduleNextAir: recording started during the guide reload — leaving the show untouched")
+                        return
+                    }
                     guard let freshDevice = devices.first(where: { $0.DeviceID == show.hdhr_record }) else {
                         // The edit also moved it to a device that's since vanished — nothing sane
                         // left to schedule against this tick; a later idle-loop pass retries.
@@ -3914,6 +3943,11 @@ final class AppState: ObservableObject {
                         guideByDevice = guideStore.channelsByDevice
                         guard let reIdx2 = showIndex(show.show_id) else { return }
                         idx = reIdx2
+                        show = shows[idx]
+                        guard !show.show_recording else {
+                            glog("[\(show.show_title)] scheduleNextAir: recording started during the second guide reload — leaving the show untouched")
+                            return
+                        }
                     }
                 }
                 // Check for a currently-airing episode first (e.g. marathon, back-to-back airings).
@@ -4030,7 +4064,12 @@ final class AppState: ObservableObject {
 
     // MARK: - Show CRUD
 
-    func addShow(_ show: Show) {
+    /// What `addShow` did — callers that show UI (the native wizard) need to know whether the show was
+    /// really added before closing their window.
+    enum AddShowOutcome: Equatable { case added, alreadyExists, watchOnlyTuner }
+
+    @discardableResult
+    func addShow(_ show: Show) -> AddShowOutcome {
         guard !shows.contains(where: { $0.show_id == show.show_id }) else {
             // Was a silent no-op — confirmed live 2026-09-13 as the actual mechanism behind a
             // "clicked Record, wizard closed, but the show never appeared" report: AddShowView's
@@ -4040,7 +4079,7 @@ final class AppState: ObservableObject {
             // right after this, regardless of whether addShow actually added anything, so the
             // wizard closing was never itself proof of success. See ISSUES.md/issues_resolved.md.
             glog("[Show] addShow no-op — show_id '\(show.show_id)' ('\(show.show_title)') already present", level: .warning)
-            return
+            return .alreadyExists
         }
         // Hard backstop, not just a UI-level picker filter: a virtual relay tuner (another
         // instance's rebroadcast of an in-progress recording, or — should self-exclusion ever be
@@ -4050,7 +4089,7 @@ final class AppState: ObservableObject {
         // enforced with certainty regardless of how a caller assembled the Show.
         if isVirtualRelayDevice(show.hdhr_record) {
             glog("[Show] Refused '\(show.show_title)' — \(show.hdhr_record) is a virtual relay tuner (watch-only)", level: .warning)
-            return
+            return .watchOnlyTuner
         }
         glog("[Show] Added '\(show.show_title)' ch=\(show.show_channel) \(show.show_is_series ? "series" : "single")")
         // Conflict check + notifications live here (not left to each caller) so every path that
@@ -4093,6 +4132,7 @@ final class AppState: ObservableObject {
                 }
             }
         }
+        return .added
     }
     func updateShow(_ show: Show) {
         guard let i = showIndex(show.show_id) else { return }
@@ -5310,7 +5350,7 @@ final class AppState: ObservableObject {
 
         do {
             try recordingManager.startFeedCachePull(sessionId: sessionId, url: remoteURL, outputPath: cachePath,
-                                                      networkInterface: config.Network_interface)
+                                                      networkInterface: effectiveNetworkInterface)
         } catch {
             glog("[Watch] FEED cache puller failed to start for \(remoteURL): \(error.localizedDescription)", level: .warning)
             return fail()

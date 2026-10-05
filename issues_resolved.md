@@ -6,6 +6,18 @@ Every entry below was re-verified against the current codebase on 2026-08-10 bef
 
 ---
 
+# Triage batch 2 fixed — 2026-10-05 (T04, T05, T06, T09, T10, T11)
+
+- **T06 guide "already loading" = failure:** `GuideStore.load` now keeps one in-flight `Task` per device; a second caller joins it and gets the real result, instead of `false` (which triggered backoff + a "Guide Load Failed" notification/Discord card for a guide that loaded fine).
+- **T04 inactive shows dropped on launch:** `loadConfig` removes only inactive **single** shows; a deactivated series/date-time show ("No air days configured — edit show to fix") is kept so the user can fix it.
+- **T05 degraded discovery overwrote a known device:** `HDHRDevice.mergingFresh` — fresh fields win, but TunerCount / ModelNumber / FirmwareVersion / FriendlyName / DeviceAuth / a numeric address / relay-ness survive a UDP-only hit, so the tuner-conflict gate and transcode support aren't lost.
+- **T09 Settings cleared Network_interface:** the saved name is kept; `AppState.effectiveNetworkInterface` falls back to Auto at the point of use (discovery, recording curls, FEED pulls) while that NIC is absent, and the Settings picker shows "<name> — not connected (using Auto)".
+- **T10 Add Show closed even when refused:** `addShow` returns an `AddShowOutcome` (`added` / `alreadyExists` / `watchOnlyTuner`); the wizard only closes on `.added` and otherwise explains why.
+- **T11 scheduleNextAir vs a starting recording:** after each guide-reload `await` it re-checks `show_recording` and leaves the show untouched if the recording started meanwhile.
+Tests: `TriageBatch2Tests` (9). Full suite 719 (the only failure is the known-flaky web-server lifecycle test).
+
+---
+
 # Triage batch 1 fixed — 2026-10-05 (T01, T07, T21, T35, T37)
 
 - **T01 web page reload loop:** the 2 h page expiry was a timestamp baked into the *cached* HTML, so once it passed every tab/load reloaded itself every minute until the next rebuild. `guide.js` now measures 2 h from when the page loaded (`_t0`); the `VER_EXP_TS` token is gone.

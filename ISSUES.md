@@ -20,13 +20,7 @@ Detailed write-ups for most rows are in the sections below (search the file/line
 |---|---|---|---|---|---|---|---|
 | T02 | Recording | `posixRecordDir` treats a volume **root** (e.g. `/Volumes/Raid6`) as mounted: if it's unmounted the show records to the boot disk under `/Volumes/Raid6/…` | `Models.swift` `posixRecordDir` | ✓ | 3 | 2 | 4 |
 | T03 | Config | Config + `.bak` are keyed by `ProcessInfo.hostName` (changes with VPN/SSID/Bonjour suffix) → looks like a fresh install; call can also block on DNS | `ConfigManager.swift:14` | ✓ | 3 | 4 | 4 |
-| T04 | Config | `loadConfig` drops every inactive show, including ones deactivated with a "fix me" reason | `AppState.swift:1309` | ✓ | 4 | 3 | 3 |
-| T05 | Discovery | `discoverDevices` replaces a known device with a degraded UDP-only hit → loses TunerCount/ModelNumber/DeviceAuth → conflict gate bypassed, transcode forced off | `AppState.swift:1601` | ✓ | 4 | 2 | 4 |
-| T06 | Guide | A skipped "already loading" guide load is reported as a **failure** → backoff + spurious "Guide Load Failed" notification/Discord card | `GuideStore.swift:101`, `AppState.swift:1915` | ✓ | 4 | 3 | 3 |
 | T08 | Player | `watchInApp` skips its tuner pre-flight when the primary is a zero-tuner relay on the same device → 805 / "Playback Ended" with no Busy alert | `AppState.swift:~5130` | A | 3 | 3 | 3 |
-| T09 | Settings | Opening Settings clears and saves `Network_interface` if that NIC is momentarily down | `SettingsView.swift:~175` | A | 4 | 3 | 3 |
-| T10 | Add Show | `save()` dismisses the window even if `addShow()` refused the show | `AddShowView.swift:~381` | A | 4 | 3 | 2 |
-| T11 | Engine | `scheduleNextAir` can overwrite a show that started recording while it awaited a guide reload (no re-check of `show_recording`) | `AppState.swift:~3880` | ✓ | 4 | 2 | 3 |
 | T12 | Engine | Tuner-occupancy data used to gate starts is throttled by the UI-only `menuIsOpen` flag (stale up to 30 s) | `AppState.swift:6176` | ✓ | 3 | 1 | 3 |
 | T13 | Config | `ConfigManager.save()` refreshes `.bak` from a main file it never verified decodes | `ConfigManager.swift:~60` | A | 4 | 1 | 3 |
 | T14 | Transcode | Transcode session port freed synchronously but the old httpd torn down later → quick viewer reconnect can hit a bind conflict | `VLCBridge.swift:~2130–2244` | A | 3 | 2 | 3 |
@@ -64,7 +58,7 @@ Detailed write-ups for most rows are in the sections below (search the file/line
 | T49 | Test-only | Add Show web-guide search box doesn't expose typed text through WKWebView's AX bridge (automation gap, not user-facing) | see 2026-09-04 entry | A | 1 | 1 | 1 |
 | T50 | FEED | FEED audio-track switching on cross-machine sessions not confirmed (CC works; may have been the old stall bug) | see 2026-09-07 entry | P | 2 | 2 | 1 |
 
-**Suggested order** (value ÷ effort): ~~T01, T07, T21, T35, T37~~ *(fixed 2026-10-05)* · next **T06, T04, T05, T09, T10, T11** · then the larger-value-but-moderate **T03, T02, T17, T08** · and leave **T41–T44** for a quiet day.
+**Suggested order** (value ÷ effort): ~~T01, T07, T21, T35, T37~~ *(fixed 2026-10-05)* · ~~T06, T04, T05, T09, T10, T11~~ *(fixed 2026-10-05)* · next **T03, T02, T17, T08** · then the larger-value-but-moderate **T03, T02, T17, T08** · and leave **T41–T44** for a quiet day.
 **Closed by this triage:** the "Web guide feels laggy" entry (moved to `issues_resolved.md`), the stale `ChannelIconCache.failedURLs` growth note, all fixed review findings (see `issues_resolved.md`), and the review agents' "FIXED (pending commit)" / "assessed not a bug" bullets. **Moved to Accepted:** the deliberate FEED keyframe back-up burst (it is what stops FEED audio running ahead of video; revisit only if FEED stalls return).
 
 

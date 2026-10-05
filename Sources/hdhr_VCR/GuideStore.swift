@@ -86,11 +86,31 @@ final class GuideStore {
 
     // MARK: - Loading
 
-    /// Fetch and index guide for one device. No-op if already loading.
+    // One in-flight load per device. A second caller (scheduleNextAir's stale-guide reload racing the
+    // periodic refreshGuides, say) JOINS it and gets its real result, rather than being told `false`
+    // — which every caller read as a failed fetch (60 s backoff + a "Guide Load Failed" notification /
+    // Discord card for a guide that in fact loaded fine). 2026-10-05 triage T06.
+    private var inFlightLoads: [String: Task<Bool, Never>] = [:]
+
+    /// Fetch and index guide for one device. If a load for this device is already running, waits for it
+    /// and returns ITS result instead of starting another (or failing).
     /// Pass useXML: true to use the XMLTV endpoint; devices without DeviceAuth fall back to JSON.
     /// Returns true if channels were successfully loaded, false on any error.
     @discardableResult
     func load(for device: HDHRDevice, hours: Int = 12, useXML: Bool = false, maxCacheAge: TimeInterval? = nil) async -> Bool {
+        let id = device.DeviceID
+        if let existing = inFlightLoads[id] {
+            glog("[\(id)] guide load already in flight — waiting for it instead of starting another")
+            return await existing.value
+        }
+        let task = Task { await self.loadNow(for: device, hours: hours, useXML: useXML, maxCacheAge: maxCacheAge) }
+        inFlightLoads[id] = task
+        defer { inFlightLoads.removeValue(forKey: id) }
+        return await task.value
+    }
+
+    @discardableResult
+    private func loadNow(for device: HDHRDevice, hours: Int, useXML: Bool, maxCacheAge: TimeInterval?) async -> Bool {
         // XMLTV is cloud-only; devices without DeviceAuth fall through to JSON path
         if useXML, device.DeviceAuth != nil {
             return await loadXMLTV(for: device, hours: hours, maxCacheAge: maxCacheAge)
