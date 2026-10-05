@@ -40,6 +40,12 @@ final class AppState: ObservableObject {
     // (@testable import doesn't reach true `private`) rather than via a hand-duplicated shadow
     // list that could itself drift out of sync with deleteShow's own cleanup.
     struct ShowRuntimeState {
+        // The show_end value Bonus Time padding was last added to (i.e. the *padded* end startRecording
+        // persisted). startRecording persists the padded end into show_end, so a retry within the same
+        // airing (launch failure, curl died, the 2-3 tick backoff) sees an already-padded show_end —
+        // without this marker it added Sports_padding_minutes again each attempt (2026-10-05 review).
+        // Compared by value, so scheduleNextAir moving show_end to the next airing naturally unmatches it.
+        var bonusPaddedEnd: Date? = nil
         // Pre-computed each idle tick (rebuildMenuEntries) — whether this show will actually
         // lose a tuner to a higher-priority competitor. Was: conflictingShowIDs (Set<String>).
         var isConflicting = false
@@ -3374,7 +3380,10 @@ final class AppState: ObservableObject {
             }
             return
         }
-        let path = show.outputPath(date: show.show_next ?? Date(), subfolder: seriesSubfolder, episodeTag: episodeTag)
+        // A retry within the same airing (curl died mid-recording, launch failed after the file was
+        // created, a relaunch after "Stop Recordings & Quit") computes the very same file name, and
+        // curl's -o would truncate what was already captured. Pick a free "_partN" name instead.
+        let path = Self.uniqueRecordingPath(show.outputPath(date: show.show_next ?? Date(), subfolder: seriesSubfolder, episodeTag: episodeTag))
         let recordDir = (path as NSString).deletingLastPathComponent
         do {
             try FileManager.default.createDirectory(atPath: recordDir, withIntermediateDirectories: true, attributes: nil)
@@ -3398,8 +3407,13 @@ final class AppState: ObservableObject {
         var endDate = show.show_end ?? Date().addingTimeInterval(Double(show.show_length) * 60)
         // Bonus Time: extend recording past the guide end when enabled on a show
         if config.Sports_padding_enabled && show.show_bonus_time {
-            endDate = endDate.addingTimeInterval(Double(config.Sports_padding_minutes) * 60)
-            glog("[\(show.show_title)] Bonus Time +\(config.Sports_padding_minutes) min applied")
+            if showRuntime[show.show_id]?.bonusPaddedEnd == endDate {
+                glog("[\(show.show_title)] Bonus Time already applied to this airing's end — not adding it again")
+            } else {
+                endDate = endDate.addingTimeInterval(Double(config.Sports_padding_minutes) * 60)
+                showRuntime[show.show_id, default: ShowRuntimeState()].bonusPaddedEnd = endDate
+                glog("[\(show.show_title)] Bonus Time +\(config.Sports_padding_minutes) min applied")
+            }
         }
         // Always persist endDate so the idle-loop natural-stop check and notifications use it
         shows[index].show_end = endDate
@@ -6272,6 +6286,30 @@ final class AppState: ObservableObject {
 
     // MARK: - Signal quality helpers
 
+    /// True when an active, unpaused, not-currently-recording show on `deviceId` is scheduled to start
+    /// within `seconds` — used to keep the background signal scan off a tuner a recording is about to take.
+    /// `path` if nothing non-empty is there; otherwise the first free "<name>_part2.<ext>",
+    /// "_part3", … so a retried recording never overwrites the partial file an earlier attempt left.
+    nonisolated static func uniqueRecordingPath(_ path: String, fileManager fm: FileManager = .default) -> String {
+        func hasContent(_ p: String) -> Bool {
+            ((try? fm.attributesOfItem(atPath: p))?[.size] as? Int ?? 0) > 0
+        }
+        guard hasContent(path) else { return path }
+        let ns = path as NSString
+        let ext = ns.pathExtension, stem = (ns.deletingPathExtension as NSString)
+        for n in 2...99 {
+            let candidate = stem.appending("_part\(n)") + (ext.isEmpty ? "" : ".\(ext)")
+            if !hasContent(candidate) { return candidate }
+        }
+        return path   // 98 prior attempts on one airing: give up and overwrite the last
+    }
+
+    func deviceHasImminentRecording(_ deviceId: String, within seconds: TimeInterval) -> Bool {
+        let horizon = Date().addingTimeInterval(seconds)
+        return shows.contains { $0.hdhr_record == deviceId && $0.show_active && !$0.show_paused
+                                && !$0.show_recording && ($0.show_next.map { $0 <= horizon } ?? false) }
+    }
+
     func startSignalScan(force: Bool = false) {
         signalScanTask?.cancel()
         signalScanTask = Task {
@@ -6315,6 +6353,20 @@ final class AppState: ObservableObject {
                 var j = 0
                 while j < entries.count {
                     guard !Task.isCancelled else { break outer }
+                    // A scan opens a REAL tuner for ~1.5 s per channel. Never do that when every tuner on
+                    // the device is already busy (the tune would be refused — and used to be recorded as
+                    // "no signal", snq=0, poisoning real channels' history), nor when a scheduled
+                    // recording on this device is about to start (the scan could be holding its tuner at
+                    // the moment it launches). The channels left unscanned stay "needs a sample" and are
+                    // picked up by the next scan. 2026-10-05 review.
+                    if tunersFull(for: device.DeviceID) {
+                        glog("[Signal] scan: all tuners on \(device.DeviceID) are busy — skipping its remaining \(entries.count - j) channel(s) for now")
+                        continue outer
+                    }
+                    if deviceHasImminentRecording(device.DeviceID, within: 120) {
+                        glog("[Signal] scan: a recording on \(device.DeviceID) starts within 2 min — skipping its remaining \(entries.count - j) channel(s) for now")
+                        continue outer
+                    }
                     let batch  = Array(entries[j ..< min(j + batchSize, entries.count)])
                     j       += batchSize
                     scanned += batch.count
@@ -6334,12 +6386,21 @@ final class AppState: ObservableObject {
                     // then read status.json 3 times (500ms apart) to collect 3 SNQ samples per
                     // channel — gives the rolling average enough data on the first scan.
                     var gotSample = Set<String>()
-                    await withTaskGroup(of: Void.self) { group in
+                    var refusedTune = Set<String>()
+                    await withTaskGroup(of: String?.self) { group in
                         for entry in batch {
                             // Device-reported lineup URL — same source every other stream URL in the
                             // app derives from (show_url, Watch Now, etc.) — not a hardcoded port.
                             guard let urlString = entry.URL, let url = URL(string: urlString) else { continue }
-                            group.addTask { _ = try? await URLSession.shared.data(from: url) }
+                            let key = ChannelSignalStore.key(for: entry.GuideName)
+                            // A refused tune (tuners in use → HTTP 503/805) answers immediately with a
+                            // non-200; a real stream never completes on its own — it only ends when
+                            // group.cancelAll() below cancels it (→ nil).
+                            group.addTask {
+                                if let (_, resp) = try? await URLSession.shared.data(from: url),
+                                   let code = (resp as? HTTPURLResponse)?.statusCode, code != 200 { return key }
+                                return nil
+                            }
                         }
                         for _ in 0..<3 {
                             try? await Task.sleep(nanoseconds: 500_000_000)
@@ -6354,12 +6415,21 @@ final class AppState: ObservableObject {
                             }
                         }
                         group.cancelAll()  // release tuners; stream tasks observe cancellation and exit
+                        for await refused in group { if let refused { refusedTune.insert(refused) } }
                     }
                     // Channels that never locked during the 3 polls get snq=0 so they render
-                    // as a red 1-bar indicator rather than staying invisible (noData).
-                    for entry in batch where !gotSample.contains(ChannelSignalStore.key(for: entry.GuideName)) {
+                    // as a red 1-bar indicator rather than staying invisible (noData) — but only when the
+                    // device actually accepted the tune. A refused tune says nothing about the signal.
+                    for entry in batch {
+                        let key = ChannelSignalStore.key(for: entry.GuideName)
+                        guard !gotSample.contains(key) else { continue }
+                        if refusedTune.contains(key) {
+                            glog("[Signal] scan: \(device.DeviceID) refused the tune for \(entry.GuideName) (tuners busy) — no sample recorded")
+                            continue
+                        }
                         ChannelSignalStore.shared.record(guideName: entry.GuideName, snq: 0)
                     }
+                    if !refusedTune.isEmpty { continue outer }   // device is busy: stop scanning it for now
 
                     // Flush every 10 channels (not every single one) so partial progress still
                     // survives a quit without rewriting the whole history file per channel —

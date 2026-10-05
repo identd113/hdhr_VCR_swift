@@ -242,6 +242,69 @@ struct AppStateRecordingEngineTests {
         #expect(abs(state.shows[0].show_end!.timeIntervalSince(expectedEnd)) < 1)
     }
 
+    // 2026-10-05 review: show_end is persisted *padded*, so a retry within the same airing re-entered
+    // startRecording with the already-extended end and added the padding again each attempt.
+    @Test @MainActor func startRecording_bonusTime_retryDoesNotStackPadding() async throws {
+        let manager = RecordingManager(curlExecutablePath: "/usr/bin/true")
+        let guideEnd = Date().addingTimeInterval(1800)
+        var show = makeShow(recordDir: tempRecordDir(), next: Date().addingTimeInterval(-5), end: guideEnd)
+        show.show_bonus_time = true
+        let state = makeTestAppState(shows: [show], devices: [makeDevice()], recordingManager: manager)
+        state.config.Min_disk_free_gb = 0
+        state.config.Sports_padding_enabled = true
+        state.config.Sports_padding_minutes = 30
+
+        await state.startRecording(index: 0)
+        let afterFirst = state.shows[0].show_end!
+        // Simulate a failed attempt that left the show eligible to start again for the same airing.
+        state.shows[0].show_recording = false
+        await state.startRecording(index: 0)
+        state.shows[0].show_recording = false
+        await state.startRecording(index: 0)
+
+        #expect(abs(afterFirst.timeIntervalSince(guideEnd.addingTimeInterval(30 * 60))) < 1)
+        #expect(abs(state.shows[0].show_end!.timeIntervalSince(afterFirst)) < 1)   // unchanged by the retries
+    }
+
+    // MARK: - Retry must not overwrite a partial recording / signal-scan guard
+
+    @Test func uniqueRecordingPath_freePath_isUnchanged() {
+        let dir = tempRecordDir()
+        let p = dir + "/Show_5.1_20261004_1500.ts"
+        #expect(AppState.uniqueRecordingPath(p) == p)
+    }
+
+    @Test func uniqueRecordingPath_existingPartial_getsPartSuffix_andNeverOverwrites() throws {
+        let dir = tempRecordDir()
+        let p = dir + "/Show_5.1_20261004_1500.ts"
+        try Data("partial".utf8).write(to: URL(fileURLWithPath: p))
+        let second = AppState.uniqueRecordingPath(p)
+        #expect(second == dir + "/Show_5.1_20261004_1500_part2.ts")
+        try Data("more".utf8).write(to: URL(fileURLWithPath: second))
+        #expect(AppState.uniqueRecordingPath(p) == dir + "/Show_5.1_20261004_1500_part3.ts")
+    }
+
+    @Test func uniqueRecordingPath_emptyLeftoverFile_isReused() throws {
+        let dir = tempRecordDir()
+        let p = dir + "/Show_5.1_20261004_1500.ts"
+        FileManager.default.createFile(atPath: p, contents: nil)
+        #expect(AppState.uniqueRecordingPath(p) == p)
+    }
+
+    @Test @MainActor func deviceHasImminentRecording_onlyForActiveUnpausedShowsStartingSoonOnThatDevice() {
+        let soon = Date().addingTimeInterval(60), later = Date().addingTimeInterval(3600)
+        var a = makeShow(recordDir: tempRecordDir(), next: soon, end: soon.addingTimeInterval(1800))
+        a.hdhr_record = "DEV1"
+        var paused = a; paused.show_id = "p"; paused.show_paused = true
+        var other = a; other.show_id = "o"; other.hdhr_record = "DEV2"
+        var far = a; far.show_id = "f"; far.show_next = later
+        let state = makeTestAppState(shows: [a], devices: [makeDevice()])
+        #expect(state.deviceHasImminentRecording("DEV1", within: 120))
+        #expect(!state.deviceHasImminentRecording("DEV2", within: 120))
+        state.shows = [paused, far, other]
+        #expect(!state.deviceHasImminentRecording("DEV1", within: 120))
+    }
+
     @Test @MainActor func startRecording_bonusTimeShowButPaddingDisabled_leavesShowEndUnchanged() async throws {
         let manager = RecordingManager(curlExecutablePath: "/usr/bin/true")
         let guideEnd = Date().addingTimeInterval(1800)
