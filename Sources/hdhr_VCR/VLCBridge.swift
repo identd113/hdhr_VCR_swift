@@ -1200,6 +1200,10 @@ final class VLCBridge: ObservableObject {
         // secondary never ramps — see play(url:slot:)'s own comment) — there's no fill phase to
         // resume. Stall-tracking fields reset rather than compute a bogus delta against the other
         // player's last-observed position/byte count.
+        // Captured before the reset below: only a demoted stream that was actually mid fill-ramp
+        // needs its rate put back — an unconditional set_rate on the main thread for every swap is
+        // wasted work (and was flagged as a possible contributor to swap-time stalls).
+        let demotedWasRamping = minRate < 1.0 || currentRate < 1.0
         minRate = 1.0
         currentRate = 1.0
         estimatedLagSec = 8.0
@@ -1215,7 +1219,7 @@ final class VLCBridge: ObservableObject {
         }
         // The demoted stream may still be mid fill-ramp (rate 0.93–0.99); the ramp only runs for the
         // primary, so without this it would stay slow in the corner. Rate 1.0 is a no-op otherwise.
-        _ = _mpSetRate?(oldPrimaryMP, 1.0)
+        if demotedWasRamping { _ = _mpSetRate?(oldPrimaryMP, 1.0) }
         lastTickTimeMs = nil
         lastTickReadBytes = nil
         lastDisplayedPictures = nil
@@ -1538,7 +1542,7 @@ final class VLCBridge: ObservableObject {
             var s = VLCStats()
             let ok = withUnsafeMutableBytes(of: &s) { getStats(media, $0.baseAddress) }
             if ok == 1 {
-                corruptDelta      = s.i_demux_corrupted - lastCorrupted
+                corruptDelta      = s.i_demux_corrupted &- lastCorrupted
                 lastCorrupted     = s.i_demux_corrupted
                 newBitrate        = s.f_demux_bitrate
                 newCorrupted      = lastCorrupted
@@ -1581,11 +1585,15 @@ final class VLCBridge: ObservableObject {
             // the conditions that would produce this pattern. Read on the MainActor (tickController
             // already runs there via the Timer's own Task { @MainActor in ... }), so no thread hop.
             let windowVisible = primaryState.drawableView?.window?.occlusionState.contains(.visible) ?? false
+            // Every delta below uses wrapping subtraction (&-): libvlc_media_stats_t's counters are C
+            // `int`s that wrap past 2 GiB (~25 min of HD), and a plain Int32 `-` across the wrap
+            // traps — a crash mid-playback (2026-10-05 review). A wrapped delta is still the correct
+            // small positive number in two's complement.
             if let lastMs = lastTickTimeMs, let bytes = readBytes, let lastBytes = lastTickReadBytes {
                 let posDeltaMs   = nowMs - lastMs
-                let bytesDelta   = bytes - lastBytes
-                let displayDelta = displayedPictures.flatMap { d in lastDisplayedPictures.map { d - $0 } }
-                let lostDelta    = lostPictures.flatMap      { l in lastLostPictures.map      { l - $0 } }
+                let bytesDelta   = bytes &- lastBytes
+                let displayDelta = displayedPictures.flatMap { d in lastDisplayedPictures.map { d &- $0 } }
+                let lostDelta    = lostPictures.flatMap      { l in lastLostPictures.map      { l &- $0 } }
                 let expectedMs   = Int64(Self.statsTimerInterval * 1000)
                 glog("[VLC] tick pos=+\(posDeltaMs)ms/\(expectedMs)ms bytes=+\(bytesDelta) displayed=+\(displayDelta ?? -1) lost=+\(lostDelta ?? -1) rate=\(String(format: "%.3f", currentRate)) windowVisible=\(windowVisible)")
                 // Under 60% of the expected real-time advance is a real, perceptible slowdown, not
