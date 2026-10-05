@@ -109,3 +109,41 @@ struct ChannelSignalStoreTests {
         #expect(store.stats(guideName: "anything") == nil)
     }
 }
+
+// MARK: - persistence round trip + repair of pre-2026-10-05 corrupted timestamps
+
+@Suite("ChannelSignalStore persistence")
+@MainActor
+struct ChannelSignalStorePersistenceTests {
+    private func tempDir() -> URL { FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString) }
+
+    @Test func saveThenLoad_preservesTimestamps() async throws {
+        let dir = tempDir()
+        let a = ChannelSignalStore(appSupportDir: dir)
+        a.record(guideName: "KFOO", snq: 77)
+        await a.flush()
+        let before = try #require(a.stats(guideName: "KFOO")?.lastSampled)
+        let b = ChannelSignalStore(appSupportDir: dir)
+        await b.load()
+        let after = try #require(b.stats(guideName: "KFOO")?.lastSampled)
+        #expect(abs(after.timeIntervalSince(before)) < 1)           // not shifted by 31 years
+        #expect(after < Date().addingTimeInterval(60))
+    }
+
+    @Test func repaired_recoversATimestampShiftedByManyRelaunches() {
+        let now = Date(timeIntervalSince1970: 1_791_200_000)          // Oct 2026
+        let truth = Date(timeIntervalSince1970: 1_790_000_000)
+        for relaunches in [1, 2, 7, 500] {
+            let corrupt = ChannelSignalSample(ts: Date(timeIntervalSince1970: truth.timeIntervalSince1970 + Double(relaunches) * 978_307_200), snq: 50)
+            let fixed = ChannelSignalStore.repaired(corrupt, now: now)
+            #expect(abs(fixed.ts.timeIntervalSince(truth)) < 1, "relaunches=\(relaunches)")
+            #expect(fixed.snq == 50)
+        }
+    }
+
+    @Test func repaired_leavesHealthySamplesAlone() {
+        let now = Date(timeIntervalSince1970: 1_791_200_000)
+        let ok = ChannelSignalSample(ts: now.addingTimeInterval(-3600), snq: 60)
+        #expect(ChannelSignalStore.repaired(ok, now: now).ts == ok.ts)
+    }
+}

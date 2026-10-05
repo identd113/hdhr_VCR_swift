@@ -35,13 +35,35 @@ final class ChannelSignalStore {
         guideName.trimmingCharacters(in: .whitespaces).lowercased()
     }
 
+    /// Samples saved by builds before 2026-10-05 were written as seconds-since-1970 but read back as
+    /// seconds-since-2001, so every relaunch pushed every stored timestamp another 978,307,200 s
+    /// (31 years) into the future — a long-lived install holds values around the year 18000. The
+    /// error is an exact multiple of that offset, so the true time is recoverable: take the value
+    /// modulo the offset and add one offset back (any real sample time between 2001 and 2032 has
+    /// exactly one such representation). A timestamp more than a day ahead of `now` is the signal
+    /// that a sample needs this; healthy ones pass through untouched.
+    nonisolated static func repaired(_ sample: ChannelSignalSample, now: Date) -> ChannelSignalSample {
+        let offset = 978_307_200.0
+        let t = sample.ts.timeIntervalSince1970
+        guard t > now.timeIntervalSince1970 + 86_400 else { return sample }
+        var fixed = t.truncatingRemainder(dividingBy: offset) + offset
+        if fixed > now.timeIntervalSince1970 + 86_400 { fixed -= offset }   // still ahead: it was a 2001-2002-era value
+        return ChannelSignalSample(ts: Date(timeIntervalSince1970: fixed), snq: sample.snq)
+    }
+
     func load() async {
         let path = filePath
         guard let h = await Task.detached(priority: .utility, operation: { () -> [String: [ChannelSignalSample]]? in
-            guard let data    = try? Data(contentsOf: path),
-                  let decoded = try? JSONDecoder().decode([String: [ChannelSignalSample]].self, from: data)
+            // .secondsSince1970 — must match the encoder in save(): with the default strategy
+            // (seconds since 2001) every reloaded sample came back ~31 years in the future, so
+            // recency-based re-sampling never fired after a relaunch and the popover showed 2057.
+            guard let data    = try? Data(contentsOf: path) else { return nil }
+            let dec = JSONDecoder()
+            dec.dateDecodingStrategy = .secondsSince1970
+            guard let decoded = try? dec.decode([String: [ChannelSignalSample]].self, from: data)
             else { return nil }
-            return decoded.mapValues { Array($0.suffix(50)) }.filter { !$0.value.isEmpty }
+            let now = Date()
+            return decoded.mapValues { Array($0.suffix(50).map { Self.repaired($0, now: now) }) }.filter { !$0.value.isEmpty }
         }).value else { return }
         history = h
         buckets = computeAllBuckets()
