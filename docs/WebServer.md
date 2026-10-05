@@ -1320,3 +1320,7 @@ log stream --level info --predicate 'subsystem == "com.hdhr.vcrplus"' | grep Web
 ```
 
 Key log prefixes: `[WebServer] Listening`, `[WebServer] mDNS registered`, `[WebServer] buildHTML tuners`, `[WebServer] Rejected non-LAN`.
+
+## Station logo fallback (2026-10-04)
+
+Every station-logo `<img>` in the web guide — the grid's `.g-logo`, the Up Next/Recording placeholder logo (`phLogo`), the summary bar's `#sum-logo`, and the Record modal's "Other Upcoming Airings" `.rm-air-logo` — falls back to the app icon (`/api/icon`, `WebServer.stationLogoFallbackPath`) when the channel has no logo URL, and via `onerror` (`WebServer.stationLogoOnError`, mirrored inline in `guide.js`/`guide-shell.html`) when its URL fails to load: swap to the icon once, hide only if the icon itself fails (no loop). The real URL stays in the guide data, so the real logo shows as soon as it loads. The native views use `stationLogoPlaceholder` the same way (`docs/WatchNowView.md`, `docs/AddShowView.md`). Poster fallbacks are unchanged.

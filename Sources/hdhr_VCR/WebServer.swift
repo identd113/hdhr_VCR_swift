@@ -347,6 +347,13 @@ final class WebServer: @unchecked Sendable {
         broadcastGuideChangeEvent(type: type, state: state)
     }
 
+    /// Station logo stand-in for the web guide: the same app icon served at `/api/icon`. Used when a
+    /// channel has no logo URL, and as the `onerror` fallback when its URL fails to load — the real URL
+    /// is still what the guide asks for, so the real logo appears as soon as it is available.
+    static let stationLogoFallbackPath = "/api/icon"
+    /// `onerror` handler for a station-logo `<img>`: swap to the app icon once; if even that fails, hide it.
+    static let stationLogoOnError = "if(this.getAttribute('src')!=='/api/icon'){this.src='/api/icon'}else{this.style.display='none'}"
+
     // Static so the DateFormatter is allocated once, not on every GET /.
     private static let hourFmt: DateFormatter = {
         let f = DateFormatter()
@@ -3215,8 +3222,8 @@ final class WebServer: @unchecked Sendable {
             ($0.show_next?.timeIntervalSince1970 ?? .infinity) < ($1.show_next?.timeIntervalSince1970 ?? .infinity)
         }
         func phLogo(_ deviceId: String, _ ch: String) -> String {
-            guard let raw = state.channelImageURLs["\(deviceId):\(ch)"], !raw.isEmpty else { return "" }
-            return "<img src=\"\(he(raw))\" loading=\"lazy\" onerror=\"this.style.display='none'\" style=\"width:36px;height:36px;object-fit:contain;border-radius:4px;flex-shrink:0;margin-right:12px;background:#ccc\">"
+            let raw = state.channelImageURLs["\(deviceId):\(ch)"].flatMap { $0.isEmpty ? nil : $0 } ?? Self.stationLogoFallbackPath
+            return "<img src=\"\(he(raw))\" loading=\"lazy\" onerror=\"\(Self.stationLogoOnError)\" style=\"width:36px;height:36px;object-fit:contain;border-radius:4px;flex-shrink:0;margin-right:12px;background:#ccc\">"
         }
         // "Up Next" = the next show today, else nothing — same standardized definition as
         // MenuContent.swift's Up Next section and buildTunerShowsHTML's above.
@@ -3456,9 +3463,8 @@ final class WebServer: @unchecked Sendable {
                 let logoURL: String = state.channelImageURLs["\(device.DeviceID):\(ch.GuideNumber)"] ?? ""
                 let isHD     = (ch.HD ?? 0) != 0
                 let chLabel  = ch.GuideNumber + (isHD ? " HD" : "")
-                let logoHTML = logoURL.isEmpty
-                    ? ""
-                    : "<img class=\"g-logo\" src=\"\(he(logoURL))\" loading=\"lazy\" onerror=\"this.style.display='none'\" alt=\"\" style=\"background:#ddd\">"
+                // No logo (or one that fails to load) shows the app icon instead of nothing — see stationLogoOnError.
+                let logoHTML = "<img class=\"g-logo\" src=\"\(he(logoURL.isEmpty ? Self.stationLogoFallbackPath : logoURL))\" loading=\"lazy\" onerror=\"\(Self.stationLogoOnError)\" alt=\"\" style=\"background:#ddd\">"
                 let isRecCh  = (recChannelsByDevice[device.DeviceID]?.contains(ch.GuideNumber) ?? false)
                              || (pendingRecChannelsByDevice[device.DeviceID]?.contains(ch.GuideNumber) ?? false)
                 let isOtherTunerCh = hwOtherChannelsByDevice[device.DeviceID]?.contains(ch.GuideNumber) ?? false

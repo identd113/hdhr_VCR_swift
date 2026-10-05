@@ -161,3 +161,5 @@ For SeriesID shows (`show_use_seriesid == true`), channel is looked up from the 
 - **Time picker for DateTime shows** — air time is always taken from the guide entry's start time. If the user wants to schedule 5 minutes early, there's no control for that.
 
 - **No edit integration** — there's no way to change a show's scheduled episode by browsing the guide in the Edit view.
+
+**Other-airings channel icon (2026-10-04):** the 18×18 icon beside each row now shows `stationLogoPlaceholder` (the app icon) instead of the `tv` SF Symbol whenever the station's real logo isn't cached (no `ImageURL`, still downloading, or failed); the real logo replaces it once `ChannelIconCache` has it.

@@ -64,7 +64,7 @@ Width = 34% of scroll-container width, capped at 220pt (`.containerRelativeFrame
 
 ### Info column (right)
 `VStack(alignment: .leading, spacing: 3)`:
-- Channel logo (16×16, `.accessibilityHidden(true)`) + `"ch 5.1  NBC HD"` caption.bold secondary. (The former inline "🔴 Recording" text badge here was removed — recording status is now shown via the poster's ring+badge above instead.)
+- Channel logo (16×16, `.accessibilityHidden(true)`) + `"ch 5.1  NBC HD"` caption.bold secondary. The logo is `stationLogoPlaceholder` (the app icon, pre-drawn 64×64 in `AppIcon.swift`) whenever the station has no `ImageURL` or its logo isn't cached yet / failed to download — never blank; the real logo replaces it once `ChannelIconCache` has it (2026-10-04). (The former inline "🔴 Recording" text badge here was removed — recording status is now shown via the poster's ring+badge above instead.)
 - Show title row — `HStack(spacing: 4)`: title (`.subheadline.bold`, 1 line; `.accessibilityLabel` appends `", \(ringState.tooltipSuffix)"` when `ringState != .none` — e.g. ", scheduled to record" or ", in use by another tuner, not managed by this app") + a green **NEW** badge when `isNewEpisode(entry)` returns true (`.accessibilityLabel("New episode")`). The badge uses `system(size: 8, weight: .heavy)` white text on a green (`Color(red: 0.18, green: 0.65, blue: 0.35)`) rounded rect. Detection: `OriginalAirdate` matches today's local date (or tonight for 00:00–05:00 start times).
 - Episode subtitle — `entry.episodeInfoLabel` (`.caption` secondary, 1 line); format: `"S01E05 · Episode Title"`, or just the non-nil part if only one is present; omitted when both are absent
 - Time range + remaining — `.caption2` tertiary, e.g. `"8:00 PM – 9:00 PM  ·  42m left"`

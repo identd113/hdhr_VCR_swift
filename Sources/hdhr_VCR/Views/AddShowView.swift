@@ -677,11 +677,8 @@ private struct OtherAiringRow: View {
     @ViewBuilder
     private var channelIcon: some View {
         Group {
-            if let logo = channelLogo {
-                Image(nsImage: logo).resizable().scaledToFit()
-            } else {
-                Image(systemName: "tv").font(.caption2).foregroundStyle(.secondary)
-            }
+            // The app icon stands in until/unless the station's real logo is cached (see stationLogoPlaceholder).
+            Image(nsImage: channelLogo ?? stationLogoPlaceholder).resizable().scaledToFit()
         }
         .frame(width: 18, height: 18)
     }

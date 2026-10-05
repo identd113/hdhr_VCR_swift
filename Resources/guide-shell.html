@@ -62,7 +62,7 @@
         <button id="sum-del" onclick="doDelete()" style="display:none;font-size:.75rem;padding:4px 12px;border-radius:5px;cursor:pointer;font-weight:600">Delete</button>
       </div>
       <div id="sum-ch-row" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:3px">
-        <img id="sum-logo" src="" alt="" loading="lazy" style="width:24px;height:24px;object-fit:contain;display:none;background:#aaa" onerror="this.style.display='none'">
+        <img id="sum-logo" src="" alt="" loading="lazy" style="width:24px;height:24px;object-fit:contain;display:none;background:#aaa" onerror="if(this.getAttribute('src')!=='/api/icon'){this.src='/api/icon'}else{this.style.display='none'}">
         <span id="sum-ct" style="font-size:.68rem"></span>
       </div>
     </div>

@@ -42,3 +42,17 @@ let appIconMenuBar: NSImage? = menuBarScaled(appIconImage)
 let appIconMenuBarRecording: NSImage? = menuBarScaled(appIconRecordingImage)
 let appIconMenuBarUpNext: NSImage? = menuBarScaled(appIconUpNextImage)
 let appIconMenuBarFeed: NSImage? = menuBarScaled(appIconFeedImage)
+
+// Stand-in for a station logo the guide doesn't have (no ImageURL) or hasn't downloaded yet / that
+// failed to download. Display-only: the channel's real URL stays in AppState.channelImageURLs, so
+// ChannelIconCache keeps fetching it on its normal schedule (and a new URL from a guide refresh is
+// fetched at once) and the real logo replaces this the moment it is cached. The same AppIcon.icns
+// the web server serves at /api/icon, pre-drawn once at 64×64 (shown at 16–18 pt, so 2× retina).
+let stationLogoPlaceholder: NSImage = {
+    let size = NSSize(width: 64, height: 64)
+    guard let url = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
+          let src = NSImage(contentsOf: url) else {
+        return NSImage(systemSymbolName: "tv", accessibilityDescription: nil) ?? NSImage(size: size)
+    }
+    return NSImage(size: size, flipped: false) { r in src.draw(in: r); return true }
+}()

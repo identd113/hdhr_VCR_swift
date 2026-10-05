@@ -94,7 +94,7 @@ function showInfo(el){
   document.getElementById('sum-ph').style.display='none';
   var sc=document.getElementById('sum-c');sc.style.display='flex';sc.style.background=el.style.background||gc(d.genre);
   var li=document.getElementById('sum-logo');
-  if(d.logo){li.src=d.logo;li.style.display='inline';}else{li.style.display='none';}
+  li.src=d.logo||'/api/icon';li.style.display='inline';
   document.getElementById('sum-title').textContent=d.title||'';
   var gi=document.getElementById('sum-genre');
   var _allTags=(d.filters||d.genre||'').split(',').filter(function(f){return f&&f.toLowerCase()!=='series';});
@@ -458,9 +458,7 @@ function renderAirings(list){
     var d=new Date(a.start*1000);
     var timeLabel=_dayShort[d.getDay()]+' '+ft(d);
     var chLabel=a.chName?('Ch '+a.ch+' · '+a.chName):('Ch '+a.ch);
-    var logo=a.chLogo
-      ? '<img class="rm-air-logo" src="'+heJs(a.chLogo)+'" alt="" loading="lazy" onerror="this.style.visibility=\'hidden\'">'
-      : '<div class="rm-air-logo"></div>';
+    var logo='<img class="rm-air-logo" src="'+heJs(a.chLogo||'/api/icon')+'" alt="" loading="lazy" onerror="if(this.getAttribute(\'src\')!==\'/api/icon\'){this.src=\'/api/icon\'}else{this.style.visibility=\'hidden\'}">';
     return '<div class="rm-air-row" ondblclick="switchAiring('+i+')" title="Double-click to record this airing instead">'
       +'<div class="rm-air-bar" style="background:'+gc(a.genre)+'"></div>'
       +logo

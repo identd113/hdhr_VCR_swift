@@ -492,13 +492,12 @@ struct WatchNowRow: View {
     private func infoColumn(managed: Show?) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 4) {
-                if let logo = channelLogo {
-                    Image(nsImage: logo)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 16, height: 16)
-                        .accessibilityHidden(true)
-                }
+                // The app icon stands in until/unless the station's real logo is cached (see stationLogoPlaceholder).
+                Image(nsImage: channelLogo ?? stationLogoPlaceholder)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 16, height: 16)
+                    .accessibilityHidden(true)
                 Text("ch \(channel.GuideNumber)  \(channel.GuideName)\(channel.HD == 1 ? " HD" : "")")
                     .font(.caption.bold())
                     .foregroundStyle(.secondary)

@@ -32,3 +32,18 @@ struct LocalRelayAndSeriesTitleTests {
         #expect(e.seriesTitle == "Stamped")              // stamp wins
     }
 }
+
+@Suite("Station logo fallback")
+struct StationLogoFallbackTests {
+    @Test func webFallbackPointsAtTheAppIconRoute_andOnErrorSwapsOnceThenHides() {
+        #expect(WebServer.stationLogoFallbackPath == "/api/icon")
+        let js = WebServer.stationLogoOnError
+        #expect(js.contains("this.src='/api/icon'"))      // first failure → app icon
+        #expect(js.contains("this.style.display='none'")) // the icon itself failing → hide (no infinite loop)
+        #expect(!js.contains("\""))                       // safe inside a double-quoted HTML attribute
+    }
+
+    @Test func nativePlaceholderIsAlwaysAvailable_andSmall() {
+        #expect(stationLogoPlaceholder.size.width <= 64 && stationLogoPlaceholder.size.height <= 64)
+    }
+}
