@@ -36,9 +36,16 @@ final class GuideStore {
 
     // Injected at init so tests can supply a mock session
     private let session: URLSession
+    /// Where the last successful fetch of each device's guide is kept (raw response body). nil =
+    /// disk cache disabled (tests, and any GuideStore built without it).
+    private let diskCacheDir: URL?
+    /// How old a cached guide may be and still stand in for a network fetch on a startup/on-demand load.
+    static let startupCacheMaxAge: TimeInterval = 3600
 
-    init(session: URLSession = .shared) {
+    init(session: URLSession = .shared, diskCacheDir: URL? = nil) {
         self.session = session
+        self.diskCacheDir = diskCacheDir
+        if let diskCacheDir { try? FileManager.default.createDirectory(at: diskCacheDir, withIntermediateDirectories: true) }
         glog("=== GuideStore initialised ===")
     }
 
@@ -83,10 +90,10 @@ final class GuideStore {
     /// Pass useXML: true to use the XMLTV endpoint; devices without DeviceAuth fall back to JSON.
     /// Returns true if channels were successfully loaded, false on any error.
     @discardableResult
-    func load(for device: HDHRDevice, hours: Int = 12, useXML: Bool = false) async -> Bool {
+    func load(for device: HDHRDevice, hours: Int = 12, useXML: Bool = false, maxCacheAge: TimeInterval? = nil) async -> Bool {
         // XMLTV is cloud-only; devices without DeviceAuth fall through to JSON path
         if useXML, device.DeviceAuth != nil {
-            return await loadXMLTV(for: device)
+            return await loadXMLTV(for: device, hours: hours, maxCacheAge: maxCacheAge)
         }
         let id = device.DeviceID
         glog("[\(id)] load() called — DeviceAuth:\(device.DeviceAuth != nil ? "present" : "nil")  LocalIP:'\(device.LocalIP)'  hours:\(hours)")
@@ -100,7 +107,7 @@ final class GuideStore {
             return false
         }
 
-        return await fetchAndIndex(id: id, url: url) { data in
+        return await fetchAndIndex(id: id, url: url, cacheFile: cacheFile(id: id, kind: "json", hours: hours), maxCacheAge: maxCacheAge) { data in
             let channels: [GuideChannel]
             do {
                 channels = try JSONDecoder().decode([GuideChannel].self, from: data)
@@ -125,7 +132,7 @@ final class GuideStore {
     /// Fetch XMLTV guide for one device. No-op if already loading.
     /// Returns true if channels were successfully loaded, false on any error.
     @discardableResult
-    private func loadXMLTV(for device: HDHRDevice) async -> Bool {
+    private func loadXMLTV(for device: HDHRDevice, hours: Int, maxCacheAge: TimeInterval?) async -> Bool {
         let id = device.DeviceID
         glog("[\(id)] loadXMLTV() called — DeviceAuth:\(device.DeviceAuth != nil ? "present" : "nil")")
 
@@ -138,7 +145,7 @@ final class GuideStore {
             return false
         }
 
-        return await fetchAndIndex(id: id, url: url) { data in
+        return await fetchAndIndex(id: id, url: url, cacheFile: cacheFile(id: id, kind: "xml", hours: hours), maxCacheAge: maxCacheAge) { data in
             let (channels, parsedOK) = XmltvParser().parse(data)
             guard parsedOK else {
                 glog("[\(id)] ERROR: XMLTV parse failed/truncated — discarding partial result", level: .error)
@@ -160,12 +167,32 @@ final class GuideStore {
     /// guards stay in each caller (not here) so their exact glog lines/ordering are unaffected by
     /// this refactor. `parse` returns nil on failure — it owns its own failure logging, since the
     /// JSON and XMLTV parse-failure messages intentionally read differently.
-    private func fetchAndIndex(id: String, url: URL, parse: @escaping @Sendable (Data) -> [GuideChannel]?) async -> Bool {
+    private func fetchAndIndex(id: String, url: URL, cacheFile: URL? = nil, maxCacheAge: TimeInterval? = nil,
+                               parse: @escaping @Sendable (Data) -> [GuideChannel]?) async -> Bool {
         loadingDevices.insert(id)
         defer { loadingDevices.remove(id) }
         // Captured before the network+decode await below — see the epochAtStart guard right
         // before applyIndex for why.
         let epochAtStart = invalidationEpoch
+
+        // Public guide API: reuse a recent on-disk copy instead of calling it again (relaunches /
+        // deploys). The file is only trusted when it parses and still covers the present — otherwise
+        // fall through to the normal network fetch below.
+        if let cacheFile, let maxCacheAge, let cached = Self.readFreshCache(cacheFile, maxAge: maxCacheAge) {
+            let nowEpoch = Int(Date().timeIntervalSince1970)
+            if let prepared = await Task.detached(priority: .utility, operation: { () -> PreparedIndex? in
+                guard let channels = parse(cached.data) else { return nil }
+                return Self.prepareIndex(deviceId: id, channels: channels)
+            }).value,
+               prepared.channelEntryIndex.values.contains(where: { $0.contains { $0.EndTime > nowEpoch } }),
+               invalidationEpoch == epochAtStart {
+                applyIndex(prepared)
+                loadTimestamps[id] = cached.modified
+                glog("[\(id)] guide loaded from disk cache (\(Int(Date().timeIntervalSince(cached.modified)))s old, \(cached.data.count) bytes) — no network call")
+                return true
+            }
+            glog("[\(id)] disk-cached guide unusable (parse failed or no longer covers now) — fetching from network")
+        }
 
         glog("[\(id)] GET \(Self.redactingDeviceAuth(url.absoluteString))")
         let t0 = Date()
@@ -210,6 +237,7 @@ final class GuideStore {
 
             applyIndex(prepared)
             loadTimestamps[id] = Date()
+            if let cacheFile { Self.writeCache(data, to: cacheFile) }
             glog("[\(id)] index built and timestamp set — guide ready")
             return true
 
@@ -219,9 +247,30 @@ final class GuideStore {
         }
     }
 
+    // MARK: - On-disk guide cache
+
+    /// One file per device + format + window length — a GuideHours or XMLTV/JSON setting change
+    /// never reuses a differently-shaped response. nil when the disk cache is disabled.
+    private func cacheFile(id: String, kind: String, hours: Int) -> URL? {
+        diskCacheDir?.appendingPathComponent("\(id)-\(kind)-\(hours)h.guide")
+    }
+
+    nonisolated private static func readFreshCache(_ file: URL, maxAge: TimeInterval) -> (data: Data, modified: Date)? {
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: file.path),
+              let modified = attrs[.modificationDate] as? Date,
+              Date().timeIntervalSince(modified) < maxAge,
+              let data = try? Data(contentsOf: file), !data.isEmpty else { return nil }
+        return (data, modified)
+    }
+
+    nonisolated private static func writeCache(_ data: Data, to file: URL) {
+        do { try data.write(to: file, options: .atomic) }
+        catch { glog("[GuideCache] could not write \(file.lastPathComponent): \(error.localizedDescription)", level: .warning) }
+    }
+
     /// Fetch guide for all devices in parallel. Returns per-device success map.
     @discardableResult
-    func loadAll(devices: [HDHRDevice], hours: Int = 12, useXML: Bool = false) async -> [String: Bool] {
+    func loadAll(devices: [HDHRDevice], hours: Int = 12, useXML: Bool = false, maxCacheAge: TimeInterval? = nil) async -> [String: Bool] {
         guard !devices.isEmpty else {
             glog("loadAll called with 0 devices — nothing to do")
             return [:]
@@ -230,7 +279,7 @@ final class GuideStore {
         var results: [String: Bool] = [:]
         await withTaskGroup(of: (String, Bool).self) { group in
             for device in devices {
-                group.addTask { (device.DeviceID, await self.load(for: device, hours: hours, useXML: useXML)) }
+                group.addTask { (device.DeviceID, await self.load(for: device, hours: hours, useXML: useXML, maxCacheAge: maxCacheAge)) }
             }
             for await (id, ok) in group { results[id] = ok }
         }

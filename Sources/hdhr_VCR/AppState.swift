@@ -872,7 +872,7 @@ final class AppState: ObservableObject {
     init(configManager: ConfigManager = ConfigManager(), recordingManager: RecordingManager? = nil, guideStore: GuideStore? = nil) {
         self.configManager = configManager
         self.recordingManager = recordingManager ?? RecordingManager()
-        self.guideStore = guideStore ?? GuideStore()
+        self.guideStore = guideStore ?? GuideStore(diskCacheDir: configManager.supportDir.appendingPathComponent("guide_cache", isDirectory: true))
         // Keep vlcCurrentURL in sync with VLCBridge.currentURL so any close path that
         // nils currentURL (releasePlayer → stopAndClearState) automatically clears the
         // "now watching" indicator without every caller needing to do it explicitly.
@@ -1863,7 +1863,10 @@ final class AppState: ObservableObject {
         // (fetchAllLineups) is a separate, unfiltered path — that one DOES need to reach a relay
         // device, since its /lineup.json is exactly what feeds the "Recording on Another Mac"
         // menu entry (see docs/VirtualTunerService.md's Remote watch menu entry section).
-        let results = await guideStore.loadAll(devices: recordableDevices, hours: config.GuideHours, useXML: config.Guide_use_xml)
+        // maxCacheAge: startup / on-demand loads may reuse a guide fetched under an hour ago (a relaunch
+        // or deploy shouldn't spend a guide.php call); the periodic refreshGuides() below never does.
+        let results = await guideStore.loadAll(devices: recordableDevices, hours: config.GuideHours, useXML: config.Guide_use_xml,
+                                               maxCacheAge: GuideStore.startupCacheMaxAge)
         guideByDevice = guideStore.channelsByDevice
         // didSet already ran these when the menu is closed — only the menu-open case (where
         // didSet's own guard skips them) needs the explicit call here, so guide load doesn't

@@ -143,14 +143,18 @@ struct RecordingManagerTests {
         defer { p.manager.stopFeedCachePull(sessionId: p.sessionId); cleanup(p.scriptPath, p.outputPath, argsLog) }
 
         // First spawn logged "-o"; the respawn goes through `sh … >> out` and must not pass -o.
-        await waitUntil(timeout: 6) {
+        // Compare whole argument lines (the mock logs one per line), not substrings, and allow plenty
+        // of time — under a loaded full-suite run the first spawn + 1 s backoff + respawn can drag.
+        func logged() -> [Substring] { ((try? String(contentsOfFile: argsLog, encoding: .utf8)) ?? "").split(separator: "\n") }
+        var args: [Substring] = []
+        await waitUntil(timeout: 20) {
             _ = p.manager.isFeedCachePullRunning(sessionId: p.sessionId)
-            let args = (try? String(contentsOfFile: argsLog, encoding: .utf8)) ?? ""
-            return !args.isEmpty && !args.contains("-o")
+            let a = logged()
+            if a.contains("--fail") && !a.contains("-o") { args = a; return true }   // snapshot the respawn's complete log
+            return false
         }
-        let args = try String(contentsOfFile: argsLog, encoding: .utf8)
         #expect(!args.contains("-o"))
-        #expect(args.contains("feed_cache:\(p.sessionId)"))
+        #expect(args.contains(Substring("feed_cache:\(p.sessionId)")))
         #expect(p.manager.isFeedCachePullRunning(sessionId: p.sessionId) == true)
     }
 

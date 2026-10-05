@@ -193,6 +193,80 @@ struct GuideStoreMockNetworkTests {
             await store.load(for: device)
             #expect(store.channels(deviceId: device.DeviceID).isEmpty)
         }
+
+        // MARK: on-disk guide cache
+
+        private func tempCacheDir() -> URL {
+            FileManager.default.temporaryDirectory.appendingPathComponent("guidecache-\(UUID().uuidString)")
+        }
+
+        @Test @MainActor func diskCache_freshFile_replacesNetworkCallOnNextLaunch() async {
+            let dir = tempCacheDir(); defer { try? FileManager.default.removeItem(at: dir) }
+            let device = makeLocalDevice()
+            var calls = 0
+            MockURLProtocol.requestHandler = { req in calls += 1; return (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!) }
+
+            let first = GuideStore(session: makeSession(), diskCacheDir: dir)
+            await first.load(for: device, maxCacheAge: GuideStore.startupCacheMaxAge)   // cold → network, writes the file
+            #expect(calls == 1)
+
+            let second = GuideStore(session: makeSession(), diskCacheDir: dir)          // "relaunch"
+            let ok = await second.load(for: device, maxCacheAge: GuideStore.startupCacheMaxAge)
+            #expect(ok)
+            #expect(calls == 1)                                                          // served from disk, no second request
+            #expect(second.channels(deviceId: device.DeviceID).count == 2)
+            #expect(second.isFresh(deviceId: device.DeviceID))
+        }
+
+        @Test @MainActor func diskCache_notUsedWithoutMaxCacheAge_periodicRefreshAlwaysHitsNetwork() async {
+            let dir = tempCacheDir(); defer { try? FileManager.default.removeItem(at: dir) }
+            let device = makeLocalDevice()
+            var calls = 0
+            MockURLProtocol.requestHandler = { req in calls += 1; return (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!) }
+            let store = GuideStore(session: makeSession(), diskCacheDir: dir)
+            await store.load(for: device)
+            await store.load(for: device)
+            #expect(calls == 2)
+        }
+
+        @Test @MainActor func diskCache_staleFile_isIgnored() async throws {
+            let dir = tempCacheDir(); defer { try? FileManager.default.removeItem(at: dir) }
+            let device = makeLocalDevice()
+            var calls = 0
+            MockURLProtocol.requestHandler = { req in calls += 1; return (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!) }
+            let first = GuideStore(session: makeSession(), diskCacheDir: dir)
+            await first.load(for: device)
+            // Age every cached file past the limit.
+            for f in try FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) {
+                try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(-2 * 3600)], ofItemAtPath: f.path)
+            }
+            let second = GuideStore(session: makeSession(), diskCacheDir: dir)
+            await second.load(for: device, maxCacheAge: GuideStore.startupCacheMaxAge)
+            #expect(calls == 2)
+        }
+
+        @Test @MainActor func diskCache_differentGuideHours_doesNotReuseFile() async {
+            let dir = tempCacheDir(); defer { try? FileManager.default.removeItem(at: dir) }
+            let device = makeLocalDevice()
+            var calls = 0
+            MockURLProtocol.requestHandler = { req in calls += 1; return (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!) }
+            await GuideStore(session: makeSession(), diskCacheDir: dir).load(for: device, hours: 12)
+            await GuideStore(session: makeSession(), diskCacheDir: dir).load(for: device, hours: 24, maxCacheAge: GuideStore.startupCacheMaxAge)
+            #expect(calls == 2)
+        }
+
+        @Test @MainActor func diskCache_corruptFile_fallsBackToNetwork() async throws {
+            let dir = tempCacheDir(); defer { try? FileManager.default.removeItem(at: dir) }
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let device = makeLocalDevice()
+            try Data("not json".utf8).write(to: dir.appendingPathComponent("\(device.DeviceID)-json-12h.guide"))
+            var calls = 0
+            MockURLProtocol.requestHandler = { req in calls += 1; return (okResponse(for: req.url!), sampleGuideJSON.data(using: .utf8)!) }
+            let store = GuideStore(session: makeSession(), diskCacheDir: dir)
+            let ok = await store.load(for: device, maxCacheAge: GuideStore.startupCacheMaxAge)
+            #expect(ok)
+            #expect(calls == 1)
+        }
     }
 
     // MARK: - Channel entry index

@@ -3,6 +3,8 @@ import Foundation
 final class ConfigManager {
     private let hostname: String
     private var configURL: URL
+    /// Directory holding the config file (and, under it, other on-disk app state such as the guide cache).
+    let supportDir: URL
 
     // appSupportDir is a test seam only — production always passes nil and gets the real
     // ~/Library/Application Support/hdhrVCRplus/ (not TCC-protected, survives ad-hoc re-signs).
@@ -13,6 +15,7 @@ final class ConfigManager {
         let appSupport = appSupportDir ?? (FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory)
             .appendingPathComponent("hdhrVCRplus")
         try? FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
+        supportDir = appSupport
         configURL = appSupport.appendingPathComponent("hdhr_VCR-\(hostname).json")
     }
 
