@@ -940,6 +940,18 @@ extension String {
     var urlBase: String { components(separatedBy: "?").first ?? self }
 }
 
+extension Collection where Element == LineupEntry {
+    /// The lineup entry whose stream URL is the one being played (ignoring any `?transcode=…` query).
+    /// Exact match on the query-stripped URL — NOT a prefix match: channel URLs are
+    /// "http://host:5004/auto/v5.1" and "…/v5.10", so a prefix test made 5.10 select 5.1 (and 6.10→6.1,
+    /// 11.10→11.1), and an entry with an empty URL prefix-matched everything. 2026-10-05 review.
+    func entry(matchingStreamURL url: String) -> LineupEntry? {
+        let base = url.urlBase
+        guard !base.isEmpty else { return nil }
+        return first { ($0.URL ?? "").urlBase == base }
+    }
+}
+
 struct GuideChannel: Codable {
     var GuideNumber: String
     var GuideName: String

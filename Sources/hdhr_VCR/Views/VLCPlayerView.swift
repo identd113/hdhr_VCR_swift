@@ -2508,7 +2508,7 @@ struct VLCPlayerView: View {
             selectedChannel = match
             return
         }
-        if let match = lineup.first(where: { ($0.URL ?? "").hasPrefix(base) || base.hasPrefix($0.URL ?? "") }) {
+        if let match = lineup.entry(matchingStreamURL: base) {   // exact match — 5.1 ≠ 5.10 (see entry(matchingStreamURL:))
             glog("[VLC] syncChannel matched \(match.GuideNumber) \(match.GuideName) for url=\(base)")
             updateNowPlaying(channel: match)
             // Only suppress and update picker if the channel is actually changing — if it's

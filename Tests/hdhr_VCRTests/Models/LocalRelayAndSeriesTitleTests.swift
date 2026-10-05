@@ -47,3 +47,43 @@ struct StationLogoFallbackTests {
         #expect(stationLogoPlaceholder.size.width <= 64 && stationLogoPlaceholder.size.height <= 64)
     }
 }
+
+@Suite("Lineup entry matching by stream URL")
+struct LineupStreamURLMatchTests {
+    private func entry(_ num: String, url: String?) -> LineupEntry {
+        LineupEntry(GuideNumber: num, GuideName: "Ch \(num)", URL: url, HD: nil, Favorite: nil)
+    }
+    private var lineup: [LineupEntry] {
+        [entry("5.1",  url: "http://10.0.0.2:5004/auto/v5.1"),
+         entry("5.10", url: "http://10.0.0.2:5004/auto/v5.10"),
+         entry("11.1", url: "http://10.0.0.2:5004/auto/v11.1"),
+         entry("11.10", url: "http://10.0.0.2:5004/auto/v11.10"),
+         entry("9.9",  url: nil),
+         entry("9.8",  url: "")]
+    }
+
+    @Test func fiveDotOne_isNotFiveDotTen_inEitherOrder() {
+        #expect(lineup.entry(matchingStreamURL: "http://10.0.0.2:5004/auto/v5.1")?.GuideNumber == "5.1")
+        #expect(lineup.entry(matchingStreamURL: "http://10.0.0.2:5004/auto/v5.10")?.GuideNumber == "5.10")
+        #expect(lineup.reversed().entry(matchingStreamURL: "http://10.0.0.2:5004/auto/v5.10")?.GuideNumber == "5.10")
+        #expect(lineup.reversed().entry(matchingStreamURL: "http://10.0.0.2:5004/auto/v5.1")?.GuideNumber == "5.1")
+        #expect(lineup.entry(matchingStreamURL: "http://10.0.0.2:5004/auto/v11.10")?.GuideNumber == "11.10")
+        #expect(lineup.entry(matchingStreamURL: "http://10.0.0.2:5004/auto/v11.1")?.GuideNumber == "11.1")
+    }
+
+    @Test func transcodeQueryIsIgnored() {
+        #expect(lineup.entry(matchingStreamURL: "http://10.0.0.2:5004/auto/v5.10?transcode=heavy")?.GuideNumber == "5.10")
+    }
+
+    @Test func unknownChannel_orPrefixOnlyURL_matchesNothing() {
+        #expect(lineup.entry(matchingStreamURL: "http://10.0.0.2:5004/auto/v5") == nil)       // a prefix of 5.1 / 5.10
+        #expect(lineup.entry(matchingStreamURL: "http://10.0.0.2:5004/auto/v5.100") == nil)   // 5.10 is a prefix of it
+        #expect(lineup.entry(matchingStreamURL: "") == nil)
+    }
+
+    @Test func entriesWithEmptyOrMissingURL_neverMatch() {
+        #expect(lineup.entry(matchingStreamURL: "http://10.0.0.2:5004/auto/v9.9") == nil)
+        let onlyEmpty = [entry("9.9", url: nil), entry("9.8", url: "")]
+        #expect(onlyEmpty.entry(matchingStreamURL: "http://anything") == nil)
+    }
+}
